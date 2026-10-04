@@ -1,19 +1,33 @@
-//! Keyframes: CSS `@keyframes` for a node's animatable slots. A node with
-//! `NodeSpec::keyframes` cycles those slots through the stops over its
-//! transition's duration, in the transition's `repeat` direction, held
-//! back by its `delay_ms` — CSS's `animation-*` family on a kui node.
+//! Keyframes: CSS `@keyframes` for a node's animatable slots.
+//!
+//! A node with [`NodeSpec::keyframes`](crate::spec::NodeSpec::keyframes)
+//! cycles those slots through the stops over its transition's duration, in
+//! the transition's `repeat` direction, held back by its `delay_ms`: CSS's
+//! `animation-*` family on a kui node.
+//!
+//! ```rust
+//! use kui_core::{Color, Keyframe, NodeSpec};
+//!
+//! // A pulse: the background goes to red at the middle of each cycle and
+//! // back to the node's own `bg` at the ends.
+//! let pulse = NodeSpec::row()
+//!     .size(40.0, 40.0)
+//!     .bg(Color::hex(0x3b5bd4ff))
+//!     .keyframes(vec![Keyframe::default().at(0.5).bg(Color::hex(0xd43b3bff))])
+//!     .transition(800.0);
+//! assert_eq!(pulse.anim().keyframes.len(), 1);
+//! ```
 //!
 //! The rules are CSS's (and the Web Animations API's) where they had one:
 //! a stop's `at` is optional and missing ones spread evenly between their
-//! neighbours (the last defaults to 1, the first to 0 — a lone stop is the
-//! far end and animates from the node's own value); a slot a stop
-//! leaves out is simply not part of that stop; and a slot whose stops don't
-//! reach 0 or 1 gets the node's own declared value there, so a single
-//! `{ at: 0.5, bg }` stop is a pulse to that color and back.
+//! neighbours (the last defaults to 1, the first to 0; a lone stop is the
+//! far end and animates from the node's own value); a slot a stop leaves
+//! out is not part of that stop; and a slot whose stops do not reach 0 or
+//! 1 gets the node's own declared value there.
 //!
-//! Stops arrive as plain data from the bindings (`parse`), and the runtime
-//! flattens them per slot into the tracks [`crate::anim::AnimStore::sample`]
-//! walks.
+//! Stops arrive as plain data from the bindings ([`parse`]), and the
+//! runtime flattens them per slot into the tracks the animation store
+//! samples each frame.
 
 use crate::slots::{Slots, slot_builders};
 use crate::value::Value;
@@ -51,8 +65,8 @@ pub fn parse(v: &Value) -> Result<Vec<Keyframe>, String> {
 /// [`parse`] with a token lookup: a `$name` in a stop's `width`,
 /// `height`, `bg` or `radius` resolves through `refs`, and one that
 /// misses leaves that slot unnamed and is remembered on the refs for the
-/// binding to raise (backlog AR14). Without refs a `$name` is the error
-/// it always was, since there is nothing to resolve it against.
+/// binding to raise. Without refs a `$name` is an error, since there is
+/// nothing to resolve it against.
 pub fn parse_with(
     v: &Value,
     mut refs: Option<&mut crate::tokens::NameRefs<'_>>,

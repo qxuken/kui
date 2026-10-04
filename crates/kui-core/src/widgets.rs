@@ -1,6 +1,34 @@
-//! Opinionated helpers composed purely from primitives — the pattern custom
-//! widgets should follow (composition over traits, state by key), which is
-//! what keeps them reachable from scripting frontends.
+//! Stock widgets built from the primitives: buttons, toggles, text input,
+//! select, slider, splitter, tooltips, menus, a titlebar and virtual lists.
+//!
+//! Every widget here is a plain function over a [`Ui`] that opens ordinary
+//! nodes with ordinary [`NodeSpec`]s; there is no widget trait and no
+//! retained object. State lives in the core by key (focus, hover, an edit
+//! buffer, a scroll offset), and the app's model is the only other state.
+//! A custom widget follows the same pattern, and the `*_spec` functions
+//! ([`button_spec`], [`toggle_spec`], [`slider_spec`], [`menu_panel_spec`])
+//! are the starting points for one that should look like the stock set.
+//!
+//! ```rust
+//! use kui_core::{Core, NodeSpec, Size, Value, widgets};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+//! ui.configure_root(NodeSpec::column().fill().pad(12.0).gap(8.0));
+//!
+//! widgets::label(&mut ui, "Settings");
+//! let name = widgets::text_input(&mut ui, "name", "Ada");
+//! widgets::checkbox(&mut ui, "Dark mode", true, "toggle-dark");
+//! widgets::slider(&mut ui, "volume", 40.0, 0.0, 100.0, 1.0, "volume");
+//! widgets::button(&mut ui, "Save", Value::str("save"));
+//!
+//! assert_eq!(ui.edit_text(name).as_deref(), Some("Ada"));
+//! ui.finish();
+//! ```
+//!
+//! Each control posts the payload it was given as a
+//! [`UiEvent`](crate::input::UiEvent) when it is used, and the view redraws
+//! from its model; a checkbox does not flip itself.
 
 use crate::access::Role;
 use crate::color::Color;
@@ -253,7 +281,7 @@ pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
 /// string as the node's description, which is where a reader hears it;
 /// as content it would be read twice under a group and, under a control
 /// named from its content, become part of the *name* whenever the pointer
-/// crossed it (backlog F88). The `tooltip` element keeps its text, since
+/// crossed it. The `tooltip` element keeps its text, since
 /// it is drawn with no description behind it.
 pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
     let size = ui.metrics().hint_text;
@@ -272,6 +300,7 @@ fn tooltip_spec(ui: &Ui<'_>) -> NodeSpec {
         .border(1.0, t.border_strong)
 }
 
+/// A line of text in the default style: `ui.text(text, TextStyle::default())`.
 pub fn label(ui: &mut Ui<'_>, text: &str) {
     ui.text(text, TextStyle::default());
 }
@@ -374,10 +403,9 @@ pub fn select_spec(theme: &Theme, m: &Metrics) -> NodeSpec {
 /// button's. The border, the click, the role and the disclosure are
 /// added here whatever `spec` said.
 ///
-/// A `current` that names no option — past the end, or a separator — is
-/// none, with a `select-current-ignored` warning on the field (backlog
-/// RG10): the field is described by nothing and no row is checked, where
-/// it used to check the divider.
+/// A `current` that names no option (past the end, or a separator) is
+/// none, with a `select-current-ignored` warning on the field: the field
+/// is described by nothing and no row is checked.
 pub fn select_with(
     ui: &mut Ui<'_>,
     label: &str,
@@ -456,9 +484,7 @@ pub const TITLEBAR_H: f32 = Metrics::comfortable().titlebar_h;
 /// the strip (`env.window.native_controls`: the macOS traffic lights under
 /// custom chrome) the strip is the OS's own titlebar, as tall as the
 /// keep-out rect says that titlebar is, so the strip's content centres on
-/// the buttons the OS centred in it; a strip 34 px tall beside a 32 px
-/// titlebar put its content 2 px under the lights, and looked taller than
-/// it was (backlog W17). Everywhere else the strip is the app's alone and
+/// the buttons the OS centred in it. Everywhere else the strip is the app's alone and
 /// `Metrics::titlebar_h` is its height. A keep-out with no height (a host
 /// that reported a width only) falls back to the metric.
 pub fn titlebar_height(ui: &Ui<'_>) -> f32 {
@@ -523,9 +549,8 @@ pub fn titlebar_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
 /// provides controls (native decorations, or macOS traffic lights), so it
 /// is always safe to call. It grows to the height it is given — the
 /// strip's, in [`titlebar_with`] — and is a titlebar tall where nothing
-/// gives it one: a grow child adds nothing to a fit parent's height, and
-/// alone in a fitted row the cluster was 0 px tall with its glyphs
-/// hanging out of it (backlog RG50).
+/// gives it one, since a grow child adds nothing to a fit parent's
+/// height.
 pub fn window_buttons(ui: &mut Ui<'_>) {
     let win = ui.env().window;
     if !win.custom_chrome || win.native_controls.is_some() {
@@ -611,17 +636,12 @@ fn window_button(ui: &mut Ui<'_>, button: WindowButton, maximized: bool) {
 /// on the node and resolved by the core, so every binding's button is this
 /// same data. Add the label as a child.
 ///
-/// The three backgrounds are the theme's accent trio — `accent`,
-/// `accent_hover`, `accent_pressed` — so the stock button paints from the
-/// palette like every other stock widget (backlog AR41): the OS's accent
-/// where the host reports one, the app's where it set or pinned one, and
-/// kui's blue otherwise, which is byte-for-byte the trio the button
-/// always had (`Theme::dark()` carries the same three values). Takes the
-/// theme and the metrics rather than reading them, as [`menu_panel_spec`]
-/// takes the palette: `widgets::button_spec(&ui.theme(), &ui.metrics())`
-/// is the idiom, and the stock numbers are `button_spec(&Theme::dark(),
-/// &Metrics::default())`. The derivation for any *other* base colour is
-/// [`button_palette`].
+/// The three backgrounds are the theme's accent trio (`accent`,
+/// `accent_hover`, `accent_pressed`): the OS's accent where the host
+/// reports one, the app's where it set or pinned one, and kui's blue
+/// otherwise. Takes the theme and the metrics rather than reading them, so
+/// `widgets::button_spec(&ui.theme(), &ui.metrics())` is the idiom. The
+/// derivation for any other base colour is [`button_palette`].
 pub fn button_spec(theme: &Theme, m: &Metrics) -> NodeSpec {
     NodeSpec::row()
         .pad_xy(m.control_pad_x, m.control_pad_y)
@@ -671,12 +691,25 @@ pub const BUTTON_TEXT: f32 = Metrics::comfortable().control_text;
 /// would show a sighted user the state a reader is told.
 pub const BUTTON_DISABLED_OPACITY: f32 = 0.5;
 
-/// A push button showing `text`, keyed by it. A label that changes re-keys
-/// the node — a new node, so it loses keyboard focus and a screen reader's
-/// cursor; declare such a button with [`button_with`] and a key of its own.
-/// The pointer over it is the hand (`CursorShape::Pointer`): the core
-/// implies no shape from an `on_click`, and the stock button is the one
-/// place the hand is declared for you.
+/// A push button showing `text`, keyed by it; a click posts `payload` as
+/// a [`UiEvent`](crate::input::UiEvent) on the button's key.
+///
+/// ```rust
+/// # use kui_core::{Core, NodeSpec, Size, widgets};
+/// # let mut core = Core::new();
+/// # let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+/// widgets::button(&mut ui, "Save", "save");
+/// // The same button with its spec in hand: a tooltip and a stable key.
+/// let (t, m) = (ui.theme(), ui.metrics());
+/// widgets::button_with(&mut ui, "save-2", "Save", widgets::button_spec(&t, &m).on_click("save"), Some("Ctrl+S"));
+/// # ui.finish();
+/// ```
+///
+/// A label that changes re-keys the node (a new node, so it loses keyboard
+/// focus and a screen reader's cursor); declare such a button with
+/// [`button_with`] and a key of its own. The pointer over it is the hand
+/// (`CursorShape::Pointer`): the core implies no shape from an `on_click`,
+/// and the stock button is the one place the hand is declared for you.
 pub fn button(ui: &mut Ui<'_>, text: &str, payload: impl Into<Value>) {
     let (theme, m) = (ui.theme(), ui.metrics());
     button_with(
@@ -707,7 +740,7 @@ pub fn button_with(ui: &mut Ui<'_>, key: &str, text: &str, spec: NodeSpec, hint:
 /// [`button_with`] keyed by a data index rather than a label — a row of a
 /// virtual list (`Ui::open_indexed`), so the button keeps its focus, its
 /// hover and its tweens as the built range slides and the same text on
-/// two rows is two nodes (backlog AR40). What `<button index>` and
+/// two rows is two nodes. What `<button index>` and
 /// `button { index = }` lower to.
 pub fn button_indexed(ui: &mut Ui<'_>, index: u64, text: &str, spec: NodeSpec, hint: Option<&str>) {
     button_body(ui, Ident::Index(index), text, spec, hint);
@@ -736,7 +769,7 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     // spec it changes nothing — `button_spec` paints from the theme's
     // trio already (AR41) — and on a spec whose caller set its own `bg`
     // it is the ask to take the theme's instead. The family is the
-    // *theme's* (ADR 0019), and the theme always has one, so there is no
+    // *theme's*, and the theme always has one, so there is no
     // gate here: kui's blue is the accent nobody chose.
     let spec = if spec.accent {
         spec.bg(theme.accent)
@@ -796,7 +829,7 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
 }
 
 // -- Stock controls ---------------------------------------------------------
-// `docs/adr/0034-stock-controls-over-the-roles.md`: checkbox, radio, switch
+// The stock controls over the roles: checkbox, radio, switch
 // and slider, composed over the roles the core already reads. The state is
 // the app's and rides on the spec — `checked`, `mixed`, `value_now` — so a
 // control is drawn from what the view declared this frame, and a toggle's
@@ -1015,7 +1048,7 @@ pub fn radio_group_spec(m: &Metrics) -> NodeSpec {
 
 /// A radio group named `label`: one Tab stop whose arrows, Home and End
 /// move the choice among the radios `f` declares and press the one they
-/// land on (ADR 0007, decisions 8 and 11), so a group of radios whose
+/// land on, so a group of radios whose
 /// payloads each set the choice answers the keyboard with no more code.
 /// The role and the name are the group's whatever `spec` said; a `row`
 /// spec lays the radios out across, and its arrows run across with it. A
@@ -1075,7 +1108,7 @@ pub fn radio_group(
 /// The stock slider's spec: a row as wide as a menu and as tall as its
 /// thumb, padded by half the thumb on either side so the thumb's centre
 /// is under the pointer at both ends — the content box is the track the
-/// core reads a press along (ADR 0034, decision 4). A caller sizing its
+/// core reads a press along. A caller sizing its
 /// own slider changes the width and keeps the padding.
 pub fn slider_spec(m: &Metrics) -> NodeSpec {
     let b = control_box(m);
@@ -1182,7 +1215,7 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
 
 // -- Splitter ---------------------------------------------------------------
 
-/// A divider between two panes that the pointer drags (backlog DX12):
+/// A divider between two panes that the pointer drags:
 /// `thickness` px across, growing along the rest of its parent, in the
 /// theme's border colour and its accent while hovered or held, with the
 /// resize arrows, and `tag` as its `on_drag`. `dir` is the parent's: in a
@@ -1221,7 +1254,7 @@ pub fn splitter(
 }
 
 // -- Context menus ----------------------------------------------------------
-// The menu every app was writing for itself (ADR 0017, decision 5). It is
+// The menu every app was writing for itself. It is
 // exported rather than hidden inside the core's automatic path, and the
 // automatic path calls exactly this — so an app that answers its own
 // `onContextMenu` to add two items of its own gets the layout, the
@@ -1243,13 +1276,11 @@ pub const MENU_KEY: &str = "kui.menu";
 /// node happens to enclose it; `fit` is what keeps it in the window, which
 /// for a menu near the bottom edge means flipping above the point.
 ///
-/// It declares `modal`, so a press outside it or Escape asks it to go away
-/// through the one mechanism that already exists for that
-/// (`docs/adr/0003-modal-surfaces.md`) rather than through a dismissal
-/// rule of its own; the caller closes it when that dismissal arrives. The
-/// rows are `menuItem`s under a `menu`, which is what makes the arrow keys
-/// work (`docs/adr/0007-composite-keyboard-patterns.md`) and what a screen
-/// reader reads.
+/// It declares `modal`, so a press outside it or Escape emits a `dismiss`
+/// event on it rather than through a dismissal rule of its own; the caller
+/// closes it when that dismissal arrives. The rows are `menuItem`s under a
+/// `menu`, which is what makes the arrow keys work and what a screen reader
+/// reads.
 ///
 /// Each chosen row posts the item's `id`, or its label when it declares
 /// none. A `Separator` posts nothing and takes no focus.
@@ -1291,11 +1322,10 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
 /// the stock menu paints. What the caller adds is where it goes and what
 /// scope it belongs to — a context menu floats at the pointer and declares
 /// its own `modal`; the menu bar's drops out of its title and lives inside
-/// the bar's (`docs/adr/0018-a-menu-bar-the-app-declares.md`, decision 5).
-/// Takes the palette and the metrics rather than reading them, because a
-/// caller that has a `Ui` in one hand cannot lend it to this and to
-/// `menu_panel` in the same expression — `let t = ui.theme();` first is
-/// the idiom (ADR 0019).
+/// the bar's. Takes the palette and the metrics rather than reading them,
+/// because a caller that has a `Ui` in one hand cannot lend it to this and
+/// to `menu_panel` in the same expression; `let t = ui.theme();` first is
+/// the idiom.
 pub fn menu_panel_spec(t: &Theme, m: &Metrics) -> NodeSpec {
     NodeSpec::column()
         .role(Role::Menu)
@@ -1420,8 +1450,7 @@ fn group_name(i: usize) -> String {
 pub const MENU_BAR_H: f32 = Metrics::comfortable().menu_bar_h;
 
 /// The application menu: `bar` is what the app's menu *is*, and calling
-/// this is where its titles go when they have to be drawn in the window
-/// (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
+/// this is where its titles go when they have to be drawn in the window.
 ///
 /// One call and not two, because the declaration and the placement are one
 /// decision. **It draws nothing where the platform owns the bar** — macOS,
@@ -1439,7 +1468,7 @@ pub const MENU_BAR_H: f32 = Metrics::comfortable().menu_bar_h;
 /// open the *bar* is the frame's modal, not the dropdown, so hovering
 /// across the titles moves the open menu the way a menu bar does, a press
 /// on the open title closes it, and Escape or a press in the app below
-/// closes it through ADR 0003's one mechanism.
+/// dismisses it as any modal is dismissed.
 ///
 /// Typical use, as the first child of a full-height root, under the
 /// titlebar if there is one:
@@ -1633,7 +1662,7 @@ pub fn uniform_list(
 /// [`uniform_list`] with each row's own node spelled by `row_spec(i)` —
 /// the click, the zebra stripe, the hover background, the role a row
 /// carries — where the plain form's rows are bare and the callback nests
-/// a second node inside each to carry them (backlog DX12). The height is
+/// a second node inside each to carry them. The height is
 /// forced to `row_h`, the stride the arithmetic assumes, and a width the
 /// spec leaves `fit` grows across the list.
 pub fn uniform_list_with(
@@ -1663,7 +1692,7 @@ pub fn uniform_list_with(
 
     ui.with_keyed(label, spec.scroll_y().gap(0.0), |ui| {
         // The whole list's size, built or not: what Select All inside a
-        // `selectable` list spans (ADR 0017, tier 3).
+        // `selectable` list spans.
         ui.row_count(rows as u64);
         // Keyed, not auto-keyed: an auto key is a sibling index, and the
         // rows already occupy that namespace at their data indices — an
@@ -1687,7 +1716,7 @@ pub fn uniform_list_with(
 
     // Sliced by a screenful's guess, with no layout of its own yet: the
     // next frame slices by its geometry. kui's ask, not the app's, so a
-    // trace names it for what it is (backlog RG82).
+    // trace names it for what it is.
     if first_frame {
         ui.owe_frame("list first frame");
     }
@@ -1696,7 +1725,7 @@ pub fn uniform_list_with(
 
 /// Scrolls the [`uniform_list`] labelled `label` so row `i` shows, when
 /// it does not already: to the middle of the list, so a jump lands with
-/// rows on both sides of it (backlog DX12). Call it before the list is
+/// rows on both sides of it. Call it before the list is
 /// declared, in the same parent — the frame that scrolls then slices its
 /// rows by the offset it scrolls to, instead of a frame late. Returns
 /// whether it scrolled. The first frame, before the list has laid out,
@@ -1704,7 +1733,7 @@ pub fn uniform_list_with(
 /// list's rows start at its content top and fill its box, as they do
 /// without padding. A row past the list's content — an index past its
 /// end — scrolls nothing and answers false, as does a `row_h` that is
-/// not positive (backlog RG75).
+/// not positive.
 ///
 /// `Ui::reveal` cannot do this for a row that is not built, and a
 /// virtual list builds only what shows.
@@ -1727,8 +1756,7 @@ pub fn reveal_row(ui: &mut Ui<'_>, label: &str, i: usize, row_h: f32) -> bool {
 
 /// How many whole rows of `row_h` the [`uniform_list`] labelled `label`
 /// shows as of the last layout — a PageDown's stride. 0 before it has
-/// laid out, and for a `row_h` that is not positive, where the division
-/// answered `usize::MAX` (backlog RG75).
+/// laid out, and for a `row_h` that is not positive.
 pub fn rows_in_view(ui: &mut Ui<'_>, label: &str, row_h: f32) -> usize {
     let key = ui.child_key(label);
     if row_h <= 0.0 {
@@ -2090,7 +2118,7 @@ pub fn list(
         }
     });
 
-    // As `uniform_list`'s first frame (backlog RG82).
+    // As `uniform_list`'s first frame.
     if plan.first_frame {
         ui.owe_frame("list first frame");
     }
@@ -2102,7 +2130,7 @@ pub fn list(
 /// its rows sit inside. [`list`] takes it from the frame
 /// ([`Self::of`]); a binding builds it from the same readings its view
 /// already has (`scrollGeometry`, `scrollOffset`, the viewport), so the
-/// arithmetic after it is this module's in every language (backlog C46).
+/// arithmetic after it is this module's in every language.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ListReading {
     /// `scroll_geometry` of the container, `None` before a layout has
@@ -2151,9 +2179,7 @@ pub struct ListSlice {
     /// *measurement* moving the numbers — not for the clamp to zero, which
     /// on a list shorter than its box (offset 0, padding 6) makes `top +
     /// pad_t` differ from the offset every frame, and a correction every
-    /// frame is a frame requested every frame: the devtools' events list
-    /// never idled again once it had one row (found building ADR 0029,
-    /// ~130 frames/s after the first event).
+    /// frame is a frame requested every frame.
     top_before: f32,
     /// Where an eased leg (F80) is going, when that is somewhere other
     /// than where the content is drawn: a second anchor, so the row under

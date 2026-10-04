@@ -1,47 +1,19 @@
-//! The scene corpus: what every binding must agree on, as data.
+//! The scene corpus: test infrastructure, behind the `conformance` feature
+//! (off by default), that every binding replays to prove it lowers props
+//! and elements the way `kui-core` does.
 //!
-//! `schema::CUSTOM` and `schema::ELEMENTS` name the props and elements each
-//! frontend lowers by hand. Naming them makes the transports agree on
-//! *identity*; nothing made them agree on *behaviour*, so a binding could
-//! (and did) drop a piece of one — `kui_tooltip` set no description, the
-//! docs named a Lua float key the parser never read — with a green build.
-//!
-//! This module is the fix: a list of small named [`Scene`]s, each declaring
-//! which `CUSTOM` and `ELEMENTS` rows it exercises — a declaration
-//! [`observe`] then derives back off the built tree, so a scene cannot
-//! claim a row it stopped touching — plus the input to
-//! replay and the [`Expect`]ed semantics. [`drive`] runs one against a
-//! `Core` and renders a [`report`] — a line-oriented text block with no
-//! floating-point formatting in it, so four languages can produce it
-//! byte-identically.
-//!
-//! Two tiers, because only one of them is portable across machines:
-//!
-//! - [`Scene::expect`] is checked in and font-independent (access rows,
-//!   events, warnings, solid/image quad counts). `kui-core`'s own test
-//!   asserts it, which pins the reference behaviour.
-//! - The report carries a digest over full quad geometry, which depends on
-//!   the installed fonts. It is never checked in: the reference is dumped
-//!   at test time (`cargo run -p kui-core --features conformance --example conformance-dump`) and
-//!   the other three bindings — Lua, C, Node — reproduce their scenes and
-//!   compare against that dump, on the same machine, in the same CI job.
-//!
-//! Most scenes are one tree replayed against a list of inputs. Two steps
-//! are not input at all, and exist because one behaviour needs more than a
-//! tree: [`Step::Phase`] is the view changing its mind (a node only departs
-//! because the view stopped declaring it) and [`Step::Time`] is the frame
-//! clock (without one every transition snaps, so there is nothing to
-//! depart). A report keeps one frame, so a scene that uses them has to end
-//! its steps where the states it wants to tell apart actually differ.
-//!
-//! Adding a binding-visible prop or element means adding it to a scene
-//! here; a binding that lowers it differently then fails to build.
-//!
-//! The module is behind the `conformance` feature, off by default: it is
-//! test infrastructure, and nothing a shipped binary should carry. The
-//! crate's own dev-dependency turns it on for its tests and examples, so
-//! does `kui-lua`'s; C and Node need nothing, since both rebuild the scenes
-//! through their public APIs and read the reference back as a file.
+//! Each [`Scene`](crate::conformance::Scene) is a small view plus the
+//! input to replay and the [`Expect`](crate::conformance::Expect)ed
+//! outcome; [`drive`](crate::conformance::drive) runs one against a `Core`
+//! and [`report`](crate::conformance::report)
+//! renders a text block that four languages can produce byte for byte.
+//! The crate's own tests assert the font-independent part (access rows,
+//! events, warnings, quad counts); the Lua, C and Node suites rebuild the
+//! scenes through their public APIs and compare their reports against a
+//! dump made on the same machine (`cargo run -p kui-core --features
+//! conformance --example conformance-dump`). A prop or element visible to
+//! a binding has to appear in a scene here, or the build fails. Nothing in
+//! a shipped app needs this module.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -235,7 +207,7 @@ pub struct Fixtures {
     /// generation, so raw 1 is index 1 at generation 1, the first key the
     /// process's mint hands out, and it stays live — *foreign*, in a Node
     /// process whose earlier sessions the GC has not collected — until
-    /// that session drops it (C31). Raw 0 is different: index 0 is the
+    /// that session drops it. Raw 0 is different: index 0 is the
     /// slot the mint never fills, and "no image" at every door.
     pub dead: ImageId,
 }
@@ -265,7 +237,7 @@ pub fn fixtures(core: &mut Core) -> Fixtures {
 }
 
 /// The named keys a [`Step::KeyAtDown`] / [`Step::KeyAtUp`] step names,
-/// by index — the way [`ARROWS`] spells an arrow (backlog F108). A
+/// by index — the way [`ARROWS`] spells an arrow. A
 /// binding's adapter keeps the same list.
 pub const STEP_KEYS: &[&str] = &["shift", "enter", "capslock"];
 
@@ -350,13 +322,13 @@ pub enum Step {
     KeyUp(u32),
     /// A named key going down or up at a place on the keyboard (backlog
     /// F108): the key as an index into [`STEP_KEYS`], the place as
-    /// [`KeyLocation::bits`]'s number (0 standard, 1 left, 2 right, 3
+    /// `KeyLocation::bits`'s number (0 standard, 1 left, 2 right, 3
     /// numpad) — integers, as every argument is. No modifiers, no text.
     KeyAtDown(u32, u32),
     KeyAtUp(u32, u32),
     /// An IME composing one character (its Unicode scalar value, the caret
     /// at its end) on whatever holds focus — a stock editor shows it
-    /// inline, an `on_key` sink hears `{kind="preedit"}` (backlog C17).
+    /// inline, an `on_key` sink hears `{kind="preedit"}`.
     /// Zero is the composition ending without a commit: empty text, no
     /// cursor.
     Preedit(u32),
@@ -366,7 +338,7 @@ pub enum Step {
     Commit(u32),
     /// The clipboard answering a paste with one character and the
     /// pasteboard's markers as [`crate::input::ClipboardMarks::bits`] —
-    /// 1 concealed, 2 transient (backlog F84): `InputEvent::Paste`, which
+    /// 1 concealed, 2 transient: `InputEvent::Paste`, which
     /// a stock editor takes as typed text and a sink hears as
     /// `{kind="text"}` with `concealed` / `transient` beside it.
     Paste(u32, u32),
@@ -590,20 +562,20 @@ pub struct Expect {
     /// so a curve's flattening is pinned too. A lower bound instead where
     /// [`Expect::segments_follow_text`] says so.
     pub segments: usize,
-    /// Whether the segments include a wavy or dotted underline's pieces
-    /// (backlog K4), whose number follows the text's advance and the
-    /// face's underline stroke — so the installed fonts: 32 on the Mac the
-    /// `underlines` scene was written on, 30 under Windows' Cascadia Mono
-    /// (backlog RG38). Then `segments` is a lower bound, as `glyphs_min`
-    /// is; the other three adapters still match this machine's report
-    /// exactly, and `deco.rs`'s tests pin the pieces a width makes.
+    /// Whether the segments include a wavy or dotted underline's pieces,
+    /// whose number follows the text's advance and the face's underline
+    /// stroke, so the installed fonts: 32 on the Mac the `underlines`
+    /// scene was written on, 30 under Windows' Cascadia Mono. Then
+    /// `segments` is a lower bound, as `glyphs_min` is; the other three
+    /// adapters still match this machine's report exactly, and `deco.rs`'s
+    /// tests pin the pieces a width makes.
     pub segments_follow_text: bool,
     /// Exact fragment-quad count: one per `fragment` node that resolved
     /// its handle. A node whose handle is dead emits none, which is how
     /// the scene pins that too.
     pub fragments: usize,
     /// Exact texture-quad count: one per `image` node drawn from a texture
-    /// of its own rather than the atlas (ADR 0025) — one that was updated,
+    /// of its own rather than the atlas — one that was updated,
     /// or that no page could hold.
     pub textures: usize,
     /// Glyph quads are one per rendered glyph — a lower bound keeps a font
@@ -644,7 +616,7 @@ pub struct Scene {
     pub name: &'static str,
     pub doc: &'static str,
     /// `schema::CUSTOM` names this scene exercises. Hand-written, but not
-    /// taken on trust: [`observe`] derives the same set from the tree the
+    /// taken on trust: `observe` derives the same set from the tree the
     /// builder produces, and the Rust adapter fails a claim that is not in
     /// it (see [`Coverage`]).
     pub custom: &'static [&'static str],
@@ -1507,7 +1479,7 @@ pub const SCENES: &[Scene] = &[
                 "1 group Sink||",
             ],
             // The sink takes the keyboard as the view declares it, and
-            // its `onFocus` hears it (backlog DX18).
+            // its `onFocus` hears it.
             events: &["focus sink"],
             announcements: &[],
             warnings: &[],
@@ -1560,7 +1532,7 @@ pub const SCENES: &[Scene] = &[
                 "1 group Sink||",
             ],
             // The sink takes the keyboard as the view declares it, and
-            // its `onFocus` hears it (backlog DX18).
+            // its `onFocus` hears it.
             events: &["focus sink"],
             announcements: &[],
             warnings: &[],
@@ -3759,7 +3731,7 @@ fn build_table(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .pad(4.0)
             .gap(2.0)
             .bg(Color::hex(0x101018ff))
-            // Grid rules (backlog DX21): one across each of the three
+            // Grid rules: one across each of the three
             // gaps between the four rows, one down each of the two gaps
             // between the body rows' three columns.
             .rules(Color::hex(0x2b3350ff))
@@ -3912,7 +3884,7 @@ pub const TOKEN_COLORS: [(&str, u32, u32); 3] = [
 ];
 pub const TOKEN_LENGTHS: [(&str, f32); 3] = [("side_w", 60.0), ("gap", 8.0), ("big", 16.0)];
 
-/// The scene's derived tokens (ADR 0028), declared after the values in
+/// The scene's derived tokens, declared after the values in
 /// this order: the name, its source, and the chain as `(verb, colour
 /// operand or "", number)` tuples. `lit` is one step off a value; `dim`
 /// two steps that do not commute, so the fold's order is pinned; `up`
@@ -4266,7 +4238,7 @@ fn build_float(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// into `hoverable` plus an accessible `description`, and draw
 /// `widgets::hover_hint` as the node's last child while it is hovered —
 /// the stock tooltip's chrome under `role="none"`, so the hint's text is
-/// read once, as the description, and never as the group's content (F88).
+/// read once, as the description, and never as the group's content.
 ///
 /// The second node is the `description` prop on its own — the same slot
 /// with neither the hover tracking nor the float, which is what a hint
@@ -4315,7 +4287,7 @@ fn build_tooltip(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
-/// The application menu bar (ADR 0018): a declaration, and the widget that
+/// The application menu bar: a declaration, and the widget that
 /// draws it. Two menus, so the second's title is somewhere to hover; a
 /// standard role, a separator, a checked row and an accelerator, so every
 /// part of a row is in the frame the report keeps.
@@ -4349,13 +4321,13 @@ fn build_menu_bar(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 
 fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.window_title("kui conformance");
-    // The other root declaration with no node (backlog C30): the frame
+    // The other root declaration with no node: the frame
     // asks for the window on top, and the report says it asked.
     ui.always_on_top(true);
-    // And the third (backlog F85): the frame asks for secure keyboard
+    // And the third: the frame asks for secure keyboard
     // entry, which a runner applies while the window has the keyboard.
     ui.secure_input(true);
-    // And the fourth (backlog F113): the left Option key as Alt, which a
+    // And the fourth: the left Option key as Alt, which a
     // runner applies to the window on change.
     ui.option_as_alt(OptionAsAlt::Left);
     ui.with(NodeSpec::column().gap(6.0), |ui| {
@@ -4371,7 +4343,7 @@ fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         // element under test is the cluster, and a drag handle would derive
         // a second `titleBar` role, which is a thing to tell a screen reader
         // rather than a side effect of where the corpus put a box. It keeps
-        // focus (`keepFocus`, backlog DX10), as a strip of buttons beside
+        // focus (`keepFocus`), as a strip of buttons beside
         // an editor would, which changes nothing drawn.
         ui.with(
             NodeSpec::row().grow_width().keep_focus(),
@@ -4427,7 +4399,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             Some("Nothing is running"),
         );
         // A field with `wrap` declared: a field's keyboard on a document's
-        // layout (backlog F44). The seed is wider than the box, so the
+        // layout. The seed is wider than the box, so the
         // quad digest pins the second line — and a binding that dropped
         // the row would lay the draft out on one line, scrolled.
         ui.text_edit(
@@ -4444,7 +4416,7 @@ fn build_controls(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         // `value_text` a reader has only the three numbers and says a
         // percentage — 25 in [5..60] is "36 percent" — and the reading
         // travels in the access row's value column, the one string slot a
-        // node has (backlog F8). No background, so the scene's quad counts
+        // node has. No background, so the scene's quad counts
         // are the button's and the editor's as before.
         ui.leaf_keyed(
             "focus",
@@ -4550,7 +4522,7 @@ fn build_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 }
 
 /// Two sinks asking for releases, tagged by kind so the report tells
-/// them apart; the second asks for the modifier keys (backlog F108).
+/// them apart; the second asks for the modifier keys.
 fn build_modifier_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let sink = |label: &str| {
         NodeSpec::row()
@@ -4571,7 +4543,7 @@ fn build_modifier_keys(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// names are 1 (`music`), 2 (`chime`) and 3 (`blip`) in every binding.
 /// Phase 1 stops declaring the last two, which is the scene's whole point:
 /// `chime` asked to [`AudioSpec::finish`] and leaves no command behind,
-/// `blip` did not and is stopped (backlog F29).
+/// `blip` did not and is stopped.
 fn build_media(ui: &mut Ui<'_>, f: &Fixtures, phase: u32) {
     use crate::resources::{ImageFit, ImageOpts, Sampling};
     ui.with(NodeSpec::column().pad(6.0).gap(4.0), |ui| {
@@ -5394,7 +5366,7 @@ fn build_windows(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 /// [`Scene::custom`] and [`Scene::elements`] are hand-written *claims*, and
 /// a claim nothing checks is a claim that rots: a scene could name `float`,
 /// stop floating anything, and the corpus would still report full coverage
-/// with nothing for the quad digests to compare on that row. [`observe`]
+/// with nothing for the quad digests to compare on that row. `observe`
 /// derives the same two sets from what the builder produced, so the Rust
 /// adapter can assert derived ⊇ declared and a stale claim fails the build.
 ///
@@ -5407,7 +5379,7 @@ pub struct Coverage {
     pub elements: BTreeSet<&'static str>,
 }
 
-/// Rows [`observe`] cannot derive, with the reason. These are the ones
+/// Rows `observe` cannot derive, with the reason. These are the ones
 /// whose coverage the corpus only *declares*; it is the written record of
 /// what is left unchecked rather than a silence.
 ///
@@ -5437,7 +5409,7 @@ pub const UNDERIVED: &[(&str, &str)] = &[];
 ///
 /// `auto` holds each parent's auto-range keys once per frame: asked node by
 /// node, the sibling count and the range's hashes were a parent's size
-/// squared, and the exit scene's 4200 rows under one parent (backlog DX23)
+/// squared, and the exit scene's 4200 rows under one parent
 /// took the suite from 8 s to 46 s.
 fn is_label_keyed(
     t: &Tree,
@@ -5570,7 +5542,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         {
             cov.elements.insert("button");
         }
-        // The stock controls (ADR 0034) are the roles they declare; a
+        // The stock controls are the roles they declare; a
         // slider is the stock one when it asked the core for its changes,
         // since a hand-drawn slider (the `controls` scene's) nudges.
         match spec.access().role {
@@ -5719,10 +5691,9 @@ pub struct Output {
     /// title, a declaration with no node, so the report carries it.
     pub always_on_top: bool,
     /// Whether the last frame asked for secure keyboard entry, the same
-    /// way (backlog F85).
+    /// way.
     pub secure_input: bool,
-    /// Which Option keys the last frame asked to act as Alt, the same way
-    /// (backlog F113).
+    /// Which Option keys the last frame asked to act as Alt, the same way.
     pub option_as_alt: OptionAsAlt,
     /// The `CUSTOM` / `ELEMENTS` rows the frames actually exercised (see
     /// [`Coverage`]). Not part of the [`report`]: it is derived from the
@@ -5738,7 +5709,7 @@ pub struct NodeRow {
     pub role: &'static str,
     pub focused: bool,
     pub disabled: bool,
-    /// `-` / `0` / `1`, or `m` for a mixed checkbox (ADR 0034).
+    /// `-` / `0` / `1`, or `m` for a mixed checkbox.
     pub checked: Option<bool>,
     pub mixed: bool,
     /// `-` / `0` / `1`. In the report because the core moving focus inside
@@ -5752,8 +5723,7 @@ pub struct NodeRow {
     pub scrollable: bool,
     /// The access rect as f32 bits, `[x, y, w, h]`: font-dependent where
     /// text sizes the node, so in the report and never in [`Expect`].
-    /// What a reader's hover and highlight go by, cut to the node's clip
-    /// (backlog F93).
+    /// What a reader's hover and highlight go by, cut to the node's clip.
     pub rect: [u32; 4],
     /// Action names in `AccessAction::ALL` (bit) order, comma-joined.
     pub actions: String,
@@ -5765,8 +5735,8 @@ pub struct NodeRow {
 /// FNV-1a over the little-endian bytes of a quad's fields, `uv` excluded:
 /// atlas coordinates depend on glyph insertion order, which a binding is
 /// free to reach by a different route. Field order is `KuiQuad`'s: x, y, w,
-/// h, color[4], border_color[4], radius[4], border_w, blur, kind, clip[4],
-/// clip_radius[4] — words 0..=18 and 23..=30 of the 31-word struct. Every
+/// h, `color[4]`, `border_color[4]`, `radius[4]`, border_w, blur, kind, `clip[4]`,
+/// `clip_radius[4]` — words 0..=18 and 23..=30 of the 31-word struct. Every
 /// adapter hashes the same words, so a geometry difference is one
 /// mismatched hex string, and a mirror of `KuiQuad` that missed a field
 /// mismatches on every scene rather than on none.
@@ -5905,11 +5875,11 @@ fn event_row(payload: &Value) -> (String, String) {
         .to_string();
     // A drag's phase and deltas ride in the tag column (`split move 8 0`),
     // because the deltas are the contract: `dx`/`dy` are measured from the
-    // press point in every phase (backlog F2), and a binding that summed
+    // press point in every phase, and a binding that summed
     // steps instead would agree on the kind and disagree here. Printed as
     // integers — the steps are integers, so the deltas are exact.
     // A slider's change carries its phase and the value the core worked
-    // out (ADR 0034), the arithmetic being what is pinned. The corpus
+    // out, the arithmetic being what is pinned. The corpus
     // steps land on whole values, so they print as integers.
     if kind == "change" {
         let phase = payload.get_str("phase").unwrap_or("-");
@@ -5926,7 +5896,7 @@ fn event_row(payload: &Value) -> (String, String) {
     // carried fraction between two notches would agree on the kind and
     // disagree here. `-` for a node that is not a grid.
     // A held button's phase and which button ride the same way
-    // (`button panel press middle`, backlog F105): the capture is the
+    // (`button panel press middle`): the capture is the
     // contract — a move and a release on the owner wherever the pointer
     // went — and a binding that lost the mask would claim the secondary
     // presses and disagree here.
@@ -5945,7 +5915,7 @@ fn event_row(payload: &Value) -> (String, String) {
         }
     }
     // A key from one of a key's twins says which, with its phase and
-    // code (`key mods down shift left`, backlog F108): the place is the
+    // code (`key mods down shift left`): the place is the
     // contract, and a binding that dropped it would agree on the kind and
     // disagree here. A key from the standard place prints as it did.
     if kind == "key"
@@ -6175,7 +6145,7 @@ pub fn write_env(env: WindowEnv, out: &mut String) {
 /// itself, so neither would compare across four runs. A play carries its
 /// `looped` bit because that is the one thing about a playback the report
 /// otherwise could not see, and it is what decides whether a departure
-/// stops the playback or releases it (`AudioSpec::finish`, backlog F29).
+/// stops the playback or releases it (`AudioSpec::finish`).
 /// `master` and `unload` name no playback at all.
 pub fn write_audio_command(cmd: &AudioCommand, out: &mut String) {
     let _ = match *cmd {

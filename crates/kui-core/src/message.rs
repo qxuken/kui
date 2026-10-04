@@ -1,16 +1,33 @@
-//! Typed messages over the plain-data payload (backlog C50).
+//! Typed messages over the plain-data payload.
 //!
-//! The IR's payloads are [`Value`]s on purpose: Lua, C and JSX share them.
-//! A Rust app gets the exhaustive `match` back on its own side of that
-//! contract: `#[derive(Message)]` (the `kui-derive` crate, re-exported by
-//! `kui-native` and, behind its `derive` feature, by this crate) turns an enum into
-//! a `{kind, …fields}` map and back, so `on_click(Msg::Save)` builds the
-//! payload and `ev.message::<Msg>()` reads it.
+//! Payloads are [`Value`]s so that Lua, C and JSX share them. A Rust app
+//! gets an exhaustive `match` back with `#[derive(Message)]` (from
+//! `kui-derive`, re-exported by `kui-native` and, behind the `derive`
+//! feature, by this crate): it turns an enum into a `{kind, ...fields}`
+//! map and back, so `on_click(Msg::Save)` builds the payload and
+//! [`UiEvent::message::<Msg>()`](crate::input::UiEvent::message) reads it.
 //!
-//! What the derive needs from this module: [`MessageField`], the
-//! conversion each field's type has, and [`MessageError`], what a payload
-//! that is not one of the enum's says. Both are plain enough to write by
-//! hand for a type the derive does not cover.
+//! ```rust,ignore
+//! // Needs the `derive` feature (on by default in kui-native).
+//! #[derive(kui::Message)]
+//! enum Msg {
+//!     Save,
+//!     Rename { to: String },
+//! }
+//!
+//! fn update(ev: &kui::UiEvent) {
+//!     match ev.message::<Msg>() {
+//!         Some(Msg::Save) => { /* ... */ }
+//!         Some(Msg::Rename { to }) => { /* ... */ }
+//!         None => {}
+//!     }
+//! }
+//! ```
+//!
+//! The derive is built from [`MessageField`], the conversion each field's
+//! type has, and [`MessageError`], what a payload that is not one of the
+//! enum's says. Both are plain enough to implement by hand for a type the
+//! derive does not cover.
 
 use crate::value::Value;
 

@@ -1,11 +1,19 @@
-//! The animatable slots an entrance or a keyframe stop may name — width,
-//! height, bg, radius, opacity — as one value. [`crate::enter::Enter`]
-//! (where a node starts on first sight) and [`crate::keyframes::Keyframe`]
-//! (a stop in a cycle) are this plus one field each; before this module the
-//! five slots were two structs with the same builders and the same parse
-//! arms, and every consumer packed them into a tween's four lanes by hand.
-//! A sixth animatable slot is one field here, one arm in `parse_field`,
-//! one case in `lanes` — and nothing in the two structs that carry it.
+//! The animatable slots an entrance or a keyframe stop may name (width,
+//! height, bg, radius, opacity) as one value.
+//!
+//! You rarely build a [`Slots`] directly: [`crate::enter::Enter`] (where
+//! a node starts on first sight) and [`crate::keyframes::Keyframe`] (a
+//! stop in a cycle) are this plus one field each, carry the same builders,
+//! and deref to it, so `enter.bg` reads the slot.
+//!
+//! ```rust
+//! use kui_core::{Color, Enter};
+//!
+//! let enter = Enter::from(-40.0, 0.0).bg(Color::WHITE).opacity(0.0);
+//! assert_eq!(enter.opacity, Some(0.0));
+//! assert_eq!(enter.bg, Some(Color::WHITE));
+//! assert!(enter.width.is_none());
+//! ```
 
 use crate::anim::Slot;
 use crate::color::Color;
@@ -59,9 +67,8 @@ impl Slots {
     /// `Ok(false)` when `name` is none of the five, so the caller can read
     /// its own fields after. Every binding funnels through here, so the
     /// shape is the same in JSX, Lua and C. With `refs`, a `$name` in a
-    /// colour or length slot resolves through it — and one that misses
-    /// leaves the slot unnamed, remembered on the refs (AR14: a token in
-    /// a stop is a token like any other, not a frame-wide error).
+    /// colour or length slot resolves through it, and one that misses
+    /// leaves the slot unnamed, remembered on the refs.
     pub(crate) fn parse_field(
         &mut self,
         name: &str,
@@ -91,7 +98,7 @@ impl Slots {
         }
         match name {
             // An expression the full table refused leaves the slot
-            // unset, as a prop is left undeclared (backlog RG93).
+            // unset, as a prop is left undeclared.
             "width" => self.width = kept(sizing_value(v))?,
             "height" => self.height = kept(sizing_value(v))?,
             "bg" => self.bg = Some(color_value(v)?),
@@ -210,14 +217,13 @@ pub(crate) fn sizing_value(v: &Value) -> Result<Sizing, String> {
                 Ok(Sizing::Grow(g as f32))
             } else if let Some(p) = v.get_float("percent") {
                 // JS's spelling, as `"50%"` and a size expression's
-                // `{ percent: 50 }` read it: it was the fraction, and a
-                // stop's `{ percent: 50 }` was 5000% (backlog RG94).
+                // `{ percent: 50 }` read it.
                 Ok(Sizing::Percent(p as f32 / 100.0))
             } else if let Some(p) = v.get_float("pct") {
                 // The Lua spelling.
                 Ok(Sizing::Percent(p as f32 / 100.0))
             } else {
-                // A size expression as data (backlog F109).
+                // A size expression as data.
                 crate::calc::sizing_value(v).map_err(|e| {
                     format!("sizing object needs grow, percent or a size expression: {e}")
                 })

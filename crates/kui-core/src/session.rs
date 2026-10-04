@@ -1,66 +1,45 @@
-//! What a window does not own alone.
+//! [`Session`]: what a set of windows shares.
 //!
-//! kui is a `Core` per window (see `docs/adr/0004-multi-window.md`), and
-//! every per-frame singleton — tree, display list, focus, hit list — stays
-//! per-window. What must not be duplicated is here: the **font database**
-//! every window shapes against, the **resource registry** behind every
-//! `FontId` / `ImageId` / `SoundId`, and the **audio store**, because the
-//! process has one audio device and not one per window. A `Session` owns
-//! them and any number of `Core`s are constructed against it
-//! (`Core::new_in`), so a font, image or sound registered in one window
-//! draws and plays in every window of the session.
+//! kui is one [`Core`](crate::Core) per window, and everything per frame
+//! (the tree, the display list, focus, hit regions) stays with its
+//! window. What must not be duplicated lives in a `Session`: the font
+//! database every window shapes against, the resource registry behind
+//! every `FontId` / `ImageId` / `SoundId`, the audio store (the process
+//! has one device), and the declared window set. Any number of cores are
+//! constructed against one session with
+//! [`Core::new_in`](crate::Core::new_in), so a font, image or sound
+//! registered in one window draws and plays in every window.
+//! [`Core::new`](crate::Core::new) makes a private session, which is why a
+//! single-window app never has to know one exists.
 //!
-//! `Core::new()` is sugar for a private session of one, which is why
-//! nothing above the core — no test, no binding, no conformance scene —
-//! has to know a session exists.
+//! ```rust
+//! use kui_core::{Core, Session};
 //!
-//! **The window set is the session's too.** Which windows exist is the
-//! union of what every live window's frame declared
-//! (`docs/adr/0004-multi-window.md`, decision 4), and a union over cores
-//! can only be kept where every core can reach it: [`WindowRegistry`]
-//! holds each core's latest declarations, the windows the diff has opened,
-//! and the ids it assigned. A core hands its declarations in at
-//! `finish_frame` and takes the resulting `Open` / `Close` commands back
-//! into its own queue, so the driver drains what it always drained.
+//! let session = Session::new();
+//! let main = Core::new_in(&session);
+//! let popup = Core::new_in(&session);
 //!
-//! **The rule for what lives here.** A session member is a registry keyed
-//! by a process-unique handle (fonts, resources, the window registry), a
-//! revision counter beside one (`fonts_rev`), or a queue any window's
-//! driver may drain (the audio commands). Anything that is *reconciled
-//! against a frame* is one window's, because a frame is: the audio store
-//! is the session's for its device and its queue, but the `audio` nodes'
-//! mounts inside it are keyed by window and diffed against that window's
-//! frame alone (AR7 — before that, every window's `finish_frame` diffed
-//! every mount against its own tree, and a popup with no `<audio>` in it
-//! stopped the main window's loop). A removed image or fragment is the
-//! same shape the other way (AR8): every window's GPU has to hear of it,
-//! so the list of removed ids is here, beside `fonts_rev`, and each core
-//! drains what it has not yet forwarded.
+//! // Registered through one window, visible to both.
+//! let image = main.resources.add_image(2, 2, vec![255; 16]);
+//! assert_eq!(popup.resources.image_size(image), Some((2, 2)));
+//! assert!(main.session().is(&session));
+//! ```
 //!
-//! **What stays per window, and why.** The shaped-text cache and the glyph
-//! atlas do not move here even though they look like caches. They are one
-//! unit with a window's texture: `CachedText` stamps its positioned glyphs
-//! with the atlas epoch they were packed against, so a cache entry is only
-//! valid for the page it was built from, and `Core::output` lends that page
-//! to the renderer as `&mut GlyphAtlas`. See the ADR note in
-//! `docs/adr/0004-multi-window.md`.
+//! The shaped-text cache and the glyph atlas stay per window even though
+//! they look like caches: a cache entry is only valid for the atlas page
+//! it was packed against, and [`Core::output`](crate::Core::output) lends
+//! that page to the window's renderer.
 //!
-//! **Borrow discipline.** The session is `Rc<RefCell<_>>`: shared
-//! ownership with a runtime check. A `Core` takes the borrow inside a
-//! method and drops it before returning, so a re-entrant borrow is not
-//! reachable from outside; the windows of a multi-window app are driven one
-//! frame at a time on one thread, so the check never contends. The one
-//! thing a `Core` lends out of the session — the family name behind
-//! `Core::font_family` — cannot live behind that borrow, so it is read from
-//! a per-window mirror that every registration and every frame refreshes.
+//! A handle belongs to its session. Handles are unique to the process, so
+//! a `FontId` / `ImageId` / `SoundId` handed to a core of another session
+//! is a miss, never an alias: it behaves as a removed handle does, and the
+//! next [`Core::take_warnings`](crate::Core::take_warnings) reports it as
+//! `foreign-resource`. Two `Core::new()`s are two sessions.
 //!
-//! **A handle belongs to its session.** Every session has a [`SessionId`],
-//! and the handles its registry mints are unique to the process (see
-//! `resources`), so a `FontId` / `ImageId` / `SoundId` handed to a core of
-//! another session is a miss, never an alias: it behaves as a removed
-//! handle does, and the core that drains warnings next reports it as
-//! `foreign-resource`. Two `Core::new()`s in one test are two sessions;
-//! what shares a handle is `Core::new_in(&session)`.
+//! The session is `Rc<RefCell<_>>`: a `Core` borrows it inside a method
+//! and drops the borrow before returning, and the windows of a
+//! multi-window app are driven one frame at a time on one thread, so the
+//! check never contends.
 
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
@@ -74,8 +53,7 @@ use crate::tree::OriginId;
 use crate::window::{WindowConfig, WindowId};
 
 /// The session's contents. Reached through [`Session::state`], one borrow
-/// at a time; the fields are borrowed disjointly the way `Core`'s own
-/// fields used to be.
+/// at a time.
 pub(crate) struct SessionState {
     /// Which session this is, for the handles the registry mints.
     pub(crate) id: SessionId,
@@ -96,19 +74,19 @@ pub(crate) struct SessionState {
     /// whether its name mirror is behind without walking the slotmap.
     pub(crate) fonts_rev: u64,
     /// Bumped when the weights a registered family is asked at change
-    /// under it — a face of it loaded or removed (RG59) — so each `Core`
+    /// under it — a face of it loaded or removed — so each `Core`
     /// drops the text it shaped at the old ones.
     pub(crate) weights_rev: u64,
     /// Whether the database's file-backed faces have been mapped once and
-    /// shared (`share_faces`, backlog DX24): done on the first family an
+    /// shared (`share_faces`): done on the first family an
     /// app names, so an app that only ever shapes the stock families never
     /// pays for it.
     pub(crate) faces_shared: bool,
     /// Bumped by every image removal, so a `Core` can tell whether its
-    /// atlas still holds a slot for an image the registry no longer has
-    /// (AR8). The atlas is per window, so every core re-checks its own.
+    /// atlas still holds a slot for an image the registry no longer has.
+    /// The atlas is per window, so every core re-checks its own.
     pub(crate) images_rev: u64,
-    /// Handles removed and not yet handed to a display list (AR8): what
+    /// Handles removed and not yet handed to a display list: what
     /// a backend frees on the device. Textures and fragment pipelines
     /// live on the device every window of the session shares, so the
     /// list is the session's and whichever core begins a frame next
@@ -117,7 +95,7 @@ pub(crate) struct SessionState {
     pub(crate) dropped: Dropped,
     /// The declared window set and the windows it has opened.
     pub(crate) windows: WindowRegistry,
-    /// The devtools panel's state (`docs/adr/0024`, decision 5): one
+    /// The devtools panel's state: one
     /// panel for the session, whichever window draws it.
     pub(crate) devtools: crate::runtime::devtools::State,
 }
@@ -196,7 +174,7 @@ pub(crate) struct WindowDecl {
 /// A window the registry has opened: its name, its id, and whether it is
 /// still on screen. `live` goes false when the driver reports an OS close
 /// while the name is still declared — the window stays closed until the
-/// declaration lapses and starts again (ADR 0004 decision 6).
+/// declaration lapses and starts again.
 struct WindowEntry {
     name: Rc<str>,
     id: WindowId,

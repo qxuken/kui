@@ -17,7 +17,7 @@ pub enum Content<'a> {
     Fragment(crate::fragment::FragmentRef, &'a [f32]),
     Cells(&'a crate::cells::CellGrid<'a>),
     Line(&'a [Vec2], Stroke),
-    /// A filled polygon (ADR 0025, decision 6); the fill is the spec's `bg`.
+    /// A filled polygon; the fill is the spec's `bg`.
     Polygon(&'a [Vec2]),
 }
 
@@ -92,7 +92,7 @@ impl Core {
 
     /// Replaces a transitioning node's animatable values with this frame's
     /// eased ones. Nodes without a transition cost one branch — inlined at
-    /// the call site, so it is a branch and not a call that returns (C15).
+    /// the call site, so it is a branch and not a call that returns.
     /// A slot the node's keyframes name is sampled from its cycle instead
     /// of tweened.
     #[inline]
@@ -149,7 +149,7 @@ impl Core {
 
     /// The key a child of the current node is derived from: the node's own
     /// key, except inside a slot fill at the depth the fill began, where it
-    /// is the fill's namespace (`Core::fill`, ADR 0014 decision 4). One
+    /// is the fill's namespace (`Core::fill`). One
     /// compare on the auto-key path; `ns_depth` is `usize::MAX` outside a
     /// fill.
     #[inline]
@@ -194,13 +194,13 @@ impl Core {
         self.interaction.is_hovered(key)
     }
 
-    /// Whether files dragged in from the OS are over `key` (ADR 0031).
+    /// Whether files dragged in from the OS are over `key`.
     pub fn is_drop_target(&self, key: Key) -> bool {
         self.interaction.is_drop_target(key)
     }
 
     /// The zone the dragged files are over, if any — what a driver
-    /// answers the OS with (ADR 0031, decision 5).
+    /// answers the OS with.
     pub fn drop_target(&self) -> Option<Key> {
         self.interaction.drop_target()
     }
@@ -357,7 +357,7 @@ impl Core {
     /// I just declared" is this and not `child_key`. None when no node
     /// declared the label. Labels are unique among siblings, not across a
     /// tree, so two nodes may share one under different parents. A guest
-    /// asking from inside its fill (ADR 0014) is answered from the nodes
+    /// asking from inside its fill is answered from the nodes
     /// it opened and no one else's — it cannot know what the host or
     /// another guest called theirs, and its env is a reading of its own
     /// view; the host, whose frame it is, from its own first and from
@@ -367,7 +367,7 @@ impl Core {
         self.find_label(label, true)
     }
 
-    /// The one label lookup (backlog AR45): the first node in tree order
+    /// The one label lookup: the first node in tree order
     /// opened under `label` in the frame being built, and — with
     /// `fall_back` and a build under way — in the last frame when this
     /// one has not declared it yet; an `ambiguous-key` warning when more
@@ -409,8 +409,8 @@ impl Core {
 
     /// Declares how many indexed rows the *open* node's virtual list has,
     /// built or not (`rowCount`): what Select All inside a `selectable`
-    /// virtual list spans, since the built rows are all the core can see
-    /// (ADR 0017, tier 3). `widgets::uniform_list` and `widgets::list`
+    /// virtual list spans, since the built rows are all the core can see.
+    /// `widgets::uniform_list` and `widgets::list`
     /// call it on their container; a list composed by hand calls it
     /// inside the container's `with`. Nothing, outside any node.
     pub fn row_count(&mut self, n: u64) {
@@ -435,7 +435,7 @@ impl Core {
 
     /// `open_with_key` with the node named `label` for `key_of`, the way
     /// `open_keyed` names its node — for a key the caller fixed rather
-    /// than derived (a devtools tab's body, ADR 0032).
+    /// than derived (a devtools tab's body).
     pub(crate) fn open_with_key_named(&mut self, key: Key, label: &str, spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
@@ -484,10 +484,8 @@ impl Core {
     /// fill alike (AR16: five doors ran five subsets of it, and a wedge's
     /// `hover_bg` never painted). The one paint the environment decides
     /// (`accent`): the theme's accent, which is the OS's where the host
-    /// reported one, the app's where it pinned one, and kui's otherwise
-    /// (ADR 0019 — before it, this read `env.system.accent` and a host
-    /// that reported none left the declared `bg`, which is the same answer
-    /// by a shorter route); before the hover resolution, so a node that
+    /// reported one, the app's where it pinned one, and kui's otherwise;
+    /// before the hover resolution, so a node that
     /// declares both still hovers to what it declared. Then the hover /
     /// pressed / focus background for the node's state, then the eased
     /// values a transition, entrance or keyframes put over the declared
@@ -501,8 +499,8 @@ impl Core {
         self.ease_spec(key, spec);
     }
 
-    /// The layout of a node placed by its own geometry — a stroke, a fill
-    /// (ADR 0010 decision 5): never in layout, a float at `rect` in the
+    /// The layout of a node placed by its own geometry — a stroke, a fill:
+    /// never in layout, a float at `rect` in the
     /// parent's box space sized exactly to it, the declared float's
     /// *anchor* kept and every sizing, clamp and scroll row overridden,
     /// since the box is the shape's own and not a size the view chose or
@@ -695,7 +693,7 @@ impl Core {
     }
 
     /// A cell grid as one leaf node, sized `cols × cell_w` by `rows ×
-    /// cell_h` (backlog C20; see `crate::cells`). `spec` is the node's:
+    /// cell_h`. `spec` is the node's:
     /// an `on_key` makes it the terminal's sink, an `on_click` / `on_drag`
     /// carry `cell: {row, col}` on their events.
     pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
@@ -805,8 +803,8 @@ impl Core {
         self.image_node_with(id, crate::resources::ImageOpts::default(), spec);
     }
 
-    /// [`Self::image_node`] with its `sampling` and `fit` rows (ADR 0025,
-    /// decision 4): how texels are read between pixels, and how the pixels
+    /// [`Self::image_node`] with its `sampling` and `fit` rows: how texels are
+    /// read between pixels, and how the pixels
     /// meet a box of another aspect. The box — its layout, hit region and
     /// access rect — is the same in every mode.
     pub fn image_node_with(
@@ -825,8 +823,7 @@ impl Core {
             .push(parent, key, self.origin, spec, NodeContent::Image(id, opts));
     }
 
-    /// A box a registered WGSL function paints
-    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// A box a registered WGSL function paints.
     ///
     /// An ordinary node in every other respect: it lays out where it is
     /// declared, sizes from `spec`, rounds by `radius`, clips, fades with
@@ -843,8 +840,7 @@ impl Core {
     /// a `fragment-params-truncated` warning. A handle that is not live in
     /// this session draws nothing, as every resource kind does — and so
     /// does one whose `image` (`FragmentId::with_image`) is not, which is
-    /// the removal order ADR 0015 decision 9 asked to be pinned before an
-    /// image input existed: the image goes, the fragment reading it draws
+    /// the removal order: the image goes, the fragment reading it draws
     /// the fallback, and the handle it kept is a `foreign-resource` miss
     /// like any other.
     pub fn fragment_node(
@@ -950,7 +946,7 @@ impl Core {
 
     /// A stroke through `points` in the parent's box space: one round-capped
     /// segment for two points, a polyline for more, a smooth curve through
-    /// them with [`Stroke::curve`] (`docs/adr/0010-a-segment-primitive.md`).
+    /// them with [`Stroke::curve`].
     ///
     /// Never in layout. The node is a float sized to the stroke's padded
     /// bounding box, so it takes no room in a row or column, and `spec`'s
@@ -962,7 +958,7 @@ impl Core {
     /// reads the points in viewport space), and `role` / `label`, which are
     /// honoured like any node's; without them a line has no access row —
     /// unless it takes input, when it derives one as a box would. Input
-    /// is hit by *shape* (ADR 0026): a press within half the stroke's
+    /// is hit by *shape*: a press within half the stroke's
     /// width of any piece (at least `MIN_STROKE_GRAB` wide) hits it, and
     /// a press elsewhere in its box falls through to what is under it.
     /// Fewer than two points draw nothing.
@@ -1027,12 +1023,12 @@ impl Core {
             .push(parent, key, self.origin, spec, NodeContent::Line(id));
     }
 
-    /// A filled polygon through `points` in the parent's box space
-    /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6): up to
+    /// A filled polygon through `points` in the parent's box space:
+    /// up to
     /// eight vertices, the fill in `spec`'s `bg`, painted by the stock
     /// polygon fragment the core registers itself.
     ///
-    /// Placed exactly as a line is (ADR 0010, decision 5): never in
+    /// Placed exactly as a line is: never in
     /// layout, a float sized to the points' bounding box inflated by a
     /// logical pixel for the edge ramp, so it takes no room in a row or
     /// column and `spec`'s sizing, clamps, padding, gap and alignment are
@@ -1041,7 +1037,7 @@ impl Core {
     /// keeps its *anchor*; `role` and `label` are honoured, and without
     /// them a polygon has no access row unless it takes input, when it
     /// derives one as a box would (a clickable wedge is a button). Input
-    /// is hit by *shape* (ADR 0026): a press inside the outline hits it,
+    /// is hit by *shape*: a press inside the outline hits it,
     /// one in its box but outside the outline falls through to what is
     /// under. Fewer than three points draw nothing; a ninth and later are
     /// dropped with `polygon-points-truncated`. The outline may be

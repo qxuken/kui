@@ -1,14 +1,18 @@
-//! The `Core`: one window. It owns everything that survives across frames
-//! and belongs to this window alone (interaction state, scroll and edit
-//! stores, focus) plus the reusable per-frame tree — and the frame-builder
-//! state itself. Builder state living here (not in a borrowing wrapper) is
-//! what lets flat C bindings drive a frame through one opaque pointer; the
-//! Rust `Ui` is a thin safe façade.
+//! [`Core`]: one window's runtime, the state machine a runner drives frame
+//! by frame.
 //!
-//! What must not be duplicated per window — the resource registry, the
-//! shaping caches, the glyph atlas and the audio store — lives in the
-//! [`crate::session::Session`] a core is constructed against.
-//! [`Core::new`] makes a private one, so a single-window app never sees it.
+//! A core owns everything that survives across frames and belongs to one
+//! window: the per-frame tree and its builder state, interaction state
+//! (hover, press, drag), focus, the scroll and edit stores, animations,
+//! the glyph atlas and the finished [`DisplayList`]. What a window must
+//! not duplicate — the font database, the resource registry, the audio
+//! store — lives in the [`Session`] a core is constructed against;
+//! [`Core::new`] makes a private one, so a single-window app never sees
+//! it. The frame lifecycle, with an example, is on [`Core`].
+//!
+//! Builder state lives in the core itself rather than in a borrowing
+//! wrapper so that flat C bindings can drive a frame through one opaque
+//! pointer; the Rust [`Ui`] is a thin safe facade over it.
 
 use std::rc::Rc;
 
@@ -71,7 +75,7 @@ mod windows;
 const SCROLL_LINE_PX: f32 = 40.0;
 
 /// What a `Core::focus_region` call asked to enter, held until the frame
-/// finishes (`docs/adr/0022-focus-regions.md`, decision 4): the main ring,
+/// finishes: the main ring,
 /// a region by key, or one by the label its node declares — the spelling
 /// a caller has for a node the last frame did not build.
 #[derive(Clone, Debug, PartialEq)]
@@ -81,6 +85,74 @@ pub(crate) enum RegionTarget {
     Label(String),
 }
 
+/// One window's runtime: the state a runner drives frame by frame.
+///
+/// Construct one with [`Core::new`] (a private [`Session`]) or
+/// [`Core::new_in`] (joining a session another window shares). The public
+/// fields are the stores a runner or a binding reads directly:
+/// `resources` and `audio` for registration and playback commands, `env`
+/// for the host facts a driver pushes, `stats` for frame timing.
+///
+/// # One frame, in order
+///
+/// 1. [`Core::set_time`] with the frame clock, so transitions advance.
+/// 2. [`Core::frame`] with the viewport (logical px) and the scale. It
+///    begins the frame and returns the [`Ui`] builder; build the tree
+///    through it.
+/// 3. [`Ui::finish`] runs layout and emission. The draw data is now in
+///    [`Core::output`]: the [`DisplayList`] and the [`GlyphAtlas`] a
+///    renderer mirrors to a texture.
+/// 4. [`Core::take_pending_events`] drains events the frame itself raised
+///    (a `resize`, a hover change under a still pointer); route them like
+///    any other.
+/// 5. Between frames, feed input through [`Core::handle_input`]. Each
+///    call returns the [`UiEvent`]s it resolved to, hit-tested against
+///    the frame that finished.
+/// 6. [`Core::take_warnings`] for misconfigurations the core noticed, and
+///    [`Core::animating`] to decide whether to draw another frame without
+///    waiting for input.
+///
+/// A headless core needs no window or GPU, so a test can drive it:
+///
+/// ```rust
+/// use kui_core::{Color, Core, InputEvent, NodeSpec, QuadKind, Size, TextStyle, Vec2};
+///
+/// let mut core = Core::new();
+///
+/// // 1–3: a frame. `frame` begins it, `finish` lays it out and emits.
+/// core.set_time(0.0);
+/// let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+/// ui.with_keyed("toolbar", NodeSpec::row().pad(8.0).gap(8.0), |ui| {
+///     // A clickable node needs an accessible name, or `take_warnings`
+///     // reports `control-without-name`.
+///     let button = NodeSpec::row().size(80.0, 32.0).bg(Color::hex(0x3366cc));
+///     ui.leaf_keyed("save", button.on_click("save").label("Save"));
+///     ui.text("Untitled", TextStyle::new(14.0));
+/// });
+/// ui.finish();
+///
+/// // 4: what the frame itself raised (nothing on a first frame).
+/// assert!(core.take_pending_events().is_empty());
+///
+/// // The renderer's view of the frame: quads in physical pixels.
+/// let (list, atlas) = core.output();
+/// assert!(list.quads.iter().any(|q| q.kind == QuadKind::Solid));
+/// atlas.dirty = false; // after uploading `atlas.pixels`
+///
+/// // 5: input, hit-tested against the frame that finished.
+/// core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, 20.0)));
+/// core.handle_input(InputEvent::mouse_down(1));
+/// let events = core.handle_input(InputEvent::mouse_up());
+/// assert_eq!(events.len(), 1);
+/// assert_eq!(events[0].payload.as_str(), Some("save"));
+///
+/// // 6: diagnostics, and whether another frame is owed.
+/// assert!(core.take_warnings().is_empty());
+/// assert!(!core.animating());
+/// ```
+///
+/// A windowed runner does the same with real time, real input and a
+/// renderer consuming [`Core::output`]; `kui-native` is that runner.
 pub struct Core {
     /// The caches and registries this window shares with the rest of its
     /// session. Everything a frame needs from it is borrowed inside a
@@ -90,7 +162,7 @@ pub struct Core {
     /// its cache entries are stamped with `atlas`'s epoch, and `TextId`
     /// indexes its per-frame list.
     pub text: TextSystem,
-    /// The frame's cell grids and their glyph tables (backlog C20).
+    /// The frame's cell grids and their glyph tables.
     pub cells: crate::cells::CellStore,
     /// This window's glyph atlas — the CPU side of its renderer's texture,
     /// handed out by `output`.
@@ -132,10 +204,11 @@ pub struct Core {
     /// start of every frame. Read by the stock widgets, by the core's own
     /// chrome (ring, scrollbar, selection) and by any view that asks.
     theme: Theme,
-    /// The sizes the stock widgets are built from (backlog T2): the
-    /// palette's other axis, set by the app or [`Metrics::default`].
+    /// The sizes the stock widgets are built from: the
+    /// palette's other axis, set by the app or
+    /// [`Metrics::default`](crate::metrics::Metrics::default).
     metrics: crate::metrics::Metrics,
-    /// The named colours and lengths each origin declared (ADR 0027): the
+    /// The named colours and lengths each origin declared: the
     /// host's under `OriginId::HOST`, an extension's under its own, so a
     /// guest's declaration never replaces the host's palette. Read through
     /// [`Core::token_lookup`], which puts the running origin's table over
@@ -145,24 +218,24 @@ pub struct Core {
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
     /// Whether this frame asked for the window to stay above every other
-    /// app's (backlog C30). The title's shape — cleared each `begin_frame`,
+    /// app's. The title's shape — cleared each `begin_frame`,
     /// the driver diffs and applies on change — but a bool with a default
     /// rather than an option, so a frame that stops asking is what lowers
     /// the window again: the pin button an app draws for this is a
     /// toggle, and the fact follows it.
     always_on_top: bool,
     /// Whether this frame asked for secure keyboard entry while its window
-    /// has the keyboard (backlog F85). `always_on_top`'s shape: cleared each
+    /// has the keyboard. `always_on_top`'s shape: cleared each
     /// `begin_frame`, so a frame that stops asking is what turns it off.
     secure_input: bool,
-    /// Which Option keys this frame asked to act as Alt on macOS (backlog
-    /// F113). `always_on_top`'s shape: cleared each `begin_frame`, so a
+    /// Which Option keys this frame asked to act as Alt on macOS.
+    /// `always_on_top`'s shape: cleared each `begin_frame`, so a
     /// frame that stops declaring it gives the Option keys back to the
     /// layout's composition.
     option_as_alt: crate::input::OptionAsAlt,
     /// Keyboard focus: the one node key input goes to — an editor (the
-    /// edit store mirrors it), an `on_key` sink, a control Tab landed on
-    /// (see `docs/adr/0002-keyboard-focus-as-data.md`). `set_focus` is
+    /// edit store mirrors it), an `on_key` sink, a control Tab landed on.
+    /// `set_focus` is
     /// the only writer.
     focus: Option<Key>,
     /// Focus got there by keyboard or assistive technology, so it shows:
@@ -175,7 +248,7 @@ pub struct Core {
     declared_focus_last: Vec<Key>,
     /// Whether the app moved focus through `set_focus` since the last
     /// frame began — the edge a closing modal's restore yields to, like a
-    /// `keyFocus` edge (AR17). Cleared by `begin_frame`.
+    /// `keyFocus` edge. Cleared by `begin_frame`.
     focus_asked: bool,
     /// The `.str`-keyed nodes this frame and last, with their labels
     /// (`open_keyed`): what `key_of` resolves a name through. The same
@@ -189,7 +262,7 @@ pub struct Core {
     /// frame; never compared to the last one, since a slot is a position
     /// and not a declaration the core diffs.
     slot_labels: LabelIndex,
-    /// The key namespace of the fill in progress (ADR 0014 decision 4):
+    /// The key namespace of the fill in progress:
     /// while the node stack is exactly `ns_depth` deep, a child's key is
     /// derived from `ns_key` instead of from the node it is opened under,
     /// so an extension's nodes are keyed by the slot and the extension
@@ -215,8 +288,8 @@ pub struct Core {
     keys_held: Vec<KeyPress>,
     /// The modifiers of the `KeyDown` the next input event is the second
     /// channel of (`KeyPress::edit_event`), so the `Key` and `Text` arms
-    /// ask the same chord question the raw press did (AR10, ADR 0011
-    /// decision 3). Set by a `KeyDown`, read and cleared by whatever
+    /// ask the same chord question the raw press did. Set by a `KeyDown`, read
+    /// and cleared by whatever
     /// comes next: a `Key` or `Text` with no press before it — a test
     /// driving one channel, a host's editing-key door — has no chord to
     /// agree with and falls back to what its own `Mods` say.
@@ -225,14 +298,14 @@ pub struct Core {
     /// Whether the host asked for `finish_frame` to copy the frame into
     /// `inspected` (see `runtime/inspect.rs`, `set_inspect`); off unless
     /// it did. The panel's own need is `dt_inspect`, derived each frame
-    /// and kept apart (backlog AR38), so neither ask can turn the other
+    /// and kept apart, so neither ask can turn the other
     /// off.
     inspect: bool,
     /// The devtools panel's need for the snapshot this frame: its tree
     /// tab is showing, or it is picking.
     dt_inspect: bool,
     inspected: Vec<inspect::NodeInfo>,
-    /// The devtools' hold on this window's frame (`docs/adr/0024`): the
+    /// The devtools' hold on this window's frame: the
     /// tree index of the app container the host's tree is wrapped in
     /// while the panel is docked, whether this core draws the panel's own
     /// window, and — while the panel's theme override is in force — the
@@ -254,15 +327,15 @@ pub struct Core {
     /// app's container in tree order), on this tab, so `finish` must not
     /// build again — and a door that moved the panel, turned it off or
     /// changed its tab since is the next frame's, which `finish` asks
-    /// for (backlog RG4).
+    /// for.
     dt_built: Option<devtools::Shown>,
-    /// The devtools tabs declared this frame, in order (ADR 0032): what
+    /// The devtools tabs declared this frame, in order: what
     /// the panel's strip lists, moved into the session's state at the
     /// end of the main window's frame. Empty on a frame nobody declares
     /// one, which is what every other frame pays.
     dt_tabs: Vec<devtools::TabDecl>,
     /// The host's viewport in window coordinates: the whole window, or
-    /// what the dock leaves of it while the panel is docked (ADR 0024).
+    /// what the dock leaves of it while the panel is docked.
     /// What `Core::viewport` reports, what a `resize` is measured on,
     /// what the host's viewport floats resolve against, and the origin
     /// every coordinate the host is handed or hands in is relative to.
@@ -277,14 +350,14 @@ pub struct Core {
     pub(crate) lines: crate::line::LineStore,
     pub(crate) fragments: crate::fragment::FragmentList,
     /// The stock polygon fragment's handle, once a `polygon` node has
-    /// asked for it this session (ADR 0025, decision 6). Forgotten by
+    /// asked for it this session. Forgotten by
     /// `remove_fragment` if a host removes it, so the next node registers
     /// it again rather than drawing nothing — and not re-checked per node,
     /// which was a session lock per polygon and cost more than the six
     /// segment quads a closed stroke of the same outline emits.
     pub(crate) stock_polygon: Option<crate::resources::FragmentId>,
-    /// The hit shapes the frame being emitted builds beside its regions
-    /// (ADR 0026), handed to `interaction` with them at the end of
+    /// The hit shapes the frame being emitted builds beside its regions,
+    /// handed to `interaction` with them at the end of
     /// emission; the previous frame's buffers, cleared, in between.
     pub(crate) hit_shapes: crate::input::HitShapes,
     pub(crate) display: DisplayList,
@@ -295,7 +368,7 @@ pub struct Core {
     counters: Vec<u64>,
     origin: OriginId,
     /// Per-node inherited clip (logical), rebuilt each finish_frame.
-    /// The access tree cuts each node's rect to it (F93), so what a
+    /// The access tree cuts each node's rect to it, so what a
     /// reader finds is what a pointer can hit.
     clips: Vec<Clip>,
     /// The `DisplayList::clips` index each of those became, so a node
@@ -307,14 +380,14 @@ pub struct Core {
     /// actually fades.
     opacity: Vec<f32>,
     /// Per node, the layer it paints in: the index of its nearest floating
-    /// ancestor-or-self, `NIL` in flow (ADR 0023). Only filled on a frame
+    /// ancestor-or-self, `NIL` in flow. Only filled on a frame
     /// that floats something.
     float_root: Vec<u32>,
     /// The float layers as the last frame painted them, bottom to top:
     /// each root's key and its rank among that frame's float roots in
     /// tree order. A root the next frame keeps stays where it is, one it
     /// opens goes on top, one it closes leaves — so the stack is the
-    /// order the layers opened in (ADR 0023, decision 3). Bounded by the
+    /// order the layers opened in. Bounded by the
     /// frame's own float count; nothing to evict.
     float_stack: Vec<(Key, u32)>,
     /// The hover hints of the nodes open right now that declared a
@@ -324,8 +397,7 @@ pub struct Core {
     hints: Vec<(usize, Key, String)>,
     /// The context menu this window has open, the keys the stock renderer
     /// gave its rows (so their clicks can be told from the app's), and
-    /// what choosing one left for the host to do. See
-    /// `docs/adr/0017-selection-as-a-scope.md`, decision 5.
+    /// what choosing one left for the host to do.
     menu: Option<crate::menu::Menu>,
     menu_actions: Vec<crate::menu::MenuAction>,
     /// The editor that held focus when the menu opened, since the menu's
@@ -335,7 +407,7 @@ pub struct Core {
     native_menus: bool,
     /// The application menu this frame has in force, and a count bumped
     /// whenever it changes, so a driver diffs against one integer rather
-    /// than against a tree (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
+    /// than against a tree.
     /// `None` is a declaration nobody has made; an empty `MenuBar` is one
     /// that took the bar away.
     menu_bar: Option<crate::menu::MenuBar>,
@@ -362,22 +434,21 @@ pub struct Core {
     /// frame resolved it to: `sel_ords` numbers the text nodes of the
     /// selection's scope in emission order (`u32::MAX` for a node
     /// outside it), and `sel_ends` is the pair of ends in reading order,
-    /// `None` when this frame builds neither end. See
-    /// `docs/adr/0017-selection-as-a-scope.md`.
+    /// `None` when this frame builds neither end.
     selection: Option<crate::select::Selection>,
     /// The window's selection when it is in a `cells` grid instead of in
     /// text. One selection per window: starting either clears the other,
     /// which `Core::set_selection` / `set_cell_selection` enforce in one
-    /// place each (ADR 0017, decisions 1 and 4).
+    /// place each.
     cell_selection: Option<crate::select::CellSelection>,
-    /// Whether a `selectionrange` ask is outstanding (ADR 0017, tier 3).
+    /// Whether a `selectionrange` ask is outstanding.
     awaiting_selection: bool,
     /// Whether a paste ask is outstanding — queued, or taken by the
-    /// driver and not yet answered with a `Commit` (backlog AR34). A
+    /// driver and not yet answered with a `Commit`. A
     /// second ask while one is out is dropped, so a view that asks every
     /// frame until the answer lands asks once.
     awaiting_paste: bool,
-    /// The one file-dialog ask (backlog C51): queued, taken by the host,
+    /// The one file-dialog ask: queued, taken by the host,
     /// or none.
     file_ask: crate::dialog::FileAsk,
     /// The drag a press is running through a selection scope, if any: set
@@ -386,35 +457,32 @@ pub struct Core {
     select_dragging: Option<crate::select::SelectDrag>,
     /// The held drag — a caret drag or a drag-select — following its
     /// scroller: the pointer's last position, the scroller found for it,
-    /// and what that scroller was at when the live end was last placed
-    /// (ADR 0029). Set with either drag, cleared with both.
+    /// and what that scroller was at when the live end was last placed.
+    /// Set with either drag, cleared with both.
     drag_follow: Option<follow::DragFollow>,
     /// The frame clock's reading at the last frame, for the edge drag's
     /// rate (`follow::follow_drag`); `None` before a clock is set.
     last_frame_time: Option<f64>,
     /// The fraction of a line the last delta over an `on_scroll` grid —
     /// a wheel notch or an edge step — did not cover, with the grid it
-    /// was over: the next delta on the same grid adds to it (ADR 0029,
-    /// decision 4).
+    /// was over: the next delta on the same grid adds to it.
     line_carry: Option<(Key, f32)>,
-    /// The targets the scroll gesture under way latched, per axis
-    /// (backlog F107, `mod gesture`).
+    /// The targets the scroll gesture under way latched, per axis.
     scroll_latch: gesture::ScrollLatch,
     sel_ords: Vec<u32>,
     sel_ends: Option<crate::select::Ends>,
     /// Per-node innermost enclosing selection scope — the key of the
     /// nearest ancestor (or the node itself) declaring `selectable`, and
     /// `None` outside every scope. Filled only on a frame that declares
-    /// one at all (`Tree::any_selectable`), which is what keeps ADR 0017
-    /// off the frames of apps that never select anything.
+    /// one at all (`Tree::any_selectable`), so an app that never selects
+    /// anything pays nothing for it.
     scopes: Vec<Option<Key>>,
     /// Per-node enclosing virtualised row index, filled beside `scopes`:
     /// what places an endpoint whose own node is no longer built.
     rows: Vec<Option<u64>>,
     /// The frame's modal scope: the tree range `[i, subtree_end(i))` of the
     /// last node declaring `modal`, and its key. Everything outside it is
-    /// inert and out of the Tab ring (see
-    /// `docs/adr/0003-modal-surfaces.md`). Recomputed by `finish_frame`.
+    /// inert and out of the Tab ring. Recomputed by `finish_frame`.
     modal: Option<(usize, usize, Key)>,
     /// The modals declared by the last finished frame, in tree order, each
     /// with the focus it displaced: a modal that stops being declared gives
@@ -434,15 +502,14 @@ pub struct Core {
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
     /// Why frames run: the reasons, and — traced — who held an owed one
-    /// and whether a frame changed anything (`runtime/cause.rs`, backlog
-    /// F111).
+    /// and whether a frame changed anything (`runtime/cause.rs`).
     trace: cause::Trace,
     /// The focused editor's caret rect (logical, viewport coords) as of the
     /// last finish_frame — where drivers should anchor the OS IME window.
     ime_rect: Option<Rect>,
     /// A custom editor's caret as of the last frame: the `line` under the
-    /// focused sink that declares `caret`, and the offset it declares
-    /// (backlog C35). What the blink clock is armed on when no stock
+    /// focused sink that declares `caret`, and the offset it declares.
+    /// What the blink clock is armed on when no stock
     /// editor is focused; `None` with nothing to blink.
     sink_caret: Option<(Key, u32)>,
     /// Whether that line declared its caret `caret_solid` — a block caret
@@ -465,7 +532,7 @@ pub struct Core {
     /// The OS settings the last frame was begun with. A driver pushes
     /// them into `env` whenever it learns of a change, and the difference
     /// between two frames is what becomes a `system` event — the same
-    /// bookkeeping `viewport` does for `resize` (backlog F40).
+    /// bookkeeping `viewport` does for `resize`.
     system_seen: SystemEnv,
     /// The session's `system_fonts_rev` the last frame was begun with; the
     /// difference is what becomes a `fonts` event.
@@ -477,8 +544,7 @@ pub struct Core {
     /// `layout` event (see `emit_layout_events`).
     layouts: FxHashMap<Key, (Rect, u64)>,
     /// One-off announcements queued since the last drain (see
-    /// [`Self::announce`] and
-    /// `docs/adr/0008-live-regions-and-announcements.md`). The fourth of
+    /// [`Self::announce`]). The fourth of
     /// the four drained channels, and the same shape as the other three:
     /// the core appends, a driver drains, a headless test asserts on what
     /// it drained.
@@ -496,19 +562,19 @@ pub struct Core {
     /// The `reveal(key)`s waiting for a layout to resolve against, in the
     /// order asked: the next `finish_frame` scrolls each node's scrolling
     /// ancestor to show it, then clears them. Within one container the
-    /// last ask wins; asks aimed at different containers all land (F82).
+    /// last ask wins; asks aimed at different containers all land.
     pending_reveal: Vec<Key>,
     /// `reveal_label` and `set_scroll_label` asks, with the origin that
     /// asked: resolved when the frame finishes, where a label named before
     /// its node is declared — later in the same build, or by the next
-    /// frame — has a node to find (backlog DX15).
+    /// frame — has a node to find.
     pending_reveal_labels: Vec<(String, crate::tree::OriginId)>,
     /// The `on_focus` nodes the focus was last reported inside, outermost
     /// first, with each one's origin and tag — what `report_focus` diffs
-    /// the focus against (backlog DX18).
+    /// the focus against.
     focus_reported: Vec<(Key, crate::tree::OriginId, Value)>,
     pending_scroll_labels: Vec<(String, crate::tree::OriginId, Vec2)>,
-    /// Type-ahead inside a composite (`docs/adr/0007`, decision 9): the
+    /// Type-ahead inside a composite: the
     /// characters typed so far, and the frame clock reading of the last
     /// keystroke. The buffer is cleared at the start of the first frame
     /// more than [`TYPE_AHEAD_SECS`] after it, so input routing stays
@@ -555,8 +621,8 @@ pub struct Core {
     access: crate::access::AccessTree,
     access_built: u64,
     /// The hash of the inputs `self.access` was derived from, so a frame
-    /// whose access-relevant state is unchanged keeps it (ADR 0016,
-    /// decision 3). `None` when the last frame could not be hashed, which
+    /// whose access-relevant state is unchanged keeps it. `None` when the last
+    /// frame could not be hashed, which
     /// forces the next derivation.
     access_inputs: Option<u64>,
     /// How many times the access tree has actually been derived, as against
@@ -565,8 +631,8 @@ pub struct Core {
     access_rebuilds: u64,
 }
 
-/// How long a type-ahead search buffer survives without a keystroke
-/// (`docs/adr/0007-composite-keyboard-patterns.md`, decision 9). Aged at
+/// How long a type-ahead search buffer survives without a keystroke.
+/// Aged at
 /// the start of a frame, so a core with no clock never ages one.
 const TYPE_AHEAD_SECS: f64 = 1.0;
 
@@ -583,7 +649,7 @@ fn step(at: usize, delta: isize, len: usize, wrap: bool) -> Option<usize> {
 
 /// What a frame left owed, by kind: [`Core::owed`]. `any()` is what
 /// [`Core::animating`] answers; `beyond_cycles()` is the same with a
-/// keyframe cycle — which never ends — left out (backlog F64).
+/// keyframe cycle — which never ends — left out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Owed {
     /// A finite transition — a leg or a spring — still mid-flight.
@@ -594,11 +660,10 @@ pub struct Owed {
     pub depart: bool,
     /// A frame a view asked for: `request_frame`, or an `animate` row.
     pub requested: bool,
-    /// A held drag scrolling its container (ADR 0029).
+    /// A held drag scrolling its container.
     pub autoscroll: bool,
     /// A scroll container easing a programmatic offset change — a
-    /// `reveal` or a `set_scroll` on a container with a `transition`
-    /// (F80).
+    /// `reveal` or a `set_scroll` on a container with a `transition`.
     pub scroll: bool,
 }
 
@@ -615,15 +680,14 @@ impl Owed {
 
     /// Anything but a cycle: what a test waits on when the view has a
     /// cycle that will never let `any()` clear. An eased scroll is a
-    /// finite leg like a transition, so it is in (RG20).
+    /// finite leg like a transition, so it is in.
     pub fn beyond_cycles(self) -> bool {
         self.transition || self.depart || self.requested || self.autoscroll || self.scroll
     }
 }
 
 impl Core {
-    /// This window's palette, as of this frame
-    /// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`).
+    /// This window's palette, as of this frame.
     /// Resolved from [`Core::theme_source`] and `env.system` at the start
     /// of every frame, so it is already right by the time a view runs.
     ///
@@ -644,7 +708,7 @@ impl Core {
 
     /// Writes what the user set in the OS and re-resolves the palette from
     /// it, so a host that pushes the appearance and reads the theme back
-    /// before its next frame sees the answer (ADR 0019). The one door for
+    /// before its next frame sees the answer. The one door for
     /// a binding's env setter: writing `env.system` by hand and forgetting
     /// the refresh was a decision each of them had to remember.
     pub fn set_system(&mut self, system: SystemEnv) {
@@ -722,14 +786,14 @@ impl Core {
     }
 
     /// The sizes the stock widgets are built from — the palette's other
-    /// axis (`crate::metrics`, backlog T2). [`Metrics::default`] until
+    /// axis ([`crate::metrics`]). [`Metrics::default`](crate::metrics::Metrics::default) until
     /// the app sets one; nothing in the OS is followed.
     pub fn metrics(&self) -> &crate::metrics::Metrics {
         &self.metrics
     }
 
-    /// Declare the tokens the running origin references by name
-    /// (`docs/adr/0027-tokens-beside-the-theme.md`): the host's outside a
+    /// Declare the tokens the running origin references by name:
+    /// the host's outside a
     /// fill, the filling extension's inside one. Replaces that origin's
     /// table whole, so an app whose lengths change with a viewport tier
     /// declares again on `resize`. A name a role owns is dropped with a
@@ -796,7 +860,7 @@ impl Core {
     }
 
     /// A binding lowered a `family` that names nothing installed or
-    /// loaded: raise `unknown-family`, once per name (ADR 0037). The text
+    /// loaded: raise `unknown-family`, once per name. The text
     /// shapes as sans, which is what the message says.
     pub fn warn_unknown_family(&mut self, name: &str) {
         self.diag.raise(Warning {
@@ -1023,10 +1087,10 @@ impl Core {
     /// Where a point lands in the text node `key` drew: a byte offset into
     /// its content and the visual row within that node — counted across
     /// every run the key covers by where the rows sit, so a `line` row of
-    /// inline runs is one row and a wrapped run as many as it wrapped to
-    /// (backlog AR30); not the ordinal `line` node a pointer event names
-    /// — or `None` for a key that is not a text node or was not drawn
-    /// (backlog C18). A `role="none"` subtree under the key (a gutter) is
+    /// inline runs is one row and a wrapped run as many as it wrapped to;
+    /// not the ordinal `line` node a pointer event names
+    /// — or `None` for a key that is not a text node or was not drawn.
+    /// A `role="none"` subtree under the key (a gutter) is
     /// not its text, as the access tree reads it. `point` is logical
     /// viewport px — the `x`/`y` a click or drag event carries — so a
     /// custom editor turns the event into a caret position with one call
@@ -1057,11 +1121,11 @@ impl Core {
     /// Queued for [`Self::take_announcements`], the way `play` queues an
     /// audio command — an announcement is a consequence of an event, and
     /// the frame's tree, which is a function of state, has no place to
-    /// keep one (see `docs/adr/0008-live-regions-and-announcements.md`).
+    /// keep one.
     /// A region whose text changes on screen is the other half, and is
     /// the `live` prop instead.
     ///
-    /// [`Live::Off`] and an empty string are both no-ops — the first so a
+    /// [`Live::Off`](crate::access::Live::Off) and an empty string are both no-ops — the first so a
     /// caller can gate politeness without an `if`, the second because
     /// every platform needs a name to say.
     pub fn announce(&mut self, text: &str, live: crate::access::Live) {
@@ -1165,7 +1229,7 @@ impl Core {
         self.text.subpixel()
     }
 
-    /// The byte budget for the shaped-text cache (backlog C16): every
+    /// The byte budget for the shaped-text cache: every
     /// text a frame draws is shaped once and kept, and past this many
     /// estimated bytes the least recently drawn entries go, down to three
     /// quarters of it, at the start of the next frame. What the last
@@ -1197,7 +1261,7 @@ impl Core {
     }
 
     /// How many long lines — no-wrap texts past `LONG_LINE_BYTES`, shaped
-    /// in chunks — are held (backlog C19).
+    /// in chunks — are held.
     pub fn long_lines(&self) -> usize {
         self.text.long_lines()
     }
@@ -1218,7 +1282,7 @@ impl Core {
         self.owed().any()
     }
 
-    /// What the last frame left owed, by kind (backlog F64). To a driver
+    /// What the last frame left owed, by kind. To a driver
     /// the kinds are one — it schedules the frame either way — but a
     /// test that wants to know whether the *transitions* have run out
     /// under a keyframe cycle that never will reads `cycle` apart from
@@ -1263,8 +1327,7 @@ impl Core {
     /// `frame` with something to fill the slots the view declares — the
     /// runner's extension list (`[Box<dyn Extension>]` is a `Fill`), or a
     /// test's stand-in. `Ui::slot` calls it in place, and `Ui::finish`
-    /// lets it fill `"root"` and report unknown slots before layout. See
-    /// `docs/adr/0014-slots-an-extension-fills-in-place.md`.
+    /// lets it fill `"root"` and report unknown slots before layout.
     pub fn frame_with<'a>(
         &'a mut self,
         viewport: Size,
@@ -1293,8 +1356,8 @@ impl Core {
     }
 
     /// The viewport (logical px) the current frame was begun with — the
-    /// window, less the devtools' dock while the panel is docked
-    /// (`docs/adr/0024`): what the host lays out into. Changes to it
+    /// window, less the devtools' dock while the panel is docked:
+    /// what the host lays out into. Changes to it
     /// arrive as `resize` events (see `take_pending_events`), a dock
     /// coming, going or resizing among them.
     pub fn viewport(&self) -> Size {
@@ -1319,6 +1382,9 @@ impl Core {
         (&self.display, &mut self.atlas)
     }
 
+    /// Begins a frame without handing out a [`Ui`]: what [`Core::frame`]
+    /// calls first. A binding that drives the builder methods on the core
+    /// directly starts here and ends with `Ui::wrap(core).finish()`.
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
         // First, while the last frame's tree and every store's reading of
         // it are still whole: why this frame runs, and who held it
@@ -1527,8 +1593,8 @@ impl Default for Core {
 /// runner uses to host Lua (or any other) extensions without knowing what
 /// they are. Origins are assigned by the runner.
 ///
-/// Where it draws is a slot the host declared
-/// (`docs/adr/0014-slots-an-extension-fills-in-place.md`): `slots` names
+/// Where it draws is a slot the host declared:
+/// `slots` names
 /// the ones it fills, `view` is called once per frame for each of them
 /// with which one it is, and an extension naming none is called once
 /// after the host's view for the reserved `"root"` slot — the sequence
@@ -1542,12 +1608,12 @@ pub trait Extension {
     /// under its namespace, for an extension whose slots are not known
     /// when it loads — a Lua host whose `init.lua` registers views at
     /// runtime, one slot per view — and it then gets no `unknown-slot`
-    /// warning, since there is no list to check against (backlog K1).
+    /// warning, since there is no list to check against.
     fn slots(&self) -> &[String] {
         &[]
     }
     fn view(&mut self, slot: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String>;
     /// One of this extension's events; the values returned are replies
-    /// to the host (ADR 0014 decision 6), delivered in order.
+    /// to the host, delivered in order.
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value>;
 }

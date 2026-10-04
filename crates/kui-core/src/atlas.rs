@@ -37,7 +37,7 @@ pub struct RasterGlyph {
 }
 
 /// A glyph or shape refused for room on a page that began the frame
-/// empty (RG56).
+/// empty.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Refusal {
     Glyph(CacheKey),
@@ -51,7 +51,7 @@ struct Shelf {
 }
 
 /// The page as it was when `begin_frame` last emptied it, kept for that
-/// one frame (backlog DX26): its pixels, and the glyphs and shapes it
+/// one frame: its pixels, and the glyphs and shapes it
 /// held, where.
 struct Prev {
     size: u32,
@@ -74,7 +74,7 @@ impl Prev {
     }
 }
 
-/// How the page makes room (backlog F99). A slot handed out during a
+/// How the page makes room. A slot handed out during a
 /// frame is never moved or overwritten before that frame is presented:
 /// the quads already emitted, the text templates built and the cell
 /// tables filled all carry its texel rect, and nothing walks them again.
@@ -85,7 +85,7 @@ impl Prev {
 /// `begin_frame`, before anything is emitted. The page then starts that
 /// frame empty at its base size and holds that frame's set alone; if the
 /// set does not fit it, it is larger than the page and the page keeps the
-/// growth (AR19, F83). Most fills never get as far as mid-frame:
+/// growth. Most fills never get as far as mid-frame:
 /// `begin_frame` sees one coming in the rows the last frames opened and
 /// empties the page first. A page at `MAX_ATLAS_SIZE` cannot extend: there
 /// the request is refused for this frame (the glyph is not drawn, an
@@ -93,7 +93,7 @@ impl Prev {
 /// `short` asks for, starts on an empty page.
 ///
 /// A page that began the frame empty and still refuses holds a set bigger
-/// than itself, and the next frame would refuse the same (RG56). Its
+/// than itself, and the next frame would refuse the same. Its
 /// refusals are kept, and until the page is next emptied the atlas
 /// measures what each frame looks up: `stamp` moves every frame, so the
 /// caches that keep slots look theirs up again, and each distinct slot's
@@ -103,7 +103,7 @@ impl Prev {
 /// the set. One that did not fit keeps the page as it is.
 ///
 /// An emptied page is not drawn from again, but it is kept for the frame
-/// that begins on the empty one (backlog DX26). A glyph or shape that
+/// that begins on the empty one. A glyph or shape that
 /// frame looks up and the old page held is copied across, not
 /// rasterized again: the frame after a reset is the whole visible set
 /// looked up at once — kawoosh's window, ~600 glyphs, was 2.5–5.3 ms of
@@ -122,7 +122,7 @@ pub struct GlyphAtlas {
     pub epoch: u64,
     /// What caches that keep slots across frames — text templates, cell
     /// tables — key them on: it moves with `epoch`, and on every frame
-    /// while refusals are pending (RG56), so that those frames look every
+    /// while refusals are pending, so that those frames look every
     /// slot they use up again and are measured.
     pub stamp: u64,
     map: FxHashMap<CacheKey, Option<GlyphSlot>>,
@@ -130,7 +130,7 @@ pub struct GlyphAtlas {
     /// call). Keyed by handle; re-blitted from `Resources` after a reset.
     images: FxHashMap<ImageId, Option<GlyphSlot>>,
     /// Shapes drawn from a cell box rather than a font — box drawing,
-    /// blocks, Powerline (backlog F66, F112) — keyed on the character and the
+    /// blocks, Powerline — keyed on the character and the
     /// cell size in physical px, so one cell size shares one slot and
     /// another size does not. Plain masks, tinted like a glyph's.
     synth: FxHashMap<(char, u32, u32), Option<GlyphSlot>>,
@@ -164,10 +164,10 @@ pub struct GlyphAtlas {
     /// one has, `rows_per_frame` is what the frames before the reset
     /// opened — a burst, a view's worth of new glyphs, that says nothing
     /// of how fast the set that followed turns over — and the page is not
-    /// read as filling (the regression pass over F99: a burst that fit
-    /// doubled the page for good two frames later).
+    /// read as filling (otherwise a burst that fit would double the page
+    /// for good two frames later).
     turned: bool,
-    /// The refusals pending (RG56): what a page that began the frame empty
+    /// The refusals pending: what a page that began the frame empty
     /// could not take, with the texels each would use and the frame it
     /// was last looked up on. Emptied with the page.
     refused: FxHashMap<Refusal, (u64, u64)>,
@@ -242,7 +242,7 @@ impl GlyphAtlas {
     /// instead: an extension is kept, and a page about to fill doubles
     /// with its slots in place. That is F83's thrash, a set between one
     /// page and two, measured by what the page does rather than by which
-    /// glyphs come back; a fill long after the last (RG23) empties it.
+    /// glyphs come back; a fill long after the last empties it.
     ///
     /// A page with refusals pending is emptied when the last frame wanted
     /// one and its set fits (see the type's note); otherwise the frame
@@ -296,8 +296,7 @@ impl GlyphAtlas {
     /// emptied has served it. Dropped here rather than at the next
     /// `begin_frame`, which on an idle window may never come — the frame
     /// that shrinks an extended page, or empties a full 4096 one, would
-    /// otherwise hold up to 64 MiB for as long as nothing redraws (the
-    /// alpha.22 regression pass).
+    /// otherwise hold up to 64 MiB for as long as nothing redraws.
     pub(crate) fn end_frame(&mut self) {
         self.prev = None;
     }
@@ -316,7 +315,7 @@ impl GlyphAtlas {
     }
 
     /// Whether this frame was refused room (see `short`), or wanted a
-    /// glyph refused earlier while its set fits the page (RG56): it drew
+    /// glyph refused earlier while its set fits the page: it drew
     /// without some glyph, and the next frame, on an empty page, draws it.
     pub(crate) fn short(&self) -> bool {
         self.short || self.refit()
@@ -510,7 +509,7 @@ impl GlyphAtlas {
     }
 
     /// A glyph the page held before `begin_frame` emptied it, its texels
-    /// copied out of the old page (DX26). Only one that was drawn: a
+    /// copied out of the old page. Only one that was drawn: a
     /// `None` there may be a refusal, which the empty page is for.
     fn carried(&self, key: &CacheKey) -> Option<RasterGlyph> {
         let prev = self.prev.as_ref()?;
@@ -527,7 +526,7 @@ impl GlyphAtlas {
     }
 
     /// Cached lookup; rasterizes on miss — or, the frame after the page
-    /// was emptied, copies what the old page held (DX26). `None` means
+    /// was emptied, copies what the old page held. `None` means
     /// unrasterizable (e.g. whitespace) and is cached as such.
     pub fn get_or_insert(
         &mut self,
@@ -566,7 +565,7 @@ impl GlyphAtlas {
         Some(slot)
     }
 
-    /// Cached lookup for a shape drawn to a `w × h` cell (backlog F66);
+    /// Cached lookup for a shape drawn to a `w × h` cell;
     /// `coverage` is called on a miss for `w * h` alpha bytes, which land
     /// as a white mask the renderer tints like any glyph's. `None` means
     /// the cell does not fit a `MAX_ATLAS_SIZE` page.
@@ -664,7 +663,7 @@ impl GlyphAtlas {
 
     /// Keeps the slots of the images `live` says still exist and forgets
     /// the rest — how a window learns of removals made through another
-    /// window of its session (AR8).
+    /// window of its session.
     pub fn retain_images(&mut self, live: impl Fn(ImageId) -> bool) {
         self.images.retain(|id, _| live(*id));
     }

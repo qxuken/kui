@@ -1,5 +1,5 @@
-//! Arrow-key motion inside a composite
-//! (`docs/adr/0007-composite-keyboard-patterns.md`): a tab list, a radio
+//! Arrow-key motion inside a composite:
+//! a tab list, a radio
 //! group, a menu or a picker list is one Tab stop, and these move focus
 //! within it — arrows, Home/End, type-ahead, and the slider nudge.
 
@@ -260,7 +260,7 @@ impl Core {
     }
 
     /// A slider move on node `i`. A slider that declared `on_change` has
-    /// the core do the arithmetic (ADR 0034, decision 4): the move is
+    /// the core do the arithmetic: the move is
     /// worked from its declared `value_now`, range and step, and proposed
     /// as `{kind="change", value, phase="end", tag}` — nothing when it
     /// lands where the slider already is. Any other slider reaches the app
@@ -311,7 +311,7 @@ impl Core {
     }
 
     /// A reader's `SetValue` on slider `i`: `value` as the number it
-    /// asked for (backlog RG42). Windows' UI Automation moves a slider
+    /// asked for. Windows' UI Automation moves a slider
     /// only this way — its RangeValue pattern has no increment — and the
     /// request was dropped, so a UIA client read a writable slider whose
     /// writes did nothing. With `on_change` the core proposes `value`

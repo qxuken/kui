@@ -1,16 +1,15 @@
-//! The headless driver the crate's own tests drive a [`Core`] with. Test
-//! infrastructure, behind the `conformance` feature like the corpus, so no
-//! shipped binary carries it; the self dev-dependency turns it on for
-//! `cargo test`.
+//! Headless input helpers for driving a [`Core`] in tests: clicks, key
+//! presses and the common readbacks. Test infrastructure, behind the
+//! `conformance` feature (off by default); the crate's own tests and
+//! `kui-lua`'s use it, nothing in a shipped app does.
 //!
-//! Every integration test used to re-derive these at the shallowest
-//! interface there is — three `handle_input` calls per click, in nine
-//! named copies and seventy-odd inline triples — so a change to the click
-//! protocol was a hunt through the test corpus. These are the verbs once:
-//! input as a driver sends it, and the two readbacks every test wants (the
-//! `kind` of each event, the quads of one kind). They are plain functions
-//! over a borrowed `Core` rather than a struct, since a test already holds
-//! the core and builds its own frames.
+//! They are plain functions over a borrowed `Core`, since a test already
+//! holds the core and builds its own frames: [`click`](crate::testing::click)
+//! is the move-press-release triple a driver sends,
+//! [`tab`](crate::testing::tab) a Tab press, [`kinds`](crate::testing::kinds)
+//! the `kind` of each event a drive produced,
+//! [`solids`](crate::testing::solids) the solid quads of the last frame, and
+//! the `*_face` functions synthesize font fixtures.
 
 use crate::display::{Quad, QuadKind};
 use crate::geom::Vec2;
@@ -144,8 +143,8 @@ pub fn tags(evs: &[UiEvent]) -> Vec<&str> {
         .collect()
 }
 
-/// A font file the tests can register without one being installed
-/// (backlog AR48): a TrueType face, family **"Kui Liga"**, that maps every
+/// A font file the tests can register without one being installed: a
+/// TrueType face, family **"Kui Liga"**, that maps every
 /// printable ASCII character to a filled square and carries one `liga`
 /// ligature — `f` followed by `i` shapes as one wider glyph unless the
 /// feature is off. Built here rather than checked in as bytes, so the
@@ -164,7 +163,7 @@ pub fn liga_font() -> Vec<u8> {
 /// `weight` on the CSS scale (the `OS/2` table's `usWeightClass`), italic
 /// or upright, and saying it is fixed-pitch or not (the `post` table's
 /// `isFixedPitch`) — so a test can stock a font database with families
-/// whose faces differ in what the database reads off them (backlog F97).
+/// whose faces differ in what the database reads off them.
 /// The glyphs are the fixture's whatever the flag says.
 pub fn font_face(family: &str, weight: u16, italic: bool, fixed_pitch: bool) -> Vec<u8> {
     liga_font::build(&liga_font::Face {
@@ -178,7 +177,7 @@ pub fn font_face(family: &str, weight: u16, italic: bool, fixed_pitch: bool) -> 
 
 /// The [`liga_font`] fixture as a proportional face of `family` that maps
 /// 字 (U+5B57) to its square besides printable ASCII: a face Han text can
-/// fall back to, measured like any other (backlog F98).
+/// fall back to, measured like any other.
 pub fn han_face(family: &str) -> Vec<u8> {
     liga_font::build(&liga_font::Face {
         family,
@@ -187,7 +186,7 @@ pub fn han_face(family: &str) -> Vec<u8> {
     })
 }
 
-/// A face whose glyph advances cannot be measured (backlog F98): the
+/// A face whose glyph advances cannot be measured: the
 /// [`han_face`] fixture, fixed-pitch, without its `head`, `hhea` and
 /// `hmtx` tables — no units per em, no horizontal metrics — and without
 /// its outlines, the way macOS's GB18030 Bitmap has none of them (it
@@ -205,7 +204,7 @@ pub fn unmeasurable_face(family: &str) -> Vec<u8> {
     })
 }
 
-/// A variable face of `family` (backlog F100): the [`liga_font`] fixture,
+/// A variable face of `family`: the [`liga_font`] fixture,
 /// fixed-pitch, whose `OS/2` says weight 400 and which carries a `wght`
 /// axis from `wght[0]` to `wght[2]`, its default at `wght[1]`, with the
 /// named instances `instances` (subfamily name, coordinate). At the axis's

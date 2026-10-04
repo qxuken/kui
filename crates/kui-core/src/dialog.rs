@@ -1,17 +1,33 @@
-//! File dialogs as an ask (backlog C51): the app asks for an Open, a Save
-//! or a folder, the host shows the platform's own dialog, and the answer
-//! comes back as one event — `{kind:"files", paths, tag}`, the payload
-//! shape a drop zone's `drop` carries (ADR 0031), `paths` empty for a
-//! dialog the user cancelled.
+//! File dialogs as an ask: the app describes an Open, Save or folder
+//! dialog, the host shows the platform's own, and the answer comes back as
+//! one `{kind:"files", paths, tag}` event (`paths` empty when cancelled).
 //!
-//! The core cannot show a dialog, so it does what it does for a paste
-//! (`Core::request_paste`): it queues the ask, a host drains it
-//! (`Core::take_file_requests` — the runner does, a Node `Ctx` or a C host
-//! driving its own window does it by hand), and the host's answer is an
-//! input (`InputEvent::Files`). One ask at a time: a second while one is
-//! unanswered is dropped, so a view that asks every frame until the answer
-//! lands asks once, and the answer goes to whoever asked — the host, or
-//! the extension whose fill asked.
+//! Build a [`FileDialog`] and hand it to `Ui::request_files` from a view or
+//! `Core::request_files` between frames. The core cannot show a dialog, so
+//! it queues the ask; the windowed runner drains it and answers for you,
+//! while a host driving its own window drains `Core::take_file_requests`
+//! and answers with `InputEvent::Files`. One ask is out at a time: a
+//! second while one is unanswered is dropped, so a view that asks every
+//! frame until the answer lands asks once.
+//!
+//! ```rust
+//! use kui_core::{Core, FileDialog, FileDialogMode, InputEvent};
+//!
+//! let dialog = FileDialog::open()
+//!     .multiple()
+//!     .title("Add images")
+//!     .filter("Images", &["png", "jpg"])
+//!     .tag("import");
+//!
+//! let mut core = Core::new();
+//! assert!(core.request_files(dialog));
+//!
+//! // A host without the runner: drain the ask, show the dialog, answer.
+//! let asked = core.take_file_requests();
+//! assert_eq!(asked[0].mode, FileDialogMode::Open);
+//! let events = core.handle_input(InputEvent::Files(vec!["/tmp/a.png".into()]));
+//! assert_eq!(events[0].kind(), Some("files"));
+//! ```
 
 use crate::key::Key;
 use crate::tree::OriginId;
@@ -106,9 +122,8 @@ impl FileDialog {
     }
 
     /// Offers the file type `name`, matching `extensions` (without the
-    /// dot; one written with it is taken without, as Node's, Lua's and
-    /// C's are — Windows matched `*..txt` and listed nothing, backlog
-    /// RG44). The first filter added is the one chosen when it opens.
+    /// dot; one written with it is taken without). The first filter added
+    /// is the one chosen when it opens.
     pub fn filter(mut self, name: impl Into<String>, extensions: &[&str]) -> Self {
         self.filters.push(FileFilter {
             name: name.into(),

@@ -1,19 +1,36 @@
-//! Entrance transitions: where a node's animatable slots start from the
-//! first frame it is seen. A transition never animates in from nowhere —
-//! a node's first sight snaps, so a view that wants a slide-in used to draw
-//! the node off screen for a frame and move it on the next. `NodeSpec::enter`
-//! states that starting point as data instead: on first sight the slots it
-//! names (`dx`/`dy` for the laid-out position, plus width, height, bg and
-//! radius in the forms the props themselves take) start there and ease to
-//! what the view declares, on the node's `transition`.
+//! Entrance transitions: where a node's animatable slots start on the
+//! first frame it is seen.
 //!
-//! `dx`/`dy` move the node's position in place, subtree and all, like
-//! `slide` does for reordered siblings; a node with `enter` but no `slide`
-//! eases only its entrance — a later layout move still snaps. Slots a
-//! `keyframes` stop names are sampled, not tweened, so `enter` leaves them
-//! alone. A node that leaves and comes back enters again (the core keeps no
-//! memory of a node it did not draw last frame, which is what a dismissed
-//! and re-shown toast wants).
+//! Without one, a node's first sight snaps into place. `NodeSpec::enter`
+//! takes an [`Enter`] naming where the slots start instead (`dx`/`dy` for
+//! the position, plus width, height, bg, radius and opacity), and they
+//! ease from there to what the view declares over the node's
+//! `transition`. `NodeSpec::exit` takes the same type read the other way:
+//! where the slots end after the view stops declaring the node.
+//!
+//! ```rust
+//! use kui_core::{Core, Enter, NodeSpec, Size};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+//! // A toast that rises 24 px and fades in over 200 ms when it first appears,
+//! // and does the reverse when the view stops declaring it.
+//! ui.leaf_keyed(
+//!     "toast",
+//!     NodeSpec::row()
+//!         .size(200.0, 40.0)
+//!         .transition(200.0)
+//!         .enter(Enter::from(0.0, 24.0).opacity(0.0))
+//!         .exit(Enter::from(0.0, 24.0).opacity(0.0)),
+//! );
+//! ui.finish();
+//! ```
+//!
+//! `dx`/`dy` move the node's position in place, subtree and all; a node
+//! with `enter` but no `slide` eases only its entrance, and a later layout
+//! move still snaps. Slots a `keyframes` stop names are sampled, not
+//! tweened, so `enter` leaves them alone. A node that leaves and comes
+//! back enters again.
 
 use crate::slots::{Slots, slot_builders};
 use crate::value::Value;
@@ -66,7 +83,7 @@ pub fn parse(v: &Value) -> Result<Enter, String> {
 
 /// [`parse`] with a token lookup, as `keyframes::parse_with`: a `$name`
 /// in `width`, `height`, `bg` or `radius` resolves, and a miss leaves the
-/// slot unnamed and is remembered on the refs (backlog AR14).
+/// slot unnamed and is remembered on the refs.
 pub fn parse_with(
     v: &Value,
     mut refs: Option<&mut crate::tokens::NameRefs<'_>>,

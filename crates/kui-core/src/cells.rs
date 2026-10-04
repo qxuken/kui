@@ -1,40 +1,50 @@
-//! A cell grid: what a terminal draws (backlog C20). One node holds
-//! `rows × cols` cells — a character, a foreground, a background, a few
-//! attribute bits — and its emission is a table walk: a glyph is looked up
-//! by character and style variant in a cache that was filled by shaping
-//! that one character once, placed at `col × cell_w`, and never shaped
-//! again. So a pane whose every cell is new every frame costs the same as
-//! one that never changes, which is the property the text runs a terminal
-//! could otherwise be built from do not have (see `benches/stream.rs`).
+//! A cell grid: a terminal's screen as one node, `rows × cols` cells each
+//! with a character, a foreground, a background and attribute bits.
+//!
+//! Build a slice of [`Cell`]s, describe it with a [`CellGrid`] and hand it
+//! to `Ui::cells` with the node's own spec. A glyph is shaped once per
+//! character and style variant and then placed at `col × cell_w` without
+//! shaping, so a pane whose every cell is new every frame costs the same
+//! as one that never changes. The node's rows apply as on any node: an
+//! `on_key` makes it the terminal's sink, an `on_click` or `on_drag`
+//! carries `cell: {row, col}`, `selectable` selects in cells, and its
+//! access row is `terminal`.
+//!
+//! ```rust
+//! use kui_core::cells::{flags, Cell, CellGrid};
+//! use kui_core::{CellCursor, Color, Core, NodeSpec, Size, TextStyle};
+//!
+//! let (rows, cols) = (2, 4);
+//! let mut cells = vec![Cell::default(); rows * cols];
+//! for (i, ch) in "ab c".chars().enumerate() {
+//!     cells[i] = Cell::new(ch, 0xffffffff, 0x0000ffff); // white on blue
+//! }
+//! cells[6] = Cell::new('x', 0xff0000ff, 0).with(flags::BOLD);
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+//! ui.cells(
+//!     &CellGrid {
+//!         rows,
+//!         cols,
+//!         cells: &cells,
+//!         style: TextStyle::new(14.0).mono().line_height(20.0),
+//!         cursor: Some((1, 2, CellCursor::Block, Color::WHITE)),
+//!         origin_line: 0,
+//!     },
+//!     NodeSpec::default(),
+//! );
+//! ui.finish();
+//! ```
 //!
 //! What it deliberately is not: shaped text. No ligatures, no kerning, no
-//! wrapping — a cell is a cell. And a cell is one *scalar*: `Cell::ch` is
-//! a `char`, C's `KuiCell.ch` a `uint32_t`, Node's stream a codepoint
-//! packed with its flags. A precomposed character (`é` as U+00E9) is one
-//! cell; a base with combining marks, a ZWJ emoji sequence, a flag or a
-//! conjunct is not representable — the app precomposes what NFC can and
-//! drops what it cannot (backlog C37). A wide character is marked `WIDE`
-//! and the cell after it is a spacer the app leaves blank. When a view
-//! needs a cluster, the shape is named so it does not grow the cell: a
-//! side table of `(cell index, &str)` on `CellGrid` for the few cells
-//! whose content is more than a scalar, keyed into the same `other`
-//! glyph map by the cluster's string, so a 200 × 50 pane stays 160 KB a
-//! frame.
-//!
-//! Box drawing, block elements and the Powerline separators are not
-//! shaped at all: a font's are its line box's height and the cell is
-//! `line_height` tall, so every `│` through the font was a dash with a
-//! gap under it (backlog F66), and a rounded cap through a fallback font
-//! was a squiggle beside its row (F112). `boxdraw` rasterizes them from the cell
-//! box into a mask of exactly the cell's size, keyed in the atlas on the
-//! character and that size, and they come through `shape_cell` like any
-//! glyph so `lookup`'s table caches them the same way.
-//!
-//! Bound four ways: the `cells` element row, C's `kui_cells` over a
-//! `KuiCell` array, Node's `Uint32Array` stream and Lua's `lines` +
-//! `runs`, the `terminal` access row, and the `cell` field on click and
-//! drag payloads — the entry's steps 1–4, built after the measurement
-//! this began as.
+//! wrapping. A cell is one `char`: a precomposed character is one cell; a
+//! base with combining marks, a ZWJ emoji sequence or a flag is not
+//! representable, so the app precomposes what NFC can and drops the rest.
+//! A wide character is marked [`flags::WIDE`] and the cell after it is a
+//! spacer the app leaves blank. Box drawing, block elements and the
+//! Powerline separators are not shaped at all but rasterized from the cell
+//! box, so a TUI's frames are seamless in any font.
 
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, Style as FontStyle};
 use rustc_hash::FxHashMap;
@@ -58,8 +68,8 @@ pub mod flags {
     pub const STRIKETHROUGH: u8 = 8;
     /// The glyph is two cells wide; the app leaves the next cell blank.
     pub const WIDE: u8 = 16;
-    /// The underline is a wave (SGR 4:3, a terminal's undercurl; backlog
-    /// K4). Implies `UNDERLINE`.
+    /// The underline is a wave (SGR 4:3, a terminal's undercurl). Implies
+    /// `UNDERLINE`.
     pub const WAVY: u8 = 32;
     /// The underline is dotted (SGR 4:4). Implies `UNDERLINE`.
     pub const DOTTED: u8 = 64;
@@ -77,7 +87,7 @@ pub struct Cell {
     pub fg: u32,
     pub bg: u32,
     pub flags: u8,
-    /// The underline's own colour (SGR 58; backlog K4), or 0 for `fg`.
+    /// The underline's own colour (SGR 58), or 0 for `fg`.
     pub ul: u32,
 }
 
@@ -92,7 +102,7 @@ impl Cell {
         }
     }
 
-    /// An underline in its own colour (backlog K4); sets `UNDERLINE`.
+    /// An underline in its own colour; sets `UNDERLINE`.
     pub const fn underline_color(mut self, ul: u32) -> Self {
         self.flags |= flags::UNDERLINE;
         self.ul = ul;
@@ -149,9 +159,8 @@ pub struct CellGrid<'a> {
     pub style: TextStyle,
     /// `(row, col, shape, colour)`.
     pub cursor: Option<(usize, usize, CursorShape, Color)>,
-    /// The absolute line number of row 0 — where this screenful sits in
-    /// the app's own history (`docs/adr/0017-selection-as-a-scope.md`,
-    /// decision 4).
+    /// The absolute line number of row 0: where this screenful sits in
+    /// the app's own history.
     ///
     /// A grid is one screenful and the scrollback behind it is the app's,
     /// so a row number is not an address: it means a different line after
@@ -236,7 +245,7 @@ impl CellStore {
     }
 
     /// Drops every style's table, to shape again on its next draw: the
-    /// weights a family is asked at changed under them (RG59).
+    /// weights a family is asked at changed under them.
     pub(crate) fn forget_shaped(&mut self) {
         self.tables.clear();
     }
@@ -404,7 +413,7 @@ impl CellStore {
     }
 
     /// The grid as text, rows joined by newlines with trailing blanks
-    /// trimmed — what a screen reader reads (backlog C20).
+    /// trimmed — what a screen reader reads.
     pub(crate) fn value(&self, id: CellsId) -> String {
         let e = &self.frame[id.0 as usize];
         let mut out = String::with_capacity(e.rows * (e.cols + 1));
@@ -454,7 +463,7 @@ impl CellStore {
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
         // The window's selection when it is in *this* grid, and the tint
-        // to paint it under (ADR 0017, decision 4). Resolved by the
+        // to paint it under. Resolved by the
         // caller, which is the only place that knows which grid is
         // selected in.
         sel: Option<(&crate::select::CellSelection, Color)>,
@@ -469,7 +478,7 @@ impl CellStore {
         if table.epoch != atlas.stamp {
             // The page was replaced — reset, whose slots are gone, or
             // resized, whose slots stayed — or the atlas is measuring
-            // what the frame uses (RG56): look every one up again.
+            // what the frame uses: look every one up again.
             table.ascii.iter_mut().for_each(|g| *g = None);
             table.other.clear();
             table.epoch = atlas.stamp;
@@ -628,7 +637,7 @@ fn push_lines(
     let w = (end - start) as f32 * cw;
     if f & (flags::UNDERLINE | flags::WAVY | flags::DOTTED) != 0 {
         // The shape bits imply the line; its colour is its own where the
-        // cell says (SGR 58), else the foreground's (backlog K4).
+        // cell says (SGR 58), else the foreground's.
         let style = if f & flags::WAVY != 0 {
             crate::spec::UnderlineStyle::Wavy
         } else if f & flags::DOTTED != 0 {
@@ -765,8 +774,7 @@ fn shape_one(
     let metrics = Metrics::new(style.size * scale, style.line_height * scale);
     let mut buffer = Buffer::new(fs, metrics);
     buffer.set_size(None, None);
-    // Bold at a weight the family has a face for, never another family's
-    // (backlog F100).
+    // Bold at a weight the family has a face for, never another family's.
     let mut attrs = res.weights_of(style.family).apply(
         Attrs::new().family(res.family_of(style.family)),
         flags & flags::BOLD != 0,

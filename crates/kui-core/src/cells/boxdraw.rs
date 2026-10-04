@@ -1,8 +1,7 @@
-//! The glyphs a `cells` node draws from the cell box instead of the font
-//! (backlog F66): box drawing (U+2500–U+257F), block elements
-//! (U+2580–U+259F) and the Powerline separators (U+E0B0–U+E0BF): the
-//! arrows, and the Powerline Extra half circles and wedges (backlog
-//! F112).
+//! The glyphs a `cells` node draws from the cell box instead of the font:
+//! box drawing (U+2500–U+257F), block elements (U+2580–U+259F) and the
+//! Powerline separators (U+E0B0–U+E0BF: the arrows, and the Powerline
+//! Extra half circles and wedges).
 //!
 //! A font's box-drawing glyphs span *its* line box — Iosevka's are 1.25 em
 //! tall — and a cell is `line_height` tall, which no font can know, so

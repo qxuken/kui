@@ -1,5 +1,5 @@
-//! The window this core draws and the windows a frame declares
-//! (`docs/adr/0004-multi-window.md`): the declared set and its diff into
+//! The window this core draws and the windows a frame declares:
+//! the declared set and its diff into
 //! `Open` / `Close`, the command queue drivers drain, the title and the
 //! window level.
 
@@ -108,8 +108,8 @@ impl Core {
     }
 
     /// A window that will finish no more frames leaves its `audio` mounts
-    /// behind: they are reconciled against that window's frames alone
-    /// (AR7), so nothing else would ever stop them — a popup's looped bed
+    /// behind: they are reconciled against that window's frames alone,
+    /// so nothing else would ever stop them — a popup's looped bed
     /// played on after the popup closed. Reconciling the window against
     /// the nothing it now declares stops each mount by the rule a removed
     /// node follows (`finish` releases a one-shot, a loop stops).
@@ -122,8 +122,8 @@ impl Core {
     /// [`crate::window::DismissReason`]). Raises `{kind:"dismiss", reason,
     /// name, id}` on the root, pending like a resize, and **closes
     /// nothing**: only the app can stop declaring the window, and it does
-    /// that on the frame it decides to, which is ADR 0003 decision 6 one
-    /// level up. So an app that graduates a dropdown from a `modal` float
+    /// that on the frame it decides to, the way a modal closes. So an app that
+    /// graduates a dropdown from a `modal` float
     /// to a popup window changes its declaration and keeps its handler.
     ///
     /// Both facts behind it are the OS's — a press outside a window lands
@@ -246,8 +246,7 @@ impl Core {
     /// a handler, after this frame if called from a view — and one a
     /// headless driver never applies, since it never drains. The window
     /// answers through the ordinary `resize` event, with the size it
-    /// actually became. Until ADR 0004's step 3 lets a frame declare more
-    /// windows, `WindowId::MAIN` is the only one there is.
+    /// actually became.
     pub fn set_window_size(&mut self, window: crate::window::WindowId, size: crate::geom::Size) {
         self.interaction
             .window_commands
@@ -284,8 +283,8 @@ impl Core {
         self.window_title.as_deref()
     }
 
-    /// Declares that this frame wants the window above every other app's
-    /// (backlog C30): a floating palette, a picture-in-picture player, a
+    /// Declares that this frame wants the window above every other app's:
+    /// a floating palette, a picture-in-picture player, a
     /// timer. Frame state like the title, and the driver applies it the
     /// same way — `set_window_level` when it differs from what is applied,
     /// nothing when it does not — but it defaults to `false` rather than
@@ -309,8 +308,8 @@ impl Core {
 
     /// Declares that this frame wants the keyboard to this window kept
     /// from other processes while the window has it — macOS's Secure
-    /// Keyboard Entry, what a terminal turns on at a password prompt
-    /// (backlog F85). Frame state like `always_on_top`: a frame that stops
+    /// Keyboard Entry, what a terminal turns on at a password prompt.
+    /// Frame state like `always_on_top`: a frame that stops
     /// declaring it turns it off, so an app asks on every frame the
     /// prompt is up and never has to remember to undo it.
     ///
@@ -333,9 +332,9 @@ impl Core {
         self.secure_input
     }
 
-    /// Declares which Option keys act as Alt in this window on macOS
-    /// (backlog F113): a dead key under that Option — ⌥u, ⌥e, ⌥i, ⌥n,
-    /// ⌥` — then arrives as the chord `<A-u>` rather than starting an
+    /// Declares which Option keys act as Alt in this window on macOS:
+    /// a dead key under that Option — ⌥u, ⌥e, ⌥i, ⌥n,
+    /// ⌥\` — then arrives as the chord `<A-u>` rather than starting an
     /// accent the app never hears, and a key under it types nothing, as
     /// under Control. Frame state like `always_on_top`, default
     /// [`OptionAsAlt::None`](crate::OptionAsAlt::None): a frame that stops

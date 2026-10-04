@@ -1,6 +1,6 @@
-//! Size expressions (backlog F109): CSS's `min()`, `max()` and `clamp()`
-//! over lengths and percentages, resolved by layout against the parent's
-//! content box — the same box a `Percent` sizing takes its cut of.
+//! Size expressions: CSS's `min()`, `max()` and `clamp()` over lengths
+//! and percentages, resolved by layout against the parent's content box
+//! (the same box a `Percent` sizing takes its cut of).
 //!
 //! ```text
 //! size   := number ["px"] | number "%" | fn "(" size ("," size)* ")"
@@ -8,44 +8,44 @@
 //! number := digits ["." digits] | "." digits  -- no sign, no exponent
 //! ```
 //!
-//! As CSS reads it: a unit straight after its number (`80 %` and `100 px`
-//! are refused), a function's `(` straight after its name (`min (1, 2)`
-//! is refused), names and `px` in any case (`MIN(10PX, 50%)`), and
-//! whitespace free around the commas and inside the parentheses. The Node
-//! encoder reads the same grammar (`encoder.js`'s `parseSize`), and
-//! `tests/fixtures/size_spellings.json` is the one table all three
-//! bindings are run through (backlog RG94).
-//!
+//! As CSS reads it: a unit straight after its number (`80 %` is refused),
+//! a function's `(` straight after its name, names and `px` in any case,
+//! and whitespace free around the commas and inside the parentheses.
 //! `"clamp(400px, 80%, 1000px)"` is 80% of the room, never under 400 nor
-//! over 1000 — and, as CSS has it, the minimum wins when it is over the
+//! over 1000, and, as CSS has it, the minimum wins when it is over the
 //! maximum. An expression with no percentage in it is a length
 //! (`"min(300px, 400)"` is `Fixed(300)`), a bare percentage is a
 //! `Percent`, and only what depends on the room becomes a [`Calc`].
 //!
-//! The same expression as data, for a binding that would rather not
-//! spell it ([`from_value`]): a number is px, `{ pct = N }` (or
-//! `{ percent: N }`, which JS writes and Lua refuses, RG33) a percentage,
-//! `{ px = N }` a length, and a function
-//! a one-key table of its arguments — `{ clamp = { 400, { pct = 80 },
-//! 1000 } }` in Lua, `{ clamp: [400, { percent: 80 }, 1000] }` in JS. A
-//! string may stand anywhere an argument does. C builds one with
-//! `kui_size_clamp(kui_size_px(400), kui_size_pct(80), kui_size_px(1000))`
-//! and Rust with [`Expr`] and [`intern`]. A spelling a frame declares
-//! again is found by its text before it is parsed, so a string costs a
-//! lookup after the first frame.
+//! ```rust
+//! use kui_core::{NodeSpec, Sizing, calc};
 //!
-//! A [`Calc`] is a handle — `LayoutSpec` is `Copy` and copied per node per
+//! let w = calc::sizing("clamp(400px, 80%, 1000px)").unwrap();
+//! assert!(matches!(w, Sizing::Calc(_)));
+//! assert_eq!(calc::sizing("min(300px, 400)").unwrap(), Sizing::Fixed(300.0));
+//!
+//! let pane = NodeSpec::column().width(w).max_width(calc::bound("50%").unwrap());
+//! if let Sizing::Calc(c) = pane.layout.width {
+//!     assert_eq!(c.resolve(1500.0), 1000.0); // 80% of 1500 is capped
+//!     assert_eq!(c.resolve(200.0), 400.0);   // and floored
+//! }
+//! ```
+//!
+//! The same expression as data, for a binding that would rather not spell
+//! it ([`from_value`]): a number is px, `{ pct = N }` (or `{ percent: N }`
+//! in JS) a percentage, `{ px = N }` a length, and a function a one-key
+//! table of its arguments. Rust builds one with [`Expr`] and [`intern`].
+//!
+//! A [`Calc`] is a handle. `LayoutSpec` is `Copy` and copied per node per
 //! frame, so the tree it names lives in a process-wide table, one entry
-//! per distinct expression (equal by structure), which a frame that
-//! declares the same expression again finds rather than adds to. The
-//! table holds at most [`MAX_CALCS`] entries and never lets one go:
-//! expressions come from a view's source, so a program that reaches the
-//! cap is spelling a new one per frame — `format!("clamp({n}px, …)")`, or
-//! `{ max: [dragX, { percent: 30 }] }` fed a splitter's fractional drag.
-//! Past it a new expression is refused with [`FULL`] in its error, which
-//! every binding reads as the prop left undeclared rather than a frame
-//! failed, and a [`crate::diag::SIZE_EXPRESSIONS_FULL`] warning says so
-//! (backlog RG93). An expression already kept still resolves.
+//! per distinct expression, which a frame that declares the same
+//! expression again finds rather than adds to. The table holds at most
+//! [`MAX_CALCS`] entries and never lets one go: a program that reaches the
+//! cap is spelling a new expression per frame (`format!("clamp({n}px, ..)")`
+//! fed a drag). Past it a new expression is refused with [`FULL`] in its
+//! error, which every binding reads as the prop left undeclared, and a
+//! [`crate::diag::SIZE_EXPRESSIONS_FULL`] warning says so. An expression
+//! already kept still resolves.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -73,7 +73,7 @@ static REFUSED: AtomicU64 = AtomicU64::new(0);
 static LAST_REFUSED: Mutex<String> = Mutex::new(String::new());
 
 /// How many new expressions the table has refused since the process
-/// started, with the last one spelled (backlog RG93).
+/// started, with the last one spelled.
 pub fn refused() -> (u64, String) {
     let n = REFUSED.load(Ordering::Relaxed);
     if n == 0 {
@@ -88,9 +88,7 @@ pub fn refused() -> (u64, String) {
 /// another, whatever built it — the grammar, data, prefix code, C's
 /// builders or a Rust tree handed to [`intern`]. Every walk of a tree
 /// (evaluating, hashing, comparing, spelling, dropping) recurses, so a
-/// tree the table keeps is one those walks can finish; a spelling of
-/// `"min("` a hundred thousand times aborted the process on the parser's
-/// stack before this (backlog RG79).
+/// tree the table keeps is one those walks can finish.
 pub const MAX_DEPTH: u32 = 32;
 
 fn too_deep(what: &str) -> String {
@@ -101,7 +99,7 @@ fn too_deep(what: &str) -> String {
 /// finds an entry by its numbers' bits, and `NaN` is equal to nothing —
 /// not even itself — so `{ min = { 0/0, { pct = 50 } } }` declared each
 /// frame was a new entry each frame, towards the cap every view shares;
-/// and `-0` and `0` were two entries for one expression (backlog RG80).
+/// and `-0` and `0` were two entries for one expression.
 /// Neither infinity means anything a room can be cut to either.
 fn finite(v: f32) -> Result<f32, String> {
     if v.is_finite() {
@@ -116,7 +114,7 @@ fn finite(v: f32) -> Result<f32, String> {
 /// [`MAX_DEPTH`], its numbers [`finite`] and `-0` made `0` — at depth
 /// `depth`: what [`intern`] and [`norm`] make of a tree built by hand (C's
 /// builders, a Rust `Expr`), stopping at the first level past the cap
-/// rather than walking the rest (backlog RG79).
+/// rather than walking the rest.
 fn canon(e: &mut Expr, depth: u32) -> Result<(), String> {
     if depth > MAX_DEPTH {
         return Err(too_deep(""));
@@ -597,7 +595,7 @@ impl Parser<'_> {
 
     /// One argument, `depth` functions in: past [`MAX_DEPTH`] it is
     /// refused before it is read, so the recursion is bounded by the cap
-    /// and not by the input (backlog RG79).
+    /// and not by the input.
     fn expr(&mut self, depth: u32) -> Result<Expr, String> {
         if depth > MAX_DEPTH {
             return Err(too_deep(""));
@@ -606,7 +604,7 @@ impl Parser<'_> {
         for name in ["clamp", "min", "max"] {
             // As CSS reads a function: its name in any case, and the
             // parenthesis straight after it — `min (1, 2)` is no call
-            // (backlog RG94).
+            //.
             let rest = &self.s[self.at..];
             if rest.len() > name.len()
                 && rest[..name.len()].eq_ignore_ascii_case(name.as_bytes())
@@ -648,10 +646,10 @@ impl Parser<'_> {
                 self.error("a number, \"N%\", \"Npx\", min(…), max(…) or clamp(…)")
             })?;
         // Digits alone can still overflow an `f32` (forty of them do):
-        // an infinity is refused as `NaN` is from data (backlog RG80).
+        // an infinity is refused as `NaN` is from data.
         let n = finite(n)?;
         // The unit straight after the number, as CSS has it: `80 %` and
-        // `100 px` are a number and a stray word (backlog RG94).
+        // `100 px` are a number and a stray word.
         let rest = &self.s[self.at..];
         if rest.first() == Some(&b'%') {
             self.at += 1;
@@ -773,7 +771,7 @@ mod tests {
             parse("80%x").unwrap_err(),
             "bad size: the end expected at \"x\""
         );
-        // CSS's spacing (backlog RG94): the unit and a function's
+        // CSS's spacing: the unit and a function's
         // parenthesis sit against what they belong to.
         assert_eq!(
             parse("80 %").unwrap_err(),
@@ -821,7 +819,7 @@ mod tests {
 
     /// Nesting stops at [`MAX_DEPTH`] whatever builds the tree: the
     /// parser and data recursed as deep as the input went, and `"min("`
-    /// a hundred thousand times overflowed the stack (backlog RG79).
+    /// a hundred thousand times overflowed the stack.
     #[test]
     fn nesting_stops_at_the_cap() {
         let deep = parse(&"min(".repeat(100_000)).unwrap_err();
@@ -845,7 +843,7 @@ mod tests {
 
     /// `NaN` equals nothing, so an expression holding one was a new entry
     /// each time it was declared — a view declaring it every frame filled
-    /// the table — and `-0` was an entry apart from `0` (backlog RG80).
+    /// the table — and `-0` was an entry apart from `0`.
     /// Every way in refuses a number that is not finite and reads `-0`
     /// as `0`.
     #[test]

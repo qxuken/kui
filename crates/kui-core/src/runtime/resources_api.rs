@@ -25,8 +25,7 @@ impl Core {
 
     // -- Fragments ------------------------------------------------------
 
-    /// Registers a WGSL fragment function for a `fragment` node
-    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// Registers a WGSL fragment function for a `fragment` node.
     /// The app writes one function:
     ///
     /// ```wgsl
@@ -87,8 +86,8 @@ impl Core {
 
     /// Registers a font from its file bytes (TTF/OTF/TTC); `None` when the
     /// data holds no usable face — none the font database can read, or
-    /// none whose glyphs can be measured (no `head`, `hhea` or `hmtx`,
-    /// backlog F98). Shape with it via `TextStyle::font`.
+    /// none whose glyphs can be measured (no `head`, `hhea` or `hmtx`).
+    /// Shape with it via `TextStyle::font`.
     pub fn add_font_data(&mut self, data: Vec<u8>) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::Source;
         let id = {
@@ -148,7 +147,7 @@ impl Core {
     /// Loads every font file under `dir` (recursively) into the font
     /// database, so their families become available to `add_system_font`
     /// by name; returns how many faces were added. A face whose glyphs
-    /// cannot be measured is left out and not counted (backlog F98). A
+    /// cannot be measured is left out and not counted. A
     /// bundled `fonts/` folder next to the app is the usual case.
     pub fn load_fonts_dir(&mut self, dir: impl AsRef<std::path::Path>) -> usize {
         let sess = &mut *self.session.state();
@@ -184,7 +183,8 @@ impl Core {
     /// fontconfig says nothing, calls this when it has reason to think the
     /// set changed (a "fonts" pane opening, the window taking focus back).
     /// It opens every font file on the system — tens of milliseconds on a
-    /// Mac's 1300 faces — so it is not a per-frame call. Sessions made after it start from the new scan; another
+    /// Mac's 1300 faces — so it is not a per-frame call. Sessions made after
+    /// it start from the new scan; another
     /// session that already exists keeps what it has until it calls this
     /// too.
     ///
@@ -194,7 +194,8 @@ impl Core {
     /// of the session shapes its text again on its next frame, since
     /// fallback can land on a new face anywhere; this window is asked for
     /// that frame, and each window's next frame reports a `fonts` event to
-    /// the host, for an app that keeps the font list in its model. A face whose file was replaced in place, under the same
+    /// the host, for an app that keeps the font list in its model. A face
+    /// whose file was replaced in place, under the same
     /// path, is not read again.
     pub fn reload_system_fonts(&mut self) -> usize {
         let fresh = crate::text::rescan_system_fonts();
@@ -257,10 +258,10 @@ impl Core {
     /// Every family the core can see, installed or loaded, one per family
     /// and sorted by name — the families `system_font_families` names —
     /// with what its faces say they are: monospaced, the weights, an
-    /// italic (backlog F97). Read from what the font database recorded
+    /// italic. Read from what the font database recorded
     /// when it scanned each face, so a fonts pane showing the monospaced
     /// ones first costs no file loaded and no glyph shaped. A face whose
-    /// glyphs cannot be measured never entered the database (backlog F98),
+    /// glyphs cannot be measured never entered the database,
     /// so a family of only such faces — macOS's GB18030 Bitmap — is not
     /// listed.
     pub fn system_fonts(&self) -> Vec<crate::resources::SystemFont> {
@@ -294,7 +295,7 @@ impl Core {
 
     /// The installed families `FontFamily::Sans`, `Serif` and `Mono` shape
     /// with, in that order — pinned per platform when the session's font
-    /// database was built (backlog C32), so the devtools can say which face
+    /// database was built, so the devtools can say which face
     /// "mono" is on this machine.
     pub(crate) fn default_font_families(&self) -> [String; 3] {
         crate::text::default_families(&self.session.state().fonts).map(str::to_string)
@@ -456,7 +457,7 @@ impl Core {
     }
 
     /// Drops what this window shaped when a registered family's weights
-    /// changed since it last looked (RG59): text shaped with a bold
+    /// changed since it last looked: text shaped with a bold
     /// synthesized for a family that has since gained its Bold, or at a
     /// face since removed, would otherwise stay as it was until evicted.
     /// Shaped text and cell tables shape again on their next draw; an
@@ -488,8 +489,8 @@ impl Core {
         }
     }
 
-    /// Replaces an image's pixels in place; see `Resources::update_image`
-    /// (ADR 0025, decision 1). If the image had been drawn from the atlas
+    /// Replaces an image's pixels in place; see `Resources::update_image`.
+    /// If the image had been drawn from the atlas
     /// its slot is forgotten — one eviction, once — and from here on it is
     /// texture-backed. A foreign or removed handle warns and changes
     /// nothing, and so does a buffer that is not `width × height × 4`
@@ -518,7 +519,7 @@ impl Core {
     /// writes every one. Where [`Self::update_image`] takes a buffer the
     /// app allocated — and frees the one it replaces — this one stops
     /// allocating after a stream's third update, which on Windows is most
-    /// of what a 1080p update cost (backlog W20). Render into `fill`'s
+    /// of what a 1080p update cost. Render into `fill`'s
     /// slice rather than into a buffer of your own to skip the copy too.
     /// `fill` runs while the session's resources are borrowed, so it must
     /// not reach them through another window's `Core`; that panics.
@@ -563,8 +564,8 @@ impl Core {
         self.atlas.evict_image(id);
     }
 
-    /// What the session removed and no display list has carried yet
-    /// (AR8), onto this frame's — a backend frees a texture or a pipeline
+    /// What the session removed and no display list has carried yet,
+    /// onto this frame's — a backend frees a texture or a pipeline
     /// once, on whichever window draws next, since both are the device's
     /// and the device is shared. And this window's own atlas slots for
     /// images the registry no longer holds, when a removal has moved the
@@ -603,7 +604,7 @@ impl crate::session::Session {
     /// shares: a query against the font database's scan and an idempotent
     /// registry entry, with no file opened. Here rather than on `Core` so
     /// a binding's prop parser, which holds the token lookup's borrow of
-    /// the core, can name a family while it parses (ADR 0037).
+    /// the core, can name a family while it parses.
     pub(crate) fn register_family(&self, name: &str) -> Option<crate::resources::FontId> {
         use cosmic_text::fontdb::{Family, Query};
         let sess = &mut *self.state();
@@ -644,7 +645,7 @@ impl crate::session::SessionState {
     }
 
     /// [`share_faces`] after a load, so the faces it added are shared with
-    /// the rest (backlog DX25). Sharing before the load, as DX24 first did,
+    /// the rest. Sharing before the load, as DX24 first did,
     /// left every face a file brought in reading its file again each time
     /// a text shaped in a new family, weight or style: kawoosh loads 167
     /// files it ships, and each new family cost a frame ~5 ms in opens.
@@ -729,7 +730,7 @@ impl crate::session::SessionState {
 }
 
 /// Maps every file-backed face in the database once and shares the
-/// mapping, as cosmic-text does for each face it loads (backlog DX24).
+/// mapping, as cosmic-text does for each face it loads.
 ///
 /// The first time a text shapes in a family (a weight, a style) it has not
 /// shaped in, cosmic-text ranks every face in the database against it, and
@@ -741,7 +742,7 @@ impl crate::session::SessionState {
 /// already made: 0.42 ms a family, for 30 ms once. Done on the first font
 /// an app registers — a family by name, bytes, a file or a folder — where
 /// the per-family cost starts to add up, and after every load from then on
-/// so a loaded file's own faces are shared too (DX25); an app on the stock
+/// so a loaded file's own faces are shared too; an app on the stock
 /// three pays what it always did.
 ///
 /// The mapping is what fontdb's `make_shared_face_data` documents as
@@ -774,10 +775,9 @@ pub(crate) fn share_faces(db: &mut cosmic_text::fontdb::Database) -> usize {
 mod tests {
     use super::*;
 
-    /// DX26's kept page lives for the frame it was kept for and no longer:
-    /// `finish` drops it, where the next `begin_frame` did — on a window
-    /// that goes idle after emptying a 4096 page, never (the alpha.22
-    /// regression pass).
+    /// The atlas's kept page lives for the frame it was kept for and no
+    /// longer: `finish` drops it, where the next `begin_frame` did — on a
+    /// window that goes idle after emptying a 4096 page, never.
     #[test]
     fn the_emptied_atlas_page_is_dropped_when_its_frame_finishes() {
         let frame = |core: &mut Core| {

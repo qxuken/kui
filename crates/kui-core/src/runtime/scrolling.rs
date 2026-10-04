@@ -9,7 +9,7 @@ impl Core {
     /// Sets one axis of a container's scroll offset, keeping the other
     /// where it stands — mid-leg, the drawn place and not the target, so
     /// a thumb dragged on one axis does not jump the other to where an
-    /// eased leg was going (RG21).
+    /// eased leg was going.
     pub(crate) fn set_scroll_axis(&mut self, key: Key, axis: ScrollAxis, value: f32) {
         let mut off = self.scroll.standing(key);
         match axis {
@@ -39,9 +39,9 @@ impl Core {
     /// spent, not held for the frame that might. Two reveals before one
     /// frame into the *same* container are contradictory, so the last one
     /// wins there; reveals into different containers — a tab strip and
-    /// the pane list under it — are not, and each lands (F82).
+    /// the pane list under it — are not, and each lands.
     ///
-    /// Traced, the ask is `"reveal"` at the caller's line (backlog RG82).
+    /// Traced, the ask is `"reveal"` at the caller's line.
     #[track_caller]
     pub fn reveal(&mut self, key: Key) {
         self.pending_reveal.push(key);
@@ -51,7 +51,7 @@ impl Core {
     /// [`Self::reveal`] by the label a node declares, resolved when the
     /// frame finishes — against the frame being built, or the next one
     /// when none is — so a view may name a row it is declaring right now,
-    /// or one the frame after declares (backlog DX15). A label that frame
+    /// or one the frame after declares. A label that frame
     /// does not declare raises `label-without-node` and moves nothing.
     #[track_caller]
     pub fn reveal_label(&mut self, label: &str) {
@@ -95,7 +95,7 @@ impl Core {
 
     /// The retained scroll offset of the container `key`, as the last
     /// layout clamped it (positive = content moved up / left) — the
-    /// target: while a container with a `transition` eases to it (F80) the
+    /// target: while a container with a `transition` eases to it the
     /// content is drawn short of it, where [`Self::scroll_geometry`]
     /// says. Zero for a node that never scrolled, and for one that is not
     /// a container at all — the store keeps offsets, not membership.
@@ -106,7 +106,7 @@ impl Core {
     /// Everything the last layout resolved for the container `key`: its own
     /// box, its content size, and the clamped offset — `None` for a key no
     /// layout has ever resolved as a scroll container. While an eased
-    /// leg runs (F80) the offset is where the content is drawn rather than
+    /// leg runs the offset is where the content is drawn rather than
     /// the target, sampled at the clock the coming frame reads, so a view
     /// slices the rows that frame shows.
     ///
@@ -134,7 +134,7 @@ impl Core {
 
     /// The rect the last frame laid `key` out at, in logical viewport px —
     /// for a node that declared `on_layout`, whose rect the core keeps for
-    /// the event's edge trigger anyway (backlog C26 step 2). The query
+    /// the event's edge trigger anyway. The query
     /// shape of the `layout` event: the same numbers, read during the next
     /// build with no event, no tag and no model field. `None` for a key
     /// that did not declare `on_layout` last frame; read during a build it
@@ -160,8 +160,8 @@ impl Core {
     /// lands it; from inside a view it asks for nothing, because the
     /// frame being built is that frame — the positions pass reads the
     /// store after the view has run — and a view writing every frame
-    /// would otherwise be a window that never idles (found twice building
-    /// ADR 0029: the devtools' events list, `widgets::list`).
+    /// would otherwise be a window that never idles (the devtools' events
+    /// list and `widgets::list` both write this way).
     #[track_caller]
     pub fn set_scroll(&mut self, key: Key, offset: Vec2) {
         // Programmatic, so a container with a `transition` eases into it
@@ -179,9 +179,9 @@ impl Core {
     /// frame is asked for: it is a correction to the frame about to be
     /// laid out — the rows above the window were measured and came out
     /// another height — so it belongs to that frame, whoever calls it. A
-    /// variable-height list's anchor (RG18): `widgets::list` from its view,
+    /// variable-height list's anchor: `widgets::list` from its view,
     /// the Node and Lua ports from theirs, just before the tree they
-    /// return is laid out (backlog C46).
+    /// return is laid out.
     pub fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
         self.scroll.shift(key, drawn, target);
     }
@@ -285,7 +285,7 @@ impl Core {
     }
 
     /// The same, easing the nudge on a container that declares a
-    /// `transition` (F80): what `reveal` asks for, where a caret nudge
+    /// `transition`: what `reveal` asks for, where a caret nudge
     /// and a focus move take the content there at once.
     pub(crate) fn scroll_rect_into_view_smooth(&mut self, i: usize, rect: Rect, relayout: bool) {
         self.scroll_rect_into_view_from(i, rect, relayout, true);

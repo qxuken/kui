@@ -1,9 +1,28 @@
-//! Transitions: retained tweens keyed by node identity. A node that declares
-//! `NodeSpec::transition` has its animatable spec values (sizing amounts,
-//! colors, radius, opacity, shadow) eased from whatever they were last frame toward what the
-//! view declares this frame — the *inputs* to layout animate, so a subtree
-//! lays out consistently every frame instead of children snapping to a
-//! target size inside a still-moving parent.
+//! Transitions: retained tweens keyed by node identity.
+//!
+//! A node that declares [`NodeSpec::transition`](crate::spec::NodeSpec::transition)
+//! has its animatable spec values (sizing amounts, colours, radius, opacity,
+//! shadow) eased from whatever they were last frame toward what the view
+//! declares this frame. The *inputs* to layout animate, so a subtree lays
+//! out consistently every frame instead of children snapping to a target
+//! size inside a still-moving parent. The view keeps declaring the target;
+//! nothing else is needed.
+//!
+//! ```rust
+//! use kui_core::{Easing, NodeSpec, Sizing, Transition};
+//!
+//! // A sidebar whose width eases over 200 ms, keyed so the tween survives.
+//! let open = true;
+//! let w = if open { 240.0 } else { 48.0 };
+//! let sidebar = NodeSpec::column().width(Sizing::Fixed(w)).transition(200.0);
+//!
+//! // A spring instead of a curve, with a little overshoot.
+//! let springy = Transition::ms(350.0).easing(Easing::Spring).bounce(0.3);
+//! let card = NodeSpec::row().transition_with(springy).slide();
+//!
+//! assert_eq!(sidebar.transition.unwrap().easing, Easing::EaseOut);
+//! assert!(card.transition.unwrap().curve().is_spring() && card.slide);
+//! ```
 //!
 //! Two kinds of motion: timed curves ([`Easing::EaseOut`] and friends,
 //! which replay a leg from wherever the value was over `duration_ms`) and
@@ -56,8 +75,7 @@ pub enum Easing {
 
 impl Easing {
     /// Every curve, in wire order: `schema::EASINGS` is `ALL` by `name`,
-    /// and a binding sends the index (backlog AR42 — the two were a hand
-    /// map that a variant appended or a list reordered put one off).
+    /// and a binding sends the index.
     pub const ALL: &'static [Easing] = &[
         Easing::EaseOut,
         Easing::Linear,
@@ -144,7 +162,7 @@ pub enum Repeat {
 
 impl Repeat {
     /// Every direction, in wire order: `schema::REPEATS` is `ALL` by
-    /// `name` (backlog AR42).
+    /// `name`.
     pub const ALL: &'static [Repeat] = &[
         Repeat::Normal,
         Repeat::Reverse,
@@ -224,7 +242,11 @@ impl Bounce {
     }
 }
 
-/// How a node's animatable values move when the view changes them.
+/// How a node's animatable values move when the view changes them: a
+/// duration, an easing (a timed curve or a spring), and for keyframes a
+/// repeat direction and a delay. Built with [`Transition::ms`] and the
+/// builders, or through the `NodeSpec` shorthands (`transition`, `easing`,
+/// `bounce`, `repeat`, `delay`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transition {
     /// How long a timed curve takes; for a spring, its response time —
@@ -243,6 +265,7 @@ pub struct Transition {
 }
 
 impl Transition {
+    /// A cubic ease-out over `duration_ms`.
     pub fn ms(duration_ms: f32) -> Self {
         Self {
             duration_ms,
@@ -253,16 +276,19 @@ impl Transition {
         }
     }
 
+    /// The curve or spring to move by.
     pub fn easing(mut self, easing: Easing) -> Self {
         self.easing = easing;
         self
     }
 
+    /// How keyframes cycle (CSS's `animation-direction`).
     pub fn repeat(mut self, repeat: Repeat) -> Self {
         self.repeat = repeat;
         self
     }
 
+    /// Holds a keyframe cycle back by `delay_ms` (CSS's `animation-delay`).
     pub fn delay(mut self, delay_ms: f32) -> Self {
         self.delay_ms = delay_ms;
         self
@@ -340,7 +366,7 @@ impl Slot {
     }
 
     /// The prop the slot eases, as a person reads it in a trace
-    /// ([`crate::runtime::cause::FrameHolder::slots`], backlog F111).
+    /// ([`crate::runtime::cause::FrameHolder::slots`]).
     pub(crate) fn name(self) -> &'static str {
         match self {
             Slot::Width => "width",
@@ -493,7 +519,7 @@ pub struct AnimStore {
     /// The clock this frame drives at, as of `begin_frame`: what
     /// [`Self::owing`] reads a leg's progress at once the frame is over,
     /// since the driver sets the next frame's time before that frame
-    /// begins (backlog F111).
+    /// begins.
     drove_at: Option<f64>,
     /// Whether any tween driven this frame is still mid-flight — a
     /// finite leg, or a spring not yet at rest.
@@ -501,7 +527,7 @@ pub struct AnimStore {
     /// Whether a keyframed slot was sampled this frame. A cycle has no
     /// end, so this is set on every frame the node is drawn; kept apart
     /// from the flag above so a test can wait for the transitions to run
-    /// out under a cycle that never will (backlog F64).
+    /// out under a cycle that never will.
     owes_cycle: bool,
 }
 
@@ -529,10 +555,8 @@ impl AnimStore {
         (self.owes_transition, self.owes_cycle)
     }
 
-    /// Starts a frame: `frame_no` is the core's counter (backlog AR45 —
-    /// each store counted for itself, in step only because `Core::
-    /// begin_frame` happened to call every one), stamped on what this
-    /// frame drives.
+    /// Starts a frame: `frame_no` is the core's counter, stamped on what
+    /// this frame drives.
     pub(crate) fn begin_frame(&mut self, frame_no: u64) {
         self.frame_no = frame_no;
         self.drove_at = self.now;
@@ -550,7 +574,7 @@ impl AnimStore {
     /// Every slot the last frame drove and left mid-flight, by node: what
     /// [`Self::owes`]'s `transition` half is made of, read back off the
     /// tweens rather than recorded while they were driven, so a frame
-    /// nobody traces pays nothing for it (backlog F111). Asked between
+    /// nobody traces pays nothing for it. Asked between
     /// frames, or before this store's `begin_frame`: the same test
     /// `drive` made — a leg short of its end at the frame's clock, a
     /// spring not yet snapped to rest.
@@ -678,7 +702,7 @@ impl NodeAnim<'_> {
     /// ones together) and because the flag it sets lives behind that
     /// borrow — the *cycle* flag, not the transition one: a cycle never
     /// ends, and a wait for the transitions to run out must not wait on
-    /// it (backlog F64). The walk itself is [`sample_track`] and takes no
+    /// it. The walk itself is [`sample_track`] and takes no
     /// key.
     pub(crate) fn sample(&mut self, track: &Track, transition: Transition) -> Option<[f32; 4]> {
         let v = sample_track(track, transition, self.now);
@@ -1156,7 +1180,7 @@ mod tests {
         assert!(!a.animating());
     }
 
-    /// The gesture behind backlog F15: a canvas of `slide` floats panned by
+    /// A canvas of `slide` floats panned by
     /// a drag retargets every slot on every frame. Each retarget starts a
     /// fresh leg at `p == 0`, so a tween that reads its stale value spends
     /// none of the frame's time and never moves — the pan is live in the

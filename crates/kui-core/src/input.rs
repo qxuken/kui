@@ -1,7 +1,35 @@
-//! Input handling and event production. Hit regions come from the previous
-//! frame's layout (the standard immediate-mode trade); events leave as plain
-//! data tagged with the origin that declared them, so the runner can route to
-//! the host app or an extension without knowing what either looks like.
+//! Input in, events out.
+//!
+//! A runner feeds [`InputEvent`]s, in logical coordinates, to
+//! [`Core::handle_input`](crate::Core::handle_input). The core hit-tests
+//! them against the frame that last finished (the standard immediate-mode
+//! trade: a click lands on what was drawn) and answers with [`UiEvent`]s:
+//! plain data, each tagged with the node's key, the origin that declared
+//! the node (the host app or an extension) and the window, so the runner
+//! can route it without knowing what either looks like.
+//!
+//! What an input becomes depends on what the node under it declared: a
+//! primary click on an `on_click` node is the node's tag as the payload,
+//! an `on_hover` node makes `{kind:"hover", ...}` events, a focused
+//! editor takes [`InputEvent::Text`] and [`InputEvent::Key`], a key sink
+//! takes [`InputEvent::KeyDown`] and [`InputEvent::KeyUp`].
+//!
+//! ```rust
+//! use kui_core::{Core, InputEvent, NodeSpec, Size, Vec2};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+//! ui.leaf_keyed("ok", NodeSpec::row().size(80.0, 30.0).on_click("ok"));
+//! ui.finish();
+//!
+//! // A click is a move, a press and a release; the release resolves it.
+//! core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
+//! core.handle_input(InputEvent::mouse_down(1));
+//! let events = core.handle_input(InputEvent::mouse_up());
+//! assert_eq!(events.len(), 1);
+//! assert_eq!(events[0].payload.as_str(), Some("ok"));
+//! assert_eq!(Some(events[0].key), core.key_of("ok"));
+//! ```
 
 use crate::cursor::CursorShape;
 use crate::geom::{Rect, Vec2};
@@ -35,8 +63,8 @@ pub enum InputEvent {
     /// door taking a bare delta (`kui_input_scroll`, Node's `scroll`)
     /// feeds.
     Scroll(Vec2),
-    /// A wheel or trackpad delta that is part of a scroll *gesture*
-    /// (backlog F107): a swipe and its momentum, or a wheel spun without
+    /// A wheel or trackpad delta that is part of a scroll *gesture*:
+    /// a swipe and its momentum, or a wheel spun without
     /// a pause. `begins` is true on a gesture's first event. The target
     /// is chosen then, per axis — the innermost scroller under the
     /// pointer that can still move that way, a scroller at its limit
@@ -61,7 +89,7 @@ pub enum InputEvent {
     /// reached it as a `key` event carrying `text`, and a sink hearing
     /// both would type every character twice.
     Text(String),
-    /// Text an IME committed at the end of a composition (backlog C17).
+    /// Text an IME committed at the end of a composition.
     /// Routed like `Text` to a focused editor; otherwise delivered to the
     /// focused sink as `{kind:"text", text, tag}` — the one committed text
     /// the platform never reports as a key press with `text`, so it is the
@@ -70,7 +98,7 @@ pub enum InputEvent {
     Commit(String),
     /// The clipboard's answer to a paste the app asked for
     /// (`Core::request_paste`, a menu's Paste), with what the pasteboard
-    /// said about it (backlog F84). Routed exactly as [`InputEvent::Commit`]
+    /// said about it. Routed exactly as [`InputEvent::Commit`]
     /// is — a focused editor takes it as typing, a focused sink hears
     /// `{kind:"text", text, tag}` — and the sink's event gains
     /// `concealed: true` and `transient: true` for the markers that are
@@ -79,7 +107,7 @@ pub enum InputEvent {
     /// A variant of its own rather than two fields on `Commit`, so every
     /// match on a commit still compiles and a driver that answers with a
     /// bare `Commit` (an older C or Node host) is still an answer: both
-    /// clear the one-ask gate (backlog AR34), and a `Commit` is a paste
+    /// clear the one-ask gate, and a `Commit` is a paste
     /// whose pasteboard marked nothing.
     Paste {
         text: String,
@@ -120,8 +148,7 @@ pub enum InputEvent {
     /// a frame (`Ui::modifiers`).
     Modifiers(KeyMods),
     /// A force click at a point in logical viewport coordinates: the
-    /// press deepened past the second stage of a Force Touch trackpad
-    /// (`docs/adr/0017-selection-as-a-scope.md`, decision 6).
+    /// press deepened past the second stage of a Force Touch trackpad.
     ///
     /// Routed like the secondary press — the topmost node under the point,
     /// no focus moved, no caret placed, no click — because it arrives
@@ -136,9 +163,8 @@ pub enum InputEvent {
     /// Files dragged in from the OS are over the window at `at` (logical
     /// viewport coordinates) — entering and moving alike: the core tells
     /// the two apart by whether the zone under the point changed, and a
-    /// change is the old zone's `leave` then the new one's `enter`
-    /// (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`,
-    /// decision 4). `paths` are the OS paths as the driver reported them.
+    /// change is the old zone's `leave` then the new one's `enter`.
+    /// `paths` are the OS paths as the driver reported them.
     /// A repeat at the same point emits nothing.
     DragFiles {
         paths: Vec<String>,
@@ -155,15 +181,15 @@ pub enum InputEvent {
     /// The dragged files left the window, or the OS ended the drag
     /// elsewhere: the lit zone hears its `leave`.
     DragCancel,
-    /// A file dialog's answer (backlog C51): the paths the user picked,
+    /// A file dialog's answer: the paths the user picked,
     /// none for a dialog cancelled. Whoever asked with
     /// `Core::request_files` hears `{kind:"files", paths, tag}`; with no
     /// ask outstanding it is dropped.
     Files(Vec<String>),
 }
 
-/// What the pasteboard said about the text a paste brought back (backlog
-/// F84): the markers password managers set on a copied secret, after the
+/// What the pasteboard said about the text a paste brought back: the markers
+/// password managers set on a copied secret, after the
 /// convention at nspasteboard.org that 1Password, Bitwarden, KeePassXC and
 /// the macOS clipboard managers follow. Read by the driver, which owns the
 /// clipboard, and handed over with the text as [`InputEvent::Paste`].
@@ -227,7 +253,7 @@ impl ClipboardMarks {
 /// focus, not the caret, not a scrollbar thumb — because a right-click on
 /// a selection has to leave that selection alone. Every non-primary
 /// button, the secondary one included, reaches a node that claims it with
-/// `NodeSpec::on_button` (backlog F105): its press, the motion while it is
+/// `NodeSpec::on_button`: its press, the motion while it is
 /// held and its release, captured by that node; a claimed secondary press
 /// is that node's instead of a context menu. A non-primary press moves no
 /// focus, caret, selection or scrollbar either way.
@@ -293,8 +319,8 @@ impl MouseButton {
         Self::NAMED.into_iter().find(|b| b.name() == Some(name))
     }
 
-    /// The value a `button` event carries for this button (backlog
-    /// F105): its name for a named one, its [`MouseButton::code`] for an
+    /// The value a `button` event carries for this button: its name for a
+    /// named one, its [`MouseButton::code`] for an
     /// `Other`.
     pub fn to_value(self) -> Value {
         match self.name() {
@@ -304,8 +330,8 @@ impl MouseButton {
     }
 }
 
-/// Which of the non-primary buttons a node's `on_button` claims (backlog
-/// F105): [`Buttons::SECONDARY`], [`Buttons::MIDDLE`] and
+/// Which of the non-primary buttons a node's `on_button` claims:
+/// [`Buttons::SECONDARY`], [`Buttons::MIDDLE`] and
 /// [`Buttons::OTHER`] (every button past the named three), or-ed together.
 /// A node declaring `on_button` claims [`Buttons::ALL`] unless it says
 /// otherwise. The primary button is never in it: that one presses, drags
@@ -433,8 +459,7 @@ pub enum EditKey {
 impl EditKey {
     /// Every editing key, in declaration order — the list a binding's
     /// name table and a generated type union are checked against, so a
-    /// key added here reaches C, Node and TypeScript or fails a build
-    /// (ADR 0020, decision 9, the same way `Role::ALL` did).
+    /// key added here reaches C, Node and TypeScript or fails a build.
     pub const ALL: [EditKey; 16] = [
         EditKey::Left,
         EditKey::Right,
@@ -532,9 +557,8 @@ pub enum KeyCode {
     /// prints it (`J`, `:`; unshifted under Alt), so a keymap written in
     /// Latin keeps working on a Cyrillic, Greek, Hebrew or Arabic layout
     /// instead of matching nothing at all. `text` is still the layout's
-    /// own character. See [`KeyPress::from_layout`], [`KeyPress::physical`],
-    /// and `docs/adr/0002` decision 11 for why the layout still wins
-    /// whenever it speaks ASCII.
+    /// own character. See [`KeyPress::from_layout`], [`KeyPress::physical`]:
+    /// the layout still wins whenever it speaks ASCII.
     Char(char),
     /// Function key: `F(1)` .. `F(35)`.
     F(u8),
@@ -708,7 +732,7 @@ impl KeyCode {
     /// Asked of the key *as the layout named it*, never of the code
     /// [`KeyPress::from_layout`] resolved: on a Russian layout ⇧ on the
     /// key printed `;` binds as `:` and types `Ж`, and asking the stand-in
-    /// typed the `:` into an editor (backlog RG28).
+    /// typed the `:` into an editor.
     pub fn typed(self, mods: KeyMods) -> Option<String> {
         if mods.ctrl || mods.alt || mods.super_key {
             return None;
@@ -803,9 +827,9 @@ impl KeyLocation {
     }
 }
 
-/// Which Option keys act as Alt on macOS (backlog F113) — what a frame
+/// Which Option keys act as Alt on macOS — what a frame
 /// declares with [`crate::Ui::option_as_alt`]. On a Mac, Option composes:
-/// ⌥m types "µ", and ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are *dead keys* that start
+/// ⌥m types "µ", and ⌥u, ⌥e, ⌥i, ⌥n and ⌥\` are *dead keys* that start
 /// an accent and wait for the next key, so the press never arrives as a
 /// key at all and a keymap that binds `<A-u>` never hears it. An Option
 /// key named here is Alt instead: it composes nothing, types nothing, and
@@ -900,7 +924,7 @@ impl KeyLocks {
 }
 
 /// Which alphabet the layout a press was typed on writes, as the platform
-/// answers it: what decides whose ASCII a keymap matches (backlog F115).
+/// answers it: what decides whose ASCII a keymap matches.
 ///
 /// A Latin layout's ASCII is the label on the key — AZERTY's `&` on the
 /// key US-QWERTY prints 1, German's `-` on its `/` — and a keymap matches
@@ -1108,8 +1132,7 @@ pub struct KeyPress {
     /// keypad's digit or the main block's (see [`KeyLocation`]).
     pub location: KeyLocation,
     /// Caps Lock and Num Lock as the press left them: a lock key's own
-    /// press reports the state it turned the lock to, on every platform
-    /// (backlog RG96).
+    /// press reports the state it turned the lock to, on every platform.
     pub locks: KeyLocks,
 }
 
@@ -1119,8 +1142,8 @@ impl KeyPress {
     /// naming a key is saying which key was pressed. The one fold: an
     /// ASCII letter's position is its lower-case letter, since a window
     /// reports `physical` from a table that never sees Shift (`Z` beside
-    /// `code: "Z"` for ⇧Z would be a pair no window ever sends; backlog
-    /// F65). A `physical` a caller spells is delivered as spelled — this
+    /// `code: "Z"` for ⇧Z would be a pair no window ever sends). A `physical`
+    /// a caller spells is delivered as spelled — this
     /// is only the default, which was already a guess.
     pub fn new(code: KeyCode, mods: KeyMods) -> Self {
         let physical = match code {
@@ -1173,7 +1196,7 @@ impl KeyPress {
     ///
     /// The stand-in is what US-QWERTY would have produced for the *same
     /// press*, Shift included: a window reports `physical` from a table
-    /// that never sees Shift (backlog F65), so ⇧ on the key printed J is
+    /// that never sees Shift, so ⇧ on the key printed J is
     /// `J`, not `j`, and ⇧ on the key printed `;` is `:` — the key a vim
     /// hand on a Russian layout reaches for, and gets `;` from otherwise.
     ///
@@ -1191,7 +1214,7 @@ impl KeyPress {
     /// print the upper-case one.
     ///
     /// `physical` is reported either way, for a keymap that would rather
-    /// bind the finger than the label. See `docs/adr/0002` decision 11.
+    /// bind the finger than the label.
     ///
     /// This judges each key by itself, which is all a driver that cannot
     /// ask about the layout can do; one that can says so through
@@ -1205,7 +1228,7 @@ impl KeyPress {
     /// in for every character the layout put where US-QWERTY has another,
     /// ASCII or not, so macOS Russian's `]` on the key printed `` ` `` is
     /// `` ` ``, its `"` on ⇧2 is `@`, and Windows Russian's `.` on the key
-    /// printed `/` is `/` (backlog F115). A key that already is its
+    /// printed `/` is `/`. A key that already is its
     /// position's character — a digit, the keypad's — keeps it, and a key
     /// at a position this vocabulary cannot name (ISO's extra key) keeps
     /// the layout's, there being nothing to stand in.
@@ -1251,7 +1274,7 @@ impl KeyPress {
     /// to the press it repeats. By position when the platform reported
     /// one, because `code` moves under a held key: hold `w`, press Shift,
     /// and the OS repeat arrives as `W`, which by `code` would be a second
-    /// key held, with the first stuck down until focus moved (AR9). A
+    /// key held, with the first stuck down until focus moved. A
     /// press whose position the vocabulary could not name is matched on
     /// `code`, which is all it has. And by [`KeyPress::location`] too:
     /// the keypad's `1` and the main block's share a position's name,
@@ -1276,8 +1299,8 @@ impl KeyPress {
     /// the focus ring, the arrows nudge a focused slider, Space presses a
     /// focused control, a printable character reaches the focused editor.
     /// A test that sent only `KeyDown` got the first channel and none of
-    /// the second, which is why `key_down("escape")` left a modal open
-    /// (backlog F6); [`crate::Core::press`] is the pair.
+    /// the second, which is why `key_down("escape")` left a modal open;
+    /// [`crate::Core::press`] is the pair.
     ///
     /// `None` for a key this vocabulary does not name — a function key,
     /// Insert — and for every chord, which carries no `text` because it
@@ -1393,7 +1416,7 @@ pub struct UiEvent {
     /// many slots (a Lua host with a view per pane), and an event routed
     /// by pane needs the slot, not the extension. Stamped by the core on
     /// the way out like `window`, from the fill ranges the last frame
-    /// recorded (`Tree::fills`); a producer leaves it `None` (backlog K2).
+    /// recorded (`Tree::fills`); a producer leaves it `None`.
     pub slot: Option<Key>,
 }
 
@@ -1443,25 +1466,25 @@ pub struct MenuOwner {
 }
 
 /// The zone files dragged over a region land on: the region's own node
-/// or an ancestor's (see `HitRegion::drop`, ADR 0031, decision 2). The
+/// or an ancestor's (see `HitRegion::drop`). The
 /// same three fields as [`MenuOwner`], resolved by the same walk.
 pub type DropOwner = MenuOwner;
 
 /// The node a non-primary button's press went to and whose capture it is
-/// until the release (backlog F105): the nearest node at or above the
+/// until the release: the nearest node at or above the
 /// region pressed whose `on_button` claims that button. The same three
 /// fields as [`MenuOwner`], resolved by the core at the press rather than
 /// carried on every region — a middle press is one event in a session,
 /// and a tag on `HitRegion` would be a clone on every region of every
-/// frame (C15).
+/// frame.
 pub type ButtonOwner = MenuOwner;
 
-/// The shape inside a region's rect that a point has to be in to hit it
-/// (`docs/adr/0026-hit-testing-by-shape.md`). The rect is always tested
+/// The shape inside a region's rect that a point has to be in to hit it.
+/// The rect is always tested
 /// first, so a shape is evaluated only for the few regions under the
-/// pointer. Inline on the region rather than behind an index: the ADR
-/// priced the twenty bytes at +7% on a 10k-region frame and measured
-/// nothing, so the simpler shape won. Points for a stroke or a fill live
+/// pointer. Inline on the region rather than behind an index: the twenty
+/// bytes measured nothing on a 10k-region frame, so the simpler shape won.
+/// Points for a stroke or a fill live
 /// in the interaction's own list, relative to the region's top-left in
 /// logical px, copied at emission because the frame's stores do not
 /// outlive the frame and a press does.
@@ -1512,8 +1535,8 @@ pub struct HitRegion {
     pub parent_rect: Rect,
     /// Content-box origin of an editable text node; None for plain hits.
     pub edit_origin: Option<Vec2>,
-    /// The selection scope this node is inside, when it is inside one
-    /// (`docs/adr/0017-selection-as-a-scope.md`): a press here starts a
+    /// The selection scope this node is inside, when it is inside one:
+    /// a press here starts a
     /// drag-select over the scope's text. A region that also carries a
     /// click payload is a control first — a press on a button inside a
     /// selectable card clicks it — so this is read only where nothing
@@ -1528,9 +1551,9 @@ pub struct HitRegion {
     /// The context menu a secondary press here opens: the node's own
     /// `on_context_menu`, or the nearest enclosing one — a container
     /// offering a menu for everything inside it is the common case, and
-    /// a press on a child that declared none is unclaimed in the sense
-    /// ADR 0011 gave keys, so it reaches the enclosing menu the way an
-    /// unclaimed key reaches the enclosing sink (backlog T1). Resolved at
+    /// a press on a child that declared none is unclaimed,
+    /// so it reaches the enclosing menu the way an
+    /// unclaimed key reaches the enclosing sink. Resolved at
     /// emission, where the tree is; the walk stops at the modal boundary
     /// and skips a disabled node's own. The press emits
     /// `{kind="contextmenu", x, y, tag}` on the *owner*, not on this node.
@@ -1538,8 +1561,8 @@ pub struct HitRegion {
     /// is swallowed here.
     pub context_menu: Option<MenuOwner>,
     /// The drop zone this region belongs to — its own `on_drop` or the
-    /// nearest enclosing declaration's — resolved at emission (ADR 0031,
-    /// decision 2). None where no zone encloses it: files dragged over
+    /// nearest enclosing declaration's — resolved at emission. None where no
+    /// zone encloses it: files dragged over
     /// such a region look past it to the topmost zone beneath.
     pub drop: Option<DropOwner>,
     /// A press on this node moves keyboard focus to it (an editor, a
@@ -1561,14 +1584,14 @@ pub struct HitRegion {
     /// Pointer shape declared by the node (`NodeSpec::cursor`). None = the
     /// I-beam over text, the arrow otherwise (`Interaction::implied_shape`).
     pub cursor: Option<CursorShape>,
-    /// A slider's track when the node declared `on_change` (ADR 0034,
-    /// decision 4): a press here proposes the value under the pointer and
+    /// A slider's track when the node declared `on_change`: a press here
+    /// proposes the value under the pointer and
     /// captures the pointer until release, each new value a `change`
     /// event. Boxed: nearly every region has none.
     pub slider: Option<Box<crate::slider::SliderTrack>>,
 }
 
-/// An OS file drag over a zone (ADR 0031): what `dropBg` reads and what
+/// An OS file drag over a zone: what `dropBg` reads and what
 /// the next `DragFiles` compares against.
 #[derive(Clone, Debug)]
 struct DropHover {
@@ -1685,7 +1708,7 @@ pub fn in_polygon(p: Vec2, pts: &[Vec2]) -> bool {
 
 /// A scroll container's on-screen area, for wheel routing — or an
 /// `on_scroll` node's, which takes the wheel the same way and turns it
-/// into an event instead of an offset (ADR 0029, decision 4).
+/// into an event instead of an offset.
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollRegion {
     pub key: Key,
@@ -1695,7 +1718,7 @@ pub struct ScrollRegion {
     pub rect: Rect,
     pub clip: Rect,
     /// Outside the frame's modal scope: the bar still draws, the wheel
-    /// and the thumb do nothing (see `docs/adr/0003-modal-surfaces.md`).
+    /// and the thumb do nothing.
     pub inert: bool,
     /// The node declared `on_scroll`: the wheel over it is an event on
     /// it, no bars are drawn and no offset is kept. A region that is
@@ -1707,20 +1730,19 @@ pub struct ScrollRegion {
     /// `scroll_y`, a handler's `scroll_axes`. Carried from the frame that
     /// drew the region, with `contain` and `parent`, so the wheel never
     /// reads the tree by `node` — a tree a build under way may have
-    /// cleared or refilled (the alpha.22 regression pass).
+    /// cleared or refilled.
     pub(crate) takes_x: bool,
     pub(crate) takes_y: bool,
     /// The axes it scrolls as a container (`scroll_x` / `scroll_y`): a
     /// handler that is one too is answered on them by its room, as a
-    /// container is (backlog F118).
+    /// container is.
     pub(crate) scrolls_x: bool,
     pub(crate) scrolls_y: bool,
     /// `overscroll: contain`: a gesture starting here stays here.
     pub(crate) contain: bool,
     /// The index in the frame's region list of the nearest scroll region
     /// around this one in the tree, [`crate::tree::NIL`] for none: where
-    /// a gesture this one passes goes next (ADR 0038's "the scroller
-    /// around it"), whatever else is painted under the pointer.
+    /// a gesture this one passes goes next, whatever else is painted under the pointer.
     pub(crate) parent: u32,
 }
 
@@ -1748,7 +1770,7 @@ pub struct ScrollbarRegion {
     pub inert: bool,
     /// The hit list's length when the bar was painted: every region below
     /// this index is under the bar, every one at or above it is in a layer
-    /// over it (ADR 0023, decision 4).
+    /// over it.
     pub(crate) above: u32,
 }
 
@@ -1782,7 +1804,7 @@ struct DragState {
     /// displacement from here — `start` is zero, a `move` is where the
     /// pointer is now, `end` is the whole distance — so a handler commits
     /// from any phase without summing anything, and the slop below drops
-    /// nothing from the total (backlog F2).
+    /// nothing from the total.
     press: Vec2,
     /// Where the pointer was last seen: the `end` position of a drag
     /// released while the cursor was outside the window.
@@ -1806,7 +1828,7 @@ impl DragState {
     }
 }
 
-/// A non-primary button held on the node that claimed it (backlog F105):
+/// A non-primary button held on the node that claimed it:
 /// its motion and its release go to `owner` wherever the pointer is.
 #[derive(Clone, Debug)]
 struct ButtonCapture {
@@ -1846,7 +1868,7 @@ pub struct Interaction {
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
     /// The non-primary buttons held on the node that claimed each with
-    /// `on_button` (backlog F105), one capture per button, in press order.
+    /// `on_button`, one capture per button, in press order.
     /// Empty — and unallocated — in an app that declares none.
     held_buttons: Vec<ButtonCapture>,
     /// Pointer-captured slide on a slider that declared `on_change`: the
@@ -1855,7 +1877,7 @@ pub struct Interaction {
     slide: Option<(Key, OriginId, Box<crate::slider::SliderTrack>, f64)>,
     /// The last primary press's driver-measured click count (1 for a
     /// single, 2 for a double, …): what the `clicks` a press or drag
-    /// inside a key sink carries reads (backlog C34).
+    /// inside a key sink carries reads.
     press_clicks: u8,
     /// Last reported physical modifier state.
     modifiers: KeyMods,
@@ -1869,7 +1891,7 @@ pub struct Interaction {
     hovered_leave: Option<UiEvent>,
     /// The zone files dragged in from the OS are over, with the `leave`
     /// prepared at `enter` — the region may be gone from the next
-    /// frame's hits (ADR 0031, decision 2).
+    /// frame's hits.
     drop: Option<DropHover>,
     /// Hover enter/leave events raised outside `handle` — a new frame's hit
     /// regions changing what sits under a still cursor. Drained by the next
@@ -1882,7 +1904,7 @@ impl Interaction {
         self.set_hits_shaped(hits, HitShapes::default());
     }
 
-    /// `set_hits` with the points the regions' shapes index (ADR 0026).
+    /// `set_hits` with the points the regions' shapes index.
     pub fn set_hits_shaped(&mut self, hits: Vec<HitRegion>, shapes: HitShapes) {
         self.hits = hits;
         self.shape_points = shapes.points;
@@ -1998,7 +2020,7 @@ impl Interaction {
     /// a caret drag places against. Read off the frame rather than kept
     /// from the press: a scroller nudged under a held drag moves the
     /// origin, and a caret placed against the press's origin would land
-    /// the nudge off (ADR 0029, decision 2).
+    /// the nudge off.
     pub(crate) fn edit_origin_of(&self, key: Key) -> Option<Vec2> {
         self.hits
             .iter()
@@ -2011,7 +2033,7 @@ impl Interaction {
     /// leave/enter events when the hovered node changes. `by` is what
     /// moved: `"pointer"` for the cursor, `"content"` for a frame that put
     /// something else under a still one — a list scrolled by the wheel or
-    /// the keyboard, a row that grew (backlog DX20).
+    /// the keyboard, a row that grew.
     fn refresh_hover(&mut self, out: &mut Vec<UiEvent>, by: &'static str) {
         let before = self.hovered;
         // Through `target_at`, like the press and the cursor shape (ADR
@@ -2077,7 +2099,7 @@ impl Interaction {
     /// What is under `p`, by the paint order and nothing else: the topmost
     /// hit region there, or the topmost scrollbar there if it was painted
     /// over that region — a bar wins the content of its own scroller and
-    /// loses to a float over it (ADR 0023, decision 4). The press and the
+    /// loses to a float over it. The press and the
     /// cursor shape both ask this, so they cannot disagree. A bar behind a
     /// modal is drawn and not a target.
     pub(crate) fn target_at(&self, p: Vec2) -> Option<Target<'_>> {
@@ -2122,8 +2144,8 @@ impl Interaction {
         UiEvent::on(state.origin, state.key, payload).tagged(Some(&state.tag))
     }
 
-    /// `{kind="button", phase, button, x, y, clicks?, tag}` on the owner
-    /// (backlog F105); `clicks` on the press only.
+    /// `{kind="button", phase, button, x, y, clicks?, tag}` on the owner;
+    /// `clicks` on the press only.
     fn button_event(
         owner: &ButtonOwner,
         button: MouseButton,
@@ -2144,8 +2166,8 @@ impl Interaction {
         UiEvent::on(owner.origin, owner.key, Value::map(fields)).tagged(Some(&owner.tag))
     }
 
-    /// A non-primary press the core found an `on_button` owner for
-    /// (backlog F105): the owner hears `press`, and the button is captured
+    /// A non-primary press the core found an `on_button` owner for:
+    /// the owner hears `press`, and the button is captured
     /// by it — every move while it is held and its release go to the same
     /// node wherever the pointer is. A second press of a button already
     /// held (its release lost to another window) starts over: the old
@@ -2180,7 +2202,7 @@ impl Interaction {
     }
 
     /// Lets go of every held button, each owner hearing its `release`
-    /// where the pointer was last seen (backlog F105): the window lost the
+    /// where the pointer was last seen: the window lost the
     /// keyboard, and the real releases will happen where this window
     /// never hears them — as a held key gets its synthetic up. Returns
     /// how many events it pushed, for the core's `attach_pointer`.
@@ -2199,8 +2221,8 @@ impl Interaction {
         n
     }
 
-    /// Lets go of the primary button's hold without a click (backlog
-    /// RG75): an `on_drag` node hears its drag `end` and a slider its
+    /// Lets go of the primary button's hold without a click: an `on_drag` node
+    /// hears its drag `end` and a slider its
     /// slide's `end` where the pointer was last seen, and the press is
     /// forgotten. The window lost the keyboard, and the release will
     /// happen where it never hears it — a click nobody finished must not
@@ -2225,7 +2247,7 @@ impl Interaction {
     }
 
     /// Lets go of every held button whose owner `alive` says is gone from
-    /// the frame (backlog F105): nothing is left to hear its release.
+    /// the frame: nothing is left to hear its release.
     pub(crate) fn drop_gone_buttons(&mut self, alive: impl Fn(Key) -> bool) {
         if !self.held_buttons.is_empty() {
             self.held_buttons.retain(|h| alive(h.owner.key));
@@ -2233,7 +2255,7 @@ impl Interaction {
     }
 
     /// The node holding `button`'s capture, if a claimed press of it is
-    /// held (backlog F105).
+    /// held.
     pub fn button_owner(&self, button: MouseButton) -> Option<Key> {
         self.held_buttons
             .iter()
@@ -2247,7 +2269,7 @@ impl Interaction {
     /// the mark `Core::attach_pointer` reads to give a click or drag its
     /// `cell` and `line` / `byte` / `clicks`: said here, where the event
     /// is built, rather than guessed afterwards from its payload's
-    /// `kind` (AR11). Every arm pushes its pointer-made events last.
+    /// `kind`. Every arm pushes its pointer-made events last.
     pub fn handle(&mut self, ev: InputEvent, out: &mut Vec<UiEvent>) -> usize {
         out.append(&mut self.pending);
         let mut pointer_made = 0;
@@ -2438,7 +2460,7 @@ impl Interaction {
         self.hovered == Some(key)
     }
 
-    /// Whether files dragged in from the OS are over `key` (ADR 0031):
+    /// Whether files dragged in from the OS are over `key`:
     /// what `drop_bg` reads when the node opens.
     pub fn is_drop_target(&self, key: Key) -> bool {
         self.drop.as_ref().is_some_and(|d| d.owner.key == key)
@@ -2451,7 +2473,7 @@ impl Interaction {
         self.drop.as_ref().map(|d| d.owner.key)
     }
 
-    /// The topmost zone under `p` (ADR 0031, decision 2): the topmost
+    /// The topmost zone under `p`: the topmost
     /// region there whose resolved `drop` is some. A region resolving to
     /// no zone — an overlay the app showed on `enter` — is looked past.
     fn zone_at(&self, p: Vec2) -> Option<&DropOwner> {
@@ -2800,7 +2822,7 @@ mod tests {
         assert!(!it.is_pressed(k));
     }
 
-    /// ADR 0031, decisions 1, 2 and 4: a button inside a zone is the
+    /// The rules: a button inside a zone is the
     /// zone, an overlay that is no zone is looked past, a drop ends the
     /// hover without a leave, a cancel leaves.
     #[test]

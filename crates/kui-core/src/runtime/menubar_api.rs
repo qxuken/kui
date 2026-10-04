@@ -1,6 +1,5 @@
 //! `Core`'s application menu bar: the declaration, the one open menu the
-//! drawn bar keeps, and the two doors a chosen item comes back through
-//! (`docs/adr/0018-a-menu-bar-the-app-declares.md`).
+//! drawn bar keeps, and the two doors a chosen item comes back through.
 //!
 //! The declaration is data and sticky, the way the window title is: a frame
 //! that declares none leaves the last one in force and a frame that
@@ -31,7 +30,7 @@ impl Core {
     /// [`MenuBar`] is how an app takes the bar away. A frame that says
     /// nothing leaves the last declaration standing — which is what lets a
     /// palette window declare no menu and leave the document window's bar
-    /// alone (ADR 0018, decision 8).
+    /// alone.
     ///
     /// Every item's accelerator is normalized on the way in: a portable
     /// `"mod+s"` becomes the platform's own spelling (`"⌘S"`, `"Ctrl+S"`),
@@ -78,7 +77,7 @@ impl Core {
     }
 
     /// Tells the core that the platform owns the menu bar — macOS's, which
-    /// is not in any window (ADR 0018, decision 4). The drawn bar then
+    /// is not in any window. The drawn bar then
     /// draws nothing, and the driver is the one that hands the declaration
     /// over and reports what was chosen.
     ///
@@ -96,7 +95,7 @@ impl Core {
 
     /// Which menu of the drawn bar is open, if any. Retained by the core
     /// because it is the one thing the widget cannot derive from the frame
-    /// (ADR 0018, decision 6) — and always `None` while the platform draws
+    /// — and always `None` while the platform draws
     /// the bar, since then the open menu is the platform's.
     pub fn menu_bar_open(&self) -> Option<usize> {
         self.menu_bar_open

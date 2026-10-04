@@ -1,7 +1,7 @@
 //! The frame as a list a tool can read back: every node the last finished
 //! frame laid out, with what it is, where layout put it, and the handful
 //! of declarations that explain the rest. What a devtools tree view and
-//! node inspector are built from (`docs/adr/0021`, the harness's dock).
+//! node inspector are built from.
 //!
 //! Off unless asked: a view runs every frame and the copy is O(nodes),
 //! so a shipped app pays nothing. `Core::set_inspect(true)` turns the
@@ -72,7 +72,7 @@ pub struct NodeInfo {
     /// `modal`, `selectable`, `focusable`, `disabled`, `scroll`, `clip`,
     /// `transition`.
     pub flags: Vec<&'static str>,
-    /// The paint layer it is in (ADR 0023): 0 in flow, else the rank of
+    /// The paint layer it is in: 0 in flow, else the rank of
     /// its float layer from the bottom, 1 being the first layer over the
     /// flow. What decides which of two nodes under one point is on top.
     pub layer: u16,
@@ -116,7 +116,7 @@ impl NodeInfo {
     /// The row as plain data, every field under its snake_case name —
     /// the key and parent spelled by `h`, sizing as [`Sizing::describe`],
     /// colours as hex, enums by their schema names, `events` a map of
-    /// handler name to payload (backlog AR1).
+    /// handler name to payload.
     pub fn to_value(&self, h: crate::value::Handles) -> Value {
         Value::map([
             ("key", (h.key)(self.key)),
@@ -185,7 +185,7 @@ impl Core {
     /// default; a devtool that reads [`Self::nodes`] turns it on once.
     /// The host's ask alone: the core's own devtools panel asks for the
     /// snapshot separately, per frame, while its tree tab shows or it is
-    /// picking, and neither ask turns the other off (backlog AR38).
+    /// picking, and neither ask turns the other off.
     pub fn set_inspect(&mut self, on: bool) {
         self.inspect = on;
         if !on && !self.dt_inspect {
@@ -203,7 +203,7 @@ impl Core {
     /// Rects in the host's viewport coordinates, like every other readback
     /// (`layout_of`, `scroll_geometry`, `text_hit`): under a left dock the
     /// snapshot itself is kept in window px for the panel's outlines, and
-    /// this is the translated copy (backlog AR36).
+    /// this is the translated copy.
     pub fn nodes(&self) -> Vec<NodeInfo> {
         let mut out = self.snapshot().to_vec();
         let shift = self.dt_shift();

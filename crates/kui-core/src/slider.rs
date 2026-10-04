@@ -1,13 +1,12 @@
-//! A slider's arithmetic (`docs/adr/0034-stock-controls-over-the-roles.md`,
-//! decision 4): what value a pointer position, an arrow, a Page key or
-//! Home / End means on a node whose role is `Slider` and that declared
-//! `on_change`. Every slider that followed the pointer did the first
-//! half of this in the app and every one that answered the keyboard did
-//! the second; none in this repo did both.
+//! A slider's arithmetic: what value a pointer position, an arrow, a Page
+//! key or Home / End means on a node whose role is `Slider` and that
+//! declared `on_change`.
 //!
-//! The core proposes a value and never applies it: the event carries the
-//! number, and nothing moves until the view declares it as `value_now`
-//! (ADR 0003's rule, kept). So nothing here is retained past a drag.
+//! The core proposes a value and never applies it: the `change` event
+//! carries the number, and nothing moves until the view declares it as
+//! `value_now`. Nothing here is retained past a drag. The stock control is
+//! [`widgets::slider`](crate::widgets::slider); this module is what it and
+//! a custom slider share.
 //!
 //! Numbers are worked in `f64` from the declared `f32`s read back through
 //! their shortest decimal spelling, and a result is rounded to the

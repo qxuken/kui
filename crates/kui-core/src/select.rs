@@ -1,15 +1,38 @@
 //! The window's text selection outside an editor: what a `selectable`
 //! node scopes, what a press-drag across it produces, and what a copy
-//! reads (`docs/adr/0017-selection-as-a-scope.md`).
+//! reads.
 //!
-//! There is one of these per window, and an editor's own selection is the
-//! other half of the same exclusivity: starting one clears the other, the
-//! way moving focus clears the last focus. What is kept here is two
-//! *addresses* — a node key and a byte inside that node's own text — and
-//! never a byte into a concatenation, an index into a frame's vectors or
-//! a handle into the shaped-text cache. A frame that no longer builds the
-//! node an address names resolves it to nothing and paints nothing, which
-//! is the honest answer; a frame that builds it again resolves it again.
+//! A view opts text in with `NodeSpec::selectable` on a container; the
+//! core then handles the drag, Shift-arrows, double and triple clicks and
+//! Select All. An app reads the result with `Core::selection` (a
+//! [`Selection`]) or `Core::cell_selection` (a [`CellSelection`] inside a
+//! `cells` grid), and asks for the text with `Core::request_copy`, which
+//! answers a [`CopyRequest`]. There is one selection per window, and an
+//! editor's own selection is the other half of that: starting one clears
+//! the other.
+//!
+//! A selection is two addresses, a node key and a byte inside that node's
+//! own text, never an index into a frame's vectors. A frame that no longer
+//! builds the node resolves it to nothing; a frame that builds it again
+//! resolves it again.
+//!
+//! ```rust
+//! use kui_core::{CellEnd, CellSelection, Endpoint, Key, Selection};
+//!
+//! // A drag from byte 3 of one label back to byte 1 of an earlier one.
+//! let scope = Key::ROOT.str("card");
+//! let sel = Selection::new(
+//!     scope,
+//!     Endpoint::new(scope.str("second"), 3),
+//!     Endpoint::new(scope.str("first"), 1),
+//! );
+//! assert!(!sel.is_empty());
+//!
+//! // Inside a terminal grid, ends are absolute lines and columns.
+//! let grid = CellSelection::new(Key::ROOT.str("term"), CellEnd::new(10, 3), CellEnd::new(12, 5));
+//! assert_eq!(grid.cols_on(11, 80), Some((0, 80))); // a middle line, edge to edge
+//! assert_eq!(grid.block(true).cols_on(11, 80), Some((3, 5))); // a block: same columns
+//! ```
 
 use crate::color::Color;
 use crate::key::Key;
@@ -20,7 +43,7 @@ use crate::key::Key;
 /// editor read, because a selection over a label and one over a field
 /// sitting side by side must not be two different blues. This constant
 /// stays as the floor an [`crate::edit::EditOptions`] the core never
-/// stamped falls back to (ADR 0019).
+/// stamped falls back to.
 pub const TINT: Color = Color {
     r: 0x3b as f32 / 255.0,
     g: 0x5b as f32 / 255.0,
@@ -28,18 +51,16 @@ pub const TINT: Color = Color {
     a: 0x66 as f32 / 255.0,
 };
 
-/// One end of a selection: the node whose text it lands in, and a byte
-/// offset into *that node's* content (not into the scope's).
 /// A `byte` that means "the end of the row, whatever its length": what a
 /// Select All puts on the last row of a `selectable` virtual list the
 /// frame did not build, since the core never laid that row out and cannot
-/// know where it ends (ADR 0017, tier 3). A `selectionrange` ask carries
-/// it as written, past any row's length, and the app cuts it to the row —
-/// which is what an app slicing a string does anyway. `u32::MAX` rather
-/// than `usize::MAX` so it survives the trip through a wire that spells
-/// bytes as numbers.
+/// know where it ends. A `selectionrange` ask carries it as written, past
+/// any row's length, and the app cuts it to the row. `u32::MAX` rather
+/// than `usize::MAX` so it survives a wire that spells bytes as numbers.
 pub const ROW_END: usize = u32::MAX as usize;
 
+/// One end of a selection: the node whose text it lands in, and a byte
+/// offset into *that node's* content (not into the scope's).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Endpoint {
     pub node: Key,
@@ -48,8 +69,7 @@ pub struct Endpoint {
     /// one (`open_indexed`). Recorded when the end is made, and the only
     /// thing that can place it once its row stops being built: a key says
     /// *which* node, an index says *where in the data* — and a frame that
-    /// never built the node can still answer the second question (ADR
-    /// 0017, decision 3).
+    /// never built the node can still answer the second question.
     pub row: Option<u64>,
 }
 
@@ -135,7 +155,7 @@ impl Grain {
 /// One end of a selection in a cell grid: an *absolute* line (the grid's
 /// `origin_line` plus the row) and a column. Absolute because a grid is
 /// one screenful of an app's own history, so a row number means a
-/// different line after every scroll (ADR 0017, decision 4).
+/// different line after every scroll.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CellEnd {
     pub line: u64,
@@ -183,9 +203,7 @@ impl CellSelection {
     /// The selection as data — `{node, anchor: {line, col}, focus: {line,
     /// col}, block}`, the ends as the drag made them (directed, like
     /// [`RangeEnd::to_value`]'s) and the lines absolute: the shape a
-    /// binding's `cell_selection` reads back, spelled once (backlog B1a,
-    /// the row ADR 0017 §4 offers "because a grid's ends mean something
-    /// to the app").
+    /// binding's `cell_selection` reads back, spelled once.
     pub fn to_value(self, handles: crate::value::Handles) -> crate::value::Value {
         use crate::value::Value;
         let end = |e: CellEnd| {
@@ -233,7 +251,7 @@ impl CellSelection {
 /// half-open range in that unit's own offsets. `None` when the unit is
 /// outside the selection. The unit is named by whatever orders the
 /// scope's units (an ordinal, an absolute line); the arithmetic is the
-/// same for both geometries ADR 0017 decision 4 keeps apart (AR3): the
+/// same for both geometries: the
 /// first unit runs from the start's offset, the last to the end's, and
 /// every unit between runs edge to edge.
 pub(crate) fn clip_to_unit<U: Ord + Copy>(
@@ -257,7 +275,7 @@ pub(crate) fn clip_to_unit<U: Ord + Copy>(
 /// backwards, from the far edge of the anchor's unit to the near edge of
 /// the live one; forwards, the reverse. So the unit the press took stays
 /// whole however far back over itself the drag turns, in bytes or in
-/// cells alike (AR3). Answers `(anchor edge, live edge)`.
+/// cells alike. Answers `(anchor edge, live edge)`.
 pub(crate) fn grained_edges(
     anchor: (usize, usize),
     live: (usize, usize),
@@ -311,8 +329,8 @@ impl RangeEnd {
 /// What asking for a copy answered (`Core::request_copy`).
 ///
 /// The third case is the one this type exists for: a selection can reach
-/// rows a virtual list never built, and the core will not invent them
-/// (ADR 0017, decision 3). It asks the app instead — a `selectionrange`
+/// rows a virtual list never built, and the core will not invent them.
+/// It asks the app instead — a `selectionrange`
 /// event on the scope — and the answer arrives later as a clipboard
 /// action, so a copy over a gap is the app's own text rather than a
 /// silent hole in the middle of one.

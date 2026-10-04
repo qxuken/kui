@@ -1,30 +1,42 @@
-//! Accessibility as data (see `docs/adr/0001-accessibility-as-data.md`).
+//! Accessibility as data: the semantic tree of a frame, derived from what
+//! nodes do and from the `role` and `label` props a view declares.
 //!
-//! The frame's tree knows what nodes *do* (`on_click`, editors, scroll
-//! containers, window chrome); two props, `role` and `label`, let a view
-//! say what they *are*. From both the core derives an [`AccessTree`]: the
-//! semantic nodes of the frame, in tree order, each with its role, name,
-//! rect, state and the actions it supports. Plain boxes are elided — their
-//! semantic descendants attach to the nearest semantic ancestor — so a
-//! frame of ten thousand rects yields a tree of a handful of nodes.
+//! A view rarely builds anything here. It sets `NodeSpec::role`,
+//! `NodeSpec::label`, `description`, `live` and the value props; the core
+//! derives an [`AccessTree`] of [`AccessNode`]s (roles from behaviour,
+//! names from labels or text, plain boxes elided) that a driver reads with
+//! [`crate::Core::access_tree`] and hands to the platform through
+//! AccessKit. Requests from assistive technology come back as
+//! [`crate::InputEvent::Access`] carrying an [`AccessRequest`] and resolve
+//! inside the core: activating a button emits the same event a click
+//! would. `Ui::announce` queues an [`Announcement`] for a one-off message
+//! with no node behind it. Headless tests assert on the tree directly.
+//!
+//! ```rust
+//! use kui_core::{AccessAction, Core, NodeSpec, Role, Size, TextStyle};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+//! ui.window_title("Demo");
+//! // An `on_click` node is a button; `label` names it when it has no text.
+//! ui.leaf_keyed("save", NodeSpec::row().size(24.0, 24.0).on_click("save").label("Save"));
+//! ui.text("Ready", TextStyle::new(14.0));
+//! ui.finish();
+//!
+//! let tree = core.access_tree();
+//! assert_eq!(tree.root().map(|n| n.role), Some(Role::Window));
+//! let button = tree.nodes.iter().find(|n| n.role == Role::Button).unwrap();
+//! assert_eq!(button.name.as_deref(), Some("Save"));
+//! assert!(button.supports(AccessAction::Click));
+//! ```
 //!
 //! Text is the one place the tree goes below the node: an editor carries
-//! its laid-out lines as [`AccessRun`]s (one per visual line, with every
-//! character's position), and its caret and selection as positions in
-//! them, which is what a screen reader needs to read by character, word
-//! and line and to report where the caret went. The built-in editors get
-//! this from their buffers; an app that owns its text (an `on_key` sink
-//! drawing lines itself) declares `role="multilineTextInput"` on the
-//! sink, `role="line"` on each line it draws, and `caret` /
-//! `selectionAnchor` byte offsets on the lines that hold them — and gets
-//! the same tree, with selection requests coming back as events.
-//!
-//! The tree is data a driver asks for ([`crate::Core::access_tree`]); the
-//! windowed runners translate it into the platform accessibility API
-//! through AccessKit, headless tests assert on it directly. Requests from
-//! assistive technology come back in as input
-//! ([`crate::InputEvent::Access`]) and resolve inside the core: activating
-//! a button emits the same event a pointer click would.
+//! its laid-out lines as [`AccessRun`]s and its caret and selection as
+//! positions in them, which is what a screen reader needs to read by
+//! character, word and line. An app that draws its own text in an
+//! `on_key` sink gets the same by declaring `role="multilineTextInput"`
+//! on the sink, `role="line"` on each line, and `caret` /
+//! `selectionAnchor` byte offsets on the lines that hold them.
 
 use std::sync::Arc;
 
@@ -86,12 +98,11 @@ pub enum Role {
     /// and its `caret` / `selectionAnchor` are byte offsets into it. Not a
     /// node of its own.
     Line,
-    // -- Appended by ADR 0007 ----------------------------------------------
+    // -- Appended later ----------------------------------------------------
     // At the tail, and in the order [`Role::ALL`] lists them, because the
     // tail is the only free position: `KUI_ROLE_*` is an `ALL` index plus
     // one and the Lua and Node wires carry the `ROLES` index, so a role
-    // inserted anywhere else renumbers every role after it
-    // (`docs/adr/0006-c-abi-versioning.md`).
+    // inserted anywhere else renumbers every role after it.
     /// A set of `radio`s: one Tab stop, arrows moving the checked one.
     RadioGroup,
     /// A menu: one Tab stop, arrows moving focus without activating.
@@ -100,8 +111,7 @@ pub enum Role {
     /// an unnamed one is reported.
     MenuItem,
     /// A cell grid (`crate::cells`): the screen of a terminal, its rows
-    /// joined as the value. Derived from the node, appended at the tail
-    /// like the ADR 0007 three (backlog C20).
+    /// joined as the value. Derived from the node.
     Terminal,
 }
 
@@ -216,8 +226,7 @@ impl Role {
 /// How urgently a reader should read a change it was not asked to read:
 /// ARIA's `aria-live`, AccessKit's `Live`. Declared on the node holding
 /// the text (`live` prop) and, for a one-off with no node behind it, the
-/// politeness of a [`Announcement`]. See
-/// `docs/adr/0008-live-regions-and-announcements.md`.
+/// politeness of an [`Announcement`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Live {
     /// Not a live region: changes are read only when asked for.
@@ -230,8 +239,7 @@ pub enum Live {
 }
 
 impl Live {
-    /// Every politeness, in wire order: `schema::LIVE` is `ALL` by `name`
-    /// (backlog AR42).
+    /// Every politeness, in wire order: `schema::LIVE` is `ALL` by `name`.
     pub const ALL: &'static [Live] = &[Live::Off, Live::Polite, Live::Assertive];
 
     /// The camelCase spelling every binding uses.
@@ -252,10 +260,9 @@ impl Live {
 
 /// One thing to say once, with no node behind it: "Saved", "3 results".
 /// Queued by `Core::announce` and drained by `Core::take_announcements`,
-/// the way window commands, audio commands and warnings are — an
+/// the way window commands, audio commands and warnings are: an
 /// announcement is an event on a timeline, and the frame's tree has no
-/// place to keep one (see
-/// `docs/adr/0008-live-regions-and-announcements.md`).
+/// place to keep one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Announcement {
     pub text: String,
@@ -267,8 +274,7 @@ pub struct Announcement {
 /// How a container arranges its items, for the platform to announce
 /// (`AXOrientation`, UIA's `Orientation`). Derived from the container's
 /// `dir` and never declared: the layout is what arranges the items, so a
-/// row that says it is a column would be a fact with two owners (see
-/// `docs/adr/0007-composite-keyboard-patterns.md`, decision 7). It is an
+/// row that says it is a column would be a fact with two owners. It is an
 /// announcement and not a gate — the arrows move both ways whatever this
 /// says — so a container whose visual arrangement does not match its `dir`
 /// costs a less precise announcement rather than a dead keyboard.
@@ -301,7 +307,7 @@ pub enum AccessAction {
     /// Activate: the node's `on_click` payload is emitted (a window button
     /// issues its command; an editor or key sink takes focus). On a node
     /// behind the frame's modal it is the press outside: a `dismiss` on
-    /// the modal, nothing on the node (ADR 0003, decision 6).
+    /// the modal, nothing on the node.
     Click,
     /// Give the node keyboard focus — any focusable node (an editor, a key
     /// sink, a control, a `focusable` box); it shows, as after Tab.
@@ -524,7 +530,7 @@ pub struct AccessNode {
     pub description: Option<String>,
     /// Final laid-out rect, logical px, viewport coordinates, cut to the
     /// clip the node is drawn under — the one its hit region carries
-    /// (backlog F93) — so a reader's hover finds only what a pointer
+    /// — so a reader's hover finds only what a pointer
     /// could. A node wholly clipped away is a zero-size rect on the clip's
     /// edge nearest it: still in the tree, still actionable, never hit.
     pub rect: Rect,
@@ -534,7 +540,7 @@ pub struct AccessNode {
     /// A slider that names its reading has *only* that reading — the
     /// string wins over the number wherever both could be said, which is
     /// what `aria-valuetext` means and what `accesskit_macos` does with
-    /// `AXValue` (see backlog F8, in `docs/backlog/closed-2026-09.md`). `min` / `max` are unaffected,
+    /// `AXValue`. `min` / `max` are unaffected,
     /// and so are the increment actions.
     pub value: Option<String>,
     /// An editor's caret, a byte offset into `value`.
@@ -549,7 +555,7 @@ pub struct AccessNode {
     pub focus: Option<TextPos>,
     /// `checked` for checkbox / radio / switch roles.
     pub checked: Option<bool>,
-    /// A checkbox that is neither on nor off (ADR 0034, decision 3):
+    /// A checkbox that is neither on nor off:
     /// reported as mixed whatever `checked` says.
     pub mixed: bool,
     /// The current one of a set: every `tab` carries it, a `listItem` or a
@@ -579,18 +585,16 @@ pub struct AccessNode {
     pub number: Option<f32>,
     pub min: Option<f32>,
     pub max: Option<f32>,
-    /// A slider's `valueStep`, where it declared one (ADR 0034).
+    /// A slider's `valueStep`, where it declared one.
     pub step: Option<f32>,
-    /// Holds keyboard focus (`Core::focus`; see
-    /// `docs/adr/0002-keyboard-focus-as-data.md`).
+    /// Holds keyboard focus (`Core::focus`).
     pub focused: bool,
     /// Declared `disabled`: inert, and not in the Tab ring.
     pub disabled: bool,
     /// The frame's modal surface (`aria-modal`): the Tab ring and every
     /// pointer are confined to it, and everything else is inert. Only the
     /// modal in effect carries it — the last one declared — so a confirm
-    /// inside a dialog leaves the dialog an ordinary node
-    /// (`docs/adr/0003-modal-surfaces.md`).
+    /// inside a dialog leaves the dialog an ordinary node.
     pub modal: bool,
     pub scroll: Option<ScrollState>,
     /// Bitset of [`AccessAction::bit`].
@@ -599,8 +603,7 @@ pub struct AccessNode {
     /// reads the change without being asked. Carried exactly where the
     /// view declared it — the platform consumer inherits it down the
     /// subtree, and duplicating that here would be a second copy of a
-    /// rule kui does not own (see
-    /// `docs/adr/0008-live-regions-and-announcements.md`).
+    /// rule kui does not own.
     pub live: Live,
 }
 
@@ -608,7 +611,7 @@ impl AccessNode {
     /// The node as plain data, every field under its snake_case name and
     /// every key spelled by `h`. The slider's numbers are `value_now`,
     /// `value_min`, `value_max` — the rows that set them, not the
-    /// fields that hold them (backlog AR1); `actions` is the list of
+    /// fields that hold them; `actions` is the list of
     /// action names, `live` and `role` and `orientation` their schema
     /// names.
     pub fn to_value(&self, h: Handles) -> Value {
@@ -771,8 +774,8 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         NodeContent::Edit(_) => return Some(Role::TextInput),
         NodeContent::Image(..) => return Some(Role::Image),
         // A stroke or a fill is decoration on its own and elided like
-        // plain structure; one that takes input is hit by its shape (ADR
-        // 0026), so the derivation below reaches it as it reaches a box —
+        // plain structure; one that takes input is hit by its shape, so
+        // the derivation below reaches it as it reaches a box —
         // a clickable wedge is a button, a draggable connector a control.
         NodeContent::Line(_) | NodeContent::Polygon(_) => {}
         NodeContent::Cells(_) => return Some(Role::Terminal),
@@ -808,7 +811,7 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
     if spec.access().live != Live::Off {
         // A live region that was elided would carry its liveness
         // nowhere: its text would inherit the window's instead, and the
-        // change would go unread (ADR 0008, decision 2).
+        // change would go unread.
         return Some(Role::Group);
     }
     None
@@ -821,8 +824,7 @@ pub(crate) fn is_custom_editor(tree: &Tree, i: usize) -> bool {
         && !matches!(tree.content[i], NodeContent::Edit(_))
 }
 
-/// Whether node `i` can hold keyboard focus (see
-/// `docs/adr/0002-keyboard-focus-as-data.md`): an editor, a key sink, a
+/// Whether node `i` can hold keyboard focus: an editor, a key sink, a
 /// control role, a derived button (`on_click`), or a node declaring
 /// `focusable` — never a disabled node, decoration or window chrome. The
 /// Tab ring is these nodes in tree order; a `role="none"` subtree is
@@ -869,7 +871,7 @@ pub(crate) fn semantic(
     // A live region joins them: it reads as **one message**, named by the
     // text inside it, and that is what changes when the message does. The
     // alternative — the region carrying only liveness and each platform
-    // announcing the changed descendant — is what ADR 0008 first built,
+    // announcing the changed descendant — is what was first built,
     // and macOS does not deliver it: `accesskit_macos` derives a live
     // node's announcement from `NodeWrapper::label()`, which for a
     // `Role::Label` reads the node's *value*, so a live static text
@@ -928,7 +930,7 @@ pub(crate) fn live_region_speaks(tree: &Tree, text: &TextSystem, i: usize) -> bo
 /// technology, and what it draws is not what the control is called. The
 /// `tooltip` prop's hint is one (`widgets::hover_hint`) — built only while
 /// the pointer is over the node, it made a hovered button's name its label
-/// and its hint both (backlog F88).
+/// and its hint both.
 fn content_name(tree: &Tree, text: &TextSystem, i: usize) -> Option<String> {
     let end = tree.subtree_end(i);
     let mut out = String::new();
@@ -969,7 +971,7 @@ pub(crate) struct Sources<'a> {
     pub scale: f32,
     /// The clip each node was emitted under, by tree index: its
     /// ancestors' only, and the one its hit region carries, so a float
-    /// that escapes has none and a `clip` float has its parent's (F90).
+    /// that escapes has none and a `clip` float has its parent's.
     /// Empty when the frame clipped nothing.
     pub clips: &'a [Clip],
 }
@@ -980,7 +982,7 @@ fn clip_of(src: &Sources<'_>, i: usize) -> Rect {
 }
 
 /// `rect` cut to `clip`, so assistive technology finds and highlights
-/// only what is drawn (backlog F93). A rect wholly outside becomes a
+/// only what is drawn. A rect wholly outside becomes a
 /// zero-size one on the clip's edge nearest it: the node keeps its place
 /// in reading order and its actions (a reader's "scroll into view" goes by
 /// key), but a point never lands in it. The clip is a rect even where the
@@ -1019,7 +1021,7 @@ fn node_rect(tree: &Tree, src: &Sources<'_>, i: usize) -> Rect {
 
 /// What an editor's runs are cut to: the node's clip and, for a field
 /// that does not fold to its width, its content box across, as emission
-/// cuts its glyphs (F41) — a scrolled field's text past its edge is not
+/// cuts its glyphs — a scrolled field's text past its edge is not
 /// drawn, so a reader should not find it there either.
 fn edit_run_clip(tree: &Tree, src: &Sources<'_>, i: usize, edit_key: Key) -> Rect {
     let clip = clip_of(src, i);
@@ -1073,8 +1075,7 @@ fn clip_runs(runs: &mut [AccessRun], clip: Rect) {
 /// It is worth taking because the walk is the cheap quarter of `build`:
 /// **105 µs against 480 µs** over a 10,000-node frame on an M3 Pro, because
 /// three quarters of that function is constructing `AccessNode`s and
-/// pushing them, which is exactly what a cache hit skips (ADR 0016,
-/// decision 3).
+/// pushing them, which is exactly what a cache hit skips.
 ///
 /// A custom editor (`is_custom_editor`) answers `None` rather than a hash:
 /// `custom_editor` fills a node from the `line` children's own text and
@@ -1309,7 +1310,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                     | AccessAction::ReplaceSelectedText.bit();
             }
         } else if let NodeContent::Cells(id) = tree.content[i] {
-            // A terminal's value is its screen, rows joined (backlog C20).
+            // A terminal's value is its screen, rows joined.
             node.value = Some(src.cells.value(id));
         }
         // A disclosure names its own state, so it lands wherever it is
@@ -1347,7 +1348,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
                 // are ignored should not have a reading that is not.
                 node.value = ax.value_text.as_deref().map(str::to_owned);
                 // SetValue too: Windows' UI Automation has no increment,
-                // and moves a slider only by setting it (backlog RG42).
+                // and moves a slider only by setting it.
                 if !spec.disabled {
                     actions |= AccessAction::Increment.bit()
                         | AccessAction::Decrement.bit()
@@ -1397,8 +1398,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
 /// ordinal on the item, which is how AccessKit models a set.
 ///
 /// The items come from `composite::items`, which is also the order the
-/// arrow keys walk (`docs/adr/0007-composite-keyboard-patterns.md`,
-/// decision 3): "3 of 7" and that walk must be the same seven in the same
+/// arrow keys walk: "3 of 7" and that walk must be the same seven in the same
 /// order or the announcement is a lie, so they are one function rather
 /// than two that agree by inspection. A disabled item is still one of the
 /// set — "2 of 3" is what a reader should hear on a disabled tab — even
@@ -1431,7 +1431,7 @@ fn set_positions(tree: &Tree, out: &mut AccessTree) {
 
 /// The `role="line"` nodes under `i`, in tree order — the numbering a
 /// custom editor's `access` events use for `line`, and the one a press
-/// inside a key sink carries (backlog C34), so the two agree. Subtrees
+/// inside a key sink carries, so the two agree. Subtrees
 /// under `role="none"` (a gutter) do not count, and a line's own subtree
 /// is not searched for lines.
 pub(crate) fn lines_under(tree: &Tree, i: usize) -> Vec<usize> {

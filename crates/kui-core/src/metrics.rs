@@ -1,42 +1,23 @@
-//! The sizes the stock widgets are built from, as one struct beside the
-//! palette (backlog T2, the axis ADR 0019 scoped itself out of).
+//! [`Metrics`]: the sizes the stock widgets are built from, one struct
+//! beside the palette.
 //!
-//! `BUTTON_TEXT` 15, `MENU_WIDTH` 200, every `pad_xy(14.0, 8.0)` and
-//! `radius(6.0)` in `widgets.rs` were hard-coded the way the colours were
-//! before the theme, and for the same reason: nobody had asked. The
-//! argument for a [`Metrics`] is ADR 0019's one axis over — the stock
-//! widgets and an app's own controls should agree on a radius and a
-//! padding without either copying a number out of the other — and the
-//! two questions the backlog entry said to settle first are settled here:
+//! Every field is logical px (or a text size in logical px), applied
+//! before `env.scale`, which the renderer multiplies everything by.
+//! Density is the app's choice, as the palette is: [`Metrics::compact`]
+//! is a tighter set, [`Metrics::scaled`] multiplies every length for a
+//! density slider, and `Core::set_metrics` makes one the frame's. An app
+//! that never sets one gets [`Metrics::default`], the stock geometry.
 //!
-//! - **A metric does not scale by itself.** Every field is logical px (or
-//!   a text size in logical px), applied *before* `env.scale`, which is
-//!   the renderer's and multiplies everything the frame draws. Density is
-//!   the app's choice, the way the palette is: [`Metrics::compact`] is a
-//!   tighter set, [`Metrics::scaled`] is every length multiplied for a
-//!   density slider, and `Core::set_metrics` is the door. The day an OS
-//!   text-size setting is plumbed into `env.system`, `scaled` is the
-//!   arithmetic and a `MetricsSource` beside [`crate::theme::ThemeSource`]
-//!   is the shape; nothing here pre-empts it.
-//! - **The default is the contract; a set metric is the app's.** The
-//!   corpus runs with [`Metrics::default`], which is byte for byte the
-//!   constants the widgets had, so no scene moved and the report pins the
-//!   stock geometry as it always did. An app that sets its own changes
-//!   what *its* frames draw, exactly as `set_theme` does, and a
-//!   conformance scene never sets one — which is what keeps "the stock
-//!   button is 15-px text in 14×8 padding" a sentence about kui and not
-//!   about an app.
-//!
-//! Roles, like the palette's: `control_pad_x` is *a button's horizontal
-//! padding*, not "spacing unit 3", and a view that wants a number between
-//! two has arithmetic.
+//! Fields are roles, like the palette's: `control_pad_x` is a button's
+//! horizontal padding, not "spacing unit 3", and a view that wants a
+//! number between two has arithmetic.
 
 /// The titlebar's height on Windows and everywhere else: the caption
 /// height the OS draws, so the one metric that is the platform's rather
 /// than a density's. Named here so [`Metrics::comfortable`] picks the
 /// running one and the schema row (`MetricRole::platform`) carries both,
 /// which is what keeps a generated table from saying which machine wrote
-/// it (backlog W13).
+/// it.
 pub const TITLEBAR_H_WINDOWS: f32 = 32.0;
 pub const TITLEBAR_H_ELSEWHERE: f32 = 34.0;
 
@@ -157,8 +138,7 @@ impl Metrics {
     /// never folded in here. A row the schema marks the platform's
     /// (`titlebar_h`: the OS's caption height, which the traffic lights
     /// are drawn against) is left alone, as [`Metrics::compact`] leaves
-    /// it — a 1.5 slider drew a 51 px strip beside 34 px buttons
-    /// (backlog AR35).
+    /// it — a 1.5 slider drew a 51 px strip beside 34 px buttons.
     pub fn scaled(self, factor: f32) -> Self {
         let mut m = self;
         for row in crate::schema::METRIC_ROLES {

@@ -1,4 +1,4 @@
-//! Why a frame was drawn (backlog F111): two readings a view can take of
+//! Why a frame was drawn: two readings a view can take of
 //! the frame it is building, for an app that keeps a ledger of its frames
 //! and wants to know why one ran with nothing on screen moving.
 //!
@@ -29,7 +29,7 @@ use super::*;
 use crate::input::InputEvent;
 
 /// Why a frame was drawn: every reason that reached the window between
-/// the start of the last frame and the start of this one (backlog F111).
+/// the start of the last frame and the start of this one.
 /// Read from a view as [`Core::frame_cause`]. A set, because a frame
 /// answers everything that asked since the last one — a keystroke and the
 /// caret's blink, a wheel and the transition it started.
@@ -87,8 +87,8 @@ impl FrameCause {
     /// The window was uncovered, or came back from minimized. The runner
     /// leaves out of that frame what it noted while the window could not
     /// draw and no frame took — another window's input, an appearance
-    /// change — so a restore does not report reasons from long before
-    /// (backlog RG97); `resize` is the same edge on Windows, where
+    /// change — so a restore does not report reasons from long before;
+    /// `resize` is the same edge on Windows, where
     /// restoring is a resize.
     pub const OCCLUSION: FrameCause = FrameCause(1 << 17);
     /// The system's appearance or settings changed: light or dark, the
@@ -267,7 +267,7 @@ pub struct FrameRequest {
     /// `"request_frame"` for a call to [`Core::request_frame`] or
     /// `Ui::request_frame` — the app's or a binding's, which `at` tells
     /// apart. A door that asks for the frame that lands it is named for
-    /// itself, `at` its caller's line (backlog RG82): `"reveal"`,
+    /// itself, `at` its caller's line: `"reveal"`,
     /// `"reveal_label"`, `"set_scroll"`, `"set_scroll_label"`,
     /// `"focus_region"`, `"focus_region_by_label"`,
     /// `"request_focus_step"` (`Ui::focus_next`, `Ui::focus_prev`),
@@ -281,8 +281,8 @@ pub struct FrameRequest {
     pub at: &'static Location<'static>,
 }
 
-/// Who holds the frame the last one left owed: [`Core::owed`], named
-/// (backlog F111). Each list is empty when its kind in [`crate::Owed`] is
+/// Who holds the frame the last one left owed: [`Core::owed`], named.
+/// Each list is empty when its kind in [`crate::Owed`] is
 /// false, and names what made it true when it is.
 ///
 /// Read with [`Core::owed_by`] from inside a view, where it describes the
@@ -360,7 +360,7 @@ pub(crate) struct Trace {
     /// still had them: a ghost's node is in no tree after that frame.
     gone: FxHashMap<Key, String>,
     /// [`Core::begin_frame_cause`] took the next frame's reasons ahead of
-    /// its `begin_frame`, which keeps them (backlog RG81).
+    /// its `begin_frame`, which keeps them.
     begun: bool,
 }
 
@@ -375,7 +375,7 @@ impl Trace {
 }
 
 impl Core {
-    /// Turns the trace of why frames run on or off (backlog F111): who
+    /// Turns the trace of why frames run on or off: who
     /// holds each owed frame ([`Self::owed_by`]) and whether each frame
     /// changed what is drawn ([`Self::frame_unchanged`]). Off by default,
     /// where neither costs anything; on, the holders are taken at the
@@ -411,7 +411,7 @@ impl Core {
     /// Starts the next frame's record now rather than at its
     /// `begin_frame`: its reasons ([`Self::frame_cause`]) and, traced,
     /// who holds it ([`Self::owed_by`]) — for a driver whose view runs
-    /// before the frame it is for begins (backlog RG81). Node's loop runs
+    /// before the frame it is for begins. Node's loop runs
     /// `view` to a tree and only then hands the tree to a frame, so a
     /// view reading either would read the frame before; the loop calls
     /// this first, and the view reads the frame it is building. The

@@ -1,55 +1,46 @@
-//! Slots: the place a host declares in its own view for an extension to
-//! fill, with parameters in and replies out
-//! (`docs/adr/0014-slots-an-extension-fills-in-place.md`).
+//! Slots: the places a host declares in its own view for an extension to
+//! fill, with parameters in and replies out.
 //!
-//! A slot is a *position*, not a node. `Ui::slot` (or `slot_with`) is a
-//! call the host makes anywhere among its children, and whatever fills it
-//! draws then and there, as children of the node the host is inside — so
-//! the tree stays preorder by construction and nothing is appended to a
-//! node that has closed. The filling is done by whatever implements
-//! [`Fill`], which the frame was begun with (`Core::frame_with`); the
-//! runner hands in its [`Extensions`], and that type's `Fill` is the loop.
+//! A slot is a position, not a node. `Ui::slot` (or `slot_with`) is a call
+//! the host makes anywhere among its children, and whatever fills it draws
+//! then and there, as children of the node the host is inside. The filling
+//! is done by whatever implements [`Fill`], which the frame was begun with
+//! (`Core::frame_with`); the windowed runner hands in its [`Extensions`].
+//! An app that loads no extensions never meets this module.
 //!
-//! **Slot names are namespaced, and the host decides the namespace.** An
-//! extension names the slots it fills in its own vocabulary — `"panel"`,
-//! `"status"` — with no `/` in them. The host gives each extension it
-//! loads a namespace, the way an importer picks an alias (`Extensions::
-//! push_as`; `push` uses the extension's own name), and declares slots by
-//! their full name: `ui.slot("fs/panel")` is the `"panel"` of the extension
-//! the host calls `fs`. Exactly one extension can fill a slot, the same
-//! plugin loaded twice is two namespaces with two sets of slots and two
-//! sets of params, and nothing an extension names can collide with
-//! anything another names.
+//! Slot names are namespaced, and the host decides the namespace. An
+//! extension names the slots it fills in its own vocabulary (`"panel"`,
+//! `"status"`, no `/` in them). The host gives each extension a namespace
+//! when it loads it ([`Extensions::push_as`]; [`Extensions::push`] uses the
+//! extension's own name) and declares slots by their full name:
+//! `ui.slot("fs/panel")` is the `"panel"` of the extension the host calls
+//! `fs`. The same plugin loaded twice is two namespaces with two sets of
+//! slots.
 //!
-//! The reserved slot name `"root"` is what an extension listing no slots
-//! fills — `ns/root`, once after the host's view, which is where every
-//! extension drew before slots existed — and a host that declares
-//! `ui.slot("ns/root")` itself moves that fill to the position it chose.
-//! The core owns the two things the ADR makes it own: the key namespace
-//! of a fill (decision 4; see `Core::fill`) and the bound on it (decision
-//! 5).
+//! ```rust
+//! use kui_core::slot::{full_name, split_name, Extensions, ROOT_SLOT};
 //!
-//! ## An extension may host extensions of its own
+//! assert_eq!(full_name("fs", "panel"), "fs/panel");
+//! assert_eq!(split_name("left/fs/panel"), ("left/fs", "panel"));
+//! assert_eq!(split_name("root"), ("", ROOT_SLOT));
 //!
-//! The ADR left one question open — "whether one may offer slots is a
-//! decision for the day one asks" — and the day was a Lua view wanting a
-//! native panel inside it. The answer is yes, and it is the same
-//! mechanism one level down rather than a second one:
+//! // The runner's list; `push_as(namespace, Box<dyn Extension>)` loads one.
+//! let exts = Extensions::new();
+//! assert!(exts.is_empty());
+//! ```
 //!
-//! * [`Fill::add`] loads an extension while a frame is being built, which
-//!   is when a guest knows it wants one. It lands in the *same* list under
-//!   a namespace of its own, so the frame has one namespace map and one
-//!   origin per extension however deep the loading went. `todos/panel`
-//!   means one thing to everybody.
-//! * A guest's `ui.slot(…)` declares a slot like anyone's, filled from
-//!   that one list. What it may *not* do is fill itself: the extension
-//!   doing the filling is out of the list while it fills, so a cycle is
-//!   the `recursive-slot` warning and an empty position rather than a
-//!   hang.
-//! * Replies go to whoever declared the slot ([`Extensions::route`]) —
-//!   decision 6 read as it is written, since the thing an extension is
-//!   answering is the slot it was put in. For every extension a host
-//!   declared itself, that is the host, exactly as before.
+//! The reserved slot name `"root"` ([`ROOT_SLOT`]) is what an extension
+//! listing no slots fills: `ns/root`, once after the host's view. A host
+//! that declares `ui.slot("ns/root")` itself moves that fill to the
+//! position it chose.
+//!
+//! An extension may host extensions of its own, by the same mechanism one
+//! level down: [`Fill::add`] loads one while a frame is being built, under
+//! a namespace of its own in the same list; a guest's `ui.slot(..)`
+//! declares a slot like anyone's, except that it cannot fill itself (a
+//! cycle is the `recursive-slot` warning and an empty position); and
+//! replies go to whoever declared the slot ([`Extensions::route`]), which
+//! for every extension the host declared is the host.
 
 use crate::input::UiEvent;
 use crate::key::Key;
@@ -125,14 +116,14 @@ pub fn full_name(namespace: &str, name: &str) -> String {
     }
 }
 
-/// Splits a full slot name at its last separator into (namespace, name);
-/// a name with none has the empty namespace.
 /// The one entry in `Extension::slots` that means "every name the host
 /// declares under my namespace": for an extension that learns its slots
 /// after it loads. `fill` matches any declared name against it and
-/// `finish` has nothing to warn about for it (backlog K1).
+/// `finish` has nothing to warn about for it.
 pub const ANY_SLOT: &str = "*";
 
+/// Splits a full slot name at its last separator into (namespace, name);
+/// a name with none has the empty namespace.
 pub fn split_name(full: &str) -> (&str, &str) {
     match full.rfind(NAMESPACE_SEPARATOR) {
         Some(i) => (&full[..i], &full[i + 1..]),
@@ -189,7 +180,7 @@ struct Entry {
     /// The origin that declared the slot this extension last filled:
     /// `OriginId::HOST` for one in the host's own view, another
     /// extension's when that extension declared it. Where its replies go
-    /// (ADR 0014 decision 6; see `route`).
+    /// (see `route`).
     asked_by: OriginId,
 }
 

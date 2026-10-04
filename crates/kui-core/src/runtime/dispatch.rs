@@ -81,7 +81,7 @@ impl Core {
     /// its action to the app instead of the panel. The devtools panel's
     /// own controls are taken back (nobody's but the core's); what is
     /// left is translated, stamped with its window and logged on its way
-    /// out (ADR 0024, decision 4).
+    /// out.
     pub(crate) fn outbound(&mut self, out: &mut Vec<UiEvent>) {
         self.devtools_consume(out);
         self.devtools_translate(out);
@@ -96,7 +96,7 @@ impl Core {
     }
 
     /// A click or drag says where it landed, in the terms of the node it
-    /// landed on — the one pass both shapes go through (AR11), run on
+    /// landed on — the one pass both shapes go through, run on
     /// the `n` events at the end of `out` that `Interaction::handle` just
     /// made from a press, and on nothing else: a click Enter, Space or a
     /// screen reader made has no point and no count, and the cursor is
@@ -105,12 +105,12 @@ impl Core {
     ///
     /// On a `cells` grid, `cell: {row, col}` — the same arithmetic a
     /// selection uses (`cell_row_col`), so the app never divides by a
-    /// cell size it did not choose (backlog C20). Inside a key sink that
+    /// cell size it did not choose. Inside a key sink that
     /// draws `role="line"` rows, `line` — the ordinal among the sink's
     /// lines, the numbering its `access` events use — `byte` — where the
     /// point falls in that line's text, what `text_hit` would answer —
     /// and `clicks` — the press's count, so a double click is a word
-    /// without a timer the app keeps (backlog C34); a point above the
+    /// without a timer the app keeps; a point above the
     /// first line is the first, below the last the last, and one in a
     /// gutter is the line beside it. The point is the event's own for a
     /// drag and the cursor's for a click. Not opt-in, like `cell`: the
@@ -222,7 +222,7 @@ impl Core {
     }
 
     /// One whole key going down: both channels, in the order a window
-    /// drives them (backlog F6). The press reaches whatever holds key
+    /// drives them. The press reaches whatever holds key
     /// focus, and then [`KeyPress::edit_event`] asks the core for what
     /// that key *means* — Escape dismisses a modal, Tab walks the ring,
     /// an arrow nudges a focused slider, a printable character reaches
@@ -255,7 +255,7 @@ impl Core {
     /// driver with more than one core asks before routing a release: a
     /// key pressed in a window and let go while a popup borrowed its
     /// keyboard was released in the popup, which never saw the press, and
-    /// the owner held it until it lost focus (backlog RG103).
+    /// the owner held it until it lost focus.
     pub fn holds_key(&self, key: &KeyPress) -> bool {
         self.keys_held.iter().any(|h| h.same_key(key))
     }
@@ -267,10 +267,10 @@ impl Core {
     /// and the driver already told it which one (`env.window.id`, beside
     /// `maximized` and the rest of the window facts) — so one assignment
     /// at each of the two exits covers every event every binding will
-    /// ever see, and ADR 0004's step 3 has only to hand each core its id.
+    /// ever see, and a multi-window driver has only to hand each core its id.
     ///
     /// The one producer that does know is the audio store, whose mounts
-    /// are per window (AR7) and whose `ended` / `refused` events are folded
+    /// are per window and whose `ended` / `refused` events are folded
     /// back through whichever core the driver holds — the main one, in the
     /// runner. An event it stamped with another window keeps that stamp; a
     /// `MAIN` one is indistinguishable from an unstamped one and takes the
@@ -814,7 +814,7 @@ impl Core {
     }
 
     /// The node a non-primary press on region `key` goes to, with the tag
-    /// its event carries (backlog F105): see `enclosing_button`. Read off
+    /// its event carries: see `enclosing_button`. Read off
     /// the tree at the press, as a force click's tag is.
     fn button_owner(&self, key: Key, button: MouseButton) -> Option<crate::input::ButtonOwner> {
         let i = self.tree.index_of(key)?;
@@ -826,7 +826,7 @@ impl Core {
         })
     }
 
-    /// A force click (ADR 0017, decision 6). Over text — an editor or a
+    /// A force click. Over text — an editor or a
     /// `selectable` scope — it selects the word under it and asks the host
     /// for its definition panel, which is what the gesture means on the
     /// one platform that has it. Anywhere else it reaches a node
@@ -1134,8 +1134,7 @@ impl Core {
     /// path), so a sink only hears while no editor is focused and it is
     /// still in the last frame's hit list. *Which* sink is
     /// [`Self::key_target`]'s answer: the focused one, or — when a control
-    /// holds focus and does not claim this key — the nearest one above it
-    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`).
+    /// holds focus and does not claim this key — the nearest one above it.
     fn route_key(&mut self, kp: &KeyPress, phase: KeyPhase, out: &mut Vec<UiEvent>) -> bool {
         if self.edit.focused().is_some() {
             return false;
@@ -1280,7 +1279,7 @@ impl Core {
     /// Node test's `setEnv({focused: false})` and a C host's `kui_env_set`
     /// do what the windowed runner does, instead of each remembering to.
     /// The synthetic `up`s are pending, like `release_held_keys`'s, and so
-    /// are the `release`s of the buttons `onButton` nodes held (F105).
+    /// are the `release`s of the buttons `onButton` nodes held.
     pub fn set_focused(&mut self, focused: bool) {
         if self.env.focused == focused {
             return;
@@ -1328,7 +1327,7 @@ impl Core {
 
     /// The sink a chord pressed now would reach, if any: the focused sink,
     /// the nearest one above the focused control, or the root's with
-    /// nothing focused (ADR 0011, decision 1; ADR 0022, decision 8). What a
+    /// nothing focused. What a
     /// driver asks before greying a menu row that spells a chord — a sink
     /// that would hear ⌘C may do anything with it, so the row stays lit.
     pub fn chord_sink(&self) -> Option<Key> {
@@ -1339,8 +1338,7 @@ impl Core {
     }
 
     /// Which node hears a raw press: the focused sink, the nearest sink
-    /// above a focused control that does not claim the key, or nothing
-    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).
+    /// above a focused control that does not claim the key, or nothing.
     ///
     /// `chord` is whether a modifier other than Shift is down. A chord is
     /// never a control's key — it is what a shortcut layer is made of — so
@@ -1383,7 +1381,7 @@ impl Core {
 
     /// Whether the focused node `i` takes `code` for itself: the keys the
     /// core acts on *for that node*, which are exactly the keys that never
-    /// bubble (`docs/adr/0011`, decision 2). Static — a press is resolved
+    /// bubble. Static — a press is resolved
     /// on its way down, before the channel that would act on it arrives,
     /// so the question has to be answerable from the node and the key
     /// alone rather than from what a handler did.
@@ -1488,7 +1486,7 @@ impl Core {
     /// The modal `key` was asked to go away — Escape, or a press outside
     /// it. Reaches the app as `{kind="dismiss", reason, tag}` on the modal
     /// node; what happens next is the app's, since only it can stop
-    /// declaring the node (see `docs/adr/0003-modal-surfaces.md`).
+    /// declaring the node.
     fn dismiss(&mut self, key: Key, reason: &str, out: &mut Vec<UiEvent>) {
         let Some(i) = self.tree.index_of(key) else {
             return;
@@ -1516,7 +1514,7 @@ impl Core {
     /// The window's selected text, for clipboard integration: the
     /// selection in a `selectable` scope when there is one, else the
     /// focused editor's. Only one of the two exists at a time — starting
-    /// either clears the other (`docs/adr/0017-selection-as-a-scope.md`)
+    /// either clears the other
     /// — so this asks in that order rather than merging them.
     pub fn copy_selection(&self) -> Option<String> {
         if self.selection.is_some() {
@@ -1528,12 +1526,12 @@ impl Core {
         self.edit.copy_selection(self.edit.focused()?)
     }
 
-    /// One selection per window (ADR 0017 decision 1), in the direction
+    /// One selection per window, in the direction
     /// `set_selection` does not cover: an editor's selection started by
     /// the keyboard — Select All, Shift+arrows, a reader's
     /// `setTextSelection` — takes the window's one selection with it, so
     /// a scope's or a grid's highlight goes and Cmd-A / Cmd-C read the
-    /// editor and not the label dragged over before Tab (AR24).
+    /// editor and not the label dragged over before Tab.
     fn editor_took_selection(&mut self, key: Key) {
         if self.edit.has_selection(key) {
             self.selection = None;
@@ -1544,8 +1542,7 @@ impl Core {
     /// Cuts the focused editor's selection, returning the removed text.
     /// A cut is an edit like any other, so the editor's `changed` is
     /// pending for the caller to route — like a `resize`, since the
-    /// caller is not answering an input event (AR15: the runner used to
-    /// build one by hand here, and the menu path posted none).
+    /// caller is not answering an input event.
     pub fn cut_selection(&mut self) -> Option<String> {
         let key = self.edit.focused()?;
         let text = self.cut_editor(key)?;
@@ -1581,7 +1578,7 @@ impl Core {
     /// Returns whether the text reached an editor now. `false` is the
     /// held case: nothing on screen changed, and a driver that redraws on
     /// it re-lowers the tree that declares no editor, which is the frame
-    /// the hold expires on (backlog F42) — so a binding asks for a redraw
+    /// the hold expires on — so a binding asks for a redraw
     /// only on `true`.
     pub fn set_edit_text(&mut self, key: Key, text: &str) -> bool {
         let sess = &mut *self.session.state();
@@ -1592,7 +1589,7 @@ impl Core {
     /// The same call by the name the view declares — an editor's `key`
     /// prop / `label` — for the app that has no key to give: the hex key
     /// comes from an event the node fired, and an editor a rename opens
-    /// for the first time has fired none (backlog F32).
+    /// for the first time has fired none.
     ///
     /// A label some frame declared resolves now ([`Core::key_of`]) and
     /// this is [`Core::set_edit_text`] on that key. One nothing has
@@ -1630,7 +1627,7 @@ impl Core {
 
 /// The raw key an editing key came from, for the keys a focused control
 /// acts on — the one place the two input channels have to name the same
-/// press (`docs/adr/0011`, decision 3). `None` for the editing vocabulary
+/// press. `None` for the editing vocabulary
 /// with no control behaviour behind it (Backspace, PageUp, Undo): those
 /// arms do nothing on a control either way.
 fn edit_key_code(ek: EditKey) -> Option<KeyCode> {
@@ -1648,7 +1645,7 @@ fn edit_key_code(ek: EditKey) -> Option<KeyCode> {
     })
 }
 
-/// ADR 0016 decision 3's gate: the access tree is cached on a hash of what
+/// The access tree is cached on a hash of what
 /// derives it, so every input that hash misses is a frame that serves a
 /// stale reading. One case per input `access::build` reads, each mutating
 /// only that input and asserting the tree was derived again *and* came out
@@ -1753,7 +1750,7 @@ mod access_cache {
 
     /// The clip a node was emitted under is not in its spec either: a
     /// clipping parent narrowing cuts the rect of a node whose own box
-    /// stayed where it was (F93).
+    /// stayed where it was.
     #[test]
     fn a_parents_clip_moves_the_tree() {
         let mut core = Core::new();

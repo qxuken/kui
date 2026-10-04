@@ -1,12 +1,10 @@
-//! Scroll gestures: latching and chaining (backlog F107,
-//! `docs/adr/0038-a-scroll-gesture-latches-its-target.md`).
+//! Scroll gestures: latching and chaining.
 //!
-//! A wheel delta used to go to whatever was under the pointer when it
-//! came. A swipe that moved the strip carried a terminal under a still
-//! pointer, and the terminal — an `on_scroll` node taking every delta —
-//! took the rest of the swipe; a list already at its end swallowed a
-//! swipe the scroller around it could have used. The browser answer,
-//! taken here: a *gesture* — a swipe and its momentum, a wheel spun
+//! A wheel delta routed to whatever is under the pointer when it comes
+//! misbehaves twice: a swipe that moves a strip carries a terminal under
+//! the still pointer, which then takes the rest of the swipe; and a list
+//! already at its end swallows a swipe the scroller around it could have
+//! used. The browser answer, taken here: a *gesture* — a swipe and its momentum, a wheel spun
 //! without a pause, as the driver delimits them
 //! ([`crate::InputEvent::ScrollGesture`]) — picks its target when it
 //! starts and keeps it (*latching*); the pick skips a scroller already at
@@ -79,8 +77,7 @@ impl Core {
     /// latched from here on. The walk goes by the tree, not by what else
     /// is painted under the pointer: a list at its end in a popover
     /// passes the gesture to the scroller the popover was declared in,
-    /// not to the page it happens to float over (the alpha.22
-    /// regression pass).
+    /// not to the page it happens to float over.
     fn scroll_target(&mut self, x: bool, d: f32) -> Option<ScrollRegion> {
         let latched = if x {
             self.scroll_latch.x
@@ -134,7 +131,7 @@ impl Core {
     /// `x` (or `y`) is `r`'s. A handler's on the axes it takes, whether
     /// or not it has anywhere to go — the core cannot ask it — unless it
     /// is a container on that axis too, whose offset the app sets and
-    /// the core can ask (F118); a container's on the axes it scrolls,
+    /// the core can ask; a container's on the axes it scrolls,
     /// while it can still move that way or when it says `contain`. Read
     /// off the region, as the frame that drew it left it, never off the
     /// tree.

@@ -1,6 +1,47 @@
-//! The Rust frame builder: a thin safe façade over `Core`'s flat builder
-//! methods (which are also the FFI surface). It never captures user state,
-//! so `view(&state)` and `update(&mut state)` can't conflict.
+//! [`Ui`]: the frame builder a Rust view declares its tree through.
+//!
+//! A `Ui` borrows a [`Core`] for the length of one frame. It is a thin,
+//! safe facade over the core's flat builder methods (which are also the FFI
+//! surface): every call opens, fills or closes a node, or reads a fact the
+//! last frame established. It never captures app state, so `view(&state)`
+//! and `update(&mut state)` cannot conflict.
+//!
+//! The shape of a view: containers open with [`Ui::with`] (scoped) or
+//! [`Ui::open`]/[`Ui::close`], leaves with [`Ui::leaf`] and [`Ui::text`],
+//! and each node's look and behaviour is a [`NodeSpec`]. Nodes are keyed by
+//! position unless a `_keyed` or `_indexed` form gives them a stable
+//! identity, which anything retained across frames (focus, scrolling, an
+//! edit buffer, a transition) needs.
+//!
+//! ```rust
+//! use kui_core::{Color, Core, NodeSpec, Size, Sizing, TextStyle, widgets};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+//! let theme = ui.theme();
+//! ui.configure_root(NodeSpec::column().fill().pad(12.0).gap(8.0));
+//!
+//! // A toolbar: a row of buttons, keyed by their labels.
+//! ui.with(NodeSpec::row().gap(6.0), |ui| {
+//!     widgets::button(ui, "Open", "open");
+//!     widgets::button(ui, "Save", "save");
+//! });
+//!
+//! // A panel that grows to fill the rest, with a label in it.
+//! let panel = ui.with_keyed(
+//!     "panel",
+//!     NodeSpec::column().fill().pad(8.0).bg(theme.surface).radius(6.0),
+//!     |ui| {
+//!         ui.text("Ready.", TextStyle::new(14.0).color(theme.muted));
+//!         ui.leaf(NodeSpec::row().size(Sizing::GROW, 1.0).bg(Color::hex(0x80808080)));
+//!     },
+//! );
+//! assert!(!ui.is_hovered(panel)); // nothing has moved the pointer yet
+//! ui.finish();
+//! ```
+//!
+//! [`Ui::finish`] is the one way out of a frame: it runs layout and
+//! emission and leaves the results in [`Core::output`].
 
 use crate::edit::EditOptions;
 use crate::env::Env;
@@ -57,8 +98,7 @@ impl<'a> Ui<'a> {
     /// it loaded it, and the slot in the extension's own vocabulary
     /// (`"fs/panel"`). `"ns/root"` is the fill that follows the host's
     /// view for an extension listing no slots, and declaring it moves
-    /// that fill here. See
-    /// `docs/adr/0014-slots-an-extension-fills-in-place.md`.
+    /// that fill here.
     pub fn slot(&mut self, name: &str) {
         self.slot_with(name, &crate::slot::NULL_PARAMS);
     }
@@ -87,8 +127,8 @@ impl<'a> Ui<'a> {
         self.core.slot_declared(name)
     }
 
-    /// Declares a devtools tab an extension fills (ADR 0032, decision
-    /// 1): `name` is the tab's identity, `label` what the strip shows,
+    /// Declares a devtools tab an extension fills: `name` is the tab's
+    /// identity, `label` what the strip shows,
     /// `slot` the full slot name (`"ts/panel"`) the extension names.
     /// While the tab is the one on show, the panel declares the slot in
     /// the tab's body and the fill is drawn there; otherwise the slot is
@@ -100,7 +140,7 @@ impl<'a> Ui<'a> {
     }
 
     /// Declares a devtools tab the host draws itself, and draws it
-    /// **only when it is shown** (ADR 0032, decisions 1 and 3): `f` runs
+    /// **only when it is shown**: `f` runs
     /// when the panel is on, docked in this window, and `name` is the
     /// tab on show — otherwise this declares and returns, and the tab
     /// costs nothing. What `f` builds is the host's: its keys, labels
@@ -127,8 +167,8 @@ impl<'a> Ui<'a> {
         self.core.devtools_tab_shown(name)
     }
 
-    /// The bare declaration either form makes (ADR 0032, decision 1):
-    /// `slot` for the extension form, `None` for a host form whose
+    /// The bare declaration either form makes: `slot` for the extension
+    /// form, `None` for a host form whose
     /// content is built some other way or not at all this frame. Whether
     /// the declaration stood — false for a name already declared this
     /// frame (`duplicate-tab`) or outside a frame.
@@ -138,7 +178,7 @@ impl<'a> Ui<'a> {
 
     /// The host form for a binding that decided the laziness on its own
     /// side (a Node encoder or a Lua converter that already read which
-    /// tab is on show, ADR 0032 decision 3): declares the tab and builds
+    /// tab is on show): declares the tab and builds
     /// `f` as its content **whether or not** the tab is shown here — a
     /// content whose body the panel did not build anchors to nothing
     /// and paints nothing, and a name already declared this frame
@@ -258,11 +298,11 @@ impl<'a> Ui<'a> {
 
     /// This frame's palette: the named colours the stock widgets paint
     /// with, derived from `env.system` unless the app pinned something
-    /// else (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`).
+    /// else (see [`crate::theme`]).
     ///
     /// By value, because it is [`Copy`] and a view that took a reference
-    /// could not then touch `ui` — which is the whole of what a view
-    /// does. `let t = ui.theme();` at the top of a widget is the idiom.
+    /// could not then touch `ui`. `let t = ui.theme();` at the top of a
+    /// widget is the idiom.
     pub fn theme(&self) -> crate::theme::Theme {
         *self.core.theme()
     }
@@ -274,16 +314,16 @@ impl<'a> Ui<'a> {
     }
 
     /// The sizes the stock widgets are built from
-    /// (`crate::metrics::Metrics`, backlog T2), by value like the theme
-    /// and for the same reason. What a view reads to make its own
-    /// controls agree with the stock ones on a radius and a padding.
+    /// ([`Metrics`](crate::metrics::Metrics)), by value like the theme and
+    /// for the same reason. What a view reads to make its own controls
+    /// agree with the stock ones on a radius and a padding.
     pub fn metrics(&self) -> crate::metrics::Metrics {
         *self.core.metrics()
     }
 
-    /// Declare the tokens this origin references by name
-    /// (`docs/adr/0027-tokens-beside-the-theme.md`); see
-    /// [`Core::set_tokens`](crate::runtime::Core::set_tokens). Inside a
+    /// Declares the tokens this origin references by name (see
+    /// [`crate::tokens`] and
+    /// [`Core::set_tokens`](crate::runtime::Core::set_tokens)). Inside a
     /// fill the table is the extension's own.
     pub fn set_tokens(&mut self, tokens: crate::tokens::Tokens) {
         self.core.set_tokens(tokens);
@@ -297,11 +337,10 @@ impl<'a> Ui<'a> {
     }
 
     /// A colour token by name, this frame's half. A name that resolves
-    /// to nothing — or to a length — raises `unknown-token` and answers
-    /// `None`, so the view leaves the slot at the row's default the way
-    /// a `$name` in a prop does in every binding (`.bg(ui.token_color(
-    /// "peach").unwrap_or(t.surface))`), rather than painting an explicit
-    /// transparent that would hide the node a typo was on (AR14).
+    /// to nothing, or to a length, raises `unknown-token` and answers
+    /// `None`, so the view leaves the slot at its default
+    /// (`.bg(ui.token_color("peach").unwrap_or(t.surface))`) rather than
+    /// painting a transparent that would hide the node a typo was on.
     pub fn token_color(&mut self, name: &str) -> Option<crate::color::Color> {
         match self.core.token_lookup().color(name) {
             Ok(c) => Some(c),
@@ -339,7 +378,7 @@ impl<'a> Ui<'a> {
     }
 
     /// Declares that this frame wants secure keyboard entry while the
-    /// window has the keyboard — a password prompt (backlog F85); see
+    /// window has the keyboard (a password prompt); see
     /// [`crate::Core::set_secure_input`]. Declare it every frame the
     /// prompt is up: a frame that does not turns it off.
     pub fn secure_input(&mut self, on: bool) {
@@ -347,8 +386,8 @@ impl<'a> Ui<'a> {
     }
 
     /// Declares which Option keys act as Alt in this window on macOS, so
-    /// ⌥u arrives as `<A-u>` rather than composing an accent (backlog
-    /// F113); see [`crate::Core::set_option_as_alt`]. Declare it every
+    /// Option-u arrives as the chord `A-u` rather than composing an
+    /// accent; see [`crate::Core::set_option_as_alt`]. Declare it every
     /// frame: a frame that does not gives the Option keys back to the
     /// layout.
     pub fn option_as_alt(&mut self, option_as_alt: crate::OptionAsAlt) {
@@ -372,14 +411,21 @@ impl<'a> Ui<'a> {
         self.core.window_name()
     }
 
+    /// Sets the origin the nodes opened from here on are tagged with; see
+    /// [`Ui::origin`].
     pub fn set_origin(&mut self, origin: OriginId) {
         self.core.set_origin(origin);
     }
 
+    /// The root node's spec for this frame: its direction, padding, gap
+    /// and background. Call it first; the default root is a fit column.
     pub fn configure_root(&mut self, spec: NodeSpec) {
         self.core.configure_root(spec);
     }
 
+    /// The key a child opened under `label` would get here, without
+    /// opening it: read it before the node exists to ask `is_hovered` or
+    /// `is_focused` while building it.
     pub fn child_key(&self, label: &str) -> Key {
         self.core.child_key(label)
     }
@@ -389,16 +435,20 @@ impl<'a> Ui<'a> {
         self.core.child_key_indexed(i)
     }
 
+    /// Whether the pointer is over `key`, as of the last input. Only a
+    /// node that tracks hover answers true (one with a click, a drag, a
+    /// hover background or `hoverable`).
     pub fn is_hovered(&self, key: Key) -> bool {
         self.core.is_hovered(key)
     }
 
+    /// Whether the primary button is held on `key`.
     pub fn is_pressed(&self, key: Key) -> bool {
         self.core.is_pressed(key)
     }
 
-    /// Whether files dragged in from the OS are over `key` (ADR 0031) —
-    /// for drop-dependent *layout*; a colour swap is `drop_bg`.
+    /// Whether files dragged in from the OS are over `key`, for
+    /// drop-dependent *layout*; a colour swap is `drop_bg`.
     pub fn is_drop_target(&self, key: Key) -> bool {
         self.core.is_drop_target(key)
     }
@@ -414,6 +464,7 @@ impl<'a> Ui<'a> {
         self.core.is_group_hovered(group)
     }
 
+    /// Whether any member of a hover group is pressed.
     pub fn is_group_pressed(&self, group: u64) -> bool {
         self.core.is_group_pressed(group)
     }
@@ -438,8 +489,8 @@ impl<'a> Ui<'a> {
         self.core.request_frame();
     }
 
-    /// Asks for one more frame on kui's own behalf — a stock widget's, not
-    /// the app's — named `why` in a trace (backlog RG82).
+    /// Asks for one more frame on kui's own behalf (a stock widget's, not
+    /// the app's), named `why` in a trace.
     #[track_caller]
     pub(crate) fn owe_frame(&mut self, why: &'static str) {
         self.core.owe_frame(why);
@@ -487,7 +538,7 @@ impl<'a> Ui<'a> {
     /// Offered where the text selection offers only [`Self::selection_text`]
     /// because a grid's ends mean something to the app: they are the
     /// session's own line numbers, not byte offsets into runs the app never
-    /// laid out (ADR 0017, decision 4).
+    /// laid out.
     pub fn cell_selection(&self) -> Option<crate::select::CellSelection> {
         self.core.cell_selection()
     }
@@ -523,7 +574,7 @@ impl<'a> Ui<'a> {
     }
 
     /// Puts a secret on the system clipboard marked concealed and
-    /// transient, the way a password manager does (backlog F84); see
+    /// transient, the way a password manager does; see
     /// `Core::set_clipboard_secret`.
     pub fn set_clipboard_secret(&mut self, text: impl Into<String>) {
         self.core.set_clipboard_secret(text);
@@ -544,7 +595,7 @@ impl<'a> Ui<'a> {
 
     /// Asks the host for a file dialog; the answer is a `files` event to
     /// whoever's view asked. False when one is already outstanding. See
-    /// `Core::request_files` (backlog C51).
+    /// `Core::request_files`.
     #[track_caller]
     pub fn request_files(&mut self, dialog: crate::dialog::FileDialog) -> bool {
         self.core.request_files(dialog)
@@ -583,7 +634,9 @@ impl<'a> Ui<'a> {
     }
 
     /// Opens a node under the next auto key; its children follow until
-    /// [`Self::close`]. [`Self::with`] is the scoped form.
+    /// [`Self::close`]. [`Self::with`] is the scoped form, and the one to
+    /// prefer: an `open` without its `close` is a `node-left-open`
+    /// warning.
     #[inline]
     pub fn open(&mut self, spec: NodeSpec) -> Key {
         self.core.open(spec)
@@ -647,7 +700,19 @@ impl<'a> Ui<'a> {
         self.core.close();
     }
 
-    /// Scoped open/close.
+    /// Opens a node, runs `f` for its children and closes it. The usual
+    /// way to declare a container:
+    ///
+    /// ```rust
+    /// # use kui_core::{Core, NodeSpec, Size, TextStyle};
+    /// # let mut core = Core::new();
+    /// # let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+    /// ui.with(NodeSpec::row().gap(8.0).pad(4.0), |ui| {
+    ///     ui.text("Name", TextStyle::new(14.0));
+    ///     ui.text("Ada", TextStyle::new(14.0));
+    /// });
+    /// # ui.finish();
+    /// ```
     pub fn with(&mut self, spec: NodeSpec, f: impl FnOnce(&mut Ui<'_>)) -> Key {
         let key = self.open(spec);
         f(self);
@@ -703,9 +768,20 @@ impl<'a> Ui<'a> {
         key
     }
 
-    /// A paragraph of plain text in one style. A text has no box of its
-    /// own — no padding, background, key or click; [`Self::text_in`] puts
-    /// it in one.
+    /// A paragraph of plain text in one style, wrapped at the width its
+    /// parent gives it. A text has no box of its own (no padding,
+    /// background, key or click); [`Self::text_in`] puts it in one.
+    ///
+    /// ```rust
+    /// # use kui_core::{Color, Core, NodeSpec, Size, TextStyle};
+    /// # let mut core = Core::new();
+    /// # let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+    /// ui.text("Plain, in the theme's foreground", TextStyle::new(14.0));
+    /// ui.text("Bold-ish, mono, red", TextStyle::new(13.0).mono().color(Color::hex(0xd43b3bff)));
+    /// let badge = ui.text_in(NodeSpec::row().pad_xy(6.0, 2.0).radius(4.0), "3", TextStyle::new(12.0));
+    /// # let _ = badge;
+    /// # ui.finish();
+    /// ```
     pub fn text(&mut self, content: &str, style: TextStyle) {
         self.core.text_node(content, style);
     }
@@ -751,8 +827,8 @@ impl<'a> Ui<'a> {
         key
     }
 
-    /// A cell grid — a terminal's screen — as one node; see
-    /// `crate::cells` (backlog C20). The spec is the node's own.
+    /// A cell grid (a terminal's screen) as one node; see
+    /// [`crate::cells`]. The spec is the node's own.
     pub fn cells(&mut self, grid: &crate::cells::CellGrid<'_>, spec: NodeSpec) {
         self.core.cells(grid, spec);
     }
@@ -793,8 +869,8 @@ impl<'a> Ui<'a> {
     /// from. It has no intrinsic size, so give it one.
     ///
     /// `frag` is the handle, or `handle.with_image(img)` for a function
-    /// that reads a registered image through `kui_sample(uv)` — a
-    /// waveform, a heatmap, an image effect (ADR 0025, decision 7).
+    /// that reads a registered image through `kui_sample(uv)`: a
+    /// waveform, a heatmap, an image effect.
     pub fn fragment(
         &mut self,
         frag: impl Into<crate::fragment::FragmentRef>,
@@ -915,7 +991,7 @@ impl<'a> Ui<'a> {
 
     /// A filled polygon through `points` in the parent's box space, the
     /// fill in `spec`'s `bg`; see `Core::polygon_node` for what it is and
-    /// is not (ADR 0025, decision 6).
+    /// is not.
     pub fn polygon(&mut self, points: &[Vec2], spec: NodeSpec) {
         self.core.polygon_node(points, spec);
     }
@@ -1022,9 +1098,9 @@ impl<'a> Ui<'a> {
         self.core.request_focus_step(false);
     }
 
-    /// Enters a focus region — the node `key` names, declared
-    /// `focus_region` — or the main ring for `None`
-    /// (`docs/adr/0022-focus-regions.md`): focus lands on what that ring
+    /// Enters a focus region (the node `key` names, declared
+    /// `focus_region`), or the main ring for `None`: focus lands on what
+    /// that ring
     /// last held if the node is still there, else its `initial_focus`,
     /// else its first stop, and shows. Deferred to `finish` like
     /// [`Ui::focus_next`], so a view may name the region it is declaring
@@ -1042,6 +1118,8 @@ impl<'a> Ui<'a> {
         self.core.region()
     }
 
+    /// An editor's current text, by its key; `None` for a key no editor
+    /// holds.
     pub fn edit_text(&self, key: Key) -> Option<String> {
         self.core.edit_text(key)
     }
@@ -1054,8 +1132,8 @@ impl<'a> Ui<'a> {
     }
 
     /// The same by the label the view declares, for a caller with no key
-    /// yet — an `update` opening a field the editor has not fired an
-    /// event from (`Core::set_edit_text_by_label`, backlog F32).
+    /// yet: an `update` opening a field the editor has not fired an
+    /// event from (`Core::set_edit_text_by_label`).
     pub fn set_edit_text_by_label(&mut self, label: &str, text: &str) -> bool {
         self.core.set_edit_text_by_label(label, text)
     }
@@ -1065,10 +1143,9 @@ impl<'a> Ui<'a> {
     /// a finished tree.
     ///
     /// A view runs every frame, so a call made from here needs a guard the
-    /// app clears — the core reports the unguarded case as
+    /// app clears; the core reports the unguarded case as
     /// `announcement-repeated`. A region whose message is on screen is the
-    /// `live` prop instead
-    /// (`docs/adr/0008-live-regions-and-announcements.md`).
+    /// `live` prop instead.
     pub fn announce(&mut self, text: &str, live: crate::access::Live) {
         self.core.announce(text, live);
     }
@@ -1083,10 +1160,10 @@ impl<'a> Ui<'a> {
         self.core.reveal(key);
     }
 
-    /// The handle for an installed or loaded font family by name — what
-    /// `family = "Name"` resolves to in the declarative bindings (ADR
-    /// 0037) — so a Rust view names a face without reaching for the core.
-    /// `None` when no face matches. Idempotent.
+    /// The handle for an installed or loaded font family by name (what
+    /// `family = "Name"` resolves to in the declarative bindings), so a
+    /// Rust view names a face without reaching for the core. `None` when
+    /// no face matches. Idempotent.
     pub fn system_font(&mut self, name: &str) -> Option<crate::resources::FontId> {
         self.core.add_system_font(name)
     }
@@ -1120,10 +1197,9 @@ impl<'a> Ui<'a> {
     }
 
     /// Moves a container's scroll state by the content that moved under
-    /// it — `drawn` for the drawn place and an eased leg's start, `target`
-    /// for the offset — with no ease asked or ended: a variable-height
-    /// list's height correction (RG18), which the Node and Lua ports ask
-    /// for through their own door (backlog C46). See `Core::shift_scroll`.
+    /// it (`drawn` for the drawn place and an eased leg's start, `target`
+    /// for the offset) with no ease asked or ended: a variable-height
+    /// list's height correction. See `Core::shift_scroll`.
     pub fn shift_scroll(&mut self, key: Key, drawn: Vec2, target: Vec2) {
         self.core.shift_scroll(key, drawn, target);
     }
@@ -1139,7 +1215,7 @@ impl<'a> Ui<'a> {
     }
 
     /// The rect the last frame laid an `on_layout` node out at; see
-    /// `Core::layout_of` (backlog C26 step 2).
+    /// `Core::layout_of`.
     pub fn layout_of(&self, key: Key) -> Option<Rect> {
         self.core.layout_of(key)
     }
@@ -1183,17 +1259,17 @@ impl<'a> Ui<'a> {
     /// begun with a filler lets it finish first: the `"root"` fill, unless
     /// the view declared it, and the `unknown-slot` check. An open context
     /// menu is drawn after both, which is what makes it the frame's modal
-    /// scope and its topmost float (ADR 0017, decision 5).
+    /// scope and its topmost float.
     pub fn finish(self) {
         let Ui { core, filler } = self;
         // Not in the devtools' own window: nothing the host or an
-        // extension declares there is built (ADR 0024, decision 6).
+        // extension declares there is built.
         if let Some(filler) = filler {
             if !core.devtools_window() {
                 // A declared tab's extension fill first — a layer
                 // anchored to a body the panel builds below, so the
                 // filler's own `unknown-slot` check sees the slot
-                // declared (ADR 0032, decision 5) — then the root fills.
+                // declared — then the root fills.
                 core.devtools_fill_mount(filler);
                 filler.finish(&mut Ui::new(core));
             }

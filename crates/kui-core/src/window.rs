@@ -1,29 +1,50 @@
-//! Windows as data. A node can declare a chrome role (drag handle,
-//! close/minimize/maximize button); interacting with it produces
-//! [`WindowCommand`]s that the frame driver drains and applies to the real
-//! window. A frame can declare that a *window exists* (`Core::declare_window`,
-//! `docs/adr/0004-multi-window.md`): the core diffs the declared set and the
-//! same queue carries the [`WindowCommand::Open`] / [`WindowCommand::Close`]
-//! the diff produces. A declared window is a [`WindowKind::Normal`] one or
-//! a [`WindowKind::Popup`] — borderless, owned, anchored, non-activating —
-//! and a driver reports a popup dismissed the way it reports one closed
-//! ([`DismissReason`]). Host window facts flow back in through [`WindowEnv`]
-//! on `Env`. The core never touches a window — headless drivers just never
-//! drain.
+//! Windows as data: what a frame declares about the OS windows it wants,
+//! and the commands a frame driver applies to the real ones.
+//!
+//! You meet this module in three places. [`WindowConfig`] is what
+//! `Ui::window` / `Core::declare_window` take to say that a named window
+//! exists this frame; `NodeSpec::window_drag` and `NodeSpec::window_button`
+//! make a node part of the window chrome; and a driver drains the resulting
+//! [`WindowCommand`]s with `Core::take_window_commands` and applies them.
+//! The core never touches a window itself, so a headless driver simply
+//! never drains. Facts about the host window flow back in through
+//! [`WindowEnv`] on `Env`.
+//!
+//! ```rust
+//! use kui_core::{Rect, WindowCommand, WindowConfig, WindowId, WindowKind};
+//!
+//! // A second window, opened on the first frame that declares it.
+//! let palette = WindowConfig::sized(320.0, 480.0);
+//! assert_eq!(palette.kind, WindowKind::Normal);
+//!
+//! // A dropdown surface anchored to a field's rect; it does not take focus.
+//! let field = Rect::new(20.0, 40.0, 200.0, 24.0);
+//! let menu = WindowConfig::popup(field, 200.0, 160.0);
+//! assert_eq!(menu.kind, WindowKind::Popup);
+//! assert!(!menu.activates);
+//!
+//! // What a driver does with the commands it drains.
+//! fn apply(cmd: WindowCommand) {
+//!     match cmd {
+//!         WindowCommand::Open { id, config, .. } => println!("open {id:?} at {:?}", config.size),
+//!         WindowCommand::Close(WindowId::MAIN) => println!("exit"),
+//!         WindowCommand::Close(id) => println!("close {id:?}"),
+//!         WindowCommand::SetSize { window, size } => println!("resize {window:?} to {size:?}"),
+//!         other => println!("{}", other.kind_name()),
+//!     }
+//! }
+//! apply(WindowCommand::Close(WindowId::MAIN));
+//! ```
 
 use crate::geom::{Rect, Size};
 use crate::tree::OriginId;
 
-/// Which OS window something belongs to: an opaque integer the core's
-/// declaration diff assigns when it opens a window, not a handle an app
-/// builds. [`WindowId::MAIN`] is 0 — the window the launcher opens, which is
-/// always live. Apps name windows with a stable string
-/// (`Core::declare_window`); the id is how the driver and the events refer
-/// to the surface that string opened.
-///
-/// It crosses every transport as a plain integer — `UiEvent::window` in
-/// Rust, `window` on a JSX `UiEvent`, `KuiEvent.window` in C — so nothing
-/// has to model window identity twice.
+/// Which OS window something belongs to: an opaque integer the core
+/// assigns when it opens a window, not a handle an app builds.
+/// [`WindowId::MAIN`] is 0, the window the launcher opens, which is always
+/// live. Apps name windows with a stable string (`Core::declare_window`);
+/// the id is how the driver and `UiEvent::window` refer to the surface
+/// that string opened.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct WindowId(pub u32);
 
@@ -64,8 +85,7 @@ impl WindowButton {
     }
 }
 
-/// What kind of OS surface a declared window is
-/// (`docs/adr/0004-multi-window.md`, decision 9).
+/// What kind of OS surface a declared window is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WindowKind {
     /// A regular top-level window with the launcher's chrome.
@@ -81,13 +101,11 @@ pub enum WindowKind {
     /// `env.focused` stays true, so the field still draws focused while
     /// the arrow keys walk the list.
     ///
-    /// Reach for it only for the three placements a float cannot make: a
-    /// list taller than the window, a menu near an edge with nowhere
-    /// in-window to go, and a panel the user wants beside the app.
-    /// Everything else is cheaper as a float — see
-    /// [`crate::spec::FloatConfig::fit`] — because a float costs one tree
-    /// and one draw call where this costs an OS surface, a swapchain, a
-    /// `Core` and an accessibility adapter.
+    /// Reach for it only for the placements a float cannot make: a list
+    /// taller than the window, a menu near an edge with nowhere in-window
+    /// to go, a panel beside the app. Everything else is cheaper as a
+    /// float ([`crate::spec::FloatConfig::fit`]): a float costs one tree
+    /// and one draw call, a popup an OS surface, a swapchain and a `Core`.
     Popup,
 }
 
@@ -110,16 +128,26 @@ impl WindowKind {
     }
 }
 
-/// What a frame says about a window it declares (`Core::declare_window`).
-/// Plain data by ADR 0004 decision 5 — no title, no callbacks — so a
-/// `WindowCommand` stays `Copy` and equality is derived, which is how the
-/// diff tells two declarations of one name apart.
+/// What a frame says about a window it declares (`Ui::window`,
+/// `Core::declare_window`). Plain data, no title and no callbacks, so a
+/// [`WindowCommand`] stays `Copy` and two declarations of one name compare
+/// by value.
 ///
 /// **Read on the opening edge only.** The config that reaches
 /// [`WindowCommand::Open`] is the one the declaration carried on the frame
-/// it started; a live window's config is never looked at again, so
-/// re-declaring `"palette"` at a new size does not resize it. The user owns
-/// a window's geometry once it exists.
+/// it started; re-declaring `"palette"` at a new size does not resize it,
+/// because the user owns a window's geometry once it exists. Resize with
+/// `Core::set_window_size` instead.
+///
+/// ```rust
+/// use kui_core::{Rect, WindowConfig, WindowKind};
+///
+/// let normal = WindowConfig::sized(640.0, 400.0);
+/// let popup = WindowConfig::popup(Rect::new(0.0, 0.0, 120.0, 24.0), 120.0, 200.0);
+/// assert!(normal.activates && !popup.activates);
+/// assert_eq!(WindowConfig::default().size, WindowConfig::DEFAULT_SIZE);
+/// assert_eq!(WindowKind::from_name("popup"), Some(WindowKind::Popup));
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WindowConfig {
     pub kind: WindowKind,
@@ -173,10 +201,9 @@ impl WindowConfig {
     /// coordinates, that an `onLayout` handler reported for the field or
     /// button the menu belongs to.
     ///
-    /// Non-activating, which is the default a popup wants and the reason
-    /// this is a constructor rather than a `kind` you set: a popup that
-    /// takes OS focus blurs whatever opened it. Set `activates` back to
-    /// true afterwards for the rare surface that should steal focus.
+    /// Non-activating, because a popup that takes OS focus blurs whatever
+    /// opened it. Set `activates` back to true afterwards for the rare
+    /// surface that should take focus.
     pub fn popup(anchor: Rect, w: f32, h: f32) -> Self {
         Self {
             size: Size::new(w, h),
@@ -186,9 +213,8 @@ impl WindowConfig {
     }
 
     /// The defaults for a window of `kind`: the one decision the kind
-    /// makes on its own is whether opening it takes OS focus — a popup
-    /// that did would blur the field that opened it, so it does not unless
-    /// asked. Every binding's window entry starts from this.
+    /// makes on its own is whether opening it takes OS focus (a normal
+    /// window does, a popup does not).
     pub fn of_kind(kind: WindowKind) -> Self {
         Self {
             kind,
@@ -201,10 +227,8 @@ impl WindowConfig {
     /// with `name`, `kind` (`"normal"` | `"popup"`), `width` and `height`
     /// (both and positive, or the default size), `activates`, and the `anchor` rect
     /// (`{x, y, w, h}`) a popup is placed against. Returns the name with
-    /// the config. An entry is plain data with a fixed shape, not a node's
-    /// loose prop bag, so a value that does nothing is refused rather than
-    /// dropped: a kind kui does not have would otherwise open a normal
-    /// window and read as the popup having worked.
+    /// the config. An unknown `kind` is an error rather than a normal
+    /// window, so a typo cannot read as a popup having worked.
     pub fn from_value(v: &crate::value::Value) -> Result<(String, Self), String> {
         use crate::value::Value;
         match v {
@@ -230,8 +254,7 @@ impl WindowConfig {
                 let mut cfg = Self::of_kind(kind);
                 let num = |key: &str| v.get(key).and_then(Value::as_float).map(|n| n as f32);
                 // Both, and positive: a zero is the default size, as C's
-                // `kui_window_declare` reads it and the runner opens it —
-                // Node's own decoder said so and this did not (AR43).
+                // `kui_window_declare` reads it and the runner opens it.
                 if let (Some(w), Some(h)) = (num("width"), num("height"))
                     && w > 0.0
                     && h > 0.0
@@ -266,18 +289,16 @@ impl Default for WindowConfig {
     }
 }
 
-/// A window-level intent for the frame driver, drained via
+/// A window-level intent for the frame driver, drained with
 /// `Core::take_window_commands` after each input dispatch and each frame.
-/// Three things produce one: input on a chrome node, the declared set's
-/// diff, and an app asking directly (`Core::set_window_size`,
+/// Three things produce one: input on a chrome node, the diff of the
+/// declared window set, and an app asking directly (`Core::set_window_size`,
 /// `Core::focus_window`, `Core::push_window_command`). A headless driver
-/// never drains, which is the whole of "the core never touches a window".
+/// never drains.
 ///
-/// Every variant says which window it is about, and every variant is
-/// `Copy` and pointer-free — an `Open` carries no title (the new window's
-/// own first frame declares one through `window_title`) and a `SetSize`
-/// carries two floats — so nothing borrowed ever enters a driver's drain
-/// loop.
+/// Every variant says which window it is about ([`WindowCommand::window`])
+/// and is `Copy`: an `Open` carries no title (the new window's first frame
+/// declares one through `window_title`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WindowCommand {
     /// Begin an interactive OS move (the press landed on a `Drag` node).
@@ -302,13 +323,11 @@ pub enum WindowCommand {
         config: WindowConfig,
     },
     /// Resize `window` to `size` (logical px), asked for by the app
-    /// (`Core::set_window_size`). A command and not part of a declaration,
-    /// because the user owns a window's size once it exists — a declared
-    /// size would fight every drag of the window's edge, which is why
-    /// `WindowConfig::size` is read on the opening edge only. The OS may
-    /// answer with a different size (a minimum, a tiling manager); the
-    /// frame that follows posts a `resize` event with whatever it actually
-    /// became, the way every resize already does.
+    /// (`Core::set_window_size`). A command rather than part of the
+    /// declaration, because the user owns a window's size once it exists.
+    /// The OS may answer with a different size (a minimum, a tiling
+    /// manager); the frame that follows posts a `resize` event with
+    /// whatever it actually became.
     SetSize {
         window: WindowId,
         size: Size,
@@ -317,10 +336,9 @@ pub enum WindowCommand {
     /// every focus request an app makes of a window manager.
     Focus(WindowId),
     /// Draw `window` again: something another window's frame or input
-    /// changed is shown there (`docs/adr/0024`, decision 7 — the devtools
-    /// window's row hover outlines a node in the main window, and an event
-    /// the main window logs moves the stream in the devtools window). A
-    /// driver that redraws every window on every event may ignore it.
+    /// changed is shown there (the devtools window's row hover outlines a
+    /// node in the main window). A driver that redraws every window on
+    /// every event may ignore it.
     Redraw(WindowId),
 }
 
@@ -384,16 +402,15 @@ impl WindowCommand {
 }
 
 /// Why a window was asked to go away (`Core::dismiss_window`): the same
-/// two reasons ADR 0003 gave a modal node, one level up.
+/// two reasons a `modal` node has, one level up.
 ///
 /// A [`WindowKind::Popup`] is dismissed by the driver, because both facts
-/// are the OS's and not the frame's: a press outside a window lands in
-/// another surface, and Escape reaches a non-activating popup only through
-/// whichever window the OS gave the keyboard to. What the core does with
-/// either is what ADR 0003 decided — raise `{kind:"dismiss", reason}` and
-/// close nothing. The app stops declaring the window on the frame it
-/// decides to, so a dropdown that graduates from a `modal` float to a
-/// popup window changes its declaration and not its handler.
+/// belong to the OS: a press outside a window lands in another surface,
+/// and Escape reaches a non-activating popup only through whichever window
+/// has the keyboard. The core raises `{kind:"dismiss", reason}` and closes
+/// nothing; the app stops declaring the window on the frame it decides to,
+/// so a dropdown that moves from a `modal` float to a popup window changes
+/// its declaration and not its handler.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DismissReason {
     /// A press landed outside the window.
@@ -431,13 +448,12 @@ pub struct WindowEnv {
     pub maximized: bool,
     pub fullscreen: bool,
     /// The window is above every other app's: the level the driver set
-    /// after the frame asked (`Core::set_always_on_top`, backlog C30), on
-    /// a platform that has one — where winit has no call for it (Wayland)
-    /// a driver reports false however often the app asks, which is what
-    /// a pin button draws its state from. It is the driver's record of
-    /// what it set and not a query: winit has no level getter, so a level
-    /// the OS dropped afterwards (a fullscreen space, a tiling manager)
-    /// is not seen here (backlog AR49 names the gap).
+    /// after the frame asked (`Core::set_always_on_top`), on a platform
+    /// that has one. On Wayland there is no such call, so a driver reports
+    /// false however often the app asks, which is why a pin button should
+    /// draw its state from this field. It is the driver's record of what
+    /// it set, not a query: a level the OS dropped afterwards (a
+    /// fullscreen space, a tiling manager) is not seen here.
     pub always_on_top: bool,
     /// Area (logical px, window coords) covered by controls the OS still
     /// draws over our content — macOS traffic lights under custom chrome.

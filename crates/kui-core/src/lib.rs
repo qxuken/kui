@@ -1,10 +1,101 @@
-//! kui-core: the data-driven contract every frontend and backend binds to.
+//! The headless model behind kui: a per-frame flat tree, flex layout, text shaping, events as data and a quad display list.
 //!
-//! - Flat per-frame tree ([`tree::Tree`]) built through [`ui::Ui`]
-//! - Clay-style flex solver ([`layout`])
-//! - Session-owned text stack: shaping, wrapping, caching, atlas ([`text`], [`atlas`], [`session`])
-//! - Events as data ([`input`], [`value::Value`]) routed by origin
-//! - Renderer boundary: a flat quad list ([`display::DisplayList`])
+//! A [`Core`] owns one window's worth of state. Each frame
+//! the app rebuilds a flat tree of [`NodeSpec`]s through a
+//! [`Ui`], the core runs a clay-style flex layout over it, shapes
+//! the text, and emits a [`DisplayList`] of quads for
+//! a renderer to draw. Input arrives as [`InputEvent`]s
+//! and comes back out as [`UiEvent`]s whose payloads are
+//! plain-data [`Value`]s. There is no window, no GPU and no
+//! clock in this crate: a driver supplies the viewport, the input, the
+//! time and the renderer.
+//!
+//! Most Rust apps do not depend on `kui-core` directly. They use
+//! [`kui-native`](https://crates.io/crates/kui-native), the windowed runner,
+//! which re-exports all of this crate and pairs it with
+//! [`kui-wgpu`](https://crates.io/crates/kui-wgpu), the renderer. Reach for
+//! `kui-core` on its own when you are writing a custom runner, a binding to
+//! another language (`kui-lua`, `kui-ffi` and `kui-node` are built on it),
+//! or headless tests that build frames and feed input without a window.
+//!
+//! # Quick start
+//!
+//! A frame built and clicked with no window at all:
+//!
+//! ```rust
+//! use kui_core::{Core, InputEvent, NodeSpec, Size, TextStyle, widgets};
+//!
+//! let mut core = Core::new();
+//! core.set_inspect(true); // keep a readable snapshot of each finished frame
+//!
+//! // One frame: begin, declare the tree, finish (layout and emission).
+//! let mut ui = core.frame(Size::new(320.0, 200.0), 1.0);
+//! ui.configure_root(NodeSpec::column().fill().pad(16.0).gap(8.0));
+//! ui.text("Hello from kui-core", TextStyle::new(16.0));
+//! widgets::button(&mut ui, "Save", "save");
+//! ui.finish();
+//!
+//! // What a renderer draws: a flat list of quads.
+//! let (list, _atlas) = core.output();
+//! assert!(!list.quads.is_empty());
+//!
+//! // Input goes in as `InputEvent`s and comes out as `UiEvent`s carrying
+//! // the payload the view declared.
+//! let button = core
+//!     .nodes()
+//!     .into_iter()
+//!     .find(|n| n.label.as_deref() == Some("Save"))
+//!     .expect("the button was laid out");
+//! core.handle_input(InputEvent::CursorMoved(button.rect.center()));
+//! core.handle_input(InputEvent::mouse_down(1));
+//! let events = core.handle_input(InputEvent::mouse_up());
+//! let click = events
+//!     .iter()
+//!     .find(|e| e.payload.as_str() == Some("save"))
+//!     .expect("the click reached the button");
+//! assert_eq!(click.key, button.key);
+//! ```
+//!
+//! A real driver repeats the frame whenever input arrives or the core asks
+//! for one, hands the display list to a renderer, and calls
+//! [`Core::set_time`](runtime::Core::set_time) before each frame so
+//! transitions can run.
+//!
+//! # Where to look
+//!
+//! - [`ui::Ui`]: the frame builder. `open`/`close`, `with`, `leaf`, `text`,
+//!   and the readbacks a view needs (`is_hovered`, `focused`, `theme`).
+//! - [`runtime::Core`]: the per-window state. `frame`, `handle_input`,
+//!   `output`, `set_time`, fonts and images, focus and scrolling.
+//! - [`spec::NodeSpec`] and [`spec::TextStyle`]: everything a node and a
+//!   text declare, as plain data with a builder.
+//! - [`layout`]: the flex solver, and what each sizing means.
+//! - [`text`]: shaping, wrapping, measuring and the glyph atlas.
+//! - [`input`] and [`input::UiEvent`]: what goes in and what comes out;
+//!   [`event`] has typed readings of the core's own event payloads.
+//! - [`value::Value`]: the payload type, and [`message`] for typed messages
+//!   over it.
+//! - [`display::DisplayList`]: the renderer boundary.
+//! - [`widgets`]: buttons, toggles, inputs, menus and virtual lists built
+//!   from the primitives.
+//! - [`theme`], [`metrics`] and [`tokens`]: the colours, sizes and named
+//!   values a view paints with.
+//! - [`session`]: fonts, images and sounds shared between windows.
+//!
+//! # Features
+//!
+//! - `devtools` (default): the inspector panel the core can draw into any
+//!   app's frame (`Core::set_devtools`, or `KUI_DEVTOOLS=1`).
+//! - `derive`: re-exports `#[derive(Message)]` from `kui-derive`, a typed
+//!   Rust enum to and from the payload map.
+//! - `conformance`: the scene corpus and the headless test driver
+//!   (`testing`). Test infrastructure, off in every shipped binary.
+//!
+//! # Links
+//!
+//! - The book: <https://kui-book.qxuken.dev>
+//! - The repository: <https://github.com/qxuken/kui> (design records live
+//!   under `docs/adr` there)
 
 pub mod access;
 pub mod anim;
@@ -97,10 +188,10 @@ pub use input::{
 };
 pub use key::Key;
 pub use keyframes::Keyframe;
-/// `#[derive(Message)]` (backlog C50), with the `derive` feature; `kui-native`
-/// turns it on. From a crate that depends on kui-core alone, say
-/// `#[message(crate = "kui_core")]` — the generated code reaches `::kui`
-/// unless told otherwise.
+/// `#[derive(Message)]`, with the `derive` feature (`kui-native` turns it
+/// on). The generated code reaches `::kui_native` unless told otherwise,
+/// so a crate that depends on kui-core alone adds
+/// `#[message(crate = "kui_core")]` to the enum.
 #[cfg(feature = "derive")]
 pub use kui_derive::Message;
 pub use line::{LineId, LineStore, Stroke};

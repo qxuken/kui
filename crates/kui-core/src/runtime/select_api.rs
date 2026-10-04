@@ -1,6 +1,5 @@
 //! `Core`'s selection surface: what a host, a binding or the pointer
-//! model does to the window's selection, and what it reads back
-//! (`docs/adr/0017-selection-as-a-scope.md`).
+//! model does to the window's selection, and what it reads back.
 //!
 //! Every query here answers from the frame that finished while one is
 //! being built, the way `text_hit` and `caret_rect` do: a press is made
@@ -219,7 +218,7 @@ impl Core {
     ///
     /// Only what the grid *holds*: a selection whose ends reach into the
     /// scrollback copies the lines on screen, because the lines behind it
-    /// were never handed to the core (ADR 0017, decision 3, tier 3).
+    /// were never handed to the core.
     pub fn cell_selection_text(&self) -> Option<String> {
         let sel = self.cell_selection?;
         let id = self.cells_id_of_ref(sel.node)?;
@@ -263,7 +262,7 @@ impl Core {
     /// since changed is safe.
     ///
     /// Clears the focused editor's own selection: there is one selection
-    /// per window (ADR 0017, decision 1).
+    /// per window.
     pub fn set_selection(&mut self, sel: Selection) {
         self.selection = Some(sel);
         self.cell_selection = None;
@@ -405,7 +404,7 @@ impl Core {
     /// The selected text, assembled across every run the selection
     /// covers — including runs the frame built but never drew, which is
     /// what makes a selection that ran past the bottom of a scroller copy
-    /// what the reader dragged over (ADR 0017, tier 2).
+    /// what the reader dragged over.
     ///
     /// `None` with no selection; an empty string when the selection is
     /// empty or its ends no longer resolve.
@@ -456,8 +455,8 @@ impl Core {
     }
 
     /// The selection as HTML — the same text `selection_text` gives, with
-    /// the bold, the italic and the span colours it was declared with
-    /// (ADR 0017, decision 7). `None` with no text selection; a cells
+    /// the bold, the italic and the span colours it was declared with.
+    /// `None` with no text selection; a cells
     /// selection has no styling to carry and answers `None` too.
     ///
     /// Meant as the *second* clipboard flavour, beside the plain text and
@@ -545,7 +544,7 @@ impl Core {
     /// virtualised row) and the byte inside that node's own text. The
     /// directed pair, unlike [`Self::selection_range`]'s: what a test or
     /// a model that mirrors the selection reads, and what says whether a
-    /// Shift-press kept the anchor (ADR 0029). `None` with no text
+    /// Shift-press kept the anchor. `None` with no text
     /// selection; a grid's is `cell_selection`.
     pub fn selection_ends(&self) -> Option<(RangeEnd, RangeEnd)> {
         let sel = self.selection?;
@@ -675,7 +674,7 @@ impl Core {
     }
 
     /// Puts a secret on the system clipboard the way a password manager
-    /// does (backlog F84) — queued as `MenuAction::SetClipboardSecret`,
+    /// does — queued as `MenuAction::SetClipboardSecret`,
     /// which the runner writes marked concealed and transient, so a
     /// clipboard manager neither shows nor keeps it. What the marks are on
     /// each platform is on the action. The text alone: a secret has no
@@ -689,17 +688,16 @@ impl Core {
     /// `MenuAction::Paste` a menu's Paste produces. The host reads the
     /// clipboard and hands the text back as `InputEvent::Paste` (or a
     /// bare `InputEvent::Commit`), which reaches a focused editor as
-    /// typing and a focused sink as `{kind:"text", text, tag}` (backlog
-    /// C17), with `concealed: true` / `transient: true` beside the text
-    /// when the pasteboard marked it so (backlog F84) — so the app that asked
+    /// typing and a focused sink as `{kind:"text", text, tag}`, with
+    /// `concealed: true` / `transient: true` beside the text
+    /// when the pasteboard marked it so — so the app that asked
     /// inserts it the way it inserts a committed IME string, and never
     /// sees the clipboard any other way. The read stays on the driver's
     /// side, where the permission lives.
     ///
     /// One ask at a time: while a paste is outstanding — queued, or taken
     /// by the driver and not yet answered — a second ask is dropped, so a
-    /// view that asks on every frame until the answer lands asks once
-    /// (backlog AR34; both Rust examples carried this guard themselves).
+    /// view that asks on every frame until the answer lands asks once.
     /// The answer is the `Paste` (or `Commit`) the driver sends, an empty
     /// one when the clipboard held nothing, and [`Core::awaiting_paste`]
     /// reads the state.
@@ -713,7 +711,7 @@ impl Core {
         self.awaiting_paste
     }
 
-    /// Asks the host for a file dialog (backlog C51): an Open, a Save or
+    /// Asks the host for a file dialog: an Open, a Save or
     /// a folder picker, which the host shows as the platform's own. The
     /// answer is an event, `{kind:"files", paths, tag}` — the `drop`
     /// payload's shape, `paths` empty when the user cancelled — delivered
@@ -797,7 +795,7 @@ impl Core {
         true
     }
 
-    /// A keyboard's selection in a `selectable` scope (backlog AR28):
+    /// A keyboard's selection in a `selectable` scope:
     /// Shift with an arrow, Home or End on a focused node inside `scope`
     /// — the scope itself when it is focusable, a control inside it —
     /// moves the selection's focus the way the stock editor's Shift-
@@ -808,8 +806,8 @@ impl Core {
     /// focused label selects it whole. Returns whether the selection
     /// changed. Answered from the frame that finished, like a drag; the
     /// endpoints carry their virtual rows like every other selection, so
-    /// a copy past the built range asks the app as ADR 0017's tier 3
-    /// does. Up and Down are not motions here: a scope has no line
+    /// a copy past the built range asks the app for the text, as any
+    /// virtualised selection does. Up and Down are not motions here: a scope has no line
     /// geometry a caret could keep a column in.
     pub fn keyboard_select(&mut self, scope: Key, key: EditKey, mods: Mods) -> bool {
         let prev = self.building;
@@ -926,7 +924,7 @@ impl Core {
     /// This is what a double-click-and-drag does in every text UI, and
     /// what the stock `<edit>` gets for free from cosmic-text's
     /// `Selection::Word`; a `selectable` scope is the one that had to be
-    /// taught (ADR 0017).
+    /// taught.
     pub(crate) fn extend_selection_grained(
         &mut self,
         drag: crate::select::SelectDrag,
@@ -1024,12 +1022,12 @@ impl Core {
     /// Arms a drag-select at a press inside `scope`, with what the click
     /// count says it moves by (`Grain::of_clicks`) and the span the press
     /// itself took, which both ends of the drag round outwards to. A grid
-    /// selects in cells and a paragraph in bytes (ADR 0017, decision 4):
+    /// selects in cells and a paragraph in bytes:
     /// this is where the two are told apart, once, and the anchor carries
     /// the answer for the drag. In a grid, Alt makes it the rectangular
     /// selection every terminal has. With `extend` — a Shift-press in
     /// the scope the selection is in — the anchor is kept and the press
-    /// is the live end (ADR 0029, decision 3). Whether a drag was armed.
+    /// is the live end. Whether a drag was armed.
     pub(crate) fn arm_select_drag(
         &mut self,
         scope: Key,

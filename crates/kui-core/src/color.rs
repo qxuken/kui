@@ -1,3 +1,22 @@
+//! [`Color`]: straight-alpha sRGB with `f32` channels, plus the small
+//! amount of colour arithmetic a palette needs (mixing, luminance, WCAG
+//! contrast).
+
+/// A straight-alpha sRGB colour with `f32` channels in `0.0..=1.0`.
+///
+/// Build one from bytes, a hex literal or floats, and derive the rest of a
+/// palette with [`Color::mix`] and [`Color::with_alpha`]:
+///
+/// ```rust
+/// use kui_core::Color;
+///
+/// let brand = Color::hex(0x3b5bd4ff);
+/// assert_eq!(brand, Color::rgb8(0x3b, 0x5b, 0xd4));
+/// let hover = brand.mix(Color::WHITE, 0.1); // a little lighter
+/// let wash = brand.with_alpha(0.25);
+/// assert!(hover.r > brand.r && wash.a == 0.25);
+/// assert_eq!(brand.to_hex(), 0x3b5bd4ff);
+/// ```
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Color {
@@ -44,14 +63,14 @@ impl Color {
         }
     }
 
-    /// 0xRRGGBBAA
-    /// The `0xRRGGBBAA` this colour is, rounded to eight bits a channel:
-    /// what `hex` reads.
+    /// This colour as `0xRRGGBBAA`, rounded to eight bits a channel: what
+    /// [`Color::hex`] reads.
     pub fn to_hex(&self) -> u32 {
         let ch = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
         (ch(self.r) << 24) | (ch(self.g) << 16) | (ch(self.b) << 8) | ch(self.a)
     }
 
+    /// A colour from `0xRRGGBBAA`.
     pub fn hex(v: u32) -> Self {
         Self::rgba8((v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8, v as u8)
     }
@@ -65,15 +84,6 @@ impl Color {
         self.a > 0.0
     }
 
-    /// This colour moved `t` of the way toward `other`, per channel, with
-    /// `self`'s alpha kept — `mix(WHITE, 0.1)` is "a little lighter" and
-    /// `mix(BLACK, 0.1)` "a little darker", which is how a palette is
-    /// built from one colour (`widgets::button_palette`).
-    ///
-    /// Straight sRGB, not a perceptual space: it is the interpolation the
-    /// animation slots already do channel by channel, and the one a view
-    /// gets if it lerps two colours itself. `t` outside 0..=1 extrapolates
-    /// rather than clamping, so a caller can overshoot on purpose.
     /// The colour as a tween's four lanes.
     #[inline]
     pub(crate) fn lanes(self) -> [f32; 4] {
@@ -99,6 +109,14 @@ impl Color {
         }))
     }
 
+    /// This colour moved `t` of the way toward `other`, per channel, with
+    /// `self`'s alpha kept: `mix(WHITE, 0.1)` is "a little lighter" and
+    /// `mix(BLACK, 0.1)` "a little darker", which is how a palette is
+    /// built from one colour (`widgets::button_palette`).
+    ///
+    /// Straight sRGB, not a perceptual space, and the same interpolation a
+    /// colour transition does. `t` outside `0..=1` extrapolates rather than
+    /// clamping, so a caller can overshoot on purpose.
     pub fn mix(self, other: Color, t: f32) -> Color {
         Color {
             r: self.r + (other.r - self.r) * t,

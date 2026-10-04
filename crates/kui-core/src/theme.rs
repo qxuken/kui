@@ -1,29 +1,35 @@
-//! The named colours a view paints with, derived from what the OS said —
-//! `docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`.
+//! [`Theme`]: the named colours a view and the stock widgets paint with,
+//! derived from the OS's appearance and accent.
 //!
-//! [`Appearance`] and the OS accent have been in [`crate::env::SystemEnv`]
-//! since they were plumbed, and `env`'s own doc is firm that the core acts
-//! on neither: "a dark appearance does not repaint anything: the view
-//! decides, because only it knows which of its colours is the background".
-//! That is still true. What was missing is the other half — a view that
-//! *wants* to decide had nothing to decide *with*, so every one of them
-//! wrote the same two dozen hex literals again, and the stock widgets in
-//! this crate wrote them a third time. A [`Theme`] is that missing half:
-//! plain data, derived from the two facts, and read rather than obeyed.
+//! The core never repaints an app's own colours when the OS goes dark; the
+//! view decides, because only it knows which of its colours is the
+//! background. A `Theme` is what it decides *with*: plain `Copy` data with
+//! a role per colour (`bg`, `surface`, `fg`, `muted`, `accent`, ...), read
+//! off `ui.theme()` each frame.
+//!
+//! ```rust
+//! use kui_core::{Appearance, Color, NodeSpec, Theme, ThemeSource};
+//!
+//! // What the core derives by default: the OS's base and accent.
+//! let t = Theme::derive(Appearance::Light, Some(Color::hex(0xd45b3bff)));
+//! assert!(!t.is_dark());
+//! let card = NodeSpec::column().bg(t.surface).border(1.0, t.border).radius(8.0);
+//! let hint = t.muted; // secondary text that reads on `surface`
+//!
+//! // An app with a brand colour that should still follow light/dark:
+//! let source = ThemeSource::DerivedWithAccent(Color::hex(0xd45b3bff));
+//! // ...handed to `Core::set_theme_source`. A fully pinned palette is
+//! // `ThemeSource::Pinned(Theme::dark().with_accent(..))`.
+//! # let _ = (card, hint, source);
+//! ```
 //!
 //! Three ways to have one, which is [`ThemeSource`]:
 //!
-//! - **Derived** (the default): the OS's appearance and the OS's accent.
-//!   A host that reports neither gets exactly what kui painted before this
-//!   module existed, which is what makes it safe to be the default.
+//! - **Derived** (the default): the OS's appearance and the OS's accent. A
+//!   host that reports neither gets the dark base with kui's blue.
 //! - **Derived with an accent**: the OS's light/dark, the app's brand
-//!   colour. What most apps with a colour of their own actually want.
-//! - **Pinned**: a [`Theme`] the app built, followed by nothing.
-//!
-//! The roles are the ones the codebase had already voted for: three
-//! examples arrived independently at `bg` / `panel` / `border` / `fg` /
-//! `dim` / `faint` / `accent`, with the same values. This is that set,
-//! spelled once.
+//!   colour. What most apps with a colour of their own want.
+//! - **Pinned**: a [`Theme`] the app built, following nothing.
 
 use crate::color::Color;
 use crate::env::{Appearance, SystemEnv};
@@ -93,7 +99,7 @@ pub struct Theme {
     /// What a text selection is painted under. Translucent: the glyphs
     /// under it keep their own colour.
     pub selection: Color,
-    /// The default keyboard focus ring (ADR 0002).
+    /// The default keyboard focus ring.
     pub focus_ring: Color,
 
     // -- neutral interaction -------------------------------------------
@@ -169,15 +175,11 @@ impl Theme {
         Self::derive(sys.appearance, sys.accent)
     }
 
-    /// The dark base. Every value here is one the crate already painted:
-    /// the muted grey 16 files were writing out, the field background the
-    /// stock input had, the ring ADR 0002 nailed down.
-    ///
-    /// The accent family is hand-picked rather than run through
-    /// [`with_accent`](Theme::with_accent), for the reason
-    /// [`crate::widgets::button_spec`] gives for its own trio: so that a
-    /// host which reports no accent paints exactly what it always did,
-    /// down to the byte. Hand an accent in and the arithmetic takes over.
+    /// The dark base, with kui's own accent. The accent family is
+    /// hand-picked rather than run through
+    /// [`with_accent`](Theme::with_accent), so that a host which reports no
+    /// accent paints exactly what kui always did. Hand an accent in and the
+    /// arithmetic takes over.
     pub fn dark() -> Self {
         Self {
             appearance: Appearance::Dark,
@@ -278,7 +280,7 @@ impl Theme {
     /// A focus ring in `accent` that can actually be *seen* on this
     /// theme's `bg`: the accent moved toward the front of the base —
     /// white on a dark one, black on a light one — until it clears the
-    /// 3:1 ADR 0002 asks of a focus indicator.
+    /// 3:1 a focus indicator needs.
     ///
     /// Each base's habit is where it starts: the dark one lifts a
     /// saturated ring that would otherwise sink into the page, and the
@@ -294,7 +296,7 @@ impl Theme {
 
     /// `accent` as ink on `surface` — strokes, borders, short labels —
     /// held to 3:1, the UI-edge grade, and painted verbatim when it
-    /// already reads. The devtools panel's accent (F50); the same
+    /// already reads. The devtools panel's accent; the same
     /// promise as [`ring_for`](Theme::ring_for) with a different start,
     /// since a fill that reads has no reason to move.
     pub fn ink_for(self, accent: Color) -> Color {
@@ -413,7 +415,7 @@ mod tests {
             }
             let label = t.on_accent.contrast(t.accent);
             assert!(label >= 4.5, "{name}: the button label is {label:.2}:1");
-            // A ring nobody can see is not a focus indicator (ADR 0002).
+            // A ring nobody can see is not a focus indicator.
             let ring = t.focus_ring.contrast(t.bg);
             assert!(ring >= 3.0, "{name}: the focus ring is {ring:.2}:1");
             for (sn, status) in [

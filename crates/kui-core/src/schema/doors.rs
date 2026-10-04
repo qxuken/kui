@@ -1,31 +1,22 @@
-//! The verb surface, one row per verb across the four bindings (backlog
-//! B1a, built on the condition ADR 0020 set: "the next time a verb reaches
-//! one binding and not the others, build the table, and put the n/a
-//! reasons in it"). The second architecture review found thirteen such
-//! verbs, none with a stated reason, so this is the table.
+//! The verb table: one row per call an app or host makes (register a
+//! resource, move focus, open a menu, size a window) with its spelling in
+//! Rust, C, Node and Lua, or the reason a binding has none.
 //!
-//! A *verb* is a call an app or a host makes on its context — a resource
-//! registered, a focus moved, a selection read, a menu opened, a window
-//! sized — as against the three surfaces pinned elsewhere: the elements
-//! (`ELEMENTS`, one constructor per binding), the props (`PROPS`) and the
-//! readings (`ENV_FIELDS`, `THEME_ROLES`, `METRIC_ROLES`). The rows are
-//! named by their Rust spelling and grouped the way the audit grouped
-//! them; a cell is the binding's spelling, the same thing in another form
-//! (a prop, a reading, a callback, a constructor option), or a reason
-//! there is none — and the reason is the point. ADR 0020 declined the
-//! table because "the verbs are not one surface": Lua is a guest with a
-//! view-time env, Node's `Ctx` is a driver and its `KuiWindow` refuses
-//! input, C is both. That is still true, and it is what the [`Cell::No`]
-//! cells say, once each, rather than what every reader re-derives.
+//! A Rust caller uses the methods on `Ui`, `Core` and friends directly;
+//! this table exists so the bindings stay in step with them and with each
+//! other. Each binding's test checks its names against [`DOORS`], so a
+//! verb added to one binding is a row here with its three other cells, or
+//! a red test. A [`Cell::No`] says once why a binding lacks a verb instead
+//! of every reader re-deriving it: Lua is a guest with a view-time env,
+//! Node's `Ctx` is a driver and its `KuiWindow` refuses input, and C is
+//! both.
 //!
-//! What pins it: `schema`'s own test resolves every Rust name against the
-//! sources; kui-ffi checks every C name against the header's prototypes
-//! and every prototype that is a verb against the table; the Node suite
-//! checks every Node name against the two classes and every method of
-//! theirs against the table; kui-lua checks every Lua name against
-//! `env`'s functions and every function against the table. A verb added
-//! to one binding is a row here — with its three other cells — or a red
-//! test in that binding.
+//! ```rust
+//! use kui_core::schema::{Cell, DOORS};
+//!
+//! let open_menu = DOORS.iter().find(|d| d.rust == "Ui::open_menu").expect("a verb");
+//! assert!(matches!(open_menu.c, Cell::Is(_)));
+//! ```
 
 /// One binding's cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,7 +49,7 @@ pub struct Door {
 use Cell::{As, Is, No};
 
 /// The reason most of Lua's column is `No`: a script's env is a *reading*
-/// the host hands it for one `view`, not a handle on the host (ADR 0014).
+/// the host hands it for one `view`, not a handle on the host.
 /// It declares a tree and answers events; what it registers, drives,
 /// times or reads back is the host's.
 pub const GUEST: &str = "a script is a guest in the host's frame (ADR 0014): its env is the view's reading, and registering, driving, pacing and reading back are the host's";
@@ -66,7 +57,7 @@ pub const GUEST: &str = "a script is a guest in the host's frame (ADR 0014): its
 /// The reason for Lua's `No` on the resource rows.
 const NO_HANDLE: &str = "a script owns no handle: the host registers and the script names the id it was given (`image { id = }`, `font = id`, `audio { src = id }`)";
 
-/// The reason for Node's `No` on the renderer rows (ADR 0020, not done
+/// The reason for Node's `No` on the renderer rows (not done
 /// here).
 const NEVER_PAINTS: &str = "a Node host never paints: the renderer behind `KuiWindow` is the runner's, and a headless `Ctx` has none";
 
@@ -610,7 +601,7 @@ pub const DOORS: &[Door] = &[
         lua: No("the same reason as C's"),
         doc: "The modifier keys held now.",
     },
-    // -- Selection (ADR 0017) ----------------------------------------------
+    // -- Selection ---------------------------------------------------------
     Door {
         rust: "Ui::selection_text",
         c: Is("kui_selection_text"),
@@ -723,7 +714,7 @@ pub const DOORS: &[Door] = &[
         lua: No(GUEST),
         doc: "Whether the host can show the platform's definition panel, which decides whether Look Up is offered.",
     },
-    // -- Menus (ADR 0018) --------------------------------------------------
+    // -- Menus -------------------------------------------------------------
     Door {
         rust: "Ui::open_menu",
         c: Is("kui_open_menu"),
@@ -981,7 +972,7 @@ pub const DOORS: &[Door] = &[
         lua: No("the `tokens` global is declared once, at load"),
         doc: "Whether an origin declared tokens.",
     },
-    // -- Diagnostics and devtools (ADR 0024) -------------------------------
+    // -- Diagnostics and devtools ------------------------------------------
     Door {
         rust: "Core::set_diagnostics",
         c: Is("kui_set_diagnostics"),
@@ -1165,7 +1156,7 @@ pub const DOORS: &[Door] = &[
         lua: No(GUEST),
         doc: "The last frame's nodes with what layout and the declarations made of them — a tree view's and an inspector's data.",
     },
-    // -- Extensions (ADR 0014) ---------------------------------------------
+    // -- Extensions --------------------------------------------------------
     Door {
         rust: "Ui::add_extension",
         c: Is("kui_ctx_add_extension"),

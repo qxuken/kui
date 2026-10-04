@@ -1,24 +1,45 @@
-//! Long-lived, host-registered resources. Slotmap keys give typed handles
-//! with generational use-after-free protection, and convert to/from `u64`
-//! (`KeyData::as_ffi`) so they cross the scripting boundary as plain integers
-//! with the generation check intact on the way back.
+//! Long-lived, host-registered resources: fonts, images, sounds and
+//! fragment shaders, behind typed handles.
+//!
+//! A handle ([`FontId`], [`ImageId`], [`SoundId`], [`FragmentId`]) is a
+//! slotmap key with generational use-after-free protection. It converts
+//! to and from `u64` (`to_ffi` / `from_ffi`) so it crosses a scripting
+//! boundary as a plain integer with the generation check intact. The
+//! registry is the session's, so a resource registered through one window
+//! draws and plays in every window of the session.
+//!
+//! Registering through a [`Core`](crate::Core):
+//!
+//! ```rust,no_run
+//! use kui_core::{Core, NodeSpec, Size, TextStyle};
+//!
+//! let mut core = Core::new();
+//! // A font: raw TTF/OTF bytes; `None` when the data holds no usable face.
+//! let font = core.add_font_data(std::fs::read("Inter.ttf").unwrap()).unwrap();
+//! // An image: RGBA, `width * height * 4` bytes.
+//! let logo = core.resources.add_image(2, 2, vec![255; 16]);
+//! // A sound: encoded file bytes the runner's audio backend decodes.
+//! let ding = core.add_sound(std::fs::read("ding.ogg").unwrap());
+//!
+//! let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+//! ui.text("Hello", TextStyle::new(14.0).font(font));
+//! ui.image(logo, NodeSpec::row().size(64.0, 64.0));
+//! ui.finish();
+//! core.play(ding, Default::default());
+//! ```
+//!
+//! Removing a resource (`remove_image`, `remove_font`, `remove_sound`,
+//! `remove_fragment` on `Core`) makes its handle a miss: the image draws
+//! nothing, the font shapes as sans, the sound is silent.
 //!
 //! **A handle is unique to the process, not to its session.** Every
-//! `Session` has its own registry, and two registries that each minted
-//! their own keys would mint the same ones — slot 0, generation 1 — so an
-//! `ImageId` from one session, looked up in another, would draw *that*
-//! session's first image, silently. To make that a detectable miss rather
-//! than an alias, the keys come from one process-wide slotmap per kind
-//! ([`Mint`]), which also records the session that owns each; a session's
-//! registry is a secondary map over those keys, so it can only ever hold
-//! entries it registered itself. A handle that misses here is then one of
-//! two things, and the mint tells them apart: no longer live anywhere
-//! (removed — the documented behaviour: the image draws nothing, the font
-//! shapes as sans, the sound is silent), or live in *another* session
-//! (foreign — the same behaviour, plus a `foreign-resource` warning, kept
-//! on the registry until a `Core::take_warnings` drains it). The mint is
-//! touched on registration, removal and the miss path only; a live lookup
-//! never locks it.
+//! `Session` has its own registry, but the keys come from one process-wide
+//! mint per kind, which also records the session that owns each. So an
+//! `ImageId` from one session, looked up in another, is a detectable miss
+//! rather than an alias for that session's first image: it behaves as a
+//! removed handle does, plus a `foreign-resource` warning the next
+//! `Core::take_warnings` reports. The mint is touched on registration,
+//! removal and the miss path only; a live lookup never locks it.
 
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -39,8 +60,7 @@ new_key_type! {
     /// `audio` node, or `NodeSpec::click_sound` / `hover_sound`.
     pub struct SoundId;
     /// A registered WGSL fragment function (`Core::add_fragment`), drawn
-    /// by a `fragment` node
-    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// by a `fragment` node.
     pub struct FragmentId;
 }
 
@@ -208,11 +228,11 @@ pub struct ImageEntry {
     /// Moves on every [`Resources::update_image`]; a backend re-uploads a
     /// texture-backed image when the revision it uploaded is behind.
     pub rev: u32,
-    /// Where the pixels live on the GPU (ADR 0025, decision 2).
+    /// Where the pixels live on the GPU.
     pub backing: ImageBacking,
     /// The buffer the last [`Resources::update_image_with`] replaced, kept
-    /// for the next one to write into once no display list holds it
-    /// (backlog W20). An update between frames finds `rgba` still shared
+    /// for the next one to write into once no display list holds it.
+    /// An update between frames finds `rgba` still shared
     /// with the last frame's `texture_pixels`, so without it every update
     /// was a fresh `w × h × 4` allocation and the previous one freed —
     /// 590 µs of page faults and 170 µs of release at 1080p on Windows,
@@ -227,14 +247,14 @@ pub struct ImageEntry {
     spare_at: u64,
 }
 
-/// How many frames an image's spare buffer outlives its last update
-/// (backlog W20). Long enough for a stream slower than the display — a
+/// How many frames an image's spare buffer outlives its last update.
+/// Long enough for a stream slower than the display — a
 /// 30 fps video beside a 120 Hz animation updates every fourth frame —
 /// and short enough that one that stopped gives its buffer back.
 pub const SPARE_FRAMES: u64 = 30;
 
-/// Where a registered image's pixels are kept for drawing
-/// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 2). The core
+/// Where a registered image's pixels are kept for drawing.
+/// The core
 /// decides on the two facts that matter — whether the image fits an atlas
 /// page, and whether its pixels were ever replaced — and the app never
 /// chooses.
@@ -251,8 +271,8 @@ pub enum ImageBacking {
     Texture,
 }
 
-/// How an `image` node meets the pixels it shows — the two per-node rows
-/// ADR 0025 decision 4 gives it. Carried on the node's content rather than
+/// How an `image` node meets the pixels it shows: its two per-node rows.
+/// Carried on the node's content rather than
 /// on `NodeSpec`, so a box pays nothing for a row only an image reads.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ImageOpts {
@@ -315,7 +335,7 @@ impl ImageFit {
 
 /// A registered font: the family name shaping resolves it by, the faces
 /// it loaded into the font database (empty for installed fonts), and the
-/// weights the family is asked at for regular and bold (backlog F100).
+/// weights the family is asked at for regular and bold.
 pub struct FontEntry {
     pub family: String,
     pub faces: Vec<cosmic_text::fontdb::ID>,
@@ -324,7 +344,7 @@ pub struct FontEntry {
 
 /// One family of the font database — installed or loaded — as its faces
 /// describe it, from what the database read off each face's tables when
-/// it was scanned: nothing is loaded or shaped to answer (backlog F97).
+/// it was scanned: nothing is loaded or shaped to answer.
 /// What [`Core::system_fonts`](crate::Core::system_fonts) lists, one per
 /// family.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -361,7 +381,7 @@ pub struct FragmentEntry {
 }
 
 /// One session's registry. The maps are secondary to the process-wide
-/// [`Mint`] (see the module doc), so a lookup that misses is a handle this
+/// the process-wide mint (see the module doc), so a lookup that misses is a handle this
 /// session never registered or has since removed — never somebody else's
 /// entry.
 pub struct Resources {
@@ -377,7 +397,7 @@ pub struct Resources {
     foreign: RefCell<Vec<Foreign>>,
     /// Frames begun by any window of the session, for aging spares.
     frames: u64,
-    /// The images holding a spare buffer (W20), swept each frame.
+    /// The images holding a spare buffer, swept each frame.
     spared: Vec<ImageId>,
 }
 
@@ -457,11 +477,11 @@ impl Resources {
     }
 
     /// Reads again the weights of the registered families `families` holds
-    /// from what `db` has of them now (backlog F100): after a family is
+    /// from what `db` has of them now: after a family is
     /// registered, and after faces of it come into the database or leave.
     /// Whether the weights of a font other than `fresh` — the one just
     /// registered, which nothing has shaped in yet — changed: text shaped
-    /// in it was shaped at the old ones (RG59).
+    /// in it was shaped at the old ones.
     pub(crate) fn reweigh(
         &mut self,
         db: &cosmic_text::fontdb::Database,
@@ -513,7 +533,7 @@ impl Resources {
         }
     }
 
-    /// The weights a style's `FontFamily` is asked at (backlog F100): a
+    /// The weights a style's `FontFamily` is asked at: a
     /// registered family's own, the CSS ones for a generic family and for
     /// an unknown or removed custom font (which shapes as sans-serif).
     pub(crate) fn weights_of(&self, f: FontFamily) -> crate::weights::Weights {
@@ -552,7 +572,7 @@ impl Resources {
         id
     }
 
-    /// Replaces an image's pixels in place (ADR 0025, decision 1): the
+    /// Replaces an image's pixels in place: the
     /// handle is unchanged, so every node declaring it shows the new
     /// pixels next frame with no view change; the dimensions may change.
     /// From the first update on the image is texture-backed for life.
@@ -587,8 +607,8 @@ impl Resources {
     /// one. The buffer is the image's own when no display list still
     /// holds it, else the one the previous update replaced, else a new
     /// one — so a stream updated every frame, between frames or inside
-    /// them, allocates at most three times and then never again (backlog
-    /// W20). The replaced buffer is kept only for an image updated before
+    /// them, allocates at most three times and then never again. The replaced
+    /// buffer is kept only for an image updated before
     /// at the same size, and let go [`SPARE_FRAMES`] frames after the
     /// last update. What every door that copies an app's bytes goes
     /// through.
@@ -655,7 +675,7 @@ impl Resources {
     }
 
     /// Called as each frame begins: drops the spare buffer of every image
-    /// not updated for [`SPARE_FRAMES`] frames (W20).
+    /// not updated for [`SPARE_FRAMES`] frames.
     pub(crate) fn release_spares(&mut self) {
         self.frames += 1;
         if self.spared.is_empty() {
@@ -851,7 +871,7 @@ mod tests {
     /// every session and is nobody's — the `fragments` scene's dead `src`
     /// and the doors' "no image" both rest on it. Raw 1 is *not* that:
     /// `from_ffi` reads every handle at an odd generation, so it is the
-    /// first key a fresh process hands out (C31).
+    /// first key a fresh process hands out.
     #[test]
     fn raw_zero_is_dead_whatever_was_minted() {
         let mut a = Resources::new(SessionId::next());

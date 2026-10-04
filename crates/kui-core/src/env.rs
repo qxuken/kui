@@ -1,18 +1,29 @@
-//! Host environment facts pushed into the core by the frame driver — the
-//! inbound mirror of events-as-data. The core never touches a window; the
-//! driver (runner, FFI host) reports what it knows and views read it.
+//! [`Env`]: the host facts a frame driver pushes into the core, which a
+//! view reads back with `ui.env()`.
 //!
-//! The reading a view gets — this struct, [`SystemEnv`], [`WindowEnv`], the
-//! derived budget and the frame facts beside them, under each binding's
-//! spelling — is written down once in `schema::ENV_FIELDS` and every
-//! binding is pinned to that table; a field added here fails `schema`'s
-//! tests until it has a row.
+//! The core never touches a window. The driver (a runner, an FFI host)
+//! reports what it knows: the refresh rate and whether the window has
+//! focus ([`Env`]), the window's own facts ([`WindowEnv`]), and the user's
+//! OS settings ([`SystemEnv`]: appearance, accent, reduced motion, locale,
+//! assistive technology). A view reads them and decides; the core acts on
+//! none of them except to derive the [`Theme`](crate::theme::Theme) from
+//! the appearance and accent.
 //!
-//! Every fact under [`SystemEnv`] can also be *unknown*, and unknown is the
+//! Every fact under [`SystemEnv`] can be *unknown*, and unknown is the
 //! default. A driver that cannot ask the OS says so rather than guessing,
-//! because the guess a view would make from a wrong answer (paint the dark
-//! palette, skip the animation) is worse than the one it makes from a
-//! missing one.
+//! and a headless [`Core`](crate::runtime::Core) reports unknown for all
+//! of them.
+//!
+//! ```rust
+//! use kui_core::{Core, Env, MotionPref, Size};
+//!
+//! let mut core = Core::new();
+//! let ui = core.frame(Size::new(100.0, 100.0), 1.0);
+//! let env: Env = ui.env();
+//! assert_eq!(env.system.motion, MotionPref::Unknown); // headless: nobody said
+//! assert!(env.frame_budget_ms() > 0.0);
+//! ui.finish();
+//! ```
 
 use crate::color::Color;
 use crate::window::WindowEnv;
@@ -64,7 +75,7 @@ impl Env {
 /// The user's OS settings, as the host reports them. Not window facts and
 /// not display facts: things the person chose once, in a settings app, that
 /// a view is expected to honour. The core acts on two of them in one way:
-/// `appearance` and `accent` derive the theme (ADR 0019), so the stock
+/// `appearance` and `accent` derive the theme, so the stock
 /// widgets and a `<text>` with no colour follow the OS — and nothing else
 /// moves. Reduced motion does not shorten an animation and a dark
 /// appearance repaints none of the app's own colours: the view decides,
@@ -101,7 +112,7 @@ impl SystemEnv {
     /// partial over what the OS answered, applied every frame where the
     /// runner writes the real reading — so a pinned `motion` survives the
     /// write, and a real change to the accent still arrives, because that
-    /// field was left unknown here and `base` is the OS's (backlog F47).
+    /// field was left unknown here and `base` is the OS's.
     ///
     /// Unknown *means* not pinned, which is why there is no separate
     /// override type: the four "cannot tell" readings are the defaults, so
@@ -224,10 +235,10 @@ impl MotionPref {
 }
 
 /// Whether assistive technology is listening: the difference between an
-/// alert that blinks and one that announces (backlog F48). `Listening` is
-/// "an accessibility client has asked this window for its tree", which is
-/// the one signal the platform adapters give and the moment the runner
-/// starts deriving trees (ADR 0016 measures its cache from there).
+/// alert that blinks and one that announces. `Listening` is "an
+/// accessibility client has asked this window for its tree", which is the
+/// one signal the platform adapters give and the moment the runner starts
+/// deriving trees.
 /// `None` is "the bridge is up and nobody has asked"; `Unknown` is "there
 /// is no bridge" — a headless core, a driver built without the
 /// `accesskit` feature, a C host that never called the setter.

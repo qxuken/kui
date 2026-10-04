@@ -1,6 +1,49 @@
-//! The renderer boundary: a flat list of quads in physical pixels. A backend
-//! needs exactly two abilities — draw these quads, and mirror the glyph atlas
-//! to a texture. Everything else (layout, shaping, styling) happened already.
+//! The renderer boundary: a flat list of quads in physical pixels.
+//!
+//! A backend needs exactly two abilities: draw these quads, and mirror the
+//! glyph atlas to a texture. Everything else (layout, shaping, styling)
+//! happened already. [`Core::output`](crate::Core::output) hands out the
+//! finished frame's [`DisplayList`] together with the window's
+//! [`GlyphAtlas`](crate::atlas::GlyphAtlas).
+//!
+//! Consuming one frame:
+//!
+//! ```rust
+//! use kui_core::{Color, Core, NodeSpec, QuadKind, Size};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(200.0, 100.0), 2.0);
+//! ui.leaf(NodeSpec::row().size(50.0, 20.0).bg(Color::WHITE));
+//! ui.finish();
+//!
+//! let (list, atlas) = core.output();
+//! if atlas.dirty {
+//!     // Upload `atlas.pixels` (RGBA, `atlas.size` square). When
+//!     // `atlas.epoch` moved, the page was replaced: re-create the texture.
+//!     atlas.dirty = false;
+//! }
+//! for quad in &list.quads {
+//!     let clip = list.clip_of(quad); // physical px, like `quad.rect`
+//!     match quad.kind {
+//!         QuadKind::Solid => { /* rounded rect, optional border */ }
+//!         QuadKind::GlyphMask | QuadKind::GlyphColor | QuadKind::GlyphSubpixel => {
+//!             /* sample the atlas at the texel rect in `quad.uv` */
+//!         }
+//!         _ => { /* see each variant's doc */ }
+//!     }
+//!     let _ = clip;
+//! }
+//! assert_eq!(list.scale, 2.0);
+//! // 50 logical px at scale 2.
+//! assert!(list.quads.iter().any(|q| q.kind == QuadKind::Solid && q.rect.w == 100.0));
+//! ```
+//!
+//! Quads are in paint order. Every quad names an entry of
+//! [`DisplayList::clips`]; a [`QuadKind::Fragment`] or
+//! [`QuadKind::Texture`] quad also names an entry of
+//! [`DisplayList::fragments`] or [`DisplayList::textures`] through
+//! `uv[0]`, and the list carries what a backend needs to compile or upload
+//! those the first time it meets them.
 
 use crate::color::Color;
 use crate::geom::{Rect, Size};
@@ -16,8 +59,8 @@ pub enum QuadKind {
     GlyphColor,
     /// Registered image blitted into the atlas: atlas rgba tinted by
     /// `color` (white = as-is), rounded by `radius` like a solid.
-    /// `border_w` is the `sampling` flag — 0 linear, 1 nearest (ADR 0025,
-    /// decision 4) — a slot this kind had no other use for; `blur` is 0.
+    /// `border_w` is the `sampling` flag — 0 linear, 1 nearest — a slot this
+    /// kind had no other use for; `blur` is 0.
     Image,
     /// LCD subpixel glyph: atlas rgb is per-channel coverage (times
     /// `color.a`), `color.rgb` the text color. Needs per-channel (dual
@@ -30,8 +73,8 @@ pub enum QuadKind {
     /// spread, so a backend only has to soften the SDF it already
     /// computes. Ignores `uv`, `border_color` and `border_w`.
     Shadow,
-    /// A round-capped stroke between two endpoints
-    /// (`docs/adr/0010-a-segment-primitive.md`). `uv` holds the endpoints
+    /// A round-capped stroke between two endpoints.
+    /// `uv` holds the endpoints
     /// as `[x0, y0, x1, y1]` in physical px, each an `f32` stored through
     /// `to_bits` — [`Quad::segment_ends`] reads them back — `border_w` is
     /// the stroke width and `color` the stroke. `rect` is the bounding
@@ -40,8 +83,7 @@ pub enum QuadKind {
     /// evaluates an SDF capsule against the fragment's position. Ignores
     /// `radius`, `border_color` and `blur`.
     Segment,
-    /// A box a host-registered WGSL function paints
-    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// A box a host-registered WGSL function paints.
     /// `uv[0]` indexes [`DisplayList::fragments`], which carries the
     /// handle and the sixteen parameters; the other three words of `uv`
     /// are zero. `rect`, `radius`, `clip` and `clip_radius` are the
@@ -55,7 +97,7 @@ pub enum QuadKind {
     /// what a missing handle does too.
     Fragment,
     /// A registered image drawn from a texture of its own rather than the
-    /// atlas (`docs/adr/0025-the-image-is-the-canvas.md`): one that did
+    /// atlas: one that did
     /// not fit a page, or whose pixels the app has replaced. `uv[0]`
     /// indexes [`DisplayList::textures`], which carries the handle and the
     /// texel rect *in that texture*; the other three words of `uv` are
@@ -255,7 +297,7 @@ fn surviving(rect: Rect, src: Rect, radius: f32, i: usize) -> f32 {
 /// It rides beside the quads rather than on them because `Quad` is copied
 /// twice per node on a 10,000-node frame and 68 more bytes on it would be
 /// paid by every quad of every frame, for a kind almost none of them are
-/// (C15, and ADR 0010's reasoning for putting a segment's endpoints in
+/// (the same reasoning puts a segment's endpoints in
 /// `uv`). A frame that draws no fragment leaves the vector empty.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FragmentDraw {
@@ -264,7 +306,7 @@ pub struct FragmentDraw {
     /// sixteen. The shader reads them as four `vec4<f32>`.
     pub params: [f32; 16],
     /// The image the function samples through `kui_sample`, resolved to
-    /// where its texels are this frame (backlog V1, ADR 0025 decision 7).
+    /// where its texels are this frame.
     pub image: FragmentImage,
 }
 
@@ -354,7 +396,7 @@ pub struct DisplayList {
     /// quads, so a host that renders one list a frame sees each once —
     /// and a removal is carried by one window's list, whichever drew
     /// next after it, since the device the cache lives on is shared by
-    /// every window of the session (AR8).
+    /// every window of the session.
     pub dropped_textures: Vec<crate::resources::ImageId>,
     /// Fragment handles removed since the last frame: what a backend
     /// drops the pipelines it built for. Carried the same way.

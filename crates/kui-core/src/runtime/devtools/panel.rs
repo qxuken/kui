@@ -148,7 +148,7 @@ fn panel(
     ui.close();
 }
 
-/// A declared tab's body (ADR 0032, decision 2): an empty node that
+/// A declared tab's body: an empty node that
 /// takes the tab area, keyed by the tab's name so the content — a layer
 /// built elsewhere, by the host or by an extension's fill — can anchor
 /// to it by key. The host form's content lives in the main window's
@@ -261,7 +261,7 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
 
 /// The tab strip. A tab is one unbreakable unit — its label never
 /// wraps inside it — and the row wraps whole tabs onto another line when
-/// a narrow dock cannot hold them all in one (ADR 0032, decision 1), so
+/// a narrow dock cannot hold them all in one, so
 /// every tab stays in view and none is cut to "Synta / x".
 fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
@@ -317,7 +317,7 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
 }
 
 /// The status block: the rows the main window's core wrote, as a table
-/// (ADR 0033) — the name column at its longest name, the value column
+/// — the name column at its longest name, the value column
 /// growing. Three of the rows — `theme`, `accent`, `menus` — are what
 /// the panel can override, and each carries its select in a third
 /// column beside the fact it changes: the fact is what the app has, the
@@ -414,10 +414,10 @@ fn override_select(ui: &mut Ui<'_>, st: &State, what: &str) {
     );
 }
 
-/// The declared tokens (ADR 0027, decision 7): a swatch and the hex for a
+/// The declared tokens: a swatch and the hex for a
 /// colour — both halves when they differ, the one in effect first — the
 /// px for a length, grouped under the origin that declared them. A table
-/// per origin (ADR 0033): the swatches, the name, the value and the
+/// per origin: the swatches, the name, the value and the
 /// recipe are its four columns, the name column at its longest name.
 fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     if st.facts.tokens.is_empty() {
@@ -511,7 +511,7 @@ fn swatch(ui: &mut Ui<'_>, c: Color, t: &Theme) {
     );
 }
 
-/// The chords and what they do: a two-column table (ADR 0033), the keys
+/// The chords and what they do: a two-column table, the keys
 /// column at its longest chord.
 fn legend(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     if st.legend.is_empty() {

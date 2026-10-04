@@ -1,37 +1,37 @@
-//! Clay-style flex layout over the flat tree, five passes:
+//! The flex solver: clay-style layout over the flat tree, run by
+//! [`compute`] once per frame.
 //!
-//! 1. fit widths      (reverse  = children before parents)
-//! 2. grow widths     (forward  = parents before children)
-//! 3. fit heights     (reverse; text wraps at its final width here)
-//! 4. grow heights    (forward)
-//! 5. positions       (forward)
+//! Each node declares a [`Sizing`] per axis (`Fit`,
+//! `Grow`, `Fixed`, `Percent` or a size expression), optional clamps, a
+//! direction, padding, gap and alignment; see
+//! [`LayoutSpec`](crate::spec::LayoutSpec). The solver resolves them in
+//! five passes over the preorder tree:
+//!
+//! 1. fit widths (reverse: children before parents)
+//! 2. grow widths (forward: parents before children)
+//! 3. fit heights (reverse; text wraps at its final width here)
+//! 4. grow heights (forward)
+//! 5. positions (forward)
 //!
 //! A wrapping row breaks its children into lines in pass 2 and every later
-//! pass reads that grouping (`Tree::line`); the order is why wrapping is
-//! rows-only, and [`wraps`] says so at length.
+//! pass reads that grouping, which is why wrapping is rows-only: a row's
+//! width is final before its height is measured, where a column would need
+//! its height first. A sixth pass runs only on a frame with a float
+//! anchored to a node by key (`FloatAnchor::Node`), since such a float's
+//! anchor may come later in preorder; its subtree is laid out again from
+//! the anchor's final rect.
 //!
-//! A sixth pass, [`anchored`], runs only on a frame with a float anchored
-//! to a node by key (`FloatAnchor::Node`): the five passes above cannot
-//! size such a float, since its anchor may come later in preorder, so
-//! its subtree is laid out again from the anchor's final rect.
+//! A table (`LayoutSpec::table`) is a column whose rows' cells line up:
+//! pass 1 reaches the table after its rows and cells and sets every fit
+//! cell to its column's widest and every row to the columns' width, so the
+//! table's own fit width is the aligned columns; pass 2 reaches it before
+//! its rows, resolves the columns against the widest row once and writes
+//! each column's width into its cells, and a row of a table then leaves
+//! its children alone. A column, a table or a leaf straight under the
+//! table has no cells.
 //!
-//! A table (`LayoutSpec::table`, ADR 0033) is a column whose rows' cells
-//! line up: pass 1 reaches the table after its rows and cells and sets
-//! every fit cell to its column's widest and every row — the `grow` ones
-//! too — to the columns' width, so the table's own fit width is the
-//! aligned columns and not 0; pass 2 reaches it before its rows,
-//! resolves the columns against the widest row once ([`table_columns`])
-//! and writes each column's width into its cells, and a row of a table
-//! then leaves its children alone — the widths are final, and the row is
-//! never shrunk or grown cell by cell. A row is a `Row` child of the
-//! table; a column, a table or a leaf straight under it has no cells. A
-//! bare text cell keeps its column's width through pass 3
-//! (`fit_heights`), where a text elsewhere shrinks to what it shaped, and
-//! an image cell's fit height is its aspect at its *own* width there,
-//! not at the column's.
-//!
-//! Text measurement goes through `TextMeasure` so the solver is testable with
-//! a deterministic stub and never depends on system fonts.
+//! Text measurement goes through [`TextMeasure`], so the solver is
+//! testable with a deterministic stub and never depends on system fonts.
 
 use crate::geom::{Rect, Size, Vec2};
 use crate::scroll::ScrollStore;
@@ -59,7 +59,7 @@ fn align_factor(a: Align) -> f32 {
 
 /// How the main axis's free space is dealt out to `n` in-flow children:
 /// what goes before the first, and what goes between each two on top of
-/// the gap (backlog C13). Nothing is dealt when nothing is free, so a
+/// the gap. Nothing is dealt when nothing is free, so a
 /// run that overflows or holds a grow child is laid out by its gaps
 /// alone, whatever the alignment.
 fn main_spread(a: Align, free: f32, n: u32) -> (f32, f32) {
@@ -102,7 +102,7 @@ fn aligns_by_baseline(tree: &Tree, c: u32) -> bool {
 }
 
 /// The first baseline of node `i`, logical px below its top edge, or
-/// `None` when nothing inside it is text (backlog C13). A text node's
+/// `None` when nothing inside it is text. A text node's
 /// and an editor's are measured (`TextMeasure::baseline`, stored by
 /// `fit_heights` on a frame that has a baseline row); a container's is
 /// its first in-flow child's, carried down through where that child
@@ -235,8 +235,7 @@ fn wraps(tree: &Tree, i: u32) -> bool {
 /// a table. Anything else straight under the table — a heading text
 /// beside the rows, a `column` section wrapping a heading over a row, a
 /// nested table — has no cells and keeps its own width, and its children
-/// are its own (backlog RG7: a column there had its stacked children
-/// taken as cells 0 and 1). Gated on the tree-level flag first, as
+/// are its own. Gated on the tree-level flag first, as
 /// [`is_float`] is. The rules (`emit_rules`) ask it too, so a table's
 /// grid is drawn over the rows its columns were laid across.
 #[inline]
@@ -272,7 +271,7 @@ fn is_table_cell(tree: &Tree, i: u32) -> bool {
     p != NIL && is_table_row(tree, p) && !is_float(tree, i)
 }
 
-/// One column of a table, as its cells declared it (ADR 0033).
+/// One column of a table, as its cells declared it.
 #[derive(Clone, Copy, Debug, Default)]
 struct Col {
     /// The widest cell's fitted width: a `Fixed` cell's px, a `Fit`
@@ -284,7 +283,7 @@ struct Col {
     /// The largest `Percent` among the cells, 0 for none; read only when
     /// nothing grows.
     pct: f32,
-    /// The largest size expression among the cells (backlog F109), in px
+    /// The largest size expression among the cells, in px
     /// of the room the columns are laid across: the column is the larger
     /// of it and `pct` of that room. Each cell's is resolved and the
     /// largest kept, as `pct` keeps the largest percentage — two
@@ -379,14 +378,13 @@ fn table_row_fit(tree: &Tree, row: u32, cols: &[Col]) -> f32 {
 /// Which rows: in pass 1 (`fitting`) every row but a `Fixed` one — the
 /// `grow` and percent rows included, whose own pass-1 width is 0 — so
 /// the table's fit width, read next, is its columns' and a `Fit` table
-/// of `grow` rows is the aligned list and not nothing (backlog RG11: the
-/// howto's key/value snippet was that shape, and laid out 0 wide). Pass
-/// 2 sizes them for good, and the fit is only the number the table reads.
+/// of `grow` rows is the aligned list and not nothing. Pass 2 sizes them
+/// for good, and the fit is only the number the table reads.
 /// In pass 2 the `Fit` rows, and — when the table scrolls x — every row
 /// widened to its columns if they overflow it, since a `grow` row is the
 /// table's own width and `positions` measures a scroll container's
 /// content from its children's boxes: without this the overflow the
-/// table kept was clipped and `scroll_max.x` was 0 (backlog RG3). A
+/// table kept was clipped and `scroll_max.x` was 0. A
 /// table that does not scroll leaves its rows' boxes alone, as any row
 /// is left when fixed children overflow it.
 fn table_apply(tree: &mut Tree, i: u32, cols: &[Col], fitting: bool) {
@@ -710,6 +708,9 @@ fn break_lines(tree: &mut Tree, i: u32, content: f32, gap: f32) {
     }
 }
 
+/// What the solver asks about text, editors, images and cell grids: the
+/// sizes it cannot compute from specs alone. The core implements it over
+/// its text system; a test may implement it with fixed numbers.
 pub trait TextMeasure {
     /// Unwrapped preferred size.
     fn intrinsic(&mut self, id: crate::tree::TextId) -> Size;
@@ -717,8 +718,8 @@ pub trait TextMeasure {
     fn wrapped(&mut self, id: crate::tree::TextId, max_w: f32) -> Size;
     /// The widest stretch of the text no break falls inside, logical px
     /// — CSS's min-content: the longest word, a whole unwrapped line.
-    /// Asked only on a frame with a share of the room (backlog RG92);
-    /// 0, the default, is a text that rewraps to any width.
+    /// Asked only on a frame with a share of the room; 0, the default, is
+    /// a text that rewraps to any width.
     fn min_content(&mut self, _id: crate::tree::TextId) -> f32 {
         0.0
     }
@@ -752,6 +753,11 @@ pub trait TextMeasure {
     }
 }
 
+/// Lays `tree` out into `viewport` logical px: sizes and positions every
+/// node, breaks wrapping rows into lines, resolves tables and floats, and
+/// clamps the scroll offsets in `scroll`. `Core::finish_frame` calls it
+/// once per frame; it is public for a custom runner or a test that drives
+/// the solver directly.
 pub fn compute(
     tree: &mut Tree,
     text: &mut dyn TextMeasure,
@@ -774,7 +780,7 @@ pub fn compute(
     // before its anchor is placed and gives it no room, so a `maxWidth
     // "50%"` on it — or a `maxWidth "100%"` on a child of it, resolved
     // against the float's own 0 — came out 0 and the sixth pass, finding
-    // no expression left to resolve, kept it (backlog RG77). Every clamp
+    // no expression left to resolve, kept it. Every clamp
     // in those subtrees that layout writes over is remembered here, as
     // declared, and put back before the re-run.
     let declared = if tree.any_node_float {
@@ -799,7 +805,7 @@ type Declared = (usize, Min, f32, Min, f32);
 
 /// The clamps of every node inside a node-anchored float's subtree that
 /// layout resolves in place — the ones the sixth pass must see again as
-/// declared (backlog RG6, RG77). Read off the raw numbers, a negative
+/// declared. Read off the raw numbers, a negative
 /// being what both forms are, so no node pays a table lookup.
 fn declared_clamps(tree: &Tree) -> Vec<Declared> {
     let mut out = Vec::new();
@@ -848,7 +854,7 @@ fn anchored(
         // The root's spec is read *after* each fit pass, which is where
         // a `Min::FIT` floor of its own — just declared again above —
         // resolves to its number; a copy taken before it clamped with a
-        // floor of 0 and the float lost its own floor (backlog RG6).
+        // floor of 0 and the float lost its own floor.
         fit_widths(tree, text, c..end);
         if tree.any_calc_bound {
             resolve_bounds(tree, c as u32, AxisSel::Width, anchor.w);
@@ -1017,14 +1023,14 @@ fn fit_widths(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Rang
 /// Node `i`'s min-content on `axis` — CSS's: the widest (or tallest)
 /// thing in it that cannot wrap, its padding on top — asked by a shrink
 /// that gives CSS's way, for the children of a run that overflowed and
-/// no other node, so a frame whose runs all fit measures nothing
-/// (backlog RG92). Across, a text is its longest word
+/// no other node, so a frame whose runs all fit measures nothing.
+/// Across, a text is its longest word
 /// (`TextMeasure::min_content`); down, it is its lines at the width it
 /// has, which the fit pass of that axis measured, as an image's and a
 /// grid's size is theirs. A box scrolling that axis, or clipping, needs
 /// nothing of what it holds — CSS's automatic minimum of a box whose
-/// overflow is not visible (backlog F114). Asked too by the shrink of a
-/// column of fit children, down (F114), for its children alone.
+/// overflow is not visible. Asked too by the shrink of a column of fit
+/// children, down, for its children alone.
 fn min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel) -> f32 {
     let spec = &tree.specs[i].layout;
     let (pad, scrolls) = match axis {
@@ -1053,14 +1059,14 @@ fn min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel)
 }
 
 /// What node `i`'s in-flow children need on `axis` at the least — CSS's
-/// min-content of a box, less its padding (backlog RG92): each child's
+/// min-content of a box, less its padding: each child's
 /// contribution is its fixed size or its own min-content, held to its
 /// clamps, and the contributions add up with the gaps along a main axis
 /// that does not wrap, where they cannot be put side by side any other
 /// way, and are the widest across it or when each may take a line of its
 /// own. Down a wrapping row, whose lines the width pass has broken, they
-/// are each line's tallest stacked with the cross gaps (backlog F114), as
-/// the row's fit height is.
+/// are each line's tallest stacked with the cross gaps, as the row's fit
+/// height is.
 fn children_min_content(tree: &Tree, text: &mut dyn TextMeasure, i: usize, axis: AxisSel) -> f32 {
     let spec = &tree.specs[i].layout;
     let main = (spec.dir == Dir::Row) == (axis == AxisSel::Width);
@@ -1122,7 +1128,7 @@ fn fit_height(tree: &Tree, i: usize, text: &mut dyn TextMeasure, edit: Size) -> 
         // cell's width is its column's, which the image did not ask for:
         // its height is its aspect at the width its own sizing gave it —
         // a 16 px icon in a 200 px column is a 200 x 16 box, not a 200 x
-        // 200 one (backlog RG8) — and how the pixels meet the wider box
+        // 200 one — and how the pixels meet the wider box
         // is the image's `fit` row.
         NodeContent::Image(id, _) => {
             let intrinsic = text.image_size(id);
@@ -1226,8 +1232,8 @@ fn fit_heights(tree: &mut Tree, text: &mut dyn TextMeasure, range: std::ops::Ran
         tree.size[i].h = spec.clamp_h(match height {
             Sizing::Fixed(px) => px,
             Sizing::Grow(_) | Sizing::Percent(_) | Sizing::Calc(_) => 0.0,
-            // Width is final by now: a declared ratio reads it (backlog
-            // C14), as an image's pixels do below it.
+            // Width is final by now: a declared ratio reads it, as an
+            // image's pixels do below it.
             Sizing::Fit if spec.aspect_height() => tree.size[i].w / spec.aspect,
             Sizing::Fit => fit,
         });
@@ -1293,7 +1299,7 @@ fn distribute_axis(
     let content = (own - pad).max(0.0);
     let is_main = (spec.dir == Dir::Row) == (axis == AxisSel::Width);
 
-    // Size-expression clamps (backlog F109) against the content box, the
+    // Size-expression clamps against the content box, the
     // room a percentage takes its cut of, before anything below is sized
     // by them; a child whose size is its own — fixed, fit — is clamped
     // again here, since its fit pass ran with no such clamp. A float's
@@ -1318,7 +1324,7 @@ fn distribute_axis(
         // not against the line it is about to land on.
         // Noting on the way whether any child is such a share, the one
         // thing the shrink below needs to know before it picks a rule
-        // (backlog RG92) — here, where every child is read anyway: a scan
+        // — here, where every child is read anyway: a scan
         // of its own cost a column of a thousand fixed rows 2%.
         let mut share = false;
         let mut c = tree.first_child[i as usize];
@@ -1406,7 +1412,7 @@ fn distribute_axis(
         // Cross axis: Grow/Percent resolve against the content box directly.
         // A Fit box across a column is its content's width but no wider
         // than the box — CSS's `fit-content` — down to its declared min,
-        // none undeclared, as a row's fit children give (backlog F116).
+        // none undeclared, as a row's fit children give.
         // Pass 1 summed it bottom-up with no room in sight; held here,
         // before its own children are distributed, its run gives and its
         // text wraps. Not across a column that scrolls x, whose overflow
@@ -1622,19 +1628,19 @@ fn distribute_run(
 
 /// The shrink pass: pays off `deficit` (how far in-flow children overflow
 /// the parent's main-axis content box) by compressing Fit-sized children
-/// and the shares of the room — `Percent` and a size expression (backlog
-/// F110). A share was cut from the content box before the gaps between the
+/// and the shares of the room — `Percent` and a size expression. A share
+/// was cut from the content box before the gaps between the
 /// children took theirs, so two `"50%"` children and a gap overflow until
 /// this gives. Two rules, by what the run holds:
 ///
-/// - With a share in it, CSS's (backlog RG92, [`shrink_as_css`]): every
+/// - With a share in it, CSS's ([`shrink_as_css`]): every
 ///   shrinkable child gives in proportion to its size, down to its floor —
 ///   its declared min, or where none was declared ([`Min::AUTO`]) its
 ///   min-content ([`min_content`], measured here and only here), none for
 ///   a child that scrolls that axis — `min-width: auto`.
 /// - Fit children alone, clay's: largest first, so equal children end up
 ///   equal, each toward its declared min — 0 across when none was
-///   declared, and down its min-content (backlog F114), none for a child
+///   declared, and down its min-content, none for a child
 ///   that scrolls or clips that axis: `min-height: auto`, so a row is
 ///   never squeezed below the text in it.
 ///
@@ -1696,7 +1702,7 @@ fn shrink_axis(
     };
 
     // A run holding a share of the room gives as CSS's flex items do,
-    // every shrinkable child of it with the share (backlog RG92); a run
+    // every shrinkable child of it with the share; a run
     // of fit children alone keeps clay's rule below. `share` is what the
     // caller saw resolving the shares, so a run without one — a column
     // of a thousand fixed rows overflowing its box, the common one here —
@@ -1751,7 +1757,7 @@ fn shrink_axis(
     // shrinkable child sits at its floor. Across, the floor is the
     // declared min (0 undeclared), so a row of labels squeezes them into
     // their ellipses. Down, an undeclared one is the child's min-content
-    // — CSS's `min-height: auto` (backlog F114) — since nothing in a box
+    // — CSS's `min-height: auto` — since nothing in a box
     // gives vertically but a scroller or a clip: a row squeezed below
     // its text painted the text over the rows under it. One that scrolls
     // or clips that axis goes to 0.
@@ -1834,7 +1840,7 @@ fn shrink_axis(
 /// size — its scaled shrink factor is its base — and one that would go
 /// under its floor is held there and the rest share what it could not
 /// pay, until nothing is under its floor or every child is held. What is
-/// left unpaid overflows, as it does in CSS (backlog RG92).
+/// left unpaid overflows, as it does in CSS.
 #[inline(never)]
 fn shrink_as_css(tree: &mut Tree, axis: AxisSel, deficit: f32, items: &mut [Give]) {
     // Each round holds at least one more child or ends, so `n + 1` rounds
@@ -1884,7 +1890,7 @@ pub(crate) struct Give {
 }
 
 /// A sizing that takes its size from the room once the parent's is
-/// known — a `Percent`, or a size expression (backlog F109) — in px of
+/// known — a `Percent`, or a size expression — in px of
 /// `room`; `None` for the others.
 #[inline]
 fn of_room(sizing: Sizing, room: f32) -> Option<f32> {
@@ -1896,7 +1902,7 @@ fn of_room(sizing: Sizing, room: f32) -> Option<f32> {
 }
 
 /// Writes node `c`'s size-expression clamps on `axis` as px of `room`
-/// into the spec's (backlog F109), so every later clamp — and every
+/// into the spec's, so every later clamp — and every
 /// reader of `min_w` / `max_w` — reads a number, as a `Min::FIT` floor
 /// is written back once its fit pass ran. Before this a calc clamp is
 /// none, as a percentage clamp is in CSS's intrinsic sizing. `true` when
@@ -2107,7 +2113,7 @@ fn positions(
         // Scroll containers: clamp the retained offset to this frame's
         // overflow and shift children by it.
         let mut offset = Vec2::ZERO;
-        // Anchoring (backlog C26 step 3): the scroll axis is the main axis,
+        // Anchoring: the scroll axis is the main axis,
         // the container is not wrapping, and a previous layout recorded
         // which child was first in view and where its leading edge sat in
         // the content. Where that edge sits *now* is the same walk the
@@ -2574,7 +2580,7 @@ mod tests {
     }
 
     /// Three 10 px children in a 100 px row: 70 px free, dealt out the
-    /// way each spread says (backlog C13).
+    /// way each spread says.
     fn spread(a: Align, gap: f32) -> Vec<f32> {
         let mut t = T::new(
             NodeSpec::row()
@@ -2800,7 +2806,7 @@ mod tests {
         t.node(other, NodeSpec::row().width(px(10.0)).height(px(60.0)));
         t.run(1000.0, 1000.0);
         assert_eq!(t.size(r).h, 80.0);
-        // Nor is its sibling below the 60 px it holds (backlog F114): the
+        // Nor is its sibling below the 60 px it holds: the
         // column overflows, where the sibling was squeezed to 20.
         assert_eq!(t.size(other).h, 60.0);
     }

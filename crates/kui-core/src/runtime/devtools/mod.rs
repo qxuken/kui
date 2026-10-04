@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "devtools"), allow(dead_code))]
-//! The devtools panel, drawn by the core into any app's frame
-//! (`docs/adr/0024-the-devtools-are-the-cores.md`).
+//! The devtools panel, drawn by the core into any app's frame.
 //!
 //! Turned on by [`Core::set_devtools`] — or by `KUI_DEVTOOLS` in the
 //! environment, which the windowed runners read before the first frame
@@ -35,7 +34,7 @@
 //! [`Accel`] spelling), since it is the one an app names in its own
 //! help — the others are the panel's, reached once the keyboard is in.
 //!
-//! **How it is in the frame** (ADR 0024, decisions 2–4). Docked, the main
+//! **How it is in the frame**. Docked, the main
 //! window's `begin_frame` opens an *app container* under the root, keyed
 //! so the host's children are named as if it were not there; the host's
 //! `configure_root` is split between the two — layout and paint to the
@@ -89,7 +88,7 @@ pub const DEVTOOLS_WINDOW: &str = "kui-devtools";
 /// window is under, so `key_of(DEVTOOLS_KEY)` finds it — and a tree reader
 /// that wants the app alone skips its subtree.
 pub const DEVTOOLS_KEY: &str = "kui-devtools";
-/// The app container's label (decision 2). Never indexed for `key_of`.
+/// The app container's label. Never indexed for `key_of`.
 const APP_KEY: &str = "kui-devtools/app";
 /// How many stream entries are kept.
 pub const STREAM_CAP: usize = 512;
@@ -187,8 +186,8 @@ pub enum Tab {
     Tree,
 }
 
-/// One tab an app or an extension declared this frame (ADR 0032,
-/// decision 1): its name (the identity), the label the strip shows, and
+/// One tab an app or an extension declared this frame: its name (the
+/// identity), the label the strip shows, and
 /// the slot an extension fills it through — `None` for the host form,
 /// whose content is the host's own subtree, anchored to the body.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -229,7 +228,7 @@ impl Tab {
 
     /// One of the three by its name in any case — `tree`, `Tree`, `TREE`
     /// — since the strip labels them with a capital and a caller writes
-    /// what it reads there (backlog RG14). A declared tab's name is the
+    /// what it reads there. A declared tab's name is the
     /// app's own spelling and is matched exactly.
     fn parse(s: &str) -> Option<Tab> {
         Self::ALL
@@ -269,7 +268,7 @@ enum EntryKind {
 /// read by whichever window draws the facts tab. Strings rather than the
 /// facts themselves: the panel prints them, and a second window's core
 /// cannot ask the first's doors.
-/// One declared token as the panel shows it (ADR 0027, decision 7):
+/// One declared token as the panel shows it:
 /// which origin declared it, its halves, and what it resolved to this
 /// frame — the value the inspector matches a node's paint against.
 #[derive(Clone, Debug, PartialEq)]
@@ -284,7 +283,7 @@ pub(crate) struct TokenFact {
     /// The px, for a length token.
     pub(crate) length: f32,
     /// A derived colour token's recipe, as the panel prints it beside the
-    /// hex (ADR 0028): `peach → lift 0.3`.
+    /// hex: `peach → lift 0.3`.
     pub(crate) recipe: Option<String>,
 }
 
@@ -314,7 +313,7 @@ pub(crate) struct Facts {
     cursor: Option<Vec2>,
 }
 
-/// The session's devtools state (ADR 0024, decision 5).
+/// The session's devtools state.
 pub(crate) struct State {
     pub(crate) on: bool,
     pub(crate) dock: Dock,
@@ -354,10 +353,10 @@ pub(crate) struct State {
     hovered_row: Option<Key>,
     collapsed: FxHashSet<Key>,
     tree_filter: String,
-    /// The picker is up (decision 9).
+    /// The picker is up.
     pick: bool,
     /// The picker was raised from a declared tab (`Core::set_devtools_pick`
-    /// while one was on show, ADR 0032): the pick lands in `selected` for
+    /// while one was on show): the pick lands in `selected` for
     /// that tab to read, and the tab stays up rather than the tree tab
     /// taking over.
     pick_keep_tab: bool,
@@ -368,7 +367,7 @@ pub(crate) struct State {
     reveal: Option<Key>,
     /// Collapse every row with children on the next build.
     fold_all: bool,
-    /// The row the keyboard is on (backlog D1a): the tree's own cursor,
+    /// The row the keyboard is on: the tree's own cursor,
     /// moved by the arrows on the list's sink and painted as a ring while
     /// the list holds focus. None until a key lands on the list.
     tree_cursor: Option<Key>,
@@ -387,8 +386,8 @@ pub(crate) struct State {
     /// The chord that moves the keyboard into the panel and back out —
     /// `Ctrl+Shift+I` unless the app respelled it.
     inspect_key: Accel,
-    /// The tabs declared in the main window's last finished frame (ADR
-    /// 0032): what the strip lists after its own three. Set by the main
+    /// The tabs declared in the main window's last finished frame: what the
+    /// strip lists after its own three. Set by the main
     /// window at the end of its frame; a left dock and the panel's own
     /// window read it a frame late, as they read the facts.
     tabs: Vec<TabDecl>,
@@ -752,7 +751,7 @@ impl State {
     }
 
     /// The tab on show: `custom` while it names a declared tab, else
-    /// `tab` (ADR 0032, decision 1).
+    /// `tab`.
     pub(crate) fn shown(&self) -> Shown {
         match self.custom.as_deref() {
             Some(name) => match self.tabs.iter().position(|t| t.name == name) {
@@ -803,8 +802,8 @@ const DEFAULT_INSPECT_KEY: Accel = Accel {
 };
 
 /// Whether a press is this chord: the modifiers exactly, and the key by
-/// the layout's character first and the physical position second (ADR
-/// 0002, decision 11) — case-blind for a character, since Shift is part
+/// the layout's character first and the physical position second — case-blind
+/// for a character, since Shift is part
 /// of the chord and the layout has already applied it.
 fn hits(accel: Accel, press: &crate::input::KeyPress) -> bool {
     if press.mods != accel.mods {
@@ -820,7 +819,7 @@ fn hits(accel: Accel, press: &crate::input::KeyPress) -> bool {
 /// The panel's chord for a key press, if it is one: the inspect chord
 /// (`Ctrl+Shift+I`, or what the app respelled it to), else `Ctrl+Shift`
 /// and a letter, by the layout's character first and the physical
-/// position second (ADR 0002, decision 11).
+/// position second.
 fn chord(press: &crate::input::KeyPress, inspect: Accel) -> Option<&'static str> {
     if hits(inspect, press) {
         return Some("inspect");
@@ -847,7 +846,7 @@ fn chord(press: &crate::input::KeyPress, inspect: Accel) -> Option<&'static str>
     }
 }
 
-/// The key of a declared tab's body (ADR 0032, decision 2): fixed by the
+/// The key of a declared tab's body: fixed by the
 /// tab's name alone, so the content can anchor to it before it exists —
 /// the host form is built before a right dock's body, after a left one's.
 pub(crate) fn tab_body_key(name: &str) -> Key {
@@ -855,7 +854,7 @@ pub(crate) fn tab_body_key(name: &str) -> Key {
 }
 
 impl Core {
-    /// Declares a devtools tab this frame (ADR 0032, decision 1). A name
+    /// Declares a devtools tab this frame. A name
     /// declared already this frame warns `duplicate-tab` and keeps the
     /// first; returns whether this one stood. The bare door under
     /// `Ui::devtools_tab` / `devtools_tab_with`, for a binding that
@@ -878,7 +877,7 @@ impl Core {
 
     /// Whether the host form of tab `name` is shown this frame — the
     /// panel is on, docked in this (the main) window, and `name` is the
-    /// tab on show (ADR 0032, decision 3). Read before the content is
+    /// tab on show. Read before the content is
     /// built, from the session's state, which is in place while the
     /// host's view runs.
     pub fn devtools_tab_shown(&self, name: &str) -> bool {
@@ -892,7 +891,7 @@ impl Core {
 
     /// The tab on show, by name, when it is a declared one — what the
     /// Node and Lua drivers read once a frame to call a tab's function
-    /// child (ADR 0032, decision 3). `None` for one of the panel's own,
+    /// child. `None` for one of the panel's own,
     /// for the panel off, popped out, or another window's frame.
     pub fn devtools_shown_tab(&self) -> Option<String> {
         if !cfg!(feature = "devtools") || self.dt_window || self.env.window.id != WindowId::MAIN {
@@ -908,7 +907,7 @@ impl Core {
 
     /// Opens the host form's content node: a float anchored to the tab's
     /// body by key, the body's size, clipped, keyed as the host's own
-    /// child (ADR 0032, decisions 2 and 7). The caller builds inside and
+    /// child. The caller builds inside and
     /// closes. The bare door under `Ui::devtools_tab_with`; it does not
     /// declare, and it does not ask whether the tab is on show.
     pub fn devtools_tab_open(&mut self, name: &str) {
@@ -924,17 +923,16 @@ impl Core {
 
     /// Whether `name` is a slot a declared tab names this frame — what
     /// counts as *declared* for the `unknown-slot` check whether or not
-    /// the panel mounted it (ADR 0032, decision 5).
+    /// the panel mounted it.
     pub(crate) fn devtools_tab_slot(&self, name: &str) -> bool {
         self.dt_tabs.iter().any(|t| t.slot.as_deref() == Some(name))
     }
 
     /// Mounts the extension form of the tab on show, if it has one: the
     /// slot is declared at the cursor under the host's origin — so the
-    /// fill's replies reach the host, as ADR 0014's rule reads with the
-    /// panel for declarer — and filled inside a float anchored to the
-    /// tab's body, the panel's facts as params (ADR 0032, decisions 2,
-    /// 4 and 5). Called with the filler in hand: from `Ui::finish` in the
+    /// fill's replies reach the host — and filled inside a float anchored to the
+    /// tab's body, the panel's facts as params. Called with the filler in
+    /// hand: from `Ui::finish` in the
     /// main window before the filler's own finish, and in the panel's
     /// window after its build. Nothing to do when the tab on show is the
     /// panel's own or a host form.
@@ -976,7 +974,7 @@ impl Core {
 }
 
 impl State {
-    /// The panel's facts as a slot's params (ADR 0032, decision 4): the
+    /// The panel's facts as a slot's params: the
     /// selected, hovered and picked nodes as hex keys (`null` for none),
     /// the region and the focus by label from the facts rows.
     fn facts_params(&self) -> Value {
@@ -1006,7 +1004,7 @@ impl State {
 // The doors.
 
 impl Core {
-    /// Turns the devtools panel on or off for this session (ADR 0024). On,
+    /// Turns the devtools panel on or off for this session. On,
     /// it is drawn where [`Self::set_devtools_dock`] says — beside the
     /// host's tree in the main window by default — and its chords are
     /// live in every window. `KUI_DEVTOOLS=1` in the environment is the
@@ -1084,8 +1082,8 @@ impl Core {
         self.session.state().devtools.inspect_key
     }
 
-    /// The node the panel's tree tab has selected (ADR 0032, decision
-    /// 4): what an inspector in a declared tab reads to say which node
+    /// The node the panel's tree tab has selected: what an inspector in a
+    /// declared tab reads to say which node
     /// it is about. Answered from the session, so it is right inside the
     /// host's view and inside an extension's fill alike.
     pub fn devtools_selected(&self) -> Option<Key> {
@@ -1117,8 +1115,8 @@ impl Core {
     }
 
     /// Raises the panel's picker from outside it — an inspector in a
-    /// declared tab asking "which node?" — or puts it away (ADR 0032,
-    /// decision 4). Picking happens in the main window, over the app: the
+    /// declared tab asking "which node?" — or puts it away. Picking happens in
+    /// the main window, over the app: the
     /// node under the pointer is `devtools_picked` while it is up, and
     /// the press lands it in `devtools_selected`. Raised while a declared
     /// tab is on show, the pick leaves that tab up; raised otherwise — a
@@ -1169,7 +1167,7 @@ impl Core {
 
     /// Shows the panel's tab named `name` from outside the panel — what
     /// the strip's click and `Ctrl+Shift+N` do, for an app with a command
-    /// that jumps to its own tab (ADR 0032). `name` is one of the panel's
+    /// that jumps to its own tab. `name` is one of the panel's
     /// own (`facts`, `events`, `tree`, in any case — the strip labels
     /// them `Facts`, `Events`, `Tree`) or a declared tab's, exactly as
     /// the app declared it. A declared
@@ -1231,7 +1229,7 @@ impl Core {
     }
 
     /// Whether this core draws the panel's own window — a frame the host
-    /// builds nothing into (decision 6).
+    /// builds nothing into.
     pub fn devtools_window(&self) -> bool {
         self.dt_window
     }
@@ -1264,15 +1262,13 @@ impl Core {
 // The hooks.
 
 impl Core {
-    /// What the dock leaves of a window `window` big (ADR 0024): the
+    /// What the dock leaves of a window `window` big: the
     /// viewport a frame begun at that size lays out into, which
     /// `viewport()` reports once the frame has begun and a `resize`
     /// reports when it changes. It takes the window's size and the dock's
     /// state and nothing of the frame, so it answers *before* the first
     /// frame too — what a driver's window-size reading hands a host that
-    /// sizes its model at setup (Node's `KuiWindow.size()`; backlog F43,
-    /// where that reading was the window's and `env().viewport` was still
-    /// 0×0 that early, so no reading said the right number).
+    /// sizes its model at setup (Node's `KuiWindow.size()`).
     pub fn host_area(&self, window: Size) -> Size {
         let r = self.devtools_area(window);
         Size::new(r.w, r.h)
@@ -1323,7 +1319,7 @@ impl Core {
         }
     }
 
-    /// The host's viewport for a frame at `viewport` (ADR 0024): the
+    /// The host's viewport for a frame at `viewport`: the
     /// window, less the dock when the panel is docked in the main window.
     /// The pane keeps its minimum before the app keeps its own, so a
     /// window too small for both squeezes the app.
@@ -1361,8 +1357,8 @@ impl Core {
         Vec2::new(self.dt_area.x, self.dt_area.y)
     }
 
-    /// The coordinates the host is handed, in its own viewport (ADR
-    /// 0024): a drag's point and parent, a layout's rect and parent, a
+    /// The coordinates the host is handed, in its own viewport: a drag's point
+    /// and parent, a layout's rect and parent, a
     /// context menu's and a force click's point. A no-op wherever the
     /// dock's origin is the window's.
     pub(crate) fn devtools_translate(&self, out: &mut [UiEvent]) {
@@ -1396,8 +1392,8 @@ impl Core {
     }
 
     /// The end of `begin_frame`: the overrides for this window, and the
-    /// wrap of the host's tree in the main one (decision 2) or the
-    /// deferred root in the panel's own (decision 6).
+    /// wrap of the host's tree in the main one or the
+    /// deferred root in the panel's own.
     /// Puts the host's own menu mode back after an override (see
     /// `dt_menus`); nothing to do when there was none.
     fn restore_menus(&mut self) {
@@ -1540,7 +1536,7 @@ impl Core {
         }
     }
 
-    /// `configure_root` while the host's tree is wrapped (decision 2):
+    /// `configure_root` while the host's tree is wrapped:
     /// what lays out and paints the children goes to the container, what
     /// is addressed stays on the root.
     pub(crate) fn devtools_configure_root(&mut self, app: usize, spec: NodeSpec) {
@@ -1769,7 +1765,7 @@ impl Core {
     }
 
     /// The start of `handle_input`: a chord, or `Escape` while picking, is
-    /// the panel's and the press goes no further (decision 4).
+    /// the panel's and the press goes no further.
     pub(crate) fn devtools_intercept(&mut self, ev: &InputEvent) -> bool {
         let press = match ev {
             InputEvent::KeyDown(press) => press,
@@ -1832,7 +1828,7 @@ impl Core {
 
     /// The panel's controls in the batch are acted on and dropped, the
     /// panel's window's own `window` events too, and in the panel's
-    /// window nothing at all is the host's (decision 4).
+    /// window nothing at all is the host's.
     pub(crate) fn devtools_consume(&mut self, out: &mut Vec<UiEvent>) {
         if out.is_empty() {
             return;
@@ -1947,7 +1943,7 @@ impl Core {
     }
 
     /// Every event handed to the host, into the stream — after the
-    /// window stamp, so the row can say which window (decision 4).
+    /// window stamp, so the row can say which window.
     pub(crate) fn devtools_log(&mut self, out: &[UiEvent]) {
         if out.is_empty() {
             return;
@@ -1989,7 +1985,7 @@ impl Core {
     }
 
     /// Asks the *other* window that shows the panel's effects to draw
-    /// again (decision 7): the main window from the panel's own, the
+    /// again: the main window from the panel's own, the
     /// panel's own from anywhere else. Coalesced against the last command
     /// queued, since a hover storm is many events.
     fn devtools_redraw_others(&mut self) {
@@ -2299,9 +2295,9 @@ enum Place {
 }
 
 /// A payload as the stream keeps it: a paste the pasteboard marked
-/// concealed (F84) — a password from a password manager — keeps its
+/// concealed — a password from a password manager — keeps its
 /// markers and its length and loses its text, which the events tab would
-/// otherwise show in plain view and hold for the stream's lifetime (RG34).
+/// otherwise show in plain view and hold for the stream's lifetime.
 fn redact(payload: &Value) -> Value {
     let concealed = payload.get_bool("concealed") == Some(true);
     match payload {

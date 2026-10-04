@@ -1,13 +1,12 @@
-//! A held drag following its scroller
-//! (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).
+//! A held drag following its scroller.
 //!
 //! Two things a caret drag or a drag-select needs beyond the press, the
 //! motion and the release, both of them about the frame moving under a
 //! pointer that did not: when the layout under the held pointer changes
 //! — a wheel notch, a scroller nudged, a virtual list re-sliced — the
-//! live end is placed again where the pointer is (decision 1); and when
+//! live end is placed again where the pointer is; and when
 //! the pointer is held past the scroller's edge, the core is what changes
-//! the layout, at a rate from how far past (decision 2). Both run at the
+//! the layout, at a rate from how far past. Both run at the
 //! start of every frame against the frame that finished, so the frame
 //! being built paints the result.
 //!
@@ -108,7 +107,7 @@ impl Core {
     }
 
     /// The scroller a held drag stepped this frame, when it did: who
-    /// [`Self::autoscrolling`] names in a trace (backlog F111).
+    /// [`Self::autoscrolling`] names in a trace.
     pub(crate) fn autoscroller(&self) -> Option<Key> {
         self.drag_follow
             .filter(|f| f.stepped)
@@ -199,7 +198,7 @@ impl Core {
 
     /// Moves the caret drag in editor `key` to the viewport point `p`,
     /// against the origin the editor was drawn at this frame — not the
-    /// press's, which a nudge has moved (decision 2).
+    /// press's, which a nudge has moved.
     pub(crate) fn edit_drag_to(&mut self, key: Key, p: Vec2) {
         let origin = self
             .interaction

@@ -1,30 +1,43 @@
-//! Tokens: named colours and lengths an app declares beside the theme and
-//! the metrics, and references a colour or length prop by name
-//! (`docs/adr/0027-tokens-beside-the-theme.md`).
+//! [`Tokens`]: named colours and lengths an app declares beside the theme
+//! and references by name (`$peach`, `$sidebar`) in any colour or length
+//! prop.
 //!
-//! A [`Theme`] is twenty-three roles the stock widgets paint from; a
-//! [`Metrics`] is sixteen lengths they are built from. Both are closed,
-//! and an app whose palette *is* the design — LCARS peach, tangerine, a
-//! sidebar width — has a vocabulary neither names. [`Tokens`] is that
-//! vocabulary: a colour token carries a light and a dark half (the same
-//! value twice, in the common case) **or a recipe over an earlier token**
-//! (`docs/adr/0028-derived-tokens.md`: a source and a chain of
-//! [`ColorOp`]s, folded on read), a length token is one number in
-//! logical px, and the app declares them once, whole. Where a role is
-//! read as `ui.theme().surface`, a token is referenced by name in the
-//! prop — `bg = "$peach"` — and the binding that lowers the node resolves
-//! it through [`TokenLookup`] before the core sees a `NodeSpec`, so the
-//! core's open path knows nothing about names.
+//! A [`Theme`] is a closed set of roles and a [`Metrics`] a closed set of
+//! lengths. An app whose palette *is* the design has names neither covers,
+//! and `Tokens` is that vocabulary. A colour token carries a light and a
+//! dark half (the same value twice in the common case) or a recipe over an
+//! earlier token (a source and a chain of [`ColorOp`]s, folded on read); a
+//! length token is one number in logical px. The app declares them once,
+//! whole, with [`Core::set_tokens`](crate::runtime::Core::set_tokens), and
+//! a Rust view reads them back through
+//! [`Ui::token_color`](crate::ui::Ui::token_color) and
+//! [`Ui::token_length`](crate::ui::Ui::token_length).
 //!
-//! One table per origin. A host's names are the host's and an
-//! extension's are its own: a lookup reads the table of the origin whose
-//! view is running, then the host's, so a guest can paint in the host's
-//! vocabulary without the host passing it and still name a grey of its
-//! own, and a plugin's declaration never replaces the host's palette.
-//! The theme's roles and the metrics' roles are reachable by the same
-//! spelling — `$surface`, `$radius` — through a reserved range in front of
-//! the app's, so a declared token that takes a role's name is refused
-//! ([`crate::diag::RESERVED_TOKEN`]) rather than shadowing it.
+//! ```rust
+//! use kui_core::{Color, ColorOp, Theme, TokenRef, Tokens};
+//!
+//! let tokens = Tokens::new()
+//!     .color("peach", Color::hex(0xffcc99ff))
+//!     .color_themed("ink", Color::BLACK, Color::WHITE)
+//!     .derive("peach-hover", "peach", [ColorOp::Lift(0.1)])
+//!     .length("sidebar", 240.0);
+//!
+//! assert!(tokens.color_id("peach").is_some());
+//! assert!(tokens.length_id("sidebar").is_some());
+//! assert!(tokens.unresolved().is_empty());
+//! if let Some(TokenRef::Color(i)) = tokens.color_id("peach-hover") {
+//!     let hover = tokens.resolve_color(i, &Theme::light());
+//!     assert!(hover.g > Color::hex(0xffcc99ff).g); // lifted toward white
+//! }
+//! ```
+//!
+//! One table per origin. A lookup reads the table of the origin whose view
+//! is running, then the host's, so an extension can paint in the host's
+//! vocabulary and still name a grey of its own, and never replaces the
+//! host's palette. The theme's roles and the metrics' roles are reachable
+//! by the same spelling (`$surface`, `$radius`) through a reserved range in
+//! front of the app's, so a declared token that takes a role's name is
+//! refused ([`crate::diag::RESERVED_TOKEN`]) rather than shadowing it.
 
 use rustc_hash::FxHashMap;
 
@@ -35,7 +48,7 @@ use crate::schema::{METRIC_ROLES, THEME_ROLES};
 use crate::theme::Theme;
 
 /// A colour token: one value per base, or a recipe over an earlier token
-/// or a theme role (ADR 0028). [`ColorToken::same`] is the unthemed case,
+/// or a theme role. [`ColorToken::same`] is the unthemed case,
 /// and what a declaration with one colour builds; a derived one is built
 /// by [`Tokens::derive`], since its source is an index into the table
 /// that holds it.
@@ -303,7 +316,7 @@ impl Tokens {
         self
     }
 
-    /// A colour computed from another (ADR 0028): `from` is a colour
+    /// A colour computed from another: `from` is a colour
     /// token already in this table or a theme role, and `ops` the steps
     /// applied to it in order, each colour operand likewise a name
     /// declared before this one. A source that resolves to nothing —
@@ -565,7 +578,7 @@ pub struct TokenLookup<'a> {
     pub(crate) host: Option<&'a Tokens>,
     pub(crate) theme: &'a Theme,
     pub(crate) metrics: &'a Metrics,
-    /// The session a named `family` registers in (ADR 0037); none for a
+    /// The session a named `family` registers in; none for a
     /// lookup built without a core.
     pub(crate) session: Option<&'a crate::session::Session>,
 }
@@ -726,8 +739,8 @@ pub fn reference(s: &str) -> Option<&str> {
 /// A lookup plus the names it could not answer — the shape every
 /// by-name lowering wants (Lua's props, a keyframe stop or an entrance
 /// in any binding, since those cross as plain data with the name still
-/// in them), so the one miss policy (ADR 0027 decision 4, backlog AR14)
-/// is written once: a `$name` that resolves to nothing, or to the other
+/// in them), so the one miss policy is written once: a `$name` that
+/// resolves to nothing, or to the other
 /// kind, is `None` — the slot is left at the row's default, the way the
 /// prop would be if it were not declared — and the miss is remembered for
 /// the caller to raise as `unknown-token` once the lookup's borrow of the
@@ -747,7 +760,7 @@ impl<'a> NameRefs<'a> {
         }
     }
 
-    /// The `family` a text names (ADR 0037): a stock one by its spelling
+    /// The `family` a text names: a stock one by its spelling
     /// (`sans`, `serif`, `mono`), else an installed or loaded family,
     /// registered in the session and drawn by its handle. A name nothing
     /// matches is sans, and remembered for the caller to raise as
@@ -892,7 +905,7 @@ mod tests {
         assert_eq!(reference("#fff"), None);
     }
 
-    // -- derived tokens (ADR 0028) ----------------------------------------
+    // -- derived tokens ---------------------------------------------------
 
     const PEACH: Color = Color {
         r: 1.0,

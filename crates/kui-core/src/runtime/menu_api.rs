@@ -1,10 +1,9 @@
 //! `Core`'s menu surface: opening one, drawing the stock one into the
-//! frame, and consuming the events its own rows produce
-//! (`docs/adr/0017-selection-as-a-scope.md`, decision 5).
+//! frame, and consuming the events its own rows produce.
 //!
 //! The menu the core opens is drawn by [`crate::widgets::context_menu`] —
 //! the same public widget an app calls — through the moment `Ui::finish`
-//! already reserves for content the view did not build (ADR 0014's `"root"`
+//! already reserves for content the view did not build (the `"root"`
 //! fill). So there is no overlay layer here, no window of the core's own,
 //! and nothing the conformance corpus cannot see: the menu is ordinary
 //! nodes in an ordinary frame.
@@ -37,8 +36,8 @@ impl Core {
     }
 
     /// Tells the core that this host shows menus itself — an `NSMenu`, a
-    /// `TrackPopupMenu`, whatever the platform has (ADR 0017, decision 5,
-    /// step 3). The core then keeps the open menu as state and **does not
+    /// `TrackPopupMenu`, whatever the platform has. The core then keeps the
+    /// open menu as state and **does not
     /// draw it**: the host reads `menu()`, shows it, and reports back with
     /// [`Self::activate_menu_item`] or [`Self::close_menu`].
     ///
@@ -80,7 +79,7 @@ impl Core {
     /// such a row and the drawn one has no click on it, so a door that
     /// names one (`activateMenuItem(1)` over a select whose second option
     /// is disabled) should be answered the way the pointer would be,
-    /// rather than handing the app a choice it disabled (backlog RG9).
+    /// rather than handing the app a choice it disabled.
     /// An index past the end closes the menu and posts nothing
     /// (`Some` and empty), which is what a host reporting a row this build
     /// does not know should do.
@@ -107,7 +106,7 @@ impl Core {
     /// paragraph it draws the whole thing back over the page as one
     /// enormous highlighted strip and then says "No Results Found" — seen
     /// in the field, 2026-09-09 — so a selection that spans lines, or runs
-    /// past [`LOOKUP_MAX`] characters, is neither offered nor asked about.
+    /// past 100 characters, is neither offered nor asked about.
     /// A force click always passes: it selects one word.
     pub fn lookup_text(&self) -> Option<String> {
         let text = self.copy_selection().filter(|t| !t.trim().is_empty())?;
@@ -316,7 +315,7 @@ impl Core {
     /// `claimed` is whether the node under the pointer declared
     /// `onContextMenu`. That declaration wins: the app asked to own the
     /// menu there, and one of the two has to win by declaration rather
-    /// than by luck (ADR 0017, decision 5).
+    /// than by luck.
     pub(crate) fn auto_menu(&mut self, at: Vec2, claimed: bool) {
         if claimed {
             return;
@@ -402,8 +401,7 @@ impl Core {
 
     /// One item, performed and posted, wherever it was chosen from: the
     /// open context menu's row, a host's native menu, or a menu of the
-    /// application menu bar (`docs/adr/0018-a-menu-bar-the-app-declares.md`,
-    /// decision 3). The two callers differ only in what they close first
+    /// application menu bar. The two callers differ only in what they close first
     /// and what node the event lands on, so everything after that is here
     /// and cannot drift between them.
     ///

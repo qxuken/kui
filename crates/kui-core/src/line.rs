@@ -1,4 +1,4 @@
-//! Strokes: what a `line` node draws (`docs/adr/0010-a-segment-primitive.md`).
+//! Strokes: what a `line` node draws.
 //!
 //! A line is a run of points and a [`Stroke`]; the core flattens a curve
 //! into a polyline here, boxes the run, and emits one
@@ -180,7 +180,7 @@ impl LineStore {
 /// `1..=CURVE_MAX_PIECES`.
 ///
 /// Centripetal means the spline's knot parameter advances by the square
-/// root of each chord (see [`chord_and_step`]) instead of by 1. A *uniform*
+/// root of each chord instead of by 1. A *uniform*
 /// spline — the textbook one, and what this was until it drew a mind
 /// map — ignores how far apart its knots are, so knots that are close
 /// together get as much parameter as knots that are far apart, and the

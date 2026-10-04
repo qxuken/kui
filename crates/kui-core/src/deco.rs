@@ -1,8 +1,8 @@
-//! Decoration lines that are not a rect (backlog K4): the wavy and dotted
+//! Decoration lines that are not a rect: the wavy and dotted
 //! underlines a text, a span or a cell asks for. A solid line is one
 //! `Solid` quad, as it always was; these are runs of
 //! [`QuadKind::Segment`] — the capsule the backend already draws for a
-//! `line` node (ADR 0010) — so no backend, header or protocol learns a
+//! `line` node — so no backend, header or protocol learns a
 //! kind. A wave is a zigzag of short pieces whose round caps soften the
 //! corners; a dotted line is a row of zero-length pieces, which the
 //! capsule SDF draws as dots. Both are sized from the stroke the face
@@ -11,8 +11,8 @@
 //! The cost is quads: a wave is two pieces per period of six strokes, a
 //! dotted line one per four. A screenful of diagnostics under 14 px text
 //! at scale 2 — say thirty runs of twenty characters — is about 1,700
-//! quads, a fifth of a 10k-rect frame's; the entry names a `QuadKind` of
-//! its own as the next step if a profile ever shows that.
+//! quads, a fifth of a 10k-rect frame's; a `QuadKind` of its own is the
+//! next step if a profile ever shows that.
 
 use crate::color::Color;
 use crate::display::{ClipId, Quad, QuadKind};

@@ -1,6 +1,5 @@
 //! A fragment: WGSL an app registers, validated here so a frame never sees
-//! a source that cannot compile
-//! (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+//! a source that cannot compile.
 //!
 //! The app writes one function:
 //!
@@ -34,8 +33,8 @@
 pub struct FragmentDrawId(pub u32);
 
 /// What a `fragment` node names: the function, and the image it reads
-/// through `kui_sample` if it declared one (backlog V1, ADR 0025 decision
-/// 7). Every fragment door takes `impl Into<FragmentRef>`, so a bare
+/// through `kui_sample` if it declared one. Every fragment door takes `impl
+/// Into<FragmentRef>`, so a bare
 /// [`FragmentId`](crate::resources::FragmentId) is the no-image form and
 /// `id.with_image(img)` the other; nothing else about the node changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,7 +77,7 @@ pub struct Draw {
 ///
 /// It is a side list for the same reason `DisplayList::fragments` is: a
 /// handle and sixteen floats is 72 bytes, and `NodeContent` is one entry
-/// per node on a tree that pushes 10,000 of them (C15). Four bytes on the
+/// per node on a tree that pushes 10,000 of them. Four bytes on the
 /// node, the rest here.
 ///
 /// The previous frame's draws are kept while an `exit` needs them, by the
@@ -296,8 +295,7 @@ fn kui_fs_fragment(
 "#;
 
 /// The stock fragment a rounded span background is painted with once the
-/// frame has joined it with the ones it meets (backlog F101,
-/// `crate::join`): one piece of the shape per line, its quad as tall as
+/// frame has joined it with the ones it meets: one piece of the shape per line, its quad as tall as
 /// the line and as wide as the piece and whatever of its neighbours'
 /// reach its corners can fill. The params are physical px from the
 /// quad's left: `params[0]` this piece `[a, b]` and the line above's,
@@ -393,8 +391,8 @@ pub const ENTRY_POINT: &str = "kui_fs_fragment";
 /// sixteen params.
 pub const POLYGON_MAX_POINTS: usize = 8;
 
-/// The stock fragment a `polygon` node paints with (ADR 0025, decision
-/// 6): up to eight vertices, one per `vec2` of the sixteen params, each
+/// The stock fragment a `polygon` node paints with: up to eight vertices, one
+/// per `vec2` of the sixteen params, each
 /// normalised to the node's box — a polygon's box is its own bounding box
 /// inflated by a pixel, so the vertices span it — the last vertex
 /// repeated to pad, filled in `in.color`. The distance is the polygon
@@ -518,7 +516,7 @@ fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
         validate(JOIN).unwrap();
     }
 
-    /// `in.color` is what the prelude added for it (ADR 0025).
+    /// `in.color` is what the prelude added for it.
     #[test]
     fn the_quad_colour_is_reachable_from_the_app() {
         let src = "\
@@ -529,7 +527,7 @@ fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {
     }
 
     /// `kui_sample`, `kui_sample_nearest` and `in.image` are the image
-    /// input (backlog V1); a source using them validates without an image
+    /// input; a source using them validates without an image
     /// bound, since binding is a per-frame fact.
     #[test]
     fn the_image_input_is_reachable_from_the_app() {

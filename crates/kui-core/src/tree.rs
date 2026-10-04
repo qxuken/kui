@@ -1,6 +1,16 @@
-//! Per-frame UI tree: flat arrays rebuilt every frame, capacities retained.
-//! Nodes are stored in DFS preorder (a parent always precedes its children,
-//! and preorder equals paint order), linked via first_child/next_sibling.
+//! [`Tree`]: the per-frame flat tree the core builds, lays out and emits.
+//!
+//! The tree is a set of parallel `Vec`s, one entry per node, rebuilt from
+//! scratch every frame with their capacities retained. Nodes are stored in
+//! DFS preorder (a parent always precedes its children, and preorder is
+//! paint order) and linked through `parent`, `first_child` and
+//! `next_sibling` indices. Layout writes `size` and `pos` into it; emission
+//! reads them. [`OriginId`] says which frontend (the host app, an
+//! extension, the core's own surfaces) opened each node.
+//!
+//! An app never touches this type: it builds through [`Ui`](crate::ui::Ui)
+//! and reads back through `Core`. It is public for a custom runner or a
+//! test that drives [`layout::compute`](crate::layout::compute) directly.
 
 use crate::geom::{Size, Vec2};
 use crate::key::Key;
@@ -14,13 +24,13 @@ pub struct OriginId(pub u16);
 
 impl OriginId {
     pub const HOST: OriginId = OriginId(0);
-    /// The core's own devtools panel (`docs/adr/0024`): a node opened
+    /// The core's own devtools panel: a node opened
     /// under it is the panel's, and an event that carries it is acted on
     /// inside `handle_input` and never handed out. Reserved at the top of
     /// the range so no extension list ever reaches it.
     pub const DEVTOOLS: OriginId = OriginId(u16::MAX);
-    /// The core's own context menu (`docs/adr/0017`, decision 5) and the
-    /// menu bar it draws (`docs/adr/0018`): the same isolation the
+    /// The core's own context menu and the menu bar it draws: the same
+    /// isolation the
     /// devtools have — a node opened under one of these is the surface's,
     /// its events are taken back inside `handle_input` and never handed
     /// out, and no key list has to remember which nodes those were.
@@ -45,7 +55,7 @@ pub enum NodeContent {
     Edit(Key),
     /// A host-registered image (see `Resources`), drawn from the atlas or
     /// from a texture of its own as the entry's backing says, met by its
-    /// box as `opts` say (ADR 0025).
+    /// box as `opts` say.
     Image(crate::resources::ImageId, crate::resources::ImageOpts),
     /// A stroke through a run of points: one segment quad per straight
     /// piece (see `crate::line`). The node is a float sized to the
@@ -53,12 +63,11 @@ pub enum NodeContent {
     Line(crate::line::LineId),
     /// A cell grid (see `crate::cells`): a terminal's screen as one node.
     Cells(crate::cells::CellsId),
-    /// A box a registered WGSL function paints (see `crate::fragment` and
-    /// `docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+    /// A box a registered WGSL function paints (see `crate::fragment`).
     /// The handle and the sixteen parameters live in the frame's
     /// `FragmentList`; the node carries only where.
     Fragment(crate::fragment::FragmentDrawId),
-    /// A filled polygon (ADR 0025, decision 6): a float sized to its own
+    /// A filled polygon: a float sized to its own
     /// bounding box like a line, painted by the stock polygon fragment
     /// whose draw sits in the frame's `FragmentList` like any fragment's,
     /// its `bg` the fill. No hit region, no access row.
@@ -83,6 +92,8 @@ impl Tree {
     }
 }
 
+/// One frame's nodes as parallel arrays in preorder; see the
+/// [module docs](self).
 #[derive(Default)]
 pub struct Tree {
     pub keys: Vec<Key>,
@@ -116,11 +127,11 @@ pub struct Tree {
     // when no node asked for that feature. A float check in a layout pass
     // is a scattered read through the spec of every child of every node;
     // behind a flag that is false on nearly every frame it is one
-    // predicted branch (C15).
+    // predicted branch.
     /// Whether any node declares `float`.
     pub any_float: bool,
     /// Whether any node declares a size expression as a clamp (a
-    /// negative `max_w`, a `Min::calc`; backlog F109): layout resolves
+    /// negative `max_w`, a `Min::calc`): layout resolves
     /// them only then.
     pub any_calc_bound: bool,
     /// Whether any float is anchored to a node by key
@@ -137,7 +148,7 @@ pub struct Tree {
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
     /// Whether any node is a `role="line"` row — what a pointer payload
-    /// inside a key sink is resolved against (backlog C34), so a frame
+    /// inside a key sink is resolved against, so a frame
     /// without a custom editor never walks a sink's subtree for one.
     pub any_line: bool,
 
@@ -146,8 +157,8 @@ pub struct Tree {
     /// Sized per run and never cleared, so the allocation is made once
     /// and reused by every run of every frame.
     pub grow_scratch: Vec<u8>,
-    /// Scratch for the shrink CSS's way (`layout::shrink_as_css`, backlog
-    /// RG92): one entry per child of the run giving, made once and reused
+    /// Scratch for the shrink CSS's way (`layout::shrink_as_css`): one
+    /// entry per child of the run giving, made once and reused
     /// by every overflowing run of every frame, as `grow_scratch` is.
     pub(crate) shrink_scratch: Vec<crate::layout::Give>,
     /// Whether any node clips (`clip`, or an overflow that scrolls).
@@ -158,9 +169,9 @@ pub struct Tree {
     pub any_rounded_clip: bool,
     /// Whether any node fades (`opacity` below one).
     pub any_opacity: bool,
-    /// Whether any node declares `modal` (ADR 0003).
+    /// Whether any node declares `modal`.
     pub any_modal: bool,
-    /// Whether any node declares `focus_region` (ADR 0022).
+    /// Whether any node declares `focus_region`.
     pub any_region: bool,
     /// Whether any node eases its position (`slide`, or an `enter` with
     /// an offset) under a transition.
@@ -169,13 +180,13 @@ pub struct Tree {
     /// the walk.
     pub any_layout: bool,
     /// Whether any node declares `on_context_menu`, so a hit region's
-    /// walk for the menu it inherits (backlog T1) is skipped wholesale on
+    /// walk for the menu it inherits is skipped wholesale on
     /// a frame that offers none.
     pub any_context_menu: bool,
     /// Some node declared `on_scroll`; emission reads the row per node
-    /// only then (ADR 0029, decision 4).
+    /// only then.
     pub any_scroll_handler: bool,
-    /// Some node declared `on_drop` (ADR 0031): a hit region's walk for
+    /// Some node declared `on_drop`: a hit region's walk for
     /// the zone it inherits is skipped wholesale on a frame with none.
     pub any_drop: bool,
     /// Whether any node declares a workable `exit` (one under a
@@ -187,19 +198,19 @@ pub struct Tree {
     /// The data index of every node opened with one (`open_indexed`), by
     /// node. A side list rather than a column, because it is a virtual
     /// list's rows and nothing else: a frame that builds none is one empty
-    /// `Vec` (C15's rule about what every node pays for).
+    /// `Vec`.
     ///
     /// What it is for: a selection endpoint in a row that is *not built*
     /// can still be ordered against the rows that are, because a row's
     /// index says where it sits in the data even when nothing on screen
-    /// says where it sits in the frame (ADR 0017, decisions 2 and 3).
+    /// says where it sits in the frame.
     pub indexed: Vec<(u32, u64)>,
     /// How many indexed rows a node's virtual list has, built or not
     /// (`rowCount`), by node. A side list for the reason `indexed` is one.
     /// What it is for: Select All inside a `selectable` virtual list is
     /// the *data*, rows `0..count`, not the rows the frame happened to
     /// build — and the count is the one thing about the data the core
-    /// cannot see (ADR 0017, tier 3).
+    /// cannot see.
     pub row_counts: Vec<(u32, u64)>,
     /// The node range every slot fill opened, by the slot's key: `(slot,
     /// first, end)` over node indices, innermost fill first (a fill
@@ -207,16 +218,16 @@ pub struct Tree {
     /// reason `indexed` is one — a frame with no extension is one empty
     /// `Vec` — and what stamps `UiEvent::slot`, so a host that fills many
     /// slots from one extension can route an event by the slot it came
-    /// from without stamping every payload (backlog K2).
+    /// from without stamping every payload.
     pub fills: Vec<(Key, u32, u32)>,
-    /// Whether any node declares `selectable` (ADR 0017). False on every
+    /// Whether any node declares `selectable`. False on every
     /// frame of an app that never asks for one, which is what keeps the
     /// scope walk and the off-screen places of tier 2 off those frames
     /// entirely.
     pub any_selectable: bool,
     /// The box a `FloatConfig::viewport()` float of the host's resolves
     /// against, in window coordinates: the whole window, or what the
-    /// devtools' dock leaves of it (`docs/adr/0024`). A zero rect means
+    /// devtools' dock leaves of it. A zero rect means
     /// the window. The devtools' own nodes always use the window.
     pub host_area: crate::geom::Rect,
 }

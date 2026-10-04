@@ -41,8 +41,7 @@ pub struct FrameStats {
     pub pending_input_ms: f32,
     /// Every frame pushed since the core was made — monotonic, where
     /// [`len`](Self::len) is the ring's fill and saturates at
-    /// [`STATS_CAPACITY`] (backlog F62: a test reading the ring's length
-    /// as a total was reading the wrong number after 120 frames).
+    /// [`STATS_CAPACITY`].
     pub total: u64,
 }
 

@@ -1,46 +1,33 @@
-//! The prop schema: the single source of truth for the per-node surface
-//! every frontend lowers into. One `PROPS` row declares a prop's name, wire
-//! id, value kind, apply function, and doc — and every binding interprets
-//! that row instead of restating it:
+//! The prop schema: the one table of node props, elements, events and
+//! readings that every kui binding is generated from or checked against.
 //!
-//! - `kui-node` parses JSON and its binary stream by kind, exports the rows
-//!   as `protocol()` so the JS encoder writes by kind, and generates the TS
-//!   prop types from them (`npm run gen`);
-//! - `kui-lua` walks a node table and looks each key up by snake_case name
-//!   (`minWidth` is `min_width` in Lua);
-//! - `kui-ffi` mirrors the rows in a `repr(C)` struct — that layout has to be
-//!   static, so it stays hand-written and pins itself to this table with a
-//!   parity test that fails when a row has no C counterpart.
+//! A Rust app does not read this module; it builds a `NodeSpec` with its
+//! methods. The tables here are for the bindings and for tooling. Each
+//! [`PROPS`] row names a prop (camelCase, with the snake_case spelling
+//! derived), its wire id, its value kind, how it applies to a `NodeSpec`
+//! and its documentation: `kui-node` parses JSON and its binary stream by
+//! kind and generates the TypeScript types from the rows, `kui-lua` looks
+//! each table key up by name, and `kui-ffi` mirrors the rows in a C struct
+//! that a parity test pins to this table. [`CUSTOM`] lists the composite
+//! props a binding extracts itself (padding shorthands, border, overflow,
+//! floats), [`ELEMENTS`] the props each element lowers, [`DOORS`] the
+//! verbs (calls rather than props) with their spelling in every binding,
+//! and [`known_prop`] answers whether a name is any of these, which is
+//! what an `unknown-prop` warning checks against.
 //!
-//! Adding a simple prop = one row here (+ `npm run gen` for TS, + a field in
-//! `KuiSpec` when the parity test says so). Composite props with real logic
-//! (the pad shorthand family, border, overflow bits, float configs) and the
-//! constructor-ordering specials (`dir`, `size`, `key`, `title`, `keyFocus`)
-//! need per-binding *extraction* — a Lua table, a serde_json map, a binary
-//! stream and a C struct are genuinely different to read — but not
-//! per-binding *decisions*: what "below" attaches to, what `padX` falls
-//! back to, what a scroll bit implies and what a tooltip means all live in
-//! one place ([`crate::spec::FloatConfig::build`],
-//! [`crate::spec::PadShorthand`], [`crate::spec::NodeSpec::overflow_bits`],
-//! [`PropsOut::apply_tooltip`]), and a binding pulls typed scalars out of
-//! its own value type and calls them. `CUSTOM` lists them by name and wire
-//! id so transports agree on identity, and `crate::conformance` makes them
-//! agree on behaviour — every `CUSTOM` and `ELEMENTS` row has to appear in
-//! a scene that all four bindings reproduce byte for byte, or the build
-//! fails.
+//! ```rust
+//! use kui_core::schema::{PROPS, P_WIDTH};
 //!
-//! Those rows are also the allow-list: a dynamic binding drops a name it
-//! cannot place, so the names it may legitimately drop have to be written
-//! down somewhere both bindings read. `CUSTOM` carries every spelling of
-//! each composite and `ELEMENTS` the props an element lowers itself
-//! (`<edit initial>`, `<image src>`), each in both conventions;
-//! [`known_prop`] answers from them and everything else is a
-//! `diag::UNKNOWN_PROP` warning.
+//! let width = PROPS.iter().find(|p| p.id == P_WIDTH).expect("a core prop");
+//! assert_eq!(width.name, "width");
+//! assert!(!width.doc.is_empty());
+//! ```
 //!
-//! The verbs — what an app or a host *calls* rather than declares — are
-//! the one surface this table did not cover; [`DOORS`] does (backlog B1a),
-//! one row per verb with its C, Node and Lua spelling or the reason there
-//! is none, pinned by each binding's own test.
+//! Adding a simple prop is one row here (plus `npm run gen` for the TS
+//! types, and a field in the C struct when the parity test says so).
+//! Composite props need per-binding extraction but not per-binding
+//! decisions: what a shorthand means lives in one place in `spec`, and
+//! `crate::conformance` makes every binding agree on behaviour.
 
 use std::sync::LazyLock;
 
@@ -188,7 +175,7 @@ pub const P_BOUNCE: u32 = 122;
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
 /// and C's `KUI_ALIGN_*` is it. The spreads mean something on `mainAlign`
-/// and `baseline` on a row's `crossAlign` only (backlog C13).
+/// and `baseline` on a row's `crossAlign` only.
 pub const ALIGNS: &[&str] = &[
     "start",
     "center",
@@ -204,12 +191,12 @@ pub const WINDOW_ROLES: &[&str] = &["drag", "close", "minimize", "maximize"];
 /// changed. C spells it as the index plus one (`KUI_SCROLLBAR_*`), so a
 /// zeroed field is "unset".
 pub const SCROLLBARS: &[&str] = &["visible", "hidden", "auto"];
-/// The `overscroll` row, in `Overscroll::ALL`'s order (backlog F107): a
+/// The `overscroll` row, in `Overscroll::ALL`'s order: a
 /// scroll gesture starting over a scroller at its limit goes on to the one
 /// around it, or stays. C spells it as the index plus one
 /// (`KUI_OVERSCROLL_*`), a zeroed field being `auto`.
 pub const OVERSCROLLS: &[&str] = &["auto", "contain"];
-/// The `scrollAxes` row, in `ScrollAxes::ALL`'s order (backlog F107): the
+/// The `scrollAxes` row, in `ScrollAxes::ALL`'s order: the
 /// axes an `onScroll` node takes. C spells it as the index plus one
 /// (`KUI_SCROLL_AXES_*`), a zeroed field being `both`.
 pub const SCROLL_AXES: &[&str] = &["both", "x", "y"];
@@ -238,7 +225,7 @@ pub fn cursor_idx(i: usize) -> CursorShape {
         .unwrap_or(CursorShape::Default)
 }
 pub const WRAPS: &[&str] = &["word", "glyph", "none", "break-spaces"];
-/// `underlineStyle` / `underline_style` (backlog K4); `UnderlineStyle::NAMES`.
+/// `underlineStyle` / `underline_style`; `UnderlineStyle::NAMES`.
 pub const UNDERLINE_STYLES: &[&str] = UnderlineStyle::NAMES;
 /// `expanded` names its state rather than being a flag: a disclosure that
 /// is shut has to say "collapsed", and an absent flag cannot — absent has
@@ -273,13 +260,13 @@ pub const ROLES: &[&str] = &[
     "textInput",
     "multilineTextInput",
     "line",
-    // Appended by ADR 0007. The tail is the only free position (ADR 0006),
+    // Appended later. The tail is the only free position,
     // which is what makes "the first fifteen can be declared" a list rather
     // than a range.
     "radioGroup",
     "menu",
     "menuItem",
-    // Appended by backlog C20: a cell grid's derived role.
+    // Appended later: a cell grid's derived role.
     "terminal",
 ];
 
@@ -311,8 +298,8 @@ pub const ASSISTIVE: &[&str] = &["unknown", "none", "listening"];
 /// call reports the default.
 pub const AUDIO_DEVICES: &[&str] = &["closed", "opening", "open", "failed"];
 
-/// The roles no view can declare, because the core derives them itself
-/// ([`crate::access::derived_role`]), with what derives each one. Every
+/// The roles no view can declare, because the core derives them itself,
+/// with what derives each one. Every
 /// [`Role::ALL`] variant is on this list or in [`ROLES`], and
 /// `every_role_is_declarable_or_derived` keeps both halves honest: a role
 /// exempted here has to be one a frame really does derive, so the list
@@ -381,7 +368,7 @@ pub fn easing_idx(i: usize) -> Easing {
 
 /// How a prop's value is parsed (per transport) and encoded (binary slots).
 pub enum Kind {
-    /// One number, or a `"$length"` token (ADR 0027). Binary: 1 slot.
+    /// One number, or a `"$length"` token. Binary: 1 slot.
     F32,
     /// One color: `0xRRGGBBAA` number or `#hex` string, or a `"$color"`
     /// token. Binary: 1 slot (u32).
@@ -418,7 +405,7 @@ pub enum Kind {
     Str,
     /// A font family: one of the stock names (`FAMILIES`) or an installed
     /// or loaded family's name, which the parser registers and turns into
-    /// its handle (ADR 0037). Binary: strref (v18).
+    /// its handle. Binary: strref (v18).
     Family,
     /// A registered resource handle (a font or sound id): the integer form
     /// of the slotmap key. JSON/binary carry it as the 16-hex string the
@@ -1715,7 +1702,7 @@ pub const TEXT_ROWS_LUA: &[&str] = &[
 
 /// The rows the stock button reads (`ElementDef::jsx_rows` / `lua_rows`):
 /// the click, the identity (`key`, or `index` in a virtual list — declared
-/// beside `key` the index wins, as on a box, backlog AR40), the access
+/// beside `key` the index wins, as on a box), the access
 /// rows — what a button *is* and what a reader says of it — and the one
 /// paint row it takes, `accent`, which is not a colour but a question put
 /// to the OS. The two lists are the same rows in each spelling, index for
@@ -1742,7 +1729,7 @@ pub const BUTTON_ROWS_LUA: &[&str] = &[
 ];
 
 /// The rows a stock toggle — `checkbox`, `radio`, `switch` — reads
-/// (`widgets::toggle_with`, ADR 0034): the button's access rows, its state
+/// (`widgets::toggle_with`): the button's access rows, its state
 /// and no layout or paint row, since its look is its spec. `mixed` means
 /// something on a checkbox alone.
 pub const TOGGLE_ROWS_JSX: &[&str] = &[
@@ -1765,7 +1752,7 @@ pub const TOGGLE_ROWS_LUA: &[&str] = &[
     "checked",
     "mixed",
 ];
-/// The rows the stock slider reads (`widgets::slider_with`, ADR 0034): the
+/// The rows the stock slider reads (`widgets::slider_with`): the
 /// value rows, its change tag, the access rows, and its width — the one
 /// piece of its look an app sizes.
 pub const SLIDER_ROWS_JSX: &[&str] = &[
@@ -2315,7 +2302,7 @@ pub struct EnvField {
     pub get: fn(&EnvFacts) -> Value,
 }
 
-/// Everything an env reading is taken from: the stored [`Env`] and the
+/// Everything an env reading is taken from: the stored [`Env`](crate::env::Env) and the
 /// frame's own facts beside it (`Core::env_facts`).
 #[derive(Clone, Copy, Debug)]
 pub struct EnvFacts {
@@ -2752,8 +2739,7 @@ pub const THEME_ROLES: &[ThemeRole] = &[
     },
 ];
 
-/// One size the stock widgets are built from (`crate::metrics::Metrics`,
-/// backlog T2), pinned the way [`ThemeRole`] pins a colour: a binding
+/// One size the stock widgets are built from (`crate::metrics::Metrics`), pinned the way [`ThemeRole`] pins a colour: a binding
 /// iterates the rows to read or write a set, so a field added to
 /// `Metrics` is one row here and nothing anywhere else. The test below
 /// destructures the struct exhaustively.
@@ -2768,8 +2754,8 @@ pub struct MetricRole {
     /// `Some` for a row whose stock value is the platform's own rather
     /// than a density's: the value on Windows, then everywhere else.
     /// `get` answers for the running platform; a generator prints the
-    /// pair, so `docs/props.md` reads the same whichever machine wrote it
-    /// (backlog W13). Stock and compact share it — the test below pins
+    /// pair, so `docs/props.md` reads the same whichever machine wrote it.
+    /// Stock and compact share it — the test below pins
     /// that `compact()` leaves such a row alone.
     pub platform: Option<PlatformValue>,
 }
@@ -3052,13 +3038,13 @@ pub struct PropsOut {
     pub row_count: Option<u64>,
     pub title: Option<String>,
     /// `alwaysOnTop`: the root asked for the window above every other
-    /// app's this frame (`Core::set_always_on_top`, backlog C30).
+    /// app's this frame (`Core::set_always_on_top`).
     pub always_on_top: bool,
     /// `secureInput`: the root asked for secure keyboard entry while the
-    /// window has the keyboard (`Core::set_secure_input`, backlog F85).
+    /// window has the keyboard (`Core::set_secure_input`).
     pub secure_input: bool,
     /// `optionAsAlt`: which Option keys the root asked to act as Alt this
-    /// frame (`Core::set_option_as_alt`, backlog F113).
+    /// frame (`Core::set_option_as_alt`).
     pub option_as_alt: crate::OptionAsAlt,
     pub key_focus: bool,
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
@@ -3069,7 +3055,7 @@ pub struct PropsOut {
     /// Whether the `wrap` row was declared: the mode is in `style.wrap`,
     /// whose default is `Word`, so the style alone cannot say. A
     /// single-line editor folds to its width when it was
-    /// (`EditOptions::wrap`, backlog F44); nothing else reads it.
+    /// (`EditOptions::wrap`); nothing else reads it.
     pub wrap: bool,
 }
 
@@ -3281,8 +3267,7 @@ mod tests {
 
     /// An enum row's name list is the wire order — a binding sends the
     /// index — so each list is its enum's `ALL` by `name`, and the index
-    /// map is a lookup in `ALL` and not a second table (backlog AR42:
-    /// `Easing`, `Repeat`, `Live` and `FontFamily` were hand maps that a
+    /// map is a lookup in `ALL` and not a second table (`Easing`, `Repeat`, `Live` and `FontFamily` were hand maps that a
     /// variant appended or a list reordered put one off, with nothing to
     /// say so). `CURSORS` has the same pin in `cursor.rs`, `ROLES` its
     /// own below.
@@ -3428,7 +3413,7 @@ mod tests {
             assert_eq!(row.node, camel, "{}'s Node spelling", row.name);
             // A platform row's pair is what the struct reads on this
             // platform, in both sets: the generator prints the pair for
-            // both columns on the strength of this (W13).
+            // both columns on the strength of this.
             if let Some(p) = row.platform {
                 assert_eq!(
                     (row.get)(&Metrics::default()),
@@ -3799,7 +3784,7 @@ mod tests {
         assert!(known_prop("edit", "initial", Camel));
         assert!(!known_prop("box", "initial", Camel));
         // A shared text row on an editor is the editor's too: `wrap` is
-        // what folds a single-line one (backlog F44), and it must not warn.
+        // what folds a single-line one, and it must not warn.
         assert!(known_prop("edit", "wrap", Camel) && known_prop("edit", "wrap", Snake));
         assert!(known_prop("image", "src", Camel) && known_prop("image", "id", Snake));
         // And nothing claims a typo.

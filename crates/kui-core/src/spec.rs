@@ -1,4 +1,41 @@
-//! Node configuration: plain data, trivially constructible from any language.
+//! [`NodeSpec`] and [`TextStyle`]: everything a node and a text declare,
+//! as plain data with a builder.
+//!
+//! A `NodeSpec` is the contract every frontend lowers into, whether a Rust
+//! builder chain, a Lua table or a JSX element. It groups the layout
+//! ([`LayoutSpec`]: sizing, direction, padding, gap, alignment, overflow),
+//! the look ([`VisualStyle`]: background, border, radius, shadow, opacity)
+//! and, boxed because most nodes declare none of it, the events, animation,
+//! accessibility and interaction styling. Every builder method sets one of
+//! those fields; the field docs below say what each means.
+//!
+//! ```rust
+//! use kui_core::{Align, Color, NodeSpec, Sizing, TextStyle, TextWrap};
+//!
+//! // A card: grows across its parent, fits its content down, 12 px padding
+//! // and gap, rounded, with a hover background and a click payload.
+//! let card = NodeSpec::column()
+//!     .width(Sizing::GROW)
+//!     .pad(12.0)
+//!     .gap(8.0)
+//!     .bg(Color::hex(0x1e2230ff))
+//!     .hover_bg(Color::hex(0x262b3aff))
+//!     .radius(8.0)
+//!     .on_click("open-card");
+//!
+//! // A toolbar row: fixed height, children centred across it.
+//! let toolbar = NodeSpec::row().size(Sizing::GROW, 36.0).cross_align(Align::Center);
+//!
+//! // A one-line title, cut with an ellipsis when it does not fit.
+//! let title = TextStyle::new(16.0).ellipsis().color(Color::WHITE);
+//! let code = TextStyle::new(13.0).mono().wrap(TextWrap::Glyph);
+//!
+//! assert_eq!(card.layout.padding.l, 12.0);
+//! assert!(card.events().on_click.is_some());
+//! assert_eq!(toolbar.layout.height, Sizing::Fixed(36.0));
+//! assert_eq!(title.max_lines, 0); // `ellipsis` alone means one line
+//! assert!(title.ellipsis && code.wrap == TextWrap::Glyph);
+//! ```
 
 use crate::anim::{Easing, Repeat, Transition};
 use crate::color::Color;
@@ -12,6 +49,8 @@ use crate::window::{WindowButton, WindowRole};
 
 pub use crate::access::{Label, Live, Role};
 
+/// How a node sizes one axis. A plain number converts to `Fixed`, so
+/// `.width(120.0)` and `.width(Sizing::Fixed(120.0))` are the same.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Sizing {
     /// Size to content.
@@ -25,23 +64,23 @@ pub enum Sizing {
     Percent(f32),
     /// A size expression resolved against the parent's content box, the
     /// box a `Percent` takes its cut of: `"clamp(400px, 80%, 1000px)"`
-    /// (backlog F109, [`crate::calc`]). Layout treats it as it treats a
-    /// `Percent` — nothing in the fit pass, its size once the parent's is
-    /// known — and a parent that overflows shrinks it as it would one.
+    /// (see [`crate::calc`]). Layout treats it as it treats a `Percent`:
+    /// nothing in the fit pass, its size once the parent's is known, and
+    /// a parent that overflows shrinks it as it would one.
     Calc(crate::calc::Calc),
 }
 
-/// What a `minWidth` / `maxWidth` / `minHeight` / `maxHeight` declares:
-/// px, the node's own fit size (a min only), or a size expression that
-/// layout resolves against the parent's content box when it sizes the
-/// node (backlog F109). Until then a calc bound clamps like none, as a
+/// What a `min_width` / `max_width` / `min_height` / `max_height`
+/// declares: px, the node's own fit size (a min only), or a size
+/// expression that layout resolves against the parent's content box when
+/// it sizes the node. Until then a calc bound clamps like none, as a
 /// percentage clamp does in CSS's intrinsic sizing.
 ///
-/// A calc clamp costs the spec nothing: it rides in the clamp's own
-/// `f32` as a negative, the way [`Min::FIT`] does — `min_w` below −1
-/// ([`Min::calc`]), `max_w` below 0 ([`max_calc`]) — and layout writes
-/// the resolved px over it, so a reader after layout reads a number and
-/// one before it goes through [`LayoutSpec::max_w_px`].
+/// A calc clamp rides in the clamp's own `f32` as a negative, the way
+/// [`Min::FIT`] does (`min_w` below -1, [`Min::calc`]; `max_w` below 0,
+/// [`max_calc`]), and layout writes the resolved px over it. A reader
+/// after layout reads a number; one before it goes through
+/// [`LayoutSpec::max_w_px`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Bound {
     Px(f32),
@@ -50,22 +89,16 @@ pub enum Bound {
 }
 
 /// A ceiling that is a size expression, as `max_w` / `max_h` hold it
-/// until layout resolves it: −1 − its number.
+/// until layout resolves it: -1 minus its number.
 pub fn max_of_calc(c: crate::calc::Calc) -> f32 {
     -1.0 - c.id() as f32
 }
 
 /// A px ceiling as `max_w` / `max_h` hold it: never below zero, so a
-/// negative there is only ever [`max_of_calc`]'s. Every door a px
-/// ceiling enters by — `NodeSpec::max_width` / `max_height` in Rust, the
-/// schema's `maxWidth` / `maxHeight` rows Node and Lua apply through
-/// (their numbers, their `$name` lengths), C's `max_w` / `max_h` and
-/// `*_size` clamps — reaches the field through those two builders, so
-/// this is the one place it is decided. Before size expressions a
-/// negative ceiling clamped a node to its floor (`clamp_w` took the
-/// larger of the two), and `NaN` did the same; 0 keeps both. Without it
-/// `-1.0` read as the expression interned first — a node held to half
-/// its row by a number that meant "nothing" (backlog RG78).
+/// negative there is only ever [`max_of_calc`]'s. A negative or `NaN`
+/// ceiling is a ceiling of 0. Every binding's max clamp reaches the field
+/// through [`NodeSpec::max_width`] / [`NodeSpec::max_height`], which call
+/// this.
 pub fn px_ceiling(px: f32) -> f32 {
     // `f32::max` takes the other operand over a `NaN`.
     px.max(0.0)
@@ -91,7 +124,7 @@ impl From<Min> for Bound {
         } else if let Some(c) = m.as_calc() {
             Bound::Calc(c)
         } else if m.is_auto() {
-            // Undeclared stays undeclared through `min_width` (RG92).
+            // Undeclared stays undeclared through `min_width`.
             Bound::Px(-0.0)
         } else {
             Bound::Px(m.resolved())
@@ -100,26 +133,22 @@ impl From<Min> for Bound {
 }
 
 /// A lower clamp on one axis: a number of logical px, or the node's own
-/// fit size on that axis (`minWidth: "fit"`, [`Min::FIT`]). `FIT` is what
-/// lets a `Grow` child keep a content floor — CSS's `flex: 1 0 auto`: the
-/// tabs of an i3-style bar split the bar evenly while they fit and sit at
-/// their label's width, scrolling, once they do not. Layout resolves it
-/// to a number in the fit pass of its axis (`layout::fit_widths` /
-/// `fit_heights`), so every later clamp reads one; until then it clamps
-/// like no floor at all.
+/// fit size on that axis ([`Min::FIT`], `minWidth: "fit"` in the
+/// bindings). `FIT` is what lets a `Grow` child keep a content floor, like
+/// CSS's `flex: 1 0 auto`: tabs split a bar evenly while they fit and sit
+/// at their label's width, scrolling, once they do not. Layout resolves it
+/// to a number in the fit pass of its axis, so every later clamp reads
+/// one; until then it clamps like no floor at all.
 ///
 /// Undeclared is [`Min::AUTO`], which clamps as 0 everywhere but one
 /// place: a child giving in an overflowing row that holds a share of the
-/// room, where it is CSS's `min-width: auto` — the child's min-content,
-/// the widest thing in it that cannot wrap (backlog RG92). A declared 0
-/// (`minWidth: 0`, `Min::px(0.0)`) is no floor there either, as CSS's
+/// room, where it is CSS's `min-width: auto`, the child's min-content. A
+/// declared 0 (`Min::px(0.0)`) is no floor there either, as CSS's
 /// `min-width: 0` is how a flex item is let go below its content.
 ///
-/// One `f32`, with `FIT` as a negative — the form `KuiSpec.min_w` takes
-/// too (`KUI_MIN_FIT`) — rather than an enum with a tag: `LayoutSpec` is
-/// copied per node per frame, and a tagged pair for two axes is eight
-/// bytes on every node for a floor almost none declares (C15). A negative
-/// floor never meant anything, so the slot was free.
+/// Stored as one `f32` with `FIT` and a calc as negatives (the form the
+/// C struct's `min_w` takes too), because `LayoutSpec` is copied per node
+/// per frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Min(f32);
 
@@ -134,10 +163,9 @@ impl Min {
     pub const FIT: Min = Min(-1.0);
 
     /// No floor declared: the node's min-content where a share of the room
-    /// gives in CSS's way (backlog RG92) and down a column of fit
-    /// children (F114); 0 across a run of fit children alone, across a
-    /// column, where a fit node is held to the column's box (F116), and
-    /// for a node that scrolls or clips.
+    /// gives in CSS's way and down a column of fit children; 0 across a
+    /// run of fit children alone, across a column, where a fit node is
+    /// held to the column's box, and for a node that scrolls or clips.
     /// Negative zero, so it is 0 to every clamp and to `==`, and told
     /// apart from a declared 0 by its sign alone ([`Min::is_auto`]).
     pub const AUTO: Min = Min(-0.0);
@@ -158,8 +186,8 @@ impl Min {
         self.0 == Min::FIT.0
     }
 
-    /// A floor that is a size expression, until layout resolves it
-    /// (backlog F109): −2 − its number, below `FIT`'s −1.
+    /// A floor that is a size expression, until layout resolves it: -2
+    /// minus its number, below `FIT`'s -1.
     pub fn calc(c: crate::calc::Calc) -> Min {
         Min(-2.0 - c.id() as f32)
     }
@@ -238,6 +266,7 @@ impl Sizing {
     }
 }
 
+/// Which way a container stacks its children.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Dir {
     Row,
@@ -257,13 +286,11 @@ impl Dir {
 
 /// Where children sit along an axis, and where a float attaches.
 ///
-/// The first three are every axis's. The rest were appended (backlog C13,
-/// in `schema::ALIGNS` order, so the wire indices and `KUI_ALIGN_*` of the
-/// first three did not move) and each means something on one axis only:
-/// the three spreads on `main_align`, `Baseline` on a row's
+/// The first three apply to every axis. The rest each mean something on
+/// one axis only: the three spreads on `main_align`, `Baseline` on a row's
 /// `cross_align`. Anywhere else one lays out as `Start`
-/// (`SpaceAround`/`SpaceEvenly` as `Center`), with a warning
-/// (`diag::ALIGN_IGNORED`).
+/// (`SpaceAround`/`SpaceEvenly` as `Center`), with an `align-ignored`
+/// warning.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Align {
     #[default]
@@ -304,22 +331,28 @@ pub enum FloatAnchor {
     /// The whole viewport.
     Viewport,
     /// The border box of the node `Key` names, wherever it is in the
-    /// tree — even after this one in preorder, which the five passes
-    /// cannot serve, so a float anchored this way is laid out again in
-    /// a sixth, once its anchor is placed (`layout::anchored`). What a
-    /// devtools tab's content is: built in the app's part of the tree,
-    /// shown over the panel's tab body (ADR 0032, decision 2). No
-    /// binding spells it; the core builds it.
+    /// tree, even after this one in preorder: such a float is laid out
+    /// again in a sixth pass once its anchor is placed. What a devtools
+    /// tab's content is: built in the app's part of the tree, shown over
+    /// the panel's tab body. No binding spells it; the core builds it.
     Node(crate::key::Key),
 }
 
-/// Takes a node out of flex flow: it doesn't consume space in its parent,
+/// Takes a node out of flex flow: it does not consume space in its parent,
 /// sizes Grow/Percent against its anchor, is positioned by attach points,
 /// and escapes ancestor clips unless [`FloatConfig::clip`] keeps it in its
-/// parent's. It paints as a layer of its own — above the
-/// in-flow tree and every float that opened before it, under every one
-/// that opened after — and takes input in the same order
-/// (`docs/adr/0023-layers-stack-in-the-order-they-open.md`).
+/// parent's. It paints as a layer of its own, above the in-flow tree and
+/// every float that opened before it and under every one that opened
+/// after, and takes input in the same order.
+///
+/// ```rust
+/// use kui_core::{Align, FloatConfig, NodeSpec};
+///
+/// let tooltip = NodeSpec::column().float(FloatConfig::below().fit());
+/// let toast = NodeSpec::row().float(FloatConfig::viewport().inside(Align::End, Align::End).offset(-16.0, -16.0));
+/// assert!(tooltip.layout.float.unwrap().fit);
+/// assert_eq!(toast.layout.float.unwrap().offset.x, -16.0);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FloatConfig {
     pub anchor: FloatAnchor,
@@ -334,26 +367,19 @@ pub struct FloatConfig {
     /// axis (below ↔ above, after ↔ before) when that fits better, then
     /// clamp whatever still overflows. Tooltips/menus want this.
     ///
-    /// This is the *in-window* approximation of an OS popup, and it is the
-    /// one to reach for first: a float costs one tree, one hit list and one
-    /// draw call. What it cannot do is leave the window — a dropdown taller
-    /// than the viewport, or a menu with nowhere in-window to go, gets
-    /// clamped rather than placed. Those want a popup window — which this
-    /// release does not have: it is `docs/adr/0004-multi-window.md`'s step
-    /// 4, and the ADR's Consequences say so. So `fit` plus a `modal` float
-    /// (`docs/adr/0003-modal-surfaces.md`) is not merely the first thing to
-    /// reach for today, it is the only thing.
+    /// This is the in-window approximation of an OS popup: a float costs
+    /// one tree, one hit list and one draw call. What it cannot do is leave
+    /// the window, so a dropdown taller than the viewport, or a menu with
+    /// nowhere in-window to go, is clamped rather than placed.
     pub fit: bool,
     /// Take the parent's clip, as a child does, instead of escaping every
     /// ancestor's: a node on a `clip` canvas panned past the canvas's edge
     /// is cut there, and its hit region with it, rather than drawn over
-    /// and clicked through the toolbar beside it (backlog F90). Only a
-    /// [`FloatAnchor::Parent`] float reads it — a viewport or node anchor
-    /// is placed against something other than the parent, and escapes
-    /// with it set or not. Paint order is unchanged: the float is still a
-    /// layer of its own above its in-flow siblings, only cut. A `line` or
-    /// `polygon` anchored in its parent's box has it set by the core (ADR
-    /// 0010, decision 5, as amended).
+    /// and clicked through the toolbar beside it. Only a
+    /// [`FloatAnchor::Parent`] float reads it; a viewport or node anchor is
+    /// placed against something other than the parent, and escapes with it
+    /// set or not. Paint order is unchanged. A `line` or `polygon` anchored
+    /// in its parent's box has it set by the core.
     pub clip: bool,
 }
 
@@ -378,10 +404,12 @@ impl Default for FloatConfig {
 }
 
 impl FloatConfig {
+    /// Anchored to the parent's top-left corner.
     pub fn parent() -> Self {
         Self::default()
     }
 
+    /// Anchored to the viewport's top-left corner.
     pub fn viewport() -> Self {
         Self {
             anchor: FloatAnchor::Viewport,
@@ -411,11 +439,13 @@ impl FloatConfig {
         }
     }
 
+    /// The attach point on the anchor.
     pub fn at(mut self, x: Align, y: Align) -> Self {
         self.anchor_point = (x, y);
         self
     }
 
+    /// The attach point on the float itself.
     pub fn self_at(mut self, x: Align, y: Align) -> Self {
         self.self_point = (x, y);
         self
@@ -429,6 +459,7 @@ impl FloatConfig {
         self.at(x, y).self_at(x, y)
     }
 
+    /// An extra offset after attaching, logical px.
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset = Vec2Offset { x, y };
         self
@@ -561,6 +592,9 @@ impl PadShorthand {
     }
 }
 
+/// The layout half of a [`NodeSpec`]: sizing, clamps, direction, padding,
+/// gap, alignment, overflow and floating. Set through the `NodeSpec`
+/// builders; read by the solver.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutSpec {
     pub width: Sizing,
@@ -569,10 +603,10 @@ pub struct LayoutSpec {
     /// Fixed alike), so "grow but at most N" and "fit but at least N" work.
     /// A min may also be [`Min::FIT`]: "grow but never below my content".
     pub min_w: Min,
-    /// A ceiling in px, or — as a negative — a size expression layout has
+    /// A ceiling in px, or, as a negative, a size expression layout has
     /// yet to resolve ([`max_of_calc`]); set it through
     /// [`NodeSpec::max_width`], which keeps a px one at or above zero
-    /// ([`px_ceiling`], backlog RG78). `max_h` is the same.
+    /// ([`px_ceiling`]). `max_h` is the same.
     pub max_w: f32,
     pub min_h: Min,
     pub max_h: f32,
@@ -586,8 +620,8 @@ pub struct LayoutSpec {
     /// would need its height first. Ignored on a column and on a
     /// `scroll_x` row, both with a warning (`diag::WRAP_IGNORED`).
     pub wrap: bool,
-    /// A column whose rows' children line up in columns (ADR 0033): the
-    /// nth in-flow child of every in-flow row is a cell of column n, and
+    /// A column whose rows' children line up in columns: the nth in-flow
+    /// child of every in-flow row is a cell of column n, and
     /// a column is as wide as its widest cell — its cells' own `width`s
     /// say how the column sizes (a `Fixed` or `Fit` cell is content that
     /// sets the column's fit width, a `Grow` cell makes the column grow,
@@ -611,7 +645,7 @@ pub struct LayoutSpec {
     pub main_align: Align,
     /// Alignment of children across the main axis; `Baseline` on a row.
     pub cross_align: Align,
-    /// Width over height (backlog C14, CSS's `aspect-ratio`); 0 = none.
+    /// Width over height (CSS's `aspect-ratio`); 0 = none.
     /// It sizes the axis whose sizing is `Fit`: a fit height is the final
     /// width over the ratio, and a fit width under a `Fixed` height is
     /// that height times it. With both axes declared it has nothing to set.
@@ -624,7 +658,7 @@ pub struct LayoutSpec {
     /// across frames in the core, keyed by this node's `Key`.
     pub scroll_x: bool,
     pub scroll_y: bool,
-    /// Scroll anchoring (backlog C26 step 3, CSS's `overflow-anchor`): the
+    /// Scroll anchoring (CSS's `overflow-anchor`): the
     /// first child in view keeps its place on screen when the content
     /// before it changes size — a chat that prepends history, a log that
     /// inserts above the viewport, a row whose estimate was corrected.
@@ -667,10 +701,9 @@ impl LayoutSpec {
         self.clip || self.scroll_x || self.scroll_y
     }
 
-    /// Whether this node is a table (ADR 0033): the flag, on a column.
-    /// Every reader — the solver, the diagnostics, `NodeInfo`, the
-    /// corpus — asks this and not the field, so a `Row` with the field
-    /// set is a row everywhere.
+    /// Whether this node is a table: the flag, on a column. Every reader
+    /// asks this and not the field, so a `Row` with the field set is a row
+    /// everywhere.
     pub fn is_table(&self) -> bool {
         self.table && self.dir == Dir::Column
     }
@@ -724,6 +757,8 @@ impl LayoutSpec {
     }
 }
 
+/// The paint half of a [`NodeSpec`]: background, border, corner radii,
+/// opacity, shadow and pixel snapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VisualStyle {
     pub bg: Color,
@@ -806,8 +841,10 @@ pub mod corner {
     pub const BL: usize = 3;
 }
 
-/// Full per-node configuration. This — not any Rust trait — is the contract
-/// every frontend (Rust builders, Lua, serialized UI) lowers into.
+/// Everything one node declares. This, not any Rust trait, is the contract
+/// every frontend (Rust builders, Lua, JSX, C) lowers into. Start from
+/// [`NodeSpec::row`], [`NodeSpec::column`] or [`NodeSpec::table`] and
+/// chain builders; see the [module docs](self) for an example.
 #[derive(Clone, Debug, Default)]
 pub struct NodeSpec {
     pub layout: LayoutSpec,
@@ -821,17 +858,11 @@ pub struct NodeSpec {
     /// node is declared (`animate`). What a `fragment` reading `time`
     /// needs; opt-in, because it takes the loop off input-driven.
     pub animate: bool,
-    /// Paint this node's background in the theme's accent
-    /// (`docs/adr/0019-a-theme-derived-from-appearance-and-accent.md`) —
-    /// the OS's where the host reported one, the app's where it pinned
-    /// one, kui's blue otherwise — keeping the declared `bg` only as what
-    /// a binding that never sets this row still gets.
-    ///
-    /// A question, not a colour: a view says *that* this node is the
-    /// accented one and the palette says which colour that is. The stock
-    /// button takes it further and repaints its hover, its pressed shade
-    /// and its label from the same accent, so a light accent still reads
-    /// (`crate::widgets::button_with`).
+    /// Paint this node's background in the theme's accent: the OS's where
+    /// the host reported one, the app's where it pinned one, kui's blue
+    /// otherwise. A view says *that* this node is the accented one and the
+    /// palette says which colour that is. The stock button also repaints
+    /// its hover, pressed shade and label from the same accent.
     pub accent: bool,
     /// Window-chrome role (drag handle / window button). A chrome node's
     /// interactions become `WindowCommand`s for the frame driver instead of
@@ -849,8 +880,7 @@ pub struct NodeSpec {
     /// Reachable by Tab, and focused by a click or an assistive-technology
     /// request, without a click payload or a control role — a list row
     /// that opens on Enter, a card. Controls (editors, key sinks,
-    /// `on_click` boxes, the control roles) are focusable already; see
-    /// `docs/adr/0002-keyboard-focus-as-data.md`.
+    /// `on_click` boxes, the control roles) are focusable already.
     pub focusable: bool,
     /// Where focus lands when the `modal` scope containing this node is
     /// entered: the first node in the modal's Tab ring declaring it,
@@ -859,7 +889,7 @@ pub struct NodeSpec {
     /// Read on entry only, so a Tab press afterwards stands; a node the
     /// ring skips (disabled, decoration, not focusable) is not a
     /// candidate, and with no candidate the entry is the ring's first
-    /// node as before. See `docs/adr/0003-modal-surfaces.md`.
+    /// node as before.
     pub initial_focus: bool,
     /// Inert: keeps its hit region (so a tooltip can say why) and loses
     /// everything else — no click, drag or key sink, no hover / pressed /
@@ -889,8 +919,7 @@ pub struct NodeSpec {
 }
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
-/// nodes declare none, and seven `Option<Value>` inline cost 224 bytes
-/// on every node built (see C15 in `docs/backlog/closed-2026-09.md`).
+/// nodes declare none.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EventSpec {
     /// Payload emitted as a `UiEvent` when this node is clicked.
@@ -919,8 +948,8 @@ pub struct EventSpec {
     /// what a keymap wants.
     pub key_up: bool,
     /// With `on_key`: the modifier and lock keys themselves arrive too
-    /// — Shift, Ctrl, Alt, Super, Caps Lock, Num Lock, Scroll Lock, as
-    /// codes of their own with their side in `location` (backlog F108).
+    /// (Shift, Ctrl, Alt, Super, Caps Lock, Num Lock, Scroll Lock), as
+    /// codes of their own with their side in `location`.
     /// Without it a modifier is only ever held — in the next key's
     /// `shift` / `ctrl` / … and the `modifiers` event — so a keymap
     /// mid-sequence does not read Shift as a key between two others. A
@@ -935,7 +964,7 @@ pub struct EventSpec {
     /// viewport coordinates, which is where the menu goes. Asked of the
     /// topmost node under the pointer; when that node offers no menu the
     /// press reaches the nearest enclosing node that does, the way an
-    /// unclaimed key reaches the enclosing sink (ADR 0011, backlog T1):
+    /// unclaimed key reaches the enclosing sink:
     /// the event carries the owner's key and tag, a nested declaration
     /// wins over its ancestor's, a disabled node's own is skipped, and
     /// the walk stops at the modal boundary. Null = the behaviour without
@@ -947,7 +976,7 @@ pub struct EventSpec {
     /// press is — no focus moved, no caret, no click — but asked of the
     /// topmost node only, with no walk to an enclosing declaration — and
     /// the ordinary click the press produces still follows,
-    /// which is what macOS does (ADR 0017, decision 6).
+    /// which is what macOS does.
     ///
     /// Text does not need this: a force click over an editor or a
     /// `selectable` scope selects the word and asks the host to look it
@@ -955,7 +984,7 @@ pub struct EventSpec {
     /// what the core cannot guess — a force click on a chart, a map, a
     /// timeline.
     pub on_force_click: Option<Value>,
-    /// The non-primary buttons as events (backlog F105): a press of a
+    /// The non-primary buttons as events: a press of a
     /// button in [`buttons`](Self::buttons) over this node emits
     /// `{kind="button", phase="press", button, x, y, clicks, tag}` on it
     /// with this payload under `tag`, and the button is then captured by
@@ -991,23 +1020,22 @@ pub struct EventSpec {
     /// other node), the fraction carried to the next notch. The node
     /// *takes* the wheel on the axes [`scroll_axes`](Self::scroll_axes)
     /// names: a scroll gesture that starts over it is its own, and stays
-    /// its own until it ends wherever the pointer goes (backlog F107) —
-    /// except on an axis it also scrolls as a container (`scroll_x`,
-    /// `scroll_y`, the offset the app sets from what it hears), where it
-    /// is answered by its room as a container is: at its edge, a gesture
-    /// that way passes to the scroller around it (backlog F118); it
+    /// its own until it ends wherever the pointer goes, except on an axis
+    /// it also scrolls as a container (`scroll_x`, `scroll_y`, the offset
+    /// the app sets from what it hears), where it is answered by its room
+    /// as a container is: at its edge, a gesture that way passes to the
+    /// scroller around it; it
     /// reaches no scroll container above it, and a container inside it
     /// still takes the axes it scrolls while it can move that way,
     /// passing this node the rest: the other axis, and a gesture that
     /// begins with the container at its limit (unless it says
     /// [`Overscroll::Contain`]). The core moves nothing — a grid's
     /// `origin_line` and a canvas's zoom are the app's to change. A
-    /// drag-select held past a
-    /// grid's top or bottom edge arrives here too, as the lines the frame
-    /// scrolled by (ADR 0029, decision 4).
+    /// drag-select held past a grid's top or bottom edge arrives here
+    /// too, as the lines the frame scrolled by.
     pub on_scroll: Option<Value>,
-    /// Which axes [`on_scroll`](Self::on_scroll) takes (backlog F107):
-    /// both unless the node says otherwise. A scroll gesture on an axis
+    /// Which axes [`on_scroll`](Self::on_scroll) takes: both unless the
+    /// node says otherwise. A scroll gesture on an axis
     /// the node does not take passes it by, to the scroller around it —
     /// a terminal that scrolls its history on `y` says
     /// [`ScrollAxes::Y`], and a sideways swipe that meets it goes on
@@ -1018,8 +1046,7 @@ pub struct EventSpec {
     /// `tag` — for hover-dependent *layout* (a close button that appears)
     /// where a color swap isn't enough. Implies hover tracking.
     pub on_hover: Option<Value>,
-    /// Drop-zone events (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`):
-    /// files dragged in from the OS over this node emit
+    /// Drop-zone events: files dragged in from the OS over this node emit
     /// `{kind="drop", phase="enter"|"move"|"leave"|"drop", paths, x, y,
     /// tag}` with this payload under `tag` — `paths` the OS paths as
     /// strings, `x`/`y` the pointer in viewport coordinates (absent on
@@ -1037,8 +1064,7 @@ pub struct EventSpec {
     /// produced instead of re-deriving them; a transition that moves the
     /// node reports every frame it moves. Needs a stable key across frames.
     pub on_layout: Option<Value>,
-    /// Slider changes (`docs/adr/0034-stock-controls-over-the-roles.md`,
-    /// decision 4): on a node whose role is `Slider`, the core turns a
+    /// Slider changes: on a node whose role is `Slider`, the core turns a
     /// press into the value under the pointer, a drag into the value under
     /// it, the arrows and assistive technology's Increment / Decrement
     /// into one `value_step`, PageUp / PageDown into ten, Home / End into
@@ -1046,21 +1072,20 @@ pub struct EventSpec {
     /// step — and emits `{kind="change", value, phase="move"|"end", tag}`
     /// with this payload under `tag`. The value is proposed, never
     /// applied: nothing moves until the view declares it as `value_now`.
-    /// Without it a slider's keys reach the app as the `access` nudge
-    /// (ADR 0007, decision 13). Ignored on any other role.
+    /// Without it a slider's keys reach the app as the `access` nudge.
+    /// Ignored on any other role.
     pub on_change: Option<Value>,
     /// Modal: while this node is declared, the Tab ring is its subtree,
     /// everything outside it is inert to the pointer, the wheel and
     /// assistive technology, and Escape or a press outside emits
     /// `{kind="dismiss", reason, tag}` on it with this payload under
     /// `tag`. The last node declaring it in tree order is the one in
-    /// effect (a confirm inside a dialog); see
-    /// `docs/adr/0003-modal-surfaces.md`. Null = modal without a tag.
+    /// effect (a confirm inside a dialog). Null = modal without a tag.
     pub modal: Option<Value>,
     /// A press on this node, or anywhere inside it, leaves keyboard focus
     /// where it was (`keepFocus`): a toolbar button, a tab, a divider
-    /// that acts without taking the keyboard from the editor beside it
-    /// (backlog DX10). Its click, drag and hover are unchanged, and Tab
+    /// that acts without taking the keyboard from the editor beside it.
+    /// Its click, drag and hover are unchanged, and Tab
     /// and assistive technology still reach a focusable node in it — it
     /// is the pointer's press alone that stops moving focus.
     pub keep_focus: bool,
@@ -1068,7 +1093,7 @@ pub struct EventSpec {
     /// itself or anything focused inside it — emits `{kind="focus",
     /// phase="in"|"out", by, tag}` with this payload under `tag`, where
     /// `by` is `"pointer"`, `"keyboard"`, `"assistive"` or `"program"`:
-    /// what moved it (backlog DX18). Reported once the move has settled —
+    /// what moved it. Reported once the move has settled —
     /// after the input that made it, or at the end of the frame that
     /// declared it — so a view reads a change instead of diffing
     /// `key_focus` every frame. Declares nothing interactive.
@@ -1160,9 +1185,9 @@ pub struct AccessSpec {
     pub description: Option<Label>,
     /// For checkbox / radio / switch roles: the on state.
     pub checked: bool,
-    /// For a checkbox: neither on nor off — the select-all box over a
-    /// list some of whose rows are selected (ADR 0034, decision 3). Wins
-    /// over `checked`, which it leaves as it was.
+    /// For a checkbox: neither on nor off, like the select-all box over a
+    /// list some of whose rows are selected. Wins over `checked`, which it
+    /// leaves as it was.
     pub mixed: bool,
     /// The current one of a set: a `Role::Tab`, a picked `Role::ListItem`,
     /// the `Role::Link` for the page you are on. A tab reports the state
@@ -1182,12 +1207,10 @@ pub struct AccessSpec {
     /// above and says a percentage — 25 in [5..60] is "36 percent" — so a
     /// value whose unit matters says it here: "25 minutes". It replaces
     /// the number rather than joining it (see [`crate::access`]), and a
-    /// nudge announces the new text, not the new number
-    /// (`docs/adr/0008-live-regions-and-announcements.md`).
+    /// nudge announces the new text, not the new number.
     pub value_text: Option<Label>,
     /// For a slider role: how far one arrow key moves it, and the grid a
-    /// value set by the pointer snaps to (ADR 0034, decision 4). None =
-    /// a hundredth of the range.
+    /// value set by the pointer snaps to. None = a hundredth of the range.
     pub value_step: Option<f32>,
     /// On a `Role::Line` of a custom editor: the caret's byte offset into
     /// the line's text, and the byte offset of the selection's other end
@@ -1208,7 +1231,7 @@ pub struct AccessSpec {
     /// When the text inside this node changes, a reader reads the change
     /// without being asked (ARIA's `aria-live`). Off by default; a node
     /// that declares it is semantic, so a plain box marked live is not
-    /// elided (see `docs/adr/0008-live-regions-and-announcements.md`).
+    /// elided.
     pub live: Live,
 }
 
@@ -1269,16 +1292,15 @@ pub struct InteractSpec {
     /// Declaring one replaces the ring the core draws by default. Pressed
     /// wins over focus wins over hover; eases with `transition`.
     pub focus_bg: Option<Color>,
-    /// Background while files dragged in from the OS are over this node
-    /// (ADR 0031, decision 3). Wins over pressed, focus and hover — a press
+    /// Background while files dragged in from the OS are over this node.
+    /// Wins over pressed, focus and hover — a press
     /// cannot be held while the OS holds a drag — and eases with
     /// `transition`; clears when the files leave, land or the drag is
     /// cancelled. Implies hover tracking.
     pub drop_bg: Option<Color>,
     /// Makes this node a *selection scope*: the text of every node inside
     /// it is one selectable run of text, in tree order, and a press-drag
-    /// inside it selects across all of them (see
-    /// `docs/adr/0017-selection-as-a-scope.md`). Declared on the container
+    /// inside it selects across all of them. Declared on the container
     /// rather than on each label, because what a reader selects is a
     /// paragraph or a card, not one run of it.
     ///
@@ -1288,8 +1310,7 @@ pub struct InteractSpec {
     pub selectable: bool,
     /// Makes this node's subtree a *focus region*: a Tab ring of its own
     /// that the ring outside never enters, and that never leaves — a
-    /// devtools dock, an inspector beside the app (see
-    /// `docs/adr/0022-focus-regions.md`). Entered on purpose:
+    /// devtools dock, an inspector beside the app. Entered on purpose:
     /// `Ui::focus_region`, a press inside it, or an explicit focus on a
     /// node in it. Nothing else about the node changes — it lays out,
     /// paints, takes the pointer and appears in the access tree as before,
@@ -1302,13 +1323,13 @@ pub struct InteractSpec {
     pub scrollbar: Scrollbar,
     /// Whether a scroll gesture that starts over this scroller while it
     /// is at its limit that way goes on to the scroller around it (see
-    /// [`Overscroll`], backlog F107). Cold like `scrollbar`: read once
+    /// [`Overscroll`]). Cold like `scrollbar`: read once
     /// per scroller a gesture starts over.
     pub overscroll: Overscroll,
-    /// On a table (ADR 0033): lines of this colour between its columns and
-    /// between its rows, drawn with the table's own box, under its cells,
-    /// down the middle of each gap — so a table with a `gap` of at least
-    /// `rule_w` gets a grid with no rule cells (backlog DX21). The
+    /// On a table: lines of this colour between its columns and between
+    /// its rows, drawn with the table's own box, under its cells, down the
+    /// middle of each gap, so a table with a `gap` of at least `rule_w`
+    /// gets a grid with no rule cells. The
     /// columns come from the row with the most cells; the lines run the
     /// table's content box. Ignored on anything that is not a table.
     pub rules: Option<Color>,
@@ -1338,6 +1359,7 @@ pub struct Scrollbar {
 }
 
 impl Scrollbar {
+    /// The stock bar: visible, 4 px, in the theme's colours.
     pub const DEFAULT: Self = Self {
         mode: ScrollbarMode::Visible,
         width: None,
@@ -1379,8 +1401,7 @@ impl ScrollbarMode {
 }
 
 /// What a scroll gesture that starts over a scroller already at its limit
-/// does (backlog F107) — CSS's `overscroll-behavior`, spelled by the
-/// `overscroll` row (`crate::schema::OVERSCROLLS`, in this order).
+/// does: CSS's `overscroll-behavior`, spelled by the `overscroll` row.
 ///
 /// A gesture picks its target when it starts: the innermost scroller
 /// under the pointer that can still move the way it goes. One at its
@@ -1388,7 +1409,7 @@ impl ScrollbarMode {
 /// `Contain` stops that: the gesture is this scroller's, and moves
 /// nothing until it turns back. Only on the axes the node scrolls, so a
 /// `scroll_y` list that contains still passes a sideways swipe to the
-/// strip it sits in (DX13), where CSS would stop that too. Decided at
+/// strip it sits in, where CSS would stop that too. Decided at
 /// the start only: a gesture that reaches a limit midway stops there
 /// whatever this says, as a browser's does.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1408,8 +1429,7 @@ impl Overscroll {
     pub const ALL: [Overscroll; 2] = [Overscroll::Auto, Overscroll::Contain];
 }
 
-/// Which axes an `on_scroll` node takes (backlog F107), spelled by the
-/// `scrollAxes` row (`crate::schema::SCROLL_AXES`, in this order).
+/// Which axes an `on_scroll` node takes, spelled by the `scrollAxes` row.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ScrollAxes {
     /// Both: the node hears every scroll gesture that starts over it.
@@ -1459,7 +1479,7 @@ impl InteractSpec {
 
 impl NodeSpec {
     // -- Boxed groups ------------------------------------------------------
-    // The four cold groups are behind a pointer each (see C15): a node that
+    // The four cold groups are behind a pointer each: a node that
     // declares none of a group pays 8 bytes for it rather than its full
     // width. Reads go through the `&` accessor, which hands back a shared
     // empty group instead of allocating, so a caller reads
@@ -1523,7 +1543,7 @@ impl NodeSpec {
     pub fn hover_tracked(&self) -> bool {
         // Asked of every node at emission; the inline flags first, then
         // each boxed group once — a node that declares neither group is
-        // answered by two null checks rather than a read per field (C15).
+        // answered by two null checks rather than a read per field.
         self.hoverable
             || self.focusable
             || self.window.is_some()
@@ -1532,8 +1552,7 @@ impl NodeSpec {
             || self.cursor.is_some()
             || self.events.as_deref().is_some_and(|e| {
                 // A modal's own background is not "outside" it: a press
-                // there must find a region (see
-                // `docs/adr/0003-modal-surfaces.md`).
+                // there must find a region.
                 e.modal.is_some()
                     || e.on_click.is_some()
                     || e.on_drag.is_some()
@@ -1556,7 +1575,7 @@ impl NodeSpec {
                     // the press that starts a drag-select lands on it.
                     || i.selectable
                     // So does a focus region: a press on its dead space
-                    // settles the ring there (`docs/adr/0022`, decision 3).
+                    // settles the ring there.
                     || i.focus_region
             })
     }
@@ -1567,6 +1586,7 @@ impl NodeSpec {
         crate::key::Key::ROOT.str(name).0
     }
 
+    /// A container that lays its children out left to right.
     pub fn row() -> Self {
         Self {
             layout: LayoutSpec {
@@ -1577,6 +1597,7 @@ impl NodeSpec {
         }
     }
 
+    /// A container that lays its children out top to bottom (the default).
     pub fn column() -> Self {
         Self {
             layout: LayoutSpec {
@@ -1587,28 +1608,30 @@ impl NodeSpec {
         }
     }
 
-    /// A table (ADR 0033): a column whose rows' children line up in
-    /// columns. Its in-flow children are the rows and each row's in-flow
-    /// children its cells; the nth cell of every row is column n, and a
-    /// column is as wide as its widest cell — so a label column sits at
-    /// its longest label with nothing measured and no width picked by
-    /// hand. A cell's `width` says how its column sizes: `Fit` (the
-    /// default) and `Fixed` are content the column's fit width is the
-    /// max of, `Grow` makes the whole column grow with the table, and a
-    /// column's `minWidth` / `maxWidth` are the strictest its cells
-    /// declared. The rows are the `Row` children — give them `width:
-    /// grow` for the columns to grow into; a `Fit` row sits at the
-    /// columns' fit width — with their own `gap` between cells, their own
-    /// padding, background, click and hover; a row of a table never
-    /// wraps. A bare text is a cell too, kept at its column's width, so
-    /// `ui.text` straight inside a row is a column; an image straight in
-    /// a row is a cell the same way, its box the column wide and its own
-    /// aspect tall. A text, a column or a table straight under the table
-    /// is a child with its own width and no cells. The table's own `Fit`
-    /// width is its columns', whatever the rows' sizing, and a `scroll_x`
-    /// table's rows are at least as wide as its columns. Everything else
-    /// is a column's: `gap` is the space between rows, `scrollY` scrolls
-    /// them.
+    /// A table: a column whose rows' children line up in columns. Its
+    /// in-flow `Row` children are the rows and each row's in-flow children
+    /// its cells; the nth cell of every row is column n, and a column is
+    /// as wide as its widest cell, so a label column sits at its longest
+    /// label with no width picked by hand.
+    ///
+    /// A cell's `width` says how its column sizes: `Fit` (the default) and
+    /// `Fixed` are content the column's fit width is the max of, `Grow`
+    /// makes the whole column grow with the table, and a column's
+    /// `min_width` / `max_width` are the strictest its cells declared.
+    /// Give the rows `width: grow` for the columns to grow into; a `Fit`
+    /// row sits at the columns' fit width. Rows keep their own `gap`,
+    /// padding, background, click and hover, and never wrap. A bare text
+    /// or image straight inside a row is a cell too. A text, a column or a
+    /// table straight under the table is a child with its own width and no
+    /// cells. Everything else is a column's: `gap` is the space between
+    /// rows, `scroll_y` scrolls them.
+    ///
+    /// ```rust
+    /// use kui_core::{NodeSpec, Sizing};
+    /// let table = NodeSpec::table().gap(4.0).rules(kui_core::Color::hex(0x80808080));
+    /// let row = NodeSpec::row().width(Sizing::GROW).gap(12.0);
+    /// assert!(table.layout.is_table() && !row.layout.is_table());
+    /// ```
     pub fn table() -> Self {
         Self {
             layout: LayoutSpec {
@@ -1660,7 +1683,7 @@ impl NodeSpec {
     }
 
     /// A number of px, [`Min::FIT`] for the node's own fit width, or a
-    /// [`Bound::Calc`] (backlog F109).
+    /// [`Bound::Calc`].
     pub fn min_width(mut self, v: impl Into<Bound>) -> Self {
         self.layout.min_w = match v.into() {
             Bound::Px(px) if px == 0.0 && px.is_sign_negative() => Min::AUTO,
@@ -1772,14 +1795,12 @@ impl NodeSpec {
         self
     }
 
-    /// The `tooltip` prop whole, for a Rust view: the node tracks hover,
-    /// the hint is its accessible description, and the core floats the
-    /// hint below it while it is hovered (`widgets::hover_hint`, the float
-    /// every binding's tooltip is). What `tooltip="…"` is in JSX and Lua
-    /// and `KuiSpec.tooltip` in C. The float is the node's last child, so
-    /// it is drawn for a box or a fragment; on a leaf — an image, an
-    /// editor, a cells grid — the hint is tracked and spoken, not drawn:
-    /// put the tooltip on a box around the leaf (backlog RG75).
+    /// A tooltip: the node tracks hover, `hint` is its accessible
+    /// description, and the core floats the hint below it while it is
+    /// hovered. The float is the node's last child, so it is drawn for a
+    /// box or a fragment; on a leaf (an image, an editor, a cells grid) the
+    /// hint is tracked and spoken, not drawn: put the tooltip on a box
+    /// around the leaf.
     #[inline]
     pub fn tooltip(self, hint: &str) -> Self {
         let mut spec = self.apply_tooltip(hint);
@@ -1808,21 +1829,25 @@ impl NodeSpec {
         self
     }
 
+    /// The same padding on all four edges, logical px.
     pub fn pad(mut self, v: f32) -> Self {
         self.layout.padding = Edges::all(v);
         self
     }
 
+    /// Padding `x` on the left and right, `y` on the top and bottom.
     pub fn pad_xy(mut self, x: f32, y: f32) -> Self {
         self.layout.padding = Edges::xy(x, y);
         self
     }
 
+    /// Padding per edge.
     pub fn padding(mut self, e: Edges) -> Self {
         self.layout.padding = e;
         self
     }
 
+    /// Space between children along the main axis, logical px.
     pub fn gap(mut self, v: f32) -> Self {
         self.layout.gap = v;
         self
@@ -1840,11 +1865,13 @@ impl NodeSpec {
         self
     }
 
+    /// Where children sit along the main axis; the spreads are allowed.
     pub fn main_align(mut self, a: Align) -> Self {
         self.layout.main_align = a;
         self
     }
 
+    /// Where children sit across the main axis; `Baseline` on a row.
     pub fn cross_align(mut self, a: Align) -> Self {
         self.layout.cross_align = a;
         self
@@ -1867,6 +1894,7 @@ impl NodeSpec {
         self.main_align(Align::Center).cross_align(Align::Center)
     }
 
+    /// The background colour.
     pub fn bg(mut self, c: Color) -> Self {
         self.style.bg = c;
         self
@@ -1916,6 +1944,7 @@ impl NodeSpec {
         self.radius_br(r).radius_bl(r)
     }
 
+    /// A border `w` px wide in `c`, inside the node's box.
     pub fn border(mut self, w: f32, c: Color) -> Self {
         self.style.border_w = w;
         self.style.border_color = c;
@@ -1996,6 +2025,9 @@ impl NodeSpec {
         self
     }
 
+    /// Makes this node clickable: a click emits `payload` as a
+    /// [`UiEvent`](crate::input::UiEvent), and the node joins the Tab ring
+    /// and reads as a button to assistive technology.
     pub fn on_click(mut self, payload: impl Into<Value>) -> Self {
         self.events_mut().on_click = Some(payload.into());
         self
@@ -2008,7 +2040,7 @@ impl NodeSpec {
     }
 
     /// Background while dragged files are over this node (see the
-    /// `drop_bg` field, ADR 0031).
+    /// `drop_bg` field).
     pub fn drop_bg(mut self, c: Color) -> Self {
         self.interact_mut().drop_bg = Some(c);
         self
@@ -2142,7 +2174,7 @@ impl NodeSpec {
     }
 
     /// Makes this node a drop zone for files dragged in from the OS (see
-    /// the `on_drop` field, ADR 0031).
+    /// the `on_drop` field).
     pub fn on_drop(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_drop = Some(tag.into());
         self
@@ -2368,14 +2400,22 @@ impl NodeSpec {
     /// transition props compose in any order.
     ///
     /// On a scroll container it also eases the offset a `reveal` or a
-    /// `set_scroll` moves it to (backlog F80) — the wheel, the thumb and
-    /// a drag past the edge still land whole, being the hand's own.
+    /// `set_scroll` moves it to; the wheel, the thumb and a drag past the
+    /// edge still land whole.
+    ///
+    /// ```rust
+    /// use kui_core::{Easing, NodeSpec, Sizing};
+    /// // Eases toward whatever width the view declares next frame.
+    /// let pane = NodeSpec::column().width(Sizing::Fixed(240.0)).transition(180.0).easing(Easing::Smooth);
+    /// assert_eq!(pane.transition.unwrap().duration_ms, 180.0);
+    /// ```
     pub fn transition(mut self, duration_ms: f32) -> Self {
         let t = self.transition.get_or_insert(Transition::ms(duration_ms));
         t.duration_ms = duration_ms;
         self
     }
 
+    /// The whole [`Transition`] at once, replacing any declared so far.
     pub fn transition_with(mut self, t: Transition) -> Self {
         self.transition = Some(t);
         self
@@ -2471,6 +2511,8 @@ impl NodeSpec {
     }
 }
 
+/// Which face a text shapes with: one of the three stock families, or a
+/// font registered with the core.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FontFamily {
     #[default]
@@ -2485,9 +2527,8 @@ pub enum FontFamily {
 }
 
 impl FontFamily {
-    /// The three stock families, in wire order: `schema::FAMILIES` is
-    /// `ALL` by `name`, and a binding sends the index (backlog AR42).
-    /// `Custom` is not a family on the wire — the `font` row is.
+    /// The three stock families, in wire order: a binding sends the index.
+    /// `Custom` is not a family on the wire; the `font` row is.
     pub const ALL: &'static [FontFamily] = &[FontFamily::Sans, FontFamily::Serif, FontFamily::Mono];
 
     /// The spelling every binding uses; a registered font has none.
@@ -2527,12 +2568,19 @@ pub enum TextWrap {
     BreakSpaces,
 }
 
-/// The OpenType features a style asks the shaper for (backlog C23): up to
-/// [`FontFeatures::MAX`] four-letter tags with a value each — `liga` 0 to
-/// keep a coding font from joining `->`, `tnum` 1 for tabular figures in a
-/// gutter, `ss01` 1 for a stylistic set. Plain data and `Copy`, since a
+/// The OpenType features a style asks the shaper for: up to
+/// [`FontFeatures::MAX`] four-letter tags with a value each. `liga` 0
+/// keeps a coding font from joining `->`, `tnum` 1 gives tabular figures,
+/// `ss01` 1 turns on a stylistic set. Plain data and `Copy`, since a
 /// `TextStyle` is; the spelling every binding shares is
 /// [`FontFeatures::parse`]'s.
+///
+/// ```rust
+/// use kui_core::{FontFeatures, TextStyle};
+/// let code = TextStyle::new(13.0).mono().features(FontFeatures::parse("-liga -calt tnum"));
+/// assert_eq!(code.features.len(), 3);
+/// assert_eq!(code.features.to_string_spelling(), "liga=0 calt=0 tnum=1");
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct FontFeatures {
     tags: [[u8; 4]; FontFeatures::MAX],
@@ -2545,6 +2593,7 @@ impl FontFeatures {
     /// text asks for and keeps the style small.
     pub const MAX: usize = 8;
 
+    /// No features: the font's own defaults.
     pub const fn new() -> Self {
         Self {
             tags: [[b' '; 4]; Self::MAX],
@@ -2622,14 +2671,31 @@ impl FontFeatures {
     }
 }
 
+/// How a run of text is shaped and painted: size, line height, colour,
+/// family, wrapping, line limits, OpenType features and decorations.
+///
+/// [`TextStyle::new`] takes the font size and derives a line height; the
+/// rest are builders. A style with no colour paints in the theme's
+/// foreground, so plain text is legible on both the light and dark base.
+///
+/// ```rust
+/// use kui_core::{Color, FontFamily, TextStyle, TextWrap};
+///
+/// let body = TextStyle::new(15.0).line_height(22.0);
+/// let caption = TextStyle::new(12.0).color(Color::hex(0x8a8fa3ff)).max_lines(2).ellipsis();
+/// let code = TextStyle::new(13.0).family(FontFamily::Mono).wrap(TextWrap::None);
+/// let link = TextStyle::new(15.0).underline().color(Color::hex(0x3b5bd4ff));
+///
+/// assert_eq!(body.color, None); // the theme's foreground
+/// assert_eq!(caption.max_lines, 2);
+/// assert!(code.wrap == TextWrap::None && link.underline);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextStyle {
     pub size: f32,
     pub line_height: f32,
-    /// `None` is "the theme's foreground" — which is what the schema has
-    /// always said this row means ("default foreground when omitted") and,
-    /// since ADR 0019, what it does. Filled in as the text enters the
-    /// tree, so nothing downstream of that ever sees a `None`.
+    /// `None` is the theme's foreground, filled in as the text enters the
+    /// tree so nothing downstream of that ever sees a `None`.
     pub color: Option<Color>,
     pub family: FontFamily,
     pub wrap: TextWrap,
@@ -2641,19 +2707,19 @@ pub struct TextStyle {
     /// OpenType features for the shaper; none by default, which is the
     /// font's own defaults (ligatures on, where it has them).
     pub features: FontFeatures,
-    /// A line under every glyph, where the face puts its underline (backlog
-    /// C22). Paint only: not part of what the text is shaped as.
+    /// A line under every glyph, where the face puts its underline. Paint
+    /// only: not part of what the text is shaped as.
     pub underline: bool,
-    /// The underline's own colour; `None` is the text's (backlog K4).
+    /// The underline's own colour; `None` is the text's.
     pub underline_color: Option<Color>,
-    /// The underline's shape: a line, a wave, dots (backlog K4).
+    /// The underline's shape: a line, a wave, dots.
     pub underline_style: UnderlineStyle,
     /// A line through every glyph, where the face puts its strikeout.
     pub strikethrough: bool,
 }
 
-/// The shape of an underline (backlog K4): the face's line, a wave under a
-/// diagnostic, dots. Where it goes and how thick it is are the face's
+/// The shape of an underline: the face's line, a wave under a diagnostic,
+/// dots. Where it goes and how thick it is are the face's
 /// recommendation either way; a wave is three strokes tall around the
 /// line's centre with a six-stroke period, dots two strokes across and
 /// four apart (`crate::deco`).
@@ -2690,6 +2756,8 @@ impl Default for TextStyle {
 }
 
 impl TextStyle {
+    /// A style at `size` logical px, sans, in the theme's foreground, with
+    /// a line height of 1.35 times the size, rounded.
     pub fn new(size: f32) -> Self {
         Self {
             size,
@@ -2707,27 +2775,29 @@ impl TextStyle {
         }
     }
 
+    /// Underlines the text in its own colour.
     pub fn underline(mut self) -> Self {
         self.underline = true;
         self
     }
 
-    /// An underline in its own colour rather than the text's — a
-    /// diagnostic's red under keyword-coloured text (backlog K4). Turns
-    /// the underline on.
+    /// An underline in its own colour rather than the text's (a
+    /// diagnostic's red under keyword-coloured text). Turns the underline
+    /// on.
     pub fn underline_color(mut self, c: Color) -> Self {
         self.underline = true;
         self.underline_color = Some(c);
         self
     }
 
-    /// An underline of this shape (backlog K4). Turns the underline on.
+    /// An underline of this shape. Turns the underline on.
     pub fn underline_style(mut self, s: UnderlineStyle) -> Self {
         self.underline = true;
         self.underline_style = s;
         self
     }
 
+    /// A line through the text.
     pub fn strikethrough(mut self) -> Self {
         self.strikethrough = true;
         self
@@ -2739,11 +2809,13 @@ impl TextStyle {
         self
     }
 
+    /// The face to shape with.
     pub fn family(mut self, f: FontFamily) -> Self {
         self.family = f;
         self
     }
 
+    /// The stock monospace family.
     pub fn mono(self) -> Self {
         self.family(FontFamily::Mono)
     }
@@ -2753,11 +2825,13 @@ impl TextStyle {
         self.family(FontFamily::Custom(id))
     }
 
+    /// The line height in logical px, replacing the derived one.
     pub fn line_height(mut self, lh: f32) -> Self {
         self.line_height = lh;
         self
     }
 
+    /// How lines break at the node's width.
     pub fn wrap(mut self, wrap: TextWrap) -> Self {
         self.wrap = wrap;
         self
@@ -2781,6 +2855,7 @@ impl TextStyle {
         self
     }
 
+    /// The text colour, instead of the theme's foreground.
     pub fn color(mut self, c: Color) -> Self {
         self.color = Some(c);
         self
@@ -2788,8 +2863,7 @@ impl TextStyle {
 
     /// This style with `fg` where it named no colour of its own: what the
     /// core stamps on as the text enters the tree, so the shaping caches,
-    /// the display list and every binding see a resolved colour and never
-    /// the question mark (ADR 0019).
+    /// the display list and every binding see a resolved colour.
     pub fn or_fg(mut self, fg: Color) -> Self {
         self.color = Some(self.color.unwrap_or(fg));
         self
@@ -2838,7 +2912,7 @@ mod size_tests {
     /// `Vec<NodeSpec>` in `Tree::push` — so its size is a per-node cost that
     /// every app pays whether or not it declares the fields. It reached 728
     /// bytes one feature at a time and cost ~2.5x on the frame benches before
-    /// anyone measured it (C15 in `docs/backlog/closed-2026-09.md`).
+    /// anyone measured it.
     ///
     /// This is the number a review can fail. Adding a prop is fine; adding it
     /// *inline* past this bound is the thing to notice. Put cold fields in one

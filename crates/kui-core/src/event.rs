@@ -1,23 +1,34 @@
-//! Typed readings of the core's own event payloads (backlog DX7).
+//! Typed readings of the core's own event payloads: drags, buttons,
+//! scrolls, hovers, layouts, key presses and text input.
 //!
-//! A payload is a [`Value`] because it crosses into Lua, Node and C in
-//! one shape (`schema::EVENTS` is its spelling). A Rust handler read it
-//! back field by field — `get_f32("x")`, `get_str("phase")`, a `KeyPress`
-//! rebuilt from nine keys — which is the reading done once here instead.
-//! Each view is `None` for an event of another kind, so a handler
-//! matches on the view it wants:
+//! A payload is a [`Value`] because it crosses into Lua, Node and C in one
+//! shape. Rather than reading it back field by field (`get_f32("x")`,
+//! `get_str("phase")`), a Rust handler asks for the view it wants; each
+//! view is `None` for an event of another kind.
 //!
-//! ```ignore
-//! if let Some(d) = ev.drag() {
-//!     self.split = d.ratio().x;
-//! } else if let Some((KeyPhase::Down, k)) = ev.key_press() {
-//!     self.bind(k);
-//! }
+//! ```rust
+//! use kui_core::{Key, OriginId, UiEvent, Value};
+//! use kui_core::event::DragPhase;
+//!
+//! // What an `on_drag` node emits as the pointer moves.
+//! let ev = UiEvent::on(OriginId::HOST, Key::ROOT, Value::map([
+//!     ("kind", Value::str("drag")),
+//!     ("phase", Value::str("move")),
+//!     ("x", Value::float(40.0)), ("y", Value::float(12.0)),
+//!     ("dx", Value::float(8.0)), ("dy", Value::float(0.0)),
+//!     ("tag", Value::str("splitter")),
+//! ]));
+//!
+//! let d = ev.drag().expect("a drag");
+//! assert_eq!(d.phase, DragPhase::Move);
+//! assert_eq!(d.delta.x, 8.0);
+//! assert_eq!(ev.tag().and_then(Value::as_str), Some("splitter"));
+//! assert!(ev.scroll().is_none()); // another kind reads as None
 //! ```
 //!
-//! The app's own tag is still [`UiEvent::message`]; these are the fields
-//! the core adds around it. The payload stays the wire, and nothing here
-//! changes what an event carries.
+//! The app's own tag is still [`UiEvent::message`] or [`UiEvent::tag`];
+//! these are the fields the core adds around it. Nothing here changes what
+//! an event carries.
 
 use crate::geom::{Rect, Vec2};
 use crate::input::{KeyCode, KeyMods, KeyPhase, KeyPress, MouseButton, UiEvent};
@@ -70,8 +81,7 @@ impl Drag {
     }
 }
 
-/// Which part of a held non-primary button an event reports (backlog
-/// F105).
+/// Which part of a held non-primary button an event reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonPhase {
     Press,
@@ -80,7 +90,7 @@ pub enum ButtonPhase {
 }
 
 /// A `{kind:"button"}` event: a non-primary button an `onButton` node
-/// claimed, captured by it from press to release (backlog F105).
+/// claimed, captured by it from press to release.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ButtonEvent {
     pub phase: ButtonPhase,
@@ -93,7 +103,7 @@ pub struct ButtonEvent {
     /// the grid.
     pub cell: Option<(u32, u32)>,
     /// Inside an `onKey` sink that draws `role="line"` rows: the line and
-    /// the byte in its text, as a drag carries them (backlog RG75).
+    /// the byte in its text, as a drag carries them.
     pub line: Option<u32>,
     pub byte: Option<usize>,
 }
@@ -115,7 +125,7 @@ pub enum HoverPhase {
     Leave,
 }
 
-/// What moved to change the hover (backlog DX20).
+/// What moved to change the hover.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HoverBy {
     /// The pointer moved, or left the window.
@@ -206,7 +216,7 @@ impl UiEvent {
     }
 
     /// This event as a held non-primary button's press, move or release,
-    /// if it is one (backlog F105).
+    /// if it is one.
     pub fn button(&self) -> Option<ButtonEvent> {
         let p = &self.payload;
         if self.kind()? != "button" {

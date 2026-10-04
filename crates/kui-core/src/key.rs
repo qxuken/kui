@@ -1,8 +1,21 @@
-//! Stable widget identity. Keys are content-addressed hashes of the path from
-//! the root (scope keys mixed with labels or sibling indices), so the same
-//! logical widget gets the same key every frame — and scripts can reproduce a
-//! key from strings alone, with no allocation event tying identity to a slot.
+//! [`Key`]: stable node identity across frames.
+//!
+//! A key is a hash of the path from the root: each node's key is its
+//! parent's mixed with either a string label or a sibling index. The same
+//! logical widget therefore gets the same key every frame, retained state
+//! (focus, scroll offsets, edit buffers, tweens) is looked up by it, and a
+//! binding can reproduce a key from strings alone.
+//!
+//! ```rust
+//! use kui_core::Key;
+//!
+//! let list = Key::ROOT.str("list");
+//! assert_eq!(list.index(3), Key::ROOT.str("list").index(3));
+//! assert_ne!(list.str("3"), list.index(3)); // labels and indices never clash
+//! ```
 
+/// A node's identity: the hash of its path from the root. `Key::ROOT` is
+/// the tree's root; [`Key::str`] and [`Key::index`] derive children.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Key(pub u64);
 
@@ -31,13 +44,11 @@ pub fn fnv(mut h: u64, bytes: &[u8]) -> u64 {
 /// word hash's set-up costs more than the bytes.
 const BULK_MIN: usize = 32;
 
-/// A word-wide hash of `bytes` — eight a round where [`fnv`] takes one —
-/// for the bulk a text cache key is made of (backlog C43): a long line's
-/// content used to cost its length every frame, at a nanosecond a byte,
-/// in a lookup that drew none of it. Fx's round (rotate, xor, multiply)
-/// with the length mixed first and murmur's finalizer after, so a tail
-/// of zero bytes and a shorter text differ and every input bit reaches
-/// every output bit. Not a digest anything keeps across versions.
+/// A word-wide hash of `bytes` (eight a round where [`fnv`] takes one),
+/// for the bulk a text cache key is made of. Fx's round (rotate, xor,
+/// multiply) with the length mixed first and murmur's finalizer after, so
+/// a tail of zero bytes and a shorter text differ and every input bit
+/// reaches every output bit. Not a digest anything keeps across versions.
 #[inline]
 pub fn hash_bulk(bytes: &[u8]) -> u64 {
     const K: u64 = 0x517c_c1b7_2722_0a95;
@@ -127,7 +138,7 @@ impl LabelIndex {
     }
 
     /// Every `(key, label)`, in tree order: what a trace indexes once
-    /// rather than scanning per node (backlog F111).
+    /// rather than scanning per node.
     pub(crate) fn iter(&self) -> impl Iterator<Item = (Key, &str)> + '_ {
         self.entries
             .iter()
@@ -152,8 +163,8 @@ impl LabelIndex {
     /// `find`, narrowed to the asker. A guest sees the keys it opened
     /// under `label` and no one else's: labels are unique among siblings,
     /// not across a frame, and a guest cannot know what the host or
-    /// another guest called its nodes (ADR 0014 — a script's env is a
-    /// reading of its own view). The host, whose frame it is, sees its
+    /// another guest called its nodes (a script's env is a reading of its
+    /// own view). The host, whose frame it is, sees its
     /// own first and everyone's when it opened none. Only a clash within
     /// what the asker sees is an ambiguity.
     /// Answers the first key in tree order and how many there were, so
@@ -187,7 +198,7 @@ mod tests {
     /// The word hash tells apart what a word-at-a-time reading could
     /// confuse: a text and the same with a zero byte after it, a change
     /// in the tail, a change on a word boundary, and the two sides of
-    /// `mix_content`'s threshold (backlog C43).
+    /// `mix_content`'s threshold.
     #[test]
     fn the_bulk_hash_separates_tails_and_lengths() {
         let a = b"0123456789abcdef0123456789abcdef0123456789abcdef";

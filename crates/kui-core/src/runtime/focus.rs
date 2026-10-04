@@ -1,7 +1,7 @@
-//! Keyboard focus and the Tab ring (`docs/adr/0002-keyboard-focus-as-data.md`),
-//! the modal scope that narrows both (`docs/adr/0003-modal-surfaces.md`),
-//! and the focus regions that split the ring into rings
-//! (`docs/adr/0022-focus-regions.md`): the one focus, who is in the ring,
+//! Keyboard focus and the Tab ring,
+//! the modal scope that narrows both,
+//! and the focus regions that split the ring into rings:
+//! the one focus, who is in the ring,
 //! what moving it does to the edit store and the held keys, the focus a
 //! modal displaces and gives back, and the region a press or a call enters.
 
@@ -52,13 +52,11 @@ impl Core {
 
     /// The Tab ring: (tree index, key) of every focusable node of the
     /// last frame in tree order, `role="none"` subtrees skipped whole —
-    /// and, when a modal is in effect, of its subtree only (see
-    /// `docs/adr/0003-modal-surfaces.md`); otherwise of the region in
-    /// effect, with every region nested in the range skipped whole
-    /// (`docs/adr/0022-focus-regions.md`, decisions 1 and 2).
+    /// and, when a modal is in effect, of its subtree only; otherwise of the region in
+    /// effect, with every region nested in the range skipped whole.
     ///
-    /// A composite contributes **one** stop instead of one per item
-    /// (`docs/adr/0007-composite-keyboard-patterns.md`): the walk enters
+    /// A composite contributes **one** stop instead of one per item:
+    /// the walk enters
     /// the container as usual — a focusable node inside it but outside
     /// every item, a "+" at the end of a tab bar, keeps its own stop — and
     /// then takes the whole of each item's subtree in one step, emitting
@@ -71,7 +69,7 @@ impl Core {
     /// says: skipped whole by the range walk, and walked after the range
     /// when its anchor's region is the ring's — so a devtools tab's
     /// content comes after the panel's own stops, and never into the
-    /// app's ring (ADR 0032, decision 2).
+    /// app's ring.
     fn focus_ring(&self) -> Vec<(usize, Key)> {
         let mut out = Vec::new();
         let (start, end) = self.ring_range();
@@ -168,7 +166,7 @@ impl Core {
     }
 
     /// The tree range the ring is made of: the modal's subtree when one is
-    /// in effect (a modal wins, `docs/adr/0022`, decision 6), else the
+    /// in effect (a modal wins), else the
     /// region in effect's, else the whole tree. A region the frame no
     /// longer has falls back to the whole tree; `resolve_regions` is what
     /// moves the region off it, and runs before any ring is asked for.
@@ -200,8 +198,7 @@ impl Core {
     /// declaring `focus_region` — or `None` for the main ring. A float
     /// anchored to a node by key belongs where it is *shown*: the walk
     /// continues from its anchor, not its parent, so a devtools tab's
-    /// content is the dock's to Tab through and never the app's (ADR
-    /// 0032, decision 2).
+    /// content is the dock's to Tab through and never the app's.
     pub(crate) fn region_of(&self, i: usize) -> Option<Key> {
         if !self.tree.any_region {
             return None;
@@ -218,7 +215,7 @@ impl Core {
     }
 
     /// The focus region in effect: the node whose subtree Tab walks, or
-    /// `None` for the main ring (`docs/adr/0022-focus-regions.md`).
+    /// `None` for the main ring.
     pub fn region(&self) -> Option<Key> {
         self.region
     }
@@ -251,7 +248,7 @@ impl Core {
     /// Settles the region on the one enclosing `key`, for a press that
     /// focused nothing (dead space, a sink keeping the keyboard): Tab
     /// afterwards enters the ring under the pointer, not the one focus
-    /// left (`docs/adr/0022`, decision 3). A press on nothing at all is a
+    /// left. A press on nothing at all is a
     /// press on the main ring.
     pub(crate) fn settle_region(&mut self, key: Option<Key>) {
         if !self.tree.any_region {
@@ -304,16 +301,15 @@ impl Core {
     }
 
     /// The regions' half of the frame's focus bookkeeping, run after the
-    /// modal's and before a pending Tab step
-    /// (`docs/adr/0022-focus-regions.md`):
+    /// modal's and before a pending Tab step:
     ///
-    /// - a `focus_region` asked for during the frame enters its target
-    ///   (decision 4), remembering what the region being left holds;
+    /// - a `focus_region` asked for during the frame enters its target,
+    ///   remembering what the region being left holds;
     /// - a region in effect that this frame stopped declaring hands focus
-    ///   back to main's (decision 5);
+    ///   back to main's;
     /// - and the region follows a focus the build moved by declaration —
     ///   `set_focus` learns the region only when the key is in the tree,
-    ///   which during a build it may not be yet (decision 3).
+    ///   which during a build it may not be yet.
     pub(crate) fn resolve_regions(&mut self) {
         let Some(target) = self.pending_region.take() else {
             if self.tree.any_region || self.region.is_some() {
@@ -373,7 +369,7 @@ impl Core {
     }
 
     /// The region follows focus, and a region that went away hands focus
-    /// back (decisions 3 and 5).
+    /// back.
     fn follow_region(&mut self) {
         if let Some(i) = self.focus_index() {
             // Focus moved during the build to a node that was not in the
@@ -402,8 +398,8 @@ impl Core {
         }
     }
 
-    /// Which item of a composite is its Tab stop, in precedence order
-    /// (`docs/adr/0007`, decision 4): the item that currently holds focus,
+    /// Which item of a composite is its Tab stop, in precedence order:
+    /// the item that currently holds focus,
     /// else one declaring `initial_focus`, else the one declaring
     /// `selected`, else the first. **No new retained state** — the roving
     /// tabindex a browser keeps per composite is, in every pattern kui has,
@@ -532,13 +528,11 @@ impl Core {
     }
 
     /// Whether a primary press on node `key` leaves the keyboard alone:
-    /// `keepFocus` on the node or an ancestor (backlog DX10). Such a press
+    /// `keepFocus` on the node or an ancestor. Such a press
     /// acts and touches nothing the keyboard has — not the focus, not the
-    /// ring Tab walks next (ADR 0022's press settling the region is a
-    /// press *taking* the keyboard), and not the selection, which is what
-    /// a toolbar's Copy or Bold acts on (the alpha.22 regression pass: it
-    /// cleared it, as ADR 0017 spares the core's menu and menu bar from
-    /// doing). One walk per press.
+    /// ring Tab walks next (a press settling the region is a press
+    /// *taking* the keyboard), and not the selection, which is what a
+    /// toolbar's Copy or Bold acts on. One walk per press.
     pub(crate) fn keeps_focus(&self, key: Key) -> bool {
         let Some(i) = self.tree.index_of(key) else {
             return false;
@@ -558,8 +552,8 @@ impl Core {
     /// on window chrome, which leaves focus alone, and inside a key sink,
     /// which keeps the keyboard through any press landing in its subtree.
     ///
-    /// A sink is an app that owns its keyboard (`docs/adr/0002`, decision
-    /// 3, the same reason Tab stays with it). The panes, buttons and dead
+    /// A sink is an app that owns its keyboard (the same reason Tab stays
+    /// with it). The panes, buttons and dead
     /// space it draws are that app's surface, and a derived button among
     /// them is focusable enough to be a Tab stop without being entitled to
     /// take the keys away from the app drawing it — otherwise the first
@@ -589,13 +583,12 @@ impl Core {
     }
 
     /// The nearest key sink strictly above node `i`: the walk
-    /// [`Self::press_focus`] makes for a press, made for a key as well
-    /// (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, decision 1).
+    /// [`Self::press_focus`] makes for a press, made for a key as well.
     ///
-    /// A disabled node is not a sink at all (`docs/adr/0002`, decision 6),
+    /// A disabled node is not a sink at all,
     /// so it neither answers here nor hides a live sink further up. The
     /// walk stops at the modal boundary rather than climbing through it:
-    /// the app around a dialog is inert (`docs/adr/0003`), and a shell that
+    /// the app around a dialog is inert, and a shell that
     /// kept hearing shortcuts while its own dialog was up would be running
     /// commands against a surface the user cannot see the state of.
     pub(crate) fn enclosing_sink(&self, i: usize) -> Option<usize> {
@@ -617,7 +610,7 @@ impl Core {
     /// `i` itself when it declares a live `on_context_menu`, else the
     /// nearest enclosing node that does — the same walk and the same
     /// modal boundary as `enclosing_sink`, because an unclaimed press is
-    /// unclaimed in the sense ADR 0011 gave keys (backlog T1). A disabled
+    /// unclaimed the way an unclaimed key is. A disabled
     /// node's own menu is skipped like a disabled sink's, so the press
     /// reaches the container's.
     pub(crate) fn enclosing_menu(&self, i: usize) -> Option<usize> {
@@ -641,8 +634,8 @@ impl Core {
         None
     }
 
-    /// The node a non-primary press of `button` on node `i` goes to
-    /// (backlog F105): `i` itself when its live `on_button` claims the
+    /// The node a non-primary press of `button` on node `i` goes to:
+    /// `i` itself when its live `on_button` claims the
     /// button, else the nearest enclosing node whose does — the walk
     /// `enclosing_menu` takes, stopping at the modal boundary and skipping
     /// a disabled node's own. For the secondary button a nearer live
@@ -672,7 +665,7 @@ impl Core {
     }
 
     /// The zone node `i` belongs to: itself when it declares `on_drop`,
-    /// else the nearest enclosing declaration (ADR 0031, decision 2) —
+    /// else the nearest enclosing declaration —
     /// the same walk as `enclosing_menu`, stopping at the modal boundary
     /// and skipping a disabled node's own.
     pub(crate) fn enclosing_drop(&self, i: usize) -> Option<usize> {
@@ -724,11 +717,10 @@ impl Core {
     /// focused this way; only focusable ones (see `access::focusable`)
     /// are reached by Tab. A move made here is the app saying where focus
     /// goes, and it stands at the frame's end against a closing modal's
-    /// restore, the way a `keyFocus` edge does (ADR 0003 decision 4,
-    /// backlog AR17): the restore is the default for an app that said
+    /// restore, the way a `keyFocus` edge does: the restore is the default for an app that said
     /// nothing, and this is an app that did. The core's own moves — a
     /// press, a Tab, an autofocus, the restore itself — go through
-    /// [`Self::move_focus`] and say nothing.
+    /// `move_focus` and say nothing.
     pub fn set_focus(&mut self, key: Option<Key>) {
         if self.focus != key {
             self.focus_asked = true;
@@ -738,7 +730,7 @@ impl Core {
 
     /// Emits `focus` events for the `on_focus` nodes the focus left and
     /// entered since the last report, `by` what moved it: the input being
-    /// handled, or `"program"` at a frame's end (backlog DX18). A node
+    /// handled, or `"program"` at a frame's end. A node
     /// hears focus anywhere in its subtree; leaving is reported innermost
     /// first, entering outermost first, as the focus crosses them.
     pub(crate) fn report_focus(&mut self, by: &'static str, out: &mut Vec<UiEvent>) {

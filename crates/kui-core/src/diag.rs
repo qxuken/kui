@@ -1,50 +1,42 @@
-//! Diagnostics as data. The misconfigurations that fail silently — a grow
-//! weight with nothing to split against, a transition on a positional key
-//! under a sibling list that changes, two nodes sharing one key — all look
-//! like "the feature is broken" from the outside. The core can see them,
-//! so it reports them the way it reports everything else: as plain data a
-//! driver drains ([`crate::Core::take_warnings`]). The windowed runners
-//! print them; a headless test asserts on them, or on their absence.
+//! Warnings as data: misconfigurations the core notices, drained through
+//! [`crate::Core::take_warnings`].
+//!
+//! A grow weight with nothing to split against, a transition on a
+//! positional key under a changing sibling list, two nodes sharing one
+//! key: all of these fail silently and look like "the feature is broken"
+//! from the outside. The core can see them, so it reports each as a
+//! [`Warning`] with a stable `code` (the constants in this module), the
+//! node it is about and a message for people. Windowed runners print
+//! them; a headless test asserts on them, or on their absence.
+//!
+//! ```rust
+//! use kui_core::{Core, NodeSpec, Size};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+//! ui.leaf_keyed("a", NodeSpec::row());
+//! ui.leaf_keyed("a", NodeSpec::row()); // the same key twice
+//! ui.finish();
+//!
+//! let warnings = core.take_warnings();
+//! assert!(warnings.iter().any(|w| w.code == kui_core::diag::DUPLICATE_KEY));
+//! ```
 //!
 //! Each distinct (code, node) pair is reported once per core, so a
 //! condition that persists across frames costs one line, not a stream.
-//! The checks walk the frame's tree (about 10 ns per node, measured), so
-//! they run on the first two frames and then every [`CHECK_EVERY`] frames:
-//! a misconfiguration persists, so it still surfaces within that many
-//! frames, and the steady-state cost rounds to nothing. A bare `Core` runs
-//! them (headless tests are development by definition); the drivers decide
-//! for shipped apps — the Rust runner and the Node loops turn them on in
-//! development builds only, a standalone C context starts with them off —
+//! The tree checks run on the first two frames and then every 16 frames.
+//! A bare `Core` runs them; runners turn them off for release builds
 //! through [`crate::Core::set_diagnostics`].
 //!
-//! Several codes do not come from the tree walk. A prop name no table claims
-//! ([`UNKNOWN_PROP`]) is gone by the time the frame is a tree, so the
-//! binding that dropped it raises it through [`crate::Core::warn`], behind
-//! the same gate and the same dedup — and a window kind no build has
-//! ([`UNKNOWN_WINDOW_KIND`]) reaches the same door from `kui-ffi`, since
-//! only C can name one. The two about declared windows
-//! ([`DUPLICATE_WINDOW_CONFIG`], [`WINDOW_DECLARED_WHILE_CLOSED`]) come
-//! from the core's diff of the declared set, which has no node to hang
-//! them on: they are keyed by the window's name, the way `unknown-prop` is
-//! keyed by element and prop, and the way the kind is keyed by the window
-//! and the number. And a resource handle from another session
-//! ([`FOREIGN_RESOURCE`]) is noticed wherever a handle resolves — under a
-//! shaping closure, in the emitter, in the driver's audio backend — so the
-//! session's registry keeps the hits and `take_warnings` raises them,
-//! keyed by kind and handle.
-//!
-//! Two codes come from further out still, and both are about a sound.
-//! [`TRUNCATED_PLAYBACK`] is about a sound that was still playing when the
-//! core stopped it, and whether it was is the one thing the core cannot
-//! see: it queues the `stop` as data and a device applies it. So the core
-//! remembers which stops could have cut a one-shot off, the driver answers
-//! `crate::Core::audio_truncated` for the ones its handle found still
-//! running, and the warning lands on the node from there.
-//! [`PLAYBACK_REFUSED`] is the one the core cannot see at all: only the
-//! driver knows the device said no, so it reports the playback back
-//! (`Core::audio_refused`) and the core keys the warning on the node that
-//! asked for the sound. A headless core never hears either answer and so
-//! never raises either — which is right, since nothing played.
+//! Not every code comes from the tree walk. A prop name nothing claims
+//! ([`UNKNOWN_PROP`]) is raised by the binding that dropped it, through
+//! [`crate::Core::warn`]; the window codes ([`DUPLICATE_WINDOW_CONFIG`],
+//! [`WINDOW_DECLARED_WHILE_CLOSED`], [`UNKNOWN_WINDOW_KIND`]) come from the
+//! declared window set and are keyed by the window's name; a handle from
+//! another session ([`FOREIGN_RESOURCE`]) is noticed wherever it resolves;
+//! and the two about sounds ([`TRUNCATED_PLAYBACK`], [`PLAYBACK_REFUSED`])
+//! are answered by the driver, since only the audio device knows, through
+//! `Core::audio_truncated` and `Core::audio_refused`.
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -136,8 +128,7 @@ warnings! {
     /// is resolved against the frame it lands on, so an `update` that
     /// toggles a dock on and enters it in one go is fine; this is that
     /// call with the view half missing, with a name the view spells
-    /// differently, or naming a node that is not a region
-    /// (`docs/adr/0022-focus-regions.md`, decision 4).
+    /// differently, or naming a node that is not a region.
     pub const FOCUS_REGION_WITHOUT_NODE: &str = "focus-region-without-node";
     /// A `reveal` or `setScroll` by label (`env.reveal("rows")`,
     /// `win.reveal("rows")`, `Core::reveal_label`) named a label the frame
@@ -145,10 +136,10 @@ warnings! {
     /// resolved when the frame finishes, so a view may name a node it is
     /// declaring right now, or one the next frame declares; this is the
     /// name spelled differently from the `key` that declares it, or the
-    /// node not declared at all (backlog DX15).
+    /// node not declared at all.
     pub const LABEL_WITHOUT_NODE: &str = "label-without-node";
-    /// A text's `family` named a family no installed or loaded font has
-    /// (ADR 0037), so it shaped as sans. `sans`, `serif` and `mono` are
+    /// A text's `family` named a family no installed or loaded font has,
+    /// so it shaped as sans. `sans`, `serif` and `mono` are
     /// kui's own; any other name is matched as `addSystemFont` matches it,
     /// and `systemFonts()` lists the names a machine has.
     pub const UNKNOWN_FAMILY: &str = "unknown-family";
@@ -172,9 +163,8 @@ warnings! {
     pub const SLIDER_VALUE_OUT_OF_RANGE: &str = "slider-value-out-of-range";
     /// `Core::add_fragment` was given WGSL that does not compile, so no
     /// handle was minted and nothing will draw. The message carries naga's
-    /// own error with the line numbers moved into the app's source
-    /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`,
-    /// decision 1). The source is rejected here rather than at the first
+    /// own error with the line numbers moved into the app's source.
+    /// The source is rejected here rather than at the first
     /// frame that shows it, so a headless test sees it too.
     pub const FRAGMENT_REJECTED: &str = "fragment-rejected";
     /// A `fragment` node declared more than sixteen `params`. The shader
@@ -184,16 +174,14 @@ warnings! {
     pub const FRAGMENT_PARAMS_TRUNCATED: &str = "fragment-params-truncated";
     /// A `polygon` declared more than eight points: the stock fragment
     /// takes eight vertices in the sixteen params it has, so the rest
-    /// were dropped. Two polygons, or the path primitive kui does not have
-    /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6).
+    /// were dropped. Two polygons, or the path primitive kui does not have.
     pub const POLYGON_POINTS_TRUNCATED: &str = "polygon-points-truncated";
     /// The frame's modal surface is not in a float, and content painted after
     /// it is drawn on top of it: everything the user can see over the modal is
     /// inert, which looks like inert-behind is broken. A modal that has to
-    /// cover the app is a float (`float="viewport"`); see
-    /// `docs/adr/0003-modal-surfaces.md`. Also raised for a modal that *is*
-    /// a float when another float from outside its scope stacks over it
-    /// (`docs/adr/0023-layers-stack-in-the-order-they-open.md`): a HUD
+    /// cover the app is a float (`float="viewport"`). Also raised for a modal that *is*
+    /// a float when another float from outside its scope stacks over it:
+    /// a HUD
     /// opened after the dialog is the same inert surface over it.
     pub const MODAL_BEHIND_CONTENT: &str = "modal-behind-content";
     /// A control (a button, link, tab, checkbox, slider, editor) with no
@@ -201,8 +189,8 @@ warnings! {
     /// editors need a `label`.
     pub const CONTROL_WITHOUT_NAME: &str = "control-without-name";
     /// A focusable node inside a composite's *item* — a button inside a list
-    /// row, a link inside a tab. The item is one roving stop of a composite
-    /// (`docs/adr/0007-composite-keyboard-patterns.md`), so the Tab ring
+    /// row, a link inside a tab. The item is one roving stop of a composite,
+    /// so the Tab ring
     /// stops at the item and nothing reaches what is inside it: declared, and
     /// impossible, which is what `modal-behind-content` set the precedent
     /// for. A focusable node inside the *container* but outside every item —
@@ -210,7 +198,7 @@ warnings! {
     pub const FOCUSABLE_INSIDE_ITEM: &str = "focusable-inside-item";
     /// A `radio` with no `radioGroup` above it, or a `tab` with no
     /// `tabList` — the stock `<radio>` included. Outside its container an
-    /// item is no composite's (`docs/adr/0007-composite-keyboard-patterns.md`):
+    /// item is no composite's:
     /// each one is a Tab stop of its own, the arrows, Home and End do not
     /// move the choice, and a screen reader announces no "2 of 3". Wrap the
     /// set in the container, labelled with what the choice is. A `menuItem`
@@ -229,8 +217,7 @@ warnings! {
     /// nothing it ever does can be announced: every platform derives the
     /// spoken string from a name, and there is none to derive. The same
     /// silent defect `image-without-label` catches, on the node that was
-    /// meant to speak (see
-    /// `docs/adr/0008-live-regions-and-announcements.md`).
+    /// meant to speak.
     pub const LIVE_REGION_WITHOUT_NAME: &str = "live-region-without-name";
     /// The same announcement text was queued on two consecutive frames.
     /// That is what an unguarded `announce` in a frame builder looks like
@@ -246,14 +233,14 @@ warnings! {
     /// which reads as "wrapping is broken"; see `LayoutSpec::wrap` for why
     /// a column cannot have it.
     pub const WRAP_IGNORED: &str = "wrap-ignored";
-    /// An alignment declared where it means nothing (backlog C13): a spread
+    /// An alignment declared where it means nothing: a spread
     /// (`spaceBetween` / `spaceAround` / `spaceEvenly`) on `crossAlign`,
     /// `baseline` on `mainAlign` or on a column's `crossAlign`, or either
     /// as a float's attach point. Each lays out as `start` — the two
     /// centring spreads as `center` — which reads as "the value is
     /// broken" when it is the axis that is wrong.
     pub const ALIGN_IGNORED: &str = "align-ignored";
-    /// An `aspectRatio` with nothing it can set (backlog C14): both axes are
+    /// An `aspectRatio` with nothing it can set: both axes are
     /// declared, or the width is `fit` under a `grow` or percent height,
     /// which is resolved only after every width is. The ratio sizes a fit
     /// height from the width, or a fit width from a fixed height.
@@ -267,8 +254,8 @@ warnings! {
     /// One frame removed more nodes declaring `exit` than the exit store
     /// will hold (4096, `depart::MAX_NODES`), so none of that frame's removal
     /// animated: every departing node of it vanished at once, as a node with
-    /// no `exit` does, rather than some sliding out and the rest blinking
-    /// (`docs/adr/0012-the-exit-budget.md`, decision 2). Correct, and
+    /// no `exit` does, rather than some sliding out and the rest blinking.
+    /// Correct, and
     /// invisible from the outside, which is the whole reason it is a line
     /// here: a list that drops a thousand rows wants `exit` on the list, not
     /// on every row. A removal that fits the budget but finds earlier exits
@@ -282,7 +269,7 @@ warnings! {
     /// gone. The message names the likely spelling. Also raised for a key
     /// a menu row map carried that no row reads — `disabled` on a select's
     /// option, where the key is `enabled` — by the binding that read the
-    /// row (backlog RG10).
+    /// row.
     pub const UNKNOWN_PROP: &str = "unknown-prop";
     /// The process has spelled 65 536 distinct size expressions — the most
     /// the table every window shares keeps, and never lets go of — and one
@@ -293,22 +280,20 @@ warnings! {
     /// 30 }] }` fed a splitter's fractional drag, a `format!` of the
     /// pointer — where one expression per layout, with the moving part a px
     /// size beside it, would not. Raised once per core; the message names
-    /// the last expression refused (backlog RG93).
+    /// the last expression refused.
     pub const SIZE_EXPRESSIONS_FULL: &str = "size-expressions-full";
     /// One name declared with two different window configs on the frame it
     /// opened. The config is read on the opening edge only, and on that edge
     /// the lowest declaring window wins (the first declaration within one
     /// frame), so the pick is deterministic — but two places in the app
-    /// disagree about what `"palette"` is, and only one of them is right. See
-    /// `docs/adr/0004-multi-window.md`, decision 4.
+    /// disagree about what `"palette"` is, and only one of them is right.
     pub const DUPLICATE_WINDOW_CONFIG: &str = "duplicate-window-config";
     /// A window the user closed is still declared, so it stays closed: a
     /// declaration reopens a window only when it *starts*, and this one never
     /// stopped. The first version of every multi-window app does this — it
     /// declares the window unconditionally — and from outside it looks like
     /// `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
-    /// event, stop declaring the name, and declare it again to reopen. See
-    /// `docs/adr/0004-multi-window.md`, decision 6.
+    /// event, stop declaring the name, and declare it again to reopen.
     pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
     /// A window declared with a `KUI_WINDOW_KIND_*` this build does not
     /// have — `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the
@@ -317,7 +302,7 @@ warnings! {
     /// than reported a frame later. The window still opens, as a normal
     /// one, so a host built against a later header degrades to a window
     /// rather than to nothing; this line is what keeps that from being
-    /// silent. See `docs/adr/0004-multi-window.md`, decision 9.
+    /// silent.
     pub const UNKNOWN_WINDOW_KIND: &str = "unknown-window-kind";
 
     /// A `setEditText` (`Core::set_edit_text`, `kui_edit_set_text`) named a
@@ -370,8 +355,7 @@ warnings! {
     /// full name, `ui.slot("ns/name")` — the namespace the host gave the
     /// extension, then the name the extension lists; one listing none fills
     /// `"ns/root"` after the host's view. Declare the slot, or drop the name
-    /// from the extension's list. See
-    /// `docs/adr/0014-slots-an-extension-fills-in-place.md`, decision 5.
+    /// from the extension's list.
     pub const UNKNOWN_SLOT: &str = "unknown-slot";
     /// A colour or length prop named a token — `bg = "$peach"` — that
     /// nothing declared and that is no theme or metrics role, or named one
@@ -380,7 +364,7 @@ warnings! {
     /// a fit width, the theme's foreground for a text's `color` — never an
     /// explicit transparent or zero, which would hide the node a typo was
     /// on; the same in every binding and in every place a `$name` can go,
-    /// a keyframe stop and an entrance included (backlog AR14), and what
+    /// a keyframe stop and an entrance included, and what
     /// `ui.token_color` / `token_length` answer `None` for in Rust. Raised
     /// by the binding that lowered the reference, through
     /// `Core::warn_unknown_token`, once per name, since the name is gone
@@ -388,27 +372,23 @@ warnings! {
     /// raised at the declaration for a derived token whose source — the
     /// `from`, or the colour a `mix` or `readable` names — is no colour
     /// token declared before it and no theme role: that token is dropped,
-    /// the message names both, and the rest of the table lands. See
-    /// `docs/adr/0027-tokens-beside-the-theme.md`, decision 4, and
-    /// `docs/adr/0028-derived-tokens.md`.
+    /// the message names both, and the rest of the table lands.
     pub const UNKNOWN_TOKEN: &str = "unknown-token";
     /// A declared token took a theme or metrics role's name (`surface`,
     /// `radius`) and was dropped: the roles are the corpus's contract and
     /// `$surface` always means the theme's, so an app cannot shadow one.
-    /// Rename the token. See `docs/adr/0027-tokens-beside-the-theme.md`,
-    /// decision 6.
+    /// Rename the token.
     pub const RESERVED_TOKEN: &str = "reserved-token";
     /// A slot name declared twice in one frame. The second declaration was
     /// ignored: a fill is keyed by the slot's full name, so two fills of one
     /// name would share every key. Two places for one extension are two
-    /// names. See ADR 0014, decision 5.
+    /// names.
     pub const DUPLICATE_SLOT: &str = "duplicate-slot";
     /// An extension returned from `view` with nodes still open. The core
     /// closed them at the depth the fill began, so the host's tree is what
     /// the host declared; outside the guard, the rest of the host's view
     /// would have landed inside the extension's last open node. The
-    /// extension has an `open` without its `close`. See ADR 0014,
-    /// decision 5.
+    /// extension has an `open` without its `close`.
     pub const UNBALANCED_EXTENSION: &str = "unbalanced-extension";
     /// An extension's `view` returned an error. The message is drawn in
     /// red where the fill would have been, and reported here once per
@@ -418,7 +398,6 @@ warnings! {
     /// so filling it would have meant calling it inside itself. The slot
     /// is left empty. An extension may host extensions (`Fill::add`), and
     /// may declare their slots — what it cannot do is be its own guest.
-    /// See ADR 0014, decision 5.
     pub const RECURSIVE_SLOT: &str = "recursive-slot";
 
     /// The device refused a play: its voices are all held, or the sound
@@ -432,14 +411,14 @@ warnings! {
     /// Stop what the view no longer needs rather than releasing it, or
     /// release shorter sounds.
     pub const PLAYBACK_REFUSED: &str = "playback-refused";
-    /// A devtools tab name declared twice in one frame (ADR 0032,
-    /// decision 1): two `devtools_tab` / `devtools_tab_with` calls, a host
+    /// A devtools tab name declared twice in one frame: two `devtools_tab` /
+    /// `devtools_tab_with` calls, a host
     /// form and an extension form of one name, or an extension declaring
     /// from its fill under a name the host took. The first declaration
     /// stands and the second is ignored; give the second tab its own name.
     pub const DUPLICATE_TAB: &str = "duplicate-tab";
     /// A `devtoolsTab` declaration a binding could not read as either
-    /// form (ADR 0032, decision 1): a child that is not a function, both a
+    /// form: a child that is not a function, both a
     /// `slot` and a child, or a `view` that is not a function in Lua. The
     /// tab was not declared. A tab names a slot for an extension to fill,
     /// or carries a function the binding calls only when the tab is shown.
@@ -450,7 +429,7 @@ warnings! {
     /// blank with a check on a divider; the options are drawn as declared.
     /// A `current` the view computes from a list it also filters is how
     /// this happens; the index is into the options as passed, separators
-    /// counted (backlog RG10). Raised once per field.
+    /// counted. Raised once per field.
     pub const SELECT_CURRENT_IGNORED: &str = "select-current-ignored";
 }
 
@@ -477,8 +456,8 @@ pub fn bad_devtools_tab(name: &str, why: &str) -> Warning {
     }
 }
 
-/// The [`TEXT_BEYOND_LINE`] warning for one text node under `line`
-/// (backlog AR30). Keyed by the text's node.
+/// The [`TEXT_BEYOND_LINE`] warning for one text node under `line`.
+/// Keyed by the text's node.
 pub fn text_beyond_line(text: Key, line: Key, reach: usize) -> Warning {
     Warning {
         code: TEXT_BEYOND_LINE,
@@ -822,7 +801,7 @@ pub fn select_current_ignored(
 
 /// The [`UNKNOWN_PROP`] warning for a key a menu row map carried that
 /// [`crate::MenuItem::from_value`] does not read — `disabled` for
-/// `enabled: false` — so the row was built without it (backlog RG10).
+/// `enabled: false` — so the row was built without it.
 /// Keyed by the name, as [`unknown_prop`]'s are: one line per spelling.
 pub fn unknown_menu_item_key(name: &str) -> Warning {
     let keys = crate::MenuItem::KEYS
@@ -1011,7 +990,7 @@ impl Diagnostics {
     /// preorder with floating subtrees last, so anything after the modal's
     /// subtree — or any float outside it — draws over it; a modal that is
     /// itself inside a float is already on top of both.
-    /// A selection scope inside another one (ADR 0017). Cheap to skip:
+    /// A selection scope inside another one. Cheap to skip:
     /// the tree says whether any node declared one at all.
     fn check_selection_scopes(&mut self, tree: &Tree) {
         if !tree.any_selectable {
@@ -1500,8 +1479,8 @@ mod tests {
     }
 
     /// A menu row's dropped key takes the row's wording, whichever door
-    /// raises it: `unknown_prop` under `MENU_ITEM` is `unknown_menu_item_key`
-    /// (backlog RG10). One hint for the key with a meaning of its own, the
+    /// raises it: `unknown_prop` under `MENU_ITEM` is `unknown_menu_item_key`.
+    /// One hint for the key with a meaning of its own, the
     /// letters' nearest for the rest, none for anything fuzzier.
     #[test]
     fn a_menu_rows_unknown_key_is_named_as_one() {

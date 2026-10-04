@@ -1,7 +1,29 @@
-//! Dynamic values: the payload type for events crossing the host/extension
-//! boundary. Everything in the IR that scripts can produce or consume is
-//! expressible as a `Value`.
+//! [`Value`]: the plain-data payload type for everything that crosses an
+//! event or binding boundary.
+//!
+//! A click payload, a drag event's fields, a readback for a script: all of
+//! them are a `Value`, so Rust, Lua, Node and C see one shape. A Rust app
+//! that wants an exhaustive `match` over its own payloads puts a typed
+//! enum on top with [`crate::message`].
+//!
+//! ```rust
+//! use kui_core::Value;
+//!
+//! let v = Value::map([
+//!     ("kind", Value::str("drag")),
+//!     ("x", Value::from(1.5f32)),
+//!     ("n", Value::from(4usize)),
+//!     ("on", true.into()),
+//! ]);
+//! assert_eq!(v.get_str("kind"), Some("drag"));
+//! assert_eq!(v.get_f32("x"), Some(1.5));
+//! assert_eq!(v.get_float("n"), Some(4.0)); // an int reads as a float
+//! assert_eq!(v.get_str("x"), None); // the wrong type is None
+//! assert_eq!(Value::from("save"), Value::Str("save".into()));
+//! ```
 
+/// A dynamically typed value: null, bool, int, float, string, list or an
+/// ordered string-keyed map. See the [module docs](self) for an example.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum Value {
     #[default]
@@ -15,10 +37,12 @@ pub enum Value {
 }
 
 impl Value {
+    /// A string value.
     pub fn str(s: impl Into<String>) -> Value {
         Value::Str(s.into())
     }
 
+    /// A map from `(key, value)` pairs, in the order given.
     pub fn map(entries: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
         Value::Map(
             entries
@@ -28,6 +52,8 @@ impl Value {
         )
     }
 
+    /// The entry under `key` of a map; `None` for a missing key or a
+    /// value that is not a map.
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
             Value::Map(entries) => entries.iter().find(|(k, _)| k == key).map(|(_, v)| v),
@@ -42,6 +68,7 @@ impl Value {
         }
     }
 
+    /// The number as an integer; a float is truncated.
     pub fn as_int(&self) -> Option<i64> {
         match self {
             Value::Int(i) => Some(*i),
@@ -57,6 +84,7 @@ impl Value {
         }
     }
 
+    /// The number as a float; an int converts.
     pub fn as_float(&self) -> Option<f64> {
         match self {
             Value::Float(f) => Some(*f),
@@ -116,13 +144,10 @@ impl Value {
     }
 }
 
-/// How a binding spells the handles inside a readback — a node key, a
-/// resource id — when a shape crosses as a [`Value`] (backlog AR1). The
-/// shape is the core's; the spelling of a 64-bit handle is not, because
-/// a JS number cannot hold one and a Lua integer can: Node writes sixteen
-/// hex digits, the way its `key`/`font`/`sound` arguments already read,
-/// and Lua writes the integer its `key` arguments already are. C reads
-/// the structs and never sees a `Value`.
+/// How a binding spells the handles inside a readback (a node key, a
+/// resource id) when a shape crosses as a [`Value`]. A JS number cannot
+/// hold a 64-bit handle and a Lua integer can, so Node writes sixteen hex
+/// digits ([`Handles::HEX`]) and Lua the integer itself ([`Handles::INT`]).
 #[derive(Clone, Copy)]
 pub struct Handles {
     pub key: fn(crate::key::Key) -> Value,

@@ -1,5 +1,5 @@
 //! The events tab: the stream as a virtual list of rows that open into
-//! the payload as data (ADR 0024, decision 8), and the one-line printing
+//! the payload as data, and the one-line printing
 //! of a `Value` the rows and the inspector share.
 
 #[cfg(test)]

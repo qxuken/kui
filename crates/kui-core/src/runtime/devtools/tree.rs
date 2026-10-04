@@ -1,7 +1,6 @@
 //! The tree tab: the main window's last frame as a collapsible, filterable
 //! list; the picker that finds a node from the app; the inspector for the
-//! selected one; and the outlines the main window paints over them
-//! (ADR 0024, decisions 9 and 10).
+//! selected one; and the outlines the main window paints over them.
 
 use rustc_hash::FxHashMap;
 
@@ -799,7 +798,7 @@ fn app_area(st: &State, dock: Dock) -> Rect {
     }
 }
 
-/// The node under `p` (decision 9): among the app's nodes whose rect
+/// The node under `p`: among the app's nodes whose rect
 /// holds it and whose scrolling or clipping ancestors all do too, the one
 /// in the topmost layer, and the last in preorder within it — the deepest
 /// of those painted over one another.

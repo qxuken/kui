@@ -20,12 +20,11 @@ const SCROLLBAR_MIN: f32 = 24.0;
 /// the driver's clock.
 const SCROLLBAR_HOLD: f64 = 1.0;
 const SCROLLBAR_FADE: f64 = 0.25;
-/// The default focus ring (see `docs/adr/0002-keyboard-focus-as-data.md`):
+/// The default focus ring:
 /// drawn this far outside the focused node, this thick, when focus is
 /// keyboard-visible and the node styles nothing itself.
 ///
-/// The *colour* is `theme.focus_ring` (ADR 0019, which revisits ADR
-/// 0002's "a constant in the core, not a theme value"): the geometry is
+/// The *colour* is `theme.focus_ring`: the geometry is
 /// still not a prop and still not negotiable, but a ring that cannot be
 /// seen is not a focus indicator, and the pale blue that reads on a dark
 /// page is invisible on a light one.
@@ -65,7 +64,7 @@ impl Core {
     /// Node `i`'s hit region, for a node that tracks the pointer. Out of
     /// line: a box that takes no input — most of a frame — does not carry
     /// the context-menu walk, the slider's track or the shape in
-    /// `emit_node`'s saved registers and stack frame (backlog C48).
+    /// `emit_node`'s saved registers and stack frame.
     #[inline(never)]
     fn push_hit(
         &mut self,
@@ -166,7 +165,7 @@ impl Core {
 
     /// An editor's own hit region, whose origin is where its glyphs sit
     /// (shifted by what a field is scrolled). Out of line for the reason
-    /// `push_hit` is (backlog C48).
+    /// `push_hit` is.
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]
     fn push_edit_hit(
@@ -237,7 +236,7 @@ impl Core {
     /// `i` in the tree, [`NIL`] for none. Ancestors are emitted before
     /// their descendants — a float's layer comes after the one its
     /// declaring node is in — so the one around is already in the list.
-    /// Off `emit_node`'s straight path: only a scroller pays for it (C48).
+    /// Off `emit_node`'s straight path: only a scroller pays for it.
     #[inline(never)]
     fn enclosing_scroll_region(&self, i: usize, regions: &[ScrollRegion]) -> u32 {
         let mut a = self.tree.parent[i];
@@ -377,11 +376,11 @@ impl Core {
         }
     }
 
-    /// The `rules` of table `i` (backlog DX21), laid out by [`rule_lines`]
+    /// The `rules` of table `i`, laid out by [`rule_lines`]
     /// from its in-flow children as layout reads them — a row is what
     /// `layout::is_table_row` says is one, so the grid is drawn over the
     /// rows its columns were laid across and not through a heading or a
-    /// section beside them (the alpha.22 regression pass).
+    /// section beside them.
     #[cold]
     #[inline(never)]
     fn emit_rules(&mut self, i: usize, rect: Rect, color: Color, paint: &Paint) {
@@ -484,8 +483,8 @@ impl Core {
     /// Runs layout and emission into `output()`, and installs this frame's
     /// hit and scroll regions for input handling. The last step of
     /// `Ui::finish`, which runs the extension fills, the devtools panel
-    /// and the open menu first — and crate-private for that reason
-    /// (backlog AR37): a host that called this directly got a frame where
+    /// and the open menu first — and crate-private for that reason:
+    /// a host that called this directly got a frame where
     /// `open_menu` drew nothing and `KUI_DEVTOOLS` did nothing, with no
     /// warning. A driver with a bare `Core` finishes through
     /// `Ui::wrap(core).finish()`.
@@ -602,7 +601,7 @@ impl Core {
     /// after the scope map and before emission, because a run's range has
     /// to be known when the run is drawn and its *offset* cannot be —
     /// the runs after it have not been placed yet, and an end may be one
-    /// of them (ADR 0017, decision 2).
+    /// of them.
     fn resolve_selection(&mut self) {
         self.sel_ords.clear();
         self.sel_ends = None;
@@ -704,7 +703,7 @@ impl Core {
     /// The keys above text node `i`, nearest first, as many as a place
     /// remembers; how many there are; and the depth of the nearest
     /// `role="none"` ancestor among them, which a query from above it
-    /// does not reach (backlog AR30). A `line` row further up than the
+    /// does not reach. A `line` row further up than the
     /// place can remember raises `text-beyond-line`, once per text.
     fn text_ancestors(&mut self, i: usize) -> crate::text::Ancestry {
         use crate::access::Role;
@@ -749,7 +748,7 @@ impl Core {
     /// in paint order — the in-flow layer, then one layer per floating
     /// subtree in the order they opened, each with the departed subtrees
     /// that were painted among it and its own chrome (scrollbars, the
-    /// ring) at its end (ADR 0023) — and the hit and scroll regions the
+    /// ring) at its end — and the hit and scroll regions the
     /// next input is tested against, in the same order.
     fn emit_frame(&mut self) {
         let scale = self.scale;
@@ -1503,10 +1502,10 @@ impl Core {
 
     /// The chrome of one layer, after its content: the bars of every
     /// scroller the layer emitted (`regions`), then the ring if the focused
-    /// node is in this layer (ADR 0023, decision 2). `layer` is the float
+    /// node is in this layer. `layer` is the float
     /// root's index, or `NIL` for the in-flow layer; `above` is the hit
     /// list's length now, which is what a bar records so a press can tell
-    /// a region under it from one in a layer over it (decision 4).
+    /// a region under it from one in a layer over it.
     fn emit_layer_chrome(
         &mut self,
         layer: u32,
@@ -1619,7 +1618,7 @@ impl Core {
     /// roots in tree order) and the stack the last frame left: a root the
     /// stack knows keeps its place, one it does not is appended, in tree
     /// order, and a root the frame no longer declares is dropped. Writes
-    /// the stack back for the next frame (ADR 0023, decision 3).
+    /// the stack back for the next frame.
     ///
     /// The steady state — the same roots as last frame — is one pass over
     /// the stack and no allocation beyond the order itself: each entry
@@ -1676,10 +1675,10 @@ impl Core {
         order
     }
 
-    /// ADR 0003's `modal-behind-content`, for the stack: a float layer
+    /// The `modal-behind-content` check, for the stack: a float layer
     /// above the modal's whose root is outside the modal's scope is inert
     /// and drawn over the one surface that takes input, which is the same
-    /// defect the in-flow check names (ADR 0023, decision 6). Only a layer
+    /// defect the in-flow check names. Only a layer
     /// with something in it that *would* take input is the defect — a
     /// control the user sees and cannot press. A picture over the dialog
     /// (a HUD, the devtools' inspector outline) is not, and is not named.
@@ -1776,7 +1775,7 @@ impl Core {
     /// The stock editor `key`'s node and its caret rect in viewport
     /// coordinates, from the frame laid out: the editor's own caret
     /// (physical px inside its text box) placed at the node's content
-    /// origin. The one place this arithmetic lives (backlog AR45) — the
+    /// origin. The one place this arithmetic lives — the
     /// IME anchor and the scroll-into-view both read it. None when no
     /// node of this frame is that editor, or it has no caret.
     pub(crate) fn stock_caret_viewport_rect(&mut self, key: Key) -> Option<(usize, Rect)> {
@@ -1840,7 +1839,7 @@ impl Core {
     }
 
     /// Remembers this frame's custom-editor caret and bumps the stamp when
-    /// it is not last frame's (backlog C35): the blink clock reads both.
+    /// it is not last frame's: the blink clock reads both.
     /// Whether it is solid is kept beside it, not in it: a caret going
     /// from bar to block has not moved, and the clock re-arms on the
     /// way back from `has_caret` alone.
@@ -2007,10 +2006,9 @@ struct Painter<'a> {
 
 impl Painter<'_> {
     /// Inlined into its two callers: a call per node with the borrows
-    /// packed into a struct measured +2.5% on `frame_10k_rects` (C15).
+    /// packed into a struct measured +2.5% on `frame_10k_rects`.
     /// What a leaf draws, and a shadow, are calls (`paint_leaf`,
-    /// `shadow_quad`): inlined as well, they made every box pay for them
-    /// (C48).
+    /// `shadow_quad`): inlined as well, they made every box pay for them.
     #[inline(always)]
     fn paint_box(
         &mut self,
@@ -2065,8 +2063,7 @@ impl Painter<'_> {
     /// What a leaf draws inside its box: text, cells, an editor, an
     /// image, a fragment, a polygon's fill or a stroke. Out of line, so the
     /// kinds a plain box never takes do not weigh on every node's
-    /// `emit_node` — its saved registers and its stack frame (backlog C48,
-    /// as C41 was for the segment loop).
+    /// `emit_node` — its saved registers and its stack frame.
     #[inline(never)]
     fn paint_leaf(
         &mut self,
@@ -2364,7 +2361,7 @@ impl PaintOrder {
 /// backend's edge ramp is never cut by the quad's own edge, and the
 /// endpoints ride in `uv` (see [`Quad::segment_ends`]).
 ///
-/// Kept out of line on purpose (backlog C41): inlined into `emit_node`,
+/// Kept out of line on purpose: inlined into `emit_node`,
 /// whose size moves with every prop a hit region grows, the loop's carried
 /// point lost its register to the stack once the drop-zone commit tipped
 /// the allocator — a store and a reload on every segment, +10% on
@@ -2413,7 +2410,7 @@ fn push_segments(
 /// the shape. Radii grow with the spread so a rounded box keeps its
 /// silhouette instead of sprouting corners. Never inlined: in
 /// `emit_node` its arithmetic took two more saved float registers for
-/// every node, shadow or not (backlog C48).
+/// every node, shadow or not.
 #[inline(never)]
 fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, scale: f32) -> Quad {
     let sh = style.shadow;
@@ -2506,8 +2503,8 @@ struct RuledChild {
     cells: Option<Vec<Rect>>,
 }
 
-/// The rules of a table at `rect` over its in-flow `children` (backlog
-/// DX21), `rule_w` thick (1 when not positive):
+/// The rules of a table at `rect` over its in-flow `children`, `rule_w` thick
+/// (1 when not positive):
 ///
 /// - across, one down the middle of each gap between two in-flow
 ///   children, the content box wide;
@@ -2516,7 +2513,7 @@ struct RuledChild {
 ///   the run's first row's top to its last row's bottom.
 ///
 /// A child that is no row — a heading text beside the rows, a `column`
-/// section wrapping a heading over a row (RG7) — is laid out across the
+/// section wrapping a heading over a row — is laid out across the
 /// table and has no cells, and is ruled as a row spanning every column,
 /// the way a `colspan` cell of a ruled HTML table is: a rule above and
 /// below it as between rows, and the column rules stop at its edges
@@ -2620,7 +2617,7 @@ fn scrollbar_quad(bar: Rect, scale: f32, clip_id: ClipId, color: Color) -> Quad 
 /// and the texel rect of the image they come from. `fill` stretches the
 /// whole image to the box; `contain` shrinks the painted rect to the
 /// image's aspect, centred; `cover` keeps the box and crops the texels,
-/// centred (ADR 0025, decision 4). A zero-sized image or box falls back to
+/// centred. A zero-sized image or box falls back to
 /// `fill`, which paints nothing visible either way.
 pub(crate) fn fit_image(
     fit: crate::resources::ImageFit,
@@ -2677,7 +2674,7 @@ pub(crate) fn fit_image(
 
 /// One fragment quad and its side entry: the draw, the source a backend
 /// compiles, and the colour the function reads as `in.color` — white for
-/// a `fragment`, the fill for a `polygon` (ADR 0025).
+/// a `fragment`, the fill for a `polygon`.
 ///
 /// A draw naming an `image` resolves it here, where the window's atlas
 /// is: an atlas-backed image goes into the atlas as an `image` node's

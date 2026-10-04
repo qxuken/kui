@@ -1,13 +1,58 @@
-//! Context menus as data: what an item *is*, what the window has open,
-//! and what a host has to do about the items the core cannot finish on its
-//! own (`docs/adr/0017-selection-as-a-scope.md`, decision 5).
+//! Menus as data: the rows of a context menu or the application menu bar,
+//! what the window has open, and what a host still has to do after a row
+//! is chosen.
 //!
-//! A menu is a list of items and a point to open at. Nothing here draws:
-//! the stock renderer is [`crate::widgets::context_menu`], which builds
-//! ordinary nodes into the frame, and a host that has a native menu
-//! renders the same list itself. That is the whole reason the list is
-//! data — a menu whose items are a closure could only ever be drawn by
-//! the code that wrote it.
+//! An app meets this module through `Ui::open_menu` / `Core::open_menu`
+//! (a [`Menu`] over a node, usually from a `contextmenu` event), through
+//! `Core::declare_menu_bar` (a [`MenuBar`] of [`BarMenu`]s), and through
+//! the `menu` event a chosen row posts on the node the menu was about. A
+//! host that holds the core drains [`MenuAction`]s with
+//! `Core::take_menu_actions`: the clipboard work the core cannot do itself.
+//! Nothing here draws; the stock renderer builds ordinary nodes into the
+//! frame, and a platform that owns menus (the macOS menu bar) gets the
+//! same list.
+//!
+//! ```rust
+//! use kui_core::{
+//!     Accel, BarMenu, Core, Key, Menu, MenuAction, MenuBar, MenuItem, MenuRole, Vec2,
+//! };
+//!
+//! let bar = MenuBar::new(vec![
+//!     BarMenu::new("File", vec![
+//!         MenuItem::new("Open...").id("open").accel("mod+o"),
+//!         MenuItem::separator(),
+//!         MenuItem::new("Quit").id("quit"),
+//!     ]),
+//!     BarMenu::new("Edit", vec![
+//!         MenuItem::role(MenuRole::Cut),
+//!         MenuItem::role(MenuRole::Copy),
+//!         MenuItem::role(MenuRole::Paste),
+//!     ]),
+//! ]);
+//! let mut core = Core::new();
+//! core.declare_menu_bar(bar);
+//! assert_eq!(core.menu_bar().map(|b| b.menus.len()), Some(2));
+//!
+//! // A context menu over a node, at the point the press landed.
+//! let items = vec![
+//!     MenuItem::new("Inspect").id("inspect"),
+//!     MenuItem::new("Delete").id("delete").enabled(false),
+//! ];
+//! core.open_menu(Menu::new(Key::ROOT, Vec2::new(40.0, 30.0), items));
+//!
+//! // After a row is chosen, the host finishes what the core cannot.
+//! for action in core.take_menu_actions() {
+//!     match action {
+//!         MenuAction::SetClipboard { text, .. } => println!("copy {text}"),
+//!         MenuAction::Paste => println!("read the clipboard"),
+//!         other => println!("{other:?}"),
+//!     }
+//! }
+//!
+//! // Accelerators are display text; `Accel` parses them for a native bar.
+//! let accel = Accel::parse("mod+shift+s").unwrap();
+//! assert!(accel.mods.shift);
+//! ```
 
 use crate::geom::Vec2;
 use crate::key::Key;
@@ -36,8 +81,8 @@ pub enum MenuRole {
     Paste,
     SelectAll,
     /// Show the platform's definition/Look Up panel for the selection.
-    /// The core cannot draw one and never tries: with no host to answer
-    /// it, the item is simply not offered (ADR 0017, decision 6).
+    /// The core cannot draw one: with no host to answer it, the item is
+    /// not offered.
     LookUp,
 }
 
@@ -196,7 +241,7 @@ impl MenuItem {
     /// reads. A binding that drops the rest of a map on the floor checks
     /// against this first and raises [`crate::diag::unknown_menu_item_key`]
     /// for what it dropped, so `{label, disabled: true}` is not silently a
-    /// row that is enabled (backlog RG10).
+    /// row that is enabled.
     pub const KEYS: [&'static str; 6] = ["label", "role", "enabled", "checked", "id", "accel"];
 
     /// The name a binding reports a row's dropped keys under
@@ -210,7 +255,7 @@ impl MenuItem {
     /// label, posting it — or [`Self::from_value`] maps, for an option
     /// that posts an `id` of its own or is disabled. An empty list is
     /// refused: a select with nothing to choose from is a field that opens
-    /// a menu of no rows, which only Escape leaves (backlog RG10).
+    /// a menu of no rows, which only Escape leaves.
     pub fn options_from_value(v: &Value) -> Result<Vec<Self>, String> {
         let Value::List(rows) = v else {
             return Err("a select's options are an array".into());
@@ -349,14 +394,13 @@ pub enum MenuAction {
     /// Cut has already removed the text by the time it arrives.
     ///
     /// `html` is the same selection with the formatting the core knows
-    /// about — bold, italic, a span's declared colour (ADR 0017, decision
-    /// 7) — for a host that can offer a second flavour. It is an
-    /// *addition* to `text` and never a replacement: a clipboard whose
-    /// only flavour is HTML pastes markup into every plain-text field on
-    /// the machine.
+    /// about (bold, italic, a span's declared colour), for a host that can
+    /// offer a second flavour. It is an addition to `text`, never a
+    /// replacement: a clipboard whose only flavour is HTML pastes markup
+    /// into every plain-text field on the machine.
     SetClipboard { text: String, html: Option<String> },
     /// Put this secret on the system clipboard the way a password manager
-    /// does (backlog F84): the text, marked concealed and transient —
+    /// does: the text, marked concealed and transient —
     /// `org.nspasteboard.ConcealedType` and `TransientType` on macOS,
     /// excluded from monitoring, history and the cloud clipboard on
     /// Windows, `x-kde-passwordManagerHint: secret` on Linux — so a
@@ -368,11 +412,11 @@ pub enum MenuAction {
     /// focused editor takes it as typing, the way it takes Cmd-V, and a
     /// focused key sink hears it as `{kind:"text"}` — which is how an
     /// app that owns its text gets a paste it asked for with
-    /// `Core::request_paste` (backlog C33). The core cannot read a
-    /// clipboard, so Paste is the one standard item it can only ask for.
-    /// The answer carries the pasteboard's markers
-    /// ([`crate::input::ClipboardMarks`], backlog F84), and an answer that
-    /// is a bare `InputEvent::Commit` is one that marked nothing.
+    /// `Core::request_paste`. The core cannot read a clipboard, so Paste
+    /// is the one standard item it can only ask for. The answer carries
+    /// the pasteboard's markers ([`crate::input::ClipboardMarks`]), and an
+    /// answer that is a bare `InputEvent::Commit` is one that marked
+    /// nothing.
     Paste,
     /// Show the platform's definition panel for `text`, anchored at
     /// `rect` (logical viewport px — the word's own box, which is what
@@ -393,10 +437,9 @@ pub enum MenuAction {
 }
 
 // -- The application menu bar -----------------------------------------------
-// `docs/adr/0018-a-menu-bar-the-app-declares.md`. The bar is the same rows
-// one level up: a list of menus, each a label and the `MenuItem`s above, so
-// an Edit menu's Copy is the *same item* the context menu's Copy is and the
-// core performs it the same way.
+// The bar is the same rows one level up: a list of menus, each a label and
+// the `MenuItem`s above, so an Edit menu's Copy is the *same item* the
+// context menu's Copy is and the core performs it the same way.
 
 /// One menu of the bar: what the bar reads, and what drops out of it.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -447,10 +490,9 @@ impl MenuBar {
     }
 
     /// A bar from plain data: a list of `{ label, items, enabled? }`,
-    /// whose `items` are the rows `openMenu` takes
-    /// (`docs/adr/0018-a-menu-bar-the-app-declares.md`). A menu with no
-    /// `items` is a shape error and not an empty menu: the two read the
-    /// same on screen and only one of them was meant.
+    /// whose `items` are the rows `openMenu` takes. A menu with no `items`
+    /// is a shape error and not an empty menu: the two read the same on
+    /// screen and only one of them was meant.
     pub fn from_value(v: &Value) -> Result<Self, String> {
         let Value::List(menus) = v else {
             return Err("menu is an array of menus".into());
@@ -562,8 +604,7 @@ impl Accel {
         }
         let code = code?;
         // A lock key turns a state rather than being a key a shortcut is
-        // held against — no menu bar takes `ctrl+capslock` — and naming
-        // it a key (backlog F108) let the words parse (backlog RG96).
+        // held against: no menu bar takes `ctrl+capslock`.
         let lock = matches!(
             code,
             KeyCode::CapsLock | KeyCode::NumLock | KeyCode::ScrollLock

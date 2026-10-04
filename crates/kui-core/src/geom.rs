@@ -1,3 +1,18 @@
+//! Plain geometry in logical pixels: [`Vec2`], [`Size`], [`Rect`] and
+//! [`Edges`].
+//!
+//! Every number here is a logical pixel, before the window's scale factor
+//! is applied; the display list and the renderer work in physical pixels.
+//! The types are `#[repr(C)]` and `Copy`, so they cross the FFI boundary
+//! unchanged.
+
+/// A point or offset in logical pixels.
+///
+/// ```rust
+/// use kui_core::Vec2;
+/// let p = Vec2::new(10.0, 4.0).plus(Vec2::new(2.0, 1.0));
+/// assert_eq!((p.x, p.y), (12.0, 5.0));
+/// ```
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Vec2 {
@@ -38,7 +53,7 @@ impl Vec2 {
     /// long as the motion lasts; a whole one moves them together. Where a
     /// node sits when it is *still* is untouched: this rounds the offset,
     /// not the position, so a card laid out at a fractional x stays there
-    /// and its text keeps the gap it had. See backlog W7.
+    /// and its text keeps the gap it had.
     pub(crate) fn snapped(self, scale: f32) -> Self {
         if scale <= 0.0 || !scale.is_finite() {
             return self;
@@ -155,8 +170,7 @@ impl Rect {
         Rect::new(x0, y0, x1 - x0, y1 - y0)
     }
 
-    /// The smallest rect holding both. What a selection spanning several
-    /// runs is anchored by (ADR 0017's Look Up panel).
+    /// The smallest rect holding both.
     pub fn union(&self, other: &Rect) -> Rect {
         let x = self.x.min(other.x);
         let y = self.y.min(other.y);

@@ -25,8 +25,8 @@ use crate::value::Value;
 /// drives it, for plain alpha masks, LCD subpixel masks and color bitmaps
 /// alike — our own so the subpixel format is ours to pick, and so a
 /// variable face is drawn at the `wght` coordinate its axis gives a CSS
-/// weight and a glyph marked for synthetic bold is drawn bold (backlog
-/// F100), neither of which cosmic-text's cache does.
+/// weight and a glyph marked for synthetic bold is drawn bold, neither of
+/// which cosmic-text's cache does.
 pub(crate) struct Raster {
     ctx: swash::scale::ScaleContext,
     /// Each face's `wght` axis, read once: `None` for a face without one.
@@ -190,7 +190,7 @@ pub(crate) fn glyph_kind(slot: &crate::atlas::GlyphSlot) -> QuadKind {
     }
 }
 
-/// The default byte budget for the shaped-text cache (backlog C16). Sized
+/// The default byte budget for the shaped-text cache. Sized
 /// so a screenful of code never meets it — two panes of 55 highlighted
 /// lines are ~900 short entries, a few megabytes — and a pane streaming
 /// new text meets it within seconds, which is when the clock alone let the
@@ -209,8 +209,8 @@ pub const DEFAULT_TEXT_CACHE_BYTES: usize = 64 << 20;
 const ENTRY_BASE_BYTES: usize = 4096;
 const ENTRY_GLYPH_BYTES: usize = 480;
 
-/// A non-wrapping text at least this long is shaped in chunks (backlog
-/// C19): a minified bundle, a log line with a blob in it, a base64 field.
+/// A non-wrapping text at least this long is shaped in chunks: a minified
+/// bundle, a log line with a blob in it, a base64 field.
 /// Shorter text takes the path it always took, so nothing below the line
 /// moves. Bytes, not characters, for the same reason a step line carries
 /// integers: every binding can count them.
@@ -254,7 +254,7 @@ pub(crate) struct CachedText {
     /// Positioned glyph quads relative to the text origin, so steady-state
     /// emission is a memcpy-style walk instead of per-glyph atlas lookups.
     glyphs: Vec<GlyphTemplate>,
-    /// The decoration rects that go with them (backlog C22): a span's
+    /// The decoration rects that go with them: a span's
     /// background under its glyphs, its underline and strikethrough over
     /// them, one rect per run of the span per line, so they wrap with it.
     deco: Vec<DecoTemplate>,
@@ -266,7 +266,7 @@ pub(crate) struct CachedText {
     /// The frame a node last wrapped this run for, and the wrap it asked:
     /// a second node of that frame asking another width wraps a copy of
     /// its own ([`TextSystem::own_wrap`]), since the queries read the
-    /// buffer as it was left (backlog RG72).
+    /// buffer as it was left.
     claimed: u64,
     claimed_wrap: Option<f32>,
     /// A break may fall between any two glyphs (`TextWrap::Glyph`), not
@@ -274,7 +274,7 @@ pub(crate) struct CachedText {
     breaks_anywhere: bool,
     /// The widest stretch no break falls inside, physical px — CSS's
     /// min-content — measured the first time a shrink asks and kept for
-    /// the entry's life, since no width changes it (backlog RG92).
+    /// the entry's life, since no width changes it.
     min_content: Option<f32>,
 }
 
@@ -304,14 +304,14 @@ struct DecoTemplate {
     /// Painted before the glyphs (a background) rather than after (a line).
     under: bool,
     /// The shape, for an underline: the rect is where a solid line goes,
-    /// and a wave or dots are built around it at emission (backlog K4).
+    /// and a wave or dots are built around it at emission.
     style: UnderlineStyle,
     /// A background's radius, logical px; above zero the frame joins it
     /// with the ones it meets ([`JoinBg`]).
     radius: f32,
 }
 
-/// A rounded span background emitted this frame (backlog F101): the quad
+/// A rounded span background emitted this frame: the quad
 /// it is, square for now, which the frame's last pass turns into its part
 /// of one shape once every text has been painted and each can be told the
 /// ones it meets (`crate::join`). The radius is logical px. `outer` is the
@@ -336,7 +336,7 @@ struct SpanDeco {
     strikethrough: bool,
     bg: Option<Color>,
     /// The background's radius, logical px: above zero it is joined with
-    /// the backgrounds it meets (backlog F101).
+    /// the backgrounds it meets.
     bg_radius: f32,
 }
 
@@ -365,19 +365,18 @@ pub struct Span<'a> {
     pub color: Option<Color>,
     pub bold: bool,
     pub italic: bool,
-    /// A line under the span, where the face puts its underline (backlog
-    /// C22).
+    /// A line under the span, where the face puts its underline.
     pub underline: bool,
-    /// The underline's own colour; `None` is the span's (backlog K4).
+    /// The underline's own colour; `None` is the span's.
     pub underline_color: Option<Color>,
-    /// The underline's shape (backlog K4).
+    /// The underline's shape.
     pub underline_style: UnderlineStyle,
     /// A line through the span, where the face puts its strikeout.
     pub strikethrough: bool,
     /// A background behind the span's glyphs, one rect per line it spans,
     /// so it follows the span across a wrap the way a box cannot.
     pub bg: Option<Color>,
-    /// The background's corner radius, logical px (backlog F101). Above
+    /// The background's corner radius, logical px. Above
     /// zero, every background of the same colour and radius that meets
     /// another edge to edge on the line above or below — in this text or
     /// another — is one shape with it: its corners convex where a line
@@ -422,14 +421,14 @@ impl<'a> Span<'a> {
         self
     }
 
-    /// An underline in its own colour (backlog K4); turns it on.
+    /// An underline in its own colour; turns it on.
     pub fn underline_color(mut self, c: Color) -> Self {
         self.underline = true;
         self.underline_color = Some(c);
         self
     }
 
-    /// An underline of this shape (backlog K4); turns it on.
+    /// An underline of this shape; turns it on.
     pub fn underline_style(mut self, s: UnderlineStyle) -> Self {
         self.underline = true;
         self.underline_style = s;
@@ -454,7 +453,7 @@ impl<'a> Span<'a> {
     }
 
     /// The span without its text: what a long line keeps per span so a
-    /// chunk can be rebuilt from the content and the ranges (backlog C42).
+    /// chunk can be rebuilt from the content and the ranges.
     fn attrs_only(&self) -> SpanAttrs {
         SpanAttrs {
             color: self.color,
@@ -495,7 +494,7 @@ impl<'a> Span<'a> {
 
 /// A [`Span`]'s attributes without its text, owned: what a long rich
 /// line keeps per span, with the range in [`OwnedSpan`], so a chunk can
-/// be handed the spans that intersect it, sliced (backlog C42).
+/// be handed the spans that intersect it, sliced.
 #[derive(Clone, Copy)]
 struct SpanAttrs {
     color: Option<Color>,
@@ -562,12 +561,12 @@ struct FrameText {
 }
 
 /// One entry of the text cache: a shaped run, or a long line whose chunks
-/// are runs of their own in the same map (backlog C19). Whether a text is
+/// are runs of their own in the same map. Whether a text is
 /// long is decided once, at [`TextSystem::add`], and lives here as the
 /// variant; every operation after it asks the entry rather than carrying
-/// a flag beside the key (AR6). A long line joins a selection scope's
+/// a flag beside the key. A long line joins a selection scope's
 /// concatenation like any run: being long is how it was shaped, not
-/// something a reader dragging across it should feel (ADR 0017).
+/// something a reader dragging across it should feel.
 pub(crate) enum Entry {
     Run(CachedText),
     Long(LongLine),
@@ -655,8 +654,8 @@ struct RowStart {
     x: f32,
 }
 
-/// A non-wrapping text past [`LONG_LINE_BYTES`], shaped in chunks on demand
-/// (backlog C19). The line itself holds no buffer: its chunks are cache
+/// A non-wrapping text past [`LONG_LINE_BYTES`], shaped in chunks on demand.
+/// The line itself holds no buffer: its chunks are cache
 /// entries interned when emission, a hit-test or a caret query lands in
 /// them, and `prefix` is where each chunk starts — an estimate from the
 /// first chunk's mean advance until the chunk shapes, exact after. So a
@@ -670,7 +669,7 @@ struct RowStart {
 #[derive(Clone)]
 pub(crate) struct LongLine {
     content: String,
-    /// The spans, for a rich line (backlog C42): each chunk is shaped as a
+    /// The spans, for a rich line: each chunk is shaped as a
     /// rich run of the spans that intersect it, sliced. Empty for a plain
     /// line, whose chunks are plain runs.
     spans: Vec<OwnedSpan>,
@@ -709,7 +708,7 @@ pub(crate) struct LongLine {
     /// breaks the rows again once the chunks it shapes are known, and
     /// rows that differ from layout's owe a frame laid out on them —
     /// once per count, so a cache too small to keep the chunks cannot
-    /// ask forever (backlog RG70).
+    /// ask forever.
     laid_rows: u32,
     asked_rows: u32,
     bytes: usize,
@@ -776,7 +775,7 @@ impl LongLine {
 /// `break-spaces` — is one chunk, shaped whole as the run it would
 /// otherwise be.
 ///
-/// Tab stops are why (backlog RG75): cosmic-text measures them from where
+/// Tab stops are why: cosmic-text measures them from where
 /// the shaped text starts, so a chunk shaped alone put a tab after its
 /// start at a stop measured from there and not from the line's. A chunk
 /// cut just after a tab ends on a stop, so the next one starts on one and
@@ -844,7 +843,7 @@ fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
 /// How many enclosing keys a place remembers: a text run answers to its
 /// own key and to any of this many ancestors, which is a `line` row, a
 /// selection wrapper around a run, and two to spare. A text further than
-/// this below its `line` raises `text-beyond-line` (backlog AR30).
+/// this below its `line` raises `text-beyond-line`.
 pub(crate) const PLACE_ANCESTORS: usize = 4;
 
 /// The keys above a text node, nearest first, as many as a place
@@ -857,7 +856,7 @@ pub(crate) struct Ancestry {
 }
 
 /// Where a text node was drawn: what `Core::text_hit` and
-/// `Core::caret_rect` answer from (backlog C18). Recorded at emission, so
+/// `Core::caret_rect` answer from. Recorded at emission, so
 /// a node the frame culled — scrolled out of its clip — has no place and
 /// answers nothing, which is also true of a point nobody can click.
 pub(crate) struct TextPlace {
@@ -868,14 +867,14 @@ pub(crate) struct TextPlace {
     /// The nearest ancestor (an index into `ancestors`) declaring
     /// `role="none"`, or `u8::MAX` for none within reach: a query by a key
     /// above it does not reach this run, the way the access tree skips a
-    /// gutter's text when it reads a `line` (backlog AR30); a query by the
+    /// gutter's text when it reads a `line`; a query by the
     /// gutter itself still does.
     none_at: u8,
     cache_key: u64,
     /// The node's origin, logical viewport px.
     origin: Vec2,
-    /// The innermost `selectable` node above this run, when there is one
-    /// (ADR 0017). What `scope_runs` gathers by, and the reason a place
+    /// The innermost `selectable` node above this run, when there is one.
+    /// What `scope_runs` gathers by, and the reason a place
     /// is recorded for a run that was never drawn — see `drawn`.
     scope: Option<Key>,
     /// Whether the run was painted. False for a run inside a selection
@@ -932,8 +931,7 @@ impl ScopeRun<'_> {
 /// node, 0-based, counted across every run the key covers by where the
 /// rows sit: a `line` row of three inline runs is one row, a run that
 /// wrapped is as many as it wrapped to, and two runs stacked are two —
-/// not the wrapped line within one run's buffer, which is what it was
-/// until backlog AR30, and not the ordinal `role="line"` node a pointer
+/// not the wrapped line within one run's buffer, and not the ordinal `role="line"` node a pointer
 /// event's `line` names (that one counts rows of the editor, this one
 /// rows of the text asked about).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -985,11 +983,10 @@ impl TextMetrics {
 pub struct TextSystem {
     raster: Raster,
     /// The rounded span backgrounds this frame emitted, for the pass that
-    /// joins them once every text is painted (backlog F101).
+    /// joins them once every text is painted.
     joins: Vec<JoinBg>,
     /// Every shaped run and every long line, by key — a long line's key
-    /// is salted (`LONG_SALT`) and its chunks are runs beside it (backlog
-    /// C19).
+    /// is salted (`LONG_SALT`) and its chunks are runs beside it.
     entries: FxHashMap<u64, Entry>,
     /// The sum of the entries' `bytes`, kept exact against inserts and
     /// removals so a frame inside its budget costs one comparison.
@@ -1007,8 +1004,7 @@ pub struct TextSystem {
     scale: f32,
     frame_no: u64,
     /// Emission broke a long line into rows other than the ones layout
-    /// used: the frame laid out on them is owed (backlog RG70; see
-    /// `LongLine::asked_rows`). Taken by [`Self::take_owed`].
+    /// used: the frame laid out on them is owed. Taken by [`Self::take_owed`].
     owed: bool,
 }
 
@@ -1029,7 +1025,7 @@ pub(crate) fn cosmic_features(f: &crate::spec::FontFeatures) -> cosmic_text::Fon
 /// list, but a missing monospace family falls to the *lowest-id*
 /// monospaced face in the database — style is not in that ranking's key,
 /// so on a machine whose first monospaced face is an italic instance every
-/// `Mono` glyph is italic (backlog C32). The first installed name in each
+/// `Mono` glyph is italic. The first installed name in each
 /// list wins; when none is, cosmic-text's own name stays so its fallback
 /// still runs.
 #[cfg(target_os = "macos")]
@@ -1069,8 +1065,7 @@ fn first_installed<'a>(db: &cosmic_text::fontdb::Database, list: &[&'a str]) -> 
 /// generic sans, serif and monospace families pinned to an installed face
 /// (see [`DEFAULT_FAMILIES`]), so weight and style matching starts from a
 /// face with real variants rather than whatever the fallback pops.
-/// Faces whose glyphs cannot be measured are taken out first (backlog
-/// F98, see [`keep_measurable`]).
+/// Faces whose glyphs cannot be measured are taken out first.
 ///
 /// The system's faces are scanned and checked once a process
 /// ([`system_fonts`]); every session after the first starts from a copy of
@@ -1122,7 +1117,7 @@ fn scan_system_fonts() -> SystemFonts {
 
 impl SystemFonts {
     /// A scan from a database already loaded: the unmeasurable faces taken
-    /// out (F98) and the generic families pinned.
+    /// out and the generic families pinned.
     pub(crate) fn from_db(locale: String, mut db: cosmic_text::fontdb::Database) -> Self {
         let all: Vec<_> = db.faces().map(|face| face.id).collect();
         keep_measurable(&mut db, all);
@@ -1178,7 +1173,7 @@ fn font_system_with(locale: String, db: cosmic_text::fontdb::Database) -> FontSy
     FontSystem::new_with_locale_and_db(system.locale, system.db)
 }
 
-/// Whether the shaper can say how wide a face's glyphs are (backlog F98):
+/// Whether the shaper can say how wide a face's glyphs are:
 /// a `head` whose units per em are in the range the spec allows
 /// (16–16384), an `hhea` with at least one horizontal metric, and an
 /// `hmtx` as long as that says. Every advance is design units over units
@@ -1206,7 +1201,7 @@ const FILES_PER_CHECKER: usize = 64;
 /// Takes the faces of `ids` the shaper cannot measure out of `db` (see
 /// [`measurable`]) and returns the rest, so a face that would shape to
 /// infinitely wide glyphs is not a family to list, to name or to fall
-/// back to (backlog F98). A face whose file cannot be read goes too: the
+/// back to. A face whose file cannot be read goes too: the
 /// shaper could not load it either.
 ///
 /// Each file is opened once for all its faces, and the files are spread
@@ -1317,7 +1312,7 @@ impl TextSystem {
         }
     }
 
-    /// Whether this frame's emission owes another frame (backlog RG70),
+    /// Whether this frame's emission owes another frame,
     /// clearing it.
     pub(crate) fn take_owed(&mut self) -> bool {
         std::mem::take(&mut self.owed)
@@ -1369,7 +1364,7 @@ impl TextSystem {
         self.entries.len() - self.long_lines()
     }
 
-    /// How many long lines are held (backlog C19).
+    /// How many long lines are held.
     pub fn long_lines(&self) -> usize {
         self.entries.values().filter(|e| e.long().is_some()).count()
     }
@@ -1463,7 +1458,7 @@ impl TextSystem {
     }
 
     /// Drops every shaped entry, to shape again on its next draw: the
-    /// weights a family is asked at changed under them (RG59).
+    /// weights a family is asked at changed under them.
     pub(crate) fn forget_shaped(&mut self) {
         self.entries.clear();
         self.bytes = 0;
@@ -1600,9 +1595,7 @@ impl TextSystem {
     /// places them (a custom editor's `line`s are read this way): a run's
     /// laid-out lines, or a long line's rows of the chunks it has shaped —
     /// one that never showed is not walked, the way a tall document's
-    /// off-screen lines are not. Every `break-spaces` text is a long line,
-    /// and an editor of them had no runs and no caret until the alpha.22
-    /// regression pass.
+    /// off-screen lines are not. Every `break-spaces` text is a long line.
     pub(crate) fn access_runs(
         &self,
         id: TextId,
@@ -1728,8 +1721,7 @@ impl TextSystem {
     /// the n-th node the n-th copy, so a frame like the last finds the
     /// copies it made laid out already. The copies share the chunks'
     /// shaped runs. Without it one `break-spaces` file open in two panes
-    /// of different widths drew and answered at the width laid out last
-    /// (the alpha.22 regression pass).
+    /// of different widths would draw and answer at the width laid out last.
     #[inline(never)]
     fn claim_long(&mut self, key: u64) -> u64 {
         let frame_no = self.frame_no;
@@ -1765,7 +1757,7 @@ impl TextSystem {
     /// hash either way: a text that could be long by its length and style
     /// is looked up under both keys before its bytes are scanned for a
     /// line break, so the steady state of a megabyte line is its hash and
-    /// two lookups (backlog C43).
+    /// two lookups.
     fn intern_any(
         &mut self,
         content: &str,
@@ -1796,7 +1788,7 @@ impl TextSystem {
 
     /// The rich counterpart of [`Self::intern_any`]: a paragraph past the
     /// threshold with no line break is a long line whose chunks are rich
-    /// runs (backlog C42); its content is concatenated only when the line
+    /// runs; its content is concatenated only when the line
     /// is built.
     fn intern_rich_any(
         &mut self,
@@ -1840,7 +1832,7 @@ impl TextSystem {
     }
 
     /// Builds the long line `content` is under `key` — plain, or rich
-    /// with `spans` (backlog C42) — shaping its first chunk for the line
+    /// with `spans` — shaping its first chunk for the line
     /// height and the advance the rest are estimated from; see
     /// [`LongLine`]. The callers have looked `key` up already.
     fn build_long(
@@ -1920,7 +1912,7 @@ impl TextSystem {
 
     /// Shapes (or touches) the run for `start..end` of a long line's
     /// content: a plain run, or a rich one of the spans that intersect
-    /// the range (backlog C42). Returns its key.
+    /// the range. Returns its key.
     #[allow(clippy::too_many_arguments)]
     fn shape_chunk(
         &mut self,
@@ -2152,8 +2144,7 @@ impl TextSystem {
 
     /// Registers a rich-text paragraph for this frame. Spans shape as one
     /// flow, so wrapping crosses style boundaries correctly; past the
-    /// long-line threshold the flow is chunked like a plain line's
-    /// (backlog C42).
+    /// long-line threshold the flow is chunked like a plain line's.
     pub fn add_rich(
         &mut self,
         spans: &[Span<'_>],
@@ -2304,7 +2295,7 @@ impl TextSystem {
     /// wrapped to another width — the same label in two panes: the node
     /// takes the copy of the run at its width, made the first time and
     /// found by width after, so each answers `text_hit` and `caret_rect`
-    /// at its own rows and neither re-wraps the other's (backlog RG72; a
+    /// at its own rows and neither re-wraps the other's (a
     /// long line's twin is [`Self::claim_long`]). Off the path every other
     /// text takes: a copy costs a buffer clone once and a lookup a frame.
     #[inline(never)]
@@ -2372,7 +2363,7 @@ impl TextSystem {
 
     /// `emit_text` for a long line, kept off the run's path: it draws the
     /// chunks inside the clip plus one either side, shaping them now if
-    /// this is the first time they show (backlog C19). Layout broke its
+    /// this is the first time they show. Layout broke its
     /// rows at the node's final width (`wrapped`), and the line is this
     /// node's alone (`claim_long`).
     #[allow(clippy::too_many_arguments)]
@@ -2584,7 +2575,7 @@ fn push_highlight(
 impl TextSystem {
     /// `emit` for a wrapped long line: the chunks whose rows touch the
     /// clip, plus one either side, each drawn row by row from its
-    /// unwrapped templates (backlog C19, step 5).
+    /// unwrapped templates.
     #[allow(clippy::too_many_arguments)]
     fn emit_long_rows(
         &mut self,
@@ -3076,8 +3067,7 @@ fn emit_entry(
 /// other half is [`has_line_break`] — and [`has_rtl`] for a text long
 /// only by its `break-spaces` — asked only when the cache has not
 /// seen the text — a wrapped one breaks its chunks into rows
-/// ([`LongLine::starts`]), whatever its `wrap`. Plain or rich alike
-/// (backlog C42).
+/// ([`LongLine::starts`]), whatever its `wrap`. Plain or rich alike.
 fn could_be_long(len: usize, style: &TextStyle) -> bool {
     (len >= LONG_LINE_BYTES || len > 0 && style.wrap == TextWrap::BreakSpaces)
         && style.max_lines == 0
@@ -3085,7 +3075,7 @@ fn could_be_long(len: usize, style: &TextStyle) -> bool {
 }
 
 /// Whether the content breaks lines of its own — a byte scan, since the
-/// `str` pattern search is per character (backlog C43).
+/// `str` pattern search is per character.
 fn has_line_break(content: &str) -> bool {
     content.bytes().any(|b| b == b'\n' || b == b'\r')
 }
@@ -3096,8 +3086,7 @@ fn has_line_break(content: &str) -> bool {
 /// is shaped as the run it would otherwise be, wrapping as `word` does
 /// (as one with line breaks of its own does): the long line breaks rows
 /// over glyph positions left to right, which a right-to-left run's are
-/// not, and a Hebrew paragraph that had to wrap drew one glyph (the
-/// alpha.22 regression pass).
+/// not, and a Hebrew paragraph that had to wrap would draw one glyph.
 fn has_rtl(content: &str) -> bool {
     !content.is_ascii()
         && content.chars().any(|c| {
@@ -3255,8 +3244,7 @@ impl TextSystem {
     /// byte offset its content starts at in the concatenation — from the
     /// frame that finished (`prev`) or the one being emitted. A long line
     /// is a run among them: every `break-spaces` text is one, and a `line`
-    /// row of several answered with the last one's bytes alone until the
-    /// alpha.22 regression pass.
+    /// row of several would otherwise answer with the last one's bytes alone.
     fn runs_of(&self, key: Key, prev: bool) -> Vec<(&TextPlace, &Entry, usize)> {
         let list = if prev {
             self.places.prev()
@@ -3289,7 +3277,7 @@ impl TextSystem {
     /// Undrawn runs are included: a scoped run the frame culled recorded
     /// a place precisely so a selection can reach past the viewport, and
     /// leaving it out here would renumber everything after it the moment
-    /// it scrolled away (ADR 0017, tier 2).
+    /// it scrolled away.
     pub(crate) fn scope_runs(&self, scope: Key, prev: bool) -> Vec<ScopeRun<'_>> {
         let list = if prev {
             self.places.prev()
@@ -3340,8 +3328,8 @@ impl TextSystem {
 
     /// A run's laid-out box, physical px in viewport space, whichever way
     /// it was shaped. A wrapped long line is as wide as its rows were
-    /// broken to — its unwrapped width claimed the text beside it in a
-    /// selection scope (the alpha.22 regression pass).
+    /// broken to — its unwrapped width would claim the text beside it in a
+    /// selection scope.
     fn entry_box(&self, place: &TextPlace, entry: &Entry) -> Rect {
         match entry {
             Entry::Run(e) => self.physical_box(place, e),
@@ -3419,7 +3407,7 @@ impl TextSystem {
 
     /// The selection `from..to` as HTML, carrying the styling that is
     /// *the text's* rather than the theme's: bold, italic, and a span's
-    /// own colour where one was declared (ADR 0017, decision 7).
+    /// own colour where one was declared.
     ///
     /// What it deliberately leaves behind is the node's colour. A
     /// paragraph drawn light grey on a dark card is grey because of the
@@ -3459,8 +3447,7 @@ impl TextSystem {
 
     /// `html_of_run` for `lo..hi` of a long line: each chunk the range
     /// touches through its own shaped run, so a rich line's spans copy as
-    /// a short rich text's do — every `break-spaces` text is a long line,
-    /// and one copied as plain text until backlog RG71. A chunk that never
+    /// a short rich text's do — every `break-spaces` text is a long line. A chunk that never
     /// showed, or whose run the cache dropped, is plain escaped text: its
     /// spans are the line's, but shaping it is not a copy's to do.
     fn long_html(&self, line: &LongLine, lo: usize, hi: usize, out: &mut String) {
@@ -3586,8 +3573,7 @@ impl TextSystem {
 
     /// The scope's text between two offsets in its concatenation, with a
     /// newline between two runs that were laid out on different lines and
-    /// nothing between two that share one — the join rule ADR 0017 leaves
-    /// open, in its first form. The exact length is known before a byte
+    /// nothing between two that share one. The exact length is known before a byte
     /// is copied, so this reserves once and grows never.
     pub(crate) fn scope_slice(&self, scope: Key, from: usize, to: usize, prev: bool) -> String {
         let (from, to) = (from.min(to), from.max(to));
@@ -3736,8 +3722,7 @@ impl TextSystem {
     /// chunk's, shaped when the line was built, rounded as its glyphs are
     /// drawn at it — a fifth of the row above the row's foot only while
     /// that chunk is not shaped. On that estimate alone a `break-spaces`
-    /// text in a baseline row sat a pixel off a `word` one (the alpha.22
-    /// regression pass).
+    /// text in a baseline row would sit a pixel off a `word` one.
     fn long_baseline(&self, line: &LongLine) -> f32 {
         line.chunks
             .first()
@@ -3749,7 +3734,7 @@ impl TextSystem {
     /// The caret for `byte`, in physical px from the long line's own
     /// origin: its x on its row, and that row's top. What `long_caret`
     /// places in the viewport and what a selection highlight measures
-    /// between (ADR 0017).
+    /// between.
     fn long_caret_local(&self, line: &LongLine, byte: usize) -> Option<(f32, f32)> {
         let byte = byte.min(line.content.len());
         if let Some(w) = line.wrap_w
@@ -4112,7 +4097,8 @@ fn escape_into(s: &str, out: &mut String) {
     }
 }
 
-/// The nearest char boundary at or below `i`, so a slice taken from a/// The nearest char boundary at or below `i`, so a slice taken from a
+/// The nearest char boundary at or below `i`, so a slice taken from a/// The
+/// nearest char boundary at or below `i`, so a slice taken from a
 /// selection never splits a character. A selection's ends come from
 /// shaping and are boundaries already; this is for the arithmetic around
 /// them (a clamp, a saturating subtraction) that has no such guarantee.
@@ -4334,8 +4320,7 @@ impl CachedText {
     /// never wrap. Trailing whitespace hangs, as in CSS. Read off the
     /// shaped glyphs of whatever width the buffer was last laid out at —
     /// a glyph's advance is the same at every width — with the breaks
-    /// `unicode-linebreak` finds, so asking lays nothing out (backlog
-    /// RG92).
+    /// `unicode-linebreak` finds, so asking lays nothing out.
     fn min_content(&mut self) -> f32 {
         if let Some(w) = self.min_content {
             return w;
@@ -4452,7 +4437,7 @@ impl TextSystem {
         Size::new(e.intrinsic.w / scale, e.intrinsic.h / scale)
     }
 
-    /// Text `id`'s min-content width, logical px (backlog RG92): see
+    /// Text `id`'s min-content width, logical px: see
     /// [`CachedText::min_content`]. A long line is 0 — its rows are broken
     /// to any width, and measuring its words would shape what C19 exists
     /// not to.
@@ -4493,8 +4478,7 @@ impl TextSystem {
 
 impl TextSystem {
     /// The first line's baseline of text `id` as `wrapped` last laid it
-    /// out, logical px below its top (backlog C13's `crossAlign:
-    /// baseline`). A run's `line_y`, rounded as the glyphs are drawn at
+    /// out, logical px below its top. A run's `line_y`, rounded as the glyphs are drawn at
     /// it; a long line's is [`Self::long_baseline`]. An empty text is one
     /// line of its own metrics.
     pub(crate) fn baseline(&mut self, id: TextId) -> f32 {
@@ -4512,8 +4496,8 @@ impl TextSystem {
     }
 }
 
-/// The generic families resolve to a face that is what its name says
-/// (backlog C32): upright, and monospaced for `Mono`.
+/// The generic families resolve to a face that is what its name says:
+/// upright, and monospaced for `Mono`.
 #[cfg(test)]
 mod default_families {
     use super::*;
@@ -4595,8 +4579,8 @@ mod default_families {
     }
 }
 
-/// A face whose glyph advances cannot be measured never reaches the shaper
-/// (backlog F98). macOS's GB18030 Bitmap has no `head`, `hhea` or `hmtx`;
+/// A face whose glyph advances cannot be measured never reaches the shaper.
+/// macOS's GB18030 Bitmap has no `head`, `hhea` or `hmtx`;
 /// it says it is fixed-pitch and maps the ideographs, so Han text in
 /// `Mono` fell back to it, and its advances came out infinite: every glyph
 /// after one was placed at infinity, and a debug build overflowed in

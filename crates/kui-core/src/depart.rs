@@ -1,59 +1,39 @@
 //! Exit transitions: a subtree the view stopped declaring, kept as a
 //! picture and played out.
 //!
-//! [`crate::enter::Enter`] says where a node's slots *start* on its first
-//! sight. `NodeSpec::exit` is the same declaration read the other way —
-//! where they *end* — and it needs something `enter` does not: the node
-//! itself, one frame after the view stopped mentioning it. The frame model
-//! is immediate, so nothing about a node survives the frame that dropped
-//! it; what survives here is a copy.
+//! A view asks for one with `NodeSpec::exit` (an [`crate::enter::Enter`]
+//! read the other way: where the slots end) together with a `transition`.
+//! When such a node is in one frame's tree and not the next, while its
+//! parent still is, its specs, contents and laid-out rects are copied out
+//! of the previous frame into this store as a **ghost**, and every later
+//! frame replays it until its transition ends. An app never calls into
+//! this module: `Core` owns the [`DepartStore`], and a driver only sees
+//! that another frame is owed while [`DepartStore::animating`] is true.
 //!
-//! A node that declared both a `transition` and an `exit`, was in the last
-//! frame's tree and is not in this one — while its parent still is: a node
-//! that went with an ancestor goes at once, as the ancestor's subtree does
-//! (backlog DX19) — becomes a **ghost**: its specs,
-//! contents and laid-out rects are copied out of the previous frame's tree
-//! into this store, stamped with the clock reading it left at. Every later
-//! frame replays it:
+//! A ghost is:
 //!
-//! - **frozen, not re-laid-out.** Rects are the ones layout gave it the
-//!   last time it existed. A dying node must not fight the live layout for
-//!   space, which is also how CSS's exit transitions work — the element is
-//!   out of flow the moment it is removed.
+//! - **frozen, not re-laid-out.** Its rects are the ones layout gave it
+//!   the last time it existed, so a dying node never fights the live
+//!   layout for space.
 //! - **in its place, and unclipped.** It is painted where the node was in
-//!   the paint order — the same pass (in flow, or among the floats) and
-//!   just under the node that painted after it — so a panel that sat
-//!   under a HUD leaves under it, rather than jumping to the top of the
-//!   window for its last few frames. There is no z-index; floats stack in
-//!   tree order, and a picture of a float keeps the place it stacked in.
-//!   Its ancestors may be gone, so there is no clip to inherit and nothing
-//!   to sit inside: it draws outside every clip *they* held. The clips
-//!   inside the picture are its own and stay: a scroll box that departs
-//!   still bounds the rows it held, so the overscan a virtual list built
-//!   past its edge does not appear the frame the list leaves.
-//! - **inert.** No hit region, no place in the Tab ring, no access row. It
-//!   is a picture of a node, not a node.
-//! - **self-easing.** Nothing can retarget a ghost — the view has already
-//!   stopped talking about it — so its slots are one lerp over its own
-//!   clock rather than a retained tween in [`crate::anim::AnimStore`].
-//!   Spring easings sample as ease-out, the same substitution
-//!   `AnimStore::sample` makes for a keyframed slot, since there is no leg
-//!   to carry momentum across.
+//!   the paint order, just under the node that painted after it, so a
+//!   panel that sat under a HUD leaves under it. Its ancestors may be
+//!   gone, so it draws outside every clip they held; the clips inside the
+//!   picture stay.
+//! - **inert.** No hit region, no place in the Tab ring, no access row.
+//! - **self-easing.** Its slots are one lerp over its own clock; a spring
+//!   easing samples as ease-out.
 //!
 //! A ghost is dropped when its transition ends, when the same key comes
-//! back (the live node wins immediately, so a toast dismissed and re-shown
-//! does not double), when it has not been replayed for
-//! [`crate::retain::KEEP_FOR`] frames, and — the part that makes this safe for a
-//! list — when a later frame's removal needs the room it is taking. The
-//! store holds at most [`MAX_NODES`] nodes, and the budget is applied to a
-//! frame's removal *whole*: the diff counts what the frame wants to add
-//! before it copies anything ([`DepartStore::admit`]), evicts the oldest
-//! ghosts until the removal fits, and if the removal alone is over the
-//! budget refuses all of it, so a list never gets half its rows sliding
-//! out and the rest blinking away. See
-//! `docs/adr/0005-the-paint-vocabulary.md` for why the budget is over
-//! nodes, and `docs/adr/0012-the-exit-budget.md` for why it is judged per
-//! frame and what it costs when it bites.
+//! back (the live node wins at once, so a toast dismissed and re-shown
+//! does not double), when it has gone unreplayed for a while, and when a
+//! later frame's removal needs the room. The store holds at most
+//! [`MAX_NODES`] nodes, judged per frame's removal as a whole: the oldest
+//! ghosts are evicted until the removal fits, and a removal larger than
+//! the budget on its own is not animated at all, so a list never gets
+//! half its rows sliding out and the rest blinking away. A node that goes
+//! because an ancestor went goes at once with it, unless that ancestor
+//! has an `exit` of its own.
 
 use crate::anim::Easing;
 use crate::color::Color;
@@ -67,18 +47,11 @@ use crate::tree::{NIL, NodeContent, Tree};
 /// The most nodes every departing subtree together may retain. The budget
 /// is over *nodes* rather than subtrees because a node is what a replayed
 /// frame pays for. A frame whose removal is larger than this gets none of
-/// it animated — every departing node vanishes at once, which is exactly
-/// the behaviour of a node with no `exit` at all — rather than the first
-/// of them sliding out and the rest blinking (ADR 0012, decision 2). The
-/// number is a decision with a curve behind it: with the departing frame
-/// linear (decision 5), and measured again on 2026-09-27 (release, M3 Pro,
-/// a pane of rows of a box and a text), a departing subtree costs about
-/// 0.065 µs a node in the frame it leaves and 0.021 µs a node a frame while
-/// it plays — 4096 nodes are 267 µs, then 87 µs a frame, where the same
-/// pane cost 404 µs a frame alive. So a fade costs less than the frames it
-/// follows, and the bound is on memory and on a removal nobody meant to
-/// animate, not on time. It was 512 until kawoosh's fonts and themes panes
-/// (1,500–1,800 nodes) could not fade out (backlog DX23).
+/// it animated (every departing node vanishes at once, as a node with no
+/// `exit` does) rather than the first of them sliding out and the rest
+/// blinking. A departing subtree costs about 0.065 µs a node in the frame
+/// it leaves and 0.021 µs a node a frame while it plays, so the bound is
+/// on memory and on a removal nobody meant to animate, not on time.
 pub const MAX_NODES: usize = 4096;
 
 /// Whether a node can depart at all: it declared an `exit`, and a
@@ -134,7 +107,7 @@ pub(crate) struct GhostNode {
     pub rect: Rect,
 }
 
-/// Where a departing subtree sat in the paint order (ADR 0023): the
+/// Where a departing subtree sat in the paint order: the
 /// layer, and the key of the first node painted after it in that layer
 /// that the frame which noticed it gone still declares. Its ghost is
 /// painted just under that node — and at the end of its layer once the
@@ -290,13 +263,12 @@ pub struct DepartStore {
     /// which is a pass over the whole store, and a mass removal would
     /// otherwise pay one per row. Exact rather than a 64-bit mask like
     /// `before_mask`: a mass removal is hundreds of distinct keys, which
-    /// saturates 64 bits and makes a mask answer "maybe" every time. See
-    /// `docs/adr/0012-the-exit-budget.md`, decision 5.
+    /// saturates 64 bits and makes a mask answer "maybe" every time.
     held: rustc_hash::FxHashSet<Key>,
 }
 
 impl DepartStore {
-    /// Starts a frame under the core's counter (backlog AR45).
+    /// Starts a frame under the core's counter.
     pub(crate) fn begin_frame(&mut self, frame_no: u64) {
         self.frame_no = frame_no;
         self.active = false;
@@ -335,7 +307,7 @@ impl DepartStore {
 
     /// Each departing root's key and the spec it left with — what a
     /// trace names a departure by, since its node is no longer in any
-    /// tree (backlog F111).
+    /// tree.
     pub(crate) fn roots(&self) -> impl Iterator<Item = (Key, &NodeSpec)> + '_ {
         self.ghosts
             .iter()
@@ -369,8 +341,7 @@ impl DepartStore {
         }
     }
 
-    /// The budget, applied to a frame's removal whole (ADR 0012, decisions
-    /// 2 and 3): `wanted` is every node the frame's departing subtrees
+    /// The budget, applied to a frame's removal whole: `wanted` is every node the frame's departing subtrees
     /// would add together, counted before any of them is copied. A removal
     /// that fits an empty store is admitted — and if the store is holding
     /// earlier exits it has no room beside, the **oldest** ghosts go first

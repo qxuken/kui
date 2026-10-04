@@ -1,4 +1,4 @@
-//! Slots on the core's side (`docs/adr/0014-slots-an-extension-fills-in-place.md`):
+//! Slots on the core's side:
 //! declaring one (`begin_slot`), and the bounded, namespaced fill an
 //! extension draws into (`fill`). The loop over extensions is
 //! `crate::slot`'s; what is here is what only the core can do, because
@@ -36,14 +36,13 @@ impl Core {
     /// Whether the full name `name` was declared this frame so far — or
     /// is the slot of a devtools tab declared this frame, which counts
     /// whether or not the panel mounted it, so a plugin whose only slot
-    /// is a tab is quiet with the panel off (ADR 0032, decision 5).
+    /// is a tab is quiet with the panel off.
     pub fn slot_declared(&self, name: &str) -> bool {
         self.slot_labels.find(name).next().is_some() || self.devtools_tab_slot(name)
     }
 
     /// Runs `f` as the fill of `slot` under `origin`: every node it opens
-    /// is tagged `origin`, keyed as a child of `slot.key` (the namespace
-    /// of ADR 0014 decision 4 — an extension's keys depend on the slot's
+    /// is tagged `origin`, keyed as a child of `slot.key` (an extension's keys depend on the slot's
     /// full name, which the host's namespace makes its own, and on
     /// nothing the host built around them), counted from zero, and
     /// closed for it if it returns with any open (decision 5, with the

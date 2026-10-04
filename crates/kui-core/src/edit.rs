@@ -1,8 +1,32 @@
-//! Editable text: retained editor state keyed by widget `Key`, built on
-//! cosmic-text's `Editor` so cursor motion, selection, and click-to-position
-//! all come from the same shaping truth the rest of the text stack uses.
-//! Edits arrive as data (`InputEvent::Text` / `InputEvent::Key`) routed to
-//! the focused editor; hosts read text back with `Core::edit_text`.
+//! Editable text: the retained state of every `text_edit` node, keyed by
+//! node `Key`, built on cosmic-text's editor.
+//!
+//! A view declares an editor with `Ui::text_edit(label, initial, &opts,
+//! spec)`, where `opts` is an [`EditOptions`]. The core keeps the buffer,
+//! caret, selection, IME composition and undo history across frames,
+//! routes `InputEvent::Text` / `InputEvent::Key` to the focused editor and
+//! posts `changed` and `submit` events. An app reads the draft back with
+//! `Core::edit_text` / `Ui::edit_text` and replaces it with
+//! `Core::set_edit_text`; the store itself is not something an app
+//! touches.
+//!
+//! ```rust
+//! use kui_core::{Core, EditOptions, InputEvent, NodeSpec, Size, TextStyle};
+//!
+//! let mut core = Core::new();
+//! let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+//! let opts = EditOptions {
+//!     style: TextStyle::new(14.0),
+//!     autofocus: true,
+//!     ..Default::default()
+//! };
+//! let field = ui.text_edit("name", "hello", &opts, NodeSpec::row().grow_width().pad(4.0));
+//! ui.finish();
+//!
+//! // Typing reaches the focused editor; the host reads the draft back.
+//! core.handle_input(InputEvent::Text(" world".into()));
+//! assert_eq!(core.edit_text(field).as_deref(), Some("hello world"));
+//! ```
 
 use std::collections::VecDeque;
 
@@ -22,13 +46,19 @@ use crate::spec::{TextStyle, TextWrap};
 use crate::text::TextSystem;
 use crate::tree::OriginId;
 
+/// How a `text_edit` node behaves: its text style, whether it is a
+/// single-line field or a multiline document, and how it takes focus and
+/// paints its selection. Build one with struct update syntax from
+/// `Default`.
 #[derive(Clone, Debug, Default)]
 pub struct EditOptions {
     pub style: TextStyle,
+    /// A document rather than a field: Enter inserts a newline, the text
+    /// wraps to the box, and the caret opens at the top.
     pub multiline: bool,
     /// A single-line editor that folds to its width, by `style.wrap`, the
     /// way a document does — instead of taking one line and scrolling it
-    /// under the caret (backlog F44). Its keyboard is still a field's:
+    /// under the caret. Its keyboard is still a field's:
     /// Enter submits, a newline is never admitted, the caret opens at the
     /// end. In the bindings this is the `wrap` row being declared on the
     /// element; off, a field does not read `style.wrap` at all. A
@@ -37,12 +67,12 @@ pub struct EditOptions {
     /// Takes keyboard focus on the frame this declaration starts — a new
     /// editor, one back after a gap, one whose flag just turned on — and
     /// only while nothing holds focus: never from a focused control, and
-    /// never again after a blur (`docs/adr/0022`, decision 9).
+    /// never again after a blur.
     pub autofocus: bool,
     /// Selection highlight color. `None` is the theme's `selection`,
     /// which is what a field gets unless the caller says otherwise — so a
     /// selection over a label and one over a field are the same tint on
-    /// both bases (ADR 0019).
+    /// both bases.
     pub accent: Option<Color>,
 }
 
@@ -52,7 +82,7 @@ pub(crate) struct EditState {
     pub(crate) accent: Color,
     pub(crate) multiline: bool,
     /// Whether the buffer is laid out to its box's width: a document, or a
-    /// field with `wrap` declared (backlog F44). What `wrapped`,
+    /// field with `wrap` declared. What `wrapped`,
     /// `line_offset` and emission's clip decide by — a field that does not
     /// fold takes one line and scrolls it.
     folds: bool,
@@ -71,12 +101,12 @@ pub(crate) struct EditState {
     /// Cached unwrapped measurement: (version, metrics, size). What the
     /// fit width reads, and the reason it is cached rather than taken off
     /// the buffer as it stands: the buffer is still carrying whatever
-    /// width `wrapped` last set on it (backlog F38).
+    /// width `wrapped` last set on it.
     natural: Option<(u64, u32, Size)>,
     /// How far a single-line field has scrolled its text left, in physical
     /// px. A field keeps the caret inside its box by moving the text under
-    /// it, the way a native field does, rather than by wrapping (backlog
-    /// F41); an editor that folds (`folds`) wraps and this stays 0.
+    /// it, the way a native field does, rather than by wrapping; an
+    /// editor that folds (`folds`) wraps and this stays 0.
     offset_x: f32,
     /// In-progress IME composition: a marked, uncommitted range living
     /// inside the buffer (so the text around it reflows as it grows).
@@ -98,16 +128,11 @@ pub(crate) struct EditState {
 }
 
 /// How many *undeclared* editors the store keeps before the longest
-/// undeclared one is dropped (backlog F26). A declared editor is never
-/// evicted, however many there are: retention across absence is what the
-/// `<edit>` row promises, so this is a ceiling, not a prune.
-///
-/// Why 256: one `EditState` is an `Editor` over a shaped `Buffer`, and a
-/// counting allocator measured a fresh one at 3.4 KB empty, 4.9 KB holding
-/// `"hello"`, and 22 KB holding a 39-character line (the shaped glyphs are
-/// most of it). 256 of the worst of those is ~5.6 MB, and ~1.2 MB at a
-/// short field — a bound an app can afford, and one no ordinary view comes
-/// near: 256 fields no longer on screen is already an app generating keys.
+/// undeclared one is dropped. A declared editor is never evicted, however
+/// many there are: retention across absence is what `text_edit` promises,
+/// so this is a ceiling, not a prune. An editor holding a short line is a
+/// few KB and one holding a long line about 22 KB, so a full budget is a
+/// few MB.
 pub const MAX_UNDECLARED_EDITS: usize = 256;
 
 const UNDO_CAP: usize = 1000;
@@ -363,6 +388,9 @@ pub(crate) enum Unclaimed {
     Label(String),
 }
 
+/// The retained editors of one window, owned by `Core`. Reach it through
+/// `Ui::text_edit`, `Core::edit_text` and `Core::set_edit_text` rather
+/// than directly.
 pub struct EditStore {
     states: FxHashMap<Key, EditState>,
     /// Text set for a key nothing has declared yet: `set_text` holds it
@@ -370,13 +398,13 @@ pub struct EditStore {
     /// with `initial`. An `update` that opens an editor and sets its text
     /// in the same turn runs a frame ahead of the view that declares it,
     /// so without this the call lands on nothing and the app sees the
-    /// editor open with `initial` (backlog F25). What the frame after it
+    /// editor open with `initial`. What the frame after it
     /// does not claim is dropped by `finish_frame`, with a warning.
     pending: FxHashMap<Key, String>,
     /// The same seed named by label instead of by key, for the app that
     /// has no key to give: the hex key comes from an event the node
     /// fired, and an editor a rename is opening for the first time has
-    /// fired none (backlog F32). Held until `text_edit` declares an
+    /// fired none. Held until `text_edit` declares an
     /// editor under the label and claims it — which is also where a
     /// *retained* editor is reached, since a key kept off screen (F20,
     /// F26) has a state `declare` would not reseed and a label
@@ -417,7 +445,7 @@ impl Default for EditStore {
 
 /// What an editor's buffer may hold: a field is one line, so a newline that
 /// arrived in a seed or a `set_text` is dropped rather than drawn below a
-/// box measured for one line (F41). The same rule `apply_text` applies to
+/// box measured for one line. The same rule `apply_text` applies to
 /// typing and pasting, so the two doors agree.
 fn admitted(text: &str, multiline: bool) -> std::borrow::Cow<'_, str> {
     if multiline || !text.contains(['\n', '\r']) {
@@ -426,7 +454,7 @@ fn admitted(text: &str, multiline: bool) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(text.chars().filter(|c| *c != '\n' && *c != '\r').collect())
 }
 
-/// At the family's regular weight, as text draws it (F100).
+/// At the family's regular weight, as text draws it.
 fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
     res.weights_of(style.family).apply(
         Attrs::new()
@@ -437,8 +465,8 @@ fn attrs_for<'a>(style: &TextStyle, res: &'a Resources) -> Attrs<'a> {
 }
 
 impl EditStore {
-    /// Gives every editor's text the weights its family is asked at now
-    /// (RG59): a face of a registered family came or went. The text,
+    /// Gives every editor's text the weights its family is asked at now:
+    /// a face of a registered family came or went. The text,
     /// caret and history stay; every line shapes again, and every
     /// measurement of it is of the old weights.
     pub(crate) fn reweigh(&mut self, res: &Resources) {
@@ -499,7 +527,7 @@ impl EditStore {
     }
 
     /// How many states are retained — declared and undeclared together.
-    /// What a test watches the budget through (backlog F26).
+    /// What a test watches the budget through.
     pub fn len(&self) -> usize {
         self.states.len()
     }
@@ -550,7 +578,7 @@ impl EditStore {
     /// this declaration is an *autofocus edge*: the key was not declared
     /// with `autofocus` on the frame before this one — a new editor, one
     /// back after a gap, or one whose `autofocus` just turned on — which
-    /// is the one frame the flag may act on (`docs/adr/0022`, decision 9).
+    /// is the one frame the flag may act on.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn declare(
         &mut self,
@@ -591,7 +619,7 @@ impl EditStore {
             // A single-line field opens with the caret after its seeded
             // text — what a native field does with a prefilled value, and
             // what a rename wants, since typing into a name meant to be
-            // extended otherwise prepends to it (backlog F20). A multiline
+            // extended otherwise prepends to it. A multiline
             // editor is a document and opens at its top, as native text
             // views do. Placed, not moved: no `touch_caret`, so nothing
             // scrolls to reveal it before the user has touched it.
@@ -636,7 +664,7 @@ impl EditStore {
         // A document wraps between words whatever its style says, as it
         // always has; a field folds only when asked, and then by the mode
         // the `wrap` row picked — so a rename field breaks where the label
-        // it renames breaks (backlog F44). `wrap="none"` on a field is the
+        // it renames breaks. `wrap="none"` on a field is the
         // field: one line, scrolled.
         let folds = opts.multiline || (opts.wrap && opts.style.wrap != TextWrap::None);
         let mode = match (opts.multiline, opts.style.wrap) {
@@ -693,13 +721,13 @@ impl EditStore {
     /// held for the frame that declares the key, so nothing on screen
     /// changed yet and the frame that will change it is the app's — a
     /// driver that redraws on every write would re-lower the tree that
-    /// declares no editor and drop the seed to the warning (backlog F42).
+    /// declares no editor and drop the seed to the warning.
     pub fn set_text(&mut self, key: Key, text: &str, fs: &mut FontSystem, res: &Resources) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             // Nothing has declared this key yet. The call is not wrong —
             // the `update` that opens an editor runs before the view that
             // declares it — so hold the text for the frame that does
-            // (backlog F25) rather than falling through silently.
+            // rather than falling through silently.
             self.pending.insert(key, text.to_string());
             return false;
         };
@@ -722,7 +750,7 @@ impl EditStore {
     }
 
     /// Holds `text` for the next editor declared under `label`, for a
-    /// `set_edit_text` by a name nothing has declared yet (backlog F32).
+    /// `set_edit_text` by a name nothing has declared yet.
     /// The key path is [`EditStore::pending`]; this one is claimed by
     /// [`EditStore::claim_label`] from inside the build, where the label
     /// and the key it resolves to are both in hand.
@@ -1076,7 +1104,7 @@ impl EditStore {
     /// 3 the line (cosmic-text's double/triple click actions). With
     /// `extend` — a Shift-press — the caret moves there keeping the
     /// selection's anchor, seeding one at the caret when there is none
-    /// (cosmic-text's `Drag` does both; ADR 0029, decision 3), and the
+    /// (cosmic-text's `Drag` does both), and the
     /// click count says nothing. Either way it is a click: a live
     /// composition is abandoned and the next edit starts an undo unit.
     pub(crate) fn click(
@@ -1112,8 +1140,8 @@ impl EditStore {
     /// so it is marked like a keyboard motion's: a field scrolls its own
     /// text toward the drag at once, and a scroller above a document
     /// reveals the caret on the release — not under the held pointer,
-    /// where the drag's own rate is what moves it (ADR 0029, decision 2;
-    /// `scroll_caret_into_view`).
+    /// where the drag's own rate is what moves it
+    /// (`scroll_caret_into_view`).
     pub(crate) fn drag(&mut self, key: Key, local: Vec2, fs: &mut FontSystem) {
         if let Some(s) = self.states.get_mut(&key) {
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
@@ -1185,8 +1213,7 @@ impl EditStore {
 
     /// Drops the selection of one editor, leaving the caret where the
     /// selection's live end was. What a selection started elsewhere in
-    /// the window calls, so no window ever shows two selections
-    /// (`docs/adr/0017-selection-as-a-scope.md`).
+    /// the window calls, so no window ever shows two selections.
     pub(crate) fn collapse_selection(&mut self, key: Key) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
@@ -1213,7 +1240,7 @@ impl EditStore {
     }
 
     /// Whether `key` lays its text out to its box's width: a document, or
-    /// a field with `wrap` declared (backlog F44). What emission asks
+    /// a field with `wrap` declared. What emission asks
     /// before narrowing a field's clip — an editor that folds never
     /// scrolls, so it keeps the node's.
     pub(crate) fn folds(&self, key: Key) -> bool {
@@ -1244,7 +1271,7 @@ impl EditStore {
     /// outgrows its box is moved under the caret rather than folded onto a
     /// second line — which is what a native field does, and what an app
     /// otherwise has to fake by declaring the box wider than the text it
-    /// is about to hold (backlog F41). Recomputed where the box is known,
+    /// is about to hold. Recomputed where the box is known,
     /// so a field that grows or shrinks between frames re-anchors with it.
     pub(crate) fn line_offset(&mut self, key: Key, inner_w: f32, fs: &mut FontSystem) -> f32 {
         let focused = self.focused == Some(key);
@@ -1293,7 +1320,7 @@ impl EditStore {
     /// and a fit width measured under that is a width that feeds back on
     /// itself: the box takes the widest wrapped line, the next frame wraps
     /// to that, and a field declared to hug its text ratchets down to one
-    /// character with every keystroke on its own line (backlog F38).
+    /// character with every keystroke on its own line.
     pub(crate) fn intrinsic(&mut self, key: Key, fs: &mut FontSystem) -> Size {
         let Some(s) = self.states.get_mut(&key) else {
             return Size::ZERO;
@@ -1331,12 +1358,12 @@ impl EditStore {
     /// (see [`EditStore::line_offset`]), which is what a native field does
     /// and what the `<edit>` row has always said it is. Wrapping one was
     /// how a name that outgrew its box came to be drawn two lines tall
-    /// inside a box measured for one (backlog F41). The exception is a
-    /// field that asked to fold (`EditOptions::wrap`, backlog F44): it
+    /// inside a box measured for one. The exception is a
+    /// field that asked to fold (`EditOptions::wrap`): it
     /// wraps to its width exactly as a document does, and keeps a field's
     /// keyboard.
     /// The first line's baseline of editor `key` as `wrapped` last laid it
-    /// out, logical px below the top of its text (backlog C13): what a
+    /// out, logical px below the top of its text: what a
     /// field beside its label lines up by. An empty editor is one line of
     /// its own metrics. `NaN` for a key no editor holds.
     pub(crate) fn baseline(&self, key: Key) -> f32 {
@@ -1431,7 +1458,7 @@ impl EditStore {
             None
         };
         // A single-line field scrolls its text under the caret; the box it
-        // scrolls inside is the clip emission was handed (F41).
+        // scrolls inside is the clip emission was handed.
         let origin = Vec2::new(origin.x - s.offset_x, origin.y);
 
         s.editor.with_buffer(|b| {

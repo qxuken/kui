@@ -1,30 +1,52 @@
-//! Audio as data. Sounds are host-registered resources ([`SoundId`], see
-//! [`crate::resources`]); playing one is a command the frame driver drains
-//! ([`AudioCommand`] via `Core::take_audio_commands`) and applies to a real
-//! device — the core never touches one, so headless drivers simply never
-//! drain and tests assert on the queue, the same shape as window commands.
+//! Audio as data: sounds are session resources, and playing one is a
+//! command the frame driver drains and applies to the device.
 //!
-//! Three ways in:
-//! - declarative props: `NodeSpec::click_sound` / `hover_sound` play when
-//!   the node is clicked / the pointer enters it;
-//! - the `audio` element (`Core::audio_node`): a playback retained by node
-//!   key — present means playing (once, or looped), gone means stopped,
-//!   `volume` / `paused` changes apply live, like an HTML `<audio autoplay>`;
-//!   `finish` changes what *gone* means, releasing the playback to play
-//!   itself out instead of stopping it ([`AudioSpec::finish`]);
-//! - imperative calls (`Core::play`, `stop`, `set_volume`, `pause`,
-//!   `resume`, `set_master_volume`) for hosts that hold the core.
+//! Register a sound's bytes with `Core::add_sound` (a [`SoundId`]), then
+//! play it one of three ways: `NodeSpec::click_sound` / `hover_sound` on a
+//! node; `Ui::audio` with an [`AudioSpec`], a playback that runs for as
+//! long as the view declares the node; or `Core::play` / `Ui::play` with
+//! [`PlayOptions`], plus `stop`, `set_volume`, `pause`, `resume` and
+//! `set_master_volume` for a host that holds the core. The windowed runner
+//! drains the resulting [`AudioCommand`]s; a host driving its own loop
+//! drains `Core::take_audio_commands`. The core never touches a device, so
+//! a headless test asserts on the queue.
+//!
+//! ```rust
+//! use kui_core::{AudioCommand, AudioSpec, Core, NodeSpec, PlayOptions, Size};
+//!
+//! let mut core = Core::new();
+//! let chime = core.add_sound(b"RIFF....WAVE".to_vec()); // the file's bytes
+//!
+//! // Imperative: start it now at half volume and ask for an `ended` event.
+//! let playback = core.play(chime, PlayOptions::default().volume(0.5).tag("chime"));
+//!
+//! // Declarative, in a view: a click sound, and a loop that plays while declared.
+//! let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+//! ui.leaf_keyed("go", NodeSpec::row().size(80.0, 24.0).on_click("go").click_sound(chime));
+//! ui.audio_keyed("music", AudioSpec::new(chime).looped().volume(0.3));
+//! ui.finish();
+//!
+//! // What a driver does with the queue.
+//! for cmd in core.take_audio_commands() {
+//!     match cmd {
+//!         AudioCommand::Play { playback, sound, looped, .. } => {
+//!             println!("play {sound:?} as {playback:?} (loop: {looped})");
+//!         }
+//!         AudioCommand::Stop { playback, .. } => println!("stop {playback:?}"),
+//!         other => println!("{}", other.kind_name()),
+//!     }
+//! }
+//! core.stop(playback, 0.0);
+//! ```
 //!
 //! A playback started with a tag comes back as
-//! `{kind="sound", phase="ended", playback, tag}` on the origin that started
-//! it once the driver reports it finished (`Core::audio_ended`) — not when
-//! something stopped it. The other direction is
-//! [`crate::diag::TRUNCATED_PLAYBACK`]: the driver reports a stop that
-//! landed on a sound still playing (`Core::audio_truncated`) and the core
-//! names the node it cut off. A play the device refused — its voices all
-//! held, or the sound undecodable — comes back as `phase="refused"`
-//! (`Core::audio_refused`), because that playback never starts and so
-//! never ends: without it a view waiting on `ended` waits forever.
+//! `{kind:"sound", phase:"ended", playback, tag}` on the origin that
+//! started it once the driver reports it finished (`Core::audio_ended`),
+//! not when something stopped it. A play the device refused comes back as
+//! `phase:"refused"` (`Core::audio_refused`), so nothing waits on an
+//! `ended` that cannot come. A stop that cut a one-shot off mid-sound is
+//! reported as the [`crate::diag::TRUNCATED_PLAYBACK`] warning
+//! (`Core::audio_truncated`); [`AudioSpec::finish`] is the usual answer.
 
 use rustc_hash::FxHashMap;
 
@@ -148,15 +170,10 @@ impl AudioSpec {
     /// what it started (`Core::stop`), which is not reported.
     ///
     /// A released playback is not free: it holds one of the device's 128
-    /// voices until its file ends, released or not, and the 129th play is
-    /// refused — reported as [`crate::diag::PLAYBACK_REFUSED`] and, for a
-    /// tagged node, `{kind:"sound", phase:"refused"}` so nothing waits on
-    /// an `ended` that cannot come. 128 is kira's number, not a kui budget
-    /// on top of it (`MainTrackBuilder::sound_capacity` is where a setting
-    /// would go); a view that releases a one-shot per keystroke of a 1.4 s
-    /// file would need ninety keystrokes a second to reach it, and a loop
-    /// reaches it at once — which is why a loop is stopped rather than
-    /// released.
+    /// voices until its file ends, and the 129th play is refused (reported
+    /// as [`crate::diag::PLAYBACK_REFUSED`] and, for a tagged node,
+    /// `{kind:"sound", phase:"refused"}`). A loop would hold a voice for
+    /// ever, which is why a loop is stopped rather than released.
     pub fn finish(mut self) -> Self {
         self.finish = true;
         self
