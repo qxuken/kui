@@ -119,7 +119,8 @@ npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access pu
 
 then approve as above.
 
-That last property is also the limit of what CI proves. The Windows non-client
+No Mac or Windows machine runs anything in either pipeline, and that is the
+limit of what CI proves. The Windows non-client
 chrome ([windows_nc.rs](../crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
 ([access_bridge.rs](../crates/kui-native/src/access_bridge.rs)) are compiled and linked by
