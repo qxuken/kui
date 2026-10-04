@@ -21,6 +21,78 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.35 (2026-10-04)
+
+**What breaks.** No build: the crates' code is alpha.34's — doc
+comments, READMEs and manifests' `readme` / `repository` keys are what
+moved — the ABI stays 23 and the Node wire is unchanged.
+
+- npm, `npm publish` from `packages/kui`: the package's `publishConfig`
+  names registry.npmjs.org where it named the Forgejo registry, so a
+  bare publish from a checkout goes to npmjs (under Changed). Nothing an
+  app that installs the package sees.
+
+### Changed
+
+- **A release is cut on two hosts.** The `v*` tag runs GitHub's
+  `release.yml` — fmt, clippy and the workspace tests, then the Node
+  addon built on each platform it ships for (linux-x64 and linux-arm64
+  through cargo-zigbuild for the glibc 2.28 floor, darwin-arm64 and
+  darwin-x64 on `macos-15`, win32-x64 on `windows-2025`), then the
+  crates to crates.io and the npm package staged on npmjs — and
+  Forgejo's `ci.yml`, which checks the same commit in full, waits for
+  crates.io to list the version and publishes the crates to the
+  `drydock9` cargo registry. This is the first release cut that way;
+  [docs/releasing.md](docs/releasing.md) has the secrets and the order.
+- **`@qxuken/kui` is on npmjs**, from this version: `npm install
+  @qxuken/kui@alpha` with no registry configured. The runner's token is
+  stage-only, so the version is staged and a maintainer with 2FA makes
+  it live — `nu scripts/npm-approve.nu`, which also gives an alpha
+  `latest` when it is the highest version the registry holds. The
+  Forgejo npm registry still gets every version, by hand through
+  `scripts/release-local.nu`. *What you can delete:* the
+  `@qxuken:registry` line in an app's `.npmrc`, once the version it
+  wants is on npmjs — 0.1.0-alpha.35 is the first there, and earlier
+  ones stay on Forgejo only.
+- **The repository is public** at
+  [github.com/qxuken/kui](https://github.com/qxuken/kui), and the
+  crates' and the npm package's `repository` names it.
+- **The docs are written for a reader arriving from crates.io.** The
+  root README is a front door — what kui is, the crates, install, the
+  hello program, where to go next — and what it held moved unchanged
+  into `docs/guide.md`, `docs/design.md`, `docs/performance.md`,
+  `docs/releasing.md` and `docs/status.md`. Each of `kui-core`,
+  `kui-native`, `kui-derive`, `kui-wgpu`, `kui-ffi`, `kui-lua` and
+  `kui-node` has a README and a crate root that says what the crate is,
+  who reaches it and through what, with compile-checked examples
+  (`kui-core` alone runs 44 doctests where it ran none). The rendered
+  docs and the book cite no ADRs or backlog items; each citation became
+  the fact it supported. `docs/props.md` and `packages/kui/index.d.ts`
+  are regenerated with the same text.
+
+### Fixed
+
+- **`kui-derive`'s docs name the crate the generated code reaches**:
+  `::kui_native` by default, where they said `::kui`. The macro is
+  unchanged.
+
+### Native verification
+
+On 2026-10-04, the commits after the alpha.34 tag: doc comments,
+READMEs, the release workflows and their scripts. This round ran on
+Windows alone, and short — the code is alpha.34's; macOS and Linux did
+not run it for this tag, and the C round, the Node parity tests, the
+corpus and the book are left to Forgejo's `check` on the tag.
+
+**Windows 11 (build 26300) on a Ryzen 9 9950X3D with an RTX 5080,
+rustc 1.99.0, nu 0.116.0**, on `7522bd4`, in a cold worktree. `cargo
+fmt --all --check` and `cargo clippy --workspace --all-targets -- -D
+warnings` are clean. `cargo test --workspace`: **1724 tests over 132
+suites, 0 failed** (5 ignored). **The windowed round**, `smoke`: **49
+Rust examples, each on both bases, 120 frames each, every one exiting
+0** — 98 windows in 24 s. The Node windows, the C hosts, the AX audit
+and the bench guard were not run.
+
 ## 0.1.0-alpha.34 (2026-10-03)
 
 **What breaks.**
