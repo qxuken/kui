@@ -49,10 +49,13 @@ def live-version [spec: string] {
 # The highest of `versions` by npm's own semver, resolved out of npm's
 # bundled copy so nothing has to be installed for it.
 def highest-of [versions: list<string>] {
-    with-env {VERSIONS: ($versions | to json)} {
+    # npm's global root is asked for here, not from inside node: on Windows
+    # `npm` is npm.cmd, which nu resolves and node's execFileSync does not
+    # (ENOENT, after alpha.35's approve had gone through).
+    let root = (^npm root -g | str trim)
+    with-env {VERSIONS: ($versions | to json), NPM_ROOT: $root} {
         ^node -e '
-          const root = require("node:child_process").execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
-          const semver = require(require.resolve("semver", { paths: [root + "/npm/node_modules"] }));
+          const semver = require(require.resolve("semver", { paths: [process.env.NPM_ROOT + "/npm/node_modules"] }));
           const all = JSON.parse(process.env.VERSIONS).filter((v) => semver.valid(v));
           if (all.length === 0) throw new Error("no versions to compare");
           process.stdout.write(all.sort(semver.rcompare)[0]);
