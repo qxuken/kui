@@ -54,14 +54,17 @@ the `kui-*` dependency requirements, package.json and the changelog's open
 `(unreleased)` heading move together — registries refuse a version that already
 exists), commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
 in one go: `git push --atomic origin main v0.1.0-alpha.2`. `origin` is
-Forgejo, and its push mirror carries both refs to GitHub, where the tag's
-arrival starts that pipeline — one push runs both halves. Forgejo is the
-source: a ref pushed to `github` that `origin` does not hold is the
-mirror's to overwrite, so nothing goes there first. Pushing the same two
-refs to `github` by name after `origin` has them is harmless (alpha.35
-did, not knowing the mirror was there) and starts the GitHub run without
-waiting for the mirror's next sync. The order the two pipelines start in
-does not matter: Forgejo's `publish` waits for crates.io. That next
+Forgejo, and its push mirror carries both refs to GitHub — but do not
+count on the mirror to start GitHub's pipeline. Push the tag there by
+name as well: `git push github main v0.1.0-alpha.2`. The one time a tag
+reached GitHub by the mirror alone (kui-node-template's v0.14.0, the
+same day as alpha.35) the tag was there and no workflow ran for it,
+while the next tag, pushed by name, started its run within seconds; and
+the mirror syncs on its own schedule in any case. Forgejo is the source:
+a ref `origin` does not hold is the mirror's to overwrite, so push the
+same commit and tag to both and nothing else to `github`. The order the
+two pipelines start in does not matter: Forgejo's `publish` waits for
+crates.io. That next
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
 unreleased fails the release. The tag then runs two pipelines, one on each
