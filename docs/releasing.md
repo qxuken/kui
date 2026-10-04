@@ -53,11 +53,15 @@ To cut a release: `nu scripts/set-version.nu 0.1.0-alpha.2` (workspace version,
 the `kui-*` dependency requirements, package.json and the changelog's open
 `(unreleased)` heading move together — registries refuse a version that already
 exists), commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
-in one go, to each host: `git push --atomic origin main v0.1.0-alpha.2`
-and the same to `github`. Each pipeline starts from its own host's copy
-of the tag, so a tag pushed to one runs half a release; alpha.35 pushed
-both by name rather than count on a mirror. The order between the two does not matter: Forgejo's
-`publish` waits for crates.io whichever went first. That next
+in one go: `git push --atomic origin main v0.1.0-alpha.2`. `origin` is
+Forgejo, and its push mirror carries both refs to GitHub, where the tag's
+arrival starts that pipeline — one push runs both halves. Forgejo is the
+source: a ref pushed to `github` that `origin` does not hold is the
+mirror's to overwrite, so nothing goes there first. Pushing the same two
+refs to `github` by name after `origin` has them is harmless (alpha.35
+did, not knowing the mirror was there) and starts the GitHub run without
+waiting for the mirror's next sync. The order the two pipelines start in
+does not matter: Forgejo's `publish` waits for crates.io. That next
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
 unreleased fails the release. The tag then runs two pipelines, one on each
