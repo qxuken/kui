@@ -8,7 +8,8 @@
     "url": "https://github.com/qxuken/kui"
   },
   "publishConfig": {
-    "registry": "https://drydock9.qxuken.dev/api/packages/qxuken/npm/"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "type": "module",
   "main": "index.js",

@@ -75,6 +75,12 @@
 #     the publish-update scope for the kui-* crates (publish-new too, for a
 #     crate not yet on crates.io). crates.io's trusted publishing takes no
 #     Forgejo runner's identity, so the runner needs the token;
+#   * a repository secret NPM_TOKEN: an npmjs granular access token for the
+#     `@qxuken` scope with "Read and write (stage only)". The runner stages
+#     the npm package on registry.npmjs.org (`npm stage publish`) and a
+#     maintainer with 2FA approves it (`npm stage approve <id> --otp`), so
+#     nothing the runner holds can publish to npmjs on its own. The Forgejo
+#     npm registry is published to directly, as before, with PACKAGES_TOKEN;
 #   * one runner labelled `docker`. Every target is cross-compiled on it
 #     (rustc targets anything; only the linkers and platform SDKs differ):
 #     - Linux: cargo-zigbuild for both arches - zig ships glibc for every
@@ -760,6 +766,10 @@ jobs:
       # cargo reads crates.io's token from CARGO_REGISTRY_TOKEN.
       CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
       NPM_REGISTRY: ${{ github.server_url }}/api/packages/${{ github.repository_owner }}/npm/
+      # npmjs: a stage-only token, so the step below stages and a human
+      # approves (see the prerequisites at the top of this file).
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPMJS_REGISTRY: https://registry.npmjs.org/
     steps:
       - uses: actions/checkout@v4
 
@@ -788,6 +798,7 @@ jobs:
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           test -n "$PACKAGES_TOKEN" || { echo "PACKAGES_TOKEN secret is not set" >&2; exit 1; }
           test -n "$CARGO_REGISTRY_TOKEN" || { echo "CRATES_IO_TOKEN secret is not set" >&2; exit 1; }
+          test -n "$NPM_TOKEN" || { echo "NPM_TOKEN secret is not set" >&2; exit 1; }
 
       # `cargo publish` verifies each crate by building the packaged tarball
       # under target/package against the registry copies of its dependencies;
@@ -874,4 +885,67 @@ jobs:
             else
               echo "latest left alone: $highest sorts above the $ver just published"
             fi
+          fi
+
+      # npmjs, last: the token there is stage-only, so this step cannot publish.
+      # It stages the tarball on registry.npmjs.org under the same dist-tag the
+      # Forgejo publish used, and a maintainer with 2FA makes it live:
+      #
+      #   npm stage list @qxuken/kui
+      #   npm stage approve <stage-id> --otp <code>
+      #
+      # Staging needs no 2FA and works for a package that does not exist yet,
+      # which is how the first version reaches npmjs. A staged version holds
+      # its semver slot (the same version cannot be staged twice) and its tag
+      # cannot change, so a re-run of this job finds the version already
+      # staged or already live and does nothing. The `latest` guard above is
+      # not repeated here: a stage-only token cannot move dist-tags, so when
+      # a prerelease is the highest version and `latest` is missing, the
+      # maintainer sets it after approving, as the step's output says.
+      - name: npm stage publish (npmjs)
+        run: |
+          set -eu
+          # `npm stage` arrived in npm 11.15; the node:24 image's npm is
+          # newer, but a pinned older image would not be.
+          if ! npm stage --help >/dev/null 2>&1; then
+            npm install -g npm@11
+            npm stage --help >/dev/null
+          fi
+          ver=$(node -p 'require("./packages/kui/package.json").version')
+          tag=latest
+          case "$ver" in *-*) tag="${ver#*-}"; tag="${tag%%.*}";; esac
+          printf '%s:_authToken=%s\n' "${NPMJS_REGISTRY#https:}" "$NPM_TOKEN" >> "$HOME/.npmrc"
+          cd packages/kui
+          if [ "$(npm view "@qxuken/kui@$ver" version --registry "$NPMJS_REGISTRY" 2>/dev/null || true)" = "$ver" ]; then
+            echo "@qxuken/kui@$ver is already live on npmjs"
+            exit 0
+          fi
+          # Tolerated: a listing that errors (a package not yet on npmjs,
+          # say) means "nothing staged", and the publish below is the real test.
+          staged=$(npm stage list @qxuken/kui --json --registry "$NPMJS_REGISTRY" 2>/dev/null || echo '[]')
+          id=$(STAGED="$staged" VER="$ver" node -e '
+            const items = JSON.parse(process.env.STAGED);
+            const hit = (Array.isArray(items) ? items : []).find((i) => i.version === process.env.VER);
+            if (hit) process.stdout.write(String(hit.id));
+          ')
+          if [ -n "$id" ]; then
+            echo "@qxuken/kui@$ver is already staged on npmjs as $id; approve it with"
+            echo "  npm stage approve $id --otp <code>"
+            exit 0
+          fi
+          # Captured rather than piped through tee: without pipefail a pipe
+          # would report tee's exit status, not npm's.
+          out=$(npm stage publish --registry "$NPMJS_REGISTRY" --tag "$tag" --access public 2>&1) || {
+            printf '%s\n' "$out" >&2
+            exit 1
+          }
+          printf '%s\n' "$out"
+          id=$(printf '%s\n' "$out" | sed -n 's/.*staged with id \([^)]*\)).*/\1/p' | tail -1)
+          echo
+          echo "@qxuken/kui@$ver is staged on npmjs under the dist-tag '$tag'. To make it live:"
+          echo "  npm stage view ${id:-<stage-id>}        # or: npm stage list @qxuken/kui"
+          echo "  npm stage approve ${id:-<stage-id>} --otp <code>"
+          if [ "$tag" != latest ]; then
+            echo "then, if 'npm dist-tag ls @qxuken/kui' shows no 'latest' or one that sorts below $ver:"
+            echo "  npm dist-tag add @qxuken/kui@$ver latest"
           fi

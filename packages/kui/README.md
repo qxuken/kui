@@ -4,14 +4,16 @@ kui for Node: JSX views (a custom jsx-runtime, no React) lowered into the kui
 IR in one call per frame, Elm-style messages as data. The library itself is
 documented in the [kui repository](https://github.com/qxuken/kui).
 
-The package is published to that Forgejo's npm registry under the `@qxuken`
-scope; route the scope there once (Forgejo does not proxy npmjs, so do not
-override the default registry) and install:
+Install it from npm:
 
 ```
-npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
 npm install @qxuken/kui@alpha
 ```
+
+Every release is also on the Forgejo npm registry the project grew up on
+(`npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/`
+first; it does not proxy npmjs, so scope the setting rather than replacing
+the default registry).
 
 Or start from the template: `npm create @qxuken/kui-node my-app`.
 

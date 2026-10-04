@@ -23,13 +23,15 @@ there, but from 0.1.0-alpha.34 on their own `kui-*` dependencies name
 crates.io: with one `kui-*` crate from drydock9 a build reads both and
 works, with two (`kui-native` and `kui-core`) it holds two `kui_core`s
 whose types do not meet. Dropping `registry = "drydock9"` is the move.
-Node goes through Forgejo's npm registry, scoped:
+Node installs from npmjs; the Forgejo npm registry carries every version
+too, scoped:
 
 ```bash
-# scoped on purpose: Forgejo does not proxy npmjs, so only @qxuken/* goes there
-npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
 npm install @qxuken/kui@alpha    # prereleases publish under their identifier as the dist-tag
 npm create @qxuken/kui-node my-app   # or scaffold an app from the template
+
+# the Forgejo copy, scoped on purpose: Forgejo does not proxy npmjs, so only @qxuken/* goes there
+npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
 ```
 
 Every release so far is a prerelease, so `latest` and `alpha` point at the same
@@ -60,10 +62,34 @@ through cargo-zigbuild with a glibc 2.28 floor; `build-windows` through
 cargo-xwin against the Windows SDK; `build-macos` through cargo-zigbuild
 against a copy of Xcode's SDK, whose Apple license applies), and `publish`
 verifies the tag against the
-manifests and the changelog heading, downloads the five prebuilds, runs the parity tests against the shipped binaries, publishes the
-crates in dependency order and finally the npm package. It needs a repository
-secret `PACKAGES_TOKEN` (a personal access token with `write:packages`) and
-nothing but that Linux runner: no Mac or Windows machine is involved.
+manifests and the changelog heading, downloads the five prebuilds, runs the
+parity tests against the shipped binaries, publishes the crates in dependency
+order (crates.io, then the Forgejo registry), publishes the npm package to the
+Forgejo npm registry, and last stages it on npmjs. It needs three repository
+secrets and nothing but that Linux runner: `PACKAGES_TOKEN` (a Forgejo
+personal access token with `write:packages`), `CRATES_IO_TOKEN` (a crates.io
+API token with publish rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs
+granular access token for the `@qxuken` scope with "Read and write (stage
+only)"). No Mac or Windows machine is involved.
+
+The npmjs half is not finished by the runner, on purpose. A stage-only token
+can put a version on registry.npmjs.org only as a *staged* release, hidden
+until a maintainer with 2FA approves it; the job's last step stages
+`@qxuken/kui@<version>` under its dist-tag (`alpha` for a prerelease) and
+prints the commands that make it live:
+
+```bash
+npm stage list @qxuken/kui                # the pending stage and its id
+npm stage view <stage-id>                 # or `npm stage download <stage-id>` to inspect the tarball
+npm stage approve <stage-id> --otp <code> # publishes it; `npm stage reject <stage-id>` discards it
+npm dist-tag ls @qxuken/kui               # after the first alpha, and whenever an alpha is the newest version:
+npm dist-tag add @qxuken/kui@<version> latest   # if `latest` is missing or older
+```
+
+`npm stage` needs npm 11.15 or newer (`npm install -g npm@11`). A staged
+version holds its semver slot, so a re-run of the job finds it staged and
+stops; rejecting it frees the slot. The Forgejo copy is live at once, as it
+always was, so a user on that registry is not waiting on the approval.
 
 When the runner cannot publish — alpha.17's tag job hung in checkout, the
 runner unable to reach Forgejo — `nu scripts/release-local.nu` does the same
@@ -71,11 +97,18 @@ from a Mac with the tag on HEAD: the Linux prebuilds in Docker with CI's
 pinned zig, the macOS ones natively, Windows through cargo-xwin, CI's
 verification (`npm test` over the bundled prebuilds, `npm pack --dry-run`,
 `cargo publish --dry-run`), a typed confirmation, then `cargo publish`,
-`npm publish` and the `latest` guard. It reads the token from
-`$env.DRYDOCK9_TOKEN`, skips whatever the registries already hold (so a
-half-finished run can be run again) and takes `--dry-run` to stop before
-publishing. Skip the tag's CI run afterwards; it would fail on "already
-exists".
+`npm publish` to the Forgejo registry and the `latest` guard. It reads the
+token from `$env.DRYDOCK9_TOKEN`, skips whatever the registries already hold
+(so a half-finished run can be run again) and takes `--dry-run` to stop
+before publishing. It does not stage on npmjs; do that by hand from
+`packages/kui` with the prebuilds still in place:
+
+```bash
+npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
+```
+
+then approve as above. Skip the tag's CI run afterwards; it would fail on
+"already exists".
 
 That last property is also the limit of what CI proves. The Windows non-client
 chrome ([windows_nc.rs](../crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
