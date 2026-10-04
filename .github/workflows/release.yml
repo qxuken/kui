@@ -284,10 +284,12 @@ jobs:
       - name: npm stage publish (npmjs)
         run: |
           set -eu
-          # `npm stage` arrived in npm 11.15; the runner's Node 24 ships a
-          # newer npm, but an older image would not.
+          # `npm stage` arrived in npm 11.15 and the runner's image ships an
+          # older one. Its global prefix is /usr/local, root's, so the
+          # install needs sudo: without it alpha.35's run died here on
+          # EACCES, after the crates were on crates.io.
           if ! npm stage --help >/dev/null 2>&1; then
-            npm install -g npm@11
+            sudo npm install -g npm@11
             npm stage --help >/dev/null
           fi
           ver=$(node -p 'require("./packages/kui/package.json").version')
