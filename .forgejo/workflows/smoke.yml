@@ -54,7 +54,7 @@
 #
 # A deeper macOS check than this one exists and is not automatable:
 # scripts/ax-audit.swift walks the real access tree and is a manual
-# pre-release step (see README, "To cut a release"). Windows has no
+# pre-release step (see docs/releasing.md, "To cut a release"). Windows has no
 # equivalent tree-walking tool, but it does have the windowed round above,
 # which needs no permission grant and no human.
 name: smoke

@@ -5,7 +5,7 @@
 //! `binary.rs` reads by the same kinds.
 //!
 //! There is no JSON prop parser here any more. One lowered whole frames
-//! before the binary transport (D1/D2 in `docs/backlog/closed-2026-09.md`)
+//! before the binary transport
 //! and then lived on for `measureText` alone, building a `NodeSpec` nobody
 //! read; `measureText` now encodes its text the way a frame does and the
 //! decoder reads it, so the encoder is the only door for props of any kind.

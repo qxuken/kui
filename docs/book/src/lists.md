@@ -80,6 +80,4 @@ when you need it.
 ## Where this is decided
 
 - Keys, and the `duplicate-key` warning:
-  `docs/props.md`, warnings.
-- Caching against the last frame, which is what keys make possible:
-  ADR 0016.
+  [`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#warnings), warnings.

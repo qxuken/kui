@@ -69,8 +69,6 @@ paint over it — and kui would warn, `modal-behind-content`.
 
 ## Where this is decided
 
-- Modal surfaces: ADR 0003.
-- Layers stack in the order they open: ADR 0023.
 - The reference examples:
   [`widgets/tooltip.rs`](examples/widgets/tooltip.md),
   [`features/modal.rs`](examples/features/modal.md),

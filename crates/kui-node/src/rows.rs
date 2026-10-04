@@ -1,9 +1,9 @@
-//! `RowHeights` for JavaScript (backlog C46): the core's own
+//! `RowHeights` for JavaScript: the core's own
 //! `widgets::RowHeights`, held by the app the way a Rust app holds one, and
 //! the slicing `widgets::list` does, in the three steps `index.js`'s
 //! `list()` drives around the app's `measure` callback. The arithmetic —
-//! the split prefix sums, the moving estimate, the anchor and RG18's second
-//! one — is the core's and nobody else's; what crosses is a reading in,
+//! the split prefix sums, the moving estimate and the anchors — is the
+//! core's and nobody else's; what crosses is a reading in,
 //! the rows to measure out, their heights in, and the plan out.
 
 use kui_core::widgets::{ListReading, ListSlice, RowHeights as Heights};

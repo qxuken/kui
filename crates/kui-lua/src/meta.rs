@@ -1,16 +1,14 @@
-//! The view DSL described for lua-language-server (backlog F81): a
-//! `---@meta` file of the prelude's constructors and the props a node
-//! table takes, generated from kui-core's schema so it cannot fall
-//! behind it — the Lua half of what `npm run gen` does for
-//! `index.d.ts`. A host writes it somewhere and puts that directory on
-//! the server's `workspace.library`; a script then completes `row {`
-//! with its props, and a misspelt one is a diagnostic where it is
-//! typed rather than a warning at runtime.
+//! The view DSL described for lua-language-server: a `---@meta` file of
+//! the prelude's constructors and the props a node table takes, generated
+//! from kui-core's schema so it cannot fall behind it. A host writes it
+//! somewhere and puts that directory on the server's `workspace.library`;
+//! a script then completes `row {` with its props, and a misspelt one is a
+//! diagnostic where it is typed rather than a warning at runtime.
 //!
 //! What the schema cannot say — the aliases' shapes, the composites'
 //! types, which constructor takes nil — is written here by hand, and
 //! the tests hold each of those against the parser and the prelude
-//! rather than against this file (RG33: the first cut typed `key` as
+//! rather than against this file (an earlier cut typed `key` as
 //! `integer|string`, `{ percent = n }` as a sizing and `repeat` as a
 //! field, and every one of them failed at runtime).
 
@@ -163,7 +161,15 @@ const ROW_HEIGHTS: &[(&str, &str, &str)] = &[
     ("row_at", "y: number", "integer"),
 ];
 
-/// The meta file's text.
+/// The `---@meta` file for lua-language-server, as text.
+///
+/// Write it to a directory on the server's `workspace.library` and scripts
+/// get completion and diagnostics for the prelude's builders and every prop.
+///
+/// ```no_run
+/// std::fs::write("lua/kui.lua", kui_lua::luals_meta())?;
+/// # Ok::<(), std::io::Error>(())
+/// ```
 pub fn luals_meta() -> String {
     let mut out = String::new();
     out.push_str(

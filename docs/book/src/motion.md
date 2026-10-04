@@ -73,10 +73,12 @@ event. You never request frames for motion.
 
 ## Where this is decided
 
-- Every animation prop — `transition`, `easing`, `bounce`, `enter`,
-  `exit`, `keyframes`, `slide`: `docs/props.md`.
-- Why a frame that removes too many exiting nodes animates none:
-  ADR 0012.
+- Every animation prop (`transition`, `easing`, `bounce`, `enter`,
+  `exit`, `keyframes`, `slide`):
+  [`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#container-props).
+- A frame that removes more than 4096 nodes declaring `exit` animates
+  none of them and warns with `exit-budget`: put `exit` on the list,
+  not on every row.
 - The reference examples:
   [`features/transition.rs`](examples/features/transition.md),
   [`features/spring.rs`](examples/features/spring.md) (a spring's

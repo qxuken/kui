@@ -2,7 +2,7 @@
 
 kui for Node: JSX views (a custom jsx-runtime, no React) lowered into the kui
 IR in one call per frame, Elm-style messages as data. The library itself is
-documented in the [kui repository](https://drydock9.qxuken.dev/qxuken/kui).
+documented in the [kui repository](https://github.com/qxuken/kui).
 
 The package is published to that Forgejo's npm registry under the `@qxuken`
 scope; route the scope there once (Forgejo does not proxy npmjs, so do not

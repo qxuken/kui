@@ -23,7 +23,7 @@
 # `needs` in ci.yml: a release is cut from a tag, and an advisory landing
 # between the last green main and the tag would otherwise block a release
 # whose code nobody had touched. Read this job before tagging instead; the
-# README's release checklist says so.
+# docs/releasing.md's release checklist says so.
 #
 # The container is the stock node image for the same reason ci.yml's jobs are:
 # actions/checkout and actions/cache are JavaScript actions and the runner

@@ -484,23 +484,24 @@ def --wrapped main [...args: string] {
     # -- README table -------------------------------------------------------
     # A CRLF checkout (Windows, autocrlf) left every row unmatched against
     # the regex's `$` in the alpha.12 Windows round, and printed "(not in
-    # the README yet)" for all of them; the bash's Node split on `\r?\n` for
+    # the README yet)" for all of them (the table lived in README.md then;
+    # it is docs/performance.md now); the bash's Node split on `\r?\n` for
     # it. Nu's `lines` drops the `\r` itself.
     mut described = {}
-    for line in (read-text README.md | lines) {
+    for line in (read-text docs/performance.md | lines) {
         let m = ($line | parse --regex '^\| `(?<name>[A-Za-z0-9_]+)` \| (?<what>.*) \| ~[^|]+ \|$')
         if ($m | is-not-empty) { $described = ($described | upsert $m.0.name $m.0.what) }
     }
     let described = $described
     print ""
-    print $"README table at HEAD \(`cargo bench -p kui-core`, ($machine_line)\):"
+    print $"docs/performance.md table at HEAD \(`cargo bench -p kui-core`, ($machine_line)\):"
     print ""
     print "| bench | what it holds | median |"
     print "|---|---|---|"
     let readme_order = ($described | columns | where {|n| $n in $head2 })
     let undescribed = ($head_names | where {|n| not ($n in $described) } | sort)
     for name in ($readme_order | append $undescribed) {
-        let what = ($described | get -o $name | default "(not in the README yet)")
+        let what = ($described | get -o $name | default "(not in docs/performance.md yet)")
         print $"| `($name)` | ($what) | ~(fmt ($head2 | get $name)) |"
     }
     let stale = ($described | columns | where {|n| not ($n in $head2) })

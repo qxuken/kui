@@ -1,12 +1,37 @@
-//! Node.js addon for kui (napi-rs). Like kui-ffi this layer is translation,
-//! not architecture — but where C makes flat builder calls, JS submits a whole
-//! frame at once: the jsx-runtime produces a plain-data element tree
-//! (`{type, key, props, children}`), the JS package encodes it into the flat
-//! binary IR stream ([`binary`]), and [`Ctx::frame_binary`] lowers it in one
-//! zero-copy boundary crossing. That is the only way a frame gets in: there
-//! is one element dispatcher ([`binary`]'s), not one per transport.
-//! Event payloads are plain JSON both ways, which is exactly the Elm shape:
-//! `onClick` carries a message value, never a closure.
+//! The Node.js addon behind the `@qxuken/kui` npm package, built with napi-rs.
+//!
+//! `kui-node` is the native half of kui for Node: it exposes a headless
+//! [`Ctx`] and a windowed `KuiWindow` to JavaScript, and the npm package
+//! wraps them in a JSX runtime and an Elm-style app loop. It is not
+//! published to crates.io; it ships as a prebuilt library inside the npm
+//! package, and its JavaScript API is documented there. Like the other
+//! bindings it is translation over [`kui_core`] (the model and layout) and
+//! `kui_native` (the window), not a second implementation.
+//!
+//! A frame comes in whole. The JSX runtime produces a plain-data element
+//! tree, the package's encoder turns it into one flat instruction stream (a
+//! `Float64Array` of opcodes, prop ids and values, plus a UTF-8 string
+//! table), and [`Ctx::frame_binary`] lowers that stream straight into the
+//! core in a single zero-copy crossing, with no per-node calls and no JSON
+//! tree in between. The opcode and prop tables come from [`protocol`], which
+//! the encoder reads at module init so the two sides cannot drift, and a
+//! version number in slot 0 of every stream guards a stale prebuilt against
+//! a newer encoder. Event payloads are plain JSON both ways: `onClick`
+//! carries a message value, never a closure.
+//!
+//! # Where to look
+//!
+//! - [`Ctx`]: the headless core, for tests and tools; everything a window
+//!   does except open one.
+//! - [`Ctx::frame_binary`]: the one door a frame comes through.
+//! - [`protocol`]: the opcode, prop and schema tables the JS encoder and the
+//!   TypeScript generator read.
+//! - [`KuiWindow`]: the windowed surface `runWindowed` drives.
+//! - `RowHeights`: the measured-heights helper behind the package's `list()`.
+//!
+//! Build from the repository with `cargo build -p kui-node --release` and
+//! point `KUI_NODE_LIB` at the resulting library; see `packages/kui/README.md`.
+//! Book: <https://kui-book.qxuken.dev>. Repository: <https://github.com/qxuken/kui>.
 
 use kui_ffi::CExtension;
 
@@ -82,7 +107,7 @@ fn json_of(v: &Value) -> Json {
 /// form (`kui_core::Handles::HEX`, so a key or a resource id is sixteen
 /// hex digits) with every map key turned from snake_case to camelCase —
 /// `content_w` → `contentW`, `pos_in_set` → `posInSet` — mechanically,
-/// at every depth (backlog AR1). The key set each shape ends up with is
+/// at every depth. The key set each shape ends up with is
 /// pinned in `readback_pins`. Event payloads never come through here:
 /// they are the app's own data, spelled however the app spelled them.
 fn readback(v: &Value) -> Json {
@@ -205,7 +230,7 @@ fn hex_key(s: &str) -> Option<Key> {
 /// `reveal` / `access`: the hex key an event carried, or the label its
 /// `key` prop declared — resolved through the last frame (`Core::key_of`),
 /// so a node never interacted with can be named. An unknown label is an
-/// error naming both, since "bad id" named neither (backlog F5).
+/// error naming both, since "bad id" named neither.
 fn resolve_key(core: &mut kui_core::Core, s: &str) -> Result<Key> {
     if let Some(k) = hex_key(s) {
         return Ok(k);
@@ -225,7 +250,7 @@ fn resolve_key(core: &mut kui_core::Core, s: &str) -> Result<Key> {
 /// label is the spelling a view uses *before* the node exists: the first
 /// frame of a virtual list asks its container for geometry that is not
 /// there yet. So the command verbs throw, where a typo is a bug the app
-/// wants named, and the queries answer (backlog C25).
+/// wants named, and the queries answer.
 fn resolve_query(core: &mut kui_core::Core, s: &str) -> Option<Key> {
     match hex_key(s) {
         Some(k) => Some(k),
@@ -261,7 +286,7 @@ fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
 
 /// The root's `menu` prop, as the JSON the encoder writes: a list of
 /// `{ label, items, enabled? }`, whose items are the same objects
-/// `openMenu` takes (`docs/adr/0018-a-menu-bar-the-app-declares.md`). One
+/// `openMenu` takes. One
 /// reader for both menus, so a row can never mean two things.
 pub(crate) fn menu_bar_of(json: &str) -> Result<kui_core::MenuBar> {
     let parsed: Json = serde_json::from_str(json).map_err(|e| err(format!("menu: {e}")))?;
@@ -433,7 +458,7 @@ fn edit_key_of(name: &str) -> Result<EditKey> {
 pub struct Ctx {
     core: Core,
     events: Vec<UiEvent>,
-    /// The extensions this context hosts, in origin order (ADR 0014):
+    /// The extensions this context hosts, in origin order:
     /// what `addExtension` loads, what a `<slot>` fills from, and what an
     /// event whose origin is not the host's is delivered to.
     extensions: kui_core::Extensions,
@@ -484,7 +509,7 @@ impl Ctx {
 
     /// Starts the next frame's record before its view runs: from here
     /// until the frame after it begins, `frameCause()` and `owedBy()`
-    /// answer the frame the next `frame` call builds (backlog RG81). A
+    /// answer the frame the next `frame` call builds. A
     /// view runs before its frame — it returns the tree `frame` is handed
     /// — so without this it reads the frame before; `createApp`'s loop
     /// calls it ahead of every view. Twice before one frame is once.
@@ -494,8 +519,8 @@ impl Ctx {
     }
 
     /// Loads a C extension: a shared library exporting the seven
-    /// `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes
-    /// (ADR 0014). `namespace` is the word that fronts every slot name it
+    /// `kui_ext_*` entry points `crates/kui-ffi/include/kui.h` describes.
+    /// `namespace` is the word that fronts every slot name it
     /// fills — `<slot name="todos/panel"/>` for `addExtension('todos', …)`
     /// — and an empty one takes the plugin's own `kui_ext_name`. Throws
     /// with the reason if the library will not load, declares no
@@ -677,7 +702,7 @@ impl Ctx {
     }
 
     /// Files dragged in from the OS are over the window at (`x`, `y`) —
-    /// entering and moving alike (ADR 0031): the `onDrop` zone under the
+    /// entering and moving alike: the `onDrop` zone under the
     /// point hears `{kind:"drop", phase:"enter"|"move", paths, x, y,
     /// tag}`, a zone it left hears `leave`, a repeat at the same point is
     /// nothing. `dropTarget()` afterwards is what a driver answers the OS
@@ -693,7 +718,7 @@ impl Ctx {
     /// A file dialog's answer, as a host that showed it reports it: the
     /// paths picked, none for a cancelled dialog. Whoever asked with
     /// `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
-    /// asked it is dropped (backlog C51).
+    /// asked it is dropped.
     #[napi]
     pub fn answer_files(&mut self, paths: Vec<String>) {
         self.input(InputEvent::Files(paths));
@@ -724,9 +749,9 @@ impl Ctx {
     /// only that one presses, drags, places the caret and clicks;
     /// "secondary" asks the node under the pointer for a context menu and
     /// moves nothing else, and every button but the primary reaches a node
-    /// that claims it with `onButton`, press to release (backlog F105).
+    /// that claims it with `onButton`, press to release.
     /// A button past the middle one is its number, `3 + n` — the code a
-    /// `button` event carries for it (backlog RG75).
+    /// `button` event carries for it.
     #[napi(ts_args_type = "down: boolean, clicks?: number, button?: MouseButtonName | number")]
     pub fn mouse(
         &mut self,
@@ -756,7 +781,7 @@ impl Ctx {
         self.input(InputEvent::Scroll(Vec2::new(dx as f32, dy as f32)));
     }
 
-    /// One event of a scroll gesture (backlog F107, ADR 0038): `begins`
+    /// One event of a scroll gesture: `begins`
     /// on its first, then the rest go to the target it picked, wherever
     /// the pointer or the content has gone since — the latching a native
     /// swipe gets, for a headless test. `scroll` is a gesture of its own.
@@ -784,7 +809,7 @@ impl Ctx {
     }
 
     /// The clipboard's answer to a paste (`requestPaste()`), with what
-    /// the pasteboard marked it (backlog F84): routed as `commit` is, and
+    /// the pasteboard marked it: routed as `commit` is, and
     /// a focused `onKey` sink hears `{kind:"text", text, tag}` with
     /// `concealed: true` / `transient: true` for the markers set. No
     /// marks is a paste nothing marked, the same answer `commit` gives.
@@ -846,8 +871,8 @@ impl Ctx {
     /// `physical` is the US-QWERTY key at that *position*, spelled the same
     /// way; omit it and it is the position's US key: the lower-case letter
     /// for a letter, `code` for everything else — the pair a window
-    /// reports for ⇧Z is `code: "Z", physical: "z"`, and so is this door's
-    /// (backlog F65). Passing both is how a driver reports a non-US
+    /// reports for ⇧Z is `code: "Z", physical: "z"`, and so is this door's.
+    /// Passing both is how a driver reports a non-US
     /// layout, and it is what makes the reported `code` portable: a
     /// layout producing something outside ASCII would leave a Latin
     /// keymap matching nothing, so the position's US key stands in, as
@@ -897,7 +922,7 @@ impl Ctx {
     /// halves, kept for a test that means to drive one channel and not the
     /// other; a test that means "the user pressed this key" wants both,
     /// and `keyDown("escape")` leaving a modal open is what having to
-    /// choose used to cost (backlog F6).
+    /// choose used to cost.
     ///
     /// Spelled exactly as `keyDown`: a single character (layout-resolved,
     /// e.g. "W" or "$") or a name ("left", "enter", "escape", "f5", ...),
@@ -909,8 +934,7 @@ impl Ctx {
     /// shifted letter is the upper-case letter with `shift` set —
     /// `press("Z", { shift: true, super: true })` is ⇧⌘Z — and
     /// `press("z", { shift: true })` is a chord no keyboard produces, which
-    /// a handler switching on `"z"` hears headless and never from a user
-    /// (backlog F60: an app's redo was green for six releases over it).
+    /// a handler switching on `"z"` hears headless and never from a user.
     /// Fold a one-character `code` to lower case under a chord if a keymap
     /// binds letters.
     #[napi(ts_args_type = "code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string")]
@@ -950,9 +974,9 @@ impl Ctx {
 
     /// One press from the `{shift, ctrl, alt, super}` shape both key calls
     /// take — with `location` ("left", "right", "numpad"; "standard" when
-    /// absent) and `capsLock` / `numLock` beside them (backlog F108; the
-    /// event's `caps_lock` / `num_lock` too, RG86), and `layout` ("latin",
-    /// "nonLatin"; backlog F115) — and
+    /// absent) and `capsLock` / `numLock` beside them (the event's
+    /// `caps_lock` / `num_lock` too), and `layout` ("latin",
+    /// "nonLatin") — and
     /// the text a plain key would insert already resolved.
     fn key_press(
         &self,
@@ -1135,7 +1159,7 @@ impl Ctx {
     }
 
     /// Whether the last frame asked for the window above every other
-    /// app's (a root `<box alwaysOnTop>`, backlog C30); false when it did
+    /// app's (a root `<box alwaysOnTop>`); false when it did
     /// not. `runWindowed` applies it to the real window on change and
     /// reports what the platform did as `env().window.alwaysOnTop`; a
     /// bare `Ctx` hands the ask back so a test can assert on it.
@@ -1145,7 +1169,7 @@ impl Ctx {
     }
 
     /// Whether the last frame asked for secure keyboard entry (a root
-    /// `<box secureInput>`, backlog F85); false when it did not.
+    /// `<box secureInput>`); false when it did not.
     /// `runWindowed` turns it on while that window has the keyboard and
     /// keeps the platform's count balanced; a bare `Ctx` hands the ask
     /// back so a test can assert on it.
@@ -1155,7 +1179,7 @@ impl Ctx {
     }
 
     /// Which Option keys the last frame asked to act as Alt on macOS (a
-    /// root `<box optionAsAlt="left">`, backlog F113): `"none"`, `"left"`,
+    /// root `<box optionAsAlt="left">`): `"none"`, `"left"`,
     /// `"right"` or `"both"`, `"none"` when it did not ask. `runWindowed`
     /// applies it to the window on change; a bare `Ctx` hands the ask back
     /// so a test can assert on it.
@@ -1292,7 +1316,7 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
 }
 
 /// The palette the core derived from `env.system`, as roles rather than
-/// values (ADR 0019): one `0xRRGGBBAA` number per row of
+/// values: one `0xRRGGBBAA` number per row of
 /// `schema::THEME_ROLES`, under that row's camelCase spelling, plus
 /// `appearance` (which base it came from) and `disabledOpacity` (a
 /// multiplier, not a colour). Numbers rather than `#hex` strings because
@@ -1304,9 +1328,9 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
 /// declaration order is the wire index and a JSON object's key order does
 /// not survive the crossing (`serde_json` sorts it). Names apart by kind
 /// because a colour and a length are both a number here, and the kind
-/// cannot be read off the value (ADR 0027, decision 2).
-/// A colour value that is an object with `from` is a derived token (ADR
-/// 0028), its `ops` a list of `[verb, …]` tuples `index.js` has already
+/// cannot be read off the value.
+/// A colour value that is an object with `from` is a derived token,
+/// its `ops` a list of `[verb, …]` tuples `index.js` has already
 /// normalised.
 fn tokens_from_json(v: &Json) -> Result<Tokens> {
     let Json::Object(o) = v else {
@@ -1484,7 +1508,7 @@ fn theme_json(core: &Core) -> Json {
     Json::Object(o)
 }
 
-/// The sizes the stock widgets are built from (backlog T2): one number per
+/// The sizes the stock widgets are built from: one number per
 /// row of `schema::METRIC_ROLES`, under that row's camelCase spelling.
 fn metrics_json(core: &Core) -> Json {
     let m = *core.metrics();
@@ -1609,8 +1633,7 @@ fn owed_by_json(by: &kui_core::OwedBy) -> Json {
 /// The runner's frame-timing ring as `{frames, framesTotal, pumps,
 /// wokenPumps, last, avgTotalMs, maxTotalMs, avgWorkMs, maxWorkMs}`;
 /// `last` is null before the first frame. The same numbers the latency
-/// HUD draws, plus the three monotonic counts a bench asserts a rate from
-/// (backlog F62, F94).
+/// HUD draws, plus the three monotonic counts a bench asserts a rate from.
 fn frame_stats_json(stats: &FrameStats, pumps: u64, woken_pumps: u64) -> Json {
     let mut o = JsonMap::new();
     o.insert("frames".into(), Json::from(stats.len()));
@@ -1655,7 +1678,7 @@ struct TreeApp {
     events: Vec<UiEvent>,
     error: Option<String>,
     /// What `onTeardown` registered: the one call JS *does* get from
-    /// inside winit (backlog RG1), since the moment it is for — the
+    /// inside winit, since the moment it is for — the
     /// window going for good — is on macOS the process going too, with
     /// no pump after it for JS to drain anything from.
     teardown: Option<FunctionRef<(), Null>>,
@@ -1674,7 +1697,7 @@ struct TreeApp {
 }
 
 impl kui_native::App for TreeApp {
-    /// The window going for good, to JS (backlog RG1): once, synchronously,
+    /// The window going for good, to JS: once, synchronously,
     /// inside the pump it happened in — the close button's, a `close()`'s,
     /// or the one an OS Quit ends the process inside of, where nothing
     /// after `await runWindowed(...)` ever runs. A throw out of the
@@ -1732,7 +1755,7 @@ pub struct KuiWindow {
     runner: kui_native::PumpRunner<TreeApp>,
     /// The window every per-window door addresses (`useWindow`): the
     /// main window until `runWindowed` aims the surface at the window
-    /// whose view or event it is handing to the app (backlog AR12).
+    /// whose view or event it is handing to the app.
     addressed: kui_core::WindowId,
 }
 
@@ -1918,7 +1941,7 @@ impl KuiWindow {
     /// surface at the window whose view it is calling and at the window
     /// an event came from before handing the surface to `update`, so an
     /// app that never calls this reads and writes the window it is being
-    /// asked about (backlog AR12). Resources, `windows()`, `pump` and
+    /// asked about. Resources, `windows()`, `pump` and
     /// `pollEvents` are the session's and unaffected.
     #[napi(ts_args_type = "window?: string | number")]
     pub fn use_window(&mut self, window: Option<Either<String, f64>>) -> bool {
@@ -1973,8 +1996,8 @@ impl KuiWindow {
 
     /// Registers what the window calls as it goes for good — its close
     /// button, `close()`, Quit from the menu or the dock — once, from
-    /// inside the `pump()` that saw it and before that pump returns
-    /// (backlog RG1). On macOS a Quit ends the process inside that pump:
+    /// inside the `pump()` that saw it and before that pump returns.
+    /// On macOS a Quit ends the process inside that pump:
     /// `pump()` never returns, `runWindowed` never resolves and nothing
     /// after it runs, not even `process.on('exit')` — so this is the only
     /// thing an app runs on ⌘Q. `runWindowed` registers its config's
@@ -2048,13 +2071,13 @@ impl KuiWindow {
 
     /// The viewport the app lays out into, in logical px, plus the scale
     /// factor: `{width, height, scale}` — the window's inner size, less
-    /// the devtools' dock while the panel is docked (`docs/adr/0024`).
+    /// the devtools' dock while the panel is docked.
     /// Readable before the first frame (in `setup` and `init`, where
     /// `env().viewport` is still 0×0), and re-reported as a
     /// `{kind:"resize", width, height, scale}` event through `pollEvents`
     /// — a `ResizeMsg` — whenever the window changes size, moves to a
     /// display with another DPI, or the dock comes, goes or is dragged.
-    /// Backlog F43: this was the window's inner size, so an app that seeded
+    /// It used to be the window's inner size, so an app that seeded
     /// its tiers from it under `KUI_DEVTOOLS=1` drew for the whole window.
     #[napi(ts_return_type = "WindowSize")]
     pub fn size(&mut self) -> Json {
@@ -2071,11 +2094,11 @@ impl KuiWindow {
     /// those the ring holds — its fill, one per painted frame up to 120, so
     /// a window that paints only when something changes stays below it for
     /// as long as it idles. `framesTotal` and `pumps` are the monotonic
-    /// counts of every frame painted and every `pump()` taken (backlog
-    /// F62), so two readings a second apart are that second's frame and
+    /// counts of every frame painted and every `pump()` taken, so two
+    /// readings a second apart are that second's frame and
     /// pump rates. `wokenPumps` counts the pumps that found an OS event or
     /// a wake — a key, the pointer crossing, a focus change, a resize, a
-    /// reader asking (backlog F94) — so two readings a second apart with it
+    /// reader asking — so two readings a second apart with it
     /// unmoved are a second the desktop left the window alone, and every
     /// frame in it was the app's own. `waitMs` is vsync backpressure;
     /// `workMs` is everything else.
@@ -2173,8 +2196,7 @@ macro_rules! core_methods {
             /// next frame with no view change; `width`/`height` may differ
             /// from the registration. From the first update on the image
             /// is drawn from a texture of its own — a video frame, a
-            /// camera, a plot the app rasterised itself
-            /// (`docs/adr/0025-the-image-is-the-canvas.md`). A dead id warns
+            /// camera, a plot the app rasterised itself. A dead id warns
             /// `foreign-resource` and changes nothing.
             #[napi]
             pub fn update_image(
@@ -2270,8 +2292,8 @@ macro_rules! core_methods {
 
             /// The families `systemFontFamilies` names, in its order, each
             /// with what its faces say they are: `monospaced` (every face
-            /// fixed-pitch), `weights` (sorted, each once) and `italic`
-            /// (backlog F97). Read from what the font database recorded
+            /// fixed-pitch), `weights` (sorted, each once) and `italic`.
+            /// Read from what the font database recorded
             /// when it scanned each face, so a font picker can put the
             /// monospaced ones first without loading a file or shaping a
             /// glyph.
@@ -2317,8 +2339,7 @@ macro_rules! core_methods {
             /// Says something once, with no node behind it: `announce("Saved")`,
             /// `announce("3 results", "assertive")`. `"off"` and an empty string
             /// are both no-ops. A region whose message is on screen is the `live`
-            /// prop instead
-            /// (`docs/adr/0008-live-regions-and-announcements.md`).
+            /// prop instead.
             ///
             /// Call it from an event handler. Called while building a frame it
             /// fires every frame, which the core reports as
@@ -2432,13 +2453,13 @@ macro_rules! core_methods {
             /// for any of them; to a test they differ, since a keyframe
             /// `repeat` cycle never ends and `settled()` never resolves
             /// under one. `quiet()` on the loop waits on everything but
-            /// `cycle` (backlog F64).
+            /// `cycle`.
             #[napi(ts_return_type = "Owed")]
             pub fn owed(&mut self) -> Json {
                 owed_json(self.$core().owed())
             }
 
-            /// Turns on the trace of why frames run (backlog F111): who
+            /// Turns on the trace of why frames run: who
             /// holds each owed frame (`owedBy()`) and whether each frame
             /// changed what is drawn (`frameUnchanged()`). Off by default,
             /// where neither costs anything; `frameCause()` is kept either
@@ -2451,7 +2472,7 @@ macro_rules! core_methods {
             /// Why a frame runs, as the names of its reasons: the input it
             /// answers (`key`, `pointerMove`, `wheel`, …), what a window's
             /// runner saw (`wake`, `resize`, `caret`, `retry`, …) and
-            /// `owed` when the frame before left one owed (backlog F111).
+            /// `owed` when the frame before left one owed.
             /// Empty for a frame nothing here asked for.
             ///
             /// Which frame: on a `Ctx`, from inside a `createApp` view,
@@ -2460,7 +2481,7 @@ macro_rules! core_methods {
             /// built. On a `KuiWindow`, always the last frame drawn: a
             /// window's view runs when the model changes, ahead of the
             /// frame that shows it, and the frames a transition or a
-            /// blink runs call no view at all (backlog RG81).
+            /// blink runs call no view at all.
             #[napi(ts_return_type = "FrameCauseName[]")]
             pub fn frame_cause(&mut self) -> Vec<&'static str> {
                 self.$core().frame_cause().names().collect()
@@ -2473,16 +2494,15 @@ macro_rules! core_methods {
             /// asked for a frame. Read from inside a `createApp` view on a
             /// `Ctx`, the reason that view's frame exists; between frames,
             /// the last frame built's; on a `KuiWindow`, the last frame
-            /// drawn's, as `frameCause()` says (backlog RG81). Empty
-            /// unless `setFrameTrace(true)` (backlog F111).
+            /// drawn's, as `frameCause()` says. Empty
+            /// unless `setFrameTrace(true)`.
             #[napi(ts_return_type = "OwedBy")]
             pub fn owed_by(&mut self) -> Json {
                 owed_by_json(self.$core().owed_by())
             }
 
             /// Whether the last finished frame drew exactly what the one
-            /// before drew; `null` untraced and on the first traced frame
-            /// (backlog F111).
+            /// before drew; `null` untraced and on the first traced frame.
             #[napi]
             pub fn frame_unchanged(&mut self) -> Option<bool> {
                 self.$core().frame_unchanged()
@@ -2518,7 +2538,7 @@ macro_rules! core_methods {
             /// by `decodeQuads`. Copied into the Buffer. A window answers
             /// with what its last pump drew, so a smoke test can read the
             /// frame the shipping driver painted and not only a headless
-            /// one's (backlog F19). Drive that window with `access(key,
+            /// one's. Drive that window with `access(key,
             /// action)` — `click`, `type` and `key` are refused there,
             /// because the OS is what drives a real window.
             #[napi]
@@ -2555,10 +2575,9 @@ macro_rules! core_methods {
             /// two 32-bit halves, the sixteen parameters, then where the
             /// draw's `image` is (0 none, 1 the atlas, 2 a texture of its
             /// own), the `textureDraws` index when it is 2, and the texel
-            /// rect `x, y, w, h` (backlog V1). The parameters ride a side
+            /// rect `x, y, w, h`. The parameters ride a side
             /// list rather than the quad, so `quads()` alone cannot show
-            /// them and a corpus adapter needs this to compare them
-            /// (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`).
+            /// them and a corpus adapter needs this to compare them.
             /// Empty on a frame that draws no fragment.
             #[napi]
             pub fn fragment_draws(&mut self) -> Vec<f64> {
@@ -2589,8 +2608,7 @@ macro_rules! core_methods {
             /// 32-bit halves, the pixels' revision, width and height, and
             /// the texel rect `x, y, w, h` in the image's own texels (the
             /// whole image, or the crop a `fit="cover"` made). The side
-            /// list a `quads()` texture quad points at
-            /// (`docs/adr/0025-the-image-is-the-canvas.md`, decision 3).
+            /// list a `quads()` texture quad points at.
             /// Empty on a frame that draws no texture-backed image.
             #[napi]
             pub fn texture_draws(&mut self) -> Vec<f64> {
@@ -2697,14 +2715,13 @@ macro_rules! core_methods {
                 Ok(())
             }
 
-            /// Declare the app's named colours and lengths
-            /// (`docs/adr/0027-tokens-beside-the-theme.md`): `{ colors:
+            /// Declare the app's named colours and lengths: `{ colors:
             /// { peach: '#ffcc99', ink: { light, dark } }, lengths: {
             /// sideW: 132 } }`. Replaces the table whole, so an app whose
             /// lengths change with a viewport tier declares again on
             /// `resize`. A name a theme or metrics role owns is dropped
             /// with a `reserved-token` warning. A colour may be a
-            /// recipe over an earlier one (ADR 0028): `{ from: 'peach',
+            /// recipe over an earlier one: `{ from: 'peach',
             /// ops: [['lift', 0.3]] }`, dropped with `unknown-token` when
             /// its source is not there. Reference one in a prop
             /// as `'$peach'` — `defineTokens` types the names. The raw
@@ -2802,8 +2819,7 @@ macro_rules! core_methods {
                 self.$core().set_inspect(on);
             }
 
-            /// Turns the core's devtools panel on or off
-            /// (`docs/adr/0024`): the event stream, the runtime's facts and
+            /// Turns the core's devtools panel on or off: the event stream, the runtime's facts and
             /// the tree, drawn by the core beside the app's own tree in the
             /// main window — or where `setDevtoolsDock` says — with its
             /// controls and its `Ctrl+Shift+<letter>` chords handled inside
@@ -2853,7 +2869,7 @@ macro_rules! core_methods {
             /// `bg`, which is the window's too and under a dock also fills
             /// the whole window beneath the pane. All zeros before the
             /// first frame, like `env().viewport`; a window's `size()` is
-            /// the reading from before it. Backlog F92.
+            /// the reading from before it.
             #[napi(ts_return_type = "Rect")]
             pub fn host_area(&mut self) -> Json {
                 rect_json(self.$core().host_rect())
@@ -2915,8 +2931,8 @@ macro_rules! core_methods {
             }
 
             /// The declared devtools tab on show, by name, or `null` for
-            /// one of the panel's own, the panel off or popped out (ADR
-            /// 0032). What `frame` / `setView` read once before encoding,
+            /// one of the panel's own, the panel off or popped out.
+            /// What `frame` / `setView` read once before encoding,
             /// so a `<devtoolsTab>`'s function child is called only for
             /// that tab.
             #[napi]
@@ -2925,7 +2941,7 @@ macro_rules! core_methods {
             }
 
             /// The node the panel's tree tab has selected, as a hex key,
-            /// or `null` (ADR 0032, decision 4) — what an inspector in a
+            /// or `null` — what an inspector in a
             /// declared tab reads to say which node it is about.
             #[napi]
             pub fn devtools_selected(&mut self) -> Option<String> {
@@ -2945,8 +2961,8 @@ macro_rules! core_methods {
             }
 
             /// Raises the panel's picker from outside it — an inspector in
-            /// a `<devtoolsTab>` asking "which node?" — or puts it away
-            /// (ADR 0032, decision 4). Picking happens over the app in
+            /// a `<devtoolsTab>` asking "which node?" — or puts it away.
+            /// Picking happens over the app in
             /// the main window: `devtoolsPicked()` is the node under the
             /// pointer while it is up, and the press lands it in
             /// `devtoolsSelected()`. Raised while a declared tab is on
@@ -2967,7 +2983,7 @@ macro_rules! core_methods {
 
             /// Shows the panel's tab named `name` from the app's side —
             /// what the strip's click and `Ctrl+Shift+N` do, for a command
-            /// that jumps to the app's own tab (ADR 0032). `name` is one
+            /// that jumps to the app's own tab. `name` is one
             /// of the panel's own (`facts`, `events`, `tree`, in any case)
             /// or a `<devtoolsTab>`'s, exactly as declared. A declared
             /// name the panel does not list
@@ -3016,7 +3032,7 @@ macro_rules! core_methods {
 
             /// The last finished frame's nodes in tree order, each with what
             /// it is, the label it was opened under, where layout put it
-            /// (in the app's viewport, like `layoutOf`; backlog AR36), and
+            /// (in the app's viewport, like `layoutOf`), and
             /// the declarations that explain the rest — what a tree view
             /// and a node inspector are built from. Empty until
             /// `setInspect(true)` and a frame after it.
@@ -3032,7 +3048,7 @@ macro_rules! core_methods {
             /// `frame` / `setView` report what they dropped through here.
             /// Behind the same `setDiagnostics` gate, and once per name. A
             /// pair under `protocol().menuItem.name` is a key a `<select>`
-            /// option object carried that no menu row reads (backlog RG10).
+            /// option object carried that no menu row reads.
             #[napi(ts_args_type = "props: [string, string][]")]
             pub fn warn_unknown_props(&mut self, props: Vec<Vec<String>>) {
                 for pair in &props {
@@ -3109,8 +3125,8 @@ macro_rules! core_methods {
                 Ok(self.$core().is_pressed(key))
             }
 
-            /// Whether files dragged in from the OS are over `key` (ADR
-            /// 0031) — for drop-dependent layout; the colour swap is the
+            /// Whether files dragged in from the OS are over `key` — for
+            /// drop-dependent layout; the colour swap is the
             /// `dropBg` prop. `key` is either spelling, as for `isHovered`.
             #[napi]
             pub fn is_drop_target(&mut self, key: String) -> Result<bool> {
@@ -3183,7 +3199,7 @@ macro_rules! core_methods {
                 self.$core().focus_visible()
             }
 
-            /// The caret's blink phase — `true` draws it (backlog C35). A
+            /// The caret's blink phase — `true` draws it. A
             /// custom editor reads it in `view` and skips its caret node
             /// on the off phase, keeping the `caret` row on its `line`
             /// either way; the window's clock sets it while a focused
@@ -3196,7 +3212,7 @@ macro_rules! core_methods {
 
             /// Whether there is a caret to blink: a focused `<edit>`'s, or
             /// the `caret` a `line` under the focused sink declares — unless
-            /// the line declares it `caretSolid` (backlog F68), which
+            /// the line declares it `caretSolid`, which
             /// anchors and reads but arms no clock. What the window's
             /// clock is armed on; headless, what a test reads to see that
             /// an idle view asks for no frame.
@@ -3274,8 +3290,7 @@ macro_rules! core_methods {
 
             /// Enters a focus region — a box declared `focusRegion`, named by
             /// the label its `key` prop declares or by the hex key an event
-            /// carried — or the main ring for `null`
-            /// (`docs/adr/0022-focus-regions.md`). Focus lands on what that
+            /// carried — or the main ring for `null`. Focus lands on what that
             /// ring last held if the node is still there, else its
             /// `initialFocus`, else its first stop, and shows.
             ///
@@ -3320,8 +3335,7 @@ macro_rules! core_methods {
             /// `focus`. A label the last frame did not declare is resolved
             /// when the coming frame finishes, so a row that frame declares
             /// for the first time is reachable by name too; one it does not
-            /// declare either is a `label-without-node` warning (backlog
-            /// DX15).
+            /// declare either is a `label-without-node` warning.
             #[napi]
             pub fn reveal(&mut self, key: String) -> Result<()> {
                 let core = self.$core();
@@ -3367,8 +3381,8 @@ macro_rules! core_methods {
             /// The rect the last frame laid `key` out at, `{x, y, w, h}`
             /// in logical viewport px, for a node that declared `onLayout`
             /// — the `layout` event's numbers, read back during the next
-            /// build with no event and no model field (backlog C26 step
-            /// 2); `null` for any other key. Read while building, it
+            /// build with no event and no model field; `null` for any
+            /// other key. Read while building, it
             /// describes the previous frame, like `scrollGeometry`.
             #[napi(ts_return_type = "{ x: number, y: number, w: number, h: number } | null")]
             pub fn layout_of(&mut self, key: String) -> Result<Option<Json>> {
@@ -3383,7 +3397,7 @@ macro_rules! core_methods {
             /// counted across every run the key covers, so a `line` row of
             /// inline runs is one row and a wrapped run as many as it
             /// wrapped to; not the ordinal `line` node a pointer event's
-            /// `line` names (backlog AR30) — or null for a key that drew no
+            /// `line` names — or null for a key that drew no
             /// text. A `role="none"` subtree under the key (a gutter) is
             /// not its text, as the access tree reads it. `x`/`y` are the logical viewport px a
             /// `click` or `drag` event carries, so a custom editor turns the
@@ -3410,7 +3424,7 @@ macro_rules! core_methods {
             /// `custom` (the default), `separator`, `cut`, `copy`,
             /// `paste`, `selectAll` or `lookUp`; the standard ones take
             /// their own wording when `label` is empty, and the core
-            /// performs the ones it can (`docs/adr/0017-selection-as-a-scope.md`).
+            /// performs the ones it can.
             ///
             /// Choosing a row posts `{kind:"menu", role, item}` on `key`
             /// and closes the menu; a press outside it or Escape closes it
@@ -3446,8 +3460,8 @@ macro_rules! core_methods {
             /// A windowed app never needs this — the driver drains it —
             /// but a headless one does: nothing else empties the queue,
             /// and a Copy nobody drains is a copy that never happened.
-            /// Asks for the platform's Open, Save or folder dialog (backlog
-            /// C51): `{mode, multiple, title, filters: [{name, extensions}],
+            /// Asks for the platform's Open, Save or folder dialog:
+            /// `{mode, multiple, title, filters: [{name, extensions}],
             /// directory, fileName, tag}`, every field optional. The answer
             /// is a `{kind:"files", paths, tag}` event — `paths` empty when
             /// the user cancelled. A window's runner shows the dialog; a
@@ -3520,8 +3534,8 @@ macro_rules! core_methods {
 
             /// Puts `text` on the system clipboard — the action a menu's
             /// Copy queues, with a door on it for an `onKey` sink that
-            /// hears the raw `Ctrl-c` and had nowhere to bind it (backlog
-            /// C33). `html` is a second flavour beside the text for the
+            /// hears the raw `Ctrl-c` and had nowhere to bind it.
+            /// `html` is a second flavour beside the text for the
             /// host to offer, never in place of it. A window applies it
             /// at its next drain (after every input and every frame); a
             /// headless `Ctx` hands it out through `takeMenuActions()`.
@@ -3531,7 +3545,7 @@ macro_rules! core_methods {
             }
 
             /// Puts a secret on the system clipboard the way a password
-            /// manager does (backlog F84): a window writes it marked
+            /// manager does: a window writes it marked
             /// concealed and transient — `org.nspasteboard.ConcealedType`
             /// and `TransientType` on macOS, the exclusion formats on
             /// Windows — so no clipboard manager shows or keeps it. A
@@ -3548,7 +3562,7 @@ macro_rules! core_methods {
             /// typing, and a focused `onKey` sink hears it as
             /// `{kind:"text", text, tag}` — with `concealed: true` /
             /// `transient: true` where the pasteboard marked it so
-            /// (backlog F84) — so an app that owns its text inserts a
+            /// — so an app that owns its text inserts a
             /// paste the way it inserts a committed IME string and never
             /// reads the clipboard itself. Headless, the request comes out
             /// of `takeMenuActions()` as `{kind:"paste"}` and the test
@@ -3561,7 +3575,7 @@ macro_rules! core_methods {
             /// Whether a paste asked for is still unanswered: one ask at a
             /// time — a second `requestPaste` while one is out is dropped,
             /// and the `commit` that answers it (an empty one for an empty
-            /// clipboard) lets the next through (backlog AR34).
+            /// clipboard) lets the next through.
             #[napi]
             pub fn awaiting_paste(&mut self) -> bool {
                 self.$core().awaiting_paste()
@@ -3600,8 +3614,7 @@ macro_rules! core_methods {
             }
 
             /// The application menu the frame declared, or null:
-            /// `{revision, menus: [{label, enabled, items}]}`
-            /// (`docs/adr/0018-a-menu-bar-the-app-declares.md`). What a
+            /// `{revision, menus: [{label, enabled, items}]}`. What a
             /// host with a menu bar of its own reads after
             /// `setNativeMenuBar(true)`; `revision` changes only when the
             /// declaration does, so a host rebuilds nothing until it moves.
@@ -3669,7 +3682,7 @@ macro_rules! core_methods {
             /// past the end closes the menu and posts nothing. False when
             /// nothing was taken: no menu was open, or the row cannot be
             /// chosen — disabled, or a separator — in which case the menu
-            /// stays open and nothing is posted (backlog RG9).
+            /// stays open and nothing is posted.
             #[napi]
             pub fn activate_menu_item(&mut self, index: u32) -> Result<bool> {
                 let Some(events) = self.$core().activate_menu_item(index as usize) else {
@@ -3698,8 +3711,7 @@ macro_rules! core_methods {
             /// from:{index, byte}, to:{index, byte}}` event is posted on
             /// the scope — the rows behind that gap are the app's, so the
             /// app answers with `answerSelectionRange`, and the answer is
-            /// what reaches the clipboard
-            /// (`docs/adr/0017-selection-as-a-scope.md`).
+            /// what reaches the clipboard.
             #[napi(ts_return_type = "{ text: string | null, asked: boolean }")]
             pub fn request_copy(&mut self) -> Result<Json> {
                 let (text, asked) = match self.$core().request_copy() {
@@ -3726,8 +3738,7 @@ macro_rules! core_methods {
             /// the window holds — starting either clears the other, so
             /// there is never a choice to make. Null with no selection,
             /// `""` when a selection exists but covers nothing (a press
-            /// that placed both ends together). See
-            /// `docs/adr/0017-selection-as-a-scope.md`.
+            /// that placed both ends together).
             #[napi]
             pub fn selection_text(&mut self) -> Result<Option<String>> {
                 Ok(self.$core().copy_selection())
@@ -3739,7 +3750,7 @@ macro_rules! core_methods {
             /// outside every virtualised row — the `index` a
             /// `selectionrange` ask would name) and `byte` the offset in
             /// that row's own text. Directed, so a Shift-click that kept
-            /// the anchor reads as one (ADR 0029). Null with no text
+            /// the anchor reads as one. Null with no text
             /// selection; a grid's is `cellSelection()`.
             #[napi(ts_return_type = "SelectionEnds | null")]
             pub fn selection_ends(&mut self) -> Result<Json> {
@@ -3756,7 +3767,7 @@ macro_rules! core_methods {
             /// one: the grid's key, `anchor` and `focus` as the drag made
             /// them — each an absolute `line` (`originLine` plus the row,
             /// so a scroll does not move it) and a `col` — and `block`
-            /// for a rectangular one (ADR 0017, decision 4). Null when the
+            /// for a rectangular one. Null when the
             /// window's selection is not a grid's; a text selection's ends
             /// are `selectionEnds()`.
             #[napi(ts_return_type = "CellSelection | null")]
@@ -3770,7 +3781,7 @@ macro_rules! core_methods {
             /// The selection as HTML, carrying the formatting the text
             /// declared — bold, italic, a span's own colour — and *not*
             /// the node's colour, which is the app's theme rather than
-            /// the text's (`docs/adr/0017-selection-as-a-scope.md`).
+            /// the text's.
             /// Null with no text selection. Meant as a second clipboard
             /// flavour beside the plain text, never instead of it.
             #[napi]
@@ -3848,8 +3859,8 @@ macro_rules! core_methods {
             /// no ease asked or ended and no frame asked for: a correction to
             /// the frame the view is building. What `list()` calls when the
             /// rows it measured came out another height than the estimate
-            /// they stood at, so the row under the pointer stays put (RG18,
-            /// backlog C46). A label nothing declared yet is the first
+            /// they stood at, so the row under the pointer stays put.
+            /// A label nothing declared yet is the first
             /// frame, which has nothing to correct.
             #[napi]
             pub fn shift_scroll(&mut self, key: String, drawn: f64, target: f64) {
@@ -3945,8 +3956,8 @@ macro_rules! core_methods {
             /// will — the view that declares the editor — is the app's:
             /// a redraw here re-lowered the *retained* tree, which declares
             /// no editor, and that was the frame the hold expired on when
-            /// the call came from a `dispatch` outside the loop (backlog
-            /// F42; `runWindowed` draws that model before it pumps).
+            /// the call came from a `dispatch` outside the loop
+            /// (`runWindowed` draws that model before it pumps).
             #[napi]
             pub fn set_edit_text(&mut self, key: String, text: String) -> Result<()> {
                 let core = self.$core();
@@ -4083,7 +4094,7 @@ core_methods!(
 /// queued for `pollEvents`, and one whose origin names a loaded extension
 /// is delivered to it here instead — its replies queued in its place,
 /// carrying its origin, window and key, so the host learns who answered
-/// and about what (ADR 0014 decision 6).
+/// and about what.
 ///
 /// This is `Shell::route_events` in the Rust runner and `KuiCtx::absorb`
 /// in the C one — all three the same `Extensions::route`, for the same
@@ -4308,7 +4319,7 @@ fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Resu
 
 /// `KuiWindow`'s `system` option is `setEnv`'s partial over a blank
 /// reading, so what is left out is unknown — "not pinned" to the runner's
-/// merge (backlog F47).
+/// merge.
 #[cfg(test)]
 mod pinned_system_tests {
     use super::*;

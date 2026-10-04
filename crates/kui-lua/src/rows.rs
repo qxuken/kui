@@ -1,9 +1,9 @@
-//! `row_heights(rows, estimate)` for Lua (backlog C46): the core's own
+//! `row_heights(rows, estimate)` for Lua: the core's own
 //! `widgets::RowHeights` as userdata the script keeps between views, as a
 //! Rust app keeps one, and the slicing `widgets::list` does in the three
 //! steps the prelude's `list` drives around the script's `measure`. The
-//! arithmetic — the split prefix sums, the moving estimate, the anchor and
-//! RG18's second one — is the core's; what crosses is a reading in, the
+//! arithmetic — the split prefix sums, the moving estimate and the
+//! anchors — is the core's; what crosses is a reading in, the
 //! rows to measure out, their heights in, and the plan out.
 
 use kui_core::widgets::{ListReading, ListSlice, RowHeights};

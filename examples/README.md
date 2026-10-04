@@ -1,8 +1,7 @@
 # Examples
 
 Every example in the repo lives here, one directory per binding, and
-inside a binding one directory per **kind** of example
-([ADR 0021](../docs/adr/0021-one-subject-per-example.md)):
+inside a binding one directory per **kind** of example:
 
 | | |
 |---|---|
@@ -10,20 +9,20 @@ inside a binding one directory per **kind** of example
 | `widgets/` | one element or one stock widget, in every state it has |
 | `features/` | one cross-cutting behaviour, with exactly the widgets it touches |
 | `tools/` | registered as an example for want of a better slot, and not one: a corpus dump, a header walk, a bench |
-| `tutorial/` | the book's steps ([ADR 0039](../docs/adr/0039-a-tutorial-is-a-sequence.md)): a whole program each, every one the last plus one concept, read in order by [`docs/book`](../docs/book) — and the one kind that runs on the shipped launcher with no harness around it |
+| `tutorial/` | the book's steps: a whole program each, every one the last plus one concept, read in order by [`docs/book`](../docs/book) (published at <https://kui-book.qxuken.dev>) — and the one kind that runs on the shipped launcher with no harness around it |
 
 An example has **one subject**, and the file is named for it with the
 name the repo already uses — the `ELEMENTS` row, the `widgets::` function,
-the `props.md` prop or the ADR's noun. The target name is the file's
+the `props.md` prop or the design record's noun. The target name is the file's
 basename (every example binary in the workspace lands in one flat
 `target/debug/examples/`, so `widgets/tooltip.rs` is `--example tooltip`);
 the `c_` and `lua_` prefixes on the two panel hosts keep them from
 colliding.
 
-The book has a page for every Rust example outside `tutorial/`, with its
-whole source, because the published book is the only place a reader
-without the repository sees one. Adding, renaming or removing one means a
-rerun of `nu scripts/book-examples.nu`; `check` in CI fails until then.
+[The published book](https://kui-book.qxuken.dev) has a page for every
+Rust example outside `tutorial/`, with its whole source, so a reader sees
+one without a checkout. Adding, renaming or removing one means a rerun of
+`nu scripts/book-examples.nu`; `check` in CI fails until then.
 
 The Rust files belong to four different crates but share this one tree,
 so each crate's `Cargo.toml` names its examples with an explicit `path`,
@@ -36,8 +35,7 @@ a target whose source sits outside the package); read them here.
 Every example runs inside [`devtools/`](devtools) (Rust; `node/devtools.tsx`
 is its twin for Node, and `c/common.h` what the C programs share). It owns
 what is not the subject: the window title and the command line — and it
-opens the **core's devtools panel** around the example
-([ADR 0024](../docs/adr/0024-the-devtools-are-the-cores.md)), the same
+opens the **core's devtools panel** around the example, the same
 panel any app gets from `Core::set_devtools(true)`, `win.setDevtools(true)`,
 `kui_set_devtools` or `KUI_DEVTOOLS=1`. Its header is the window's title,
 the frame counter (`n / KUI_SMOKE_FRAMES` when one is set) and an icon
@@ -90,9 +88,9 @@ that is how the drawn bar is seen), `D` moves the panel (left → right →
 bottom → window → off), `N` the tab, `C` clears the stream, `I` moves the keyboard
 into the panel and back, `P` picks.
 
-The panel is a focus region (ADR 0022): the example's Tab ring never
+The panel is a focus region: the example's Tab ring never
 enters it, and inside it Tab walks the panel's own controls. While it is
-docked the core wraps the example's root (ADR 0024, decision 2) — the
+docked the core wraps the example's root — the
 example's keys do not move for it, and its `configure_root` still lands
 where it did. `--dock off` draws nothing and keeps the chords live, which
 is what the accessibility audit runs under.
@@ -156,17 +154,17 @@ ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
 | [`button.rs`](rust/widgets/button.rs) | The stock button in every state: rest, hover, pressed, the ring, `accent`, `disabled`; the access rows; a button in the app's own colour off `button_palette` | ✓ | |
 | [`edit.rs`](rust/widgets/edit.rs) | The `edit` element: a multiline document and the single-line `text_input`, `changed` and `submit`, the text read back | ✓ | |
 | [`text.rs`](rust/widgets/text.rs) | The `text` element: spans shaped as one paragraph, decorations, families, `nowrap`, `max_lines` + `ellipsis`, line height | | |
-| [`image.rs`](rust/widgets/image.rs) | The `image` element: Fit sizing, kept aspect, rounded corners; a stream replaced every frame at the size `layout.scale` says (`update_image`), `nearest` beside `linear`, `contain` / `cover` (ADR 0025) | ✓ | |
+| [`image.rs`](rust/widgets/image.rs) | The `image` element: Fit sizing, kept aspect, rounded corners; a stream replaced every frame at the size `layout.scale` says (`update_image`), `nearest` beside `linear`, `contain` / `cover` | ✓ | |
 | [`line.rs`](rust/widgets/line.rs) | The `line` element: a mind map whose links are curves between floats, brightening by transition | | |
 | [`polygon.rs`](rust/widgets/polygon.rs) | The `polygon` element: a pie whose wedges light under a hover box, arrowheads on a graph's links, the area under a sparkline, a concave star | ✓ | |
 | [`fragment.rs`](rust/widgets/fragment.rs) | The `fragment` element: boxes a WGSL function paints — a gradient, a ring, a shimmer, a card with children; a heatmap reading a data texture the app replaces every frame and a ripple over an atlas-backed icon, the `image` input (V1) | ✓ | |
 | [`cells.rs`](rust/widgets/cells.rs) | The `cells` element: a terminal grid with a cursor and an `origin_line`, selecting in cells, copy trimming blanks, the screen scrolled under a selection, a box-drawn table drawn from the cell box | ✓ | |
 | [`virtual_list.rs`](rust/widgets/virtual_list.rs) | `widgets::uniform_list`, the same list by hand (`--by-hand`), and `widgets::list` for rows of no fixed height (`--variable`) | ✓ every mode | |
 | [`context_menu.rs`](rust/widgets/context_menu.rs) | Who gets a context menu: the stock one over a selectable scope, the app's own over a row, the editor's four, nothing over a plain box | ✓ | |
-| [`controls.rs`](rust/widgets/controls.rs) | The stock controls (ADR 0034): a switch, checkboxes under a select-all that goes mixed, a radio group whose arrows move the choice, and two sliders whose `change` events the app stores — one in steps of 5, one in tenths with a `value_text` | ✓ the mixed box, the switch disabling the rows, the arrows, a press, Right, PageDown, End and a tenth down | drag a slider; Tab through them |
+| [`controls.rs`](rust/widgets/controls.rs) | The stock controls: a switch, checkboxes under a select-all that goes mixed, a radio group whose arrows move the choice, and two sliders whose `change` events the app stores — one in steps of 5, one in tenths with a `value_text` | ✓ the mixed box, the switch disabling the rows, the arrows, a press, Right, PageDown, End and a tenth down | drag a slider; Tab through them |
 | [`select.rs`](rust/widgets/select.rs) | `widgets::select` over labels and `select_items` over `MenuItem`s: the field opens the core's own menu under itself, a choice is one `menu` event on the field, the app holds no open state | ✓ | |
-| [`table.rs`](rust/widgets/table.rs) | The table (ADR 0033): `NodeSpec::table()` is a column whose rows' cells line up, each column as wide as its widest cell and the `grow` one taking the rest — no width picked by hand, nothing measured; the rows are clickable rows with a hover wash and a selected fill, a number right-aligned in its column, the header's cells sorting by the column pressed | ✓ the alignment, a row's click, a header's sort | |
-| [`menu_bar.rs`](rust/widgets/menu_bar.rs) | The application menu bar the frame declares (ADR 0018): a `checked` row, an `enabled` one, and the same `menu` event whoever showed it | ✓ | |
+| [`table.rs`](rust/widgets/table.rs) | The table: `NodeSpec::table()` is a column whose rows' cells line up, each column as wide as its widest cell and the `grow` one taking the rest — no width picked by hand, nothing measured; the rows are clickable rows with a hover wash and a selected fill, a number right-aligned in its column, the header's cells sorting by the column pressed | ✓ the alignment, a row's click, a header's sort | |
+| [`menu_bar.rs`](rust/widgets/menu_bar.rs) | The application menu bar the frame declares: a `checked` row, an `enabled` one, and the same `menu` event whoever showed it | ✓ | |
 | [`tooltip.rs`](rust/widgets/tooltip.rs) | The tooltip three ways: the view's float under `is_hovered`, the `tooltip` prop that is also the accessible description, `tooltip_with` around a legend; `fit` near the edge | ✓ | |
 | [`titlebar.rs`](rust/widgets/titlebar.rs) | Custom chrome: `titlebar`, `titlebar_with` (tabs in the strip), `window_buttons`, the inset past the OS's own controls, the window facts read back | | drag the strip, double-click it |
 
@@ -175,20 +173,20 @@ ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
 | Example | Shows | Headless | By hand |
 |---|---|---|---|
 | [`hover.rs`](rust/features/hover.rs) | Hover declared, not tracked: `hover_bg`, `hoverable` + `is_hovered`, `hover_group` lighting siblings together, `on_hover` as enter/leave events | ✓ | |
-| [`drop.rs`](rust/features/drop.rs) | A drop zone (ADR 0031): `on_drop` as `enter`/`move`/`leave`/`drop` events with the paths and the point, `drop_bg` lighting the zone, a button inside it being the zone's, the banner shown on `enter` looked past, a box that is no zone refusing the release; "Open…" asking for the platform's Open dialog, whose `files` answer lands in the same list | ✓ | drag a file from the Finder: the badge over the zone, none off it, the icon sliding home; Open… shows the sheet |
-| [`focus.rs`](rust/features/focus.rs) | Keyboard focus as data (ADR 0002): the Tab ring in tree order, who is in it and who is not, Enter/Space, the ring vs a click, `focus_bg`, the `focus` / `blur` / `focus_next` verbs | ✓ | |
+| [`drop.rs`](rust/features/drop.rs) | A drop zone: `on_drop` as `enter`/`move`/`leave`/`drop` events with the paths and the point, `drop_bg` lighting the zone, a button inside it being the zone's, the banner shown on `enter` looked past, a box that is no zone refusing the release; "Open…" asking for the platform's Open dialog, whose `files` answer lands in the same list | ✓ | drag a file from the Finder: the badge over the zone, none off it, the icon sliding home; Open… shows the sheet |
+| [`focus.rs`](rust/features/focus.rs) | Keyboard focus as data: the Tab ring in tree order, who is in it and who is not, Enter/Space, the ring vs a click, `focus_bg`, the `focus` / `blur` / `focus_next` verbs | ✓ | |
 | [`drag.rs`](rust/features/drag.rs) | `on_drag`: start/move/end with the displacement since the press — a slider by travel (drawn by hand: the drag is the subject; an app's is `widgets::slider`), a card moved by its float offset, the pointer captured until the release | ✓ | |
 | [`spring.rs`](rust/features/spring.rs) | A spring tuned by eye: sliders for its duration and `bounce`, buttons for the four named bounces (`smooth`, `snappy`, `spring`, `bouncy`), and a bar and a racer springing across a stage with them — mid-flight clicks turn them around with their momentum | ✓ smooth stops at its width, bouncy carries past it, a retarget keeps its momentum, the sliders store what they propose | tune by eye |
 | [`transition.rs`](rust/features/transition.rs) | Motion as data: `transition`, every `easing` racing (and a spring with a `bounce` of its own), `slide` between anchors, `keyframes` with `repeat` and `delay` as a chase light | ✓ | |
-| [`selection.rs`](rust/features/selection.rs) | Selection as a scope (ADR 0017) over `text`, spans, `cells` and `edit`: one selection per window, read back | ✓ | force-click a word for Look Up |
+| [`selection.rs`](rust/features/selection.rs) | Selection as a scope over `text`, spans, `cells` and `edit`: one selection per window, read back | ✓ | force-click a word for Look Up |
 | [`clipboard.rs`](rust/features/clipboard.rs) | The clipboard: every way onto the host's one queue — the runner's chords in an `edit`, a `selectable` scope's Copy with the HTML beside, a virtual list's `selectionrange` ask answered from the app's rows, a key sink's own `y`/`p` through `set_clipboard` / `request_paste` — and a paste landing as typing or as the sink's `text` event | ✓ every path | ⌘C then `pbpaste`; `pbcopy` then `p` |
 | [`audio.rs`](rust/features/audio.rs) | Sound as data: `click_sound`, `hover_sound`, a looped `audio` node declared while on; the dock's `audio` row is the device's side | ✓ the queued commands | the device closes a while after the last sound |
 | [`enter_exit.rs`](rust/features/enter_exit.rs) | `enter` / `exit`: toasts that slide in and back out, the departing copy the core keeps | | Windows: drag the title bar mid-spring (W3) |
-| [`exit_budget.rs`](rust/features/exit_budget.rs) | The exit budget at its boundary (ADR 0012): whole or not at all, the newest outranks the old, a virtual list keeps the picture small | | the boundary watch |
-| [`popup.rs`](rust/features/popup.rs) | `WindowKind::Popup`: a combobox whose list is taller than the window; `--dock off` by default so the frame stays small | | press in the owner, drag into the popup, release on an item (ADR 0009) |
+| [`exit_budget.rs`](rust/features/exit_budget.rs) | The exit budget at its boundary: whole or not at all, the newest outranks the old, a virtual list keeps the picture small | | the boundary watch |
+| [`popup.rs`](rust/features/popup.rs) | `WindowKind::Popup`: a combobox whose list is taller than the window; `--dock off` by default so the frame stays small | | press in the owner, drag into the popup, release on an item |
 | [`theme.rs`](rust/features/theme.rs) | The token reference: every `Theme` role as a swatch over every stock widget that reads it; the devtools' base and accent icons are the switch | | |
-| [`modal.rs`](rust/features/modal.rs) | `modal` (ADR 0003): a dialog over a form opening on its `initial_focus`, Tab confined to it, a confirm nested inside it that makes the dialog inert, Escape routed by tag and answered by the app, focus restored to the opener | ✓ | |
-| [`devtools_tab.rs`](rust/features/devtools_tab.rs) | A tab of the app's own in the devtools panel (ADR 0032), in a tree-sitter inspector's shape: the source coloured by highlight group from a hand-written syntax tree, `devtools_tab_with` drawing the tree as an Inspector beside facts/events/tree — lazily, the closure runs only while the tab is on show — over the panel's tab body; hover both ways (a row lights its node's tokens, a token lights its path and scrolls the tab to it), a row's click selecting the token in the panel's tree, the panel's picker raised from the tab, the page's own button jumping to the tab (`set_devtools_tab`) | ✓ the laziness, the layout, both hovers, the doors, the pick, the jump | Ctrl+Shift+N to the Inspector, or the page's button; hover the source and the tree |
+| [`modal.rs`](rust/features/modal.rs) | `modal`: a dialog over a form opening on its `initial_focus`, Tab confined to it, a confirm nested inside it that makes the dialog inert, Escape routed by tag and answered by the app, focus restored to the opener | ✓ | |
+| [`devtools_tab.rs`](rust/features/devtools_tab.rs) | A tab of the app's own in the devtools panel, in a tree-sitter inspector's shape: the source coloured by highlight group from a hand-written syntax tree, `devtools_tab_with` drawing the tree as an Inspector beside facts/events/tree — lazily, the closure runs only while the tab is on show — over the panel's tab body; hover both ways (a row lights its node's tokens, a token lights its path and scrolls the tab to it), a row's click selecting the token in the panel's tree, the panel's picker raised from the tab, the page's own button jumping to the tab (`set_devtools_tab`) | ✓ the laziness, the layout, both hovers, the doors, the pick, the jump | Ctrl+Shift+N to the Inspector, or the page's button; hover the source and the tree |
 | [`metrics.rs`](rust/features/metrics.rs) | The palette's other axis (T2): the stock set, `compact` and a scaled set switched by a click, the stock widgets rebuilt from each, and a card of the app's own that reads `ui.metrics()` for its radius and padding | ✓ | |
 | [`align.rs`](rust/features/align.rs) | Where the free space goes and what lines up (C13): a track of chips under the six main-axis alignments the buttons pick, the three spreads among them; a reading in three sizes at the top and on its baseline; and a `grow` card that keeps 16:9 beside squares sized from their height (C14) | ✓ the spreads' ends, the baselines, the ratios | resize the window: the card keeps its shape |
 | [`accessibility.rs`](rust/features/accessibility.rs) | Every accessibility prop in one window, the fixture the platform audit drives; `--dock off` by default | | `scripts/ax-audit.swift` (106 checks) |
@@ -212,7 +210,7 @@ library the hosts link.
 | Example | Shows | Headless |
 |---|---|---|
 | [`apps/counter.c`](c/apps/counter.c) | The counter from C, the same shape as the other three: kui as a plain library under `kui_run` | ✓ `counter --headless`, the Rosetta drive |
-| [`features/slots/panel.c`](c/features/slots/panel.c) | C as the *extension*: a `dlopen`ed plugin filling the slot a host declares (ADR 0014), the same panel as the Lua one | through its hosts |
+| [`features/slots/panel.c`](c/features/slots/panel.c) | C as the *extension*: a `dlopen`ed plugin filling the slot a host declares, the same panel as the Lua one | through its hosts |
 | [`features/slots/panel.rs`](c/features/slots/panel.rs) | The Rust host of that plugin: `cargo run -p kui-ffi --example c_panel` | ✓ `c_panel --headless` |
 | [`features/slots/host.c`](c/features/slots/host.c) | C on both sides: a C host loading the same plugin through `kui_ctx_add_extension` | ✓ `host --headless` |
 | [`tools/surface.c`](c/tools/surface.c) | The header walk: every prototype in `kui.h` called once and checked — the FFI self-test, not an example | ✓ `surface` |
@@ -261,12 +259,12 @@ needs it; the corpus already proves the four bindings lower alike.
 | [`features/relaunch.tsx`](node/features/relaunch.tsx) | A second `runWindowed` in one process: the window closes and the same app reopens under the other chrome, on the event loop the first runner parked (F58) — the harness's `after` hook | **by hand:** press the button; under `KUI_SMOKE_FRAMES` the round passes only if the second window opened |
 | [`features/slide.tsx`](node/features/slide.tsx) | `slide`: a canvas of floats and `line` connectors that eases everything or nothing, panned by an `onDrag` root — the by-hand check for F15 | ✓ the model's pan; **by hand:** drag the empty canvas and watch it while the button is down |
 | [`features/drop.tsx`](node/features/drop.tsx) | A drop zone from Node, the twin of `rust/features/drop.rs`: `onDrop` and `dropBg` as props, the `drop` message's four phases in `update`, `ctx.dragFiles` / `dropFiles` / `dragCancel` as the headless drive and `dropTarget()` / `isDropTarget` as what it reads; "Open…" through `requestFiles`, answered headlessly with `takeFileRequests` / `answerFiles` | ✓ every path |
-| [`features/devtools_tab.tsx`](node/features/devtools_tab.tsx) | `<devtoolsTab>` with a function child (ADR 0032), the twin of `rust/features/devtools_tab.rs`: the source coloured by highlight group, the syntax tree as the app's Inspector tab, the function called only while the tab is on show (once a view — a redraw re-lowers the stored stream), hover both ways through `onHover` tags, `setDevtoolsSelected` / `setDevtoolsPick` / `setDevtoolsTab` from `update` | ✓ the laziness, the layout, both hovers, the doors, the pick, the jump |
+| [`features/devtools_tab.tsx`](node/features/devtools_tab.tsx) | `<devtoolsTab>` with a function child, the twin of `rust/features/devtools_tab.rs`: the source coloured by highlight group, the syntax tree as the app's Inspector tab, the function called only while the tab is on show (once a view — a redraw re-lowers the stored stream), hover both ways through `onHover` tags, `setDevtoolsSelected` / `setDevtoolsPick` / `setDevtoolsTab` from `update` | ✓ the laziness, the layout, both hovers, the doors, the pick, the jump |
 | [`features/clipboard.tsx`](node/features/clipboard.tsx) | The clipboard from Node, the twin of `rust/features/clipboard.rs`: `takeMenuActions()` as the queue a host drains, `answerSelectionRange` for a virtual list's ask, `setClipboard` / `requestPaste` from `update` with the surface in hand, the paste as a `text` message | ✓ every path |
 | [`widgets/virtual_list.tsx`](node/widgets/virtual_list.tsx) | `uniformList`: 10,000 rows costing a screenful, re-sliced on the wheel with no model change; `list` over `RowHeights` for rows of no fixed height (`--variable`, and in the headless drive) | ✓ |
 | [`widgets/select.tsx`](node/widgets/select.tsx) | `<select>` over labels and over menu items with an `id`: the field opens the core's menu under itself, a choice is one `menu` message, the app holds no open state | ✓ |
 | [`widgets/controls.tsx`](node/widgets/controls.tsx) | `<switch>`, `<checkbox>` with `mixed`, `<radioGroup>` of `<radio>`s and `<slider>`s whose `ChangeMsg` the `update` stores — the twin of `rust/widgets/controls.rs` | ✓ |
-| [`widgets/table.tsx`](node/widgets/table.tsx) | `<box dir="table">` (ADR 0033): rows whose cells line up, each column as wide as its widest cell and the `grow` one taking the rest; clickable rows, a right-aligned number, headers that sort | ✓ |
+| [`widgets/table.tsx`](node/widgets/table.tsx) | `<box dir="table">`: rows whose cells line up, each column as wide as its widest cell and the `grow` one taking the rest; clickable rows, a right-aligned number, headers that sort | ✓ |
 | [`tools/types.tsx`](node/tools/types.tsx) | The shipped `.d.ts` exercised: a typed drive over every app-facing type, run as code under `--headless` | ✓ |
 | [`tools/bench.mjs`](node/tools/bench.mjs) | The JSX/Node side of `lua/tools/bench.rs` | |
 | [`tools/smoke.mjs`](node/tools/smoke.mjs) | `npm run smoke`: every example in package.json's `kui.headless` roster, driven `--headless` in turn — the one list the shell round reads too | |

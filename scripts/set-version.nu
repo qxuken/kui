@@ -47,10 +47,10 @@ def main [version: string] {
     # The book's setup page spells out the dependency line a reader copies
     # into their own Cargo.toml. Nothing wrote it, so the alpha.28 book asked
     # for alpha.27; the book is published from the release tag, so the line
-    # has to name the version that tag publishes. The README's Releases
-    # section shows the same line. Either spelling, `"<v>"` or
-    # `{ version = "<v>", ... }`.
-    for page in [docs/book/src/setup.md README.md] {
+    # has to name the version that tag publishes. README.md's Install
+    # section and docs/releasing.md show the same line. Either spelling,
+    # `"<v>"` or `{ version = "<v>", ... }`.
+    for page in [docs/book/src/setup.md README.md docs/releasing.md] {
         edit-lines $page {|l|
             $l | str replace -r '^(kui-native = (?:\{ version = )?)"[^"]+"' $'${1}"($ver)"'
         }

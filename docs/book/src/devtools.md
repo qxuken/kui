@@ -49,13 +49,15 @@ The ones you will meet first:
 | `item-outside-container` | a `radio` with no `radio_group` above it | wrap the items |
 | `exit-budget` | one frame removed more than 4096 nodes declaring `exit` | that removal did not animate; remove a parent instead of its children |
 
-The full list is in `docs/props.md`, under *Warnings*. Each
+The full list is the Warnings table in
+[`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#warnings). Each
 `(code, node)` pair is reported once, so a warning in a view that runs
 every frame does not flood the log.
 
 ## Where this is decided
 
-- The devtools are the core's, so every binding has the same panel:
-  ADR 0024.
+- The panel is drawn by the core, not by the window runner, so a Node,
+  Lua or C app gets the same one, and `KUI_DEVTOOLS=1` works for all of
+  them.
 - Your app can add a tab of its own:
   [`features/devtools_tab.rs`](examples/features/devtools_tab.md).

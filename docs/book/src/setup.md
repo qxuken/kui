@@ -19,31 +19,34 @@ alpha for now, and a version requirement does not hold an alpha still:
 and `Cargo.lock` is what keeps the version you tested. Write
 `"=0.1.0-alpha.33"` to pin it in the manifest.
 
-Versions before 0.1.0-alpha.33 are on kui's own Forgejo registry only. A
-project that names it — `[registries.drydock9]` with index
-`sparse+https://drydock9.qxuken.dev/api/packages/qxuken/cargo/` and
-`registry = "drydock9"` on the dependency — finds every version there
-too, but from 0.1.0-alpha.34 on a crate taken from it resolves its
-`kui-*` siblings from crates.io, so naming two `kui-*` crates from it
-puts two `kui_core`s in the build. Drop the `registry` key: that is the
-whole move to crates.io.
 `kui-native` is the batteries-included crate: a window, a GPU renderer,
 the stock widgets and the `App` trait. Everything the book uses is
-reachable from it.
+reachable from it, and its API reference is on
+[docs.rs](https://docs.rs/kui-native). This book is the path in; docs.rs
+is the map once you know the names.
+
+Versions before 0.1.0-alpha.33 are on kui's own Forgejo registry only. A
+project that still names that registry (`registry = "drydock9"` on the
+dependency) should drop the key: from 0.1.0-alpha.34 on, a crate taken
+from there resolves its `kui-*` siblings from crates.io, so naming two
+`kui-*` crates from it puts two `kui_core`s in one build.
 
 ## Your project
 
-The book's programs are examples in the kui repository, which is not
-public, so each one is complete on the page: a chapter's code block
-shows the lines it is about, and the eye icon in its corner reveals the
-rest of the file. Copy the whole program into `src/main.rs` of a
+The book's programs are the files under
+[`examples/rust/tutorial`](https://github.com/qxuken/kui/tree/main/examples/rust/tutorial)
+in the kui repository, and each is complete on the page: a chapter's code
+block shows the lines it is about, and the eye icon in its corner reveals
+the rest of the file. Copy the whole program into `src/main.rs` of a
 project set up as above, and run it:
 
 ```bash
 cargo run
 ```
 
-Every chapter's *Run it* line is spelled that way. The testing
+Every chapter's *Run it* line is spelled that way. From a checkout of
+the repository the same program is `cargo run -p kui-native --example
+tutorial_01_hello`, with each file's own number and name. The testing
 chapter's program carries its tests, and `cargo test` runs them.
 
 ## Linux
@@ -70,8 +73,9 @@ while you read. Chapter 12 walks through its tabs.
 
 ## Building this book
 
-The book is built with [mdBook](https://rust-lang.github.io/mdBook/),
-from `docs/book` in the repository:
+The published copy is at <https://kui-book.qxuken.dev>. It is built
+with [mdBook](https://rust-lang.github.io/mdBook/) from `docs/book` in a
+checkout of [the repository](https://github.com/qxuken/kui):
 
 ```bash
 cargo install mdbook

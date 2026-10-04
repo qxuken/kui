@@ -1,8 +1,8 @@
-//! The flat binary IR path: JS encodes the frame as one instruction stream
-//! (a Float64Array — opcodes, prop ids, and values are all f64) plus a UTF-8
-//! string table (a Uint8Array), and this module lowers it straight into the
-//! core. One boundary crossing, zero per-node napi calls, strings borrowed
-//! from the table — no `serde_json::Value` tree ever exists.
+//! The flat binary frame path: JS encodes the frame as one instruction stream
+//! (a Float64Array of opcodes, prop ids and values) plus a UTF-8 string table
+//! (a Uint8Array), and this module lowers it straight into the core. One
+//! boundary crossing, no per-node napi calls, strings borrowed from the
+//! table, and no `serde_json::Value` tree in between.
 //!
 //! The prop surface is defined once in `schema.rs`; this decoder reads
 //! generic props by their schema kind and applies them through the shared
@@ -47,7 +47,7 @@ use crate::{Result, err, value_of};
 /// for the other direction, an encoder that emits one to an addon without
 /// the op).
 /// v6: `<cells originLine>` — the absolute line a grid's row 0 is, so a
-/// terminal's selection survives a scroll (ADR 0017, decision 4). A slot
+/// terminal's selection survives a scroll. A slot
 /// in the middle of the cells op rather than a new op, so the bump is what
 /// keeps an older encoder's stream from being read as if it had one.
 /// v7: a `windows` entry's `activates` slot is 0/1/2, 2 for "unsaid" — the
@@ -55,37 +55,37 @@ use crate::{Result, err, value_of};
 /// not by the encoder; and `measureText` sends its text as one encoded
 /// element (`measure_binary`) rather than a JSON tree.
 /// v8: `image` carries its `sampling` and `fit` rows as two slots before
-/// its props, and `polygon` is a new op (ADR 0025) — the slots in the
+/// its props, and `polygon` is a new op — the slots in the
 /// middle of an existing op are what the bump is for.
 /// v9: `fragment` carries its `image` handle as two slots after `src`
-/// (backlog V1, ADR 0025 decision 7) — slots in the middle of an op again.
-/// v10: a prop id may carry `TOKEN_TAG` (ADR 0027).
-/// v11: a `$name` reaches the three slots it could not (backlog AR14): a
+/// — slots in the middle of an op again.
+/// v10: a prop id may carry `TOKEN_TAG`.
+/// v11: a `$name` reaches the three slots it could not: a
 /// tagged `min` row is one slot, the index; a `line`'s flags word bit 2
 /// says its width slot is a length index; a `cells`' cursor-shape slot
 /// bit 4 says its colour slot is a colour index. And a keyframe stop or
 /// an entrance resolves a `$name` in the core — no wire change, but the
-/// same release. Also (backlog B1a): the edit op's flags word bit 4 says
+/// same release. Also: the edit op's flags word bit 4 says
 /// the op is the stock field (`<input>`, `widgets::text_input`) and its
 /// prop list is empty; and `tooltip` is a new op, the node form.
 /// v12: the root's `windows` list rides as one JSON string, read entry by
-/// entry through `WindowConfig::from_value` (backlog AR43) — the ten-slot
+/// entry through `WindowConfig::from_value` — the ten-slot
 /// stanza v7 shaped is gone, and with it the encoder's own copy of the
 /// kind list and of what a zero size means.
-/// v14: `devtoolsTab` is a new op (ADR 0032): name, label, slot (or
+/// v14: `devtoolsTab` is a new op: name, label, slot (or
 /// none), then a flags word whose bit 1 says the content follows to a
 /// CLOSE — the encoder's function child, called only for the tab the
 /// driver read as on show. A new op, so the bump is for an encoder that
 /// emits one to an addon without it.
-/// v15: `select` is a new op (backlog F73): label, the options as one
+/// v15: `select` is a new op: label, the options as one
 /// JSON string read by `MenuItem::options_from_value`, then the current
 /// index plus one (0 = none). No prop list: the field reads no row but
 /// its own. A new op, so the bump is for an encoder that emits one to an
 /// addon without it.
 /// v16: the float stanza's last slot, `fit` as 0 or 1 until now, is a
-/// flags word — 1 `fit`, 2 `clip` (backlog F90) — so an encoder that
+/// flags word — 1 `fit`, 2 `clip` — so an encoder that
 /// sets 2 to an addon reading `== 1` would lose `fit` with the clip.
-/// v13: an underline's own colour and shape (backlog K4). A span carries
+/// v13: an underline's own colour and shape. A span carries
 /// a third colour slot, the underline's, with flags bits 256 (has one),
 /// 512 (it is a token index), 1024 (wavy) and 2048 (dotted); a cell
 /// carries a fourth slot, its underline colour (0 = fg), and the JSX
@@ -93,11 +93,11 @@ use crate::{Result, err, value_of};
 /// ops, which is what the bump is for; `underlineColor` and
 /// `underlineStyle` on a `<text>` are ordinary schema rows.
 /// v17: a span carries a fifth slot after its underline colour, its
-/// background's radius in logical px (backlog F101), 0 for the square
+/// background's radius in logical px, 0 for the square
 /// background every span had. A slot in the middle of an op again.
-/// v18: `family` is a strref, a stock name or an installed family's
-/// (ADR 0037), where it was the index into `schema::FAMILIES`.
-/// v19: size expressions (backlog F109). A sizing, a min or a max whose
+/// v18: `family` is a strref, a stock name or an installed family's,
+/// where it was the index into `schema::FAMILIES`.
+/// v19: size expressions. A sizing, a min or a max whose
 /// mode is `SIZE_MODE_CALC` (4) is followed by a strref, the spelling,
 /// and one whose mode is `SIZE_MODE_TREE` (5) by a count and the
 /// expression in prefix code (`calc::from_code`); `maxWidth` and
@@ -105,8 +105,7 @@ use crate::{Result, err, value_of};
 pub const VERSION: u32 = 19;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
-/// token index rather than a value (`docs/adr/0027-tokens-beside-the-theme.md`,
-/// decision 4): `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
+/// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
 /// `TokenRef::index` gives, and `read_props` resolves it through the
 /// core's lookup before the schema applies it. Ids are small, so the bit
 /// is free; a reference costs the wire nothing and the decoder one mask.
@@ -135,14 +134,14 @@ pub const OP_POLYGON: u32 = 19;
 pub const OP_TOOLTIP: u32 = 20;
 pub const OP_DEVTOOLS_TAB: u32 = 21;
 pub const OP_SELECT: u32 = 22;
-/// A stock toggle (ADR 0034): the kind — 0 checkbox, 1 radio, 2 switch —
+/// A stock toggle: the kind — 0 checkbox, 1 radio, 2 switch —
 /// then the button's layout: text, key?, click payload?, a prop list of
 /// the rows it admits.
 pub const OP_TOGGLE: u32 = 23;
-/// The stock slider (ADR 0034): label, key?, a prop list of the rows it
+/// The stock slider: label, key?, a prop list of the rows it
 /// admits.
 pub const OP_SLIDER: u32 = 24;
-/// A radio group (ADR 0034): label, a prop list of box rows, children
+/// A radio group: label, a prop list of box rows, children
 /// until the CLOSE op.
 pub const OP_RADIO_GROUP: u32 = 25;
 
@@ -408,8 +407,8 @@ fn read_props(r: &mut Reader<'_>, refs: &mut Refs<'_>) -> Result<PropsOut> {
     read_props_over(r, PropsOut::new(), refs)
 }
 
-/// What a token index resolves through while a prop list is read (ADR
-/// 0027): the core's lookup for the window being lowered, and the indices
+/// What a token index resolves through while a prop list is read: the
+/// core's lookup for the window being lowered, and the indices
 /// that named nothing in it. The encoder writes an index only for a name
 /// it resolved against *its* map, but the map is the surface's and the
 /// table is a core's — `setTokens` reaches the main window's core, and a
@@ -419,7 +418,7 @@ struct Refs<'a> {
     look: TokenLookup<'a>,
     missed: Vec<(TokenKind, u32)>,
     /// The by-name half, for a keyframe stop or an entrance, which cross
-    /// as plain data with the `$name` still in them (AR14).
+    /// as plain data with the `$name` still in them.
     names: kui_core::NameRefs<'a>,
 }
 
@@ -428,7 +427,7 @@ struct Refs<'a> {
 struct Missed {
     by_index: Vec<(TokenKind, u32)>,
     by_name: Vec<kui_core::TokenError>,
-    /// `family` names nothing installed or loaded matched (ADR 0037).
+    /// `family` names nothing installed or loaded matched.
     families: Vec<String>,
 }
 
@@ -815,8 +814,7 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
 /// colour, 8 underline, 16 strikethrough, 32 has bg, 64 the colour is a
 /// token index, 128 the bg is, 256 has an underline colour, 512 it is a
 /// token index, 1024 the underline is wavy, 2048 dotted) with the three
-/// colours (v13, backlog K4), then the background's radius (v17, backlog
-/// F101).
+/// colours (v13), then the background's radius (v17).
 fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a>>> {
     let nspans = r.u()? as usize;
     let mut spans = Vec::with_capacity(nspans);

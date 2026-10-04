@@ -51,8 +51,9 @@ channel into `on_event` — the model *is* the channel.
 `ui.window_title(..)` is said every frame, and applied when it changes.
 `ui.window_command(WindowCommand::Close(id))` asks the runner to close
 a window; `ui.env().window.id` is this one's id. A second window is
-declared the same way, with `ui.window(name, ..)` — the README's
-multi-window section shows it.
+declared the same way, with `ui.window(name, ..)`;
+[`docs/design.md`](https://github.com/qxuken/kui/blob/main/docs/design.md) has the multi-window rules under
+*Window chrome is data*.
 
 ## The messages
 
@@ -70,9 +71,10 @@ multi-window section shows it.
 
 ## Where this is decided
 
-- The handler gets its window: ADR 0036.
+- `on_event_with`, `setup` and `teardown`:
+  [`kui_native::App`](https://docs.rs/kui-native/latest/kui_native/trait.App.html).
 - Effects as data, the Node driver's version of the same idea:
-  ADR 0013.
+  `withEffects` in the [Node package](https://github.com/qxuken/kui/blob/main/packages/kui/README.md).
 - The reference examples:
   [`features/waker.rs`](examples/features/waker.md),
   [`features/clipboard.rs`](examples/features/clipboard.md).

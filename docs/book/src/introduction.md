@@ -54,7 +54,8 @@ test with no window, and — with the same tree — from Node, Lua or C.
 ## How this book works
 
 Each chapter adds one idea and ends with a program you can run. The
-programs live in the kui repository under `examples/rust/tutorial/`,
+programs live in [the kui repository](https://github.com/qxuken/kui)
+under `examples/rust/tutorial/`,
 and the code you read here is pulled from those files, so it cannot go
 stale. A code block shows the lines the chapter is about; the eye icon
 in its corner reveals the rest of the file.
@@ -72,6 +73,8 @@ Someone who knows Rust and has not used kui. You should be comfortable
 with closures and enums. You do not need to know any other UI library.
 
 If you already know what you want and need its name, the reference is a
-better door: `docs/howto.md` answers "how do I…"
-questions and `docs/props.md` lists every prop and
-event.
+better door. [docs.rs/kui-native](https://docs.rs/kui-native) is the API
+reference, [`docs/howto.md`](https://github.com/qxuken/kui/blob/main/docs/howto.md)
+answers "how do I…" questions, and
+[`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md)
+lists every prop and event.

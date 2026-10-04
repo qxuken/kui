@@ -1,89 +1,279 @@
-//! Lua extensions for kui. A script defines `view(env, slot)` returning a plain
-//! table tree (built with the injected `row`/`column`/`text`/`button`
-//! prelude) and optionally `on_event(ev)`, whose return value is its replies
-//! to the host; `slot` says which slot the host is filling (`slot.name`,
-//! `slot.namespace`, `slot.params`, `slot.key`; ADR 0014), and a `slots`
-//! global lists the names it fills. `env` carries host facts
-//! (refresh rate, focus, viewport), queries (`env.edit_text(key)`,
-//! `env.is_focused(key)`, `env.is_hovered(key)`, `env.is_pressed(key)`,
-//! `env.measure_text(s, opts, max_w)`), focus verbs (`env.set_focus(key)`,
-//! `env.blur()`, `env.focus_next()`, `env.focus_prev()`),
-//! `env.announce(text, politeness)` and scroll calls
-//! (`env.reveal(key)`, `env.scroll_offset(key)`, `env.set_scroll(key, x, y)`,
-//! `env.shift_scroll(key, drawn, target)`, `env.scroll_geometry(key)`), file dialogs
-//! (`env.request_files(opts)`, `env.awaiting_files()`), text queries (`env.text_hit(key, x, y)`,
-//! `env.caret_rect(key, byte)`) and window requests
-//! (`env.set_window_size(window, w, h)`, `env.focus_window(window)`); the
-//! root table may set `window_title`, `always_on_top`, `secure_input` and `option_as_alt`. Because the IR is data all the way down, the binding is
-//! just table-to-node conversion — no closures cross the boundary. One
-//! global is native rather than the prelude's: `row_heights(rows,
-//! estimate)`, the core's `RowHeights` as userdata the script keeps, which
-//! the prelude's `list` slices a variable-height list by (backlog C46).
+//! Lua scripts as kui extensions: a script returns its view as a table tree and gets events back as tables.
 //!
-//! ## The two `focus` names
+//! `kui-lua` loads a Lua script as an [`Extension`] a kui host can place in
+//! its frame. The script defines `view(env, slot)`, which returns a plain
+//! table tree built with the `row` / `column` / `text` / `button` prelude,
+//! and optionally `on_event(ev)`, which receives the events the script's own
+//! nodes emit and may return replies for the host. Nothing but data crosses
+//! the boundary: the host gets nodes, the script gets event tables, and no
+//! closure lives on either side. It sits beside [kui-ffi] (C plugins) and
+//! [kui-node] (the Node.js package) as one of the bindings over
+//! [`kui_core`]; most hosts run it inside [kui-native], the windowed runner.
 //!
-//! `env.focused` and `env.focus` are one letter apart and are *not* the
-//! same fact, so neither is going away:
+//! Two readers meet here. A Rust application wants scriptable panels or
+//! plugins: it declares a slot in its own view, loads a script under a
+//! namespace, and counts the replies that come back, without ever looking at
+//! the script's UI. The author of such a script wants to know what `view`
+//! is handed, which builders exist and which props a table takes; the
+//! reference below is for them, and [`luals_meta`] turns it into completion
+//! for lua-language-server.
 //!
-//! - `env.focused` (bool) is the **window**'s keyboard focus — whether this
-//!   window has the keyboard at all. It is `Env::focused`, and every
-//!   binding carries it; Node reads it off its own `env` object.
-//! - `env.focus` (integer, nil for none) is the focused **node**'s key.
-//!   Node spells this `ctx.focused()` and C `kui_focused`.
+//! [kui-ffi]: https://crates.io/crates/kui-ffi
+//! [kui-node]: https://www.npmjs.com/package/@qxuken/kui
+//! [kui-native]: https://crates.io/crates/kui-native
 //!
-//! Lua puts host facts and runtime queries on one table where Node has two
-//! objects (`env` and `ctx`), so the name `focused` was already spent on
-//! the window fact and the node reading could not have it. That also
-//! settles the verbs: `env.focus` is a value, so moving focus is
-//! `env.set_focus(key)` rather than the `focus(key)` of the other
-//! bindings. `env.blur()`, `env.focus_next()` and `env.focus_prev()` need
-//! no such dodge and keep the Node and C spellings.
+//! # Quick start
 //!
-//! `env.set_focus`, `env.is_focused` and `env.reveal` take the node either
-//! way it can be spelled: the integer key an event carried, or the string
-//! its `key` field declared — `env.set_focus("note")` — resolved through
-//! the frame being built so far and then the last finished one
-//! (`Ui::key_of`), so a node no event has come from can be named — among
-//! the script's own nodes: a script is a guest in the host's frame, and a
-//! label the host or another plugin declared is not one it can see. Two
-//! nodes of its own on one label under different parents resolve to the
-//! first in tree order with an `ambiguous-key` warning; a label no node
-//! declared is an error naming both spellings.
+//! The Rust side: a kui-native app that reserves a position for the script
+//! and hears its replies. `extension_as` names the script's namespace, so the
+//! slot the view declares is `todos/panel` for a script whose `slots` global
+//! lists `"panel"`.
 //!
-//! `set_focus` and `blur` take effect at once; `focus_next` / `focus_prev`
-//! resolve when the frame finishes, because the Tab ring is made of a
-//! finished tree and `view` is still declaring one (`Ui::focus_next`).
-//! Either way `env.focus` is a value the host wrote before `view` ran, so
-//! it still reads the focus the frame opened with — `env.is_focused(key)`
-//! is the query that answers about now.
+//! ```rust,no_run
+//! use kui_lua::LuaExtension;
+//! use kui_native::{App, NodeSpec, Ui, UiEvent, Value};
 //!
-//! Props come from the shared schema (`kui_core::schema`): every row is
-//! reachable from Lua under its snake_case name (`min_width`, `on_click`,
-//! `line_height`, ...), so Lua and the Node binding accept the same surface
-//! by construction. Only the composites keep Lua-flavored shapes:
-//! `pad = 8 | {all,x,y,l,r,t,b}`, `border = {w, color}`, `scroll`/
-//! `scroll_x`/`scroll_y`/`clip` booleans, `float = "below" | {anchor, at,
-//! self, dx, dy, fit}` (`self_at` still answers to `self`), sizing
-//! `{pct = 50} | {grow = 2}`, and `tooltip = "hint"` on a container
-//! (hover-gated). Those are *shapes*, not rules: what a name falls back
-//! to, what a preset attaches to and what a hint implies are decided in
-//! `kui_core::spec`, which this module hands its extracted scalars to.
+//! struct Host {
+//!     toggles: u32,
+//! }
 //!
-//! ## A script may host a plugin of its own
+//! impl App for Host {
+//!     fn view(&mut self, ui: &mut Ui<'_>) {
+//!         ui.configure_root(NodeSpec::row().fill().pad(16.0).gap(16.0));
+//!         // The script draws here. The params are its to read from
+//!         // `slot.params`; `on_toggle` is the reply shape the host wants.
+//!         ui.slot_with(
+//!             "todos/panel",
+//!             &Value::map([
+//!                 ("title", "todos".into()),
+//!                 ("on_toggle", Value::map([("kind", "toggled".into())])),
+//!             ]),
+//!         );
+//!     }
 //!
-//! `env.add_extension(namespace, path)` loads a C extension — a `.so` /
-//! `.dylib` / `.dll` exporting the `kui_ext_*` entry points
-//! `crates/kui-ffi/include/kui.h` describes, the same plugin a Rust, C or
-//! Node host loads — and `fill { name = "ns/slot", params = ... }` is the
-//! position it draws in, among the script's own children. The script is
-//! a host to it exactly as its host is a host to the script: it declares
-//! where, it passes params every frame, and the plugin's replies come
-//! back to `on_event` with `from` naming the namespace
-//! (`kui_core::slot`). It is C libraries and only that; a script does not
-//! load another script, because a host that wants two scripts loads two.
+//!     fn on_event(&mut self, ev: UiEvent) {
+//!         if ev.kind() == Some("toggled") {
+//!             self.toggles += 1;
+//!         }
+//!     }
+//! }
 //!
-//! Events arrive as their payload table plus `node_key` (the emitting
-//! node's key as an integer), which is what `env.edit_text` takes.
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let script = LuaExtension::from_file("panel.lua")?;
+//!     kui_native::app("todos")
+//!         .extension_as("todos", script)
+//!         .run(Host { toggles: 0 })
+//! }
+//! ```
+//!
+//! The Lua side, `panel.lua`: a todo list that keeps its own state, reads
+//! the title and the reply template the host passed, and answers a toggle by
+//! returning that template filled in.
+//!
+//! ```lua
+//! slots = { "panel" }
+//!
+//! local todos = { "ship the layout solver", "wire up wgpu" }
+//! local done = {}
+//! local on_toggle -- the host's reply template, kept for on_event
+//!
+//! function view(env, slot)
+//!   local t = env.theme
+//!   local params = slot.params or {}
+//!   on_toggle = params.on_toggle
+//!   local items = {}
+//!   for i, todo in ipairs(todos) do
+//!     items[#items + 1] = row {
+//!       gap = 8, pad = { t = 4, b = 4 },
+//!       on_click = { kind = "toggle", index = i },
+//!       text((done[i] and "[x] " or "[ ] ") .. todo, { size = 14, color = t.fg }),
+//!     }
+//!   end
+//!   return column {
+//!     width = 300, height = "grow", pad = 16, gap = 10,
+//!     bg = t.surface, radius = 10, border = { w = 1, color = t.border },
+//!     text(params.title or "todos", { size = 12, color = t.muted }),
+//!     edit { key = "filter", label = "filter todos", initial = "", width = "grow" },
+//!     column { height = "grow", scroll = true, table.unpack(items) },
+//!     button { label = "add", on_click = { kind = "add" } },
+//!   }
+//! end
+//!
+//! function on_event(ev)
+//!   if ev.kind == "toggle" then
+//!     done[ev.index] = not done[ev.index]
+//!     if on_toggle then
+//!       local reply = { index = ev.index, done = done[ev.index] }
+//!       for k, v in pairs(on_toggle) do reply[k] = v end
+//!       return reply -- a returned table is a reply the host hears
+//!     end
+//!   elseif ev.kind == "add" then
+//!     todos[#todos + 1] = "todo #" .. (#todos + 1)
+//!   end
+//! end
+//! ```
+//!
+//! A headless host (tests, tools) uses [`kui_core::Core`] directly: load
+//! with [`LuaExtension::from_source`], push the extension into a
+//! [`kui_core::Extensions`] list and build frames with
+//! `Core::frame_with`. The `LuaExtension` docs show that path.
+//!
+//! # What a script gets
+//!
+//! ## Builders
+//!
+//! The prelude injects one global per element; each takes a table of props
+//! whose integer keys are the children and returns it with `type` set.
+//!
+//! - Containers: `row { }`, `column { }`, `grid { }` (a table whose cells
+//!   line up in columns; named `grid` because `table` is Lua's).
+//! - Text: `text("plain", opts)` or `text({ "a ", { "b", bold = true } }, opts)`
+//!   for spans; `tooltip("hint")` as a node, or `tooltip = "hint"` as a prop.
+//! - Controls: `button { label = }`, `checkbox`, `radio`, `switch`,
+//!   `radio_group { radio { }, ... }`, `slider { value_now =, value_min =,
+//!   value_max = }`, `input { label = }` (single line with chrome), `edit
+//!   { key =, initial = }` (bare editor), `dropdown { options =, current = }`
+//!   (named `dropdown` because `select` is Lua's).
+//! - Media: `image { id = }`, `fragment { id = }` (a WGSL-painted box),
+//!   `line { from =, to = }`, `polygon { points = }`, `cells { }` (a
+//!   terminal screen as one node), `audio { src = }`.
+//! - Window chrome: `titlebar { title = }`, `window_buttons()`, `menu_bar
+//!   { menu = }`, `latency_graph()`, `latency_hud { }`.
+//! - Lists: `uniform_list(env, opts, row)` for rows of one height,
+//!   `list(env, opts, measure, row)` for rows of different heights, sliced
+//!   by a `row_heights(rows, estimate)` the script keeps between frames;
+//!   `reveal_row(env, key, i, row_h)` and `rows_in_view(env, key, row_h)` go
+//!   with them. `splitter(env, { key =, dir =, on_drag = })` is a draggable
+//!   divider.
+//! - Hosting: `fill { name = "ns/slot", params = }` is the position a C
+//!   plugin this script loaded draws in; `devtools_tab { name =, label =,
+//!   slot = | view = }` adds a tab to the core's devtools panel.
+//!
+//! ## The `env` table
+//!
+//! `env` is built fresh for every `view` call. Its values are the facts the
+//! host wrote before `view` ran; its functions answer about the frame being
+//! built and the last one finished.
+//!
+//! Facts:
+//!
+//! - Timing and size: `refresh_hz`, `frame_budget_ms`, `viewport_w`,
+//!   `viewport_h`. A fact the host cannot tell is left out rather than nil.
+//! - Focus: `focused` (the window has the keyboard), `focus` (the focused
+//!   node's key, nil for none), `focus_visible`, `caret_visible`, `region`.
+//! - Window: `window.id`, `window.fullscreen`, `window.maximized`,
+//!   `window.always_on_top`, `window.custom_chrome`, `window.controls_w` /
+//!   `window.controls_h` (the keep-out extent of OS-drawn controls).
+//! - System: `system.appearance`, `system.accent`, `system.locale`,
+//!   `system.motion`, `system.assistive`; `audio.live`, `audio.device`.
+//! - Palette: `env.theme` has one `0xRRGGBBAA` number per theme role
+//!   (`bg`, `surface`, `fg`, `muted`, `border`, `accent`, ...) plus
+//!   `appearance` and `disabled_opacity`; `env.metrics` the sizes the stock
+//!   widgets use; `env.tokens.colors` / `env.tokens.lengths` the named
+//!   tokens in force, the script's own over the host's. All read-only.
+//!
+//! Functions, by topic. `key` is an integer key an event carried or the
+//! string label a node's `key` prop declared, resolved among the script's
+//! own nodes:
+//!
+//! - Queries: `edit_text(key)`, `set_edit_text(key, text)`,
+//!   `is_focused(key)`, `is_hovered(key)`, `is_pressed(key)`,
+//!   `is_drop_target(key)`, `drop_target()`, `layout_of(key)`,
+//!   `measure_text(s, opts, max_w)` (what layout gives the same `text`),
+//!   `extension_namespaces()`.
+//! - Focus: `set_focus(key)`, `blur()`, `focus_next()`, `focus_prev()`,
+//!   `focus_region(key)`, `announce(text, politeness)`.
+//! - Scrolling: `reveal(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
+//!   `set_scroll(key, x, y)`, `shift_scroll(key, drawn, target)`.
+//! - Text and selection: `text_hit(key, x, y)`, `caret_rect(key, byte)`,
+//!   `selection_text()`, `selection_html()`, `selection_ends()`,
+//!   `cell_selection()`, `select_all_in(key)`, `clear_selection()`,
+//!   `answer_selection_range(text)`.
+//! - Clipboard and dialogs: `set_clipboard(text, html)`,
+//!   `set_clipboard_secret(text)`, `request_copy()`, `request_paste()`,
+//!   `awaiting_paste()`, `request_files(opts)`, `awaiting_files()`.
+//! - Menus and windows: `open_menu(key, x, y, items)`, `close_menu()`,
+//!   `set_window_size(window, w, h)`, `focus_window(window)`.
+//! - Declarations: `set_tokens(decl)` replaces the script's token table;
+//!   `add_extension(namespace, path)` loads a C plugin (see below).
+//!
+//! The root table may also carry host state beside its children:
+//! `window_title`, `always_on_top`, `secure_input`, `option_as_alt` and a
+//! `windows` list of `name | { name, kind, width, height, activates, anchor }`.
+//!
+//! ## The two focus names
+//!
+//! `env.focused` and `env.focus` are different facts. `focused` is a boolean,
+//! whether this window has the keyboard at all. `focus` is the focused node's
+//! key, nil for none. Because `focus` is a value, moving focus is
+//! `env.set_focus(key)`; `blur`, `focus_next` and `focus_prev` keep the names
+//! the other bindings use. `set_focus` and `blur` take effect at once;
+//! `focus_next` / `focus_prev` resolve when the frame finishes, because the
+//! Tab ring is built from a finished tree. `env.focus` still reads the focus
+//! the frame opened with, so `env.is_focused(key)` is the query that answers
+//! about now.
+//!
+//! ## The `slot` argument
+//!
+//! `view`'s second argument says which slot the host is filling: `slot.name`
+//! (the slot in the script's own vocabulary), `slot.namespace` (what the host
+//! loaded the script under), `slot.params` (the host's table, nil when it
+//! passed none) and `slot.key` (the integer key events and `set_focus` use).
+//! A `slots` global lists the names the script fills: no global means
+//! `"root"`, `{ "*" }` means every name the host declares under the
+//! namespace.
+//!
+//! ## Events
+//!
+//! `on_event(ev)` receives the payload table the node declared (`on_click =
+//! { kind = "toggle", index = i }`) plus `node_key` (the emitting node's
+//! integer key), `window` (the window it came from) and `slot` (the full
+//! name of the slot the node was filled into). Edit widgets emit `{ kind =
+//! "changed" | "submit" }`; read the text back with `env.edit_text`. What
+//! `on_event` returns is the script's replies to the host: nothing, one
+//! table, or a sequence of tables.
+//!
+//! ## Props
+//!
+//! Every row of the shared schema in [`kui_core::schema`] is reachable under
+//! its snake_case name (`min_width`, `on_click`, `line_height`, ...), so Lua
+//! and Node accept the same surface. Only the composites have Lua shapes:
+//!
+//! - `pad = 8` or `pad = { all =, x =, y =, l =, r =, t =, b = }`
+//! - `border = { w = 1, color = 0x... }`
+//! - `scroll`, `scroll_x`, `scroll_y`, `clip` as booleans
+//! - `float = "below" | "above"` or `float = { anchor =, at =, self =, dx =,
+//!   dy =, fit = }`
+//! - sizing: `width = 300`, `"grow"`, `{ grow = 2 }`, `{ pct = 50 }`, or a
+//!   size expression string
+//! - `tooltip = "hint"` on a container (hover-gated)
+//! - a colour is `0xRRGGBBAA` or a `"$token"` name
+//!
+//! A key no table claims is an `unknown-prop` warning the host can read.
+//!
+//! ## A script may host a plugin
+//!
+//! `env.add_extension(namespace, path)` loads a C extension, a `.so` /
+//! `.dylib` / `.dll` exporting the `kui_ext_*` entry points kui-ffi's
+//! `kui.h` describes, and `fill { name = "ns/slot", params = }` is the
+//! position it draws in among the script's children. The plugin's replies
+//! reach `on_event` with `from` set to the namespace. A script loads C
+//! libraries only; a host that wants two scripts loads two.
+//!
+//! # Where to look
+//!
+//! - [`LuaExtension`]: the script as an extension; [`LuaExtension::from_file`]
+//!   and [`LuaExtension::from_source`] load it.
+//! - [`luals_meta`]: a `---@meta` file for lua-language-server, generated
+//!   from the schema.
+//! - [`lua_to_value`] / [`value_to_lua`]: the table <-> [`kui_core::Value`]
+//!   conversion events and replies go through.
+//! - [`parse_props`] and [`parse_tokens`]: the table readers, for a host that
+//!   wants to parse a view table or a `tokens` table itself.
+//! - [`MAX_VIEW_DEPTH`] / [`MAX_VALUE_DEPTH`]: the nesting limits.
+//!
+//! Book: <https://kui-book.qxuken.dev>. Repository: <https://github.com/qxuken/kui>
+//! (the design records live under `docs/adr` there).
 
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
@@ -98,13 +288,50 @@ pub use meta::luals_meta;
 
 const PRELUDE: &str = include_str!("prelude.lua");
 
+/// A Lua script loaded as a kui [`Extension`].
+///
+/// Load it with [`LuaExtension::from_file`] or [`LuaExtension::from_source`],
+/// then hand it to a host: `kui_native::app(..).extension_as(ns, ext)` for a
+/// window, or a [`kui_core::Extensions`] list for a headless
+/// [`kui_core::Core`]. The host places the script by declaring a slot named
+/// `ns/<slot>`; the script's `view(env, slot)` runs inside the host's frame
+/// and its `on_event(ev)` hears the events its own nodes emit.
+///
+/// ```
+/// use kui_core::{Core, Extensions, NodeSpec, OriginId, Size, Value};
+/// use kui_lua::LuaExtension;
+///
+/// let script = LuaExtension::from_source("panel.lua", r#"
+///     slots = { "panel" }
+///     function view(env, slot)
+///       return column { pad = 8, text(slot.params.title) }
+///     end
+///     function on_event(ev)
+///       if ev.kind == "pick" then return { kind = "picked" } end
+///     end
+/// "#)?;
+///
+/// let mut exts = Extensions::new();
+/// exts.push_as("fs", Box::new(script))?;
+///
+/// let mut core = Core::new();
+/// let mut ui = core.frame_with(Size::new(400.0, 300.0), 1.0, &mut exts);
+/// ui.configure_root(NodeSpec::row().fill());
+/// ui.slot_with("fs/panel", &Value::map([("title", "files".into())]));
+/// ui.finish();
+///
+/// // The script's nodes carry its origin, so the host can tell them apart.
+/// let drawn = core.access_tree().nodes.iter().filter(|n| n.origin == OriginId(1)).count();
+/// assert!(drawn > 0);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct LuaExtension {
     lua: Lua,
     name: String,
     /// The script's `slots` global, read once at load: the slot names it
-    /// fills (ADR 0014 decision 2). Empty — no global — means `"root"`;
+    /// fills. Empty — no global — means `"root"`;
     /// `{ "*" }` means every name the host declares under the namespace,
-    /// for a script that registers its views after it loads (backlog K1).
+    /// for a script that registers its views after it loads.
     slots: Vec<String>,
     /// The C extensions this script loaded (`env.add_extension`), in the
     /// order it asked for them. A `RefCell` because the loading happens
@@ -113,11 +340,10 @@ pub struct LuaExtension {
     loaded: std::cell::RefCell<Vec<Loaded>>,
     /// The full name of every slot this script has filled, by the slot's
     /// key — what `on_event` reads `ev.slot` off, since an event carries
-    /// the key and the script thinks in the names it was handed
-    /// (backlog K2).
+    /// the key and the script thinks in the names it was handed.
     slot_names: std::collections::HashMap<kui_core::Key, String>,
     /// The `tokens = { colors = …, lengths = … }` global the script
-    /// declared at load (ADR 0027), declared into the core under this
+    /// declared at load, declared into the core under this
     /// extension's origin on the first `view` that finds none there;
     /// `env.set_tokens` replaces it from inside a view.
     tokens: Option<kui_core::Tokens>,
@@ -132,6 +358,29 @@ struct Loaded {
 }
 
 impl LuaExtension {
+    /// Loads a script from its source text; `name` is what errors call it.
+    ///
+    /// The prelude is injected first, then the script runs once, and its
+    /// `slots` and `tokens` globals are read. A script with no `slots`
+    /// global fills `"root"`.
+    ///
+    /// ```
+    /// use kui_core::{Core, Extension, Size, Slot};
+    /// use kui_lua::LuaExtension;
+    ///
+    /// let mut ext = LuaExtension::from_source("hello.lua", r#"
+    ///     function view(env)
+    ///       return column { pad = 8, text("hello from Lua") }
+    ///     end
+    /// "#)?;
+    /// assert!(ext.slots().is_empty());
+    ///
+    /// let mut core = Core::new();
+    /// let mut ui = core.frame(Size::new(320.0, 240.0), 1.0);
+    /// ext.view(&Slot::root(), &mut ui)?;
+    /// ui.finish();
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn from_source(name: impl Into<String>, source: &str) -> mlua::Result<Self> {
         let lua = Lua::new();
         rows::register(&lua)?;
@@ -178,14 +427,14 @@ impl LuaExtension {
             .map(|l| l.namespace.clone())
     }
 
-    /// The script's own interpreter. A host reaches for this to seed a
-    /// global the script reads — the escape hatch for facts that are not
-    /// `env` and not events, which is what the conformance corpus needs to
-    /// tell a script which phase of a scene to build.
+    /// The script's own interpreter, for a host that wants to seed a global
+    /// the script reads: the escape hatch for facts that are neither `env`
+    /// nor events.
     pub fn lua(&self) -> &Lua {
         &self.lua
     }
 
+    /// Loads a script from a file; its file name becomes the script's name.
     pub fn from_file(path: impl AsRef<std::path::Path>) -> mlua::Result<Self> {
         let path = path.as_ref();
         let source = std::fs::read_to_string(path).map_err(mlua::Error::external)?;
@@ -358,7 +607,7 @@ fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
 /// or the string label its `key` field declared, resolved through the
 /// frame so far and then the last finished one (`Ui::key_of`). A string no
 /// node declared is an error naming both spellings, since nothing else
-/// would (backlog F5) — see [`key_query`] for the calls that answer instead.
+/// would — see [`key_query`] for the calls that answer instead.
 fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
     match v {
         mlua::Value::Integer(i) => Ok(Key(i as u64)),
@@ -386,7 +635,7 @@ fn key_arg(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Key> {
 /// label is the spelling a view uses *before* the node exists: the first
 /// frame of a `uniform_list` asks its own container for geometry that is
 /// not there yet. The command verbs ([`key_arg`]) keep throwing, where a
-/// typo is a bug worth naming (backlog C25). What a key may *be* is the
+/// typo is a bug worth naming. What a key may *be* is the
 /// same question for both, so anything that is not an integer or a string
 /// is refused here too.
 fn key_query(ui: &mut Ui<'_>, v: mlua::Value) -> mlua::Result<Option<Key>> {
@@ -412,7 +661,7 @@ fn lua_list_to_value(t: &Table) -> mlua::Result<Value> {
 
 /// The snake spellings a script may have learned first — `select_all`,
 /// `look_up` — kept as aliases of the wire names in a row's `role`, the
-/// way `direction` is one for `repeat` (ADR 0020, decision 10). The rest
+/// way `direction` is one for `repeat`. The rest
 /// of a row is the core's call (`MenuItem::from_value`).
 fn alias_menu_role(row: &mut Value) {
     let Value::Map(fields) = row else { return };
@@ -466,8 +715,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `shift_scroll(key, drawn, target)` / `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `selection_html()` (the same words with the formatting they declared) /
-/// `selection_ends()` (the anchor and the focus as row indices and bytes,
-/// ADR 0029) / `cell_selection()` (a grid's, as absolute lines and
+/// `selection_ends()` (the anchor and the focus as row indices and
+/// bytes) / `cell_selection()` (a grid's, as absolute lines and
 /// columns) /
 /// `request_copy()` + `answer_selection_range(text)` (a copy that reaches
 /// rows a virtual list never built is asked of the app) /
@@ -476,8 +725,8 @@ fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
 /// `pasted = true`, one ask at a time, and `concealed = true` /
 /// `transient = true` where the pasteboard marked it so) + `awaiting_paste()` (whether one is
 /// unanswered) + `set_clipboard_secret(text)` (a secret the host writes
-/// marked concealed and transient, backlog F84) /
-/// `select_all_in(key)` / `clear_selection()` (ADR 0017 — one selection
+/// marked concealed and transient) /
+/// `select_all_in(key)` / `clear_selection()` (one selection
 /// per window, a `selectable` scope's or the focused editor's), the menu
 /// verbs `open_menu(key, x, y, items)` / `close_menu()` (whose chosen row
 /// comes back as a `menu` event on that node), the
@@ -1384,7 +1633,7 @@ fn check_props(ui: &mut Ui<'_>, t: &Table, element: &str) -> mlua::Result<()> {
 }
 
 /// `fill { name = "todos/panel", params = {...} }`: a position an
-/// extension fills, in place (ADR 0014). Not a node and so not a schema
+/// extension fills, in place. Not a node and so not a schema
 /// element — it draws nothing itself and takes none of the props a box
 /// takes, which is why it is checked here rather than by `check_props`.
 /// `name` is the full `namespace/slot`: the namespace this script loaded
@@ -1422,7 +1671,7 @@ fn build_fill(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
 }
 
 /// `devtools_tab { name = , label = , slot = }` or `devtools_tab { name = ,
-/// label = , view = function() … end }` (ADR 0032): a tab in the core's
+/// label = , view = function() … end }`: a tab in the core's
 /// devtools panel, an extension's through the slot it names, or the
 /// script's own through `view`, which is called only while the tab is on
 /// show — the same rule the Rust closure and the C open answer — and
@@ -1486,12 +1735,9 @@ fn build_devtools_tab(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     }
 }
 
-/// How deep a Lua view tree may nest: twice `deep_nesting_64_levels`,
-/// and inside a debug build's 2 MB test thread whatever the nodes on the
-/// way (a chain of tooltips, radio groups and fragments overflowed it
-/// between 128 and 256). Past it, or on a node that is its own ancestor
-/// (`t[1] = t`), [`build_node`] refuses the view rather than recurse off
-/// the stack (backlog RG95).
+/// How deep a view table may nest. Past it, or on a table that is its own
+/// ancestor (`t[1] = t`), the view is refused with an error rather than
+/// recursing off the stack.
 pub const MAX_VIEW_DEPTH: usize = 128;
 
 thread_local! {
@@ -1524,7 +1770,7 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
 /// [`open_box`] and every other node type in [`build_widget`], each
 /// frame gone before the children are built. One function holding the
 /// whole match was 64 KB of stack a level in a debug build, and 32
-/// nested columns overflowed a test thread (backlog RG95).
+/// nested columns overflowed a test thread.
 fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let ty: String = t.get("type")?;
     match ty.as_str() {
@@ -2074,7 +2320,7 @@ struct SpanPart {
     bold: bool,
     italic: bool,
     underline: bool,
-    /// `underline_color` / `underline_style` (backlog K4); either implies
+    /// `underline_color` / `underline_style`; either implies
     /// `underline`.
     underline_color: Option<Color>,
     underline_style: Option<kui_core::UnderlineStyle>,
@@ -2082,7 +2328,7 @@ struct SpanPart {
     color: Option<Color>,
     bg: Option<Color>,
     /// `bg_radius`: the background rounded, one shape with the ones it
-    /// meets (backlog F101).
+    /// meets.
     bg_radius: f32,
 }
 
@@ -2190,16 +2436,15 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
     Ok(out)
 }
 
-/// `{ colors = { name = colour | { light =, dark = } | { from =, ops = } },
-/// lengths = { name = px } }` as a [`kui_core::Tokens`] (ADR 0027). Names
-/// are sorted, since a Lua table's iteration order is not one a
-/// declaration can promise and the index is only what `env.tokens` lists
-/// them in. A colour with `from` is a derived token (ADR 0028), its `ops`
-/// a list of `{ verb, … }` tuples; the values are declared first and the
-/// derived ones after, each once every source it names is in — position
-/// cannot carry that order here, so the name does. One whose source never
-/// arrives goes in last as written, for the core to drop with
-/// `unknown-token`; a cycle drops the same way, each naming the other.
+/// Reads a `tokens` table as a [`kui_core::Tokens`].
+///
+/// The shape is `{ colors = { name = colour | { light =, dark = } | { from =,
+/// ops = } }, lengths = { name = px } }`. A colour with `from` is derived
+/// from an earlier token by its `ops`, a list of `{ verb, ... }` tuples.
+/// Names are sorted, since a Lua table's iteration order is not one a
+/// declaration can promise; derived tokens are declared after the values
+/// they name, and one whose source never arrives is left for the core to
+/// drop with `unknown-token`.
 pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
     let mut out = kui_core::Tokens::new();
     for pair in t.pairs::<String, mlua::Value>() {
@@ -2361,17 +2606,11 @@ fn parse_color_op(name: &str, op: &Table) -> mlua::Result<kui_core::ColorOp> {
     Ok(kui_core::ColorOp::parse(&verb, color.as_deref(), n).expect("checked above"))
 }
 
-/// What a `$name` in a prop resolves through while a table is parsed
-/// (ADR 0027): the core's lookup for the running origin — its own table
-/// over the host's, the roles in front — and the names that did not
-/// resolve, raised as `unknown-token` once the borrow is handed back
-/// ([`with_refs`]). A slot whose name resolves to nothing is left out, so
-/// it keeps its default — the theme's foreground for a text's `color`, a
-/// fit width, the default text size — the way Node's encoder drops the
-/// prop; not an explicit transparent or zero, which would hide the text
-/// a typo was on. The core's [`kui_core::NameRefs`] since AR14: the one
-/// miss policy, written once, that a keyframe stop and an entrance
-/// resolve through in every binding.
+/// What a `$name` in a prop resolves through while a table is parsed: the
+/// core's token lookup for the running origin, plus the names that did not
+/// resolve, which are raised as `unknown-token` warnings afterwards. A prop
+/// whose name resolves to nothing is left out and keeps its default, rather
+/// than becoming an explicit transparent or zero.
 pub type Refs<'a> = kui_core::NameRefs<'a>;
 
 /// Runs `f` with a [`Refs`] over the frame's lookup, then raises what did
@@ -2415,11 +2654,13 @@ fn length_of(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<f32>> 
         .ok_or_else(|| bad("expected a number or a \"$token\""))
 }
 
-/// Table → props. Constructor-order specials first (`dir` from the node
-/// type, `size` before any style prop), then the Lua-shaped composites,
-/// then every schema row by its snake_case name. Unknown keys (`type`,
-/// `value`, `label`, children) fall through. `refs` is what a `$name`
-/// resolves through ([`with_refs`]).
+/// Reads a node table's props into a [`PropsOut`].
+///
+/// Constructor-order specials come first (`dir` from the node type, `size`
+/// before any style prop), then the Lua-shaped composites (`pad`, `border`,
+/// `float`, sizing), then every schema row by its snake_case name. Keys the
+/// schema does not own (`type`, `value`, `label`, the children) fall
+/// through. `refs` is what a `$name` resolves through.
 pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result<PropsOut> {
     let mut out = PropsOut::new();
     if is_row {
@@ -2649,9 +2890,9 @@ fn parse_color(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Colo
         .map_err(|_| bad("color must be a 0xRRGGBBAA integer, a \"#hex\" string or a \"$token\""))
 }
 
-/// A size expression as data (backlog F109), as the core reads one — with
+/// A size expression as data, as the core reads one — with
 /// a percentage spelled `{ pct = n }` at any depth, Lua's word: `percent`
-/// was the first cut's, refused since (RG33), and a size table taking it
+/// was the first cut's, refused since, and a size table taking it
 /// would bring it back one level down.
 fn size_value(v: &mlua::Value) -> mlua::Result<Value> {
     fn check(v: &Value) -> mlua::Result<()> {
@@ -2676,7 +2917,7 @@ fn size_value(v: &mlua::Value) -> mlua::Result<Value> {
 
 /// `Some` of a size expression, `None` for one the full table refused
 /// ([`kui_core::calc::is_full`]) — the prop left undeclared, as a
-/// `$name` that misses is (backlog RG93) — and the error for a bad one.
+/// `$name` that misses is — and the error for a bad one.
 fn kept<T>(r: Result<T, String>) -> mlua::Result<Option<T>> {
     match r {
         Ok(v) => Ok(Some(v)),
@@ -2804,12 +3045,28 @@ fn parse_float(v: &mlua::Value) -> mlua::Result<FloatConfig> {
 // ---------------------------------------------------------------------------
 // Value <-> Lua
 
-/// How deep a Lua value may nest before [`lua_to_value`] refuses it: a
-/// table holding itself, or one nested past any payload a view means,
-/// would otherwise recurse off the Rust stack and abort the process
-/// before anything read the value (backlog RG95).
+/// How deep a Lua value may nest before [`lua_to_value`] refuses it. A
+/// table holding itself, or one nested deeper than this, is an error rather
+/// than a stack overflow.
 pub const MAX_VALUE_DEPTH: usize = 64;
 
+/// Converts a Lua value to a [`kui_core::Value`], the shape event payloads
+/// and replies travel in.
+///
+/// A table with sequence entries becomes a [`Value::List`], any other table
+/// a [`Value::Map`] with string keys; nil, booleans, integers, floats and
+/// strings map one to one. Functions and userdata are refused.
+///
+/// ```
+/// use kui_core::Value;
+/// use kui_lua::lua_to_value;
+///
+/// let lua = mlua::Lua::new();
+/// let v: mlua::Value = lua.load(r#"{ kind = "toggle", index = 2 }"#).eval()?;
+/// let payload = lua_to_value(&v)?;
+/// assert_eq!(payload.get_str("kind"), Some("toggle"));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub fn lua_to_value(v: &mlua::Value) -> mlua::Result<Value> {
     to_value(
         v,
@@ -2887,6 +3144,8 @@ fn to_value(v: &mlua::Value, path: &mut ValuePath) -> mlua::Result<Value> {
     })
 }
 
+/// Converts a [`kui_core::Value`] to a Lua value: the inverse of
+/// [`lua_to_value`], used to hand event payloads and slot params to a script.
 pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
     Ok(match v {
         Value::Null => mlua::Value::Nil,

@@ -7,8 +7,9 @@
 # A page holds no source of its own - it `{{#include}}`s the example's file,
 # so the book shows what the file says the day it is built. What can drift is
 # the list: an example added, renamed or removed without a rerun. The book is
-# published from a private repository (.forgejo/workflows/book.yml), so these
-# pages are the only place a reader of the site sees an example at all.
+# published on its own (.forgejo/workflows/book.yml), so these pages are
+# the one place a reader of the site sees an example without opening the
+# repository.
 #
 #   nu scripts/book-examples.nu          rewrite the pages and the SUMMARY part
 #   nu scripts/book-examples.nu --check  fail, with the diff, if a rerun would

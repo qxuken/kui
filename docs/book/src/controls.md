@@ -67,8 +67,8 @@ it.
 
 So the pattern for any event that carries more than a click is: match
 the message to learn *which* control spoke, then read the core's fields
-to learn *what* it said. The events chapter of the reference lists
-every event's fields.
+to learn *what* it said. The events table of
+[`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#events) lists every event's fields.
 
 ## A text field owns its text
 
@@ -111,8 +111,10 @@ recognises it by comparing `ev.key` to the key the view kept.
 ## Where this is decided
 
 - Every stock widget:
-  `crates/kui-core/src/widgets.rs`.
-- Why the stock controls are built over the accessibility roles:
-  ADR 0034.
+  [`kui_core::widgets`](https://docs.rs/kui-core/latest/kui_core/widgets/index.html),
+  re-exported as `kui_native::widgets`.
+- The stock controls are built over the accessibility roles, so a switch
+  is a `switch` to a screen reader and a Tab stop with nothing more from
+  you.
 - The `change`, `changed`, `submit` and `menu` events:
-  `docs/props.md`, events.
+  [`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#events), events.

@@ -70,6 +70,7 @@ you give a text a background or a size of its own.
 ## Where this is decided
 
 - Every layout prop, with its Node, Lua and C spelling:
-  `docs/props.md`, container props.
-- The layout solver is described in the README under
-  *Layout*.
+  [`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#container-props),
+  container props.
+- The layout solver, pass by pass:
+  [`docs/design.md`](https://github.com/qxuken/kui/blob/main/docs/design.md#layout), *Layout*.

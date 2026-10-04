@@ -114,7 +114,7 @@
 # and run the workspace tests there - but they do not close it, because
 # there are no tests to run against those two files. Behavioural coverage
 # of the macOS access tree is scripts/ax-audit.swift, a manual pre-release
-# step (see README, "To cut a release"); on Windows there is none.
+# step (see docs/releasing.md, "To cut a release"); on Windows there is none.
 name: ci
 
 on:
