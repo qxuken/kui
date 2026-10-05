@@ -21,6 +21,56 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.37 (unreleased)
+
+**What breaks.**
+
+- Rust: `HitShape::Path` gains a `stroke` field and `Content` a
+  `PathFlat` variant (under Fixed), so a pattern over either needs
+  them.
+- A `path` with a stroke over a fill is hit out to the stroke's edge,
+  where the half of the stroke outside the outline fell through; and a
+  stroked path with no `bg` but a `hover_bg`, `pressed_bg` or
+  `focus_bg` is hit inside, where it was hit along its stroke only
+  (under Fixed).
+- Lua: `path { ops = }` whose numbers are not the flat form draws
+  nothing with a `path-malformed` warning, where it was an error that
+  failed the view (under Fixed).
+- A `path` that animated and then held still for 120 frames draws from
+  the atlas again — a `GlyphMask` quad where it stayed a `Texture`
+  (under Fixed). Nothing an app sees; a host that counts quads by kind
+  does.
+
+No C build breaks and the ABI stays 23; the Node wire stays v20.
+
+### Fixed
+
+- **What the `path` reviews left** (backlog RG112, the second review in
+  [ADR 0040](docs/adr/0040-a-path-is-a-mask-in-the-atlas.md)):
+  - A window closed while it showed an animating or a big path left the
+    path's texture with the renderer for the life of the process; the
+    core now hands it to the session as it goes, and the next frame any
+    window draws drops it. A frame built and never read keeps its
+    `dropped_textures` and `dropped_fragments` for the next one.
+  - A path that stopped moving stops costing a texture and a draw of
+    its own: after 120 still frames its mask is the atlas's again. A
+    row of icons keyed by position, whose neighbours came and went
+    twice within eight frames, read as animating and stayed so for
+    good.
+  - A stroke over a fill is hit as far as it is painted
+    (`HitShape::Path`'s `stroke`).
+  - Ops that are not the flat form raise `path-malformed` under the
+    node's key in every binding (`Core::path_flat_node`,
+    `Content::PathFlat`); C and Node drew nothing in silence.
+  - JSX types `width` on `line` and `path` as a number or a `$length`,
+    as the encoder reads it; `Core::image_pixels` answers for the
+    handle a path's `Texture` quad names.
+
+**What you can delete.** The key an app gave a still icon only so a
+neighbour's coming and going would not move it to a texture; the
+invisible wider path laid under a thick-stroked one to catch the press
+on its edge.
+
 ## 0.1.0-alpha.36 (2026-10-05)
 
 **What breaks.**

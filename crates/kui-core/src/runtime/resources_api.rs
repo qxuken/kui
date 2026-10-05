@@ -549,6 +549,11 @@ impl Core {
         &self,
         id: crate::resources::ImageId,
     ) -> Option<(u32, u32, std::sync::Arc<Vec<u8>>)> {
+        // A path's own texture is this core's, not the registry's: the
+        // handle a `Texture` quad names is answered either way.
+        if let Some(px) = self.path_textures.pixels(id) {
+            return Some(px);
+        }
         let sess = self.session.state();
         sess.resources
             .image(id)

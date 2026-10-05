@@ -272,7 +272,8 @@ pub extern "C" fn kui_polygon(
 /// node (empty for a key from the tree position). The three payloads are
 /// consumed as [`kui_open_with`] consumes them; a path with one is hit
 /// by its outline under the fill rule. A NULL `spec` is a path with no
-/// fill, its payloads kept; ops that are not the flat form draw nothing.
+/// fill, its payloads kept; ops that are not the flat form raise
+/// `path-malformed` under the node's key and draw nothing.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn kui_path(
@@ -300,9 +301,6 @@ pub extern "C" fn kui_path(
             return;
         }
         let floats = unsafe { std::slice::from_raw_parts(ops, count) };
-        let Ok(path) = kui_core::Path::from_floats(floats) else {
-            return;
-        };
         let rule = kui_core::FillRule::from_index(fill_rule as usize);
         let stroke = (width > 0.0).then(|| {
             let color = if color == 0 {
@@ -312,19 +310,12 @@ pub extern "C" fn kui_path(
             };
             kui_core::Stroke::new(width, color)
         });
-        let mut path = path.fill_rule(rule);
-        if let Some(stroke) = stroke {
-            path = path.stroked(stroke);
-        }
-        if let Some(turn) = unsafe { turn_of(rotate, pivot) } {
-            path = path.rotated(turn.turns);
-            if let Some(p) = turn.pivot {
-                path = path.pivot(p.x, p.y);
-            }
-        }
+        let turn = unsafe { turn_of(rotate, pivot) };
         match opt_str(label) {
-            Some(label) => c.core().path_node_keyed(&label, &path, spec),
-            None => c.core().path_node(&path, spec),
+            Some(label) => c
+                .core()
+                .path_flat_node_keyed(&label, floats, rule, stroke, turn, spec),
+            None => c.core().path_flat_node(floats, rule, stroke, turn, spec),
         }
     });
 }

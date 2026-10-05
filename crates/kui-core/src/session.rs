@@ -407,6 +407,12 @@ impl Session {
     pub(crate) fn state(&self) -> RefMut<'_, SessionState> {
         self.0.borrow_mut()
     }
+
+    /// [`Self::state`] for a `Drop`, which must not panic: `None` while
+    /// something else holds the state.
+    pub(crate) fn try_state(&self) -> Option<RefMut<'_, SessionState>> {
+        self.0.try_borrow_mut().ok()
+    }
 }
 
 impl Default for Session {

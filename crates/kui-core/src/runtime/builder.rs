@@ -35,6 +35,15 @@ pub enum Content<'a> {
         Option<Stroke>,
         Option<crate::path::Turn>,
     ),
+    /// The same from the flat op form (`Path::to_floats`), read here; one
+    /// that is not the form raises `path-malformed` under the node's key
+    /// as a `d` that does not parse does.
+    PathFlat(
+        &'a [f32],
+        crate::path::FillRule,
+        Option<Stroke>,
+        Option<crate::path::Turn>,
+    ),
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -636,6 +645,10 @@ impl Core {
             }
             Content::PathD(d, rule, stroke, turn) => {
                 self.path_node_d(key, d, rule, stroke, turn, spec);
+                true
+            }
+            Content::PathFlat(floats, rule, stroke, turn) => {
+                self.path_node_flat(key, floats, rule, stroke, turn, spec);
                 true
             }
         };
@@ -1321,6 +1334,68 @@ impl Core {
         );
     }
 
+    /// [`Self::path_node`] from the flat op form — a code, then its
+    /// operands, per op, as `Path::to_floats` writes it and a binding's
+    /// wire carries it. Floats that are not the form (a code that is not
+    /// one, an op cut short) raise `path-malformed` under the node's key
+    /// and draw nothing: one answer in every binding, where it was an
+    /// error in one and silence in two (RG112).
+    pub fn path_flat_node(
+        &mut self,
+        floats: &[f32],
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
+        spec: NodeSpec,
+    ) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.auto_key();
+        self.path_node_flat(key, floats, rule, stroke, turn, spec);
+    }
+
+    /// [`Self::path_flat_node`] under a label key.
+    pub fn path_flat_node_keyed(
+        &mut self,
+        label: &str,
+        floats: &[f32],
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
+        spec: NodeSpec,
+    ) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key(label);
+        self.path_node_flat(key, floats, rule, stroke, turn, spec);
+        self.key_labels.push(key, label, self.origin);
+    }
+
+    /// [`Self::path_flat_node`] under a key the caller derived.
+    pub fn path_node_flat(
+        &mut self,
+        key: Key,
+        floats: &[f32],
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
+        spec: NodeSpec,
+    ) {
+        match crate::path::Path::from_floats(floats) {
+            Ok(path) => self.path_with_key(key, path.ops(), rule, stroke, turn, spec),
+            Err(e) => self.diag.raise(Warning {
+                code: crate::diag::PATH_MALFORMED,
+                key,
+                message: format!(
+                    "the path's ops are not the flat form: expected {} at float {}",
+                    e.what, e.at
+                ),
+            }),
+        }
+    }
+
     fn path_with_key(
         &mut self,
         key: Key,
@@ -1375,8 +1450,8 @@ impl Core {
         }
         // A key whose ops changed twice within a few frames is animating:
         // its masks go to a texture of their own rather than churning the
-        // atlas (ADR 0040, decision 8). One-way, as an updated image's
-        // backing is. One change is a new shape and a new slot.
+        // atlas (ADR 0040, decision 8). One change is a new shape and a
+        // new slot.
         let hash = self.paths.run(id).0.hash;
         let now = self.frame_no;
         let motion = match self.path_motion.get(&key) {
@@ -1387,7 +1462,15 @@ impl Core {
                 animating: m.animating
                     || (m.changed != 0 && now - m.changed <= crate::path::ANIMATING_WINDOW),
             },
-            Some(&m) => crate::path::Motion { seen: now, ..m },
+            // Still for long enough, it is a shape again and goes back
+            // to the atlas: the latch is for what moves, and a key from
+            // the tree position whose siblings came and went would
+            // otherwise hold a texture of its own for good (RG112).
+            Some(&m) => crate::path::Motion {
+                seen: now,
+                animating: m.animating && now - m.changed <= crate::path::SETTLED_AFTER,
+                ..m
+            },
             None => crate::path::Motion {
                 hash,
                 seen: now,

@@ -812,7 +812,7 @@ export declare namespace JSX {
         to?: [number, number];
         points?: [number, number][];
         curve?: boolean;
-        width?: number;
+        width?: LengthProp;
         color?: ColorProp;
         float?: 'parent' | 'viewport';
       };
@@ -890,7 +890,7 @@ export declare namespace JSX {
          *  `pivot` is boxed by the square the turn sweeps. */
         pivot?: [number, number];
         bg?: ColorProp;
-        width?: number;
+        width?: LengthProp;
         color?: ColorProp;
         float?: 'parent' | 'viewport';
       };

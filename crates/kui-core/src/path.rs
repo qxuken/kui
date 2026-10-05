@@ -1168,8 +1168,12 @@ pub fn rasterize_at(
 pub const MAX_ATLAS_MASK_TEXELS: u64 = 2048 * 2048;
 
 /// The widest or tallest a mask may be and still be drawn from a texture
-/// of its own: a texture every device kui runs on can hold. Past it the
-/// node draws nothing, with `path-too-large`.
+/// of its own: a texture every device kui runs on can hold — `kui-wgpu`
+/// opens its device with wgpu's default limits, whose
+/// `max_texture_dimension_2d` is this number whatever the adapter could
+/// do, so the core's limit and the renderer's are one. Past it the node
+/// draws nothing, with `path-too-large`. A host that draws the list
+/// itself on a device that holds less refuses the texture on its side.
 pub const MAX_MASK_SIDE: u32 = 8192;
 
 /// A mask drawn from a texture of its own rather than the atlas (ADR
@@ -1187,13 +1191,50 @@ pub struct PathTexture {
 /// have held them under. One a frame does not draw is dropped at the
 /// next frame's start, its handle handed to the display list for the
 /// backend to free; an animating path, whose key is new each frame, thus
-/// uploads one texture a frame and frees one.
-#[derive(Default)]
+/// uploads one texture a frame and frees one. The ones a core still
+/// holds when it goes go the way a removed image does: to the session,
+/// for the next display list any of its windows builds (RG112).
 pub struct PathTextures {
     by_key: rustc_hash::FxHashMap<u64, PathTexture>,
+    session: crate::session::Session,
+}
+
+impl Drop for PathTextures {
+    fn drop(&mut self) {
+        for t in self.by_key.values() {
+            crate::resources::unmint_image(t.id);
+        }
+        // Held only if the core is dropped from inside a borrow of its
+        // session, which nothing does; then the handles are forgotten
+        // and the backend keeps the textures, as before.
+        if let Some(mut sess) = self.session.try_state() {
+            sess.dropped
+                .images
+                .extend(self.by_key.values().map(|t| t.id));
+        }
+    }
 }
 
 impl PathTextures {
+    pub(crate) fn new(session: crate::session::Session) -> Self {
+        Self {
+            by_key: Default::default(),
+            session,
+        }
+    }
+
+    /// The pixels of the texture minted as `id`, for a host that draws
+    /// the list itself and asks by handle.
+    pub(crate) fn pixels(
+        &self,
+        id: crate::resources::ImageId,
+    ) -> Option<(u32, u32, std::sync::Arc<Vec<u8>>)> {
+        self.by_key
+            .values()
+            .find(|t| t.id == id)
+            .map(|t| (t.w, t.h, t.rgba.clone()))
+    }
+
     /// The texture for `key`, made from `coverage` (`w * h` alpha bytes)
     /// on a miss.
     pub(crate) fn get_or_make(
@@ -1281,6 +1322,12 @@ pub(crate) fn mask_key(hash: u64, scale: f32, bin: (u8, u8), paint: MaskPaint) -
 /// frame, and each of its shapes would be a slot the atlas never reuses.
 pub const ANIMATING_WINDOW: u64 = 8;
 
+/// How many frames an animating key's shape stays the same before it is
+/// a still shape again, and its mask the atlas's: a second at 120 Hz. A
+/// spinner that pauses for a frame or ten stays out; one that stopped
+/// stops costing a texture and a draw of its own.
+pub const SETTLED_AFTER: u64 = 120;
+
 /// What the core remembers of one `path` key between frames, to tell a
 /// new shape from a moving one.
 #[derive(Clone, Copy, Debug)]
@@ -1290,7 +1337,8 @@ pub(crate) struct Motion {
     pub seen: u64,
     /// The frame the hash last differed from the one before; 0 for never.
     pub changed: u64,
-    /// Two changes within [`ANIMATING_WINDOW`]: one-way.
+    /// Two changes within [`ANIMATING_WINDOW`], until the shape has held
+    /// for [`SETTLED_AFTER`].
     pub animating: bool,
 }
 
@@ -1320,7 +1368,8 @@ pub(crate) struct Run {
     /// the square about its pivot, and the angle is the quad's.
     pub angle: Option<f32>,
     /// The key's ops changed twice within [`ANIMATING_WINDOW`] frames:
-    /// the mask goes to a texture of its own and stays there.
+    /// the mask goes to a texture of its own until the shape has held
+    /// for [`SETTLED_AFTER`].
     pub animating: bool,
 }
 

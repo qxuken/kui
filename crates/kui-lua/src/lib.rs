@@ -1961,10 +1961,8 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             } else if let Some(list) = t.get::<Option<Table>>("ops")? {
                 let floats: Vec<f32> =
                     list.sequence_values::<f32>().collect::<mlua::Result<_>>()?;
-                let path = kui_core::Path::from_floats(&floats)
-                    .map_err(|e| bad(format!("ops: expected {e}")))?;
                 ui.core()
-                    .open_from(p, Content::Path(path.ops(), rule, stroke, turn));
+                    .open_from(p, Content::PathFlat(&floats, rule, stroke, turn));
             } else {
                 return Err(bad("path needs d or ops"));
             }

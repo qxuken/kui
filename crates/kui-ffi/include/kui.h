@@ -2968,7 +2968,8 @@ enum { KUI_FILL_NONZERO = 0, KUI_FILL_EVENODD = 1 };
  * the parent's box space. The three payloads are taken as kui_open_with
  * takes them: a path with one is hit by its OUTLINE under the fill rule - a
  * press inside it hits, a press in its box past the outline falls through
- * (a stroke with no fill is hit by its stroke, as a line is) - and a
+ * (a stroke with no fill is hit by its stroke, as a line is; one over a
+ * fill by both, out to the stroke's edge) - and a
  * clickable path is a button to assistive technology, so name it. On the
  * wire it is one KUI_QUAD_GLYPH_MASK per paint, fill and stroke, from the
  * glyph atlas - rasterized once per shape, scale and quarter-pixel
@@ -2982,7 +2983,9 @@ enum { KUI_FILL_NONZERO = 0, KUI_FILL_EVENODD = 1 };
  * angle in KuiQuad.blur. 0 and NULL are no turn, the tight box; a path that
  * turns through 0 names its pivot so its box does not change there. label
  * keys the node (empty = a key from the tree
- * position); spec may be NULL (no fill); NULL for a payload is none. */
+ * position); spec may be NULL (no fill); NULL for a payload is none. Ops
+ * that are not the flat form - a code that is not one, an op cut short -
+ * raise path-malformed under the node's key and draw nothing. */
 void kui_path(KuiCtx *ctx, KuiStr label, const float *ops, size_t count,
               uint32_t fill_rule, float width, uint32_t color, float rotate,
               const float *pivot, const KuiSpec *spec, KuiValue *on_click,

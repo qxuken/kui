@@ -1138,12 +1138,10 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                         .open_from(p, Content::PathD(d, rule, stroke, turn));
                 }
                 None => {
-                    // The encoder checked the numbers; a form it did not
-                    // is nothing to draw.
-                    if let Ok(path) = kui_core::Path::from_floats(&floats) {
-                        ui.core()
-                            .open_from(p, Content::Path(path.ops(), rule, stroke, turn));
-                    }
+                    // The encoder checked the numbers are finite, not
+                    // that they are the form: the core says so.
+                    ui.core()
+                        .open_from(p, Content::PathFlat(&floats, rule, stroke, turn));
                 }
             }
             Ok(())

@@ -181,7 +181,8 @@ date: 2026-10-04
    that is different each frame; a shape that must move cheaply every
    frame at any size stays a `polygon`, whose SDF costs the quad and
    nothing else. A path still for two frames after animating stays
-   texture-backed; the rule is one-way, as the image's is.
+   texture-backed; the rule is one-way, as the image's is. *(Amended:
+   it returns after 120 still frames — see the second review below.)*
 9. **Hit by its outline, nonzero or even-odd as it fills.** Emission
    flattens the ops once — the same flattening the rasterizer gets — into
    `Interaction::shape_points`, and `HitShape::Polygon` gains the fill
@@ -398,6 +399,45 @@ frame, with the bench building a `Path` per hexagon per frame; the
 allocation, not the core, was the difference, and the bench now builds
 its geometry once, as the polygon bench's points are. An app keeps its
 geometry too.
+
+### Second review (2026-10-05, before the alpha.36 tag and after it)
+
+The pre-tag regression pass read the built element again (backlog
+RG107–RG112). What it changed in the decisions above:
+
+- **Decision 8 is not one-way.** An animating key whose shape has held
+  for 120 frames (`path::SETTLED_AFTER`, a second at 120 Hz) is a shape
+  again: its mask goes back to the atlas and its texture is dropped.
+  The latch was for what moves; held for good it also caught a key from
+  the tree position whose siblings came and went twice within the
+  window, and a spinner that had stopped — each a texture, a bind group
+  and a draw of its own for the life of the node. A pause shorter than
+  that stays out, so a spinner that stutters does not churn the page,
+  and moving again takes two changes, as the first time. The image's
+  rule is unchanged: an image's backing is declared by its updates, a
+  path's is inferred.
+- **Decision 9, with a stroke over a fill.** A path that may paint a
+  fill — a `bg`, or one a hover, a press or the focus brings — and has
+  a stroke is hit by the fill *or* within half the stroke's width of
+  the stroke's pieces (`HitShape::Path`'s `stroke`), so the outer half
+  of a thick stroke is hit where it is painted. A stroke with no fill
+  at all is still `HitShape::Segments`, with its minimum grab.
+- **A texture of its own is the session's to drop when its window
+  goes.** A core's `PathTextures` hands what it still holds to the
+  session as it is dropped, so the next list any window builds carries
+  the drop, as a removed image's does; and a frame whose list nobody
+  read (`Core::output`) hands its drops to the next, since an animating
+  path sweeps a texture every frame and a frame built twice before a
+  render lost one each time.
+- **The flat form is checked in the core.** `Core::path_flat_node`
+  (and `Content::PathFlat` for a binding that lowers props) reads the
+  floats and raises `path-malformed` under the node's key when they are
+  not the form — what C and Node drew nothing for in silence and Lua
+  failed the view for. A number that is not finite, in either form or
+  in the turn, is `path-malformed` too (RG107).
+- **The limit is the device's.** `kui-wgpu` opens its device with
+  wgpu's default limits, so 8192 is what every device it draws on
+  holds; the gate counts the mask's own margin (RG111).
 
 ## Action items — all done 2026-10-05
 

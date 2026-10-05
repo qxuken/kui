@@ -2150,46 +2150,30 @@ reviews (the core half of `path`, its bindings with the pacer, the
 release's docs), each claim probed with a test before anything
 changed. The parser, the fill rules, the cache keys, the atlas, the
 ghost, the shader's turn, the Node wire byte for byte and the pacer's
-hold all read sound. Six entries. RG107–RG111 were **built
+hold all read sound. Seven entries. RG107–RG111 were **built
 2026-10-05**, the day they were filed, and are in the archive: a path
 holding a NaN or an infinity (RG107), a ring at 0% painted as a
 hairline (RG108), C's payloads leaked on an early return and dropped
 with a NULL spec (RG109), a fractional op code read as a move (RG110)
-and the size gate two pixels short (RG111). RG112 holds what was read
-and left.
+and the size gate two pixels short (RG111). RG112, what was read and
+left, was **built 2026-10-05** after the alpha.36 tag and is in the
+archive too; RG113 holds the two things it left in turn.
 
-### `.` RG112 — What the `path` reviews found and the pass left
+### `.` RG113 — Two things RG112 read and left
 
-- **A path's own textures outlive their `Core`.** `PathTextures` has no
-  `Drop`: a window closed while it shows an animating or a big path
-  leaves its minted ids in the mint and its textures in the shared
-  `Gpu`'s cache for the life of the process. A frame built and never
-  rendered loses that frame's `dropped_textures` the same way, which an
-  animating path — one texture swept a frame — meets where a registered
-  image rarely does.
-- **The animating latch is one-way and keyed by position.** A path with
-  a key from the tree position whose earlier sibling comes and goes
-  twice within eight frames reads as two changes and draws from a
-  texture of its own from then on, still as it is. Nothing unlatches.
-- **A visible fill is hit by the fill alone.** Under a thick stroke the
-  outer half of the stroke is painted and not hit; and the choice reads
-  the declared `bg`, so a stroke-only path with a `hover_bg` is still
-  hit as segments while it paints a fill.
-- **Ops that are not the flat form are three things.** A Lua error, and
-  nothing drawn with no warning from Node and from C; only the string
-  form raises `path-malformed`.
-- **`rotate = 0` with no pivot is two boxes.** No turn in C (the tight
-  box, as its header says); a turn of 0 in JSX and Lua (the swept
-  square). A C spinner passing through exactly 0 changes box for that
-  frame.
-- **The limit is the core's, not the device's.** 8192 is hard-coded;
-  a device with a smaller `max_texture_dimension_2d` refuses the
-  texture after the raster, with no warning.
-- **Types.** JSX's `path` and `line` type `width` as a number where the
-  encoder takes a `$length`; both advertise `tooltip`, which a leaf
-  drops. `Core::image_pixels` on a path texture's id is `None` with a
-  resource miss — a host that draws the list itself reads
-  `texture_pixels`.
+- **A leaf takes no tooltip.** `line`, `polygon` and `path` are typed
+  with `tooltip` in JSX and their rows read it, and `open_from` drops
+  the hint for a leaf: the hint floats as its node's last child, and a
+  leaf has none. A hovered wedge with a `tooltip` shows nothing. It
+  wants the hint floated beside the leaf, anchored to it
+  (`FloatAnchor::Node`), or the prop off the three types.
+- **`rotate = 0` with no pivot is two boxes.** No turn in C — the tight
+  box, as its header says, since C's zero is also its undeclared — and
+  a turn of 0 in JSX and Lua, the swept square. A C spinner passing
+  through exactly 0 with no pivot changes box for that frame; naming
+  the pivot is the header's answer. Telling them apart in C is a new
+  argument or a flag, which is an ABI question for a frame nobody has
+  reported.
 
 ## After alpha.35
 
@@ -3524,3 +3508,5 @@ move.
 - `.` **RG110** — [A flat-form op code that is not a whole number read as a move](backlog/closed-2026-09.md#-rg110--a-flat-form-op-code-that-is-not-a-whole-number-read-as-a-move--done-2026-10-05) — done (2026-10-05)
 
 - `.` **RG111** — [A path a pixel or two under the mask limit rasterized 400 MB and drew nothing, silently](backlog/closed-2026-09.md#-rg111--a-path-a-pixel-or-two-under-the-mask-limit-rasterized-400-mb-and-drew-nothing-silently--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG112** — [What the `path` reviews found and the pass left](backlog/closed-2026-09.md#-rg112--what-the-path-reviews-found-and-the-pass-left--done-2026-10-05) — done (2026-10-05), after the alpha.36 tag

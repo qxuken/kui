@@ -353,7 +353,7 @@ pub struct Core {
     /// What each `path` key last declared and when its ops last changed,
     /// and whether the key is animating: one whose ops changed twice
     /// within `path::ANIMATING_WINDOW` frames, whose masks leave the atlas
-    /// for good.
+    /// until it has held still for `path::SETTLED_AFTER`.
     pub(crate) path_motion: rustc_hash::FxHashMap<Key, crate::path::Motion>,
     /// The ops of each `d` string a `path` key last declared, so a string
     /// handed over every frame is parsed once.
@@ -361,6 +361,10 @@ pub struct Core {
     /// The masks drawn from a texture of their own rather than the atlas:
     /// too big for a page, or animating.
     pub(crate) path_textures: crate::path::PathTextures,
+    /// Whether [`Core::output`] has been asked for since the frame was
+    /// built: what says its `dropped_textures` and `dropped_fragments`
+    /// reached a backend. A frame nobody read hands them to the next.
+    output_read: bool,
     pub(crate) fragments: crate::fragment::FragmentList,
     /// The stock polygon fragment's handle, once a `polygon` node has
     /// asked for it this session. Forgotten by
@@ -986,7 +990,8 @@ impl Core {
             paths: Default::default(),
             path_motion: Default::default(),
             path_parsed: Default::default(),
-            path_textures: Default::default(),
+            path_textures: crate::path::PathTextures::new(session.clone()),
+            output_read: true,
             fragments: Default::default(),
             stock_polygon: None,
             hit_shapes: Default::default(),
@@ -1396,6 +1401,7 @@ impl Core {
     /// The finished frame's draw data: display list plus the glyph atlas the
     /// renderer mirrors (mutable so it can clear the dirty flag).
     pub fn output(&mut self) -> (&DisplayList, &mut GlyphAtlas) {
+        self.output_read = true;
         (&self.display, &mut self.atlas)
     }
 
@@ -1542,7 +1548,25 @@ impl Core {
             self.prev_tree.clear();
         }
         self.tree.clear();
+        // The drops a frame carried and no backend read - a frame built
+        // twice before one is drawn, a window that framed and did not
+        // render - ride on, or the texture a path animated out of would
+        // be the backend's for good (RG112). Bounded, for a core that is
+        // never read at all and so has no backend to tell.
+        let unread = (!self.output_read).then(|| {
+            const MOST: usize = 4096;
+            let mut t = std::mem::take(&mut self.display.dropped_textures);
+            let mut f = std::mem::take(&mut self.display.dropped_fragments);
+            t.drain(..t.len().saturating_sub(MOST));
+            f.drain(..f.len().saturating_sub(MOST));
+            (t, f)
+        });
         self.display.clear();
+        if let Some((t, f)) = unread {
+            self.display.dropped_textures = t;
+            self.display.dropped_fragments = f;
+        }
+        self.output_read = false;
         // Removed handles the backend has not heard of, and this window's
         // atlas slots for removed images (AR8); kept on the session
         // because a removal can land between frames, after the list was

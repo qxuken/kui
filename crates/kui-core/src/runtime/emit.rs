@@ -137,8 +137,21 @@ impl Core {
             NodeContent::Path(id) => {
                 let (run, ops) = self.paths.run(id);
                 let mut outline = Vec::new();
-                let fill = spec.style.bg.is_visible() || run.stroke_w <= 0.0;
-                if fill {
+                // Hit by its fill when it may paint one: a `bg`, or one a
+                // hover, a press or the focus brings (the shape is
+                // decided before the pointer is, so by what is declared).
+                // With a stroke too, by the stroke's own pieces as well,
+                // or the outer half of a thick one is painted and not
+                // hit (RG112).
+                let s = &spec.style;
+                let fill = run.stroke_w <= 0.0
+                    || s.bg.is_visible()
+                    || spec.interact.as_deref().is_some_and(|i| {
+                        [i.hover_bg, i.pressed_bg, i.focus_bg]
+                            .iter()
+                            .any(|c| c.is_some_and(|c| c.is_visible()))
+                    });
+                if fill && run.stroke_w <= 0.0 {
                     crate::path::flatten(ops, &mut outline);
                 } else {
                     crate::path::flatten_stroke(ops, &mut outline);
@@ -153,7 +166,7 @@ impl Core {
                     }
                 }
                 if fill {
-                    self.hit_shapes.path(&outline, run.rule)
+                    self.hit_shapes.path(&outline, run.rule, run.stroke_w)
                 } else {
                     // A stroke with no fill is hit as a line is, by the
                     // pieces it paints: a contour its `Z` closed runs

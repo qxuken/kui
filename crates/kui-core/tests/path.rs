@@ -254,9 +254,10 @@ fn a_big_mask_takes_a_texture_and_a_huge_one_warns() {
 }
 
 /// A path whose ops change twice within a few frames leaves the atlas for a
-/// texture of its own and stays there once still again.
+/// texture of its own, stays there through a pause, and is the atlas's
+/// again once it has held still for long enough (RG112).
 #[test]
-fn an_animating_path_leaves_the_atlas_and_stays_out() {
+fn an_animating_path_leaves_the_atlas_and_comes_back_when_still() {
     let mut core = Core::new();
     let wedge = |sweep: f32| Path::sector(100.0, 100.0, 60.0, 0.0, 0.0, sweep);
     let show = |core: &mut Core, sweep: f32| {
@@ -276,9 +277,10 @@ fn an_animating_path_leaves_the_atlas_and_stays_out() {
     show(&mut core, 0.22);
     assert!(masks(&mut core).is_empty());
     assert_eq!(core.path_texture_count(), 1);
-    // And still again, it stays texture-backed.
-    show(&mut core, 0.22);
-    show(&mut core, 0.22);
+    // And still for a while, it stays texture-backed.
+    for _ in 0..kui_core::path::SETTLED_AFTER {
+        show(&mut core, 0.22);
+    }
     assert!(masks(&mut core).is_empty());
     assert_eq!(core.path_texture_count(), 1);
     let dl = core.output().0;
@@ -289,6 +291,19 @@ fn an_animating_path_leaves_the_atlas_and_stays_out() {
             .count(),
         1
     );
+    // Past that it is a shape again: one mask in the atlas, and the
+    // texture dropped a frame later.
+    show(&mut core, 0.22);
+    assert_eq!(masks(&mut core).len(), 1);
+    show(&mut core, 0.22);
+    show(&mut core, 0.22);
+    assert_eq!(core.path_texture_count(), 0);
+    assert_eq!(core.output().0.dropped_textures.len(), 1);
+    // And moving again takes two changes, as the first time.
+    show(&mut core, 0.23);
+    assert_eq!(core.path_texture_count(), 0);
+    show(&mut core, 0.24);
+    assert_eq!(core.path_texture_count(), 1);
 }
 
 /// At scale 2 the mask is rasterized at scale 2 — twice the texels, on
@@ -598,4 +613,128 @@ fn a_flat_form_with_a_code_that_is_not_one_is_refused() {
         Path::from_floats(&[0.0, 1.0, 2.0, 1.0, 3.0]).is_err(),
         "short"
     );
+}
+
+const BIG: &str = "M0 0 H2100 V2100 H0 Z";
+
+fn show_big(core: &mut Core) {
+    let big = Path::parse(BIG).unwrap();
+    frame(core, |ui| {
+        ui.with(NodeSpec::column().fill(), |ui| {
+            ui.path_keyed("big", &big, NodeSpec::column().bg(Color::WHITE));
+        });
+    });
+}
+
+/// A window that goes while it shows a path from a texture of its own
+/// hands the texture on: the next list any window of its session builds
+/// tells the backend to drop it (RG112).
+#[test]
+fn a_core_that_goes_hands_its_path_textures_to_the_session() {
+    let mut first = Core::new();
+    let mut second = Core::new_in(first.session());
+    show_big(&mut second);
+    let id = second.output().0.textures[0].id;
+    drop(second);
+    frame(&mut first, |_| {});
+    assert_eq!(first.output().0.dropped_textures, [id]);
+    frame(&mut first, |_| {});
+    assert!(first.output().0.dropped_textures.is_empty(), "told once");
+}
+
+/// A frame nobody read carries its drops into the next one: a list built
+/// twice before a backend sees it loses no texture (RG112).
+#[test]
+fn a_frame_nobody_read_hands_its_drops_to_the_next() {
+    let mut core = Core::new();
+    show_big(&mut core);
+    let id = core.output().0.textures[0].id;
+    // Gone from the view; the frame after drops it - and three more are
+    // built before anything reads one.
+    for _ in 0..5 {
+        frame(&mut core, |_| {});
+    }
+    assert_eq!(core.output().0.dropped_textures, [id]);
+    frame(&mut core, |_| {});
+    assert!(core.output().0.dropped_textures.is_empty(), "read, so told");
+}
+
+/// A host that draws the list itself asks for a `Texture` quad's pixels
+/// by its handle, and a path's own texture answers as an image's does.
+#[test]
+fn a_path_textures_pixels_are_read_by_its_handle() {
+    let mut core = Core::new();
+    show_big(&mut core);
+    let (id, w) = {
+        let dl = core.output().0;
+        (dl.textures[0].id, dl.texture_pixels[0].width)
+    };
+    let (pw, ph, rgba) = core.image_pixels(id).expect("the path's texture");
+    assert_eq!(pw, w);
+    assert_eq!(rgba.len(), (pw * ph * 4) as usize);
+}
+
+/// A thick stroke over a fill is hit as far as it is painted: the half
+/// of it outside the outline too. And a stroke with only a `hover_bg` is
+/// hit inside, where the hover would paint (RG112).
+#[test]
+fn a_stroke_over_a_fill_is_hit_to_its_outer_edge() {
+    let mut core = Core::new();
+    let square = |x: f32| Path::parse(&format!("M{x} 50 h60 v60 h-60 Z")).unwrap();
+    frame(&mut core, |ui| {
+        ui.with(NodeSpec::column().fill().on_click("canvas"), |ui| {
+            ui.path_keyed(
+                "both",
+                &square(50.0).stroked(Stroke::new(12.0, Color::hex(0xff0000ff))),
+                NodeSpec::column().bg(Color::WHITE).on_click("both"),
+            );
+            ui.path_keyed(
+                "hover",
+                &square(180.0).stroked(Stroke::new(2.0, Color::hex(0xff0000ff))),
+                NodeSpec::column().hover_bg(Color::WHITE).on_click("hover"),
+            );
+        });
+    });
+    // Inside, on the edge, 5 px outside it (within the 6 the stroke
+    // reaches), and 8 px outside (past it).
+    assert_eq!(tag(&click_at(&mut core, 80.0, 80.0)), ["both"]);
+    assert_eq!(tag(&click_at(&mut core, 45.0, 80.0)), ["both"]);
+    assert_eq!(tag(&click_at(&mut core, 42.0, 80.0)), ["canvas"]);
+    assert_eq!(tag(&click_at(&mut core, 210.0, 80.0)), ["hover"]);
+}
+
+/// Floats that are not the flat form warn under the node's key and draw
+/// nothing, as a `d` that does not parse does (RG112).
+#[test]
+fn a_flat_form_that_is_not_one_warns_and_draws_nothing() {
+    let mut core = Core::new();
+    let build = |ui: &mut kui_core::Ui<'_>| {
+        ui.with(NodeSpec::column().fill(), |ui| {
+            // A line cut short of its y.
+            ui.core().path_flat_node_keyed(
+                "cut",
+                &[0.0, 1.0, 2.0, 1.0, 3.0],
+                FillRule::NonZero,
+                None,
+                None,
+                NodeSpec::column().bg(Color::WHITE),
+            );
+            ui.core().path_flat_node_keyed(
+                "ok",
+                &[0.0, 10.0, 10.0, 1.0, 40.0, 10.0, 1.0, 40.0, 40.0, 5.0],
+                FillRule::NonZero,
+                None,
+                None,
+                NodeSpec::column().bg(Color::WHITE),
+            );
+        });
+    };
+    frame(&mut core, build);
+    assert_eq!(masks(&mut core).len(), 1);
+    let w = core.take_warnings();
+    assert_eq!(w.len(), 1);
+    assert_eq!(w[0].code, "path-malformed");
+    assert!(w[0].message.contains("float 3"), "{}", w[0].message);
+    frame(&mut core, build);
+    assert!(core.take_warnings().is_empty(), "once per key");
 }

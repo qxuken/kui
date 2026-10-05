@@ -1507,11 +1507,15 @@ pub enum HitShape {
     Polygon { first: u32, len: u32 },
     /// A `path`'s flattened outline: `len` points from `first`, closed
     /// contours each followed by `crate::path::CONTOUR_BREAK`, hit by the
-    /// fill rule it paints with (`crate::path::in_path`).
+    /// fill rule it paints with (`crate::path::in_path`) — and, where a
+    /// stroke is painted over the fill, by the stroke too: `stroke` is
+    /// its width, 0 for none, and a point within half of it of any piece
+    /// hits, so the half of a thick stroke outside the fill is not dead.
     Path {
         first: u32,
         len: u32,
         rule: crate::path::FillRule,
+        stroke: f32,
     },
 }
 
@@ -1631,13 +1635,17 @@ impl HitShapes {
     }
 
     /// Adds a path's flattened contours and returns the shape over them.
-    pub fn path(&mut self, points: &[Vec2], rule: crate::path::FillRule) -> HitShape {
+    /// `stroke` is the width of the stroke painted over the fill, 0 for
+    /// none; with one, `points` are the stroke's polylines
+    /// (`path::flatten_stroke`), which the fill reads the same.
+    pub fn path(&mut self, points: &[Vec2], rule: crate::path::FillRule, stroke: f32) -> HitShape {
         let first = self.points.len() as u32;
         self.points.extend_from_slice(points);
         HitShape::Path {
             first,
             len: points.len() as u32,
             rule,
+            stroke,
         }
     }
 
@@ -2001,14 +2009,26 @@ impl Interaction {
                 };
                 in_polygon(local, pts)
             }
-            HitShape::Path { first, len, rule } => {
+            HitShape::Path {
+                first,
+                len,
+                rule,
+                stroke,
+            } => {
                 let Some(pts) = self
                     .shape_points
                     .get(first as usize..(first + len) as usize)
                 else {
                     return false;
                 };
+                // The fill, or the half of the stroke that lies outside
+                // it: a break between contours is a NaN, whose distance
+                // is one and never within the width.
                 crate::path::in_path(local, pts, rule)
+                    || (stroke > 0.0
+                        && pts
+                            .windows(2)
+                            .any(|w| segment_distance(local, w[0], w[1]) <= stroke * 0.5))
             }
         }
     }
