@@ -357,15 +357,21 @@ the code is right and this says why.
   `dropped_textures` — one upload and one free a frame, which is the cost
   decision 8 named, with no revision counter to keep.
 
-### Measurements (2026-10-05, this container, 4 cores, `cargo bench -p kui-core --bench frame`)
+### Measurements (2026-10-05, a 4-core cloud container, `cargo bench -p kui-core --bench frame`, medians)
 
-| bench | result | held to |
-|---|---|---|
-| `raster_pie_wedge_220px` | see below | under 60 µs |
-| `frame_1k_paths_cached` | see below | within 2× of `frame_1k_polygons` |
-| `frame_1k_paths_fresh` | see below | the raster bound |
-| `frame_1k_paths_animating` | see below | where the cliff is |
-| `frame_1k_polygons` | see below | unchanged |
+| bench | result | held to | |
+|---|---|---|---|
+| `raster_pie_wedge_220px` | 13.7 µs | under 60 µs | a wedge of the example's pie, ~26k texels, cold: zeno at about half a nanosecond a texel |
+| `frame_1k_paths_cached` | 294 µs | within 2× of `frame_1k_polygons` | 1.66×: the hash, the atlas lookup and the quad, with the box and the flattening for it, over a polygon's sixteen normalised floats |
+| `frame_1k_paths_fresh` | 625 µs | the raster bound | a thousand 64 px hexagons rasterized on an empty page: ~330 µs of raster over the cached frame, a third of a microsecond each |
+| `frame_1k_paths_animating` | 837 µs | where decision 8's cliff is | a thousand outlines moving every frame, each a raster and a texture of its own: the cliff is a thousand such paths at under a millisecond, and the threshold wants no count beside its size |
+| `frame_1k_polygons` | 177 µs | unchanged | 97.5 µs on the M3 Pro the table in `docs/performance.md` was written on; this container is slower on every row, and the ratio is what the rows above are read against |
+
+The first run of the cached frame measured 647 µs, 3.3× the polygon
+frame, with the bench building a `Path` per hexagon per frame; the
+allocation, not the core, was the difference, and the bench now builds
+its geometry once, as the polygon bench's points are. An app keeps its
+geometry too.
 
 ## Action items — all done 2026-10-05
 
