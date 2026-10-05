@@ -1193,9 +1193,10 @@ impl PathStore {
         self.scratch.clear();
         flatten(ops, &mut self.scratch);
         let b = bounds(&self.scratch)?;
-        // A logical pixel past the outline for the edge ramp and the
-        // bleed; a stroke reaches half its width further.
-        let pad = 1.0 + if stroke_w > 0.0 { stroke_w * 0.5 + 1.0 } else { 0.0 };
+        // Two logical px past the outline — one for the bleed, one for
+        // the edge ramp — and half the stroke's width further for a
+        // stroke, so no mask is cut by its own edge.
+        let pad = 2.0 + stroke_w * 0.5;
         let origin = Vec2::new(b.x - pad, b.y - pad);
         let rect = Rect::new(origin.x, origin.y, b.w + 2.0 * pad, b.h + 2.0 * pad);
         let first = self.ops.len();
@@ -1433,12 +1434,12 @@ mod tests {
         store.begin_frame(false);
         let p = Path::parse("M10 20 H30 V40 Z").unwrap();
         let (id, rect) = store.push(p.ops(), FillRule::NonZero, 0.0).unwrap();
-        assert_eq!(rect, Rect::new(9.0, 19.0, 22.0, 22.0));
+        assert_eq!(rect, Rect::new(8.0, 18.0, 24.0, 24.0));
         let (run, ops) = store.run(id);
-        assert_eq!(ops[0], PathOp::MoveTo(Vec2::new(1.0, 1.0)));
+        assert_eq!(ops[0], PathOp::MoveTo(Vec2::new(2.0, 2.0)));
         assert_eq!(run.len, 4);
         assert!(store.push(&[PathOp::MoveTo(Vec2::ZERO)], FillRule::NonZero, 0.0).is_none());
-        // A stroke widens the box by half its width and a pixel.
+        // A stroke widens the box by half its width.
         let (_, rect) = store.push(p.ops(), FillRule::NonZero, 4.0).unwrap();
         assert_eq!(rect, Rect::new(6.0, 16.0, 28.0, 28.0));
         store.begin_frame(true);

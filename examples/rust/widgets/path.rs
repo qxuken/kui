@@ -90,7 +90,7 @@ impl App for Demo {
                                 .gap(4.0),
                             |ui| {
                                 ui.text(
-                                    format!("{:.0}%", self.gauge * 100.0),
+                                    &format!("{:.0}%", self.gauge * 100.0),
                                     TextStyle::new(22.0).color(t.fg),
                                 );
                                 ui.text("of the frame budget", muted);
@@ -205,12 +205,12 @@ impl Example for Demo {
                 .count()
         };
         // 4 wedges + the track and the gauge + 2 icons × 2 paints + the ring.
-        d.check(
-            count(d.core, QuadKind::GlyphMask) >= 11,
-            "every paint is one mask quad",
-        )?;
-        d.check(count(d.core, QuadKind::Fragment) == 0, "and none is a fragment")?;
-        d.check(d.warnings().is_empty(), "nothing warned")?;
+        let masks = count(d.core, QuadKind::GlyphMask);
+        d.check(masks >= 11, "every paint is one mask quad")?;
+        let fragments = count(d.core, QuadKind::Fragment);
+        d.check(fragments == 0, "and none is a fragment")?;
+        let warned = d.warnings();
+        d.check(warned.is_empty(), "nothing warned")?;
         let w1 = d.key_of("wedge1").ok_or("no second wedge")?;
         let r = d.rect_of(w1).ok_or("the wedge has no region")?;
         // The pie's centre on the page: the wedge's region is its outline's
@@ -223,7 +223,7 @@ impl Example for Demo {
             &mut outline,
         );
         let b = kui_native::path::bounds(&outline).ok_or("no bounds")?;
-        let c = kui_native::Vec2::new(r.x - (b.x - 1.0) + 110.0, r.y - (b.y - 1.0) + 110.0);
+        let c = kui_native::Vec2::new(r.x - (b.x - 2.0) + 110.0, r.y - (b.y - 2.0) + 110.0);
         let mid = (from + frac * 0.5) * std::f32::consts::TAU;
         let inside = kui_native::Vec2::new(c.x + 50.0 * mid.cos(), c.y + 50.0 * mid.sin());
         let outside = kui_native::Vec2::new(c.x + 84.0 * mid.cos(), c.y + 84.0 * mid.sin());

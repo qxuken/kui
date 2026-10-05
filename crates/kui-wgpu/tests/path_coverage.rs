@@ -145,12 +145,11 @@ fn a_fractional_position_is_baked_into_the_mask() {
     let q = &q[0];
     assert_eq!(q.rect.x.fract(), 0.0);
     let cov = |x: f32, y: f32| coverage(&core, q, x, y).unwrap_or(0.0);
-    // The edge is at 20.5 with half a pixel of bleed to 20: pixel 20 is
-    // fully the bleed's, pixel 19 is the bleed's outer half, 18 is empty.
+    // The edge is at 20.5 with half a pixel of bleed to 20.0: pixel 20
+    // is whole, pixel 19 is empty — where the integer edge of the first
+    // test left pixel 19 half covered. The half pixel moved the edge.
     assert!(cov(21.5, 40.5) > 0.99, "{}", cov(21.5, 40.5));
-    assert!(cov(20.5, 40.5) > 0.9, "{}", cov(20.5, 40.5));
-    let outer = cov(19.5, 40.5);
-    assert!(outer > 0.2 && outer < 0.8, "{outer}");
-    assert!(cov(18.5, 40.5) < 0.01);
+    assert!(cov(20.5, 40.5) > 0.95, "{}", cov(20.5, 40.5));
+    assert!(cov(19.5, 40.5) < 0.05, "{}", cov(19.5, 40.5));
     assert!(Vec2::new(q.rect.x, q.rect.y).x <= 19.0);
 }

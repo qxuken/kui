@@ -857,7 +857,7 @@ export declare namespace JSX {
      *  y, 3 C c1x c1y c2x c2y x y, 4 A rx ry rot large sweep x y, 5 Z).
      *  Placed as a `line` is: always a float in its parent's box space
      *  (`float="viewport"` for viewport space), sized to its own bounding
-     *  box a pixel out on each side, so it takes no room in a row or
+     *  box two pixels out on each side, so it takes no room in a row or
      *  column. `transition` eases the fill and, with `slide`, its position.
      *  Hit by its outline under the fill rule
      *  (docs/adr/0026-hit-testing-by-shape.md): with `onClick`, `onDrag`,

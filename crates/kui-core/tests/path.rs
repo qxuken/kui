@@ -220,7 +220,7 @@ fn a_big_mask_takes_a_texture_and_a_huge_one_warns() {
     let dl = core.output().0;
     assert_eq!(dl.quads.iter().filter(|q| q.kind == QuadKind::Texture).count(), 1);
     assert_eq!(dl.textures.len(), 1);
-    assert_eq!(dl.texture_pixels[0].width, 2103);
+    assert_eq!(dl.texture_pixels[0].width, 2105);
     assert_eq!(core.path_texture_count(), 1);
     // Still, the next frame draws the same texture: nothing is dropped.
     frame(&mut core, build);
