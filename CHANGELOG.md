@@ -21,6 +21,48 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.** Nothing in a build: `KUI_ABI_VERSION` stays 23 — the
+C API gains three functions and two enums and changes no struct or
+signature, which the ABI rule does not bump for — and the Node wire
+moves to v20 for the one new op, which an encoder and addon of one
+release never see apart.
+
+- `path` is a new element in every binding
+  ([ADR 0040](docs/adr/0040-a-path-is-a-mask-in-the-atlas.md)): any
+  outline as SVG path data (`<path d="M … Z" bg width color fillRule/>`,
+  `path { d = }`, `kui_path_d` / `kui_path` with `kui_path_parse`,
+  `ui.path(&Path::parse(d)?, spec)` with `Path::sector` for a wedge, a
+  donut's segment or a ring), filled with `bg` by `nonzero` or `evenodd`
+  and stroked by `width` and `color` over the fill, placed like a `line`
+  and hit by its outline under the rule. The core parses `d` once, for
+  every binding; flattens the outline for the hit test; rasterizes it
+  through zeno (swash's rasterizer, already in the tree) at the node's
+  physical scale and quarter-pixel position into the glyph atlas, under
+  its existing reset-and-copy policy, as a fourth kind of slot; and draws
+  one `GlyphMask` quad per paint, so a host that draws text draws paths
+  and nothing is re-rasterized for a hover, a colour tween or a slide. A
+  fill bleeds half a pixel, so two paths sharing an edge meet without the
+  background showing through — the hairline the `polygon` pie showed. A
+  mask a quarter of the biggest atlas page or more, or a path whose ops
+  change two frames running, draws from a texture of its own
+  (`QuadKind::Texture`, dropped through `dropped_textures` when no frame
+  draws it), and one past 8192 px on a side draws nothing with
+  `path-too-large`; a `d` that does not parse raises `path-malformed`
+  with the byte. `HitShape::Path` carries the rule; `NodeKind::Path` in
+  the devtools; the `path` corpus scene in four bindings; the `path`
+  example; `frame_1k_paths_cached`, `frame_1k_paths_fresh`,
+  `frame_1k_paths_animating` and `raster_pie_wedge_220px` benches.
+- `polygon` is unchanged: the eight-point fill whose SDF costs nothing per
+  frame however it moves, for an arrowhead on a tweening connector or a
+  strip under a live sparkline.
+
+**What you can delete.** The half-pixel overlap or same-colour hairline
+stroke a chart drew between adjacent wedges to hide the seam; the two
+polygons a shape of more than eight points was split into; the flattening
+an app did to draw an arc, a bezier or an icon's `d` as a polyline.
+
 ## 0.1.0-alpha.35 (2026-10-04)
 
 **What breaks.** No build: the crates' code is alpha.34's — doc

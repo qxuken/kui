@@ -2043,6 +2043,52 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "path",
+        doc: "Six paths in a 200×120 canvas (ADR 0040): two quarter wedges \
+              of one pie sharing a radial edge, round by their arcs — the \
+              first declares a click and a label, so it is a button hit by \
+              its outline: a press inside it clicks, a press in its bounding \
+              box past the arc reaches nothing — the second keyed; an \
+              even-odd ring, declared in the flat op form by the bindings \
+              that take it; a stroked cubic with no fill; a triangle filled \
+              and stroked, faded; and a `d` that does not parse, keyed, \
+              which raises its warning and draws nothing. Every paint is one \
+              glyph-mask quad from the atlas, so the glyph lines of the \
+              report pin the masks' slots; nothing is a texture.",
+        custom: &["key"],
+        elements: &["path", "box"],
+        build: build_path,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(75, 75),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(98, 98),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 6,
+            access: &["0 window ||", "1 button Wedge||"],
+            events: &["wedge -"],
+            announcements: &[],
+            warnings: &["path-malformed"],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+        },
+    },
+    Scene {
         name: "fragments",
         doc: "A box a registered WGSL function paints \
               (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): \
@@ -4618,6 +4664,73 @@ pub const POLYGON_NINE: &[(f32, f32)] = &[
 pub const POLYGON_QUAD: &[(f32, f32)] =
     &[(110.0, 70.0), (190.0, 70.0), (180.0, 110.0), (120.0, 110.0)];
 
+/// The `path` scene's outlines as SVG path data, shared so every adapter
+/// draws the same ops. The ring is also spelled in the flat op form
+/// ([`PATH_RING_OPS`]) for the bindings that take it, and the two must be
+/// the same ops to the bit — a test in `tests/conformance.rs` holds them
+/// to it. The last is malformed on purpose.
+pub const PATH_WEDGE: &str = "M60 60 L100 60 A40 40 0 0 1 60 100 Z";
+pub const PATH_WEDGE2: &str = "M60 60 L60 100 A40 40 0 0 1 20 60 Z";
+pub const PATH_RING: &str = "M120 10 H190 V80 H120 Z M140 30 H170 V60 H140 Z";
+pub const PATH_RING_OPS: &[f32] = &[
+    0.0, 120.0, 10.0, 1.0, 190.0, 10.0, 1.0, 190.0, 80.0, 1.0, 120.0, 80.0, 5.0, 0.0, 140.0, 30.0,
+    1.0, 170.0, 30.0, 1.0, 170.0, 60.0, 1.0, 140.0, 60.0, 5.0,
+];
+pub const PATH_CURVE: &str = "M110 90 C130 70 150 110 190 90";
+pub const PATH_TRI: &str = "M20 10 L50 10 L35 40 Z";
+pub const PATH_BAD: &str = "M10 10 L20";
+
+fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::path::{FillRule, Path};
+    ui.with(
+        NodeSpec::column()
+            .size(200.0, 120.0)
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            ui.path_d(
+                PATH_WEDGE,
+                FillRule::NonZero,
+                None,
+                NodeSpec::column()
+                    .bg(Color::hex(0x7f9cf5ff))
+                    .on_click(Value::map([("kind", Value::str("wedge"))]))
+                    .label("Wedge"),
+            );
+            ui.path_d_keyed(
+                "wedge2",
+                PATH_WEDGE2,
+                FillRule::NonZero,
+                None,
+                NodeSpec::column().bg(Color::hex(0xd8863bff)),
+            );
+            // The flat form, as C always and the others may declare it.
+            let ring = Path::from_floats(PATH_RING_OPS)
+                .expect("the ring's ops")
+                .fill_rule(FillRule::EvenOdd);
+            ui.path(&ring, NodeSpec::column().bg(Color::hex(0xf5d67fff)));
+            ui.path_d(
+                PATH_CURVE,
+                FillRule::NonZero,
+                Some(Stroke::new(2.0, Color::hex(0x9ad9a0ff))),
+                NodeSpec::column(),
+            );
+            ui.path_d(
+                PATH_TRI,
+                FillRule::NonZero,
+                Some(Stroke::new(1.5, Color::hex(0xffffffff))),
+                NodeSpec::column().bg(Color::hex(0xe07a8aff)).opacity(0.5),
+            );
+            ui.path_d_keyed(
+                "bad",
+                PATH_BAD,
+                FillRule::NonZero,
+                None,
+                NodeSpec::column().bg(Color::hex(0xffffffff)),
+            );
+        },
+    );
+}
+
 fn polygon_points(pts: &[(f32, f32)]) -> Vec<Vec2> {
     pts.iter().map(|&(x, y)| Vec2::new(x, y)).collect()
 }
@@ -5624,6 +5737,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
             }
             NodeContent::Polygon(_) => {
                 cov.elements.insert("polygon");
+            }
+            NodeContent::Path(_) => {
+                cov.elements.insert("path");
             }
         }
 

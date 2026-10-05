@@ -214,6 +214,7 @@ headless = [
     "table",
     "image",
     "polygon",
+    "path",
     "fragment",
     "metrics",
     "align",
@@ -264,6 +265,10 @@ path = "../../examples/rust/widgets/line.rs"
 [[example]]
 name = "polygon"
 path = "../../examples/rust/widgets/polygon.rs"
+
+[[example]]
+name = "path"
+path = "../../examples/rust/widgets/path.rs"
 
 [[example]]
 name = "fragment"

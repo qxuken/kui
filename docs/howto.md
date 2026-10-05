@@ -1276,25 +1276,46 @@ today, and where a zoom would compose in if the core ever takes one.
 [`layout` event](props.md#events) ·
 [ADR 0025](adr/0025-the-image-is-the-canvas.md)
 
-### How do I fill a shape — an arrowhead, a pie wedge, the area under a curve?
+### How do I fill a shape — a pie wedge, an icon, a map's region, the area under a curve?
 
-`<polygon points={[[x, y], …]} bg/>`: up to eight points in the parent's
-box space, filled with `bg`, placed like a `line` (a float sized to its
-own bounding box, taking no room and no input). Concave outlines fill
-correctly; a shape with more than eight vertices is two polygons (a pie is
-wedges, an area chart is a strip of quads); a stroked outline is a closed
-`line` over it. `transition` eases the fill, and with `slide` the position.
-It is hit by its outline ([ADR 0026](adr/0026-hit-testing-by-shape.md)):
-give a wedge `onClick` or `hoverable` and a press inside it is its own, one
-in its bounding box past the arc is the neighbour's — no hit boxes — and
-a clickable wedge is a button to a screen reader, so give it a `label`. A
-`line` is the same by its stroke, with at least 4 px of grab. On the wire
-a polygon is one `fragment` quad painted by a source the core registers
-itself, so it costs what a fragment costs and no shader of yours.
+`<path d="M … Z" bg/>`: SVG path data (`M L H V C S Q T A Z`, absolute or
+relative — what an icon editor or a chart library exports) in the
+parent's box space, filled with `bg`, placed like a `line` (a float sized
+to its own bounding box, taking no room). `fillRule="evenodd"` makes a
+ring's hole a hole; `width` and `color` stroke the outline over the fill,
+as a `line`'s rows do. `transition` eases the fill, and with `slide` the
+position; a hover or a colour tween re-tints the same mask. It is hit by
+its outline under the fill rule ([ADR
+0026](adr/0026-hit-testing-by-shape.md)): give a wedge `onClick` or
+`hoverable` and a press inside it is its own, one in its bounding box past
+the arc is the neighbour's — no hit boxes — and a clickable wedge is a
+button to a screen reader, so give it a `label`. Two paths that share an
+edge meet without the background showing through: a fill bleeds half a
+pixel, so a pie needs no overlap and no hairline stroke. In Rust,
+`Path::sector(cx, cy, outer, inner, from, sweep)` is a wedge, a donut's
+segment or a ring in one call, and `Path::parse(d)` is the same parser
+every binding's `d` goes through.
 
+On the wire a path is one glyph-mask quad per paint, from the glyph
+atlas: the outline is rasterized once per shape, scale and quarter-pixel
+position, and a host that draws text draws paths. A mask a quarter of the
+biggest atlas page or more, or a path whose `d` changes two frames
+running, draws from a texture of its own instead; a shape that must move
+cheaply every frame at any size is a `polygon`
+([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)).
+
+`<polygon points={[[x, y], …]} bg/>` is the eight-point fill that came
+first ([ADR 0025](adr/0025-the-image-is-the-canvas.md)): one `fragment`
+quad painted by a signed-distance source the core registers, so it costs
+nothing per frame however it moves, and it is still the right element for
+an arrowhead on a tweening connector or a strip of quads under a live
+sparkline. It fills even-odd, takes at most eight points, and two of
+them sharing an edge show a hairline of the background through it.
+
+[`path` element](props.md#elements) ·
 [`polygon` element](props.md#elements) ·
-[ADR 0025](adr/0025-the-image-is-the-canvas.md) ·
-`cargo run --example polygon`
+[ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md) ·
+`cargo run --example path` · `cargo run --example polygon`
 
 ### How do I draw a gradient, a ring, or anything the paint props cannot?
 

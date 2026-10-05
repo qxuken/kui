@@ -159,6 +159,16 @@ function polygon(t)
   return t
 end
 
+-- path { d = "M60 60 L100 60 A40 40 0 0 1 60 100 Z", bg = 0xd8863bff,
+-- fill_rule = "nonzero", width = 2, color = 0xffffffff }: any outline as SVG
+-- path data (or `ops`, the flat op form), filled with `bg` by `fill_rule`
+-- and stroked `width` wide in `color` when `width` is given, placed like a
+-- line. Hit by its outline under the rule (docs/adr/0040).
+function path(t)
+  t.type = "path"
+  return t
+end
+
 -- cells { rows=, cols=, lines={"row text", ...}, runs={{row, col, len, fg,
 -- bg, flags}, ...}, cursor_at={row, col}, cursor_shape="block", cursor_color=,
 -- size=, family= }: a terminal's screen as one node (backlog C20). Rows and

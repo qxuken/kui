@@ -671,6 +671,26 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: six paths in a
+        // 200×120 canvas; the first wedge takes a click, hit by its arc, the
+        // second is keyed, the ring is the flat op form, the cubic is a
+        // stroke alone, the triangle is both and faded, and the last does not
+        // parse. Data is `conformance::PATH_*` to the character.
+        "path" => r#"
+            return column { width = 200, height = 120, bg = 0x14161eff,
+              path { d = "M60 60 L100 60 A40 40 0 0 1 60 100 Z", bg = 0x7f9cf5ff,
+                     on_click = { kind = "wedge" }, label = "Wedge" },
+              path { key = "wedge2", d = "M60 60 L60 100 A40 40 0 0 1 20 60 Z", bg = 0xd8863bff },
+              path { ops = {0, 120, 10, 1, 190, 10, 1, 190, 80, 1, 120, 80, 5,
+                            0, 140, 30, 1, 170, 30, 1, 170, 60, 1, 140, 60, 5},
+                     bg = 0xf5d67fff, fill_rule = "evenodd" },
+              path { d = "M110 90 C130 70 150 110 190 90", width = 2, color = 0x9ad9a0ff },
+              path { d = "M20 10 L50 10 L35 40 Z", bg = 0xe07a8aff, width = 1.5,
+                     color = 0xffffffff, opacity = 0.5 },
+              path { key = "bad", d = "M10 10 L20", bg = 0xffffffff },
+            }
+        "#
+        .to_string(),
         // The one scene whose view changes its mind: `phase` is a global
         // the host writes before each frame (see `every_scene_lowers_...`),
         // and the four subtrees it gates are the departures.

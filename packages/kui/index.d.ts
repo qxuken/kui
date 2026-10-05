@@ -1302,7 +1302,7 @@ export interface NodeInfo {
   parent: string | null;
   /** Nesting depth; the root is 0. */
   depth: number;
-  kind: 'box' | 'text' | 'edit' | 'image' | 'line' | 'cells' | 'fragment' | 'polygon';
+  kind: 'box' | 'text' | 'edit' | 'image' | 'line' | 'cells' | 'fragment' | 'polygon' | 'path';
   label: string | null;
   rect: Rect;
   dir: 'row' | 'column';

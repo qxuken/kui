@@ -216,6 +216,18 @@ fn mint() -> MutexGuard<'static, Mint> {
     MINT.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// An image handle for pixels the core itself owns — a path's mask drawn
+/// from a texture of its own — unique across sessions as a registered
+/// image's is, so a backend's texture cache never confuses the two.
+pub(crate) fn mint_image(session: SessionId) -> ImageId {
+    mint().images.insert(session)
+}
+
+/// Returns a handle [`mint_image`] made.
+pub(crate) fn unmint_image(id: ImageId) {
+    mint().images.remove(id);
+}
+
 /// An RGBA image registered by the host (rendering lands in a later pass).
 pub struct ImageEntry {
     pub width: u32,

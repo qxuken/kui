@@ -4536,6 +4536,21 @@ const SCENE_TREES = {
         el('polygon', { points: [[110, 70], [190, 70], [180, 110], [120, 110]], bg: '#e07a8a', opacity: 0.5 }),
       ]),
     ]),
+  // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: six paths; the first
+  // wedge takes a click, hit by its arc, the second is keyed, the ring is
+  // the flat op form, the cubic is a stroke alone, the triangle is both and
+  // faded, and the last does not parse. Data is `conformance::PATH_*`.
+  path: () =>
+    root({}, [
+      box({ width: 200, height: 120, bg: '#14161e' }, [
+        el('path', { d: 'M60 60 L100 60 A40 40 0 0 1 60 100 Z', bg: '#7f9cf5', onClick: { kind: 'wedge' }, label: 'Wedge' }),
+        el('path', { d: 'M60 60 L60 100 A40 40 0 0 1 20 60 Z', bg: '#d8863b' }, [], 'wedge2'),
+        el('path', { d: [0, 120, 10, 1, 190, 10, 1, 190, 80, 1, 120, 80, 5, 0, 140, 30, 1, 170, 30, 1, 170, 60, 1, 140, 60, 5], bg: '#f5d67f', fillRule: 'evenodd' }),
+        el('path', { d: 'M110 90 C130 70 150 110 190 90', width: 2, color: '#9ad9a0' }),
+        el('path', { d: 'M20 10 L50 10 L35 40 Z', bg: '#e07a8a', width: 1.5, color: '#ffffff', opacity: 0.5 }),
+        el('path', { d: 'M10 10 L20', bg: '#ffffff' }, [], 'bad'),
+      ]),
+    ]),
   // docs/adr/0010-a-segment-primitive.md: three strokes and a box; the
   // elbow takes a click, hit by its stroke (ADR 0026).
   underlines: () => {

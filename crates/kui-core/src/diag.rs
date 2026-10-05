@@ -176,6 +176,14 @@ warnings! {
     /// takes eight vertices in the sixteen params it has, so the rest
     /// were dropped. Two polygons, or the path primitive kui does not have.
     pub const POLYGON_POINTS_TRUNCATED: &str = "polygon-points-truncated";
+    /// A `path`'s `d` did not parse: the message names the byte and what
+    /// was expected there (a number, a command letter, an arc flag). The
+    /// node draws nothing. Raised once per key.
+    pub const PATH_MALFORMED: &str = "path-malformed";
+    /// A `path`'s mask is wider or taller than a texture the device can
+    /// hold, so it draws nothing: the message names the size and the
+    /// limit. Draw it smaller, or as several paths.
+    pub const PATH_TOO_LARGE: &str = "path-too-large";
     /// The frame's modal surface is not in a float, and content painted after
     /// it is drawn on top of it: everything the user can see over the modal is
     /// inert, which looks like inert-behind is broken. A modal that has to

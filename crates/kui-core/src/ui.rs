@@ -1006,6 +1006,47 @@ impl<'a> Ui<'a> {
         self.core.polygon_node_indexed(i, points, spec);
     }
 
+    /// A path — any outline — filled with `spec`'s `bg` and stroked by
+    /// the path's own stroke; see `Core::path_node` for what it is and
+    /// is not.
+    pub fn path(&mut self, path: &crate::path::Path, spec: NodeSpec) {
+        self.core.path_node(path, spec);
+    }
+
+    /// [`Self::path`] under a label key.
+    pub fn path_keyed(&mut self, label: &str, path: &crate::path::Path, spec: NodeSpec) {
+        self.core.path_node_keyed(label, path, spec);
+    }
+
+    /// [`Self::path`] under a data index; see [`Self::open_indexed`].
+    pub fn path_indexed(&mut self, i: u64, path: &crate::path::Path, spec: NodeSpec) {
+        self.core.path_node_indexed(i, path, spec);
+    }
+
+    /// [`Self::path`] from SVG path data; data that does not parse raises
+    /// `path-malformed` and draws nothing. See `Core::path_d_node`.
+    pub fn path_d(
+        &mut self,
+        d: &str,
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        spec: NodeSpec,
+    ) {
+        self.core.path_d_node(d, rule, stroke, spec);
+    }
+
+    /// [`Self::path_d`] under a label key.
+    pub fn path_d_keyed(
+        &mut self,
+        label: &str,
+        d: &str,
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        spec: NodeSpec,
+    ) {
+        self.core.path_d_node_keyed(label, d, rule, stroke, spec);
+    }
+
     /// An `audio` node: a playback retained for as long as the view keeps
     /// declaring it; see `Core::audio_node`.
     pub fn audio(&mut self, spec: crate::audio::AudioSpec) -> Key {

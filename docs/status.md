@@ -16,12 +16,17 @@ are not a paint prop's worth of work — write a fragment, or use an image),
 no inset or
 multiple shadows, and the single shadow is not knocked out of the middle of
 the shape, so a translucent background shows it through. There are **no
-paths, dashes or arrowhead caps**: a line is segments and nothing else, a
+dashes or arrowhead caps**: a line is segments and nothing else, a
 translucent polyline double-blends where its caps overlap at a join, and its
-width does not tween (its colour does). A fill is a `polygon` of at
-most eight points ([ADR 0025](adr/0025-the-image-is-the-canvas.md)):
-concave is fine, more vertices is two polygons, and a stroked outline is a
-closed line over it. Both take input **by shape**
+width does not tween (its colour does). A fill of any shape is a `path`
+([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)): SVG path data,
+filled by either rule and stroked, rasterized once per shape and scale
+into the glyph atlas and drawn as a mask quad — so a hover or a colour
+tween is free and a shape that changes every frame pays a raster each,
+from a texture of its own. A `polygon` of at most eight points
+([ADR 0025](adr/0025-the-image-is-the-canvas.md)) is the fill that costs
+nothing per frame however it moves: concave is fine, more vertices is two
+polygons, and two sharing an edge show a hairline. All three take input **by shape**
 ([ADR 0026](adr/0026-hit-testing-by-shape.md)): a press within a
 stroke's width (at least 4 px of grab) or inside an outline hits it, one in
 the bounding box off the shape falls through, and a stroke or fill with a

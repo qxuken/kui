@@ -102,7 +102,8 @@ use crate::{Result, err, value_of};
 /// and one whose mode is `SIZE_MODE_TREE` (5) by a count and the
 /// expression in prefix code (`calc::from_code`); `maxWidth` and
 /// `maxHeight` are two slots, (mode, value), where they were one.
-pub const VERSION: u32 = 19;
+/// v20: `path` is a new op (ADR 0040).
+pub const VERSION: u32 = 20;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -144,6 +145,11 @@ pub const OP_SLIDER: u32 = 24;
 /// A radio group: label, a prop list of box rows, children
 /// until the CLOSE op.
 pub const OP_RADIO_GROUP: u32 = 25;
+/// A path (ADR 0040): `d` as a strref (none for the flat form), a count
+/// and that many floats of the flat op form, the stroke width slot, a
+/// flags word (bit 1: the width slot is a length token's index; bit 2:
+/// even-odd), then props.
+pub const OP_PATH: u32 = 26;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -178,6 +184,7 @@ pub fn protocol_json() -> Json {
                 ("toggle", OP_TOGGLE),
                 ("slider", OP_SLIDER),
                 ("radioGroup", OP_RADIO_GROUP),
+                ("path", OP_PATH),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1092,6 +1099,44 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         // n, then n (x, y) pairs, width, flags (1 curve), then the prop
         // list — `color` lands in the style, `key` in `p.key`, and the
         // core decides the box (docs/adr/0010-a-segment-primitive.md).
+        OP_PATH => {
+            let d = r.str_ref()?;
+            let n = r.u()? as usize;
+            let mut floats = Vec::with_capacity(n);
+            for _ in 0..n {
+                floats.push(r.f()? as f32);
+            }
+            let width_slot = r.f()?;
+            let flags = r.u()?;
+            let p = lower_props(r, ui)?;
+            let width = if flags & 1 != 0 {
+                lookup_length(ui, width_slot).unwrap_or(0.0)
+            } else {
+                width_slot as f32
+            };
+            // No `width` is no stroke; no `color` is the foreground.
+            let stroke = (width > 0.0).then(|| {
+                kui_core::Stroke::new(width, p.style.color.unwrap_or(ui.theme().fg))
+            });
+            let rule = if flags & 2 != 0 {
+                kui_core::FillRule::EvenOdd
+            } else {
+                kui_core::FillRule::NonZero
+            };
+            match d {
+                Some(d) => {
+                    ui.core().open_from(p, Content::PathD(d, rule, stroke));
+                }
+                None => {
+                    // The encoder checked the numbers; a form it did not
+                    // is nothing to draw.
+                    if let Ok(path) = kui_core::Path::from_floats(&floats) {
+                        ui.core().open_from(p, Content::Path(path.ops(), rule, stroke));
+                    }
+                }
+            }
+            Ok(())
+        }
         OP_LINE => {
             let n = r.u()? as usize;
             let mut points = Vec::with_capacity(n);

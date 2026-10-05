@@ -235,6 +235,134 @@ pub extern "C" fn kui_polygon(
     });
 }
 
+/// A path — any outline — as `count` floats at `ops` in the flat op form
+/// ([`kui_path_parse`] makes it from SVG path data): filled with `spec`'s
+/// `bg` by `fill_rule` (`KUI_FILL_NONZERO` or `KUI_FILL_EVENODD`) and,
+/// when `width` is positive, stroked `width` wide in `color` (0 for the
+/// theme's foreground) over the fill. Placed like a stroke: a float sized
+/// to its own bounding box, in the parent's box space. `label` keys the
+/// node (empty for a key from the tree position). The three payloads are
+/// consumed as [`kui_open_with`] consumes them; a path with one is hit
+/// by its outline under the fill rule. A NULL `spec` is a path with no
+/// fill; ops that are not the flat form draw nothing.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn kui_path(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    ops: *const f32,
+    count: usize,
+    fill_rule: u32,
+    width: f32,
+    color: u32,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_hover: *mut KuiValue,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if ops.is_null() || count == 0 {
+            return;
+        }
+        let floats = unsafe { std::slice::from_raw_parts(ops, count) };
+        let Ok(path) = kui_core::Path::from_floats(floats) else {
+            return;
+        };
+        let rule = kui_core::FillRule::from_index(fill_rule as usize);
+        let stroke = (width > 0.0).then(|| {
+            let color = if color == 0 {
+                c.core().theme().fg
+            } else {
+                color_of(color)
+            };
+            kui_core::Stroke::new(width, color)
+        });
+        let mut path = path.fill_rule(rule);
+        if let Some(stroke) = stroke {
+            path = path.stroked(stroke);
+        }
+        let spec = match unsafe { spec.as_ref() } {
+            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
+            None => kui_core::NodeSpec::column(),
+        };
+        match opt_str(label) {
+            Some(label) => c.core().path_node_keyed(&label, &path, spec),
+            None => c.core().path_node(&path, spec),
+        }
+    });
+}
+
+/// [`kui_path`] from SVG path data instead of the flat form: `d` goes
+/// through the one parser every binding uses, and data that does not parse
+/// raises `path-malformed` under the node's key and draws nothing — the
+/// same as `<path d>` in JSX and `path { d = }` in Lua.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn kui_path_d(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    d: KuiStr,
+    fill_rule: u32,
+    width: f32,
+    color: u32,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_hover: *mut KuiValue,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let d = kstr(d);
+        let rule = kui_core::FillRule::from_index(fill_rule as usize);
+        let stroke = (width > 0.0).then(|| {
+            let color = if color == 0 {
+                c.core().theme().fg
+            } else {
+                color_of(color)
+            };
+            kui_core::Stroke::new(width, color)
+        });
+        let spec = match unsafe { spec.as_ref() } {
+            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
+            None => kui_core::NodeSpec::column(),
+        };
+        match opt_str(label) {
+            Some(label) => c.core().path_d_node_keyed(&label, &d, rule, stroke, spec),
+            None => c.core().path_d_node(&d, rule, stroke, spec),
+        }
+    });
+}
+
+/// Parses SVG path data (`M L H V C S Q T A Z`, absolute or relative) into
+/// the flat op form [`kui_path`] takes — a `KUI_PATH_*` code then its
+/// operands, every coordinate absolute — through the one parser every
+/// binding uses. Returns how many floats the form needs; they are written
+/// to `out` when `cap` holds them all, and not at all otherwise, so a
+/// host may call once with `cap` 0 to size a buffer. Returns 0 for data
+/// that does not parse.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_path_parse(d: KuiStr, out: *mut f32, cap: usize) -> usize {
+    guard(0, || {
+        let Some(d) = opt_str(d) else {
+            return 0;
+        };
+        let Ok(path) = kui_core::Path::parse(&d) else {
+            return 0;
+        };
+        let floats = path.to_floats();
+        if !out.is_null() && cap >= floats.len() {
+            let dst = unsafe { std::slice::from_raw_parts_mut(out, floats.len()) };
+            dst.copy_from_slice(&floats);
+        }
+        floats.len()
+    })
+}
+
 /// A box painted by the WGSL fragment function registered as `id`
 /// ([`kui_fragment_add`]). It has no intrinsic size, so `spec` must give
 /// it one. `params` are `count` floats the function reads, NULL when

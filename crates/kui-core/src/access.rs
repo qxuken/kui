@@ -777,7 +777,7 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         // plain structure; one that takes input is hit by its shape, so
         // the derivation below reaches it as it reaches a box —
         // a clickable wedge is a button, a draggable connector a control.
-        NodeContent::Line(_) | NodeContent::Polygon(_) => {}
+        NodeContent::Line(_) | NodeContent::Polygon(_) | NodeContent::Path(_) => {}
         NodeContent::Cells(_) => return Some(Role::Terminal),
         // A fragment is paint. On its own it is decoration and is elided
         // like plain structure, but unlike a line it does take input, so

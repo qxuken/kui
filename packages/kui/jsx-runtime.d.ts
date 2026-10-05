@@ -845,6 +845,46 @@ export declare namespace JSX {
         bg?: ColorProp;
         float?: 'parent' | 'viewport';
       };
+    /** Any outline — SVG path data, a pie wedge with a round arc, a map's
+     *  region, an icon — filled with `bg` by `fillRule` (`nonzero`, the
+     *  default, or `evenodd`) and stroked `width` wide in `color` when
+     *  `width` is given, the stroke over the fill
+     *  (docs/adr/0040-a-path-is-a-mask-in-the-atlas.md). `d` is SVG path
+     *  data (`M L H V C S Q T A Z`, absolute or relative), parsed by one
+     *  parser in the core so every binding draws the same shape — one that
+     *  does not parse raises `path-malformed` and draws nothing — or a flat
+     *  number array of op codes and operands (0 M x y, 1 L x y, 2 Q cx cy x
+     *  y, 3 C c1x c1y c2x c2y x y, 4 A rx ry rot large sweep x y, 5 Z).
+     *  Placed as a `line` is: always a float in its parent's box space
+     *  (`float="viewport"` for viewport space), sized to its own bounding
+     *  box a pixel out on each side, so it takes no room in a row or
+     *  column. `transition` eases the fill and, with `slide`, its position.
+     *  Hit by its outline under the fill rule
+     *  (docs/adr/0026-hit-testing-by-shape.md): with `onClick`, `onDrag`,
+     *  `onHover` or `hoverable`, a press inside hits it and one in its box
+     *  past the outline falls through — a pie's wedges need no hit boxes; a
+     *  stroke with no fill is hit by its stroke, as a line is; with input it
+     *  is a button — name it. On the wire it is one glyph-mask quad per
+     *  paint, fill and stroke, from the glyph atlas: rasterized once per
+     *  shape, scale and quarter-pixel position, re-tinted for free. The fill
+     *  bleeds half a pixel, so two paths sharing an edge meet without the
+     *  background showing through. A mask a quarter of the biggest atlas
+     *  page or more, or a path whose `d` changes two frames running, draws
+     *  from a texture of its own; one past 8192 px on a side draws nothing,
+     *  with `path-too-large`. */
+    path: Keyed &
+      Pick<
+        GeneratedSpecProps,
+        | 'opacity' | 'transition' | 'slide' | 'enter' | 'exit' | 'onLayout' | 'label' | 'role'
+        | 'onClick' | 'onDrag' | 'onHover' | 'hoverable' | 'hoverBg' | 'cursor' | 'description'
+      > & Pick<CustomSpecProps, 'tooltip'> & {
+        d: string | number[];
+        fillRule?: 'nonzero' | 'evenodd';
+        bg?: ColorProp;
+        width?: number;
+        color?: ColorProp;
+        float?: 'parent' | 'viewport';
+      };
     /** Adaptive titlebar (drag strip + window buttons per env facts).
      *  `title` alone draws the standard title; children host custom content. */
     titlebar: Keyed & { title?: string; children?: KuiNode };

@@ -13,6 +13,14 @@
 //! bounding box but past its arc is over the neighbour, not it. Before
 //! that ADR this example floated a hover box over each wedge's middle.
 //!
+//! What this pie shows that a chart would not want: an arc of seven
+//! chords, and a hairline of the panel through every shared edge, since
+//! two signed-distance fills each cover the edge's pixels by half. A
+//! round pie that meets without a seam is the `path` element's
+//! (`docs/adr/0040-a-path-is-a-mask-in-the-atlas.md`, `--example path`);
+//! what `polygon` keeps is a fill that costs nothing per frame however it
+//! moves — the arrowheads and the area strip below.
+//!
 //! Run: cargo run -p kui-native --example polygon [-- --headless]
 
 use kui_devtools::{Drive, Example};

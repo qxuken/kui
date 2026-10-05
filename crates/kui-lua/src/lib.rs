@@ -135,8 +135,9 @@
 //!   { key =, initial = }` (bare editor), `dropdown { options =, current = }`
 //!   (named `dropdown` because `select` is Lua's).
 //! - Media: `image { id = }`, `fragment { id = }` (a WGSL-painted box),
-//!   `line { from =, to = }`, `polygon { points = }`, `cells { }` (a
-//!   terminal screen as one node), `audio { src = }`.
+//!   `line { from =, to = }`, `polygon { points = }`, `path { d = }` (any
+//!   outline, SVG path data), `cells { }` (a terminal screen as one
+//!   node), `audio { src = }`.
 //! - Window chrome: `titlebar { title = }`, `window_buttons()`, `menu_bar
 //!   { menu = }`, `latency_graph()`, `latency_hud { }`.
 //! - Lists: `uniform_list(env, opts, row)` for rows of one height,
@@ -1922,6 +1923,38 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 })
                 .collect::<mlua::Result<_>>()?;
             ui.core().open_from(p, Content::Polygon(&points));
+            Ok(())
+        }
+        "path" => {
+            // `d` (SVG path data, parsed in the core) or `ops` (the flat op
+            // form, a list of numbers); the fill is the `bg` row, `fill_rule`
+            // its rule; `width` and `color` are the stroke's, as a line's,
+            // and no `width` is no stroke (ADR 0040).
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let rule = match t.get::<Option<String>>("fill_rule")? {
+                Some(name) => kui_core::FillRule::parse(&name)
+                    .ok_or_else(|| bad("fill_rule is \"nonzero\" or \"evenodd\""))?,
+                None => kui_core::FillRule::NonZero,
+            };
+            let width = match t.get::<mlua::Value>("width")? {
+                mlua::Value::Nil => None,
+                v => with_refs(ui, |refs| length_of(&v, refs))?,
+            };
+            let stroke = width.filter(|w| *w > 0.0).map(|w| {
+                kui_core::Stroke::new(w, p.style.color.unwrap_or(ui.theme().fg))
+            });
+            if let Some(d) = t.get::<Option<String>>("d")? {
+                ui.core().open_from(p, Content::PathD(&d, rule, stroke));
+            } else if let Some(list) = t.get::<Option<Table>>("ops")? {
+                let floats: Vec<f32> = list
+                    .sequence_values::<f32>()
+                    .collect::<mlua::Result<_>>()?;
+                let path = kui_core::Path::from_floats(&floats)
+                    .map_err(|e| bad(&format!("ops: expected {e}")))?;
+                ui.core().open_from(p, Content::Path(path.ops(), rule, stroke));
+            } else {
+                return Err(bad("path needs d or ops"));
+            }
             Ok(())
         }
         "line" => {

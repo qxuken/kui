@@ -35,6 +35,7 @@
   - [line](examples/widgets/line.md)
   - [menu_bar](examples/widgets/menu_bar.md)
   - [polygon](examples/widgets/polygon.md)
+  - [path](examples/widgets/path.md)
   - [select](examples/widgets/select.md)
   - [table](examples/widgets/table.md)
   - [text](examples/widgets/text.md)

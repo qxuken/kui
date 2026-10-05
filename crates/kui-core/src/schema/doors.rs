@@ -92,6 +92,13 @@ pub const DOORS: &[Door] = &[
         doc: "The pixels behind a handle, for a renderer meeting a texture quad.",
     },
     Door {
+        rust: "Path::parse",
+        c: Is("kui_path_parse"),
+        node: As("`d` on `<path>` is the string; the addon hands it to this parser"),
+        lua: As("`d` on `path { }` is the string; the host hands it to this parser"),
+        doc: "SVG path data to the flat op form a `path` draws (ADR 0040): one parser, so every binding draws the same shape.",
+    },
+    Door {
         rust: "Core::add_fragment",
         c: Is("kui_fragment_add"),
         node: Is("addFragment"),

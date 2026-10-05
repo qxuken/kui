@@ -19,6 +19,12 @@ pub enum Content<'a> {
     Line(&'a [Vec2], Stroke),
     /// A filled polygon; the fill is the spec's `bg`.
     Polygon(&'a [Vec2]),
+    /// A path: its ops, the fill rule, and a stroke if it has one. The
+    /// fill is the spec's `bg`.
+    Path(&'a [crate::path::PathOp], crate::path::FillRule, Option<Stroke>),
+    /// The same from a `d` string, parsed here by the one parser; one
+    /// that does not parse raises `path-malformed` under the node's key.
+    PathD(&'a str, crate::path::FillRule, Option<Stroke>),
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -614,6 +620,14 @@ impl Core {
                 self.polygon_with_key(key, points, spec);
                 true
             }
+            Content::Path(ops, rule, stroke) => {
+                self.path_with_key(key, ops, rule, stroke, spec);
+                true
+            }
+            Content::PathD(d, rule, stroke) => {
+                self.path_node_d(key, d, rule, stroke, spec);
+                true
+            }
         };
         // Bookkeeping for the node that was actually pushed: the label
         // `key_of` resolves through, or the data index a selection inside
@@ -1138,6 +1152,156 @@ impl Core {
         let parent = self.current();
         self.tree
             .push(parent, key, self.origin, spec, NodeContent::Polygon(draw));
+    }
+
+    /// A path — any outline, SVG's `d` — filled with `spec`'s `bg` by the
+    /// path's rule and stroked by its stroke if it has one
+    /// (`docs/adr/0040-a-path-is-a-mask-in-the-atlas.md`).
+    ///
+    /// Placed exactly as a line is: never in layout, a float sized to the
+    /// outline's bounding box a logical pixel out (and half the stroke's
+    /// width further), so it takes no room in a row or column and
+    /// `spec`'s sizing, clamps, padding, gap and alignment are ignored.
+    /// `transition` eases the fill through the `bg` slot, and `slide`,
+    /// `enter` and `exit` move the float; a declared `float` keeps its
+    /// *anchor*; `role` and `label` are honoured, and without them a path
+    /// has no access row unless it takes input, when it derives one as a
+    /// box would. Input is hit by *shape*: a press inside the outline by
+    /// the fill rule hits it, one in its box past the outline falls
+    /// through to what is under. A path with no outline draws nothing.
+    ///
+    /// The outline is rasterized once per shape, scale and quarter-pixel
+    /// position into the glyph atlas and drawn as a glyph-mask quad; the
+    /// fill bleeds half a pixel so two paths sharing an edge meet without
+    /// the background showing through. A path whose ops change two frames
+    /// running, or whose mask is a quarter of the biggest atlas page or
+    /// more, draws from a texture of its own instead.
+    pub fn path_node(&mut self, path: &crate::path::Path, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.auto_key();
+        self.path_with_key(key, path.ops(), path.rule(), path.stroke(), spec);
+    }
+
+    /// [`Self::path_node`] under a label key.
+    pub fn path_node_keyed(&mut self, label: &str, path: &crate::path::Path, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key(label);
+        self.path_with_key(key, path.ops(), path.rule(), path.stroke(), spec);
+        self.key_labels.push(key, label, self.origin);
+    }
+
+    /// [`Self::path_node`] under a data index; see [`Self::open_indexed`].
+    pub fn path_node_indexed(&mut self, i: u64, path: &crate::path::Path, spec: NodeSpec) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key_indexed(i);
+        self.path_with_key(key, path.ops(), path.rule(), path.stroke(), spec);
+    }
+
+    /// [`Self::path_node`] from SVG path data, parsed by the one parser
+    /// every binding goes through; data that does not parse raises
+    /// `path-malformed` under the node's key and draws nothing.
+    pub fn path_d_node(
+        &mut self,
+        d: &str,
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        spec: NodeSpec,
+    ) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.auto_key();
+        self.path_node_d(key, d, rule, stroke, spec);
+    }
+
+    /// [`Self::path_d_node`] under a label key.
+    pub fn path_d_node_keyed(
+        &mut self,
+        label: &str,
+        d: &str,
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        spec: NodeSpec,
+    ) {
+        if self.tree.is_empty() {
+            return;
+        }
+        let key = self.child_key(label);
+        self.path_node_d(key, d, rule, stroke, spec);
+        self.key_labels.push(key, label, self.origin);
+    }
+
+    /// [`Self::path_d_node`] under a key the caller derived.
+    pub fn path_node_d(&mut self, key: Key, d: &str, rule: crate::path::FillRule, stroke: Option<Stroke>, spec: NodeSpec) {
+        match crate::path::Path::parse(d) {
+            Ok(path) => self.path_with_key(key, path.ops(), rule, stroke, spec),
+            Err(e) => self.diag.raise(Warning {
+                code: crate::diag::PATH_MALFORMED,
+                key,
+                message: format!("the path's `d` did not parse: expected {e}"),
+            }),
+        }
+    }
+
+    fn path_with_key(
+        &mut self,
+        key: Key,
+        ops: &[crate::path::PathOp],
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        mut spec: NodeSpec,
+    ) {
+        let stroke_w = stroke.map_or(0.0, |s| s.width.max(0.0));
+        let Some((id, rect)) = self.paths.push(ops, rule, stroke_w) else {
+            return;
+        };
+        // The mask is the box at the frame's scale; past what a texture
+        // can hold it draws nothing, and says so once per key.
+        let side = (rect.w.max(rect.h) * self.scale).ceil();
+        if side > crate::path::MAX_MASK_SIDE as f32 {
+            self.diag.raise(Warning {
+                code: crate::diag::PATH_TOO_LARGE,
+                key,
+                message: format!(
+                    "the path's mask would be {side} px on a side at this scale, and a                      texture holds {} at most; draw it smaller, or as several paths",
+                    crate::path::MAX_MASK_SIDE
+                ),
+            });
+            return;
+        }
+        // A key whose ops moved two frames running is animating: its masks
+        // go to a texture of their own rather than churning the atlas
+        // (ADR 0040, decision 8). One-way, as an updated image's backing is.
+        let hash = self.paths.run(id).0.hash;
+        let (changed, animating) = match self.path_motion.get(&key) {
+            Some(&(last, at, changed_last, was)) => {
+                let changed = last != hash && at + 1 == self.frame_no;
+                (changed, was || (changed && changed_last))
+            }
+            None => (false, false),
+        };
+        if animating {
+            self.paths.set_animating(id);
+        }
+        self.path_motion
+            .insert(key, (hash, self.frame_no, changed, animating));
+        // The fill rides in `bg`, which `transition`, `enter` and `exit`
+        // ease and `hover_bg` and `accent` swap; the stroke rides in the
+        // border slots, which is what a border is to a box.
+        spec.style.border_w = stroke_w;
+        spec.style.border_color = stroke.map_or(Color::TRANSPARENT, |s| s.color);
+        spec.style.shadow = crate::spec::Shadow::default();
+        self.prepare_spec(key, &mut spec);
+        Self::float_box_for(&mut spec, rect);
+        let parent = self.current();
+        self.tree
+            .push(parent, key, self.origin, spec, NodeContent::Path(id));
     }
 
     /// A paragraph of styled spans, shaped and wrapped as one flow.

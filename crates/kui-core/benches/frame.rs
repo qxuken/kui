@@ -373,6 +373,85 @@ fn frame_1k_polygons(bencher: divan::Bencher) {
     bencher.bench_local(|| run_polygons(&mut core, 1000));
 }
 
+/// The thousand hexagons as `path`s (ADR 0040), the ops the same each
+/// frame: every mask a hit in the atlas, so the frame pays the hash and
+/// the quad and nothing of the raster.
+fn run_paths(core: &mut Core, n: usize, wobble: f32) -> usize {
+    let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut pts = [Vec2::ZERO; 6];
+    for i in 0..n {
+        hexagon(i, &mut pts);
+        let mut p = kui_core::Path::new().move_to(pts[0].x + wobble, pts[0].y);
+        for q in &pts[1..] {
+            p = p.line_to(q.x, q.y);
+        }
+        ui.path_indexed(
+            i as u64,
+            &p.close(),
+            NodeSpec::column().bg(Color::rgb8((i % 255) as u8, 120, 200)),
+        );
+    }
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+#[divan::bench]
+fn frame_1k_paths_cached(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    run_paths(&mut core, 1000, 0.0);
+    bencher.bench_local(|| run_paths(&mut core, 1000, 0.0));
+}
+
+/// The same thousand on an empty page every time: the raster bound. A
+/// fresh core per run, since the page would otherwise hold them.
+#[divan::bench(sample_count = 10)]
+fn frame_1k_paths_fresh(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(Core::new)
+        .bench_local_values(|mut core| run_paths(&mut core, 1000, 0.0));
+}
+
+/// The same thousand, every outline moving each frame: after two frames
+/// they are animating and draw from textures of their own, one raster
+/// and one upload each per frame (ADR 0040, decision 8).
+#[divan::bench(sample_count = 10)]
+fn frame_1k_paths_animating(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    let mut frame = 0u32;
+    bencher.bench_local(|| {
+        frame += 1;
+        run_paths(&mut core, 1000, frame as f32 * 0.37)
+    });
+}
+
+/// One wedge of the `path` example's pie, 220 px across, rasterized cold:
+/// what a path costs the first time it is seen.
+#[divan::bench]
+fn raster_pie_wedge_220px(bencher: divan::Bencher) {
+    use kui_core::path::{MaskPaint, FillRule, rasterize};
+    let wedge = kui_core::Path::sector(110.0, 110.0, 80.0, 0.0, 0.0, 0.34);
+    let mut outline = Vec::new();
+    kui_core::path::flatten(wedge.ops(), &mut outline);
+    let b = kui_core::path::bounds(&outline).unwrap();
+    let ops: Vec<_> = wedge
+        .ops()
+        .iter()
+        .map(|op| match *op {
+            kui_core::PathOp::MoveTo(p) => kui_core::PathOp::MoveTo(Vec2::new(p.x - b.x + 1.0, p.y - b.y + 1.0)),
+            kui_core::PathOp::LineTo(p) => kui_core::PathOp::LineTo(Vec2::new(p.x - b.x + 1.0, p.y - b.y + 1.0)),
+            kui_core::PathOp::ArcTo { rx, ry, rotation, large, sweep, to } => kui_core::PathOp::ArcTo {
+                rx, ry, rotation, large, sweep,
+                to: Vec2::new(to.x - b.x + 1.0, to.y - b.y + 1.0),
+            },
+            other => other,
+        })
+        .collect();
+    let (w, h) = ((b.w + 2.0).ceil() as u32 + 1, (b.h + 2.0).ceil() as u32 + 1);
+    bencher.bench_local(|| rasterize(&ops, 1.0, (0, 0), w, h, MaskPaint::Fill(FillRule::NonZero)));
+}
+
 /// The same thousand outlines as closed strokes: six segment quads each.
 #[divan::bench]
 fn frame_1k_closed_lines(bencher: divan::Bencher) {

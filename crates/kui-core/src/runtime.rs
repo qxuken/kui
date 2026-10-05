@@ -348,6 +348,16 @@ pub struct Core {
     /// The frame's strokes, indexed by the `line` nodes' `LineId`s; the
     /// previous frame's kept alongside on the same terms as `prev_tree`.
     pub(crate) lines: crate::line::LineStore,
+    /// The frame's paths, on the same terms as the strokes.
+    pub(crate) paths: crate::path::PathStore,
+    /// The last hash each `path` key declared, the frame it did, whether
+    /// that was a change from the frame before, and whether the key is
+    /// animating: one whose ops changed two frames running, whose masks
+    /// leave the atlas for good (ADR 0040, decision 8).
+    pub(crate) path_motion: rustc_hash::FxHashMap<Key, (u64, u64, bool, bool)>,
+    /// The masks drawn from a texture of their own rather than the atlas:
+    /// too big for a page, or animating.
+    pub(crate) path_textures: crate::path::PathTextures,
     pub(crate) fragments: crate::fragment::FragmentList,
     /// The stock polygon fragment's handle, once a `polygon` node has
     /// asked for it this session. Forgotten by
@@ -970,6 +980,9 @@ impl Core {
             inspected: Vec::new(),
             prev_tree: Tree::new(),
             lines: Default::default(),
+            paths: Default::default(),
+            path_motion: Default::default(),
+            path_textures: Default::default(),
             fragments: Default::default(),
             stock_polygon: None,
             hit_shapes: Default::default(),
@@ -1550,6 +1563,11 @@ impl Core {
         // And the strokes, for the same reason: a kept frame's `line`
         // nodes index that frame's list.
         self.lines.begin_frame(keep_prev);
+        self.paths.begin_frame(keep_prev);
+        if self.path_motion.len() > 1024 {
+            let cutoff = self.frame_no.saturating_sub(2);
+            self.path_motion.retain(|_, (_, at, _, _)| *at >= cutoff);
+        }
         self.fragments.begin_frame(keep_prev);
         self.cells.begin_frame(scale);
         self.sync_font_names();

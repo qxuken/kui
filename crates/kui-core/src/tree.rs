@@ -72,6 +72,11 @@ pub enum NodeContent {
     /// whose draw sits in the frame's `FragmentList` like any fragment's,
     /// its `bg` the fill. No hit region, no access row.
     Polygon(crate::fragment::FragmentDrawId),
+    /// A filled and/or stroked outline of any shape (see `crate::path`):
+    /// a float sized to its own bounding box like a line, its ops in the
+    /// frame's `PathStore`, drawn as glyph-mask quads from the atlas. Its
+    /// `bg` is the fill, its border width and colour the stroke.
+    Path(crate::path::PathId),
 }
 
 impl Tree {

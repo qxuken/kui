@@ -1083,6 +1083,33 @@ export function createEncoder(P) {
         f[fi++] = OP.close;
         return;
       }
+      case 'path': {
+        // `d` as SVG path data (parsed in the core) or a flat number array
+        // of op codes and operands; `bg` is the fill, a schema row the
+        // props pass writes into the style, `fillRule` its rule; `width`
+        // and `color` are the stroke's, as a line's, and no `width` is no
+        // stroke (docs/adr/0040-a-path-is-a-mask-in-the-atlas.md).
+        const d = p.d;
+        const flat = Array.isArray(d) ? d : null;
+        if (typeof d !== 'string' && flat == null) throw new Error('<path> needs a d (SVG path data, or a flat array of ops)');
+        if (flat != null) {
+          for (const n of flat) {
+            if (typeof n !== 'number' || !Number.isFinite(n)) throw new Error(`<path> bad op value ${JSON.stringify(n)}`);
+          }
+        }
+        if (p.fillRule !== undefined && p.fillRule !== 'nonzero' && p.fillRule !== 'evenodd') throw new Error(`bad fillRule ${JSON.stringify(p.fillRule)} for <path> ('nonzero' or 'evenodd')`);
+        const widthRef = isRef(p.width) ? tokenRef(p.width, 'length') : undefined;
+        if (p.width !== undefined && typeof p.width !== 'number' && !isRef(p.width)) throw new Error(`bad width ${JSON.stringify(p.width)} for <path> (a stroke width in px, or a "$length")`);
+        reserve(7 + (flat ? flat.length : 0));
+        f[fi++] = OP.path;
+        strRef(flat ? null : d);
+        f[fi++] = flat ? flat.length : 0;
+        if (flat) for (const n of flat) f[fi++] = n;
+        f[fi++] = widthRef !== undefined ? widthRef : typeof p.width === 'number' ? p.width : 0;
+        f[fi++] = (widthRef !== undefined ? 1 : 0) | (p.fillRule === 'evenodd' ? 2 : 0);
+        props(p, el.key, false);
+        return;
+      }
       case 'line': {
         // `from`/`to` or `points`, each an [x, y] pair; `width` is the
         // stroke width and `color` the stroke colour, the latter a schema

@@ -43,6 +43,8 @@ macro_rules! painter {
             cells: &mut $core.cells,
             atlas: &mut $core.atlas,
             session: &$core.session,
+            path_tex: &mut $core.path_textures,
+            frame_no: $core.frame_no,
         }
     };
 }
@@ -131,6 +133,34 @@ impl Core {
                     *p = Vec2::new(draw.params[k * 2] * rect.w, draw.params[k * 2 + 1] * rect.h);
                 }
                 self.hit_shapes.polygon(&pts)
+            }
+            NodeContent::Path(id) => {
+                let (run, ops) = self.paths.run(id);
+                let mut outline = Vec::new();
+                crate::path::flatten(ops, &mut outline);
+                if spec.style.bg.is_visible() || run.stroke_w <= 0.0 {
+                    self.hit_shapes.path(&outline, run.rule)
+                } else {
+                    // A stroke with no fill is hit as a line is: each
+                    // contour closed back to its start, the breaks kept
+                    // so no piece runs from one contour to the next.
+                    let mut pieces = Vec::with_capacity(outline.len() + 4);
+                    let mut start = None;
+                    for p in outline {
+                        if p.x.is_nan() {
+                            if let Some(s) = start.take() {
+                                pieces.push(s);
+                            }
+                            pieces.push(p);
+                        } else {
+                            if start.is_none() {
+                                start = Some(p);
+                            }
+                            pieces.push(p);
+                        }
+                    }
+                    self.hit_shapes.segments(&pieces, run.stroke_w)
+                }
             }
             _ if spec.style.radius != crate::display::SQUARE => {
                 crate::input::HitShape::Rounded(spec.style.radius)
@@ -361,6 +391,16 @@ impl Core {
                 Leaf::Line {
                     points,
                     width: run.width,
+                }
+            }
+            NodeContent::Path(id) => {
+                let (run, ops) = self.paths.run(id);
+                Leaf::Path {
+                    ops,
+                    rule: run.rule,
+                    stroke_w: run.stroke_w,
+                    hash: run.hash,
+                    animating: run.animating,
                 }
             }
             NodeContent::Container => Leaf::Container,
@@ -1263,6 +1303,7 @@ impl Core {
                 &self.text,
                 &self.lines,
                 &self.fragments,
+                &self.paths,
             );
         }
         // Named now, while a tree still has them (backlog F111).
@@ -1382,6 +1423,21 @@ impl Core {
                 GhostContent::Line { first, len, width } => Leaf::Line {
                     points: &g.points[first as usize..(first + len) as usize],
                     width,
+                },
+                // The ops are the ghost's own copy, the hash the live
+                // node's, so the masks are the slots it already had.
+                GhostContent::Path {
+                    first,
+                    len,
+                    rule,
+                    stroke_w,
+                    hash,
+                } => Leaf::Path {
+                    ops: &g.ops[first as usize..(first + len) as usize],
+                    rule,
+                    stroke_w,
+                    hash,
+                    animating: false,
                 },
             };
             let paint = Paint {
@@ -1988,6 +2044,15 @@ enum Leaf<'a> {
         points: &'a [Vec2],
         width: f32,
     },
+    /// A path's run; the fill is the node's `bg`, the stroke its border
+    /// colour and width, each a mask quad from the atlas (ADR 0040).
+    Path {
+        ops: &'a [crate::path::PathOp],
+        rule: crate::path::FillRule,
+        stroke_w: f32,
+        hash: u64,
+        animating: bool,
+    },
 }
 
 /// One box's paint: its shadow, its fill and border, its content, faded by
@@ -2002,6 +2067,9 @@ struct Painter<'a> {
     cells: &'a mut crate::cells::CellStore,
     atlas: &'a mut GlyphAtlas,
     session: &'a Session,
+    /// The masks drawn from textures of their own (ADR 0040).
+    path_tex: &'a mut crate::path::PathTextures,
+    frame_no: u64,
 }
 
 impl Painter<'_> {
@@ -2033,7 +2101,7 @@ impl Painter<'_> {
         // A stroke's `bg` is its colour, not a box to fill (ADR 0010,
         // decision 7), and a polygon's is its fill (ADR 0025, decision 6)
         // — for the ghost of one as much as for the live one.
-        let is_line = matches!(leaf, Leaf::Line { .. } | Leaf::Polygon(_));
+        let is_line = matches!(leaf, Leaf::Line { .. } | Leaf::Polygon(_) | Leaf::Path { .. });
         if !is_line
             && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
         {
@@ -2249,7 +2317,125 @@ impl Painter<'_> {
                     scale,
                 );
             }
+            Leaf::Path {
+                ops,
+                rule,
+                stroke_w,
+                hash,
+                animating,
+            } => {
+                // The mask covers the node's box at physical scale, a
+                // pixel over for the ramp, and is drawn on whole pixels
+                // with the box's fractional offset baked in at the
+                // nearest quarter — the bins a glyph is keyed on — so
+                // the quad never resamples it.
+                let px = rect.scaled(scale);
+                let bin_of = |f: f32| -> (f32, u8) {
+                    let b = (f * 4.0).round() as u8;
+                    if b >= 4 { (1.0, 0) } else { (0.0, b) }
+                };
+                let (fx, fy) = (px.x.floor(), px.y.floor());
+                let (cx, bx) = bin_of(px.x - fx);
+                let (cy, by) = bin_of(px.y - fy);
+                let at = Rect::new(
+                    fx + cx,
+                    fy + cy,
+                    (px.w.ceil() + 1.0).max(1.0),
+                    (px.h.ceil() + 1.0).max(1.0),
+                );
+                if style.bg.is_visible() {
+                    self.paint_mask(
+                        ops,
+                        hash,
+                        scale,
+                        (bx, by),
+                        at,
+                        crate::path::MaskPaint::Fill(rule),
+                        style.bg,
+                        clip_id,
+                        animating,
+                    );
+                }
+                if stroke_w > 0.0 && style.border_color.is_visible() {
+                    self.paint_mask(
+                        ops,
+                        hash,
+                        scale,
+                        (bx, by),
+                        at,
+                        crate::path::MaskPaint::Stroke(stroke_w * scale),
+                        style.border_color,
+                        clip_id,
+                        animating,
+                    );
+                }
+            }
         }
+    }
+
+    /// One mask quad of a path: from the atlas when the mask fits it and
+    /// the path is still, from a texture of its own otherwise (ADR 0040,
+    /// decisions 6–8). `at` is the quad in physical px, on whole pixels.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_mask(
+        &mut self,
+        ops: &[crate::path::PathOp],
+        hash: u64,
+        scale: f32,
+        bin: (u8, u8),
+        at: Rect,
+        paint: crate::path::MaskPaint,
+        color: Color,
+        clip_id: ClipId,
+        animating: bool,
+    ) {
+        let (w, h) = (at.w as u32, at.h as u32);
+        let key = crate::path::mask_key(hash, scale, bin, paint);
+        let texels = u64::from(w) * u64::from(h);
+        let slot = if animating || texels >= crate::path::MAX_ATLAS_MASK_TEXELS {
+            None
+        } else {
+            self.atlas.get_or_insert_path(key, w, h, || {
+                crate::path::rasterize(ops, scale, bin, w, h, paint)
+            })
+        };
+        let (kind, uv) = match slot {
+            Some(slot) => (QuadKind::GlyphMask, [slot.x, slot.y, slot.w, slot.h]),
+            None => {
+                let tex = self.path_tex.get_or_make(
+                    key,
+                    w,
+                    h,
+                    self.frame_no,
+                    self.session.id(),
+                    || crate::path::rasterize(ops, scale, bin, w, h, paint),
+                );
+                let index = self.display.textures.len() as u32;
+                self.display
+                    .textures
+                    .push(crate::display::TextureDraw { id: tex.id, uv: [0, 0, w, h] });
+                self.display
+                    .texture_pixels
+                    .push(crate::display::TexturePixels {
+                        width: w,
+                        height: h,
+                        rev: 0,
+                        rgba: tex.rgba.clone(),
+                    });
+                (QuadKind::Texture, [index, 0, 0, 0])
+            }
+        };
+        self.display.quads.push(Quad {
+            rect: at,
+            color,
+            border_color: Color::TRANSPARENT,
+            radius: crate::display::SQUARE,
+            border_w: 0.0,
+            blur: 0.0,
+            kind,
+            clip: clip_id,
+            uv,
+        });
     }
 }
 

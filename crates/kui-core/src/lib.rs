@@ -130,6 +130,7 @@ pub mod line;
 pub mod menu;
 pub mod message;
 pub mod metrics;
+pub mod path;
 pub mod resources;
 pub(crate) mod retain;
 pub mod runtime;
@@ -195,6 +196,7 @@ pub use keyframes::Keyframe;
 #[cfg(feature = "derive")]
 pub use kui_derive::Message;
 pub use line::{LineId, LineStore, Stroke};
+pub use path::{FillRule, Path, PathError, PathId, PathOp, PathStore};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
 pub use message::{MessageError, MessageField};
 pub use metrics::Metrics;

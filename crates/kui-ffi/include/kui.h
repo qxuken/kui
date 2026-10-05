@@ -2946,6 +2946,46 @@ void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
 void kui_polygon(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
                  const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
                  KuiValue *on_hover);
+/* The flat op form of a path (docs/adr/0040-a-path-is-a-mask-in-the-atlas.md):
+ * a code, then its operands, every coordinate absolute in the parent's box
+ * space. MOVE x y; LINE x y; QUAD cx cy x y; CUBIC c1x c1y c2x c2y x y; ARC
+ * rx ry rotation_deg large sweep x y (the two flags 0 or 1); CLOSE. */
+enum { KUI_PATH_MOVE = 0, KUI_PATH_LINE = 1, KUI_PATH_QUAD = 2, KUI_PATH_CUBIC = 3,
+       KUI_PATH_ARC = 4, KUI_PATH_CLOSE = 5 };
+/* How a path's inside is decided: SVG's default, or the polygon's rule. */
+enum { KUI_FILL_NONZERO = 0, KUI_FILL_EVENODD = 1 };
+/* Any outline - a pie wedge with a round arc, a map's region, an icon - as
+ * `count` floats at `ops` in the flat op form (kui_path_parse makes it from
+ * SVG path data): filled with spec->bg by fill_rule and, when width > 0,
+ * stroked width wide in color (0xRRGGBBAA; 0 = the theme's foreground) over
+ * the fill. Placed like a stroke: a float sized to its own bounding box, in
+ * the parent's box space. The three payloads are taken as kui_open_with
+ * takes them: a path with one is hit by its OUTLINE under the fill rule - a
+ * press inside it hits, a press in its box past the outline falls through
+ * (a stroke with no fill is hit by its stroke, as a line is) - and a
+ * clickable path is a button to assistive technology, so name it. On the
+ * wire it is one KUI_QUAD_GLYPH_MASK per paint, fill and stroke, from the
+ * glyph atlas - rasterized once per shape, scale and quarter-pixel
+ * position, re-tinted for free - or a KUI_QUAD_TEXTURE when the mask is a
+ * quarter of the biggest atlas page or more, or the path's ops change two
+ * frames running. label keys the node (empty = a key from the tree
+ * position); spec may be NULL (no fill); NULL for a payload is none. */
+void kui_path(KuiCtx *ctx, KuiStr label, const float *ops, size_t count,
+              uint32_t fill_rule, float width, uint32_t color,
+              const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
+              KuiValue *on_hover);
+/* SVG path data (M L H V C S Q T A Z, absolute or relative) to the flat op
+ * form, through the one parser every binding uses. Returns how many floats
+ * the form needs; they are written to out when cap holds them all, and not
+ * at all otherwise - call once with cap 0 to size a buffer. 0 for data that
+ * does not parse. */
+size_t kui_path_parse(KuiStr d, float *out, size_t cap);
+/* kui_path from SVG path data instead of the flat form: d goes through the
+ * one parser every binding uses, and data that does not parse raises
+ * `path-malformed` under the node's key and draws nothing. */
+void kui_path_d(KuiCtx *ctx, KuiStr label, KuiStr d, uint32_t fill_rule,
+                float width, uint32_t color, const KuiSpec *spec,
+                KuiValue *on_click, KuiValue *on_drag, KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

@@ -1505,6 +1505,14 @@ pub enum HitShape {
     /// by, so the hit is the fill exactly, a self-intersecting outline's
     /// unfilled overlaps included.
     Polygon { first: u32, len: u32 },
+    /// A `path`'s flattened outline: `len` points from `first`, closed
+    /// contours each followed by `crate::path::CONTOUR_BREAK`, hit by the
+    /// fill rule it paints with (`crate::path::in_path`).
+    Path {
+        first: u32,
+        len: u32,
+        rule: crate::path::FillRule,
+    },
 }
 
 /// The narrowest a stroke's hit target gets, logical px, whatever its
@@ -1619,6 +1627,17 @@ impl HitShapes {
             first,
             len: points.len() as u32,
             width,
+        }
+    }
+
+    /// Adds a path's flattened contours and returns the shape over them.
+    pub fn path(&mut self, points: &[Vec2], rule: crate::path::FillRule) -> HitShape {
+        let first = self.points.len() as u32;
+        self.points.extend_from_slice(points);
+        HitShape::Path {
+            first,
+            len: points.len() as u32,
+            rule,
         }
     }
 
@@ -1981,6 +2000,15 @@ impl Interaction {
                     return false;
                 };
                 in_polygon(local, pts)
+            }
+            HitShape::Path { first, len, rule } => {
+                let Some(pts) = self
+                    .shape_points
+                    .get(first as usize..(first + len) as usize)
+                else {
+                    return false;
+                };
+                crate::path::in_path(local, pts, rule)
             }
         }
     }

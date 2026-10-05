@@ -42,6 +42,8 @@ pub struct RasterGlyph {
 enum Refusal {
     Glyph(CacheKey),
     Synth(char, u32, u32),
+    /// A path's mask, by the key `get_or_insert_path` was given.
+    Path(u64),
 }
 
 struct Shelf {
@@ -58,6 +60,7 @@ struct Prev {
     pixels: Vec<u8>,
     map: FxHashMap<CacheKey, Option<GlyphSlot>>,
     synth: FxHashMap<(char, u32, u32), Option<GlyphSlot>>,
+    paths: FxHashMap<u64, Option<GlyphSlot>>,
 }
 
 impl Prev {
@@ -134,6 +137,12 @@ pub struct GlyphAtlas {
     /// cell size in physical px, so one cell size shares one slot and
     /// another size does not. Plain masks, tinted like a glyph's.
     synth: FxHashMap<(char, u32, u32), Option<GlyphSlot>>,
+    /// A `path` node's masks (`docs/adr/0040-a-path-is-a-mask-in-the-atlas.md`,
+    /// decision 6): the outline filled or stroked at one physical scale and
+    /// quarter-pixel bin, keyed on a hash of all of that, so one shape
+    /// at one place shares one slot and another does not. Plain masks,
+    /// tinted like a glyph's; copied across a reset like a glyph's.
+    paths: FxHashMap<u64, Option<GlyphSlot>>,
     shelves: Vec<Shelf>,
     next_shelf_y: u32,
     /// The size the page settles at: what `begin_frame` resets an
@@ -204,6 +213,7 @@ impl GlyphAtlas {
             map: FxHashMap::default(),
             images: FxHashMap::default(),
             synth: FxHashMap::default(),
+            paths: FxHashMap::default(),
             shelves: Vec::new(),
             next_shelf_y: 0,
             base: size,
@@ -378,6 +388,7 @@ impl GlyphAtlas {
                 pixels,
                 map: std::mem::take(&mut self.map),
                 synth: std::mem::take(&mut self.synth),
+                paths: std::mem::take(&mut self.paths),
             });
             self.size = size;
         } else if size == self.size {
@@ -389,6 +400,7 @@ impl GlyphAtlas {
         self.map.clear();
         self.images.clear();
         self.synth.clear();
+        self.paths.clear();
         self.shelves.clear();
         self.next_shelf_y = 0;
         self.epoch += 1;
@@ -615,6 +627,67 @@ impl GlyphAtlas {
         self.note_slot(slot);
         self.synth.insert((ch, w, h), Some(slot));
         Some(slot)
+    }
+
+    /// Cached lookup for a path's mask under `key` (the hash of its ops,
+    /// scale, bin and paint — the caller's to make); `coverage` is called
+    /// on a miss for `w * h` alpha bytes, which land as a white mask the
+    /// renderer tints like any glyph's, or the mask is copied from the
+    /// page `begin_frame` emptied when that page held it. `None` means
+    /// the mask does not fit the page this frame, or no page at all; the
+    /// caller draws it from a texture of its own.
+    pub fn get_or_insert_path(
+        &mut self,
+        key: u64,
+        w: u32,
+        h: u32,
+        coverage: impl FnOnce() -> Vec<u8>,
+    ) -> Option<GlyphSlot> {
+        if let Some(&slot) = self.paths.get(&key) {
+            match slot {
+                Some(slot) => self.note_slot(slot),
+                None => self.note_refusal(Refusal::Path(key)),
+            }
+            return slot;
+        }
+        let Some((x, y)) = self.alloc_or_make_room(w, h) else {
+            self.refuse(Refusal::Path(key), w, h);
+            self.paths.insert(key, None);
+            return None;
+        };
+        let carried = self.prev.as_ref().and_then(|prev| {
+            let slot = (*prev.paths.get(&key)?)?;
+            (slot.w == w && slot.h == h).then(|| prev.texels(slot.x, slot.y, w, h))
+        });
+        let rgba = carried.unwrap_or_else(|| {
+            let mask = coverage();
+            debug_assert_eq!(mask.len(), (w * h) as usize);
+            let mut rgba = Vec::with_capacity(mask.len() * 4);
+            for &a in &mask {
+                rgba.extend_from_slice(&[255, 255, 255, a]);
+            }
+            rgba
+        });
+        self.blit(x, y, w, h, &rgba);
+        let slot = GlyphSlot {
+            x,
+            y,
+            w,
+            h,
+            left: 0,
+            top: 0,
+            color_glyph: false,
+            subpixel: false,
+        };
+        self.note_slot(slot);
+        self.paths.insert(key, Some(slot));
+        Some(slot)
+    }
+
+    /// Whether the page holds a mask under `key` this frame: for a test
+    /// of what a path's second frame costs.
+    pub fn has_path(&self, key: u64) -> bool {
+        matches!(self.paths.get(&key), Some(Some(_)))
     }
 
     /// Cached lookup for a registered image; blits `rgba` (w*h*4) on miss.

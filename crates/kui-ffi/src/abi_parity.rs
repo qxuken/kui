@@ -331,6 +331,22 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::ImageFit::ALL, 0 => [
         "KUI_FIT_FILL", "KUI_FIT_CONTAIN", "KUI_FIT_COVER",
     ]);
+    abi_enum!(o, kui_core::FillRule::ALL, 0 => [
+        "KUI_FILL_NONZERO", "KUI_FILL_EVENODD",
+    ]);
+    // A path's op codes are floats on the wire; the C names are their
+    // integer values.
+    for (name, code) in [
+        ("KUI_PATH_MOVE", kui_core::path::OP_MOVE),
+        ("KUI_PATH_LINE", kui_core::path::OP_LINE),
+        ("KUI_PATH_QUAD", kui_core::path::OP_QUAD),
+        ("KUI_PATH_CUBIC", kui_core::path::OP_CUBIC),
+        ("KUI_PATH_ARC", kui_core::path::OP_ARC),
+        ("KUI_PATH_CLOSE", kui_core::path::OP_CLOSE),
+    ] {
+        writeln!(o, "KUI_ENUM({name}, {});", code as i32).unwrap();
+    }
+    writeln!(o).unwrap();
     abi_enum!(o, kui_core::schema::LIVE, 0 => [
         "KUI_LIVE_OFF", "KUI_LIVE_POLITE", "KUI_LIVE_ASSERTIVE",
     ]);

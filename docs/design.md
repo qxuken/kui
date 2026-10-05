@@ -17,7 +17,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   overflow, `float`) keep per-binding shapes on purpose. Elements are the
   same set everywhere too: containers, text and rich spans, editors, images,
   fragments (a box a WGSL function paints), polygons (a fill of up to eight
-  points), lines (segments, polylines and curves), buttons, titlebar (plain or with
+  points), paths (any outline, SVG path data, filled and stroked), lines
+  (segments, polylines and curves), buttons, titlebar (plain or with
   custom content), window buttons, latency graph/HUD, and tooltips — Lua
   reaches them through the prelude (`edit`, `line`, `tooltip`,
   `window_buttons`, `latency_hud`, ...), C through `kui_*`
@@ -708,6 +709,17 @@ with the spec's `bg`, placed like a line — a float in the parent's box space
 — and painted as one `fragment` quad by a stock WGSL source the core
 registers itself, so an arrowhead, a pie wedge or the area under a curve is
 one node ([ADR 0025](adr/0025-the-image-is-the-canvas.md), decision 6).
+
+Paths: `ui.path(&Path::parse(d)?, spec)` — or `Path::sector(..)` for a
+wedge, a donut's segment or a ring, or the builder's `move_to` / `line_to`
+/ `quad_to` / `cubic_to` / `arc_to` — fills any outline with the spec's
+`bg` by its rule and strokes it with its own `Stroke`, placed like a
+line. The core flattens it for the hit outline, rasterizes it once per
+shape and scale through zeno (swash's rasterizer) into the glyph atlas,
+and draws one `GlyphMask` quad per paint, so a hover or a colour tween
+re-tints the same mask; a mask too big for a page, or a path whose ops
+change two frames running, draws from a texture of its own
+([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)).
 
 Lines: `ui.line(from, to, Stroke::new(width, color), spec)` draws a
 round-capped segment, `ui.polyline(&points, stroke, spec)` a polyline, and

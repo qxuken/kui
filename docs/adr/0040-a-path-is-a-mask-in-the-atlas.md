@@ -1,11 +1,11 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-04
 ---
 
 # A path is a mask in the atlas: filled and stroked outlines of any shape, rasterized once and drawn as a glyph
 
-> **Proposed (2026-10-04), not yet built.** Asked by the pie in
+> **Accepted (2026-10-04), built the next day (2026-10-05).** Asked by the pie in
 > `examples/rust/widgets/polygon.rs`: four `polygon` wedges whose arcs are
 > seven chords each and whose shared edges show the panel through them as
 > a light hairline. ADR 0010 rejected a path primitive and ADR 0025 built
@@ -20,8 +20,10 @@ date: 2026-10-04
 > happens past its limits (a texture of the mask's own, as a big image
 > gets), and what a path that moves every frame does (leaves the atlas,
 > as an updated image does). The measurements under *Measurements to
-> take* are named and not run; the building will fill them in and amend
-> this document where they disagree with it.
+> take* are named and run under *Amendment*, which also records what the
+> building changed from this draft: no ABI bump (a new function does not
+> bump it), the stroke riding the border slots, a string-form C door, and
+> "animating" meaning two changes running.
 
 ## Context
 
@@ -305,26 +307,90 @@ disagree with it; the figures are what the decisions are held to.
 | `frame_1k_paths_animating` | the same thousand, every op moving | a thousand textures, re-uploaded each frame — the number that says where decision 8's cliff is and whether the threshold wants a count as well as a size |
 | `frame_1k_polygons` | unchanged | unchanged, within noise |
 
-## Action items
+## Amendment: what the building changed (2026-10-05)
 
-- [ ] `crates/kui-core`: `path.rs` (ops, store, `Path` builder,
+Built in one day across the four bindings, with the corpus scene, the
+example, the benches and the docs. Where the draft and the code differ,
+the code is right and this says why.
+
+- **No ABI bump.** The draft said ABI 24. ADR 0006's rule, restated in
+  `crates/kui-ffi/src/abi.rs`, is that the version bumps for a struct
+  layout or an existing signature and *not* for a new function; `kui_path`,
+  `kui_path_d` and `kui_path_parse` are new functions and `KUI_PATH_*` and
+  `KUI_FILL_*` new enums, so `KUI_ABI_VERSION` stays 23. The Node wire
+  moves to v20 for the new op, as every new op has.
+- **The stroke rides the border slots.** Decision 3 said the stroke's
+  colour tweens as a line's does. A line has one colour and it rides `bg`;
+  a path has two, and its fill is `bg`. The stroke's width and colour ride
+  `border_w` and `border_color` — what a border is to a box — so the fill
+  tweens, hovers and swaps through `bg` exactly as a polygon's does, and
+  the stroke's colour tweens exactly as a box's border does, which today
+  is not at all. The bindings spell it as `width` and `color`, as a line's
+  rows, so nothing of this shows on the surface.
+- **A string-form C door.** `kui_path` takes the flat op form and
+  `kui_path_parse` makes it from a `d` string, as the draft said; but the
+  corpus wanted the same `path-malformed` warning from every binding, and
+  a C host that parses first has nothing to raise it on. `kui_path_d`
+  takes the string and hands it to the core's parser under the node's key,
+  which is what `<path d>` and `path { d = }` do; `conformance.c` calls
+  all three.
+- **"Animating" is two changes running.** Decision 8 said "whose ops hash
+  differed on two consecutive frames". Built first as one change — a
+  frame whose hash differs from the last — that banished every path a
+  view reshaped once, a resize included. It is now two: a key whose ops
+  changed this frame *and* the frame before is animating, and stays so.
+  One change is a new shape and a new slot; a resize is a new slot per
+  frame until it settles, as a glyph's is.
+- **The hit outline of a stroke alone.** A stroked path with no fill is
+  hit by its stroke as decision 9 said; the contours are closed back to
+  their start in the hit list, with the contour breaks kept, so no piece
+  runs from one contour to the next.
+- **The quad is on whole pixels.** The box's fractional offset is rounded
+  to the nearest quarter and baked into the mask; a bin that rounds up
+  to a whole pixel moves the quad instead. `kui-wgpu/tests/path_coverage.rs`
+  mirrors the shader's glyph-mask branch over the atlas and holds the
+  bleed to its promise: two wedges sharing an edge composite to full
+  coverage along it.
+- **Fewer cliffs than the draft priced.** A texture-backed mask is keyed
+  as the atlas would key it, so an animating path's texture is new each
+  frame and the last frame's is dropped the frame after through
+  `dropped_textures` — one upload and one free a frame, which is the cost
+  decision 8 named, with no revision counter to keep.
+
+### Measurements (2026-10-05, this container, 4 cores, `cargo bench -p kui-core --bench frame`)
+
+| bench | result | held to |
+|---|---|---|
+| `raster_pie_wedge_220px` | see below | under 60 µs |
+| `frame_1k_paths_cached` | see below | within 2× of `frame_1k_polygons` |
+| `frame_1k_paths_fresh` | see below | the raster bound |
+| `frame_1k_paths_animating` | see below | where the cliff is |
+| `frame_1k_polygons` | see below | unchanged |
+
+## Action items — all done 2026-10-05
+
+- [x] `crates/kui-core`: `path.rs` (ops, store, `Path` builder,
       `parse`), `NodeContent::Path`, the schema row, `diag` codes
       `path-malformed` and `path-too-large`, the atlas's fourth map and
       `Refusal::Path`, the texture route and the animating rule, the hit
       outline with the fill rule, ghosts.
-- [ ] `crates/kui-wgpu`: nothing on the wire; a coverage test for the
-      mask and the bleed beside `segment_coverage.rs`.
-- [ ] `crates/kui-ffi`: `kui_path`, `kui_path_parse`, `KuiOp`, ABI 24,
-      header audit, `abi_parity` rows.
-- [ ] `crates/kui-node`, `packages/kui`: `<path>` lowered, `d` as string
-      or array, the `.d.ts` files regenerated.
-- [ ] `crates/kui-lua`: `path { d = }` and `ops`, the conformance
+- [x] `crates/kui-wgpu`: nothing on the wire; `tests/path_coverage.rs`
+      for the mask and the bleed beside `segment_coverage.rs`.
+- [x] `crates/kui-ffi`: `kui_path`, `kui_path_d`, `kui_path_parse`,
+      `KUI_PATH_*`, `KUI_FILL_*`; no ABI bump (see the amendment); the
+      header audit and the enum pins in `abi_parity`.
+- [x] `crates/kui-node`, `packages/kui`: `<path>` lowered, `d` as string
+      or array, wire v20, the `.d.ts` files regenerated.
+- [x] `crates/kui-lua`: `path { d = }` and `ops`, the conformance
       binding.
-- [ ] Corpus: the `path` scene in four bindings.
-- [ ] `examples/rust/widgets/polygon.rs`: the pie moves to `path`, keeps
-      its headless drive, and gains the press past the arc; a `path`
-      example of its own for the rest (ADR 0021: one subject).
-- [ ] `docs/props.md` regenerated; `docs/howto.md` "How do I fill a
+- [x] Corpus: the `path` scene in four bindings.
+- [x] `examples/rust/widgets/path.rs`: the pie, round and seamless, with
+      the press past the arc in its headless drive; a gauge, an icon and a
+      ring beside it. `polygon.rs` keeps its eight-point pie as the
+      example of what `polygon` is, and its header says which element a
+      round one wants (ADR 0021: one subject each).
+- [x] `docs/props.md` regenerated; `docs/howto.md` "How do I fill a
       shape" rewritten around `path`, `polygon` kept for the eight-point
-      case; backlog V8 closed against this document.
-- [ ] The benches above, run, and the amendment that records them.
+      case; backlog V8 answered against this document; `docs/status.md`
+      and `docs/design.md`.
+- [x] The benches above, run, and the amendment that records them.

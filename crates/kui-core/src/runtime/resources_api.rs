@@ -571,7 +571,19 @@ impl Core {
     /// images the registry no longer holds, when a removal has moved the
     /// revision since this core last looked: the atlas is per window, so
     /// the removing core's eviction reached only its own.
+    /// How many `path` masks this core draws from textures of their own
+    /// rather than the atlas — too big for a page, or animating (ADR
+    /// 0040, decisions 7 and 8). For a test of which road a path took.
+    pub fn path_texture_count(&self) -> usize {
+        self.path_textures.len()
+    }
+
     pub(crate) fn sync_dropped(&mut self) {
+        // A path's own texture the last frame did not draw goes with the
+        // removed images (ADR 0040, decisions 7 and 8).
+        self.display
+            .dropped_textures
+            .extend(self.path_textures.sweep(self.frame_no));
         let mut sess = self.session.state();
         self.display
             .dropped_textures

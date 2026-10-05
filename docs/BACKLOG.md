@@ -798,7 +798,15 @@ request for UI zoom (Cmd+/Cmd−). One fact for either design: continuous
 zoom re-shapes text per fractional size and churns the shape cache (C16),
 so a core zoom would quantise its steps as the mind map does (×1.45).
 
-### `.` V8 — A drawing-ops `canvas` element — declined with a condition
+### `.` V8 — A drawing-ops `canvas` element — declined with a condition; its condition met and answered by `path` (2026-10-05)
+
+**The condition's second half — "a fill eight points cannot make" — was
+met by a round pie wedge on 2026-10-04, and answered the next day by the
+`path` element of [ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)
+rather than a canvas:** any outline as SVG path data, rasterized once per
+shape and scale into the glyph atlas and drawn as a mask quad, hit by its
+outline. The first half — more than ~10k primitives from Node — stays as
+the condition for an op list. What follows is the entry as it was filed.
 
 One node, an op list lowered to quads, no per-op node. Measured before
 being declined: the core builds 10k nodes in ~0.8 ms (~80 ns a node),
