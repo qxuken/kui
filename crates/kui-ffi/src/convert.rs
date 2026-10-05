@@ -309,6 +309,24 @@ pub(crate) fn spec_of(
         let stops = unsafe { std::slice::from_raw_parts(s.keyframes, s.keyframes_len) };
         spec = spec.keyframes(stops.iter().map(keyframe_of).collect());
     }
+    if !s.gradient.is_null() {
+        let g = unsafe { &*s.gradient };
+        let stops: &[KuiGradientStop] = if g.stops.is_null() {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(g.stops, g.stops_len) }
+        };
+        let stops = stops.iter().map(|s| kui_core::GradientStop {
+            color: color_of(s.color),
+            at: (s.at >= 0.0).then_some(s.at),
+        });
+        spec = spec.gradient(match g.kind {
+            KUI_GRADIENT_RADIAL => {
+                kui_core::Gradient::radial_at(kui_core::Vec2::new(g.at_x, g.at_y), stops)
+            }
+            _ => kui_core::Gradient::angle(g.angle, stops),
+        });
+    }
     if s.enter.set != 0 {
         spec = spec.enter(enter_of(&s.enter));
     }

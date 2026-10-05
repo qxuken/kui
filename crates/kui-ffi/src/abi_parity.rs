@@ -649,6 +649,20 @@ fn asserts() -> (String, Vec<&'static str>) {
         opacity: f32 => "float",
     });
 
+    abi_struct!(o, KuiGradientStop {
+        color: u32 => "uint32_t",
+        at: f32 => "float",
+    });
+
+    abi_struct!(o, KuiGradient {
+        kind: u32 => "uint32_t",
+        angle: f32 => "float",
+        at_x: f32 => "float",
+        at_y: f32 => "float",
+        stops: *const KuiGradientStop => "const KuiGradientStop *",
+        stops_len: usize => "size_t",
+    });
+
     abi_struct!(o, KuiEnter {
         set: u32 => "uint32_t",
         dx: f32 => "float",
@@ -775,6 +789,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         min_h_size: KuiSizing => "KuiSizing",
         max_h_size: KuiSizing => "KuiSizing",
         bounce: f32 => "float",
+        gradient: *const KuiGradient => "const KuiGradient *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1452,8 +1467,10 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `on_button` and `buttons`; then `overscroll` and
         // `scroll_axes`. ABI 21: `modifier_keys`. ABI 22: the four
         // `*_size` clamps. ABI 23:
-        // `bounce`.
-        ("KuiSpec", 688, 23),
+        // `bounce`. ABI 24: `gradient`.
+        ("KuiSpec", 696, 24),
+        ("KuiGradientStop", 8, 24),
+        ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),
         ("KuiKeyframe", 36, 16),
         ("KuiEnter", 40, 16),

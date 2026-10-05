@@ -422,7 +422,20 @@ impl Core {
             }
             NodeContent::Container => Leaf::Container,
         };
+        let first_quad = self.display.quads.len();
         painter!(self).paint_box(rect, &style, &paint, leaf);
+        // A gradient over the background the box just painted. Out of
+        // `emit_node` as the rules below are, and for the same reason.
+        if self.tree.any_gradient
+            && let Some(g) = &self.tree.specs[i].interact().gradient
+            // A stroke and a fill paint no box for it to lie over.
+            && !matches!(
+                self.tree.content[i],
+                NodeContent::Line(_) | NodeContent::Polygon(_) | NodeContent::Path(_)
+            )
+        {
+            painter!(self).paint_gradient(g, rect, &style, &paint, first_quad);
+        }
         // A table's grid rules, with its box and under its cells. Out of
         // `emit_node`: a rare path kept off its codegen (C48).
         if self.tree.any_table
@@ -1473,7 +1486,19 @@ impl Core {
                 scale,
                 opacity,
             };
+            let first_quad = self.display.quads.len();
             painter!(self).paint_box(rect, &style, &paint, leaf);
+            // A departing box keeps its gradient, from the slot it had.
+            if let Some(grad) = &node.spec.interact().gradient
+                && !matches!(
+                    node.content,
+                    GhostContent::Line { .. }
+                        | GhostContent::Polygon(_)
+                        | GhostContent::Path { .. }
+                )
+            {
+                painter!(self).paint_gradient(grad, rect, &style, &paint, first_quad);
+            }
             // A departing table keeps its grid for as long as it fades.
             if let Some(c) = node.spec.interact().rules
                 && node.spec.layout.is_table()
@@ -2161,6 +2186,78 @@ impl Painter<'_> {
         }
         if opacity < 1.0 {
             fade(&mut self.display.quads[first_quad..], opacity);
+        }
+    }
+
+    /// A box's `gradient` (ADR 0042): one `Image` quad over the box's
+    /// rect from the gradient's slot in the atlas, put where it paints
+    /// over the background and under everything else the box drew — its
+    /// content, and its border, which moves to a ring of its own on top
+    /// so the gradient does not cover the inside of it. `first_quad` is
+    /// where the box's quads start. A gradient no page can hold draws
+    /// nothing.
+    #[cold]
+    #[inline(never)]
+    fn paint_gradient(
+        &mut self,
+        g: &crate::gradient::Gradient,
+        rect: Rect,
+        style: &crate::spec::VisualStyle,
+        paint: &Paint,
+        first_quad: usize,
+    ) {
+        if !g.is_drawable() {
+            return;
+        }
+        let (w, h) = g.raster_size();
+        let Some(slot) = self
+            .atlas
+            .get_or_insert_gradient(g.key(), w, h, || g.rasterize())
+        else {
+            return;
+        };
+        let quads = &mut self.display.quads;
+        let px = rect.scaled(paint.scale);
+        let image = Quad {
+            rect: if style.pixel_snap { px.on_pixels() } else { px },
+            // White is untinted; the group opacity rides its alpha.
+            color: Color {
+                a: paint.opacity.min(1.0),
+                ..Color::WHITE
+            },
+            border_color: Color::TRANSPARENT,
+            radius: style.radius.map(|r| r * paint.scale),
+            border_w: 0.0,
+            blur: 0.0,
+            kind: QuadKind::Image,
+            clip: paint.clip_id,
+            uv: [slot.x, slot.y, slot.w, slot.h],
+        };
+        // Where `paint_box` put the box's own solid, when it painted
+        // one: after the shadow, before the content.
+        let at = first_quad + usize::from(style.shadow.is_visible());
+        let bordered = style.border_w > 0.0 && style.border_color.is_visible();
+        if !style.bg.is_visible() && !bordered {
+            // No background and no border: the gradient is the box.
+            quads.insert(at, image);
+            return;
+        }
+        // The border as a ring of its own, above the gradient; what is
+        // left under it is the background alone.
+        let ring = bordered.then(|| Quad {
+            color: Color::TRANSPARENT,
+            ..quads[at]
+        });
+        if style.bg.is_visible() {
+            quads[at].border_w = 0.0;
+            quads[at].border_color = Color::TRANSPARENT;
+            quads.insert(at + 1, image);
+        } else {
+            quads[at] = image;
+        }
+        let over = at + 1 + usize::from(style.bg.is_visible());
+        if let Some(ring) = ring {
+            quads.insert(over, ring);
         }
     }
 

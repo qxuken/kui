@@ -1341,7 +1341,28 @@ them sharing an edge show a hairline of the background through it.
 [ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md) ·
 `cargo run --example path` · `cargo run --example polygon`
 
-### How do I draw a gradient, a ring, or anything the paint props cannot?
+### How do I give a box a gradient background?
+
+`gradient` on the box: `gradient={{ to: 'bottom', stops: ['#1e2030',
+'#14161e'] }}` runs to a side or a corner, `{ angle: 0.125, stops }` along
+a direction in turns clockwise from east, and `{ radial: true, at: [0.5,
+0], stops }` out from a centre. A stop is a colour or `[colour, position]`.
+It paints over `bg` and under the border and the children, so a scrim is
+a gradient with a transparent stop over whatever is beneath. The geometry
+is the box's unit square stretched to the box — a corner is CSS's corner,
+and an `angle` runs corner to corner at an eighth of a turn whatever the
+aspect, which CSS's `45deg` does not.
+
+It costs one image quad and is rasterized once per distinct gradient, so
+it does not tween and `hoverBg` does not replace it: to move a gradient,
+move the box that has it (the rainbow in `loaders` is one gradient slid
+under a clip); to animate its colours, write a fragment.
+
+[`gradient` row](props.md#container-props) ·
+[ADR 0042](adr/0042-a-gradient-is-an-image-the-core-paints.md) ·
+`cargo run --example loaders`
+
+### How do I draw a ring, noise, a shimmer, or anything the paint props cannot?
 
 Write a fragment. `add_fragment(wgsl)` validates one WGSL function and hands
 back a handle; `<fragment src={id} params={[…]} animate>` is a box that

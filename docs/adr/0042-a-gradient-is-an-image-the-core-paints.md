@@ -1,12 +1,16 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-05
 ---
 
 # A gradient is an image the core paints: `gradient` on a box, rasterized once into the atlas
 
-> **Proposed 2026-10-05, not built.** Asked the day `dash` was (backlog
-> V2): "the next would be gradient backgrounds".
+> **Accepted and built 2026-10-05**, the day it was proposed; the
+> *Amendment* at the end records what the building changed — a malformed
+> gradient is an error where it is declared and not a warning, the
+> atlas's texels are straight alpha, and the ABI did not bump a second
+> time — and which measurements were taken and which were not. Asked the
+> day `dash` was (backlog V2): "the next would be gradient backgrounds".
 > [ADR 0005](0005-the-paint-vocabulary.md) declined gradients for v0 and
 > wrote down why — a stop list to parse in five bindings, a type, a
 > geometry, an interpolation space "that looks arbitrary in every
@@ -302,7 +306,65 @@ If the corner and radial rows cannot be held with a square the atlas
 can afford, the answer is the `Gradient` quad kind under *Considered
 options*, and decisions 1–4 and 6–11 stand as written.
 
-## Action items — none started
+## Amendment: what the building changed (2026-10-05)
+
+- **A malformed gradient is an error, not a warning.** Decision 9
+  proposed `gradient-malformed`, once per key. The row is carried and
+  parsed exactly as `keyframes` is, and a `keyframes` list that does not
+  parse fails the view in Node and Lua where it is declared; a second
+  convention for the row beside it would be the surprise. So: a `to`
+  nobody spells, an unknown field, fewer than two stops in the list or
+  a number that is not one is an error from `gradient::parse_with`,
+  with the field named. What still draws nothing in silence is a
+  gradient that *parsed* and has nothing to paint — every stop a token
+  that missed (each raised as `unknown-token`), or one built in Rust or
+  C with one stop or a NaN. No warning code was added.
+- **The atlas holds straight alpha** (open question 1). An `Image`
+  quad's shader multiplies the texel's rgb by the tint and its alpha by
+  the coverage separately, so the texels are straight. The raster mixes
+  the stops premultiplied, as decision 7 says, and stores the result
+  un-premultiplied; a texel with no alpha keeps the straight mix of its
+  neighbours' colours, so the sampler does not darken the texel beside
+  it. `a_fade_to_transparent_keeps_its_colour` pins the mix.
+- **The half-texel is left as it is** (open question 2). The first and
+  last texel of a strip are the gradient half a texel in, a 512th of
+  the length: one 8-bit level on a full-range ramp.
+- **One table in the atlas, not two.** A gradient's slot lives in the
+  keyed table a path's mask does (`get_or_insert_gradient` beside
+  `get_or_insert_path`), copied across a reset the same way. The keys
+  are hashes of different things; nothing else tells them apart, and
+  nothing needs to.
+- **Where the quad goes.** `paint_box` is unchanged — it is on every
+  node's path and the frame benches guard it. A cold `paint_gradient`
+  runs after it, on frames whose tree has a gradient at all
+  (`Tree::any_gradient`), and puts the image where it belongs among the
+  quads the box just pushed: after the shadow and the background,
+  before the content, with the border lifted off the background's solid
+  into a transparent-filled ring above. A ghost reads the same row off
+  the spec it kept.
+- **C's stops place themselves with a negative `at`.** `KuiGradientStop`
+  is a colour and an `at`; less than zero is "spaced between its
+  neighbours", since 0 is a position.
+- **The ABI is 24, not 25.** `dash` had already bumped it in the same
+  unreleased section; `gradient` on `KuiSpec` (64-bit size 696) and the
+  two structs are in the same step. The Node wire stays v21: the row
+  rides as a string reference like `keyframes`, and a new row is not a
+  new layout.
+- **`gradient` on a stroke or a fill is ignored**, in the live pass and
+  the ghost's: a `line`, a `polygon` and a `path` paint no box.
+
+### Measured, and not
+
+Taken: the unit tests against the mix computed per texel
+(`gradient::tests`), the quad order and the shared slot
+(`tests/gradient.rs`), the `gradients` scene in four bindings, and
+`scripts/bench-check.nu` over the guarded frame rows against
+alpha.36. **Not taken:** the `frame_10k_rects_with_gradient` and raster
+benches and the `kui-wgpu` coverage tests in the table above — the
+stretched square against a per-pixel reference on a 3:1 box is the one
+that decides the square's size, and it is still owed (backlog V9).
+
+## Action items — 2–4 and 6's example done 2026-10-05; 1 by reading; the benches and coverage tests of 5 are V9
 
 1. Read the atlas's alpha convention and its image sampling at a slot's
    edge; settle the first three open questions.
@@ -315,7 +377,8 @@ options*, and decisions 1–4 and 6–11 stand as written.
    ABI bump; the Node wire bump; `gradient-malformed`.
 5. A `gradients` scene in the corpus; the benches and coverage tests
    above.
-6. `examples/rust/features/gradient.rs` (one subject: a card, a
-   scrim over an image, a radial glow, a heat-mapped list); the how-to
+6. The rainbow in `examples/rust/apps/loaders.rs` — a gradient two
+   tracks long slid under a clip, one strip for good — in place of the
+   `features/gradient.rs` first proposed; the how-to
    entry rewritten ("a gradient: the row; a ring, noise or a shimmer:
    a fragment"); `status.md`, ADR 0005's note, the changelog.

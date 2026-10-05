@@ -69,6 +69,7 @@ const SAMPLE = {
     { at: 0.75, width: 'grow', height: '50%', radius: 9, opacity: 0.25 },
   ],
   enter: { dx: -40, dy: 8, width: { grow: 0 }, bg: '#11223300', radius: 0, opacity: 0 },
+  gradient: { to: 'bottom right', stops: ['#112233', ['#ffffff', 0.5], '#000000'] },
 };
 
 /** Per-prop overrides, where the shared sample for a kind would not survive
@@ -4253,6 +4254,15 @@ const SCENE_TREES = {
       box({ width: 4 }, [
         text(['ab', el('span', { bg: '#3b5bd4' }, ['  ']), 'c'], mono),
       ]),
+    ])]);
+  },
+  // ADR 0042: a strip, a square over a bg and under a border, a radial.
+  gradients: () => {
+    const band = (props) => box({ width: 200, height: 40, ...props });
+    return root({}, [box({ pad: 10, gap: 6 }, [
+      band({ radius: 8, gradient: { to: 'right', stops: ['#7f9cf5', '#e07a8a'] } }),
+      band({ bg: '#14161e', borderW: 2, borderColor: '#ffffff', gradient: { angle: 0.125, stops: ['#f5d67f', ['#00000000', 0.8]] } }),
+      band({ gradient: { radial: true, at: [0.5, 0], stops: ['#9ad9a0', '#14161e'] } }),
     ])]);
   },
   // Size expressions (backlog F109): four bars in a 400 px column, two

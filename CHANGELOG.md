@@ -42,7 +42,10 @@ was the first bare bump to break an app in five releases).
   does.
 - C: `kui_polyline`, `kui_path` and `kui_path_d` take a `dash` before
   `spec` — five floats, or NULL for the solid stroke they drew (under
-  Added). `KUI_ABI_VERSION` is 24; pass NULL and recompile.
+  Added). `KUI_ABI_VERSION` is 24; pass NULL and recompile. The same
+  step appends `gradient` to `KuiSpec` (64-bit size 696).
+- Rust: `schema::Kind`, `Apply` and `Parsed` gain a `Gradient` variant
+  and `InteractSpec` a `gradient` field (under Added).
 - Rust: `Stroke` gains a `dash` field, so a struct literal needs it
   (`Stroke::new` does not); `path::MaskPaint` gains `Dashed`.
 
@@ -50,6 +53,37 @@ The Node wire moves to v21 for the dash's five floats on a line and a
 path, which an encoder and addon of one release never see apart.
 
 ### Added
+
+- **`gradient` on a box, in every binding**
+  ([ADR 0042](docs/adr/0042-a-gradient-is-an-image-the-core-paints.md),
+  which supersedes ADR 0005's "no gradients"): `gradient={{ to:
+  'bottom', stops: ['#1e2030', '#14161e'] }}`, `{ angle: 0.125, stops }`
+  in turns clockwise from east, `{ radial: true, at: [0.5, 0], stops }`;
+  the same table in Lua; `NodeSpec::gradient(Gradient::to(Side::Bottom,
+  [...]))` with `Gradient::angle` and `Gradient::radial_at`; and a
+  `const KuiGradient *` on `KuiSpec`. A stop is a colour — a `$token`
+  too — or a colour and a position.
+  - **Over `bg`, under the border and the children.** `bg` stays a
+    colour and keeps its tweens, tokens and state backgrounds; a
+    transparent stop shows it through.
+  - **An image the core paints.** Each distinct gradient is rasterized
+    once into the glyph atlas — a 256-texel strip along an axis, a
+    128-texel square otherwise — and drawn as one `Image` quad, so no
+    renderer changes and a host that draws an image draws a gradient.
+    The key is the gradient and not the box: a resize, another scale
+    and a thousand boxes sharing one rasterize nothing.
+  - **On the box's unit square.** A side or a corner is CSS's; any
+    other `angle` runs corner to corner at an eighth of a turn at any
+    aspect, where CSS's pixel-measured `45deg` does not. Stops mix in
+    straight sRGB with the alpha premultiplied.
+  - **What it does not do.** It does not tween and the state
+    backgrounds do not replace it; a hard stop is as soft as the raster
+    stretched (a 256th of the box along a strip); there is no conic
+    one, and none on a `path`, a `line`, a border or a text. Those, and
+    anything animated, stay a `fragment`'s.
+  - The corpus gains a `gradients` scene; `examples/rust/apps/loaders.rs`
+    gains a rainbow — one gradient two tracks long slid under a clip,
+    one strip in the atlas for good.
 
 - **`dash` on a `line` and on a `path`'s stroke, in every binding**
   (backlog V2, the amendment in
@@ -111,7 +145,8 @@ path, which an encoder and addon of one release never see apart.
 **What you can delete.** The key an app gave a still icon only so a
 neighbour's coming and going would not move it to a texture; the
 invisible wider path laid under a thick-stroked one to catch the press
-on its edge; the loop that walked a connector's points and declared a
+on its edge; the WGSL a card's two-colour fade was written in, and the
+`fragment` that held its children; the loop that walked a connector's points and declared a
 `line` per dash, and the arithmetic that kept its phase round a corner.
 
 ## 0.1.0-alpha.36 (2026-10-05)

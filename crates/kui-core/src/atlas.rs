@@ -643,6 +643,43 @@ impl GlyphAtlas {
         h: u32,
         coverage: impl FnOnce() -> Vec<u8>,
     ) -> Option<GlyphSlot> {
+        self.get_or_insert_keyed(key, w, h, false, || {
+            let mask = coverage();
+            debug_assert_eq!(mask.len(), (w * h) as usize);
+            let mut rgba = Vec::with_capacity(mask.len() * 4);
+            for &a in &mask {
+                rgba.extend_from_slice(&[255, 255, 255, a]);
+            }
+            rgba
+        })
+    }
+
+    /// Cached lookup for a gradient's raster
+    /// (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): `w × h`
+    /// texels of straight RGBA under `key`, made by `rgba` on a miss and
+    /// copied across a reset like a path's mask, whose table it shares —
+    /// the caller's key is of a different domain. `None` when no page can
+    /// hold it.
+    pub fn get_or_insert_gradient(
+        &mut self,
+        key: u64,
+        w: u32,
+        h: u32,
+        rgba: impl FnOnce() -> Vec<u8>,
+    ) -> Option<GlyphSlot> {
+        self.get_or_insert_keyed(key, w, h, true, rgba)
+    }
+
+    /// The slot under `key` in the keyed table, its `w * h * 4` texels
+    /// from `rgba` the first time and from the page before across a reset.
+    fn get_or_insert_keyed(
+        &mut self,
+        key: u64,
+        w: u32,
+        h: u32,
+        color: bool,
+        rgba: impl FnOnce() -> Vec<u8>,
+    ) -> Option<GlyphSlot> {
         if let Some(&slot) = self.paths.get(&key) {
             match slot {
                 Some(slot) => self.note_slot(slot),
@@ -659,15 +696,8 @@ impl GlyphAtlas {
             let slot = (*prev.paths.get(&key)?)?;
             (slot.w == w && slot.h == h).then(|| prev.texels(slot.x, slot.y, w, h))
         });
-        let rgba = carried.unwrap_or_else(|| {
-            let mask = coverage();
-            debug_assert_eq!(mask.len(), (w * h) as usize);
-            let mut rgba = Vec::with_capacity(mask.len() * 4);
-            for &a in &mask {
-                rgba.extend_from_slice(&[255, 255, 255, a]);
-            }
-            rgba
-        });
+        let rgba = carried.unwrap_or_else(rgba);
+        debug_assert_eq!(rgba.len(), (w * h * 4) as usize);
         self.blit(x, y, w, h, &rgba);
         let slot = GlyphSlot {
             x,
@@ -676,7 +706,7 @@ impl GlyphAtlas {
             h,
             left: 0,
             top: 0,
-            color_glyph: false,
+            color_glyph: color,
             subpixel: false,
         };
         self.note_slot(slot);

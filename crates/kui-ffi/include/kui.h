@@ -296,7 +296,10 @@ extern "C" {
  *
  * ABI 24 gives kui_polyline, kui_path and kui_path_d a `dash` argument
  * before spec: five floats - a mark, a gap, a mark, a gap, the offset - or
- * NULL for the solid stroke they drew. Pass NULL and recompile.
+ * NULL for the solid stroke they drew. Pass NULL and recompile. It also
+ * appends gradient to KuiSpec, a pointer to the new KuiGradient: a
+ * gradient painted over bg; NULL, as a zeroed spec has it, paints none.
+ * The 64-bit size is 696.
  */
 #define KUI_ABI_VERSION 24u
 uint32_t kui_abi_version(void);
@@ -313,7 +316,8 @@ uint32_t kui_abi_version(void);
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
- *          KuiDerivedToken, KuiFileFilter, KuiFileDialog.
+ *          KuiDerivedToken, KuiFileFilter, KuiFileDialog, KuiGradientStop,
+ *          KuiGradient.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -606,6 +610,34 @@ typedef struct KuiKeyframe {
     float radius;
     float opacity; /* group opacity 0..1 */
 } KuiKeyframe;
+
+/* A box's gradient (KuiSpec.gradient,
+ * docs/adr/0042-a-gradient-is-an-image-the-core-paints.md), painted over
+ * bg and under the border and the children. KUI_GRADIENT_LINEAR runs along
+ * angle - turns clockwise from east, so 0 is to the right and 0.25 down -
+ * and KUI_GRADIENT_RADIAL out from (at_x, at_y), fractions of the box, to
+ * its farthest corner. Both are defined on the box's unit square and
+ * stretched to it: an eighth of a turn runs corner to corner at any
+ * aspect. A stop's at is 0..1, or negative for a stop spaced evenly
+ * between its neighbours that have one; two stops or more, mixed in
+ * straight sRGB with the alpha premultiplied. The core rasterizes each
+ * distinct gradient once into the atlas and the box draws it as one
+ * KUI_QUAD_IMAGE, so a renderer that draws an image draws a gradient. It
+ * does not tween. The struct and its stops are read during the call. */
+enum { KUI_GRADIENT_LINEAR = 0, KUI_GRADIENT_RADIAL = 1 };
+/* [in] */
+typedef struct KuiGradientStop {
+    uint32_t color; /* 0xRRGGBBAA */
+    float at;       /* 0..1; < 0: spaced between its neighbours */
+} KuiGradientStop;
+/* [in] */
+typedef struct KuiGradient {
+    uint32_t kind; /* KUI_GRADIENT_* */
+    float angle;
+    float at_x, at_y;
+    const KuiGradientStop *stops;
+    size_t stops_len;
+} KuiGradient;
 
 /* Which KuiEnter fields are set (KuiEnter.set bits); 0 = no entrance. */
 enum {
@@ -1088,6 +1120,9 @@ typedef struct KuiSpec {
      * makes the transition a spring. Zero is the easing's own - a spring
      * with no bounce at all is KUI_EASE_SMOOTH. ABI 23. */
     float bounce;
+    /* A gradient over bg, under the border and the children (see
+     * KuiGradient); NULL paints none. ABI 24. */
+    const KuiGradient *gradient;
 } KuiSpec;
 
 /* Size expressions, built from parts so nothing is parsed:

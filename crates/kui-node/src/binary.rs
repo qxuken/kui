@@ -827,6 +827,14 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                         kui_core::enter::parse_with(&payload(r.req_str()?)?, Some(&mut refs.names))
                             .map_err(err)?,
                     ),
+                    // JSON too; a `$name` stop resolves as a keyframe's does.
+                    Kind::Gradient => Parsed::Gradient(
+                        kui_core::gradient::parse_with(
+                            &payload(r.req_str()?)?,
+                            Some(&mut refs.names),
+                        )
+                        .map_err(err)?,
+                    ),
                 };
                 schema::apply(def, parsed, &mut out)?;
             }
@@ -1540,6 +1548,17 @@ mod tests {
                     strings = br#"{"dx":-7,"radius":7}"#;
                     stream.extend([0.0, strings.len() as f64]);
                     Parsed::Enter(kui_core::Enter::from(-7.0, 0.0).radius(7.0))
+                }
+                Kind::Gradient => {
+                    strings = br##"{"to":"right","stops":["#112233",["#ffffff",0.5]]}"##;
+                    stream.extend([0.0, strings.len() as f64]);
+                    Parsed::Gradient(kui_core::Gradient::to(
+                        kui_core::Side::Right,
+                        [
+                            kui_core::GradientStop::from(kui_core::Color::hex(0x112233ff)),
+                            kui_core::GradientStop::from((kui_core::Color::WHITE, 0.5)),
+                        ],
+                    ))
                 }
             };
             let mut expected = PropsOut::new();

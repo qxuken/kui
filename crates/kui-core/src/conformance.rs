@@ -3453,6 +3453,42 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "gradients",
+        doc: "The `gradient` row (ADR 0042), three 200 × 40 boxes in a \
+              column: blue to pink `to right` on a rounded box — a strip; \
+              yellow fading out by 0.8 along an eighth of a turn, over a \
+              `bg` and under a 2 px border — the background, the square, \
+              and the border as a ring of its own above it; and a radial \
+              from the middle of the top edge. Three image quads from the \
+              atlas and two solids; the digest holds their order, and a \
+              binding that drops the row draws the two solids as one.",
+        custom: &[],
+        elements: &["box"],
+        build: build_gradients,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 3,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+        },
+    },
+    Scene {
         name: "sampler",
         doc: "The generic rows no other scene declares, on four nodes \
               (backlog AR47): a card carrying the size ceilings, `center`, \
@@ -4997,6 +5033,33 @@ fn build_fit_across(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     ui.with(NodeSpec::row().gap(20.0), |ui| {
         card(ui, NodeSpec::column());
         card(ui, NodeSpec::column().min_width(Min::FIT));
+    });
+}
+
+fn build_gradients(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::gradient::{Gradient, Side, Stop};
+    let band = || NodeSpec::column().size(200.0, 40.0);
+    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+        ui.leaf(band().radius(8.0).gradient(Gradient::to(
+            Side::Right,
+            [Color::hex(0x7f9cf5ff), Color::hex(0xe07a8aff)],
+        )));
+        ui.leaf(
+            band()
+                .bg(Color::hex(0x14161eff))
+                .border(2.0, Color::hex(0xffffffff))
+                .gradient(Gradient::angle(
+                    0.125,
+                    [
+                        Stop::from(Color::hex(0xf5d67fff)),
+                        Stop::from((Color::hex(0x00000000), 0.8)),
+                    ],
+                )),
+        );
+        ui.leaf(band().gradient(Gradient::radial_at(
+            Vec2::new(0.5, 0.0),
+            [Color::hex(0x9ad9a0ff), Color::hex(0x14161eff)],
+        )));
     });
 }
 

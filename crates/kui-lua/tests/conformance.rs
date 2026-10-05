@@ -601,6 +601,21 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             return row { gap = 20, card({}), card({ min_width = "fit" }) }
         "#
         .to_string(),
+        // ADR 0042: a strip, a square over a bg and under a border, a radial.
+        "gradients" => r#"
+            return column { pad = 10, gap = 6,
+              column { width = 200, height = 40, radius = 8,
+                       gradient = { to = "right", stops = { 0x7f9cf5ff, 0xe07a8aff } } },
+              column { width = 200, height = 40, bg = 0x14161eff,
+                       border = { w = 2, color = 0xffffffff },
+                       gradient = { angle = 0.125,
+                                    stops = { 0xf5d67fff, { 0x00000000, 0.8 } } } },
+              column { width = 200, height = 40,
+                       gradient = { radial = true, at = { 0.5, 0 },
+                                    stops = { 0x9ad9a0ff, 0x14161eff } } },
+            }
+        "#
+        .to_string(),
         // Backlog F109: four bars sized by expressions, spelled and as data.
         "size-expressions" => r#"
             local function bar(t)

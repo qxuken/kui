@@ -173,6 +173,13 @@ fn every_schema_prop_has_a_c_counterpart() {
             Kind::Resource => Parsed::Resource(7),
             Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().at(0.5).radius(F)]),
             Kind::Enter => Parsed::Enter(Enter::from(-F, 0.0).radius(F)),
+            Kind::Gradient => Parsed::Gradient(kui_core::Gradient::angle(
+                0.125,
+                [
+                    kui_core::GradientStop::from(Color::hex(C)),
+                    kui_core::GradientStop::from((Color::WHITE, 0.5)),
+                ],
+            )),
         };
         let mut expected = PropsOut::new();
         apply(def, sample, &mut expected).unwrap();
@@ -187,6 +194,21 @@ fn every_schema_prop_has_a_c_counterpart() {
             radius: F,
             opacity: 0.0,
         }];
+        let gradient_stops = [
+            KuiGradientStop { color: C, at: -1.0 },
+            KuiGradientStop {
+                color: 0xffff_ffff,
+                at: 0.5,
+            },
+        ];
+        let gradient = KuiGradient {
+            kind: KUI_GRADIENT_LINEAR,
+            angle: 0.125,
+            at_x: 0.0,
+            at_y: 0.0,
+            stops: gradient_stops.as_ptr(),
+            stops_len: 2,
+        };
         let mut s = zeroed_spec();
         let mut t = zeroed_style();
         let (mut click, mut drag, mut key, mut hover) = (NONE, NONE, NONE, NONE);
@@ -244,6 +266,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "bounce" => s.bounce = F,
             "slide" => s.slide = 1,
             "keyframes" => (s.keyframes, s.keyframes_len) = (stops.as_ptr(), 1),
+            "gradient" => s.gradient = &gradient,
             "enter" => {
                 s.enter = KuiEnter {
                     set: KUI_ENTER_OFFSET | KUI_ENTER_RADIUS,
@@ -480,6 +503,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         min_h_size: KuiSizing { tag: 0, value: 0.0 },
         max_h_size: KuiSizing { tag: 0, value: 0.0 },
         bounce: 0.3,
+        gradient: std::ptr::null(),
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {

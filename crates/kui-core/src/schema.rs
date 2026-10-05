@@ -171,6 +171,7 @@ pub const P_SCROLL_AXES: u32 = 119;
 pub const P_MODIFIER_KEYS: u32 = 120;
 pub const P_OPTION_AS_ALT: u32 = 121;
 pub const P_BOUNCE: u32 = 122;
+pub const P_GRADIENT: u32 = 123;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -418,6 +419,10 @@ pub enum Kind {
     /// An entrance (`crate::enter::parse` reads the plain-data form).
     /// Carried like a `Msg` and parsed in the core; C fills a `KuiEnter`.
     Enter,
+    /// A gradient (`crate::gradient::parse` reads the plain-data form).
+    /// Carried like a `Msg` and parsed in the core; C fills a
+    /// `KuiGradient`.
+    Gradient,
 }
 
 /// Where a parsed value lands. `PropDef::target` derives from this.
@@ -432,6 +437,7 @@ pub enum Apply {
     SpecStr(fn(NodeSpec, &str) -> NodeSpec),
     SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
     SpecEnter(fn(NodeSpec, Enter) -> NodeSpec),
+    SpecGradient(fn(NodeSpec, crate::gradient::Gradient) -> NodeSpec),
     SpecResource(fn(NodeSpec, u64) -> NodeSpec),
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
@@ -839,6 +845,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.hover_bg(c)),
         doc: "Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.",
+    },
+    PropDef {
+        name: "gradient",
+        id: P_GRADIENT,
+        kind: Kind::Gradient,
+        apply: Apply::SpecGradient(|s, g| s.gradient(g)),
+        doc: "A gradient painted over the node's `bg` and under its border and its children (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): `{ to: 'bottom', stops: [...] }` towards a side or a corner (`right`, `bottom left`, …; the default is `bottom`), `{ angle: 0.125, stops }` in turns clockwise from east, or `{ radial: true, at: [0.5, 0], stops }` out from a centre (fractions of the box, the middle by default) to its farthest corner. A stop is a colour — a `$token` too — or `[colour, position]` with the position 0 to 1; stops without one are spaced evenly between those with. Two stops at one position are a hard edge. The gradient is defined on the box's unit square and stretched to it, so a side or a corner is CSS's and any other `angle` runs corner to corner at an eighth of a turn whatever the box's aspect, where CSS's pixel-measured `45deg` does not. Stops mix in straight sRGB with the alpha premultiplied, as CSS's do. What it costs is one image quad: the core rasterizes each distinct gradient once into the glyph atlas — a 256-texel strip along an axis, a 128-texel square otherwise — keyed by the gradient and not the box, so a box that resizes and a thousand boxes that share one rasterize nothing, and a host that draws an image draws it. A hard edge is as soft as the raster stretched to the box (a 256th of its length along a strip); stripes are boxes. It does not tween — `transition` eases the `bg` under it and `opacity` fades it — and `hoverBg` and the other state backgrounds replace `bg`, not the gradient; one that changes every frame is a raster a frame, and a shimmer is a `fragment`'s. Ignored on a `line`, a `polygon` and a `path`. Fewer than two stops draw nothing.",
     },
     PropDef {
         name: "rules",
@@ -1508,6 +1521,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "keyframes",
         "`keyframes` + `keyframes_len` (`KuiKeyframe[]`)",
     ),
+    ("gradient", "`gradient` (`const KuiGradient *`)"),
     ("repeat", "`repeat` (`KUI_REPEAT_*`)"),
     ("delay", "`delay_ms`"),
     ("enter", "`enter` (`KuiEnter`, with `set` bits)"),
@@ -3042,6 +3056,7 @@ pub enum Parsed {
     Resource(u64),
     Keyframes(Vec<Keyframe>),
     Enter(Enter),
+    Gradient(crate::gradient::Gradient),
     /// A family, already resolved by the parser (`NameRefs::family`).
     Family(FontFamily),
 }
@@ -3171,6 +3186,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
         (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
         (Apply::SpecEnter(f), Parsed::Enter(v)) => out.spec = f(spec, v),
+        (Apply::SpecGradient(f), Parsed::Gradient(v)) => out.spec = f(spec, v),
         (Apply::SpecResource(f), Parsed::Resource(v)) => out.spec = f(spec, v),
         (Apply::StyleF32(f), Parsed::F32(v)) => {
             out.spec = spec;
@@ -3866,6 +3882,10 @@ mod tests {
                 Kind::Resource => Parsed::Resource(7),
                 Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().radius(7.0)]),
                 Kind::Enter => Parsed::Enter(Enter::from(-7.0, 0.0)),
+                Kind::Gradient => Parsed::Gradient(crate::gradient::Gradient::to(
+                    crate::gradient::Side::Right,
+                    [Color::hex(0x11223344), Color::WHITE],
+                )),
             };
             let mut out = PropsOut::new();
             apply(def, sample, &mut out).unwrap();

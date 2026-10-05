@@ -1236,6 +1236,41 @@ static void conf_fit_across(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_gradients (ADR 0042): a strip, a square over a bg and
+ * under a border, and a radial from the top edge. */
+static void conf_gradients(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec column = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
+    kui_open(ui, &column, NULL);
+
+    KuiGradientStop fade_stops[] = {{0x7f9cf5ff, -1}, {0xe07a8aff, -1}};
+    KuiGradient fade = {.kind = KUI_GRADIENT_LINEAR, .angle = 0, .stops = fade_stops,
+                        .stops_len = 2};
+    KuiSpec strip = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 40}, .radius = 8,
+                     .gradient = &fade};
+    kui_open(ui, &strip, NULL);
+    kui_close(ui);
+
+    KuiGradientStop glow_stops[] = {{0xf5d67fff, -1}, {0x00000000, 0.8f}};
+    KuiGradient glow = {.kind = KUI_GRADIENT_LINEAR, .angle = 0.125f, .stops = glow_stops,
+                        .stops_len = 2};
+    KuiSpec square = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 40},
+                      .bg = 0x14161eff, .border_w = 2, .border_color = 0xffffffff,
+                      .gradient = &glow};
+    kui_open(ui, &square, NULL);
+    kui_close(ui);
+
+    KuiGradientStop sun_stops[] = {{0x9ad9a0ff, -1}, {0x14161eff, -1}};
+    KuiGradient sun = {.kind = KUI_GRADIENT_RADIAL, .at_x = 0.5f, .at_y = 0,
+                       .stops = sun_stops, .stops_len = 2};
+    KuiSpec radial = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 40}, .gradient = &sun};
+    kui_open(ui, &radial, NULL);
+    kui_close(ui);
+
+    kui_close(ui);
+}
+
 /* conformance::build_size_expressions (backlog F109): four bars in a 400 px
  * column sized by expressions, built from parts with kui_size_* - nothing
  * parsed but the clamp, which goes through kui_size_parse. */
@@ -2198,6 +2233,7 @@ static const ConfScene CONF_SCENES[] = {
     {"column-squeeze", conf_column_squeeze},
     {"fit-across", conf_fit_across},
     {"size-expressions", conf_size_expressions},
+    {"gradients", conf_gradients},
     {"media", conf_media},
     {"lines", conf_lines},
     {"polygon", conf_polygon},

@@ -63,6 +63,7 @@ const TS_BY_KIND = {
   resource: 'string',
   keyframes: 'KeyframeProp[]',
   enter: 'EnterProp',
+  gradient: 'GradientProp',
 };
 
 function field([name, def]) {
@@ -158,6 +159,7 @@ const TYPE_DOC = {
   resource: 'resource handle',
   keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius?, opacity? }, …]`)',
   enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`)',
+  gradient: 'gradient (`{ to? \\| angle? \\| radial?, at?, stops: [color \\| [color, at], …] }`)',
 };
 
 const cell = (s) => String(s).replace(/\|/g, '\\|');

@@ -2929,6 +2929,9 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
         Kind::Enter => {
             Parsed::Enter(kui_core::enter::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?)
         }
+        Kind::Gradient => Parsed::Gradient(
+            kui_core::gradient::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?,
+        ),
     }))
 }
 

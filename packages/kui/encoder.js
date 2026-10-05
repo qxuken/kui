@@ -614,6 +614,7 @@ export function createEncoder(P) {
             case 'tag':
             case 'keyframes':
             case 'enter':
+            case 'gradient':
               strRef(JSON.stringify(v));
               break;
             case 'str':
