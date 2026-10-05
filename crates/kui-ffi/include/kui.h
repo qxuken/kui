@@ -623,7 +623,10 @@ typedef struct KuiKeyframe {
  * straight sRGB with the alpha premultiplied. The core rasterizes each
  * distinct gradient once into the atlas and the box draws it as one
  * KUI_QUAD_IMAGE, so a renderer that draws an image draws a gradient. It
- * does not tween. The struct and its stops are read during the call. */
+ * does not tween. The struct and its stops are read during the call.
+ * A zeroed struct is not the default the other bindings have: a stop's
+ * at of 0 is the start and not "spaced evenly" - write -1 for that - and
+ * a radial one's (0, 0) is the top left corner, (0.5, 0.5) the middle. */
 enum { KUI_GRADIENT_LINEAR = 0, KUI_GRADIENT_RADIAL = 1 };
 /* [in] */
 typedef struct KuiGradientStop {

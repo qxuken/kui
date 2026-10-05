@@ -114,6 +114,23 @@ impl Grid {
     }
 }
 
+/// A cell of a gradient row: the gradient in place of the `bg`. Built
+/// per cell per frame, as a view would build it: the stops, their hash
+/// and the row are in the bill. Its own function, never inlined, so the
+/// plain rows' loop is the one it was.
+#[inline(never)]
+fn gradient_cell(spec: &mut NodeSpec, which: Gradients, color: Color) {
+    spec.style.bg = Color::TRANSPARENT;
+    let first = match which {
+        Gradients::Shared => Color::rgb8(127, 156, 245),
+        Gradients::Distinct => color,
+    };
+    spec.interact_mut().gradient = Some(kui_core::Gradient::to(
+        kui_core::Side::Right,
+        [first, Color::rgb8(224, 122, 138)],
+    ));
+}
+
 fn grid(ui: &mut Ui<'_>, g: Grid) {
     let mut root = NodeSpec::column().fill().pad(8.0).gap(4.0);
     if g.opacity {
@@ -131,20 +148,19 @@ fn grid(ui: &mut Ui<'_>, g: Grid) {
         ui.with(row, |ui| {
             for c in 0..g.cols {
                 let color = Color::rgb8((r % 255) as u8, (c % 255) as u8, 128);
-                let mut spec = NodeSpec::column().grow_width().height(14.0).radius(2.0);
-                spec = match g.gradient {
-                    None => spec.bg(color),
-                    // Built per cell per frame, as a view would build it:
-                    // the stops, their hash and the row are in the bill.
-                    Some(Gradients::Shared) => spec.gradient(kui_core::Gradient::to(
-                        kui_core::Side::Right,
-                        [Color::rgb8(127, 156, 245), Color::rgb8(224, 122, 138)],
-                    )),
-                    Some(Gradients::Distinct) => spec.gradient(kui_core::Gradient::to(
-                        kui_core::Side::Right,
-                        [color, Color::rgb8(224, 122, 138)],
-                    )),
-                };
+                // The plain cell, built as it was before the grid knew a
+                // gradient: the gradient rows' arms beside it in one
+                // `match` cost every other row of this file 6 ns a cell
+                // (alpha.37's pre-tag bench, `frame_10k_rects` +8%), which
+                // was the bench's bill and not the core's.
+                let mut spec = NodeSpec::column()
+                    .grow_width()
+                    .height(14.0)
+                    .bg(color)
+                    .radius(2.0);
+                if let Some(which) = g.gradient {
+                    gradient_cell(&mut spec, which, color);
+                }
                 if g.shadows {
                     spec = spec
                         .shadow_color(Color::rgba8(0, 0, 0, 96))

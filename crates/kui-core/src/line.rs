@@ -225,14 +225,16 @@ impl Cut {
     /// lies on, meeting at the corner, and a dot is a call with both ends
     /// the same. False, with nothing called, for a stroke that draws
     /// solid instead: a pattern [`Self::finer_than`] `min`, more than
-    /// [`MAX_MARKS`] marks, or a length that is not finite.
+    /// [`MAX_MARKS`] marks, or a length that is zero or not finite.
     pub fn marks(&self, points: &[Vec2], min: f32, mut mark: impl FnMut(Vec2, Vec2)) -> bool {
         let period = self.period();
         let piece = |pair: &[Vec2]| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y);
         let total: f32 = points.windows(2).map(piece).sum();
         // Two marks a period; `!(..)` so a NaN draws solid too.
         let marks = total / period * 2.0;
-        if self.finer_than(min) || marks.is_nan() || marks > MAX_MARKS as f32 {
+        // A stroke of no length has no mark to lie on and is the dot its
+        // solid one is (RG116).
+        if self.finer_than(min) || marks.is_nan() || marks > MAX_MARKS as f32 || total <= 0.0 {
             return false;
         }
         // Where the stroke starts in the pattern: the entry and what is

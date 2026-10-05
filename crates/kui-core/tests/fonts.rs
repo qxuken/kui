@@ -588,10 +588,32 @@ fn the_apps_fallback_fonts_are_asked_before_the_platforms() {
             .map(|q| q.rect.x)
             .collect()
     };
+    // An editor already open on the text, its lines shaped (RG114).
+    let editor = |core: &mut Core| -> Vec<f32> {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.text_edit(
+            "field",
+            "字字",
+            &kui_core::EditOptions {
+                style,
+                ..Default::default()
+            },
+            NodeSpec::column().width(kui_core::Sizing::Fixed(300.0)),
+        );
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::GlyphMask)
+            .map(|q| q.rect.x)
+            .collect()
+    };
     let apart = |xs: &[f32]| xs.get(1).zip(xs.first()).map(|(b, a)| b - a);
     let before = plain(&mut core);
     assert_ne!(apart(&before), Some(10.0), "the platform's: {before:?}");
     let cells_before = cell_glyphs(&mut core, "字", 0, style);
+    let editor_before = editor(&mut core);
+    assert_ne!(apart(&editor_before), Some(10.0), "{editor_before:?}");
 
     core.set_fallback_fonts(&[han]);
     assert_eq!(core.fallback_fonts(), ["Kui F121 Han"]);
@@ -599,8 +621,11 @@ fn the_apps_fallback_fonts_are_asked_before_the_platforms() {
     assert_eq!(apart(&after), Some(10.0), "the app's: {after:?}");
     let cells_after = cell_glyphs(&mut core, "字", 0, style);
     assert_ne!(cells_after, cells_before, "a grid asks them too");
+    let editor_after = editor(&mut core);
+    assert_eq!(apart(&editor_after), Some(10.0), "an open editor too");
 
     core.set_fallback_fonts(&[]);
     assert_eq!(plain(&mut core), before, "and the platform's again");
     assert_eq!(cell_glyphs(&mut core, "字", 0, style), cells_before);
+    assert_eq!(editor(&mut core), editor_before);
 }

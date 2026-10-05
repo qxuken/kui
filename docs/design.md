@@ -411,7 +411,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   Both are decided in [ADR 0005](adr/0005-the-paint-vocabulary.md),
   which also says why there are no gradient *props*.
 - **A fragment is a box a WGSL function paints.** What ADR 0005 declined to
-  build one prop at a time — gradients, rings, noise, shimmer — an app
+  build one prop at a time — gradients (a linear or a radial one is a
+  `gradient` row since ADR 0042), rings, noise, shimmer — an app
   writes as one function instead
   ([ADR 0015](adr/0015-a-fragment-element-and-the-painter-it-is-not.md)):
   `add_fragment(wgsl)` validates the source and hands back a handle, and

@@ -489,7 +489,11 @@ pub fn parse_with(
                 to = Some(side);
             }
             "angle" => angle = Some(num(v, "`angle`")?),
-            "radial" => radial = v.as_bool().unwrap_or(false),
+            "radial" => {
+                radial = v
+                    .as_bool()
+                    .ok_or("gradient: `radial` must be true or false")?
+            }
             "at" => match v.as_list() {
                 Some([x, y]) => at = Some(Vec2::new(num(x, "`at`")?, num(y, "`at`")?)),
                 _ => return Err("gradient: `at` is an [x, y] pair".into()),
@@ -705,6 +709,14 @@ mod tests {
             bad(Value::map([("stops", Value::list([Value::str("#fff")]))])).contains("two stops")
         );
         assert!(bad(Value::map([("angle", Value::float(0.1))])).contains("needs `stops`"));
+        // RG117: it read as "not radial" and drew a linear one.
+        assert!(
+            bad(Value::map([
+                ("radial", Value::str("yes")),
+                ("stops", stops())
+            ]))
+            .contains("true or false")
+        );
         assert!(
             bad(Value::map([
                 ("angle", Value::float(0.1)),

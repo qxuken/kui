@@ -263,6 +263,8 @@ impl Core {
         self.session.state().resources.fallback.clone()
     }
 
+    /// Forgets a registered font; faces loaded from bytes leave the font
+    /// database. Styles still naming it shape as sans-serif.
     pub fn remove_font(&mut self, id: crate::resources::FontId) {
         {
             let sess = &mut *self.session.state();

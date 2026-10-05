@@ -97,7 +97,10 @@ regression run of 2026-09-30, filed and built after the alpha.27 tag, and
 with the alpha.36 tag RG107–RG111 — a path holding a number that is
 not one, a ring at 0%, C's leaked payloads, a fractional op code and
 the size gate — from the regression pass of 2026-10-05, filed and built
-the same day, and
+the same day, and with the alpha.37 tag RG114–RG117 — an open editor
+and a new fallback list, the root's gradient under the devtools dock, a
+dashed line of no length and the gradient's docs — from the pre-tag
+pass of the same day, filed and built with it, and
 with the alpha.29 tag RG99 — RG96's readings, confirmed in a window on
 Linux and Windows — with RG100–RG104 from that window round, filed and
 built the same day after the alpha.28 tag, and RG105 from it, withdrawn
@@ -158,7 +161,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.35".
+Ordered by area, not by priority. What to do next is under "After alpha.36".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -424,7 +427,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.35" below.
+not cover is in "After alpha.36" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2024,7 +2027,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.35*).
+*Distribution* under *After alpha.36*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2184,9 +2187,87 @@ archive too; RG113 holds the two things it left in turn.
   argument or a flag, which is an ABI question for a frame nobody has
   reported.
 
-## After alpha.35
+## From the alpha.37 pre-tag pass (2026-10-05)
+
+The pre-tag pass over the nine commits after the alpha.36 tag — `dash`
+on a stroke (V2), the `gradient` row
+([ADR 0042](adr/0042-a-gradient-is-an-image-the-core-paints.md)), a cell
+grid's fallback glyph (F120), the fallback fonts (F121) and RG112 — run
+as the one before it was: the mechanical round first (all green), then
+three read-only reviews (the dash, the gradient, the fonts with the
+release's docs), each claim probed with a test before anything changed.
+The cut's termination and its caps, the phase round a corner, the
+path's cache key, the gradient's key, its gutter, its paint order and
+its alpha, the Node wire field for field and the grid's lookup cache
+all read sound. Six entries. RG114–RG117 were **built 2026-10-05**,
+the day they were filed, and are in the archive: an open editor keeping
+the fallback fonts it was shaped with (RG114), the root's gradient
+dropped under the devtools dock (RG115), a dashed line of no length
+drawing nothing (RG116) and the gradient's docs against its code
+(RG117). RG118 holds what was read and left, and C52 what the bench
+guard found: green, and `frame_10k_segments` 5 to 7% slower with the
+dash. The guard's other find was its own — `frame_10k_rects` read 8%
+slower for a `match` the bench's grid had grown, which is fixed in the
+bench (ADR 0042's *Measured* says so).
+
+### `.` C52 — A solid line costs 5 to 7 ns more since a stroke can be dashed
+
+`frame_10k_segments`, ten thousand solid one-segment lines, reads
+**+5.5% to +7.7%** against alpha.36 (863 → 929 µs in the pre-tag
+guard, ±1.0%; 869 → 918 µs alternating the two binaries), under the
+guard's 10% and not noise. Bisected by building the bench at each
+commit: it arrives whole with `7c70c4f`, V2's `dash`, and no later
+commit moves it. `frame_1k_curves` and `frame_1k_closed_lines`, many
+segments a line, move 1.5–2.5%, so it is a cost per line and not per
+segment.
+
+Two causes tried and ruled out, each built and measured: the
+`Option<Cut>` copied into the leaf (lent by reference instead: 921 →
+917 µs, nothing), and the run grown from 12 bytes to 36 (the cut moved
+to a side table, the run 16 bytes: 920 → 911 µs, a per cent). What is
+left unread is the builder's side — `Stroke` twenty bytes wider by
+value through `line_with`, `Dash::cut` on every push — and the codegen
+of `paint_box`'s line arm with `push_marks` beside `push_segments`;
+C41's recipe (xctrace leaf addresses into objdump) is the way in.
+
+**Wants:** a solid line to cost what it did, or the reason it cannot.
+
+### `.` RG118 — What the alpha.37 reviews read and left
+
+By reading, none probed in a window:
+
+- **The app's fallback list may be passed over for `FontFamily::Mono`
+  text.** cosmic-text asks every installed monospaced face that covers
+  the word before the script and common fallbacks, which is where the
+  app's names go; F121's "for every family" is tested for a registered
+  family only. It wants a probe on a machine whose monospaced faces
+  cover the character, and then the app's names asked first.
+- **A fallback glyph of no advance is centred.** A lone combining mark
+  from a fallback face sat on its negative bearing at the cell's left
+  edge and now sits half a cell right. Neither is where a terminal puts
+  it; a grid that composes its marks is the answer, and no grid has
+  asked.
+- **The grid reads its family's face off `M`.** A symbols-only or
+  CJK-only family has no `M`, so its own glyphs read as fallbacks and
+  can be asked of the monospaced face first.
+- **`set_fallback_fonts` asks its own window for a frame.** Another
+  window of the session shapes again when something else draws it.
+- **A mark shorter than the stroke is wide overlaps its neighbours.**
+  `dash = {2, 2}` at a width of 8 is 8 px dots every 4 px — a lumpy
+  solid line, a quad per dot. The docs' "at any width" holds from the
+  width up; under it the dot rule is what is written.
+- **A gradient whose `$token` misses draws nothing** once fewer than
+  two stops are left, with `unknown-token` raised and no error: the
+  count is of the list, as ADR 0042's amendment says.
+
+## After alpha.36
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.35" until later on 2026-10-05, when the round between the alpha.36
+and alpha.37 tags — `dash` on a stroke, the `gradient` row (ADR 0042),
+F120 and F121 from kawoosh's Cyrillic-terminal report, RG112 and
+RG114–RG117 from the pre-tag pass — had landed, and the heading moved
+with the tag; "After
 alpha.33" until 2026-10-05, when the rounds between the alpha.34 and
 alpha.36 tags — the docs for a reader from crates.io and the first
 release cut on two hosts (alpha.35), then the `path` element (ADR 0040),
@@ -2721,7 +2802,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.35" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.36" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -3526,3 +3607,19 @@ move.
 - `.` **RG111** — [A path a pixel or two under the mask limit rasterized 400 MB and drew nothing, silently](backlog/closed-2026-09.md#-rg111--a-path-a-pixel-or-two-under-the-mask-limit-rasterized-400-mb-and-drew-nothing-silently--done-2026-10-05) — done (2026-10-05)
 
 - `.` **RG112** — [What the `path` reviews found and the pass left](backlog/closed-2026-09.md#-rg112--what-the-path-reviews-found-and-the-pass-left--done-2026-10-05) — done (2026-10-05), after the alpha.36 tag
+
+**From the dash and gradient round (2026-10-05)** — V2, built when a view asked for it, and V9, the measurements ADR 0042's build owed
+
+- `.` **V2** — [`dash` on `line`](backlog/closed-2026-09.md#-v2--dash-on-line--done-2026-10-05) — done (2026-10-05)
+
+- `.` **V9** — [The gradient's measurements](backlog/closed-2026-09.md#-v9--the-gradients-measurements--done-2026-10-05) — done (2026-10-05)
+
+**From the alpha.37 pre-tag pass (2026-10-05)** — RG114–RG117, filed and built the same day
+
+- `.` **RG114** — [An open editor kept the fallback fonts it was shaped with](backlog/closed-2026-09.md#-rg114--an-open-editor-kept-the-fallback-fonts-it-was-shaped-with--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG115** — [The root's gradient was dropped while the devtools dock was open](backlog/closed-2026-09.md#-rg115--the-roots-gradient-was-dropped-while-the-devtools-dock-was-open--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG116** — [A dashed line of no length drew nothing, and was still hit](backlog/closed-2026-09.md#-rg116--a-dashed-line-of-no-length-drew-nothing-and-was-still-hit--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG117** — [The gradient's docs and its plain-data reader disagreed with the code](backlog/closed-2026-09.md#-rg117--the-gradients-docs-and-its-plain-data-reader-disagreed-with-the-code--done-2026-10-05) — done (2026-10-05)

@@ -199,3 +199,36 @@ fn a_ghost_keeps_its_gradient() {
     assert_eq!(ghost[0].uv, live[0].uv);
     assert!(ghost[0].color.a < 1.0);
 }
+
+/// RG115: the root's gradient is still painted while the devtools dock
+/// wraps the app's tree — it went with the rest of the `interact` row,
+/// which the wrapped container does not take.
+#[cfg(feature = "devtools")]
+#[test]
+fn the_roots_gradient_survives_the_devtools_dock() {
+    let images = |quads: &[Quad]| -> Vec<Quad> {
+        quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::Image)
+            .copied()
+            .collect()
+    };
+    let build = |ui: &mut kui_core::Ui<'_>| {
+        ui.configure_root(NodeSpec::column().size(VIEW.w, VIEW.h).gradient(fade()));
+    };
+    let mut core = Core::new();
+    let bare = images(&frame(&mut core, 1.0, build));
+    assert_eq!(bare.len(), 1);
+    assert_eq!((bare[0].rect.w, bare[0].rect.h), (VIEW.w, VIEW.h));
+
+    core.set_devtools(true);
+    core.set_devtools_dock(kui_core::DevtoolsDock::Right);
+    frame(&mut core, 1.0, build);
+    let docked = images(&frame(&mut core, 1.0, build));
+    let over_app: Vec<_> = docked
+        .iter()
+        .filter(|q| q.uv == bare[0].uv && q.rect.h == VIEW.h)
+        .collect();
+    assert_eq!(over_app.len(), 1, "{docked:?}");
+    assert!(over_app[0].rect.w < VIEW.w, "the app's box, not the dock's");
+}

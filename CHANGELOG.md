@@ -21,13 +21,13 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.37 (unreleased)
+## 0.1.0-alpha.37 (2026-10-05)
 
 **What breaks.**
 
 - Rust: `HitShape::Path` gains a `stroke` field and `Content` a
   `PathFlat` variant (under Fixed), so a pattern over either needs
-  them.
+  them; `HitShapes::path` takes the stroke's width after the rule.
 - A `path` with a stroke over a fill is hit out to the stroke's edge,
   where the half of the stroke outside the outline fell through; and a
   stroked path with no `bg` but a `hover_bg`, `pressed_bg` or
@@ -52,6 +52,7 @@ was the first bare bump to break an app in five releases).
   monospaced face where one has it, in the middle of its cell, and no
   wider than it (F120, under Fixed), where it was the platform's first
   fallback at its own width from the cell's left edge.
+- Rust: `Tree` gains an `any_gradient` field.
 
 The Node wire moves to v21 for the dash's five floats on a line and a
 path, which an encoder and addon of one release never see apart.
@@ -89,7 +90,7 @@ path, which an encoder and addon of one release never see apart.
     anything animated, stay a `fragment`'s.
   - Measured (the ADR's *Measured*): a linear gradient is within half
     an 8-bit level of the mix computed per pixel at every pixel of the
-    box, a radial within 1.2; a gradient box costs about 55 ns over a
+    box, a radial within 1.2; a gradient box costs about 52 ns over a
     flat one, half of it what any `hoverBg` pays; a raster is 4 µs for
     a strip and 25 to 42 for a square.
   - The corpus gains a `gradients` scene; `examples/rust/apps/loaders.rs`
@@ -130,20 +131,15 @@ path, which an encoder and addon of one release never see apart.
     `examples/rust/widgets/line.rs` hangs its planned cards off dashed
     links that march under the pointer.
 
-### Added
-
 - **The fallback fonts are the app's to name** (backlog F121, from
   kawoosh). `Core::set_fallback_fonts(&[FontId])` — C
   `kui_font_set_fallback`, Node `ctx.setFallbackFonts(ids)` — lists the
   fonts asked, in order, for a character the text's own family has no
   glyph for, before the platform's list, whose first choice on macOS is
-  the system's proportional face. For every text in the session, a cell
-  grid's too, and kept across `reload_system_fonts`; an empty list is
-  the platform's alone.
-
-**What you can delete.** Nothing an app could have written: the list
-was not reachable. A family chosen only because it covers a script the
-preferred one lacks can give way to the preferred one.
+  the system's proportional face. For every text in the session — an
+  editor already open and a cell grid too — and kept across
+  `reload_system_fonts`; an empty list is the platform's alone.
+  `Core::fallback_fonts` reads the families back.
 
 ### Fixed
 
@@ -178,12 +174,83 @@ preferred one lacks can give way to the preferred one.
     as the encoder reads it; `Core::image_pixels` answers for the
     handle a path's `Texture` quad names.
 
-**What you can delete.** The key an app gave a still icon only so a
+- **What this release's own pre-tag pass found** (backlog RG114–RG117;
+  RG118 holds what it read and left), none of it in a release before
+  this one:
+  - An editor open when `set_fallback_fonts` was called kept the faces
+    its lines were shaped in until they were edited (RG114).
+  - The root's `gradient` was dropped while the devtools panel was
+    docked (RG115).
+  - A dashed `line` whose points coincide drew nothing and was still
+    hit; it is the dot its solid one is (RG116).
+  - A gradient's `radial` that is not a boolean is an error, where it
+    read as linear; its row says that fewer than two stops fail the
+    view in JSX and Lua and draw nothing in Rust and C; `kui.h` says
+    what a zeroed `KuiGradient` is (RG117).
+
+**What you can delete.** A family chosen only because it covers a
+script the preferred one lacks, which can give way to the preferred
+one with the fallback list named; the key an app gave a still icon only so a
 neighbour's coming and going would not move it to a texture; the
 invisible wider path laid under a thick-stroked one to catch the press
 on its edge; the WGSL a card's two-colour fade was written in, and the
 `fragment` that held its children; the loop that walked a connector's points and declared a
 `line` per dash, and the arithmetic that kept its phase round a corner.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-05 — the
+nine commits after the alpha.36 tag: `dash`, the `gradient` row, F120,
+F121 and RG112 — with a regression pass over them first: three
+read-only reviews (the dash, the gradient, the fonts with this
+release's docs), each claim probed with a test before anything
+changed. RG114–RG117 came of it and are in this release; RG118 holds
+what was read and left. This round ran on the Mac alone; Windows and
+Linux did not run it for this tag.
+
+**macOS 27.0.1 on an M3 Pro MacBook Pro, rustc 1.99.0 (the toolchain
+CI runs), Node 26.10.0, nu 0.116.0**, on the release commit's tree,
+the workspace's own artifacts pruned and rebuilt. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets -- -D warnings`
+are clean. `scripts/test.nu`, the workspace's tests with the
+conformance feature: **1802 tests over 135 suites, 0 failed** (4
+ignored). The C round, `cbuild --run`, passes its five checks; the
+corpus passes its **57 scenes** in four adapters, `gradients` the new
+one; the ABI is **24**. Node's `node --test test.mjs` under
+`KUI_CONFORMANCE_REQUIRED=1`: **209 of 209**. `npm run gen` leaves no
+diff, the examples typecheck and their lockfile installs, the headless
+round passes all **35 drives**, the book builds and
+`scripts/book-examples.nu --check` passes.
+
+**The windowed round**, `smoke -- --node`, three times over: **51 Rust
+examples and the eleven Node examples, each on both bases, 120 frames
+each, every one exiting 0** — 124 windows, eight at a time, in 28 to
+32 s — and `counter`, `host`, `c_panel` and `lua_panel` by hand under
+`KUI_SMOKE_FRAMES=120`, each exiting 0 with nothing on stderr: **128
+windows over five hosts.** In each of the three runs one window of the
+first eight took the whole round to draw its frames — `cells`, then
+`audio`, then `accessibility`, each a second and a half when run
+alone — which reads as a window covered by the seven launched over it
+and not drawn until they had gone; not compared against alpha.36's
+build. The AX audit: **106/106**, the audited window raised to the
+front by its pid first, and no warning on the fixture's stderr.
+
+**The bench guard** against the alpha.36 tag, on the release commit's
+tree: **green**, none of the 8 guarded rows more than 10% slower (the
+worst guarded run-to-run spread 1.4%). Seven of them are within
+−0.3% and +1.5%. `frame_10k_segments` is **+7.7%** (863 → 929 µs, ±1.0%),
+and that is the dash: bisected to V2's commit by building the bench at
+each one, two causes tried and ruled out, filed as backlog C52. The
+guard's first run read `frame_10k_rects` +9.3% and every row built on
+the bench's grid 5 to 9% slower, and that was the bench: bisected to
+the commit that gave its grid the gradient rows' arms in one `match`
+per cell, with no line of the core between it and the commit before.
+The gradient cell is a function of its own now, the plain rows read
+as alpha.36's, and the gradient rows were taken again — 52 ns a node
+over a flat box where the first reading said 55
+([ADR 0042](docs/adr/0042-a-gradient-is-an-image-the-core-paints.md),
+*Measured*; [docs/performance.md](docs/performance.md) carries the
+four rows from this run, the rest of its table kept as it was).
 
 ## 0.1.0-alpha.36 (2026-10-05)
 

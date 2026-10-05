@@ -584,3 +584,33 @@ fn a_dashed_line_leaves_dashed() {
     ui.finish();
     assert_eq!(segments(&core.output().0.quads).len(), 10);
 }
+
+/// RG116: a dashed line of no length is the dot its solid one is — a
+/// connector being dragged out of a point was hit and not seen.
+#[test]
+fn a_dashed_line_of_no_length_is_a_dot() {
+    let at = Vec2::new(40.0, 50.0);
+    let mut core = Core::new();
+    let solid = frame(&mut core, 1.0, |ui| {
+        ui.line(at, at, Stroke::new(4.0, Color::WHITE), NodeSpec::column());
+    });
+    let dashed = frame(&mut core, 1.0, |ui| {
+        ui.line(
+            at,
+            at,
+            Stroke::new(4.0, Color::WHITE).dash(6.0, 4.0),
+            NodeSpec::column(),
+        );
+    });
+    assert_eq!(segments(&solid).len(), 1);
+    assert_eq!(
+        segments(&dashed)
+            .iter()
+            .map(|s| s.segment_ends())
+            .collect::<Vec<_>>(),
+        segments(&solid)
+            .iter()
+            .map(|s| s.segment_ends())
+            .collect::<Vec<_>>()
+    );
+}

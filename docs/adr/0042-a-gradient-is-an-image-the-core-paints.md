@@ -393,18 +393,26 @@ the amendment above records.
 
 | bench | what | median |
 |---|---|---|
-| `frame_10k_rects` | the plain grid | 831 µs |
-| `frame_10k_rects_with_gradient` | every cell's solid a gradient instead, all the same | 1.38 ms |
-| `frame_1k_rects` | 32 × 32, plain | 84.1 µs |
-| `frame_1k_shared_gradient` | the same, one gradient | 140 µs |
-| `frame_1k_distinct_gradients` | the same, a gradient each | 143 µs |
+| `frame_10k_rects` | the plain grid | 770 µs |
+| `frame_10k_rects_with_gradient` | every cell's solid a gradient instead, all the same | 1.29 ms |
+| `frame_1k_rects` | 32 × 32, plain | 78.3 µs |
+| `frame_1k_shared_gradient` | the same, one gradient | 131 µs |
+| `frame_1k_distinct_gradients` | the same, a gradient each | 134 µs |
 | `raster_gradient_strip` | 258 × 3 texels, three stops | 4.0 µs |
 | `raster_gradient_square` | 130 × 130, a corner | 24.8 µs |
 | `raster_gradient_radial` | 130 × 130 | 41.9 µs |
 
+(These five were taken again by the alpha.37 pre-tag pass, the same
+day. As first measured they read 831 µs, 1.38 ms, 84.1, 140 and 143 µs:
+the bench's grid chose a cell's paint in one `match` with the gradient
+arms in it, and that cost every row built on the grid about 6 ns a
+cell — `frame_10k_rects` 8% over alpha.36's with no line of the core
+between them. The gradient cell is a function of its own now and the
+plain rows are what they were.)
+
 **The proposed bound on the first row was not held, and was the wrong
 bound.** "Within 10% of `frame_10k_rects`" assumed a gradient box costs
-what a solid one does. It costs about **55 ns more a node**: half of it
+what a solid one does. It costs about **52 ns more a node**: half of it
 is the boxed group of rare rows the gradient lives in, which a
 `hoverBg` pays as well (28 ns, measured by giving the plain grid a row
 from that group), and the rest is the stops built and hashed by the

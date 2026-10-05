@@ -1550,7 +1550,18 @@ impl Core {
         }
         inner.events = None;
         inner.access = None;
-        inner.interact = None;
+        // The gradient is paint over the children's box, so it goes with
+        // them; the rest of the row is addressed (RG115).
+        inner.interact = spec
+            .interact
+            .as_ref()
+            .and_then(|i| i.gradient.clone())
+            .map(|g| {
+                Box::new(crate::spec::InteractSpec {
+                    gradient: Some(g),
+                    ..Default::default()
+                })
+            });
         inner.focusable = false;
         inner.initial_focus = false;
         inner.hoverable = false;
