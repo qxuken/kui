@@ -1203,6 +1203,13 @@ impl Core {
         self.path_with_key(key, path.ops(), path.rule(), path.stroke(), spec);
     }
 
+    /// SVG path data to a [`crate::path::Path`], through the one parser
+    /// every binding's `d` goes through (`Path::parse`, reached here as
+    /// the door the C API's `kui_path_parse` is). `Err` names the byte.
+    pub fn parse_path(&self, d: &str) -> Result<crate::path::Path, crate::path::PathError> {
+        crate::path::Path::parse(d)
+    }
+
     /// [`Self::path_node`] from SVG path data, parsed by the one parser
     /// every binding goes through; data that does not parse raises
     /// `path-malformed` under the node's key and draws nothing.

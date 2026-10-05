@@ -92,7 +92,7 @@ pub const DOORS: &[Door] = &[
         doc: "The pixels behind a handle, for a renderer meeting a texture quad.",
     },
     Door {
-        rust: "Path::parse",
+        rust: "Core::parse_path",
         c: Is("kui_path_parse"),
         node: As("`d` on `<path>` is the string; the addon hands it to this parser"),
         lua: As("`d` on `path { }` is the string; the host hands it to this parser"),
