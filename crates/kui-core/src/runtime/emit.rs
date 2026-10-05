@@ -2209,7 +2209,7 @@ impl Painter<'_> {
         if !g.is_drawable() {
             return;
         }
-        let (w, h) = g.raster_size();
+        let (w, h) = g.slot_size();
         let Some(slot) = self
             .atlas
             .get_or_insert_gradient(g.key(), w, h, || g.rasterize())
@@ -2231,7 +2231,8 @@ impl Painter<'_> {
             blur: 0.0,
             kind: QuadKind::Image,
             clip: paint.clip_id,
-            uv: [slot.x, slot.y, slot.w, slot.h],
+            // The raster inside its gutter (`Gradient::rasterize`).
+            uv: [slot.x + 1, slot.y + 1, slot.w - 2, slot.h - 2],
         };
         // Where `paint_box` put the box's own solid, when it painted
         // one: after the shadow, before the content.

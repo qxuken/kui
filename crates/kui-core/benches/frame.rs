@@ -32,6 +32,18 @@ struct Grid {
     /// Implies `clip`: every row also has a radius, so the clip its cells
     /// inherit is rounded and each one costs the per-corner intersect.
     rounded_clip: bool,
+    /// Every cell paints a `gradient` in place of its `bg` (ADR 0042): one
+    /// image quad where the plain grid has a solid.
+    gradient: Option<Gradients>,
+}
+
+/// Which gradient a cell of the grid declares.
+#[derive(Clone, Copy)]
+enum Gradients {
+    /// The same one in every cell: one slot in the atlas.
+    Shared,
+    /// One of its own in every cell: a slot each.
+    Distinct,
 }
 
 impl Grid {
@@ -47,7 +59,13 @@ impl Grid {
             exits: false,
             clip: false,
             rounded_clip: false,
+            gradient: None,
         }
+    }
+
+    fn gradient(mut self, which: Gradients) -> Self {
+        self.gradient = Some(which);
+        self
     }
 
     fn text(mut self) -> Self {
@@ -112,11 +130,21 @@ fn grid(ui: &mut Ui<'_>, g: Grid) {
         }
         ui.with(row, |ui| {
             for c in 0..g.cols {
-                let mut spec = NodeSpec::column()
-                    .grow_width()
-                    .height(14.0)
-                    .bg(Color::rgb8((r % 255) as u8, (c % 255) as u8, 128))
-                    .radius(2.0);
+                let color = Color::rgb8((r % 255) as u8, (c % 255) as u8, 128);
+                let mut spec = NodeSpec::column().grow_width().height(14.0).radius(2.0);
+                spec = match g.gradient {
+                    None => spec.bg(color),
+                    // Built per cell per frame, as a view would build it:
+                    // the stops, their hash and the row are in the bill.
+                    Some(Gradients::Shared) => spec.gradient(kui_core::Gradient::to(
+                        kui_core::Side::Right,
+                        [Color::rgb8(127, 156, 245), Color::rgb8(224, 122, 138)],
+                    )),
+                    Some(Gradients::Distinct) => spec.gradient(kui_core::Gradient::to(
+                        kui_core::Side::Right,
+                        [color, Color::rgb8(224, 122, 138)],
+                    )),
+                };
                 if g.shadows {
                     spec = spec
                         .shadow_color(Color::rgba8(0, 0, 0, 96))
@@ -209,6 +237,83 @@ fn hover_over_10k_regions(bencher: divan::Bencher) {
         core.handle_input(kui_core::InputEvent::CursorMoved(p))
             .len()
     });
+}
+
+/// `frame_10k_rects` with every cell's solid a gradient instead — the
+/// same one, so one strip in the atlas and ten thousand image quads from
+/// it. The difference between the two is what the row costs a node: the
+/// stops built and hashed, the atlas lookup, the cold call out of
+/// `emit_node`.
+#[divan::bench]
+fn frame_10k_rects_with_gradient(bencher: divan::Bencher) {
+    let g = Grid::new(100, 100).gradient(Gradients::Shared);
+    let mut core = Core::new();
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+/// A thousand cells with a gradient each, steady state: a thousand strips
+/// in the atlas and every one a hit. Beside `frame_1k_shared_gradient`,
+/// what distinct slots cost over a shared one.
+#[divan::bench]
+fn frame_1k_distinct_gradients(bencher: divan::Bencher) {
+    let g = Grid::new(32, 32).gradient(Gradients::Distinct);
+    let mut core = Core::new();
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+#[divan::bench]
+fn frame_1k_shared_gradient(bencher: divan::Bencher) {
+    let g = Grid::new(32, 32).gradient(Gradients::Shared);
+    let mut core = Core::new();
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+/// The plain 32 × 32 grid the two above are read against.
+#[divan::bench]
+fn frame_1k_rects(bencher: divan::Bencher) {
+    let g = Grid::new(32, 32);
+    let mut core = Core::new();
+    run_frame(&mut core, g);
+    bencher.bench_local(|| run_frame(&mut core, g));
+}
+
+/// A gradient's raster, cold: the strip a side takes, three stops.
+#[divan::bench]
+fn raster_gradient_strip(bencher: divan::Bencher) {
+    let g = kui_core::Gradient::to(
+        kui_core::Side::Right,
+        [
+            Color::rgb8(127, 156, 245),
+            Color::WHITE,
+            Color::rgb8(224, 122, 138),
+        ],
+    );
+    bencher.bench_local(|| g.rasterize());
+}
+
+/// And the square every other gradient takes — a corner here: what a
+/// gradient that changes every frame costs that frame.
+#[divan::bench]
+fn raster_gradient_square(bencher: divan::Bencher) {
+    let g = kui_core::Gradient::to(
+        kui_core::Side::BottomRight,
+        [
+            Color::rgb8(127, 156, 245),
+            Color::WHITE,
+            Color::rgb8(224, 122, 138),
+        ],
+    );
+    bencher.bench_local(|| g.rasterize());
+}
+
+/// The square, radial: a square root a texel more.
+#[divan::bench]
+fn raster_gradient_radial(bencher: divan::Bencher) {
+    let g = kui_core::Gradient::radial([Color::rgb8(127, 156, 245), Color::rgb8(20, 22, 30)]);
+    bencher.bench_local(|| g.rasterize());
 }
 
 #[divan::bench]

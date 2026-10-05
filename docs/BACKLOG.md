@@ -745,8 +745,9 @@ the fragment image input, in
 [the archive](backlog/closed-2026-09.md#-v1--fragment-image-input--done-2026-09-11)
 — and V2, `dash` on `line`, on 2026-10-05, when a view asked
 ([the archive](backlog/closed-2026-09.md#-v2--dash-on-line--done-2026-10-05))
-— so what stays is V3–V8, and V9, the measurements ADR 0042's
-build left owed.
+— so what stays is V3–V8. (V9, the measurements ADR 0042's build
+left owed, was taken the same day:
+[the archive](backlog/closed-2026-09.md#-v9--the-gradients-measurements--done-2026-10-05).)
 
 ### `.` V3 — `cap` on `line`: `round | butt | arrow`
 
@@ -816,20 +817,6 @@ primitives — a scene no app on kui has — and nothing new to draw, since
 an op is a box, a segment or a glyph and a fill is the path primitive ADR
 0010 rejected. **Condition:** a view with more than ~10k primitives from
 Node, or a fill eight points cannot make. V1 is the answer for data.
-
-
-### `.` V9 — The gradient's measurements
-
-[ADR 0042](adr/0042-a-gradient-is-an-image-the-core-paints.md) was built
-the day it was proposed and its table of measurements only half taken.
-Owed: `frame_10k_rects_with_gradient` and `frame_1k_distinct_gradients`
-beside the guarded rows, the two raster benches, and
-`kui-wgpu/tests/gradient_coverage.rs` — a strip and the 128-texel square
-stretched over a 3:1 box against the mix computed per pixel, a hard
-stop's width, a fade to transparent. The square's row is the one with a
-decision behind it: past two 8-bit levels on a smooth ramp, the square
-grows or the `Gradient` quad kind the ADR set aside comes back.
-**Condition:** before the release that ships `gradient`.
 
 ## From the editor-and-mux assessment, third round (2026-09-13)
 

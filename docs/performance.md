@@ -48,6 +48,13 @@ that prop costs.
 | `frame_1k_paths_fresh` | the same thousand on an empty page every time: the raster bound | ~430 µs |
 | `frame_1k_paths_rotating` | the same thousand, each turned a little further every frame by `rotate`: one mask each, kept, the angle in the quad | ~224 µs |
 | `frame_1k_paths_animating` | the same thousand, every outline moving each frame: a texture of its own each, one raster and one upload a frame | ~449 µs |
+| `frame_10k_rects_with_gradient` | `frame_10k_rects` with every cell's solid a `gradient` instead, all the same: one strip in the atlas, ten thousand image quads — about 55 ns a node over a flat box, half of it the boxed group a `hoverBg` pays too (measured 2026-10-05 with the six rows below, in a run where `frame_10k_rects` read ~831 µs; ADR 0042) | ~1.38 ms |
+| `frame_1k_rects` | the plain 32×32 grid the two below are read against | ~84.1 µs |
+| `frame_1k_shared_gradient` | that grid, every cell the same gradient | ~140 µs |
+| `frame_1k_distinct_gradients` | that grid, a gradient of its own in every cell: a thousand strips, every one a hit | ~143 µs |
+| `raster_gradient_strip` | a gradient's raster, cold: the 258×3 strip a side takes, three stops | ~4.0 µs |
+| `raster_gradient_square` | the 130×130 square a corner or an angle takes | ~24.8 µs |
+| `raster_gradient_radial` | the same square, radial | ~41.9 µs |
 | `raster_pie_wedge_220px` | one wedge of the `path` example's pie, 220 px across, rasterized cold: what a path costs the first time it is seen | ~8.58 µs |
 | `frame_1k_typical_with_8_textures` | `frame_1k_typical` plus eight texture-backed images, registered once and updated once, so each is its own texture and a side-list entry (ADR 0025) | ~128 µs |
 | `update_image_1080p_and_frame` | replacing a 1080p frame — the `Vec` handoff, the revision bump, then the frame that draws it; the upload is the backend's (`benches/split.rs` in kui-wgpu under `TEX=1`) | ~136 µs |

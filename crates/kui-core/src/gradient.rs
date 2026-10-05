@@ -97,9 +97,10 @@ impl Side {
 /// What a gradient runs along.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Shape {
-    /// Along a direction, in turns clockwise from east, measured in the
-    /// unit square: 0 at the corner it leaves, 1 at the corner it reaches.
-    Linear { turns: f32 },
+    /// Along a direction — a unit vector, clockwise from east with y
+    /// down — measured in the unit square: 0 at the corner it leaves, 1
+    /// at the corner it reaches.
+    Linear { dx: f32, dy: f32 },
     /// Out from a centre (fractions of the box) to the farthest corner:
     /// an ellipse once the square is stretched to the box.
     Radial { at: Vec2 },
@@ -112,9 +113,61 @@ enum Shape {
 pub struct Gradient {
     shape: Shape,
     /// The stops with every position resolved, in order.
-    stops: Vec<(Color, f32)>,
+    stops: Stops,
     /// The shape and the stops as one number: the atlas slot's key.
     key: u64,
+}
+
+/// A gradient's stops: up to four in place — nearly every gradient a
+/// view declares, and declares again every frame, so they cost it no
+/// allocation — and a list past that.
+#[derive(Clone, Debug)]
+enum Stops {
+    Few([(Color, f32); 4], u8),
+    Many(Vec<(Color, f32)>),
+}
+
+impl Stops {
+    fn push(&mut self, stop: (Color, f32)) {
+        match self {
+            Stops::Few(held, n) if (*n as usize) < held.len() => {
+                held[*n as usize] = stop;
+                *n += 1;
+            }
+            Stops::Few(held, _) => {
+                let mut list = Vec::with_capacity(16);
+                list.extend_from_slice(held);
+                list.push(stop);
+                *self = Stops::Many(list);
+            }
+            Stops::Many(list) => list.push(stop),
+        }
+    }
+}
+
+impl std::ops::Deref for Stops {
+    type Target = [(Color, f32)];
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Stops::Few(held, n) => &held[..*n as usize],
+            Stops::Many(list) => list,
+        }
+    }
+}
+
+impl std::ops::DerefMut for Stops {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Stops::Few(held, n) => &mut held[..*n as usize],
+            Stops::Many(list) => list,
+        }
+    }
+}
+
+impl PartialEq for Stops {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
 }
 
 /// Texels along a strip, for a gradient along an axis.
@@ -135,7 +188,8 @@ impl Gradient {
     /// turn runs corner to corner whatever the box's aspect, which CSS's
     /// `45deg`, measured in pixels, does not.
     pub fn angle<S: Into<Stop>>(turns: f32, stops: impl IntoIterator<Item = S>) -> Self {
-        Self::new(Shape::Linear { turns }, stops)
+        let (dx, dy) = direction(turns);
+        Self::new(Shape::Linear { dx, dy }, stops)
     }
 
     /// A radial gradient from the middle of the box out to its corners.
@@ -150,7 +204,16 @@ impl Gradient {
     }
 
     fn new<S: Into<Stop>>(shape: Shape, stops: impl IntoIterator<Item = S>) -> Self {
-        let stops = resolve(&stops.into_iter().map(Into::into).collect::<Vec<Stop>>());
+        // One list, built once: a stop with no position waits as a NaN
+        // for `resolve` to place it.
+        let mut list = Stops::Few([(Color::TRANSPARENT, 0.0); 4], 0);
+        for s in stops {
+            let s: Stop = s.into();
+            let at = s.at.filter(|a| a.is_finite()).map(|a| a.clamp(0.0, 1.0));
+            list.push((s.color, at.unwrap_or(f32::NAN)));
+        }
+        let mut stops = list;
+        resolve(&mut stops);
         let mut g = Gradient {
             shape,
             stops,
@@ -164,7 +227,7 @@ impl Gradient {
     /// made of numbers.
     pub fn is_drawable(&self) -> bool {
         let shape = match self.shape {
-            Shape::Linear { turns } => turns.is_finite(),
+            Shape::Linear { dx, dy } => dx.is_finite() && dy.is_finite(),
             Shape::Radial { at } => at.x.is_finite() && at.y.is_finite(),
         };
         shape && self.stops.len() >= 2
@@ -189,10 +252,10 @@ impl Gradient {
             h = h.wrapping_mul(PRIME);
         };
         match self.shape {
-            Shape::Linear { turns } => {
+            // The direction and not the angle, so a whole turn more is
+            // the same key.
+            Shape::Linear { dx, dy } => {
                 mix(1);
-                // The direction, so a whole turn more is the same key.
-                let (dx, dy) = direction(turns);
                 mix(dx.to_bits());
                 mix(dy.to_bits());
             }
@@ -202,7 +265,7 @@ impl Gradient {
                 mix(at.y.to_bits());
             }
         }
-        for (c, at) in &self.stops {
+        for (c, at) in self.stops.iter() {
             for lane in c.lanes() {
                 mix(lane.to_bits());
             }
@@ -215,43 +278,82 @@ impl Gradient {
     /// runs on, or the square.
     pub fn raster_size(&self) -> (u32, u32) {
         match self.shape {
-            Shape::Linear { turns } => match direction(turns) {
-                (_, 0.0) => (STRIP, 1),
-                (0.0, _) => (1, STRIP),
-                _ => (SQUARE, SQUARE),
-            },
+            Shape::Linear { dy: 0.0, .. } => (STRIP, 1),
+            Shape::Linear { dx: 0.0, .. } => (1, STRIP),
+            Shape::Linear { .. } => (SQUARE, SQUARE),
             Shape::Radial { .. } => (SQUARE, SQUARE),
         }
     }
 
-    /// The raster: [`Self::raster_size`] texels of straight RGBA, row
-    /// after row, each the gradient at its texel's centre.
+    /// The texels its slot takes: [`Self::raster_size`] and a gutter of
+    /// one all round.
+    pub fn slot_size(&self) -> (u32, u32) {
+        let (w, h) = self.raster_size();
+        (w + 2, h + 2)
+    }
+
+    /// The raster: [`Self::slot_size`] texels of straight RGBA, row after
+    /// row, each the gradient at its texel's centre. The quad draws the
+    /// inner [`Self::raster_size`] of them; the gutter is the gradient
+    /// carried on a texel past each edge, because the quad is stretched
+    /// and sampled linearly, and at the box's edge the sampler reads half
+    /// a texel past the rect it was given — a strip one texel high would
+    /// otherwise fade into whatever the atlas holds above and below it.
     pub fn rasterize(&self) -> Vec<u8> {
         let (w, h) = self.raster_size();
-        let mut out = Vec::with_capacity((w * h * 4) as usize);
-        let along: Box<dyn Fn(f32, f32) -> f32> = match self.shape {
-            Shape::Linear { turns } => {
-                let (dx, dy) = direction(turns);
-                // The corners the direction leaves and reaches are this
-                // far apart along it, in the unit square.
-                let len = dx.abs() + dy.abs();
-                Box::new(move |x, y| ((x - 0.5) * dx + (y - 0.5) * dy) / len + 0.5)
+        let mut out = Vec::with_capacity(((w + 2) * (h + 2) * 4) as usize);
+        if w.min(h) == 1 {
+            // A strip: each texel its own mix.
+            for row in 0..h + 2 {
+                let y = (row as f32 - 0.5) / h as f32;
+                for col in 0..w + 2 {
+                    let x = (col as f32 - 0.5) / w as f32;
+                    out.extend_from_slice(&bytes(self.color_at(self.along(x, y))));
+                }
             }
-            Shape::Radial { at } => {
-                let far = (at.x.max(1.0 - at.x)).hypot(at.y.max(1.0 - at.y));
-                let far = if far > 0.0 { far } else { 1.0 };
-                Box::new(move |x, y| (x - at.x).hypot(y - at.y) / far)
-            }
-        };
-        for row in 0..h {
-            let y = (row as f32 + 0.5) / h as f32;
-            for col in 0..w {
-                let x = (col as f32 + 0.5) / w as f32;
-                let c = self.color_at(along(x, y));
-                out.extend_from_slice(&[byte(c.r), byte(c.g), byte(c.b), byte(c.a)]);
+            return out;
+        }
+        // A square: seventeen thousand texels of at most a few hundred
+        // different colours. The ramp is mixed once, finely, and each
+        // texel reads it — a quarter of an 8-bit level off at the most.
+        const RAMP: usize = 1024;
+        let ramp: Vec<[u8; 4]> = (0..=RAMP)
+            .map(|i| bytes(self.color_at(i as f32 / RAMP as f32)))
+            .collect();
+        for row in 0..h + 2 {
+            let y = (row as f32 - 0.5) / h as f32;
+            for col in 0..w + 2 {
+                let x = (col as f32 - 0.5) / w as f32;
+                let t = self.along(x, y).clamp(0.0, 1.0);
+                out.extend_from_slice(&ramp[(t * RAMP as f32 + 0.5) as usize]);
             }
         }
         out
+    }
+
+    /// The colour at a point of the box, as fractions of it: `(0, 0)`
+    /// its top left, `(1, 1)` its bottom right. What the raster samples,
+    /// and what a test of the stretched raster compares it with.
+    pub fn color_in(&self, x: f32, y: f32) -> Color {
+        self.color_at(self.along(x, y))
+    }
+
+    /// How far along the gradient a point of the box is.
+    #[inline]
+    fn along(&self, x: f32, y: f32) -> f32 {
+        match self.shape {
+            Shape::Linear { dx, dy } => {
+                // The corners the direction leaves and reaches are this
+                // far apart along it, in the unit square.
+                let len = dx.abs() + dy.abs();
+                ((x - 0.5) * dx + (y - 0.5) * dy) / len + 0.5
+            }
+            Shape::Radial { at } => {
+                let far = (at.x.max(1.0 - at.x)).hypot(at.y.max(1.0 - at.y));
+                let (rx, ry) = (x - at.x, y - at.y);
+                (rx * rx + ry * ry).sqrt() / if far > 0.0 { far } else { 1.0 }
+            }
+        }
     }
 
     /// The colour `t` of the way along: the stops either side mixed in
@@ -293,59 +395,64 @@ impl Gradient {
     }
 }
 
-fn byte(lane: f32) -> u8 {
-    (lane.clamp(0.0, 1.0) * 255.0).round() as u8
+fn bytes(c: Color) -> [u8; 4] {
+    [c.r, c.g, c.b, c.a].map(|lane| (lane.clamp(0.0, 1.0) * 255.0).round() as u8)
 }
 
-/// The unit vector `turns` clockwise from east, with what is an axis to
-/// within rounding put exactly on it, so the four sides are strips.
+/// The unit vector `turns` clockwise from east. An eighth of a turn is
+/// read off a table — the sides and corners, exactly on their axes and
+/// diagonals and with no trigonometry, which is every gradient a `to`
+/// spells — and anything else is its cosine and sine.
 fn direction(turns: f32) -> (f32, f32) {
-    let a = turns.rem_euclid(1.0) * std::f32::consts::TAU;
-    let snap = |v: f32| if v.abs() < 1e-6 { 0.0 } else { v };
-    (snap(a.cos()), snap(a.sin()))
+    const D: f32 = std::f32::consts::FRAC_1_SQRT_2;
+    const EIGHTHS: [(f32, f32); 8] = [
+        (1.0, 0.0),
+        (D, D),
+        (0.0, 1.0),
+        (-D, D),
+        (-1.0, 0.0),
+        (-D, -D),
+        (0.0, -1.0),
+        (D, -D),
+    ];
+    let eighths = turns.rem_euclid(1.0) * 8.0;
+    if eighths == eighths.round() {
+        return EIGHTHS[eighths as usize & 7];
+    }
+    let a = eighths * (std::f32::consts::TAU / 8.0);
+    (a.cos(), a.sin())
 }
 
-/// The stops with their positions filled in: a first with none is 0, a
-/// last with none 1, a run with none is spaced evenly between its
+/// Fills in the positions `Gradient::new` left as NaN: a first with none
+/// is 0, a last with none 1, a run with none is spaced evenly between its
 /// neighbours, and a position behind the one before it is raised to it.
-fn resolve(stops: &[Stop]) -> Vec<(Color, f32)> {
+fn resolve(stops: &mut [(Color, f32)]) {
     let n = stops.len();
-    let mut at: Vec<Option<f32>> = stops
-        .iter()
-        .map(|s| s.at.filter(|a| a.is_finite()).map(|a| a.clamp(0.0, 1.0)))
-        .collect();
     if n == 0 {
-        return Vec::new();
+        return;
     }
-    at[0] = at[0].or(Some(0.0));
-    at[n - 1] = at[n - 1].or(Some(1.0));
+    if stops[0].1.is_nan() {
+        stops[0].1 = 0.0;
+    }
+    if stops[n - 1].1.is_nan() {
+        stops[n - 1].1 = 1.0;
+    }
     let mut floor = 0.0f32;
-    for a in at.iter_mut().flatten() {
-        floor = floor.max(*a);
-        *a = floor;
+    for (_, at) in stops.iter_mut().filter(|s| !s.1.is_nan()) {
+        floor = floor.max(*at);
+        *at = floor;
     }
-    let mut out = Vec::with_capacity(n);
     let mut i = 0;
-    while i < n {
-        let Some(here) = at[i] else {
-            unreachable!("every run of unplaced stops is filled from its start")
-        };
-        out.push((stops[i].color, here));
-        // The next placed stop, and the unplaced ones between spaced
+    while i + 1 < n {
+        // The next placed stop; the unplaced ones between are spaced
         // evenly up to it.
-        let next = (i + 1..n).find(|&j| at[j].is_some());
-        if let Some(j) = next {
-            let there = at[j].unwrap_or(here);
-            for (n, stop) in stops[i + 1..j].iter().enumerate() {
-                let u = (n + 1) as f32 / (j - i) as f32;
-                out.push((stop.color, here + (there - here) * u));
-            }
-            i = j;
-        } else {
-            i = n;
+        let j = (i + 1..n).find(|&j| !stops[j].1.is_nan()).unwrap_or(n - 1);
+        let (here, there) = (stops[i].1, stops[j].1);
+        for (n, stop) in stops[i + 1..j].iter_mut().enumerate() {
+            stop.1 = here + (there - here) * ((n + 1) as f32 / (j - i) as f32);
         }
+        i = j;
     }
-    out
 }
 
 /// Reads a gradient from plain data, the form every binding carries:
@@ -425,17 +532,17 @@ pub fn parse_with(
     if list.len() < 2 {
         return Err("gradient needs two stops or more".into());
     }
+    let linear = |turns: f32| {
+        let (dx, dy) = direction(turns);
+        Shape::Linear { dx, dy }
+    };
     let shape = match (radial, to, angle) {
         (true, None, None) => Shape::Radial {
             at: at.unwrap_or(Vec2::new(0.5, 0.5)),
         },
-        (false, Some(side), None) => Shape::Linear {
-            turns: side.turns(),
-        },
-        (false, None, Some(turns)) => Shape::Linear { turns },
-        (false, None, None) => Shape::Linear {
-            turns: Side::Bottom.turns(),
-        },
+        (false, Some(side), None) => linear(side.turns()),
+        (false, None, Some(turns)) => linear(turns),
+        (false, None, None) => linear(Side::Bottom.turns()),
         _ => return Err("gradient: one of `to`, `angle` and `radial`".into()),
     };
     if at.is_some() && !radial {
@@ -467,9 +574,10 @@ mod tests {
     };
 
     fn texel(g: &Gradient, x: u32, y: u32) -> [u8; 4] {
-        let (w, _) = g.raster_size();
+        // Past the gutter.
+        let (w, _) = g.slot_size();
         let px = g.rasterize();
-        let i = ((y * w + x) * 4) as usize;
+        let i = (((y + 1) * w + x + 1) * 4) as usize;
         [px[i], px[i + 1], px[i + 2], px[i + 3]]
     }
 

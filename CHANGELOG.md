@@ -68,7 +68,9 @@ path, which an encoder and addon of one release never see apart.
     transparent stop shows it through.
   - **An image the core paints.** Each distinct gradient is rasterized
     once into the glyph atlas — a 256-texel strip along an axis, a
-    128-texel square otherwise — and drawn as one `Image` quad, so no
+    128-texel square otherwise, each with a gutter of the gradient
+    carried a texel past its edges, since a stretched quad samples
+    there — and drawn as one `Image` quad, so no
     renderer changes and a host that draws an image draws a gradient.
     The key is the gradient and not the box: a resize, another scale
     and a thousand boxes sharing one rasterize nothing.
@@ -81,6 +83,11 @@ path, which an encoder and addon of one release never see apart.
     stretched (a 256th of the box along a strip); there is no conic
     one, and none on a `path`, a `line`, a border or a text. Those, and
     anything animated, stay a `fragment`'s.
+  - Measured (the ADR's *Measured*): a linear gradient is within half
+    an 8-bit level of the mix computed per pixel at every pixel of the
+    box, a radial within 1.2; a gradient box costs about 55 ns over a
+    flat one, half of it what any `hoverBg` pays; a raster is 4 µs for
+    a strip and 25 to 42 for a square.
   - The corpus gains a `gradients` scene; `examples/rust/apps/loaders.rs`
     gains a rainbow — one gradient two tracks long slid under a clip,
     one strip in the atlas for good.

@@ -8,8 +8,10 @@ date: 2026-10-05
 > **Accepted and built 2026-10-05**, the day it was proposed; the
 > *Amendment* at the end records what the building changed — a malformed
 > gradient is an error where it is declared and not a warning, the
-> atlas's texels are straight alpha, and the ABI did not bump a second
-> time — and which measurements were taken and which were not. Asked the
+> atlas's texels are straight alpha, the slot needs a gutter, and the
+> ABI did not bump a second time — and *Measured* what the table of
+> measurements read: the square's size holds, and the bound on a
+> gradient box's cost did not. Asked the
 > day `dash` was (backlog V2): "the next would be gradient backgrounds".
 > [ADR 0005](0005-the-paint-vocabulary.md) declined gradients for v0 and
 > wrote down why — a stop list to parse in five bindings, a type, a
@@ -326,9 +328,15 @@ options*, and decisions 1–4 and 6–11 stand as written.
   un-premultiplied; a texel with no alpha keeps the straight mix of its
   neighbours' colours, so the sampler does not darken the texel beside
   it. `a_fade_to_transparent_keeps_its_colour` pins the mix.
-- **The half-texel is left as it is** (open question 2). The first and
-  last texel of a strip are the gradient half a texel in, a 512th of
-  the length: one 8-bit level on a full-range ramp.
+- **The slot has a gutter, and it is not empty** (open questions 2
+  and 3; see *Measured*). The raster is the strip or the square with
+  one texel more all round, each the gradient carried on past the edge,
+  and the quad's `uv` is the rect inside. As first built there was no
+  gutter, and the coverage test's arithmetic said why there must be
+  before the test was written: a stretched quad's sampler reads half a
+  texel past the rect it is given, and a strip one texel high, drawn
+  over a box forty pixels high, was the gradient only along its middle
+  row and faded into whatever the atlas held above and below it.
 - **One table in the atlas, not two.** A gradient's slot lives in the
   keyed table a path's mask does (`get_or_insert_gradient` beside
   `get_or_insert_path`), copied across a reset the same way. The keys
@@ -353,18 +361,73 @@ options*, and decisions 1–4 and 6–11 stand as written.
 - **`gradient` on a stroke or a fill is ignored**, in the live pass and
   the ghost's: a `line`, a `polygon` and a `path` paint no box.
 
-### Measured, and not
+### Measured (2026-10-05, an M3 Pro; backlog V9)
 
-Taken: the unit tests against the mix computed per texel
-(`gradient::tests`), the quad order and the shared slot
-(`tests/gradient.rs`), the `gradients` scene in four bindings, and
-`scripts/bench-check.nu` over the guarded frame rows against
-alpha.36. **Not taken:** the `frame_10k_rects_with_gradient` and raster
-benches and the `kui-wgpu` coverage tests in the table above — the
-stretched square against a per-pixel reference on a 3:1 box is the one
-that decides the square's size, and it is still owed (backlog V9).
+`kui-wgpu/tests/gradient_coverage.rs` mirrors the shader's image branch
+on the CPU — the atlas sampled linearly, nothing clamped to the slot —
+over the quads a core emitted, with other gradients in the atlas on
+either side, and compares every pixel of the box with the gradient
+computed at that pixel, in 8-bit levels on the worst channel:
 
-## Action items — 2–4 and 6's example done 2026-10-05; 1 by reading; the benches and coverage tests of 5 are V9
+| what | box | worst pixel |
+|---|---|---|
+| a strip, each of the four sides | 1000 × 40 | 0.49 |
+| a strip, black to white | 1000 × 40 | 0.50 |
+| the square, a corner | 600 × 200 | 0.48 |
+| the square, `angle` 0.07 | 600 × 200 | 0.52 |
+| the square, a corner, black to white | 600 × 200 | 0.50 |
+| the square, radial from the middle | 600 × 200 | 1.20 |
+| the square, radial from the top edge | 600 × 200 | 0.75 |
+| three stops, strip and corner | as above | 0.50 |
+
+Half a level is the rounding of the texels themselves, so a linear
+gradient through 128 texels is exact — a linear ramp is what a linear
+filter reproduces — and **the square's size holds**: the proposed bound
+was two levels, and the worst case, a radial's curvature between
+texels, is 1.2. A hard stop on a strip over 1000 px is 4 px wide. A
+fade to transparent is its colour at every alpha. Without the gutter
+the same tests read 127 and 169 levels at the edges, which is the bug
+the amendment above records.
+
+`benches/frame.rs`, medians:
+
+| bench | what | median |
+|---|---|---|
+| `frame_10k_rects` | the plain grid | 831 µs |
+| `frame_10k_rects_with_gradient` | every cell's solid a gradient instead, all the same | 1.38 ms |
+| `frame_1k_rects` | 32 × 32, plain | 84.1 µs |
+| `frame_1k_shared_gradient` | the same, one gradient | 140 µs |
+| `frame_1k_distinct_gradients` | the same, a gradient each | 143 µs |
+| `raster_gradient_strip` | 258 × 3 texels, three stops | 4.0 µs |
+| `raster_gradient_square` | 130 × 130, a corner | 24.8 µs |
+| `raster_gradient_radial` | 130 × 130 | 41.9 µs |
+
+**The proposed bound on the first row was not held, and was the wrong
+bound.** "Within 10% of `frame_10k_rects`" assumed a gradient box costs
+what a solid one does. It costs about **55 ns more a node**: half of it
+is the boxed group of rare rows the gradient lives in, which a
+`hoverBg` pays as well (28 ns, measured by giving the plain grid a row
+from that group), and the rest is the stops built and hashed by the
+view every frame, the atlas lookup and the call out of `emit_node`. As
+first built it was 105 ns; the direction is now read off a table for
+the sides and corners instead of a cosine and a sine three times a
+node, and up to four stops are held in place instead of in two lists.
+The rasters were 90 µs and are 25: a square's texels read a ramp mixed
+once instead of each mixing its own.
+
+What it means: a card, a header and a row of buttons are microseconds,
+and ten thousand gradient boxes are half a millisecond over ten
+thousand flat ones — not free, and not what the row is for. Distinct
+gradients cost 3 ns a node over a shared one. None of it is the wire
+shape's doing: the quad-kind option would build, hash and box the same
+row. What would lower it is the registered handle *Considered options*
+set aside, or a `Gradient` an app builds once and clones; neither is
+built, and the condition is a view that declares thousands.
+
+The guarded rows are within noise of alpha.36 (`bench-check`): a tree
+with no gradient pays one flag test a node.
+
+## Action items — all done 2026-10-05
 
 1. Read the atlas's alpha convention and its image sampling at a slot's
    edge; settle the first three open questions.
