@@ -218,8 +218,51 @@ impl Core {
         Some(id)
     }
 
-    /// Forgets a registered font; faces loaded from bytes leave the font
-    /// database. Styles still naming it shape as sans-serif.
+    /// The families asked, in order, for a character the text's own
+    /// family has no glyph for — before the platform's fallback list,
+    /// whose first choice is the system's interface face: proportional on
+    /// macOS, so a Cyrillic word in a Latin-only monospaced family was
+    /// set in San Francisco. An editor names its icon face, the face it
+    /// ships and a monospaced one the machine has; a family that has not
+    /// got the character is passed over, and after the last the
+    /// platform's list runs as before. For every family and every kind of
+    /// text in the session — plain, spans, an editor, a cell grid — and
+    /// kept across `reload_system_fonts`. A handle that names no font is
+    /// left out; an empty list is the platform's alone.
+    ///
+    /// Not a per-frame call for a list that changes: a new list builds
+    /// the font system again over the same faces and every window of the
+    /// session shapes its text again. The same list twice is nothing.
+    pub fn set_fallback_fonts(&mut self, fonts: &[crate::resources::FontId]) {
+        {
+            let sess = &mut *self.session.state();
+            let names: Vec<String> = fonts
+                .iter()
+                .filter_map(|&id| sess.resources.font_family(id).map(str::to_string))
+                .collect();
+            if names == sess.resources.fallback {
+                return;
+            }
+            sess.resources.fallback = names;
+            let old = std::mem::replace(
+                &mut sess.fonts,
+                cosmic_text::FontSystem::new_with_locale_and_db(String::new(), Default::default()),
+            );
+            let (locale, db) = old.into_locale_and_db();
+            sess.fonts = crate::text::font_system_over(locale, db, &sess.resources.fallback);
+            if sess.faces_shared {
+                share_faces(sess.fonts.db_mut());
+            }
+            sess.weights_rev += 1;
+        }
+        self.request_frame();
+    }
+
+    /// The families `set_fallback_fonts` named, in order.
+    pub fn fallback_fonts(&self) -> Vec<String> {
+        self.session.state().resources.fallback.clone()
+    }
+
     pub fn remove_font(&mut self, id: crate::resources::FontId) {
         {
             let sess = &mut *self.session.state();
@@ -732,7 +775,7 @@ impl crate::session::SessionState {
             cosmic_text::FontSystem::new_with_locale_and_db(String::new(), Default::default()),
         );
         let (locale, db) = fonts.into_locale_and_db();
-        self.fonts = cosmic_text::FontSystem::new_with_locale_and_db(locale, db);
+        self.fonts = crate::text::font_system_over(locale, db, &self.resources.fallback);
         if self.faces_shared {
             share_faces(self.fonts.db_mut());
         }

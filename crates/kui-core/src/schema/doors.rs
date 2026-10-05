@@ -155,6 +155,20 @@ pub const DOORS: &[Door] = &[
         doc: "Scans the system's fonts again, so a font installed while the app runs is found (the scan is otherwise once a process); returns how many faces came and went.",
     },
     Door {
+        rust: "Core::set_fallback_fonts",
+        c: Is("kui_font_set_fallback"),
+        node: Is("setFallbackFonts"),
+        lua: No(NO_HANDLE),
+        doc: "The fonts asked, in order, for a character the text's own family lacks, before the platform's fallback list (backlog F121).",
+    },
+    Door {
+        rust: "Core::fallback_fonts",
+        c: No("the list is the one the host set"),
+        node: No("the list is the one the host set"),
+        lua: No(NO_HANDLE),
+        doc: "The families `set_fallback_fonts` named, in order.",
+    },
+    Door {
         rust: "Core::remove_font",
         c: Is("kui_font_remove"),
         node: Is("removeFont"),

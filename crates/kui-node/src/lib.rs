@@ -2277,6 +2277,24 @@ macro_rules! core_methods {
                 changed as u32
             }
 
+            /// The fonts asked, in order, for a character the text's own
+            /// family has no glyph for, before the platform's fallback list
+            /// — whose first choice on macOS is the system's proportional
+            /// face. Ids from `addFont` / `addSystemFont` / `loadFontFile`;
+            /// one that names no font is left out, and `[]` is the
+            /// platform's list alone. A new list shapes every text again;
+            /// the same list twice is nothing.
+            #[napi]
+            pub fn set_fallback_fonts(&mut self, ids: Vec<String>) -> Result<()> {
+                let ids = ids
+                    .iter()
+                    .map(|id| parse_u64(id).map(FontId::from_ffi))
+                    .collect::<Result<Vec<_>>>()?;
+                self.$core().set_fallback_fonts(&ids);
+                self.$redraw();
+                Ok(())
+            }
+
             #[napi]
             pub fn remove_font(&mut self, id: String) -> Result<()> {
                 self.$core().remove_font(FontId::from_ffi(parse_u64(&id)?));

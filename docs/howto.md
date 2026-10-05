@@ -277,6 +277,23 @@ is the names alone.
 [Doors](props.md#doors) ·
 [alpha.21 `### Added`](../CHANGELOG.md#010-alpha21-2026-09-26)
 
+### How do I choose what stands in for a character my font lacks?
+
+Name the fonts, in the order they should be asked:
+`ctx.setFallbackFonts([icons, shipped, mono])` (Rust
+`Core::set_fallback_fonts(&[..])`, C `kui_font_set_fallback`), each an id
+from `addFont`, `addSystemFont` or `loadFontFile`. A character the
+text's own family has no glyph for goes to the first of them that has
+it, and only then to the platform's list — whose first choice on macOS
+is the system's interface face, so Cyrillic in a Latin-only monospaced
+family comes out proportional. The list is the session's, for every
+family and every kind of text; `[]` is the platform's alone. Set it
+when the choice changes, not every frame with a new list: a new list
+shapes every text again (the same one twice costs nothing). A cell grid
+goes one step further by itself: with no fallback of yours that has the
+character it asks a monospaced face before the platform's, and fits and
+centres whatever it got in the cell.
+
 ### How do I see a font the user installed while the app runs?
 
 On macOS and Windows a window app does nothing: the runner hears the OS

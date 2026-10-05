@@ -2441,6 +2441,16 @@ export declare class Ctx {
    * every frame.
    */
   reloadSystemFonts(): number
+  /**
+   * The fonts asked, in order, for a character the text's own
+   * family has no glyph for, before the platform's fallback list
+   * — whose first choice on macOS is the system's proportional
+   * face. Ids from `addFont` / `addSystemFont` / `loadFontFile`;
+   * one that names no font is left out, and `[]` is the
+   * platform's list alone. A new list shapes every text again;
+   * the same list twice is nothing.
+   */
+  setFallbackFonts(ids: Array<string>): void
   removeFont(id: string): void
   /**
    * Family names of every font the core can see, installed or
@@ -3613,6 +3623,16 @@ export declare class KuiWindow {
    * every frame.
    */
   reloadSystemFonts(): number
+  /**
+   * The fonts asked, in order, for a character the text's own
+   * family has no glyph for, before the platform's fallback list
+   * — whose first choice on macOS is the system's proportional
+   * face. Ids from `addFont` / `addSystemFont` / `loadFontFile`;
+   * one that names no font is left out, and `[]` is the
+   * platform's list alone. A new list shapes every text again;
+   * the same list twice is nothing.
+   */
+  setFallbackFonts(ids: Array<string>): void
   removeFont(id: string): void
   /**
    * Family names of every font the core can see, installed or
