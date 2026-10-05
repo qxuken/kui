@@ -21,6 +21,22 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.39 (unreleased)
+
+### Fixed
+
+- **`scripts/npm-approve.nu` asks npmjs whatever the npm it runs under
+  is configured with.** An npm with `@qxuken:registry` pointing at the
+  Forgejo copy asks that registry for a scoped package whatever
+  `--registry` says. alpha.38 was published by hand during a GitHub
+  Actions outage, Forgejo's npm copy first, and the script then read
+  Forgejo's dist-tags and said "live on npmjs already" and "latest is
+  0.1.0-alpha.38 already" while npmjs held the version staged. Every
+  call names npmjs for the scope as well now. A release script, so
+  nothing an app sees.
+
+**What you can delete.** Nothing.
+
 ## 0.1.0-alpha.38 (2026-10-05)
 
 **What breaks.**

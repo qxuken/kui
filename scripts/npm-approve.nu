@@ -36,6 +36,13 @@
 
 const PACKAGE = "@qxuken/kui"
 const REGISTRY = "https://registry.npmjs.org/"
+# Every npm call names npmjs twice: `--registry`, and the scope's own.
+# An npm configured with `@qxuken:registry` (the Forgejo copy's line in
+# docs/releasing.md) asks that registry for a scoped package whatever
+# `--registry` says, and alpha.38 found out: published to Forgejo first,
+# it read as "live on npmjs already" from a shell so configured while
+# npmjs still held it staged.
+const NPMJS = ["--registry" "https://registry.npmjs.org/" "--@qxuken:registry=https://registry.npmjs.org/"]
 
 # Runs the command with inherited stdio (npm's 2FA prompt needs the
 # terminal) and fails loudly when it does.
@@ -50,7 +57,7 @@ def --wrapped must [...cmd: string] {
 # (a package or version it does not have exits non-zero or prints nothing).
 # The cached packument: minutes behind an approval (see the note above).
 def live-version [spec: string] {
-    let r = (^npm view $spec version --registry $REGISTRY | complete)
+    let r = (^npm view $spec version ...$NPMJS | complete)
     if $r.exit_code != 0 { return null }
     let v = ($r.stdout | str trim)
     if ($v | is-empty) { null } else { $v }
@@ -60,7 +67,7 @@ def live-version [spec: string] {
 # registry has none or does not answer. `npm dist-tag ls` prints
 # `<tag>: <version>` a line.
 def dist-tags [] {
-    let r = (^npm dist-tag ls $PACKAGE --registry $REGISTRY | complete)
+    let r = (^npm dist-tag ls $PACKAGE ...$NPMJS | complete)
     if $r.exit_code != 0 { return {} }
     $r.stdout | lines | parse "{tag}: {version}" | reduce --fold {} {|row, acc|
         $acc | upsert ($row.tag | str trim) ($row.version | str trim)
@@ -109,7 +116,7 @@ def main [
     if (is-live $ver) {
         print $"($PACKAGE)@($ver) is live on npmjs already"
     } else {
-        let listed = (^npm stage list $PACKAGE --json --registry $REGISTRY | complete)
+        let listed = (^npm stage list $PACKAGE --json ...$NPMJS | complete)
         if $listed.exit_code != 0 {
             error make {msg: $"npm stage list failed \(logged in on npmjs? `npm whoami --registry ($REGISTRY)`\):\n($listed.stderr)"}
         }
@@ -122,7 +129,7 @@ def main [
         if $dry_run {
             print $"dry run: would approve ($stage.id)"
         } else {
-            must npm stage approve $stage.id --registry $REGISTRY ...$otp_args
+            must npm stage approve $stage.id ...$NPMJS ...$otp_args
             # npm said so, and that is the fact. `npm view` may not list
             # the version for some minutes yet, and nothing below waits
             # for it.
@@ -140,7 +147,7 @@ def main [
         print $"latest is ($ver) already"
         return
     }
-    let versions = (^npm view $PACKAGE versions --json --registry $REGISTRY | complete)
+    let versions = (^npm view $PACKAGE versions --json ...$NPMJS | complete)
     if $versions.exit_code != 0 {
         error make {msg: $"npm view ($PACKAGE) versions failed:\n($versions.stderr)"}
     }
@@ -155,6 +162,6 @@ def main [
         print $"dry run: would run npm dist-tag add ($PACKAGE)@($ver) latest \(latest is (if $latest == null { 'unset' } else { $latest })\)"
         return
     }
-    must npm dist-tag add $"($PACKAGE)@($ver)" latest --registry $REGISTRY ...$otp_args
-    print (^npm dist-tag ls $PACKAGE --registry $REGISTRY)
+    must npm dist-tag add $"($PACKAGE)@($ver)" latest ...$NPMJS ...$otp_args
+    print (^npm dist-tag ls $PACKAGE ...$NPMJS)
 }
