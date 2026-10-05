@@ -148,7 +148,9 @@ pub const OP_RADIO_GROUP: u32 = 25;
 /// A path (ADR 0040): `d` as a strref (none for the flat form), a count
 /// and that many floats of the flat op form, the stroke width slot, a
 /// flags word (bit 1: the width slot is a length token's index; bit 2:
-/// even-odd), then props.
+/// even-odd; bit 4: `rotate` was declared; bit 8: `pivot` was), the
+/// turns, the pivot's x and y (ADR 0041; zero when not declared), then
+/// props.
 pub const OP_PATH: u32 = 26;
 
 pub fn protocol_json() -> Json {
@@ -1096,9 +1098,11 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             ui.slot_with(name, &params);
             Ok(())
         }
-        // n, then n (x, y) pairs, width, flags (1 curve), then the prop
-        // list — `color` lands in the style, `key` in `p.key`, and the
-        // core decides the box (docs/adr/0010-a-segment-primitive.md).
+        // `d` as a strref or the flat op form, the stroke width slot,
+        // flags (1 width is a length token, 2 even-odd, 4 rotate, 8
+        // pivot), the turns and the pivot, then the prop
+        // list — `bg` is the fill, `color` the stroke's
+        // (docs/adr/0040-a-path-is-a-mask-in-the-atlas.md).
         OP_PATH => {
             let d = r.str_ref()?;
             let n = r.u()? as usize;
@@ -1108,6 +1112,12 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
             let width_slot = r.f()?;
             let flags = r.u()?;
+            let turns = r.f()? as f32;
+            let pivot = kui_core::Vec2::new(r.f()? as f32, r.f()? as f32);
+            let turn = (flags & 12 != 0).then_some(kui_core::Turn {
+                turns,
+                pivot: (flags & 8 != 0).then_some(pivot),
+            });
             let p = lower_props(r, ui)?;
             let width = if flags & 1 != 0 {
                 lookup_length(ui, width_slot).unwrap_or(0.0)
@@ -1115,9 +1125,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 width_slot as f32
             };
             // No `width` is no stroke; no `color` is the foreground.
-            let stroke = (width > 0.0).then(|| {
-                kui_core::Stroke::new(width, p.style.color.unwrap_or(ui.theme().fg))
-            });
+            let stroke = (width > 0.0)
+                .then(|| kui_core::Stroke::new(width, p.style.color.unwrap_or(ui.theme().fg)));
             let rule = if flags & 2 != 0 {
                 kui_core::FillRule::EvenOdd
             } else {
@@ -1125,18 +1134,23 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             };
             match d {
                 Some(d) => {
-                    ui.core().open_from(p, Content::PathD(d, rule, stroke));
+                    ui.core()
+                        .open_from(p, Content::PathD(d, rule, stroke, turn));
                 }
                 None => {
                     // The encoder checked the numbers; a form it did not
                     // is nothing to draw.
                     if let Ok(path) = kui_core::Path::from_floats(&floats) {
-                        ui.core().open_from(p, Content::Path(path.ops(), rule, stroke));
+                        ui.core()
+                            .open_from(p, Content::Path(path.ops(), rule, stroke, turn));
                     }
                 }
             }
             Ok(())
         }
+        // n, then n (x, y) pairs, width, flags (1 curve), then the prop
+        // list — `color` lands in the style, `key` in `p.key`, and the
+        // core decides the box (docs/adr/0010-a-segment-primitive.md).
         OP_LINE => {
             let n = r.u()? as usize;
             let mut points = Vec::with_capacity(n);

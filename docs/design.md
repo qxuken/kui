@@ -718,8 +718,12 @@ line. The core flattens it for the hit outline, rasterizes it once per
 shape and scale through zeno (swash's rasterizer) into the glyph atlas,
 and draws one `GlyphMask` quad per paint, so a hover or a colour tween
 re-tints the same mask; a mask too big for a page, or a path whose ops
-change two frames running, draws from a texture of its own
-([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)).
+change twice within a few frames, draws from a texture of its own
+([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)). A path with a
+`rotate` is boxed by the square its turn sweeps about its pivot and
+drawn from one upright mask, the angle in the quad's `blur` for the
+backend to turn the corners by
+([ADR 0041](adr/0041-a-mask-turns-about-its-centre.md)).
 
 Lines: `ui.line(from, to, Stroke::new(width, color), spec)` draws a
 round-capped segment, `ui.polyline(&points, stroke, spec)` a polyline, and

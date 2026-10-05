@@ -869,7 +869,7 @@ export declare namespace JSX {
      *  shape, scale and quarter-pixel position, re-tinted for free. The fill
      *  bleeds half a pixel, so two paths sharing an edge meet without the
      *  background showing through. A mask a quarter of the biggest atlas
-     *  page or more, or a path whose `d` changes two frames running, draws
+     *  page or more, or a path whose `d` changes twice within a few frames, draws
      *  from a texture of its own; one past 8192 px on a side draws nothing,
      *  with `path-too-large`. */
     path: Keyed &
@@ -880,6 +880,15 @@ export declare namespace JSX {
       > & Pick<CustomSpecProps, 'tooltip'> & {
         d: string | number[];
         fillRule?: 'nonzero' | 'evenodd';
+        /** Turns the path, in turns clockwise, about `pivot`: the quad
+         *  turns and the mask is drawn once, so a path that only turns is
+         *  never rasterized again
+         *  (docs/adr/0041-a-mask-turns-about-its-centre.md). */
+        rotate?: number;
+        /** The point `rotate` turns about, in the path's own coordinates;
+         *  the centre of its box without one. A path with `rotate` or
+         *  `pivot` is boxed by the square the turn sweeps. */
+        pivot?: [number, number];
         bg?: ColorProp;
         width?: number;
         color?: ColorProp;

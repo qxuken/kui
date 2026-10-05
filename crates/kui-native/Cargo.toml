@@ -215,6 +215,7 @@ headless = [
     "image",
     "polygon",
     "path",
+    "loaders",
     "fragment",
     "metrics",
     "align",
@@ -245,6 +246,10 @@ path = "../../examples/rust/apps/modal_editor.rs"
 [[example]]
 name = "syntax_view"
 path = "../../examples/rust/apps/syntax_view.rs"
+
+[[example]]
+name = "loaders"
+path = "../../examples/rust/apps/loaders.rs"
 
 [[example]]
 name = "edit"

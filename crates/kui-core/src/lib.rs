@@ -196,10 +196,10 @@ pub use keyframes::Keyframe;
 #[cfg(feature = "derive")]
 pub use kui_derive::Message;
 pub use line::{LineId, LineStore, Stroke};
-pub use path::{FillRule, Path, PathError, PathId, PathOp, PathStore};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
 pub use message::{MessageError, MessageField};
 pub use metrics::Metrics;
+pub use path::{FillRule, Path, PathError, PathId, PathOp, PathStore, Turn};
 pub use resources::{
     FontId, FragmentId, ImageBacking, ImageFit, ImageId, ImageOpts, Resources, Sampling, SessionId,
     SoundId, SystemFont,

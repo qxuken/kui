@@ -46,7 +46,7 @@ release never see apart.
   fill bleeds half a pixel, so two paths sharing an edge meet without the
   background showing through — the hairline the `polygon` pie showed. A
   mask a quarter of the biggest atlas page or more, or a path whose ops
-  change two frames running, draws from a texture of its own
+  change twice within a few frames, draws from a texture of its own
   (`QuadKind::Texture`, dropped through `dropped_textures` when no frame
   draws it), and one past 8192 px on a side draws nothing with
   `path-too-large`; a `d` that does not parse raises `path-malformed`
@@ -54,11 +54,50 @@ release never see apart.
   the devtools; the `path` corpus scene in four bindings; the `path`
   example; `frame_1k_paths_cached`, `frame_1k_paths_fresh`,
   `frame_1k_paths_animating` and `raster_pie_wedge_220px` benches.
+- `rotate` and `pivot` on a `path`
+  ([ADR 0041](docs/adr/0041-a-mask-turns-about-its-centre.md)):
+  `<path d rotate={0.25} pivot={[x, y]}/>`, `path { d =, rotate =, pivot
+  = {x, y} }`, `Path::rotated(turns)` and `Path::pivot(x, y)`, and two
+  arguments on `kui_path` and `kui_path_d`. The turn is in turns,
+  clockwise, about the pivot — the centre of the path's box without one
+  — and it is the quad's, not the mask's: a path that only turns is
+  boxed by the square the turn sweeps, rasterized once upright, kept in
+  the atlas at every angle, and its `GlyphMask` (or `Texture`) quad
+  carries the angle in `blur`, radians about the quad's centre, which a
+  renderer turns the four corners by. Measured in a window, a turning
+  arc drawn by changing its ops costs about 20 µs a frame — a raster, a
+  texture and a draw of its own — and one drawn by `rotate` costs what a
+  still one does; `frame_1k_paths_rotating` is the bench. A turned edge
+  is resampled, so it softens by about a tenth of a pixel's coverage,
+  and two fills that share an edge and turn together show a faint seam
+  (0.94 where an upright seam is whole). `rotate` does not tween. Hit
+  where it is drawn.
+- An animating window no longer turns its run loop between frames
+  (macOS, backlog F103's held half). While anything animated — a
+  transition, a spinner, a view asking for frames — the loop asked for
+  the next frame on every turn, the pacer held it for the display, and
+  the held frame was asked for again at once: a whole core for as long
+  as it lasted, whatever was being drawn. The loop now waits for the
+  display link it had already armed. An empty view asking for a frame
+  every frame at 120 Hz went from 102–104% of a core to about 40%, the
+  rest being the frame and the platform's own presenting.
+- A `path` painted what it was hit as: a draw after `Z` starts where
+  the subpath began in the mask as in the hit outline, a stroke with no
+  fill is hit by the pieces it paints and not along the chord of an open
+  curve, and a `d` string handed over every frame is parsed when it
+  changes rather than every frame (the ADR's review section).
+- `examples/rust/apps/loaders.rs`: ten loaders over one job — a pie, a
+  ring and a bar that draw its progress, seven that draw only the time —
+  with the clock in the model, a frame asked for only while the job
+  runs, the round ones as `path`s that change every frame, and reduced
+  motion honoured. Its arc turns by `rotate`: one atlas mask, turned
+  by its quad. The job's button holds the keyboard, so Space starts it.
 - `polygon` is unchanged: the eight-point fill whose SDF costs nothing per
   frame however it moves, for an arrowhead on a tweening connector or a
   strip under a live sparkline.
 
-**What you can delete.** The half-pixel overlap or same-colour hairline
+**What you can delete.** The trigonometry that rebuilt a spinner's `d`
+every frame to turn it; the half-pixel overlap or same-colour hairline
 stroke a chart drew between adjacent wedges to hide the seam; the two
 polygons a shape of more than eight points was split into; the flattening
 an app did to draw an arc, a bezier or an icon's `d` as a polyline.

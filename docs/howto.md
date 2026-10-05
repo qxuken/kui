@@ -1299,10 +1299,19 @@ every binding's `d` goes through.
 On the wire a path is one glyph-mask quad per paint, from the glyph
 atlas: the outline is rasterized once per shape, scale and quarter-pixel
 position, and a host that draws text draws paths. A mask a quarter of the
-biggest atlas page or more, or a path whose `d` changes two frames
-running, draws from a texture of its own instead; a shape that must move
-cheaply every frame at any size is a `polygon`
+biggest atlas page or more, or a path whose `d` changes twice within a
+few frames, draws from a texture of its own instead; a shape that must
+move cheaply every frame at any size is a `polygon`
 ([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)).
+
+A shape that only *turns* — a spinner's arc, a gauge's needle — is not a
+different shape each frame: `rotate={turns}` turns it about `pivot={[x,
+y]}` (the centre of its box without one), and the turn is the quad's.
+The mask is rasterized once and stays in the atlas at every angle, so a
+turning path costs what a still one does
+([ADR 0041](adr/0041-a-mask-turns-about-its-centre.md)). Its edges are
+resampled while it is turned, a tenth of a pixel softer; `rotate` does
+not tween.
 
 `<polygon points={[[x, y], …]} bg/>` is the eight-point fill that came
 first ([ADR 0025](adr/0025-the-image-is-the-canvas.md)): one `fragment`

@@ -350,11 +350,14 @@ pub struct Core {
     pub(crate) lines: crate::line::LineStore,
     /// The frame's paths, on the same terms as the strokes.
     pub(crate) paths: crate::path::PathStore,
-    /// The last hash each `path` key declared, the frame it did, whether
-    /// that was a change from the frame before, and whether the key is
-    /// animating: one whose ops changed two frames running, whose masks
-    /// leave the atlas for good (ADR 0040, decision 8).
-    pub(crate) path_motion: rustc_hash::FxHashMap<Key, (u64, u64, bool, bool)>,
+    /// What each `path` key last declared and when its ops last changed,
+    /// and whether the key is animating: one whose ops changed twice
+    /// within `path::ANIMATING_WINDOW` frames, whose masks leave the atlas
+    /// for good (ADR 0040, decision 8).
+    pub(crate) path_motion: rustc_hash::FxHashMap<Key, crate::path::Motion>,
+    /// The ops of each `d` string a `path` key last declared, so a string
+    /// handed over every frame is parsed once.
+    pub(crate) path_parsed: rustc_hash::FxHashMap<Key, crate::path::Parsed>,
     /// The masks drawn from a texture of their own rather than the atlas:
     /// too big for a page, or animating.
     pub(crate) path_textures: crate::path::PathTextures,
@@ -982,6 +985,7 @@ impl Core {
             lines: Default::default(),
             paths: Default::default(),
             path_motion: Default::default(),
+            path_parsed: Default::default(),
             path_textures: Default::default(),
             fragments: Default::default(),
             stock_polygon: None,
@@ -1564,9 +1568,12 @@ impl Core {
         // nodes index that frame's list.
         self.lines.begin_frame(keep_prev);
         self.paths.begin_frame(keep_prev);
+        let cutoff = self.frame_no.saturating_sub(crate::path::ANIMATING_WINDOW);
         if self.path_motion.len() > 1024 {
-            let cutoff = self.frame_no.saturating_sub(2);
-            self.path_motion.retain(|_, (_, at, _, _)| *at >= cutoff);
+            self.path_motion.retain(|_, m| m.seen >= cutoff);
+        }
+        if self.path_parsed.len() > 1024 {
+            self.path_parsed.retain(|_, p| p.seen >= cutoff);
         }
         self.fragments.begin_frame(keep_prev);
         self.cells.begin_frame(scale);

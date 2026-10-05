@@ -425,6 +425,30 @@ fn frame_1k_paths_fresh(bencher: divan::Bencher) {
         .bench_local_values(|mut core| run_paths(&mut core, &paths));
 }
 
+/// The same thousand, each turned a little further every frame by its
+/// `rotate`: one mask each, in the atlas for good, the angle in the quad
+/// (ADR 0041). What `frame_1k_paths_animating` is measured against; held
+/// to `frame_1k_paths_cached`.
+#[divan::bench]
+fn frame_1k_paths_rotating(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    // Eight frames of turn, cycled, built ahead as the others are.
+    let frames: Vec<Vec<kui_core::Path>> = (0..8)
+        .map(|f| {
+            hexagon_paths(1000, 0.0)
+                .into_iter()
+                .map(|p| p.rotated(f as f32 * 0.03))
+                .collect()
+        })
+        .collect();
+    run_paths(&mut core, &frames[0]);
+    let mut frame = 0usize;
+    bencher.bench_local(|| {
+        frame += 1;
+        run_paths(&mut core, &frames[frame % 8])
+    });
+}
+
 /// The same thousand, every outline moving each frame: after two frames
 /// they are animating and draw from textures of their own, one raster
 /// and one upload each per frame (ADR 0040, decision 8).
@@ -433,8 +457,9 @@ fn frame_1k_paths_animating(bencher: divan::Bencher) {
     let mut core = Core::new();
     // Eight frames of motion, cycled: the geometry is built ahead, as a
     // chart keeps its series, and the raster each frame is the cost.
-    let frames: Vec<Vec<kui_core::Path>> =
-        (0..8).map(|f| hexagon_paths(1000, f as f32 * 0.37)).collect();
+    let frames: Vec<Vec<kui_core::Path>> = (0..8)
+        .map(|f| hexagon_paths(1000, f as f32 * 0.37))
+        .collect();
     let mut frame = 0usize;
     bencher.bench_local(|| {
         frame += 1;
@@ -446,7 +471,7 @@ fn frame_1k_paths_animating(bencher: divan::Bencher) {
 /// what a path costs the first time it is seen.
 #[divan::bench]
 fn raster_pie_wedge_220px(bencher: divan::Bencher) {
-    use kui_core::path::{MaskPaint, FillRule, rasterize};
+    use kui_core::path::{FillRule, MaskPaint, rasterize};
     let wedge = kui_core::Path::sector(110.0, 110.0, 80.0, 0.0, 0.0, 0.34);
     let mut outline = Vec::new();
     kui_core::path::flatten(wedge.ops(), &mut outline);
@@ -455,10 +480,25 @@ fn raster_pie_wedge_220px(bencher: divan::Bencher) {
         .ops()
         .iter()
         .map(|op| match *op {
-            kui_core::PathOp::MoveTo(p) => kui_core::PathOp::MoveTo(Vec2::new(p.x - b.x + 1.0, p.y - b.y + 1.0)),
-            kui_core::PathOp::LineTo(p) => kui_core::PathOp::LineTo(Vec2::new(p.x - b.x + 1.0, p.y - b.y + 1.0)),
-            kui_core::PathOp::ArcTo { rx, ry, rotation, large, sweep, to } => kui_core::PathOp::ArcTo {
-                rx, ry, rotation, large, sweep,
+            kui_core::PathOp::MoveTo(p) => {
+                kui_core::PathOp::MoveTo(Vec2::new(p.x - b.x + 1.0, p.y - b.y + 1.0))
+            }
+            kui_core::PathOp::LineTo(p) => {
+                kui_core::PathOp::LineTo(Vec2::new(p.x - b.x + 1.0, p.y - b.y + 1.0))
+            }
+            kui_core::PathOp::ArcTo {
+                rx,
+                ry,
+                rotation,
+                large,
+                sweep,
+                to,
+            } => kui_core::PathOp::ArcTo {
+                rx,
+                ry,
+                rotation,
+                large,
+                sweep,
                 to: Vec2::new(to.x - b.x + 1.0, to.y - b.y + 1.0),
             },
             other => other,

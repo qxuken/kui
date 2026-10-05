@@ -1718,7 +1718,13 @@ typedef struct KuiQuad {
     float border_color[4];
     float radius[4];         /* corner radii, clockwise from the top-left */
     float border_w;
-    float blur;              /* KUI_QUAD_SHADOW: blur radius, also how far the rect is inflated */
+    /* KUI_QUAD_SHADOW: blur radius, also how far the rect is inflated.
+     * KUI_QUAD_GLYPH_MASK and KUI_QUAD_TEXTURE: the quad's turn in radians,
+     * clockwise, about the rect's centre - 0 on every glyph and image, and
+     * on a path's quads the path's `rotate`. Turn the four corners; sample
+     * the texels linearly. A renderer that ignores it draws turned paths
+     * upright (docs/adr/0041-a-mask-turns-about-its-centre.md). */
+    float blur;
     uint32_t kind;           /* KUI_QUAD_* */
     /* Which entry of KuiDrawData.clips clips this quad. An index and not
      * the clip itself since ABI 11: a clip is 32 bytes and a frame has a
@@ -2967,13 +2973,20 @@ enum { KUI_FILL_NONZERO = 0, KUI_FILL_EVENODD = 1 };
  * wire it is one KUI_QUAD_GLYPH_MASK per paint, fill and stroke, from the
  * glyph atlas - rasterized once per shape, scale and quarter-pixel
  * position, re-tinted for free - or a KUI_QUAD_TEXTURE when the mask is a
- * quarter of the biggest atlas page or more, or the path's ops change two
- * frames running. label keys the node (empty = a key from the tree
+ * quarter of the biggest atlas page or more, or the path's ops change twice
+ * within a few frames. rotate turns it, in turns clockwise, about pivot -
+ * two floats in the path's own coordinates, NULL for the centre of its box -
+ * and the turn is the quad's, not the mask's
+ * (docs/adr/0041-a-mask-turns-about-its-centre.md): the path is boxed by the
+ * square the turn sweeps, rasterized once upright, and its quads carry the
+ * angle in KuiQuad.blur. 0 and NULL are no turn, the tight box; a path that
+ * turns through 0 names its pivot so its box does not change there. label
+ * keys the node (empty = a key from the tree
  * position); spec may be NULL (no fill); NULL for a payload is none. */
 void kui_path(KuiCtx *ctx, KuiStr label, const float *ops, size_t count,
-              uint32_t fill_rule, float width, uint32_t color,
-              const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
-              KuiValue *on_hover);
+              uint32_t fill_rule, float width, uint32_t color, float rotate,
+              const float *pivot, const KuiSpec *spec, KuiValue *on_click,
+              KuiValue *on_drag, KuiValue *on_hover);
 /* SVG path data (M L H V C S Q T A Z, absolute or relative) to the flat op
  * form, through the one parser every binding uses. Returns how many floats
  * the form needs; they are written to out when cap holds them all, and not
@@ -2984,8 +2997,9 @@ size_t kui_path_parse(KuiStr d, float *out, size_t cap);
  * one parser every binding uses, and data that does not parse raises
  * `path-malformed` under the node's key and draws nothing. */
 void kui_path_d(KuiCtx *ctx, KuiStr label, KuiStr d, uint32_t fill_rule,
-                float width, uint32_t color, const KuiSpec *spec,
-                KuiValue *on_click, KuiValue *on_drag, KuiValue *on_hover);
+                float width, uint32_t color, float rotate, const float *pivot,
+                const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
+                KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

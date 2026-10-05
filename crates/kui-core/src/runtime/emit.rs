@@ -137,29 +137,30 @@ impl Core {
             NodeContent::Path(id) => {
                 let (run, ops) = self.paths.run(id);
                 let mut outline = Vec::new();
-                crate::path::flatten(ops, &mut outline);
-                if spec.style.bg.is_visible() || run.stroke_w <= 0.0 {
+                let fill = spec.style.bg.is_visible() || run.stroke_w <= 0.0;
+                if fill {
+                    crate::path::flatten(ops, &mut outline);
+                } else {
+                    crate::path::flatten_stroke(ops, &mut outline);
+                }
+                // A turned path is hit where it is drawn: the outline
+                // turned about the box's centre, which is its pivot (ADR
+                // 0041). The contour breaks are not points and stay.
+                if let Some(angle) = run.angle.filter(|a| *a != 0.0) {
+                    let c = Vec2::new(rect.w * 0.5, rect.h * 0.5);
+                    for p in outline.iter_mut().filter(|p| !p.x.is_nan()) {
+                        *p = crate::path::turned(*p, c, angle);
+                    }
+                }
+                if fill {
                     self.hit_shapes.path(&outline, run.rule)
                 } else {
-                    // A stroke with no fill is hit as a line is: each
-                    // contour closed back to its start, the breaks kept
-                    // so no piece runs from one contour to the next.
-                    let mut pieces = Vec::with_capacity(outline.len() + 4);
-                    let mut start = None;
-                    for p in outline {
-                        if p.x.is_nan() {
-                            if let Some(s) = start.take() {
-                                pieces.push(s);
-                            }
-                            pieces.push(p);
-                        } else {
-                            if start.is_none() {
-                                start = Some(p);
-                            }
-                            pieces.push(p);
-                        }
-                    }
-                    self.hit_shapes.segments(&pieces, run.stroke_w)
+                    // A stroke with no fill is hit as a line is, by the
+                    // pieces it paints: a contour its `Z` closed runs
+                    // back to its start, an open one does not, and the
+                    // breaks are kept so no piece runs from one contour
+                    // to the next.
+                    self.hit_shapes.segments(&outline, run.stroke_w)
                 }
             }
             _ if spec.style.radius != crate::display::SQUARE => {
@@ -400,6 +401,7 @@ impl Core {
                     rule: run.rule,
                     stroke_w: run.stroke_w,
                     hash: run.hash,
+                    angle: run.angle,
                     animating: run.animating,
                 }
             }
@@ -1432,11 +1434,13 @@ impl Core {
                     rule,
                     stroke_w,
                     hash,
+                    angle,
                 } => Leaf::Path {
                     ops: &g.ops[first as usize..(first + len) as usize],
                     rule,
                     stroke_w,
                     hash,
+                    angle,
                     animating: false,
                 },
             };
@@ -2051,6 +2055,8 @@ enum Leaf<'a> {
         rule: crate::path::FillRule,
         stroke_w: f32,
         hash: u64,
+        /// The turn in radians of a path that declared one (ADR 0041).
+        angle: Option<f32>,
         animating: bool,
     },
 }
@@ -2101,7 +2107,10 @@ impl Painter<'_> {
         // A stroke's `bg` is its colour, not a box to fill (ADR 0010,
         // decision 7), and a polygon's is its fill (ADR 0025, decision 6)
         // — for the ghost of one as much as for the live one.
-        let is_line = matches!(leaf, Leaf::Line { .. } | Leaf::Polygon(_) | Leaf::Path { .. });
+        let is_line = matches!(
+            leaf,
+            Leaf::Line { .. } | Leaf::Polygon(_) | Leaf::Path { .. }
+        );
         if !is_line
             && (style.bg.is_visible() || (style.border_w > 0.0 && style.border_color.is_visible()))
         {
@@ -2322,34 +2331,58 @@ impl Painter<'_> {
                 rule,
                 stroke_w,
                 hash,
+                angle,
                 animating,
             } => {
-                // The mask covers the node's box at physical scale, a
-                // pixel over for the ramp, and is drawn on whole pixels
-                // with the box's fractional offset baked in at the
-                // nearest quarter — the bins a glyph is keyed on — so
-                // the quad never resamples it.
                 let px = rect.scaled(scale);
-                let bin_of = |f: f32| -> (f32, u8) {
-                    let b = (f * 4.0).round() as u8;
-                    if b >= 4 { (1.0, 0) } else { (0.0, b) }
+                let mask = match angle {
+                    // The mask covers the node's box at physical scale, a
+                    // pixel over for the ramp, and is drawn on whole
+                    // pixels with the box's fractional offset baked in at
+                    // the nearest quarter — the bins a glyph is keyed on
+                    // — so the quad never resamples it.
+                    None => {
+                        let bin_of = |f: f32| -> (f32, u8) {
+                            let b = (f * 4.0).round() as u8;
+                            if b >= 4 { (1.0, 0) } else { (0.0, b) }
+                        };
+                        let (fx, fy) = (px.x.floor(), px.y.floor());
+                        let (cx, bx) = bin_of(px.x - fx);
+                        let (cy, by) = bin_of(px.y - fy);
+                        MaskAt {
+                            at: Rect::new(
+                                fx + cx,
+                                fy + cy,
+                                (px.w.ceil() + 1.0).max(1.0),
+                                (px.h.ceil() + 1.0).max(1.0),
+                            ),
+                            bin: (bx, by),
+                            off: Vec2::new(f32::from(bx) * 0.25, f32::from(by) * 0.25),
+                            angle: 0.0,
+                        }
+                    }
+                    // A turning path's box is the square about its pivot
+                    // (ADR 0041): the mask is that square on an even
+                    // number of pixels with the pivot at its centre, the
+                    // centre on a whole pixel, so the quad turns about
+                    // its own middle and, at no angle, is texel for texel.
+                    Some(angle) => {
+                        let side = 2.0 * (px.w * 0.5).ceil() + 2.0;
+                        let (cx, cy) = ((px.x + px.w * 0.5).round(), (px.y + px.h * 0.5).round());
+                        MaskAt {
+                            at: Rect::new(cx - side * 0.5, cy - side * 0.5, side, side),
+                            bin: crate::path::TURNED_BIN,
+                            off: Vec2::new((side - px.w) * 0.5, (side - px.h) * 0.5),
+                            angle,
+                        }
+                    }
                 };
-                let (fx, fy) = (px.x.floor(), px.y.floor());
-                let (cx, bx) = bin_of(px.x - fx);
-                let (cy, by) = bin_of(px.y - fy);
-                let at = Rect::new(
-                    fx + cx,
-                    fy + cy,
-                    (px.w.ceil() + 1.0).max(1.0),
-                    (px.h.ceil() + 1.0).max(1.0),
-                );
                 if style.bg.is_visible() {
                     self.paint_mask(
                         ops,
                         hash,
                         scale,
-                        (bx, by),
-                        at,
+                        mask,
                         crate::path::MaskPaint::Fill(rule),
                         style.bg,
                         clip_id,
@@ -2361,8 +2394,7 @@ impl Painter<'_> {
                         ops,
                         hash,
                         scale,
-                        (bx, by),
-                        at,
+                        mask,
                         crate::path::MaskPaint::Stroke(stroke_w * scale),
                         style.border_color,
                         clip_id,
@@ -2375,20 +2407,25 @@ impl Painter<'_> {
 
     /// One mask quad of a path: from the atlas when the mask fits it and
     /// the path is still, from a texture of its own otherwise (ADR 0040,
-    /// decisions 6–8). `at` is the quad in physical px, on whole pixels.
+    /// decisions 6–8), turned by the quad when the path turns (ADR 0041).
     #[allow(clippy::too_many_arguments)]
     fn paint_mask(
         &mut self,
         ops: &[crate::path::PathOp],
         hash: u64,
         scale: f32,
-        bin: (u8, u8),
-        at: Rect,
+        mask: MaskAt,
         paint: crate::path::MaskPaint,
         color: Color,
         clip_id: ClipId,
         animating: bool,
     ) {
+        let MaskAt {
+            at,
+            bin,
+            off,
+            angle,
+        } = mask;
         let (w, h) = (at.w as u32, at.h as u32);
         let key = crate::path::mask_key(hash, scale, bin, paint);
         let texels = u64::from(w) * u64::from(h);
@@ -2396,24 +2433,22 @@ impl Painter<'_> {
             None
         } else {
             self.atlas.get_or_insert_path(key, w, h, || {
-                crate::path::rasterize(ops, scale, bin, w, h, paint)
+                crate::path::rasterize_at(ops, scale, off, w, h, paint)
             })
         };
         let (kind, uv) = match slot {
             Some(slot) => (QuadKind::GlyphMask, [slot.x, slot.y, slot.w, slot.h]),
             None => {
-                let tex = self.path_tex.get_or_make(
-                    key,
-                    w,
-                    h,
-                    self.frame_no,
-                    self.session.id(),
-                    || crate::path::rasterize(ops, scale, bin, w, h, paint),
-                );
+                let tex =
+                    self.path_tex
+                        .get_or_make(key, w, h, self.frame_no, self.session.id(), || {
+                            crate::path::rasterize_at(ops, scale, off, w, h, paint)
+                        });
                 let index = self.display.textures.len() as u32;
-                self.display
-                    .textures
-                    .push(crate::display::TextureDraw { id: tex.id, uv: [0, 0, w, h] });
+                self.display.textures.push(crate::display::TextureDraw {
+                    id: tex.id,
+                    uv: [0, 0, w, h],
+                });
                 self.display
                     .texture_pixels
                     .push(crate::display::TexturePixels {
@@ -2431,12 +2466,25 @@ impl Painter<'_> {
             border_color: Color::TRANSPARENT,
             radius: crate::display::SQUARE,
             border_w: 0.0,
-            blur: 0.0,
+            // A mask has no blur; the slot carries its turn, in radians
+            // about the quad's centre, 0 for none (ADR 0041, decision 4).
+            blur: angle,
             kind,
             clip: clip_id,
             uv,
         });
     }
+}
+
+/// Where one path's masks go: the quad in physical px, on whole pixels;
+/// the bin its masks are keyed under; where the node's box begins inside
+/// the mask; and the quad's turn in radians.
+#[derive(Clone, Copy)]
+struct MaskAt {
+    at: Rect,
+    bin: (u8, u8),
+    off: Vec2,
+    angle: f32,
 }
 
 #[derive(Clone, Copy)]

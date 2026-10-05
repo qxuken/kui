@@ -1100,13 +1100,22 @@ export function createEncoder(P) {
         if (p.fillRule !== undefined && p.fillRule !== 'nonzero' && p.fillRule !== 'evenodd') throw new Error(`bad fillRule ${JSON.stringify(p.fillRule)} for <path> ('nonzero' or 'evenodd')`);
         const widthRef = isRef(p.width) ? tokenRef(p.width, 'length') : undefined;
         if (p.width !== undefined && typeof p.width !== 'number' && !isRef(p.width)) throw new Error(`bad width ${JSON.stringify(p.width)} for <path> (a stroke width in px, or a "$length")`);
-        reserve(7 + (flat ? flat.length : 0));
+        // `rotate` in turns and `pivot` as [x, y]: the turn is the quad's,
+        // and either prop asks for the box the turn sweeps
+        // (docs/adr/0041-a-mask-turns-about-its-centre.md).
+        if (p.rotate !== undefined && (typeof p.rotate !== 'number' || !Number.isFinite(p.rotate))) throw new Error(`bad rotate ${JSON.stringify(p.rotate)} for <path> (turns, a number)`);
+        const pivot = p.pivot;
+        if (pivot !== undefined && !(Array.isArray(pivot) && pivot.length === 2 && pivot.every((n) => typeof n === 'number' && Number.isFinite(n)))) throw new Error(`bad pivot ${JSON.stringify(pivot)} for <path> ([x, y])`);
+        reserve(10 + (flat ? flat.length : 0));
         f[fi++] = OP.path;
         strRef(flat ? null : d);
         f[fi++] = flat ? flat.length : 0;
         if (flat) for (const n of flat) f[fi++] = n;
         f[fi++] = widthRef !== undefined ? widthRef : typeof p.width === 'number' ? p.width : 0;
-        f[fi++] = (widthRef !== undefined ? 1 : 0) | (p.fillRule === 'evenodd' ? 2 : 0);
+        f[fi++] = (widthRef !== undefined ? 1 : 0) | (p.fillRule === 'evenodd' ? 2 : 0) | (p.rotate !== undefined ? 4 : 0) | (pivot !== undefined ? 8 : 0);
+        f[fi++] = p.rotate ?? 0;
+        f[fi++] = pivot ? pivot[0] : 0;
+        f[fi++] = pivot ? pivot[1] : 0;
         props(p, el.key, false);
         return;
       }

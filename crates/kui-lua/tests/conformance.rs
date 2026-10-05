@@ -687,6 +687,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               path { d = "M110 90 C130 70 150 110 190 90", width = 2, color = 0x9ad9a0ff },
               path { d = "M20 10 L50 10 L35 40 Z", bg = 0xe07a8aff, width = 1.5,
                      color = 0xffffffff, opacity = 0.5 },
+              path { d = "M30 104 H50 V110 H30 Z", bg = 0x7fd6f5ff, rotate = 0.125,
+                     pivot = {40, 107} },
               path { key = "bad", d = "M10 10 L20", bg = 0xffffffff },
             }
         "#

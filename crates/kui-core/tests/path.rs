@@ -54,18 +54,12 @@ fn a_pies_wedges_are_hit_by_their_arcs() {
             ui.path_keyed(
                 "a",
                 &Path::sector(cx, cy, r, 0.0, 0.0, 0.25),
-                NodeSpec::column()
-                    .bg(Color::WHITE)
-                    .on_click("a")
-                    .label("A"),
+                NodeSpec::column().bg(Color::WHITE).on_click("a").label("A"),
             );
             ui.path_keyed(
                 "b",
                 &Path::sector(cx, cy, r, 0.0, 0.25, 0.25),
-                NodeSpec::column()
-                    .bg(Color::WHITE)
-                    .on_click("b")
-                    .label("B"),
+                NodeSpec::column().bg(Color::WHITE).on_click("b").label("B"),
             );
         });
     });
@@ -190,6 +184,7 @@ fn a_malformed_d_warns_and_draws_nothing() {
                 "M10 10 L20",
                 FillRule::NonZero,
                 None,
+                None,
                 NodeSpec::column().bg(Color::WHITE),
             );
         });
@@ -218,7 +213,13 @@ fn a_big_mask_takes_a_texture_and_a_huge_one_warns() {
     };
     frame(&mut core, build);
     let dl = core.output().0;
-    assert_eq!(dl.quads.iter().filter(|q| q.kind == QuadKind::Texture).count(), 1);
+    assert_eq!(
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::Texture)
+            .count(),
+        1
+    );
     assert_eq!(dl.textures.len(), 1);
     assert_eq!(dl.texture_pixels[0].width, 2105);
     assert_eq!(core.path_texture_count(), 1);
@@ -239,11 +240,20 @@ fn a_big_mask_takes_a_texture_and_a_huge_one_warns() {
         });
     });
     let w = core.take_warnings();
-    assert_eq!(w.iter().map(|w| w.code).collect::<Vec<_>>(), ["path-too-large"]);
-    assert!(core.output().0.quads.iter().all(|q| q.kind != QuadKind::Texture));
+    assert_eq!(
+        w.iter().map(|w| w.code).collect::<Vec<_>>(),
+        ["path-too-large"]
+    );
+    assert!(
+        core.output()
+            .0
+            .quads
+            .iter()
+            .all(|q| q.kind != QuadKind::Texture)
+    );
 }
 
-/// A path whose ops change two frames running leaves the atlas for a
+/// A path whose ops change twice within a few frames leaves the atlas for a
 /// texture of its own and stays there once still again.
 #[test]
 fn an_animating_path_leaves_the_atlas_and_stays_out() {
@@ -272,7 +282,13 @@ fn an_animating_path_leaves_the_atlas_and_stays_out() {
     assert!(masks(&mut core).is_empty());
     assert_eq!(core.path_texture_count(), 1);
     let dl = core.output().0;
-    assert_eq!(dl.quads.iter().filter(|q| q.kind == QuadKind::Texture).count(), 1);
+    assert_eq!(
+        dl.quads
+            .iter()
+            .filter(|q| q.kind == QuadKind::Texture)
+            .count(),
+        1
+    );
 }
 
 /// At scale 2 the mask is rasterized at scale 2 — twice the texels, on
@@ -294,7 +310,12 @@ fn the_mask_follows_the_scale() {
     let two = masks(&mut core)[0];
     assert_eq!(one.rect.x.fract(), 0.0);
     assert_eq!(two.rect.x.fract(), 0.0);
-    assert!(two.uv[2] >= one.uv[2] * 2 - 2, "{:?} vs {:?}", one.uv, two.uv);
+    assert!(
+        two.uv[2] >= one.uv[2] * 2 - 2,
+        "{:?} vs {:?}",
+        one.uv,
+        two.uv
+    );
     assert_ne!(one.uv, two.uv, "two slots, one per scale");
 }
 
@@ -334,4 +355,185 @@ fn a_ghost_keeps_its_masks() {
     core.set_time(1.0);
     show(&mut core, false);
     assert!(masks(&mut core).is_empty(), "and then it is gone");
+}
+
+/// An open stroked curve is hit where it is drawn and not along the
+/// chord from its end back to its start; a closed one is hit on the
+/// edge its `Z` drew.
+#[test]
+fn an_open_stroke_is_not_hit_along_its_chord() {
+    let mut core = Core::new();
+    frame(&mut core, |ui| {
+        ui.with(NodeSpec::column().fill().on_click("canvas"), |ui| {
+            ui.path_keyed(
+                "open",
+                &Path::parse("M50 50 L150 50 L150 150")
+                    .unwrap()
+                    .stroked(Stroke::new(2.0, Color::WHITE)),
+                NodeSpec::column().on_click("open"),
+            );
+            ui.path_keyed(
+                "closed",
+                &Path::parse("M180 50 L280 50 L280 150 Z")
+                    .unwrap()
+                    .stroked(Stroke::new(2.0, Color::WHITE)),
+                NodeSpec::column().on_click("closed"),
+            );
+        });
+    });
+    assert_eq!(tag(&click_at(&mut core, 100.0, 50.0)), ["open"]);
+    assert_eq!(tag(&click_at(&mut core, 150.0, 100.0)), ["open"]);
+    assert_eq!(tag(&click_at(&mut core, 100.0, 100.0)), ["canvas"]);
+    assert_eq!(tag(&click_at(&mut core, 230.0, 100.0)), ["closed"]);
+}
+
+/// A shape that changes every other frame is animating as surely as one
+/// that changes every frame; two changes far apart are two shapes.
+#[test]
+fn changes_a_frame_apart_are_an_animation_and_far_apart_are_not() {
+    let wedge = |sweep: f32| Path::sector(100.0, 100.0, 60.0, 0.0, 0.0, sweep);
+    let show = |core: &mut Core, sweep: f32| {
+        frame(core, |ui| {
+            ui.with(NodeSpec::column().fill(), |ui| {
+                ui.path_keyed("w", &wedge(sweep), NodeSpec::column().bg(Color::WHITE));
+            });
+        });
+    };
+    let mut core = Core::new();
+    show(&mut core, 0.2);
+    show(&mut core, 0.21);
+    show(&mut core, 0.21);
+    assert_eq!(core.path_texture_count(), 0);
+    show(&mut core, 0.22);
+    assert_eq!(core.path_texture_count(), 1, "a frame between two changes");
+
+    let mut core = Core::new();
+    show(&mut core, 0.2);
+    show(&mut core, 0.21);
+    for _ in 0..kui_core::path::ANIMATING_WINDOW {
+        show(&mut core, 0.21);
+    }
+    show(&mut core, 0.22);
+    assert_eq!(core.path_texture_count(), 0, "two shapes, not a motion");
+    assert_eq!(masks(&mut core).len(), 1);
+}
+
+/// A `d` handed over every frame draws what it drew, and a changed
+/// string under the same key draws the new shape.
+#[test]
+fn a_d_string_is_kept_until_it_changes() {
+    let mut core = Core::new();
+    let show = |core: &mut Core, d: &str| {
+        frame(core, |ui| {
+            ui.with(NodeSpec::column().fill(), |ui| {
+                ui.path_d_keyed(
+                    "p",
+                    d,
+                    FillRule::NonZero,
+                    None,
+                    None,
+                    NodeSpec::column().bg(Color::WHITE),
+                );
+            });
+        });
+    };
+    show(&mut core, "M10 10 H50 V50 H10 Z");
+    let first = masks(&mut core);
+    show(&mut core, "M10 10 H50 V50 H10 Z");
+    let again = masks(&mut core);
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0].uv, first[0].uv);
+    assert_eq!(again[0].rect, first[0].rect);
+    show(&mut core, "M10 10 H90 V50 H10 Z");
+    let wide = masks(&mut core);
+    assert_eq!(wide.len(), 1);
+    assert!(wide[0].rect.w > first[0].rect.w);
+    // A string that stops parsing warns and draws nothing, kept ops or not.
+    show(&mut core, "M10 10 H");
+    assert!(masks(&mut core).is_empty());
+    assert_eq!(core.take_warnings().len(), 1);
+}
+
+/// A turning path is one mask (ADR 0041): the same slot at every angle,
+/// never animating, the angle in the quad's `blur`, the quad a square
+/// on whole pixels about the pivot.
+#[test]
+fn a_turning_path_keeps_its_mask_and_carries_the_angle() {
+    let mut core = Core::new();
+    // An arc of a circle about (100, 100): its own box's centre is not
+    // the pivot.
+    let arc = |turns: f32| {
+        Path::new()
+            .move_to(130.0, 100.0)
+            .arc_to(30.0, 30.0, 0.0, false, true, 100.0, 130.0)
+            .stroked(Stroke::new(4.0, Color::WHITE))
+            .pivot(100.0, 100.0)
+            .rotated(turns)
+    };
+    let show = |core: &mut Core, turns: f32| {
+        frame(core, |ui| {
+            ui.with(NodeSpec::column().fill(), |ui| {
+                ui.path_keyed("arc", &arc(turns), NodeSpec::column());
+            });
+        });
+    };
+    show(&mut core, 0.0);
+    let first = masks(&mut core);
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].blur, 0.0);
+    let mut seen = Vec::new();
+    for i in 1..=12 {
+        let turns = i as f32 / 12.0;
+        show(&mut core, turns);
+        let m = masks(&mut core);
+        assert_eq!(m.len(), 1, "still an atlas mask at {turns}");
+        assert_eq!(m[0].uv, first[0].uv, "the same slot");
+        assert_eq!(m[0].rect, first[0].rect, "the same quad");
+        assert!((m[0].blur - turns * std::f32::consts::TAU).abs() < 1e-5);
+        seen.push(m[0].blur);
+    }
+    assert_eq!(core.path_texture_count(), 0, "turning is not animating");
+    // The quad is a square about the pivot, on whole pixels.
+    let r = first[0].rect;
+    assert_eq!(r.w, r.h);
+    assert_eq!((r.x.fract(), r.y.fract()), (0.0, 0.0));
+    assert_eq!((r.x + r.w * 0.5, r.y + r.h * 0.5), (100.0, 100.0));
+}
+
+/// A turned path is hit where it is drawn, not where its ops say.
+#[test]
+fn a_turned_path_is_hit_where_it_is_drawn() {
+    let mut core = Core::new();
+    // A bar to the east of the pivot, turned a quarter: it points south.
+    let bar = Path::parse("M110 95 H160 V105 H110 Z")
+        .unwrap()
+        .pivot(100.0, 100.0)
+        .rotated(0.25);
+    frame(&mut core, |ui| {
+        ui.with(NodeSpec::column().fill().on_click("canvas"), |ui| {
+            ui.path_keyed(
+                "bar",
+                &bar,
+                NodeSpec::column().bg(Color::WHITE).on_click("bar"),
+            );
+        });
+    });
+    assert_eq!(tag(&click_at(&mut core, 100.0, 135.0)), ["bar"]);
+    assert_eq!(tag(&click_at(&mut core, 135.0, 100.0)), ["canvas"]);
+}
+
+/// Without a pivot the path turns about the centre of its outline's box.
+#[test]
+fn the_default_pivot_is_the_centre_of_the_box() {
+    let mut core = Core::new();
+    frame(&mut core, |ui| {
+        ui.with(NodeSpec::column().fill(), |ui| {
+            ui.path(
+                &Path::parse("M40 60 H80 V70 H40 Z").unwrap().rotated(0.1),
+                NodeSpec::column().bg(Color::WHITE),
+            );
+        });
+    });
+    let r = masks(&mut core)[0].rect;
+    assert_eq!((r.x + r.w * 0.5, r.y + r.h * 0.5), (60.0, 65.0));
 }

@@ -239,7 +239,10 @@ pub extern "C" fn kui_polygon(
 /// ([`kui_path_parse`] makes it from SVG path data): filled with `spec`'s
 /// `bg` by `fill_rule` (`KUI_FILL_NONZERO` or `KUI_FILL_EVENODD`) and,
 /// when `width` is positive, stroked `width` wide in `color` (0 for the
-/// theme's foreground) over the fill. Placed like a stroke: a float sized
+/// theme's foreground) over the fill; turned by `rotate` turns about
+/// `pivot` (two floats in the path's coordinates, NULL for the centre of
+/// its box) by the quad that draws it, so a path that only turns is
+/// rasterized once (ADR 0041) — 0 and NULL for no turn. Placed like a stroke: a float sized
 /// to its own bounding box, in the parent's box space. `label` keys the
 /// node (empty for a key from the tree position). The three payloads are
 /// consumed as [`kui_open_with`] consumes them; a path with one is hit
@@ -255,6 +258,8 @@ pub extern "C" fn kui_path(
     fill_rule: u32,
     width: f32,
     color: u32,
+    rotate: f32,
+    pivot: *const f32,
     spec: *const KuiSpec,
     on_click: *mut KuiValue,
     on_drag: *mut KuiValue,
@@ -284,6 +289,12 @@ pub extern "C" fn kui_path(
         if let Some(stroke) = stroke {
             path = path.stroked(stroke);
         }
+        if let Some(turn) = unsafe { turn_of(rotate, pivot) } {
+            path = path.rotated(turn.turns);
+            if let Some(p) = turn.pivot {
+                path = path.pivot(p.x, p.y);
+            }
+        }
         let spec = match unsafe { spec.as_ref() } {
             Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
             None => kui_core::NodeSpec::column(),
@@ -293,6 +304,24 @@ pub extern "C" fn kui_path(
             None => c.core().path_node(&path, spec),
         }
     });
+}
+
+/// A path's turn as C spells it: `rotate` in turns and `pivot`, two
+/// floats in the path's own coordinates or NULL for the centre of its
+/// box. No turn at all — the tight box, the binned mask — is `rotate` 0
+/// with a NULL `pivot`, so a path that turns through 0 names its pivot.
+///
+/// # Safety
+/// `pivot` is NULL or points at two floats.
+unsafe fn turn_of(rotate: f32, pivot: *const f32) -> Option<kui_core::Turn> {
+    let pivot = (!pivot.is_null()).then(|| {
+        let p = unsafe { std::slice::from_raw_parts(pivot, 2) };
+        kui_core::Vec2::new(p[0], p[1])
+    });
+    (rotate != 0.0 || pivot.is_some()).then_some(kui_core::Turn {
+        turns: rotate,
+        pivot,
+    })
 }
 
 /// [`kui_path`] from SVG path data instead of the flat form: `d` goes
@@ -308,6 +337,8 @@ pub extern "C" fn kui_path_d(
     fill_rule: u32,
     width: f32,
     color: u32,
+    rotate: f32,
+    pivot: *const f32,
     spec: *const KuiSpec,
     on_click: *mut KuiValue,
     on_drag: *mut KuiValue,
@@ -318,6 +349,7 @@ pub extern "C" fn kui_path_d(
             return;
         };
         let d = kstr(d);
+        let turn = unsafe { turn_of(rotate, pivot) };
         let rule = kui_core::FillRule::from_index(fill_rule as usize);
         let stroke = (width > 0.0).then(|| {
             let color = if color == 0 {
@@ -332,8 +364,10 @@ pub extern "C" fn kui_path_d(
             None => kui_core::NodeSpec::column(),
         };
         match opt_str(label) {
-            Some(label) => c.core().path_d_node_keyed(&label, &d, rule, stroke, spec),
-            None => c.core().path_d_node(&d, rule, stroke, spec),
+            Some(label) => c
+                .core()
+                .path_d_node_keyed(&label, &d, rule, stroke, turn, spec),
+            None => c.core().path_d_node(&d, rule, stroke, turn, spec),
         }
     });
 }

@@ -1030,9 +1030,10 @@ impl<'a> Ui<'a> {
         d: &str,
         rule: crate::path::FillRule,
         stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
         spec: NodeSpec,
     ) {
-        self.core.path_d_node(d, rule, stroke, spec);
+        self.core.path_d_node(d, rule, stroke, turn, spec);
     }
 
     /// [`Self::path_d`] under a label key.
@@ -1042,9 +1043,11 @@ impl<'a> Ui<'a> {
         d: &str,
         rule: crate::path::FillRule,
         stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
         spec: NodeSpec,
     ) {
-        self.core.path_d_node_keyed(label, d, rule, stroke, spec);
+        self.core
+            .path_d_node_keyed(label, d, rule, stroke, turn, spec);
     }
 
     /// An `audio` node: a playback retained for as long as the view keeps

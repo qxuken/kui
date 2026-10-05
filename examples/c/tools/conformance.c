@@ -949,11 +949,12 @@ static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
-/* docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: six paths in a 200x120
+/* docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: seven paths in a 200x120
  * canvas - the first wedge takes a click, hit by its arc; the second is
  * keyed; the ring goes through kui_path_parse into the flat form kui_path
  * takes; the cubic is a stroke alone (NULL spec); the triangle is filled and
- * stroked, faded; and the last does not parse, which kui_path_d turns into
+ * stroked, faded; a bar turned an eighth about a pivot it names (ADR 0041);
+ * and the last does not parse, which kui_path_d turns into
  * the warning under its key. Data is conformance::PATH_* to the character. */
 static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
@@ -965,23 +966,28 @@ static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiValue *click = kui_value_map();
     kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("wedge")));
     kui_path_d(ui, KUI_STR(""), KUI_STR("M60 60 L100 60 A40 40 0 0 1 60 100 Z"),
-               KUI_FILL_NONZERO, 0, 0, &blue, click, NULL, NULL);
+               KUI_FILL_NONZERO, 0, 0, 0, NULL, &blue, click, NULL, NULL);
     KuiSpec orange = {.bg = 0xd8863bff};
     kui_path_d(ui, KUI_STR("wedge2"), KUI_STR("M60 60 L60 100 A40 40 0 0 1 20 60 Z"),
-               KUI_FILL_NONZERO, 0, 0, &orange, NULL, NULL, NULL);
+               KUI_FILL_NONZERO, 0, 0, 0, NULL, &orange, NULL, NULL, NULL);
     float ring[64];
     size_t n = kui_path_parse(KUI_STR("M120 10 H190 V80 H120 Z M140 30 H170 V60 H140 Z"),
                               ring, 64);
     KuiSpec yellow = {.bg = 0xf5d67fff};
-    kui_path(ui, KUI_STR(""), ring, n, KUI_FILL_EVENODD, 0, 0, &yellow, NULL, NULL, NULL);
+    kui_path(ui, KUI_STR(""), ring, n, KUI_FILL_EVENODD, 0, 0, 0, NULL, &yellow, NULL, NULL,
+             NULL);
     kui_path_d(ui, KUI_STR(""), KUI_STR("M110 90 C130 70 150 110 190 90"),
-               KUI_FILL_NONZERO, 2, 0x9ad9a0ff, NULL, NULL, NULL, NULL);
+               KUI_FILL_NONZERO, 2, 0x9ad9a0ff, 0, NULL, NULL, NULL, NULL, NULL);
     KuiSpec pink = {.bg = 0xe07a8aff, .opacity_set = 1, .opacity = 0.5f};
     kui_path_d(ui, KUI_STR(""), KUI_STR("M20 10 L50 10 L35 40 Z"), KUI_FILL_NONZERO,
-               1.5f, 0xffffffff, &pink, NULL, NULL, NULL);
+               1.5f, 0xffffffff, 0, NULL, &pink, NULL, NULL, NULL);
+    KuiSpec cyan = {.bg = 0x7fd6f5ff};
+    float pivot[2] = {40, 107};
+    kui_path_d(ui, KUI_STR(""), KUI_STR("M30 104 H50 V110 H30 Z"), KUI_FILL_NONZERO, 0, 0,
+               0.125f, pivot, &cyan, NULL, NULL, NULL);
     KuiSpec white = {.bg = 0xffffffff};
-    kui_path_d(ui, KUI_STR("bad"), KUI_STR("M10 10 L20"), KUI_FILL_NONZERO, 0, 0, &white,
-               NULL, NULL, NULL);
+    kui_path_d(ui, KUI_STR("bad"), KUI_STR("M10 10 L20"), KUI_FILL_NONZERO, 0, 0, 0, NULL,
+               &white, NULL, NULL, NULL);
     kui_close(ui);
 }
 

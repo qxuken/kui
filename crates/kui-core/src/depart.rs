@@ -105,6 +105,7 @@ pub(crate) enum GhostContent {
         rule: crate::path::FillRule,
         stroke_w: f32,
         hash: u64,
+        angle: Option<f32>,
     },
 }
 
@@ -487,6 +488,7 @@ impl DepartStore {
                                 rule: run.rule,
                                 stroke_w: run.stroke_w,
                                 hash: run.hash,
+                                angle: run.angle,
                             }
                         }
                         None => GhostContent::Container,
@@ -714,7 +716,9 @@ mod tests {
         let paths = crate::path::PathStore::default();
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame(frame.next());
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+        d.depart(
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+        );
         assert_eq!(d.node_count(), 3, "the subtree, not just its root");
 
         let mut seen = Vec::new();
@@ -741,7 +745,9 @@ mod tests {
         let paths = crate::path::PathStore::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame(frame.next());
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+        d.depart(
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+        );
         assert_eq!(d.keys().collect::<Vec<_>>(), vec![Key::ROOT.str("x")]);
         d.retire(Key::ROOT.str("x"));
         assert!(d.is_empty());
@@ -764,11 +770,15 @@ mod tests {
         let paths = crate::path::PathStore::default();
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame(frame.next());
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+        d.depart(
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+        );
         assert_eq!(d.keys().count(), 1);
         assert_eq!(d.node_count(), 3);
 
-        d.depart(&tree, 1, 0.05, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+        d.depart(
+            &tree, 1, 0.05, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+        );
         assert_eq!(d.keys().count(), 1, "one picture of one node, not two");
         assert_eq!(d.node_count(), 3, "and the budget charged once for it");
     }
@@ -792,7 +802,9 @@ mod tests {
             let mut frame = Frames(0);
             let tree = tree_with(spec, 0);
             d.begin_frame(frame.next());
-            d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+            d.depart(
+                &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            );
             assert!(d.is_empty());
         }
     }
@@ -917,7 +929,9 @@ mod tests {
         let paths = crate::path::PathStore::default();
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame(frame.next());
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+        d.depart(
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+        );
         // Frames without a replay: the sweep runs on the 240th.
         for _ in 0..480 {
             d.begin_frame(frame.next());
@@ -940,7 +954,9 @@ mod tests {
             .exit(Enter::from(100.0, 0.0));
         let tree = tree_with(spec, 0);
         d.begin_frame(frame.next());
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+        d.depart(
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+        );
         let mut x = 0.0;
         d.replay(0.05, |_, p| x = p.offset.x);
         let expect = Easing::EaseOut.apply(0.5) * 100.0;
@@ -969,7 +985,9 @@ mod tests {
         let mut tree = tree_with(spec, 0);
         tree.size[1] = crate::geom::Size::new(40.0, 20.0);
         d.begin_frame(frame.next());
-        d.depart(&tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+        d.depart(
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+        );
         d.replay(0.05, |_, p| {
             assert!((p.opacity - 0.5).abs() < 1e-4, "halfway faded");
             assert!((p.bg.unwrap().a - 0.5).abs() < 1e-4, "halfway transparent");

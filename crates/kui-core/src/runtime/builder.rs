@@ -21,10 +21,20 @@ pub enum Content<'a> {
     Polygon(&'a [Vec2]),
     /// A path: its ops, the fill rule, and a stroke if it has one. The
     /// fill is the spec's `bg`.
-    Path(&'a [crate::path::PathOp], crate::path::FillRule, Option<Stroke>),
+    Path(
+        &'a [crate::path::PathOp],
+        crate::path::FillRule,
+        Option<Stroke>,
+        Option<crate::path::Turn>,
+    ),
     /// The same from a `d` string, parsed here by the one parser; one
     /// that does not parse raises `path-malformed` under the node's key.
-    PathD(&'a str, crate::path::FillRule, Option<Stroke>),
+    PathD(
+        &'a str,
+        crate::path::FillRule,
+        Option<Stroke>,
+        Option<crate::path::Turn>,
+    ),
 }
 
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
@@ -620,12 +630,12 @@ impl Core {
                 self.polygon_with_key(key, points, spec);
                 true
             }
-            Content::Path(ops, rule, stroke) => {
-                self.path_with_key(key, ops, rule, stroke, spec);
+            Content::Path(ops, rule, stroke, turn) => {
+                self.path_with_key(key, ops, rule, stroke, turn, spec);
                 true
             }
-            Content::PathD(d, rule, stroke) => {
-                self.path_node_d(key, d, rule, stroke, spec);
+            Content::PathD(d, rule, stroke, turn) => {
+                self.path_node_d(key, d, rule, stroke, turn, spec);
                 true
             }
         };
@@ -1159,7 +1169,7 @@ impl Core {
     /// (`docs/adr/0040-a-path-is-a-mask-in-the-atlas.md`).
     ///
     /// Placed exactly as a line is: never in layout, a float sized to the
-    /// outline's bounding box a logical pixel out (and half the stroke's
+    /// outline's bounding box two logical pixels out (and half the stroke's
     /// width further), so it takes no room in a row or column and
     /// `spec`'s sizing, clamps, padding, gap and alignment are ignored.
     /// `transition` eases the fill through the `bg` slot, and `slide`,
@@ -1173,15 +1183,22 @@ impl Core {
     /// The outline is rasterized once per shape, scale and quarter-pixel
     /// position into the glyph atlas and drawn as a glyph-mask quad; the
     /// fill bleeds half a pixel so two paths sharing an edge meet without
-    /// the background showing through. A path whose ops change two frames
-    /// running, or whose mask is a quarter of the biggest atlas page or
+    /// the background showing through. A path whose ops change twice within
+    /// a few frames, or whose mask is a quarter of the biggest atlas page or
     /// more, draws from a texture of its own instead.
     pub fn path_node(&mut self, path: &crate::path::Path, spec: NodeSpec) {
         if self.tree.is_empty() {
             return;
         }
         let key = self.auto_key();
-        self.path_with_key(key, path.ops(), path.rule(), path.stroke(), spec);
+        self.path_with_key(
+            key,
+            path.ops(),
+            path.rule(),
+            path.stroke(),
+            path.turn(),
+            spec,
+        );
     }
 
     /// [`Self::path_node`] under a label key.
@@ -1190,7 +1207,14 @@ impl Core {
             return;
         }
         let key = self.child_key(label);
-        self.path_with_key(key, path.ops(), path.rule(), path.stroke(), spec);
+        self.path_with_key(
+            key,
+            path.ops(),
+            path.rule(),
+            path.stroke(),
+            path.turn(),
+            spec,
+        );
         self.key_labels.push(key, label, self.origin);
     }
 
@@ -1200,7 +1224,14 @@ impl Core {
             return;
         }
         let key = self.child_key_indexed(i);
-        self.path_with_key(key, path.ops(), path.rule(), path.stroke(), spec);
+        self.path_with_key(
+            key,
+            path.ops(),
+            path.rule(),
+            path.stroke(),
+            path.turn(),
+            spec,
+        );
     }
 
     /// SVG path data to a [`crate::path::Path`], through the one parser
@@ -1218,13 +1249,14 @@ impl Core {
         d: &str,
         rule: crate::path::FillRule,
         stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
         spec: NodeSpec,
     ) {
         if self.tree.is_empty() {
             return;
         }
         let key = self.auto_key();
-        self.path_node_d(key, d, rule, stroke, spec);
+        self.path_node_d(key, d, rule, stroke, turn, spec);
     }
 
     /// [`Self::path_d_node`] under a label key.
@@ -1234,26 +1266,59 @@ impl Core {
         d: &str,
         rule: crate::path::FillRule,
         stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
         spec: NodeSpec,
     ) {
         if self.tree.is_empty() {
             return;
         }
         let key = self.child_key(label);
-        self.path_node_d(key, d, rule, stroke, spec);
+        self.path_node_d(key, d, rule, stroke, turn, spec);
         self.key_labels.push(key, label, self.origin);
     }
 
     /// [`Self::path_d_node`] under a key the caller derived.
-    pub fn path_node_d(&mut self, key: Key, d: &str, rule: crate::path::FillRule, stroke: Option<Stroke>, spec: NodeSpec) {
-        match crate::path::Path::parse(d) {
-            Ok(path) => self.path_with_key(key, path.ops(), rule, stroke, spec),
-            Err(e) => self.diag.raise(Warning {
-                code: crate::diag::PATH_MALFORMED,
-                key,
-                message: format!("the path's `d` did not parse: expected {e}"),
-            }),
-        }
+    pub fn path_node_d(
+        &mut self,
+        key: Key,
+        d: &str,
+        rule: crate::path::FillRule,
+        stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
+        spec: NodeSpec,
+    ) {
+        // The string a key declared last frame is the string it declares
+        // this frame, nearly always: its ops are kept, and the parse is
+        // paid when the string changes.
+        let hash = crate::key::hash_bulk(d.as_bytes());
+        let kept = self
+            .path_parsed
+            .remove(&key)
+            .filter(|p| p.hash == hash && p.len == d.len());
+        let ops = match kept {
+            Some(p) => p.ops,
+            None => match crate::path::Path::parse(d) {
+                Ok(path) => path.into_ops(),
+                Err(e) => {
+                    self.diag.raise(Warning {
+                        code: crate::diag::PATH_MALFORMED,
+                        key,
+                        message: format!("the path's `d` did not parse: expected {e}"),
+                    });
+                    return;
+                }
+            },
+        };
+        self.path_with_key(key, &ops, rule, stroke, turn, spec);
+        self.path_parsed.insert(
+            key,
+            crate::path::Parsed {
+                hash,
+                len: d.len(),
+                seen: self.frame_no,
+                ops,
+            },
+        );
     }
 
     fn path_with_key(
@@ -1262,10 +1327,11 @@ impl Core {
         ops: &[crate::path::PathOp],
         rule: crate::path::FillRule,
         stroke: Option<Stroke>,
+        turn: Option<crate::path::Turn>,
         mut spec: NodeSpec,
     ) {
         let stroke_w = stroke.map_or(0.0, |s| s.width.max(0.0));
-        let Some((id, rect)) = self.paths.push(ops, rule, stroke_w) else {
+        let Some((id, rect)) = self.paths.push(ops, rule, stroke_w, turn) else {
             return;
         };
         // The mask is the box at the frame's scale; past what a texture
@@ -1276,28 +1342,39 @@ impl Core {
                 code: crate::diag::PATH_TOO_LARGE,
                 key,
                 message: format!(
-                    "the path's mask would be {side} px on a side at this scale, and a                      texture holds {} at most; draw it smaller, or as several paths",
+                    "the path's mask would be {side} px on a side at this scale, and a \
+                     texture holds {} at most; draw it smaller, or as several paths",
                     crate::path::MAX_MASK_SIDE
                 ),
             });
             return;
         }
-        // A key whose ops moved two frames running is animating: its masks
-        // go to a texture of their own rather than churning the atlas
-        // (ADR 0040, decision 8). One-way, as an updated image's backing is.
+        // A key whose ops changed twice within a few frames is animating:
+        // its masks go to a texture of their own rather than churning the
+        // atlas (ADR 0040, decision 8). One-way, as an updated image's
+        // backing is. One change is a new shape and a new slot.
         let hash = self.paths.run(id).0.hash;
-        let (changed, animating) = match self.path_motion.get(&key) {
-            Some(&(last, at, changed_last, was)) => {
-                let changed = last != hash && at + 1 == self.frame_no;
-                (changed, was || (changed && changed_last))
-            }
-            None => (false, false),
+        let now = self.frame_no;
+        let motion = match self.path_motion.get(&key) {
+            Some(&m) if m.hash != hash => crate::path::Motion {
+                hash,
+                seen: now,
+                changed: now,
+                animating: m.animating
+                    || (m.changed != 0 && now - m.changed <= crate::path::ANIMATING_WINDOW),
+            },
+            Some(&m) => crate::path::Motion { seen: now, ..m },
+            None => crate::path::Motion {
+                hash,
+                seen: now,
+                changed: 0,
+                animating: false,
+            },
         };
-        if animating {
+        if motion.animating {
             self.paths.set_animating(id);
         }
-        self.path_motion
-            .insert(key, (hash, self.frame_no, changed, animating));
+        self.path_motion.insert(key, motion);
         // The fill rides in `bg`, which `transition`, `enter` and `exit`
         // ease and `hover_bg` and `accent` swap; the stroke rides in the
         // border slots, which is what a border is to a box.

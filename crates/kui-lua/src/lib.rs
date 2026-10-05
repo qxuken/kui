@@ -1940,18 +1940,31 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 mlua::Value::Nil => None,
                 v => with_refs(ui, |refs| length_of(&v, refs))?,
             };
-            let stroke = width.filter(|w| *w > 0.0).map(|w| {
-                kui_core::Stroke::new(w, p.style.color.unwrap_or(ui.theme().fg))
+            let stroke = width
+                .filter(|w| *w > 0.0)
+                .map(|w| kui_core::Stroke::new(w, p.style.color.unwrap_or(ui.theme().fg)));
+            // `rotate` in turns and `pivot = {x, y}`: the turn is the
+            // quad's, and either row asks for the box the turn sweeps
+            // (ADR 0041).
+            let turns = t.get::<Option<f32>>("rotate")?;
+            let pivot = match t.get::<Option<Table>>("pivot")? {
+                Some(p) => Some(kui_core::Vec2::new(p.get::<f32>(1)?, p.get::<f32>(2)?)),
+                None => None,
+            };
+            let turn = (turns.is_some() || pivot.is_some()).then_some(kui_core::Turn {
+                turns: turns.unwrap_or(0.0),
+                pivot,
             });
             if let Some(d) = t.get::<Option<String>>("d")? {
-                ui.core().open_from(p, Content::PathD(&d, rule, stroke));
+                ui.core()
+                    .open_from(p, Content::PathD(&d, rule, stroke, turn));
             } else if let Some(list) = t.get::<Option<Table>>("ops")? {
-                let floats: Vec<f32> = list
-                    .sequence_values::<f32>()
-                    .collect::<mlua::Result<_>>()?;
+                let floats: Vec<f32> =
+                    list.sequence_values::<f32>().collect::<mlua::Result<_>>()?;
                 let path = kui_core::Path::from_floats(&floats)
-                    .map_err(|e| bad(&format!("ops: expected {e}")))?;
-                ui.core().open_from(p, Content::Path(path.ops(), rule, stroke));
+                    .map_err(|e| bad(format!("ops: expected {e}")))?;
+                ui.core()
+                    .open_from(p, Content::Path(path.ops(), rule, stroke, turn));
             } else {
                 return Err(bad("path needs d or ops"));
             }

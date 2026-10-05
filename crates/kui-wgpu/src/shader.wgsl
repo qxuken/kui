@@ -29,7 +29,8 @@ struct Instance {
     @location(1) size: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) border_color: vec4<f32>,
-    // blur (shadows), border_w (also the stroke width of a segment, and the
+    // blur (shadows; for a mask glyph or an image, its turn in radians
+    // about the quad's centre, which only a path's quads set), border_w (also the stroke width of a segment, and the
     // sampling flag of an image: 1 = nearest), kind (0 solid / 1 mask
     // glyph / 2 color glyph / 3 image / 4 subpixel glyph / 5 shadow /
     // 6 segment; a texture quad arrives as 3 with its own texture bound),
@@ -70,7 +71,20 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
         vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0),
     );
     let corner = corners[vi];
-    let px = inst.pos + corner * inst.size;
+    // A path's mask carries its turn in the blur slot, radians about the
+    // quad's centre (kinds 1 and 3; a shadow's blur is a blur). `local`
+    // and `uv` below stay the quad's own, so everything the fragment
+    // stage reads turns with it and the clip, in framebuffer space, does
+    // not (docs/adr/0041-a-mask-turns-about-its-centre.md).
+    let k = u32(inst.params.z + 0.5);
+    let angle = select(0.0, inst.params.x, k == 1u || k == 3u);
+    var px = inst.pos + corner * inst.size;
+    if angle != 0.0 {
+        let rel = (corner - vec2<f32>(0.5, 0.5)) * inst.size;
+        let cs = vec2<f32>(cos(angle), sin(angle));
+        px = inst.pos + inst.size * 0.5
+            + vec2<f32>(rel.x * cs.x - rel.y * cs.y, rel.x * cs.y + rel.y * cs.x);
+    }
     let ndc = vec2<f32>(
         px.x / globals.viewport.x * 2.0 - 1.0,
         1.0 - px.y / globals.viewport.y * 2.0,

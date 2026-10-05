@@ -163,6 +163,33 @@ impl FillRule {
     }
 }
 
+/// A path's turn (`docs/adr/0041-a-mask-turns-about-its-centre.md`): how
+/// far it is turned, in turns — clockwise with y down, as
+/// [`Path::sector`] counts them — and the point it turns about, in the
+/// path's own coordinates; `None` is the centre of the outline's box. A
+/// path with a turn is boxed by the square the turn sweeps, so its mask
+/// is one mask at every angle and the quad that draws it carries the
+/// angle.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Turn {
+    pub turns: f32,
+    pub pivot: Option<Vec2>,
+}
+
+impl Turn {
+    /// The angle in radians, clockwise with y down.
+    pub fn radians(self) -> f32 {
+        self.turns * std::f32::consts::TAU
+    }
+}
+
+/// `p` turned by `angle` radians (clockwise, y down) about `c`.
+pub fn turned(p: Vec2, c: Vec2, angle: f32) -> Vec2 {
+    let (sin, cos) = angle.sin_cos();
+    let (x, y) = (p.x - c.x, p.y - c.y);
+    Vec2::new(c.x + x * cos - y * sin, c.y + x * sin + y * cos)
+}
+
 /// Where a `d` string went wrong: the byte offset and what was expected.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PathError {
@@ -186,6 +213,7 @@ pub struct Path {
     ops: Vec<PathOp>,
     rule: FillRule,
     stroke: Option<crate::line::Stroke>,
+    turn: Option<Turn>,
 }
 
 impl Default for Path {
@@ -200,6 +228,7 @@ impl Path {
             ops: Vec::new(),
             rule: FillRule::NonZero,
             stroke: None,
+            turn: None,
         }
     }
 
@@ -209,6 +238,7 @@ impl Path {
             ops,
             rule: FillRule::NonZero,
             stroke: None,
+            turn: None,
         }
     }
 
@@ -267,12 +297,37 @@ impl Path {
         &self.ops
     }
 
+    pub fn into_ops(self) -> Vec<PathOp> {
+        self.ops
+    }
+
     pub fn rule(&self) -> FillRule {
         self.rule
     }
 
     pub fn stroke(&self) -> Option<crate::line::Stroke> {
         self.stroke
+    }
+
+    pub fn turn(&self) -> Option<Turn> {
+        self.turn
+    }
+
+    /// Turns the path by `turns` (clockwise, y down) about its pivot —
+    /// the centre of its outline's box unless [`Self::pivot`] names one.
+    /// The turn is the quad's and not the mask's: one raster, whatever
+    /// the angle (ADR 0041).
+    pub fn rotated(mut self, turns: f32) -> Self {
+        self.turn.get_or_insert_default().turns = turns;
+        self
+    }
+
+    /// The point the path turns about, in the path's own coordinates. A
+    /// spinner's arc names its circle's centre, which is not its own
+    /// box's.
+    pub fn pivot(mut self, x: f32, y: f32) -> Self {
+        self.turn.get_or_insert_default().pivot = Some(Vec2::new(x, y));
+        self
     }
 
     pub fn fill_rule(mut self, rule: FillRule) -> Self {
@@ -632,13 +687,28 @@ const MAX_PIECES: usize = 128;
 /// purpose of a fill, as SVG closes it. A move with nothing after it
 /// adds nothing.
 pub fn flatten(ops: &[PathOp], out: &mut Vec<Vec2>) {
+    flatten_as(ops, out, false);
+}
+
+/// Flattens `ops` into the polylines a stroke draws, each followed by
+/// [`CONTOUR_BREAK`]: a subpath its `Z` closed ends back on its start, an
+/// open one ends where it was left, so a stroke's hit pieces are the
+/// pieces it paints and no chord across an open curve is among them.
+pub fn flatten_stroke(ops: &[PathOp], out: &mut Vec<Vec2>) {
+    flatten_as(ops, out, true);
+}
+
+fn flatten_as(ops: &[PathOp], out: &mut Vec<Vec2>, stroke: bool) {
     let mut cur = Vec2::ZERO;
     let mut open = false;
     let mut contour_start = out.len();
-    let close = |out: &mut Vec<Vec2>, open: &mut bool, contour_start: usize| {
+    let close = |out: &mut Vec<Vec2>, open: &mut bool, contour_start: usize, closed: bool| {
         if *open {
             // A contour of one point is nothing.
             if out.len() - contour_start >= 2 {
+                if stroke && closed {
+                    out.push(out[contour_start]);
+                }
                 out.push(CONTOUR_BREAK);
             } else {
                 out.truncate(contour_start);
@@ -649,14 +719,14 @@ pub fn flatten(ops: &[PathOp], out: &mut Vec<Vec2>) {
     for op in ops {
         match *op {
             PathOp::MoveTo(p) => {
-                close(out, &mut open, contour_start);
+                close(out, &mut open, contour_start, false);
                 contour_start = out.len();
                 out.push(p);
                 cur = p;
                 open = true;
             }
             PathOp::Close => {
-                close(out, &mut open, contour_start);
+                close(out, &mut open, contour_start, true);
                 // A draw after a close starts where the subpath began.
                 if let Some(&s) = out.get(contour_start) {
                     cur = s;
@@ -698,7 +768,7 @@ pub fn flatten(ops: &[PathOp], out: &mut Vec<Vec2>) {
             }
         }
     }
-    close(out, &mut open, contour_start);
+    close(out, &mut open, contour_start, false);
 }
 
 fn pieces(dd: f32, k: f32) -> usize {
@@ -814,8 +884,7 @@ fn flatten_arc(
     to: Vec2,
     out: &mut Vec<Vec2>,
 ) {
-    let Some((c, rx, ry, phi, theta, delta)) =
-        arc_center(from, rx, ry, rotation, large, sweep, to)
+    let Some((c, rx, ry, phi, theta, delta)) = arc_center(from, rx, ry, rotation, large, sweep, to)
     else {
         out.push(to);
         return;
@@ -935,33 +1004,53 @@ pub fn rasterize(
     h: u32,
     paint: MaskPaint,
 ) -> Vec<u8> {
+    let off = Vec2::new(f32::from(bin.0) * 0.25, f32::from(bin.1) * 0.25);
+    rasterize_at(ops, scale, off, w, h, paint)
+}
+
+/// [`rasterize`] with the box's origin `off` physical px into the mask:
+/// what a turning path's mask is drawn with, its pivot at the mask's
+/// centre (ADR 0041).
+pub fn rasterize_at(
+    ops: &[PathOp],
+    scale: f32,
+    off: Vec2,
+    w: u32,
+    h: u32,
+    paint: MaskPaint,
+) -> Vec<u8> {
     use swash::zeno::{Cap, Command, Fill, Join, Mask, PathBuilder, Point, Stroke};
     let len = (w as usize) * (h as usize);
     let mut buf = vec![0u8; len];
     if len == 0 || ops.is_empty() {
         return buf;
     }
-    let off = Vec2::new(f32::from(bin.0) * 0.25, f32::from(bin.1) * 0.25);
     let at = |p: Vec2| Point::new(p.x * scale + off.x, p.y * scale + off.y);
     let mut cmds: Vec<Command> = Vec::with_capacity(ops.len() + 1);
     let mut cur = Vec2::ZERO;
+    let mut start = Vec2::ZERO;
     let mut open = false;
     for op in ops {
         match *op {
             PathOp::MoveTo(p) => {
                 cmds.move_to(at(p));
                 cur = p;
+                start = p;
                 open = true;
             }
             PathOp::Close => {
                 if open {
                     cmds.close();
                 }
+                // A draw after a close starts where the subpath began,
+                // as `flatten` has it.
+                cur = start;
                 open = false;
             }
             _ => {
                 if !open {
                     cmds.move_to(at(cur));
+                    start = cur;
                     open = true;
                 }
                 match *op {
@@ -990,7 +1079,11 @@ pub fn rasterize(
                             rx * scale,
                             ry * scale,
                             Angle::from_degrees(rotation),
-                            if large { ArcSize::Large } else { ArcSize::Small },
+                            if large {
+                                ArcSize::Large
+                            } else {
+                                ArcSize::Small
+                            },
                             if sweep {
                                 ArcSweep::Positive
                             } else {
@@ -1132,6 +1225,10 @@ impl PathTextures {
 
 /// The mask key the atlas and the textures hold a path's mask under: its
 /// ops' hash with the scale, the quarter-pixel bin and the paint mixed in.
+/// The bin a turning path's masks are keyed under: none of the sixteen,
+/// since its mask is centred on its pivot and not binned.
+pub(crate) const TURNED_BIN: (u8, u8) = (0xff, 0xff);
+
 pub(crate) fn mask_key(hash: u64, scale: f32, bin: (u8, u8), paint: MaskPaint) -> u64 {
     const PRIME: u64 = 0x0000_0100_0000_01b3;
     let mut h = hash;
@@ -1148,6 +1245,37 @@ pub(crate) fn mask_key(hash: u64, scale: f32, bin: (u8, u8), paint: MaskPaint) -
     h
 }
 
+/// How many frames apart two changes of one key's ops may be and still
+/// be an animation (ADR 0040, decision 8): a shape driven at a quarter of
+/// the frame rate, or one whose changes have a frame between them that
+/// something else asked for, moves as surely as one that changes every
+/// frame, and each of its shapes would be a slot the atlas never reuses.
+pub const ANIMATING_WINDOW: u64 = 8;
+
+/// What the core remembers of one `path` key between frames, to tell a
+/// new shape from a moving one.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Motion {
+    /// The ops' hash the key last declared, and the frame it did.
+    pub hash: u64,
+    pub seen: u64,
+    /// The frame the hash last differed from the one before; 0 for never.
+    pub changed: u64,
+    /// Two changes within [`ANIMATING_WINDOW`]: one-way.
+    pub animating: bool,
+}
+
+/// A `d` string's ops as the core last parsed them under one key, so a
+/// binding that hands the string over every frame pays the parse once
+/// per string rather than once per frame.
+pub(crate) struct Parsed {
+    /// `key::hash_bulk` of the string, and its length.
+    pub hash: u64,
+    pub len: usize,
+    pub seen: u64,
+    pub ops: Vec<PathOp>,
+}
+
 /// One path's run in the frame's op list. The ops are stored relative to
 /// the node's box, so a node that eases or slides carries them along.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1159,9 +1287,12 @@ pub(crate) struct Run {
     pub stroke_w: f32,
     /// [`hash_ops`] of the ops as stored.
     pub hash: u64,
-    /// The ops differed from the previous frame's under the same key, two
-    /// frames running: the mask goes to a texture of its own and stays
-    /// there (ADR 0040, decision 8).
+    /// The turn in radians when the path declared one: its box is then
+    /// the square about its pivot, and the angle is the quad's (ADR 0041).
+    pub angle: Option<f32>,
+    /// The key's ops changed twice within [`ANIMATING_WINDOW`] frames:
+    /// the mask goes to a texture of its own and stays there (ADR 0040,
+    /// decision 8).
     pub animating: bool,
 }
 
@@ -1189,6 +1320,7 @@ impl PathStore {
         ops: &[PathOp],
         rule: FillRule,
         stroke_w: f32,
+        turn: Option<Turn>,
     ) -> Option<(PathId, Rect)> {
         self.scratch.clear();
         flatten(ops, &mut self.scratch);
@@ -1197,8 +1329,26 @@ impl PathStore {
         // the edge ramp — and half the stroke's width further for a
         // stroke, so no mask is cut by its own edge.
         let pad = 2.0 + stroke_w * 0.5;
-        let origin = Vec2::new(b.x - pad, b.y - pad);
-        let rect = Rect::new(origin.x, origin.y, b.w + 2.0 * pad, b.h + 2.0 * pad);
+        let rect = match turn {
+            None => Rect::new(b.x - pad, b.y - pad, b.w + 2.0 * pad, b.h + 2.0 * pad),
+            // The square the turn sweeps: centred on the pivot, out to
+            // the farthest point of the outline, so it is the same box —
+            // and the same ops, hash and mask — at every angle.
+            Some(turn) => {
+                let c = turn
+                    .pivot
+                    .unwrap_or(Vec2::new(b.x + b.w * 0.5, b.y + b.h * 0.5));
+                let far = self
+                    .scratch
+                    .iter()
+                    .filter(|p| !p.x.is_nan())
+                    .map(|p| (p.x - c.x).hypot(p.y - c.y))
+                    .fold(0.0f32, f32::max);
+                let half = far + pad;
+                Rect::new(c.x - half, c.y - half, 2.0 * half, 2.0 * half)
+            }
+        };
+        let origin = Vec2::new(rect.x, rect.y);
         let first = self.ops.len();
         let shift = Vec2::new(-origin.x, -origin.y);
         self.ops.extend(ops.iter().map(|op| op.shifted(shift)));
@@ -1210,6 +1360,7 @@ impl PathStore {
             rule,
             stroke_w,
             hash,
+            angle: turn.map(Turn::radians),
             animating: false,
         });
         Some((id, rect))
@@ -1314,8 +1465,7 @@ mod tests {
 
     #[test]
     fn the_wire_form_round_trips() {
-        let p = Path::parse("M1 2 L3 4 Q5 6 7 8 C9 10 11 12 13 14 A15 16 17 1 0 18 19 Z")
-            .unwrap();
+        let p = Path::parse("M1 2 L3 4 Q5 6 7 8 C9 10 11 12 13 14 A15 16 17 1 0 18 19 Z").unwrap();
         let f = p.to_floats();
         assert_eq!(f.len(), 3 + 3 + 5 + 7 + 8 + 1);
         assert_eq!(Path::from_floats(&f).unwrap().ops(), p.ops());
@@ -1369,10 +1519,12 @@ mod tests {
         assert_eq!(v[v.len() - 2], Vec2::new(20.0, 0.0));
         // The sweep flag picks the other half.
         let down = Path::parse("M0 0 A10 10 0 0 0 20 0").unwrap();
-        assert!(pts(down.ops())
-            .iter()
-            .filter(|q| !q.x.is_nan())
-            .all(|q| q.y >= -0.01));
+        assert!(
+            pts(down.ops())
+                .iter()
+                .filter(|q| !q.x.is_nan())
+                .all(|q| q.y >= -0.01)
+        );
     }
 
     #[test]
@@ -1388,9 +1540,53 @@ mod tests {
     }
 
     #[test]
+    fn a_draw_after_a_close_starts_where_the_subpath_began() {
+        // The second triangle is (10,10) (10,40) (30,40): the hit outline
+        // and the mask agree on it.
+        let p = Path::parse("M10 10 H30 V30 Z L10 40 L30 40 Z").unwrap();
+        let v = pts(p.ops());
+        let m = rasterize(
+            p.ops(),
+            1.0,
+            (0, 0),
+            48,
+            48,
+            MaskPaint::Fill(FillRule::NonZero),
+        );
+        for (x, y) in [(12usize, 25usize), (28, 32), (28, 20), (14, 36)] {
+            let hit = in_path(
+                Vec2::new(x as f32 + 0.5, y as f32 + 0.5),
+                &v,
+                FillRule::NonZero,
+            );
+            assert_eq!(m[y * 48 + x] == 255, hit, "({x}, {y})");
+        }
+        assert_eq!(m[25 * 48 + 12], 255);
+        assert_eq!(m[32 * 48 + 28], 0);
+    }
+
+    #[test]
+    fn a_strokes_pieces_close_only_what_its_z_closed() {
+        let open = Path::parse("M0 0 L10 0 L10 10").unwrap();
+        let mut v = Vec::new();
+        flatten_stroke(open.ops(), &mut v);
+        assert_eq!(v.len(), 4);
+        assert_eq!(v[2], Vec2::new(10.0, 10.0));
+        assert!(v[3].x.is_nan());
+        let closed = Path::parse("M0 0 L10 0 L10 10 Z").unwrap();
+        v.clear();
+        flatten_stroke(closed.ops(), &mut v);
+        assert_eq!(v.len(), 5);
+        assert_eq!(v[3], Vec2::ZERO);
+        assert!(v[4].x.is_nan());
+    }
+
+    #[test]
     fn the_hash_follows_the_ops_and_nothing_else() {
         let a = Path::parse("M0 0 L10 0 L10 10 Z").unwrap();
-        let b = Path::parse("M0 0 L10 0 L10 10 Z").unwrap().fill_rule(FillRule::EvenOdd);
+        let b = Path::parse("M0 0 L10 0 L10 10 Z")
+            .unwrap()
+            .fill_rule(FillRule::EvenOdd);
         let c = Path::parse("M0 0 L10 0 L10 11 Z").unwrap();
         assert_eq!(hash_ops(a.ops()), hash_ops(b.ops()));
         assert_ne!(hash_ops(a.ops()), hash_ops(c.ops()));
@@ -1399,7 +1595,14 @@ mod tests {
     #[test]
     fn a_filled_square_is_opaque_inside_and_bleeds_past_its_edge() {
         let p = Path::parse("M2 2 H12 V12 H2 Z").unwrap();
-        let m = rasterize(p.ops(), 1.0, (0, 0), 16, 16, MaskPaint::Fill(FillRule::NonZero));
+        let m = rasterize(
+            p.ops(),
+            1.0,
+            (0, 0),
+            16,
+            16,
+            MaskPaint::Fill(FillRule::NonZero),
+        );
         let at = |x: usize, y: usize| m[y * 16 + x];
         assert_eq!(at(7, 7), 255);
         assert_eq!(at(0, 0), 0);
@@ -1411,10 +1614,23 @@ mod tests {
         // Two squares sharing the edge x = 12 composite to full coverage
         // along it: the right one's left bleed over the left one's own.
         let q = Path::parse("M12 2 H22 V12 H12 Z").unwrap();
-        let n = rasterize(q.ops(), 1.0, (0, 0), 24, 16, MaskPaint::Fill(FillRule::NonZero));
-        let (a, b) = (f32::from(at(12, 7)) / 255.0, f32::from(n[7 * 24 + 12]) / 255.0);
+        let n = rasterize(
+            q.ops(),
+            1.0,
+            (0, 0),
+            24,
+            16,
+            MaskPaint::Fill(FillRule::NonZero),
+        );
+        let (a, b) = (
+            f32::from(at(12, 7)) / 255.0,
+            f32::from(n[7 * 24 + 12]) / 255.0,
+        );
         assert!(a + b * (1.0 - a) > 0.99, "{a} over {b}");
-        let (a, b) = (f32::from(at(11, 7)) / 255.0, f32::from(n[7 * 24 + 11]) / 255.0);
+        let (a, b) = (
+            f32::from(at(11, 7)) / 255.0,
+            f32::from(n[7 * 24 + 11]) / 255.0,
+        );
         assert!(a + b * (1.0 - a) > 0.99, "{a} over {b}");
     }
 
@@ -1433,15 +1649,37 @@ mod tests {
         let mut store = PathStore::default();
         store.begin_frame(false);
         let p = Path::parse("M10 20 H30 V40 Z").unwrap();
-        let (id, rect) = store.push(p.ops(), FillRule::NonZero, 0.0).unwrap();
+        let (id, rect) = store.push(p.ops(), FillRule::NonZero, 0.0, None).unwrap();
         assert_eq!(rect, Rect::new(8.0, 18.0, 24.0, 24.0));
         let (run, ops) = store.run(id);
         assert_eq!(ops[0], PathOp::MoveTo(Vec2::new(2.0, 2.0)));
         assert_eq!(run.len, 4);
-        assert!(store.push(&[PathOp::MoveTo(Vec2::ZERO)], FillRule::NonZero, 0.0).is_none());
+        assert!(
+            store
+                .push(&[PathOp::MoveTo(Vec2::ZERO)], FillRule::NonZero, 0.0, None)
+                .is_none()
+        );
         // A stroke widens the box by half its width.
-        let (_, rect) = store.push(p.ops(), FillRule::NonZero, 4.0).unwrap();
+        let (_, rect) = store.push(p.ops(), FillRule::NonZero, 4.0, None).unwrap();
         assert_eq!(rect, Rect::new(6.0, 16.0, 28.0, 28.0));
+        // A turn boxes the path by the square it sweeps about its pivot:
+        // the same box, ops and hash at any angle.
+        let turn = |t: f32| Turn {
+            turns: t,
+            pivot: Some(Vec2::new(10.0, 20.0)),
+        };
+        let (a, ra) = store
+            .push(p.ops(), FillRule::NonZero, 0.0, Some(turn(0.0)))
+            .unwrap();
+        let (b, rb) = store
+            .push(p.ops(), FillRule::NonZero, 0.0, Some(turn(0.3)))
+            .unwrap();
+        let far = (20.0f32 * 20.0 + 20.0 * 20.0).sqrt() + 2.0;
+        assert_eq!(ra, Rect::new(10.0 - far, 20.0 - far, 2.0 * far, 2.0 * far));
+        assert_eq!(ra, rb);
+        assert_eq!(store.run(a).0.hash, store.run(b).0.hash);
+        assert_eq!(store.run(a).1, store.run(b).1);
+        assert_eq!(store.run(b).0.angle, Some(0.3 * std::f32::consts::TAU));
         store.begin_frame(true);
         assert!(store.prev_run(id).is_some());
         assert!(store.is_empty());

@@ -334,7 +334,8 @@ the code is right and this says why.
   takes the string and hands it to the core's parser under the node's key,
   which is what `<path d>` and `path { d = }` do; `conformance.c` calls
   all three.
-- **"Animating" is two changes running.** Decision 8 said "whose ops hash
+- **"Animating" is two changes running** (widened to two within eight
+  frames by the review below). Decision 8 said "whose ops hash
   differed on two consecutive frames". Built first as one change — a
   frame whose hash differs from the last — that banished every path a
   view reshaped once, a resize included. It is now two: a key whose ops
@@ -366,6 +367,31 @@ the code is right and this says why.
 | `frame_1k_paths_fresh` | 625 µs | the raster bound | a thousand 64 px hexagons rasterized on an empty page: ~330 µs of raster over the cached frame, a third of a microsecond each |
 | `frame_1k_paths_animating` | 837 µs | where decision 8's cliff is | a thousand outlines moving every frame, each a raster and a texture of its own: the cliff is a thousand such paths at under a millisecond, and the threshold wants no count beside its size |
 | `frame_1k_polygons` | 177 µs | unchanged | 97.5 µs on the M3 Pro the table in `docs/performance.md` was written on; this container is slower on every row, and the ratio is what the rows above are read against |
+
+### Review (2026-10-05, the same day)
+
+A review of the built branch found two defects and two rules worth
+moving; all four are in the code and its tests.
+
+- **A draw after `Z` starts where the subpath began.** The rasterizer
+  kept the point before the close as the current point, where SVG, the
+  parser and the hit outline all take the subpath's start: `M10 10 H30
+  V30 Z L10 40 L30 40 Z` painted one triangle and was hit as another.
+- **A stroke alone is hit by the pieces it paints.** The amendment above
+  closed every contour back to its start in the hit list; an open curve
+  — a gauge's arc — was then hit along a chord it never drew. Only a
+  contour its `Z` closed runs back to its start (`path::flatten_stroke`).
+- **"Animating" is two changes within eight frames**
+  (`path::ANIMATING_WINDOW`), not two frames running. A shape driven at
+  half the frame rate, or one with a frame between its changes that a
+  hover or a tick asked for, never changed two frames running and took
+  a new atlas slot per shape, which is the churn decision 8 exists to
+  stop. One change is still a new shape and a new slot.
+- **A `d` string is parsed once per string, not once per frame.** Node,
+  Lua and `kui_path_d` hand the string over every frame; the core keeps
+  the ops it last parsed under the node's key and parses again only
+  when the string differs. The box is two logical px out, not the one
+  decision 1 names: one for the bleed and one for the ramp (`b2c4986`).
 
 The first run of the cached frame measured 647 µs, 3.3× the polygon
 frame, with the bench building a `Path` per hexagon per frame; the

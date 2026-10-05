@@ -21,7 +21,8 @@ use kui_native::{App, Color, Core, FillRule, NodeSpec, Path, QuadKind, Stroke, T
 
 /// A heart, as an icon editor would export it: SVG path data, in a 24 px
 /// box, drawn at any scale by the one parser the core owns.
-const HEART: &str = "M12 21 C12 21 3 14.5 3 8.5 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8.5 C21 14.5 12 21 12 21 Z";
+const HEART: &str =
+    "M12 21 C12 21 3 14.5 3 8.5 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8.5 C21 14.5 12 21 12 21 Z";
 
 struct Demo {
     slices: Vec<(&'static str, f32, Color)>,
@@ -228,9 +229,15 @@ impl Example for Demo {
         let inside = kui_native::Vec2::new(c.x + 50.0 * mid.cos(), c.y + 50.0 * mid.sin());
         let outside = kui_native::Vec2::new(c.x + 84.0 * mid.cos(), c.y + 84.0 * mid.sin());
         d.input(self, kui_native::InputEvent::CursorMoved(inside));
-        d.check(d.core.is_hovered(w1), "a pointer inside the wedge hovers it")?;
+        d.check(
+            d.core.is_hovered(w1),
+            "a pointer inside the wedge hovers it",
+        )?;
         d.input(self, kui_native::InputEvent::CursorMoved(outside));
-        d.check(!d.core.is_hovered(w1), "a pointer in its box past its arc does not")?;
+        d.check(
+            !d.core.is_hovered(w1),
+            "a pointer in its box past its arc does not",
+        )?;
         // Back inside: the fill eases to the accent, from the same slot.
         d.input(self, kui_native::InputEvent::CursorMoved(inside));
         d.frame(self);
@@ -250,7 +257,10 @@ impl Example for Demo {
         let rr = d.rect_of(ring).ok_or("the ring has no region")?;
         let centre = kui_native::Vec2::new(rr.x + rr.w * 0.5, rr.y + rr.h * 0.5);
         d.input(self, kui_native::InputEvent::CursorMoved(centre));
-        d.check(!d.core.is_hovered(ring), "the ring's hole is not the ring's")?;
+        d.check(
+            !d.core.is_hovered(ring),
+            "the ring's hole is not the ring's",
+        )?;
         d.input(
             self,
             kui_native::InputEvent::CursorMoved(kui_native::Vec2::new(centre.x + 33.0, centre.y)),

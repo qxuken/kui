@@ -2044,14 +2044,16 @@ pub const SCENES: &[Scene] = &[
     },
     Scene {
         name: "path",
-        doc: "Six paths in a 200×120 canvas (ADR 0040): two quarter wedges \
+        doc: "Seven paths in a 200×120 canvas (ADR 0040): two quarter wedges \
               of one pie sharing a radial edge, round by their arcs — the \
               first declares a click and a label, so it is a button hit by \
               its outline: a press inside it clicks, a press in its bounding \
               box past the arc reaches nothing — the second keyed; an \
               even-odd ring, declared in the flat op form by the bindings \
               that take it; a stroked cubic with no fill; a triangle filled \
-              and stroked, faded; and a `d` that does not parse, keyed, \
+              and stroked, faded; a bar turned an eighth of a turn about \
+              a pivot it names, by the quad that draws it (ADR 0041); \
+              and a `d` that does not parse, keyed, \
               which raises its warning and draws nothing. Every paint is one \
               glyph-mask quad from the atlas, so the glyph lines of the \
               report pin the masks' slots; nothing is a texture.",
@@ -2075,7 +2077,7 @@ pub const SCENES: &[Scene] = &[
             segments_follow_text: false,
             fragments: 0,
             textures: 0,
-            glyphs_min: 6,
+            glyphs_min: 7,
             access: &["0 window ||", "1 button Wedge||"],
             events: &["wedge -"],
             announcements: &[],
@@ -4678,6 +4680,9 @@ pub const PATH_RING_OPS: &[f32] = &[
 ];
 pub const PATH_CURVE: &str = "M110 90 C130 70 150 110 190 90";
 pub const PATH_TRI: &str = "M20 10 L50 10 L35 40 Z";
+/// The turned bar, and its turn: turns, then the pivot.
+pub const PATH_BAR: &str = "M30 104 H50 V110 H30 Z";
+pub const PATH_BAR_TURN: (f32, f32, f32) = (0.125, 40.0, 107.0);
 pub const PATH_BAD: &str = "M10 10 L20";
 
 fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
@@ -4691,6 +4696,7 @@ fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 PATH_WEDGE,
                 FillRule::NonZero,
                 None,
+                None,
                 NodeSpec::column()
                     .bg(Color::hex(0x7f9cf5ff))
                     .on_click(Value::map([("kind", Value::str("wedge"))]))
@@ -4700,6 +4706,7 @@ fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 "wedge2",
                 PATH_WEDGE2,
                 FillRule::NonZero,
+                None,
                 None,
                 NodeSpec::column().bg(Color::hex(0xd8863bff)),
             );
@@ -4712,18 +4719,32 @@ fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 PATH_CURVE,
                 FillRule::NonZero,
                 Some(Stroke::new(2.0, Color::hex(0x9ad9a0ff))),
+                None,
                 NodeSpec::column(),
             );
             ui.path_d(
                 PATH_TRI,
                 FillRule::NonZero,
                 Some(Stroke::new(1.5, Color::hex(0xffffffff))),
+                None,
                 NodeSpec::column().bg(Color::hex(0xe07a8aff)).opacity(0.5),
+            );
+            // Turned by its quad, about a pivot it names (ADR 0041).
+            ui.path_d(
+                PATH_BAR,
+                FillRule::NonZero,
+                None,
+                Some(crate::path::Turn {
+                    turns: PATH_BAR_TURN.0,
+                    pivot: Some(Vec2::new(PATH_BAR_TURN.1, PATH_BAR_TURN.2)),
+                }),
+                NodeSpec::column().bg(Color::hex(0x7fd6f5ff)),
             );
             ui.path_d_keyed(
                 "bad",
                 PATH_BAD,
                 FillRule::NonZero,
+                None,
                 None,
                 NodeSpec::column().bg(Color::hex(0xffffffff)),
             );

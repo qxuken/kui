@@ -163,7 +163,9 @@ end
 -- fill_rule = "nonzero", width = 2, color = 0xffffffff }: any outline as SVG
 -- path data (or `ops`, the flat op form), filled with `bg` by `fill_rule`
 -- and stroked `width` wide in `color` when `width` is given, placed like a
--- line. Hit by its outline under the rule (docs/adr/0040).
+-- line. Hit by its outline under the rule (docs/adr/0040). `rotate = 0.25`
+-- turns it a quarter turn clockwise about `pivot = {x, y}` (the centre of
+-- its box without one): the quad turns, the mask is drawn once (docs/adr/0041).
 function path(t)
   t.type = "path"
   return t
