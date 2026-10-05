@@ -208,7 +208,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 .join("\n                    ");
             format!(
                 r#"
-            return column {{ pad = 4,
+            return column {{ pad = 4, on_scroll = {{ kind = "zoom" }}, scroll_mods = "ctrl",
               column {{ key = "page", width = 200, height = 100, scroll_y = true, bg = 0x101018ff,
                 row {{ key = "strip", width = 200, height = 80, scroll_x = true,
                   column {{ key = "list", width = 100, height = 80, gap = 4, scroll_y = true,

@@ -78,7 +78,7 @@ const SAMPLE = {
 // The align rows' last value is `baseline`, which means nothing on the
 // main axis or a column's cross axis, so they take a value that does.
 // `buttons` is a list of names, and the shared string sample names none.
-const SAMPLE_BY_NAME = { opacity: 0.5, mainAlign: 'spaceEvenly', crossAlign: 'end', buttons: 'middle' };
+const SAMPLE_BY_NAME = { opacity: 0.5, mainAlign: 'spaceEvenly', crossAlign: 'end', buttons: 'middle', scrollMods: 'ctrl' };
 
 test('protocol exports a version and the schema rows', () => {
   const p = protocol();
@@ -1915,6 +1915,31 @@ test('a drag held past the edge scrolls, follows, and Shift extends from the anc
   assert.deepEqual(ends, { anchor: { index: null, byte: 0 }, focus: { index: null, byte: 1 } });
   assert.equal(ctx.clearSelection(), true);
   assert.equal(ctx.selectionEnds(), null);
+});
+
+// An `onScroll` that names modifiers hears a wheel turned with one of them
+// held, ahead of the scroller under the pointer, and no other (backlog
+// F122).
+test('scrollMods makes onScroll the modified wheel\'s, ahead of a scroller inside it', () => {
+  const ctx = new Ctx();
+  const tree = box({ width: 'grow', height: 'grow', onScroll: { kind: 'zoom' }, scrollMods: 'ctrl super' }, [
+    box({ width: 'grow', height: 200, scrollY: true }, [box({ width: 'grow', height: 900 }, [], 'tall')], 'list'),
+  ]);
+  ctx.frame(400, 200, 1, tree);
+  ctx.cursor(50, 20);
+  ctx.scroll(0, -40);
+  assert.deepEqual(ctx.pollEvents(), [], 'nothing held: the list\'s');
+  ctx.frame(400, 200, 1, tree);
+  assert.equal(ctx.scrollOffset('list').y, 40);
+  ctx.modifiers({ ctrl: true });
+  ctx.pollEvents();
+  ctx.scroll(0, 40);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{
+    kind: 'scroll', x: 50, y: 20, dx: 0, dy: 40, lines: null,
+    mods: { shift: false, ctrl: true, alt: false, super: false }, tag: { kind: 'zoom' },
+  }]);
+  ctx.frame(400, 200, 1, tree);
+  assert.equal(ctx.scrollOffset('list').y, 40, 'the list stood still');
 });
 
 // An `onScroll` node hears the wheel instead of scrolling: pixels on any
@@ -5005,7 +5030,7 @@ SCENE_TREES['cells-scroll'] = (_fx, phase) => {
 // that takes only `y`.
 SCENE_TREES['scroll-gestures'] = () =>
   root({}, [
-    box({ pad: 4 }, [
+    box({ pad: 4, onScroll: { kind: 'zoom' }, scrollMods: 'ctrl' }, [
       box({ width: 200, height: 100, scrollY: true, bg: '#101018' }, [
         box({ dir: 'row', width: 200, height: 80, scrollX: true }, [
           box(

@@ -172,6 +172,7 @@ pub const P_MODIFIER_KEYS: u32 = 120;
 pub const P_OPTION_AS_ALT: u32 = 121;
 pub const P_BOUNCE: u32 = 122;
 pub const P_GRADIENT: u32 = 123;
+pub const P_SCROLL_MODS: u32 = 124;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1008,6 +1009,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Which axes `onScroll` takes (backlog F107): `both` (the default), `x` or `y`. A scroll gesture on an axis the node does not take passes it by, to the scroller around it, and hears nothing here: a terminal that scrolls its history says `y`, and a sideways swipe that starts over it moves the strip it sits in. (A swipe that started elsewhere is not the node's either way: a gesture keeps the target it started with.) Meaningless without `onScroll`.",
     },
     PropDef {
+        name: "scrollMods",
+        id: P_SCROLL_MODS,
+        kind: Kind::Str,
+        apply: Apply::SpecStr(|s, v| s.scroll_mods(crate::input::KeyMods::parse(v))),
+        doc: "The modifiers `onScroll` is for (backlog F122): `\"shift\"`, `\"ctrl\"`, `\"alt\"` and `\"super\"` (⌘, the Windows key), separated by spaces or commas — `\"ctrl super\"`. With any named, the node hears only a scroll gesture that began with one of them held, and hears it first: ahead of every scroll container and every `onScroll` that names none, wherever under the pointer the gesture began, the innermost such node winning — so a Ctrl-wheel zoom declared on the window's root is heard over a list, and the list does not scroll. A wheel with none of them held passes the node by. Its `scroll` events carry `mods`, the modifiers held when the gesture began; the gesture stays the node's to the end of its glide, whatever is let go meanwhile, and one begun without them never becomes its. A word that is none of the four is skipped. Unset, a handler like any other. Meaningless without `onScroll`.",
+    },
+    PropDef {
         name: "window",
         id: P_WINDOW,
         kind: Kind::Enum(WINDOW_ROLES),
@@ -1599,6 +1607,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "`scroll_axes` (`KUI_SCROLL_AXES_*`; zeroed, both)",
     ),
     (
+        "scrollMods",
+        "`scroll_mods` (`KUI_KMOD_*` bits; zeroed, none)",
+    ),
+    (
         "onDrop",
         "`on_drop` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
@@ -2153,7 +2165,7 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "scroll",
-        payload: "`{ kind: \"scroll\", x, y, dx, dy, lines, tag }`",
+        payload: "`{ kind: \"scroll\", x, y, dx, dy, lines, mods?: { shift, ctrl, alt, super }, tag }`",
         doc: "The wheel over an `onScroll` node, or a drag-select held past a `cells` grid's top or bottom edge: `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer in logical viewport coordinates, `lines` the whole lines a `cells` grid's `dy` covers — positive is later history, the sign `originLine` grows in, the fraction carried to the next notch — and null on any other node. The core scrolls nothing for it: the app re-declares the grid's `originLine`, or zooms its canvas. From the edge drag it comes once a frame while the pointer is held past the edge, with the lines that frame's step covers, and the selection's absolute lines survive the scroll the app answers with (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
     },
     EventDef {
@@ -3877,6 +3889,9 @@ mod tests {
                 Kind::Min => Parsed::Bound(Bound::Fit),
                 Kind::Max => Parsed::Bound(Bound::Px(10.0)),
                 Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(1)),
+                // A list of four names, and a string of none of them is
+                // the default: none.
+                Kind::Str if def.name == "scrollMods" => Parsed::Str("ctrl".into()),
                 Kind::Str => Parsed::Str("name".into()),
                 Kind::Family => Parsed::Family(FontFamily::Mono),
                 Kind::Resource => Parsed::Resource(7),

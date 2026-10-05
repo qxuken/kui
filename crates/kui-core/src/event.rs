@@ -116,6 +116,9 @@ pub struct Scroll {
     /// On a `cells` grid: whole rows the wheel moved, the remainder
     /// carried to the next event; later history is negative.
     pub lines: Option<i64>,
+    /// On a node that names `scroll_mods`: the modifiers held when the
+    /// gesture began.
+    pub mods: Option<KeyMods>,
 }
 
 /// Which half of a hover an event reports.
@@ -308,6 +311,7 @@ impl UiEvent {
             pos: point(p)?,
             delta: Vec2::new(p.get_f32("dx")?, p.get_f32("dy")?),
             lines: p.get_int("lines"),
+            mods: p.get("mods").map(mods),
         })
     }
 

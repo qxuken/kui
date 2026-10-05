@@ -353,6 +353,11 @@ impl Core {
                 scrolls_x: spec.layout.scroll_x,
                 scrolls_y: spec.layout.scroll_y,
                 contain: spec.interact().overscroll == crate::spec::Overscroll::Contain,
+                mods: if handler {
+                    spec.events().scroll_mods.bits()
+                } else {
+                    0
+                },
                 parent: self.enclosing_scroll_region(i, scroll_regions),
             });
         }

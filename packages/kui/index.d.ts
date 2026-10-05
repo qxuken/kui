@@ -172,6 +172,9 @@ export type ScrollMsg<T = AppMsg> = {
   dx: number;
   dy: number;
   lines: number | null;
+  /** On a node that names `scrollMods`: the modifiers held when the
+   *  gesture began. */
+  mods?: { shift: boolean; ctrl: boolean; alt: boolean; super: boolean };
   tag?: T;
 };
 

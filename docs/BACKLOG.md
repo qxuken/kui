@@ -1522,6 +1522,20 @@ so the core took them for nodes it cannot ask. Two entries, F117 and
 F118, **built 2026-10-02**, the day they were filed, and in the
 archive, with ADR 0038's amendments.
 
+## From the kawoosh wheel-zoom report (2026-10-05)
+
+kawoosh was asked for the wheel to size its font: "let's add
+ctrl/cmd-scroll up/down to change font size". Its editor panes and
+terminals hear the wheel as `on_scroll` handlers and could have read
+the modifiers there; its pickers, lists, tab strip and every Lua view
+scroll in containers, which take a wheel before any app hears of it —
+so the same gesture would have sized the font over one pane and
+scrolled a list over the next. A first build was a flag on the core
+(`set_wheel_zoom`, a `zoom` event on the root); its user: "i wonder
+about set_wheel_zoom. it looks too specific" — it named the keys, the
+meaning and the one listener, all three the app's. One entry, F122,
+**built 2026-10-05**, the day it was filed, and in the archive.
+
 ## From the kawoosh Cyrillic-terminal report (2026-10-05)
 
 A terminal in kawoosh, in a family with no Cyrillic (Berkeley Mono),
@@ -2425,6 +2439,8 @@ Nothing of the kawoosh sticky-swipe report is open (F117 and F118
 **built 2026-10-02**, the day they were filed).
 Nothing of the kawoosh menus-on-a-Mac report is open (F119 **built
 2026-10-03**, the day it was filed).
+Nothing of the kawoosh wheel-zoom report is open (F122 **built
+2026-10-05**, the day it was filed).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -3347,6 +3363,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh wheel-zoom report (2026-10-05)** — F122, filed and built the same day
+
+- `~` **F122** — [A wheel with a modifier held goes to whatever scrolls under the pointer, and no handler around it can claim it](backlog/closed-2026-09.md#-f122--a-wheel-with-a-modifier-held-goes-to-whatever-scrolls-under-the-pointer-and-no-handler-around-it-can-claim-it--done-2026-10-05) — done (2026-10-05) — `scrollMods` on an `onScroll` node (`NodeSpec::scroll_mods(KeyMods)`, C `KuiSpec.scroll_mods`, ABI 25): the node hears only a gesture begun with a named modifier held, ahead of every container and plain handler under the pointer, the innermost winning; its events carry `mods`; a gesture stays what it began as
 
 **From the kawoosh Cyrillic-terminal report (2026-10-05)** — F120 and F121, filed and built the same day
 

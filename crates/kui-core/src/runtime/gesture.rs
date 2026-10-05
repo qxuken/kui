@@ -31,6 +31,11 @@ const AT_LIMIT: f32 = 0.5;
 pub(crate) struct ScrollLatch {
     x: Option<Key>,
     y: Option<Key>,
+    /// The modifiers held when the gesture began (`KeyMods::bits`): what
+    /// a handler's `scroll_mods` is asked against for the whole of it, so
+    /// a glide stays what the swipe was whatever is let go or pressed
+    /// meanwhile (backlog F122).
+    held: u32,
 }
 
 /// What a scroll region says to a gesture starting over it on one axis.
@@ -47,7 +52,10 @@ impl Core {
     /// moves on — to the ones picked under the pointer now.
     pub(crate) fn route_scroll(&mut self, delta: Vec2, begins: bool, out: &mut Vec<UiEvent>) {
         if begins {
-            self.scroll_latch = ScrollLatch::default();
+            self.scroll_latch = ScrollLatch {
+                held: self.interaction.modifiers().bits(),
+                ..ScrollLatch::default()
+            };
         }
         let tx = (delta.x != 0.0)
             .then(|| self.scroll_target(true, delta.x))
@@ -105,6 +113,24 @@ impl Core {
             .map(|r| r.node)
             .and_then(|node| regions.iter().rposition(|r| r.node == node));
         let mut picked = None;
+        // A handler that names the modifiers held is the more specific
+        // ask (`scroll_mods`, backlog F122): the innermost one around the
+        // pointer takes the gesture ahead of every region that names
+        // none, whatever room those have.
+        let held = self.scroll_latch.held;
+        let mut named = at.filter(|_| held != 0);
+        while let Some(i) = named {
+            let r = regions[i];
+            if r.inert {
+                break;
+            }
+            if r.mods & held != 0 && if x { r.takes_x } else { r.takes_y } {
+                picked = Some(r);
+                at = None;
+                break;
+            }
+            named = (r.parent != NIL).then_some(r.parent as usize);
+        }
         while let Some(i) = at {
             let r = regions[i];
             // Out through a modal's edge is out of its scope: the one
@@ -137,7 +163,9 @@ impl Core {
     /// tree.
     fn answer(&self, r: &ScrollRegion, x: bool, d: f32) -> Answer {
         let takes = if x { r.takes_x } else { r.takes_y };
-        if !takes {
+        // A handler that names modifiers was asked before this walk, of
+        // the ones held: here it is nobody's.
+        if !takes || r.mods != 0 {
             return Answer::Pass;
         }
         let scrolls = if x { r.scrolls_x } else { r.scrolls_y };
@@ -164,7 +192,18 @@ impl Core {
     fn scroll_into(&mut self, r: ScrollRegion, delta: Vec2, out: &mut Vec<UiEvent>) {
         if r.handler {
             let p = self.interaction.cursor().unwrap_or(Vec2::ZERO);
-            if let Some(ev) = self.scroll_event(r.key, p, delta) {
+            if let Some(mut ev) = self.scroll_event(r.key, p, delta) {
+                // Ahead of `tag`, which every payload ends on.
+                if r.mods != 0
+                    && let Value::Map(entries) = &mut ev.payload
+                {
+                    let held = crate::input::KeyMods::from_bits(self.scroll_latch.held);
+                    let at = entries
+                        .iter()
+                        .position(|(k, _)| k == "tag")
+                        .unwrap_or(entries.len());
+                    entries.insert(at, ("mods".to_string(), held.to_fields()));
+                }
                 out.push(ev);
             }
         } else {
