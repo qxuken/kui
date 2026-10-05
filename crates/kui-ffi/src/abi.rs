@@ -130,7 +130,8 @@
 ///   (signature changes): five floats, or NULL for a solid stroke.
 ///   `gradient` on `KuiSpec` (64-bit size 696), with `KuiGradient` and
 ///   `KuiGradientStop`.
-pub const KUI_ABI_VERSION: u32 = 24;
+/// - ABI 25: `scroll_mods` on `KuiSpec` (64-bit size 704).
+pub const KUI_ABI_VERSION: u32 = 25;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

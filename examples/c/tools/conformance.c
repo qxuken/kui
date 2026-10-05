@@ -1857,8 +1857,12 @@ static void conf_scroll_handler_room(KuiCtx *ui, const Fixtures *f, int phase) {
 static void conf_scroll_gestures(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
-    KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4};
+    KuiValue *zoom = kui_value_map();
+    kui_value_map_set(zoom, KUI_STR("kind"), kui_value_str(KUI_STR("zoom")));
+    KuiSpec outer = {.pad_l = 4, .pad_r = 4, .pad_t = 4, .pad_b = 4,
+                     .on_scroll = zoom, .scroll_mods = KUI_KMOD_CTRL};
     kui_open(ui, &outer, NULL);
+    kui_value_free(zoom);
     KuiSpec page = {.width = {KUI_FIXED, 200}, .height = {KUI_FIXED, 100},
                     .overflow = KUI_SCROLL_Y, .bg = 0x101018ff};
     kui_open_keyed(ui, KUI_STR("page"), &page, NULL);

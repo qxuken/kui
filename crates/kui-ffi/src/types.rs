@@ -744,6 +744,11 @@ pub struct KuiSpec {
     /// A gradient painted over `bg`, under the border and the children;
     /// NULL for none. Read during the call. ABI 24.
     pub gradient: *const KuiGradient,
+    /// The modifiers `on_scroll` is for (`scrollMods`), as `KUI_KMOD_*`
+    /// bits: with any set, the node hears only a scroll gesture begun
+    /// with one of them held, ahead of every scroller under the pointer.
+    /// 0 is none: a handler like any other. ABI 25.
+    pub scroll_mods: u32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

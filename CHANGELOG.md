@@ -21,6 +21,41 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- C: `KuiSpec` gains `scroll_mods` at its end (64-bit size 704), so
+  `KUI_ABI_VERSION` is 25; recompile. A zeroed spec is what it was.
+- Rust: `event::Scroll` gains a `mods` field and `EventSpec` a
+  `scroll_mods` one (under Added), so a struct literal of either needs
+  them.
+
+The Node wire stays v21: `scrollMods` is one more string row.
+
+### Added
+
+- **An `onScroll` node can be for a modified wheel** (backlog F122,
+  from kawoosh). `scrollMods` — `"ctrl super"`, any of `shift`, `ctrl`,
+  `alt`, `super`; Rust `NodeSpec::scroll_mods(KeyMods)`, C
+  `KuiSpec.scroll_mods` in `KUI_KMOD_*` bits, Lua `scroll_mods` — and
+  the node hears only a scroll gesture that began with one of them
+  held, and hears it first: ahead of every scroll container and every
+  `onScroll` that names none, wherever under the pointer the gesture
+  began, the innermost such node winning. A Ctrl-wheel zoom declared
+  on the window's root is heard over a list, and the list does not
+  scroll; a canvas inside can name the same key and take it for
+  itself. A wheel with none of them held passes the node by. Its
+  `scroll` events carry `mods` (`Scroll::mods`), the modifiers held
+  when the gesture began: a gesture stays what it began as to the end
+  of its glide, whatever is let go or pressed meanwhile.
+
+**What you can delete.** An `onScroll` handler that read the modifiers
+to tell a zoom from a scroll, and the scroll it then had to do itself
+for the plain wheel — and the knowledge that it only ever worked over
+that handler's own node, every scroll container inside it taking the
+same wheel first.
+
 ## 0.1.0-alpha.37 (2026-10-05)
 
 **What breaks.**

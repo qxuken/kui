@@ -775,6 +775,29 @@ rows.
 [`transition` row](props.md#container-props) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
+### How do I zoom with Ctrl or ⌘ and the wheel?
+
+Put an `onScroll` on the node that zooms and say which keys it is for:
+`<box onScroll={{ kind: 'zoom' }} scrollMods="ctrl super">` (Rust
+`.on_scroll(tag).scroll_mods(KeyMods::NONE.with_ctrl().with_super())`,
+C `.scroll_mods = KUI_KMOD_CTRL | KUI_KMOD_SUPER`, Lua `scroll_mods =
+"ctrl super"`). A wheel turned with one of them held is then that
+node's `scroll` event wherever under the pointer it began — over a
+list inside it, and the list does not move — and a plain wheel passes
+the node by, so the lists go on scrolling. On the window's root it is
+the whole window's zoom; a canvas inside can name the same key and take
+the gesture for itself, the innermost winning. Positive `dy` is the
+wheel rolling up, "bigger". A mouse's notch is 40 px and a trackpad's
+swipe comes in small pixel steps, so add `dy` up and step when the sum
+crosses your notch rather than once an event. The event's `mods` are
+the keys held when the gesture began: a swipe begun with the key held
+stays yours to the end of its glide even if the key was let go, and
+one begun without it never becomes yours, so there is nothing to latch
+yourself. Without the row an `onScroll` cannot do this: every scroll
+container inside it takes the wheel first.
+
+[`scrollMods` row](props.md#container-props)
+
 ### Why does a swipe down not move the strip sideways?
 
 A trackpad swipe keeps to the axis it started on, so nothing is yours

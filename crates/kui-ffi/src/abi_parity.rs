@@ -790,6 +790,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         max_h_size: KuiSizing => "KuiSizing",
         bounce: f32 => "float",
         gradient: *const KuiGradient => "const KuiGradient *",
+        scroll_mods: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1467,8 +1468,8 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `on_button` and `buttons`; then `overscroll` and
         // `scroll_axes`. ABI 21: `modifier_keys`. ABI 22: the four
         // `*_size` clamps. ABI 23:
-        // `bounce`. ABI 24: `gradient`.
-        ("KuiSpec", 696, 24),
+        // `bounce`. ABI 24: `gradient`. ABI 25: `scroll_mods`.
+        ("KuiSpec", 704, 25),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

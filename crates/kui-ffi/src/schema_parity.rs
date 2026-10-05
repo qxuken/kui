@@ -165,6 +165,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             // them claims nothing, which the C bits cannot say (zero is
             // all three): its sample is one of the names.
             Kind::Str if def.name == "buttons" => Parsed::Str("middle".into()),
+            // And `scrollMods` of four.
+            Kind::Str if def.name == "scrollMods" => Parsed::Str("ctrl".into()),
             Kind::Str => Parsed::Str("name".into()),
             // C names the stock three by index (`KUI_FONT_*`) and an
             // installed family by its handle (`kui_font_add_system`), so
@@ -315,6 +317,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "buttons" => s.buttons = KUI_BUTTONS_MIDDLE,
             "overscroll" => s.overscroll = KUI_OVERSCROLL_CONTAIN,
             "scrollAxes" => s.scroll_axes = KUI_SCROLL_AXES_X,
+            "scrollMods" => s.scroll_mods = KUI_KMOD_CTRL,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -504,6 +507,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         max_h_size: KuiSizing { tag: 0, value: 0.0 },
         bounce: 0.3,
         gradient: std::ptr::null(),
+        scroll_mods: KUI_KMOD_CTRL | KUI_KMOD_SUPER,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -600,6 +604,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .buttons(kui_core::Buttons::SECONDARY | kui_core::Buttons::MIDDLE)
         .overscroll(kui_core::Overscroll::Contain)
         .scroll_axes(kui_core::ScrollAxes::Y)
+        .scroll_mods(kui_core::KeyMods::NONE.with_ctrl().with_super())
         .modifier_keys()
         .initial_focus()
         .disabled(true)

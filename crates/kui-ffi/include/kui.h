@@ -300,8 +300,12 @@ extern "C" {
  * appends gradient to KuiSpec, a pointer to the new KuiGradient: a
  * gradient painted over bg; NULL, as a zeroed spec has it, paints none.
  * The 64-bit size is 696.
+ *
+ * ABI 25 appends scroll_mods to KuiSpec: the modifiers an on_scroll node
+ * is for, as KUI_KMOD_* bits. Zeroed, the handler is asked as before. The
+ * 64-bit size is 704. Recompile.
  */
-#define KUI_ABI_VERSION 24u
+#define KUI_ABI_VERSION 25u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1126,6 +1130,14 @@ typedef struct KuiSpec {
     /* A gradient over bg, under the border and the children (see
      * KuiGradient); NULL paints none. ABI 24. */
     const KuiGradient *gradient;
+    /* The modifiers on_scroll is for, as KUI_KMOD_* bits (scrollMods):
+     * with any set, the node hears only a scroll gesture that began with
+     * one of them held, and hears it ahead of every scroll container and
+     * every on_scroll that names none, wherever under the pointer the
+     * gesture began - a Ctrl-wheel zoom declared on the root, heard over a
+     * list that then does not scroll. Its scroll events carry `mods`. 0
+     * (the zeroed spec): a handler like any other. ABI 25. */
+    uint32_t scroll_mods;
 } KuiSpec;
 
 /* Size expressions, built from parts so nothing is parsed:

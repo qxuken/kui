@@ -2853,7 +2853,11 @@ pub const SCENES: &[Scene] = &[
               sideways one passes it by and moves the strip — without \
               `scrollAxes` the terminal would hear it too. Each `Scroll` \
               is a gesture of its own; latching across a gesture is a \
-              driver's gesture boundaries, pinned in kui-core's tests.",
+              driver's gesture boundaries, pinned in kui-core's tests. \
+              The box around it all hears the wheel for Ctrl alone \
+              (`scrollMods`, backlog F122): the notches before never \
+              reach it, and with Ctrl held the same notch over the list \
+              at its limit, `contain` and all, is its event.",
         custom: &["overflow", "key", "pad"],
         elements: &["box"],
         build: build_scroll_gestures,
@@ -2865,6 +2869,10 @@ pub const SCENES: &[Scene] = &[
             Step::Cursor(150, 30),
             Step::Scroll(0, -10),
             Step::Scroll(-30, 0),
+            Step::Modifiers(KeyMods::CTRL),
+            Step::Cursor(30, 30),
+            Step::Scroll(0, -20),
+            Step::Modifiers(0),
         ],
         expect: Expect {
             solid: 12,
@@ -2881,7 +2889,12 @@ pub const SCENES: &[Scene] = &[
                 "2 scrollView ||",
                 "3 scrollView ||",
             ],
-            events: &["scroll term -"],
+            events: &[
+                "scroll term -",
+                "modifiers -",
+                "scroll zoom -",
+                "modifiers -",
+            ],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -4137,7 +4150,11 @@ pub const CELLS_SCROLL_ORIGIN: u64 = 100;
 /// `scroll-gestures`: a page (y) holding a strip (x) holding a contained
 /// list (y) and a y-only wheel handler, then a spacer each.
 fn build_scroll_gestures(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
-    ui.with(NodeSpec::column().pad(4.0), |ui| {
+    let around = NodeSpec::column()
+        .pad(4.0)
+        .on_scroll(Value::map([("kind", Value::str("zoom"))]))
+        .scroll_mods(KeyMods::NONE.with_ctrl());
+    ui.with(around, |ui| {
         ui.with_keyed(
             "page",
             NodeSpec::column()

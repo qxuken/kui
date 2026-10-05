@@ -1052,6 +1052,39 @@ impl KeyMods {
         self.shift || self.ctrl || self.alt || self.super_key
     }
 
+    /// Whether any modifier of `other` is held here.
+    pub fn any_of(self, other: KeyMods) -> bool {
+        self.bits() & other.bits() != 0
+    }
+
+    /// From the schema's spelling (the `scrollMods` row): names separated
+    /// by spaces or commas — `"ctrl"`, `"ctrl super"`, `"shift, alt"`. A
+    /// word that is none of the four is skipped, so a string of none of
+    /// them names nothing.
+    pub fn parse(names: &str) -> Self {
+        names.split(|c: char| c == ',' || c.is_whitespace()).fold(
+            Self::NONE,
+            |m, name| match name {
+                "shift" => m.with_shift(),
+                "ctrl" => m.with_ctrl(),
+                "alt" => m.with_alt(),
+                "super" => m.with_super(),
+                _ => m,
+            },
+        )
+    }
+
+    /// `{shift=, ctrl=, alt=, super=}`: the state as an event carries it
+    /// under a field of its own (a `scroll` event's `mods`).
+    pub fn to_fields(self) -> Value {
+        Value::map([
+            ("shift", Value::Bool(self.shift)),
+            ("ctrl", Value::Bool(self.ctrl)),
+            ("alt", Value::Bool(self.alt)),
+            ("super", Value::Bool(self.super_key)),
+        ])
+    }
+
     /// The platform primary shortcut modifier: Command on macOS, Control
     /// elsewhere.
     pub fn primary(self) -> bool {
@@ -1767,6 +1800,10 @@ pub struct ScrollRegion {
     pub(crate) scrolls_y: bool,
     /// `overscroll: contain`: a gesture starting here stays here.
     pub(crate) contain: bool,
+    /// A handler's `scroll_mods`, as `KeyMods::bits`: it takes a gesture
+    /// begun with one of them held, ahead of every region that names
+    /// none, and no other. Zero for a region that names none.
+    pub(crate) mods: u32,
     /// The index in the frame's region list of the nearest scroll region
     /// around this one in the tree, [`crate::tree::NIL`] for none: where
     /// a gesture this one passes goes next, whatever else is painted under the pointer.

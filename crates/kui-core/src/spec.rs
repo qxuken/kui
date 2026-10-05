@@ -1041,6 +1041,21 @@ pub struct EventSpec {
     /// [`ScrollAxes::Y`], and a sideways swipe that meets it goes on
     /// moving the strip it sits in. Meaningless without `on_scroll`.
     pub scroll_axes: ScrollAxes,
+    /// The modifiers [`on_scroll`](Self::on_scroll) is for (backlog
+    /// F122): with any named, the node hears only a scroll gesture that
+    /// began with one of them held — and hears it *first*, wherever in
+    /// the tree under the pointer the gesture began: ahead of every
+    /// scroll container and every handler that names none, the innermost
+    /// such node winning. A wheel with none of them held passes it by as
+    /// if it declared no `on_scroll`. What a Ctrl-wheel zoom is declared
+    /// with, on the window's root or on the one canvas it zooms: a
+    /// modified wheel is the more specific ask, and no list under the
+    /// pointer scrolls for it. Its events carry `mods`, the modifiers
+    /// held when the gesture began — the gesture stays this node's to
+    /// its end, glide included, whatever is let go meanwhile. None named
+    /// (the default): a handler like any other. Meaningless without
+    /// `on_scroll`.
+    pub scroll_mods: crate::input::KeyMods,
     /// Hover events: the pointer entering or leaving this node emits
     /// `{kind="hover", phase="enter"|"leave", tag}` with this payload under
     /// `tag` — for hover-dependent *layout* (a close button that appears)
@@ -1115,6 +1130,7 @@ impl EventSpec {
         buttons: Buttons::ALL,
         on_scroll: None,
         scroll_axes: ScrollAxes::Both,
+        scroll_mods: crate::input::KeyMods::NONE,
         on_hover: None,
         on_drop: None,
         on_layout: None,
@@ -2396,6 +2412,15 @@ impl NodeSpec {
     /// passes it by. Meaningless without `on_scroll`.
     pub fn scroll_axes(mut self, axes: ScrollAxes) -> Self {
         self.events_mut().scroll_axes = axes;
+        self
+    }
+
+    /// The modifiers `on_scroll` is for (see the `scroll_mods` field):
+    /// `KeyMods::NONE.with_ctrl().with_super()` hears a wheel turned with
+    /// Ctrl or ⌘ held, ahead of every scroller under the pointer, and no
+    /// other wheel. Meaningless without `on_scroll`.
+    pub fn scroll_mods(mut self, mods: crate::input::KeyMods) -> Self {
+        self.events_mut().scroll_mods = mods;
         self
     }
 
