@@ -12,12 +12,14 @@ state it has, inside the devtools:
 
 - **[`widgets/`](examples/widgets.md)** — one element or stock widget each: `button`, `edit`,
   `select`, `table`, `virtual_list`, `cells` (a terminal grid),
-  `image`, `fragment` (a box a shader paints), `menu_bar`, `titlebar`.
+  `image`, `fragment` (a box a shader paints), `path` (any outline, as
+  SVG path data), `menu_bar`, `titlebar`.
 - **[`features/`](examples/features.md)** — one behaviour each: `hover`, `drag`, `drop`,
   `focus`, `selection`, `clipboard`, `audio`, `accessibility`,
   `theme`, `metrics`, `transition`, `enter_exit`, `waker`.
 - **[`apps/`](examples/apps.md)** — how it composes: `splitmux` (a tiling pane
-  multiplexer), `modal_editor` (a Helix-style editor), `syntax_view`.
+  multiplexer), `modal_editor` (a Helix-style editor), `syntax_view`,
+  `loaders`.
 
 Reading order after this book: [`features/focus.rs`](examples/features/focus.md), then
 [`widgets/edit.rs`](examples/widgets/edit.md), then [`apps/splitmux.rs`](examples/apps/splitmux.md).

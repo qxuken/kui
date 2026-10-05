@@ -191,6 +191,33 @@ pub extern "C" fn kui_image_with(
     });
 }
 
+/// The spec of a leaf placed like a stroke, with its three payloads
+/// consumed whether or not there is a `spec` to read: a NULL one is a leaf
+/// with no fill, which a stroked path still is, and its handlers hold.
+fn leaf_spec(
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_hover: *mut KuiValue,
+) -> kui_core::NodeSpec {
+    match unsafe { spec.as_ref() } {
+        Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
+        None => {
+            let mut spec = kui_core::NodeSpec::column();
+            if let Some(v) = take_msg(on_click) {
+                spec = spec.on_click(v);
+            }
+            if let Some(v) = take_msg(on_drag) {
+                spec = spec.on_drag(v);
+            }
+            if let Some(v) = take_msg(on_hover) {
+                spec = spec.on_hover(v);
+            }
+            spec
+        }
+    }
+}
+
 /// A filled polygon through `count` points at `xy` (x0, y0, x1, y1, ...),
 /// at most eight (more are dropped with a `polygon-points-truncated`
 /// warning, fewer than three draw nothing), filled with `spec`'s `bg`.
@@ -211,6 +238,8 @@ pub extern "C" fn kui_polygon(
     on_hover: *mut KuiValue,
 ) {
     guard((), || {
+        // First, so the payloads are consumed on every way out.
+        let spec = leaf_spec(spec, on_click, on_drag, on_hover);
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return;
         };
@@ -224,10 +253,6 @@ pub extern "C" fn kui_polygon(
             .iter()
             .map(|p| kui_core::Vec2::new(p[0], p[1]))
             .collect();
-        let spec = match unsafe { spec.as_ref() } {
-            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
-            None => kui_core::NodeSpec::column(),
-        };
         match opt_str(label) {
             Some(label) => c.core().polygon_node_keyed(&label, &points, spec),
             None => c.core().polygon_node(&points, spec),
@@ -242,12 +267,12 @@ pub extern "C" fn kui_polygon(
 /// theme's foreground) over the fill; turned by `rotate` turns about
 /// `pivot` (two floats in the path's coordinates, NULL for the centre of
 /// its box) by the quad that draws it, so a path that only turns is
-/// rasterized once (ADR 0041) — 0 and NULL for no turn. Placed like a stroke: a float sized
-/// to its own bounding box, in the parent's box space. `label` keys the
+/// rasterized once — 0 and NULL for no turn. Placed like a stroke: a
+/// float sized to its own bounding box, in the parent's box space. `label` keys the
 /// node (empty for a key from the tree position). The three payloads are
 /// consumed as [`kui_open_with`] consumes them; a path with one is hit
 /// by its outline under the fill rule. A NULL `spec` is a path with no
-/// fill; ops that are not the flat form draw nothing.
+/// fill, its payloads kept; ops that are not the flat form draw nothing.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn kui_path(
@@ -266,6 +291,8 @@ pub extern "C" fn kui_path(
     on_hover: *mut KuiValue,
 ) {
     guard((), || {
+        // First, so the payloads are consumed on every way out.
+        let spec = leaf_spec(spec, on_click, on_drag, on_hover);
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return;
         };
@@ -295,10 +322,6 @@ pub extern "C" fn kui_path(
                 path = path.pivot(p.x, p.y);
             }
         }
-        let spec = match unsafe { spec.as_ref() } {
-            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
-            None => kui_core::NodeSpec::column(),
-        };
         match opt_str(label) {
             Some(label) => c.core().path_node_keyed(&label, &path, spec),
             None => c.core().path_node(&path, spec),
@@ -345,6 +368,8 @@ pub extern "C" fn kui_path_d(
     on_hover: *mut KuiValue,
 ) {
     guard((), || {
+        // First, so the payloads are consumed on every way out.
+        let spec = leaf_spec(spec, on_click, on_drag, on_hover);
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return;
         };
@@ -359,10 +384,6 @@ pub extern "C" fn kui_path_d(
             };
             kui_core::Stroke::new(width, color)
         });
-        let spec = match unsafe { spec.as_ref() } {
-            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
-            None => kui_core::NodeSpec::column(),
-        };
         match opt_str(label) {
             Some(label) => c
                 .core()
@@ -581,6 +602,8 @@ pub extern "C" fn kui_polyline(
     on_hover: *mut KuiValue,
 ) {
     guard((), || {
+        // First, so the payloads are consumed on every way out.
+        let spec = leaf_spec(spec, on_click, on_drag, on_hover);
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return;
         };
@@ -594,10 +617,6 @@ pub extern "C" fn kui_polyline(
             .iter()
             .map(|p| kui_core::Vec2::new(p[0], p[1]))
             .collect();
-        let spec = match unsafe { spec.as_ref() } {
-            Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
-            None => kui_core::NodeSpec::column(),
-        };
         // A stroke with no colour of its own is the theme's foreground,
         // the way a text run with none is.
         let color = if color == 0 {

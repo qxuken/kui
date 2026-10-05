@@ -44,6 +44,11 @@ that prop costs.
 | `frame_1k_curves` | 1k curves through eight knots each, re-flattened by chord length every frame — 35 segments a curve | ~246 µs |
 | `frame_1k_polygons` | 1k six-point fills, one fragment quad each (ADR 0025) | ~97.5 µs |
 | `frame_1k_closed_lines` | the same thousand outlines as closed strokes, six segment quads each | ~97.3 µs |
+| `frame_1k_paths_cached` | 1k `path` wedges, their masks in the atlas: one `GlyphMask` quad each and no raster (measured 2026-10-05, with the four rows below, by the alpha.36 pre-tag run, where `frame_1k_polygons` read ~101 µs) | ~212 µs |
+| `frame_1k_paths_fresh` | the same thousand on an empty page every time: the raster bound | ~430 µs |
+| `frame_1k_paths_rotating` | the same thousand, each turned a little further every frame by `rotate`: one mask each, kept, the angle in the quad | ~224 µs |
+| `frame_1k_paths_animating` | the same thousand, every outline moving each frame: a texture of its own each, one raster and one upload a frame | ~449 µs |
+| `raster_pie_wedge_220px` | one wedge of the `path` example's pie, 220 px across, rasterized cold: what a path costs the first time it is seen | ~8.58 µs |
 | `frame_1k_typical_with_8_textures` | `frame_1k_typical` plus eight texture-backed images, registered once and updated once, so each is its own texture and a side-list entry (ADR 0025) | ~128 µs |
 | `update_image_1080p_and_frame` | replacing a 1080p frame — the `Vec` handoff, the revision bump, then the frame that draws it; the upload is the backend's (`benches/split.rs` in kui-wgpu under `TEX=1`) | ~136 µs |
 | `copy_1080p_frame` | the app's own copy of that 1080p frame, measured beside it so the core's share of `update_image_1080p_and_frame` is the difference | ~139 µs |

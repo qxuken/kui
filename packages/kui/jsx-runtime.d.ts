@@ -160,7 +160,7 @@ export interface FloatProp {
    *  canvas panned past the canvas's edge is cut there and cannot be hit
    *  past it. Read with the `parent` anchor (and `below` / `above`, which
    *  anchor to the parent) only; still drawn as a layer over its in-flow
-   *  siblings. A `line` or `polygon` in its parent's box is always
+   *  siblings. A `line`, `polygon` or `path` in its parent's box is always
    *  clipped this way. */
   clip?: boolean;
 }

@@ -21,15 +21,31 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.36 (2026-10-05)
 
-**What breaks.** Nothing in a build: `KUI_ABI_VERSION` stays 23 — the
-C API gains three functions and two enums and changes no struct or
-signature, which the ABI rule does not bump for — and the Node wire
-moves to v20 for the one new op, which an encoder and addon of one
-release never see apart.
+**What breaks.**
 
-- `path` is a new element in every binding
+- Rust: `NodeKind::Path`, `HitShape::Path` and `NodeContent::Path` (under
+  Added), so an exhaustive match on any of the three needs the arm.
+- Node: `NodeInfo.kind` gains `'path'` and `WarningCode` gains
+  `'path-malformed'` and `'path-too-large'`, so an exhaustive `switch`
+  over either wants the cases.
+- C: `kui_polyline` and `kui_polygon` with a NULL `spec` and a payload
+  are hit, where the payload was dropped (RG109, under Fixed).
+- A host that draws the list itself (C, or a renderer of your own):
+  `KuiQuad.blur` / `Quad::blur` on a `GlyphMask` or `Texture` quad is
+  the quad's turn in radians about its centre — 0 on every glyph and
+  image, a path's `rotate` on a path's quads (under Added). A renderer
+  that ignores it draws turned paths upright; nothing else changes.
+
+No C build breaks: `KUI_ABI_VERSION` stays 23 — the C API gains three
+functions and two enums and changes no struct or signature, which the
+ABI rule does not bump for — and the Node wire moves to v20 for the one
+new op, which an encoder and addon of one release never see apart.
+
+### Added
+
+- **`path` is a new element in every binding**
   ([ADR 0040](docs/adr/0040-a-path-is-a-mask-in-the-atlas.md)): any
   outline as SVG path data (`<path d="M … Z" bg width color fillRule/>`,
   `path { d = }`, `kui_path_d` / `kui_path` with `kui_path_parse`,
@@ -51,10 +67,19 @@ release never see apart.
   draws it), and one past 8192 px on a side draws nothing with
   `path-too-large`; a `d` that does not parse raises `path-malformed`
   with the byte. `HitShape::Path` carries the rule; `NodeKind::Path` in
-  the devtools; the `path` corpus scene in four bindings; the `path`
+  the devtools. A draw after `Z` starts where the subpath began, in the
+  mask as in the hit outline; a stroke with no fill is hit by the pieces
+  it paints and not along the chord of an open curve; and a `d` string
+  handed over every frame is parsed when it changes, not every frame.
+  A fill with no area — a ring's sector at a sweep of 0 — paints
+  nothing; a path holding a NaN or an infinity (`1e99` in `d` is one)
+  among its coordinates or in its turn draws nothing with
+  `path-malformed`; and ops in the flat form whose code is not a whole
+  0 to 5 are refused.
+  The `path` corpus scene in four bindings; the `path`
   example; `frame_1k_paths_cached`, `frame_1k_paths_fresh`,
   `frame_1k_paths_animating` and `raster_pie_wedge_220px` benches.
-- `rotate` and `pivot` on a `path`
+- **`rotate` and `pivot` on a `path`**
   ([ADR 0041](docs/adr/0041-a-mask-turns-about-its-centre.md)):
   `<path d rotate={0.25} pivot={[x, y]}/>`, `path { d =, rotate =, pivot
   = {x, y} }`, `Path::rotated(turns)` and `Path::pivot(x, y)`, and two
@@ -72,7 +97,30 @@ release never see apart.
   and two fills that share an edge and turn together show a faint seam
   (0.94 where an upright seam is whole). `rotate` does not tween. Hit
   where it is drawn.
-- An animating window no longer turns its run loop between frames
+- **`examples/rust/apps/loaders.rs`**: ten loaders over one job — a pie, a
+  ring and a bar that draw its progress, seven that draw only the time —
+  with the clock in the model, a frame asked for only while the job
+  runs, the round fills as `path`s that change every frame, and reduced
+  motion honoured. Its arc turns by `rotate`: one atlas mask, turned
+  by its quad. The job's button holds the keyboard, so Space starts it.
+- **`polygon` is unchanged**: the eight-point fill whose SDF costs nothing per
+  frame however it moves, for an arrowhead on a tweening connector or a
+  strip under a live sparkline.
+
+### Changed
+
+- **The release workflow's npm step runs**: `release.yml` installs npm
+  11 with `sudo`, where alpha.35's tag failed on `EACCES` under
+  `/usr/local` after the crates were out and the stage was finished by
+  hand; and `scripts/npm-approve.nu` asks nu for npm's global root, so
+  its `latest` step runs on Windows. [docs/releasing.md](docs/releasing.md)
+  has what the first two-host release found out, and pushes the tag to
+  GitHub by name: the Forgejo mirror carried a tag there once without
+  starting its pipeline.
+
+### Fixed
+
+- **An animating window no longer turns its run loop between frames**
   (macOS, backlog F103's held half). While anything animated — a
   transition, a spinner, a view asking for frames — the loop asked for
   the next frame on every turn, the pacer held it for the display, and
@@ -81,26 +129,69 @@ release never see apart.
   display link it had already armed. An empty view asking for a frame
   every frame at 120 Hz went from 102–104% of a core to about 40%, the
   rest being the frame and the platform's own presenting.
-- A `path` painted what it was hit as: a draw after `Z` starts where
-  the subpath began in the mask as in the hit outline, a stroke with no
-  fill is hit by the pieces it paints and not along the chord of an open
-  curve, and a `d` string handed over every frame is parsed when it
-  changes rather than every frame (the ADR's review section).
-- `examples/rust/apps/loaders.rs`: ten loaders over one job — a pie, a
-  ring and a bar that draw its progress, seven that draw only the time —
-  with the clock in the model, a frame asked for only while the job
-  runs, the round ones as `path`s that change every frame, and reduced
-  motion honoured. Its arc turns by `rotate`: one atlas mask, turned
-  by its quad. The job's button holds the keyboard, so Space starts it.
-- `polygon` is unchanged: the eight-point fill whose SDF costs nothing per
-  frame however it moves, for an arrowhead on a tweening connector or a
-  strip under a live sparkline.
+
+- **C: `kui_polygon` and `kui_polyline` consume their payloads on every
+  way out** (backlog RG109, as the new `kui_path` and `kui_path_d` do):
+  a call that drew nothing — a NULL context, too few points — leaked
+  the three `KuiValue`s it was handed, and one with a NULL `spec`
+  dropped them unfreed. A NULL `spec` now keeps its handlers, so a
+  stroke with no spec of its own takes a click.
 
 **What you can delete.** The trigonometry that rebuilt a spinner's `d`
 every frame to turn it; the half-pixel overlap or same-colour hairline
 stroke a chart drew between adjacent wedges to hide the seam; the two
 polygons a shape of more than eight points was split into; the flattening
 an app did to draw an arc, a bezier or an icon's `d` as a polyline.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-05 — the
+fifteen commits after the alpha.35 tag: the `path` element, `rotate` on
+it, the loaders example, F103's held half and the release workflow's
+fixes — with a regression pass over them first: three read-only
+reviews (the core half of `path`, its bindings with the pacer, this
+release's docs), each claim probed with a test before anything
+changed. RG107–RG111 came of it and are in this release; RG112 holds
+what was read and left. This round ran on the Mac alone; Windows and
+Linux did not run it for this tag.
+
+**macOS 27.0.1 on an M3 Pro MacBook Pro, rustc 1.99.0 (the toolchain
+CI runs), Node 26.10.0, nu 0.116.0**, on the release commit's tree,
+the workspace's own artifacts pruned and rebuilt. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets -- -D warnings`
+are clean. `scripts/test.nu`, the workspace's tests with the
+conformance feature: **1764 tests over 133 suites, 0 failed** (4
+ignored). The C round, `cbuild --run`, passes its five checks; the
+corpus passes its **56 scenes** in four adapters, `path` the new one;
+the ABI is **23**. Node's `node --test test.mjs` under
+`KUI_CONFORMANCE_REQUIRED=1`: **207 of 207**. `npm run gen` leaves no
+diff, the examples typecheck and their lockfile installs, the headless
+round passes all **35 drives**, the book builds and
+`scripts/book-examples.nu --check` passes.
+
+**The windowed round**, `smoke -- --node`: **51 Rust examples and the
+eleven Node examples, each on both bases, 120 frames each, every one
+exiting 0** — 124 windows, eight at a time, in 32 s — and `counter`,
+`host`, `c_panel` and `lua_panel` by hand under `KUI_SMOKE_FRAMES=120`,
+each exiting 0 with nothing on stderr: **128 windows over five hosts.**
+The AX audit: **106/106**, the audited window raised to the front by
+its pid first. Before the prune the same round took a minute and
+twice timed out its first eight windows straight after a relink, and
+that was the directory, not the code: `target/debug/examples` held
+47 796 files of older builds, a process's start walks the directory
+its executable is in, and the same binary copied to an empty one
+started as alpha.35's does (eight `counter`s side by side: 3.6 s
+each from the crowded directory, 1.8 s from the empty one, 1.6 s for
+alpha.35's).
+
+**The bench guard** against the alpha.35 tag, on `004d49a`, before the
+pass's fixes (which touch a path's gate and its first raster, and no
+guarded row's code): **green**, none of the 8 guarded rows more than
+10% slower — every one between −2.8% and +0.1% (the worst guarded
+run-to-run spread 2.5%) — and every row both sides have reading
+"same". The five `path` rows are new and in
+[docs/performance.md](docs/performance.md) from this run; the rest of
+its table is kept at alpha.22's numbers.
 
 ## 0.1.0-alpha.35 (2026-10-04)
 

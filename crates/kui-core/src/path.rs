@@ -56,6 +56,11 @@ impl PathOp {
     /// How many floats follow the code of op `code` on the wire; `None`
     /// for a code that is not one.
     pub fn operands(code: f32) -> Option<usize> {
+        // A whole number or nothing: `as` would read 0.9, -0.5 and a NaN
+        // as 0, a move.
+        if code.fract() != 0.0 {
+            return None;
+        }
         match code as i32 {
             0 | 1 => Some(2),
             2 => Some(4),
@@ -63,6 +68,24 @@ impl PathOp {
             4 => Some(7),
             5 => Some(0),
             _ => None,
+        }
+    }
+
+    /// Whether every number of the op is one: no NaN, no infinity.
+    pub fn is_finite(&self) -> bool {
+        let ok = |p: Vec2| p.x.is_finite() && p.y.is_finite();
+        match *self {
+            PathOp::MoveTo(p) | PathOp::LineTo(p) => ok(p),
+            PathOp::QuadTo(c, p) => ok(c) && ok(p),
+            PathOp::CubicTo(a, b, p) => ok(a) && ok(b) && ok(p),
+            PathOp::ArcTo {
+                rx,
+                ry,
+                rotation,
+                to,
+                ..
+            } => rx.is_finite() && ry.is_finite() && rotation.is_finite() && ok(to),
+            PathOp::Close => true,
         }
     }
 
@@ -316,7 +339,7 @@ impl Path {
     /// Turns the path by `turns` (clockwise, y down) about its pivot —
     /// the centre of its outline's box unless [`Self::pivot`] names one.
     /// The turn is the quad's and not the mask's: one raster, whatever
-    /// the angle (ADR 0041).
+    /// the angle.
     pub fn rotated(mut self, turns: f32) -> Self {
         self.turn.get_or_insert_default().turns = turns;
         self
@@ -984,8 +1007,8 @@ pub fn hash_ops(ops: &[PathOp]) -> u64 {
 }
 
 /// What one mask paints: the fill by its rule, bled half a pixel so two
-/// fills sharing an edge meet without the background showing (ADR 0040,
-/// decision 5), or the outline stroked `width` physical px wide.
+/// fills sharing an edge meet without the background showing, or the
+/// outline stroked `width` physical px wide.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MaskPaint {
     Fill(FillRule),
@@ -1010,7 +1033,7 @@ pub fn rasterize(
 
 /// [`rasterize`] with the box's origin `off` physical px into the mask:
 /// what a turning path's mask is drawn with, its pivot at the mask's
-/// centre (ADR 0041).
+/// centre.
 pub fn rasterize_at(
     ops: &[PathOp],
     scale: f32,
@@ -1108,6 +1131,12 @@ pub fn rasterize_at(
                 .style(fill)
                 .size(w, h)
                 .render_into(&mut buf, None);
+            // A fill that covers nothing - a ring's sector at a sweep of
+            // 0, out along a radius and back - has no edge to bleed: the
+            // outline alone would paint it as a hairline.
+            if buf.iter().all(|&a| a == 0) {
+                return buf;
+            }
             // The bleed: the outline a pixel wide, in the same mask by
             // max, so two fills sharing an edge overlap by the ramp.
             let mut edge = vec![0u8; len];
@@ -1135,7 +1164,7 @@ pub fn rasterize_at(
 
 /// The texels a mask may take of the atlas before it goes to a texture
 /// of its own: a quarter of the biggest page, since four of them would
-/// empty it every frame (ADR 0040, decision 7).
+/// empty it every frame.
 pub const MAX_ATLAS_MASK_TEXELS: u64 = 2048 * 2048;
 
 /// The widest or tallest a mask may be and still be drawn from a texture
@@ -1246,7 +1275,7 @@ pub(crate) fn mask_key(hash: u64, scale: f32, bin: (u8, u8), paint: MaskPaint) -
 }
 
 /// How many frames apart two changes of one key's ops may be and still
-/// be an animation (ADR 0040, decision 8): a shape driven at a quarter of
+/// be an animation: a shape driven at a quarter of
 /// the frame rate, or one whose changes have a frame between them that
 /// something else asked for, moves as surely as one that changes every
 /// frame, and each of its shapes would be a slot the atlas never reuses.
@@ -1288,11 +1317,10 @@ pub(crate) struct Run {
     /// [`hash_ops`] of the ops as stored.
     pub hash: u64,
     /// The turn in radians when the path declared one: its box is then
-    /// the square about its pivot, and the angle is the quad's (ADR 0041).
+    /// the square about its pivot, and the angle is the quad's.
     pub angle: Option<f32>,
     /// The key's ops changed twice within [`ANIMATING_WINDOW`] frames:
-    /// the mask goes to a texture of its own and stays there (ADR 0040,
-    /// decision 8).
+    /// the mask goes to a texture of its own and stays there.
     pub animating: bool,
 }
 
@@ -1683,5 +1711,25 @@ mod tests {
         store.begin_frame(true);
         assert!(store.prev_run(id).is_some());
         assert!(store.is_empty());
+    }
+
+    /// A fill with no area paints nothing: the bleed is an edge's, and a
+    /// progress ring at 0 has none.
+    #[test]
+    fn a_fill_with_no_area_is_an_empty_mask() {
+        for p in [
+            Path::sector(16.0, 16.0, 12.0, 8.0, 0.0, 0.0),
+            Path::parse("M2 2 L20 2 Z").unwrap(),
+        ] {
+            let m = rasterize(
+                p.ops(),
+                1.0,
+                (0, 0),
+                32,
+                32,
+                MaskPaint::Fill(FillRule::NonZero),
+            );
+            assert!(m.iter().all(|&a| a == 0));
+        }
     }
 }

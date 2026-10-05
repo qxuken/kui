@@ -353,7 +353,7 @@ pub struct Core {
     /// What each `path` key last declared and when its ops last changed,
     /// and whether the key is animating: one whose ops changed twice
     /// within `path::ANIMATING_WINDOW` frames, whose masks leave the atlas
-    /// for good (ADR 0040, decision 8).
+    /// for good.
     pub(crate) path_motion: rustc_hash::FxHashMap<Key, crate::path::Motion>,
     /// The ops of each `d` string a `path` key last declared, so a string
     /// handed over every frame is parsed once.

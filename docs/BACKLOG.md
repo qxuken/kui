@@ -94,6 +94,10 @@ on a Mac — from the kawoosh settings-pane report of the same day, filed
 and built after the alpha.26 tag, and with the alpha.28 tag DX27 — the
 kui book — from the book round of 2026-09-29, and RG77–RG98 from the
 regression run of 2026-09-30, filed and built after the alpha.27 tag, and
+with the alpha.36 tag RG107–RG111 — a path holding a number that is
+not one, a ring at 0%, C's leaked payloads, a fractional op code and
+the size gate — from the regression pass of 2026-10-05, filed and built
+the same day, and
 with the alpha.29 tag RG99 — RG96's readings, confirmed in a window on
 Linux and Windows — with RG100–RG104 from that window round, filed and
 built the same day after the alpha.28 tag, and RG105 from it, withdrawn
@@ -154,7 +158,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.32".
+Ordered by area, not by priority. What to do next is under "After alpha.35".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -420,7 +424,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.32" below.
+not cover is in "After alpha.35" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2011,7 +2015,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.32*).
+*Distribution* under *After alpha.35*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2135,9 +2139,67 @@ window beneath, by a press winit made up as that window gained focus
 (RG100). RG105, filed the same day, was withdrawn the same day and is
 in the archive: the Windows reading it rested on was a US layout's.
 
-## After alpha.33
+## From the regression pass of 2026-10-05
+
+The pre-tag pass over the fifteen commits after the alpha.35 tag — the
+`path` element ([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)),
+`rotate` on it ([ADR 0041](adr/0041-a-mask-turns-about-its-centre.md)),
+the loaders example and F103's held half — run as the 2026-09-30 one
+was: the mechanical round first (all green), then three read-only
+reviews (the core half of `path`, its bindings with the pacer, the
+release's docs), each claim probed with a test before anything
+changed. The parser, the fill rules, the cache keys, the atlas, the
+ghost, the shader's turn, the Node wire byte for byte and the pacer's
+hold all read sound. Six entries. RG107–RG111 were **built
+2026-10-05**, the day they were filed, and are in the archive: a path
+holding a NaN or an infinity (RG107), a ring at 0% painted as a
+hairline (RG108), C's payloads leaked on an early return and dropped
+with a NULL spec (RG109), a fractional op code read as a move (RG110)
+and the size gate two pixels short (RG111). RG112 holds what was read
+and left.
+
+### `.` RG112 — What the `path` reviews found and the pass left
+
+- **A path's own textures outlive their `Core`.** `PathTextures` has no
+  `Drop`: a window closed while it shows an animating or a big path
+  leaves its minted ids in the mint and its textures in the shared
+  `Gpu`'s cache for the life of the process. A frame built and never
+  rendered loses that frame's `dropped_textures` the same way, which an
+  animating path — one texture swept a frame — meets where a registered
+  image rarely does.
+- **The animating latch is one-way and keyed by position.** A path with
+  a key from the tree position whose earlier sibling comes and goes
+  twice within eight frames reads as two changes and draws from a
+  texture of its own from then on, still as it is. Nothing unlatches.
+- **A visible fill is hit by the fill alone.** Under a thick stroke the
+  outer half of the stroke is painted and not hit; and the choice reads
+  the declared `bg`, so a stroke-only path with a `hover_bg` is still
+  hit as segments while it paints a fill.
+- **Ops that are not the flat form are three things.** A Lua error, and
+  nothing drawn with no warning from Node and from C; only the string
+  form raises `path-malformed`.
+- **`rotate = 0` with no pivot is two boxes.** No turn in C (the tight
+  box, as its header says); a turn of 0 in JSX and Lua (the swept
+  square). A C spinner passing through exactly 0 changes box for that
+  frame.
+- **The limit is the core's, not the device's.** 8192 is hard-coded;
+  a device with a smaller `max_texture_dimension_2d` refuses the
+  texture after the raster, with no warning.
+- **Types.** JSX's `path` and `line` type `width` as a number where the
+  encoder takes a `$length`; both advertise `tooltip`, which a leaf
+  drops. `Core::image_pixels` on a path texture's id is `None` with a
+  resource miss — a host that draws the list itself reads
+  `texture_pixels`.
+
+## After alpha.35
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.33" until 2026-10-05, when the rounds between the alpha.34 and
+alpha.36 tags — the docs for a reader from crates.io and the first
+release cut on two hosts (alpha.35), then the `path` element (ADR 0040),
+`rotate` on it (ADR 0041), the loaders example, F103's held half and
+RG107–RG111 from the pre-tag pass — had landed, and the heading moved
+with the tag; "After
 alpha.32" until 2026-10-03, when the round between the alpha.33 and
 alpha.34 tags — the crates on crates.io, and F119 from kawoosh's
 menus-on-a-Mac report, a macOS menu row drawing the keys it does not
@@ -2664,7 +2726,7 @@ Every closed entry, all in
 [`backlog/closed-2026-09.md`](backlog/closed-2026-09.md) and all verbatim — one heading
 per id, and `tests/docs.rs` holds every id to one entry across both files.
 This index is here so an id resolves without opening that file: the open items
-above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.32" and
+above cite A1, C7, C9, C10, D2, P3, P5, P8, R3, R6 and S2, "After alpha.35" and
 the hygiene note cite C2, C5(b), P3, R4 and R7, and code comments, ADRs and
 commit messages cite ids of their own. All of them are whole in the
 archive. **C11**, **W2** and **C15** were each split for a while — an entry
@@ -3450,3 +3512,15 @@ move.
 **From kawoosh (2026-09-30)** — RG106, filed and built the same day
 
 - `!` **RG106** — [Windows' light/dark switch never reached a running app](backlog/closed-2026-09.md#-rg106--windows-lightdark-switch-never-reached-a-running-app--done-2026-09-30) — done (2026-09-30)
+
+**From the regression pass of 2026-10-05** — RG107–RG111, filed and built the same day
+
+- `.` **RG107** — [A `path` holding a number that is not one reached the rasterizer and the quad](backlog/closed-2026-09.md#-rg107--a-path-holding-a-number-that-is-not-one-reached-the-rasterizer-and-the-quad--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG108** — [A fill with no area painted a hairline: a progress ring at 0 showed a tick](backlog/closed-2026-09.md#-rg108--a-fill-with-no-area-painted-a-hairline-a-progress-ring-at-0-showed-a-tick--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG109** — [C's `kui_path`, `kui_path_d`, `kui_polygon` and `kui_polyline` leaked their payloads on every early return, and dropped them with a NULL spec](backlog/closed-2026-09.md#-rg109--cs-kuipath-kuipathd-kuipolygon-and-kuipolyline-leaked-their-payloads-on-every-early-return-and-dropped-them-with-a-null-spec--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG110** — [A flat-form op code that is not a whole number read as a move](backlog/closed-2026-09.md#-rg110--a-flat-form-op-code-that-is-not-a-whole-number-read-as-a-move--done-2026-10-05) — done (2026-10-05)
+
+- `.` **RG111** — [A path a pixel or two under the mask limit rasterized 400 MB and drew nothing, silently](backlog/closed-2026-09.md#-rg111--a-path-a-pixel-or-two-under-the-mask-limit-rasterized-400-mb-and-drew-nothing-silently--done-2026-10-05) — done (2026-10-05)

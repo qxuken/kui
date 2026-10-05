@@ -671,7 +671,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
-        // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: six paths in a
+        // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: seven paths in a
         // 200×120 canvas; the first wedge takes a click, hit by its arc, the
         // second is keyed, the ring is the flat op form, the cubic is a
         // stroke alone, the triangle is both and faded, and the last does not

@@ -174,10 +174,12 @@ warnings! {
     pub const FRAGMENT_PARAMS_TRUNCATED: &str = "fragment-params-truncated";
     /// A `polygon` declared more than eight points: the stock fragment
     /// takes eight vertices in the sixteen params it has, so the rest
-    /// were dropped. Two polygons, or the path primitive kui does not have.
+    /// were dropped. Two polygons, or a `path`, which takes any outline.
     pub const POLYGON_POINTS_TRUNCATED: &str = "polygon-points-truncated";
     /// A `path`'s `d` did not parse: the message names the byte and what
-    /// was expected there (a number, a command letter, an arc flag). The
+    /// was expected there (a number, a command letter, an arc flag). Or
+    /// the path holds a number that is not finite - a NaN or an infinity,
+    /// which `1e99` in `d` is - among its coordinates or in its turn. The
     /// node draws nothing. Raised once per key.
     pub const PATH_MALFORMED: &str = "path-malformed";
     /// A `path`'s mask is wider or taller than a texture the device can

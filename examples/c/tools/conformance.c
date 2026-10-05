@@ -974,8 +974,11 @@ static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
     size_t n = kui_path_parse(KUI_STR("M120 10 H190 V80 H120 Z M140 30 H170 V60 H140 Z"),
                               ring, 64);
     KuiSpec yellow = {.bg = 0xf5d67fff};
-    kui_path(ui, KUI_STR(""), ring, n, KUI_FILL_EVENODD, 0, 0, 0, NULL, &yellow, NULL, NULL,
-             NULL);
+    /* kui_path_parse answers with what the form needs and writes nothing
+       past `cap`, so a count over the buffer is one to size by, not to draw. */
+    if (n > 0 && n <= 64)
+        kui_path(ui, KUI_STR(""), ring, n, KUI_FILL_EVENODD, 0, 0, 0, NULL, &yellow, NULL,
+                 NULL, NULL);
     kui_path_d(ui, KUI_STR(""), KUI_STR("M110 90 C130 70 150 110 190 90"),
                KUI_FILL_NONZERO, 2, 0x9ad9a0ff, 0, NULL, NULL, NULL, NULL, NULL);
     KuiSpec pink = {.bg = 0xe07a8aff, .opacity_set = 1, .opacity = 0.5f};

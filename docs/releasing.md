@@ -11,7 +11,7 @@ for development). A Rust project needs nothing but the dependency:
 
 ```toml
 # Cargo.toml
-kui-native = "0.1.0-alpha.35"  # `use kui_native::…`; `cargo add kui-native` writes it
+kui-native = "0.1.0-alpha.36"  # `use kui_native::…`; `cargo add kui-native` writes it
 ```
 
 crates.io has had them since 0.1.0-alpha.33; every earlier version is on
@@ -64,7 +64,7 @@ the mirror syncs on its own schedule in any case. Forgejo is the source:
 a ref `origin` does not hold is the mirror's to overwrite, so push the
 same commit and tag to both and nothing else to `github`. The order the
 two pipelines start in does not matter: Forgejo's `publish` waits for
-crates.io. That next
+crates.io. The next release's
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
 unreleased fails the release. The tag then runs two pipelines, one on each
@@ -101,7 +101,7 @@ script makes it live, logged in on npmjs (`npm login`) with npm 11.15 or
 newer (`npm install -g npm@11`):
 
 ```bash
-nu scripts/npm-approve.nu              # the version package.json names; prompts for the 2FA code
+nu scripts/npm-approve.nu              # the version package.json names; npmjs's approval opens in the browser
 nu scripts/npm-approve.nu --dry-run    # say what it would do
 ```
 
@@ -143,7 +143,8 @@ When the job's npm step fails, the crates are on crates.io already and
 the tag cannot move, so a fix to the workflow does not help that release:
 a re-run of the job runs the workflow file the tag points at. alpha.35's
 did fail there — the runner's npm predated `npm stage`, and `npm install
--g` without `sudo` cannot write under `/usr/local`. The step is finished
+-g` without `sudo` cannot write under `/usr/local`; release.yml has
+installed it with `sudo` since. The step is finished
 from any machine, with the run's own prebuilds rather than a rebuild:
 
 ```bash
@@ -179,8 +180,9 @@ npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access pu
 
 then `nu scripts/npm-approve.nu` as above.
 
-No Mac or Windows machine runs anything in either pipeline, and that is the
-limit of what CI proves. The Windows non-client
+No Mac or Windows machine runs a test or opens a window in either pipeline —
+GitHub's macOS and Windows runners compile the Node addon and nothing else —
+and that is the limit of what CI proves. The Windows non-client
 chrome ([windows_nc.rs](../crates/kui-native/src/windows_nc.rs)), the macOS traffic-light
 inset in `widgets::titlebar_with` and the whole AccessKit bridge
 ([access_bridge.rs](../crates/kui-native/src/access_bridge.rs)) are compiled and linked by

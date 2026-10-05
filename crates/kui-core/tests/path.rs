@@ -537,3 +537,65 @@ fn the_default_pivot_is_the_centre_of_the_box() {
     let r = masks(&mut core)[0].rect;
     assert_eq!((r.x + r.w * 0.5, r.y + r.h * 0.5), (60.0, 65.0));
 }
+
+/// A box that is not finite draws nothing and says so, whichever way the
+/// number got in: a coordinate past an f32 in `d`, a NaN among the ops or
+/// in the turn. `max` drops a NaN, so the side alone let these through.
+#[test]
+fn a_path_that_is_not_finite_warns_and_draws_nothing() {
+    let nan = Path::from_floats(&[0.0, 0.0, 0.0, 1.0, 10.0, f32::NAN, 1.0, 10.0, 10.0, 5.0]);
+    let cases: Vec<(&str, Path)> = vec![
+        ("far", Path::parse("M1e999 0 L1e999 10 L0 10 Z").unwrap()),
+        ("wide", Path::parse("M-3e38 0 L3e38 10 L0 10 Z").unwrap()),
+        (
+            "curve",
+            Path::parse("M0 0 C1e999 0 0 1e999 10 10 Z").unwrap(),
+        ),
+        ("nan", nan.unwrap()),
+        (
+            "turn",
+            Path::parse("M0 0 H10 V10 Z").unwrap().rotated(f32::NAN),
+        ),
+        (
+            "pivot",
+            Path::parse("M0 0 H10 V10 Z")
+                .unwrap()
+                .rotated(0.1)
+                .pivot(f32::INFINITY, 0.0),
+        ),
+    ];
+    for (name, path) in cases {
+        let mut core = Core::new();
+        frame(&mut core, |ui| {
+            ui.path_keyed(name, &path, NodeSpec::column().bg(Color::WHITE));
+        });
+        assert!(masks(&mut core).is_empty(), "{name}: nothing drawn");
+        let quads = &core.output().0.quads;
+        assert!(
+            quads
+                .iter()
+                .all(|q| [q.rect.x, q.rect.y, q.rect.w, q.rect.h, q.blur]
+                    .iter()
+                    .all(|v| v.is_finite())),
+            "{name}: no quad carries the number"
+        );
+        let w = core.take_warnings();
+        assert!(
+            w.len() == 1 && ["path-too-large", "path-malformed"].contains(&w[0].code),
+            "{name}: {:?}",
+            w.iter().map(|w| w.code).collect::<Vec<_>>()
+        );
+    }
+}
+
+/// An op code is a whole number 0..=5: a fraction or a NaN is not a move.
+#[test]
+fn a_flat_form_with_a_code_that_is_not_one_is_refused() {
+    for code in [0.9, -0.5, f32::NAN, 6.0, f32::INFINITY] {
+        assert!(Path::from_floats(&[code, 1.0, 2.0]).is_err(), "{code}");
+    }
+    assert!(
+        Path::from_floats(&[0.0, 1.0, 2.0, 1.0, 3.0]).is_err(),
+        "short"
+    );
+}

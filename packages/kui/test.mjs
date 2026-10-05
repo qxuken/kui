@@ -4536,7 +4536,7 @@ const SCENE_TREES = {
         el('polygon', { points: [[110, 70], [190, 70], [180, 110], [120, 110]], bg: '#e07a8a', opacity: 0.5 }),
       ]),
     ]),
-  // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: six paths; the first
+  // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: seven paths; the first
   // wedge takes a click, hit by its arc, the second is keyed, the ring is
   // the flat op form, the cubic is a stroke alone, the triangle is both and
   // faded, and the last does not parse. Data is `conformance::PATH_*`.

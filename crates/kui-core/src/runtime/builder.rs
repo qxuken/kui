@@ -1330,14 +1330,38 @@ impl Core {
         turn: Option<crate::path::Turn>,
         mut spec: NodeSpec,
     ) {
+        // A number that is not one - `1e99` in `d` is an infinity, a
+        // chart's 0/0 a NaN - has no outline to draw: the bounds would
+        // drop it and the rasterizer would not.
+        // The same for its turn, which the box does not depend on and so
+        // could not catch.
+        let turn_ok = turn.is_none_or(|t| {
+            t.turns.is_finite() && t.pivot.is_none_or(|p| p.x.is_finite() && p.y.is_finite())
+        });
+        if !turn_ok || !ops.iter().all(crate::path::PathOp::is_finite) {
+            self.diag.raise(Warning {
+                code: crate::diag::PATH_MALFORMED,
+                key,
+                message: "the path holds a number that is not finite (a NaN or an \
+                          infinity), among its coordinates or in its turn"
+                    .into(),
+            });
+            return;
+        }
         let stroke_w = stroke.map_or(0.0, |s| s.width.max(0.0));
         let Some((id, rect)) = self.paths.push(ops, rule, stroke_w, turn) else {
             return;
         };
         // The mask is the box at the frame's scale; past what a texture
-        // can hold it draws nothing, and says so once per key.
+        // can hold it draws nothing, and says so once per key. A box
+        // that is not finite - a coordinate past what an f32 holds, a NaN
+        // among the ops or in the turn - is past it too: `max` drops a
+        // NaN, so the side alone would let one through.
         let side = (rect.w.max(rect.h) * self.scale).ceil();
-        if side > crate::path::MAX_MASK_SIDE as f32 {
+        let finite = [rect.x, rect.y, rect.w, rect.h]
+            .iter()
+            .all(|v| v.is_finite());
+        if !finite || side + 2.0 > crate::path::MAX_MASK_SIDE as f32 {
             self.diag.raise(Warning {
                 code: crate::diag::PATH_TOO_LARGE,
                 key,
