@@ -11,13 +11,22 @@
 #   nu scripts/npm-approve.nu --no-latest      approve, leave the dist-tags alone
 #
 # It finds the stage holding the version (`npm stage list`), approves it
-# (`npm stage approve`), waits for the registry to list the version, then
-# applies CI's `latest` rule: a prerelease publishes under its identifier
+# (`npm stage approve`), then applies CI's `latest` rule: a prerelease publishes under its identifier
 # as the dist-tag (`alpha`), and also takes `latest` when it sorts highest
 # among the versions the registry holds - a package without `latest`
 # answers a bare `npm install @qxuken/kui` with nothing - while a stable
 # release's `latest` is never taken back by an alpha published after it.
 # A plain version is staged as `latest` already and needs no second step.
+#
+# What is live is read off the dist-tags, not off `npm view`: the tags are
+# the registry's own answer, and the packument `npm view` reads is served
+# from a cache that listed alpha.37 more than a minute after its approval
+# had gone through. The script waited a minute for it, failed "approved,
+# but npmjs does not list it yet; run this again", and the second run -
+# no stage left, the version still not in the cached packument - said
+# nothing was staged and the release workflow had not run. So the approval
+# is taken at npm's word, and `latest` follows it at once: a dist-tag is
+# written where the version already is.
 #
 # Safe to run again: a version already live is not approved twice, and a
 # `latest` already in place is left as it is. Needs npm 11.15 or newer
@@ -39,11 +48,31 @@ def --wrapped must [...cmd: string] {
 
 # The version the registry lists under `spec`, or null when it lists none
 # (a package or version it does not have exits non-zero or prints nothing).
+# The cached packument: minutes behind an approval (see the note above).
 def live-version [spec: string] {
     let r = (^npm view $spec version --registry $REGISTRY | complete)
     if $r.exit_code != 0 { return null }
     let v = ($r.stdout | str trim)
     if ($v | is-empty) { null } else { $v }
+}
+
+# The package's dist-tags as a record, tag to version; empty when the
+# registry has none or does not answer. `npm dist-tag ls` prints
+# `<tag>: <version>` a line.
+def dist-tags [] {
+    let r = (^npm dist-tag ls $PACKAGE --registry $REGISTRY | complete)
+    if $r.exit_code != 0 { return {} }
+    $r.stdout | lines | parse "{tag}: {version}" | reduce --fold {} {|row, acc|
+        $acc | upsert ($row.tag | str trim) ($row.version | str trim)
+    }
+}
+
+# Whether `ver` is published: a dist-tag names it - a version is staged
+# under one and takes it the moment it is approved - or the packument
+# lists it, which is how a version whose tags have all moved on is found.
+def is-live [ver: string] {
+    if ($ver in (dist-tags | values)) { return true }
+    (live-version $"($PACKAGE)@($ver)") == $ver
 }
 
 # The highest of `versions` by npm's own semver, resolved out of npm's
@@ -77,7 +106,7 @@ def main [
     let otp_args = if $otp == null { [] } else { ["--otp" $otp] }
 
     # 1. Approve, unless the version is live already.
-    if (live-version $"($PACKAGE)@($ver)") == $ver {
+    if (is-live $ver) {
         print $"($PACKAGE)@($ver) is live on npmjs already"
     } else {
         let listed = (^npm stage list $PACKAGE --json --registry $REGISTRY | complete)
@@ -94,20 +123,19 @@ def main [
             print $"dry run: would approve ($stage.id)"
         } else {
             must npm stage approve $stage.id --registry $REGISTRY ...$otp_args
-            # The registry lists an approved version a moment after the approval.
-            mut tries = 0
-            while (live-version $"($PACKAGE)@($ver)") != $ver {
-                $tries += 1
-                if $tries > 30 { error make {msg: $"approved, but npmjs does not list ($PACKAGE)@($ver) yet; run this again for the `latest` step"} }
-                sleep 2sec
+            # npm said so, and that is the fact. `npm view` may not list
+            # the version for some minutes yet, and nothing below waits
+            # for it.
+            print $"($PACKAGE)@($ver) is approved and published"
+            if (live-version $"($PACKAGE)@($ver)") != $ver {
+                print "  \(`npm view` and `npm install` see it once the registry's cache has caught up, usually within minutes\)"
             }
-            print $"($PACKAGE)@($ver) is live on npmjs"
         }
     }
 
     # 2. `latest`, by CI's rule.
     if $no_latest { return }
-    let latest = (live-version $"($PACKAGE)@latest")
+    let latest = (dist-tags | get -o latest)
     if $latest == $ver {
         print $"latest is ($ver) already"
         return

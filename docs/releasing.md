@@ -105,8 +105,10 @@ nu scripts/npm-approve.nu              # the version package.json names; npmjs's
 nu scripts/npm-approve.nu --dry-run    # say what it would do
 ```
 
-It finds the stage, approves it, waits for the registry to list the version
-and then applies CI's `latest` rule: an alpha also takes `latest` when it is
+It finds the stage, approves it and then applies CI's `latest` rule, without
+waiting for `npm view` to list the version — the packument that reads is
+cached and ran more than a minute behind alpha.37's approval, so what is
+live is read off the dist-tags instead. The rule: an alpha also takes `latest` when it is
 the highest version the registry holds, so a bare `npm install @qxuken/kui`
 resolves, and a stable release's `latest` is never taken back by a later
 alpha (`--no-latest` skips that half). By hand, the same is:

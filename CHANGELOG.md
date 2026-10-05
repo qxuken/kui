@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.38 (unreleased)
 
 **What breaks.**
 
@@ -55,6 +55,21 @@ to tell a zoom from a scroll, and the scroll it then had to do itself
 for the plain wheel — and the knowledge that it only ever worked over
 that handler's own node, every scroll container inside it taking the
 same wheel first.
+
+### Fixed
+
+- **`scripts/npm-approve.nu` no longer fails a release it has just
+  made.** Approving alpha.37 went through, and the script then waited
+  a minute for `npm view` to list the version, gave up with "approved,
+  but npmjs does not list it yet; run this again", and on the second
+  run — no stage left, the cached packument still without the
+  version — said nothing was staged and asked whether the release
+  workflow had run. `latest` was set by hand. What is live is now read
+  off the dist-tags, which a version takes the moment it is approved,
+  and `latest` follows the approval at once. A release script, so
+  nothing an app sees.
+
+**What you can delete.** Nothing.
 
 ## 0.1.0-alpha.37 (2026-10-05)
 
