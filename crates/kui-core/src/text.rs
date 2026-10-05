@@ -1076,8 +1076,104 @@ fn first_installed<'a>(db: &cosmic_text::fontdb::Database, list: &[&'a str]) -> 
 /// something asks for a new scan (`Core::reload_system_fonts`).
 pub(crate) fn new_font_system() -> (FontSystem, std::sync::Arc<SystemFonts>) {
     let system = system_fonts();
-    let fonts = FontSystem::new_with_locale_and_db(system.locale.clone(), system.db.clone());
+    let fonts = font_system_over(system.locale.clone(), system.db.clone(), &[]);
     (fonts, system)
+}
+
+/// A font system over `db` whose fallback asks `first`'s families before
+/// the platform's ([`AppFallback`]). cosmic-text reads its fallback lists
+/// when the system is built and keeps them, so a new list is a new system
+/// over the same database: the ids stay.
+pub(crate) fn font_system_over(
+    locale: String,
+    db: cosmic_text::fontdb::Database,
+    first: &[String],
+) -> FontSystem {
+    FontSystem::new_with_locale_and_db_and_fallback(locale, db, AppFallback::new(first))
+}
+
+/// The platform's fallback lists with the app's families ahead of them
+/// (`Core::set_fallback_fonts`, backlog F121): a character the text's own
+/// family has no glyph for is asked of each of the app's, in order, before
+/// the script's faces and the platform's common ones — on macOS the
+/// system's proportional face, which is no editor's second choice.
+/// With none it is the platform's lists as they are.
+pub(crate) struct AppFallback {
+    platform: cosmic_text::PlatformFallback,
+    first: &'static [&'static str],
+    common: &'static [&'static str],
+    /// A script's list with `first` ahead of it, made when first asked
+    /// for.
+    scripts: std::sync::Mutex<
+        rustc_hash::FxHashMap<(unicode_script::Script, String), &'static [&'static str]>,
+    >,
+}
+
+/// `names` for the life of the process, each spelling and each list kept
+/// once: cosmic-text's lists are `&'static`, and an app sets a handful.
+fn keep(names: Vec<&'static str>) -> &'static [&'static str] {
+    static LISTS: std::sync::Mutex<Vec<&'static [&'static str]>> =
+        std::sync::Mutex::new(Vec::new());
+    let mut lists = LISTS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(&kept) = lists.iter().find(|l| ***l == names[..]) {
+        return kept;
+    }
+    let kept: &'static [&'static str] = Box::leak(names.into_boxed_slice());
+    lists.push(kept);
+    kept
+}
+
+fn keep_name(name: &str) -> &'static str {
+    static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(&kept) = names.iter().find(|n| **n == name) {
+        return kept;
+    }
+    let kept: &'static str = Box::leak(name.to_string().into_boxed_str());
+    names.push(kept);
+    kept
+}
+
+impl AppFallback {
+    pub(crate) fn new(first: &[String]) -> Self {
+        use cosmic_text::Fallback;
+        let platform = cosmic_text::PlatformFallback;
+        let first = keep(first.iter().map(|n| keep_name(n)).collect());
+        let common = keep(
+            first
+                .iter()
+                .chain(platform.common_fallback())
+                .copied()
+                .collect(),
+        );
+        Self {
+            platform,
+            first,
+            common,
+            scripts: Default::default(),
+        }
+    }
+}
+
+impl cosmic_text::Fallback for AppFallback {
+    fn common_fallback(&self) -> &[&'static str] {
+        self.common
+    }
+
+    fn forbidden_fallback(&self) -> &[&'static str] {
+        self.platform.forbidden_fallback()
+    }
+
+    fn script_fallback(&self, script: unicode_script::Script, locale: &str) -> &[&'static str] {
+        let theirs = self.platform.script_fallback(script, locale);
+        if self.first.is_empty() {
+            return theirs;
+        }
+        let mut scripts = self.scripts.lock().unwrap_or_else(|e| e.into_inner());
+        scripts
+            .entry((script, locale.to_string()))
+            .or_insert_with(|| keep(self.first.iter().chain(theirs).copied().collect()))
+    }
 }
 
 /// One scan of the system's fonts, checked and pinned the way kui shapes

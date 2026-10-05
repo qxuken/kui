@@ -402,6 +402,10 @@ pub struct Resources {
     pub(crate) fonts: SparseSecondaryMap<FontId, FontEntry>,
     pub(crate) sounds: SparseSecondaryMap<SoundId, SoundEntry>,
     pub(crate) fragments: SparseSecondaryMap<FragmentId, FragmentEntry>,
+    /// The families asked before the platform's fallback lists
+    /// (`Core::set_fallback_fonts`), in order: what the font system was
+    /// built with, kept for the one built again over a new scan.
+    pub(crate) fallback: Vec<String>,
     /// Handles of other sessions this registry was asked for since the
     /// last drain, each once. A `RefCell` because the resolves that find
     /// them (`family_of` under a shaping closure, `image` under the
@@ -423,6 +427,7 @@ impl Resources {
             fonts: SparseSecondaryMap::new(),
             sounds: SparseSecondaryMap::new(),
             fragments: SparseSecondaryMap::new(),
+            fallback: Vec::new(),
             foreign: RefCell::new(Vec::new()),
             frames: 0,
             spared: Vec::new(),

@@ -3805,6 +3805,14 @@ test('a rescan of the system fonts finds nothing new when nothing was installed'
   assert.deepEqual(ctx.systemFontFamilies(), families);
 });
 
+test('the fallback fonts take ids, and an empty list is the platform\'s own', () => {
+  const ctx = new Ctx();
+  const id = ctx.addSystemFont(ctx.systemFontFamilies()[0]);
+  ctx.setFallbackFonts([id]);
+  ctx.setFallbackFonts([]);
+  assert.throws(() => ctx.setFallbackFonts(['not an id']));
+});
+
 test('wrap, maxLines and ellipsis cut text instead of wrapping it', () => {
   const ctx = new Ctx();
   const LONG = 'A window title that is far too long to fit inside a narrow header strip';

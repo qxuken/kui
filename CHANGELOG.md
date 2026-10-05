@@ -48,6 +48,10 @@ was the first bare bump to break an app in five releases).
   and `InteractSpec` a `gradient` field (under Added).
 - Rust: `Stroke` gains a `dash` field, so a struct literal needs it
   (`Stroke::new` does not); `path::MaskPaint` gains `Dashed`.
+- A cell grid's glyph for a character its family lacks is drawn from a
+  monospaced face where one has it, in the middle of its cell, and no
+  wider than it (F120, under Fixed), where it was the platform's first
+  fallback at its own width from the cell's left edge.
 
 The Node wire moves to v21 for the dash's five floats on a line and a
 path, which an encoder and addon of one release never see apart.
@@ -126,7 +130,32 @@ path, which an encoder and addon of one release never see apart.
     `examples/rust/widgets/line.rs` hangs its planned cards off dashed
     links that march under the pointer.
 
+### Added
+
+- **The fallback fonts are the app's to name** (backlog F121, from
+  kawoosh). `Core::set_fallback_fonts(&[FontId])` — C
+  `kui_font_set_fallback`, Node `ctx.setFallbackFonts(ids)` — lists the
+  fonts asked, in order, for a character the text's own family has no
+  glyph for, before the platform's list, whose first choice on macOS is
+  the system's proportional face. For every text in the session, a cell
+  grid's too, and kept across `reload_system_fonts`; an empty list is
+  the platform's alone.
+
+**What you can delete.** Nothing an app could have written: the list
+was not reachable. A family chosen only because it covers a script the
+preferred one lacks can give way to the preferred one.
+
 ### Fixed
+
+- **A cell grid's fallback glyph stays in its cell** (backlog F120, from
+  kawoosh: Russian text in a terminal whose family has no Cyrillic, `Ю`
+  drawn across the letter after it). A character the grid's family has
+  no glyph for is asked of a monospaced face before the platform's
+  fallback list — on macOS that list opens with the system's
+  proportional face; a glyph still wider than its cells, two under
+  `wide`, is shaped at the size it fits at; and the room a narrower one
+  leaves is shared either side. The family's own glyphs and the private
+  use area's icons draw as they did.
 
 - **What the `path` reviews left** (backlog RG112, the second review in
   [ADR 0040](docs/adr/0040-a-path-is-a-mask-in-the-atlas.md)):
