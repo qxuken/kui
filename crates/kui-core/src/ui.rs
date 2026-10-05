@@ -952,6 +952,7 @@ impl<'a> Ui<'a> {
 
     /// A round-capped segment from `from` to `to`, in the parent's box
     /// space; see `Core::line_node` for what it is and is not.
+    #[inline]
     pub fn line(&mut self, from: Vec2, to: Vec2, stroke: Stroke, spec: NodeSpec) {
         self.core.line_node(&[from, to], stroke, spec);
     }
@@ -975,6 +976,7 @@ impl<'a> Ui<'a> {
 
     /// A stroke through `points`: a polyline, or a smooth curve through
     /// them with [`Stroke::curve`]; see `Core::line_node`.
+    #[inline]
     pub fn polyline(&mut self, points: &[Vec2], stroke: Stroke, spec: NodeSpec) {
         self.core.line_node(points, stroke, spec);
     }

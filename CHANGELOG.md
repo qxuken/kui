@@ -236,21 +236,44 @@ build. The AX audit: **106/106**, the audited window raised to the
 front by its pid first, and no warning on the fixture's stderr.
 
 **The bench guard** against the alpha.36 tag, on the release commit's
-tree: **green**, none of the 8 guarded rows more than 10% slower (the
-worst guarded run-to-run spread 1.4%). Seven of them are within
-−0.3% and +1.5%. `frame_10k_segments` is **+7.7%** (863 → 929 µs, ±1.0%),
-and that is the dash: bisected to V2's commit by building the bench at
-each one, two causes tried and ruled out, filed as backlog C52. The
-guard's first run read `frame_10k_rects` +9.3% and every row built on
-the bench's grid 5 to 9% slower, and that was the bench: bisected to
-the commit that gave its grid the gradient rows' arms in one `match`
-per cell, with no line of the core between it and the commit before.
-The gradient cell is a function of its own now, the plain rows read
-as alpha.36's, and the gradient rows were taken again — 52 ns a node
-over a flat box where the first reading said 55
-([ADR 0042](docs/adr/0042-a-gradient-is-an-image-the-core-paints.md),
-*Measured*; [docs/performance.md](docs/performance.md) carries the
-four rows from this run, the rest of its table kept as it was).
+tree: **green**, none of the 8 guarded rows more than 10% slower —
+every one between −0.9% and +2.8% (the worst guarded run-to-run spread
+2.1%). It was not so at first, twice over, and both are fixed in this
+tree:
+
+- `frame_10k_segments` read **+7.7%** (863 → 929 µs, ±1.0%) on solid
+  lines, and that was the dash (backlog C52): bisected to V2's commit
+  by building the bench at each one. The `Stroke`, twenty bytes wider
+  with its `Dash`, was copied at each call from `Ui::line` down to the
+  line store, and the dash's cut ran its whole test on every line. The
+  stroke is lent and a solid pattern is told by its zeroes; the row
+  reads +2.5% in the guard and 875 → 880 µs with the two binaries
+  alternated.
+- `frame_10k_rects` read +9.3% and every row built on the bench's grid
+  5 to 9% slower, and that was the bench: bisected to the commit that
+  gave its grid the gradient rows' arms in one `match` per cell, with
+  no line of the core between it and the commit before. The gradient
+  cell is a function of its own now, the plain rows read as
+  alpha.36's, and the gradient rows were taken again — 52 ns a node
+  over a flat box where the first reading said 55
+  ([ADR 0042](docs/adr/0042-a-gradient-is-an-image-the-core-paints.md),
+  *Measured*; [docs/performance.md](docs/performance.md) carries the
+  four rows from that run, the rest of its table kept as it was).
+
+**This tag was cut twice.** The first, at `c7e9793`, published
+nothing: both hosts' `check` failed on F121's own test, which asserted
+that the platform's list draws `字` differently from the app's — and
+on an image with DejaVu alone, both pipelines', the fixture is the one
+face that has it, list or no list. Forgejo's `check` had been red on
+it since F121 was merged, which this round did not read before
+tagging; cargo stops at the first failing suite, so the suites after
+`fonts` had not run there either. The test now tells which machine it
+is on and asserts the platform's half only where there is one, and
+`cargo test -p kui-core` passes its 105 suites in `rust:1-bookworm`
+with `fonts-dejavu-core` alone (the whole workspace would not fit that
+container). With no crate and no package carrying the version, the tag
+was moved to the commit that has the fix and C52's; the mechanical
+round, the windowed round and the guard above are of that commit.
 
 ## 0.1.0-alpha.36 (2026-10-05)
 

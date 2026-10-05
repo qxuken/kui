@@ -610,17 +610,28 @@ fn the_apps_fallback_fonts_are_asked_before_the_platforms() {
     };
     let apart = |xs: &[f32]| xs.get(1).zip(xs.first()).map(|(b, a)| b - a);
     let before = plain(&mut core);
-    assert_ne!(apart(&before), Some(10.0), "the platform's: {before:?}");
+    // Whether the machine has a face of its own with 字 for its list to
+    // name. A bare CI image has none - DejaVu alone - and there the
+    // fixture is the one face that can answer, list or no list, so the
+    // two orders draw the same and only the app's half can be told. (The
+    // first alpha.37 tag failed its release's `check` on exactly that.)
+    let platform_has_one = apart(&before) != Some(10.0);
     let cells_before = cell_glyphs(&mut core, "字", 0, style);
     let editor_before = editor(&mut core);
-    assert_ne!(apart(&editor_before), Some(10.0), "{editor_before:?}");
+    assert_eq!(
+        apart(&editor_before) != Some(10.0),
+        platform_has_one,
+        "an editor asks whom plain text asks: {editor_before:?}"
+    );
 
     core.set_fallback_fonts(&[han]);
     assert_eq!(core.fallback_fonts(), ["Kui F121 Han"]);
     let after = plain(&mut core);
     assert_eq!(apart(&after), Some(10.0), "the app's: {after:?}");
     let cells_after = cell_glyphs(&mut core, "字", 0, style);
-    assert_ne!(cells_after, cells_before, "a grid asks them too");
+    if platform_has_one {
+        assert_ne!(cells_after, cells_before, "a grid asks them too");
+    }
     let editor_after = editor(&mut core);
     assert_eq!(apart(&editor_after), Some(10.0), "an open editor too");
 

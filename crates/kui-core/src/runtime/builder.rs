@@ -632,7 +632,7 @@ impl Core {
                 true
             }
             Content::Line(points, stroke) => {
-                self.line_with_key(key, points, stroke, spec);
+                self.line_with_key(key, points, &stroke, spec);
                 true
             }
             Content::Polygon(points) => {
@@ -1008,7 +1008,7 @@ impl Core {
             return;
         }
         let key = self.auto_key();
-        self.line_with_key(key, points, stroke, spec);
+        self.line_with_key(key, points, &stroke, spec);
     }
 
     /// [`Self::line_node`] under a label key, for a stroke that transitions
@@ -1024,7 +1024,7 @@ impl Core {
             return;
         }
         let key = self.child_key(label);
-        self.line_with_key(key, points, stroke, spec);
+        self.line_with_key(key, points, &stroke, spec);
         // Like every other keyed door: the label `key_of` resolves through.
         self.key_labels.push(key, label, self.origin);
     }
@@ -1035,10 +1035,13 @@ impl Core {
             return;
         }
         let key = self.child_key_indexed(i);
-        self.line_with_key(key, points, stroke, spec);
+        self.line_with_key(key, points, &stroke, spec);
     }
 
-    fn line_with_key(&mut self, key: Key, points: &[Vec2], stroke: Stroke, mut spec: NodeSpec) {
+    /// The stroke is lent from here down: at 44 bytes with its dash it
+    /// is passed in memory, and a copy at each call of the chain was
+    /// most of what a solid line cost over alpha.36's (backlog C52).
+    fn line_with_key(&mut self, key: Key, points: &[Vec2], stroke: &Stroke, mut spec: NodeSpec) {
         let Some((id, rect)) = self.lines.push(points, stroke) else {
             return;
         };

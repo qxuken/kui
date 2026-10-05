@@ -189,7 +189,19 @@ impl Dash {
     /// None for one that draws solid: a length that is not finite, or no
     /// gap anywhere. Negative lengths are zero, and a pair that is zero
     /// altogether is the other pair.
+    #[inline]
     pub fn cut(&self, width: f32) -> Option<Cut> {
+        // The solid stroke, which is nearly every stroke, is told by its
+        // zeroes and pays for nothing below (backlog C52).
+        if self.pattern == Dash::SOLID.pattern {
+            return None;
+        }
+        self.cut_pattern(width)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn cut_pattern(&self, width: f32) -> Option<Cut> {
         if !self.pattern.iter().all(|l| l.is_finite()) || !self.offset.is_finite() {
             return None;
         }
@@ -332,7 +344,7 @@ impl LineStore {
     /// curve, boxes the run, and stores the points relative to the box.
     /// Returns the id and the box, or None for fewer than two points,
     /// which draw nothing.
-    pub(crate) fn push(&mut self, points: &[Vec2], stroke: Stroke) -> Option<(LineId, Rect)> {
+    pub(crate) fn push(&mut self, points: &[Vec2], stroke: &Stroke) -> Option<(LineId, Rect)> {
         if points.len() < 2 {
             return None;
         }
@@ -638,7 +650,7 @@ mod tests {
         let (id, rect) = store
             .push(
                 &[Vec2::new(10.0, 10.0), Vec2::new(50.0, 40.0)],
-                Stroke::new(2.0, Color::WHITE).curve(),
+                &Stroke::new(2.0, Color::WHITE).curve(),
             )
             .unwrap();
         let (run, pts) = store.run(id);
@@ -655,7 +667,7 @@ mod tests {
         let mut store = LineStore::default();
         assert!(
             store
-                .push(&[Vec2::new(1.0, 1.0)], Stroke::new(1.0, Color::WHITE))
+                .push(&[Vec2::new(1.0, 1.0)], &Stroke::new(1.0, Color::WHITE))
                 .is_none()
         );
     }
@@ -666,7 +678,7 @@ mod tests {
         let (id, _) = store
             .push(
                 &[Vec2::new(0.0, 0.0), Vec2::new(4.0, 0.0)],
-                Stroke::new(1.0, Color::WHITE),
+                &Stroke::new(1.0, Color::WHITE),
             )
             .unwrap();
         store.begin_frame(true);

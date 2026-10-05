@@ -2204,33 +2204,12 @@ the day they were filed, and are in the archive: an open editor keeping
 the fallback fonts it was shaped with (RG114), the root's gradient
 dropped under the devtools dock (RG115), a dashed line of no length
 drawing nothing (RG116) and the gradient's docs against its code
-(RG117). RG118 holds what was read and left, and C52 what the bench
-guard found: green, and `frame_10k_segments` 5 to 7% slower with the
-dash. The guard's other find was its own — `frame_10k_rects` read 8%
+(RG117). RG118 holds what was read and left. C52 was what the bench
+guard found — green, and `frame_10k_segments` 5 to 7% slower with the
+dash — and was **built 2026-10-05**, before the tag was cut the
+second time, and is in the archive. The guard's other find was its own — `frame_10k_rects` read 8%
 slower for a `match` the bench's grid had grown, which is fixed in the
 bench (ADR 0042's *Measured* says so).
-
-### `.` C52 — A solid line costs 5 to 7 ns more since a stroke can be dashed
-
-`frame_10k_segments`, ten thousand solid one-segment lines, reads
-**+5.5% to +7.7%** against alpha.36 (863 → 929 µs in the pre-tag
-guard, ±1.0%; 869 → 918 µs alternating the two binaries), under the
-guard's 10% and not noise. Bisected by building the bench at each
-commit: it arrives whole with `7c70c4f`, V2's `dash`, and no later
-commit moves it. `frame_1k_curves` and `frame_1k_closed_lines`, many
-segments a line, move 1.5–2.5%, so it is a cost per line and not per
-segment.
-
-Two causes tried and ruled out, each built and measured: the
-`Option<Cut>` copied into the leaf (lent by reference instead: 921 →
-917 µs, nothing), and the run grown from 12 bytes to 36 (the cut moved
-to a side table, the run 16 bytes: 920 → 911 µs, a per cent). What is
-left unread is the builder's side — `Stroke` twenty bytes wider by
-value through `line_with`, `Dash::cut` on every push — and the codegen
-of `paint_box`'s line arm with `push_marks` beside `push_segments`;
-C41's recipe (xctrace leaf addresses into objdump) is the way in.
-
-**Wants:** a solid line to cost what it did, or the reason it cannot.
 
 ### `.` RG118 — What the alpha.37 reviews read and left
 
@@ -3623,3 +3602,5 @@ move.
 - `.` **RG116** — [A dashed line of no length drew nothing, and was still hit](backlog/closed-2026-09.md#-rg116--a-dashed-line-of-no-length-drew-nothing-and-was-still-hit--done-2026-10-05) — done (2026-10-05)
 
 - `.` **RG117** — [The gradient's docs and its plain-data reader disagreed with the code](backlog/closed-2026-09.md#-rg117--the-gradients-docs-and-its-plain-data-reader-disagreed-with-the-code--done-2026-10-05) — done (2026-10-05)
+
+- `.` **C52** — [A solid line cost 5 to 7 ns more once a stroke could be dashed](backlog/closed-2026-09.md#-c52--a-solid-line-cost-5-to-7-ns-more-once-a-stroke-could-be-dashed--done-2026-10-05) — done (2026-10-05)
