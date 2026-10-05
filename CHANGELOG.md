@@ -40,10 +40,24 @@ was the first bare bump to break an app in five releases).
   the atlas again — a `GlyphMask` quad where it stayed a `Texture`
   (under Fixed). Nothing an app sees; a host that counts quads by kind
   does.
+- A cell grid's glyph for a character its family lacks is drawn from a
+  monospaced face where one has it, in the middle of its cell, and no
+  wider than it (F120, under Fixed), where it was the platform's first
+  fallback at its own width from the cell's left edge.
 
 No C build breaks and the ABI stays 23; the Node wire stays v20.
 
 ### Fixed
+
+- **A cell grid's fallback glyph stays in its cell** (backlog F120, from
+  kawoosh: Russian text in a terminal whose family has no Cyrillic, `Ю`
+  drawn across the letter after it). A character the grid's family has
+  no glyph for is asked of a monospaced face before the platform's
+  fallback list — on macOS that list opens with the system's
+  proportional face; a glyph still wider than its cells, two under
+  `wide`, is shaped at the size it fits at; and the room a narrower one
+  leaves is shared either side. The family's own glyphs and the private
+  use area's icons draw as they did.
 
 - **What the `path` reviews left** (backlog RG112, the second review in
   [ADR 0040](docs/adr/0040-a-path-is-a-mask-in-the-atlas.md)):

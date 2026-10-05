@@ -207,6 +207,9 @@ struct StyleTable {
     cell_h: f32,
     ascii: Vec<Option<Option<CellGlyph>>>,
     other: FxHashMap<(char, u8), Option<CellGlyph>>,
+    /// The face the style's family shapes each variant's `M` with, asked
+    /// once: a glyph from any other face is a fallback's (`shape_cell`).
+    own: [Option<Option<cosmic_text::fontdb::ID>>; VARIANTS],
     /// The atlas stamp the slots were looked up against.
     epoch: u64,
 }
@@ -302,8 +305,8 @@ impl CellStore {
         let key = Self::table_key(style, self.scale);
         if !self.tables.contains_key(&key) {
             let scale = self.scale;
-            let cell_w = shape_one(style, "M", 0, res, fs, scale)
-                .map_or(style.size * scale * 0.6, |(_, advance, _)| advance)
+            let cell_w = shape_one(style, "M", 0, None, 1.0, res, fs, scale)
+                .map_or(style.size * scale * 0.6, |g| g.advance)
                 .round()
                 .max(1.0);
             self.tables.insert(
@@ -313,6 +316,7 @@ impl CellStore {
                     cell_h: (style.line_height * scale).round().max(1.0),
                     ascii: vec![None; VARIANTS * 128],
                     other: FxHashMap::default(),
+                    own: [None; VARIANTS],
                     epoch: u64::MAX,
                 },
             );
@@ -683,32 +687,22 @@ fn lookup(
     scale: f32,
 ) -> Option<CellGlyph> {
     let v = variant(flags);
-    if (ch as u32) < 128 {
-        let i = v * 128 + ch as usize;
-        if let Some(g) = table.ascii[i] {
-            return g;
-        }
-        let g = shape_cell(
-            ch,
-            flags,
-            style,
-            res,
-            fs,
-            raster,
-            atlas,
-            scale,
-            (table.cell_w, table.cell_h),
-        );
-        table.ascii[i] = Some(g);
+    let known = if (ch as u32) < 128 {
+        table.ascii[v * 128 + ch as usize]
+    } else {
+        table.other.get(&(ch, v as u8)).copied()
+    };
+    if let Some(g) = known {
         return g;
     }
-    if let Some(g) = table.other.get(&(ch, v as u8)) {
-        return *g;
-    }
+    let own = *table.own[v].get_or_insert_with(|| {
+        shape_one(style, "M", flags, None, 1.0, res, fs, scale).map(|g| g.font)
+    });
     let g = shape_cell(
         ch,
         flags,
         style,
+        own,
         res,
         fs,
         raster,
@@ -716,18 +710,32 @@ fn lookup(
         scale,
         (table.cell_w, table.cell_h),
     );
-    table.other.insert((ch, v as u8), g);
+    if (ch as u32) < 128 {
+        table.ascii[v * 128 + ch as usize] = Some(g);
+    } else {
+        table.other.insert((ch, v as u8), g);
+    }
     g
 }
 
 /// Shapes one cell's character and rasterizes its glyph into the atlas —
 /// or, for a character the cell box draws (`boxdraw`), rasterizes the
 /// cell-sized mask and skips the font.
+///
+/// A character the style's family has no glyph for is another face's
+/// (`own` is the family's), and a cell is still a cell (F120): a
+/// monospaced face that has it is asked before the platform's fallback
+/// list, whose first name on macOS is a proportional one; a glyph wider
+/// than its cells — two for a wide one — is shaped again at the size it
+/// fits at, on the baseline it had; and what room is left is shared either
+/// side of it. The private use area is left as it falls: an icon is drawn
+/// to run over the blank after it.
 #[allow(clippy::too_many_arguments)]
 fn shape_cell(
     ch: char,
     flags: u8,
     style: &TextStyle,
+    own: Option<cosmic_text::fontdb::ID>,
     res: &Resources,
     fs: &mut FontSystem,
     raster: &mut Raster,
@@ -748,12 +756,35 @@ fn shape_cell(
         });
     }
     let mut buf = [0u8; 4];
-    let (key, _, (px, py, line_y)) =
-        shape_one(style, ch.encode_utf8(&mut buf), flags, res, fs, scale)?;
-    let slot = raster_glyph(key, fs, raster, atlas)?;
+    let text: &str = ch.encode_utf8(&mut buf);
+    let mut g = shape_one(style, text, flags, None, 1.0, res, fs, scale)?;
+    let mut dx = 0.0;
+    if own.is_some_and(|own| own != g.font) && !private_use(ch) {
+        let mut family = None;
+        if !fs.is_monospace(g.font)
+            && let Some(m) = shape_one(style, text, flags, MONO, 1.0, res, fs, scale)
+            && m.glyph != 0
+            && fs.is_monospace(m.font)
+        {
+            family = MONO;
+            g = m;
+        }
+        let span = cell.0 * if flags & flags::WIDE != 0 { 2.0 } else { 1.0 };
+        if g.advance > span + 0.5 {
+            let fit = span / g.advance;
+            if let Some(f) = shape_one(style, text, flags, family, fit, res, fs, scale) {
+                g = Shaped {
+                    line_y: g.line_y,
+                    ..f
+                };
+            }
+        }
+        dx = ((span - g.advance) / 2.0).round().max(0.0);
+    }
+    let slot = raster_glyph(g.key, fs, raster, atlas)?;
     Some(CellGlyph {
-        x: px as f32 + slot.left as f32,
-        y: line_y.round() + py as f32 - slot.top as f32,
+        x: dx + g.x as f32 + slot.left as f32,
+        y: g.line_y.round() + g.y as f32 - slot.top as f32,
         w: slot.w as f32,
         h: slot.h as f32,
         uv: [slot.x, slot.y, slot.w, slot.h],
@@ -761,24 +792,53 @@ fn shape_cell(
     })
 }
 
-/// Shapes `text` alone in `style` at `scale`: the first glyph's cache key,
-/// its advance, and where it sits (physical x, y and the baseline).
+/// The generic monospaced family, in place of the style's.
+const MONO: Option<cosmic_text::Family<'static>> = Some(cosmic_text::Family::Monospace);
+
+/// Whether `ch` is in a private use area: an icon font's.
+fn private_use(ch: char) -> bool {
+    matches!(ch as u32, 0xE000..=0xF8FF | 0xF_0000..=0x10_FFFF)
+}
+
+/// One shaped glyph: its cache key, its face and its id there (0 where
+/// the face has none), its advance, and where it sits (physical x, y and
+/// the baseline).
+struct Shaped {
+    key: cosmic_text::CacheKey,
+    font: cosmic_text::fontdb::ID,
+    glyph: u16,
+    advance: f32,
+    x: i32,
+    y: i32,
+    line_y: f32,
+}
+
+/// Shapes `text` alone in `style` at `scale` and returns its first glyph
+/// — in `family` where one is given in place of the style's, at `fit`
+/// times the style's size.
+#[allow(clippy::too_many_arguments)]
 fn shape_one(
     style: &TextStyle,
     text: &str,
     flags: u8,
+    family: Option<cosmic_text::Family<'_>>,
+    fit: f32,
     res: &Resources,
     fs: &mut FontSystem,
     scale: f32,
-) -> Option<(cosmic_text::CacheKey, f32, (i32, i32, f32))> {
-    let metrics = Metrics::new(style.size * scale, style.line_height * scale);
+) -> Option<Shaped> {
+    let metrics = Metrics::new(style.size * scale * fit, style.line_height * scale);
     let mut buffer = Buffer::new(fs, metrics);
     buffer.set_size(None, None);
     // Bold at a weight the family has a face for, never another family's.
-    let mut attrs = res.weights_of(style.family).apply(
-        Attrs::new().family(res.family_of(style.family)),
-        flags & flags::BOLD != 0,
-    );
+    let mut attrs = match family {
+        Some(family) => crate::weights::Weights::CSS
+            .apply(Attrs::new().family(family), flags & flags::BOLD != 0),
+        None => res.weights_of(style.family).apply(
+            Attrs::new().family(res.family_of(style.family)),
+            flags & flags::BOLD != 0,
+        ),
+    };
     if flags & flags::ITALIC != 0 {
         attrs = attrs.style(FontStyle::Italic);
     }
@@ -787,9 +847,13 @@ fn shape_one(
     let run = buffer.layout_runs().next()?;
     let glyph = run.glyphs.first()?;
     let physical = glyph.physical((0.0, 0.0), 1.0);
-    Some((
-        physical.cache_key,
-        glyph.w,
-        (physical.x, physical.y, run.line_y),
-    ))
+    Some(Shaped {
+        key: physical.cache_key,
+        font: glyph.font_id,
+        glyph: glyph.glyph_id,
+        advance: glyph.w,
+        x: physical.x,
+        y: physical.y,
+        line_y: run.line_y,
+    })
 }

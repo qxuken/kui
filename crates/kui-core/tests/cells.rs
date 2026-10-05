@@ -580,3 +580,59 @@ mod boxdraw {
         assert_eq!(node.value.as_deref(), Some("┌─┐"));
     }
 }
+
+/// F120: a character the grid's family has no glyph for is a fallback
+/// face's, and the platform's first is a proportional one on macOS — a
+/// `Ю` half as wide again as the cell, drawn over the letter after it. A
+/// cell is a cell: whatever face it comes from, the glyph is inside its
+/// own, and a wide one inside its two.
+#[test]
+fn a_fallback_glyph_stays_in_its_cell() {
+    let mut core = Core::new();
+    // Fixed-pitch, printable ASCII only.
+    let font = core
+        .add_font_data(kui_core::testing::font_face("Kui F120", 400, false, true))
+        .expect("the fixture registers");
+    let style = TextStyle::new(14.0).font(font).line_height(20.0);
+    let mut draw = |text: &str, wide: bool| -> Vec<(f32, f32)> {
+        let cells: Vec<Cell> = text
+            .chars()
+            .map(|c| Cell::new(c, 0xffffffff, 0).with(if wide { flags::WIDE } else { 0 }))
+            .collect();
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.cells(
+            &CellGrid {
+                rows: 1,
+                cols: cells.len(),
+                cells: &cells,
+                style,
+                cursor: None,
+                origin_line: 0,
+            },
+            NodeSpec::default(),
+        );
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| q.kind != QuadKind::Solid)
+            .map(|q| (q.rect.x, q.rect.w))
+            .collect()
+    };
+    let own = draw("aa", false);
+    let cw = own[1].0 - own[0].0;
+    for ch in ["Ю", "ж", "ш", "Щ", "Ω", "あ"] {
+        for (wide, span) in [(false, cw), (true, 2.0 * cw)] {
+            let g = draw(ch, wide);
+            let Some(&(x, w)) = g.first() else {
+                continue; // no face on this machine has it
+            };
+            assert!(
+                x >= -1.0 && x + w <= span + 1.0,
+                "{ch} (wide: {wide}) spans {x}..{} of a {span} px cell",
+                x + w
+            );
+        }
+    }
+}

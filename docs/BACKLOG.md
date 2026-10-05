@@ -1524,6 +1524,17 @@ so the core took them for nodes it cannot ask. Two entries, F117 and
 F118, **built 2026-10-02**, the day they were filed, and in the
 archive, with ADR 0038's amendments.
 
+## From the kawoosh Cyrillic-terminal report (2026-10-05)
+
+A terminal in kawoosh, in a family with no Cyrillic (Berkeley Mono),
+printed a Russian error: `Юзер` with its `Ю` across the `з`, `ОП` one
+letter over the other, `невозможна` with `ж` on its neighbours. The
+grid asked the family for each character alone and drew what came back
+at the cell's corner — on macOS the system's proportional face, the
+first name on the platform's fallback list, with Menlo behind it. One
+entry, F120, **built 2026-10-05**, the day it was filed, and in the
+archive.
+
 ## From the kawoosh menus-on-a-Mac report (2026-10-03)
 
 kawoosh's context menus, built and tested on Linux where kui draws them,
@@ -2356,6 +2367,8 @@ Nothing of the kawoosh sticky-swipe report is open (F117 and F118
 **built 2026-10-02**, the day they were filed).
 Nothing of the kawoosh menus-on-a-Mac report is open (F119 **built
 2026-10-03**, the day it was filed).
+Nothing of the kawoosh Cyrillic-terminal report is open (F120 **built
+2026-10-05**, the day it was filed).
 Nothing of the Windows regression round of 2026-09-26 is open
 (RG38–RG46 **built 2026-09-26**, the day they were filed).
 Nothing of the Linux round under WSLg is open (RG47–RG49 **built
@@ -3276,6 +3289,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh Cyrillic-terminal report (2026-10-05)** — F120, filed and built the same day
+
+- `!` **F120** — [A cell grid's fallback glyph is drawn as wide as its own face made it, so a Cyrillic letter in a Latin-only family lies over the next cell](backlog/closed-2026-09.md#-f120--a-cell-grids-fallback-glyph-is-drawn-as-wide-as-its-own-face-made-it-so-a-cyrillic-letter-in-a-latin-only-family-lies-over-the-next-cell--done-2026-10-05) — done (2026-10-05) — a character the grid's family lacks is asked of a monospaced face before the platform's list; a glyph wider than its cells (two for a wide one) is shaped at the size it fits at, on its baseline; the room left is shared either side; the private use area as it was
 
 **From the kawoosh menus-on-a-Mac report (2026-10-03)** — F119, filed and built the same day
 
