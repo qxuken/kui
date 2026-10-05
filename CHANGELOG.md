@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.38 (unreleased)
+## 0.1.0-alpha.38 (2026-10-05)
 
 **What breaks.**
 
@@ -45,7 +45,11 @@ The Node wire stays v21: `scrollMods` is one more string row.
   began, the innermost such node winning. A Ctrl-wheel zoom declared
   on the window's root is heard over a list, and the list does not
   scroll; a canvas inside can name the same key and take it for
-  itself. A wheel with none of them held passes the node by. Its
+  itself. A wheel with none of them held passes the node by — and
+  scrolls it, if it is a scroll container too: a list can name a key
+  for its own zoom and scroll for every other wheel (backlog RG119,
+  from this release's pre-tag pass; as merged, such a list stood still
+  for a plain wheel). Its
   `scroll` events carry `mods` (`Scroll::mods`), the modifiers held
   when the gesture began: a gesture stays what it began as to the end
   of its glide, whatever is let go or pressed meanwhile.
@@ -70,6 +74,50 @@ same wheel first.
   nothing an app sees.
 
 **What you can delete.** Nothing.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-05 — the
+two commits after the alpha.37 tag: `scrollMods` (F122) and the
+approval script — with a regression pass over them first: the diff
+read whole, each claim probed with a test before anything changed.
+RG119 came of it and is in this release. Before any of it the last
+`check` on main was read on both hosts, green at `3d4fff6` — the step
+alpha.37's first tag went without. This round ran on the Mac alone;
+Windows and Linux did not run it for this tag.
+
+**macOS 27.0.1 on an M3 Pro MacBook Pro, rustc 1.99.0 (the toolchain
+CI runs), Node 26.10.0, nu 0.116.0**, on the release commit's tree,
+the workspace's own artifacts pruned and rebuilt. `cargo fmt --all
+--check` and `cargo clippy --workspace --all-targets -- -D warnings`
+are clean. `scripts/test.nu`, the workspace's tests with the
+conformance feature: **1808 tests over 136 suites, 0 failed** (4
+ignored). The C round, `cbuild --run`, passes its five checks; the
+corpus passes its **57 scenes** in four adapters, `scroll-gestures`
+now holding a Ctrl-wheel over a contained list at its limit; the ABI
+is **25**. Node's `node --test test.mjs` under
+`KUI_CONFORMANCE_REQUIRED=1`: **210 of 210**. `npm run gen` leaves no
+diff, the examples typecheck and their lockfile installs, the headless
+round passes all **35 drives**, the book builds and
+`scripts/book-examples.nu --check`
+passes.
+
+**The windowed round**, `smoke -- --node`, twice over: **51 Rust
+examples and the eleven Node examples, each on both bases, 120 frames
+each, every one exiting 0** — 124 windows, eight at a time, in 34 and
+35 s — and `counter`, `host`, `c_panel` and `lua_panel` by hand under
+`KUI_SMOKE_FRAMES=120`, each exiting 0 with nothing on stderr: **128
+windows over five hosts.** The AX audit: **106/106**, the audited
+window raised to the front by its pid first, and no warning on the
+fixture's stderr. `scrollMods` itself was not driven in a window in
+this round: it was tried in kawoosh's before the merge, and RG119's
+case is pinned in the core's tests alone.
+
+**The bench guard** against the alpha.37 tag, on the release commit's
+tree: **green**, none of the 8 guarded rows more than 10% slower —
+every one between −4.1% and +0.6% (the worst guarded run-to-run spread
+4.3%), and no row of the run more than 5% slower. `README.md`'s table
+is kept as it was.
 
 ## 0.1.0-alpha.37 (2026-10-05)
 

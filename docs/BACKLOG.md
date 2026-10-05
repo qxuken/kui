@@ -101,6 +101,9 @@ the same day, and with the alpha.37 tag RG114–RG117 — an open editor
 and a new fallback list, the root's gradient under the devtools dock, a
 dashed line of no length and the gradient's docs — from the pre-tag
 pass of the same day, filed and built with it, and
+with the alpha.38 tag RG119 — a scroll container that names a modifier
+for its own `onScroll` and stopped scrolling for a plain wheel — from
+its pre-tag pass, filed and built with it, and
 with the alpha.29 tag RG99 — RG96's readings, confirmed in a window on
 Linux and Windows — with RG100–RG104 from that window round, filed and
 built the same day after the alpha.28 tag, and RG105 from it, withdrawn
@@ -2253,6 +2256,19 @@ By reading, none probed in a window:
   two stops are left, with `unknown-token` raised and no error: the
   count is of the list, as ADR 0042's amendment says.
 
+## From the alpha.38 pre-tag pass (2026-10-05)
+
+The pre-tag pass over the two commits after the alpha.37 tag —
+`scrollMods` (F122) and `scripts/npm-approve.nu` reading the dist-tags —
+run as the ones before it: the mechanical round first (all green), then
+the diff read whole, each claim probed with a test before anything
+changed. The latch keeping the modifiers, the walk stopping at a
+modal's edge, the payload's `mods` ahead of `tag`, the C field and the
+schema row all read sound. One entry, RG119, **built 2026-10-05**, the
+day it was filed, and in the archive: a node that scrolls and names a
+modifier for its own `onScroll` let every plain wheel pass it by.
+Nothing of it is open.
+
 ## After alpha.36
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -3624,3 +3640,7 @@ move.
 - `.` **RG117** — [The gradient's docs and its plain-data reader disagreed with the code](backlog/closed-2026-09.md#-rg117--the-gradients-docs-and-its-plain-data-reader-disagreed-with-the-code--done-2026-10-05) — done (2026-10-05)
 
 - `.` **C52** — [A solid line cost 5 to 7 ns more once a stroke could be dashed](backlog/closed-2026-09.md#-c52--a-solid-line-cost-5-to-7-ns-more-once-a-stroke-could-be-dashed--done-2026-10-05) — done (2026-10-05)
+
+**From the alpha.38 pre-tag pass (2026-10-05)** — RG119, filed and built the same day
+
+- `.` **RG119** — [A scroll container that named a modifier for its own `onScroll` stopped scrolling](backlog/closed-2026-09.md#-rg119--a-scroll-container-that-named-a-modifier-for-its-own-onscroll-stopped-scrolling--done-2026-10-05) — done (2026-10-05)

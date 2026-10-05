@@ -784,7 +784,9 @@ C `.scroll_mods = KUI_KMOD_CTRL | KUI_KMOD_SUPER`, Lua `scroll_mods =
 "ctrl super"`). A wheel turned with one of them held is then that
 node's `scroll` event wherever under the pointer it began — over a
 list inside it, and the list does not move — and a plain wheel passes
-the node by, so the lists go on scrolling. On the window's root it is
+the node by, so the lists go on scrolling — the node itself too, if it
+is the list: a scroll container that names a key for its own zoom
+scrolls for every other wheel. On the window's root it is
 the whole window's zoom; a canvas inside can name the same key and take
 the gesture for itself, the innermost winning. Positive `dy` is the
 wheel rolling up, "bigger". A mouse's notch is 40 px and a trackpad's

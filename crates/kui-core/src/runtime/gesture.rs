@@ -46,6 +46,32 @@ enum Answer {
     Pass,
 }
 
+impl ScrollRegion {
+    /// Whether this is a handler that names one of the modifiers `held`
+    /// and takes the axis: the gesture is its before any other region is
+    /// asked (`scroll_mods`, backlog F122).
+    fn hears(&self, x: bool, held: u32) -> bool {
+        self.mods & held != 0 && if x { self.takes_x } else { self.takes_y }
+    }
+
+    /// The region as a gesture begun with `held` meets it on `x` (or
+    /// `y`). A handler that names modifiers is, to a gesture it does not
+    /// hear, as if it declared no `on_scroll`: the container it may also
+    /// be, which scrolls as any other does, and otherwise nothing.
+    fn asked(&self, x: bool, held: u32) -> ScrollRegion {
+        if self.mods == 0 || self.hears(x, held) {
+            return *self;
+        }
+        ScrollRegion {
+            handler: false,
+            takes_x: self.scrolls_x,
+            takes_y: self.scrolls_y,
+            mods: 0,
+            ..*self
+        }
+    }
+}
+
 impl Core {
     /// Routes one wheel delta: to the targets the gesture under way
     /// latched, or — for the gesture's first event, or an axis it first
@@ -66,7 +92,9 @@ impl Core {
         match (tx, ty) {
             // One target for both: one event on a handler, as the whole
             // delta always was.
-            (Some(a), Some(b)) if a.key == b.key => self.scroll_into(a, delta, out),
+            (Some(a), Some(b)) if a.key == b.key && a.handler == b.handler => {
+                self.scroll_into(a, delta, out)
+            }
             (a, b) => {
                 if let Some(a) = a {
                     self.scroll_into(a, Vec2::new(delta.x, 0.0), out);
@@ -102,7 +130,7 @@ impl Core {
                 .rev()
                 .find(|r| r.key == key && !r.inert)
             {
-                return Some(*r);
+                return Some(r.asked(x, self.scroll_latch.held));
             }
         }
         let regions = &self.interaction.scroll_regions;
@@ -124,7 +152,7 @@ impl Core {
             if r.inert {
                 break;
             }
-            if r.mods & held != 0 && if x { r.takes_x } else { r.takes_y } {
+            if r.hears(x, held) {
                 picked = Some(r);
                 at = None;
                 break;
@@ -132,7 +160,7 @@ impl Core {
             named = (r.parent != NIL).then_some(r.parent as usize);
         }
         while let Some(i) = at {
-            let r = regions[i];
+            let r = regions[i].asked(x, held);
             // Out through a modal's edge is out of its scope: the one
             // around is inert, and so is everything past it.
             if r.inert {
@@ -163,9 +191,7 @@ impl Core {
     /// tree.
     fn answer(&self, r: &ScrollRegion, x: bool, d: f32) -> Answer {
         let takes = if x { r.takes_x } else { r.takes_y };
-        // A handler that names modifiers was asked before this walk, of
-        // the ones held: here it is nobody's.
-        if !takes || r.mods != 0 {
+        if !takes {
             return Answer::Pass;
         }
         let scrolls = if x { r.scrolls_x } else { r.scrolls_y };

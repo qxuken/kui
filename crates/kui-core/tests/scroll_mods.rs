@@ -149,3 +149,37 @@ fn the_names_parse_as_the_schema_spells_them() {
     );
     assert_eq!(KeyMods::parse("control cmd"), KeyMods::NONE);
 }
+
+/// A list that scrolls and names a modifier for its own `on_scroll`: the
+/// zoom is declared on the thing it zooms.
+fn zooming_list(core: &mut Core) {
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let list = NodeSpec::column()
+        .fill()
+        .scroll_y()
+        .on_scroll(Value::str("zoom"))
+        .scroll_mods(KeyMods::NONE.with_ctrl());
+    ui.with_keyed("list", list, |ui| {
+        ui.leaf_keyed("rest", NodeSpec::row().grow_width().height(900.0));
+    });
+    ui.finish();
+}
+
+#[test]
+fn a_container_that_names_a_modifier_still_scrolls_for_a_plain_wheel() {
+    let mut core = Core::new();
+    zooming_list(&mut core);
+    // Plain: the node is a container like any other, glide included.
+    assert!(heard(&wheel(&mut core, REST, -40.0, true)).is_empty());
+    assert!(heard(&wheel(&mut core, REST, -10.0, false)).is_empty());
+    zooming_list(&mut core);
+    let list = core.key_of("list").expect("the list");
+    assert_eq!(core.scroll_offset(list).y, 50.0, "the list scrolled");
+    // With the key: the handler's, and the list stands still.
+    hold(&mut core, KeyMods::NONE.with_ctrl());
+    assert_eq!(heard(&wheel(&mut core, REST, -40.0, true)), ["zoom"]);
+    assert_eq!(heard(&wheel(&mut core, REST, -10.0, false)), ["zoom"]);
+    zooming_list(&mut core);
+    assert_eq!(core.scroll_offset(list).y, 50.0);
+}

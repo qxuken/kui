@@ -1047,7 +1047,8 @@ pub struct EventSpec {
     /// the tree under the pointer the gesture began: ahead of every
     /// scroll container and every handler that names none, the innermost
     /// such node winning. A wheel with none of them held passes it by as
-    /// if it declared no `on_scroll`. What a Ctrl-wheel zoom is declared
+    /// if it declared no `on_scroll` — a node that is a scroll container
+    /// too scrolls for it as any other does. What a Ctrl-wheel zoom is declared
     /// with, on the window's root or on the one canvas it zooms: a
     /// modified wheel is the more specific ask, and no list under the
     /// pointer scrolls for it. Its events carry `mods`, the modifiers

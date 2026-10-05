@@ -1135,7 +1135,9 @@ typedef struct KuiSpec {
      * one of them held, and hears it ahead of every scroll container and
      * every on_scroll that names none, wherever under the pointer the
      * gesture began - a Ctrl-wheel zoom declared on the root, heard over a
-     * list that then does not scroll. Its scroll events carry `mods`. 0
+     * list that then does not scroll. Any other wheel passes the node by,
+     * and scrolls it if it is a scroll container too. Its scroll events
+     * carry `mods`. 0
      * (the zeroed spec): a handler like any other. ABI 25. */
     uint32_t scroll_mods;
 } KuiSpec;

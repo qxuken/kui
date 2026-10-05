@@ -186,3 +186,11 @@ date: 2026-09-28
   the C door, and by the corpus's `scroll-gestures` scene in four
   adapters. The scene holds a contained list at its limit and a y-only
   handler met by a sideways notch.
+- *Amended (F122, RG119):* a handler that names modifiers
+  (`scroll_mods`) is asked before this walk, of the modifiers the
+  gesture began with, the innermost such handler taking it whatever
+  room or `contain` the regions inside it have. To a gesture it does
+  not hear it is what it would be with no `on_scroll`: the container
+  it may also be, asked like any other, and otherwise passed. The
+  latch keeps the modifiers with the targets. Pinned by
+  `tests/scroll_mods.rs`.
