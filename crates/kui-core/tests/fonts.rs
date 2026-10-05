@@ -561,3 +561,46 @@ fn a_face_loaded_or_removed_under_shaped_text_reaches_it() {
         "bold synthesized again: {synthetic:?}"
     );
 }
+
+/// F121: the families an app names are asked for a character the text's
+/// own family lacks before the platform's list — in plain text and in a
+/// cell grid alike — and the platform's runs again when the list is empty.
+#[test]
+fn the_apps_fallback_fonts_are_asked_before_the_platforms() {
+    use kui_core::testing::{font_face, han_face};
+    let mut core = Core::new();
+    let own = core
+        .add_font_data(font_face("Kui F121", 400, false, false))
+        .expect("the fixture registers");
+    // The fixture's 字 is half an em wide: no installed face's is.
+    let han = core
+        .add_font_data(han_face("Kui F121 Han"))
+        .expect("a face with 字");
+    let style = TextStyle::new(20.0).font(own).line_height(24.0);
+    let plain = |core: &mut Core| -> Vec<f32> {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.text_in(NodeSpec::column(), "字字", style);
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| q.kind != kui_core::QuadKind::Solid)
+            .map(|q| q.rect.x)
+            .collect()
+    };
+    let apart = |xs: &[f32]| xs.get(1).zip(xs.first()).map(|(b, a)| b - a);
+    let before = plain(&mut core);
+    assert_ne!(apart(&before), Some(10.0), "the platform's: {before:?}");
+    let cells_before = cell_glyphs(&mut core, "字", 0, style);
+
+    core.set_fallback_fonts(&[han]);
+    assert_eq!(core.fallback_fonts(), ["Kui F121 Han"]);
+    let after = plain(&mut core);
+    assert_eq!(apart(&after), Some(10.0), "the app's: {after:?}");
+    let cells_after = cell_glyphs(&mut core, "字", 0, style);
+    assert_ne!(cells_after, cells_before, "a grid asks them too");
+
+    core.set_fallback_fonts(&[]);
+    assert_eq!(plain(&mut core), before, "and the platform's again");
+    assert_eq!(cell_glyphs(&mut core, "字", 0, style), cells_before);
+}

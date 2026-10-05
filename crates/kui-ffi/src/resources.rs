@@ -276,6 +276,33 @@ pub extern "C" fn kui_font_reload_system(ptr: *mut KuiCtx) -> usize {
     })
 }
 
+/// The families asked, in order, for a character the text's own family
+/// has no glyph for, before the platform's fallback list
+/// (`Core::set_fallback_fonts`): `len` font handles at `ids`, none (NULL
+/// or 0) for the platform's list alone. A handle that names no font is
+/// left out. A new list shapes every text again; the same list twice is
+/// nothing.
+///
+/// # Safety
+/// `ids` points at `len` handles, or is NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kui_font_set_fallback(ptr: *mut KuiCtx, ids: *const u64, len: usize) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let ids: Vec<kui_core::FontId> = if ids.is_null() {
+            Vec::new()
+        } else {
+            unsafe { std::slice::from_raw_parts(ids, len) }
+                .iter()
+                .map(|&id| kui_core::FontId::from_ffi(id))
+                .collect()
+        };
+        c.core().set_fallback_fonts(&ids);
+    });
+}
+
 /// Forgets a registered font; text still naming it falls back to the
 /// family.
 #[unsafe(no_mangle)]

@@ -47,6 +47,21 @@ was the first bare bump to break an app in five releases).
 
 No C build breaks and the ABI stays 23; the Node wire stays v20.
 
+### Added
+
+- **The fallback fonts are the app's to name** (backlog F121, from
+  kawoosh). `Core::set_fallback_fonts(&[FontId])` — C
+  `kui_font_set_fallback`, Node `ctx.setFallbackFonts(ids)` — lists the
+  fonts asked, in order, for a character the text's own family has no
+  glyph for, before the platform's list, whose first choice on macOS is
+  the system's proportional face. For every text in the session, a cell
+  grid's too, and kept across `reload_system_fonts`; an empty list is
+  the platform's alone.
+
+**What you can delete.** Nothing an app could have written: the list
+was not reachable. A family chosen only because it covers a script the
+preferred one lacks can give way to the preferred one.
+
 ### Fixed
 
 - **A cell grid's fallback glyph stays in its cell** (backlog F120, from

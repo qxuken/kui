@@ -761,7 +761,14 @@ fn shape_cell(
     let mut dx = 0.0;
     if own.is_some_and(|own| own != g.font) && !private_use(ch) {
         let mut family = None;
-        if !fs.is_monospace(g.font)
+        // The app's own choice of fallback stands, whatever its pitch.
+        let chosen = fs.db().face(g.font).is_some_and(|f| {
+            f.families
+                .iter()
+                .any(|(name, _)| res.fallback.contains(name))
+        });
+        if !chosen
+            && !fs.is_monospace(g.font)
             && let Some(m) = shape_one(style, text, flags, MONO, 1.0, res, fs, scale)
             && m.glyph != 0
             && fs.is_monospace(m.font)
