@@ -1417,6 +1417,32 @@ test('a cells grid selects by cell, word and row from the click count', () => {
 
 // Underline, strikethrough and a background per span (backlog C22): solid
 // quads beside the glyphs, the background under them and the lines over.
+test('dash cuts a line and a path\'s stroke into marks, and a count nobody spells is refused (V2)', () => {
+  const segments = (props) => {
+    const b = run(() => root({}, [box({ width: 200, height: 40 }, [el('line', { from: [0, 20], to: [100, 20], width: 2, ...props })])]));
+    const stride = b.quads.byteLength / b.stats.quadCount;
+    let n = 0;
+    for (let off = 0; off < b.quads.byteLength; off += stride) {
+      if (b.quads.readUInt32LE(off + KIND_WORD * 4) === 6) n++;
+    }
+    return n;
+  };
+  assert.equal(segments({}), 1);
+  // One length is marks and gaps alike; a pair is a mark and a gap.
+  assert.equal(segments({ dash: 5 }), 10);
+  assert.equal(segments({ dash: [6, 4] }), 10);
+  assert.equal(segments({ dash: [6, 4], dashOffset: 5 }), 10);
+  assert.equal(segments({ dash: [10, 4, 2, 4] }), 10);
+  // No gap is no pattern.
+  assert.equal(segments({ dash: [6, 0] }), 1);
+  assert.throws(() => probe.encode(el('line', { from: [0, 0], to: [9, 9], dash: [1, 2, 3] })), /bad dash/);
+  assert.throws(() => probe.encode(el('line', { from: [0, 0], to: [9, 9], dash: 'dotted' })), /bad dash/);
+  assert.throws(() => probe.encode(el('line', { from: [0, 0], to: [9, 9], dash: 4, dashOffset: '1' })), /bad dashOffset/);
+  assert.throws(() => probe.encode(el('path', { d: 'M0 0 H9', width: 1, dash: [] })), /bad dash/);
+  // A path's dash rides after its pivot and the stream stays in step.
+  assertLowers('dashed path', () => root({}, [box({ width: 200, height: 40 }, [el('path', { d: 'M0 20 H100', width: 2, dash: [6, 4], dashOffset: 2 }), text('after', { size: 12 })])]));
+});
+
 test('a span carries its own background and lines', () => {
   const ctx = new Ctx();
   const mono = { size: 14, family: 'mono', lineHeight: 20 };
@@ -4546,7 +4572,7 @@ const SCENE_TREES = {
         el('path', { d: 'M60 60 L100 60 A40 40 0 0 1 60 100 Z', bg: '#7f9cf5', onClick: { kind: 'wedge' }, label: 'Wedge' }),
         el('path', { d: 'M60 60 L60 100 A40 40 0 0 1 20 60 Z', bg: '#d8863b' }, [], 'wedge2'),
         el('path', { d: [0, 120, 10, 1, 190, 10, 1, 190, 80, 1, 120, 80, 5, 0, 140, 30, 1, 170, 30, 1, 170, 60, 1, 140, 60, 5], bg: '#f5d67f', fillRule: 'evenodd' }),
-        el('path', { d: 'M110 90 C130 70 150 110 190 90', width: 2, color: '#9ad9a0' }),
+        el('path', { d: 'M110 90 C130 70 150 110 190 90', width: 2, color: '#9ad9a0', dash: [8, 4], dashOffset: 3 }),
         el('path', { d: 'M20 10 L50 10 L35 40 Z', bg: '#e07a8a', width: 1.5, color: '#ffffff', opacity: 0.5 }),
         el('path', { d: 'M30 104 H50 V110 H30 Z', bg: '#7fd6f5', rotate: 0.125, pivot: [40, 107] }),
         el('path', { d: 'M10 10 L20', bg: '#ffffff' }, [], 'bad'),
@@ -4581,6 +4607,7 @@ const SCENE_TREES = {
         el('line', { from: [10, 10], to: [90, 70], width: 2, color: '#7f9cf5' }),
         el('line', { points: [[100, 20], [140, 20], [140, 60]], width: 3, color: '#d8863b', onClick: { kind: 'elbow' }, label: 'Elbow' }),
         el('line', { points: [[20, 100], [60, 80], [100, 110], [180, 90]], curve: true, width: 1.5, color: '#9ad9a0', opacity: 0.5 }, [], 'curve'),
+        el('line', { points: [[150, 70], [190, 70], [190, 110]], width: 2, color: '#e07a8a', dash: [10, 4, 2, 4], dashOffset: 3 }),
         box({ width: 40, height: 20, bg: '#202030' }),
       ]),
     ]),

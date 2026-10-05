@@ -1955,7 +1955,10 @@ pub const SCENES: &[Scene] = &[
         doc: "The stroke primitive (`docs/adr/0010-a-segment-primitive.md`): \
               a diagonal segment, an orthogonal elbow through three points, \
               and a faded curve through four knots — 8, 9 and 14 pieces by \
-              the core's flattening, so the segment count pins it — beside \
+              the core's flattening, so the segment count pins it — and a \
+              dash-dot round a corner, 3 px into its pattern (backlog V2): \
+              ten more segments, one per mark and two for the mark that \
+              turns the corner — beside \
               a box, which the lines paint over because a line is a float. \
               A line with no input is elided from the access tree; the \
               elbow declares a click and a label, so it is a button, and \
@@ -1978,7 +1981,7 @@ pub const SCENES: &[Scene] = &[
             solid: 2,
             shadows: 0,
             images: 0,
-            segments: 34,
+            segments: 44,
             segments_follow_text: false,
             fragments: 0,
             textures: 0,
@@ -4718,7 +4721,12 @@ fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui.path_d(
                 PATH_CURVE,
                 FillRule::NonZero,
-                Some(Stroke::new(2.0, Color::hex(0x9ad9a0ff))),
+                // Dashed: 8 px marks, 4 px gaps, 3 px in.
+                Some(
+                    Stroke::new(2.0, Color::hex(0x9ad9a0ff))
+                        .dash(8.0, 4.0)
+                        .dash_offset(3.0),
+                ),
                 None,
                 NodeSpec::column(),
             );
@@ -5067,6 +5075,18 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ],
                 Stroke::new(1.5, Color::hex(0x9ad9a0ff)).curve(),
                 NodeSpec::column().opacity(0.5),
+            );
+            // A dash-dot round a corner, 3 px into its pattern.
+            ui.polyline(
+                &[
+                    Vec2::new(150.0, 70.0),
+                    Vec2::new(190.0, 70.0),
+                    Vec2::new(190.0, 110.0),
+                ],
+                Stroke::new(2.0, Color::hex(0xe07a8aff))
+                    .dashed(crate::Dash::of(&[10.0, 4.0, 2.0, 4.0]).unwrap())
+                    .dash_offset(3.0),
+                NodeSpec::column(),
             );
             ui.leaf(
                 NodeSpec::column()

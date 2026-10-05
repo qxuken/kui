@@ -338,3 +338,249 @@ fn a_departing_line_leaves_no_box_behind() {
         quads.iter().map(|q| q.kind).collect::<Vec<_>>()
     );
 }
+
+/// A dashed stroke (backlog V2) is one segment per mark: a mark is a
+/// short round-capped stroke, so the lengths declared are the ones seen —
+/// a 6 px mark at a width of 2 is a 4 px centre line and its two caps.
+#[test]
+fn a_dashed_line_is_one_segment_per_mark() {
+    let mut core = Core::new();
+    let quads = frame(&mut core, 1.0, |ui| {
+        ui.line(
+            Vec2::new(10.0, 50.0),
+            Vec2::new(110.0, 50.0),
+            Stroke::new(2.0, Color::WHITE).dash(6.0, 4.0),
+            NodeSpec::column(),
+        );
+    });
+    let segs = segments(&quads);
+    assert_eq!(segs.len(), 10, "a mark every 10 px of 100");
+    assert_eq!(segs[0].segment_ends(), [10.0, 50.0, 14.0, 50.0]);
+    assert_eq!(segs[1].segment_ends(), [20.0, 50.0, 24.0, 50.0]);
+    assert_eq!(segs[9].segment_ends(), [100.0, 50.0, 104.0, 50.0]);
+    assert!(segs.iter().all(|s| s.border_w == 2.0));
+    // Each mark's quad is its own box, padded as a stroke's is.
+    assert_eq!(
+        (
+            segs[1].rect.x,
+            segs[1].rect.y,
+            segs[1].rect.w,
+            segs[1].rect.h
+        ),
+        (17.0, 47.0, 10.0, 6.0)
+    );
+}
+
+/// The pattern runs along the stroke's whole length: a gap that a corner
+/// interrupts is finished after it, and a mark that turns the corner is
+/// two segments meeting there — ADR 0010's reason for not shipping dashes
+/// that restart at every piece of a curve.
+#[test]
+fn a_dash_pattern_keeps_its_phase_across_a_corner() {
+    let mut core = Core::new();
+    // Centre lengths 4 and 6. The first piece is 7 long: a mark, then 3
+    // of the gap's 6.
+    let quads = frame(&mut core, 1.0, |ui| {
+        ui.polyline(
+            &[
+                Vec2::new(10.0, 10.0),
+                Vec2::new(17.0, 10.0),
+                Vec2::new(17.0, 40.0),
+            ],
+            Stroke::new(2.0, Color::WHITE).dash(6.0, 4.0),
+            NodeSpec::column(),
+        );
+    });
+    let segs = segments(&quads);
+    assert_eq!(segs[0].segment_ends(), [10.0, 10.0, 14.0, 10.0]);
+    assert_eq!(segs[1].segment_ends(), [17.0, 13.0, 17.0, 17.0]);
+
+    // The first piece is 2 long: half the mark before the corner, half
+    // after, sharing the corner point.
+    let quads = frame(&mut core, 1.0, |ui| {
+        ui.polyline(
+            &[
+                Vec2::new(10.0, 10.0),
+                Vec2::new(12.0, 10.0),
+                Vec2::new(12.0, 40.0),
+            ],
+            Stroke::new(2.0, Color::WHITE).dash(6.0, 4.0),
+            NodeSpec::column(),
+        );
+    });
+    let segs = segments(&quads);
+    assert_eq!(segs[0].segment_ends(), [10.0, 10.0, 12.0, 10.0]);
+    assert_eq!(segs[1].segment_ends(), [12.0, 10.0, 12.0, 12.0]);
+    assert_eq!(segs[2].segment_ends(), [12.0, 18.0, 12.0, 22.0]);
+
+    // A curve's pieces are 6 px or less, shorter than the period: the
+    // marks are still spaced by the pattern and not by the pieces.
+    let quads = frame(&mut core, 1.0, |ui| {
+        ui.polyline(
+            &[
+                Vec2::new(10.0, 100.0),
+                Vec2::new(60.0, 60.0),
+                Vec2::new(110.0, 100.0),
+            ],
+            Stroke::new(2.0, Color::WHITE).curve().dash(12.0, 8.0),
+            NodeSpec::column(),
+        );
+    });
+    let starts: Vec<[f32; 4]> = segments(&quads).iter().map(|s| s.segment_ends()).collect();
+    let gaps = starts
+        .windows(2)
+        .filter(|w| (w[0][2], w[0][3]) != (w[1][0], w[1][1]))
+        .count();
+    // ~135 px of curve at a 20 px period.
+    assert!((6..=7).contains(&gaps), "{gaps} gaps in {starts:?}");
+}
+
+/// A mark no longer than the stroke is wide is a dot; `dash_offset` moves
+/// the marks towards the first point; a four-length pattern is a
+/// dash-dot.
+#[test]
+fn dots_offsets_and_a_dash_dot() {
+    let mut core = Core::new();
+    let line = |core: &mut Core, stroke: Stroke| {
+        let quads = frame(core, 1.0, |ui| {
+            ui.line(
+                Vec2::new(0.0, 50.0),
+                Vec2::new(40.0, 50.0),
+                stroke,
+                NodeSpec::column(),
+            );
+        });
+        segments(&quads)
+            .iter()
+            .map(|s| {
+                let e = s.segment_ends();
+                (e[0], e[2])
+            })
+            .collect::<Vec<_>>()
+    };
+    let white = |w| Stroke::new(w, Color::WHITE);
+    // Dots 4 across, 10 apart.
+    assert_eq!(
+        line(&mut core, white(4.0).dash(4.0, 6.0)),
+        [
+            (0.0, 0.0),
+            (10.0, 10.0),
+            (20.0, 20.0),
+            (30.0, 30.0),
+            (40.0, 40.0)
+        ]
+    );
+    // 3 px into a 4 + 6 pattern: the last of the first mark, then on.
+    assert_eq!(
+        line(&mut core, white(2.0).dash(6.0, 4.0).dash_offset(3.0)),
+        [
+            (0.0, 1.0),
+            (7.0, 11.0),
+            (17.0, 21.0),
+            (27.0, 31.0),
+            (37.0, 40.0)
+        ]
+    );
+    // And it wraps, backwards too.
+    assert_eq!(
+        line(&mut core, white(2.0).dash(6.0, 4.0).dash_offset(-7.0)),
+        line(&mut core, white(2.0).dash(6.0, 4.0).dash_offset(13.0)),
+    );
+    // A dash, a gap, a dot, a gap: centre lengths 8, 6, 0, 6.
+    let dash_dot = kui_core::Dash::of(&[10.0, 4.0, 2.0, 4.0]).unwrap();
+    assert_eq!(
+        line(&mut core, white(2.0).dashed(dash_dot)),
+        [(0.0, 8.0), (14.0, 14.0), (20.0, 28.0), (34.0, 34.0)]
+    );
+    assert!(kui_core::Dash::of(&[1.0, 2.0, 3.0]).is_none());
+}
+
+/// What is not a pattern draws solid: no gap, a length that is not a
+/// number, a mark and its gap under a physical pixel together. And the lengths are logical —
+/// the marks scale with the frame.
+#[test]
+fn a_pattern_with_no_gap_is_solid_and_the_lengths_are_logical() {
+    let mut core = Core::new();
+    let count = |core: &mut Core, scale: f32, stroke: Stroke| {
+        let quads = frame(core, scale, |ui| {
+            ui.line(
+                Vec2::new(10.0, 50.0),
+                Vec2::new(110.0, 50.0),
+                stroke,
+                NodeSpec::column(),
+            );
+        });
+        segments(&quads).len()
+    };
+    let white = Stroke::new(2.0, Color::WHITE);
+    assert_eq!(count(&mut core, 1.0, white.dash(6.0, 0.0)), 1);
+    assert_eq!(count(&mut core, 1.0, white.dash(f32::NAN, 4.0)), 1);
+    assert_eq!(count(&mut core, 1.0, white.dash(0.3, 0.3)), 1);
+    assert!(white.dash(6.0, 0.0).dash.is_solid());
+    assert!(!white.dash(6.0, 4.0).dash.is_solid());
+    // 0.3 + 0.3 is over a pixel at a scale of 4.
+    assert!(count(&mut core, 4.0, white.dash(0.3, 0.3)) > 1);
+
+    let quads = frame(&mut core, 2.0, |ui| {
+        ui.line(
+            Vec2::new(10.0, 50.0),
+            Vec2::new(110.0, 50.0),
+            white.dash(6.0, 4.0),
+            NodeSpec::column(),
+        );
+    });
+    let segs = segments(&quads);
+    assert_eq!(segs.len(), 10);
+    assert_eq!(segs[1].segment_ends(), [40.0, 100.0, 48.0, 100.0]);
+    assert_eq!(segs[1].border_w, 4.0);
+}
+
+/// A dashed stroke is hit along its whole length, gaps included: the
+/// target is the stroke, not the ink.
+#[test]
+fn a_dashed_line_is_hit_in_its_gaps() {
+    let mut core = Core::new();
+    let build = |ui: &mut kui_core::Ui<'_>| {
+        ui.line_keyed(
+            "l",
+            Vec2::new(10.0, 50.0),
+            Vec2::new(110.0, 50.0),
+            Stroke::new(4.0, Color::WHITE).dash(8.0, 12.0),
+            NodeSpec::column().on_click("line"),
+        );
+    };
+    frame(&mut core, 1.0, build);
+    // x = 25 is in the first gap (8..20 past the start).
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(25.0, 50.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    let events = core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].payload, Value::str("line"));
+}
+
+/// A departing dashed stroke's ghost is dashed.
+#[test]
+fn a_dashed_line_leaves_dashed() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.line_keyed(
+        "l",
+        Vec2::new(10.0, 50.0),
+        Vec2::new(110.0, 50.0),
+        Stroke::new(2.0, Color::WHITE).dash(6.0, 4.0),
+        NodeSpec::column()
+            .transition(100.0)
+            .exit(kui_core::Enter::from(20.0, 0.0)),
+    );
+    ui.finish();
+    core.set_time(0.05);
+    let ui = core.frame(VIEW, 1.0);
+    ui.finish();
+    assert_eq!(segments(&core.output().0.quads).len(), 10);
+}

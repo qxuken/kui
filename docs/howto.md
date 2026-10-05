@@ -52,6 +52,21 @@ a nine-point curve over ~50 px spans is ~60 quads.
 [ADR 0010](adr/0010-a-segment-primitive.md) ·
 [alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
 
+### How do I draw a dashed line, a dotted one, or a marquee's marching ants?
+
+`dash` on a `<line>` or on a `<path>`'s stroke: `dash={[6, 4]}` is 6 px
+marks with 4 px gaps, `dash={4}` the same length for both, and four
+lengths are a dash-dot. The lengths are what you see — every mark has the
+stroke's round caps — so a mark no longer than the stroke is wide is a
+dot: `width={3} dash={[3, 5]}` is a dotted line. The pattern runs along
+the whole stroke, round corners and along a `curve`. For marching ants,
+grow `dashOffset` from a tick; the marks move towards the first point.
+A dashed line costs a quad per mark, and is still hit in its gaps.
+
+[`line` element](props.md#elements) ·
+[ADR 0010's amendment](adr/0010-a-segment-primitive.md#amendment-a-dash-is-cut-in-the-core) ·
+`cargo run --example line`
+
 ### How do I make a tab bar whose tabs stop shrinking at their labels?
 
 Give every tab `width="grow"` and `minWidth="fit"`: they split the bar evenly

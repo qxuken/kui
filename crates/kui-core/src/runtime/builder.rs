@@ -1424,7 +1424,8 @@ impl Core {
             return;
         }
         let stroke_w = stroke.map_or(0.0, |s| s.width.max(0.0));
-        let Some((id, rect)) = self.paths.push(ops, rule, stroke_w, turn) else {
+        let dash = stroke.and_then(|s| s.dash.cut(stroke_w));
+        let Some((id, rect)) = self.paths.push(ops, rule, stroke_w, dash, turn) else {
             return;
         };
         // The mask is the box at the frame's scale; past what a texture
@@ -1452,7 +1453,9 @@ impl Core {
         // its masks go to a texture of their own rather than churning the
         // atlas (ADR 0040, decision 8). One change is a new shape and a
         // new slot.
-        let hash = self.paths.run(id).0.hash;
+        // A pattern that moves - a marquee's marching ants - is a shape
+        // that moves: each offset is a mask of its own.
+        let hash = self.paths.run(id).0.hash ^ dash.map_or(0, |d| d.hash());
         let now = self.frame_no;
         let motion = match self.path_motion.get(&key) {
             Some(&m) if m.hash != hash => crate::path::Motion {

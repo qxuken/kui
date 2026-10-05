@@ -127,7 +127,9 @@ date: 2026-10-04
    wedge; the stroke's colour tweens as a line's does. `fillRule` is
    `nonzero` (SVG's default; a self-intersecting outline fills its
    overlaps) or `evenodd` (the `polygon`'s rule, kept there unchanged).
-   Joins and caps are round, as a `line`'s are; `dash` stays V2's.
+   Joins and caps are round, as a `line`'s are; `dash` stays V2's
+   (built 2026-10-05: the stroke's mask is cut by the pattern, see
+   [ADR 0010's amendment](0010-a-segment-primitive.md#amendment-a-dash-is-cut-in-the-core)).
 4. **Rasterized on the CPU, through zeno, at the node's physical scale.**
    The ops are transformed to physical px and rasterized into an 8-bit
    coverage mask the size of the outline's bounding box plus a pixel on

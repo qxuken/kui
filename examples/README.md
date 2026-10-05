@@ -156,7 +156,7 @@ ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
 | [`edit.rs`](rust/widgets/edit.rs) | The `edit` element: a multiline document and the single-line `text_input`, `changed` and `submit`, the text read back | ✓ | |
 | [`text.rs`](rust/widgets/text.rs) | The `text` element: spans shaped as one paragraph, decorations, families, `nowrap`, `max_lines` + `ellipsis`, line height | | |
 | [`image.rs`](rust/widgets/image.rs) | The `image` element: Fit sizing, kept aspect, rounded corners; a stream replaced every frame at the size `layout.scale` says (`update_image`), `nearest` beside `linear`, `contain` / `cover` | ✓ | |
-| [`line.rs`](rust/widgets/line.rs) | The `line` element: a mind map whose links are curves between floats, brightening by transition | | |
+| [`line.rs`](rust/widgets/line.rs) | The `line` element: a mind map whose links are curves between floats, brightening by transition; a planned card's link is dashed (`Stroke::dash`), and marches while it is lit | | |
 | [`polygon.rs`](rust/widgets/polygon.rs) | The `polygon` element: a pie whose wedges light under a hover box, arrowheads on a graph's links, the area under a sparkline, a concave star | ✓ | |
 | [`path.rs`](rust/widgets/path.rs) | The `path` element: a pie whose round wedges meet without a seam and light under the pointer, a donut gauge, an icon from SVG path data filled and stroked, an even-odd ring whose hole the pointer falls through | ✓ | |
 | [`fragment.rs`](rust/widgets/fragment.rs) | The `fragment` element: boxes a WGSL function paints — a gradient, a ring, a shimmer, a card with children; a heatmap reading a data texture the app replaces every frame and a ripple over an atlas-backed icon, the `image` input (V1) | ✓ | |

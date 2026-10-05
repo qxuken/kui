@@ -966,10 +966,10 @@ static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiValue *click = kui_value_map();
     kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("wedge")));
     kui_path_d(ui, KUI_STR(""), KUI_STR("M60 60 L100 60 A40 40 0 0 1 60 100 Z"),
-               KUI_FILL_NONZERO, 0, 0, 0, NULL, &blue, click, NULL, NULL);
+               KUI_FILL_NONZERO, 0, 0, 0, NULL, NULL, &blue, click, NULL, NULL);
     KuiSpec orange = {.bg = 0xd8863bff};
     kui_path_d(ui, KUI_STR("wedge2"), KUI_STR("M60 60 L60 100 A40 40 0 0 1 20 60 Z"),
-               KUI_FILL_NONZERO, 0, 0, 0, NULL, &orange, NULL, NULL, NULL);
+               KUI_FILL_NONZERO, 0, 0, 0, NULL, NULL, &orange, NULL, NULL, NULL);
     float ring[64];
     size_t n = kui_path_parse(KUI_STR("M120 10 H190 V80 H120 Z M140 30 H170 V60 H140 Z"),
                               ring, 64);
@@ -977,20 +977,22 @@ static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
     /* kui_path_parse answers with what the form needs and writes nothing
        past `cap`, so a count over the buffer is one to size by, not to draw. */
     if (n > 0 && n <= 64)
-        kui_path(ui, KUI_STR(""), ring, n, KUI_FILL_EVENODD, 0, 0, 0, NULL, &yellow, NULL,
-                 NULL, NULL);
+        kui_path(ui, KUI_STR(""), ring, n, KUI_FILL_EVENODD, 0, 0, 0, NULL, NULL, &yellow,
+                 NULL, NULL, NULL);
+    /* The curve's stroke is dashed: 8 px marks, 4 px gaps, 3 px in. */
+    float dashes[5] = {8, 4, 8, 4, 3};
     kui_path_d(ui, KUI_STR(""), KUI_STR("M110 90 C130 70 150 110 190 90"),
-               KUI_FILL_NONZERO, 2, 0x9ad9a0ff, 0, NULL, NULL, NULL, NULL, NULL);
+               KUI_FILL_NONZERO, 2, 0x9ad9a0ff, 0, NULL, dashes, NULL, NULL, NULL, NULL);
     KuiSpec pink = {.bg = 0xe07a8aff, .opacity_set = 1, .opacity = 0.5f};
     kui_path_d(ui, KUI_STR(""), KUI_STR("M20 10 L50 10 L35 40 Z"), KUI_FILL_NONZERO,
-               1.5f, 0xffffffff, 0, NULL, &pink, NULL, NULL, NULL);
+               1.5f, 0xffffffff, 0, NULL, NULL, &pink, NULL, NULL, NULL);
     KuiSpec cyan = {.bg = 0x7fd6f5ff};
     float pivot[2] = {40, 107};
     kui_path_d(ui, KUI_STR(""), KUI_STR("M30 104 H50 V110 H30 Z"), KUI_FILL_NONZERO, 0, 0,
-               0.125f, pivot, &cyan, NULL, NULL, NULL);
+               0.125f, pivot, NULL, &cyan, NULL, NULL, NULL);
     KuiSpec white = {.bg = 0xffffffff};
     kui_path_d(ui, KUI_STR("bad"), KUI_STR("M10 10 L20"), KUI_FILL_NONZERO, 0, 0, 0, NULL,
-               &white, NULL, NULL, NULL);
+               NULL, &white, NULL, NULL, NULL);
     kui_close(ui);
 }
 
@@ -1282,11 +1284,16 @@ static void conf_lines(KuiCtx *ui, const Fixtures *f, int phase) {
     KuiSpec elbow_spec = {.label = KUI_STR("Elbow")};
     KuiValue *elbow_click = kui_value_map();
     kui_value_map_set(elbow_click, KUI_STR("kind"), kui_value_str(KUI_STR("elbow")));
-    kui_polyline(ui, KUI_STR(""), elbow, 3, 3, 0xd8863bff, false, &elbow_spec, elbow_click,
-                 NULL, NULL);
+    kui_polyline(ui, KUI_STR(""), elbow, 3, 3, 0xd8863bff, false, NULL, &elbow_spec,
+                 elbow_click, NULL, NULL);
     float curve[] = {20, 100, 60, 80, 100, 110, 180, 90};
     KuiSpec faded = {.opacity_set = 1, .opacity = 0.5f};
-    kui_polyline(ui, KUI_STR("curve"), curve, 4, 1.5f, 0x9ad9a0ff, true, &faded, NULL, NULL,
+    kui_polyline(ui, KUI_STR("curve"), curve, 4, 1.5f, 0x9ad9a0ff, true, NULL, &faded, NULL,
+                 NULL, NULL);
+    /* A dash-dot round a corner, 3 px into its pattern (backlog V2). */
+    float corner[] = {150, 70, 190, 70, 190, 110};
+    float dash_dot[5] = {10, 4, 2, 4, 3};
+    kui_polyline(ui, KUI_STR(""), corner, 3, 2, 0xe07a8aff, false, dash_dot, NULL, NULL, NULL,
                  NULL);
     KuiSpec box = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 20}, .bg = 0x202030ff};
     kui_open(ui, &box, NULL);

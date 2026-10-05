@@ -15,8 +15,9 @@ gradient props** (a stop list, a type, a geometry and an interpolation space
 are not a paint prop's worth of work — write a fragment, or use an image),
 no inset or
 multiple shadows, and the single shadow is not knocked out of the middle of
-the shape, so a translucent background shows it through. There are **no
-dashes or arrowhead caps**: a line is segments and nothing else, a
+the shape, so a translucent background shows it through. A stroke takes a `dash` (marks and gaps as seen, the pattern kept along
+the whole stroke; backlog V2) on a `line` and on a `path`. There are **no
+arrowhead caps**: a line is segments and nothing else, a
 translucent polyline double-blends where its caps overlap at a join, and its
 width does not tween (its colour does). A fill of any shape is a `path`
 ([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)): SVG path data,

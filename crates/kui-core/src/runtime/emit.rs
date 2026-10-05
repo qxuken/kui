@@ -405,6 +405,7 @@ impl Core {
                 Leaf::Line {
                     points,
                     width: run.width,
+                    dash: run.dash,
                 }
             }
             NodeContent::Path(id) => {
@@ -413,6 +414,7 @@ impl Core {
                     ops,
                     rule: run.rule,
                     stroke_w: run.stroke_w,
+                    dash: run.dash,
                     hash: run.hash,
                     angle: run.angle,
                     animating: run.animating,
@@ -1435,9 +1437,15 @@ impl Core {
                 GhostContent::Polygon(draw) => Leaf::Polygon(draw),
                 // The points are the ghost's own copy; the colour is the
                 // `bg` slot, which `play.bg` eases on the root.
-                GhostContent::Line { first, len, width } => Leaf::Line {
+                GhostContent::Line {
+                    first,
+                    len,
+                    width,
+                    dash,
+                } => Leaf::Line {
                     points: &g.points[first as usize..(first + len) as usize],
                     width,
+                    dash,
                 },
                 // The ops are the ghost's own copy, the hash the live
                 // node's, so the masks are the slots it already had.
@@ -1446,12 +1454,14 @@ impl Core {
                     len,
                     rule,
                     stroke_w,
+                    dash,
                     hash,
                     angle,
                 } => Leaf::Path {
                     ops: &g.ops[first as usize..(first + len) as usize],
                     rule,
                     stroke_w,
+                    dash,
                     hash,
                     angle,
                     animating: false,
@@ -2060,6 +2070,8 @@ enum Leaf<'a> {
     Line {
         points: &'a [Vec2],
         width: f32,
+        /// What cuts the stroke into marks (backlog V2); None for solid.
+        dash: Option<crate::line::Cut>,
     },
     /// A path's run; the fill is the node's `bg`, the stroke its border
     /// colour and width, each a mask quad from the atlas (ADR 0040).
@@ -2067,6 +2079,8 @@ enum Leaf<'a> {
         ops: &'a [crate::path::PathOp],
         rule: crate::path::FillRule,
         stroke_w: f32,
+        /// What cuts the stroke into marks, as a line's (backlog V2).
+        dash: Option<crate::line::Cut>,
         hash: u64,
         /// The turn in radians of a path that declared one (ADR 0041).
         angle: Option<f32>,
@@ -2328,21 +2342,26 @@ impl Painter<'_> {
                     );
                 }
             }
-            Leaf::Line { points, width } => {
-                push_segments(
-                    &mut self.display.quads,
-                    Vec2::new(rect.x, rect.y),
-                    points,
-                    width,
-                    style.bg,
-                    clip_id,
-                    scale,
-                );
+            Leaf::Line {
+                points,
+                width,
+                dash,
+            } => {
+                let origin = Vec2::new(rect.x, rect.y);
+                let quads = &mut self.display.quads;
+                // A pattern too fine to be one draws solid.
+                let cut = dash.is_some_and(|d| {
+                    push_marks(quads, origin, points, width, d, style.bg, clip_id, scale)
+                });
+                if !cut {
+                    push_segments(quads, origin, points, width, style.bg, clip_id, scale);
+                }
             }
             Leaf::Path {
                 ops,
                 rule,
                 stroke_w,
+                dash,
                 hash,
                 angle,
                 animating,
@@ -2408,7 +2427,16 @@ impl Painter<'_> {
                         hash,
                         scale,
                         mask,
-                        crate::path::MaskPaint::Stroke(stroke_w * scale),
+                        match dash {
+                            Some(cut) => crate::path::MaskPaint::Dashed(
+                                stroke_w * scale,
+                                crate::line::Cut {
+                                    lens: cut.lens.map(|l| l * scale),
+                                    offset: cut.offset * scale,
+                                },
+                            ),
+                            None => crate::path::MaskPaint::Stroke(stroke_w * scale),
+                        },
                         style.border_color,
                         clip_id,
                         animating,
@@ -2648,6 +2676,49 @@ fn push_segments(
             uv: Quad::segment_uv([a.x, a.y, b.x, b.y]),
         });
     }
+}
+
+/// A dashed stroke's quads: one [`QuadKind::Segment`] per mark per
+/// piece it lies on, as [`push_segments`] makes one per piece — a mark is
+/// a short stroke, round caps and all, so a backend that draws a line
+/// draws a dashed one (backlog V2). False, with nothing pushed, for a
+/// pattern the caller draws solid: a mark and its gap under a physical
+/// pixel together, or
+/// more marks than [`crate::line::MAX_MARKS`].
+///
+/// Its own function, and never inlined, for the reason `push_segments`
+/// is: nothing of the rare path belongs in `emit_node`.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn push_marks(
+    quads: &mut Vec<Quad>,
+    origin: Vec2,
+    points: &[Vec2],
+    width: f32,
+    cut: crate::line::Cut,
+    color: Color,
+    clip_id: ClipId,
+    scale: f32,
+) -> bool {
+    let pad = crate::line::pad(width) * scale;
+    let w = width.max(0.0) * scale;
+    cut.marks(points, 1.0 / scale, |from, to| {
+        let a = Vec2::new((origin.x + from.x) * scale, (origin.y + from.y) * scale);
+        let b = Vec2::new((origin.x + to.x) * scale, (origin.y + to.y) * scale);
+        let (x0, x1) = (a.x.min(b.x) - pad, a.x.max(b.x) + pad);
+        let (y0, y1) = (a.y.min(b.y) - pad, a.y.max(b.y) + pad);
+        quads.push(Quad {
+            rect: Rect::new(x0, y0, x1 - x0, y1 - y0),
+            color,
+            border_color: Color::TRANSPARENT,
+            radius: crate::display::SQUARE,
+            border_w: w,
+            blur: 0.0,
+            kind: QuadKind::Segment,
+            clip: clip_id,
+            uv: Quad::segment_uv([a.x, a.y, b.x, b.y]),
+        });
+    })
 }
 
 /// The drop shadow behind one node, in physical pixels. The quad is the

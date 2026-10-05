@@ -293,8 +293,12 @@ extern "C" {
  * keeps its own bounce and a timed one stays timed, as before. The 64-bit
  * size is 688. KUI_EASE_SMOOTH and KUI_EASE_SNAPPY are new values of
  * easing, which moved nothing. Recompile.
+ *
+ * ABI 24 gives kui_polyline, kui_path and kui_path_d a `dash` argument
+ * before spec: five floats - a mark, a gap, a mark, a gap, the offset - or
+ * NULL for the solid stroke they drew. Pass NULL and recompile.
  */
-#define KUI_ABI_VERSION 23u
+#define KUI_ABI_VERSION 24u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -2933,10 +2937,25 @@ void kui_line(KuiCtx *ctx, float x0, float y0, float x1, float y1, float width,
  * three payloads are taken as kui_open_with takes them: a stroke with one
  * is hit by its SHAPE - a press
  * within half its width of any piece (at least 4 px of grab), and a press
- * elsewhere in its box falls through to what is under. NULL for none. */
+ * elsewhere in its box falls through to what is under. NULL for none.
+ * dash cuts the stroke into marks and gaps: five floats - a mark, a gap, a
+ * second mark, a second gap (repeat the pair for a plain dash) and the
+ * offset into the pattern the stroke starts at - or NULL for a solid
+ * stroke. The lengths are the ones SEEN, in logical px: every mark is
+ * round-capped, so a mark no longer than the stroke is wide is a dot, and
+ * {6, 4, 6, 4, 0} is 6 px of ink and 4 of nothing at any width (SVG's
+ * stroke-dasharray measures the centre line: this is its mark - width,
+ * gap + width). The pattern runs along the whole stroke, round corners and
+ * along a curve; growing the offset moves the marks towards the first
+ * point. No gap, a mark and gap under a physical pixel together, or more
+ * than 16384 marks draws solid. On the wire a dashed stroke is one
+ * KUI_QUAD_SEGMENT per mark per piece the mark lies on, so a renderer
+ * that draws a stroke draws a dashed one; it is hit along its whole
+ * length, gaps included. */
 void kui_polyline(KuiCtx *ctx, KuiStr label, const float *xy, size_t count,
-                  float width, uint32_t color, bool curve, const KuiSpec *spec,
-                  KuiValue *on_click, KuiValue *on_drag, KuiValue *on_hover);
+                  float width, uint32_t color, bool curve, const float *dash,
+                  const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
+                  KuiValue *on_hover);
 /* A filled polygon through `count` points at xy (x0, y0, x1, y1, ...): at
  * most eight - more are dropped with `polygon-points-truncated`, fewer than
  * three draw nothing - the fill in spec->bg (no bg, no fill). Placed like a
@@ -2981,15 +3000,18 @@ enum { KUI_FILL_NONZERO = 0, KUI_FILL_EVENODD = 1 };
  * (docs/adr/0041-a-mask-turns-about-its-centre.md): the path is boxed by the
  * square the turn sweeps, rasterized once upright, and its quads carry the
  * angle in KuiQuad.blur. 0 and NULL are no turn, the tight box; a path that
- * turns through 0 names its pivot so its box does not change there. label
+ * turns through 0 names its pivot so its box does not change there. dash
+ * cuts the stroke as kui_polyline's does - five floats, NULL for none -
+ * restarting at every subpath; it is part of the stroke's mask, and one
+ * whose offset changes every frame is a path that changes every frame. label
  * keys the node (empty = a key from the tree
  * position); spec may be NULL (no fill); NULL for a payload is none. Ops
  * that are not the flat form - a code that is not one, an op cut short -
  * raise path-malformed under the node's key and draw nothing. */
 void kui_path(KuiCtx *ctx, KuiStr label, const float *ops, size_t count,
               uint32_t fill_rule, float width, uint32_t color, float rotate,
-              const float *pivot, const KuiSpec *spec, KuiValue *on_click,
-              KuiValue *on_drag, KuiValue *on_hover);
+              const float *pivot, const float *dash, const KuiSpec *spec,
+              KuiValue *on_click, KuiValue *on_drag, KuiValue *on_hover);
 /* SVG path data (M L H V C S Q T A Z, absolute or relative) to the flat op
  * form, through the one parser every binding uses. Returns how many floats
  * the form needs; they are written to out when cap holds them all, and not
@@ -3001,8 +3023,8 @@ size_t kui_path_parse(KuiStr d, float *out, size_t cap);
  * `path-malformed` under the node's key and draws nothing. */
 void kui_path_d(KuiCtx *ctx, KuiStr label, KuiStr d, uint32_t fill_rule,
                 float width, uint32_t color, float rotate, const float *pivot,
-                const KuiSpec *spec, KuiValue *on_click, KuiValue *on_drag,
-                KuiValue *on_hover);
+                const float *dash, const KuiSpec *spec, KuiValue *on_click,
+                KuiValue *on_drag, KuiValue *on_hover);
 void kui_close(KuiCtx *ctx);
 void kui_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style);
 void kui_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,

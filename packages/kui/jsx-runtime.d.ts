@@ -812,6 +812,19 @@ export declare namespace JSX {
         to?: [number, number];
         points?: [number, number][];
         curve?: boolean;
+        /** Cuts the stroke into marks and gaps (backlog V2): one length
+         *  (marks and gaps alike), `[mark, gap]`, or `[mark, gap, mark,
+         *  gap]` for a dash-dot, in px **as seen** — every mark is
+         *  round-capped, so a mark no longer than the stroke is wide is a
+         *  dot (SVG's `stroke-dasharray` measures the centre line; this is
+         *  its `mark − width, gap + width`). The pattern runs along the
+         *  whole stroke, corners and curves included. A pattern with no
+         *  gap, or finer than a pixel, draws solid. */
+        dash?: number | [number] | [number, number] | [number, number, number, number];
+        /** How far into the pattern the stroke starts, in px: growing it
+         *  moves the marks towards the first point — a marquee's marching
+         *  ants. It wraps; it does not tween. */
+        dashOffset?: number;
         width?: LengthProp;
         color?: ColorProp;
         float?: 'parent' | 'viewport';
@@ -889,6 +902,19 @@ export declare namespace JSX {
          *  the centre of its box without one. A path with `rotate` or
          *  `pivot` is boxed by the square the turn sweeps. */
         pivot?: [number, number];
+        /** Cuts the stroke into marks and gaps (backlog V2): one length
+         *  (marks and gaps alike), `[mark, gap]`, or `[mark, gap, mark,
+         *  gap]` for a dash-dot, in px **as seen** — every mark is
+         *  round-capped, so a mark no longer than the stroke is wide is a
+         *  dot (SVG's `stroke-dasharray` measures the centre line; this is
+         *  its `mark − width, gap + width`). The pattern runs along the
+         *  outline, restarting at every subpath as SVG's does. A pattern with no
+         *  gap, or finer than a pixel, draws solid. */
+        dash?: number | [number] | [number, number] | [number, number, number, number];
+        /** How far into the pattern the stroke starts, in px: growing it
+         *  moves the marks towards the first point — a marquee's marching
+         *  ants. It wraps; it does not tween. */
+        dashOffset?: number;
         bg?: ColorProp;
         width?: LengthProp;
         color?: ColorProp;

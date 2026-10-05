@@ -408,3 +408,49 @@ binding: two nodes on a clipping canvas are panned half past its top edge,
 one clipped and one not. A press over the toolbar where the clipped node's
 cut half would be reaches the toolbar, and the same press on the other
 node reaches that node.
+
+## Amendment: a dash is cut in the core
+
+*2026-10-05, backlog V2.* Decision 9 left dashes out, and the options
+said why: a `dash` that restarted at every join of a curve would read as
+a bug. A view asked, so it is built, and not the way the option sketched.
+
+**The sketch was a phase per quad.** `params.w` would carry how far
+along the stroke each segment starts, and the backend would cut the
+capsule by the pattern. That is one quad per piece whatever the pattern,
+and it is a change to every renderer: the wgpu shader, and each host
+that draws the list itself, which would draw a dashed stroke solid until
+it caught up — with nothing to tell it so.
+
+**What is built is a cut in the core.** A dashed stroke's run is walked
+along its arc length (`line::Cut::marks`) and each mark is emitted as
+what it is, a short round-capped stroke: one `Segment` quad per mark per
+piece the mark lies on, two meeting at the corner for a mark that turns
+one. No backend changed, the corpus pins the cut by its segment count,
+and the phase is kept by construction, since the walk does not know
+where the pieces end. It costs quads in proportion to the marks rather
+than the pieces — a 1000 px line at a 10 px period is 100 — and a
+stroke that would be more than 16384 marks, or whose mark and gap come
+to under a physical pixel, draws solid.
+
+**The lengths are the ones seen.** Caps are round (decision 2), so a
+mark `on` long is a capsule with a centre line of `on − width`, and the
+gap's centre line takes the difference; a mark no longer than the stroke
+is wide is a dot. SVG's `stroke-dasharray` measures the centre line,
+and with a round cap its `4 4` at a width of 4 is a solid line, which
+is the first thing anyone writes. The first mark's cap sits where the
+solid stroke's would.
+
+**The same pattern on a `path`.** A path's stroke is a mask
+([ADR 0040](0040-a-path-is-a-mask-in-the-atlas.md), whose decision 3
+left `dash` to V2), so the centre lengths go to the rasterizer and the
+mask is keyed by them. The pattern restarts at each subpath, as SVG's
+does. An offset that changes every frame is read as the path's shape
+changing, so a marching outline takes a texture of its own instead of
+an atlas slot a frame.
+
+**What it does not do.** Neither `dash` nor `dashOffset` tweens; a
+translucent dashed polyline double-blends where two halves of one mark
+meet at a corner, as a solid one does at every join; and the hit region
+is the whole stroke, gaps included — the target is the stroke, not the
+ink.

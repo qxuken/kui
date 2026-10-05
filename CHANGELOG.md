@@ -40,8 +40,50 @@ was the first bare bump to break an app in five releases).
   the atlas again — a `GlyphMask` quad where it stayed a `Texture`
   (under Fixed). Nothing an app sees; a host that counts quads by kind
   does.
+- C: `kui_polyline`, `kui_path` and `kui_path_d` take a `dash` before
+  `spec` — five floats, or NULL for the solid stroke they drew (under
+  Added). `KUI_ABI_VERSION` is 24; pass NULL and recompile.
+- Rust: `Stroke` gains a `dash` field, so a struct literal needs it
+  (`Stroke::new` does not); `path::MaskPaint` gains `Dashed`.
 
-No C build breaks and the ABI stays 23; the Node wire stays v20.
+The Node wire moves to v21 for the dash's five floats on a line and a
+path, which an encoder and addon of one release never see apart.
+
+### Added
+
+- **`dash` on a `line` and on a `path`'s stroke, in every binding**
+  (backlog V2, the amendment in
+  [ADR 0010](docs/adr/0010-a-segment-primitive.md)): `<line dash={[6, 4]}
+  dashOffset/>`, `line { dash = {6, 4}, dash_offset = }`,
+  `Stroke::new(w, c).dash(6.0, 4.0).dash_offset(n)` (`Dash::of` for a
+  pattern read from data), and a `const float *dash` on `kui_polyline`,
+  `kui_path` and `kui_path_d`. One length is marks and gaps alike, two
+  are a mark and a gap, four a dash-dot.
+  - **The lengths are the ones seen.** Every mark is a short stroke
+    with the stroke's own round caps, so `6, 4` is 6 px of ink and 4 px
+    of nothing at any width and a mark no longer than the stroke is
+    wide is a dot. SVG's `stroke-dasharray` measures the centre line,
+    which with round caps makes `4 4` at a width of 4 a solid line;
+    this pattern is SVG's `mark − width, gap + width`.
+  - **The pattern keeps its phase** along the whole stroke — round the
+    corners of a polyline and across the pieces of a curve, which is
+    what ADR 0010 would not ship without — and restarts at each subpath
+    of a `path`, as SVG's does. `dashOffset` starts that far into it;
+    growing it moves the marks towards the first point, a marquee's
+    marching ants. Neither tweens.
+  - **No renderer changes.** A dashed line is one `Segment` quad per
+    mark per piece the mark lies on, cut in the core, so a host that
+    draws a stroke draws a dashed one; a dashed path stroke is cut by
+    the rasterizer into the mask it already was. A path whose offset
+    changes every frame is a shape that changes every frame, and
+    leaves the atlas for a texture of its own while it marches.
+  - A pattern with no gap, a mark and gap under a physical pixel
+    together, or more than 16384 marks draws solid. A dashed stroke is
+    hit along its whole length, gaps included.
+  - The corpus's `lines` and `paths` scenes carry one each, so the
+    segment count pins the cut in four bindings;
+    `examples/rust/widgets/line.rs` hangs its planned cards off dashed
+    links that march under the pointer.
 
 ### Fixed
 
@@ -69,7 +111,8 @@ No C build breaks and the ABI stays 23; the Node wire stays v20.
 **What you can delete.** The key an app gave a still icon only so a
 neighbour's coming and going would not move it to a texture; the
 invisible wider path laid under a thick-stroked one to catch the press
-on its edge.
+on its edge; the loop that walked a connector's points and declared a
+`line` per dash, and the arithmetic that kept its phase round a corner.
 
 ## 0.1.0-alpha.36 (2026-10-05)
 

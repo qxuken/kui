@@ -195,7 +195,7 @@ pub use keyframes::Keyframe;
 /// `#[message(crate = "kui_core")]` to the enum.
 #[cfg(feature = "derive")]
 pub use kui_derive::Message;
-pub use line::{LineId, LineStore, Stroke};
+pub use line::{Dash, LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
 pub use message::{MessageError, MessageField};
 pub use metrics::Metrics;
