@@ -238,6 +238,16 @@ impl Pacer {
         true
     }
 
+    /// Whether a frame is held for the display right now: the link has
+    /// been asked to bring it back, and [`Self::overdue`] is the deadline
+    /// if it does not. Asking for it again meanwhile is only held again —
+    /// which is how an animating window turned its run loop as fast as it
+    /// would go between two presents, a core for as long as anything
+    /// moved (backlog F103).
+    pub(crate) fn holding(&self) -> bool {
+        self.held_since.is_some()
+    }
+
     /// A frame reached the surface, at this size.
     pub(crate) fn presented(&mut self, now: Instant, size: (u32, u32)) {
         self.last_present = Some(now);
@@ -283,6 +293,30 @@ mod tests {
             "a live resize"
         );
         assert!(!in_run(None, (0, 0), t0, (800, 600)), "the first frame");
+    }
+
+    /// A held frame is held until it is overdue, and says so, so the
+    /// loop does not ask for it again in between (backlog F103).
+    #[test]
+    fn a_held_frame_is_holding_until_it_is_overdue() {
+        let t0 = Instant::now();
+        let mut p = Pacer {
+            #[cfg(target_os = "macos")]
+            link: None,
+            last_present: Some(t0),
+            last_size: (800, 600),
+            held_since: None,
+        };
+        assert!(!p.holding());
+        // What `admit` leaves behind when it holds a frame of a run.
+        p.held_since = Some(t0 + Duration::from_millis(2));
+        assert!(p.holding());
+        let (at, due) = p.overdue(t0 + Duration::from_millis(10)).unwrap();
+        assert!(!due && at == t0 + Duration::from_millis(2) + HELD_MAX);
+        assert!(p.holding(), "still held: the deadline is not up");
+        let (_, due) = p.overdue(t0 + Duration::from_millis(60)).unwrap();
+        assert!(due);
+        assert!(!p.holding(), "let go once it is drawn anyway");
     }
 
     /// Without a link — any platform but macOS 14+, or pacing turned off —

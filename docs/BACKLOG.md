@@ -136,7 +136,9 @@ were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
 behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
 texture upload's second copy), F103 from the kawoosh
-⌘-Tab report (an animating hidden window spinning on skipped frames),
+⌘-Tab report (an animating hidden window spinning on skipped frames;
+its visible half — a window spinning on held frames, a core for as long
+as anything animated — was measured and built on 2026-10-05),
 DX16 from the DX sweep (declined with a condition), RG76 from
 the regression pass of 2026-09-28. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
@@ -1416,6 +1418,44 @@ once a retry interval (`retry::RETRY`) — and a held frame waits for the
 link rather than being asked for again. Not built with F102, which
 keeps to asking again: this touches the pacer, whose latency C47
 measured.
+
+**Measured visible, 2026-10-05** (from the loaders round, measuring what
+a turning `path` costs for ADR 0041). The visible half is not "seen
+once": it is every animating window. A release build of an example whose
+view asks for a frame every frame (`ui.request_frame()`) and draws
+*nothing else* held 120 fps on an M3 Pro, macOS 27.0.1, and used **102–
+104% of a core** doing it — `ps` and `getrusage` agree, 8.6 ms of CPU a
+frame for a frame whose own work (`Shell::redraw`, the wait for the
+drawable taken out) is 0.1 ms. `sample` puts the main thread in
+`control_flow_end_handler` → the shell's `window_event` →
+`Window::request_redraw` → `CFRunLoopWakeUp`, over and over between two
+presents: the held redraw is asked for again as soon as it is held, as
+this entry says. So an app with one spinner on screen costs a core for
+as long as it spins, whatever the spinner costs, and CPU time a frame
+cannot be used to measure anything on an animating window until this is
+built — the ADR's numbers had to come from sampling the frame's own
+work instead.
+
+**The held half built, 2026-10-05.** `about_to_wait` asked for the
+animation's next frame on every turn of the loop; the pacer held it for
+the display; the held redraw came straight back to `about_to_wait`,
+which asked again. Now it does not ask while the pacer is holding one
+(`Pacer::holding`): the link brings the frame back at the vsync, and
+`overdue` is the wake if it does not, as before. The same probe, same
+machine: **37–45% of a core where it was 102–104%**, still 120 fps,
+`request_redraw` and `CFRunLoopWakeUp` gone from the main thread's
+sample and the thread blocked for 85% of it. What is left is not the
+loop: `KUI_FRAME_PACING=0`, which never holds a frame, reads the same
+38%, about half of it on the main thread (the frame, the harness's dock
+with it) and half in system time on Metal's and Core Animation's own
+queues — what presenting 120 frames a second costs. Latency was not
+re-measured against C47's numbers; the frame is drawn from the same
+link tick as before, so nothing in its path moved.
+
+**Still open: the skipped half**, the one this entry is named for. Since
+it was filed, `Pane::animates_now` stopped asking a window the platform
+calls covered or minimized (RG45, RG98) and `mod retry` paces a skipped
+frame, so the 8,300 skips may already be gone; not re-measured here.
 
 ## From the kawoosh trackpad-drift report (2026-09-28)
 

@@ -3022,7 +3022,12 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // present to there is no vsync to pace the frame, and each one
             // would only find the device still owed. Nor while it is
             // minimized or covered (`Pane::animates_now`, RG45, RG98).
-            if pane.animates_now() {
+            // Nor while the pacer holds one for the display: the link
+            // brings that frame back at the next vsync, `overdue` below
+            // is the wake if it does not, and asking again in between is
+            // held again at once — the loop went round as fast as it
+            // could until the vsync came (backlog F103).
+            if pane.animates_now() && !pane.pacer.holding() {
                 pane.redraw_for(FrameCause::OWED);
             }
             // A frame held for a display that stopped firing is drawn
