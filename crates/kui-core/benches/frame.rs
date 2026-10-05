@@ -373,22 +373,32 @@ fn frame_1k_polygons(bencher: divan::Bencher) {
     bencher.bench_local(|| run_polygons(&mut core, 1000));
 }
 
-/// The thousand hexagons as `path`s (ADR 0040), the ops the same each
-/// frame: every mask a hit in the atlas, so the frame pays the hash and
-/// the quad and nothing of the raster.
-fn run_paths(core: &mut Core, n: usize, wobble: f32) -> usize {
+/// The thousand hexagons as `path`s (ADR 0040), built once as the
+/// polygon bench's points are: every frame the ops are the same, so
+/// every mask is a hit in the atlas and the frame pays the hash and the
+/// quad and nothing of the raster. `wobble` moves the first vertex, for
+/// the frames that must miss.
+fn hexagon_paths(n: usize, wobble: f32) -> Vec<kui_core::Path> {
+    let mut pts = [Vec2::ZERO; 6];
+    (0..n)
+        .map(|i| {
+            hexagon(i, &mut pts);
+            let mut p = kui_core::Path::new().move_to(pts[0].x + wobble, pts[0].y);
+            for q in &pts[1..] {
+                p = p.line_to(q.x, q.y);
+            }
+            p.close()
+        })
+        .collect()
+}
+
+fn run_paths(core: &mut Core, paths: &[kui_core::Path]) -> usize {
     let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
     ui.configure_root(NodeSpec::column().fill());
-    let mut pts = [Vec2::ZERO; 6];
-    for i in 0..n {
-        hexagon(i, &mut pts);
-        let mut p = kui_core::Path::new().move_to(pts[0].x + wobble, pts[0].y);
-        for q in &pts[1..] {
-            p = p.line_to(q.x, q.y);
-        }
+    for (i, p) in paths.iter().enumerate() {
         ui.path_indexed(
             i as u64,
-            &p.close(),
+            p,
             NodeSpec::column().bg(Color::rgb8((i % 255) as u8, 120, 200)),
         );
     }
@@ -400,17 +410,19 @@ fn run_paths(core: &mut Core, n: usize, wobble: f32) -> usize {
 #[divan::bench]
 fn frame_1k_paths_cached(bencher: divan::Bencher) {
     let mut core = Core::new();
-    run_paths(&mut core, 1000, 0.0);
-    bencher.bench_local(|| run_paths(&mut core, 1000, 0.0));
+    let paths = hexagon_paths(1000, 0.0);
+    run_paths(&mut core, &paths);
+    bencher.bench_local(|| run_paths(&mut core, &paths));
 }
 
 /// The same thousand on an empty page every time: the raster bound. A
 /// fresh core per run, since the page would otherwise hold them.
 #[divan::bench(sample_count = 10)]
 fn frame_1k_paths_fresh(bencher: divan::Bencher) {
+    let paths = hexagon_paths(1000, 0.0);
     bencher
         .with_inputs(Core::new)
-        .bench_local_values(|mut core| run_paths(&mut core, 1000, 0.0));
+        .bench_local_values(|mut core| run_paths(&mut core, &paths));
 }
 
 /// The same thousand, every outline moving each frame: after two frames
@@ -419,10 +431,14 @@ fn frame_1k_paths_fresh(bencher: divan::Bencher) {
 #[divan::bench(sample_count = 10)]
 fn frame_1k_paths_animating(bencher: divan::Bencher) {
     let mut core = Core::new();
-    let mut frame = 0u32;
+    // Eight frames of motion, cycled: the geometry is built ahead, as a
+    // chart keeps its series, and the raster each frame is the cost.
+    let frames: Vec<Vec<kui_core::Path>> =
+        (0..8).map(|f| hexagon_paths(1000, f as f32 * 0.37)).collect();
+    let mut frame = 0usize;
     bencher.bench_local(|| {
         frame += 1;
-        run_paths(&mut core, 1000, frame as f32 * 0.37)
+        run_paths(&mut core, &frames[frame % 8])
     });
 }
 
