@@ -1,8 +1,9 @@
-//! Loaders: ten ways to say "wait", over one job the app owns. The job
+//! Loaders: eleven ways to say "wait", over one job the app owns. The job
 //! is a number from 0 to 1 that a clock moves while it runs; three loaders
-//! are *determinate* and draw that number — a pie, a ring, a bar — and seven
+//! are *determinate* and draw that number — a pie, a ring, a bar — and eight
 //! are *indeterminate* and draw only the time — an arc, a chasing pie,
-//! spokes, dots, a sweeping bar, a bar going back and forth, a skeleton.
+//! spokes, dots, a sweeping bar, a bar going back and forth, a skeleton,
+//! a rainbow.
 //!
 //! What it shows of composing an app:
 //!
@@ -21,6 +22,12 @@
 //!   `rotate` (`docs/adr/0041-a-mask-turns-about-its-centre.md`): one
 //!   mask, in the atlas, turned by the quad that draws it. The spokes are `line`s and the rest are boxes:
 //!   a loader that is only rectangles needs no path.
+//! - **The rainbow is a `gradient`** (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`):
+//!   two turns of the spectrum on a box twice its track's length, slid
+//!   under the track's clip. A gradient does not tween, and this one does
+//!   not have to: what moves is the box, so the colours are rasterized
+//!   once, into one strip in the atlas, and every frame after is the same
+//!   image quad somewhere else.
 //! - **Reduced motion is honoured** (`env.system.motion`): the
 //!   indeterminate loaders stand still and the determinate ones still
 //!   report, since progress is information and spinning is not.
@@ -33,8 +40,8 @@ use std::time::Instant;
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, FloatConfig, Message, NodeSpec, Path, QuadKind, Role, Stroke,
-    TextStyle, Ui, UiEvent, Vec2,
+    Align, App, Color, Core, FloatConfig, Gradient, Message, NodeSpec, Path, QuadKind, Role, Side,
+    Stroke, TextStyle, Ui, UiEvent, Vec2,
 };
 
 /// How long the job takes at speed 1, in seconds.
@@ -381,6 +388,28 @@ impl App for Loaders {
                             }
                         });
                     });
+                    // The rainbow: the spectrum flowing along a track. One
+                    // gradient, on a box two tracks long, slid left under
+                    // the track's clip by up to a track — where the second
+                    // turn of the colours sits exactly where the first
+                    // began, so the loop has no seam. Only the box moves:
+                    // the gradient is the same every frame, and so is its
+                    // one strip in the atlas.
+                    card(ui, "rainbow", "rainbow bar", |ui| {
+                        let len = STAGE - 12.0;
+                        let x = (phase * 0.6).rem_euclid(1.0) * len;
+                        ui.with(NodeSpec::column().fill().center(), |ui| {
+                            ui.with(NodeSpec::row().size(len, 10.0).radius(5.0).clip(), |ui| {
+                                ui.leaf_keyed(
+                                    "spectrum",
+                                    NodeSpec::row()
+                                        .float(FloatConfig::parent().offset(-x, 0.0).clipped())
+                                        .size(len * 2.0, 10.0)
+                                        .gradient(rainbow()),
+                                );
+                            });
+                        });
+                    });
                 });
             },
         );
@@ -420,6 +449,21 @@ impl App for Loaders {
 /// a cosine, so it eases at both ends.
 fn loop_offset(phase: f32, len: f32, run: f32) -> f32 {
     (len - run) * (0.5 - 0.5 * (phase * 0.4 * TAU).cos())
+}
+
+/// The spectrum twice over, left to right: red round to red, and round
+/// again, so a box painted with it and slid by half its length looks as
+/// it did before it moved.
+fn rainbow() -> Gradient {
+    const TURN: [u32; 6] = [
+        0xff5f6dff, 0xffa64dff, 0xffe066ff, 0x5fd38dff, 0x4da3ffff, 0xb580ffff,
+    ];
+    let stops = TURN
+        .iter()
+        .chain(&TURN)
+        .chain(&TURN[..1])
+        .map(|&c| Color::hex(c));
+    Gradient::to(Side::Right, stops)
 }
 
 /// The colour of a loader's track.
@@ -469,7 +513,7 @@ impl Example for Loaders {
     ];
 
     fn window(&self) -> kui_devtools::Window {
-        kui_devtools::Window::default().size(1030.0, 470.0)
+        kui_devtools::Window::default().size(1160.0, 470.0)
     }
 
     /// The job by hand: idle asks for no frame; running, the progress is
@@ -478,7 +522,7 @@ impl Example for Loaders {
     /// success colour.
     fn headless(&mut self, core: &mut Core) -> Result<(), String> {
         self.manual = true;
-        let mut d = Drive::new(core, 1030.0, 470.0);
+        let mut d = Drive::new(core, 1160.0, 470.0);
         let step = |app: &mut Self, d: &mut Drive<'_>, secs: f32, frames: u32| {
             for _ in 0..frames {
                 app.step(secs / frames as f32);
@@ -506,6 +550,15 @@ impl Example for Loaders {
         let spokes = count(d.core, QuadKind::Segment, None);
         d.check(spokes == 12, "and the spokes are twelve segments")?;
         d.check(d.core.path_texture_count() == 0, "with no texture")?;
+        // The rainbow is one image quad from the atlas, twice its track.
+        let spectrum = |core: &mut Core| -> Vec<(f32, [u32; 4])> {
+            let quads = &core.output().0.quads;
+            let images = quads.iter().filter(|q| q.kind == QuadKind::Image);
+            images.map(|q| (q.rect.x, q.uv)).collect()
+        };
+        let idle = spectrum(d.core);
+        d.check(idle.len() == 1, "the rainbow is one image quad")?;
+        d.check(idle[0].1[2..] == [256, 1], "from a strip in the atlas")?;
 
         // A second of a four-second job, in ten frames.
         let job = d.key_of("job").ok_or("no job button")?;
@@ -544,6 +597,13 @@ impl Example for Loaders {
         )?;
         let masks = count(d.core, QuadKind::GlyphMask, Some(track));
         d.check(masks == 2, "and the two tracks are still masks")?;
+        // The rainbow moved and was not drawn again: the same texels,
+        // further left.
+        let flowing = spectrum(d.core);
+        d.check(
+            flowing.len() == 1 && flowing[0].1 == idle[0].1 && flowing[0].0 < idle[0].0,
+            "the rainbow slid, and is the strip it was",
+        )?;
         let warned = d.warnings();
         d.check(warned.is_empty(), "nothing warned")?;
 

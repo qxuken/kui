@@ -171,6 +171,7 @@ pub const P_SCROLL_AXES: u32 = 119;
 pub const P_MODIFIER_KEYS: u32 = 120;
 pub const P_OPTION_AS_ALT: u32 = 121;
 pub const P_BOUNCE: u32 = 122;
+pub const P_GRADIENT: u32 = 123;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -418,6 +419,10 @@ pub enum Kind {
     /// An entrance (`crate::enter::parse` reads the plain-data form).
     /// Carried like a `Msg` and parsed in the core; C fills a `KuiEnter`.
     Enter,
+    /// A gradient (`crate::gradient::parse` reads the plain-data form).
+    /// Carried like a `Msg` and parsed in the core; C fills a
+    /// `KuiGradient`.
+    Gradient,
 }
 
 /// Where a parsed value lands. `PropDef::target` derives from this.
@@ -432,6 +437,7 @@ pub enum Apply {
     SpecStr(fn(NodeSpec, &str) -> NodeSpec),
     SpecKeyframes(fn(NodeSpec, Vec<Keyframe>) -> NodeSpec),
     SpecEnter(fn(NodeSpec, Enter) -> NodeSpec),
+    SpecGradient(fn(NodeSpec, crate::gradient::Gradient) -> NodeSpec),
     SpecResource(fn(NodeSpec, u64) -> NodeSpec),
     StyleF32(fn(TextStyle, f32) -> TextStyle),
     StyleColor(fn(TextStyle, Color) -> TextStyle),
@@ -839,6 +845,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.hover_bg(c)),
         doc: "Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.",
+    },
+    PropDef {
+        name: "gradient",
+        id: P_GRADIENT,
+        kind: Kind::Gradient,
+        apply: Apply::SpecGradient(|s, g| s.gradient(g)),
+        doc: "A gradient painted over the node's `bg` and under its border and its children (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): `{ to: 'bottom', stops: [...] }` towards a side or a corner (`right`, `bottom left`, …; the default is `bottom`), `{ angle: 0.125, stops }` in turns clockwise from east, or `{ radial: true, at: [0.5, 0], stops }` out from a centre (fractions of the box, the middle by default) to its farthest corner. A stop is a colour — a `$token` too — or `[colour, position]` with the position 0 to 1; stops without one are spaced evenly between those with. Two stops at one position are a hard edge. The gradient is defined on the box's unit square and stretched to it, so a side or a corner is CSS's and any other `angle` runs corner to corner at an eighth of a turn whatever the box's aspect, where CSS's pixel-measured `45deg` does not. Stops mix in straight sRGB with the alpha premultiplied, as CSS's do. What it costs is one image quad: the core rasterizes each distinct gradient once into the glyph atlas — a 256-texel strip along an axis, a 128-texel square otherwise, within half an 8-bit level of the gradient computed per pixel for a linear one and 1.2 for a radial — keyed by the gradient and not the box, so a box that resizes and a thousand boxes that share one rasterize nothing, and a host that draws an image draws it; a gradient box costs about 55 ns over a flat one, so ten thousand of them are half a millisecond. A hard edge is as soft as the raster stretched to the box (a 256th of its length along a strip); stripes are boxes. It does not tween — `transition` eases the `bg` under it and `opacity` fades it — and `hoverBg` and the other state backgrounds replace `bg`, not the gradient; one that changes every frame is a raster a frame, and a shimmer is a `fragment`'s. Ignored on a `line`, a `polygon` and a `path`. Fewer than two stops draw nothing.",
     },
     PropDef {
         name: "rules",
@@ -1508,6 +1521,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "keyframes",
         "`keyframes` + `keyframes_len` (`KuiKeyframe[]`)",
     ),
+    ("gradient", "`gradient` (`const KuiGradient *`)"),
     ("repeat", "`repeat` (`KUI_REPEAT_*`)"),
     ("delay", "`delay_ms`"),
     ("enter", "`enter` (`KuiEnter`, with `set` bits)"),
@@ -1940,14 +1954,22 @@ pub const ELEMENTS: &[ElementDef] = &[
         // `bg` is a schema row already; on a path it is the fill. `width`
         // and `color` are rows too; on a path they are the stroke's, as on
         // a line.
-        jsx_own: &["d", "fillRule", "rotate", "pivot"],
-        lua_own: &["d", "ops", "fill_rule", "rotate", "pivot"],
+        jsx_own: &["d", "fillRule", "rotate", "pivot", "dash", "dashOffset"],
+        lua_own: &[
+            "d",
+            "ops",
+            "fill_rule",
+            "rotate",
+            "pivot",
+            "dash",
+            "dash_offset",
+        ],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<path d=\"M … Z\" bg width color fillRule rotate pivot/>`",
-        lua: "`path { d = \"M … Z\", bg=, width=, color=, fill_rule=, rotate=, pivot= }`",
+        jsx: "`<path d=\"M … Z\" bg width color fillRule rotate pivot dash dashOffset/>`",
+        lua: "`path { d = \"M … Z\", bg=, width=, color=, fill_rule=, rotate=, pivot=, dash=, dash_offset= }`",
         c: "`kui_path`",
-        doc: "Any outline — SVG's `d`, a pie wedge with a round arc, a map's region, an icon — filled with `bg` by `fillRule` (`nonzero`, the default, or `evenodd`) and stroked `width` wide in `color` when `width` is given, the stroke over the fill (`docs/adr/0040-a-path-is-a-mask-in-the-atlas.md`). `d` is SVG path data (`M L H V C S Q T A Z`, absolute or relative), parsed by one parser in the core, so every binding draws the same shape; one that does not parse raises `path-malformed` and draws nothing. JSX also takes `d` as a flat number array of op codes and operands, Lua the same as `ops`, and C only that form (`kui_path_parse` turns a string into it). Placed as a `line` is — always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box two pixels out on each side (half the stroke's width further), so it takes no room in a row or column, held by the parent's clip as a child is. `transition` eases the fill and, with `slide`, its position; the stroke's colour does not tween, as a box's border does not. Hit by its outline under the fill rule (`docs/adr/0026-hit-testing-by-shape.md`): with `onClick`, `onDrag`, `onHover` or `hoverable` a press inside hits it and one in its box past the outline falls through, so a pie's wedges need no hit boxes; a stroke with no fill is hit by its stroke as a line is; with input it derives an access row as a box would (a clickable wedge is a button), so name it. On the wire it is one glyph-mask quad per paint, fill and stroke: the outline is rasterized once per shape, scale and quarter-pixel position into the glyph atlas and tinted like a glyph, so a host that draws text draws paths, and nothing is re-rasterized for a colour tween, a hover or a slide. The fill bleeds half a pixel, so two paths sharing an edge meet without the background showing through; a chart that wants separators gaps its own geometry. A mask a quarter of the biggest atlas page or more, or a path whose ops change twice within a few frames, draws from a texture of its own instead (a `texture` quad), and one past 8192 px on a side draws nothing, with `path-too-large`. `rotate` turns the path, in turns clockwise, about `pivot` — a point in the path's own coordinates, the centre of its box without one (`docs/adr/0041-a-mask-turns-about-its-centre.md`): the turn is the quad's and not the mask's, so a path that only turns — a spinner's arc about its circle's centre — is rasterized once and stays in the atlas at every angle. A path with `rotate` or `pivot` is boxed by the square the turn sweeps, its mask centred on the pivot on a whole pixel, and it is hit where it is drawn; `rotate` does not tween.",
+        doc: "Any outline — SVG's `d`, a pie wedge with a round arc, a map's region, an icon — filled with `bg` by `fillRule` (`nonzero`, the default, or `evenodd`) and stroked `width` wide in `color` when `width` is given, the stroke over the fill (`docs/adr/0040-a-path-is-a-mask-in-the-atlas.md`). `d` is SVG path data (`M L H V C S Q T A Z`, absolute or relative), parsed by one parser in the core, so every binding draws the same shape; one that does not parse raises `path-malformed` and draws nothing. JSX also takes `d` as a flat number array of op codes and operands, Lua the same as `ops`, and C only that form (`kui_path_parse` turns a string into it). Placed as a `line` is — always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box two pixels out on each side (half the stroke's width further), so it takes no room in a row or column, held by the parent's clip as a child is. `transition` eases the fill and, with `slide`, its position; the stroke's colour does not tween, as a box's border does not. Hit by its outline under the fill rule (`docs/adr/0026-hit-testing-by-shape.md`): with `onClick`, `onDrag`, `onHover` or `hoverable` a press inside hits it and one in its box past the outline falls through, so a pie's wedges need no hit boxes; a stroke with no fill is hit by its stroke as a line is; with input it derives an access row as a box would (a clickable wedge is a button), so name it. On the wire it is one glyph-mask quad per paint, fill and stroke: the outline is rasterized once per shape, scale and quarter-pixel position into the glyph atlas and tinted like a glyph, so a host that draws text draws paths, and nothing is re-rasterized for a colour tween, a hover or a slide. The fill bleeds half a pixel, so two paths sharing an edge meet without the background showing through; a chart that wants separators gaps its own geometry. A mask a quarter of the biggest atlas page or more, or a path whose ops change twice within a few frames, draws from a texture of its own instead (a `texture` quad), and one past 8192 px on a side draws nothing, with `path-too-large`. `rotate` turns the path, in turns clockwise, about `pivot` — a point in the path's own coordinates, the centre of its box without one (`docs/adr/0041-a-mask-turns-about-its-centre.md`): the turn is the quad's and not the mask's, so a path that only turns — a spinner's arc about its circle's centre — is rasterized once and stays in the atlas at every angle. A path with `rotate` or `pivot` is boxed by the square the turn sweeps, its mask centred on the pivot on a whole pixel, and it is hit where it is drawn; `rotate` does not tween. `dash` and `dashOffset` cut the stroke into marks and gaps as a `line`'s do (backlog V2) — lengths as seen, round-capped marks — restarting at every subpath as SVG's do; the pattern is part of the stroke's mask, so a dashed stroke costs what a solid one does, a stroke with no fill is still hit along its gaps, and a `dashOffset` that changes every frame is a shape that changes every frame: the path leaves the atlas for a texture of its own while it marches.",
     },
     ElementDef {
         name: "fragment",
@@ -1992,14 +2014,14 @@ pub const ELEMENTS: &[ElementDef] = &[
         name: "line",
         // `width` and `color` are schema rows already (a sizing and the text
         // colour); on a line they are the stroke's width and colour.
-        jsx_own: &["from", "to", "points", "curve"],
-        lua_own: &["from", "to", "points", "curve"],
+        jsx_own: &["from", "to", "points", "curve", "dash", "dashOffset"],
+        lua_own: &["from", "to", "points", "curve", "dash", "dash_offset"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve/>`",
-        lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true }`",
+        jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve dash={[6, 4]} dashOffset/>`",
+        lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true, dash={6, 4}, dash_offset= }`",
         c: "`kui_line`, `kui_polyline`",
-        doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column. A stroke in its parent's box space is held by the parent's clip as a child is, its hit region with it, so it is cut at a scroller's edge with the row it is drawn in; a declared float is held that way only when it declares `clip` with a parent anchor, and a `float=\"viewport\"` stroke escapes (backlog F78, `docs/adr/0010-a-segment-primitive.md` decision 5). `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour, and with `slide` beside it the stroke's position too — the points ride its box, so a stroke whose ends all move together slides with them, while one whose ends move apart resizes at once (a canvas of floats eases everything or nothing, connectors included). Hit by its shape (`docs/adr/0026-hit-testing-by-shape.md`): with `onClick`, `onDrag`, `onHover` or `hoverable` a press within half the width of any piece hits it — at least 4 px of grab, so a hairline is a target — and a press elsewhere in its bounding box falls through to what is under; with none it takes no input and has no access row, and with input it derives one as a box would (a clickable connector is a button), so name it. What it costs: one quad per segment, and a curve is flattened in the core at one piece per 6 logical px of chord (at most 32 per span) — fixed rather than tolerance-driven so every binding gets the same pieces and the corpus can pin them — so a nine-point curve over ~50 px spans is ~60 quads, and a `quadCount` budget should expect it.",
+        doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column. A stroke in its parent's box space is held by the parent's clip as a child is, its hit region with it, so it is cut at a scroller's edge with the row it is drawn in; a declared float is held that way only when it declares `clip` with a parent anchor, and a `float=\"viewport\"` stroke escapes (backlog F78, `docs/adr/0010-a-segment-primitive.md` decision 5). `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour, and with `slide` beside it the stroke's position too — the points ride its box, so a stroke whose ends all move together slides with them, while one whose ends move apart resizes at once (a canvas of floats eases everything or nothing, connectors included). Hit by its shape (`docs/adr/0026-hit-testing-by-shape.md`): with `onClick`, `onDrag`, `onHover` or `hoverable` a press within half the width of any piece hits it — at least 4 px of grab, so a hairline is a target — and a press elsewhere in its bounding box falls through to what is under; with none it takes no input and has no access row, and with input it derives one as a box would (a clickable connector is a button), so name it. What it costs: one quad per segment, and a curve is flattened in the core at one piece per 6 logical px of chord (at most 32 per span) — fixed rather than tolerance-driven so every binding gets the same pieces and the corpus can pin them — so a nine-point curve over ~50 px spans is ~60 quads, and a `quadCount` budget should expect it. `dash` cuts the stroke into marks and gaps (backlog V2): one length (marks and gaps alike), a mark and a gap, or four lengths for a dash-dot, in px **as seen** — every mark is a short stroke with the stroke's round caps, so `dash` 6, 4 is 6 px of ink and 4 px of nothing at any width, and a mark no longer than the stroke is wide is a dot (SVG's `stroke-dasharray` measures the centre line instead, so with round caps its `4 4` at a width of 4 is solid; this pattern is SVG's `mark − width, gap + width`). The pattern runs along the stroke's whole length, so it keeps its phase round the corners of a polyline and the pieces of a curve, and `dashOffset` starts that far into it — growing it moves the marks towards the first point, a marquee's marching ants; neither tweens. A pattern with no gap, a mark and gap under a physical pixel together, or more than 16384 marks draws solid. A dashed stroke is hit along its whole length, gaps included, and costs a quad per mark per piece the mark lies on.",
     },
     ElementDef {
         name: "titlebar",
@@ -3034,6 +3056,7 @@ pub enum Parsed {
     Resource(u64),
     Keyframes(Vec<Keyframe>),
     Enter(Enter),
+    Gradient(crate::gradient::Gradient),
     /// A family, already resolved by the parser (`NameRefs::family`).
     Family(FontFamily),
 }
@@ -3163,6 +3186,7 @@ pub fn apply(def: &PropDef, value: Parsed, out: &mut PropsOut) -> Result<(), Str
         (Apply::SpecStr(f), Parsed::Str(v)) => out.spec = f(spec, &v),
         (Apply::SpecKeyframes(f), Parsed::Keyframes(v)) => out.spec = f(spec, v),
         (Apply::SpecEnter(f), Parsed::Enter(v)) => out.spec = f(spec, v),
+        (Apply::SpecGradient(f), Parsed::Gradient(v)) => out.spec = f(spec, v),
         (Apply::SpecResource(f), Parsed::Resource(v)) => out.spec = f(spec, v),
         (Apply::StyleF32(f), Parsed::F32(v)) => {
             out.spec = spec;
@@ -3858,6 +3882,10 @@ mod tests {
                 Kind::Resource => Parsed::Resource(7),
                 Kind::Keyframes => Parsed::Keyframes(vec![Keyframe::default().radius(7.0)]),
                 Kind::Enter => Parsed::Enter(Enter::from(-7.0, 0.0)),
+                Kind::Gradient => Parsed::Gradient(crate::gradient::Gradient::to(
+                    crate::gradient::Side::Right,
+                    [Color::hex(0x11223344), Color::WHITE],
+                )),
             };
             let mut out = PropsOut::new();
             apply(def, sample, &mut out).unwrap();

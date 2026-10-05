@@ -103,7 +103,7 @@ use crate::{Result, err, value_of};
 /// expression in prefix code (`calc::from_code`); `maxWidth` and
 /// `maxHeight` are two slots, (mode, value), where they were one.
 /// v20: `path` is a new op (ADR 0040).
-pub const VERSION: u32 = 20;
+pub const VERSION: u32 = 21;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -148,9 +148,10 @@ pub const OP_RADIO_GROUP: u32 = 25;
 /// A path (ADR 0040): `d` as a strref (none for the flat form), a count
 /// and that many floats of the flat op form, the stroke width slot, a
 /// flags word (bit 1: the width slot is a length token's index; bit 2:
-/// even-odd; bit 4: `rotate` was declared; bit 8: `pivot` was), the
-/// turns, the pivot's x and y (ADR 0041; zero when not declared), then
-/// props.
+/// even-odd; bit 4: `rotate` was declared; bit 8: `pivot` was; bit 16:
+/// the stroke is dashed), the turns, the pivot's x and y (ADR 0041; zero
+/// when not declared), the dash when bit 16 says so — its four lengths
+/// and its offset (v21, backlog V2) — then props.
 pub const OP_PATH: u32 = 26;
 
 pub fn protocol_json() -> Json {
@@ -523,6 +524,22 @@ fn lookup_color(ui: &mut kui_core::Ui<'_>, index: f64) -> Option<Color> {
 }
 
 /// Reads one prop list through the core's lookup and raises what missed.
+/// A stroke's dash off the stream when its flag says there is one: four
+/// lengths and an offset, as the encoder normalized them (backlog V2).
+fn read_dash(r: &mut Reader<'_>, dashed: bool) -> Result<kui_core::Dash> {
+    if !dashed {
+        return Ok(kui_core::Dash::SOLID);
+    }
+    let mut pattern = [0.0; 4];
+    for l in &mut pattern {
+        *l = r.f()? as f32;
+    }
+    Ok(kui_core::Dash {
+        pattern,
+        offset: r.f()? as f32,
+    })
+}
+
 fn lower_props(r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<PropsOut> {
     lower_props_over(r, PropsOut::new(), ui)
 }
@@ -809,6 +826,14 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     Kind::Enter => Parsed::Enter(
                         kui_core::enter::parse_with(&payload(r.req_str()?)?, Some(&mut refs.names))
                             .map_err(err)?,
+                    ),
+                    // JSON too; a `$name` stop resolves as a keyframe's does.
+                    Kind::Gradient => Parsed::Gradient(
+                        kui_core::gradient::parse_with(
+                            &payload(r.req_str()?)?,
+                            Some(&mut refs.names),
+                        )
+                        .map_err(err)?,
                     ),
                 };
                 schema::apply(def, parsed, &mut out)?;
@@ -1100,7 +1125,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         }
         // `d` as a strref or the flat op form, the stroke width slot,
         // flags (1 width is a length token, 2 even-odd, 4 rotate, 8
-        // pivot), the turns and the pivot, then the prop
+        // pivot, 16 dashed), the turns and the pivot, the dash's five
+        // floats when it is dashed, then the prop
         // list — `bg` is the fill, `color` the stroke's
         // (docs/adr/0040-a-path-is-a-mask-in-the-atlas.md).
         OP_PATH => {
@@ -1118,6 +1144,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 turns,
                 pivot: (flags & 8 != 0).then_some(pivot),
             });
+            let dash = read_dash(r, flags & 16 != 0)?;
             let p = lower_props(r, ui)?;
             let width = if flags & 1 != 0 {
                 lookup_length(ui, width_slot).unwrap_or(0.0)
@@ -1125,8 +1152,9 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 width_slot as f32
             };
             // No `width` is no stroke; no `color` is the foreground.
-            let stroke = (width > 0.0)
-                .then(|| kui_core::Stroke::new(width, p.style.color.unwrap_or(ui.theme().fg)));
+            let stroke = (width > 0.0).then(|| {
+                kui_core::Stroke::new(width, p.style.color.unwrap_or(ui.theme().fg)).dashed(dash)
+            });
             let rule = if flags & 2 != 0 {
                 kui_core::FillRule::EvenOdd
             } else {
@@ -1146,7 +1174,9 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
             Ok(())
         }
-        // n, then n (x, y) pairs, width, flags (1 curve), then the prop
+        // n, then n (x, y) pairs, width, flags (1 curve, 2 the width is
+        // a token, 4 dashed), the dash's four lengths and its offset when
+        // it is dashed (v21, backlog V2), then the prop
         // list — `color` lands in the style, `key` in `p.key`, and the
         // core decides the box (docs/adr/0010-a-segment-primitive.md).
         OP_LINE => {
@@ -1159,6 +1189,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             }
             let width_slot = r.f()?;
             let flags = r.u()?;
+            let dash = read_dash(r, flags & 4 != 0)?;
             let p = lower_props(r, ui)?;
             // Bit 2: the width slot is a length token's index (v11, AR14);
             // one the table does not hold is the default stroke, 1 px.
@@ -1171,6 +1202,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
             stroke.curve = flags & 1 != 0;
+            stroke.dash = dash;
             ui.core().open_from(p, Content::Line(&points, stroke));
             Ok(())
         }
@@ -1516,6 +1548,17 @@ mod tests {
                     strings = br#"{"dx":-7,"radius":7}"#;
                     stream.extend([0.0, strings.len() as f64]);
                     Parsed::Enter(kui_core::Enter::from(-7.0, 0.0).radius(7.0))
+                }
+                Kind::Gradient => {
+                    strings = br##"{"to":"right","stops":["#112233",["#ffffff",0.5]]}"##;
+                    stream.extend([0.0, strings.len() as f64]);
+                    Parsed::Gradient(kui_core::Gradient::to(
+                        kui_core::Side::Right,
+                        [
+                            kui_core::GradientStop::from(kui_core::Color::hex(0x112233ff)),
+                            kui_core::GradientStop::from((kui_core::Color::WHITE, 0.5)),
+                        ],
+                    ))
                 }
             };
             let mut expected = PropsOut::new();

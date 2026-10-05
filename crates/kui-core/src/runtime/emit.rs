@@ -405,6 +405,7 @@ impl Core {
                 Leaf::Line {
                     points,
                     width: run.width,
+                    dash: run.dash,
                 }
             }
             NodeContent::Path(id) => {
@@ -413,6 +414,7 @@ impl Core {
                     ops,
                     rule: run.rule,
                     stroke_w: run.stroke_w,
+                    dash: run.dash,
                     hash: run.hash,
                     angle: run.angle,
                     animating: run.animating,
@@ -420,7 +422,20 @@ impl Core {
             }
             NodeContent::Container => Leaf::Container,
         };
+        let first_quad = self.display.quads.len();
         painter!(self).paint_box(rect, &style, &paint, leaf);
+        // A gradient over the background the box just painted. Out of
+        // `emit_node` as the rules below are, and for the same reason.
+        if self.tree.any_gradient
+            && let Some(g) = &self.tree.specs[i].interact().gradient
+            // A stroke and a fill paint no box for it to lie over.
+            && !matches!(
+                self.tree.content[i],
+                NodeContent::Line(_) | NodeContent::Polygon(_) | NodeContent::Path(_)
+            )
+        {
+            painter!(self).paint_gradient(g, rect, &style, &paint, first_quad);
+        }
         // A table's grid rules, with its box and under its cells. Out of
         // `emit_node`: a rare path kept off its codegen (C48).
         if self.tree.any_table
@@ -1435,9 +1450,15 @@ impl Core {
                 GhostContent::Polygon(draw) => Leaf::Polygon(draw),
                 // The points are the ghost's own copy; the colour is the
                 // `bg` slot, which `play.bg` eases on the root.
-                GhostContent::Line { first, len, width } => Leaf::Line {
+                GhostContent::Line {
+                    first,
+                    len,
+                    width,
+                    dash,
+                } => Leaf::Line {
                     points: &g.points[first as usize..(first + len) as usize],
                     width,
+                    dash,
                 },
                 // The ops are the ghost's own copy, the hash the live
                 // node's, so the masks are the slots it already had.
@@ -1446,12 +1467,14 @@ impl Core {
                     len,
                     rule,
                     stroke_w,
+                    dash,
                     hash,
                     angle,
                 } => Leaf::Path {
                     ops: &g.ops[first as usize..(first + len) as usize],
                     rule,
                     stroke_w,
+                    dash,
                     hash,
                     angle,
                     animating: false,
@@ -1463,7 +1486,19 @@ impl Core {
                 scale,
                 opacity,
             };
+            let first_quad = self.display.quads.len();
             painter!(self).paint_box(rect, &style, &paint, leaf);
+            // A departing box keeps its gradient, from the slot it had.
+            if let Some(grad) = &node.spec.interact().gradient
+                && !matches!(
+                    node.content,
+                    GhostContent::Line { .. }
+                        | GhostContent::Polygon(_)
+                        | GhostContent::Path { .. }
+                )
+            {
+                painter!(self).paint_gradient(grad, rect, &style, &paint, first_quad);
+            }
             // A departing table keeps its grid for as long as it fades.
             if let Some(c) = node.spec.interact().rules
                 && node.spec.layout.is_table()
@@ -2060,6 +2095,8 @@ enum Leaf<'a> {
     Line {
         points: &'a [Vec2],
         width: f32,
+        /// What cuts the stroke into marks (backlog V2); None for solid.
+        dash: Option<crate::line::Cut>,
     },
     /// A path's run; the fill is the node's `bg`, the stroke its border
     /// colour and width, each a mask quad from the atlas (ADR 0040).
@@ -2067,6 +2104,8 @@ enum Leaf<'a> {
         ops: &'a [crate::path::PathOp],
         rule: crate::path::FillRule,
         stroke_w: f32,
+        /// What cuts the stroke into marks, as a line's (backlog V2).
+        dash: Option<crate::line::Cut>,
         hash: u64,
         /// The turn in radians of a path that declared one (ADR 0041).
         angle: Option<f32>,
@@ -2147,6 +2186,79 @@ impl Painter<'_> {
         }
         if opacity < 1.0 {
             fade(&mut self.display.quads[first_quad..], opacity);
+        }
+    }
+
+    /// A box's `gradient` (ADR 0042): one `Image` quad over the box's
+    /// rect from the gradient's slot in the atlas, put where it paints
+    /// over the background and under everything else the box drew — its
+    /// content, and its border, which moves to a ring of its own on top
+    /// so the gradient does not cover the inside of it. `first_quad` is
+    /// where the box's quads start. A gradient no page can hold draws
+    /// nothing.
+    #[cold]
+    #[inline(never)]
+    fn paint_gradient(
+        &mut self,
+        g: &crate::gradient::Gradient,
+        rect: Rect,
+        style: &crate::spec::VisualStyle,
+        paint: &Paint,
+        first_quad: usize,
+    ) {
+        if !g.is_drawable() {
+            return;
+        }
+        let (w, h) = g.slot_size();
+        let Some(slot) = self
+            .atlas
+            .get_or_insert_gradient(g.key(), w, h, || g.rasterize())
+        else {
+            return;
+        };
+        let quads = &mut self.display.quads;
+        let px = rect.scaled(paint.scale);
+        let image = Quad {
+            rect: if style.pixel_snap { px.on_pixels() } else { px },
+            // White is untinted; the group opacity rides its alpha.
+            color: Color {
+                a: paint.opacity.min(1.0),
+                ..Color::WHITE
+            },
+            border_color: Color::TRANSPARENT,
+            radius: style.radius.map(|r| r * paint.scale),
+            border_w: 0.0,
+            blur: 0.0,
+            kind: QuadKind::Image,
+            clip: paint.clip_id,
+            // The raster inside its gutter (`Gradient::rasterize`).
+            uv: [slot.x + 1, slot.y + 1, slot.w - 2, slot.h - 2],
+        };
+        // Where `paint_box` put the box's own solid, when it painted
+        // one: after the shadow, before the content.
+        let at = first_quad + usize::from(style.shadow.is_visible());
+        let bordered = style.border_w > 0.0 && style.border_color.is_visible();
+        if !style.bg.is_visible() && !bordered {
+            // No background and no border: the gradient is the box.
+            quads.insert(at, image);
+            return;
+        }
+        // The border as a ring of its own, above the gradient; what is
+        // left under it is the background alone.
+        let ring = bordered.then(|| Quad {
+            color: Color::TRANSPARENT,
+            ..quads[at]
+        });
+        if style.bg.is_visible() {
+            quads[at].border_w = 0.0;
+            quads[at].border_color = Color::TRANSPARENT;
+            quads.insert(at + 1, image);
+        } else {
+            quads[at] = image;
+        }
+        let over = at + 1 + usize::from(style.bg.is_visible());
+        if let Some(ring) = ring {
+            quads.insert(over, ring);
         }
     }
 
@@ -2328,21 +2440,26 @@ impl Painter<'_> {
                     );
                 }
             }
-            Leaf::Line { points, width } => {
-                push_segments(
-                    &mut self.display.quads,
-                    Vec2::new(rect.x, rect.y),
-                    points,
-                    width,
-                    style.bg,
-                    clip_id,
-                    scale,
-                );
+            Leaf::Line {
+                points,
+                width,
+                dash,
+            } => {
+                let origin = Vec2::new(rect.x, rect.y);
+                let quads = &mut self.display.quads;
+                // A pattern too fine to be one draws solid.
+                let cut = dash.is_some_and(|d| {
+                    push_marks(quads, origin, points, width, d, style.bg, clip_id, scale)
+                });
+                if !cut {
+                    push_segments(quads, origin, points, width, style.bg, clip_id, scale);
+                }
             }
             Leaf::Path {
                 ops,
                 rule,
                 stroke_w,
+                dash,
                 hash,
                 angle,
                 animating,
@@ -2408,7 +2525,16 @@ impl Painter<'_> {
                         hash,
                         scale,
                         mask,
-                        crate::path::MaskPaint::Stroke(stroke_w * scale),
+                        match dash {
+                            Some(cut) => crate::path::MaskPaint::Dashed(
+                                stroke_w * scale,
+                                crate::line::Cut {
+                                    lens: cut.lens.map(|l| l * scale),
+                                    offset: cut.offset * scale,
+                                },
+                            ),
+                            None => crate::path::MaskPaint::Stroke(stroke_w * scale),
+                        },
                         style.border_color,
                         clip_id,
                         animating,
@@ -2648,6 +2774,49 @@ fn push_segments(
             uv: Quad::segment_uv([a.x, a.y, b.x, b.y]),
         });
     }
+}
+
+/// A dashed stroke's quads: one [`QuadKind::Segment`] per mark per
+/// piece it lies on, as [`push_segments`] makes one per piece — a mark is
+/// a short stroke, round caps and all, so a backend that draws a line
+/// draws a dashed one (backlog V2). False, with nothing pushed, for a
+/// pattern the caller draws solid: a mark and its gap under a physical
+/// pixel together, or
+/// more marks than [`crate::line::MAX_MARKS`].
+///
+/// Its own function, and never inlined, for the reason `push_segments`
+/// is: nothing of the rare path belongs in `emit_node`.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn push_marks(
+    quads: &mut Vec<Quad>,
+    origin: Vec2,
+    points: &[Vec2],
+    width: f32,
+    cut: crate::line::Cut,
+    color: Color,
+    clip_id: ClipId,
+    scale: f32,
+) -> bool {
+    let pad = crate::line::pad(width) * scale;
+    let w = width.max(0.0) * scale;
+    cut.marks(points, 1.0 / scale, |from, to| {
+        let a = Vec2::new((origin.x + from.x) * scale, (origin.y + from.y) * scale);
+        let b = Vec2::new((origin.x + to.x) * scale, (origin.y + to.y) * scale);
+        let (x0, x1) = (a.x.min(b.x) - pad, a.x.max(b.x) + pad);
+        let (y0, y1) = (a.y.min(b.y) - pad, a.y.max(b.y) + pad);
+        quads.push(Quad {
+            rect: Rect::new(x0, y0, x1 - x0, y1 - y0),
+            color,
+            border_color: Color::TRANSPARENT,
+            radius: crate::display::SQUARE,
+            border_w: w,
+            blur: 0.0,
+            kind: QuadKind::Segment,
+            clip: clip_id,
+            uv: Quad::segment_uv([a.x, a.y, b.x, b.y]),
+        });
+    })
 }
 
 /// The drop shadow behind one node, in physical pixels. The quad is the

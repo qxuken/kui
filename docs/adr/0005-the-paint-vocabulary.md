@@ -127,6 +127,11 @@ silent surprise.
 
 ### Gradients: out of scope for v0
 
+> **Superseded by [ADR 0042](0042-a-gradient-is-an-image-the-core-paints.md)
+> (2026-10-05):** a box takes a `gradient`, linear or radial, rasterized
+> once into the atlas and drawn as an image quad. What follows is why it
+> was not in v0.
+
 Two colors and a direction sound like one more `PROPS` row and are not. A
 gradient needs a stop list (so: a `Keyframes`-shaped parse, in five
 bindings), a type (linear, radial, conic), a geometry (angle or two points,

@@ -1335,6 +1335,11 @@ pub struct InteractSpec {
     pub rules: Option<Color>,
     /// The rules' width in logical px; 0 is 1.
     pub rule_w: f32,
+    /// A gradient painted over the node's `bg` and under its border and
+    /// its children (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`):
+    /// one image quad from the atlas, rounded by the node's radius. It
+    /// does not tween, and the state backgrounds replace `bg`, not it.
+    pub gradient: Option<crate::gradient::Gradient>,
 }
 
 /// A scrolling node's bars, per node. Every field's default is the stock
@@ -1474,6 +1479,7 @@ impl InteractSpec {
         overscroll: Overscroll::Auto,
         rules: None,
         rule_w: 0.0,
+        gradient: None,
     };
 }
 
@@ -2043,6 +2049,13 @@ impl NodeSpec {
     /// `drop_bg` field).
     pub fn drop_bg(mut self, c: Color) -> Self {
         self.interact_mut().drop_bg = Some(c);
+        self
+    }
+
+    /// Paints `gradient` over this node's `bg`, under its border and
+    /// its children (see the `gradient` field).
+    pub fn gradient(mut self, gradient: crate::gradient::Gradient) -> Self {
+        self.interact_mut().gradient = Some(gradient);
         self
     }
 

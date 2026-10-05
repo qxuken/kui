@@ -1008,12 +1008,19 @@ pub fn hash_ops(ops: &[PathOp]) -> u64 {
 
 /// What one mask paints: the fill by its rule, bled half a pixel so two
 /// fills sharing an edge meet without the background showing, or the
-/// outline stroked `width` physical px wide.
+/// outline stroked `width` physical px wide — whole, or cut into the
+/// marks of a dash pattern (backlog V2), its lengths physical too.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MaskPaint {
     Fill(FillRule),
     Stroke(f32),
+    Dashed(f32, DashCut),
 }
+
+/// A dash pattern as the rasterizer takes it: the centre-line lengths of
+/// a mark, a gap, a mark and a gap, and how far into them the stroke
+/// starts. [`crate::line::Dash`] is what an app declares.
+pub type DashCut = crate::line::Cut;
 
 /// Rasterizes `ops` (in logical px, relative to the node's box) into a
 /// `w × h` alpha mask at `scale`, the node's box shifted by `bin`
@@ -1153,6 +1160,19 @@ pub fn rasterize_at(
         MaskPaint::Stroke(width) => {
             let mut stroke = Stroke::new(width.max(0.0));
             stroke.join(Join::Round).cap(Cap::Round);
+            Mask::new(&cmds[..])
+                .style(stroke)
+                .size(w, h)
+                .render_into(&mut buf, None);
+        }
+        MaskPaint::Dashed(width, cut) => {
+            let mut stroke = Stroke::new(width.max(0.0));
+            stroke.join(Join::Round).cap(Cap::Round);
+            // A mark and its gap under a pixel are not a pattern any
+            // more, as on a line: the stroke whole.
+            if !cut.finer_than(1.0) {
+                stroke.dash(&cut.lens, cut.offset);
+            }
             Mask::new(&cmds[..])
                 .style(stroke)
                 .size(w, h)
@@ -1311,6 +1331,10 @@ pub(crate) fn mask_key(hash: u64, scale: f32, bin: (u8, u8), paint: MaskPaint) -
     match paint {
         MaskPaint::Fill(rule) => mix(0x1000 | rule.index() as u64),
         MaskPaint::Stroke(w) => mix(0x2000_0000_0000 | u64::from(w.to_bits())),
+        MaskPaint::Dashed(w, cut) => {
+            mix(0x3000_0000_0000 | u64::from(w.to_bits()));
+            mix(cut.hash());
+        }
     }
     h
 }
@@ -1362,6 +1386,8 @@ pub(crate) struct Run {
     pub rule: FillRule,
     /// The stroke width in logical px; 0 for no stroke.
     pub stroke_w: f32,
+    /// What cuts the stroke into marks; None for a solid one.
+    pub dash: Option<crate::line::Cut>,
     /// [`hash_ops`] of the ops as stored.
     pub hash: u64,
     /// The turn in radians when the path declared one: its box is then
@@ -1397,6 +1423,7 @@ impl PathStore {
         ops: &[PathOp],
         rule: FillRule,
         stroke_w: f32,
+        dash: Option<crate::line::Cut>,
         turn: Option<Turn>,
     ) -> Option<(PathId, Rect)> {
         self.scratch.clear();
@@ -1436,6 +1463,7 @@ impl PathStore {
             len: (self.ops.len() - first) as u32,
             rule,
             stroke_w,
+            dash,
             hash,
             angle: turn.map(Turn::radians),
             animating: false,
@@ -1711,6 +1739,31 @@ mod tests {
         assert!(a + b * (1.0 - a) > 0.99, "{a} over {b}");
     }
 
+    /// A dashed stroke's mask is the marks a dashed line would draw: the
+    /// lengths seen are the ones declared, a short mark is a dot, and the
+    /// offset moves them towards the start.
+    #[test]
+    fn a_dashed_stroke_is_marks_and_gaps() {
+        let p = Path::parse("M4 8 H44").unwrap();
+        let row = |dash: crate::line::Dash| {
+            let paint = MaskPaint::Dashed(2.0, dash.cut(2.0).unwrap());
+            let m = rasterize(p.ops(), 1.0, (0, 0), 48, 16, paint);
+            // The row of pixels under the centre line, on or off.
+            (0..48).map(|x| m[8 * 48 + x] > 127).collect::<Vec<_>>()
+        };
+        let on = |r: &[bool], x: std::ops::Range<usize>| r[x].iter().all(|&b| b);
+        let off = |r: &[bool], x: std::ops::Range<usize>| r[x].iter().all(|&b| !b);
+        // 6 on, 4 off from a cap before x = 4: marks cover 3..9, 13..19.
+        let r = row(crate::line::Dash::new(6.0, 4.0));
+        assert!(on(&r, 3..9) && off(&r, 10..12) && on(&r, 13..19), "{r:?}");
+        // Dots 2 across, 8 apart.
+        let r = row(crate::line::Dash::new(2.0, 6.0));
+        assert!(on(&r, 3..5) && off(&r, 6..10) && on(&r, 11..13), "{r:?}");
+        // 5 px in: the first mark's last pixel, then the gap.
+        let r = row(crate::line::Dash::new(6.0, 4.0).offset(5.0));
+        assert!(off(&r, 6..7) && on(&r, 8..14), "{r:?}");
+    }
+
     #[test]
     fn a_stroke_covers_the_outline_and_not_the_inside() {
         let p = Path::parse("M2 2 H12 V12 H2 Z").unwrap();
@@ -1726,18 +1779,28 @@ mod tests {
         let mut store = PathStore::default();
         store.begin_frame(false);
         let p = Path::parse("M10 20 H30 V40 Z").unwrap();
-        let (id, rect) = store.push(p.ops(), FillRule::NonZero, 0.0, None).unwrap();
+        let (id, rect) = store
+            .push(p.ops(), FillRule::NonZero, 0.0, None, None)
+            .unwrap();
         assert_eq!(rect, Rect::new(8.0, 18.0, 24.0, 24.0));
         let (run, ops) = store.run(id);
         assert_eq!(ops[0], PathOp::MoveTo(Vec2::new(2.0, 2.0)));
         assert_eq!(run.len, 4);
         assert!(
             store
-                .push(&[PathOp::MoveTo(Vec2::ZERO)], FillRule::NonZero, 0.0, None)
+                .push(
+                    &[PathOp::MoveTo(Vec2::ZERO)],
+                    FillRule::NonZero,
+                    0.0,
+                    None,
+                    None
+                )
                 .is_none()
         );
         // A stroke widens the box by half its width.
-        let (_, rect) = store.push(p.ops(), FillRule::NonZero, 4.0, None).unwrap();
+        let (_, rect) = store
+            .push(p.ops(), FillRule::NonZero, 4.0, None, None)
+            .unwrap();
         assert_eq!(rect, Rect::new(6.0, 16.0, 28.0, 28.0));
         // A turn boxes the path by the square it sweeps about its pivot:
         // the same box, ops and hash at any angle.
@@ -1746,10 +1809,10 @@ mod tests {
             pivot: Some(Vec2::new(10.0, 20.0)),
         };
         let (a, ra) = store
-            .push(p.ops(), FillRule::NonZero, 0.0, Some(turn(0.0)))
+            .push(p.ops(), FillRule::NonZero, 0.0, None, Some(turn(0.0)))
             .unwrap();
         let (b, rb) = store
-            .push(p.ops(), FillRule::NonZero, 0.0, Some(turn(0.3)))
+            .push(p.ops(), FillRule::NonZero, 0.0, None, Some(turn(0.3)))
             .unwrap();
         let far = (20.0f32 * 20.0 + 20.0 * 20.0).sqrt() + 2.0;
         assert_eq!(ra, Rect::new(10.0 - far, 20.0 - far, 2.0 * far, 2.0 * far));

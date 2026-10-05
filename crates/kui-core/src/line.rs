@@ -32,6 +32,9 @@ pub struct Stroke {
     /// spline, flattened by [`flatten_curve`]) instead of the polyline. Two
     /// points are a straight segment either way.
     pub curve: bool,
+    /// The marks and gaps the stroke is cut into; [`Dash::SOLID`], the
+    /// default, is none.
+    pub dash: Dash,
 }
 
 impl Stroke {
@@ -40,12 +43,242 @@ impl Stroke {
             width,
             color,
             curve: false,
+            dash: Dash::SOLID,
         }
     }
 
     pub fn curve(mut self) -> Self {
         self.curve = true;
         self
+    }
+
+    /// Cuts the stroke into marks `on` long with gaps `off` long between
+    /// them; see [`Dash`].
+    pub fn dash(mut self, on: f32, off: f32) -> Self {
+        self.dash = Dash {
+            offset: self.dash.offset,
+            ..Dash::new(on, off)
+        };
+        self
+    }
+
+    /// The whole pattern at once, for a dash-dot or one read from data.
+    pub fn dashed(mut self, dash: Dash) -> Self {
+        self.dash = dash;
+        self
+    }
+
+    /// How far into the pattern the stroke starts; see [`Dash::offset`].
+    pub fn dash_offset(mut self, offset: f32) -> Self {
+        self.dash.offset = offset;
+        self
+    }
+}
+
+/// A stroke's dash pattern (backlog V2): a mark, a gap, a second mark and
+/// a second gap, repeated along the stroke's length from its first point.
+///
+/// The lengths are the ones **seen**, in logical px. Every mark is
+/// round-capped, as the stroke itself is, so a mark `on` long is drawn as
+/// a capsule whose centre line is `on − width` long, and a mark no longer
+/// than the stroke is wide is a dot. (SVG's `stroke-dasharray` measures
+/// the centre line instead, which with a round cap makes `4 4` at a width
+/// of 4 a solid line; this pattern at any width is SVG's
+/// `on − width, off + width`.) The first mark's cap sits where a solid
+/// stroke's would, half the width before the first point.
+///
+/// The pattern runs along the arc length of the whole stroke, so it keeps
+/// its phase across the corners of a polyline and the pieces of a curve;
+/// on a `path` it restarts at every subpath, as SVG's does.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Dash {
+    /// Mark, gap, mark, gap. A two-length pattern is the same pair twice.
+    pub pattern: [f32; 4],
+    /// How far into the pattern the stroke starts, in logical px: growing
+    /// it moves the marks towards the stroke's first point, which is what
+    /// a marquee's marching ants are. Any number; it wraps.
+    pub offset: f32,
+}
+
+impl Default for Dash {
+    fn default() -> Self {
+        Dash::SOLID
+    }
+}
+
+/// What a dashed stroke is cut by: the centre-line lengths of the
+/// pattern's four entries — mark, gap, mark, gap — and where in it the
+/// stroke starts, `0 <= offset < period`. Logical px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Cut {
+    pub lens: [f32; 4],
+    pub offset: f32,
+}
+
+impl Cut {
+    pub fn period(&self) -> f32 {
+        self.lens.iter().sum()
+    }
+
+    /// Whether a mark and its gap come to less than `min` together, on
+    /// average: a pattern that fine reads as a tint, and is drawn solid.
+    pub fn finer_than(&self, min: f32) -> bool {
+        let pair = self.period() * 0.5;
+        pair.is_nan() || pair < min
+    }
+
+    /// The pattern as one number, for a mask's key and for telling a
+    /// pattern that moved from one that held.
+    pub(crate) fn hash(&self) -> u64 {
+        let [a, b, c, d] = self.lens.map(|l| u64::from(l.to_bits()));
+        let mut h = a ^ b.rotate_left(16) ^ c.rotate_left(32) ^ d.rotate_left(48);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3) ^ u64::from(self.offset.to_bits());
+        h.wrapping_mul(0x0000_0100_0000_01b3)
+    }
+}
+
+/// The most marks one stroke is cut into; a pattern that would make more
+/// — a period of a pixel along a line no screen is long enough for —
+/// draws solid, which is what it would read as.
+pub const MAX_MARKS: usize = 16384;
+
+impl Dash {
+    /// No dashes: the stroke unbroken.
+    pub const SOLID: Dash = Dash {
+        pattern: [0.0; 4],
+        offset: 0.0,
+    };
+
+    /// Marks `on` long with gaps `off` long between them.
+    pub fn new(on: f32, off: f32) -> Self {
+        Dash {
+            pattern: [on, off, on, off],
+            offset: 0.0,
+        }
+    }
+
+    /// The pattern as the bindings spell it: one length (marks and gaps
+    /// alike), two (a mark and a gap) or four (a mark, a gap, a second
+    /// mark, a second gap — a dash-dot). None for any other count.
+    pub fn of(lengths: &[f32]) -> Option<Self> {
+        let pattern = match *lengths {
+            [a] => [a, a, a, a],
+            [a, b] => [a, b, a, b],
+            [a, b, c, d] => [a, b, c, d],
+            _ => return None,
+        };
+        Some(Dash {
+            pattern,
+            offset: 0.0,
+        })
+    }
+
+    /// [`Self::offset`] set.
+    pub fn offset(mut self, offset: f32) -> Self {
+        self.offset = offset;
+        self
+    }
+
+    /// Whether the pattern leaves the stroke unbroken: no gap in it, or a
+    /// length that is not a number.
+    pub fn is_solid(&self) -> bool {
+        self.cut(0.0).is_none()
+    }
+
+    /// The pattern as centre-line lengths for a stroke `width` wide, or
+    /// None for one that draws solid: a length that is not finite, or no
+    /// gap anywhere. Negative lengths are zero, and a pair that is zero
+    /// altogether is the other pair.
+    pub fn cut(&self, width: f32) -> Option<Cut> {
+        if !self.pattern.iter().all(|l| l.is_finite()) || !self.offset.is_finite() {
+            return None;
+        }
+        let [a, b, c, d] = self.pattern.map(|l| l.max(0.0));
+        if b <= 0.0 && d <= 0.0 {
+            return None;
+        }
+        let (first, second) = match (a + b > 0.0, c + d > 0.0) {
+            (true, true) => ([a, b], [c, d]),
+            (true, false) => ([a, b], [a, b]),
+            (false, _) => ([c, d], [c, d]),
+        };
+        let w = width.max(0.0);
+        // The mark's caps are part of what is seen, so they come out of
+        // its centre line and go into the gap's.
+        let centre = |[on, off]: [f32; 2]| {
+            let mark = (on - w).max(0.0);
+            [mark, on + off - mark]
+        };
+        let ([m0, g0], [m1, g1]) = (centre(first), centre(second));
+        let lens = [m0, g0, m1, g1];
+        let period: f32 = lens.iter().sum();
+        Some(Cut {
+            lens,
+            offset: self.offset.rem_euclid(period),
+        })
+    }
+}
+
+impl Cut {
+    /// Calls `mark(from, to)` for every mark along the polyline `points`,
+    /// in order — a mark that turns a corner is one call per piece it
+    /// lies on, meeting at the corner, and a dot is a call with both ends
+    /// the same. False, with nothing called, for a stroke that draws
+    /// solid instead: a pattern [`Self::finer_than`] `min`, more than
+    /// [`MAX_MARKS`] marks, or a length that is not finite.
+    pub fn marks(&self, points: &[Vec2], min: f32, mut mark: impl FnMut(Vec2, Vec2)) -> bool {
+        let period = self.period();
+        let piece = |pair: &[Vec2]| (pair[1].x - pair[0].x).hypot(pair[1].y - pair[0].y);
+        let total: f32 = points.windows(2).map(piece).sum();
+        // Two marks a period; `!(..)` so a NaN draws solid too.
+        let marks = total / period * 2.0;
+        if self.finer_than(min) || marks.is_nan() || marks > MAX_MARKS as f32 {
+            return false;
+        }
+        // Where the stroke starts in the pattern: the entry and what is
+        // left of it.
+        let (mut i, mut left) = (0, self.lens[0]);
+        let mut skip = self.offset;
+        while skip >= left && skip > 0.0 {
+            skip -= left;
+            i = (i + 1) & 3;
+            left = self.lens[i];
+        }
+        left -= skip;
+        // A mark that ended exactly on a corner has been drawn up to it;
+        // the entry after it starts on the next piece.
+        for pair in points.windows(2) {
+            let len = piece(pair);
+            if len <= 0.0 {
+                continue;
+            }
+            let (a, b) = (pair[0], pair[1]);
+            let at = |s: f32| {
+                let t = s / len;
+                Vec2::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+            };
+            let mut pos = 0.0;
+            loop {
+                let take = left.min(len - pos);
+                if i & 1 == 0 {
+                    mark(at(pos), at(pos + take));
+                }
+                pos += take;
+                left -= take;
+                if left > 0.0 {
+                    break;
+                }
+                i = (i + 1) & 3;
+                left = self.lens[i];
+                // The piece is used up: what starts here starts on the
+                // next one, except a dot, which has nowhere else to be
+                // when this is the last.
+                if pos >= len && left > 0.0 {
+                    break;
+                }
+            }
+        }
+        true
     }
 }
 
@@ -58,6 +291,8 @@ pub(crate) struct Run {
     pub len: u32,
     /// Logical px.
     pub width: f32,
+    /// What cuts the stroke into marks; None for a solid one.
+    pub dash: Option<Cut>,
 }
 
 /// The frame's strokes, and the previous frame's while an `exit` needs it.
@@ -130,6 +365,7 @@ impl LineStore {
             first: first as u32,
             len: (self.points.len() - first) as u32,
             width: stroke.width,
+            dash: stroke.dash.cut(stroke.width),
         });
         Some((id, rect))
     }
@@ -158,6 +394,7 @@ impl LineStore {
                     first: 0,
                     len: 0,
                     width: 0.0,
+                    dash: None,
                 },
                 &[],
             ),

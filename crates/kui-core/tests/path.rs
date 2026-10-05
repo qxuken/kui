@@ -144,6 +144,60 @@ fn a_stroke_is_a_second_mask_and_hits_by_its_width() {
     assert_eq!(tag(&click_at(&mut core, 240.0, 100.0)), ["canvas"]);
 }
 
+/// A stroke's `dash` cuts its mask as it cuts a line (backlog V2): the
+/// dashed outline is a mask of its own beside the solid one of the same
+/// ops, the fill's is shared, and a gap is still the stroke to a press.
+#[test]
+fn a_dashed_stroke_is_its_own_mask_and_is_hit_in_its_gaps() {
+    let mut core = Core::new();
+    let d = Path::parse("M50 50 H150 V150 H50 Z").unwrap();
+    let red = Stroke::new(4.0, Color::hex(0xff0000ff));
+    frame(&mut core, |ui| {
+        ui.with(NodeSpec::column().fill().on_click("canvas"), |ui| {
+            // No gap is no pattern: the solid stroke's mask again.
+            for (key, stroke) in [
+                ("solid", red),
+                ("none", red.dash(10.0, 0.0)),
+                ("sq", red.dash(10.0, 10.0)),
+            ] {
+                ui.path_keyed(
+                    key,
+                    &d.clone().stroked(stroke),
+                    NodeSpec::column().bg(Color::WHITE).on_click(key),
+                );
+            }
+        });
+    });
+    let m = masks(&mut core);
+    assert_eq!(m.len(), 6);
+    let (solid, none, dashed) = (&m[0..2], &m[2..4], &m[4..6]);
+    assert_eq!(solid[0].uv, dashed[0].uv, "one fill");
+    assert_ne!(solid[1].uv, dashed[1].uv, "two strokes");
+    assert_eq!(solid[1].uv, none[1].uv);
+    // (65, 50) is on the top edge, in the first gap (10..20 along it).
+    assert_eq!(tag(&click_at(&mut core, 65.0, 50.0)), ["sq"]);
+}
+
+/// A pattern that moves — a marquee's marching ants — is a shape that
+/// moves: its masks leave the atlas for a texture of their own, as a
+/// path whose ops change does, instead of filling it an offset a frame.
+#[test]
+fn a_marching_dash_is_an_animating_path() {
+    let mut core = Core::new();
+    let d = Path::parse("M50 50 H150 V150 H50 Z").unwrap();
+    for i in 0..4 {
+        let stroke = Stroke::new(2.0, Color::WHITE)
+            .dash(6.0, 4.0)
+            .dash_offset(i as f32);
+        frame(&mut core, |ui| {
+            ui.path_keyed("ants", &d.clone().stroked(stroke), NodeSpec::column());
+        });
+    }
+    assert!(masks(&mut core).is_empty());
+    let (list, _) = core.output();
+    assert_eq!(list.textures.len(), 1);
+}
+
 /// Even-odd leaves a ring's hole open to the press beneath; nonzero over
 /// the same two contours (wound the same way) fills it.
 #[test]

@@ -40,12 +40,95 @@ was the first bare bump to break an app in five releases).
   the atlas again — a `GlyphMask` quad where it stayed a `Texture`
   (under Fixed). Nothing an app sees; a host that counts quads by kind
   does.
+- C: `kui_polyline`, `kui_path` and `kui_path_d` take a `dash` before
+  `spec` — five floats, or NULL for the solid stroke they drew (under
+  Added). `KUI_ABI_VERSION` is 24; pass NULL and recompile. The same
+  step appends `gradient` to `KuiSpec` (64-bit size 696).
+- Rust: `schema::Kind`, `Apply` and `Parsed` gain a `Gradient` variant
+  and `InteractSpec` a `gradient` field (under Added).
+- Rust: `Stroke` gains a `dash` field, so a struct literal needs it
+  (`Stroke::new` does not); `path::MaskPaint` gains `Dashed`.
 - A cell grid's glyph for a character its family lacks is drawn from a
   monospaced face where one has it, in the middle of its cell, and no
   wider than it (F120, under Fixed), where it was the platform's first
   fallback at its own width from the cell's left edge.
 
-No C build breaks and the ABI stays 23; the Node wire stays v20.
+The Node wire moves to v21 for the dash's five floats on a line and a
+path, which an encoder and addon of one release never see apart.
+
+### Added
+
+- **`gradient` on a box, in every binding**
+  ([ADR 0042](docs/adr/0042-a-gradient-is-an-image-the-core-paints.md),
+  which supersedes ADR 0005's "no gradients"): `gradient={{ to:
+  'bottom', stops: ['#1e2030', '#14161e'] }}`, `{ angle: 0.125, stops }`
+  in turns clockwise from east, `{ radial: true, at: [0.5, 0], stops }`;
+  the same table in Lua; `NodeSpec::gradient(Gradient::to(Side::Bottom,
+  [...]))` with `Gradient::angle` and `Gradient::radial_at`; and a
+  `const KuiGradient *` on `KuiSpec`. A stop is a colour — a `$token`
+  too — or a colour and a position.
+  - **Over `bg`, under the border and the children.** `bg` stays a
+    colour and keeps its tweens, tokens and state backgrounds; a
+    transparent stop shows it through.
+  - **An image the core paints.** Each distinct gradient is rasterized
+    once into the glyph atlas — a 256-texel strip along an axis, a
+    128-texel square otherwise, each with a gutter of the gradient
+    carried a texel past its edges, since a stretched quad samples
+    there — and drawn as one `Image` quad, so no
+    renderer changes and a host that draws an image draws a gradient.
+    The key is the gradient and not the box: a resize, another scale
+    and a thousand boxes sharing one rasterize nothing.
+  - **On the box's unit square.** A side or a corner is CSS's; any
+    other `angle` runs corner to corner at an eighth of a turn at any
+    aspect, where CSS's pixel-measured `45deg` does not. Stops mix in
+    straight sRGB with the alpha premultiplied.
+  - **What it does not do.** It does not tween and the state
+    backgrounds do not replace it; a hard stop is as soft as the raster
+    stretched (a 256th of the box along a strip); there is no conic
+    one, and none on a `path`, a `line`, a border or a text. Those, and
+    anything animated, stay a `fragment`'s.
+  - Measured (the ADR's *Measured*): a linear gradient is within half
+    an 8-bit level of the mix computed per pixel at every pixel of the
+    box, a radial within 1.2; a gradient box costs about 55 ns over a
+    flat one, half of it what any `hoverBg` pays; a raster is 4 µs for
+    a strip and 25 to 42 for a square.
+  - The corpus gains a `gradients` scene; `examples/rust/apps/loaders.rs`
+    gains a rainbow — one gradient two tracks long slid under a clip,
+    one strip in the atlas for good.
+
+- **`dash` on a `line` and on a `path`'s stroke, in every binding**
+  (backlog V2, the amendment in
+  [ADR 0010](docs/adr/0010-a-segment-primitive.md)): `<line dash={[6, 4]}
+  dashOffset/>`, `line { dash = {6, 4}, dash_offset = }`,
+  `Stroke::new(w, c).dash(6.0, 4.0).dash_offset(n)` (`Dash::of` for a
+  pattern read from data), and a `const float *dash` on `kui_polyline`,
+  `kui_path` and `kui_path_d`. One length is marks and gaps alike, two
+  are a mark and a gap, four a dash-dot.
+  - **The lengths are the ones seen.** Every mark is a short stroke
+    with the stroke's own round caps, so `6, 4` is 6 px of ink and 4 px
+    of nothing at any width and a mark no longer than the stroke is
+    wide is a dot. SVG's `stroke-dasharray` measures the centre line,
+    which with round caps makes `4 4` at a width of 4 a solid line;
+    this pattern is SVG's `mark − width, gap + width`.
+  - **The pattern keeps its phase** along the whole stroke — round the
+    corners of a polyline and across the pieces of a curve, which is
+    what ADR 0010 would not ship without — and restarts at each subpath
+    of a `path`, as SVG's does. `dashOffset` starts that far into it;
+    growing it moves the marks towards the first point, a marquee's
+    marching ants. Neither tweens.
+  - **No renderer changes.** A dashed line is one `Segment` quad per
+    mark per piece the mark lies on, cut in the core, so a host that
+    draws a stroke draws a dashed one; a dashed path stroke is cut by
+    the rasterizer into the mask it already was. A path whose offset
+    changes every frame is a shape that changes every frame, and
+    leaves the atlas for a texture of its own while it marches.
+  - A pattern with no gap, a mark and gap under a physical pixel
+    together, or more than 16384 marks draws solid. A dashed stroke is
+    hit along its whole length, gaps included.
+  - The corpus's `lines` and `paths` scenes carry one each, so the
+    segment count pins the cut in four bindings;
+    `examples/rust/widgets/line.rs` hangs its planned cards off dashed
+    links that march under the pointer.
 
 ### Added
 
@@ -98,7 +181,9 @@ preferred one lacks can give way to the preferred one.
 **What you can delete.** The key an app gave a still icon only so a
 neighbour's coming and going would not move it to a texture; the
 invisible wider path laid under a thick-stroked one to catch the press
-on its edge.
+on its edge; the WGSL a card's two-colour fade was written in, and the
+`fragment` that held its children; the loop that walked a connector's points and declared a
+`line` per dash, and the arithmetic that kept its phase round a corner.
 
 ## 0.1.0-alpha.36 (2026-10-05)
 

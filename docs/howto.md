@@ -52,6 +52,21 @@ a nine-point curve over ~50 px spans is ~60 quads.
 [ADR 0010](adr/0010-a-segment-primitive.md) ·
 [alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
 
+### How do I draw a dashed line, a dotted one, or a marquee's marching ants?
+
+`dash` on a `<line>` or on a `<path>`'s stroke: `dash={[6, 4]}` is 6 px
+marks with 4 px gaps, `dash={4}` the same length for both, and four
+lengths are a dash-dot. The lengths are what you see — every mark has the
+stroke's round caps — so a mark no longer than the stroke is wide is a
+dot: `width={3} dash={[3, 5]}` is a dotted line. The pattern runs along
+the whole stroke, round corners and along a `curve`. For marching ants,
+grow `dashOffset` from a tick; the marks move towards the first point.
+A dashed line costs a quad per mark, and is still hit in its gaps.
+
+[`line` element](props.md#elements) ·
+[ADR 0010's amendment](adr/0010-a-segment-primitive.md#amendment-a-dash-is-cut-in-the-core) ·
+`cargo run --example line`
+
 ### How do I make a tab bar whose tabs stop shrinking at their labels?
 
 Give every tab `width="grow"` and `minWidth="fit"`: they split the bar evenly
@@ -1343,7 +1358,28 @@ them sharing an edge show a hairline of the background through it.
 [ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md) ·
 `cargo run --example path` · `cargo run --example polygon`
 
-### How do I draw a gradient, a ring, or anything the paint props cannot?
+### How do I give a box a gradient background?
+
+`gradient` on the box: `gradient={{ to: 'bottom', stops: ['#1e2030',
+'#14161e'] }}` runs to a side or a corner, `{ angle: 0.125, stops }` along
+a direction in turns clockwise from east, and `{ radial: true, at: [0.5,
+0], stops }` out from a centre. A stop is a colour or `[colour, position]`.
+It paints over `bg` and under the border and the children, so a scrim is
+a gradient with a transparent stop over whatever is beneath. The geometry
+is the box's unit square stretched to the box — a corner is CSS's corner,
+and an `angle` runs corner to corner at an eighth of a turn whatever the
+aspect, which CSS's `45deg` does not.
+
+It costs one image quad and is rasterized once per distinct gradient, so
+it does not tween and `hoverBg` does not replace it: to move a gradient,
+move the box that has it (the rainbow in `loaders` is one gradient slid
+under a clip); to animate its colours, write a fragment.
+
+[`gradient` row](props.md#container-props) ·
+[ADR 0042](adr/0042-a-gradient-is-an-image-the-core-paints.md) ·
+`cargo run --example loaders`
+
+### How do I draw a ring, noise, a shimmer, or anything the paint props cannot?
 
 Write a fragment. `add_fragment(wgsl)` validates one WGSL function and hands
 back a handle; `<fragment src={id} params={[…]} animate>` is a box that

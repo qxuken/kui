@@ -116,10 +116,10 @@ archive. Nothing was renumbered in any of those moves, and nothing ever is.
 What is left here: one parked heading — C12, waiting for a view that
 wants it (C13 and C14 beside it were built on 2026-09-25, asked for by
 the second bake-off) — C27 with its measurements (an idle pumped
-window's cost, where every way out was worse than the cost), V2–V8 from
-the canvas question of 2026-09-11 (five waiting for a view, two declined
+window's cost, where every way out was worse than the cost), V3–V8 from
+the canvas question of 2026-09-11 (four waiting for a view, two declined
 with a condition — V1, the one with an order attached, was built the
-round after, on 2026-09-11), W16 from the alpha.12 pre-tag round (the
+round after, on 2026-09-11, and V2, `dash`, on 2026-10-05), W16 from the alpha.12 pre-tag round (the
 headless round overwriting `kui_ffi.dll` under the C hosts, filed with
 two fixes to choose between), two of the three editor wishes parked at
 the end of the third editor-and-mux round (the third, the underline, is
@@ -743,16 +743,11 @@ and did not build is here, each with the condition that builds it. None is
 a defect. V1, the one with an order attached, was built the round after —
 the fragment image input, in
 [the archive](backlog/closed-2026-09.md#-v1--fragment-image-input--done-2026-09-11)
-— so what stays is V2–V8.
-
-### `.` V2 — `dash` on `line`
-
-ADR 0010 deferred it with the shape written: a pattern along arc length
-that keeps its phase across the joins of a polyline — `params.w` is free
-to carry a phase per quad and the core knows the cumulative length. A
-`dash` declared today would restart at every join of a curve, which reads
-as a bug, so it is not free to get right blind. **Condition:** a view that
-draws a dashed connector or a selection marquee.
+— and V2, `dash` on `line`, on 2026-10-05, when a view asked
+([the archive](backlog/closed-2026-09.md#-v2--dash-on-line--done-2026-10-05))
+— so what stays is V3–V8. (V9, the measurements ADR 0042's build
+left owed, was taken the same day:
+[the archive](backlog/closed-2026-09.md#-v9--the-gradients-measurements--done-2026-10-05).)
 
 ### `.` V3 — `cap` on `line`: `round | butt | arrow`
 
@@ -2679,7 +2674,7 @@ the alpha.12 tag on 2026-09-14, the four sections that partly stayed —
 Core capability, the alpha.9 reports, the alpha.11 reports and the third
 editor-and-mux round — each keeping a paragraph that says what went
 where. This file is now three parked entries, C27 with its measurements,
-V2–V8, W16, W17 and W18 (the macOS 27 round's two finds, built the same day), C40 and W19 (the drop zone of ADR 0031, built the day it was asked for, and the Windows/Linux position it could not verify from here), the editor wishes, the "theirs, not ours" lists, and this
+V3–V8, W16, W17 and W18 (the macOS 27 round's two finds, built the same day), C40 and W19 (the drop zone of ADR 0031, built the day it was asked for, and the Windows/Linux position it could not verify from here), the editor wishes, the "theirs, not ours" lists, and this
 section.
 Still open, both waiting on something outside the repo: enable `SMOKE_MACOS`
 / `SMOKE_WINDOWS` the day a runner exists (P8) — which has two jobs waiting

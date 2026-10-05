@@ -1940,9 +1940,10 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 mlua::Value::Nil => None,
                 v => with_refs(ui, |refs| length_of(&v, refs))?,
             };
-            let stroke = width
-                .filter(|w| *w > 0.0)
-                .map(|w| kui_core::Stroke::new(w, p.style.color.unwrap_or(ui.theme().fg)));
+            let dash = dash_of(t)?;
+            let stroke = width.filter(|w| *w > 0.0).map(|w| {
+                kui_core::Stroke::new(w, p.style.color.unwrap_or(ui.theme().fg)).dashed(dash)
+            });
             // `rotate` in turns and `pivot = {x, y}`: the turn is the
             // quad's, and either row asks for the box the turn sweeps
             // (ADR 0041).
@@ -2007,6 +2008,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             let stroke_color = p.style.color.unwrap_or(ui.theme().fg);
             let mut stroke = kui_core::Stroke::new(width, stroke_color);
             stroke.curve = t.get::<Option<bool>>("curve")?.unwrap_or(false);
+            stroke.dash = dash_of(t)?;
             ui.core().open_from(p, Content::Line(&points, stroke));
             Ok(())
         }
@@ -2688,6 +2690,23 @@ fn reference(v: &mlua::Value) -> mlua::Result<Option<String>> {
     Ok(None)
 }
 
+/// A stroke's `dash` and `dash_offset` rows (backlog V2): one length
+/// (marks and gaps alike), a `{mark, gap}` pair, or four lengths for a
+/// dash-dot. No `dash` is a solid stroke.
+fn dash_of(t: &Table) -> mlua::Result<kui_core::Dash> {
+    let offset = t.get::<Option<f32>>("dash_offset")?.unwrap_or(0.0);
+    let lengths: Vec<f32> = match t.get::<mlua::Value>("dash")? {
+        mlua::Value::Nil => return Ok(kui_core::Dash::SOLID),
+        mlua::Value::Table(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
+        mlua::Value::Integer(n) => vec![n as f32],
+        mlua::Value::Number(n) => vec![n as f32],
+        _ => Vec::new(),
+    };
+    kui_core::Dash::of(&lengths)
+        .map(|d| d.offset(offset))
+        .ok_or_else(|| bad("dash is a length, {mark, gap} or {mark, gap, mark, gap}"))
+}
+
 /// A number, or a `$name` length token.
 fn length_of(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<f32>> {
     if let Some(name) = reference(v)? {
@@ -2910,6 +2929,9 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
         Kind::Enter => {
             Parsed::Enter(kui_core::enter::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?)
         }
+        Kind::Gradient => Parsed::Gradient(
+            kui_core::gradient::parse_with(&lua_to_value(v)?, Some(refs)).map_err(bad)?,
+        ),
     }))
 }
 
@@ -6316,6 +6338,42 @@ mod tests {
         ui.set_origin(OriginId(1));
         let err = bad.view(&Slot::root(), &mut ui).unwrap_err();
         assert!(err.contains("solid | wavy | dotted"), "{err}");
+    }
+
+    /// `dash` on a line (backlog V2): one length is marks and gaps alike,
+    /// a pair is a mark and a gap, and `dash_offset` starts into the
+    /// pattern; a count nobody spells is refused where it is declared.
+    #[test]
+    fn a_line_takes_a_dash_as_a_length_a_pair_or_four() {
+        let segments = |view: &str| -> Result<usize, String> {
+            let mut ext = LuaExtension::from_source("dash", view).unwrap();
+            let mut core = Core::new();
+            let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            let lowered = ext.view(&Slot::root(), &mut ui);
+            ui.finish();
+            lowered?;
+            let (dl, _) = core.output();
+            Ok(dl
+                .quads
+                .iter()
+                .filter(|q| q.kind == kui_core::QuadKind::Segment)
+                .count())
+        };
+        let line = |dash: &str| {
+            format!(
+                "function view(env) return column {{ width = 200, height = 40,
+                   line {{ from = {{0, 20}}, to = {{100, 20}}, width = 2, {dash} }} }} end"
+            )
+        };
+        assert_eq!(segments(&line("")), Ok(1));
+        // 5 on, 5 off: a mark every 10 px.
+        assert_eq!(segments(&line("dash = 5")), Ok(10));
+        assert_eq!(segments(&line("dash = {6, 4}")), Ok(10));
+        assert_eq!(segments(&line("dash = {6, 4}, dash_offset = 5")), Ok(10));
+        assert_eq!(segments(&line("dash = {10, 4, 2, 4}")), Ok(10));
+        let err = segments(&line("dash = {1, 2, 3}")).unwrap_err();
+        assert!(err.contains("dash is a length"), "{err}");
     }
 
     /// `features = "liga=0"` reaches the shaper through the same schema

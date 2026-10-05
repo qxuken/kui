@@ -143,6 +143,31 @@ export interface EnterProp {
   opacity?: number;
 }
 
+/** A gradient painted over a box's `bg`, under its border and children
+ *  (docs/adr/0042-a-gradient-is-an-image-the-core-paints.md). Linear
+ *  `to` a side or a corner (the default is `'bottom'`) or along `angle`,
+ *  or `radial` from `at`. Defined on the box's unit square and stretched
+ *  to it: a side or a corner is CSS's, and any other `angle` runs corner
+ *  to corner at an eighth of a turn whatever the box's aspect, where
+ *  CSS's `45deg` does not. Rasterized once per distinct gradient and
+ *  drawn as one image quad; it does not tween. */
+export interface GradientProp {
+  /** The side or corner a linear gradient runs to. */
+  to?: 'right' | 'bottom right' | 'bottom' | 'bottom left' | 'left' | 'top left' | 'top' | 'top right';
+  /** A linear gradient's direction in turns, clockwise from east: 0.25
+   *  runs downwards. */
+  angle?: number;
+  /** Out from `at` to the box's farthest corner instead of along a line. */
+  radial?: boolean;
+  /** A radial gradient's centre as fractions of the box; the middle,
+   *  `[0.5, 0.5]`, without one. */
+  at?: [number, number];
+  /** Two or more colours, each alone or as `[colour, position]` with the
+   *  position 0 to 1. Stops without one are spaced evenly between those
+   *  with; two at one position are a hard edge. */
+  stops: (ColorProp | [ColorProp, number])[];
+}
+
 export interface FloatProp {
   /** The preset to start from; every key below overrides one of its
    *  values and leaving one out keeps the preset's own, so
@@ -276,6 +301,8 @@ export interface GeneratedSpecProps {
   focusable?: boolean;
   /** Space between children along the main axis. */
   gap?: LengthProp;
+  /** A gradient painted over the node's `bg` and under its border and its children (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): `{ to: 'bottom', stops: [...] }` towards a side or a corner (`right`, `bottom left`, …; the default is `bottom`), `{ angle: 0.125, stops }` in turns clockwise from east, or `{ radial: true, at: [0.5, 0], stops }` out from a centre (fractions of the box, the middle by default) to its farthest corner. A stop is a colour — a `$token` too — or `[colour, position]` with the position 0 to 1; stops without one are spaced evenly between those with. Two stops at one position are a hard edge. The gradient is defined on the box's unit square and stretched to it, so a side or a corner is CSS's and any other `angle` runs corner to corner at an eighth of a turn whatever the box's aspect, where CSS's pixel-measured `45deg` does not. Stops mix in straight sRGB with the alpha premultiplied, as CSS's do. What it costs is one image quad: the core rasterizes each distinct gradient once into the glyph atlas — a 256-texel strip along an axis, a 128-texel square otherwise, within half an 8-bit level of the gradient computed per pixel for a linear one and 1.2 for a radial — keyed by the gradient and not the box, so a box that resizes and a thousand boxes that share one rasterize nothing, and a host that draws an image draws it; a gradient box costs about 55 ns over a flat one, so ten thousand of them are half a millisecond. A hard edge is as soft as the raster stretched to the box (a 256th of its length along a strip); stripes are boxes. It does not tween — `transition` eases the `bg` under it and `opacity` fades it — and `hoverBg` and the other state backgrounds replace `bg`, not the gradient; one that changes every frame is a raster a frame, and a shimmer is a `fragment`'s. Ignored on a `line`, a `polygon` and a `path`. Fewer than two stops draw nothing. */
+  gradient?: GradientProp;
   /** Vertical size: px | "fit" | "grow" | "N%" | a size expression (see `width`). */
   height?: SizingProp;
   /** Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
@@ -812,6 +839,19 @@ export declare namespace JSX {
         to?: [number, number];
         points?: [number, number][];
         curve?: boolean;
+        /** Cuts the stroke into marks and gaps (backlog V2): one length
+         *  (marks and gaps alike), `[mark, gap]`, or `[mark, gap, mark,
+         *  gap]` for a dash-dot, in px **as seen** — every mark is
+         *  round-capped, so a mark no longer than the stroke is wide is a
+         *  dot (SVG's `stroke-dasharray` measures the centre line; this is
+         *  its `mark − width, gap + width`). The pattern runs along the
+         *  whole stroke, corners and curves included. A pattern with no
+         *  gap, or finer than a pixel, draws solid. */
+        dash?: number | [number] | [number, number] | [number, number, number, number];
+        /** How far into the pattern the stroke starts, in px: growing it
+         *  moves the marks towards the first point — a marquee's marching
+         *  ants. It wraps; it does not tween. */
+        dashOffset?: number;
         width?: LengthProp;
         color?: ColorProp;
         float?: 'parent' | 'viewport';
@@ -889,6 +929,19 @@ export declare namespace JSX {
          *  the centre of its box without one. A path with `rotate` or
          *  `pivot` is boxed by the square the turn sweeps. */
         pivot?: [number, number];
+        /** Cuts the stroke into marks and gaps (backlog V2): one length
+         *  (marks and gaps alike), `[mark, gap]`, or `[mark, gap, mark,
+         *  gap]` for a dash-dot, in px **as seen** — every mark is
+         *  round-capped, so a mark no longer than the stroke is wide is a
+         *  dot (SVG's `stroke-dasharray` measures the centre line; this is
+         *  its `mark − width, gap + width`). The pattern runs along the
+         *  outline, restarting at every subpath as SVG's does. A pattern with no
+         *  gap, or finer than a pixel, draws solid. */
+        dash?: number | [number] | [number, number] | [number, number, number, number];
+        /** How far into the pattern the stroke starts, in px: growing it
+         *  moves the marks towards the first point — a marquee's marching
+         *  ants. It wraps; it does not tween. */
+        dashOffset?: number;
         bg?: ColorProp;
         width?: LengthProp;
         color?: ColorProp;

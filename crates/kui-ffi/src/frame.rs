@@ -267,7 +267,8 @@ pub extern "C" fn kui_polygon(
 /// theme's foreground) over the fill; turned by `rotate` turns about
 /// `pivot` (two floats in the path's coordinates, NULL for the centre of
 /// its box) by the quad that draws it, so a path that only turns is
-/// rasterized once — 0 and NULL for no turn. Placed like a stroke: a
+/// rasterized once — 0 and NULL for no turn. `dash` cuts the stroke as
+/// [`kui_polyline`]'s does, NULL for none. Placed like a stroke: a
 /// float sized to its own bounding box, in the parent's box space. `label` keys the
 /// node (empty for a key from the tree position). The three payloads are
 /// consumed as [`kui_open_with`] consumes them; a path with one is hit
@@ -286,6 +287,7 @@ pub extern "C" fn kui_path(
     color: u32,
     rotate: f32,
     pivot: *const f32,
+    dash: *const f32,
     spec: *const KuiSpec,
     on_click: *mut KuiValue,
     on_drag: *mut KuiValue,
@@ -308,7 +310,7 @@ pub extern "C" fn kui_path(
             } else {
                 color_of(color)
             };
-            kui_core::Stroke::new(width, color)
+            kui_core::Stroke::new(width, color).dashed(unsafe { dash_of(dash) })
         });
         let turn = unsafe { turn_of(rotate, pivot) };
         match opt_str(label) {
@@ -318,6 +320,23 @@ pub extern "C" fn kui_path(
             None => c.core().path_flat_node(floats, rule, stroke, turn, spec),
         }
     });
+}
+
+/// A stroke's dash as C spells it (backlog V2): five floats — a mark, a
+/// gap, a second mark, a second gap, and how far into the pattern the
+/// stroke starts — or NULL for a solid stroke.
+///
+/// # Safety
+/// `dash` is NULL or points at five floats.
+unsafe fn dash_of(dash: *const f32) -> kui_core::Dash {
+    if dash.is_null() {
+        return kui_core::Dash::SOLID;
+    }
+    let d = unsafe { std::slice::from_raw_parts(dash, 5) };
+    kui_core::Dash {
+        pattern: [d[0], d[1], d[2], d[3]],
+        offset: d[4],
+    }
 }
 
 /// A path's turn as C spells it: `rotate` in turns and `pivot`, two
@@ -353,6 +372,7 @@ pub extern "C" fn kui_path_d(
     color: u32,
     rotate: f32,
     pivot: *const f32,
+    dash: *const f32,
     spec: *const KuiSpec,
     on_click: *mut KuiValue,
     on_drag: *mut KuiValue,
@@ -373,7 +393,7 @@ pub extern "C" fn kui_path_d(
             } else {
                 color_of(color)
             };
-            kui_core::Stroke::new(width, color)
+            kui_core::Stroke::new(width, color).dashed(unsafe { dash_of(dash) })
         });
         match opt_str(label) {
             Some(label) => c
@@ -565,6 +585,7 @@ pub extern "C" fn kui_line(
         width,
         color,
         false,
+        std::ptr::null(),
         spec,
         NONE,
         NONE,
@@ -577,8 +598,13 @@ pub extern "C" fn kui_line(
 /// node (empty for a key from the tree position), for a stroke that
 /// transitions or exits. The three payloads are consumed as
 /// [`kui_open_with`] consumes them; a stroke with one is hit by its shape,
-/// not its bounding box.
+/// not its bounding box. `dash` cuts the stroke into marks and gaps
+/// (backlog V2): five floats — a mark, a gap, a second mark, a second gap
+/// (the lengths seen, in logical px; repeat the pair for a plain dash)
+/// and the offset into the pattern the stroke starts at — or NULL for a
+/// solid stroke.
 #[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
 pub extern "C" fn kui_polyline(
     ptr: *mut KuiCtx,
     label: KuiStr,
@@ -587,6 +613,7 @@ pub extern "C" fn kui_polyline(
     width: f32,
     color: u32,
     curve: bool,
+    dash: *const f32,
     spec: *const KuiSpec,
     on_click: *mut KuiValue,
     on_drag: *mut KuiValue,
@@ -617,6 +644,7 @@ pub extern "C" fn kui_polyline(
         };
         let mut stroke = kui_core::Stroke::new(if width > 0.0 { width } else { 1.0 }, color);
         stroke.curve = curve;
+        stroke.dash = unsafe { dash_of(dash) };
         match opt_str(label) {
             Some(label) => c.core().line_node_keyed(&label, &points, stroke, spec),
             None => c.core().line_node(&points, stroke, spec),

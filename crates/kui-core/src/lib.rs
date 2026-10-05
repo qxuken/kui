@@ -121,6 +121,7 @@ pub mod env;
 pub mod event;
 pub mod fragment;
 pub mod geom;
+pub mod gradient;
 pub mod input;
 pub(crate) mod join;
 pub mod key;
@@ -182,6 +183,7 @@ pub use event::{
 };
 pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Vec2};
+pub use gradient::{Gradient, Side, Stop as GradientStop};
 pub use input::ScrollAxis;
 pub use input::{
     Buttons, ClipboardMarks, EditKey, InputEvent, KeyCode, KeyLocation, KeyLocks, KeyMods,
@@ -195,7 +197,7 @@ pub use keyframes::Keyframe;
 /// `#[message(crate = "kui_core")]` to the enum.
 #[cfg(feature = "derive")]
 pub use kui_derive::Message;
-pub use line::{LineId, LineStore, Stroke};
+pub use line::{Dash, LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
 pub use message::{MessageError, MessageField};
 pub use metrics::Metrics;

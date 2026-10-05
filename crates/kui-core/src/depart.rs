@@ -88,6 +88,7 @@ pub(crate) enum GhostContent {
         first: u32,
         len: u32,
         width: f32,
+        dash: Option<crate::line::Cut>,
     },
     /// A fragment, by value: the handle and the parameters the node last
     /// declared. The ghost re-declares them every frame it draws, so the
@@ -104,6 +105,7 @@ pub(crate) enum GhostContent {
         len: u32,
         rule: crate::path::FillRule,
         stroke_w: f32,
+        dash: Option<crate::line::Cut>,
         hash: u64,
         angle: Option<f32>,
     },
@@ -476,6 +478,7 @@ impl DepartStore {
                             first,
                             len: pts.len() as u32,
                             width: run.width,
+                            dash: run.dash,
                         }
                     }
                     NodeContent::Path(id) => match paths.prev_run(id) {
@@ -487,6 +490,7 @@ impl DepartStore {
                                 len: run_ops.len() as u32,
                                 rule: run.rule,
                                 stroke_w: run.stroke_w,
+                                dash: run.dash,
                                 hash: run.hash,
                                 angle: run.angle,
                             }

@@ -297,6 +297,38 @@ pub struct KuiKeyframe {
     pub opacity: f32,
 }
 
+/// `KuiGradient.kind`: along a line, or out from a centre.
+pub const KUI_GRADIENT_LINEAR: u32 = 0;
+pub const KUI_GRADIENT_RADIAL: u32 = 1;
+
+/// One stop of a `KuiGradient`: a colour and where along the gradient
+/// it sits, 0..1 — or a negative `at` for a stop spaced evenly between
+/// its neighbours that have one.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiGradientStop {
+    /// 0xRRGGBBAA
+    pub color: u32,
+    pub at: f32,
+}
+
+/// A box's gradient (`KuiSpec.gradient`,
+/// `docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): linear
+/// along `angle` — turns clockwise from east, in the box's unit square —
+/// or radial out from (`at_x`, `at_y`), fractions of the box, to its
+/// farthest corner. `stops_len` stops, two or more.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiGradient {
+    /// `KUI_GRADIENT_*`.
+    pub kind: u32,
+    pub angle: f32,
+    pub at_x: f32,
+    pub at_y: f32,
+    pub stops: *const KuiGradientStop,
+    pub stops_len: usize,
+}
+
 /// Which of a `KuiEnter`'s fields are set (its `set` bits); 0 = no entrance.
 /// `KuiSpec.float_mode`: in flow, or which rect the float attaches to. The
 /// non-zero values are `kui_core::FLOAT_PRESETS` indices plus one, so zero
@@ -709,6 +741,9 @@ pub struct KuiSpec {
     /// easing's own, since a spring with none is `KUI_EASE_SMOOTH`.
     /// ABI 23.
     pub bounce: f32,
+    /// A gradient painted over `bg`, under the border and the children;
+    /// NULL for none. Read during the call. ABI 24.
+    pub gradient: *const KuiGradient,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a

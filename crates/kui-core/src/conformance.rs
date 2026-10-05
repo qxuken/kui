@@ -1955,7 +1955,10 @@ pub const SCENES: &[Scene] = &[
         doc: "The stroke primitive (`docs/adr/0010-a-segment-primitive.md`): \
               a diagonal segment, an orthogonal elbow through three points, \
               and a faded curve through four knots — 8, 9 and 14 pieces by \
-              the core's flattening, so the segment count pins it — beside \
+              the core's flattening, so the segment count pins it — and a \
+              dash-dot round a corner, 3 px into its pattern (backlog V2): \
+              ten more segments, one per mark and two for the mark that \
+              turns the corner — beside \
               a box, which the lines paint over because a line is a float. \
               A line with no input is elided from the access tree; the \
               elbow declares a click and a label, so it is a button, and \
@@ -1978,7 +1981,7 @@ pub const SCENES: &[Scene] = &[
             solid: 2,
             shadows: 0,
             images: 0,
-            segments: 34,
+            segments: 44,
             segments_follow_text: false,
             fragments: 0,
             textures: 0,
@@ -3450,6 +3453,42 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "gradients",
+        doc: "The `gradient` row (ADR 0042), three 200 × 40 boxes in a \
+              column: blue to pink `to right` on a rounded box — a strip; \
+              yellow fading out by 0.8 along an eighth of a turn, over a \
+              `bg` and under a 2 px border — the background, the square, \
+              and the border as a ring of its own above it; and a radial \
+              from the middle of the top edge. Three image quads from the \
+              atlas and two solids; the digest holds their order, and a \
+              binding that drops the row draws the two solids as one.",
+        custom: &[],
+        elements: &["box"],
+        build: build_gradients,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 3,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+        },
+    },
+    Scene {
         name: "sampler",
         doc: "The generic rows no other scene declares, on four nodes \
               (backlog AR47): a card carrying the size ceilings, `center`, \
@@ -4718,7 +4757,12 @@ fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             ui.path_d(
                 PATH_CURVE,
                 FillRule::NonZero,
-                Some(Stroke::new(2.0, Color::hex(0x9ad9a0ff))),
+                // Dashed: 8 px marks, 4 px gaps, 3 px in.
+                Some(
+                    Stroke::new(2.0, Color::hex(0x9ad9a0ff))
+                        .dash(8.0, 4.0)
+                        .dash_offset(3.0),
+                ),
                 None,
                 NodeSpec::column(),
             );
@@ -4992,6 +5036,33 @@ fn build_fit_across(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     });
 }
 
+fn build_gradients(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::gradient::{Gradient, Side, Stop};
+    let band = || NodeSpec::column().size(200.0, 40.0);
+    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+        ui.leaf(band().radius(8.0).gradient(Gradient::to(
+            Side::Right,
+            [Color::hex(0x7f9cf5ff), Color::hex(0xe07a8aff)],
+        )));
+        ui.leaf(
+            band()
+                .bg(Color::hex(0x14161eff))
+                .border(2.0, Color::hex(0xffffffff))
+                .gradient(Gradient::angle(
+                    0.125,
+                    [
+                        Stop::from(Color::hex(0xf5d67fff)),
+                        Stop::from((Color::hex(0x00000000), 0.8)),
+                    ],
+                )),
+        );
+        ui.leaf(band().gradient(Gradient::radial_at(
+            Vec2::new(0.5, 0.0),
+            [Color::hex(0x9ad9a0ff), Color::hex(0x14161eff)],
+        )));
+    });
+}
+
 fn build_size_expressions(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     use crate::schema::{max_str, min_str, sizing_str};
     let bar = |spec: NodeSpec| spec.height(10.0).bg(Color::hex(0x3b5bd4ff));
@@ -5067,6 +5138,18 @@ fn build_lines(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 ],
                 Stroke::new(1.5, Color::hex(0x9ad9a0ff)).curve(),
                 NodeSpec::column().opacity(0.5),
+            );
+            // A dash-dot round a corner, 3 px into its pattern.
+            ui.polyline(
+                &[
+                    Vec2::new(150.0, 70.0),
+                    Vec2::new(190.0, 70.0),
+                    Vec2::new(190.0, 110.0),
+                ],
+                Stroke::new(2.0, Color::hex(0xe07a8aff))
+                    .dashed(crate::Dash::of(&[10.0, 4.0, 2.0, 4.0]).unwrap())
+                    .dash_offset(3.0),
+                NodeSpec::column(),
             );
             ui.leaf(
                 NodeSpec::column()

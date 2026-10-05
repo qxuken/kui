@@ -10,13 +10,17 @@ straight piece of a segment, a polyline or a curve flattened in the core
 ([ADR 0010](adr/0010-a-segment-primitive.md)), and one escape hatch:
 the `fragment` element, a box a registered WGSL function paints
 ([ADR 0015](adr/0015-a-fragment-element-and-the-painter-it-is-not.md)),
-which is where gradients, rings, noise and shimmer live. There are **no
-gradient props** (a stop list, a type, a geometry and an interpolation space
-are not a paint prop's worth of work — write a fragment, or use an image),
-no inset or
+which is where rings, noise and shimmer live. A box takes a `gradient`,
+linear or radial, painted over its `bg`
+([ADR 0042](adr/0042-a-gradient-is-an-image-the-core-paints.md)): defined
+on the box's unit square, rasterized once into the atlas and drawn as an
+image quad, so it does not tween, a hard stop is soft, and there is no
+conic one and none on a `path`, a `line` or a text — those are a
+fragment's. There are no inset or
 multiple shadows, and the single shadow is not knocked out of the middle of
-the shape, so a translucent background shows it through. There are **no
-dashes or arrowhead caps**: a line is segments and nothing else, a
+the shape, so a translucent background shows it through. A stroke takes a `dash` (marks and gaps as seen, the pattern kept along
+the whole stroke; backlog V2) on a `line` and on a `path`. There are **no
+arrowhead caps**: a line is segments and nothing else, a
 translucent polyline double-blends where its caps overlap at a join, and its
 width does not tween (its colour does). A fill of any shape is a `path`
 ([ADR 0040](adr/0040-a-path-is-a-mask-in-the-atlas.md)): SVG path data,

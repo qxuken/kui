@@ -126,7 +126,11 @@
 ///   `KuiSpec` (64-bit size 680); `KuiSizing` takes `KUI_CALC`.
 /// - ABI 23: `bounce` on `KuiSpec` (64-bit size 688); `KUI_EASE_SMOOTH`
 ///   and `KUI_EASE_SNAPPY` are new easings.
-pub const KUI_ABI_VERSION: u32 = 23;
+/// - ABI 24: `kui_polyline`, `kui_path` and `kui_path_d` take a `dash`
+///   (signature changes): five floats, or NULL for a solid stroke.
+///   `gradient` on `KuiSpec` (64-bit size 696), with `KuiGradient` and
+///   `KuiGradientStop`.
+pub const KUI_ABI_VERSION: u32 = 24;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

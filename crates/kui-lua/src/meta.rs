@@ -388,7 +388,7 @@ fn type_of(kind: &Kind) -> String {
         // The stock three, for an editor to offer, or any installed name.
         Kind::Family => "\"sans\"|\"serif\"|\"mono\"|string".into(),
         Kind::Resource => "integer".into(),
-        Kind::Keyframes | Kind::Enter => "table".into(),
+        Kind::Keyframes | Kind::Enter | Kind::Gradient => "table".into(),
     }
 }
 

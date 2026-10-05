@@ -8,6 +8,13 @@
 //! it like any background. The links are declared before the cards, so
 //! they paint under them (floats stack in tree order).
 //!
+//! A card that is only planned hangs off a **dashed** link
+//! (`Stroke::dash`): 7 px marks and 5 px gaps, the lengths seen, the
+//! pattern running along the curve's whole length and not restarting at
+//! each of its pieces. Hover one and its marks march towards the parent —
+//! `dash_offset` grown by the clock, and a frame asked for only while one
+//! is lit.
+//!
 //! Run: cargo run -p kui-native --example line
 
 use kui_devtools::Example;
@@ -18,6 +25,8 @@ struct Card {
     /// Top-left in the canvas, logical px.
     at: Vec2,
     parent: Option<usize>,
+    /// Not built yet: its link is dashed.
+    planned: bool,
 }
 
 const W: f32 = 120.0;
@@ -62,7 +71,14 @@ struct Map {
     cards: Vec<Card>,
     /// Refilled per link per frame, so a frame allocates nothing.
     points: Vec<Vec2>,
+    /// How far the lit dashed links have marched, in px, and when the
+    /// last frame that moved them was drawn.
+    march: f32,
+    last: Option<std::time::Instant>,
 }
+
+/// Px a second a lit dashed link's marks move.
+const MARCH: f32 = 24.0;
 
 impl Map {
     fn new() -> Self {
@@ -70,6 +86,11 @@ impl Map {
             label,
             at: Vec2::new(x, y),
             parent,
+            planned: false,
+        };
+        let planned = |card: Card| Card {
+            planned: true,
+            ..card
         };
         Map {
             cards: vec![
@@ -81,9 +102,13 @@ impl Map {
                 c("floats", 540.0, 100.0, Some(1)),
                 c("shadows", 540.0, 170.0, Some(2)),
                 c("segments", 540.0, 240.0, Some(2)),
-                c("focus", 540.0, 340.0, Some(3)),
+                planned(c("gradients", 540.0, 290.0, Some(2))),
+                c("focus", 540.0, 345.0, Some(3)),
+                planned(c("gestures", 540.0, 400.0, Some(3))),
             ],
             points: Vec::new(),
+            march: 0.0,
+            last: None,
         }
     }
 }
@@ -93,7 +118,7 @@ impl App for Map {
         let t = ui.theme();
         ui.with(NodeSpec::column().fill().bg(t.bg).pad(24.0).gap(12.0), |ui| {
         ui.text(
-            "Links are `line` nodes: a Bézier sampled into a polyline, in the canvas's box space. Hover a card.",
+            "Links are `line` nodes: a Bézier sampled into a polyline, in the canvas's box space; a planned card's link is dashed. Hover a card.",
             TextStyle::new(12.0).color(t.muted),
         );
         let canvas = NodeSpec::column()
@@ -108,6 +133,20 @@ impl App for Map {
             let hovered: Vec<bool> = (0..self.cards.len())
                 .map(|i| ui.is_hovered(ui.child_key(&format!("card{i}"))))
                 .collect();
+            // The dashes of a lit link march, on the clock rather than
+            // the frame count, and only they keep the window drawing.
+            let marching = (0..self.cards.len()).any(|i| {
+                self.cards[i].planned
+                    && (hovered[i] || self.cards[i].parent.is_some_and(|p| hovered[p]))
+            });
+            let now = std::time::Instant::now();
+            if let (true, Some(last)) = (marching, self.last) {
+                self.march += now.duration_since(last).as_secs_f32() * MARCH;
+            }
+            self.last = marching.then_some(now);
+            if marching {
+                ui.request_frame();
+            }
             for i in 0..self.cards.len() {
                 let Some(p) = self.cards[i].parent else {
                     continue;
@@ -119,10 +158,18 @@ impl App for Map {
                 // border, which is what every other hairline on the page is.
                 let color = if lit { t.focus_ring } else { t.border_strong };
                 link(from, to, &mut self.points);
+                let mut stroke = Stroke::new(if lit { 3.0 } else { 2.0 }, color);
+                if self.cards[i].planned {
+                    // The links run parent to child, so a growing offset
+                    // carries the marks back to the parent.
+                    stroke = stroke
+                        .dash(7.0, 5.0)
+                        .dash_offset(if lit { self.march } else { 0.0 });
+                }
                 ui.polyline_keyed(
                     &format!("link{i}"),
                     &self.points,
-                    Stroke::new(if lit { 3.0 } else { 2.0 }, color),
+                    stroke,
                     NodeSpec::column().transition(160.0),
                 );
             }

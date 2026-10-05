@@ -87,6 +87,23 @@ export function createEncoder(P) {
   // The wire index of `$name` in the `kind` space, or `undefined` for a
   // name that resolved to nothing or to the other kind — reported like an
   // unknown prop, and the slot is left out so the core keeps its default.
+  // A stroke's `dash` and `dashOffset` as the five floats the stream
+  // carries — a mark, a gap, a mark, a gap, the offset — or null for a
+  // solid stroke. `dash` is one length (marks and gaps alike), a
+  // [mark, gap] pair, or four lengths for a dash-dot (backlog V2).
+  function dashOf(p, tag) {
+    const d = p.dash;
+    const finite = (n) => typeof n === 'number' && Number.isFinite(n);
+    if (p.dashOffset !== undefined && !finite(p.dashOffset)) throw new Error(`bad dashOffset ${JSON.stringify(p.dashOffset)} for <${tag}> (px, a number)`);
+    if (d == null) return null;
+    const l = typeof d === 'number' ? [d] : d;
+    if (!Array.isArray(l) || !(l.length === 1 || l.length === 2 || l.length === 4) || !l.every(finite)) {
+      throw new Error(`bad dash ${JSON.stringify(d)} for <${tag}> (a length, [mark, gap] or [mark, gap, mark, gap], in px)`);
+    }
+    const [a, b = a, c = a, e = b] = l;
+    return [a, b, c, e, p.dashOffset ?? 0];
+  }
+
   function tokenRef(v, kind) {
     const name = v.slice(1);
     const hit = ROLE_TOKENS.get(name) ?? tokens?.get(name);
@@ -597,6 +614,7 @@ export function createEncoder(P) {
             case 'tag':
             case 'keyframes':
             case 'enter':
+            case 'gradient':
               strRef(JSON.stringify(v));
               break;
             case 'str':
@@ -1106,16 +1124,18 @@ export function createEncoder(P) {
         if (p.rotate !== undefined && (typeof p.rotate !== 'number' || !Number.isFinite(p.rotate))) throw new Error(`bad rotate ${JSON.stringify(p.rotate)} for <path> (turns, a number)`);
         const pivot = p.pivot;
         if (pivot !== undefined && !(Array.isArray(pivot) && pivot.length === 2 && pivot.every((n) => typeof n === 'number' && Number.isFinite(n)))) throw new Error(`bad pivot ${JSON.stringify(pivot)} for <path> ([x, y])`);
-        reserve(10 + (flat ? flat.length : 0));
+        const pathDash = dashOf(p, 'path');
+        reserve(15 + (flat ? flat.length : 0));
         f[fi++] = OP.path;
         strRef(flat ? null : d);
         f[fi++] = flat ? flat.length : 0;
         if (flat) for (const n of flat) f[fi++] = n;
         f[fi++] = widthRef !== undefined ? widthRef : typeof p.width === 'number' ? p.width : 0;
-        f[fi++] = (widthRef !== undefined ? 1 : 0) | (p.fillRule === 'evenodd' ? 2 : 0) | (p.rotate !== undefined ? 4 : 0) | (pivot !== undefined ? 8 : 0);
+        f[fi++] = (widthRef !== undefined ? 1 : 0) | (p.fillRule === 'evenodd' ? 2 : 0) | (p.rotate !== undefined ? 4 : 0) | (pivot !== undefined ? 8 : 0) | (pathDash ? 16 : 0);
         f[fi++] = p.rotate ?? 0;
         f[fi++] = pivot ? pivot[0] : 0;
         f[fi++] = pivot ? pivot[1] : 0;
+        if (pathDash) for (const n of pathDash) f[fi++] = n;
         props(p, el.key, false);
         return;
       }
@@ -1135,7 +1155,8 @@ export function createEncoder(P) {
         // one that does not resolve is left out, the default stroke.
         const widthRef = isRef(p.width) ? tokenRef(p.width, 'length') : undefined;
         if (p.width !== undefined && typeof p.width !== 'number' && !isRef(p.width)) throw new Error(`bad width ${JSON.stringify(p.width)} for <line> (a stroke width in px, or a "$length")`);
-        reserve(6 + pts.length * 2);
+        const lineDash = dashOf(p, 'line');
+        reserve(11 + pts.length * 2);
         f[fi++] = OP.line;
         f[fi++] = pts.length;
         for (const pt of pts) {
@@ -1146,7 +1167,8 @@ export function createEncoder(P) {
           f[fi++] = pt[1];
         }
         f[fi++] = widthRef !== undefined ? widthRef : typeof p.width === 'number' ? p.width : 1;
-        f[fi++] = (p.curve ? 1 : 0) | (widthRef !== undefined ? 2 : 0);
+        f[fi++] = (p.curve ? 1 : 0) | (widthRef !== undefined ? 2 : 0) | (lineDash ? 4 : 0);
+        if (lineDash) for (const n of lineDash) f[fi++] = n;
         props(p, el.key, false);
         return;
       }
