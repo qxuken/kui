@@ -2322,6 +2322,18 @@ impl TextSystem {
         let scale = self.scale;
         let entry = self.run_mut(key).expect("just interned");
         let target = wrap_target(entry, max_w, scale);
+        // A run a node has drawn keeps the rows it was drawn at: its
+        // `text_hit` and `caret_rect` read them until the next frame, which
+        // would only wrap them back. A measure at another width lays out a
+        // copy at that width instead, kept for the next measure there —
+        // between frames as well as within one, where RG72's claim is
+        // (backlog RG76).
+        let key = if entry.claimed != u64::MAX && wrap_differs(entry.wrap, target) {
+            self.wrap_copy(key, target, fs)
+        } else {
+            key
+        };
+        let entry = self.run_mut(key).expect("just interned");
         wrap_entry(entry, fs, target);
         let (mut m, lines) = measure_buffer(&entry.buffer, entry.max_lines);
         if entry.clamp_w
@@ -2496,19 +2508,32 @@ impl TextSystem {
     fn own_wrap(&mut self, id: TextId, target: Option<f32>, fs: &mut FontSystem) {
         let frame_no = self.frame_no;
         let key = self.frame[id.0 as usize].cache_key;
+        let copy = self.wrap_copy(key, target, fs);
+        self.frame[id.0 as usize].cache_key = copy;
+        let entry = self.run_mut(copy).expect("just made");
+        entry.claimed = frame_no;
+        entry.claimed_wrap = target;
+    }
+
+    /// The copy of run `key` laid out at `target`, made the first time a
+    /// width asks for it and found by width after: what a second node
+    /// drawing the run at another width ([`Self::own_wrap`]) and a
+    /// `measure_text` at a width no node drew it at ([`Self::measure_key`])
+    /// lay out instead of the run a node drew.
+    #[inline(never)]
+    fn wrap_copy(&mut self, key: u64, target: Option<f32>, fs: &mut FontSystem) -> u64 {
+        let frame_no = self.frame_no;
         // By the half pixel `wrap_differs` tells widths apart by.
         let slot = target.map_or(u64::MAX, |t| (t * 2.0).round() as u64);
         let copy = crate::key::fnv(key ^ COPY_SALT, &slot.to_le_bytes());
         if self.run(copy).is_none() {
-            let fork = self.run(key).expect("frame text").fork(frame_no);
+            let fork = self.run(key).expect("a run").fork(frame_no);
             self.insert(copy, Entry::Run(fork));
         }
-        self.frame[id.0 as usize].cache_key = copy;
         let entry = self.run_mut(copy).expect("just made");
         entry.last_used = frame_no;
-        entry.claimed = frame_no;
-        entry.claimed_wrap = target;
         wrap_entry(entry, fs, target);
+        copy
     }
 
     /// Emits positioned glyph quads for a laid-out text node.
