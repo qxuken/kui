@@ -322,6 +322,32 @@ pub extern "C" fn kui_option_as_alt_get(ptr: *mut KuiCtx) -> u32 {
     })
 }
 
+/// Declares that this window takes the keyboard as keys, with the
+/// platform's input method off — no composition, no dead keys, and on a
+/// Mac no press-and-hold, so a held letter repeats. Cleared each
+/// `kui_frame_begin` like `kui_set_always_on_top`: a frame that stops
+/// calling this gives the window its input method back. Under `kui_run`
+/// the runner applies it on change; a host driving its own window reads
+/// `kui_ime_off_get` and does.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_ime_off(ptr: *mut KuiCtx, off: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_ime_off(off);
+        }
+    });
+}
+
+/// Whether the frame that just finished asked for the input method off —
+/// for hosts driving their own window. False for a frame that never
+/// asked, and on a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_ime_off_get(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        unsafe { ctx(ptr) }.is_some_and(|c| c.core().ime_off())
+    })
+}
+
 /// The window fact for views to read as `env.window.always_on_top`: what
 /// the host actually did about the ask, so a pin button draws the
 /// platform's answer and not the app's guess. Its own setter rather than

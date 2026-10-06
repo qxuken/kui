@@ -45,6 +45,7 @@ static void surface_view(void *user, KuiCtx *ui) {
     kui_set_always_on_top(ui, true);
     kui_set_secure_input(ui, true);
     kui_set_option_as_alt(ui, KUI_OPTION_AS_ALT_LEFT);
+    kui_set_ime_off(ui, true);
 
     /* Window chrome, each piece in its own keyed slot: two titlebars as
      * siblings would share a key, and per-key state (hover, transitions)

@@ -608,6 +608,9 @@ impl DynShell<'_> {
         event: winit::event::KeyEvent,
     ) {
         let pressed = event.state == ElementState::Pressed;
+        // A key pressed with `from`'s IME off holds it off until it comes
+        // up (`Pane::ime_off_held`): the window the OS composes in.
+        self.panes[from].note_ime_key(event.physical_key, pressed, event.repeat);
         // Whether an Option the window made Alt is held (backlog F113):
         // `from`'s setting and `from`'s reading of which Options are down,
         // since winit rewrote the press in that window's view by the

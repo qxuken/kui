@@ -236,7 +236,11 @@ recorded under [adr/](adr); this page is their consequences for an app.
   `option_as_alt = "left"` / `kui_set_option_as_alt` makes that Option
   Alt in the window, so a Mac's dead keys (⌥u, ⌥e, ⌥n) arrive as chords
   instead of starting an accent; `none`, the default, keeps the Mac's
-  composing Option. The windows' icon is a launch
+  composing Option. So is the input method: `ui.ime_off(true)` / a root
+  `imeOff` / `ime_off = true` / `kui_set_ime_off` takes the keyboard as
+  keys — no IME, no dead keys, and on a Mac no press-and-hold, so a held
+  `j` repeats — for a modal editor's normal mode, whose insert mode stops
+  declaring it. The windows' icon is a launch
   option: `kui_native::app("t").icon(rgba, w, h).icon_resource(1)` — the pixels
   on X11, the executable's icon resource on Windows, for the title bar,
   Alt-Tab and the taskbar (`icon` in Node's `WindowOptions`,

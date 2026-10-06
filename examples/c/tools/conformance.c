@@ -812,6 +812,8 @@ static void conf_chrome(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_set_secure_input(ui, true);
     /* And the fourth: the left Option key as Alt (backlog F113). */
     kui_set_option_as_alt(ui, KUI_OPTION_AS_ALT_LEFT);
+    /* And the fifth: the input method off (backlog F125). */
+    kui_set_ime_off(ui, true);
     KuiSpec outer = {.gap = 6};
     kui_open(ui, &outer, NULL);
     /* kui_titlebar_with appends its own cluster after the body; the second
@@ -2654,6 +2656,7 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
         uint32_t o = kui_option_as_alt_get(ctx);
         repf(out, "option-as-alt %s\n", o < 4 ? option_as_alt[o] : "none");
     }
+    repf(out, "ime-off %d\n", kui_ime_off_get(ctx) ? 1 : 0);
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ctx, &dd);

@@ -214,6 +214,26 @@ pub fn stamp(window: &Window, core: &Core) {
     });
 }
 
+/// Drops the composition `window`'s view has open, if any — what the
+/// runner calls before turning the window's IME off, so the input
+/// method's own candidate window closes with it rather than waiting on a
+/// view that no longer passes it keys. winit's `set_ime_allowed(false)`
+/// clears its marked text but leaves the input context alone.
+pub fn discard_marked_text(window: &Window) {
+    let Some(view) = view_of(window) else {
+        return;
+    };
+    // SAFETY: a live view on the main thread; `inputContext` is NSView's
+    // (nil for a view that takes no text), `discardMarkedText`
+    // NSTextInputContext's.
+    unsafe {
+        let ctx: Option<Retained<AnyObject>> = msg_send![&*view, inputContext];
+        if let Some(ctx) = ctx {
+            let _: () = msg_send![&*ctx, discardMarkedText];
+        }
+    }
+}
+
 /// The inserts the platform made since the last drain, by view pointer,
 /// oldest first.
 pub fn take_commits() -> Vec<(usize, String)> {

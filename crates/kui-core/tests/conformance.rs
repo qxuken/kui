@@ -114,6 +114,7 @@ fn check(scene: &Scene) {
     assert_eq!(out.always_on_top, e.always_on_top, "{name}: always on top");
     assert_eq!(out.secure_input, e.secure_input, "{name}: secure input");
     assert_eq!(out.option_as_alt, e.option_as_alt, "{name}: option as alt");
+    assert_eq!(out.ime_off, e.ime_off, "{name}: ime off");
 }
 
 #[test]
