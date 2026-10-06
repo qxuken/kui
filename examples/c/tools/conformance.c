@@ -951,7 +951,7 @@ static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
 
 /* docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: seven paths in a 200x120
  * canvas - the first wedge takes a click, hit by its arc; the second is
- * keyed; the ring goes through kui_path_parse into the flat form kui_path
+ * keyed, with a tooltip; the ring goes through kui_path_parse into the flat form kui_path
  * takes; the cubic is a stroke alone (NULL spec); the triangle is filled and
  * stroked, faded; a bar turned an eighth about a pivot it names (ADR 0041);
  * and the last does not parse, which kui_path_d turns into
@@ -967,7 +967,8 @@ static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("wedge")));
     kui_path_d(ui, KUI_STR(""), KUI_STR("M60 60 L100 60 A40 40 0 0 1 60 100 Z"),
                KUI_FILL_NONZERO, 0, 0, 0, NULL, NULL, &blue, click, NULL, NULL);
-    KuiSpec orange = {.bg = 0xd8863bff};
+    /* A leaf's tooltip floats beside it, below its box (backlog RG113). */
+    KuiSpec orange = {.bg = 0xd8863bff, .tooltip = KUI_STR("The other quarter")};
     kui_path_d(ui, KUI_STR("wedge2"), KUI_STR("M60 60 L60 100 A40 40 0 0 1 20 60 Z"),
                KUI_FILL_NONZERO, 0, 0, 0, NULL, NULL, &orange, NULL, NULL, NULL);
     float ring[64];

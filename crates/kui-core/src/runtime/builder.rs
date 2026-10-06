@@ -504,6 +504,50 @@ impl Core {
         }
     }
 
+    /// Pushes a leaf — a node that is never left open for children: a
+    /// `cells` grid, an editor, an image, a stroke, a fill, a path — under
+    /// the current node. The one door every leaf goes through, so a leaf
+    /// whose spec asks for its tooltip drawn (`AccessSpec::tooltip`) has it
+    /// floated here once rather than by six doors. One pointer check for a
+    /// leaf that declares no access group.
+    #[inline]
+    fn push_leaf(&mut self, key: Key, spec: NodeSpec, content: NodeContent) {
+        let parent = self.current();
+        let idx = self.tree.push(parent, key, self.origin, spec, content);
+        // Read off the pushed spec rather than before the push, so nothing
+        // is held across `Tree::push` on the path every leaf takes.
+        if self.tree.specs[idx as usize]
+            .access
+            .as_deref()
+            .is_some_and(|a| a.tooltip)
+        {
+            self.leaf_hint(key, idx);
+        }
+    }
+
+    /// The hint of the leaf just pushed, floated while it is hovered: a
+    /// leaf holds no children, so the hint cannot be its last child the
+    /// way `close` floats a box's, and it floats beside the leaf anchored
+    /// to it instead (`widgets::leaf_hint`, backlog RG113). The string is
+    /// the leaf's description, which is what `apply_tooltip` set it to.
+    #[cold]
+    #[inline(never)]
+    fn leaf_hint(&mut self, key: Key, idx: u32) {
+        if !self.is_hovered(key) {
+            return;
+        }
+        let Some(tip) = self
+            .tree
+            .specs
+            .get(idx as usize)
+            .and_then(|s| s.access.as_deref())
+            .and_then(|a| a.description.clone())
+        else {
+            return;
+        };
+        crate::widgets::leaf_hint(&mut Ui::wrap(self), key, &tip);
+    }
+
     /// What every node's spec goes through between the door and the tree,
     /// in this order — one pipeline for a box, a leaf, a stroke and a
     /// fill alike (AR16: five doors ran five subsets of it, and a wedge's
@@ -593,11 +637,14 @@ impl Core {
     /// with whatever the node holds. The one door for every binding that
     /// lowers props, so the identity match, the focus edge and the hint
     /// are not re-derived per binding per element (they were, eight, five
-    /// and four times). A box or a fragment is left open for its children;
-    /// a `cells` grid, a `line` and a `polygon` are leaves and take no
-    /// hint, since a stroke and a fill take no input and a grid draws its
-    /// own. Returns the key.
+    /// and four times). A box or a fragment is left open for its children,
+    /// and its hint floats as its last child on `close`; a `cells` grid, a
+    /// `line`, a `polygon` and a `path` are leaves, and theirs floats
+    /// beside the leaf, anchored to it (`PropsOut::for_leaf`, backlog
+    /// RG113). Returns the key.
     pub fn open_from(&mut self, props: PropsOut, content: Content<'_>) -> Key {
+        let leaf = !matches!(content, Content::Box | Content::Fragment(..));
+        let props = if leaf { props.for_leaf() } else { props };
         let PropsOut {
             spec,
             key: label,
@@ -618,40 +665,22 @@ impl Core {
             Identity::Index(i) => self.child_key_indexed(i),
         };
         let at = self.tree.len() as u32;
-        let leaf = match content {
-            Content::Box => {
-                self.open_with_key(key, spec);
-                false
-            }
-            Content::Fragment(frag, params) => {
-                self.fragment_with_key(key, frag, params, spec);
-                false
-            }
-            Content::Cells(grid) => {
-                self.cells_at(key, grid, spec);
-                true
-            }
-            Content::Line(points, stroke) => {
-                self.line_with_key(key, points, &stroke, spec);
-                true
-            }
-            Content::Polygon(points) => {
-                self.polygon_with_key(key, points, spec);
-                true
-            }
+        match content {
+            Content::Box => self.open_with_key(key, spec),
+            Content::Fragment(frag, params) => self.fragment_with_key(key, frag, params, spec),
+            Content::Cells(grid) => self.cells_at(key, grid, spec),
+            Content::Line(points, stroke) => self.line_with_key(key, points, &stroke, spec),
+            Content::Polygon(points) => self.polygon_with_key(key, points, spec),
             Content::Path(ops, rule, stroke, turn) => {
-                self.path_with_key(key, ops, rule, stroke, turn, spec);
-                true
+                self.path_with_key(key, ops, rule, stroke, turn, spec)
             }
             Content::PathD(d, rule, stroke, turn) => {
-                self.path_node_d(key, d, rule, stroke, turn, spec);
-                true
+                self.path_node_d(key, d, rule, stroke, turn, spec)
             }
             Content::PathFlat(floats, rule, stroke, turn) => {
-                self.path_node_flat(key, floats, rule, stroke, turn, spec);
-                true
+                self.path_node_flat(key, floats, rule, stroke, turn, spec)
             }
-        };
+        }
         // Bookkeeping for the node that was actually pushed: the label
         // `key_of` resolves through, or the data index a selection inside
         // a virtual row is ordered by when the row is not built (ADR 0017).
@@ -668,6 +697,7 @@ impl Core {
         if key_focus {
             self.set_key_focus(Some(key));
         }
+        // A leaf's hint was asked of its door by `for_leaf`, above.
         if let Some(hint) = tooltip
             && !leaf
         {
@@ -766,9 +796,7 @@ impl Core {
         // touches them (AR5).
         self.prepare_spec(key, &mut spec);
         let cid = self.cells.add(key, grid);
-        let parent = self.current();
-        self.tree
-            .push(parent, key, self.origin, spec, NodeContent::Cells(cid));
+        self.push_leaf(key, spec, NodeContent::Cells(cid));
     }
 
     /// An editable text node. State (buffer, cursor, selection) is retained
@@ -822,9 +850,7 @@ impl Core {
         if opts.autofocus && edge && self.focus.is_none() && !spec.disabled {
             self.move_focus(Some(key));
         }
-        let parent = self.current();
-        self.tree
-            .push(parent, key, self.origin, spec, NodeContent::Edit(key));
+        self.push_leaf(key, spec, NodeContent::Edit(key));
         // A leaf keyed by its label, like `open_keyed`: `key_of` must find
         // the editor an app wants to focus by name.
         self.key_labels.push(key, label, self.origin);
@@ -855,9 +881,7 @@ impl Core {
         }
         let key = self.auto_key();
         self.prepare_spec(key, &mut spec);
-        let parent = self.current();
-        self.tree
-            .push(parent, key, self.origin, spec, NodeContent::Image(id, opts));
+        self.push_leaf(key, spec, NodeContent::Image(id, opts));
     }
 
     /// A box a registered WGSL function paints.
@@ -1058,9 +1082,7 @@ impl Core {
         // The box is the stroke's own, and the points are stored relative
         // to it.
         Self::float_box_for(&mut spec, rect);
-        let parent = self.current();
-        self.tree
-            .push(parent, key, self.origin, spec, NodeContent::Line(id));
+        self.push_leaf(key, spec, NodeContent::Line(id));
     }
 
     /// A filled polygon through `points` in the parent's box space:
@@ -1175,9 +1197,7 @@ impl Core {
         spec.style.shadow = crate::spec::Shadow::default();
         self.prepare_spec(key, &mut spec);
         Self::float_box_for(&mut spec, rect);
-        let parent = self.current();
-        self.tree
-            .push(parent, key, self.origin, spec, NodeContent::Polygon(draw));
+        self.push_leaf(key, spec, NodeContent::Polygon(draw));
     }
 
     /// A path — any outline, SVG's `d` — filled with `spec`'s `bg` by the
@@ -1496,9 +1516,7 @@ impl Core {
         spec.style.shadow = crate::spec::Shadow::default();
         self.prepare_spec(key, &mut spec);
         Self::float_box_for(&mut spec, rect);
-        let parent = self.current();
-        self.tree
-            .push(parent, key, self.origin, spec, NodeContent::Path(id));
+        self.push_leaf(key, spec, NodeContent::Path(id));
     }
 
     /// A paragraph of styled spans, shaped and wrapped as one flow.

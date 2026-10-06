@@ -1886,7 +1886,10 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // passed to scripts as a plain integer. `sampling` and `fit`
             // are the rows ADR 0025 gives the element, by name.
             let id: i64 = t.get("id")?;
-            let spec = with_refs(ui, |refs| parse_props(t, false, refs))?.spec;
+            // A leaf: its `tooltip` floats beside it (backlog RG113).
+            let spec = with_refs(ui, |refs| parse_props(t, false, refs))?
+                .for_leaf()
+                .spec;
             let named = |row: &str, names: &[&str]| -> mlua::Result<usize> {
                 match t.get::<Option<String>>(row)? {
                     None => Ok(0),
@@ -2171,7 +2174,8 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             Ok(())
         }
         "edit" => {
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            // A leaf: its `tooltip` floats beside it (backlog RG113).
+            let p = with_refs(ui, |refs| parse_props(t, false, refs))?.for_leaf();
             let label = match p.key.clone().or(t.get::<Option<String>>("label")?) {
                 Some(l) => l,
                 None => return Err(bad("edit needs a key (state is retained by key)")),

@@ -122,6 +122,26 @@ pub(crate) fn min_of(v: f32) -> Min {
     }
 }
 
+/// [`spec_of`] for a leaf — `kui_image`, `kui_polygon`, `kui_path`,
+/// `kui_polyline`, `kui_cells`, `kui_text_edit` — whose `tooltip` the core
+/// floats beside it while hovered (backlog RG113). A box's hint is the
+/// third effect `kui_close` adds once the node closes; a leaf is never
+/// opened, so its spec asks the leaf's door for the float instead, the
+/// way `PropsOut::for_leaf` asks it for JSX and Lua.
+pub(crate) fn leaf_spec_of(
+    s: &KuiSpec,
+    on_click: *mut KuiValue,
+    on_drag: *mut KuiValue,
+    on_key: *mut KuiValue,
+    on_hover: *mut KuiValue,
+) -> NodeSpec {
+    let mut spec = spec_of(s, on_click, on_drag, on_key, on_hover);
+    if opt_str(s.tooltip).is_some() {
+        spec.access_mut().tooltip = true;
+    }
+    spec
+}
+
 pub(crate) fn spec_of(
     s: &KuiSpec,
     on_click: *mut KuiValue,
@@ -436,7 +456,8 @@ pub(crate) fn spec_of(
     }
     if let Some(hint) = opt_str(s.tooltip) {
         // Two of the prop's three effects; `kui_close` adds the third (the
-        // float, while hovered) once it knows the node closed.
+        // float, while hovered) once it knows the node closed, and a
+        // leaf's door adds it for a leaf (`leaf_spec_of`).
         spec = spec.apply_tooltip(&hint);
     }
     if let Some(d) = opt_str(s.description) {

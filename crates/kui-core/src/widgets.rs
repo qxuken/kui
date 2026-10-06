@@ -289,6 +289,26 @@ pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
     ui.text_in(spec, text, TextStyle::new(size));
 }
 
+/// [`hover_hint`] for a leaf — a `line`, a `polygon`, a `path`, a `cells`
+/// grid, an image, an editor — which holds no children for the hint to
+/// float as the last of (backlog RG113). The hint is opened beside the
+/// leaf, in the leaf's parent, and anchored to the leaf by key
+/// (`FloatAnchor::Node`), so it is laid out against the leaf's box once
+/// that is placed and lands below it as a box's lands below the box. Its
+/// key is the leaf's own child key: an auto-keyed one would take the
+/// parent's next sibling slot while the pointer is over the leaf and
+/// shift the key of every sibling declared after it.
+pub(crate) fn leaf_hint(ui: &mut Ui<'_>, leaf: Key, text: &str) {
+    let size = ui.metrics().hint_text;
+    let mut spec = tooltip_spec(ui).role(crate::access::Role::None);
+    if let Some(float) = spec.layout.float.as_mut() {
+        float.anchor = crate::spec::FloatAnchor::Node(leaf);
+    }
+    ui.core().open_key(leaf.str("tooltip"), spec);
+    ui.text(text, TextStyle::new(size));
+    ui.close();
+}
+
 fn tooltip_spec(ui: &Ui<'_>) -> NodeSpec {
     let t = ui.theme();
     let m = ui.metrics();

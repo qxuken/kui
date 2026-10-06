@@ -879,7 +879,7 @@ fn anchored(
         for i in c..end {
             distribute_axis(tree, text, i as u32, AxisSel::Height, viewport);
         }
-        place_anchored(tree, c, anchor);
+        place_anchored(tree, c, anchor, viewport);
         positions(tree, scroll, viewport, scale, c..end);
     }
 }
@@ -908,30 +908,15 @@ fn node_floats(tree: &Tree) -> Vec<(usize, usize, crate::key::Key)> {
     out
 }
 
-/// Attaches the sized float `c` to `anchor`, its config's points.
-fn place_anchored(tree: &mut Tree, c: usize, anchor: Rect) {
+/// Attaches the sized float `c` to `anchor`, its config's points — kept
+/// on screen as a parent-anchored float is when it declares `fit`, which
+/// a leaf's tooltip anchored to the leaf does (backlog RG113).
+fn place_anchored(tree: &mut Tree, c: usize, anchor: Rect, viewport: Size) {
     let Some(cfg) = tree.specs[c].layout.float else {
         return;
     };
-    let cs = tree.size[c];
-    tree.pos[c] = Vec2::new(
-        attach(
-            anchor.x,
-            anchor.w,
-            cs.w,
-            cfg.anchor_point.0,
-            cfg.self_point.0,
-            cfg.offset.x,
-        ),
-        attach(
-            anchor.y,
-            anchor.h,
-            cs.h,
-            cfg.anchor_point.1,
-            cfg.self_point.1,
-            cfg.offset.y,
-        ),
-    );
+    let vp = float_viewport(tree, c as u32, viewport);
+    tree.pos[c] = attach_fitted(&cfg, anchor, tree.size[c], vp, true);
 }
 
 /// Pass 5 again, with the sizes kept: what a scroll that moved a node
@@ -942,7 +927,7 @@ pub(crate) fn reposition(tree: &mut Tree, scroll: &mut ScrollStore, viewport: Si
         for (c, end, key) in node_floats(tree) {
             if let Some(a) = tree.index_of(key) {
                 let anchor = Rect::from_pos_size(tree.pos[a], tree.size[a]);
-                place_anchored(tree, c, anchor);
+                place_anchored(tree, c, anchor, viewport);
                 positions(tree, scroll, viewport, scale, c..end);
             }
         }
@@ -1995,6 +1980,25 @@ fn place_float(
         FloatAnchor::Node(_) => return,
     };
     let cs = tree.size[c as usize];
+    // Mirroring across the viewport itself would teleport a
+    // cursor-anchored float to the opposite side of the window,
+    // so viewport floats only clamp.
+    let mirrors = cfg.anchor == FloatAnchor::Parent;
+    tree.pos[c as usize] = attach_fitted(&cfg, anchor, cs, vp, mirrors);
+}
+
+/// Where a float of size `cs` sits against `anchor` by its config's
+/// attach points and offset — and, when it declares `fit`, kept in `vp`:
+/// mirrored across the anchor per axis where that side is less off-screen
+/// (if `mirrors`), then clamped. A parent-anchored float and a
+/// node-anchored one both mirror; a viewport one only clamps.
+fn attach_fitted(
+    cfg: &crate::spec::FloatConfig,
+    anchor: Rect,
+    cs: Size,
+    vp: Rect,
+    mirrors: bool,
+) -> Vec2 {
     let mut x = attach(
         anchor.x,
         anchor.w,
@@ -2011,10 +2015,7 @@ fn place_float(
         cfg.self_point.1,
         cfg.offset.y,
     );
-    // Mirroring across the viewport itself would teleport a
-    // cursor-anchored float to the opposite side of the window,
-    // so viewport floats only clamp.
-    if cfg.fit && cfg.anchor == FloatAnchor::Parent {
+    if cfg.fit && mirrors {
         // Mirror the attachment across the anchor per axis when
         // the mirrored side is less off-screen (ties keep the
         // declared side), then clamp the rest. Clamp order pins
@@ -2046,7 +2047,7 @@ fn place_float(
         x = x.min(vp.x + vp.w - cs.w).max(vp.x);
         y = y.min(vp.y + vp.h - cs.h).max(vp.y);
     }
-    tree.pos[c as usize] = Vec2::new(x, y);
+    Vec2::new(x, y)
 }
 
 fn positions(

@@ -500,8 +500,10 @@ export interface CustomSpecProps {
    *  once, so a later Tab press is not clobbered. `ctx.focus(key)` moves
    *  focus at any time. */
   keyFocus?: boolean;
-  /** Hover hint: a tooltip floated below this box while it is hovered
-   *  (implies hoverable). */
+  /** Hover hint: a tooltip floated below this node while it is hovered
+   *  (implies hoverable) — as a box's last child, and beside a leaf that
+   *  holds no children (`line`, `polygon`, `path`, `cells`, `image`,
+   *  `edit`), anchored to it, below its box (backlog RG113). */
   tooltip?: string;
   /** Stable identity by *data* index rather than by name: the key
    *  auto-keying would have given this node as the `i`th child, given to

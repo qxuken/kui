@@ -412,7 +412,7 @@ pub extern "C" fn kui_text_edit(
             wrap: flags & KUI_EDIT_WRAP != 0,
             ..Default::default()
         };
-        let spec = spec_of(sp, NONE, NONE, NONE, NONE);
+        let spec = leaf_spec_of(sp, NONE, NONE, NONE, NONE);
         c.core()
             .text_edit(&kstr(label), &kstr(initial), &opts, spec)
             .0
