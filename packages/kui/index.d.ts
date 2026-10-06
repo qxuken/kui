@@ -2471,8 +2471,10 @@ export declare class Ctx {
    * — whose first choice on macOS is the system's proportional
    * face. Ids from `addFont` / `addSystemFont` / `loadFontFile`;
    * one that names no font is left out, and `[]` is the
-   * platform's list alone. A new list shapes every text again;
-   * the same list twice is nothing.
+   * platform's list alone. `mono` text asks them straight after
+   * its own face, ahead of the machine's other monospaced faces.
+   * A new list shapes every text again; the same list twice is
+   * nothing.
    */
   setFallbackFonts(ids: Array<string>): void
   removeFont(id: string): void
@@ -3653,8 +3655,10 @@ export declare class KuiWindow {
    * — whose first choice on macOS is the system's proportional
    * face. Ids from `addFont` / `addSystemFont` / `loadFontFile`;
    * one that names no font is left out, and `[]` is the
-   * platform's list alone. A new list shapes every text again;
-   * the same list twice is nothing.
+   * platform's list alone. `mono` text asks them straight after
+   * its own face, ahead of the machine's other monospaced faces.
+   * A new list shapes every text again; the same list twice is
+   * nothing.
    */
   setFallbackFonts(ids: Array<string>): void
   removeFont(id: string): void

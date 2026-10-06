@@ -2874,8 +2874,9 @@ size_t kui_font_reload_system(KuiCtx *ctx);
  * `ids`, none (NULL or 0) for the platform's list alone. On macOS the
  * platform's first choice is the system's proportional face, so an editor
  * names its icon face, the face it ships and a monospaced one. A handle
- * that names no font is left out. A new list shapes every text again; the
- * same list twice is nothing. */
+ * that names no font is left out. KUI_FONT_MONO text asks them straight
+ * after its own face, ahead of the machine's other monospaced faces. A new
+ * list shapes every text again; the same list twice is nothing. */
 void kui_font_set_fallback(KuiCtx *ctx, const uint64_t *ids, size_t len);
 /* Forgets a font; styles still naming it shape as sans. */
 void kui_font_remove(KuiCtx *ctx, uint64_t id);

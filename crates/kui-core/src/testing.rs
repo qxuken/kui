@@ -186,6 +186,19 @@ pub fn han_face(family: &str) -> Vec<u8> {
     })
 }
 
+/// The [`han_face`] fixture as a fixed-pitch face whose 字 is 700 units
+/// wide, not 500: a monospaced face with 字 that a test tells apart from a
+/// [`han_face`] by the advance alone.
+pub fn mono_han_face(family: &str) -> Vec<u8> {
+    liga_font::build(&liga_font::Face {
+        family,
+        fixed_pitch: true,
+        han: true,
+        wide_han: true,
+        ..liga_font::Face::LIGA
+    })
+}
+
 /// A face whose glyph advances cannot be measured: the
 /// [`han_face`] fixture, fixed-pitch, without its `head`, `hhea` and
 /// `hmtx` tables — no units per em, no horizontal metrics — and without
@@ -240,6 +253,12 @@ mod liga_font {
         pub(super) fixed_pitch: bool,
         /// Maps 字 (U+5B57) to the square as well as printable ASCII.
         pub(super) han: bool,
+        /// Maps 字 to the ligature's glyph, 700 units wide, instead of
+        /// the square: a second face of it a test can tell apart.
+        pub(super) wide_han: bool,
+        /// Maps printable ASCII; without it 字 is the face's one
+        /// character, and it has no `M`.
+        pub(super) ascii: bool,
         /// Carries `head`, `hhea`, `hmtx` and the outlines; without them
         /// nothing says how wide a glyph is.
         pub(super) metrics: bool,
@@ -261,6 +280,8 @@ mod liga_font {
             italic: false,
             fixed_pitch: false,
             han: false,
+            wide_han: false,
+            ascii: true,
             metrics: true,
             wght: None,
         };
@@ -429,7 +450,7 @@ mod liga_font {
         }
         w.i16(0); // sFamilyClass
         w.bytes(&[0; 10]); // panose
-        w.u32(1); // ulUnicodeRange1: Basic Latin
+        w.u32(u32::from(face.ascii)); // ulUnicodeRange1: Basic Latin
         // ulUnicodeRange2: CJK Unified Ideographs (bit 59) for a `han` face.
         w.u32(u32::from(face.han) << 27);
         w.u32(0);
@@ -440,7 +461,7 @@ mod liga_font {
             (false, false) => 0x0040,
             (bold, italic) => u16::from(italic) | u16::from(bold) << 5,
         });
-        w.u16(FIRST); // usFirstCharIndex
+        w.u16(if face.ascii { FIRST } else { HAN }); // usFirstCharIndex
         w.u16(if face.han { HAN } else { LAST }); // usLastCharIndex
         w.i16(800); // sTypoAscender
         w.i16(-200); // sTypoDescender
@@ -471,6 +492,9 @@ mod liga_font {
     /// glyph array, so `f` and `i` can be their own glyphs while the rest
     /// share the square, and a `han` face's 字 to the square by delta.
     fn cmap(face: &Face) -> Vec<u8> {
+        if !face.ascii {
+            return cmap_han_alone(face);
+        }
         let chars = usize::from(LAST - FIRST + 1);
         // By endCode: ASCII, 字 when mapped, and the closing 0xFFFF.
         let han: &[u16] = if face.han { &[HAN] } else { &[] };
@@ -499,7 +523,8 @@ mod liga_font {
         han.iter().for_each(|&c| w.u16(c));
         w.u16(0xFFFF);
         w.i16(0); // idDelta: the array's ids are final
-        han.iter().for_each(|&c| w.u16(BOX.wrapping_sub(c)));
+        han.iter()
+            .for_each(|&c| w.u16(han_glyph(face).wrapping_sub(c)));
         w.i16(1);
         w.u16(2 * segments); // idRangeOffset: the glyph array starts right after
         han.iter().for_each(|_| w.u16(0));
@@ -511,6 +536,44 @@ mod liga_font {
                 _ => BOX,
             });
         }
+        debug_assert_eq!(w.0.len(), 12 + length);
+        w.0
+    }
+
+    /// The glyph a `han` face maps 字 to.
+    fn han_glyph(face: &Face) -> u16 {
+        if face.wide_han { FI } else { BOX }
+    }
+
+    /// [`cmap`] for a face without ASCII: 字 by delta and the closing
+    /// 0xFFFF, no glyph array.
+    fn cmap_han_alone(face: &Face) -> Vec<u8> {
+        let segments: u16 = 2;
+        let entry_selector = segments.ilog2() as u16;
+        let search_range = 2 << entry_selector;
+        let length = 14 + 8 * usize::from(segments) + 2;
+        let mut w = W(Vec::new());
+        w.u16(0); // version
+        w.u16(1); // one encoding record
+        w.u16(3); // Windows
+        w.u16(1); // Unicode BMP
+        w.u32(12); // its subtable follows the header
+        w.u16(4); // format
+        w.u16(length as u16);
+        w.u16(0); // language
+        w.u16(segments * 2);
+        w.u16(search_range);
+        w.u16(entry_selector);
+        w.u16(segments * 2 - search_range); // rangeShift
+        w.u16(HAN); // endCode
+        w.u16(0xFFFF);
+        w.u16(0); // reservedPad
+        w.u16(HAN); // startCode
+        w.u16(0xFFFF);
+        w.u16(han_glyph(face).wrapping_sub(HAN)); // idDelta
+        w.i16(1);
+        w.u16(0); // idRangeOffset: none
+        w.u16(0);
         debug_assert_eq!(w.0.len(), 12 + length);
         w.0
     }

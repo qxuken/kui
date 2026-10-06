@@ -305,7 +305,9 @@ text's own family has no glyph for goes to the first of them that has
 it, and only then to the platform's list — whose first choice on macOS
 is the system's interface face, so Cyrillic in a Latin-only monospaced
 family comes out proportional. The list is the session's, for every
-family and every kind of text; `[]` is the platform's alone. Set it
+family and every kind of text; `[]` is the platform's alone. `mono`
+text asks it straight after its own face, ahead of the machine's other
+monospaced faces, which it walks first when there is no list. Set it
 when the choice changes, not every frame with a new list: a new list
 shapes every text again (the same one twice costs nothing). A cell grid
 goes one step further by itself: with no fallback of yours that has the
