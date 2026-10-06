@@ -199,6 +199,18 @@ pub fn mono_han_face(family: &str) -> Vec<u8> {
     })
 }
 
+/// The [`han_face`] fixture with 字 its one character: a proportional
+/// face of `family` with no `M`, as a CJK-only or symbols-only family has
+/// none.
+pub fn han_only_face(family: &str) -> Vec<u8> {
+    liga_font::build(&liga_font::Face {
+        family,
+        han: true,
+        ascii: false,
+        ..liga_font::Face::LIGA
+    })
+}
+
 /// A face whose glyph advances cannot be measured: the
 /// [`han_face`] fixture, fixed-pitch, without its `head`, `hhea` and
 /// `hmtx` tables — no units per em, no horizontal metrics — and without

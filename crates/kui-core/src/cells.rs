@@ -207,9 +207,12 @@ struct StyleTable {
     cell_h: f32,
     ascii: Vec<Option<Option<CellGlyph>>>,
     other: FxHashMap<(char, u8), Option<CellGlyph>>,
-    /// The face the style's family shapes each variant's `M` with, asked
-    /// once: a glyph from any other face is a fallback's (`shape_cell`).
-    own: [Option<Option<cosmic_text::fontdb::ID>>; VARIANTS],
+    /// The style's family by name: a glyph from a face of another family
+    /// is a fallback's (`shape_cell`). Read off the family itself, not off
+    /// the face its `M` shapes with: a symbols-only or a CJK-only family
+    /// has no `M`, and its own glyphs read as a fallback's, asked of a
+    /// monospaced face first and centred (backlog RG118).
+    family: String,
     /// The atlas stamp the slots were looked up against.
     epoch: u64,
 }
@@ -316,7 +319,10 @@ impl CellStore {
                     cell_h: (style.line_height * scale).round().max(1.0),
                     ascii: vec![None; VARIANTS * 128],
                     other: FxHashMap::default(),
-                    own: [None; VARIANTS],
+                    family: fs
+                        .db()
+                        .family_name(&res.family_of(style.family))
+                        .to_string(),
                     epoch: u64::MAX,
                 },
             );
@@ -695,14 +701,11 @@ fn lookup(
     if let Some(g) = known {
         return g;
     }
-    let own = *table.own[v].get_or_insert_with(|| {
-        shape_one(style, "M", flags, None, 1.0, res, fs, scale).map(|g| g.font)
-    });
     let g = shape_cell(
         ch,
         flags,
         style,
-        own,
+        &table.family,
         res,
         fs,
         raster,
@@ -722,8 +725,8 @@ fn lookup(
 /// or, for a character the cell box draws (`boxdraw`), rasterizes the
 /// cell-sized mask and skips the font.
 ///
-/// A character the style's family has no glyph for is another face's
-/// (`own` is the family's), and a cell is still a cell (F120): a
+/// A character the style's family has no glyph for is another family's
+/// (`own` is the style's), and a cell is still a cell (F120): a
 /// monospaced face that has it is asked before the platform's fallback
 /// list, whose first name on macOS is a proportional one; a glyph wider
 /// than its cells — two for a wide one — is shaped again at the size it
@@ -735,7 +738,7 @@ fn shape_cell(
     ch: char,
     flags: u8,
     style: &TextStyle,
-    own: Option<cosmic_text::fontdb::ID>,
+    own: &str,
     res: &Resources,
     fs: &mut FontSystem,
     raster: &mut Raster,
@@ -759,7 +762,11 @@ fn shape_cell(
     let text: &str = ch.encode_utf8(&mut buf);
     let mut g = shape_one(style, text, flags, None, 1.0, res, fs, scale)?;
     let mut dx = 0.0;
-    if own.is_some_and(|own| own != g.font) && !private_use(ch) {
+    let theirs = fs
+        .db()
+        .face(g.font)
+        .is_some_and(|f| !f.families.iter().any(|(name, _)| name == own));
+    if theirs && !private_use(ch) {
         let mut family = None;
         // The app's own choice of fallback stands, whatever its pitch.
         let chosen = fs.db().face(g.font).is_some_and(|f| {
