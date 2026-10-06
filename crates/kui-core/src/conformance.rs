@@ -616,6 +616,9 @@ pub struct Expect {
     /// Which Option keys the frame asked to act as Alt (`optionAsAlt`,
     /// backlog F113).
     pub option_as_alt: OptionAsAlt,
+    /// Whether the frame asked for the input method off (`imeOff`,
+    /// backlog F125).
+    pub ime_off: bool,
 }
 
 /// One scene: a builder every binding re-expresses, the input to replay,
@@ -689,6 +692,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -726,6 +730,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -758,6 +763,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -794,6 +800,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -864,6 +871,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -910,6 +918,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -945,6 +954,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -976,6 +986,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1020,6 +1031,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1064,6 +1076,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1117,6 +1130,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1151,6 +1165,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1207,6 +1222,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1236,6 +1252,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1285,6 +1302,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1322,6 +1340,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1382,6 +1401,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1433,6 +1453,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1443,7 +1464,8 @@ pub const SCENES: &[Scene] = &[
               for the window above every other app's (alwaysOnTop — a \
               declaration with no node, like the title), its ask for \
               secure keyboard entry (secureInput, the same) and for the \
-              left Option key as Alt (optionAsAlt, the same), an adaptive \
+              left Option key as Alt (optionAsAlt, the same) and for the \
+              input method off (imeOff, the same), an adaptive \
               titlebar hosting custom content and appending its own \
               buttons, a hand-laid strip holding a second cluster through \
               the windowButtons element itself, and a focusable box that \
@@ -1453,6 +1475,7 @@ pub const SCENES: &[Scene] = &[
             "alwaysOnTop",
             "secureInput",
             "optionAsAlt",
+            "imeOff",
             "keyFocus",
             "size",
         ],
@@ -1497,6 +1520,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: true,
             secure_input: true,
             option_as_alt: OptionAsAlt::Left,
+            ime_off: true,
         },
     },
     Scene {
@@ -1512,6 +1536,7 @@ pub const SCENES: &[Scene] = &[
             "alwaysOnTop",
             "secureInput",
             "optionAsAlt",
+            "imeOff",
             "keyFocus",
             "size",
         ],
@@ -1550,6 +1575,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: true,
             secure_input: true,
             option_as_alt: OptionAsAlt::Left,
+            ime_off: true,
         },
     },
     Scene {
@@ -1631,6 +1657,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1697,6 +1724,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1757,6 +1785,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1809,6 +1838,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1867,6 +1897,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1903,6 +1934,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -1956,6 +1988,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2004,6 +2037,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2051,6 +2085,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2099,6 +2134,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2144,6 +2180,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2234,6 +2271,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2324,6 +2362,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2408,6 +2447,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2470,6 +2510,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2530,6 +2571,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2573,6 +2615,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2623,6 +2666,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2673,6 +2717,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2723,6 +2768,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2781,6 +2827,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2846,6 +2893,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2911,6 +2959,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -2955,6 +3004,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3019,6 +3069,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3068,6 +3119,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3129,6 +3181,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3205,6 +3258,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3252,6 +3306,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3299,6 +3354,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3334,6 +3390,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3368,6 +3425,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3406,6 +3464,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3443,6 +3502,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3479,6 +3539,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3515,6 +3576,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
     Scene {
@@ -3582,6 +3644,7 @@ pub const SCENES: &[Scene] = &[
             always_on_top: false,
             secure_input: false,
             option_as_alt: OptionAsAlt::None,
+            ime_off: false,
         },
     },
 ];
@@ -4450,6 +4513,9 @@ fn build_chrome(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     // And the fourth: the left Option key as Alt, which a
     // runner applies to the window on change.
     ui.option_as_alt(OptionAsAlt::Left);
+    // And the fifth: the input method off, which a runner
+    // applies to the window on change.
+    ui.ime_off(true);
     ui.with(NodeSpec::column().gap(6.0), |ui| {
         // The adaptive form: content between the platform inset and the
         // cluster `titlebar_with` appends by itself.
@@ -5720,6 +5786,9 @@ fn observe(core: &Core, cov: &mut Coverage) {
     if core.option_as_alt() != OptionAsAlt::None {
         cov.custom.insert("optionAsAlt");
     }
+    if core.ime_off() {
+        cov.custom.insert("imeOff");
+    }
     // `keyFocus` leaves no mark on the tree: the focus it takes looks
     // exactly like the focus a click takes, so the frame's declaration
     // list is the only trace of one.
@@ -5948,6 +6017,9 @@ pub struct Output {
     pub secure_input: bool,
     /// Which Option keys the last frame asked to act as Alt, the same way.
     pub option_as_alt: OptionAsAlt,
+    /// Whether the last frame asked for the input method off, the same
+    /// way.
+    pub ime_off: bool,
     /// The `CUSTOM` / `ELEMENTS` rows the frames actually exercised (see
     /// [`Coverage`]). Not part of the [`report`]: it is derived from the
     /// tree a builder produced, which is a question about the builder, not
@@ -6329,6 +6401,7 @@ pub fn drive(
     let always_on_top = core.always_on_top();
     let secure_input = core.secure_input();
     let option_as_alt = core.option_as_alt();
+    let ime_off = core.ime_off();
     let announcements = core.take_announcements();
     let warnings = core.take_warnings().into_iter().map(|w| w.code).collect();
     let nodes = rows(core.access_tree());
@@ -6368,6 +6441,7 @@ pub fn drive(
         always_on_top,
         secure_input,
         option_as_alt,
+        ime_off,
         coverage,
     }
 }
@@ -6479,6 +6553,7 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 /// secure-input <0|1>       whether the frame asked for secure keyboard entry
 /// option-as-alt <none|left|right|both>
 ///                            which Option keys the frame asked to act as Alt
+/// ime-off <0|1>            whether the frame asked for the input method off
 /// quads <count> <digest:016x>
 /// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment> <fragment> <texture>
 /// fragment <i> <16 × params as f32 bits>
@@ -6504,6 +6579,7 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     let _ = writeln!(s, "always-on-top {}", out.always_on_top as u8);
     let _ = writeln!(s, "secure-input {}", out.secure_input as u8);
     let _ = writeln!(s, "option-as-alt {}", out.option_as_alt.name());
+    let _ = writeln!(s, "ime-off {}", out.ime_off as u8);
     let _ = writeln!(s, "quads {} {:016x}", out.quad_count, out.quad_digest);
     let _ = writeln!(
         s,

@@ -2593,6 +2593,24 @@ void kui_set_option_as_alt(KuiCtx *ctx, uint32_t option_as_alt);
  * named side's Option, where a host reads its own events). NONE for a
  * frame that never asked. */
 uint32_t kui_option_as_alt_get(KuiCtx *ctx);
+/* Declares that this window takes the keyboard as keys, with the
+ * platform's input method off: no composition and no candidate window, no
+ * dead key waiting for the next, and on a Mac no press-and-hold - an input
+ * method too, so a held letter repeats instead of opening the accent
+ * picker, whatever the user's ApplePressAndHoldEnabled says. A key's text
+ * is still the layout's character. What a modal editor's normal mode
+ * wants; its insert mode stops calling this and gets them back. Cleared
+ * each kui_frame_begin like kui_set_always_on_top. Under kui_run the
+ * runner applies it to the window on change, and a composition in
+ * progress ends without a commit (an empty preedit). On Windows and Linux
+ * the window's IME is disabled the same way. New functions, ABI
+ * unchanged. */
+void kui_set_ime_off(KuiCtx *ctx, bool off);
+/* Whether the frame that just finished asked for it - for a host with its
+ * own window, which applies it on change (winit's set_ime_allowed; on
+ * macOS, not calling interpretKeyEvents: where a host reads its own
+ * events). False for a frame that never asked. */
+bool kui_ime_off_get(KuiCtx *ctx);
 
 /* -- Spec helpers -------------------------------------------------------- */
 /* Fills spec->float_* from a preset name — the same four the JSX and Lua

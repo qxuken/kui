@@ -5,6 +5,7 @@
 //! move; the shell in `lib.rs` owns the list of panes.
 
 use super::*;
+use winit::keyboard::PhysicalKey;
 
 /// Everything about a pane the driver owns and the app only reads: the
 /// display's refresh rate, the four OS settings, whether assistive
@@ -156,6 +157,52 @@ pub(crate) fn option_as_alt_change(
     Some(want)
 }
 
+/// What a frame's `ime_off` ask does to the window: whether to turn the
+/// input method off (`Some(true)`) or back on (`Some(false)`), or `None`
+/// when the window already has it — once per change, never per frame, the
+/// level's rule. `applied` is the runner's record (`Pane::applied_ime_off`),
+/// updated here. Every window opens with its IME allowed, so an app that
+/// never declares it never makes the call.
+pub(crate) fn ime_off_change(want: bool, applied: &mut bool) -> Option<bool> {
+    if want == *applied {
+        return None;
+    }
+    *applied = want;
+    Some(want)
+}
+
+/// Turns `window`'s input method off or back on. Off, a composition the
+/// user had open is dropped first, so the IME's own window closes with
+/// it; winit's `Ime::Disabled` then ends it in the view.
+pub(crate) fn apply_ime_off(window: &Window, off: bool) {
+    #[cfg(target_os = "macos")]
+    if off {
+        crate::macos_text_input::discard_marked_text(window);
+    }
+    window.set_ime_allowed(!off);
+}
+
+/// The held-key record behind `Pane::ime_off_held`: a press made with the
+/// IME off is recorded, its release forgets it, a repeat changes nothing.
+/// Returns whether the record emptied — the moment the IME may come back.
+pub(crate) fn note_ime_key(
+    held: &mut Vec<PhysicalKey>,
+    ime_off: bool,
+    key: PhysicalKey,
+    pressed: bool,
+    repeat: bool,
+) -> bool {
+    if pressed {
+        if ime_off && !repeat && !held.contains(&key) {
+            held.push(key);
+        }
+        return false;
+    }
+    let before = held.len();
+    held.retain(|k| *k != key);
+    before > 0 && held.is_empty()
+}
+
 /// Whether the Option key held for this press is Alt under the window's
 /// applied setting: an Option down on a side it covers.
 /// winit has already given such a press the layout's unmodified character
@@ -287,6 +334,24 @@ pub(crate) struct Pane {
     /// [`option_as_alt_change`] touches the window only when this differs.
     /// Kept on every platform, called on macOS only.
     pub(crate) applied_option_as_alt: kui_core::OptionAsAlt,
+    /// Whether this window's input method is off as far as this runner
+    /// has told winit; [`ime_off_change`] touches the window only when
+    /// the frame's ask differs.
+    pub(crate) applied_ime_off: bool,
+    /// Keys that went down while this window's IME was off and are still
+    /// held. Turning the IME back on under one hands its repeats to an
+    /// input method that never saw the press: on a Mac, press-and-hold
+    /// opens its accent picker over them while winit still forwards each
+    /// one as typed — a modal editor's held `i`, whose first press is the
+    /// switch to insert mode, typed `iiii` under the picker. So the IME
+    /// stays off until the last of these comes up, and a held key keeps
+    /// repeating as it began.
+    pub(crate) ime_off_held: Vec<PhysicalKey>,
+    /// Whether the key target was last told of a composition still open —
+    /// a non-empty preedit since the last commit or empty one — so the
+    /// IME going away mid-composition ends it with an empty preedit, and
+    /// going away with nothing open says nothing.
+    pub(crate) preedit_open: bool,
     pub(crate) modifiers: ModifiersState,
     /// The modifier keys down in this window, by side — what a modifier
     /// key's release reads its own bit from while its twin is still held
@@ -360,6 +425,36 @@ pub(crate) struct Pane {
 }
 
 impl Pane {
+    /// Whether this window's IME should be off now: the frame asked, or a
+    /// key pressed while it was off is still down (`ime_off_held`).
+    pub(crate) fn ime_off_wanted(&self) -> bool {
+        self.core.ime_off() || !self.ime_off_held.is_empty()
+    }
+
+    /// Applies [`Self::ime_off_wanted`] to the window if it changed —
+    /// for the moments between frames that can change it: the last held
+    /// key coming up, the keyboard going away.
+    pub(crate) fn sync_ime(&mut self) {
+        if let Some(off) = ime_off_change(self.ime_off_wanted(), &mut self.applied_ime_off) {
+            apply_ime_off(&self.window, off);
+        }
+    }
+
+    /// Records a key event against [`Self::ime_off_held`], and gives the
+    /// IME back when the last key held from under it comes up and the
+    /// frame no longer asks for it off.
+    pub(crate) fn note_ime_key(&mut self, key: PhysicalKey, pressed: bool, repeat: bool) {
+        if note_ime_key(
+            &mut self.ime_off_held,
+            self.applied_ime_off,
+            key,
+            pressed,
+            repeat,
+        ) {
+            self.sync_ime();
+        }
+    }
+
     /// Whether the window is minimized, on Windows: an animation there
     /// asks for no frames, where it built every one at the display's rate
     /// into a surface nobody could see (RG45). Restoring the window is a
@@ -764,6 +859,91 @@ mod tests {
         assert_eq!(option_as_alt_change(Off, &mut applied), Some(Off));
         assert_eq!(applied, Off);
         assert_eq!(option_as_alt_change(Off, &mut applied), None);
+    }
+
+    /// The input method reaches winit once per change and never per
+    /// frame: a window opens with it allowed and an app that never asks
+    /// never makes the call; a mode that keeps asking costs nothing; the
+    /// frame that stops asking turns it back on.
+    #[test]
+    fn ime_off_is_applied_on_change() {
+        let mut applied = false;
+        assert_eq!(ime_off_change(false, &mut applied), None);
+        assert_eq!(ime_off_change(true, &mut applied), Some(true));
+        assert!(applied);
+        assert_eq!(ime_off_change(true, &mut applied), None);
+        assert_eq!(ime_off_change(true, &mut applied), None);
+        assert_eq!(ime_off_change(false, &mut applied), Some(false));
+        assert!(!applied);
+        assert_eq!(ime_off_change(false, &mut applied), None);
+    }
+
+    /// A key that went down with the IME off holds it off until it comes
+    /// up: recorded on its press, kept through its repeats, forgotten on
+    /// its release — and the release of the last one is the moment the
+    /// IME may come back. A press made with the IME on is never recorded.
+    #[test]
+    fn a_key_pressed_with_the_ime_off_holds_it_off_until_released() {
+        use winit::keyboard::{KeyCode, PhysicalKey::Code};
+        let mut held = Vec::new();
+        assert!(!note_ime_key(
+            &mut held,
+            true,
+            Code(KeyCode::KeyI),
+            true,
+            false
+        ));
+        assert_eq!(held, [Code(KeyCode::KeyI)]);
+        assert!(!note_ime_key(
+            &mut held,
+            false,
+            Code(KeyCode::KeyI),
+            true,
+            true
+        ));
+        assert!(!note_ime_key(
+            &mut held,
+            true,
+            Code(KeyCode::ShiftLeft),
+            true,
+            false
+        ));
+        assert!(!note_ime_key(
+            &mut held,
+            true,
+            Code(KeyCode::ShiftLeft),
+            false,
+            false
+        ));
+        assert_eq!(
+            held,
+            [Code(KeyCode::KeyI)],
+            "a repeat records nothing twice"
+        );
+        assert!(note_ime_key(
+            &mut held,
+            false,
+            Code(KeyCode::KeyI),
+            false,
+            false
+        ));
+        assert!(held.is_empty());
+        // With the IME on, a press is the IME's own business.
+        assert!(!note_ime_key(
+            &mut held,
+            false,
+            Code(KeyCode::KeyE),
+            true,
+            false
+        ));
+        assert!(!note_ime_key(
+            &mut held,
+            false,
+            Code(KeyCode::KeyE),
+            false,
+            false
+        ));
+        assert!(held.is_empty());
     }
 
     /// Which held Option makes a press Alt: the side the

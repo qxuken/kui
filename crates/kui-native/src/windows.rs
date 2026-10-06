@@ -410,6 +410,9 @@ impl DynShell<'_> {
             // A popup opened on top (see above); everything else opens Normal.
             applied_on_top: config.kind == WindowKind::Popup,
             applied_option_as_alt: kui_core::OptionAsAlt::None,
+            applied_ime_off: false,
+            ime_off_held: Vec::new(),
+            preedit_open: false,
             level_supported: level_supported(&window),
             core,
             window,

@@ -21,6 +21,44 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- Rust: `schema::PropsOut` gains `ime_off` (under Added, F125), so a
+  struct literal of it needs the field or `..Default::default()`.
+
+C stays at ABI 25 (`kui_set_ime_off` / `kui_ime_off_get` are new
+functions) and the Node wire at v21 (a root prop, no frame version).
+
+### Added
+
+- **A window can take the keyboard as keys, with the input method off**
+  (backlog F125, from kawoosh's wish list). `ui.ime_off(true)` / a root
+  `imeOff` / `ime_off = true` / `kui_set_ime_off(ctx, true)` turns the
+  platform's input method off in the window: no composition and no
+  candidate window, no dead key waiting for the next, and on a Mac no
+  press-and-hold — which is an input method too, so a held `j` repeats
+  and a held `e` opens no accent picker, whatever the user's
+  `ApplePressAndHoldEnabled` says. A `key` event's `text` is still the
+  layout's character. What a modal editor's normal mode wants; its
+  insert mode stops declaring it and gets accents, dead keys and the IME
+  back. Frame state in `optionAsAlt`'s shape, default off; the runner
+  applies it on change through winit's `set_ime_allowed`, so winit's
+  `keyDown:` stops calling `interpretKeyEvents:`, where macOS composes. A
+  key pressed while it was off keeps it off until it comes up, so the
+  `i` that switches to insert mode, held, keeps typing `iiii` rather
+  than opening the picker over its own repeats; the next fresh press in
+  insert mode gets the picker. A composition open when it turns off is
+  dropped, and ends in the view as an empty `preedit` — as one does now
+  when the user switches input source mid-composition, which used to
+  leave the preedit drawn. On Windows and Linux the window's IME is
+  disabled the same way. `Ctx.imeOff()` / `kui_ime_off_get` read the ask
+  back; `modal_editor` declares it in normal mode. *What you can
+  delete:* the README line telling a Mac user of a modal editor to run
+  `defaults write -g ApplePressAndHoldEnabled -bool false`, and any
+  per-mode IME switching an app did by hand.
+
 ## 0.1.0-alpha.40 (2026-10-07)
 
 **What breaks.**

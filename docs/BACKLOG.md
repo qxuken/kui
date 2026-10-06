@@ -1541,6 +1541,16 @@ winit's delegate answers only that the app finished launching and is
 terminating. One entry, F124, **built 2026-10-06**, the day it was
 filed, and in the archive.
 
+## From the kawoosh wish list (2026-10-07)
+
+kawoosh's roadmap kept one line for kui since RG16 removed F69's door:
+"switching macOS's accent popup on in insert mode and off in normal is
+a per-mode `NSUserDefaults` flip. Cheap if kui exposes it; a kui
+backlog item". No default reaches the read that decides (RG15), but
+press-and-hold is an input method, and winit composes only when the
+window allows one. One entry, F125, **built 2026-10-07**, the day it
+was filed, and in the archive.
+
 ## From the kawoosh update-toast report (2026-10-06)
 
 kawoosh's update toast — "a new Kawoosh is installed: relaunch to run
@@ -2534,6 +2544,8 @@ Nothing of the kawoosh update-toast report is open (F123 **built
 2026-10-06**, the day it was filed).
 Nothing of the kawoosh open-documents report is open (F124 **built
 2026-10-06**, the day it was filed).
+Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
+2026-10-07**, the day it was filed).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -3460,6 +3472,10 @@ move.
 **From the kawoosh open-documents report (2026-10-06)** — F124, filed and built the same day
 
 - `~` **F124** — [A document the Finder opens with the app goes nowhere: winit's application delegate answers no `application:openURLs:`](backlog/closed-2026-09.md#-f124--a-document-the-finder-opens-with-the-app-goes-nowhere-winits-application-delegate-answers-no-applicationopenurls--done-2026-10-06) — done (2026-10-06) — `InputEvent::Open(paths)`, heard by the host as `{kind:"open", paths}` on the root with no ask (`kui_input_open`, `Ctx.openDocuments`); the macOS runner adds `application:openURLs:` to winit's delegate class (`mod macos_open`) and holds a launch-time list until the main window opens
+
+**From the kawoosh wish list (2026-10-07)** — F125, filed and built the same day
+
+- `~` **F125** — [A modal editor's normal mode cannot have the Mac's press-and-hold off: a held `j` moves once, a held `e` opens the accent picker](backlog/closed-2026-09.md#-f125--a-modal-editors-normal-mode-cannot-have-the-macs-press-and-hold-off-a-held-j-moves-once-a-held-e-opens-the-accent-picker--done-2026-10-07) — done (2026-10-07) — `Ui::ime_off` / root `imeOff` / `kui_set_ime_off`, frame state; the runner applies it through winit's `set_ime_allowed`, so `interpretKeyEvents:` (where press-and-hold, dead keys and IMEs live) is not called; a key pressed with it off holds it off until released
 
 **From the kawoosh update-toast report (2026-10-06)** — F123, filed and built the same day
 
