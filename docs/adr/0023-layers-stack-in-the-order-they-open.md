@@ -374,3 +374,22 @@ paints over the page's bar in a real window, checked by screenshot.
    "draws on top of in-flow content" becomes "a layer of its own, above
    the in-flow tree and every float that opened before it"; the `float`
    schema row (and so `docs/props.md`) gains the same sentence.
+
+## Amendment — a stroke is not a layer (2026-10-06, backlog F123)
+
+Decision 1 made every float root a layer, and the core makes a float of
+every `line`, `polygon` and `path` so it takes no room in a row or column
+([ADR 0010](0010-a-segment-primitive.md) decision 5). Together, under
+decision 3, a stroke drawn a frame after some float opened was above that
+float: kawoosh's update toast, a viewport float declared on every frame
+so it stays under every confirm, had the `⌥` key cap of a pane's title
+bar — polylines — painted over it, since the pane opened after the
+window's first frame. The stroke's float is the core's, for the room
+alone; the stroke is its parent's content, which F78 already said for its
+clip. So a stroke in its parent's box space now paints in its parent's
+layer at its place in the tree, as a child does — `Tree::opens_layer`
+decides what is a layer root, in `emit_frame` and in `PaintOrder::of`
+for a departing one — and only a float a view declared, or a stroke
+anchored to the viewport, opens a layer. `tests/layers.rs` pins the
+stroke under a toast opened before it, a stroke inside a float in that
+float's layer, and the viewport-anchored one above.

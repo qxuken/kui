@@ -382,3 +382,114 @@ fn a_float_over_a_modal_from_outside_it_warns_when_it_holds_a_control() {
     let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
     assert_eq!(codes, ["modal-behind-content"], "a control over it");
 }
+
+/// Every quad of the last frame in paint order, the strokes named too:
+/// `painted` with `"stroke"` for a segment, since a polyline is what a
+/// glyph drawn into a title bar is made of.
+fn painted_with_strokes(core: &mut Core) -> Vec<&'static str> {
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .filter(|q| matches!(q.kind, QuadKind::Solid | QuadKind::Segment))
+        .map(|q| {
+            if q.kind == QuadKind::Segment {
+                "stroke"
+            } else if q.color == RED {
+                "red"
+            } else if q.color == BLUE {
+                "blue"
+            } else if q.color == GREY {
+                "grey"
+            } else {
+                "?"
+            }
+        })
+        .collect()
+}
+
+/// A toast at the viewport's top-right, open since the first frame, and
+/// a bar under it that draws a glyph — a polyline — from the second frame
+/// on, as a pane opened after the toast draws its title bar's key cap.
+/// `viewport` anchors the glyph to the viewport instead.
+fn toast_and_bar(core: &mut Core, glyph: bool, viewport: bool) {
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed(
+        "bar",
+        NodeSpec::row().grow_width().height(24.0).bg(GREY),
+        |ui| {
+            if glyph {
+                let mut spec = NodeSpec::row();
+                if viewport {
+                    spec = spec.float(FloatConfig::viewport());
+                }
+                ui.polyline_keyed(
+                    "glyph",
+                    &[Vec2::new(300.0, 4.0), Vec2::new(316.0, 20.0)],
+                    kui_core::Stroke::new(2.0, GREEN),
+                    spec,
+                );
+            }
+        },
+    );
+    ui.leaf_keyed("toast", float_at(200.0, RED));
+    ui.finish();
+}
+
+/// A stroke in its parent's box space is the parent's content, so it
+/// paints in the parent's layer at its place in the tree — a glyph drawn
+/// into a bar under a toast that opened a frame earlier goes under the
+/// toast, as the bar does (backlog F123, from kawoosh: a title bar's key
+/// cap drawn over the update toast). Only a stroke that escapes, anchored
+/// to the viewport, opens a layer of its own.
+#[test]
+fn a_stroke_paints_in_its_parents_layer_not_in_one_of_its_own() {
+    let mut core = Core::new();
+    toast_and_bar(&mut core, false, false);
+    assert_eq!(painted_with_strokes(&mut core), ["grey", "red"]);
+    toast_and_bar(&mut core, true, false);
+    assert_eq!(
+        painted_with_strokes(&mut core),
+        ["grey", "stroke", "red"],
+        "the glyph came a frame after the toast and is still under it"
+    );
+    toast_and_bar(&mut core, true, false);
+    assert_eq!(painted_with_strokes(&mut core), ["grey", "stroke", "red"]);
+
+    let mut core = Core::new();
+    toast_and_bar(&mut core, false, true);
+    toast_and_bar(&mut core, true, true);
+    assert_eq!(
+        painted_with_strokes(&mut core),
+        ["grey", "red", "stroke"],
+        "a viewport-anchored stroke is a layer, opened after the toast's"
+    );
+}
+
+/// Two floats open together; a frame later the first gains a stroke. The
+/// stroke is in the first float's layer, under the second — not a third
+/// layer on top of both.
+#[test]
+fn a_stroke_inside_a_float_paints_in_that_floats_layer() {
+    fn frame(core: &mut Core, stroke: bool) {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed("first", float_at(100.0, RED), |ui| {
+            if stroke {
+                ui.line(
+                    Vec2::new(10.0, 10.0),
+                    Vec2::new(190.0, 90.0),
+                    kui_core::Stroke::new(2.0, GREEN),
+                    NodeSpec::row(),
+                );
+            }
+        });
+        ui.leaf_keyed("second", float_at(150.0, BLUE));
+        ui.finish();
+    }
+    let mut core = Core::new();
+    frame(&mut core, false);
+    assert_eq!(painted_with_strokes(&mut core), ["red", "blue"]);
+    frame(&mut core, true);
+    assert_eq!(painted_with_strokes(&mut core), ["red", "stroke", "blue"]);
+}

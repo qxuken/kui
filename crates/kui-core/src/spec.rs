@@ -378,8 +378,11 @@ pub struct FloatConfig {
     /// and clicked through the toolbar beside it. Only a
     /// [`FloatAnchor::Parent`] float reads it; a viewport or node anchor is
     /// placed against something other than the parent, and escapes with it
-    /// set or not. Paint order is unchanged. A `line` or `polygon` anchored
-    /// in its parent's box has it set by the core.
+    /// set or not. A declared float's paint order is unchanged: it is a
+    /// layer of its own still. A `line`, `polygon` or `path` anchored in
+    /// its parent's box has it set by the core, and with it paints in the
+    /// parent's layer at its place in the tree, as a child does — it opens
+    /// no layer (backlog F123; `Tree::opens_layer`).
     pub clip: bool,
 }
 

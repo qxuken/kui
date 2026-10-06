@@ -23,7 +23,36 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.39 (unreleased)
 
+**What breaks.**
+
+- A `line`, `polygon` or `path` in its parent's box space paints in its
+  parent's layer at its place in the tree — over the siblings declared
+  before it, under those declared after — where it was a float layer of
+  its own, above every in-flow node and every float that had opened
+  before it (under Fixed). A stroke declared before a sibling it
+  overlaps is under that sibling now; declare it after to keep it on
+  top. One anchored `float="viewport"` is placed as it was.
+
 ### Fixed
+
+- **A stroke is its parent's content, not a layer over the window**
+  (backlog F123, from kawoosh). The core floats every `line`, `polygon`
+  and `path` so it takes no room in a row or column, and since ADR 0023
+  every float is a layer stacked by when it opened — so a glyph drawn as
+  polylines into a pane's title bar, in a pane opened after the first
+  frame, painted over a toast the app had floated on every frame since
+  the window opened: kawoosh's "a new Kawoosh is installed: relaunch to
+  run it" with an `⌥` key cap through its border. A stroke in its
+  parent's box space now paints in the parent's layer, at its place in
+  the tree, as a child that takes no room does, and is held by the
+  parent's clip as before; a stroke anchored to the viewport keeps a
+  layer of its own. `Tree::opens_layer` is the one reading, for the live
+  pass and for a departing stroke's ghost.
+
+**What you can delete.** A toast or popover redeclared under a fresh key
+so it stacks over the icons an app draws with `line` or `polygon`, and
+a stroke moved out of its row into a float of its own so a card could
+cover it.
 
 - **`scripts/npm-approve.nu` asks npmjs whatever the npm it runs under
   is configured with.** An npm with `@qxuken:registry` pointing at the

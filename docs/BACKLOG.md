@@ -1525,6 +1525,19 @@ so the core took them for nodes it cannot ask. Two entries, F117 and
 F118, **built 2026-10-02**, the day they were filed, and in the
 archive, with ADR 0038's amendments.
 
+## From the kawoosh update-toast report (2026-10-06)
+
+kawoosh's update toast — "a new Kawoosh is installed: relaunch to run
+it", with Relaunch and Later — came up over a pane's title bar with the
+bar's `⌥/ keys` hint drawn through it: the key cap's glyph, polylines
+through `line`, over the toast's border and text. The toast is a
+viewport float kawoosh declares on every frame so it stays under every
+confirm (ADR 0023: a layer is above every layer that opened before it);
+the pane opened later, and the core makes a float of every stroke so it
+takes no room — a layer of its own, opened after the toast's. One
+entry, F123, **built 2026-10-06**, the day it was filed, and in the
+archive.
+
 ## From the kawoosh wheel-zoom report (2026-10-05)
 
 kawoosh was asked for the wheel to size its font: "let's add
@@ -2457,6 +2470,8 @@ Nothing of the kawoosh menus-on-a-Mac report is open (F119 **built
 2026-10-03**, the day it was filed).
 Nothing of the kawoosh wheel-zoom report is open (F122 **built
 2026-10-05**, the day it was filed).
+Nothing of the kawoosh update-toast report is open (F123 **built
+2026-10-06**, the day it was filed).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -3379,6 +3394,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh update-toast report (2026-10-06)** — F123, filed and built the same day
+
+- `!` **F123** — [A stroke drawn into a pane's title bar paints over a toast that opened before it: every `line` is a float layer of its own, stacked by when it opened](backlog/closed-2026-09.md#-f123--a-stroke-drawn-into-a-panes-title-bar-paints-over-a-toast-that-opened-before-it-every-line-is-a-float-layer-of-its-own-stacked-by-when-it-opened--done-2026-10-06) — done (2026-10-06) — a `line`, `polygon` or `path` in its parent's box space paints in the parent's layer at its place in the tree, as a child that takes no room; only a declared float, or a stroke anchored to the viewport, opens a layer (`Tree::opens_layer`); ADR 0010 decision 5 and ADR 0023 amended
 
 **From the kawoosh wheel-zoom report (2026-10-05)** — F122, filed and built the same day
 

@@ -936,13 +936,17 @@ impl Core {
 
         // Pass 1: clip/float propagation + in-flow emission (preorder =
         // paint order; parents precede children). `float_root[i]` is the
-        // nearest floating ancestor-or-self, `NIL` in flow: the layer a
-        // node paints in (ADR 0023, decision 1). Every float root goes into
-        // `roots`, in tree order, for the stack to sort.
+        // nearest layer-opening ancestor-or-self, `NIL` in flow: the layer
+        // a node paints in (ADR 0023, decision 1). Every layer root goes
+        // into `roots`, in tree order, for the stack to sort. A `line`,
+        // `polygon` or `path` in its parent's box space floats without
+        // opening a layer (`Tree::opens_layer`, F123): it is the parent's
+        // content, painted at its place in the tree and held by the
+        // parent's clip, as a child is.
         let mut roots: Vec<u32> = Vec::new();
         for i in 0..self.tree.len() {
             let parent = self.tree.parent[i];
-            let floats_here = any_float && self.tree.specs[i].layout.float.is_some();
+            let floats_here = any_float && self.tree.opens_layer(i);
             if any_float {
                 self.float_root[i] = if floats_here {
                     roots.push(i as u32);
@@ -971,12 +975,13 @@ impl Core {
             // A parent-anchored float that declared `clip` belongs to the
             // parent's content as a child does, so the parent's clip holds
             // it: a node on a `clip` canvas panned past the canvas's edge
-            // is cut there (F90), and a graph beside a scrolled list at
-            // the list's edge like the rows it draws over, since the core
-            // sets the bit on every stroke and polygon (F78, ADR 0010
-            // decision 5). Any other float (a tooltip, a menu, a stroke
-            // anchored to the viewport) escapes. Only the clip is the
-            // parent's: the node still paints in its float layer.
+            // is cut there (F90). Any other float (a tooltip, a menu, a
+            // stroke anchored to the viewport) escapes. Only the clip is
+            // the parent's: a declared float still paints in its own
+            // layer. A stroke or polygon in its parent's box, which the
+            // core gives the bit (F78, ADR 0010 decision 5), is not a
+            // layer root at all (above), so it takes the parent's clip
+            // here by the in-flow arm, as its graph's rows do.
             let drawn_in_parent = floats_here
                 && parent != NIL
                 && self.tree.specs[i]
@@ -2663,13 +2668,16 @@ impl PaintOrder {
         let n = prev.len();
         let live: FxHashSet<Key> = tree.keys.iter().copied().collect();
         let roots: FxHashSet<Key> = (0..tree.len())
-            .filter(|&i| tree.specs[i].layout.float.is_some())
+            .filter(|&i| tree.opens_layer(i))
             .map(|i| tree.keys[i])
             .collect();
         let mut float_root = vec![NIL; n];
         for i in 0..n {
             let parent = prev.parent[i];
-            float_root[i] = if prev.specs[i].layout.float.is_some() {
+            // The live pass's rule (`Tree::opens_layer`): a stroke in its
+            // parent's box painted in the parent's layer, so a departing
+            // one keeps its place there.
+            float_root[i] = if prev.opens_layer(i) {
                 i as u32
             } else if parent != NIL {
                 float_root[parent as usize]
