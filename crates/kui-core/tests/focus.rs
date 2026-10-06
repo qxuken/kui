@@ -1274,3 +1274,51 @@ fn the_root_is_never_a_tab_stop() {
         "a focused root sink keeps the keyboard"
     );
 }
+
+/// `modal-behind-content` for an in-flow modal is about what paints over
+/// it. A `line` in a bar declared before the modal paints in the bar's
+/// layer, under the modal (backlog F123), and is not content over it;
+/// one anchored to the viewport is a layer of its own, over it, and is.
+#[test]
+fn a_stroke_declared_before_an_in_flow_modal_is_not_content_over_it() {
+    let build = |core: &mut Core, viewport: bool| {
+        let mut ui = core.frame(Size::new(200.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed("bar", NodeSpec::row().size(200.0, H), |ui| {
+            let mut spec = NodeSpec::row();
+            if viewport {
+                spec = spec.float(kui_core::FloatConfig::viewport());
+            }
+            ui.line(
+                Vec2::new(4.0, 4.0),
+                Vec2::new(16.0, 16.0),
+                kui_core::Stroke::new(2.0, Color::WHITE),
+                spec,
+            );
+        });
+        ui.leaf_keyed(
+            "sheet",
+            NodeSpec::column()
+                .size(100.0, H)
+                .modal(Value::Null)
+                .label("Sheet"),
+        );
+        ui.finish();
+        core.take_warnings()
+            .iter()
+            .filter(|w| w.code == kui_core::diag::MODAL_BEHIND_CONTENT)
+            .count()
+    };
+    let mut core = Core::new();
+    assert_eq!(
+        build(&mut core, false),
+        0,
+        "a stroke in the bar's layer is under the modal"
+    );
+    let mut core = Core::new();
+    assert_eq!(
+        build(&mut core, true),
+        1,
+        "a viewport-anchored stroke is a layer over it"
+    );
+}

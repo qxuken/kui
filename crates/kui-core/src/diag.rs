@@ -1033,9 +1033,14 @@ impl Diagnostics {
             return;
         };
         let end = tree.subtree_end(i);
+        // In a layer over the in-flow one: a float root, or under one.
+        // Read through `Tree::opens_layer`, not the float bit — a `line`
+        // in its parent's box floats for the room alone and paints in
+        // the parent's layer (F123), so one in a bar declared before the
+        // modal is under it, not content over it (RG120).
         let floating = |mut j: usize| {
             loop {
-                if tree.specs[j].layout.float.is_some() {
+                if tree.opens_layer(j) {
                     return true;
                 }
                 match tree.parent[j] {

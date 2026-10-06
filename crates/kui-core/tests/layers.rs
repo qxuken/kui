@@ -493,3 +493,259 @@ fn a_stroke_inside_a_float_paints_in_that_floats_layer() {
     frame(&mut core, true);
     assert_eq!(painted_with_strokes(&mut core), ["red", "stroke", "blue"]);
 }
+
+/// Every quad of the last frame in paint order, each kind named: a solid
+/// by its colour, a segment `stroke`, a polygon's fragment quad `polygon`,
+/// a path's mask quad `path`; the rest left out.
+fn painted_shapes(core: &mut Core) -> Vec<&'static str> {
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .filter_map(|q| match q.kind {
+            QuadKind::Solid => Some(if q.color == RED {
+                "red"
+            } else if q.color == BLUE {
+                "blue"
+            } else if q.color == GREY {
+                "grey"
+            } else {
+                "?"
+            }),
+            QuadKind::Segment => Some("stroke"),
+            QuadKind::Fragment => Some("polygon"),
+            QuadKind::GlyphMask => Some("path"),
+            _ => None,
+        })
+        .collect()
+}
+
+/// F123's rule is for the three kinds the core floats for the room alone:
+/// a `polygon` and a `path` drawn into the bar a frame after the toast
+/// opened are under it, as the `line` is.
+#[test]
+fn a_polygon_and_a_path_paint_in_their_parents_layer_as_a_line_does() {
+    fn frame(core: &mut Core, shapes: bool) {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "bar",
+            NodeSpec::row().grow_width().height(24.0).bg(GREY),
+            |ui| {
+                if shapes {
+                    ui.polygon_keyed(
+                        "wedge",
+                        &[
+                            Vec2::new(300.0, 4.0),
+                            Vec2::new(316.0, 4.0),
+                            Vec2::new(308.0, 20.0),
+                        ],
+                        NodeSpec::row().bg(GREEN),
+                    );
+                    ui.path_d_keyed(
+                        "icon",
+                        "M 330 4 L 346 4 L 338 20 Z",
+                        kui_core::FillRule::NonZero,
+                        None,
+                        None,
+                        NodeSpec::row().bg(GREEN),
+                    );
+                }
+            },
+        );
+        ui.leaf_keyed("toast", float_at(200.0, RED));
+        ui.finish();
+    }
+    let mut core = Core::new();
+    frame(&mut core, false);
+    assert_eq!(painted_shapes(&mut core), ["grey", "red"]);
+    frame(&mut core, true);
+    assert_eq!(
+        painted_shapes(&mut core),
+        ["grey", "polygon", "path", "red"],
+        "both came a frame after the toast and are under it"
+    );
+}
+
+/// A stroke that departs keeps the place it painted in: its ghost is in
+/// the bar's layer under the toast, not in a layer of its own on top
+/// (`PaintOrder::of` reads `Tree::opens_layer` as the live pass does).
+#[test]
+fn a_departing_stroke_is_replayed_in_its_parents_layer() {
+    fn frame(core: &mut Core, now: f64, glyph: bool) {
+        core.set_time(now);
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "bar",
+            NodeSpec::row().grow_width().height(24.0).bg(GREY),
+            |ui| {
+                if glyph {
+                    ui.line_keyed(
+                        "glyph",
+                        Vec2::new(300.0, 4.0),
+                        Vec2::new(316.0, 20.0),
+                        kui_core::Stroke::new(2.0, GREEN),
+                        NodeSpec::row()
+                            .transition(100.0)
+                            .exit(kui_core::Enter::default().opacity(0.0)),
+                    );
+                }
+            },
+        );
+        ui.leaf_keyed("toast", float_at(200.0, RED));
+        ui.finish();
+    }
+    let mut core = Core::new();
+    frame(&mut core, 0.0, false);
+    frame(&mut core, 0.0, true);
+    assert_eq!(painted_with_strokes(&mut core), ["grey", "stroke", "red"]);
+    frame(&mut core, 0.01, false);
+    assert!(core.animating(), "the exit is playing");
+    assert_eq!(
+        painted_with_strokes(&mut core),
+        ["grey", "stroke", "red"],
+        "the ghost keeps the stroke's place under the toast"
+    );
+    frame(&mut core, 0.2, false);
+    assert_eq!(painted_with_strokes(&mut core), ["grey", "red"]);
+}
+
+/// Only the core's own floats lost their layer: a float a view declared
+/// with `clip` and a parent anchor (F90) is cut by the parent and still a
+/// layer of its own, over the in-flow sibling declared after it.
+#[test]
+fn a_declared_float_with_clip_is_still_a_layer_of_its_own() {
+    let mut core = Core::new();
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("canvas", NodeSpec::column().fill().clip().bg(GREY), |ui| {
+        ui.leaf_keyed(
+            "node",
+            NodeSpec::column()
+                .size(80.0, 40.0)
+                .bg(RED)
+                .float(FloatConfig::parent().clipped().offset(10.0, 10.0)),
+        );
+        ui.leaf_keyed("sheet", NodeSpec::column().size(200.0, 200.0).bg(BLUE));
+    });
+    ui.finish();
+    assert_eq!(
+        painted(&mut core),
+        ["grey", "blue", "red"],
+        "the declared float paints after the sibling declared after it"
+    );
+}
+
+/// A stroke in its parent's box space is held by the parent's clip (F78);
+/// one anchored to the viewport still escapes it, and that is the one
+/// that is a layer.
+#[test]
+fn a_viewport_anchored_stroke_still_escapes_its_parents_clip() {
+    let mut core = Core::new();
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with(NodeSpec::column().size(50.0, 50.0).clip(), |ui| {
+        ui.line(
+            Vec2::new(0.0, 25.0),
+            Vec2::new(300.0, 25.0),
+            kui_core::Stroke::new(2.0, GREEN),
+            NodeSpec::row(),
+        );
+        ui.line(
+            Vec2::new(0.0, 150.0),
+            Vec2::new(300.0, 150.0),
+            kui_core::Stroke::new(2.0, GREEN),
+            NodeSpec::row().float(FloatConfig::viewport()),
+        );
+    });
+    ui.finish();
+    let (dl, _) = core.output();
+    let clips: Vec<kui_core::Rect> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Segment)
+        .map(|q| dl.clips[q.clip as usize].rect)
+        .collect();
+    assert_eq!(clips.len(), 2, "both strokes draw");
+    assert_eq!(
+        (clips[0].w, clips[0].h),
+        (50.0, 50.0),
+        "held by the box's clip: {:?}",
+        clips[0]
+    );
+    assert!(
+        clips[1].contains(Vec2::new(150.0, 150.0)),
+        "escaped the box: {:?}",
+        clips[1]
+    );
+}
+
+/// Input reads the stack as paint does (ADR 0023): a clickable stroke is
+/// hit at its place among its siblings — under a card declared after it,
+/// over one declared before — where it was topmost over every in-flow
+/// node as a layer of its own.
+#[test]
+fn a_stroke_is_hit_at_its_place_among_its_siblings() {
+    fn frame(core: &mut Core, stroke_first: bool) {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "bar",
+            NodeSpec::row().grow_width().height(24.0).bg(GREY),
+            |ui| {
+                let glyph = |ui: &mut kui_core::Ui<'_>| {
+                    ui.line_keyed(
+                        "glyph",
+                        Vec2::new(0.0, 12.0),
+                        Vec2::new(100.0, 12.0),
+                        kui_core::Stroke::new(4.0, GREEN),
+                        NodeSpec::row().on_click("glyph"),
+                    );
+                };
+                let card = |ui: &mut kui_core::Ui<'_>| {
+                    ui.leaf_keyed(
+                        "card",
+                        NodeSpec::column()
+                            .size(60.0, 24.0)
+                            .bg(BLUE)
+                            .on_click("card"),
+                    );
+                };
+                if stroke_first {
+                    glyph(ui);
+                    card(ui);
+                } else {
+                    card(ui);
+                    glyph(ui);
+                }
+            },
+        );
+        ui.finish();
+    }
+    fn click_at(core: &mut Core, x: f32, y: f32) -> Option<String> {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        core.handle_input(InputEvent::mouse_down(1));
+        let evs = core.handle_input(InputEvent::mouse_up());
+        evs.first()
+            .and_then(|e| e.payload.as_str())
+            .map(str::to_string)
+    }
+    let mut core = Core::new();
+    frame(&mut core, true);
+    assert_eq!(painted_with_strokes(&mut core), ["grey", "stroke", "blue"]);
+    assert_eq!(
+        click_at(&mut core, 30.0, 12.0).as_deref(),
+        Some("card"),
+        "the card declared after the stroke is over it"
+    );
+    assert_eq!(click_at(&mut core, 80.0, 12.0).as_deref(), Some("glyph"));
+
+    let mut core = Core::new();
+    frame(&mut core, false);
+    assert_eq!(painted_with_strokes(&mut core), ["grey", "blue", "stroke"]);
+    assert_eq!(
+        click_at(&mut core, 30.0, 12.0).as_deref(),
+        Some("glyph"),
+        "declared after the card, the stroke is over it"
+    );
+}

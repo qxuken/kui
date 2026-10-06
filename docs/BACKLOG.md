@@ -104,6 +104,9 @@ pass of the same day, filed and built with it, and
 with the alpha.38 tag RG119 — a scroll container that names a modifier
 for its own `onScroll` and stopped scrolling for a plain wheel — from
 its pre-tag pass, filed and built with it, and
+with the alpha.39 tag RG120 — `modal-behind-content` naming a stroke
+under an in-flow modal as content over it — from its pre-tag pass,
+filed and built with it, and
 with the alpha.29 tag RG99 — RG96's readings, confirmed in a window on
 Linux and Windows — with RG100–RG104 from that window round, filed and
 built the same day after the alpha.28 tag, and RG105 from it, withdrawn
@@ -2282,6 +2285,22 @@ day it was filed, and in the archive: a node that scrolls and names a
 modifier for its own `onScroll` let every plain wheel pass it by.
 Nothing of it is open.
 
+## From the alpha.39 pre-tag pass (2026-10-06)
+
+The pre-tag pass over the two commits after the alpha.38 tag — a stroke
+painting in its parent's layer (F123) and `scripts/npm-approve.nu`
+naming npmjs for the scope — run as the ones before it: the mechanical
+round first (all green), then the diff read whole, each claim probed with
+a test before anything changed. The layer roots, the clip arm, a
+departing stroke's place, a `polygon` and a `path` under the same rule,
+a declared float with `clip` still a layer, a viewport-anchored stroke
+still escaping, and a clickable stroke hit at its place all read sound
+and are pinned in `tests/layers.rs`. One entry, RG120, **built
+2026-10-06**, the day it was filed, and in the archive: the
+`modal-behind-content` check still read the float bit for "in a layer
+over the modal", and named a stroke under an in-flow modal as content
+over it. Nothing of it is open.
+
 ## After alpha.36
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -3663,3 +3682,7 @@ move.
 **From the alpha.38 pre-tag pass (2026-10-05)** — RG119, filed and built the same day
 
 - `.` **RG119** — [A scroll container that named a modifier for its own `onScroll` stopped scrolling](backlog/closed-2026-09.md#-rg119--a-scroll-container-that-named-a-modifier-for-its-own-onscroll-stopped-scrolling--done-2026-10-05) — done (2026-10-05)
+
+**From the alpha.39 pre-tag pass (2026-10-06)** — RG120, filed and built the same day
+
+- `.` **RG120** — [`modal-behind-content` named a stroke under an in-flow modal as content over it](backlog/closed-2026-09.md#-rg120--modal-behind-content-named-a-stroke-under-an-in-flow-modal-as-content-over-it--done-2026-10-06) — done (2026-10-06)

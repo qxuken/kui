@@ -48,6 +48,14 @@ was the first bare bump to break an app in five releases).
   parent's clip as before; a stroke anchored to the viewport keeps a
   layer of its own. `Tree::opens_layer` is the one reading, for the live
   pass and for a departing stroke's ghost.
+- **`modal-behind-content` reads the paint order, not the float bit**
+  (backlog RG120, from this release's pre-tag pass). With a stroke in its
+  parent's layer, the check for content over a modal the view did not
+  float still took any node under a `float` for a layer over it — and
+  every `line`, `polygon` and `path` is one for the room alone — so an
+  icon drawn with strokes before the modal's declaration raised the
+  warning on a modal nothing painted over. It reads `Tree::opens_layer`
+  now; a viewport-anchored stroke, a layer of its own, still warns.
 
 **What you can delete.** A toast or popover redeclared under a fresh key
 so it stacks over the icons an app draws with `line` or `polygon`, and
