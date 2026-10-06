@@ -192,8 +192,8 @@ impl Core {
     /// cache; fonts the app loaded itself (`add_font_data`,
     /// `load_font_file`, `load_fonts_dir`) are not touched. Every window
     /// of the session shapes its text again on its next frame, since
-    /// fallback can land on a new face anywhere; this window is asked for
-    /// that frame, and each window's next frame reports a `fonts` event to
+    /// fallback can land on a new face anywhere; every one of them owes
+    /// that frame (`animating`), and each window's next frame reports a `fonts` event to
     /// the host, for an app that keeps the font list in its model. A face
     /// whose file was replaced in place, under the same
     /// path, is not read again.
@@ -227,12 +227,17 @@ impl Core {
     /// got the character is passed over, and after the last the
     /// platform's list runs as before. For every family and every kind of
     /// text in the session — plain, spans, an editor, a cell grid — and
-    /// kept across `reload_system_fonts`. A handle that names no font is
-    /// left out; an empty list is the platform's alone.
+    /// kept across `reload_system_fonts`. `FontFamily::Mono` asks them
+    /// straight after its own face, ahead of the machine's other
+    /// monospaced faces, which with no list it walks first (backlog
+    /// RG118). A handle that names no font is left out; an empty list is
+    /// the platform's alone.
     ///
     /// Not a per-frame call for a list that changes: a new list builds
     /// the font system again over the same faces and every window of the
-    /// session shapes its text again. The same list twice is nothing.
+    /// session shapes its text again: each owes a frame (`animating`), so
+    /// a driver draws the windows the call was not made through as well
+    /// (backlog RG118). The same list twice is nothing.
     pub fn set_fallback_fonts(&mut self, fonts: &[crate::resources::FontId]) {
         {
             let sess = &mut *self.session.state();
@@ -253,6 +258,7 @@ impl Core {
             if sess.faces_shared {
                 share_faces(sess.fonts.db_mut());
             }
+            sess.name_mono();
             sess.weights_rev += 1;
         }
         self.request_frame();
@@ -720,6 +726,23 @@ impl crate::session::SessionState {
         share_faces(self.fonts.db_mut());
     }
 
+    /// Names the family `Mono` shapes as while the app names fallbacks
+    /// (`Resources::mono`, backlog RG118): the face the generic monospace
+    /// family is pinned to, by name, so the app's list is asked straight
+    /// after it rather than after every monospaced face. None with no
+    /// list, or where no installed face is of the pinned name (cosmic-text's
+    /// own default on a machine without it), where the generic family's
+    /// walk of the monospaced faces is the better first answer.
+    pub(crate) fn name_mono(&mut self) {
+        let db = self.fonts.db();
+        let name = db.family_name(&cosmic_text::Family::Monospace);
+        let installed = db
+            .faces()
+            .any(|face| face.families.iter().any(|(f, _)| f == name));
+        self.resources.mono =
+            (!self.resources.fallback.is_empty() && installed).then(|| name.to_string());
+    }
+
     /// `Core::reload_system_fonts`' half on the session: the faces the
     /// scan this session holds had and `fresh` has not leave the database,
     /// those `fresh` has and it had not are loaded, and the rest stay
@@ -781,6 +804,8 @@ impl crate::session::SessionState {
         if self.faces_shared {
             share_faces(self.fonts.db_mut());
         }
+        // The scan can pin `Mono` to another face.
+        self.name_mono();
         self.resources.reweigh(self.fonts.db(), &touched, None);
         // Every window shapes again, whatever reweigh found: a family no
         // one registered can still be what fallback picks.

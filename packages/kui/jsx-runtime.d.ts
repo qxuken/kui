@@ -164,7 +164,9 @@ export interface GradientProp {
   at?: [number, number];
   /** Two or more colours, each alone or as `[colour, position]` with the
    *  position 0 to 1. Stops without one are spaced evenly between those
-   *  with; two at one position are a hard edge. */
+   *  with; two at one position are a hard edge. A `$token` that misses
+   *  is raised as `unknown-token` and its stop left out, so a gradient
+   *  left with fewer than two draws nothing over the `bg`. */
   stops: (ColorProp | [ColorProp, number])[];
 }
 
@@ -301,7 +303,7 @@ export interface GeneratedSpecProps {
   focusable?: boolean;
   /** Space between children along the main axis. */
   gap?: LengthProp;
-  /** A gradient painted over the node's `bg` and under its border and its children (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): `{ to: 'bottom', stops: [...] }` towards a side or a corner (`right`, `bottom left`, …; the default is `bottom`), `{ angle: 0.125, stops }` in turns clockwise from east, or `{ radial: true, at: [0.5, 0], stops }` out from a centre (fractions of the box, the middle by default) to its farthest corner. A stop is a colour — a `$token` too — or `[colour, position]` with the position 0 to 1; stops without one are spaced evenly between those with. Two stops at one position are a hard edge. The gradient is defined on the box's unit square and stretched to it, so a side or a corner is CSS's and any other `angle` runs corner to corner at an eighth of a turn whatever the box's aspect, where CSS's pixel-measured `45deg` does not. Stops mix in straight sRGB with the alpha premultiplied, as CSS's do. What it costs is one image quad: the core rasterizes each distinct gradient once into the glyph atlas — a 256-texel strip along an axis, a 128-texel square otherwise, within half an 8-bit level of the gradient computed per pixel for a linear one and 1.2 for a radial — keyed by the gradient and not the box, so a box that resizes and a thousand boxes that share one rasterize nothing, and a host that draws an image draws it; a gradient box costs about 55 ns over a flat one, so ten thousand of them are half a millisecond. A hard edge is as soft as the raster stretched to the box (a 256th of its length along a strip); stripes are boxes. It does not tween — `transition` eases the `bg` under it and `opacity` fades it — and `hoverBg` and the other state backgrounds replace `bg`, not the gradient; one that changes every frame is a raster a frame, and a shimmer is a `fragment`'s. Ignored on a `line`, a `polygon` and a `path`. Fewer than two stops are an error in JSX and Lua, as a malformed `keyframes` is, and draw nothing in Rust and C. */
+  /** A gradient painted over the node's `bg` and under its border and its children (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): `{ to: 'bottom', stops: [...] }` towards a side or a corner (`right`, `bottom left`, …; the default is `bottom`), `{ angle: 0.125, stops }` in turns clockwise from east, or `{ radial: true, at: [0.5, 0], stops }` out from a centre (fractions of the box, the middle by default) to its farthest corner. A stop is a colour — a `$token` too — or `[colour, position]` with the position 0 to 1; stops without one are spaced evenly between those with. Two stops at one position are a hard edge. The gradient is defined on the box's unit square and stretched to it, so a side or a corner is CSS's and any other `angle` runs corner to corner at an eighth of a turn whatever the box's aspect, where CSS's pixel-measured `45deg` does not. Stops mix in straight sRGB with the alpha premultiplied, as CSS's do. What it costs is one image quad: the core rasterizes each distinct gradient once into the glyph atlas — a 256-texel strip along an axis, a 128-texel square otherwise, within half an 8-bit level of the gradient computed per pixel for a linear one and 1.2 for a radial — keyed by the gradient and not the box, so a box that resizes and a thousand boxes that share one rasterize nothing, and a host that draws an image draws it; a gradient box costs about 55 ns over a flat one, so ten thousand of them are half a millisecond. A hard edge is as soft as the raster stretched to the box (a 256th of its length along a strip); stripes are boxes. It does not tween — `transition` eases the `bg` under it and `opacity` fades it — and `hoverBg` and the other state backgrounds replace `bg`, not the gradient; one that changes every frame is a raster a frame, and a shimmer is a `fragment`'s. Ignored on a `line`, a `polygon` and a `path`. Fewer than two stops are an error in JSX and Lua, as a malformed `keyframes` is, and draw nothing in Rust and C. A stop whose `$token` misses is not an error: it is raised as `unknown-token` and left out, as a miss leaves any slot unset, and the rest are spaced as if it had not been declared — so a gradient left with fewer than two stops, a two-stop one with a typo, draws nothing over its `bg` (backlog RG118). */
   gradient?: GradientProp;
   /** Vertical size: px | "fit" | "grow" | "N%" | a size expression (see `width`). */
   height?: SizingProp;
@@ -848,9 +850,11 @@ export declare namespace JSX {
          *  gap]` for a dash-dot, in px **as seen** — every mark is
          *  round-capped, so a mark no longer than the stroke is wide is a
          *  dot (SVG's `stroke-dasharray` measures the centre line; this is
-         *  its `mark − width, gap + width`). The pattern runs along the
-         *  whole stroke, corners and curves included. A pattern with no
-         *  gap, or finer than a pixel, draws solid. */
+         *  its `mark − width, gap + width`). A gap the dots overlap — a
+         *  mark and its gap together no longer than the width — closes,
+         *  and the marks either side of it are one. The pattern runs along
+         *  the whole stroke, corners and curves included. A pattern with
+         *  no gap left, or finer than a pixel, draws solid. */
         dash?: number | [number] | [number, number] | [number, number, number, number];
         /** How far into the pattern the stroke starts, in px: growing it
          *  moves the marks towards the first point — a marquee's marching
@@ -940,9 +944,11 @@ export declare namespace JSX {
          *  gap]` for a dash-dot, in px **as seen** — every mark is
          *  round-capped, so a mark no longer than the stroke is wide is a
          *  dot (SVG's `stroke-dasharray` measures the centre line; this is
-         *  its `mark − width, gap + width`). The pattern runs along the
-         *  outline, restarting at every subpath as SVG's does. A pattern with no
-         *  gap, or finer than a pixel, draws solid. */
+         *  its `mark − width, gap + width`). A gap the dots overlap — a
+         *  mark and its gap together no longer than the width — closes,
+         *  and the marks either side of it are one. The pattern runs along
+         *  the outline, restarting at every subpath as SVG's does. A
+         *  pattern with no gap left, or finer than a pixel, draws solid. */
         dash?: number | [number] | [number, number] | [number, number, number, number];
         /** How far into the pattern the stroke starts, in px: growing it
          *  moves the marks towards the first point — a marquee's marching

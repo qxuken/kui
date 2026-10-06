@@ -636,3 +636,42 @@ fn a_fallback_glyph_stays_in_its_cell() {
         }
     }
 }
+
+/// A family with no `M` draws its own glyphs as its own (backlog RG118).
+/// The grid told a fallback's glyph by the face `M` shaped with, and a
+/// CJK-only or symbols-only family's `M` is a fallback's: its own glyphs
+/// then read as another face's, to be asked of a monospaced face first,
+/// fitted and centred. Here the family's one character is 字, half an em
+/// wide: drawn as its face puts it, at the cell's left edge, where it sat
+/// 4 px right on a Mac, centred in a cell as wide as another face's `M`.
+#[test]
+fn a_family_without_an_m_draws_its_own_glyphs_as_its_own() {
+    let mut core = Core::new();
+    let font = core
+        .add_font_data(kui_core::testing::han_only_face("Kui RG118 Han Only"))
+        .expect("the fixture registers");
+    let style = TextStyle::new(20.0).font(font).line_height(24.0);
+    let cells = [Cell::new('字', 0xffffffff, 0)];
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.cells(
+        &CellGrid {
+            rows: 1,
+            cols: 1,
+            cells: &cells,
+            style,
+            cursor: None,
+            origin_line: 0,
+        },
+        NodeSpec::default(),
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    let glyphs: Vec<(f32, f32)> = dl
+        .quads
+        .iter()
+        .filter(|q| q.kind != QuadKind::Solid)
+        .map(|q| (q.rect.x, q.rect.w))
+        .collect();
+    assert_eq!(glyphs, [(0.0, 8.0)], "the face's own 字, where it puts it");
+}

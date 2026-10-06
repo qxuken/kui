@@ -640,3 +640,53 @@ fn the_apps_fallback_fonts_are_asked_before_the_platforms() {
     assert_eq!(cell_glyphs(&mut core, "字", 0, style), cells_before);
     assert_eq!(editor(&mut core), editor_before);
 }
+
+/// `mono` text asks the app's fallback fonts straight after its own face
+/// (backlog RG118). cosmic-text's generic monospace family asks every
+/// monospaced face on the machine for what its face lacks first, so a
+/// monospaced face with the character beat the app's choice — on a Mac,
+/// Courier New's italic for Hebrew, PT Mono for ₽, Cascadia Code for
+/// braille. Here the monospaced face is a fixture whose 字 is 14 px at
+/// 20, and the app's choice one whose 字 is 10.
+#[test]
+fn mono_text_asks_the_apps_fallback_fonts_before_the_other_monospaced_faces() {
+    use kui_core::testing::{han_face, mono_han_face};
+    let mut core = Core::new();
+    if core.system_font_families().is_empty() {
+        // No installed face for `Mono` to be pinned to, so it stays the
+        // generic family, which walks the monospaced faces first.
+        eprintln!("skipped: no installed font on this machine");
+        return;
+    }
+    core.add_font_data(mono_han_face("Kui RG118 Mono Han"))
+        .expect("a monospaced face with 字");
+    let han = core
+        .add_font_data(han_face("Kui RG118 Han"))
+        .expect("a face with 字");
+    let style = TextStyle::new(20.0)
+        .family(kui_core::FontFamily::Mono)
+        .line_height(24.0);
+    let apart = |core: &mut Core| -> Option<f32> {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.text_in(NodeSpec::column(), "字字", style);
+        ui.finish();
+        let (dl, _) = core.output();
+        let xs: Vec<f32> = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind != kui_core::QuadKind::Solid)
+            .map(|q| q.rect.x)
+            .collect();
+        xs.get(1).zip(xs.first()).map(|(b, a)| b - a)
+    };
+    core.set_fallback_fonts(&[han]);
+    assert_eq!(apart(&mut core), Some(10.0), "the app's 字, not 14 px");
+    // In a grid, the app's square: 8 px of ink, where the monospaced
+    // face's is 12 (or less, fitted to the cell).
+    let cells = cell_glyphs(&mut core, "字", 0, style);
+    assert_eq!(cells.iter().map(|c| c.1).collect::<Vec<_>>(), [8.0]);
+    // With no list the monospaced faces are asked first again, the
+    // fixture among them now that the font system was built over it.
+    core.set_fallback_fonts(&[]);
+    assert_ne!(apart(&mut core), Some(10.0), "not the app's without a list");
+}

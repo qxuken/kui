@@ -173,6 +173,58 @@ fn a_font_registered_in_one_window_shapes_in_the_other() {
     );
 }
 
+/// A fallback list set through one window draws every window of the
+/// session (backlog RG118). The list is the session's and every window's
+/// shaped text goes stale with it, but only the window it was set through
+/// asked for a frame: another window shaped again when something else
+/// drew it. Each window now owes a frame while the session's fonts have
+/// moved under the text it shaped, which a driver polling `animating`
+/// for each of its windows draws.
+#[test]
+fn a_fallback_list_set_through_one_window_draws_every_window() {
+    use kui_core::testing::{font_face, han_face};
+    let session = Session::new();
+    let mut a = Core::new_in(&session);
+    let mut b = Core::new_in(&session);
+    let font = a
+        .add_font_data(font_face("Kui RG118 Latin", 400, false, true))
+        .expect("the fixture registers");
+    let han = a
+        .add_font_data(han_face("Kui RG118 Han"))
+        .expect("a face with 字");
+    let style = TextStyle::new(20.0).font(font).line_height(24.0);
+    // How far apart two 字 are drawn: 10 px in the fixture's face.
+    let apart = |core: &mut Core| -> Option<f32> {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.text_in(NodeSpec::column(), "字字", style);
+        ui.finish();
+        let (dl, _) = core.output();
+        let xs: Vec<f32> = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind != QuadKind::Solid)
+            .map(|q| q.rect.x)
+            .collect();
+        xs.get(1).zip(xs.first()).map(|(b, a)| b - a)
+    };
+    for core in [&mut a, &mut b] {
+        apart(core);
+        apart(core);
+    }
+    assert!(!a.animating() && !b.animating(), "both drawn and idle");
+
+    a.set_fallback_fonts(&[han]);
+    assert!(a.animating(), "the window it was set through owes a frame");
+    assert!(
+        b.animating(),
+        "and so does every other window of the session"
+    );
+    assert_eq!(apart(&mut b), Some(10.0), "which shapes with the list");
+    assert!(!b.animating(), "one frame");
+    assert_eq!(apart(&mut a), Some(10.0));
+    assert!(!a.animating());
+}
+
 #[test]
 fn a_sound_registered_in_one_window_plays_from_the_other() {
     let session = Session::new();

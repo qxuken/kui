@@ -318,9 +318,21 @@ options*, and decisions 1–4 and 6–11 stand as written.
   nobody spells, an unknown field, fewer than two stops in the list or
   a number that is not one is an error from `gradient::parse_with`,
   with the field named. What still draws nothing in silence is a
-  gradient that *parsed* and has nothing to paint — every stop a token
-  that missed (each raised as `unknown-token`), or one built in Rust or
-  C with one stop or a NaN. No warning code was added.
+  gradient that *parsed* and has nothing to paint — fewer than two
+  stops left once those whose token missed are taken out (each raised
+  as `unknown-token`), or one built in Rust or C with one stop or a
+  NaN. No warning code was added.
+
+  *Weighed again (2026-10-07, backlog RG118).* The count is of the
+  list, so `[$peach, $peech]` parses and draws nothing. A missed stop
+  could instead keep its place painted transparent, so the gradient
+  still draws; it stays left out. A missed token leaves any other slot
+  as if it were not declared (a `bg`, a keyframe's stop, an
+  entrance), and a stand-in here would paint a colour nobody wrote — a
+  fade to nothing that reads as intended, where a box with no gradient
+  over its `bg` reads as the mistake it is beside the `unknown-token`
+  that names it. Tokens have no fallback of their own to paint instead.
+  The docs of the row say so.
 - **The atlas holds straight alpha** (open question 1). An `Image`
   quad's shader multiplies the texel's rgb by the tint and its alpha by
   the coverage separately, so the texels are straight. The raster mixes

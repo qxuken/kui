@@ -406,6 +406,16 @@ pub struct Resources {
     /// (`Core::set_fallback_fonts`), in order: what the font system was
     /// built with, kept for the one built again over a new scan.
     pub(crate) fallback: Vec<String>,
+    /// The family `FontFamily::Mono` is shaped as by name while
+    /// `fallback` names any (backlog RG118): cosmic-text's generic
+    /// monospace family asks every monospaced face on the machine for a
+    /// character its own face lacks before it gets to the lists the app's
+    /// names lead, so the app's choice lost to whichever monospaced face
+    /// came first — Courier New's italic for Hebrew on a Mac. By name, it
+    /// asks its own face and then the app's, as a registered family does.
+    /// None with no list, where the monospaced faces are asked first as
+    /// before (`Core::set_fallback_fonts` keeps it).
+    pub(crate) mono: Option<String>,
     /// Handles of other sessions this registry was asked for since the
     /// last drain, each once. A `RefCell` because the resolves that find
     /// them (`family_of` under a shaping closure, `image` under the
@@ -428,6 +438,7 @@ impl Resources {
             sounds: SparseSecondaryMap::new(),
             fragments: SparseSecondaryMap::new(),
             fallback: Vec::new(),
+            mono: None,
             foreign: RefCell::new(Vec::new()),
             frames: 0,
             spared: Vec::new(),
@@ -537,12 +548,16 @@ impl Resources {
     }
 
     /// The cosmic-text family a style's `FontFamily` shapes with; an unknown
-    /// or removed custom font falls back to sans-serif.
+    /// or removed custom font falls back to sans-serif. `Mono` is its face's
+    /// family by name while the app names fallbacks (see `mono`).
     pub(crate) fn family_of(&self, f: FontFamily) -> cosmic_text::Family<'_> {
         match f {
             FontFamily::Sans => cosmic_text::Family::SansSerif,
             FontFamily::Serif => cosmic_text::Family::Serif,
-            FontFamily::Mono => cosmic_text::Family::Monospace,
+            FontFamily::Mono => self
+                .mono
+                .as_deref()
+                .map_or(cosmic_text::Family::Monospace, cosmic_text::Family::Name),
             FontFamily::Custom(id) => match self.font_family(id) {
                 Some(name) => cosmic_text::Family::Name(name),
                 None => cosmic_text::Family::SansSerif,

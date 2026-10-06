@@ -456,6 +456,16 @@ and with a round cap its `4 4` at a width of 4 is a solid line, which
 is the first thing anyone writes. The first mark's cap sits where the
 solid stroke's would.
 
+**A gap the dots overlap closes** (2026-10-07, backlog RG118). A dot is
+as wide as the stroke whatever its mark says, in the same period, so
+where a mark and its gap together come to no more than the width the
+dots meet: as first built, `{2, 2}` at a width of 8 was 8 px dots every
+4 px, a lumpy solid line at a quad a dot. Clamping the dot to its mark
+cannot be drawn, and growing the period to keep the gap moves every
+dotted line whose dots do not touch. So the gap closes and the marks
+either side of it are one (`Dash::cut`); a pattern with no gap left is
+solid. A gap that is seen is untouched.
+
 **The same pattern on a `path`.** A path's stroke is a mask
 ([ADR 0040](0040-a-path-is-a-mask-in-the-atlas.md), whose decision 3
 left `dash` to V2), so the centre lengths go to the rasterizer and the

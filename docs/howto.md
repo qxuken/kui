@@ -61,7 +61,9 @@ a nine-point curve over ~50 px spans is ~60 quads.
 marks with 4 px gaps, `dash={4}` the same length for both, and four
 lengths are a dash-dot. The lengths are what you see — every mark has the
 stroke's round caps — so a mark no longer than the stroke is wide is a
-dot: `width={3} dash={[3, 5]}` is a dotted line. The pattern runs along
+dot: `width={3} dash={[3, 5]}` is a dotted line. A dot is as wide as the
+stroke, so a gap the dots overlap closes: `width={8} dash={[2, 2]}` is a
+solid line. The pattern runs along
 the whole stroke, round corners and along a `curve`. For marching ants,
 grow `dashOffset` from a tick; the marks move towards the first point.
 A dashed line costs a quad per mark, and is still hit in its gaps.
@@ -305,7 +307,9 @@ text's own family has no glyph for goes to the first of them that has
 it, and only then to the platform's list — whose first choice on macOS
 is the system's interface face, so Cyrillic in a Latin-only monospaced
 family comes out proportional. The list is the session's, for every
-family and every kind of text; `[]` is the platform's alone. Set it
+family and every kind of text; `[]` is the platform's alone. `mono`
+text asks it straight after its own face, ahead of the machine's other
+monospaced faces, which it walks first when there is no list. Set it
 when the choice changes, not every frame with a new list: a new list
 shapes every text again (the same one twice costs nothing). A cell grid
 goes one step further by itself: with no fallback of yours that has the
@@ -1420,8 +1424,10 @@ them sharing an edge show a hairline of the background through it.
 `gradient` on the box: `gradient={{ to: 'bottom', stops: ['#1e2030',
 '#14161e'] }}` runs to a side or a corner, `{ angle: 0.125, stops }` along
 a direction in turns clockwise from east, and `{ radial: true, at: [0.5,
-0], stops }` out from a centre. A stop is a colour or `[colour, position]`.
-It paints over `bg` and under the border and the children, so a scrim is
+0], stops }` out from a centre. A stop is a colour or `[colour, position]`,
+the colour a `$token` too; a token that misses is raised as
+`unknown-token` and its stop left out, so a two-stop gradient with a
+typo draws nothing over its `bg`. It paints over `bg` and under the border and the children, so a scrim is
 a gradient with a transparent stop over whatever is beneath. The geometry
 is the box's unit square stretched to the box — a corner is CSS's corner,
 and an `angle` runs corner to corner at an eighth of a turn whatever the

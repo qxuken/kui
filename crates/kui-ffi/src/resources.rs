@@ -280,8 +280,9 @@ pub extern "C" fn kui_font_reload_system(ptr: *mut KuiCtx) -> usize {
 /// has no glyph for, before the platform's fallback list
 /// (`Core::set_fallback_fonts`): `len` font handles at `ids`, none (NULL
 /// or 0) for the platform's list alone. A handle that names no font is
-/// left out. A new list shapes every text again; the same list twice is
-/// nothing.
+/// left out. KUI_FONT_MONO text asks them straight after its own face,
+/// ahead of the machine's other monospaced faces. A new list shapes every
+/// text again; the same list twice is nothing.
 ///
 /// # Safety
 /// `ids` points at `len` handles, or is NULL.
