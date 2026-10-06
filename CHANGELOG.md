@@ -21,6 +21,108 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- A leaf that declares `tooltip` — `line`, `polygon`, `path`, `cells`,
+  `image`, `edit`, in any binding, or a Rust leaf whose spec says
+  `NodeSpec::tooltip` — draws its hint while hovered, where it drew
+  nothing.
+- A `dash` gap the round-capped marks overlap closes: `dash = {2, 2}` at
+  a width of 8 draws a solid line where it drew 8 px dots every 4 px.
+- With a fallback list set, `Mono` text asks the app's fallback faces
+  before the machine's other monospaced ones, so a character may draw in
+  another face.
+- A cell grid whose family has no `M` draws its own glyphs where its face
+  puts them, no longer centred as a fallback's.
+- On a line past 4 KB, a tab after more than ~512 bytes with none moves
+  onto the line's tab stops, up to a tab's width, and the rest of the
+  line with it.
+
+C stays at ABI 25 and the Node wire at v21: nothing here is a new
+function or a new field.
+
+A leaf's hint is drawn now, and the four paint changes after it are each
+what the code always meant to draw: a hint the docs told you to put on a
+box around the leaf, a dotted line that was a lumpy solid one at a quad a
+dot, a fallback list that `Mono` text never asked, a grid's own glyphs
+treated as a stranger's, and a tab measured from where its chunk began
+instead of where the line did. Each moves pixels an app may have written
+to, so each is listed.
+
+### Fixed
+
+- **A leaf draws its tooltip** (backlog RG113). The hint floats as its
+  node's last child, and a leaf has none, so a hovered wedge, path, line,
+  grid, image or editor with a `tooltip` showed nothing — it was tracked
+  and spoken, not drawn. It now floats beside the leaf, anchored to it
+  (`FloatAnchor::Node`), and lands below the leaf's box as a box's hint
+  lands below the box: outside every clip, outside layout, flipped above
+  near the window's bottom, and only while the pointer is on the stroke
+  or inside the outline. In all four bindings — `NodeSpec::tooltip`, the
+  JSX and Lua prop, `KuiSpec.tooltip` on C's leaf doors. A float anchored
+  to a node now honours `fit` as a parent-anchored one does. On a leaf
+  the drawn string is its description, so a leaf that declares a
+  `description` after its `tooltip` draws that.
+- **An animating window whose surface skips its frames waits between
+  tries** (backlog F103). A skipped frame returns at once, with no
+  drawable to wait for and no vsync behind it, so where the platform
+  never says a window is covered — Windows behind other windows, Wayland,
+  an acquire that times out — an animation asked for its next frame on
+  the loop's very next turn: 82,000 views a second at a core, measured on
+  a Mac with every frame forced to skip and no display link. It waits a
+  retry (16 ms) after a skip now — 60 a second at 2% — and runs at the
+  display's rate again from the first frame that lands. A window macOS
+  calls covered still asks for nothing at all.
+- **A tab on a long line stops where the line's stops are** (backlog
+  RG76). On a line past 4 KB, a tab that followed more than half a chunk
+  without one measured from its chunk's start. Such a chunk now ends
+  after that tab, and the line gives the tab the advance that reaches its
+  next stop — exact once the text since the previous tab has been on
+  screen, and as near as the rest of the line's estimate before that.
+  Wrapped rows carry the same advance.
+- **`measure_text` leaves a drawn text's rows alone** (backlog RG76).
+  Measuring, between frames, a text a node drew at another width
+  re-wrapped the run they share, so that node's `caret_rect` and
+  `text_hit` answered from the measured rows until the next frame wrapped
+  it back. The measure lays out a copy at its own width, kept for the
+  next measure there.
+- **`Mono` text asks the app's fallback fonts straight after its own
+  face** (backlog RG118). cosmic-text's generic monospace family walks
+  every installed monospaced face that has the character before the
+  lists `set_fallback_fonts` joins — on a Mac, Hebrew in `Mono` came out
+  in Courier New *Italic* with Arial named. While a list is set, `Mono`
+  is shaped as the face it is pinned to, by name, so the order is that
+  face, the app's names, then the platform's. With no list nothing
+  changes.
+- **A grid tells its family's glyphs by the family's name** (backlog
+  RG118). It read the family's face off the face `M` shaped with, and a
+  symbols-only or CJK-only family has no `M`, so its own glyphs were
+  taken for a fallback's — centred, and asked of a monospaced face first.
+- **A new fallback list or a font rescan draws every window of the
+  session** (backlog RG118). `set_fallback_fonts` and
+  `reload_system_fonts` asked for a frame of the window they were called
+  through alone; another window shaped again whenever something else drew
+  it. Each window that has drawn now owes a frame (`animating()`) while
+  the session's fonts are newer than the text it shaped.
+- **Dash dots that overlap make one mark** (backlog RG118). A gap no
+  wider than the stroke is closed by the round caps either side of it,
+  and `{2, 2}` at a width of 8 was 8 px dots every 4 px — a solid line
+  drawn lumpy, at a quad a dot. Such a gap now closes and the marks
+  either side are one mark; a pattern with no gap left draws solid. A
+  pattern whose gaps show draws exactly as before.
+- The docs of a `gradient` stop whose `$token` misses say what it does:
+  `unknown-token` is raised and the stop is left out, so a gradient left
+  with fewer than two stops draws nothing over its `bg` — no error, and
+  no fade nobody wrote. ADR 0042's amendment says why it stays (backlog
+  RG118).
+
+**What you can delete.** A box wrapped around a `line`, `polygon` or
+`path` only to carry its `tooltip`; a pattern stretched by hand so a
+thick stroke's dots would not touch; a second `set_fallback_fonts` (or a
+redraw) sent through every other window of the session.
+
 ## 0.1.0-alpha.40 (2026-10-07)
 
 **What breaks.**

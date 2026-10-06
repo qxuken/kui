@@ -148,12 +148,11 @@ threshold, and a long line's key hashed a byte at a time every frame —
 were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
 behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
-texture upload's second copy), F103 from the kawoosh
-⌘-Tab report (an animating hidden window spinning on skipped frames;
-its visible half — a window spinning on held frames, a core for as long
-as anything animated — was measured and built on 2026-10-05),
-DX16 from the DX sweep (declined with a condition), RG76 from
-the regression pass of 2026-09-28. Everything else that has been filed has
+texture upload's second copy),
+DX16 from the DX sweep (declined with a condition), and RG121 from the
+round after alpha.40 — what RG76, RG113 and RG118 left, each with its
+reason (F103's skipped half, RG76, RG113 and RG118 themselves were built
+on 2026-10-07 and are in the archive). Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -1407,63 +1406,8 @@ then `frontmost`): the frame the returning focus asked for was skipped
 as occluded, twice, and nothing asked again — only a window's first
 frame was ever retried — and AppKit's `Occluded(false)`, 35 ms later,
 went to no handler. Two entries: F102, **built 2026-09-27**, the day it
-was filed, and in the archive; F103, open.
-
-### `.` F103 — A frame the surface skips returns at once, so an animating hidden window spins
-
-Seen in the same probe, on the commit before F102 as after it: hidden
-for 1.5 s while its blur transition played, `counter` asked for and
-skipped about 8,300 frames. A skip returns at once — there is no
-drawable to wait for, so no vsync paces it — and the pacer (`mod
-pacer`) counts only presents, so each skip's `about_to_wait` asks for
-the next frame straight away and the loop spins until the animation
-ends. The same shape shows while visible when the pacer holds a frame:
-a run of held redraws, tens of microseconds apart, between two
-presents (seen once, while an animation ran; not yet measured against
-the commit before). **Wants:** a skipped frame paces as a presented one
-does, so an animating window the surface will not take tries at most
-once a retry interval (`retry::RETRY`) — and a held frame waits for the
-link rather than being asked for again. Not built with F102, which
-keeps to asking again: this touches the pacer, whose latency C47
-measured.
-
-**Measured visible, 2026-10-05** (from the loaders round, measuring what
-a turning `path` costs for ADR 0041). The visible half is not "seen
-once": it is every animating window. A release build of an example whose
-view asks for a frame every frame (`ui.request_frame()`) and draws
-*nothing else* held 120 fps on an M3 Pro, macOS 27.0.1, and used **102–
-104% of a core** doing it — `ps` and `getrusage` agree, 8.6 ms of CPU a
-frame for a frame whose own work (`Shell::redraw`, the wait for the
-drawable taken out) is 0.1 ms. `sample` puts the main thread in
-`control_flow_end_handler` → the shell's `window_event` →
-`Window::request_redraw` → `CFRunLoopWakeUp`, over and over between two
-presents: the held redraw is asked for again as soon as it is held, as
-this entry says. So an app with one spinner on screen costs a core for
-as long as it spins, whatever the spinner costs, and CPU time a frame
-cannot be used to measure anything on an animating window until this is
-built — the ADR's numbers had to come from sampling the frame's own
-work instead.
-
-**The held half built, 2026-10-05.** `about_to_wait` asked for the
-animation's next frame on every turn of the loop; the pacer held it for
-the display; the held redraw came straight back to `about_to_wait`,
-which asked again. Now it does not ask while the pacer is holding one
-(`Pacer::holding`): the link brings the frame back at the vsync, and
-`overdue` is the wake if it does not, as before. The same probe, same
-machine: **37–45% of a core where it was 102–104%**, still 120 fps,
-`request_redraw` and `CFRunLoopWakeUp` gone from the main thread's
-sample and the thread blocked for 85% of it. What is left is not the
-loop: `KUI_FRAME_PACING=0`, which never holds a frame, reads the same
-38%, about half of it on the main thread (the frame, the harness's dock
-with it) and half in system time on Metal's and Core Animation's own
-queues — what presenting 120 frames a second costs. Latency was not
-re-measured against C47's numbers; the frame is drawn from the same
-link tick as before, so nothing in its path moved.
-
-**Still open: the skipped half**, the one this entry is named for. Since
-it was filed, `Pane::animates_now` stopped asking a window the platform
-calls covered or minimized (RG45, RG98) and `mod retry` paces a skipped
-frame, so the 8,300 skips may already be gone; not re-measured here.
+was filed, and in the archive; F103 the same way, its visible half on
+2026-10-05 and its skipped half on 2026-10-07.
 
 ## From the kawoosh trackpad-drift report (2026-09-28)
 
@@ -2130,17 +2074,8 @@ Sixteen entries. RG60–RG69 were **built 2026-09-28**, the day they
 were filed, and are in the archive; the headline was F106's
 `break-spaces` meeting the long line's limits on every short text
 (RG68). RG70–RG75 were built the same day after the alpha.22 tag and
-are in the archive too; RG76 holds what two of them left.
-
-### `.` RG76 — Two leftovers of RG72 and RG75
-
-- A tab after a stretch of more than half a chunk window with no tab,
-  on a line past 4 KB, still measures from its chunk's start (RG75 cuts
-  at a tab near each cut, which covers a line with a tab in every half
-  window). Exact would mean shaping every earlier chunk, which C19
-  exists to avoid, or keying a chunk's run by where it starts.
-- A `measure_text` between frames re-wraps the shared run of a text
-  drawn at another width (RG72's copy is taken only within a frame).
+are in the archive too; RG76, what two of them left, was **built
+2026-10-07** and is in the archive too.
 
 ## From the book round (2026-09-29)
 
@@ -2215,23 +2150,8 @@ hairline (RG108), C's payloads leaked on an early return and dropped
 with a NULL spec (RG109), a fractional op code read as a move (RG110)
 and the size gate two pixels short (RG111). RG112, what was read and
 left, was **built 2026-10-05** after the alpha.36 tag and is in the
-archive too; RG113 holds the two things it left in turn.
-
-### `.` RG113 — Two things RG112 read and left
-
-- **A leaf takes no tooltip.** `line`, `polygon` and `path` are typed
-  with `tooltip` in JSX and their rows read it, and `open_from` drops
-  the hint for a leaf: the hint floats as its node's last child, and a
-  leaf has none. A hovered wedge with a `tooltip` shows nothing. It
-  wants the hint floated beside the leaf, anchored to it
-  (`FloatAnchor::Node`), or the prop off the three types.
-- **`rotate = 0` with no pivot is two boxes.** No turn in C — the tight
-  box, as its header says, since C's zero is also its undeclared — and
-  a turn of 0 in JSX and Lua, the swept square. A C spinner passing
-  through exactly 0 with no pivot changes box for that frame; naming
-  the pivot is the header's answer. Telling them apart in C is a new
-  argument or a flag, which is an ABI question for a frame nobody has
-  reported.
+archive too; RG113, the two things it left in turn, was **built
+2026-10-07** and is in the archive with them.
 
 ## From the alpha.37 pre-tag pass (2026-10-05)
 
@@ -2250,40 +2170,13 @@ the day they were filed, and are in the archive: an open editor keeping
 the fallback fonts it was shaped with (RG114), the root's gradient
 dropped under the devtools dock (RG115), a dashed line of no length
 drawing nothing (RG116) and the gradient's docs against its code
-(RG117). RG118 holds what was read and left. C52 was what the bench
+(RG117). RG118, what was read and left, was **built 2026-10-07** and
+is in the archive. C52 was what the bench
 guard found — green, and `frame_10k_segments` 5 to 7% slower with the
 dash — and was **built 2026-10-05**, before the tag was cut the
 second time, and is in the archive. The guard's other find was its own — `frame_10k_rects` read 8%
 slower for a `match` the bench's grid had grown, which is fixed in the
 bench (ADR 0042's *Measured* says so).
-
-### `.` RG118 — What the alpha.37 reviews read and left
-
-By reading, none probed in a window:
-
-- **The app's fallback list may be passed over for `FontFamily::Mono`
-  text.** cosmic-text asks every installed monospaced face that covers
-  the word before the script and common fallbacks, which is where the
-  app's names go; F121's "for every family" is tested for a registered
-  family only. It wants a probe on a machine whose monospaced faces
-  cover the character, and then the app's names asked first.
-- **A fallback glyph of no advance is centred.** A lone combining mark
-  from a fallback face sat on its negative bearing at the cell's left
-  edge and now sits half a cell right. Neither is where a terminal puts
-  it; a grid that composes its marks is the answer, and no grid has
-  asked.
-- **The grid reads its family's face off `M`.** A symbols-only or
-  CJK-only family has no `M`, so its own glyphs read as fallbacks and
-  can be asked of the monospaced face first.
-- **`set_fallback_fonts` asks its own window for a frame.** Another
-  window of the session shapes again when something else draws it.
-- **A mark shorter than the stroke is wide overlaps its neighbours.**
-  `dash = {2, 2}` at a width of 8 is 8 px dots every 4 px — a lumpy
-  solid line, a quad per dot. The docs' "at any width" holds from the
-  width up; under it the dot rule is what is written.
-- **A gradient whose `$token` misses draws nothing** once fewer than
-  two stops are left, with `unknown-token` raised and no error: the
-  count is of the list, as ADR 0042's amendment says.
 
 ## From the alpha.38 pre-tag pass (2026-10-05)
 
@@ -2331,6 +2224,35 @@ YES` — so an app that reads its arguments and hears `open` does not
 open a file twice. The non-macOS side is clean under clippy for
 Windows. The C clamp of `step open` to eight paths is the one
 `dragfiles` already has. Nothing was filed.
+
+## From the round after alpha.40 (2026-10-07)
+
+F103's skipped half, RG76, RG113 and RG118 were built on 2026-10-07,
+asked for together ("let's build F103 and RG series"), and are in the
+archive. RG121 holds what three of them left, each with its reason.
+
+### `.` RG121 — What RG76, RG113 and RG118 left
+
+- **`rotate = 0` with no pivot is two boxes in C** (RG113's second
+  half). No turn in C is the tight box, since C's zero is also its
+  undeclared, and a turn of 0 in JSX and Lua is the swept square, so a C
+  spinner passing through exactly 0 with no pivot changes box for that
+  frame. Every fix that keeps the ABI is unclean (a negative zero, a NaN
+  sentinel, a hidden per-key hysteresis — RG113's outcome says why), and
+  the header's answer, name the pivot, stands. **Wants:** a `turned`
+  flag or argument on `kui_path`/`kui_path_d` the next time the ABI moves
+  for another reason.
+- **A fallback glyph of no advance is centred** (RG118's second item). A
+  lone combining mark from a fallback face sits half a cell right; its own
+  bearing from the cell's left edge would put it over the previous cell,
+  right only when the app placed it straight after its base, and its own
+  cell stays blank either way. **Wants:** a grid that composes a base and
+  its marks into one cell — when a grid asks.
+- **A click in a line-placed tab's whitespace splits at cosmic-text's
+  midpoint** (RG76's tab). The tab that ends an off-stop chunk is drawn
+  wider than the run shaped it, to reach the line's stop, and a hit
+  inside its whitespace still splits where the run's own tab ends.
+  Cosmetic: the caret lands on one side of the tab or the other.
 
 ## After alpha.39
 
@@ -3594,7 +3516,7 @@ move.
 
 - `.` **W20** — [A streamed image allocated and freed 8 MB a frame, which on Windows is three times the copy](backlog/closed-2026-09.md#-w20--a-streamed-image-allocated-and-freed-8-mb-a-frame-which-on-windows-is-three-times-the-copy--built-2026-09-26) — built (2026-09-26)
 
-**From the regression pass of 2026-09-28** — RG60–RG75, filed and built the same day (RG70–RG75 after the alpha.22 tag); RG76 open
+**From the regression pass of 2026-09-28** — RG60–RG75, filed and built the same day (RG70–RG75 after the alpha.22 tag); RG76 built 2026-10-07, in the group below
 
 - `!` **RG60** — [A gesture at a scroller's limit chained to whatever was painted under the pointer, not to the scroller around it](backlog/closed-2026-09.md#-rg60--a-gesture-at-a-scrollers-limit-chained-to-whatever-was-painted-under-the-pointer-not-to-the-scroller-around-it--done-2026-09-28) — done (2026-09-28)
 
@@ -3733,3 +3655,13 @@ move.
 **From the alpha.39 pre-tag pass (2026-10-06)** — RG120, filed and built the same day
 
 - `.` **RG120** — [`modal-behind-content` named a stroke under an in-flow modal as content over it](backlog/closed-2026-09.md#-rg120--modal-behind-content-named-a-stroke-under-an-in-flow-modal-as-content-over-it--done-2026-10-06) — done (2026-10-06)
+
+**From the round after alpha.40 (2026-10-07)** — F103's skipped half, RG76, RG113 and RG118, built together
+
+- `.` **F103** — [A frame the surface skips returns at once, so an animating hidden window spins](backlog/closed-2026-09.md#-f103--a-frame-the-surface-skips-returns-at-once-so-an-animating-hidden-window-spins--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG76** — [Two leftovers of RG72 and RG75](backlog/closed-2026-09.md#-rg76--two-leftovers-of-rg72-and-rg75--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG113** — [Two things RG112 read and left](backlog/closed-2026-09.md#-rg113--two-things-rg112-read-and-left--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG118** — [What the alpha.37 reviews read and left](backlog/closed-2026-09.md#-rg118--what-the-alpha37-reviews-read-and-left--done-2026-10-07) — done (2026-10-07)
