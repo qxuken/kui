@@ -1528,6 +1528,19 @@ so the core took them for nodes it cannot ask. Two entries, F117 and
 F118, **built 2026-10-02**, the day they were filed, and in the
 archive, with ADR 0038's amendments.
 
+## From the kawoosh open-documents report (2026-10-06)
+
+kawoosh was asked to ship an `Info.plist` that names the files it
+opens: "let's compile plist with proper extension that app can open and
+ensure that we listen for open event". Declaring the types is the
+bundle's half; the other is hearing them, and a kui app could not:
+AppKit hands the documents the Finder's Open With, the Dock icon and
+`open -a` give an app to its delegate's `application:openURLs:` — at
+launch before any window exists, with nothing in the arguments — and
+winit's delegate answers only that the app finished launching and is
+terminating. One entry, F124, **built 2026-10-06**, the day it was
+filed, and in the archive.
+
 ## From the kawoosh update-toast report (2026-10-06)
 
 kawoosh's update toast — "a new Kawoosh is installed: relaunch to run
@@ -2497,6 +2510,8 @@ Nothing of the kawoosh wheel-zoom report is open (F122 **built
 2026-10-05**, the day it was filed).
 Nothing of the kawoosh update-toast report is open (F123 **built
 2026-10-06**, the day it was filed).
+Nothing of the kawoosh open-documents report is open (F124 **built
+2026-10-06**, the day it was filed).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -3419,6 +3434,10 @@ move.
 **From the kawoosh settings-pane report (2026-09-29)** — F113, filed and built the same day
 
 - `~` **F113** — [A Mac's dead keys never arrive: ⌥u composes an accent and a keymap's `<A-u>` never hears it](backlog/closed-2026-09.md#-f113--a-macs-dead-keys-never-arrive-u-composes-an-accent-and-a-keymaps-a-u-never-hears-it--done-2026-09-29) — done (2026-09-29) — `Ui::option_as_alt(OptionAsAlt)` (`none`, `left`, `right`, `both`), frame state; the runner hands it to winit's `set_option_as_alt` on change, and an Option that is Alt types nothing
+
+**From the kawoosh open-documents report (2026-10-06)** — F124, filed and built the same day
+
+- `~` **F124** — [A document the Finder opens with the app goes nowhere: winit's application delegate answers no `application:openURLs:`](backlog/closed-2026-09.md#-f124--a-document-the-finder-opens-with-the-app-goes-nowhere-winits-application-delegate-answers-no-applicationopenurls--done-2026-10-06) — done (2026-10-06) — `InputEvent::Open(paths)`, heard by the host as `{kind:"open", paths}` on the root with no ask (`kui_input_open`, `Ctx.openDocuments`); the macOS runner adds `application:openURLs:` to winit's delegate class (`mod macos_open`) and holds a launch-time list until the main window opens
 
 **From the kawoosh update-toast report (2026-10-06)** — F123, filed and built the same day
 

@@ -368,6 +368,18 @@ export type SystemMsg = {
  *  A font the app loads itself raises none. */
 export type FontsMsg = { kind: 'fonts' };
 
+/** The OS asked the app to open these documents (backlog F124): the
+ *  Finder's Open With, a file dropped on the Dock icon, `open -a`, a
+ *  double-click on a document type the app's Info.plist declares
+ *  (`CFBundleDocumentTypes`). Delivered on the root whether or not the app
+ *  asked — at launch, once the window is open, and while it runs. `paths`
+ *  are file-system paths. macOS only: Windows and Linux hand documents over
+ *  in `process.argv`. `ctx.openDocuments(paths)` is the headless drive. */
+export type OpenMsg = {
+  kind: 'open';
+  paths: string[];
+};
+
 /** A declared window opened, or closed — because nothing declares it any
  *  more, or because the user closed it. A window the user closed stays
  *  closed while it is still declared (a declaration reopens a window only
@@ -496,7 +508,8 @@ export type CoreMsg =
   | SoundMsg
   | AccessMsg
   | ChangeMsg
-  | FilesMsg;
+  | FilesMsg
+  | OpenMsg;
 
 /** A stock slider's proposal (docs/adr/0034-stock-controls-over-the-roles.md):
  *  the core turned a press, a drag, an arrow, a Page key, Home / End or an
@@ -2161,6 +2174,14 @@ export declare class Ctx {
    * asked it is dropped.
    */
   answerFiles(paths: Array<string>): void
+  /**
+   * The OS asked the app to open these documents (backlog F124) — the
+   * Finder's Open With, a file dropped on the Dock icon, `open -a`: the
+   * app hears `{kind:"open", paths}` on the root whether or not it
+   * asked; none is nothing. A `KuiWindow` on macOS hears it from the
+   * runner; this is the headless drive.
+   */
+  openDocuments(paths: Array<string>): void
   /**
    * The dragged files released at (`x`, `y`): the zone there hears
    * `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`

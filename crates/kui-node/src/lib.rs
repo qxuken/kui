@@ -724,6 +724,16 @@ impl Ctx {
         self.input(InputEvent::Files(paths));
     }
 
+    /// The OS asked the app to open these documents (backlog F124) — the
+    /// Finder's Open With, a file dropped on the Dock icon, `open -a`: the
+    /// app hears `{kind:"open", paths}` on the root whether or not it
+    /// asked; none is nothing. A `KuiWindow` on macOS hears it from the
+    /// runner; this is the headless drive.
+    #[napi]
+    pub fn open_documents(&mut self, paths: Vec<String>) {
+        self.input(InputEvent::Open(paths));
+    }
+
     /// The dragged files released at (`x`, `y`): the zone there hears
     /// `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
     /// after it; with no zone there, nothing but the lit zone's `leave`.

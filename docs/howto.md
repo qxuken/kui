@@ -750,6 +750,35 @@ drive, and `dropTarget()` is what a driver answers the OS with.
 [`drop` payload](props.md#events) ·
 [`examples/rust/features/drop.rs`](../examples/rust/features/drop.rs)
 
+### How do I hear the documents the OS opens: Finder's Open With, the Dock icon?
+
+Handle `{kind:"open", paths}` in `update` (Rust `on_event`, C's event
+callback): it arrives on the root, asked for or not, with the file-system
+paths of the documents the Finder's Open With, a file dropped on the Dock
+icon, `open -a YourApp file.rs` or a double-click handed the app. The
+macOS runner hears them from the application delegate's
+`application:openURLs:` — at launch, where AppKit sends them before the
+window exists and puts none in the arguments, the paths wait for the main
+window and arrive on its first turn; while the app runs, at once. One
+`open` per request, several paths when the user opened several.
+
+The app's bundle has to say it opens documents, or the Finder will not
+offer it: an `Info.plist` with `CFBundleDocumentTypes`, one entry per
+kind — `LSItemContentTypes` the UTIs (`public.plain-text`,
+`public.source-code`, `public.data` for anything), `CFBundleTypeRole`
+`Editor` or `Viewer`, and `LSHandlerRank` `Alternate` to be listed in Open
+With without taking the type's double-click from its owner (`Default` or
+`Owner` to take it). Re-register a bundle you rebuilt in place with
+`lsregister -f YourApp.app` if the Finder still has the old list.
+
+On Windows and Linux the documents are in the process's arguments (a
+file association, a `.desktop` file's `%F`), and nothing sends `open`.
+Headless, `ctx.openDocuments(paths)` (C `kui_input_open`, Rust
+`InputEvent::Open`) is the drive.
+
+[`open` payload](props.md#events) ·
+[Unreleased `### Added`](../CHANGELOG.md#unreleased)
+
 ### How do I have global shortcuts and a Tab ring at once?
 
 Put the keymap on an `onKey` sink that encloses the controls: a focused

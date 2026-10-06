@@ -304,6 +304,8 @@ extern "C" {
  * ABI 25 appends scroll_mods to KuiSpec: the modifiers an on_scroll node
  * is for, as KUI_KMOD_* bits. Zeroed, the handler is asked as before. The
  * 64-bit size is 704. Recompile.
+ * Still at 25, since nothing a host had laid out moved: kui_input_open,
+ * one function, the documents the OS asked the app to open.
  */
 #define KUI_ABI_VERSION 25u
 uint32_t kui_abi_version(void);
@@ -1989,6 +1991,14 @@ void kui_input_drag_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
 void kui_input_drop_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
                           float x, float y);
 void kui_input_drag_cancel(KuiCtx *ctx);
+/* The OS asked the app to open `count` documents (`paths`, file-system
+ * paths): the Finder's Open With, a file dropped on the Dock icon,
+ * `open -a`. The host hears {kind:"open", paths} on the root whether or
+ * not anything asked; none emits nothing. Under kui_run the macOS runner
+ * sends it, at launch and while running; a host driving its own window
+ * sends it from its app delegate's application:openURLs:. Windows and
+ * Linux hand documents over in argv instead. */
+void kui_input_open(KuiCtx *ctx, const KuiStr *paths, size_t count);
 /* A whole key going down, the way a window sends it - the call a host
  * driving kui from its own event loop wants, and the one a headless test
  * wants. Spelled exactly as kui_input_key_down, and it sends that press

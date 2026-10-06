@@ -67,7 +67,8 @@ impl FrameCause {
     pub const ACCESS: FrameCause = FrameCause(1 << 8);
     /// Files dragged over the window, dropped on it, or taken away.
     pub const FILE_DRAG: FrameCause = FrameCause(1 << 9);
-    /// A file dialog answered.
+    /// A file dialog answered, or the OS handed the app documents to open
+    /// (`InputEvent::Open`, backlog F124).
     pub const FILES: FrameCause = FrameCause(1 << 10);
 
     // What the driver saw (`Core::note_frame_cause`).
@@ -209,7 +210,7 @@ impl FrameCause {
             InputEvent::DragFiles { .. }
             | InputEvent::DropFiles { .. }
             | InputEvent::DragCancel => Self::FILE_DRAG,
-            InputEvent::Files(_) => Self::FILES,
+            InputEvent::Files(_) | InputEvent::Open(_) => Self::FILES,
         }
     }
 }

@@ -186,6 +186,21 @@ pub enum InputEvent {
     /// `Core::request_files` hears `{kind:"files", paths, tag}`; with no
     /// ask outstanding it is dropped.
     Files(Vec<String>),
+    /// The OS asked the app to open these documents (backlog F124): the
+    /// Finder's Open With, a file dropped on the Dock icon, `open -a`, a
+    /// double-click on a document whose type the app declares. Unlike
+    /// [`InputEvent::Files`] nothing asked for it, so it is always
+    /// delivered: the host hears `{kind:"open", paths}` on the root of the
+    /// window it was handed to (the main window, in the runner). `paths`
+    /// are file-system paths as strings; an empty list emits nothing. A
+    /// URL of a scheme of the app's own is not a path and is not carried
+    /// here — the payload leaves room for a `urls` beside `paths`.
+    ///
+    /// The macOS runner sends it, at launch (before the window opens: the
+    /// paths wait for it) and while running; on Windows and Linux the
+    /// documents arrive in the process's arguments instead, and nothing
+    /// sends it.
+    Open(Vec<String>),
 }
 
 /// What the pasteboard said about the text a paste brought back: the markers
@@ -2480,7 +2495,7 @@ impl Interaction {
             InputEvent::DropFiles { paths, at } => self.drop_files(&paths, at, out),
             InputEvent::DragCancel => self.drag_cancel(out),
             // The core's, answered before the pointer is asked.
-            InputEvent::Files(_) => {}
+            InputEvent::Files(_) | InputEvent::Open(_) => {}
             // A non-primary release resolves no click; it ends the capture
             // its press began, if an `on_button` node claimed that press.
             InputEvent::MouseUp { button } if button != MouseButton::Primary => {

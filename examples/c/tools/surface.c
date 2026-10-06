@@ -1033,6 +1033,29 @@ static int surface(void) {
         check(files == 1, "the answer is one files event with the path and the tag");
     }
 
+    /* Documents the OS asked the app to open (backlog F124): nobody asked,
+     * and the host hears them on the root; none is nothing. */
+    {
+        KuiStr docs[] = { KUI_STR("/tmp/a.txt"), KUI_STR("/tmp/b.md") };
+        kui_input_open(ui, docs, 2);
+        int opened = 0;
+        KuiEvent oev = KUI_EVENT_INIT;
+        while (kui_poll_event(ui, &oev)) {
+            const KuiValue *kind = oev.payload ? kui_value_get(oev.payload, KUI_STR("kind")) : NULL;
+            const KuiValue *paths = oev.payload ? kui_value_get(oev.payload, KUI_STR("paths")) : NULL;
+            KuiStr ks, second;
+            if (kind && kui_value_as_str(kind, &ks) && ks.len == 4 && memcmp(ks.ptr, "open", 4) == 0
+                && paths && kui_value_len(paths) == 2
+                && kui_value_as_str(kui_value_at(paths, 1), &second) && second.len == 9
+                && memcmp(second.ptr, "/tmp/b.md", 9) == 0) {
+                opened++;
+            }
+        }
+        check(opened == 1, "kui_input_open is one open event with both paths");
+        kui_input_open(ui, NULL, 0);
+        check(!kui_poll_event(ui, &oev), "and no documents is no event");
+    }
+
     /* Focus regions: entered by name, read back as the ring in effect. */
     check(kui_region(ui) == 0, "the main ring to begin with");
     kui_focus_region(ui, k.region);
