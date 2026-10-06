@@ -5684,6 +5684,52 @@ mod tests {
         assert!(heights[2] > heights[0], "and not the default: {heights:?}");
     }
 
+    /// A gradient stop whose `$name` misses is left out, as a miss leaves
+    /// any slot (backlog RG118, ADR 0042's amendment): one `unknown-token`
+    /// and no error. Three stops less one still paint the other two; two
+    /// less one have nothing to paint, and the box's `bg` is what shows.
+    #[test]
+    fn a_gradient_stop_that_misses_is_left_out() {
+        let mut ext = LuaExtension::from_source(
+            "gradient",
+            r##"
+                tokens = { colors = { peach = "#ffcc99" } }
+                function view(env)
+                  return column {
+                    row { key = "three", width = 40, height = 10,
+                          gradient = { stops = { "$peach", "$peech", "#0000ff" } } },
+                    row { key = "two", width = 40, height = 10, bg = "#000000",
+                          gradient = { stops = { "$peach", "$peech" } } },
+                  }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert_eq!(codes, [kui_core::diag::UNKNOWN_TOKEN], "once, for the name");
+        let dl = core.output().0;
+        let images: Vec<_> = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Image)
+            .collect();
+        assert_eq!(images.len(), 1, "the three-stop row's two");
+        assert!(
+            images[0].rect.y < 10.0,
+            "on the first row: {:?}",
+            images[0].rect
+        );
+        let black = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Solid && q.color == Color::hex(0x000000ff))
+            .count();
+        assert_eq!(black, 1, "the second row's bg");
+    }
+
     /// AR14: the three slots a `$name` could not reach, and the stops it
     /// failed the frame from — a `min_width`, a line's `width`, a
     /// keyframe's `bg` and an entrance's `width` — resolve like any prop,

@@ -464,7 +464,10 @@ fn resolve(stops: &mut [(Color, f32)]) {
 /// No `to`, `angle` or `radial` is `to = "bottom"`. A stop is a colour —
 /// `0xRRGGBBAA`, `"#hex"`, or with `refs` a `$name` — or a
 /// `{colour, position}` pair. A `$name` that misses is remembered on the
-/// refs for the binding to raise, and its stop is left out.
+/// refs for the binding to raise, and its stop is left out, as a miss
+/// leaves any slot: fewer than two stops in the list is an error, but a
+/// list left with fewer once the misses are out parses, and draws nothing
+/// (ADR 0042's amendment, weighed again for backlog RG118).
 pub fn parse_with(
     v: &Value,
     mut refs: Option<&mut crate::tokens::NameRefs<'_>>,

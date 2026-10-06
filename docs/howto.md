@@ -1424,8 +1424,10 @@ them sharing an edge show a hairline of the background through it.
 `gradient` on the box: `gradient={{ to: 'bottom', stops: ['#1e2030',
 '#14161e'] }}` runs to a side or a corner, `{ angle: 0.125, stops }` along
 a direction in turns clockwise from east, and `{ radial: true, at: [0.5,
-0], stops }` out from a centre. A stop is a colour or `[colour, position]`.
-It paints over `bg` and under the border and the children, so a scrim is
+0], stops }` out from a centre. A stop is a colour or `[colour, position]`,
+the colour a `$token` too; a token that misses is raised as
+`unknown-token` and its stop left out, so a two-stop gradient with a
+typo draws nothing over its `bg`. It paints over `bg` and under the border and the children, so a scrim is
 a gradient with a transparent stop over whatever is beneath. The geometry
 is the box's unit square stretched to the box — a corner is CSS's corner,
 and an `angle` runs corner to corner at an eighth of a turn whatever the
