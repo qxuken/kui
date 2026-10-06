@@ -1246,7 +1246,11 @@ pub struct AccessSpec {
     /// Float `description` below the node while it is hovered — the
     /// `tooltip` prop's third effect, set by [`NodeSpec::tooltip`]. The core
     /// reads it as the node opens (`Core::hint`); a binding that lowers the
-    /// prop floats the hint itself and leaves this off.
+    /// prop onto a box floats the hint itself and leaves this off. A leaf
+    /// reads it as it is pushed and floats the hint beside itself, anchored
+    /// to it, since it holds no children for the hint to be the last of —
+    /// which is how a binding asks it of a leaf (`PropsOut::for_leaf`,
+    /// backlog RG113).
     pub tooltip: bool,
     /// When the text inside this node changes, a reader reads the change
     /// without being asked (ARIA's `aria-live`). Off by default; a node
@@ -1823,10 +1827,11 @@ impl NodeSpec {
 
     /// A tooltip: the node tracks hover, `hint` is its accessible
     /// description, and the core floats the hint below it while it is
-    /// hovered. The float is the node's last child, so it is drawn for a
-    /// box or a fragment; on a leaf (an image, an editor, a cells grid) the
-    /// hint is tracked and spoken, not drawn: put the tooltip on a box
-    /// around the leaf.
+    /// hovered. On a box or a fragment the float is the node's last child;
+    /// on a leaf — an image, an editor, a cells grid, a line, a polygon, a
+    /// path — which holds no children, it floats beside the leaf, anchored
+    /// to it ([`FloatAnchor::Node`]), and lands below the leaf's box all
+    /// the same (backlog RG113).
     #[inline]
     pub fn tooltip(self, hint: &str) -> Self {
         let mut spec = self.apply_tooltip(hint);

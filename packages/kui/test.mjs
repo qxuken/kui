@@ -4613,7 +4613,7 @@ const SCENE_TREES = {
     root({}, [
       box({ width: 200, height: 120, bg: '#14161e' }, [
         el('path', { d: 'M60 60 L100 60 A40 40 0 0 1 60 100 Z', bg: '#7f9cf5', onClick: { kind: 'wedge' }, label: 'Wedge' }),
-        el('path', { d: 'M60 60 L60 100 A40 40 0 0 1 20 60 Z', bg: '#d8863b' }, [], 'wedge2'),
+        el('path', { d: 'M60 60 L60 100 A40 40 0 0 1 20 60 Z', bg: '#d8863b', tooltip: 'The other quarter' }, [], 'wedge2'),
         el('path', { d: [0, 120, 10, 1, 190, 10, 1, 190, 80, 1, 120, 80, 5, 0, 140, 30, 1, 170, 30, 1, 170, 60, 1, 140, 60, 5], bg: '#f5d67f', fillRule: 'evenodd' }),
         el('path', { d: 'M110 90 C130 70 150 110 190 90', width: 2, color: '#9ad9a0', dash: [8, 4], dashOffset: 3 }),
         el('path', { d: 'M20 10 L50 10 L35 40 Z', bg: '#e07a8a', width: 1.5, color: '#ffffff', opacity: 0.5 }),

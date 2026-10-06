@@ -1028,7 +1028,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let label = r.req_str()?;
             let initial = r.str_ref()?.unwrap_or("");
             let flags = r.u()?;
-            let p = lower_props(r, ui)?;
+            // A leaf: its `tooltip` floats beside it (backlog RG113).
+            let p = lower_props(r, ui)?.for_leaf();
             // Bit 4: the stock field (`<input label initial>`), the same
             // widget Lua's `input { }` and C's `kui_text_input` lower to.
             if flags & 4 != 0 {
@@ -1050,7 +1051,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
             let sampling = r.u()? as usize;
             let fit = r.u()? as usize;
-            let p = lower_props(r, ui)?;
+            // A leaf: its `tooltip` floats beside it (backlog RG113).
+            let p = lower_props(r, ui)?.for_leaf();
             let opts = kui_core::ImageOpts {
                 sampling: kui_core::Sampling::ALL
                     .get(sampling)

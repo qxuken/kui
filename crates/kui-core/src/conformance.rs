@@ -2059,7 +2059,9 @@ pub const SCENES: &[Scene] = &[
               of one pie sharing a radial edge, round by their arcs — the \
               first declares a click and a label, so it is a button hit by \
               its outline: a press inside it clicks, a press in its bounding \
-              box past the arc reaches nothing — the second keyed; an \
+              box past the arc reaches nothing — the second keyed, with a \
+              `tooltip` the last step rests on, which floats below the \
+              wedge's box though a leaf holds no children (backlog RG113); an \
               even-odd ring, declared in the flat op form by the bindings \
               that take it; a stroked cubic with no fill; a triangle filled \
               and stroked, faded; a bar turned an eighth of a turn about \
@@ -2068,7 +2070,7 @@ pub const SCENES: &[Scene] = &[
               which raises its warning and draws nothing. Every paint is one \
               glyph-mask quad from the atlas, so the glyph lines of the \
               report pin the masks' slots; nothing is a texture.",
-        custom: &["key"],
+        custom: &["key", "tooltip"],
         elements: &["path", "box"],
         build: build_path,
         env: NATIVE_CHROME,
@@ -2079,9 +2081,10 @@ pub const SCENES: &[Scene] = &[
             Step::Cursor(98, 98),
             Step::MouseDown,
             Step::MouseUp,
+            Step::Cursor(45, 75),
         ],
         expect: Expect {
-            solid: 1,
+            solid: 2,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -4780,7 +4783,11 @@ fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 FillRule::NonZero,
                 None,
                 None,
-                NodeSpec::column().bg(Color::hex(0xd8863bff)),
+                // A leaf's tooltip floats beside it, below its box, while
+                // the last step rests in it (backlog RG113).
+                NodeSpec::column()
+                    .bg(Color::hex(0xd8863bff))
+                    .tooltip("The other quarter"),
             );
             // The flat form, as C always and the others may declare it.
             let ring = Path::from_floats(PATH_RING_OPS)

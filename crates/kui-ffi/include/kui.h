@@ -788,9 +788,13 @@ typedef struct KuiSpec {
     uint32_t focus_bg;
     /* Hover hint (empty = none), the `tooltip` prop of the other bindings:
      * makes the node hover-tracked, becomes its accessible description,
-     * and floats the hint below it while the pointer is over it. kui_close
-     * draws that float, so this only applies to nodes opened with the
-     * kui_open* family; for a hint that always draws, or one around custom
+     * and floats the hint below it while the pointer is over it. For a
+     * node opened with the kui_open* family kui_close draws that float; a
+     * leaf - kui_image, kui_polygon, kui_path, kui_polyline, kui_cells,
+     * kui_text_edit - holds no children, and its door floats the hint
+     * beside it, anchored to it, below its box (backlog RG113). On a leaf
+     * the drawn hint is its description, so a leaf that sets `description`
+     * too draws that. For a hint that always draws, or one around custom
      * content, call kui_tooltip / kui_tooltip_with yourself. Borrowed
      * while the node opens. */
     KuiStr tooltip;

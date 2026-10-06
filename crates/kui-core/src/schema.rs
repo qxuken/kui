@@ -1512,7 +1512,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`tooltip=\"hint\"`",
         lua: "`tooltip = \"hint\"`",
         c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
-        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn. The float is the node's last child, so it is drawn for a box or a `fragment`; on a leaf that holds no children — an `image`, an `edit`, a `cells` grid — the hint is tracked and spoken but not drawn, so put the tooltip on a box around it (backlog RG75).",
+        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn. On a box or a `fragment` the float is the node's last child; a leaf holds no children — a `line`, `polygon`, `path`, `cells` grid, `image` or `edit` — and its hint floats beside it instead, anchored to it, and lands below its box the same way, out of every clip and flipping above near the window's bottom (backlog RG113; `PropsOut::for_leaf`). A leaf draws its description, which is the hint unless a `description` applied after it overwrote the slot. A `line`, `polygon` or `path` is hovered by its shape, so its hint shows while the pointer is on the stroke or inside the outline, not anywhere in its box.",
     },
 ];
 
@@ -3164,6 +3164,21 @@ impl PropsOut {
         let hint = hint.into();
         self.with_spec(|s| s.apply_tooltip(&hint));
         self.tooltip = Some(hint);
+    }
+
+    /// The list for a leaf — a `line`, `polygon`, `path`, `cells` grid,
+    /// `image` or `edit` — whose `tooltip` the core floats beside it rather
+    /// than as its last child, since a leaf holds none (backlog RG113): the
+    /// spec asks for the hint drawn ([`crate::spec::AccessSpec::tooltip`]), and
+    /// the leaf's door floats it while the leaf is hovered. `Core::open_from`
+    /// calls it for the leaves it opens; a binding that lowers an `image`
+    /// or an `edit` through its own door calls it before handing the spec
+    /// over. A list with no tooltip comes back as it went in.
+    pub fn for_leaf(mut self) -> Self {
+        if self.tooltip.is_some() {
+            self.spec.access_mut().tooltip = true;
+        }
+        self
     }
 
     /// Resolves the `pad` shorthand family and applies it — a no-op when the

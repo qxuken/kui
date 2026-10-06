@@ -87,12 +87,12 @@ fn key_focus_lands_on_the_node_and_a_tooltip_floats_only_while_hovered() {
 }
 
 #[test]
-fn a_leaf_takes_its_identity_and_no_hint() {
+fn a_leaf_takes_its_identity_and_no_hint_unhovered() {
     let mut core = Core::new();
     let mut ui = core.frame(VIEW, 1.0);
     let mut p = props(NodeSpec::column());
     p.key = Some("stroke".into());
-    p.apply_tooltip("never shown");
+    p.apply_tooltip("shown only while hovered (tests/leaf_tooltip.rs)");
     let pts = [Vec2::new(0.0, 0.0), Vec2::new(50.0, 50.0)];
     let key = ui.core().open_from(
         p,
@@ -108,6 +108,6 @@ fn a_leaf_takes_its_identity_and_no_hint() {
     let (dl, _) = core.output();
     assert!(
         dl.quads.iter().all(|q| q.kind == QuadKind::Segment),
-        "the stroke, and nothing floated"
+        "the stroke, and nothing floated while it is not hovered"
     );
 }

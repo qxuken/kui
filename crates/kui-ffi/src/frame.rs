@@ -174,7 +174,7 @@ pub extern "C" fn kui_image_with(
 ) {
     guard((), || {
         if let (Some(c), Some(s)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) {
-            let spec = spec_of(s, NONE, NONE, NONE, NONE);
+            let spec = leaf_spec_of(s, NONE, NONE, NONE, NONE);
             let opts = kui_core::ImageOpts {
                 sampling: kui_core::Sampling::ALL
                     .get(sampling as usize)
@@ -201,7 +201,7 @@ fn leaf_spec(
     on_hover: *mut KuiValue,
 ) -> kui_core::NodeSpec {
     match unsafe { spec.as_ref() } {
-        Some(s) => spec_of(s, on_click, on_drag, NONE, on_hover),
+        Some(s) => leaf_spec_of(s, on_click, on_drag, NONE, on_hover),
         None => {
             let mut spec = kui_core::NodeSpec::column();
             if let Some(v) = take_msg(on_click) {
@@ -1000,7 +1000,7 @@ pub extern "C" fn kui_cells(
             .map(text_style_of)
             .unwrap_or_default();
         let spec = match unsafe { spec.as_ref() } {
-            Some(s) => spec_of(s, on_click, on_drag, on_key, NONE),
+            Some(s) => leaf_spec_of(s, on_click, on_drag, on_key, NONE),
             None => {
                 for p in [on_click, on_drag, on_key] {
                     drop(take_msg(p));

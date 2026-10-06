@@ -690,14 +690,15 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: seven paths in a
         // 200×120 canvas; the first wedge takes a click, hit by its arc, the
-        // second is keyed, the ring is the flat op form, the cubic is a
+        // second is keyed with a tooltip, the ring is the flat op form, the cubic is a
         // stroke alone, the triangle is both and faded, and the last does not
         // parse. Data is `conformance::PATH_*` to the character.
         "path" => r#"
             return column { width = 200, height = 120, bg = 0x14161eff,
               path { d = "M60 60 L100 60 A40 40 0 0 1 60 100 Z", bg = 0x7f9cf5ff,
                      on_click = { kind = "wedge" }, label = "Wedge" },
-              path { key = "wedge2", d = "M60 60 L60 100 A40 40 0 0 1 20 60 Z", bg = 0xd8863bff },
+              path { key = "wedge2", d = "M60 60 L60 100 A40 40 0 0 1 20 60 Z", bg = 0xd8863bff,
+                     tooltip = "The other quarter" },
               path { ops = {0, 120, 10, 1, 190, 10, 1, 190, 80, 1, 120, 80, 5,
                             0, 140, 30, 1, 170, 30, 1, 170, 60, 1, 140, 60, 5},
                      bg = 0xf5d67fff, fill_rule = "evenodd" },
