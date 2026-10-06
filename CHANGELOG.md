@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.40 (2026-10-07)
 
 **What breaks.**
 
@@ -54,6 +54,61 @@ at v21.
 **What you can delete.** An `NSApplicationDelegate` method added or
 swizzled by hand onto winit's delegate to hear a Finder open, and the
 queue that held a launch's paths until a window existed to show them.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-07 — the
+one round after the alpha.39 tag: the documents the OS asks the app to
+open (F124) — with a regression pass over it first: the diff read whole,
+each claim probed before anything changed. The probes ran in a window,
+since the half that can break is AppKit's: a scratch app on the
+release tree's `kui-native`, bare and in an ad-hoc-signed bundle
+declaring `public.data` (`LSHandlerRank` `Alternate`). `open -a` at
+launch handed over both documents in one `open` event, `argv` the
+executable alone; two `open -a` calls into the running instance arrived
+as two events, in order, each with its request's paths in their order.
+And the one thing an added `application:openURLs:` could have started
+that F124's own checks did not look at: AppKit taking the process's
+arguments for documents once the delegate answers them
+(`NSTreatUnknownArgumentsAsOpen`). A binary run from a terminal with a
+path, a subcommand, a missing file and a flag, bare and as the bundle's
+own executable, even with `-NSTreatUnknownArgumentsAsOpen YES`, heard
+no `open` — so an app that reads its arguments and hears `open` too
+does not open a file twice. The non-macOS side (`pump_open_documents`
+without `macos_open`) is clean under clippy for `x86_64-pc-windows-msvc`.
+Nothing was filed. This round ran on the Mac alone; Windows and Linux
+did not run it for this tag.
+
+**macOS 27.0.1 on an M3 Pro MacBook Pro, rustc 1.99.0 (the toolchain
+CI runs), Node 25.6.0, nu 0.116.1**, on the release commit's tree.
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets
+--features kui-core/conformance -- -D warnings` are clean, and so is
+`cargo audit --deny warnings`. `cargo test --workspace --features
+kui-core/conformance`: **1822 tests over 137 suites, 0 failed** (4
+ignored). The C round, `cbuild --run`, passes its five checks; the
+corpus passes its **57 scenes** in four adapters, the `drop` scene now
+ending with two documents opened; the ABI is **25**. Node's `node --test
+test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`: **211 of 211**. `npm run
+gen` leaves no diff, the examples typecheck and their lockfile installs,
+the headless round passes all **35 drives**, the book builds and
+`scripts/book-examples.nu --check` passes.
+
+**The windowed round**, `smoke -- --node`, three times over — twice
+before the version bump, once on the release tree: **51 Rust examples
+and the eleven Node examples, each on both bases, 120 frames each, every
+one exiting 0** — 124 windows, eight at a time, in 32.3, 32.5 and
+38.8 s — and `counter`, `host`, `c_panel` and `lua_panel` by hand under
+`KUI_SMOKE_FRAMES=120`, each exiting 0 with nothing on stderr: **128
+windows over five hosts.** The AX audit: **106/106**, the audited window
+raised to the front by its pid first, and no warning on the fixture's
+stderr. F124 itself was seen in kawoosh's window before the merge, built
+against the branch by path.
+
+**The bench guard** against the alpha.39 tag: **green**, none of the 8
+guarded rows more than 10% slower — every one between −3.2% and +3.5%
+(the worst guarded run-to-run spread 1.3%) — and no row of the run more
+than 4.7% slower (`frame_1k_paths_animating`, a frame F124 does not
+reach). `README.md`'s table is kept as it was.
 
 ## 0.1.0-alpha.39 (2026-10-06)
 

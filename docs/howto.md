@@ -777,7 +777,7 @@ Headless, `ctx.openDocuments(paths)` (C `kui_input_open`, Rust
 `InputEvent::Open`) is the drive.
 
 [`open` payload](props.md#events) ·
-[Unreleased `### Added`](../CHANGELOG.md#unreleased)
+[alpha.40 `### Added`](../CHANGELOG.md#010-alpha40-2026-10-07)
 
 ### How do I have global shortcuts and a Tab ring at once?
 

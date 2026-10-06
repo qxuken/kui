@@ -167,7 +167,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.36".
+Ordered by area, not by priority. What to do next is under "After alpha.39".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -433,7 +433,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.36" below.
+not cover is in "After alpha.39" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2073,7 +2073,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.36*).
+*Distribution* under *After alpha.39*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2314,9 +2314,31 @@ and are pinned in `tests/layers.rs`. One entry, RG120, **built
 over the modal", and named a stroke under an in-flow modal as content
 over it. Nothing of it is open.
 
-## After alpha.38
+## From the alpha.40 pre-tag pass (2026-10-07)
+
+The pre-tag pass over the one round after the alpha.39 tag — the
+documents the OS asks the app to open (F124) — run as the ones before
+it: the mechanical round first (all green), then the diff read whole,
+each claim probed before anything changed, in a window this time, since
+the half that can break is AppKit's. A scratch app on the release
+tree's `kui-native`, bare and in an ad-hoc-signed bundle declaring
+`public.data`: a launch's documents in one `open` after the window
+opened, `argv` the executable alone; two requests into the running
+instance as two events, in order; and no `open` for the process's own
+arguments — a path, a subcommand, a missing file, a flag, bare and as
+the bundle's executable, even with `-NSTreatUnknownArgumentsAsOpen
+YES` — so an app that reads its arguments and hears `open` does not
+open a file twice. The non-macOS side is clean under clippy for
+Windows. The C clamp of `step open` to eight paths is the one
+`dragfiles` already has. Nothing was filed.
+
+## After alpha.39
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.38" until 2026-10-07, when the round between the alpha.39 and
+alpha.40 tags — the documents the OS asks the app to open (F124) from
+kawoosh's open-documents report, and alpha.40's pre-tag pass, which
+filed nothing — had landed, and the heading moved with the tag; "After
 alpha.36" until 2026-10-06, when the rounds between the alpha.37 and
 alpha.39 tags — `scrollMods` (F122) from kawoosh's wheel-zoom report
 and RG119 from alpha.38's pre-tag pass, then a stroke painting in its
