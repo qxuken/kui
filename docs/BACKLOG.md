@@ -2301,9 +2301,15 @@ and are pinned in `tests/layers.rs`. One entry, RG120, **built
 over the modal", and named a stroke under an in-flow modal as content
 over it. Nothing of it is open.
 
-## After alpha.36
+## After alpha.38
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.36" until 2026-10-06, when the rounds between the alpha.37 and
+alpha.39 tags — `scrollMods` (F122) from kawoosh's wheel-zoom report
+and RG119 from alpha.38's pre-tag pass, then a stroke painting in its
+parent's layer (F123) from kawoosh's update-toast report and RG120 from
+alpha.39's pre-tag pass — had landed, and the heading moved with the
+tag; "After
 alpha.35" until later on 2026-10-05, when the round between the alpha.36
 and alpha.37 tags — `dash` on a stroke, the `gradient` row (ADR 0042),
 F120 and F121 from kawoosh's Cyrillic-terminal report, RG112 and

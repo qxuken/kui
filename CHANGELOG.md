@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.39 (unreleased)
+## 0.1.0-alpha.39 (2026-10-06)
 
 **What breaks.**
 
@@ -73,6 +73,57 @@ cover it.
   nothing an app sees.
 
 **What you can delete.** Nothing.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-06 — the
+two commits after the alpha.38 tag: a stroke painting in its parent's
+layer (F123) and the approval script naming npmjs for the scope — with a
+regression pass over them first: the diff read whole, each claim probed
+with a test before anything changed. Six probes were written; five
+passed and are kept in `tests/layers.rs` for what F123's own tests did
+not pin (a `polygon` and a `path` under the same rule, a departing
+stroke's ghost in its parent's layer, a declared float with `clip` still
+a layer, a viewport-anchored stroke still escaping its clip, a clickable
+stroke hit at its place), and the sixth found RG120, which is in this
+release. This round ran on the Mac alone; Windows and Linux did not run
+it for this tag.
+
+**macOS 27.0.1 on an M3 Pro MacBook Pro, rustc 1.99.0 (the toolchain
+CI runs), Node 25.6.0, nu 0.116.0**, on the release commit's tree, the
+workspace's own artifacts pruned and rebuilt. `cargo fmt --all --check`
+and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean. `cargo test --workspace
+--features kui-core/conformance`: **1816 tests over 136 suites, 0
+failed** (4 ignored). The C round, `cbuild --run`, passes its five
+checks; the corpus passes its **57 scenes** in four adapters; the ABI
+is **25**. Node's `node --test test.mjs` under
+`KUI_CONFORMANCE_REQUIRED=1`: **210 of 210**. `npm run gen` leaves no
+diff, the examples typecheck and their lockfile installs, the headless
+round passes all **35 drives**, the book builds and
+`scripts/book-examples.nu --check` passes.
+
+**The windowed round**, `smoke -- --node`, twice over: **51 Rust
+examples and the eleven Node examples, each on both bases, 120 frames
+each, every one exiting 0** — 124 windows, eight at a time, in
+37.6 and 33.4 s — and `counter`, `host`, `c_panel` and `lua_panel` by
+hand under `KUI_SMOKE_FRAMES=120`, each exiting 0 with nothing on
+stderr: **128 windows over five hosts.** The AX audit: **106/106**, the
+audited window raised to the front by its pid first, and no warning on
+the fixture's stderr. F123 itself was seen in kawoosh's window before
+the merge, built against the branch by path; RG120's case is pinned in
+the core's tests alone.
+
+**The bench guard** against the alpha.38 tag, on the tree the release
+commit was cut from: **green**, none of the 8 guarded rows more than
+10% slower — every one between −5.3% and +1.4% (the worst guarded
+run-to-run spread 2.7%), and no row of the run more than 2.2% slower.
+Three rows got faster by more than the noise, and that is F123:
+`frame_10k_segments` 881 → 834 µs (−5.3%), `frame_1k_closed_lines`
+103 → 97.1 µs (−5.9%) and `frame_1k_polygons` 102 → 97.2 µs (−4.5%) —
+ten thousand strokes that were ten thousand layers for the float stack
+to sort are their parents' content now. `README.md`'s table is kept as
+it was.
 
 ## 0.1.0-alpha.38 (2026-10-05)
 
