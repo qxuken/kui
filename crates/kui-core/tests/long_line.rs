@@ -773,3 +773,56 @@ fn a_tab_in_a_later_chunk_stops_on_the_lines_stops() {
         "past 4 KB: (tab byte, off a stop by) {off:?}"
     );
 }
+
+#[test]
+fn a_tab_after_a_long_stretch_without_one_stops_on_the_lines_stops() {
+    // A chunk cut ends after a tab near the cut when a window has one
+    // (RG75), so a stretch of more than half a window without a tab ends
+    // a chunk on a space, the next chunk starts off the stops, and the
+    // tab after the stretch measured its stop from that chunk's start
+    // (backlog RG76). Six cells a word put the cuts off the eight-cell
+    // grid.
+    let text = format!("{}ab\tcd\tef ", "abcde ".repeat(200)).repeat(6);
+    assert!(text.len() > LONG_LINE_BYTES);
+    let stop = tab_carets("\tx", TextWrap::None)[1];
+    let mut at = Vec::new();
+    for wrap in [TextWrap::None, TextWrap::BreakSpaces] {
+        at = tab_carets(&text, wrap);
+        let off: Vec<_> = text
+            .match_indices('\t')
+            .map(|(b, _)| (b, at[b + 1] % stop))
+            .filter(|(_, r)| r.min(stop - r) > 0.5)
+            .take(5)
+            .collect();
+        assert!(
+            off.is_empty(),
+            "{wrap:?}: (tab byte, off a stop by) {off:?}"
+        );
+    }
+    // Wrapped into rows, a tab keeps the advance the unwrapped line gave
+    // it, as a whole run's does: the chunk after it starts there.
+    let mut core = Core::new();
+    let key = Key::ROOT.str("t").index(0);
+    for _ in 0..2 {
+        let mut ui = core.frame(Size::new(2000.0, 1000.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.text_in_keyed(
+            "t",
+            NodeSpec::column().width(2000.0),
+            &text,
+            wrapped(TextWrap::Word),
+        );
+        ui.finish();
+    }
+    let off: Vec<_> = text
+        .match_indices('\t')
+        .filter_map(|(b, _)| {
+            let (r0, r1) = (core.caret_rect(key, b)?, core.caret_rect(key, b + 1)?);
+            let got = r1.x - r0.x;
+            let want = at[b + 1] - at[b];
+            (r0.y == r1.y && (got - want).abs() > 0.5).then_some((b, got, want))
+        })
+        .take(5)
+        .collect();
+    assert!(off.is_empty(), "wrapped: (tab byte, advance, want) {off:?}");
+}

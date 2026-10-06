@@ -639,7 +639,14 @@ struct Chunk {
     start: usize,
     end: usize,
     key: u64,
+    /// The run's own width: its tabs' stops measured from its start.
     width: Option<f32>,
+    /// For a shaped chunk that starts off the line's tab stops and ends in
+    /// its one tab (`chunk_ranges`): where the tab starts in the run, and
+    /// the stops' interval, physical px. The run's width put that tab on
+    /// a stop of the chunk's own; the line puts it on one of its own, from
+    /// where the chunk starts (`LongLine::reprefix`, backlog RG76).
+    tab: Option<(f32, f32)>,
     /// While the line is wrapped and this chunk is shaped: where each of
     /// its rows starts. Empty otherwise (one row, or an estimate).
     rows: Vec<RowStart>,
@@ -756,37 +763,70 @@ impl LongLine {
     }
 
     /// Recomputes `prefix` from the chunk widths, estimating the unshaped.
+    /// A chunk ending in a tab it started off the stops for is as wide as
+    /// takes that tab to the line's next stop (backlog RG76), so the chunk
+    /// after it starts on one; the stop is exact once every chunk since
+    /// the line's previous tab is shaped, and otherwise as near as the
+    /// estimate `prefix` already is.
     fn reprefix(&mut self) {
         let mut at = 0.0f32;
         self.prefix.clear();
         self.prefix.push(0.0);
         for c in &self.chunks {
-            at += c
-                .width
-                .unwrap_or_else(|| (c.end - c.start) as f32 * self.avg);
+            at = match (c.width, c.tab) {
+                (Some(_), Some((tab_x, every))) => next_tab_stop(at + tab_x, every),
+                (Some(w), None) => at + w,
+                (None, _) => at + (c.end - c.start) as f32 * self.avg,
+            };
             self.prefix.push(at);
+        }
+    }
+
+    /// How far the line moves chunk `i`'s end from where its run ends:
+    /// nonzero only for a chunk whose tab the line places (`reprefix`).
+    fn tab_shift(&self, i: usize) -> f32 {
+        let c = &self.chunks[i];
+        match (c.width, c.tab) {
+            (Some(w), Some(_)) => self.prefix[i + 1] - self.prefix[i] - w,
+            _ => 0.0,
         }
     }
 }
 
+/// The tab stop after `x` (physical px from the line's start), stops
+/// `every` px apart: cosmic-text's rule, which moves a tab already on a
+/// stop to the next one. `x` is a sum of chunk widths, so a stop within a
+/// sixteenth of a pixel ahead counts as reached — the drift that sum has
+/// over a stretch without a tab, which a whole line's own sum has too.
+fn next_tab_stop(x: f32, every: f32) -> f32 {
+    if every <= 0.0 {
+        return x;
+    }
+    (((x + 1.0 / 16.0) / every).floor() + 1.0) * every
+}
+
 /// Where a long line is cut: after the last tab in the second half of each
 /// window, else after the last whitespace there, else at the last grapheme
-/// boundary inside it. A line under [`LONG_LINE_BYTES`] — long only by its
-/// `break-spaces` — is one chunk, shaped whole as the run it would
-/// otherwise be.
+/// boundary inside it — except that a chunk starting anywhere but after a
+/// tab ends after its first tab, wherever in the window that falls. A line
+/// under [`LONG_LINE_BYTES`] — long only by its `break-spaces` — is one
+/// chunk, shaped whole as the run it would otherwise be.
 ///
 /// Tab stops are why: cosmic-text measures them from where
 /// the shaped text starts, so a chunk shaped alone put a tab after its
 /// start at a stop measured from there and not from the line's. A chunk
 /// cut just after a tab ends on a stop, so the next one starts on one and
-/// its stops are the line's: a line with a tab in the second half of every
-/// window lays out its tabs exactly, and one with a stretch longer than
-/// that without any still measures the tabs after it from that chunk.
+/// its stops are the line's (RG75). A chunk that starts off the stops —
+/// after a stretch of more than half a window without a tab — holds at
+/// most one tab, its last character, whose advance the line places from
+/// where the chunk starts (`Chunk::tab`, backlog RG76): nothing in the
+/// chunk follows that tab, so its run needs no reshaping for the line's x.
 fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
     use unicode_segmentation::UnicodeSegmentation;
     if content.len() < LONG_LINE_BYTES {
         return vec![(0, content.len())];
     }
+    let bytes = content.as_bytes();
     let mut out = Vec::with_capacity(content.len() / CHUNK_BYTES + 1);
     let mut start = 0usize;
     while start < content.len() {
@@ -797,28 +837,40 @@ fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
         while !content.is_char_boundary(window_end) {
             window_end -= 1;
         }
-        let end = if window_end == content.len() {
+        let window = &content[start..window_end];
+        // Where the window's second half starts, on a char boundary.
+        let mut from = (CHUNK_BYTES / 2).min(window.len());
+        while !window.is_char_boundary(from) {
+            from += 1;
+        }
+        // Off the stops (after anything but a tab), a tab in the first
+        // half ends the chunk: `find` is a memchr, so a tab-free line pays
+        // a search per window and not a second walk of it (RG75's cost).
+        let off_stops = start > 0 && bytes[start - 1] != b'\t';
+        let early_tab = match off_stops {
+            true => window[..from].find('\t'),
+            false => None,
+        };
+        let end = if let Some(t) = early_tab {
+            start + t + 1
+        } else if window_end == content.len() && !(off_stops && window[from..].contains('\t')) {
             window_end
         } else {
-            let window = &content[start..window_end];
-            let half = CHUNK_BYTES / 2;
-            // One pass over the second half, noting the last tab and the
-            // last whitespace: a line re-cut on every edit (C19) must not
-            // walk each window twice, nor its first half at all.
-            let mut from = half.min(window.len());
-            while !window.is_char_boundary(from) {
-                from += 1;
-            }
-            let (mut tab, mut space) = (None, None);
+            // One pass over the second half, noting its first and last
+            // tab and its last whitespace: a line re-cut on every edit
+            // (C19) must not walk each window twice.
+            let (mut first_tab, mut last_tab, mut space) = (None, None, None);
             for (i, c) in window[from..].char_indices() {
                 if c.is_whitespace() {
                     let end = from + i + c.len_utf8();
                     space = Some(end);
                     if c == '\t' {
-                        tab = Some(end);
+                        first_tab = first_tab.or(Some(end));
+                        last_tab = Some(end);
                     }
                 }
             }
+            let tab = if off_stops { first_tab } else { last_tab };
             match tab.or(space) {
                 Some(i) => start + i,
                 None => {
@@ -1958,6 +2010,7 @@ impl TextSystem {
                     Self::rich_key(&chunk_spans(&content, &spans, start, end), style, scale)
                 },
                 width: None,
+                tab: None,
                 rows: Vec::new(),
             })
             .collect();
@@ -2045,7 +2098,7 @@ impl TextSystem {
         }
         // Shaping now: the chunk's text and its spans rebased to the
         // slice, copied out so the line stays in the map meanwhile.
-        let (text, spans, style) = {
+        let (text, spans, style, off_stops) = {
             let line = self.long(key).expect("a long line");
             let c = &line.chunks[i];
             let first = line.spans.partition_point(|s| s.end <= c.start);
@@ -2058,17 +2111,58 @@ impl TextSystem {
                     attrs: s.attrs,
                 })
                 .collect();
-            (line.content[c.start..c.end].to_string(), spans, line.style)
+            let bytes = line.content.as_bytes();
+            let off_stops = c.start > 0 && bytes[c.start - 1] != b'\t';
+            (
+                line.content[c.start..c.end].to_string(),
+                spans,
+                line.style,
+                off_stops,
+            )
         };
         let k = self.shape_chunk(&text, &spans, 0, text.len(), &style, res, fs);
         let w = self.run(k).expect("just interned").intrinsic.w;
+        let tab = match off_stops && text.ends_with('\t') {
+            true => self.chunk_tab(k, &text, &spans, &style, res, fs),
+            false => None,
+        };
         let line = self.long_mut(key).expect("just read");
         line.chunks[i].key = k;
+        line.chunks[i].tab = tab;
         if line.chunks[i].width != Some(w) {
             line.chunks[i].width = Some(w);
             line.reprefix();
         }
         true
+    }
+
+    /// For a chunk that starts off the line's tab stops and ends in its one
+    /// tab, shaped as `chunk`: where the tab starts in that run, and the
+    /// stops' interval — the width of the tab shaped alone in its own
+    /// span's style, which starts on a stop (backlog RG76). `None` for a
+    /// right-to-left run, whose tab is not at its end.
+    #[inline(never)]
+    #[allow(clippy::too_many_arguments)]
+    fn chunk_tab(
+        &mut self,
+        chunk: u64,
+        text: &str,
+        spans: &[OwnedSpan],
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+    ) -> Option<(f32, f32)> {
+        let at = text.len() - 1;
+        let tab_x = {
+            let run = self.run(chunk)?.buffer.layout_runs().next()?;
+            if run.rtl {
+                return None;
+            }
+            run.glyphs.iter().rev().find(|g| g.start == at)?.x
+        };
+        let alone = self.shape_chunk(text, spans, at, text.len(), style, res, fs);
+        let every = self.run(alone)?.intrinsic.w;
+        Some((tab_x, every))
     }
 
     /// Breaks the long line `key` into rows at `w` (physical px), or lays
@@ -2098,14 +2192,18 @@ impl TextSystem {
         let rows: Vec<Vec<RowStart>> = line
             .chunks
             .iter()
-            .map(|c| {
+            .enumerate()
+            .map(|(i, c)| {
                 let shaped = c.width.and_then(|_| self.run(c.key));
                 let rows = match shaped {
                     Some(e) => {
                         let text = &line.content[c.start..c.end];
                         let (rows, end) = break_rows(&e.buffer, text, line.wrap, w, x);
                         row += rows.len() as u32 - 1;
-                        x = end;
+                        // A tab the line places ends the chunk where the
+                        // unwrapped line puts it, as a whole run's tab is
+                        // measured before its rows are broken (RG76).
+                        x = end + line.tab_shift(i);
                         rows
                     }
                     None => {
