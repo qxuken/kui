@@ -707,8 +707,8 @@ impl Core {
     }
 
     /// The root the way a parsed prop list says: its title, whether it
-    /// wants the window on top, its keyboard secure or its Option keys as
-    /// Alt, the windows it declares, its spec, and
+    /// wants the window on top, its keyboard secure, its Option keys as
+    /// Alt or its input method off, the windows it declares, its spec, and
     /// keyboard focus on it when asked — what a binding's root op does,
     /// once.
     pub fn configure_root_from(&mut self, props: PropsOut) {
@@ -723,6 +723,9 @@ impl Core {
         }
         if props.option_as_alt != crate::OptionAsAlt::None {
             self.set_option_as_alt(props.option_as_alt);
+        }
+        if props.ime_off {
+            self.set_ime_off(true);
         }
         for (name, cfg) in &props.windows {
             self.declare_window(name, *cfg);

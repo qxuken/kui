@@ -1138,20 +1138,38 @@ macOS's press-and-hold: holding a letter offers its accents (`e` → `é è
 ê`) instead of repeating it, and a letter with no accents does nothing
 at all — on by default, and off only on a machine whose owner turned it
 off, which is why it works on one Mac and not the next. Every other
-platform repeats. It is the **user's setting, not the app's**: the read
-that decides is HIToolbox's, of the user's global preference by name,
-and no per-process default reaches it — not the argument domain, not a
-registered default, not the app's own domain (F69 built a door that
-pinned one; RG15 found it inert and RG16 removed it — the backlog
-archive has the measurements). What works is
+platform repeats. The setting is the user's — the read that decides is
+HIToolbox's, of the user's global preference by name, and no
+per-process default reaches it (F69 built a door that pinned one; RG15
+found it inert and RG16 removed it — the backlog archive has the
+measurements) — but press-and-hold is an *input method*, and a window
+can take the keyboard with its input method off. Declare `imeOff` on the
+root while your keys are commands (Rust `ui.ime_off(true)`, Lua
+`ime_off = true` on the root table, C `kui_set_ime_off(ctx, true)`):
+
+```rust
+// Normal mode is a keymap; insert mode types text.
+ui.ime_off(self.mode == Mode::Normal);
+```
+
+A held `j` then repeats, a held `e` opens nothing, and a dead key or an
+IME left on no longer eats the keymap; each key still carries the
+layout's character as its `text`. Stop declaring it and insert mode has
+accents, dead keys and the IME back. A key held across the switch — the
+`i` that enters insert mode — keeps repeating until it comes up, so the
+picker comes from the next fresh press. It is frame state: declare it on
+every frame the mode wants it.
+
+The user can still turn press-and-hold off for every app:
 
 ```
 defaults write -g ApplePressAndHoldEnabled -bool false
 ```
 
-and a relaunch — what the owner of a modal editor, where `j` held is a
-motion, has usually done already. An app whose keys are commands can say
-so in its README; kui has nothing to offer it beyond that.
+and a relaunch.
+
+[`imeOff`](props.md#composite-props-hand-written-per-binding) ·
+[`examples/rust/apps/modal_editor.rs`](../examples/rust/apps/modal_editor.rs)
 
 ### How do I tell the keypad from the main keys, or hear a lone Shift?
 

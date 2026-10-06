@@ -356,4 +356,37 @@ impl Core {
     pub fn option_as_alt(&self) -> crate::OptionAsAlt {
         self.option_as_alt
     }
+
+    /// Declares that this window takes the keyboard as keys, with the
+    /// platform's input method off: no composition, no candidate window,
+    /// no dead key waiting for the next one, and on a Mac no
+    /// press-and-hold — which is an input method too, so a held letter
+    /// repeats instead of opening the accent picker, whatever the user's
+    /// `ApplePressAndHoldEnabled` says. A key's `text` is still the
+    /// layout's character; what goes is everything the OS would have
+    /// composed from it. What a modal editor's normal mode wants, where
+    /// `jjjj` is how one moves and a Japanese IME left on eats the
+    /// keymap; its insert mode stops declaring it and gets both back.
+    /// Frame state like `always_on_top`, default off: a frame that stops
+    /// declaring it gives the window its input method back, so an app
+    /// declares it on every frame its mode wants it and never has to
+    /// undo it.
+    ///
+    /// The runner applies it to the window on change and never per
+    /// frame (winit's `set_ime_allowed`); a composition in progress when
+    /// it turns off is ended without a commit, as an empty `preedit`. It
+    /// is the window's, not a node's: a stock editor focused under it
+    /// composes nothing either. A popup's keys arrive through its owner,
+    /// so the owner's declaration is the one they are read under. On
+    /// Windows and Linux the window's IME is disabled the same way; their
+    /// dead keys are the layout's and still compose.
+    pub fn set_ime_off(&mut self, off: bool) {
+        self.ime_off = off;
+    }
+
+    /// Whether this frame asked for the input method off (for the frame
+    /// driver); false for a frame that never said.
+    pub fn ime_off(&self) -> bool {
+        self.ime_off
+    }
 }

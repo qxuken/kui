@@ -2100,6 +2100,28 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The input-method ask is frame state: false until a frame declares
+    /// it, false again on the frame that stops, and nothing on a bad
+    /// context.
+    #[test]
+    fn ime_off_is_asked_per_frame() {
+        let ctx = kui_ctx_new();
+        assert!(!kui_ime_off_get(ctx));
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_set_ime_off(ctx, true);
+        kui_frame_finish(ctx);
+        assert!(kui_ime_off_get(ctx));
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_frame_finish(ctx);
+        assert!(
+            !kui_ime_off_get(ctx),
+            "a frame that stops asking gives the input method back"
+        );
+        kui_set_ime_off(std::ptr::null_mut(), true);
+        assert!(!kui_ime_off_get(std::ptr::null_mut()));
+        kui_ctx_free(ctx);
+    }
+
     /// Option as Alt is frame state: none until a frame
     /// declares it, none again on the frame that stops, a number the
     /// header does not name is none, and nothing on a bad context.

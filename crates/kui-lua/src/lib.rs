@@ -199,8 +199,8 @@
 //!   `add_extension(namespace, path)` loads a C plugin (see below).
 //!
 //! The root table may also carry host state beside its children:
-//! `window_title`, `always_on_top`, `secure_input`, `option_as_alt` and a
-//! `windows` list of `name | { name, kind, width, height, activates, anchor }`.
+//! `window_title`, `always_on_top`, `secure_input`, `option_as_alt`,
+//! `ime_off` and a `windows` list of `name | { name, kind, width, height, activates, anchor }`.
 //!
 //! ## The two focus names
 //!
@@ -522,6 +522,11 @@ impl Extension for LuaExtension {
             if v != kui_core::OptionAsAlt::None {
                 ui.option_as_alt(v);
             }
+        }
+        // The input method off (backlog F125), the shape `secure_input`
+        // has: a modal editor's normal mode declares it on every view.
+        if let Ok(Some(true)) = root.get::<Option<bool>>("ime_off") {
+            ui.ime_off(true);
         }
         declare_windows(ui, &root).map_err(|e| format!("windows: {e}"))?;
         build_node(ui, &root).map_err(|e| format!("view table: {e}"))
@@ -3900,7 +3905,7 @@ mod tests {
             r##"
                 function view(env)
                   return column { gap = 4, window_title = "all nodes", always_on_top = true,
-                    secure_input = true, option_as_alt = "right",
+                    secure_input = true, option_as_alt = "right", ime_off = true,
                     titlebar { text("custom title"), window_buttons() },
                     titlebar { title = "plain title" },
                     text({ "same IR as ", { "Rust", bold = true, color = "#73d98c" },
@@ -3927,6 +3932,7 @@ mod tests {
         assert!(core.always_on_top());
         assert!(core.secure_input());
         assert_eq!(core.option_as_alt(), kui_core::OptionAsAlt::Right);
+        assert!(core.ime_off());
         // And every key above is one some table claims: this scene is the
         // allow-list's fixture, so a new element prop that nobody adds to
         // `ELEMENTS.lua_own` fails here instead of warning at a user.

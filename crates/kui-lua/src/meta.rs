@@ -358,7 +358,7 @@ fn composite_type(name: &str) -> String {
             names.join("|")
         }
         "clip" | "scroll" | "scroll_x" | "scroll_y" | "key_focus" | "always_on_top"
-        | "secure_input" => "boolean".into(),
+        | "secure_input" | "ime_off" => "boolean".into(),
         _ => "any".into(),
     }
 }
@@ -539,6 +539,7 @@ mod tests {
         "always_on_top",
         "secure_input",
         "option_as_alt",
+        "ime_off",
         "windows",
     ];
 

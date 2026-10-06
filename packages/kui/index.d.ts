@@ -2402,6 +2402,14 @@ export declare class Ctx {
    */
   optionAsAlt(): 'none' | 'left' | 'right' | 'both'
   /**
+   * Whether the last frame asked for the platform's input method off
+   * in its window (a root `<box imeOff>`) — no composition, no dead
+   * keys, no press-and-hold on a Mac; false when it did not.
+   * `runWindowed` applies it to the window on change; a bare `Ctx`
+   * hands the ask back so a test can assert on it.
+   */
+  imeOff(): boolean
+  /**
    * A headless context is one window, the main: this answers whether
    * `window` names it (`"main"`, `0`, or left out) and addresses
    * nothing else — the same door `KuiWindow` has, so a loop or a test

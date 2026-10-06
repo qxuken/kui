@@ -64,6 +64,28 @@ fn secure_input_is_frame_scoped_and_defaults_off() {
     );
 }
 
+/// The input-method ask is frame state the way the level is (backlog
+/// F125): off until a frame declares it — the platform's IME, dead keys
+/// and press-and-hold, so no app changes by upgrading — and off again on
+/// the frame that stops, which is how a modal editor's insert mode gets
+/// them back without undoing anything.
+#[test]
+fn ime_off_is_frame_scoped_and_defaults_off() {
+    let mut core = Core::new();
+    assert!(!core.ime_off());
+    let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.ime_off(true);
+    ui.finish();
+    assert!(core.ime_off());
+
+    let ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.finish();
+    assert!(
+        !core.ime_off(),
+        "a frame that stops asking gives the input method back"
+    );
+}
+
 /// Option as Alt is frame state the way the level is (backlog F113):
 /// `None` until a frame declares it — the Mac's own composing Option, so
 /// no app changes by upgrading — and `None` again on the frame that

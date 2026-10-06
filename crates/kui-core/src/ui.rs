@@ -394,6 +394,15 @@ impl<'a> Ui<'a> {
         self.core.set_option_as_alt(option_as_alt);
     }
 
+    /// Declares that this window takes the keyboard as keys, with the
+    /// platform's input method off — no composition, no dead keys, and on
+    /// a Mac no press-and-hold, so a held letter repeats; see
+    /// [`crate::Core::set_ime_off`]. A modal editor's normal mode. Declare
+    /// it every frame: a frame that does not gives the IME back.
+    pub fn ime_off(&mut self, off: bool) {
+        self.core.set_ime_off(off);
+    }
+
     /// Declares that a window named `name` exists this frame; see
     /// `Core::declare_window`. It opens on the first frame that declares
     /// it (`config` is read then and never again), stays open while any

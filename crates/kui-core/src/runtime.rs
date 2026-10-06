@@ -233,6 +233,10 @@ pub struct Core {
     /// frame that stops declaring it gives the Option keys back to the
     /// layout's composition.
     option_as_alt: crate::input::OptionAsAlt,
+    /// Whether this frame asked for the platform's input method off in
+    /// its window. `always_on_top`'s shape: cleared each `begin_frame`,
+    /// so a frame that stops asking gives the window its IME back.
+    ime_off: bool,
     /// Keyboard focus: the one node key input goes to — an editor (the
     /// edit store mirrors it), an `on_key` sink, a control Tab landed on.
     /// `set_focus` is
@@ -957,6 +961,7 @@ impl Core {
             always_on_top: false,
             secure_input: false,
             option_as_alt: crate::input::OptionAsAlt::None,
+            ime_off: false,
             focus: None,
             focus_visible: false,
             declared_focus: Vec::new(),
@@ -1535,6 +1540,7 @@ impl Core {
         self.always_on_top = false;
         self.secure_input = false;
         self.option_as_alt = crate::input::OptionAsAlt::None;
+        self.ime_off = false;
         // The drawn menu bar's root is this frame's: a view that stops
         // calling `widgets::menu_bar` leaves nothing behind for the next
         // event to land on. Re-recorded while the widget builds.

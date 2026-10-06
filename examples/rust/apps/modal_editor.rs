@@ -424,6 +424,12 @@ impl App for ModalEditor {
         if self.awaiting_paste {
             ui.request_paste();
         }
+        // Normal mode is a keymap, not text: the platform's input method is
+        // off while it holds (backlog F125), so a held `j` repeats where a
+        // Mac's press-and-hold would have swallowed it, and an IME left on
+        // does not eat the keys. Insert and command modes type text, and
+        // get accents, dead keys and the IME back by not declaring it.
+        ui.ime_off(self.mode == Mode::Normal);
         ui.with(NodeSpec::column().fill().bg(pal.bg), |ui| {
             widgets::titlebar(ui, "kui — modal editor (the app owns the keymap)");
 
@@ -1260,6 +1266,7 @@ impl Example for ModalEditor {
             self.mode == Mode::Normal && !d.core.has_caret() && d.core.ime_rect().is_some(),
             "a solid block caret anchors the IME and arms no clock",
         )?;
+        d.check(d.core.ime_off(), "normal mode turns the input method off")?;
         // Without the keyboard the solid caret is still declared and its
         // phase still on — the runner hides only what it blinks — and
         // the block is this view's to draw hollow (backlog RG14, in F68).
@@ -1293,6 +1300,7 @@ impl Example for ModalEditor {
             self.mode == Mode::Insert && d.core.has_caret(),
             "the caret row is declared through the off phase",
         )?;
+        d.check(!d.core.ime_off(), "insert mode gives the input method back")?;
         d.core.set_caret_visible(true);
         Ok(())
     }

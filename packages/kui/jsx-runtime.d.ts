@@ -550,6 +550,14 @@ export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
    *  Declare it every frame; the frame that stops gives the Option keys
    *  back to the layout. Nothing elsewhere. */
   optionAsAlt?: 'none' | 'left' | 'right' | 'both';
+  /** Root box only: this window takes the keyboard as keys, with the
+   *  platform's input method off (backlog F125) — no composition, no dead
+   *  keys, and on a Mac no press-and-hold, so a held letter repeats
+   *  instead of opening the accent picker. A key's `text` is still the
+   *  layout's character. A modal editor's normal mode: declare it every
+   *  frame the mode wants it; the frame that stops gives the IME, dead
+   *  keys and accents back. */
+  imeOff?: boolean;
   /** Root box only: which windows exist besides the main one (see
    *  `WindowDecl` in `@qxuken/kui`). `runWindowed` / `createApp` write it
    *  from the loop config's `windows(model)`; a view driving a `Ctx` by

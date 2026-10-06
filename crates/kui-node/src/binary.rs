@@ -30,7 +30,7 @@ use kui_core::{
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
-    self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_INDEX, P_KEY, P_KEY_FOCUS,
+    self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_IME_OFF, P_INDEX, P_KEY, P_KEY_FOCUS,
     P_OPTION_AS_ALT, P_OVERFLOW, P_PAD, P_ROW_COUNT, P_SECURE_INPUT, P_SIZE, P_TITLE, P_TOOLTIP,
     P_WINDOWS, Parsed, PropsOut, SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx, color_num, min_num,
     sizing_num,
@@ -697,6 +697,8 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
             P_ALWAYS_ON_TOP => out.always_on_top = true,
             // The same shape (backlog F85).
             P_SECURE_INPUT => out.secure_input = true,
+            // And again (backlog F125).
+            P_IME_OFF => out.ime_off = true,
             // Root only, a side by its number (`OptionAsAlt::index`,
             // backlog F113); the encoder writes nothing for "none" and
             // refuses a name it does not know, so a number past the four
@@ -1628,6 +1630,7 @@ mod tests {
                 "keyFocus" => expected.key_focus = true,
                 "alwaysOnTop" => expected.always_on_top = true,
                 "secureInput" => expected.secure_input = true,
+                "imeOff" => expected.ime_off = true,
                 "optionAsAlt" => {
                     s.push(2.0);
                     expected.option_as_alt = kui_core::OptionAsAlt::Right;

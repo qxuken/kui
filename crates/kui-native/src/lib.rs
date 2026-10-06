@@ -184,8 +184,8 @@ pub mod testing;
 mod windows;
 
 use pane::{
-    Pane, appearance_of, level_change, level_supported, option_as_alt_change, sync_env,
-    theme_appearance,
+    Pane, appearance_of, apply_ime_off, ime_off_change, level_change, level_supported,
+    option_as_alt_change, sync_env, theme_appearance,
 };
 /// The OS settings winit has no call for, asked once and re-asked when the
 /// user has evidently been in a settings app.
@@ -2153,6 +2153,17 @@ impl DynShell<'_> {
             }
         }
 
+        // The input method, the same way (backlog F125). Off, winit's
+        // `keyDown:` stops calling `interpretKeyEvents:`, and everything
+        // the OS composes there goes with it — an IME, a dead key, and
+        // macOS's press-and-hold, which is an input method that swallows a
+        // held letter's repeats; the key still arrives with the layout's
+        // character as its text. A key still held from a press the IME
+        // never saw keeps it off until it comes up (`Pane::ime_off_held`).
+        if let Some(off) = ime_off_change(pane.ime_off_wanted(), &mut pane.applied_ime_off) {
+            apply_ime_off(window, off);
+        }
+
         // The floor the app declared is a floor on the *app*: while the
         // devtools are docked in the main window, the pane's extent goes
         // on top of it, so the OS stops the window where the app is at
@@ -2561,6 +2572,11 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 // was down is forgotten with the keyboard (backlog F108).
                 if !focused {
                     self.panes[i].modifier_keys_down.clear();
+                    // And so is a key held through a mode change: its
+                    // release lands elsewhere, so the IME it was keeping
+                    // off is the frame's to decide again.
+                    self.panes[i].ime_off_held.clear();
+                    self.panes[i].sync_ime();
                 }
                 // Coming back to the app is the cheap, reliable sign that
                 // the user may have been in a settings app: the accent and
@@ -2652,12 +2668,25 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 // Its own channel, not `Text`: a sink hears a commit as a
                 // `text` event and a keystroke as a `key` event, once each
                 // (backlog C17); a stock editor takes both the same way.
+                self.panes[i].preedit_open = false;
                 let t = self.key_target(i);
                 self.dispatch(event_loop, t, InputEvent::Commit(text));
             }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                self.panes[i].preedit_open = !text.is_empty();
                 let t = self.key_target(i);
                 self.dispatch(event_loop, t, InputEvent::Preedit(text, cursor));
+            }
+            // The IME went away — the frame turned it off (`imeOff`), or
+            // the user switched input source — and winit's contract is
+            // that a pending preedit is cleared: a composition still open
+            // ends without a commit, as an empty preedit, the way an IME
+            // that cancels says it.
+            WindowEvent::Ime(Ime::Disabled) => {
+                if std::mem::take(&mut self.panes[i].preedit_open) {
+                    let t = self.key_target(i);
+                    self.dispatch(event_loop, t, InputEvent::Preedit(String::new(), None));
+                }
             }
             // Force Touch: stage 2 is the deepened press macOS calls a
             // force click. winit reports the whole ramp, and only the

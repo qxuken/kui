@@ -1197,6 +1197,16 @@ impl Ctx {
     pub fn option_as_alt(&self) -> &'static str {
         self.core.option_as_alt().name()
     }
+
+    /// Whether the last frame asked for the platform's input method off
+    /// in its window (a root `<box imeOff>`) — no composition, no dead
+    /// keys, no press-and-hold on a Mac; false when it did not.
+    /// `runWindowed` applies it to the window on change; a bare `Ctx`
+    /// hands the ask back so a test can assert on it.
+    #[napi]
+    pub fn ime_off(&self) -> bool {
+        self.core.ime_off()
+    }
 }
 
 /// Window commands as the objects `windowCommands()` hands out.

@@ -173,6 +173,7 @@ pub const P_OPTION_AS_ALT: u32 = 121;
 pub const P_BOUNCE: u32 = 122;
 pub const P_GRADIENT: u32 = 123;
 pub const P_SCROLL_MODS: u32 = 124;
+pub const P_IME_OFF: u32 = 125;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1493,6 +1494,16 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`option_as_alt = \"left\"` (root table)",
         c: "`kui_set_option_as_alt` (`KUI_OPTION_AS_ALT_*`)",
         doc: "Declares which Option keys act as Alt in this window on macOS (backlog F113). On a Mac, Option composes: ⌥m types `µ`, and ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for the next key, so the press never reaches the app as a key and a keymap binding `<A-u>` never hears it. An Option key named here is Alt instead: it composes nothing and types nothing, and a key under it arrives as a chord of the key the layout prints unmodified — a terminal's \"Option as Meta\", an editor's Alt bindings. `\"left\"` or `\"right\"` leaves the other side composing, so a user keeps `ü` on one Option; `\"both\"` takes both; `\"none\"`, the default, is the Mac's own behaviour. Frame state the way `alwaysOnTop` is: declare it on every frame, and the frame that stops gives the Option keys back to the layout; the runner applies it to the window on change, never per frame. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. Nothing on Windows or Linux, whose Alt composes nothing. A C host with its own loop reads the ask with `kui_option_as_alt_get` and applies it itself.",
+    },
+    CustomProp {
+        name: "imeOff",
+        id: P_IME_OFF,
+        jsx_names: &["imeOff"],
+        lua_names: &["ime_off"],
+        jsx: "`imeOff` (root box only)",
+        lua: "`ime_off = true` (root table)",
+        c: "`kui_set_ime_off`",
+        doc: "Declares that this window takes the keyboard as keys, with the platform's input method off (backlog F125): no composition and no candidate window, no dead key waiting for the next, and on a Mac no press-and-hold — an input method too, so a held letter repeats instead of opening the accent picker, whatever the user's `ApplePressAndHoldEnabled` says. A `key` event's `text` is still the layout's character; what goes is everything the OS would have composed from it. What a modal editor's normal mode wants — `jjjj` is how one moves, and an IME left on eats the keymap — while its insert mode stops declaring it and gets accents, dead keys and the IME back. Frame state the way `alwaysOnTop` is, default false: declare it on every frame the mode wants it, and the frame that stops gives the input method back; the runner applies it to the window on change, never per frame, and a composition in progress when it turns off ends without a commit, as an empty `preedit`. The window's, not a node's: a stock editor focused under it composes nothing either. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. On Windows and Linux the window's IME is disabled the same way (their dead keys are the layout's and still compose). A C host with its own loop reads the ask with `kui_ime_off_get` and applies it itself.",
     },
     CustomProp {
         name: "windows",
@@ -3100,6 +3111,9 @@ pub struct PropsOut {
     /// `optionAsAlt`: which Option keys the root asked to act as Alt this
     /// frame (`Core::set_option_as_alt`).
     pub option_as_alt: crate::OptionAsAlt,
+    /// `imeOff`: the root asked for the platform's input method off in
+    /// its window this frame (`Core::set_ime_off`).
+    pub ime_off: bool,
     pub key_focus: bool,
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
     /// node while it is hovered (the parser also marks the spec hoverable).
@@ -3144,6 +3158,7 @@ impl PropsOut {
             always_on_top: false,
             secure_input: false,
             option_as_alt: crate::OptionAsAlt::None,
+            ime_off: false,
             key_focus: false,
             tooltip: None,
             windows: Vec::new(),

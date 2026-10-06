@@ -297,6 +297,21 @@ test('secureInput is asked per frame from the root and read back as the ask', ()
   assert.deepEqual(ctx.warnings(), []);
 });
 
+// `imeOff` is the same shape again (backlog F125): the frame that stops
+// saying it gives the window its input method back.
+test('imeOff is asked per frame from the root and read back as the ask', () => {
+  const ctx = new Ctx();
+  assert.equal(ctx.imeOff(), false);
+  ctx.frame(320, 240, 1, box({ imeOff: true }, [text('-- NORMAL --', { size: 12 })]));
+  assert.equal(ctx.imeOff(), true);
+  ctx.frame(320, 240, 1, box({}, [text('-- INSERT --', { size: 12 })]));
+  assert.equal(ctx.imeOff(), false, 'the frame that stops asking gives the IME back');
+  // `false` and a non-root box both encode nothing, like `secureInput`.
+  ctx.frame(320, 240, 1, box({ imeOff: false }, [box({ imeOff: true })]));
+  assert.equal(ctx.imeOff(), false);
+  assert.deepEqual(ctx.warnings(), []);
+});
+
 // `optionAsAlt` is the same shape with a side for a value (backlog F113):
 // "none" is the default and the frame that stops saying it goes back to it;
 // a name kui does not have is refused before it crosses.
@@ -4389,7 +4404,7 @@ const SCENE_TREES = {
       ]),
     ]),
   chrome: () =>
-    root({ title: 'kui conformance', alwaysOnTop: true, secureInput: true, optionAsAlt: 'left' }, [
+    root({ title: 'kui conformance', alwaysOnTop: true, secureInput: true, optionAsAlt: 'left', imeOff: true }, [
       box({ gap: 6 }, [
         // `<titlebar>` appends its own cluster; the second one goes through
         // the `<windowButtons>` element, in a strip laid out by hand.
@@ -5364,6 +5379,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   lines.push(`always-on-top ${+ctx.alwaysOnTop()}`);
   lines.push(`secure-input ${+ctx.secureInput()}`);
   lines.push(`option-as-alt ${ctx.optionAsAlt()}`);
+  lines.push(`ime-off ${+ctx.imeOff()}`);
   const quads = Buffer.from(ctx.quads());
   const stride = quadStride();
   const count = quads.byteLength / stride;

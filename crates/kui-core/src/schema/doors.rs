@@ -868,6 +868,13 @@ pub const DOORS: &[Door] = &[
         doc: "Declares which Option keys act as Alt in this window on macOS, so a dead key like ⌥u arrives as `<A-u>` (backlog F113).",
     },
     Door {
+        rust: "Ui::ime_off",
+        c: Is("kui_set_ime_off"),
+        node: As("the root's `imeOff` prop"),
+        lua: As("the root's `ime_off` field"),
+        doc: "Declares that this window takes the keyboard as keys, with the input method off — no composition, no dead keys, no press-and-hold on a Mac, so a held letter repeats (backlog F125).",
+    },
+    Door {
         rust: "Ui::window_command",
         c: As(
             "the chrome roles (`KuiSpec.window_role`) are the door; the verb is what `widgets::window_buttons` lowers to",
@@ -905,6 +912,13 @@ pub const DOORS: &[Door] = &[
         node: Is("Ctx.optionAsAlt"),
         lua: No(GUEST),
         doc: "The same for the Option-as-Alt ask: what a driver with its own loop reads to apply it to its window; the runner applies it for a `KuiWindow` and `kui_run`.",
+    },
+    Door {
+        rust: "Core::ime_off",
+        c: Is("kui_ime_off_get"),
+        node: Is("Ctx.imeOff"),
+        lua: No(GUEST),
+        doc: "The same for the input-method ask: what a driver with its own loop reads to apply it to its window; the runner applies it for a `KuiWindow` and `kui_run`.",
     },
     Door {
         rust: "Core::take_window_commands",
