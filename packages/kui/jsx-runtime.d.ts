@@ -846,9 +846,11 @@ export declare namespace JSX {
          *  gap]` for a dash-dot, in px **as seen** — every mark is
          *  round-capped, so a mark no longer than the stroke is wide is a
          *  dot (SVG's `stroke-dasharray` measures the centre line; this is
-         *  its `mark − width, gap + width`). The pattern runs along the
-         *  whole stroke, corners and curves included. A pattern with no
-         *  gap, or finer than a pixel, draws solid. */
+         *  its `mark − width, gap + width`). A gap the dots overlap — a
+         *  mark and its gap together no longer than the width — closes,
+         *  and the marks either side of it are one. The pattern runs along
+         *  the whole stroke, corners and curves included. A pattern with
+         *  no gap left, or finer than a pixel, draws solid. */
         dash?: number | [number] | [number, number] | [number, number, number, number];
         /** How far into the pattern the stroke starts, in px: growing it
          *  moves the marks towards the first point — a marquee's marching
@@ -938,9 +940,11 @@ export declare namespace JSX {
          *  gap]` for a dash-dot, in px **as seen** — every mark is
          *  round-capped, so a mark no longer than the stroke is wide is a
          *  dot (SVG's `stroke-dasharray` measures the centre line; this is
-         *  its `mark − width, gap + width`). The pattern runs along the
-         *  outline, restarting at every subpath as SVG's does. A pattern with no
-         *  gap, or finer than a pixel, draws solid. */
+         *  its `mark − width, gap + width`). A gap the dots overlap — a
+         *  mark and its gap together no longer than the width — closes,
+         *  and the marks either side of it are one. The pattern runs along
+         *  the outline, restarting at every subpath as SVG's does. A
+         *  pattern with no gap left, or finer than a pixel, draws solid. */
         dash?: number | [number] | [number, number] | [number, number, number, number];
         /** How far into the pattern the stroke starts, in px: growing it
          *  moves the marks towards the first point — a marquee's marching

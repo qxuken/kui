@@ -61,7 +61,9 @@ a nine-point curve over ~50 px spans is ~60 quads.
 marks with 4 px gaps, `dash={4}` the same length for both, and four
 lengths are a dash-dot. The lengths are what you see — every mark has the
 stroke's round caps — so a mark no longer than the stroke is wide is a
-dot: `width={3} dash={[3, 5]}` is a dotted line. The pattern runs along
+dot: `width={3} dash={[3, 5]}` is a dotted line. A dot is as wide as the
+stroke, so a gap the dots overlap closes: `width={8} dash={[2, 2]}` is a
+solid line. The pattern runs along
 the whole stroke, round corners and along a `curve`. For marching ants,
 grow `dashOffset` from a tick; the marks move towards the first point.
 A dashed line costs a quad per mark, and is still hit in its gaps.

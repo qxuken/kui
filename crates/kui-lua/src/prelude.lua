@@ -144,8 +144,9 @@ end
 -- `key`, `transition`, `opacity`, `on_layout` apply, and `on_click`,
 -- `on_drag`, `on_hover`, `hoverable` hit by the stroke (docs/adr/0026).
 -- `dash = {6, 4}` cuts it into 6 px marks with 4 px gaps, as seen (one
--- length is both, four are a dash-dot); `dash_offset` starts that far into
--- the pattern.
+-- length is both, four are a dash-dot); a mark no longer than `width` is a
+-- dot, and a gap the dots overlap closes; `dash_offset` starts that far
+-- into the pattern.
 function line(t)
   t.type = "line"
   return t

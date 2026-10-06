@@ -503,6 +503,70 @@ fn dots_offsets_and_a_dash_dot() {
     assert!(kui_core::Dash::of(&[1.0, 2.0, 3.0]).is_none());
 }
 
+/// A gap the dots leave no room for closes (backlog RG118). A dot is as
+/// wide as the stroke whatever its mark says, so `{2, 2}` at a width of 8
+/// was 8 px dots every 4 px — a lumpy solid line, a quad a dot. Where a
+/// mark and its gap come to no more than the width, the marks either side
+/// of the gap are one, and a pattern with no gap left is solid.
+#[test]
+fn a_gap_the_dots_overlap_closes() {
+    let mut core = Core::new();
+    let line = |core: &mut Core, stroke: Stroke| {
+        let quads = frame(core, 1.0, |ui| {
+            ui.line(
+                Vec2::new(0.0, 50.0),
+                Vec2::new(40.0, 50.0),
+                stroke,
+                NodeSpec::column(),
+            );
+        });
+        segments(&quads)
+            .iter()
+            .map(|s| {
+                let e = s.segment_ends();
+                (e[0], e[2])
+            })
+            .collect::<Vec<_>>()
+    };
+    let white = |w| Stroke::new(w, Color::WHITE);
+    // Overlapping, and touching: the stroke whole.
+    assert_eq!(line(&mut core, white(8.0).dash(2.0, 2.0)), [(0.0, 40.0)]);
+    assert!(white(8.0).dash(2.0, 2.0).dash.cut(8.0).is_none());
+    assert_eq!(line(&mut core, white(8.0).dash(2.0, 6.0)), [(0.0, 40.0)]);
+    // A pixel apart: dots, 9 px apart.
+    assert_eq!(
+        line(&mut core, white(8.0).dash(2.0, 7.0)),
+        [
+            (0.0, 0.0),
+            (9.0, 9.0),
+            (18.0, 18.0),
+            (27.0, 27.0),
+            (36.0, 36.0)
+        ]
+    );
+    // A dash, a gap, a dot and a gap the dot's 4 px close: the dot is the
+    // start of the next dash. Centre lengths 6, 8, 0, 4 — the marks were
+    // (0, 6), (14, 14), (18, 24), (32, 32), (36, 40).
+    let dash_dot = kui_core::Dash::of(&[10.0, 4.0, 2.0, 2.0]).unwrap();
+    assert_eq!(
+        line(&mut core, white(4.0).dashed(dash_dot)),
+        [(0.0, 6.0), (14.0, 24.0), (32.0, 40.0)]
+    );
+    // The same with the dash's gap closed instead: the dash runs on into
+    // the dot. Centre lengths 6, 4, 0, 8.
+    let dash_dot = kui_core::Dash::of(&[10.0, 0.0, 2.0, 6.0]).unwrap();
+    assert_eq!(
+        line(&mut core, white(4.0).dashed(dash_dot)),
+        [(0.0, 10.0), (18.0, 28.0), (36.0, 40.0)]
+    );
+    // And an offset still counts from the first mark.
+    let dash_dot = kui_core::Dash::of(&[10.0, 4.0, 2.0, 2.0]).unwrap();
+    assert_eq!(
+        line(&mut core, white(4.0).dashed(dash_dot.offset(14.0))),
+        [(0.0, 10.0), (18.0, 28.0), (36.0, 40.0)]
+    );
+}
+
 /// What is not a pattern draws solid: no gap, a length that is not a
 /// number, a mark and its gap under a physical pixel together. And the lengths are logical —
 /// the marks scale with the frame.
@@ -523,11 +587,13 @@ fn a_pattern_with_no_gap_is_solid_and_the_lengths_are_logical() {
     let white = Stroke::new(2.0, Color::WHITE);
     assert_eq!(count(&mut core, 1.0, white.dash(6.0, 0.0)), 1);
     assert_eq!(count(&mut core, 1.0, white.dash(f32::NAN, 4.0)), 1);
-    assert_eq!(count(&mut core, 1.0, white.dash(0.3, 0.3)), 1);
+    // A hairline, whose 0.3 px gaps the caps leave seen.
+    let hairline = Stroke::new(0.2, Color::WHITE);
+    assert_eq!(count(&mut core, 1.0, hairline.dash(0.3, 0.3)), 1);
     assert!(white.dash(6.0, 0.0).dash.is_solid());
     assert!(!white.dash(6.0, 4.0).dash.is_solid());
     // 0.3 + 0.3 is over a pixel at a scale of 4.
-    assert!(count(&mut core, 4.0, white.dash(0.3, 0.3)) > 1);
+    assert!(count(&mut core, 4.0, hairline.dash(0.3, 0.3)) > 1);
 
     let quads = frame(&mut core, 2.0, |ui| {
         ui.line(

@@ -3013,13 +3013,16 @@ void kui_line(KuiCtx *ctx, float x0, float y0, float x1, float y1, float width,
  * second mark, a second gap (repeat the pair for a plain dash) and the
  * offset into the pattern the stroke starts at - or NULL for a solid
  * stroke. The lengths are the ones SEEN, in logical px: every mark is
- * round-capped, so a mark no longer than the stroke is wide is a dot, and
- * {6, 4, 6, 4, 0} is 6 px of ink and 4 of nothing at any width (SVG's
- * stroke-dasharray measures the centre line: this is its mark - width,
- * gap + width). The pattern runs along the whole stroke, round corners and
- * along a curve; growing the offset moves the marks towards the first
- * point. No gap, a mark and gap under a physical pixel together, or more
- * than 16384 marks draws solid. On the wire a dashed stroke is one
+ * round-capped, so {6, 4, 6, 4, 0} is 6 px of ink and 4 of nothing at any
+ * width up to 6 (SVG's stroke-dasharray measures the centre line: this is
+ * its mark - width, gap + width), and a mark no longer than the stroke is
+ * wide is a dot as wide as the stroke, its gap that much shorter. A gap
+ * the dots overlap - a mark and its gap together no longer than the width
+ * - closes, and the marks either side of it are one. The pattern runs
+ * along the whole stroke, round corners and along a curve; growing the
+ * offset moves the marks towards the first point. No gap left, a mark and
+ * gap under a physical pixel together, or more than 16384 marks draws
+ * solid. On the wire a dashed stroke is one
  * KUI_QUAD_SEGMENT per mark per piece the mark lies on, so a renderer
  * that draws a stroke draws a dashed one; it is hit along its whole
  * length, gaps included. */

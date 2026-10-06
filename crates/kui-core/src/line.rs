@@ -87,6 +87,14 @@ impl Stroke {
 /// `on − width, off + width`.) The first mark's cap sits where a solid
 /// stroke's would, half the width before the first point.
 ///
+/// A dot is as wide as the stroke whatever its mark says, so where a
+/// mark and its gap together come to no more than the width the dots
+/// meet or overlap and the gap is not seen. Such a gap closes: the marks
+/// either side of it are one mark, and a pattern with no gap left draws
+/// solid (backlog RG118) — where `{2, 2}` at a width of 8 was 8 px dots
+/// every 4 px, a lumpy solid line at a quad a dot. Every gap that is seen
+/// is the length given.
+///
 /// The pattern runs along the arc length of the whole stroke, so it keeps
 /// its phase across the corners of a polyline and the pieces of a curve;
 /// on a `path` it restarts at every subpath, as SVG's does.
@@ -187,8 +195,9 @@ impl Dash {
 
     /// The pattern as centre-line lengths for a stroke `width` wide, or
     /// None for one that draws solid: a length that is not finite, or no
-    /// gap anywhere. Negative lengths are zero, and a pair that is zero
-    /// altogether is the other pair.
+    /// gap anywhere that the width leaves seen. Negative lengths are zero,
+    /// a pair that is zero altogether is the other pair, and a gap the
+    /// width closes joins the marks either side of it.
     #[inline]
     pub fn cut(&self, width: f32) -> Option<Cut> {
         // The solid stroke, which is nearly every stroke, is told by its
@@ -222,11 +231,27 @@ impl Dash {
             [mark, on + off - mark]
         };
         let ([m0, g0], [m1, g1]) = (centre(first), centre(second));
-        let lens = [m0, g0, m1, g1];
-        let period: f32 = lens.iter().sum();
+        let period = m0 + g0 + m1 + g1;
+        // A gap is seen as its centre line less the caps of the marks
+        // either side, half the width each; one that leaves nothing closes
+        // and its marks are one (RG118). The merged pair is written twice,
+        // so the walk is unchanged, and where the merged mark starts at the
+        // second mark the offset moves with it.
+        let (lens, from) = match (g0 > w, g1 > w) {
+            (true, true) => ([m0, g0, m1, g1], 0.0),
+            (false, true) => {
+                let m = m0 + g0 + m1;
+                ([m, g1, m, g1], 0.0)
+            }
+            (true, false) => {
+                let m = m1 + g1 + m0;
+                ([m, g0, m, g0], m0 + g0)
+            }
+            (false, false) => return None,
+        };
         Some(Cut {
             lens,
-            offset: self.offset.rem_euclid(period),
+            offset: (self.offset - from).rem_euclid(period),
         })
     }
 }
