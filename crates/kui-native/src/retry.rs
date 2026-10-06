@@ -21,6 +21,17 @@
 //! and when it says the window is uncovered, a frame is owed at once,
 //! since what the window shows is whatever it presented before it was
 //! covered.
+//!
+//! An animation is the other thing that asks while the surface skips,
+//! and it asks every turn of the loop: a skip returns at once, with no
+//! drawable to wait for and no vsync behind it, so an animating window
+//! on a platform that never says it is covered (Windows, Wayland), or
+//! whose acquires time out, built and dropped frames as fast as the loop
+//! went round — about 8,300 in a second and a half, the first time it
+//! was counted (backlog F103). So the animation's next frame after a skip
+//! waits out the same retry interval ([`Retry::animation_waits`]): at
+//! most one try a retry apart while the surface will not take them, and
+//! back at the display's rate with the first frame that lands.
 
 use std::time::{Duration, Instant};
 
@@ -71,10 +82,21 @@ impl Retry {
         self.presented
     }
 
-    /// A frame landed: nothing is owed.
+    /// A frame landed: nothing is owed, and an animation asks at the
+    /// display's rate again.
     pub(crate) fn presented(&mut self) {
         self.owed = None;
         self.presented = true;
+        self.last_skip = None;
+    }
+
+    /// Until when an animation's next frame waits, the surface having
+    /// skipped the last one a retry ago or less: `None` once it has
+    /// waited that long, or when the last frame landed. The loop wakes at
+    /// the instant returned and asks then (backlog F103).
+    pub(crate) fn animation_waits(&self, now: Instant) -> Option<Instant> {
+        let at = self.last_skip? + RETRY;
+        (now < at).then_some(at)
     }
 
     /// The surface skipped a frame: the next is owed a retry from now,
@@ -213,6 +235,40 @@ mod tests {
         assert!(asks(&mut r, back + RETRY), "asked for again");
         r.presented();
         assert_eq!(r.poll(back + RETRY * 2), (false, None));
+    }
+
+    /// F103: an animation asks for its next frame a retry after a skip,
+    /// not at once, however long the surface goes on skipping — and at
+    /// once again from the first frame that lands.
+    #[test]
+    fn an_animation_waits_a_retry_after_a_skip() {
+        let t = Instant::now();
+        let mut r = Retry::new(t);
+        r.presented();
+        assert_eq!(r.animation_waits(t), None, "presenting: no wait");
+        // Long past the tries: the surface never takes a frame, and an
+        // animation is what goes on asking.
+        let mut now = t;
+        let mut asked = 0;
+        while now < t + Duration::from_secs(3) {
+            match r.animation_waits(now) {
+                Some(at) => {
+                    assert!(at > now && at <= now + RETRY);
+                    now = at;
+                }
+                // A skip returns at once; the loop's next turn is tens of
+                // microseconds on.
+                None => {
+                    asked += 1;
+                    r.skipped(now);
+                    now += Duration::from_micros(50);
+                }
+            }
+        }
+        let most = (Duration::from_secs(3).as_millis() / RETRY.as_millis()) as u32 + 1;
+        assert!(asked <= most, "{asked} tries in 3 s, at most {most}");
+        r.presented();
+        assert_eq!(r.animation_waits(now), None, "landed: the display's rate");
     }
 
     /// Covered, a skip owes nothing; uncovered, a frame is owed at once,

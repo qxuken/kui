@@ -3068,9 +3068,15 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // brings that frame back at the next vsync, `overdue` below
             // is the wake if it does not, and asking again in between is
             // held again at once — the loop went round as fast as it
-            // could until the vsync came (backlog F103).
+            // could until the vsync came (backlog F103). Nor straight
+            // after a frame the surface skipped: that returned at once,
+            // with no vsync behind it, and the next is asked for a retry
+            // apart instead of on the loop's next turn (`mod retry`).
             if pane.animates_now() && !pane.pacer.holding() {
-                pane.redraw_for(FrameCause::OWED);
+                match pane.retry.animation_waits(now) {
+                    None => pane.redraw_for(FrameCause::OWED),
+                    Some(at) => deadline = Some(deadline.map_or(at, |d| d.min(at))),
+                }
             }
             // A frame held for a display that stopped firing is drawn
             // anyway once it has waited too long (`mod pacer`).
