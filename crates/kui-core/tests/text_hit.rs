@@ -384,3 +384,31 @@ fn one_text_at_two_widths_answers_at_each() {
     assert_eq!(rows(0.0, 100.0), [0, 1, 2]);
     assert_eq!(rows(160.0, 300.0), [0]);
 }
+
+#[test]
+fn a_measure_between_frames_leaves_a_drawn_text_its_rows() {
+    // `measure_text` at a width other than the one a node drew the same
+    // text at re-wrapped the run they share, so until the next frame
+    // wrapped it back, the node answered `caret_rect` and `text_hit` from
+    // the measured rows (backlog RG76).
+    let mut core = Core::new();
+    let w = cell(&mut core);
+    let text = "aaa bbb ccc";
+    let key = frame(&mut core, text, Some(20.0 * w + 0.5), 1.0);
+    let row_x = |r: kui_core::Rect| (((r.y - 20.0) / LH).round(), ((r.x - 10.0) / w).round());
+    assert_eq!(row_x(core.caret_rect(key, 8).unwrap()), (0.0, 8.0));
+    // "aaa ", "bbb ", "ccc" in six cells: the measure answers its own rows...
+    for _ in 0..2 {
+        let m = core.measure_text(text, &mono(), Some(6.0 * w + 0.5));
+        assert_eq!(m.lines, 3);
+        // ...and the node keeps its one row.
+        assert_eq!(row_x(core.caret_rect(key, 8).unwrap()), (0.0, 8.0));
+        assert_eq!(
+            core.text_hit(key, Vec2::new(10.0 + 9.2 * w, 25.0)),
+            Some(TextHit { byte: 9, line: 0 })
+        );
+    }
+    // Unwrapped, the measure is the node's own wrap, and answers as it.
+    let m = core.measure_text(text, &mono(), None);
+    assert_eq!((m.lines, (m.width / w).round()), (1, 11.0));
+}
