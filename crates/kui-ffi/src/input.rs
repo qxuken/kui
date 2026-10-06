@@ -153,6 +153,19 @@ pub extern "C" fn kui_input_drag_cancel(ptr: *mut KuiCtx) {
     push_input(ptr, InputEvent::DragCancel);
 }
 
+/// The OS asked the app to open these `count` documents (backlog F124):
+/// the host hears `{kind:"open", paths}` on the root, asked for or not;
+/// none emits nothing. A host driving its own window on macOS sends it
+/// from its app delegate's `application:openURLs:`; under `kui_run` the
+/// runner does.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_open(ptr: *mut KuiCtx, paths: *const KuiStr, count: usize) {
+    guard((), || {
+        let paths = paths_of(paths, count);
+        push_input(ptr, InputEvent::Open(paths));
+    });
+}
+
 fn edit_key_of(key: u32) -> Option<EditKey> {
     KUI_EDIT_KEYS.get(key as usize).map(|(_, k)| *k)
 }

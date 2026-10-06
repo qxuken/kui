@@ -2189,6 +2189,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "A file dialog's answer (backlog C51): what an Open, Save or folder dialog asked for with `requestFiles` / `request_files` / `kui_request_files` picked — the OS paths, as a `drop` carries them — or no paths when the user cancelled. `tag` is the dialog's own. It reaches whoever asked: the host, or the extension whose fill asked; one dialog is out at a time.",
     },
     EventDef {
+        kind: "open",
+        payload: "`{ kind: \"open\", paths: string[] }` on the root",
+        doc: "The OS asked the app to open documents (backlog F124): the Finder's Open With, a file dropped on the Dock icon, `open -a App file`, a double-click on a document of a type the app's `Info.plist` declares under `CFBundleDocumentTypes`. Delivered to the host on the root whether or not anything asked — unlike `files`, which answers an ask. `paths` are file-system paths as strings; a URL of a scheme the app registers is not one, and is not carried (room is left for a `urls` beside `paths`). The macOS runner sends it at launch — held until the main window has opened, since AppKit hands the documents over before it exists and puts none in the arguments — and while the app runs; a host driving its own window sends it as input (`openDocuments`, `kui_input_open`, `InputEvent::Open`). Windows and Linux pass documents in the process's arguments instead, and nothing sends it there.",
+    },
+    EventDef {
         kind: "layout",
         payload: "`{ kind: \"layout\", x, y, w, h, parent: { x, y, w, h }, scale, tag }`",
         doc: "The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. `scale` is physical px per logical px at the node — `w × scale` by `h × scale` is how many pixels to render for it before `updateImage` (the frame's scale today; where a zoom would compose in).",

@@ -21,6 +21,40 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+**What breaks.**
+
+- Rust: `InputEvent` gains `Open(Vec<String>)`, so an exhaustive `match`
+  on it needs an arm.
+
+C stays at ABI 25 (`kui_input_open` is a new function) and the Node wire
+at v21.
+
+### Added
+
+- **The documents the OS asks the app to open reach it** (backlog F124,
+  from kawoosh). The Finder's Open With, a file dropped on the Dock icon,
+  `open -a YourApp file`, a double-click on a document type the bundle's
+  `Info.plist` declares (`CFBundleDocumentTypes`): AppKit hands every one
+  to the application delegate's `application:openURLs:`, which winit's
+  delegate does not answer, so they went nowhere. The macOS runner adds
+  it to winit's delegate class once per process, and the app hears
+  `{kind:"open", paths}` on the root — file-system paths, one event per
+  request, asked for or not. A launch's documents, which AppKit sends
+  before any window exists and leaves out of the arguments, wait for the
+  main window and arrive on its first turn; while the app runs they
+  arrive at once. A delegate class that already answers documents (an
+  app's own override) is left alone. Headless and for a host with its
+  own window: `InputEvent::Open(paths)`, C `kui_input_open`, Node
+  `ctx.openDocuments(paths)` (`OpenMsg` in `CoreMsg`). Windows and Linux
+  hand documents over in the process's arguments, and nothing sends it
+  there.
+
+**What you can delete.** An `NSApplicationDelegate` method added or
+swizzled by hand onto winit's delegate to hear a Finder open, and the
+queue that held a launch's paths until a window existed to show them.
+
 ## 0.1.0-alpha.39 (2026-10-06)
 
 **What breaks.**

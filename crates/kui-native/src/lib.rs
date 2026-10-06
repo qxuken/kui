@@ -166,6 +166,9 @@ mod macos_key;
 /// The platform's own context menu, where there is one.
 #[cfg(target_os = "macos")]
 mod macos_menu;
+/// The documents the Finder, the Dock and `open -a` hand the app.
+#[cfg(target_os = "macos")]
+mod macos_open;
 /// The palette's and dictation's inserts, which winit's view drops.
 #[cfg(target_os = "macos")]
 mod macos_text_input;
@@ -838,6 +841,15 @@ impl DynShell<'_> {
         // And a file drag's position (ADR 0031), which winit's do not.
         #[cfg(target_os = "macos")]
         macos_drop::set_waker(Waker(event_loop.create_proxy()));
+        // And the documents the OS asks the app to open (backlog F124),
+        // which winit's application delegate does not answer: installed
+        // here, before `run_app` launches the app, since the launch-time
+        // ones come inside `finishLaunching`.
+        #[cfg(target_os = "macos")]
+        {
+            macos_open::set_waker(Waker(event_loop.create_proxy()));
+            macos_open::install();
+        }
         // And the installed fonts changing, which winit has no event for.
         system_fonts::watch(event_loop.create_proxy());
     }
@@ -919,8 +931,10 @@ fn input_completes(ev: &InputEvent) -> bool {
         // A drop is a release; a cancel ends the drag the same way.
         | InputEvent::DropFiles { .. }
         | InputEvent::DragCancel
-        // A dialog's answer is one moment, as a paste is.
-        | InputEvent::Files(_) => true,
+        // A dialog's answer is one moment, as a paste is, and so are the
+        // documents the OS hands over.
+        | InputEvent::Files(_)
+        | InputEvent::Open(_) => true,
         InputEvent::CursorMoved(_)
         | InputEvent::CursorLeft
         | InputEvent::Scroll(_)
@@ -1838,6 +1852,33 @@ impl DynShell<'_> {
                 self.dispatch(event_loop, i, ev);
             }
         }
+    }
+
+    /// The documents the OS asked the app to open since the last turn
+    /// (backlog F124), each list as one `InputEvent::Open` to the main
+    /// window's core. Before that window has opened — the launch-time
+    /// open, which AppKit sends inside `finishLaunching` — they stay
+    /// queued for the first turn after it has. Nothing sends them off
+    /// macOS: there the documents are in the process's arguments.
+    fn pump_open_documents(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "macos")]
+        {
+            if !macos_open::pending() || self.pane_of(WindowId::MAIN).is_none() {
+                return;
+            }
+            for paths in macos_open::take() {
+                // Looked up per list: a handler may close a window.
+                let Some(i) = self.pane_of(WindowId::MAIN) else {
+                    // Gone between two lists: the rest wait, as the
+                    // launch-time ones do, for a main window to hear them.
+                    macos_open::requeue(paths);
+                    continue;
+                };
+                self.dispatch(event_loop, i, InputEvent::Open(paths));
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = event_loop;
     }
 
     /// Hands one input to pane `i`'s core and does what followed from it:
@@ -2996,6 +3037,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         self.pump_menu_bar(event_loop);
         self.pump_text_input(event_loop);
         self.pump_file_drag(event_loop);
+        self.pump_open_documents(event_loop);
         self.settle_focus();
         self.apply_secure_input();
         self.dismiss_popups_if_deactivated();

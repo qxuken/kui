@@ -2440,6 +2440,18 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
         else kui_input_drop_files(ctx, paths, n, (float)s->b, (float)s->c);
     }
     else if (strcmp(s->kind, "dragcancel") == 0) kui_input_drag_cancel(ctx);
+    /* The OS asking the app to open `a` documents, spelled as the files
+     * above (backlog F124); none is an empty list. */
+    else if (strcmp(s->kind, "open") == 0) {
+        char names[8][16];
+        KuiStr paths[8];
+        size_t n = s->a > 8 ? 8 : (size_t)s->a;
+        for (size_t i = 0; i < n; i++) {
+            snprintf(names[i], sizeof names[i], "/drop/%zu.txt", i + 1);
+            paths[i] = (KuiStr){(const uint8_t *)names[i], strlen(names[i])};
+        }
+        kui_input_open(ctx, paths, n);
+    }
     else {
         fprintf(stderr, "conformance: unknown step '%s'\n", s->kind);
         exit(1);
@@ -2540,6 +2552,11 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             if (p) kui_value_as_str(p, &phase);
             const KuiValue *l = kui_value_get(ev.payload, KUI_STR("paths"));
             repf(events, " %.*s %zu", (int)phase.len, phase.ptr, l ? kui_value_len(l) : (size_t)0);
+        }
+        /* The documents the OS handed over, as a count (backlog F124). */
+        if (kind.len == 4 && memcmp(kind.ptr, "open", 4) == 0) {
+            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("paths"));
+            repf(events, " %zu", l ? kui_value_len(l) : (size_t)0);
         }
         /* A paste's markers ride the same way, each only when it is set
          * (backlog F84). */

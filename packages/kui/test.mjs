@@ -5311,6 +5311,10 @@ function driveScene(env, steps, build) {
       if (step[0] === 'dragfiles') ctx.dragFiles(paths, step[2], step[3]);
       else ctx.dropFiles(paths, step[2], step[3]);
     } else if (step[0] === 'dragcancel') ctx.dragCancel();
+    // The OS asking the app to open `n` documents, spelled as the files
+    // above (backlog F124).
+    else if (step[0] === 'open')
+      ctx.openDocuments(Array.from({ length: step[1] }, (_, i) => `/drop/${i + 1}.txt`));
     else throw new Error(`unknown conformance step ${step[0]}`);
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());
@@ -5441,6 +5445,8 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
       tag += ` ${p.phase} ${p.code} ${p.location}`;
     // A drop's phase and its path count ride the same way (ADR 0031).
     if (p?.kind === 'drop') tag += ` ${p.phase} ${p.paths.length}`;
+    // The documents the OS handed over, as a count (backlog F124).
+    if (p?.kind === 'open') tag += ` ${p.paths.length}`;
     // A paste's markers ride the same way, each only when set (backlog F84).
     if (p?.kind === 'text') for (const m of ['concealed', 'transient']) if (p[m] === true) tag += ` ${m}`;
     lines.push(`event ${p?.kind ?? '-'} ${tag}`);
@@ -6207,6 +6213,31 @@ test('a cancelled dialog answers with no paths, and a stray answer is dropped', 
   const evs = ctx.pollEvents().filter((e) => e.payload?.kind === 'files');
   assert.deepEqual(evs.map((e) => e.payload.paths), [[]]);
   assert.throws(() => ctx.requestFiles({ mode: 'sideways' }), /unknown dialog mode/);
+});
+
+// -- Documents the OS opens (backlog F124) ------------------------------------
+
+test('openDocuments reaches update unasked, and none is nothing', () => {
+  const seen = [];
+  const app = createApp(
+    {
+      init: {},
+      update: (model, msg) => {
+        seen.push(msg);
+        return model;
+      },
+      view: () => box_({ width: 'grow', height: 'grow' }, []),
+    },
+    { width: 200, height: 100, warnings: false },
+  );
+  app.render();
+  app.ctx.openDocuments(['/tmp/a.txt', '/tmp/b.md']);
+  app.step();
+  assert.deepEqual(seen.filter((m) => m?.kind === 'open'), [{ kind: 'open', paths: ['/tmp/a.txt', '/tmp/b.md'] }]);
+
+  const ctx = new Ctx();
+  ctx.openDocuments([]);
+  assert.deepEqual(ctx.pollEvents().filter((e) => e.payload?.kind === 'open'), []);
 });
 
 /** A `uniformList` app that records the range each frame built. */
@@ -7778,7 +7809,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
     'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
-    'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles',
+    'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles', 'openDocuments',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',
   ]);

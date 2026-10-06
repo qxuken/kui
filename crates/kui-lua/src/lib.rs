@@ -6900,6 +6900,42 @@ mod tests {
         assert_eq!(heard, "/tmp/notes.md|export");
     }
 
+    /// The documents the OS asked the app to open (backlog F124) are the
+    /// host's — on the root, with no ask — and a host that hands the event
+    /// on gives a script `{kind="open", paths={...}}`, a list of strings.
+    #[test]
+    fn a_host_hands_a_script_the_documents_the_os_opened() {
+        let mut ext = LuaExtension::from_source(
+            "open",
+            r#"
+                heard = nil
+                function view(env) return column {} end
+                function on_event(ev)
+                  if ev.kind == "open" then heard = #ev.paths .. "|" .. ev.paths[2] end
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        let evs = core.handle_input(InputEvent::Open(vec![
+            "/tmp/a.txt".into(),
+            "/tmp/b.md".into(),
+        ]));
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].origin, OriginId::HOST, "nobody asked: the host's");
+        assert_eq!(evs[0].key, kui_core::Key::ROOT);
+        for e in &evs {
+            ext.on_event(e);
+        }
+        let heard: String = ext.lua.globals().get("heard").unwrap();
+        assert_eq!(heard, "2|/tmp/b.md");
+        assert!(
+            core.handle_input(InputEvent::Open(Vec::new())).is_empty(),
+            "no documents is no event"
+        );
+    }
+
     /// The script is told what it got wrong, not handed a Lua error from
     /// inside the prelude.
     #[test]

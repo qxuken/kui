@@ -377,6 +377,25 @@ impl Core {
                     out.push(ev);
                 }
             }
+            // Documents the OS handed the app (backlog F124): nobody's ask,
+            // so the host's, on the root, as `system` and `fonts` are.
+            InputEvent::Open(paths) => {
+                if !paths.is_empty() {
+                    out.push(UiEvent {
+                        origin: OriginId::HOST,
+                        window: WindowId::MAIN,
+                        key: Key::ROOT,
+                        payload: Value::map([
+                            ("kind", Value::str("open")),
+                            (
+                                "paths",
+                                Value::List(paths.into_iter().map(Value::Str).collect()),
+                            ),
+                        ]),
+                        slot: None,
+                    });
+                }
+            }
             InputEvent::Commit(s) => {
                 // The paste's answer, when one was asked — a driver answers
                 // every ask, with an empty commit for an empty clipboard,

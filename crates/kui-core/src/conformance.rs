@@ -378,10 +378,14 @@ pub enum Step {
     DropFiles(u32, i32, i32),
     /// The files left the window (`InputEvent::DragCancel`).
     DragCancel,
+    /// The OS asking the app to open `n` documents (`InputEvent::Open`,
+    /// backlog F124), spelled as [`Step::DragFiles`]'s files are
+    /// ([`drop_paths`]). Zero is an empty list, which emits nothing.
+    Open(u32),
 }
 
-/// The paths a [`Step::DragFiles`] / [`Step::DropFiles`] with `n` files
-/// carries: `/drop/1.txt` … `/drop/n.txt`. Every adapter spells them so.
+/// The paths a [`Step::DragFiles`] / [`Step::DropFiles`] / [`Step::Open`]
+/// with `n` files carries: `/drop/1.txt` … `/drop/n.txt`. Every adapter spells them so.
 pub fn drop_paths(n: u32) -> Vec<String> {
     (1..=n).map(|k| format!("/drop/{k}.txt")).collect()
 }
@@ -460,6 +464,9 @@ impl Step {
                 let _ = writeln!(out, "step dropfiles {n} {x} {y}");
             }
             Step::DragCancel => out.push_str("step dragcancel\n"),
+            Step::Open(n) => {
+                let _ = writeln!(out, "step open {n}");
+            }
         }
     }
 
@@ -544,6 +551,7 @@ impl Step {
                 at: Vec2::new(x as f32, y as f32),
             },
             Step::DragCancel => InputEvent::DragCancel,
+            Step::Open(n) => InputEvent::Open(drop_paths(n)),
         })
     }
 }
@@ -3140,7 +3148,10 @@ pub const SCENES: &[Scene] = &[
               `leave` carries the paths of the `enter` it was prepared \
               at (one file), not the two the last move reported: it is \
               built once, so a zone the view stops declaring still gets \
-              it, and the paths cannot change within one OS drag.",
+              it, and the paths cannot change within one OS drag. Then \
+              the OS asks the app to open two documents (backlog F124), \
+              which the host hears on the root with no zone and no ask, \
+              and an empty list, which is nothing.",
         custom: &["float", "key"],
         elements: &["box"],
         build: build_drop,
@@ -3161,6 +3172,10 @@ pub const SCENES: &[Scene] = &[
             // Under the modal the first zone is no target.
             Step::DragFiles(1, 50, 50),
             Step::DragCancel,
+            // Documents the OS hands over: the host's, wherever the
+            // pointer is and whatever is modal.
+            Step::Open(2),
+            Step::Open(0),
         ],
         expect: Expect {
             // The two zones, the button, the modal.
@@ -3180,6 +3195,7 @@ pub const SCENES: &[Scene] = &[
                 "drop files leave 1",
                 "drop other enter 1",
                 "drop other drop 1",
+                "open - 2",
             ],
             announcements: &[],
             warnings: &[],
@@ -6182,6 +6198,15 @@ fn event_row(payload: &Value) -> (String, String) {
             .and_then(Value::as_list)
             .map_or(0, <[Value]>::len);
         let _ = write!(tag, " {phase} {n}");
+    }
+    // The documents the OS handed over ride the same way, as a count
+    // (`open - 2`, backlog F124).
+    if kind == "open" {
+        let n = payload
+            .get("paths")
+            .and_then(Value::as_list)
+            .map_or(0, <[Value]>::len);
+        let _ = write!(tag, " {n}");
     }
     // A paste's markers ride the same way (`text ed concealed transient`),
     // each only when it is set, as the payload carries them (backlog
