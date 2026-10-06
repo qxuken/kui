@@ -675,7 +675,10 @@ pub struct Owed {
     pub cycle: bool,
     /// An exit animation (a ghost) still departing.
     pub depart: bool,
-    /// A frame a view asked for: `request_frame`, or an `animate` row.
+    /// A frame a view asked for: `request_frame`, or an `animate` row —
+    /// or one the session's fonts ask for, moved under the text this
+    /// window shaped through another window (a new fallback list, a
+    /// rescan).
     pub requested: bool,
     /// A held drag scrolling its container.
     pub autoscroll: bool,
@@ -1315,10 +1318,28 @@ impl Core {
             transition,
             cycle,
             depart: self.depart.animating(),
-            requested: self.frame_requested || self.tree.any_animate,
+            requested: self.frame_requested || self.tree.any_animate || self.fonts_moved(),
             autoscroll: self.autoscrolling(),
             scroll: self.scroll.animating(),
         }
+    }
+
+    /// Whether the session's fonts moved under the text this window shaped
+    /// since its last frame began — a new fallback list, a rescan, a face of
+    /// a registered family come or gone, through whichever window of the
+    /// session — so the window owes a frame to shape it again (backlog
+    /// RG118). The window that made the change asks for its own frame;
+    /// this is how every other window hears, through the `animating` a
+    /// driver polls for each of its windows, with no list of the session's
+    /// windows to wake. A window that has not drawn has nothing to shape
+    /// again. `try_state`, since a driver may ask while the session is
+    /// borrowed, where it reads as nothing owed.
+    fn fonts_moved(&self) -> bool {
+        self.framed
+            && self
+                .session
+                .try_state()
+                .is_some_and(|sess| sess.weights_rev != self.weights_rev)
     }
 
     /// Asks the driver for one more frame right after this one. A view

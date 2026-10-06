@@ -192,8 +192,8 @@ impl Core {
     /// cache; fonts the app loaded itself (`add_font_data`,
     /// `load_font_file`, `load_fonts_dir`) are not touched. Every window
     /// of the session shapes its text again on its next frame, since
-    /// fallback can land on a new face anywhere; this window is asked for
-    /// that frame, and each window's next frame reports a `fonts` event to
+    /// fallback can land on a new face anywhere; every one of them owes
+    /// that frame (`animating`), and each window's next frame reports a `fonts` event to
     /// the host, for an app that keeps the font list in its model. A face
     /// whose file was replaced in place, under the same
     /// path, is not read again.
@@ -235,7 +235,9 @@ impl Core {
     ///
     /// Not a per-frame call for a list that changes: a new list builds
     /// the font system again over the same faces and every window of the
-    /// session shapes its text again. The same list twice is nothing.
+    /// session shapes its text again: each owes a frame (`animating`), so
+    /// a driver draws the windows the call was not made through as well
+    /// (backlog RG118). The same list twice is nothing.
     pub fn set_fallback_fonts(&mut self, fonts: &[crate::resources::FontId]) {
         {
             let sess = &mut *self.session.state();
