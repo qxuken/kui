@@ -170,7 +170,9 @@ date: 2026-09-11
    decision 5): always a float, sized to its bounding box inflated by one
    logical px for the antialiasing ramp, points in the parent's box space
    (`float="viewport"` for viewport space), no room taken in a row or
-   column; `slide`, `enter`, `exit` move it as a float. Like a line it
+   column; `slide`, `enter`, `exit` move it as a float — and, since
+   backlog F123, painted in the parent's layer at its place in the tree
+   as a line is, not in a layer of its own. Like a line it
    takes **no input** and has **no access row** (`polygon-ignores-input`
    for the same six keys, a `role` and `label` honoured if declared) —
    *superseded the same day by [ADR 0026](0026-hit-testing-by-shape.md):

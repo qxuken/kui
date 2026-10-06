@@ -59,7 +59,9 @@ pub enum NodeContent {
     Image(crate::resources::ImageId, crate::resources::ImageOpts),
     /// A stroke through a run of points: one segment quad per straight
     /// piece (see `crate::line`). The node is a float sized to the
-    /// stroke's bounding box, and its `bg` is the stroke colour.
+    /// stroke's bounding box, so it takes no room, and its `bg` is the
+    /// stroke colour. In its parent's box space it paints in the parent's
+    /// layer at its place in the tree ([`NodeContent::drawn_in_parent`]).
     Line(crate::line::LineId),
     /// A cell grid (see `crate::cells`): a terminal's screen as one node.
     Cells(crate::cells::CellsId),
@@ -79,7 +81,44 @@ pub enum NodeContent {
     Path(crate::path::PathId),
 }
 
+impl NodeContent {
+    /// Whether this is a shape the core floats for its own reasons — a
+    /// `line`, `polygon` or `path`, a float only so it takes no room in a
+    /// row or column (ADR 0010 decision 5). Such a node is its parent's
+    /// content as a child is: the parent's clip holds it (F78), and it
+    /// paints in the parent's layer at its place in the tree rather than
+    /// opening a layer of its own (F123) — a glyph drawn into a title bar
+    /// is not over a toast that opened before the bar did.
+    pub fn drawn_in_parent(self) -> bool {
+        matches!(self, Self::Line(_) | Self::Polygon(_) | Self::Path(_))
+    }
+}
+
 impl Tree {
+    /// Whether node `i` opens a float layer of its own (ADR 0023): a float
+    /// a view declared, or a stroke anchored to the viewport. A `line`,
+    /// `polygon` or `path` in its parent's box space does not — the core
+    /// made its float so it takes no room, and it paints where a child
+    /// would ([`NodeContent::drawn_in_parent`]). Reads the float's
+    /// anchor through [`FloatConfig::clipped_by_parent`], which the core
+    /// sets for every such shape, so the one rule serves the clip and the
+    /// layer.
+    ///
+    /// [`FloatConfig::clipped_by_parent`]: crate::spec::FloatConfig::clipped_by_parent
+    pub fn opens_layer(&self, i: usize) -> bool {
+        self.specs[i]
+            .layout
+            .float
+            .is_some_and(|f| !(f.clipped_by_parent() && self.content[i].drawn_in_parent()))
+    }
+
+    /// Whether node `i` is drawn in its parent's layer, as a child is,
+    /// although it floats: [`Tree::opens_layer`]'s complement for a node
+    /// that declares `float` at all.
+    pub fn floats_in_parent(&self, i: usize) -> bool {
+        self.specs[i].layout.float.is_some() && !self.opens_layer(i)
+    }
+
     /// One past the last node of `i`'s subtree. Preorder storage makes a
     /// subtree a contiguous index range ending at the next node that is a
     /// sibling of `i` or of one of its ancestors.

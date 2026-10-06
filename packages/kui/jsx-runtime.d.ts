@@ -900,7 +900,9 @@ export declare namespace JSX {
      *  Placed as a `line` is: always a float in its parent's box space
      *  (`float="viewport"` for viewport space), sized to its own bounding
      *  box two pixels out on each side, so it takes no room in a row or
-     *  column. `transition` eases the fill and, with `slide`, its position.
+     *  column, and painted in the parent's layer at its place in the tree
+     *  (backlog F123). `transition` eases the fill and, with `slide`, its
+     *  position.
      *  Hit by its outline under the fill rule
      *  (docs/adr/0026-hit-testing-by-shape.md): with `onClick`, `onDrag`,
      *  `onHover` or `hoverable`, a press inside hits it and one in its box

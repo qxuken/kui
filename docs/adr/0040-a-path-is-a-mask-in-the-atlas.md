@@ -105,7 +105,9 @@ date: 2026-10-04
    parent's box space, `float="viewport"` for viewport space, sized to its
    own bounding box inflated by one logical px, no room taken in a row or
    column; `slide`, `enter` and `exit` move and fade it as a float; a
-   declared `clip` holds it as it holds a polygon.
+   declared `clip` holds it as it holds a polygon; and, since backlog
+   F123, it paints in the parent's layer at its place in the tree as a
+   line and a polygon do, not in a layer of its own.
 2. **One wire form, and SVG's `d` parsed in the core.** On the wire a
    path is a flat `f32` list, an op code followed by its operands, every
    coordinate absolute and in the parent's box space: `M x y`, `L x y`,

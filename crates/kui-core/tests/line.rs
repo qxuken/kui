@@ -122,7 +122,7 @@ fn a_polyline_is_one_segment_per_piece_and_a_curve_is_flattened_in_the_core() {
 }
 
 #[test]
-fn a_line_takes_no_room_and_paints_over_its_siblings() {
+fn a_line_takes_no_room_and_paints_at_its_place_among_its_siblings() {
     let mut core = Core::new();
     let quads = frame(&mut core, 1.0, |ui| {
         ui.with(NodeSpec::column().gap(4.0), |ui| {
@@ -140,8 +140,16 @@ fn a_line_takes_no_room_and_paints_over_its_siblings() {
     assert_eq!(solids.len(), 2);
     // `b` sits right under `a` plus the gap: the line took no slot.
     assert_eq!(solids[1].rect.y, 24.0);
-    // Floats paint after in-flow content.
-    assert_eq!(quads.last().unwrap().kind, QuadKind::Segment);
+    // It floats for the room alone: it paints where a child between `a`
+    // and `b` would, over `a` and under `b`, in its parent's layer — not
+    // in a layer of its own after every in-flow quad (backlog F123; the
+    // layer half is in `tests/layers.rs`).
+    let kinds: Vec<QuadKind> = quads.iter().map(|q| q.kind).collect();
+    assert_eq!(
+        kinds,
+        [QuadKind::Solid, QuadKind::Segment, QuadKind::Solid],
+        "a, the line, b"
+    );
 }
 
 #[test]

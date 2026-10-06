@@ -136,6 +136,11 @@ test — is declined or deferred below, each with the reason.
    ignored. Because it is a float it paints in the float pass, on top of
    its parent's in-flow content and in tree order among the other floats:
    a connector meant to sit under two cards is declared before them.
+   *Amended 2026-10-06 (backlog F123):* it paints in its parent's layer
+   at its place in the tree — over the parent's box and the siblings
+   before it, under those after — and opens no layer of its own; the
+   connector under two cards is still declared before them. See the
+   amendment at the end.
    `slide`, `enter` and `exit` offsets move it as they move any float.
    *Amended 2026-09-22 (backlog F78):* it is clipped as a child of its
    parent is — by the parent's own box when the parent clips or
@@ -403,7 +408,17 @@ for a stroke that escapes its parent.
 Paint order does not change. A clipped float is still its own layer, drawn
 above its in-flow siblings in the float pass and hit in the same order
 ([ADR 0023](0023-layers-stack-in-the-order-they-open.md)). Only the clip
-comes from the parent. The corpus's `clip-float` scene pins it in every
+comes from the parent. *Amended 2026-10-06 (backlog F123):* that holds
+for a float a view declared with the bit. A `line`, `polygon` or `path`
+in its parent's box space, whose float the core made, is not a layer at
+all: it paints in its parent's layer at its place in the tree, as a child
+that takes no room — `Tree::opens_layer` is the one reading, for the live
+pass and the ghost pass. Under ADR 0023's stack, where a layer is above
+every layer that opened before it, a stroke's own layer put a key cap
+drawn into a title bar over a toast that had been open since the window's
+first frame; a stroke that is its parent's content stacks with the
+parent. One anchored `float="viewport"` escapes and keeps a layer of its
+own. The corpus's `clip-float` scene pins it in every
 binding: two nodes on a clipping canvas are panned half past its top edge,
 one clipped and one not. A press over the toolbar where the clipped node's
 cut half would be reaches the toolbar, and the same press on the other

@@ -42,7 +42,10 @@ because the removal is judged whole rather than half-animated, and the
 `<line from={[x, y]} to={[x, y]} width color/>` is one round-capped stroke,
 `<line points={[[x, y], …]} curve/>` a polyline or a smooth curve through
 the points; a line is always a float in its parent's box space, sized to its
-own bounding box, so it takes no room in a row or column. With `onClick`,
+own bounding box, so it takes no room in a row or column — and it paints
+where a child declared there would, in its parent's layer, over the siblings
+before it and under those after (a connector meant to sit under two cards is
+declared before them; one meant to sit over them, after). With `onClick`,
 `onDrag` or `hoverable` it is hit by its stroke, at least 4 px wide
 ([ADR 0026](adr/0026-hit-testing-by-shape.md)). Budget its quads: one per segment, and a curve is flattened
 in the core at one piece per 6 logical px of chord, at most 32 per span — so
