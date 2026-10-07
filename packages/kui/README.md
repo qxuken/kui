@@ -24,9 +24,10 @@ absent. Ranges do not pin a prerelease — `^0.1.0-alpha.8` and `~0.1.0-alpha.8`
 both admit every later alpha of the same `0.1.0` — so an app that wants the
 version it tested writes that version exactly and commits its lockfile.
 
-The tarball bundles the native addon for linux-x64, linux-arm64, darwin-arm64,
-darwin-x64 and win32-x64 under `prebuilds/`; `native.cjs` picks the one matching
-`process.platform`-`process.arch`. On any other platform build it from the
+The tarball bundles the native addon for linux-x64, linux-arm64, darwin-arm64
+and win32-x64 under `prebuilds/`; `native.cjs` picks the one matching
+`process.platform`-`process.arch`. On any other platform — an Intel Mac
+among them, since 0.1.0-alpha.41 — build it from the
 repo (`cargo build -p kui-node --release`) and set `KUI_NODE_LIB` to the
 resulting library.
 

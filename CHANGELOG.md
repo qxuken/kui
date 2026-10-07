@@ -41,6 +41,9 @@ was the first bare bump to break an app in five releases).
   line with it.
 - Rust: `schema::PropsOut` gains `ime_off` (under Added, F125), so a
   struct literal of it needs the field or `..Default::default()`.
+- npm: `@qxuken/kui` bundles no darwin-x64 prebuild. On an Intel Mac,
+  build the addon (`cargo build -p kui-node --release`) and point
+  `KUI_NODE_LIB` at it; the Rust crates are unchanged there.
 
 C stays at ABI 25 (`kui_set_ime_off` / `kui_ime_off_get` are new
 functions) and the Node wire at v21 (a root prop, no frame version).
@@ -52,6 +55,16 @@ dot, a fallback list that `Mono` text never asked, a grid's own glyphs
 treated as a stranger's, and a tab measured from where its chunk began
 instead of where the line did. Each moves pixels an app may have written
 to, so each is listed.
+
+### Changed
+
+- **Intel Macs lose their Node prebuild.** The package ships the addon
+  for linux-x64, linux-arm64, darwin-arm64 and win32-x64; the release
+  workflow's darwin-x64 leg and `release-local.nu`'s are gone. On an
+  Intel Mac `require('@qxuken/kui')` fails with the loader's not-found
+  error, which now says the prebuild was dropped and how to build one.
+  `kui-native`, `kui-ffi` and the rest still build and run there; only
+  the bundled `.node` is gone.
 
 ### Added
 

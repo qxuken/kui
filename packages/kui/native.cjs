@@ -107,10 +107,16 @@ if (native) {
       'KUI_NODE_LIB at a working library.',
   );
 } else {
+  // An Intel Mac had a prebuild until alpha.40, so it is told that, not
+  // left to guess whether the install went wrong.
+  const dropped =
+    process.platform === 'darwin' && process.arch === 'x64'
+      ? ' (Intel Macs had one until 0.1.0-alpha.40 and build it from source since)'
+      : '';
   throw new Error(
-    `kui native library not found for ${process.platform}-${process.arch} - ` +
-      'this package ships prebuilds for linux-x64, linux-arm64, darwin-arm64, ' +
-      'darwin-x64 and win32-x64; elsewhere run `cargo build -p kui-node --release` in the kui ' +
+    `kui native library not found for ${process.platform}-${process.arch}${dropped} - ` +
+      'this package ships prebuilds for linux-x64, linux-arm64, darwin-arm64 ' +
+      'and win32-x64; elsewhere run `cargo build -p kui-node --release` in the kui ' +
       'repo or point KUI_NODE_LIB at a built library.\nLooked in:\n  ' +
       looked.join('\n  '),
   );

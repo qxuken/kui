@@ -16,7 +16,7 @@ Then point the package at the result (`target/release/libkui_node.so`, `.dylib` 
 KUI_NODE_LIB=/path/to/kui/target/release/libkui_node.so node app.mjs
 ```
 
-The npm package picks a bundled prebuild for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 by itself; `KUI_NODE_LIB` is for every other platform and for running against a local build.
+The npm package picks a bundled prebuild for linux-x64, linux-arm64, darwin-arm64 and win32-x64 by itself; `KUI_NODE_LIB` is for every other platform, Intel Macs among them, and for running against a local build.
 
 ## Documentation
 

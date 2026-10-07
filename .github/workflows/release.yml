@@ -1,7 +1,7 @@
 # GitHub Actions: the public release. Pushing a `v*` tag runs
 #
-#   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, darwin-x64, win32-x64) ──┐
-#           └──────────────────────────────────────────────────────────────────────┴── publish
+#   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, win32-x64) ──┐
+#           └──────────────────────────────────────────────────────────┴── publish
 #
 # and `publish` puts the crates on crates.io and stages the npm package on
 # npmjs. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
@@ -20,7 +20,9 @@
 # the two Linux legs use cargo-zigbuild only to pin the glibc floor at 2.28,
 # so the addon runs on distributions older than the runner's own Ubuntu.
 # The arm64 leg runs on an arm64 runner (free for a public repository),
-# which is what keeps multiarch ALSA headers out of the picture.
+# which is what keeps multiarch ALSA headers out of the picture. There is
+# no darwin-x64 leg: Intel Macs lost their prebuild after alpha.40 (the
+# CHANGELOG says why), and build the addon from source.
 #
 # Secrets:
 #   * CRATES_IO_TOKEN: a crates.io API token with publish-update on the
@@ -114,9 +116,6 @@ jobs:
           - os: macos-15
             target: aarch64-apple-darwin
             prebuild: darwin-arm64
-          - os: macos-15
-            target: x86_64-apple-darwin
-            prebuild: darwin-x64
           - os: windows-2025
             target: x86_64-pc-windows-msvc
             prebuild: win32-x64
@@ -253,7 +252,7 @@ jobs:
         run: |
           set -eu
           ls -lR packages/kui/prebuilds
-          for p in linux-x64 linux-arm64 darwin-arm64 darwin-x64 win32-x64; do
+          for p in linux-x64 linux-arm64 darwin-arm64 win32-x64; do
             test -f "packages/kui/prebuilds/$p/kui_node.node" || { echo "missing prebuild $p" >&2; exit 1; }
           done
           cd packages/kui

@@ -33,14 +33,14 @@
 # exists".
 #
 # What differs from CI: the macOS prebuilds link against this Mac's SDK
-# (targeting macOS 11.0 arm64 and 10.12 x64, as CI's do) rather than the
+# (targeting macOS 11.0 arm64, as CI's does) rather than the
 # pinned 15.5 SDK, and cargo-xwin uses brew's LLVM rather than Debian's.
 
 const HOST = "https://drydock9.qxuken.dev"
 const NPM_REGISTRY = "https://drydock9.qxuken.dev/api/packages/qxuken/npm/"
 const CRATES = [kui-derive kui-core kui-wgpu kui-native kui-lua kui-ffi]
 const REGISTRIES = [crates-io drydock9]
-const PREBUILDS = [darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64]
+const PREBUILDS = [darwin-arm64 linux-arm64 linux-x64 win32-x64]
 
 # Runs an external command and fails the script when it fails.
 def --wrapped must [cmd: string, ...args] {
@@ -122,10 +122,10 @@ def main [
     must docker run --rm --platform $arch -v $"($scratch)/src.tar:/src.tar:ro" -v $"($scratch)/linux-build.sh:/build.sh:ro" -v $"($scratch)/out:/out" node:24-bookworm bash /build.sh
 
     step "macOS and Windows prebuilds"
-    must rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc
+    must rustup target add aarch64-apple-darwin x86_64-pc-windows-msvc
     # Each into its own target dir, never target/release — the windowed
     # smoke round leaves a smoke-featured addon there.
-    for t in [[target prebuild]; [aarch64-apple-darwin darwin-arm64] [x86_64-apple-darwin darwin-x64]] {
+    for t in [[target prebuild]; [aarch64-apple-darwin darwin-arm64]] {
         must cargo build -p kui-node --release --target $t.target
         must $nu.current-exe scripts/collect-prebuild.nu $t.target $t.prebuild
     }

@@ -4,7 +4,7 @@ Tagged commits publish the library crates (`kui-derive`, `kui-core`,
 `kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to crates.io and to the
 self-hosted Forgejo's cargo registry, and
 [`packages/kui`](../packages/kui) to npmjs as `@qxuken/kui`, with the Node addon
-prebuilt for linux-x64, linux-arm64, darwin-arm64, darwin-x64 and win32-x64 bundled
+prebuilt for linux-x64, linux-arm64, darwin-arm64 and win32-x64 bundled
 under `prebuilds/` (`native.cjs` picks the one matching the running Node;
 `KUI_NODE_LIB` still overrides it, and an in-repo `cargo build` still wins
 for development). A Rust project needs nothing but the dependency:
