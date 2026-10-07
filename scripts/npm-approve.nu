@@ -5,7 +5,7 @@
 # with 2FA can approve it, which is this script:
 #
 #   nu scripts/npm-approve.nu                  the version packages/kui/package.json names
-#   nu scripts/npm-approve.nu 0.1.0-alpha.35   that version
+#   nu scripts/npm-approve.nu 0.1.0-alpha.35   that version (or @qxuken/kui@0.1.0-alpha.35)
 #   nu scripts/npm-approve.nu --otp 123456     the 2FA code up front; otherwise npm asks
 #   nu scripts/npm-approve.nu --dry-run        say what would happen, change nothing
 #   nu scripts/npm-approve.nu --no-latest      approve, leave the dist-tags alone
@@ -106,7 +106,12 @@ def main [
     --no-latest        # approve only; do not touch the dist-tags
 ] {
     cd ($env.FILE_PWD | path dirname)
-    let ver = if $version == null { open packages/kui/package.json | get version } else { $version }
+    # A spec pasted off npm (`@qxuken/kui@0.1.0-alpha.42`) names the
+    # version too; stage list holds bare versions, so the package is cut off.
+    let ver = if $version == null { open packages/kui/package.json | get version } else { $version | str replace $"($PACKAGE)@" "" }
+    if ($ver | str contains "@") {
+        error make {msg: $"($version) is not a version of ($PACKAGE); pass a bare version, like 0.1.0-alpha.42"}
+    }
     if (^npm stage --help | complete).exit_code != 0 {
         error make {msg: "this npm has no `npm stage` (11.15 or newer; `npm install -g npm@11`)"}
     }

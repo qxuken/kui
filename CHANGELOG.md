@@ -21,6 +21,20 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.43 (unreleased)
+
+### Fixed
+
+- **`scripts/npm-approve.nu` takes the version as npm spells it.**
+  Approving alpha.42 as `nu scripts/npm-approve.nu
+  @qxuken/kui@0.1.0-alpha.42` looked for a stage whose version was the
+  whole spec, found none, and said "nothing staged for
+  @qxuken/kui@@qxuken/kui@0.1.0-alpha.42" while the stage sat there. The
+  package prefix is cut off now, and a spec naming another package is
+  refused by name. A release script, so nothing an app sees.
+
+**What you can delete.** Nothing.
+
 ## 0.1.0-alpha.42 (2026-10-07)
 
 **What breaks.**
