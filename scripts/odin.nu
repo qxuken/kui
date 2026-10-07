@@ -149,7 +149,7 @@ def build-plugin [src: string, release: bool] {
     ^(odin) build $src -file -build-mode:shared -define:KUI_PLUGIN=true $"-out:($lib)" ...$link ...$opt
     # The contract's seven, exported under their C names.
     if $nu.os-info.name != "windows" {
-        let exported = nm -gU $lib | lines | parse -r '\s_?(?<sym>kui_ext_\w+)$' | get sym
+        let exported = nm -g --defined-only $lib | lines | parse -r '\s_?(?<sym>kui_ext_\w+)$' | get sym
         let want = [kui_ext_abi kui_ext_name kui_ext_init kui_ext_slots kui_ext_view kui_ext_on_event kui_ext_free]
         let missing = $want | where {|w| $w not-in $exported }
         if not ($missing | is-empty) {

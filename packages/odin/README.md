@@ -178,4 +178,11 @@ checked: `nu scripts/odin.nu test`.
 - Windows: `KuiStr` as Odin's `string` is checked on arm64 macOS only.
   The layout asserts hold everywhere, but how a two-word struct is passed
   by value is each platform's C ABI.
-- CI, an ADR, and a book page.
+- An ADR and a book page.
+
+## CI
+
+`check` in `.forgejo/workflows/ci.yml` installs the Odin release pinned as
+`ODIN_VERSION`, plus clang, after the C round. It then runs `gen --check`,
+`check`, `test` and `slots`, the last reusing the C panel, the C host and
+the Rust host the round before it built.

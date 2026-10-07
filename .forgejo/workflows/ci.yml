@@ -136,6 +136,10 @@ env:
   # The Nushell the scripts are written against (scripts/*.nu), pinned like
   # every other tool here.
   NU_VERSION: "0.116.0"
+  # The Odin the binding (packages/odin) is generated and checked with: an
+  # odin-lang release tag, whose Linux build is one self-contained binary
+  # beside its core library.
+  ODIN_VERSION: "dev-2026-09"
 
 jobs:
   # Answers one question - does this commit still need checking? - and is
@@ -353,6 +357,43 @@ jobs:
         run: |
           cargo run -p kui-devtools --bin cbuild -- --run
           ./target/debug/conformance target/conformance.txt
+
+      # The Odin binding (packages/odin, experimental): kui/c and the typed
+      # layer are generated from include/kui.h (through clang's AST) and the
+      # prop schema (the schema-dump example), so a header or schema change
+      # that was not regenerated fails `gen --check` here, the way a stale
+      # .d.ts fails the Node step below. `check` vets the generator, both
+      # packages and every example under -strict-style; `test` runs each
+      # example's --headless drive - the counter, the header walk
+      # (tools/surface.odin calls every door), and the Odin host loading the
+      # Odin panel. `slots` is the extension contract across languages: the
+      # Odin panel in the C host and in the Rust one (c_panel), the C panel
+      # in the Odin host, each a click and a reply. It reuses what the C
+      # round above built (cbuild's panel and host, the Rust host example),
+      # which is why it sits after it. clang is what Odin links with on
+      # Linux, and what parses the header.
+      - name: Install Odin
+        run: |
+          set -eu
+          apt-get install -y --no-install-recommends clang
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64) arch=arm64 ;;
+            *) echo "no Odin release for $(uname -m)"; exit 1 ;;
+          esac
+          mkdir -p /usr/local/odin
+          curl -fL --retry 3 \
+            "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-${arch}-${ODIN_VERSION}.tar.gz" \
+            | tar -xz -C /usr/local/odin --strip-components=1
+          echo /usr/local/odin >> "$GITHUB_PATH"
+          /usr/local/odin/odin version
+
+      - name: Odin binding (generated, vetted, driven, and across languages)
+        run: |
+          nu scripts/odin.nu gen --check
+          nu scripts/odin.nu check
+          nu scripts/odin.nu test
+          nu scripts/odin.nu slots
 
       # npm test covers both the encoder tests and the Node adapter over
       # the corpus, which needs KUI_CONFORMANCE to run (it skips without

@@ -50,7 +50,9 @@ was the first bare bump to break an app in five releases).
   hosts and the C panel in the Odin host.
 
   Run it with `nu scripts/odin.nu gen | test | slots | run counter`. It is
-  not published and not in CI yet.
+  not published. CI's `check` installs a pinned Odin release (`ODIN_VERSION`)
+  and runs `gen --check`, `check`, `test` and `slots`, so a header or schema
+  change that was not regenerated goes red there.
 - `examples/rust/tools/schema-dump.rs`: the prop schema (props,
   composites, elements, events, the verb table, the name lists) as JSON,
   for a binding generated outside Rust.
