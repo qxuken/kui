@@ -40,8 +40,17 @@ was the first bare bump to break an app in five releases).
   not call gets a generated door, so the binding covers kui.h whole: 219
   generated, 51 by hand, 2 skipped with their reason.
   `examples/odin/tools/surface.odin` is `surface.c` through it, and calls
-  every door. Run it with `nu scripts/odin.nu gen | test | run counter`.
-  It is not published and not in CI yet.
+  every door.
+
+  It covers extensions both ways. An Odin host loads a plugin with
+  `ctx_add_extension` and `slot`. An Odin plugin is a shared library whose
+  seven `kui_ext_*` exports are one line each over `extension.odin`.
+  Built with `KUI_PLUGIN`, it links no kui and loads into any host:
+  `nu scripts/odin.nu slots` drives the Odin panel in the C and Rust
+  hosts and the C panel in the Odin host.
+
+  Run it with `nu scripts/odin.nu gen | test | slots | run counter`. It is
+  not published and not in CI yet.
 - `examples/rust/tools/schema-dump.rs`: the prop schema (props,
   composites, elements, events, the verb table, the name lists) as JSON,
   for a binding generated outside Rust.

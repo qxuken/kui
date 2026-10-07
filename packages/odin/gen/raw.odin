@@ -30,7 +30,25 @@ package kui_c
 // which -extra-linker-flags:"-L<dir>" points at a build. Override with
 // -define:KUI_LIB=<name or relative path>.
 KUI_LIB :: #config(KUI_LIB, "system:kui_ffi")
-foreign import lib { KUI_LIB }
+
+// A plugin (-define:KUI_PLUGIN=true, built -build-mode:shared) links no kui
+// on macOS or Linux: every kui_* stays undefined and resolves at load from
+// the host that loads it, as kui.h's "Extension ABI" has it - so one plugin
+// loads into a Rust, C, Odin or Node host alike. macOS's linker needs
+// telling that undefined is meant: build with
+// -extra-linker-flags:"-Wl,-undefined,dynamic_lookup" (an attribute here
+// cannot carry it: Odin joins it to the next flag with no space). On
+// Windows a DLL may not leave an import unresolved, and a plugin imports
+// from kui_ffi.dll as any program does (kui.h's shape 1).
+KUI_PLUGIN :: #config(KUI_PLUGIN, false)
+
+when KUI_PLUGIN && ODIN_OS == .Darwin {
+	foreign import lib "system:System"
+} else when KUI_PLUGIN && ODIN_OS != .Windows {
+	foreign import lib "system:c"
+} else {
+	foreign import lib { KUI_LIB }
+}
 
 Str :: string
 `)

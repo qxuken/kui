@@ -288,10 +288,13 @@ run by [`scripts/odin.nu`](../scripts/odin.nu) against this checkout's
 | Example | Shows | Headless |
 |---|---|---|
 | [`apps/counter.odin`](odin/apps/counter.odin) | The counter from Odin, the same shape as the other four: state, a typed message union, a context menu as a modal float | ✓ `--headless`, the Rosetta drive, and a typed message's round trip |
+| [`features/slots/panel.odin`](odin/features/slots/panel.odin) | Odin as the *extension*: the same panel as the C and Lua ones, a shared library linked against nothing, loaded by the Odin, C and Rust hosts alike | through its hosts |
+| [`features/slots/host.odin`](odin/features/slots/host.odin) | Odin as the host of an extension, the twin of `c/features/slots/host.c`: loads the Odin panel, or the C one, under `todos` and declares its slot | ✓ `--headless`, and `nu scripts/odin.nu slots` for every language pair |
 | [`tools/surface.odin`](odin/tools/surface.odin) | `tools/surface.c` through the typed layer, plus what the C binding walks in its other programs: every door of package `kui` called and checked | ✓ |
 
 ```bash
 nu scripts/odin.nu run counter      # the window
 nu scripts/odin.nu test             # every example's --headless self-check
+nu scripts/odin.nu slots            # the Odin panel in the C and Rust hosts, the C panel in the Odin one
 nu scripts/odin.nu gen              # regenerate the binding from kui.h and the schema
 ```

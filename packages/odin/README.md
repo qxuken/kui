@@ -53,11 +53,39 @@ nu scripts/odin.nu test                     # every example's --headless self-ch
 nu scripts/odin.nu check                    # regenerate, then vet everything
 nu scripts/odin.nu gen                      # regenerate from kui.h and the schema
 nu scripts/odin.nu gen --check              # fail if a rerun would change anything
+nu scripts/odin.nu slots                    # the extension contract across Odin, C and Rust
 ```
 
 `odin` comes from PATH, or set `ODIN`. The examples link `kui_ffi` as a
 system library with `-L` and an rpath into `target/<profile>`; outside this
 repository, pass your own `-extra-linker-flags`, or `-define:KUI_LIB=<name>`.
+
+## Extensions
+
+An Odin program can load plugins, and an Odin plugin loads into any host:
+Rust, C, Node, Lua or Odin. A host loads one with `ctx_add_extension`
+on a context of its own and declares where it draws with `slot`. A
+plugin is a shared library exporting the seven `kui_ext_*` symbols of
+kui.h's contract, each a line over `extension.odin`'s helpers:
+
+```odin
+@(export) kui_ext_abi      :: proc "c" () -> u32 { return kui.ABI_VERSION }
+@(export) kui_ext_view     :: proc "c" (user: rawptr, ui: ^kui.Ui) { kui.ext_view(user, ui, view) }
+@(export) kui_ext_on_event :: proc "c" (user: rawptr, ev: ^kui.Ext_Event) { kui.ext_on_event(user, ev, on_event) }
+// ...and name, slots, init, free: examples/odin/features/slots/panel.odin
+```
+
+`view` and `on_event` have `run`'s shapes. `slot_params` reads what the
+host passed, and `reply(ev, msg)` answers it. Build with
+`-build-mode:shared -define:KUI_PLUGIN=true`, plus
+`-extra-linker-flags:"-Wl,-undefined,dynamic_lookup"` on macOS. The plugin
+then links no kui at all, and every `kui_*` resolves from whichever host
+loads it, as `panel.c` does.
+
+`nu scripts/odin.nu slots` runs the contract across languages, each pair's
+`--headless` drive: a click on the panel, routed to it and not the host,
+and its reply back with its origin and slot. The pairs are the Odin host
+with the Odin and C panels, and the C and Rust hosts with the Odin panel.
 
 ## Where each part comes from
 
@@ -109,8 +137,8 @@ generated from or checked against):
 `devtools_tab_open`, which closes only what it opened),
 messages (`message.odin`), the run loop with typed state (`run.odin`),
 the types with helpers and the twins that cross by a cast
-(`types.odin`), and the one door whose shape the header says only in
-prose (`doors.odin`).
+(`types.odin`), the plugin side (`extension.odin`), and the one door whose
+shape the header says only in prose (`doors.odin`).
 
 The split is mechanical: **a C function a hand-written file calls is
 hand-written; every other one gets a generated door**, unless `SKIP` gives
@@ -147,8 +175,6 @@ checked: `nu scripts/odin.nu test`.
 
 ## Not here yet
 
-- The extension side (`kui_ext_*`, an Odin plugin a host loads). The
-  generator skips those seven, since a plugin defines them.
 - Windows: `KuiStr` as Odin's `string` is checked on arm64 macOS only.
   The layout asserts hold everywhere, but how a two-word struct is passed
   by value is each platform's C ABI.
