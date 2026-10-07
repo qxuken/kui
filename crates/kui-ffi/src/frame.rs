@@ -1128,6 +1128,10 @@ pub extern "C" fn kui_frame_finish(ptr: *mut KuiCtx) {
             // context so the `Ui` can borrow it and the list at once.
             let core: &mut Core = unsafe { &mut *c.core };
             kui_core::Ui::with_filler(core, &mut c.extensions).finish();
+            // A `kui_draw_data` while the frame built read the list
+            // `kui_frame_begin` emptied, and handed out no arrays; the
+            // finished frame's are transcribed afresh.
+            c.draws_current = false;
             // Raised by the frame itself, not by input: the resize a
             // changed viewport produced at kui_frame_begin, and hover
             // enter/leave from this frame changing what sits under a

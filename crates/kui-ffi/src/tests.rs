@@ -3321,6 +3321,30 @@ mod borrows {
         kui_ctx_free(ctx);
     }
 
+    /// A `kui_draw_data` while the frame builds reads the list
+    /// `kui_frame_begin` emptied; the one after `kui_frame_finish` reads
+    /// what the frame drew, its fragment draws with it, where it handed
+    /// out the empty arrays the first call cached.
+    #[test]
+    fn draw_data_mid_build_leaves_the_finished_frame_its_fragments() {
+        let ctx = kui_ctx_new();
+        kui_frame_begin(ctx, 200.0, 200.0, 1.0);
+        let mut draw = KuiDrawData::default();
+        assert!(kui_draw_data(ctx, &mut draw));
+        assert_eq!(draw.fragment_count, 0);
+        kui_root(ctx, &zspec());
+        let mut s = zspec();
+        s.bg = 0xff0000ff;
+        let xy = [[0.0f32, 0.0], [50.0, 0.0], [25.0, 40.0]];
+        let null = std::ptr::null_mut();
+        kui_polygon(ctx, none(), xy.as_ptr().cast(), 3, &s, null, null, null);
+        kui_frame_finish(ctx);
+        assert!(kui_draw_data(ctx, &mut draw));
+        assert!(draw.fragment_count >= 1, "a polygon is a fragment draw");
+        assert!(!draw.fragments.is_null());
+        kui_ctx_free(ctx);
+    }
+
     /// `kui_access_runs` leaves the strings `kui_access_tree` handed out
     /// alone; it replaced the whole tree they live in.
     #[test]

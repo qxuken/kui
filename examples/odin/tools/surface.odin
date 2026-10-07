@@ -656,6 +656,14 @@ surface :: proc() -> bool {
 		check(x_ok && x == 1.5 && on_ok && on, "and its float and bool")
 		check(kui.is_null(kui.get(m, "nil")), "and its explicit null")
 		check(kui.get(m, "missing") == nil, "a missing key is nil")
+		// A kind is the derive's snake_case: a run of capitals is a word.
+		HTTPGet :: struct {}
+		OpenURLNow :: struct {}
+		Tab_New :: struct {}
+		for pair in ([][2]any{{HTTPGet{}, "http_get"}, {OpenURLNow{}, "open_url_now"}, {Tab_New{}, "tab_new"}}) {
+			kind, kind_ok := kui.as_string(kui.get(keep(&vals, pair[0]), "kind"))
+			check(kind_ok && kind == pair[1].(string), fmt.tprintf("a kind is %s", pair[1]))
+		}
 		// The same map through a struct, which encode does lower.
 		Fields :: struct {
 			n:   int,
@@ -1203,7 +1211,7 @@ Rest :: struct {
 rest_view :: proc(r: ^Rest, ui: ^kui.Ui) {
 	kui.root(ui, {width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true})
 	kui.line(ui, 10, 10, 90, 70, 2, 0x7f9cf5ff)
-	kui.polyline(ui, "elbow", {{0, 0}, {40, 20}, {80, 0}}, 3, 0xd8863bff, false, dash = {6, 3, 6, 3, 0})
+	kui.polyline(ui, "elbow", {{0, 0}, {40, 20}, {80, 0}}, 3, 0xd8863bff, false, dash = [5]f32{6, 3, 6, 3, 0})
 	kui.polygon(ui, "tri", {{0, 30}, {15, 0}, {30, 30}}, {width = kui.px(30), height = kui.px(30), bg = 0x3b82f6ff})
 	kui.path(ui, "ring", r.ring, .Evenodd, 0, 0, 0, spec = {width = kui.px(80), height = kui.px(80), bg = 0xffd000ff})
 	kui.path_d(ui, "wedge", "M60 60 L100 60 A40 40 0 0 1 60 100 Z", .Nonzero, 0, 0, 0, spec = {width = kui.px(100), height = kui.px(100), bg = 0x73d98cff})
@@ -1242,6 +1250,30 @@ rest :: proc() {
 	said := kui.take_announcements(ui)
 	check(len(said) == 1 && said[0].text == "Saved" && said[0].live == .Assertive, "announce, and take_announcements drains it")
 	check(len(kui.take_announcements(ui)) == 0, "once")
+
+	// A drain past 64: the strings handed out are the door's until its
+	// next call, and a drain that asked in chunks of 64 called it again
+	// and freed the first chunk's; the announcements past 64 were dropped.
+	// 300 duplicate keys fill the core's pending warnings (256), every
+	// message whole; 70 announcements are all kept.
+	{
+		kui.frame_begin(ui, 320, 240, 1)
+		kui.root(ui, {})
+		for i in 0 ..< 300 {
+			key := fmt.tprintf("dup%d", i)
+			for _ in 0 ..< 2 do if kui.box(ui, {key = key}) {}
+		}
+		kui.frame_finish(ui)
+		dups, whole := 0, 0
+		for w in kui.take_warnings(ui) do if w.code == "duplicate-key" {
+			dups += 1
+			if strings.has_prefix(w.message, "two nodes share this key") do whole += 1
+		}
+		check(dups > 64 && whole == dups, "take_warnings past a chunk keeps every message")
+		for i in 0 ..< 70 do kui.announce(ui, fmt.tprintf("said %d", i), .Polite)
+		many := kui.take_announcements(ui)
+		check(len(many) == 70 && many[0].text == "said 0" && many[69].text == "said 69", "take_announcements keeps all 70")
+	}
 
 	// Resources the drawing elements take: an image whose pixels change
 	// under its id, two fragments, a path parsed once.
@@ -1294,6 +1326,8 @@ rest :: proc() {
 		kui.frame_finish(ui)
 		cmd, ok := kui.take_window_command(ui)
 		check(ok && cmd.kind == .Open && cmd.config.kind == .Popup, "the popup opens")
+		// activates unsaid is KUI_WINDOW_POPUP_INIT's no, where it was a yes.
+		check(!(cmd.config.activates.? or_else true), "a popup does not activate unless it says so")
 		for _ in kui.poll_event(ui) {}
 		kui.window_dismissed(ui, cmd.window, .Escape)
 		heard := false

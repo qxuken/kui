@@ -3322,7 +3322,9 @@ bool kui_activate_menu_item(KuiCtx *ctx, size_t index);
  * core neither offers nor asks. */
 void kui_set_lookup_available(KuiCtx *ctx, bool on);
 /* Drains one queued menu action (see KuiMenuAction); false when there are
- * none. Drain to empty after handling input, the way window commands are. */
+ * none, and false with the action left queued when out is NULL or its size
+ * is too small. Drain to empty after handling input, the way window
+ * commands are. */
 bool kui_take_menu_action(KuiCtx *ctx, KuiMenuAction *out);
 
 /* File dialogs: ask for the platform's Open, Save or folder

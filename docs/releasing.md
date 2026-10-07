@@ -83,7 +83,8 @@ host the repository lives on:
   rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs granular access
   token for the `@qxuken` scope with "Read and write (stage only)").
 - **Forgejo**, [ci.yml](../.forgejo/workflows/ci.yml): `check` in full (the
-  C round, the Node parity tests, the scene corpus, the book), then
+  C round, the Odin binding, the Node parity tests, the scene corpus, the
+  book), then
   `publish`, which waits for crates.io to list the version (the Forgejo
   copies name crates.io for their `kui-*` dependencies, so their verify
   builds cannot run before it does; it gives up after two hours, and a

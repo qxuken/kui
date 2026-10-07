@@ -1358,7 +1358,7 @@ window_config_to_c :: proc(v: Window_Config, scratch: ^Scratch) -> (out: c.Windo
 	out.kind = u32(v.kind)
 	out.width = v.width
 	out.height = v.height
-	out.activates = 1 if (v.activates.? or_else true) else 0
+	out.activates = 1 if (v.activates.? or_else v.kind != .Popup) else 0
 	out.anchor_x = v.anchor_x
 	out.anchor_y = v.anchor_y
 	out.anchor_w = v.anchor_w
@@ -2721,6 +2721,7 @@ font_remove :: proc(ui: ^Ui, id: Font) {
 // Registers RGBA pixels and mints an id for `<image src>`.
 // Rust: SharedResources::add_image.
 image_add :: proc(ui: ^Ui, w: u32, h: u32, rgba: []u8) -> Image {
+	assert(rgba == nil || len(rgba) >= int(w) * int(h) * 4, "image_add: rgba holds fewer bytes than int(w) * int(h) * 4")
 	return Image(c.image_add(ui, w, h, raw_data(rgba)))
 }
 
@@ -2733,6 +2734,7 @@ image_remove :: proc(ui: ^Ui, id: Image) {
 // Replaces the pixels behind a live id, keeping the id (ADR 0025).
 // Rust: Core::update_image.
 image_update :: proc(ui: ^Ui, id: Image, w: u32, h: u32, rgba: []u8) {
+	assert(rgba == nil || len(rgba) >= int(w) * int(h) * 4, "image_update: rgba holds fewer bytes than int(w) * int(h) * 4")
 	c.image_update(ui, u64(id), w, h, raw_data(rgba))
 }
 
@@ -2823,7 +2825,7 @@ audio :: proc(ui: ^Ui, label: string, spec: Audio, tag: any = nil) -> u64 {
 // Rust: Core::take_audio_commands.
 take_audio_commands :: proc(ui: ^Ui) -> (out: []Audio_Command) {
 	all := make([dynamic]c.AudioCommand, context.temp_allocator)
-	chunk: [64]c.AudioCommand
+	chunk := make([]c.AudioCommand, 1024, context.temp_allocator)
 	for {
 		got := int(c.take_audio_commands(ui, raw_data(chunk[:]), len(chunk)))
 		append(&all, ..chunk[:min(got, len(chunk))])
@@ -2938,12 +2940,13 @@ line :: proc(ui: ^Ui, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Col
 }
 
 // kui_polyline (kui.h).
-polyline :: proc(ui: ^Ui, label: string, xy: [][2]f32, width: f32, color: Color, curve: bool, dash: []f32 = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
+polyline :: proc(ui: ^Ui, label: string, xy: [][2]f32, width: f32, color: Color, curve: bool, dash: Maybe([5]f32) = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
 	scratch: Scratch
 	defer scratch_free(&scratch)
+	dash_v, dash_ok := dash.?
 	spec_c: c.Spec
 	spec_to_c(spec, &spec_c, &scratch)
-	c.polyline(ui, label, ([^]f32)(raw_data(xy)), uint(len(xy)), width, color, curve, raw_data(dash), &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
+	c.polyline(ui, label, ([^]f32)(raw_data(xy)), uint(len(xy)), width, color, curve, raw_data(dash_v[:]) if dash_ok else nil, &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
 }
 
 // kui_polygon (kui.h).
@@ -2956,12 +2959,14 @@ polygon :: proc(ui: ^Ui, label: string, xy: [][2]f32, spec: Spec = {}, on_click:
 }
 
 // kui_path (kui.h).
-path :: proc(ui: ^Ui, label: string, ops: []f32, fill_rule: Fill_Rule, width: f32, color: Color, rotate: f32, pivot: []f32 = nil, dash: []f32 = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
+path :: proc(ui: ^Ui, label: string, ops: []f32, fill_rule: Fill_Rule, width: f32, color: Color, rotate: f32, pivot: Maybe([2]f32) = nil, dash: Maybe([5]f32) = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
 	scratch: Scratch
 	defer scratch_free(&scratch)
+	pivot_v, pivot_ok := pivot.?
+	dash_v, dash_ok := dash.?
 	spec_c: c.Spec
 	spec_to_c(spec, &spec_c, &scratch)
-	c.path(ui, label, ([^]f32)(raw_data(ops)), uint(len(ops)), u32(fill_rule), width, color, rotate, raw_data(pivot), raw_data(dash), &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
+	c.path(ui, label, ([^]f32)(raw_data(ops)), uint(len(ops)), u32(fill_rule), width, color, rotate, raw_data(pivot_v[:]) if pivot_ok else nil, raw_data(dash_v[:]) if dash_ok else nil, &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
 }
 
 // SVG path data to the flat op form a `path` draws (ADR 0040): one parser, so
@@ -2976,12 +2981,14 @@ path_parse :: proc(d: string) -> (out: []f32) {
 }
 
 // kui_path_d (kui.h).
-path_d :: proc(ui: ^Ui, label: string, d: string, fill_rule: Fill_Rule, width: f32, color: Color, rotate: f32, pivot: []f32 = nil, dash: []f32 = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
+path_d :: proc(ui: ^Ui, label: string, d: string, fill_rule: Fill_Rule, width: f32, color: Color, rotate: f32, pivot: Maybe([2]f32) = nil, dash: Maybe([5]f32) = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
 	scratch: Scratch
 	defer scratch_free(&scratch)
+	pivot_v, pivot_ok := pivot.?
+	dash_v, dash_ok := dash.?
 	spec_c: c.Spec
 	spec_to_c(spec, &spec_c, &scratch)
-	c.path_d(ui, label, d, u32(fill_rule), width, color, rotate, raw_data(pivot), raw_data(dash), &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
+	c.path_d(ui, label, d, u32(fill_rule), width, color, rotate, raw_data(pivot_v[:]) if pivot_ok else nil, raw_data(dash_v[:]) if dash_ok else nil, &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
 }
 
 // kui_cells (kui.h).
@@ -3335,9 +3342,13 @@ ime_rect :: proc(ui: ^Ui) -> (out: Caret_Rect, ok: bool) #optional_ok {
 // Rust: Core::take_warnings.
 take_warnings :: proc(ui: ^Ui) -> (out: []Warning) {
 	all := make([dynamic]c.Warning, context.temp_allocator)
-	chunk: [64]c.Warning
+	chunk := make([]c.Warning, 1024, context.temp_allocator)
 	for {
 		got := int(c.take_warnings(ui, raw_data(chunk[:]), len(chunk)))
+		for &x in chunk[:min(got, len(chunk))] {
+			x.code = kept(x.code)
+			x.message = kept(x.message)
+		}
 		append(&all, ..chunk[:min(got, len(chunk))])
 		if got < len(chunk) do break
 	}
@@ -3510,9 +3521,12 @@ announce :: proc(ui: ^Ui, text: string, live: Live) {
 // Rust: Core::take_announcements.
 take_announcements :: proc(ui: ^Ui) -> (out: []Announcement) {
 	all := make([dynamic]c.Announcement, context.temp_allocator)
-	chunk: [64]c.Announcement
+	chunk := make([]c.Announcement, 1024, context.temp_allocator)
 	for {
 		got := int(c.take_announcements(ui, raw_data(chunk[:]), len(chunk)))
+		for &x in chunk[:min(got, len(chunk))] {
+			x.text = kept(x.text)
+		}
 		append(&all, ..chunk[:min(got, len(chunk))])
 		if got < len(chunk) do break
 	}
@@ -3625,6 +3639,7 @@ draw_data :: proc(ui: ^Ui) -> (out: Draw_Data, ok: bool) #optional_ok {
 // `.desktop` file's) have no window icon (backlog F86).
 // Rust: Launcher::icon.
 set_icon :: proc(rgba: []u8, width: u32, height: u32, resource: u32) -> bool {
+	assert(rgba == nil || len(rgba) >= int(width) * int(height) * 4, "set_icon: rgba holds fewer bytes than int(width) * int(height) * 4")
 	return c.set_icon(raw_data(rgba), width, height, resource)
 }
 

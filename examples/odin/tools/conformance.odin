@@ -764,10 +764,10 @@ scene_path :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		}
 		// The curve's stroke is dashed: 8 px marks, 4 px gaps, 3 px in.
 		dashes := [5]f32{8, 4, 8, 4, 3}
-		kui.path_d(ui, "", "M110 90 C130 70 150 110 190 90", .Nonzero, 2, 0x9ad9a0ff, 0, nil, dashes[:])
+		kui.path_d(ui, "", "M110 90 C130 70 150 110 190 90", .Nonzero, 2, 0x9ad9a0ff, 0, nil, dashes)
 		kui.path_d(ui, "", "M20 10 L50 10 L35 40 Z", .Nonzero, 1.5, 0xffffffff, 0, nil, nil, {bg = 0xe07a8aff, opacity = 0.5})
 		pivot := [2]f32{40, 107}
-		kui.path_d(ui, "", "M30 104 H50 V110 H30 Z", .Nonzero, 0, 0, 0.125, pivot[:], nil, {bg = 0x7fd6f5ff})
+		kui.path_d(ui, "", "M30 104 H50 V110 H30 Z", .Nonzero, 0, 0, 0.125, pivot, nil, {bg = 0x7fd6f5ff})
 		kui.path_d(ui, "bad", "M10 10 L20", .Nonzero, 0, 0, 0, nil, nil, {bg = 0xffffffff})
 	}
 }
@@ -1010,7 +1010,7 @@ scene_lines :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		// A dash-dot round a corner, 3 px into its pattern (backlog V2).
 		corner := [3][2]f32{{150, 70}, {190, 70}, {190, 110}}
 		dash_dot := [5]f32{10, 4, 2, 4, 3}
-		kui.polyline(ui, "", corner[:], 2, 0xe07a8aff, false, dash_dot[:])
+		kui.polyline(ui, "", corner[:], 2, 0xe07a8aff, false, dash_dot)
 		if kui.box(ui, {width = kui.px(40), height = kui.px(20), bg = 0x202030ff}) {}
 	}
 }

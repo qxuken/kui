@@ -264,7 +264,8 @@ pub extern "C" fn kui_close_menu(ptr: *mut KuiCtx) -> bool {
 /// as typing; a sink hears it as `{kind:"text"}`).
 ///
 /// Writes one action into `out` and returns true; false when the queue is
-/// empty. `text` is borrowed until the next call on this context.
+/// empty, and false with the action left queued when `out` is NULL or its
+/// `size` too small. `text` is borrowed until the next call on this context.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction) -> bool {
     guard(false, || {

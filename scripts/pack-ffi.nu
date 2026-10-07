@@ -22,8 +22,10 @@
 #   kui-ffi-<version>-<platform>.tar.gz, and SHA256SUMS over every tarball there
 #
 # Where each is built: the machine's own platform natively with cargo, and
-# the rest in a Docker image this script builds once (pinned below), the
-# same tools the release workflow uses for the Node prebuilds:
+# the rest in a Docker image this script builds once (pinned below):
+# cargo-zigbuild, as the release workflow builds the Linux Node prebuilds,
+# and cargo-xwin, which the release workflow no longer uses (it builds
+# Windows on a Windows runner):
 #
 #   linux-x64, linux-arm64   cargo-zigbuild against glibc 2.28, the floor
 #                            the npm prebuilds have; ALSA (the audio backend
@@ -52,7 +54,8 @@
 const ROOT = path self | path dirname | path dirname
 const OUT = $ROOT | path join target pack
 
-# Pinned like the release workflow's (.github/workflows/release.yml).
+# The first two pinned like the release workflow's
+# (.github/workflows/release.yml); cargo-xwin only here.
 const CARGO_ZIGBUILD_VERSION = "0.23.3"
 const ZIGLANG_VERSION = "0.16.0"
 const CARGO_XWIN_VERSION = "0.23.1"

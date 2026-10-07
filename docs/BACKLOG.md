@@ -163,7 +163,10 @@ archive; and RG139 from the regression and smoke round after RG127 (what
 it left: Node integers that wrap, errors that name nothing, a payload's
 depth, a teardown callback's re-entry, a grid's unbounded size — RG129–
 RG138, its other ten, were built the day they were filed and are in the
-archive). Everything else that has been filed has
+archive); and RG145 from the alpha.42 pre-tag pass (what it left: the
+`pack-ffi.nu` Docker Windows leg, RG135's offsets beside the run, the
+docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
+they were filed and are in the archive). Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2435,6 +2438,79 @@ says it is expandable or expanded — every AccessKit app on Linux.
   without overflowing aborts. **Wants:** a bound, and a warning past it —
   which bound is the decision.
 
+## From the alpha.42 pre-tag pass (2026-10-07)
+
+The pass before the alpha.42 tag, on the macOS machine: the mechanical
+round (fmt, clippy, 1856 Rust tests in 139 suites, the book, the C round
+and the 57 scenes, the Odin binding's gen/check/test/slots, Node 215 of
+215 with the corpus required, gen with no diff, the headless round), the
+windowed smoke with Node's (124 windows), the AX audit (106 of 106), the
+frame bench guard against alpha.41 (green, −1.2 to −0.3% on the guarded
+rows; the cell grid rows flat, RG126's warm one −0.4% this time), and a
+dead-key probe of RG127 on macOS, which the Windows and Linux round could
+not run: twelve sequences typed into the `edit` example through
+`CGEventPostToPid` and read back through AX — `⌥e e` is `é`, `⌥e space`
+`´`, `⌥e z` `´z`, a chord nothing — all as AppKit composes them. Four
+read-only reviewers over the diff since alpha.41 (the Odin binding; the C
+doors and `pack-ffi.nu`; the runner's keys, the access bridge, the text
+floor and Node; the docs), each claim probed.
+
+Five entries, RG140–RG144, **built 2026-10-07**, the day they were
+filed, and in the archive: a `<select>` option or a menu bar row cut
+through an emoji failing the Node frame, which RG138's repair missed
+(RG140); `kui_draw_data` while a frame built leaving the finished frame
+without its fragment draws, a regression of RG131 (RG141); the Odin
+drains freeing the strings they returned (RG142); a popup that
+activated, slices for fixed shapes and an acronym's kind in Odin
+(RG143); and a cell grid's infinite line height (RG144). Read sound:
+RG127 on macOS (winit's text there is the logical key's whenever Alt is
+not held, so a press types what it did), RG129 on macOS (a static text
+is one AXValue, no AXDescription, nothing read twice), RG130 (only
+`accesskit_windows` sends Expand and Collapse), RG136's floor on every
+shaping buffer. The docs audit's corrections went into the changelog,
+the README, `examples/README.md`, `pack-ffi.nu` and kui.h the same day.
+RG145 is what the pass left.
+
+### `.` RG145 — What the alpha.42 pre-tag pass left
+
+- **`pack-ffi.nu`'s Docker Windows leg has not run**, and three things
+  read wrong in it. On a Linux host with rootful Docker the container
+  copies the import libraries into `imports/` as root, and the user's
+  `rm -rf` of the staging directory then fails before the tarball is
+  written, and again at the next run's start. With `--no-runner` on a
+  fresh registry volume the `cp` of `windows_x86_64_msvc-<v>/lib/*.lib`
+  matches nothing — only the runner's dependencies download that crate —
+  and fails where the native leg's `glob` tolerates it. And every checkout
+  shares the `kui-pack-target` volume at `/src`, so a pack from one
+  worktree can find another's newer build fresh and ship its library
+  beside this one's `kui.h`. **Wants:** `--user`, a tolerant copy, a
+  volume per checkout — and a run of the leg. Smaller: `SHA256SUMS`
+  lists older versions' tarballs, a `--no-runner` pack overwrites a full
+  one of the same name, and bsdtar's xattrs warn under GNU tar.
+- **RG135 left the offsets beside the run.** `KuiAccessNode.caret`,
+  `selection_start` and `selection_end` still carry a custom editor's
+  byte inside a character; only the run's `focus` and `anchor` are
+  floored to its start. The kui-native bridge reads those, so nothing
+  draws wrong; a host that slices `value` at `caret` panics in Rust or
+  Odin.
+- **The docs guard has gaps** (`crates/kui-core/tests/docs.rs`): a
+  heading marked `` `x` `` (T1, T4, E1, E2 in the archive) is never
+  checked for uniqueness; a howto citation without the word "backlog"
+  before it, or of an id that exists nowhere, passes; and the index's
+  anchors into the archive are not checked — nine are broken today (DX6,
+  DX9, DX10, DX15, DX22, F115, RG62, RG72, RG109), each dropping an
+  underscore, all broken at alpha.41 too.
+- **Odin, latent or docs.** `check_events` matches a payload's fields by
+  a normalised name and the decoder by the exact one, so a camelCase key
+  would pass generation and decode as zero (every payload is snake_case
+  today); `kui/c` declares a context pointer followed by a `size_t` as
+  `[^]Ctx` (`count_param`), the same ABI but not the C type it claims to
+  keep; `doors.odin` promises `image_pixels`'s bytes until the image
+  changes, where kui.h promises them until the next call; and a headless
+  host that drives `frame` itself is never told to `free_all` the temp
+  allocator each frame, which only `run` and the extension entry points
+  do.
+
 ## After alpha.40
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -3897,3 +3973,15 @@ move.
 - `.` **RG137** — [`measureText` inside a `devtoolsTab` function child broke the frame](backlog/closed-2026-09.md#-rg137--measuretext-inside-a-devtoolstab-function-child-broke-the-frame--done-2026-10-07) — done (2026-10-07)
 
 - `.` **RG138** — [A Node message did not come back as it was sent, and `dir: null` threw](backlog/closed-2026-09.md#-rg138--a-node-message-did-not-come-back-as-it-was-sent-and-dir-null-threw--done-2026-10-07) — done (2026-10-07)
+
+**From the alpha.42 pre-tag pass (2026-10-07)** — RG140–RG144, filed and built the same day
+
+- `.` **RG140** — [A `<select>` option or a `menuBar` row cut through an emoji failed the Node frame](backlog/closed-2026-09.md#-rg140--a-select-option-or-a-menubar-row-cut-through-an-emoji-failed-the-node-frame--done-2026-10-07) — done (2026-10-07)
+
+- `!` **RG141** — [`kui_draw_data` while a frame built left the finished frame without its fragment and texture draws](backlog/closed-2026-09.md#-rg141--kui_draw_data-while-a-frame-built-left-the-finished-frame-without-its-fragment-and-texture-draws--done-2026-10-07) — done (2026-10-07)
+
+- `!` **RG142** — [The Odin binding's drains freed the strings they returned, and dropped past 64](backlog/closed-2026-09.md#-rg142--the-odin-bindings-drains-freed-the-strings-they-returned-and-dropped-past-64--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG143** — [Three places the Odin binding meant something kui.h and the derive do not](backlog/closed-2026-09.md#-rg143--three-places-the-odin-binding-meant-something-kuih-and-the-derive-do-not--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG144** — [An infinite line height on a cell grid put its rows at the layout's limit](backlog/closed-2026-09.md#-rg144--an-infinite-line-height-on-a-cell-grid-put-its-rows-at-the-layouts-limit--done-2026-10-07) — done (2026-10-07)

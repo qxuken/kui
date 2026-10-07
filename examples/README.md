@@ -287,7 +287,7 @@ run by [`scripts/odin.nu`](../scripts/odin.nu) against this checkout's
 
 | Example | Shows | Headless |
 |---|---|---|
-| [`apps/counter.odin`](odin/apps/counter.odin) | The counter from Odin, the same shape as the other four: state, a typed message union, a context menu as a modal float | ✓ `--headless`, the Rosetta drive, and a typed message's round trip |
+| [`apps/counter.odin`](odin/apps/counter.odin) | The counter from Odin, the same shape as the other three: state, a typed message union, a context menu as a modal float | ✓ `--headless`, the Rosetta drive, and a typed message's round trip |
 | [`features/slots/panel.odin`](odin/features/slots/panel.odin) | Odin as the *extension*: the same panel as the C and Lua ones, a shared library linked against nothing, loaded by the Odin, C and Rust hosts alike | through its hosts |
 | [`features/slots/host.odin`](odin/features/slots/host.odin) | Odin as the host of an extension, the twin of `c/features/slots/host.c`: loads the Odin panel, or the C one, under `todos` and declares its slot | ✓ `--headless`, and `nu scripts/odin.nu slots` for every language pair |
 | [`tools/conformance.odin`](odin/tools/conformance.odin) | `tools/conformance.c` through the typed layer: every scene of the corpus rebuilt through package `kui`'s `Spec` and doors, its report diffed byte for byte against the reference | ✓ against `KUI_CONFORMANCE`, or a reference `odin.nu test` makes |

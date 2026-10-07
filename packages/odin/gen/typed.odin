@@ -641,7 +641,9 @@ mirror_fields :: proc(g: ^Gen, c_name: string) -> (out: [dynamic]M_Field) {
 			g.used[fmt.tprintf("field_default.%s", fd[0])] = true
 		}
 		if fdefault != "" {
-			if fdefault == "true" || fdefault == "false" {
+			// A flag's default is true, false, or a condition on the struct's
+			// other fields (`v.kind != .Popup`), when the INIT macros differ.
+			if fdefault == "true" || fdefault == "false" || strings.has_prefix(fdefault, "v.") {
 				append(
 					&out,
 					M_Field {
@@ -907,13 +909,28 @@ emit_door :: proc(g: ^Gen, f: ^Function) {
 				collect = fmt.tprintf("%s = make([]%s, n, context.temp_allocator)\n\tfor x, k in buf[:n] do %s[k] = %s", n, elem_odin, n, conv)
 			}
 			if strings.has_prefix(raw_name(f.name), "take_") {
+				// A drain whose rest wait (warnings) is asked again until a
+				// chunk comes back short; one that drops the rest
+				// (announcements, audio commands: "size it generously",
+				// kui.h) gets what a chunk holds, so the chunk is generous.
+				// A string in what a drain hands out is borrowed until the
+				// door's next call, and the next chunk is one: each chunk's
+				// are kept before it is asked for.
+				keep := ""
+				if r := record(g.m, bare(elem)); r != nil {
+					for fl in r.fields do if bare(fl.type) == "KuiStr" {
+						keep = fmt.tprintf("%s\n\t\t\tx.%s = kept(x.%s)", keep, ident(fl.name), ident(fl.name))
+					}
+				}
+				if keep != "" do keep = fmt.tprintf("\n\t\tfor &x in chunk[:min(got, len(chunk))] {{%s\n\t\t}}", keep)
 				array_code = fmt.tprintf(
-					"all := make([dynamic]%s, context.temp_allocator)\n\tchunk: [64]%s\n\tfor {{\n\t\tgot := int(c.%s(%s%sraw_data(chunk[:]), len(chunk)))\n\t\tappend(&all, ..chunk[:min(got, len(chunk))])\n\t\tif got < len(chunk) do break\n\t}}\n\tbuf := all[:]\n\tn := len(buf)\n\t%s",
+					"all := make([dynamic]%s, context.temp_allocator)\n\tchunk := make([]%s, 1024, context.temp_allocator)\n\tfor {{\n\t\tgot := int(c.%s(%s%sraw_data(chunk[:]), len(chunk)))%s\n\t\tappend(&all, ..chunk[:min(got, len(chunk))])\n\t\tif got < len(chunk) do break\n\t}}\n\tbuf := all[:]\n\tn := len(buf)\n\t%s",
 					elem_c,
 					elem_c,
 					raw_name(f.name),
 					before,
 					sep,
+					keep,
 					collect,
 				)
 			} else {
@@ -948,12 +965,31 @@ emit_door :: proc(g: ^Gen, f: ^Function) {
 			} else {
 				append(&args, fmt.tprintf("to_value(%s)", n))
 			}
-		case bt == "uint8_t *" || bt == "float *" && is_const_pointer(t):
-			// A float array with no count is a fixed shape the call may go
-			// without (a pivot, a dash): optional. Bytes are the data itself.
-			et := "u8" if bt == "uint8_t *" else "f32"
-			append(&params, D_Param{decl = fmt.tprintf("%s: []%s", n, et), defaultable = "nil" if et == "f32" else ""})
+		case bt == "uint8_t *":
+			// Bytes are the data itself, as many as the size beside them says
+			// (BYTE_LENGTHS).
+			want := ""
+			for bl in BYTE_LENGTHS do if bl[0] == fmt.tprintf("%s.%s", f.name, p.name) {
+				want = bl[1]
+				g.used[fmt.tprintf("byte_lengths.%s", bl[0])] = true
+			}
+			if want == "" do fail("%s: byte array %s has no BYTE_LENGTHS row", f.name, p.name)
+			append(&params, D_Param{decl = fmt.tprintf("%s: []u8", n)})
+			append(&pre, fmt.tprintf("assert(%s == nil || len(%s) >= %s, \"%s: %s holds fewer bytes than %s\")", n, n, want, raw_name(f.name), n, want))
 			append(&args, fmt.tprintf("raw_data(%s)", n))
+		case bt == "float *" && is_const_pointer(t):
+			// A float array with no count is a fixed shape the call may go
+			// without (a pivot, a dash): a fixed array, optional
+			// (FIXED_FLOATS).
+			size := ""
+			for ff in FIXED_FLOATS do if ff[0] == fmt.tprintf("%s.%s", f.name, p.name) {
+				size = ff[1]
+				g.used[fmt.tprintf("fixed_floats.%s", ff[0])] = true
+			}
+			if size == "" do fail("%s: float array %s has no count and no FIXED_FLOATS row", f.name, p.name)
+			append(&params, D_Param{decl = fmt.tprintf("%s: Maybe([%s]f32)", n, size), defaultable = "nil"})
+			append(&pre, fmt.tprintf("%s_v, %s_ok := %s.?", n, n, n))
+			append(&args, fmt.tprintf("raw_data(%s_v[:]) if %s_ok else nil", n, n))
 		case is_const_pointer(t) && strings.has_prefix(pointee(t), "Kui"):
 			mr := mirror_of(g, pointee(t))
 			// The node's spec and a text's style are optional; another struct is
@@ -1352,6 +1388,8 @@ check_stale :: proc(g: ^Gen) {
 	for t in FIELD_DEFAULTS do if !g.used[fmt.tprintf("field_default.%s", t[0])] do append(&stale, fmt.tprintf("FIELD_DEFAULTS %s", t[0]))
 	for t in SLICE_COUNTS do if !g.used[fmt.tprintf("slice_count.%s", t[0])] do append(&stale, fmt.tprintf("SLICE_COUNTS %s", t[0]))
 	for t in POINTS do if !g.used[fmt.tprintf("points.%s", t)] do append(&stale, fmt.tprintf("POINTS %s", t))
+	for t in FIXED_FLOATS do if !g.used[fmt.tprintf("fixed_floats.%s", t[0])] do append(&stale, fmt.tprintf("FIXED_FLOATS %s", t[0]))
+	for t in BYTE_LENGTHS do if !g.used[fmt.tprintf("byte_lengths.%s", t[0])] do append(&stale, fmt.tprintf("BYTE_LENGTHS %s", t[0]))
 	for t in OPENERS do if !g.used[fmt.tprintf("opener.%s", t)] do append(&stale, fmt.tprintf("OPENERS %s", t))
 	for t in INVERTED do if !g.used[fmt.tprintf("inverted.%s", t[0])] do append(&stale, fmt.tprintf("INVERTED %s", t[0]))
 	if len(stale) > 0 do fail("policy rows that matched nothing (stale, or a typo): %v", stale)

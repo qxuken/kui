@@ -383,16 +383,22 @@ encode_any :: proc(a: any, top: bool) -> ^c.Value {
 	return c.value_null()
 }
 
-// Tab_New, TabNew and Add10 as tab_new, tab_new and add10: Rust's
-// snake_case, which the derive gives a variant.
+// Tab_New, TabNew, Add10 and HTTPGet as tab_new, tab_new, add10 and
+// http_get: Rust's snake_case, which the derive gives a variant - a run of
+// capitals is one word, and its last capital starts the next when a
+// lowercase letter follows it.
 @(private)
 snake :: proc(name: string) -> string {
+	upper :: proc(ch: u8) -> bool {return 'A' <= ch && ch <= 'Z'}
 	b := strings.builder_make(context.temp_allocator)
 	for i in 0 ..< len(name) {
 		ch := name[i]
-		if 'A' <= ch && ch <= 'Z' {
+		if upper(ch) {
 			prev := name[i - 1] if i > 0 else '_'
-			if i > 0 && prev != '_' && !('A' <= prev && prev <= 'Z') do strings.write_byte(&b, '_')
+			next := name[i + 1] if i + 1 < len(name) else '_'
+			after_word := prev != '_' && !upper(prev)
+			ends_run := upper(prev) && 'a' <= next && next <= 'z'
+			if i > 0 && (after_word || ends_run) do strings.write_byte(&b, '_')
 			strings.write_byte(&b, ch + 32)
 		} else {
 			strings.write_byte(&b, ch)
@@ -400,3 +406,8 @@ snake :: proc(name: string) -> string {
 	}
 	return strings.to_string(b)
 }
+
+// A string a door's next call frees (a drain's `code`, `message`, `text`),
+// copied where the rest of the drain's results live, so a drain that asks
+// the door again for its next chunk does not free the chunk before.
+kept :: proc(s: string) -> string {return strings.clone(s, context.temp_allocator)}

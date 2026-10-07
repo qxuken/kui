@@ -131,7 +131,13 @@ fn main() {
     });
     let text = serde_json::to_string_pretty(&out).expect("the schema is plain data");
     match std::env::args().nth(1) {
-        Some(path) => std::fs::write(&path, text).unwrap_or_else(|e| {
+        Some(path) => std::fs::create_dir_all(
+            std::path::Path::new(&path)
+                .parent()
+                .unwrap_or(std::path::Path::new(".")),
+        )
+        .and_then(|()| std::fs::write(&path, text))
+        .unwrap_or_else(|e| {
             eprintln!("schema-dump: {path}: {e}");
             std::process::exit(1);
         }),

@@ -336,11 +336,12 @@ DEFAULTS :: [][2]string {
 NULLABLE :: []string{"kui_theme_set.theme", "kui_metrics_set.metrics", "kui_window_declare.cfg", "kui_play.opts"}
 
 // A field whose C zero is not the default its INIT macro gives: a Maybe in
-// the mirror, the INIT value when it is nil.
+// the mirror, the INIT value when it is nil. A window activates by
+// KUI_WINDOW_CONFIG_INIT and a popup does not, by KUI_WINDOW_POPUP_INIT.
 FIELD_DEFAULTS :: [][2]string {
 	{"Play.volume", "1"},
 	{"Audio.volume", "1"},
-	{"WindowConfig.activates", "true"},
+	{"WindowConfig.activates", "v.kind != .Popup"},
 }
 
 // A pointer whose count is not the field after it: an access run's three
@@ -358,6 +359,26 @@ SLICE_COUNTS :: [][2]string {
 // half point cannot be written. (Lowered as floats, the call claimed twice
 // its points and the core read past the array; the scene corpus found it.)
 POINTS :: []string{"kui_polyline.xy", "kui_polygon.xy"}
+
+// A float pointer with no count is a fixed shape the call reads whole or
+// takes NULL for: a fixed array in a Maybe, so a short one cannot be
+// written. (As a slice, `dash = {4, 2}` let the core read three floats
+// past it.)
+FIXED_FLOATS :: [][2]string {
+	{"kui_polyline.dash", "5"},
+	{"kui_path.pivot", "2"},
+	{"kui_path.dash", "5"},
+	{"kui_path_d.pivot", "2"},
+	{"kui_path_d.dash", "5"},
+}
+
+// Pixels the call reads by the size beside them: a slice, asserted to hold
+// that many bytes (nil passes, as NULL, which the call refuses).
+BYTE_LENGTHS :: [][2]string {
+	{"kui_image_add.rgba", "int(w) * int(h) * 4"},
+	{"kui_image_update.rgba", "int(w) * int(h) * 4"},
+	{"kui_set_icon.rgba", "int(width) * int(height) * 4"},
+}
 
 // Doors that open a node the caller closes: generated with
 // @(deferred_in), so `if kui.fragment_open(...) { ... }` closes itself.

@@ -97,10 +97,10 @@ first.
 - **[docs/howto.md](docs/howto.md)**: "How do I…", about twenty
   questions a developer arrives with, two sentences each and a pointer.
 - **[docs/props.md](docs/props.md)**: every prop, element, event,
-  warning, theme role and metric, with its JSX, Lua and C spelling in the
-  same row. Generated from the schema, so it cannot drift.
+  warning, theme role and metric, with its JSX, Lua, C and Odin spelling in
+  the same row. Generated from the schema, so it cannot drift.
 - **[examples/README.md](examples/README.md)**: the map of every example
-  in Rust, C, Lua and Node, what each shows and how to run it.
+  in Rust, C, Lua, Node and Odin, what each shows and how to run it.
 - **[docs/guide.md](docs/guide.md)**: testing without a window, the
   devtools panel, the same app from Node, Lua and C, and the reference
   documents in detail.

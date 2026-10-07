@@ -404,8 +404,9 @@ fn payload(s: &str) -> Result<kui_core::Value> {
 /// `s` with every lone surrogate escape `JSON.stringify` writes (a string
 /// cut through an emoji: `'ab😀'.slice(0, 3)`) turned into `�`, the
 /// character a text child shows for it. serde_json refuses one, which
-/// failed the whole frame over one message; a pair is left as it is.
-fn well_formed(s: &str) -> std::borrow::Cow<'_, str> {
+/// failed the whole frame over one message, a `<select>` option or a
+/// menu bar row; a pair is left as it is.
+pub(crate) fn well_formed(s: &str) -> std::borrow::Cow<'_, str> {
     if !s.contains("\\ud") && !s.contains("\\uD") {
         return s.into();
     }

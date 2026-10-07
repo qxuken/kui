@@ -8564,3 +8564,17 @@ test('a message comes back as it was sent: a whole number past 2^53, a string cu
     assert.deepEqual(evs[0].payload, back);
   }
 });
+
+test('a select option or a menu bar row cut through an emoji draws U+FFFD, not a failed frame', () => {
+  // Both ride as JSON like a message, and RG138's repair missed them.
+  const cut = 'ab😀'.slice(0, 3);
+  const el = (type, props = {}, children = []) => ({ type, props, children });
+  for (const node of [
+    el('select', { label: 'f', options: [cut, 'ok'], current: 0 }),
+    el('menuBar', { menu: [{ label: cut, items: [{ label: cut }] }] }),
+  ]) {
+    const ctx = new Ctx();
+    ctx.frame(300, 200, 1, el('box', {}, [node]));
+    assert.ok(JSON.stringify(ctx.accessTree()).includes('ab�'), node.type);
+  }
+});

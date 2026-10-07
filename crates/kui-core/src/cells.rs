@@ -316,7 +316,13 @@ impl CellStore {
                 key,
                 StyleTable {
                     cell_w,
-                    cell_h: (style.line_height * scale).round().max(1.0),
+                    // A pixel at least, as the shaper's (backlog RG136):
+                    // an infinite one put every row after the first at
+                    // the layout's limit.
+                    cell_h: match (style.line_height * scale).round() {
+                        h if h.is_finite() => h.max(1.0),
+                        _ => 1.0,
+                    },
                     ascii: vec![None; VARIANTS * 128],
                     other: FxHashMap::default(),
                     family: fs

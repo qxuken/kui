@@ -34,12 +34,20 @@ was the first bare bump to break an app in five releases).
 - Node: a whole number past 2^53 in a message comes back a `number`,
   where it came back a `BigInt` (RG138).
 - C: `kui_take_menu_action` with a NULL or too-small `out` leaves the
-  action queued, where it dropped it; `kui_draw_data`'s `fragments` and
-  `textures` are NULL on a frame that draws none, where they were a
-  non-NULL pointer to nothing (RG133, RG131).
+  action queued, where it dropped it; `kui_take_warnings` keeps what does
+  not fit `cap` for the next call, where it dropped it; `kui_draw_data`'s
+  `fragments` and `textures` are NULL on a frame that draws none, where
+  they were a non-NULL pointer to nothing (RG133, RG134, RG131).
 - A text style whose size or line height is under a pixel — 0, negative,
   NaN — shapes at a pixel, where Node and Lua aborted or hung and Rust
-  panicked (RG136).
+  panicked (RG136); a cell grid's rows are a pixel apart at an infinite
+  one, where they went to the layout's limit (RG144).
+- Rust: `schema::Door`, `schema::CustomProp` and `schema::ElementDef` gain
+  `odin` (under Added, the Odin binding), so a struct literal of one needs
+  the field.
+
+C stays at ABI 25 (kui.h gains no function and no field; four doors now
+keep what it always promised) and the Node wire at v21 (no frame version).
 
 ### Added
 
@@ -62,12 +70,15 @@ was the first bare bump to break an app in five releases).
   scene corpus through `Spec` and the doors, matching the reference report
   byte for byte, as the Rust, Lua, C and Node adapters do.
   `polyline` and `polygon` take points (`[][2]f32`), the count kui.h
-  means.
+  means; a dash or a pivot is a fixed array in a `Maybe` (`[5]f32`,
+  `[2]f32`), so a short one cannot be written; and pixels are checked
+  against the size beside them.
 
   It covers extensions both ways. An Odin host loads a plugin with
   `ctx_add_extension` and `slot`. An Odin plugin is a shared library whose
   seven `kui_ext_*` exports are one line each over `extension.odin`.
-  Built with `KUI_PLUGIN`, it links no kui and loads into any host:
+  Built with `KUI_PLUGIN` on macOS and Linux, it links no kui and loads
+  into any host (on Windows it imports `kui_ffi.dll`, as a C plugin does):
   `nu scripts/odin.nu slots` drives the Odin panel in the C and Rust
   hosts and the C panel in the Odin host.
 
@@ -92,6 +103,9 @@ was the first bare bump to break an app in five releases).
 - `examples/rust/tools/schema-dump.rs`: the prop schema (props,
   composites, elements, events, the verb table, the name lists) as JSON,
   for a binding generated outside Rust.
+- The verb table (`schema::DOORS`) and `docs/props.md` have an Odin
+  column beside C's, each spelling held by the Odin generator both ways;
+  Node's `protocol()` carries it (`Door.odin`).
 
 ### Fixed
 
@@ -139,10 +153,10 @@ was the first bare bump to break an app in five releases).
   panicked, which under C emptied the tree every frame; the position is
   the character's start.
 - Node: `measureText` inside a `<devtoolsTab>` function child no longer
-  breaks the frame being encoded (RG137); a message holding a string cut
-  through an emoji draws its lone surrogate as U+FFFD rather than failing
-  the frame, and `dir: null` is absent like every other null prop
-  (RG138).
+  breaks the frame being encoded (RG137); a message, a `<select>` option
+  or a `menuBar` row holding a string cut through an emoji draws its lone
+  surrogate as U+FFFD rather than failing the frame, and `dir: null` is
+  absent like every other null prop (RG138, RG140).
 
 ## 0.1.0-alpha.41 (2026-10-07)
 

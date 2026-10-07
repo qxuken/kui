@@ -50,7 +50,9 @@ pub struct KuiCtx {
     /// Whether the two above are this frame's: `kui_draw_data` transcribes
     /// once a frame, so a second call in the same frame hands out the same
     /// arrays rather than freeing the ones the first call handed out.
-    /// Cleared by `kui_frame_begin`, which is where kui.h ends them.
+    /// Cleared by `kui_frame_begin`, which is where kui.h ends them, and
+    /// by `kui_frame_finish`, so a call while the frame built does not
+    /// stand for the frame it finished.
     pub(crate) draws_current: bool,
     /// What `kui_image_pixels` last handed out, so the pointer outlives
     /// the call.
