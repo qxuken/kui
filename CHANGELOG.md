@@ -40,8 +40,11 @@ was the first bare bump to break an app in five releases).
   onto the line's tab stops, up to a tab's width, and the rest of the
   line with it.
 - Rust: `schema::PropsOut` gains `ime_off` (under Added, F125), so a
-  struct literal of it needs the field or `..Default::default()`.
-- npm: `@qxuken/kui` bundles no darwin-x64 prebuild. On an Intel Mac,
+  struct literal of it needs the field or `..Default::default()`; so do
+  `conformance::Expect` and `conformance::Output`, behind the
+  `conformance` feature.
+- npm: `@qxuken/kui` bundles no darwin-x64 prebuild. On an Intel Mac (or
+  an x64 Node under Rosetta),
   build the addon (`cargo build -p kui-node --release`) and point
   `KUI_NODE_LIB` at it; the Rust crates are unchanged there.
 
@@ -56,23 +59,13 @@ treated as a stranger's, and a tab measured from where its chunk began
 instead of where the line did. Each moves pixels an app may have written
 to, so each is listed.
 
-### Changed
-
-- **Intel Macs lose their Node prebuild.** The package ships the addon
-  for linux-x64, linux-arm64, darwin-arm64 and win32-x64; the release
-  workflow's darwin-x64 leg and `release-local.nu`'s are gone. On an
-  Intel Mac `require('@qxuken/kui')` fails with the loader's not-found
-  error, which now says the prebuild was dropped and how to build one.
-  `kui-native`, `kui-ffi` and the rest still build and run there; only
-  the bundled `.node` is gone.
-
 ### Added
 
 - **A window can take the keyboard as keys, with the input method off**
   (backlog F125, from kawoosh's wish list). `ui.ime_off(true)` / a root
   `imeOff` / `ime_off = true` / `kui_set_ime_off(ctx, true)` turns the
   platform's input method off in the window: no composition and no
-  candidate window, no dead key waiting for the next, and on a Mac no
+  candidate window, and on a Mac no dead key waiting for the next and no
   press-and-hold — which is an input method too, so a held `j` repeats
   and a held `e` opens no accent picker, whatever the user's
   `ApplePressAndHoldEnabled` says. A `key` event's `text` is still the
@@ -88,11 +81,23 @@ to, so each is listed.
   dropped, and ends in the view as an empty `preedit` — as one does now
   when the user switches input source mid-composition, which used to
   leave the preedit drawn. On Windows and Linux the window's IME is
-  disabled the same way. `Ctx.imeOff()` / `kui_ime_off_get` read the ask
+  disabled the same way, and only that: a dead key there is the
+  layout's, which winit composes whatever the IME says, and it still
+  composes. `Ctx.imeOff()` / `kui_ime_off_get` read the ask
   back; `modal_editor` declares it in normal mode. *What you can
   delete:* the README line telling a Mac user of a modal editor to run
   `defaults write -g ApplePressAndHoldEnabled -bool false`, and any
   per-mode IME switching an app did by hand.
+
+### Changed
+
+- **Intel Macs lose their Node prebuild.** The package ships the addon
+  for linux-x64, linux-arm64, darwin-arm64 and win32-x64; the release
+  workflow's darwin-x64 leg and `release-local.nu`'s are gone. On an
+  Intel Mac `require('@qxuken/kui')` fails with the loader's not-found
+  error, which now says the prebuild was dropped and how to build one.
+  `kui-native`, `kui-ffi` and the rest still build and run there; only
+  the bundled `.node` is gone.
 
 ### Fixed
 
@@ -117,7 +122,9 @@ to, so each is listed.
   a Mac with every frame forced to skip and no display link. It waits a
   retry (16 ms) after a skip now — 60 a second at 2% — and runs at the
   display's rate again from the first frame that lands. A window macOS
-  calls covered still asks for nothing at all.
+  calls covered still asks for nothing at all. On Windows the timer that
+  keeps an animation going through a title-bar drag paces the same tries
+  at its own interval, 10 to 16 ms.
 - **A tab on a long line stops where the line's stops are** (backlog
   RG76). On a line past 4 KB, a tab that followed more than half a chunk
   without one measured from its chunk's start. Such a chunk now ends

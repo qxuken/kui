@@ -238,7 +238,7 @@ recorded under [adr/](adr); this page is their consequences for an app.
   instead of starting an accent; `none`, the default, keeps the Mac's
   composing Option. So is the input method: `ui.ime_off(true)` / a root
   `imeOff` / `ime_off = true` / `kui_set_ime_off` takes the keyboard as
-  keys — no IME, no dead keys, and on a Mac no press-and-hold, so a held
+  keys — no IME, and on a Mac no dead keys and no press-and-hold, so a held
   `j` repeats — for a modal editor's normal mode, whose insert mode stops
   declaring it. The windows' icon is a launch
   option: `kui_native::app("t").icon(rgba, w, h).icon_resource(1)` — the pixels

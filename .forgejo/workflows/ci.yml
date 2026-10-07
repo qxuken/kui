@@ -543,7 +543,7 @@ jobs:
       # cannot name both registries, and crates.io refuses a dependency from
       # any other), so each verify build below resolves them there and fails
       # until crates.io lists this version. The GitHub release workflow
-      # publishes it from the same tag, after its own checks and five
+      # publishes it from the same tag, after its own checks and four
       # platform builds; this polls the sparse index until every crate is
       # there, or gives up after CRATES_IO_WAIT_MINUTES, in which case
       # re-running this job once crates.io has caught up finishes the

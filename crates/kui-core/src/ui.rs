@@ -395,8 +395,8 @@ impl<'a> Ui<'a> {
     }
 
     /// Declares that this window takes the keyboard as keys, with the
-    /// platform's input method off — no composition, no dead keys, and on
-    /// a Mac no press-and-hold, so a held letter repeats; see
+    /// platform's input method off — no composition, and on a Mac no dead
+    /// keys and no press-and-hold, so a held letter repeats; see
     /// [`crate::Core::set_ime_off`]. A modal editor's normal mode. Declare
     /// it every frame: a frame that does not gives the IME back.
     pub fn ime_off(&mut self, off: bool) {

@@ -73,10 +73,11 @@ host the repository lives on:
 - **GitHub**, [release.yml](../.github/workflows/release.yml): `check`
   (fmt, clippy, the workspace tests), then one addon build per platform on
   the platform itself (`ubuntu-24.04` and `ubuntu-24.04-arm` through
-  cargo-zigbuild for a glibc 2.28 floor, `macos-15` for both Mac
-  architectures, `windows-2025`), then `publish`, which verifies the tag
-  against the manifests and the changelog heading, runs the parity tests
-  against the five shipped binaries, publishes the crates to crates.io in
+  cargo-zigbuild for a glibc 2.28 floor, `macos-15` for arm64 — Intel
+  Macs have had no prebuild since alpha.41 — and `windows-2025`), then
+  `publish`, which verifies the tag against the manifests and the
+  changelog heading, runs the parity tests against the four shipped
+  binaries, publishes the crates to crates.io in
   dependency order and stages the npm package on npmjs. It needs two
   repository secrets: `CRATES_IO_TOKEN` (a crates.io API token with publish
   rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs granular access
@@ -150,7 +151,7 @@ installed it with `sudo` since. The step is finished
 from any machine, with the run's own prebuilds rather than a rebuild:
 
 ```bash
-gh run download <run-id> -R qxuken/kui -D packages/kui/prebuilds   # the five artifacts land in the prebuilds layout
+gh run download <run-id> -R qxuken/kui -D packages/kui/prebuilds   # the four artifacts land in the prebuilds layout
 cd packages/kui
 npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
 ```
@@ -163,8 +164,8 @@ jobs, and the Forgejo cargo registry answers per crate at
 `https://drydock9.qxuken.dev/api/v1/packages/qxuken/cargo/<crate>/<version>`.
 
 The Forgejo npm copy: once both pipelines are through, `nu
-scripts/release-local.nu` from a Mac with the tag on HEAD builds the five
-prebuilds (the Linux ones in Docker with CI's pinned zig, the macOS ones
+scripts/release-local.nu` from a Mac with the tag on HEAD builds the four
+prebuilds (the Linux ones in Docker with CI's pinned zig, the macOS one
 natively, Windows through cargo-xwin), runs CI's verification (`npm test`
 over the bundled prebuilds, `npm pack --dry-run`, `cargo publish
 --dry-run`), asks for a typed confirmation, skips every crate the registries

@@ -323,8 +323,8 @@ pub extern "C" fn kui_option_as_alt_get(ptr: *mut KuiCtx) -> u32 {
 }
 
 /// Declares that this window takes the keyboard as keys, with the
-/// platform's input method off — no composition, no dead keys, and on a
-/// Mac no press-and-hold, so a held letter repeats. Cleared each
+/// platform's input method off — no composition, and on a Mac no dead
+/// keys and no press-and-hold, so a held letter repeats. Cleared each
 /// `kui_frame_begin` like `kui_set_always_on_top`: a frame that stops
 /// calling this gives the window its input method back. Under `kui_run`
 /// the runner applies it on change; a host driving its own window reads

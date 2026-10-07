@@ -872,7 +872,7 @@ pub const DOORS: &[Door] = &[
         c: Is("kui_set_ime_off"),
         node: As("the root's `imeOff` prop"),
         lua: As("the root's `ime_off` field"),
-        doc: "Declares that this window takes the keyboard as keys, with the input method off — no composition, no dead keys, no press-and-hold on a Mac, so a held letter repeats (backlog F125).",
+        doc: "Declares that this window takes the keyboard as keys, with the input method off — no composition, and on a Mac no dead keys and no press-and-hold, so a held letter repeats (backlog F125).",
     },
     Door {
         rust: "Ui::window_command",

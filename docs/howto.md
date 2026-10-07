@@ -1152,9 +1152,11 @@ root while your keys are commands (Rust `ui.ime_off(true)`, Lua
 ui.ime_off(self.mode == Mode::Normal);
 ```
 
-A held `j` then repeats, a held `e` opens nothing, and a dead key or an
-IME left on no longer eats the keymap; each key still carries the
-layout's character as its `text`. Stop declaring it and insert mode has
+A held `j` then repeats, a held `e` opens nothing, and an IME left on
+no longer eats the keymap — nor, on a Mac, a dead key; each key still
+carries the layout's character as its `text`. On Windows and Linux a
+dead key is the layout's and still composes: winit composes it whatever
+the IME says. Stop declaring it and insert mode has
 accents, dead keys and the IME back. A key held across the switch — the
 `i` that enters insert mode — keeps repeating until it comes up, so the
 picker comes from the next fresh press. It is frame state: declare it on

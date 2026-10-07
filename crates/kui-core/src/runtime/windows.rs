@@ -358,8 +358,8 @@ impl Core {
     }
 
     /// Declares that this window takes the keyboard as keys, with the
-    /// platform's input method off: no composition, no candidate window,
-    /// no dead key waiting for the next one, and on a Mac no
+    /// platform's input method off: no composition and no candidate
+    /// window, and on a Mac no dead key waiting for the next one and no
     /// press-and-hold — which is an input method too, so a held letter
     /// repeats instead of opening the accent picker, whatever the user's
     /// `ApplePressAndHoldEnabled` says. A key's `text` is still the
@@ -378,8 +378,10 @@ impl Core {
     /// is the window's, not a node's: a stock editor focused under it
     /// composes nothing either. A popup's keys arrive through its owner,
     /// so the owner's declaration is the one they are read under. On
-    /// Windows and Linux the window's IME is disabled the same way; their
-    /// dead keys are the layout's and still compose.
+    /// Windows and Linux the window's IME is disabled the same way, and
+    /// that is all: their dead keys are the layout's (`WM_DEADCHAR`, xkb
+    /// compose), winit composes them whatever the IME says, and they
+    /// still compose.
     pub fn set_ime_off(&mut self, off: bool) {
         self.ime_off = off;
     }

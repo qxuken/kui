@@ -2598,8 +2598,8 @@ void kui_set_option_as_alt(KuiCtx *ctx, uint32_t option_as_alt);
  * frame that never asked. */
 uint32_t kui_option_as_alt_get(KuiCtx *ctx);
 /* Declares that this window takes the keyboard as keys, with the
- * platform's input method off: no composition and no candidate window, no
- * dead key waiting for the next, and on a Mac no press-and-hold - an input
+ * platform's input method off: no composition and no candidate window,
+ * and on a Mac no dead key waiting for the next and no press-and-hold - an input
  * method too, so a held letter repeats instead of opening the accent
  * picker, whatever the user's ApplePressAndHoldEnabled says. A key's text
  * is still the layout's character. What a modal editor's normal mode
@@ -2607,7 +2607,8 @@ uint32_t kui_option_as_alt_get(KuiCtx *ctx);
  * each kui_frame_begin like kui_set_always_on_top. Under kui_run the
  * runner applies it to the window on change, and a composition in
  * progress ends without a commit (an empty preedit). On Windows and Linux
- * the window's IME is disabled the same way. New functions, ABI
+ * the window's IME is disabled the same way, and only that: their dead
+ * keys are the layout's and still compose. New functions, ABI
  * unchanged. */
 void kui_set_ime_off(KuiCtx *ctx, bool off);
 /* Whether the frame that just finished asked for it - for a host with its

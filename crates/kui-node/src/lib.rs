@@ -1199,8 +1199,8 @@ impl Ctx {
     }
 
     /// Whether the last frame asked for the platform's input method off
-    /// in its window (a root `<box imeOff>`) — no composition, no dead
-    /// keys, no press-and-hold on a Mac; false when it did not.
+    /// in its window (a root `<box imeOff>`) — no composition, and on a
+    /// Mac no dead keys and no press-and-hold; false when it did not.
     /// `runWindowed` applies it to the window on change; a bare `Ctx`
     /// hands the ask back so a test can assert on it.
     #[napi]

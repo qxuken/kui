@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# Publishes a tagged release from this Mac: the five Node prebuilds, the
+# Publishes a tagged release from this Mac: the four Node prebuilds, the
 # verification, `cargo publish` (crates.io, then drydock9), `npm publish`
 # to the Forgejo npm registry and the `latest` guard there.
 #

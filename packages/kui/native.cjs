@@ -107,11 +107,12 @@ if (native) {
       'KUI_NODE_LIB at a working library.',
   );
 } else {
-  // An Intel Mac had a prebuild until alpha.40, so it is told that, not
-  // left to guess whether the install went wrong.
+  // An Intel Mac had a prebuild until alpha.40 (as did an x64 Node under
+  // Rosetta on Apple silicon, which reads as the same platform), so it is
+  // told that, not left to guess whether the install went wrong.
   const dropped =
     process.platform === 'darwin' && process.arch === 'x64'
-      ? ' (Intel Macs had one until 0.1.0-alpha.40 and build it from source since)'
+      ? ' (Intel Macs, and an x64 Node under Rosetta, had one until 0.1.0-alpha.40 and build it from source since)'
       : '';
   throw new Error(
     `kui native library not found for ${process.platform}-${process.arch}${dropped} - ` +

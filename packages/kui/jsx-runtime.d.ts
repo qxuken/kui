@@ -551,8 +551,8 @@ export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
    *  back to the layout. Nothing elsewhere. */
   optionAsAlt?: 'none' | 'left' | 'right' | 'both';
   /** Root box only: this window takes the keyboard as keys, with the
-   *  platform's input method off (backlog F125) — no composition, no dead
-   *  keys, and on a Mac no press-and-hold, so a held letter repeats
+   *  platform's input method off (backlog F125) — no composition, and on
+   *  a Mac no dead keys and no press-and-hold, so a held letter repeats
    *  instead of opening the accent picker. A key's `text` is still the
    *  layout's character. A modal editor's normal mode: declare it every
    *  frame the mode wants it; the frame that stops gives the IME, dead

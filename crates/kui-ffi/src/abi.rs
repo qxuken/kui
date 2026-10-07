@@ -131,7 +131,8 @@
 ///   `gradient` on `KuiSpec` (64-bit size 696), with `KuiGradient` and
 ///   `KuiGradientStop`.
 /// - ABI 25: `scroll_mods` on `KuiSpec` (64-bit size 704). Still 25 with
-///   `kui_input_open`, a new function.
+///   `kui_input_open`, `kui_set_ime_off` and `kui_ime_off_get`, new
+///   functions.
 pub const KUI_ABI_VERSION: u32 = 25;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
