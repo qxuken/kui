@@ -31,6 +31,15 @@ was the first bare bump to break an app in five releases).
   and `z` — in a key sink's payload and in what an editor inserts (under
   Fixed, RG127). A keymap that binds Space by its `text` rather than its
   `code` sees the accent there.
+- Node: a whole number past 2^53 in a message comes back a `number`,
+  where it came back a `BigInt` (RG138).
+- C: `kui_take_menu_action` with a NULL or too-small `out` leaves the
+  action queued, where it dropped it; `kui_draw_data`'s `fragments` and
+  `textures` are NULL on a frame that draws none, where they were a
+  non-NULL pointer to nothing (RG133, RG131).
+- A text style whose size or line height is under a pixel — 0, negative,
+  NaN — shapes at a pixel, where Node and Lua aborted or hung and Rust
+  panicked (RG136).
 
 ### Added
 
@@ -104,6 +113,36 @@ was the first bare bump to break an app in five releases).
   as an uncovered one does; minimized, it asks for none (RG45). F103's
   wait holds there only for an acquire that times out. `retry.rs` says so
   now (backlog RG128).
+- **Text is read aloud on Windows and Linux** (backlog RG129, from the
+  regression and smoke round after RG127). Every static text — a line of
+  text, a list row's content, a drawn title — reached UI Automation with
+  an empty Name and AT-SPI with an empty name: AccessKit names a label by
+  its value, and kui set only its label. macOS read it all along.
+- **A disclosure or a select opens from Narrator** (RG130). UI
+  Automation gives a node with `expanded` its ExpandCollapse pattern in
+  place of Invoke, and its Expand and Collapse reached nothing. They are
+  the node's click.
+- **A text size or line height of 0 no longer ends the process** (RG136).
+  `lineHeight: 0`, `size: 0`, or a size under 0.4 (whose line height
+  rounds to 0) aborted a Node or Lua process — cosmic-text asserts a line
+  height is not 0 — and a negative one spun its layout; on an `edit`, a
+  `cells` and in `measureText` too. Every buffer is shaped at a pixel at
+  least. C's door had always read them as unset.
+- C: what kui.h says a door hands out lives as long as it says (RG131–
+  RG134). A second `kui_draw_data` in a frame freed the arrays the first
+  handed out; `kui_access_runs` freed the strings `kui_access_tree`
+  handed out; reading a menu row or asking for a copy freed a taken menu
+  action's text; and `kui_take_warnings` dropped what did not fit `cap`,
+  where kui.h says the rest wait.
+- A custom editor whose `caret` or `selection_anchor` falls inside a
+  character has an access tree (RG135): the run was sliced there and
+  panicked, which under C emptied the tree every frame; the position is
+  the character's start.
+- Node: `measureText` inside a `<devtoolsTab>` function child no longer
+  breaks the frame being encoded (RG137); a message holding a string cut
+  through an emoji draws its lone surrogate as U+FFFD rather than failing
+  the frame, and `dir: null` is absent like every other null prop
+  (RG138).
 
 ## 0.1.0-alpha.41 (2026-10-07)
 

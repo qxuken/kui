@@ -47,15 +47,27 @@ pub struct KuiCtx {
     pub(crate) fragment_draws: Vec<KuiFragmentDraw>,
     /// `kui_draw_data`'s transcription of the frame's texture draws.
     pub(crate) texture_draws: Vec<KuiTextureDraw>,
+    /// Whether the two above are this frame's: `kui_draw_data` transcribes
+    /// once a frame, so a second call in the same frame hands out the same
+    /// arrays rather than freeing the ones the first call handed out.
+    /// Cleared by `kui_frame_begin`, which is where kui.h ends them.
+    pub(crate) draws_current: bool,
     /// What `kui_image_pixels` last handed out, so the pointer outlives
     /// the call.
     pub(crate) image_pixels: Option<std::sync::Arc<Vec<u8>>>,
     /// Warnings most recently handed out by kui_take_warnings; their strings
     /// stay valid until the next call.
     pub(crate) last_warnings: Vec<kui_core::Warning>,
+    /// Warnings drained from the core and not handed out yet: a `cap`
+    /// shorter than what was raised leaves the rest here.
+    pub(crate) pending_warnings: Vec<kui_core::Warning>,
     /// Access tree most recently handed out by kui_access_tree; its strings
     /// stay valid until the next call.
     pub(crate) last_access: kui_core::AccessTree,
+    /// The runs most recently handed out by kui_access_runs, held apart
+    /// from `last_access` so reading an editor's runs leaves the strings
+    /// kui_access_tree handed out alone.
+    pub(crate) last_runs: Vec<kui_core::AccessRun>,
     /// Announcements most recently handed out by kui_take_announcements;
     /// their strings stay valid until the next call.
     pub(crate) last_announcements: Vec<kui_core::Announcement>,
@@ -68,9 +80,15 @@ pub struct KuiCtx {
     pub(crate) menu_actions: VecDeque<kui_core::MenuAction>,
     pub(crate) menu_text: String,
     pub(crate) menu_html: String,
-    /// The accelerator most recently handed out by `kui_menu_bar_item`,
-    /// on the same terms as `menu_text` beside it.
+    /// The label most recently read back by `kui_menu_bar_menu`,
+    /// `kui_menu_bar_item` or `kui_menu_item`, and the accelerator beside
+    /// it: their own, so reading a menu leaves a taken action's `text`
+    /// alone, as kui.h says it is (borrowed until the next
+    /// `kui_take_menu_action`).
+    pub(crate) row_text: String,
     pub(crate) menu_accel: String,
+    /// What `kui_request_copy` most recently handed out, on the same terms.
+    pub(crate) copy_text: String,
     /// The chord most recently handed out by `kui_devtools_key`, on the
     /// same terms.
     pub(crate) devtools_key: String,
@@ -171,14 +189,19 @@ impl KuiCtx {
             fragment_source: String::new(),
             fragment_draws: Vec::new(),
             texture_draws: Vec::new(),
+            draws_current: false,
             image_pixels: None,
             last_warnings: Vec::new(),
+            pending_warnings: Vec::new(),
             last_access: Default::default(),
+            last_runs: Vec::new(),
             last_announcements: Vec::new(),
             window_commands: VecDeque::new(),
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
+            row_text: String::new(),
             menu_accel: String::new(),
+            copy_text: String::new(),
             devtools_key: String::new(),
             file_request: None,
             file_filter_text: String::new(),

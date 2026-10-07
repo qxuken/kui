@@ -181,15 +181,17 @@ pub extern "C" fn kui_access_runs(
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return 0;
         };
-        c.last_access = c.core().access_tree().clone();
-        let Some(node) = c.last_access.get(Key(key)) else {
-            return 0;
+        // The node's runs alone, held apart: replacing `last_access` here
+        // freed every string the host's last kui_access_tree still held.
+        c.last_runs = match c.core().access_tree().get(Key(key)) {
+            Some(node) => node.runs.clone(),
+            None => Vec::new(),
         };
-        let total = node.runs.len();
+        let total = c.last_runs.len();
         if out.is_null() || cap == 0 {
             return total;
         }
-        for (i, r) in node.runs.iter().take(cap).enumerate() {
+        for (i, r) in c.last_runs.iter().take(cap).enumerate() {
             unsafe {
                 out.add(i).write(KuiAccessRun {
                     key: r.key.0,

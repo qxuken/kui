@@ -31,8 +31,8 @@
 use std::collections::VecDeque;
 
 use cosmic_text::{
-    Action, Attrs, AttrsList, Buffer, Cursor, Edit as _, Editor, FontSystem, Metrics, Motion,
-    Selection, Shaping, Wrap,
+    Action, Attrs, AttrsList, Buffer, Cursor, Edit as _, Editor, FontSystem, Motion, Selection,
+    Shaping, Wrap,
 };
 use rustc_hash::FxHashMap;
 
@@ -607,7 +607,10 @@ impl EditStore {
         let seeded = seed.is_some();
         let initial = seed.as_deref().unwrap_or(initial);
         let state = self.states.entry(key).or_insert_with(|| {
-            let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
+            let metrics = crate::text::shaper_metrics(
+                opts.style.size * scale,
+                opts.style.line_height * scale,
+            );
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(None, None);
             buffer.set_text(
@@ -685,7 +688,10 @@ impl EditStore {
         if state.scale != scale || state.style != opts.style {
             state.style = opts.style;
             state.scale = scale;
-            let metrics = Metrics::new(opts.style.size * scale, opts.style.line_height * scale);
+            let metrics = crate::text::shaper_metrics(
+                opts.style.size * scale,
+                opts.style.line_height * scale,
+            );
             state.editor.with_buffer_mut(|b| b.set_metrics(metrics));
             state.wrap = None;
             state.metrics_rev = state.metrics_rev.wrapping_add(1);

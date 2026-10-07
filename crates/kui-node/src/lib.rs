@@ -74,9 +74,12 @@ fn value_of(v: &Json) -> Value {
     match v {
         Json::Null => Value::Null,
         Json::Bool(b) => Value::Bool(*b),
+        // An integer JS can hold exactly is an Int; past 2^53 it was a JS
+        // float that happened to be whole, and stays one — as an Int it
+        // came back to the app as a BigInt, `!==` the number it sent.
         Json::Number(n) => match n.as_i64() {
-            Some(i) => Value::Int(i),
-            None => Value::Float(n.as_f64().unwrap_or(0.0)),
+            Some(i) if i.unsigned_abs() <= 1 << 53 => Value::Int(i),
+            _ => Value::Float(n.as_f64().unwrap_or(0.0)),
         },
         Json::String(s) => Value::Str(s.clone()),
         Json::Array(a) => Value::List(a.iter().map(value_of).collect()),

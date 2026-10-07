@@ -53,6 +53,7 @@ pub extern "C" fn kui_spec_float_preset(spec: *mut KuiSpec, name: KuiStr) -> boo
 pub extern "C" fn kui_frame_begin(ptr: *mut KuiCtx, w: f32, h: f32, scale: f32) {
     guard((), || {
         if let Some(c) = unsafe { ctx(ptr) } {
+            c.draws_current = false;
             c.core()
                 .begin_frame(Size::new(w, h), if scale > 0.0 { scale } else { 1.0 });
         }
@@ -1157,51 +1158,61 @@ pub extern "C" fn kui_draw_data(ptr: *mut KuiCtx, out: *mut KuiDrawData) -> bool
         // The fragment draws are transcribed rather than cast: the core's
         // `FragmentDraw` holds a `FragmentId`, which is a slotmap key, and
         // `KuiFragmentDraw` holds the `u64` a host can pass back. Kept on
-        // the context so the pointer outlives this call.
-        let fragments: Vec<KuiFragmentDraw> = {
-            let (dl, _) = c.core().output();
-            dl.fragments
-                .iter()
-                .map(|f| {
-                    let (image_source, image_texture) = match f.image {
-                        kui_core::FragmentImage::None => (KUI_FRAGMENT_IMAGE_NONE, 0),
-                        kui_core::FragmentImage::Atlas(_) => (KUI_FRAGMENT_IMAGE_ATLAS, 0),
-                        kui_core::FragmentImage::Texture { index, .. } => {
-                            (KUI_FRAGMENT_IMAGE_TEXTURE, index)
+        // the context so the pointer outlives this call — once a frame, so
+        // a second call before the next `kui_frame_begin` hands out the
+        // same arrays instead of freeing the first call's.
+        if !c.draws_current {
+            let fragments: Vec<KuiFragmentDraw> = {
+                let (dl, _) = c.core().output();
+                dl.fragments
+                    .iter()
+                    .map(|f| {
+                        let (image_source, image_texture) = match f.image {
+                            kui_core::FragmentImage::None => (KUI_FRAGMENT_IMAGE_NONE, 0),
+                            kui_core::FragmentImage::Atlas(_) => (KUI_FRAGMENT_IMAGE_ATLAS, 0),
+                            kui_core::FragmentImage::Texture { index, .. } => {
+                                (KUI_FRAGMENT_IMAGE_TEXTURE, index)
+                            }
+                        };
+                        KuiFragmentDraw {
+                            fragment: f.id.to_ffi(),
+                            params: f.params,
+                            image_source,
+                            image_texture,
+                            image_uv: f.image.uv(),
                         }
-                    };
-                    KuiFragmentDraw {
-                        fragment: f.id.to_ffi(),
-                        params: f.params,
-                        image_source,
-                        image_texture,
-                        image_uv: f.image.uv(),
-                    }
-                })
-                .collect()
+                    })
+                    .collect()
+            };
+            // The texture draws likewise: `TextureDraw` holds an `ImageId`,
+            // and the pixels' revision and size ride from the parallel list.
+            let textures: Vec<KuiTextureDraw> = {
+                let (dl, _) = c.core().output();
+                dl.textures
+                    .iter()
+                    .zip(&dl.texture_pixels)
+                    .map(|(t, px)| KuiTextureDraw {
+                        image: t.id.to_ffi(),
+                        rev: px.rev,
+                        width: px.width,
+                        height: px.height,
+                        uv: t.uv,
+                    })
+                    .collect()
+            };
+            c.fragment_draws = fragments;
+            c.texture_draws = textures;
+            c.draws_current = true;
+        }
+        // NULL for none, as kui.h says, not an empty Vec's dangling pointer.
+        let (fragment_draws, fragment_count) = match c.fragment_draws.len() {
+            0 => (std::ptr::null(), 0),
+            n => (c.fragment_draws.as_ptr(), n),
         };
-        c.fragment_draws = fragments;
-        let fragment_draws = c.fragment_draws.as_ptr();
-        let fragment_count = c.fragment_draws.len();
-        // The texture draws likewise: `TextureDraw` holds an `ImageId`,
-        // and the pixels' revision and size ride from the parallel list.
-        let textures: Vec<KuiTextureDraw> = {
-            let (dl, _) = c.core().output();
-            dl.textures
-                .iter()
-                .zip(&dl.texture_pixels)
-                .map(|(t, px)| KuiTextureDraw {
-                    image: t.id.to_ffi(),
-                    rev: px.rev,
-                    width: px.width,
-                    height: px.height,
-                    uv: t.uv,
-                })
-                .collect()
+        let (texture_draws, texture_count) = match c.texture_draws.len() {
+            0 => (std::ptr::null(), 0),
+            n => (c.texture_draws.as_ptr(), n),
         };
-        c.texture_draws = textures;
-        let texture_draws = c.texture_draws.as_ptr();
-        let texture_count = c.texture_draws.len();
         let (dl, atlas) = c.core().output();
         let data = KuiDrawData {
             quads: dl.quads.as_ptr().cast(),

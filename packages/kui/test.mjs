@@ -8518,3 +8518,49 @@ test('an event names the slot its node was filled into, and null for the app’s
   assert.deepEqual(Object.keys(ev).sort(), ['key', 'origin', 'payload', 'slot', 'window']);
   assert.equal(ev.slot, null);
 });
+
+test('a text size or line height of nothing frames, and dir null is absent', () => {
+  // A size or line height of 0 aborted the process (cosmic-text asserts a
+  // line height is not 0) and a negative one spun its layout; null dir threw.
+  const ctx = new Ctx();
+  for (const props of [{ lineHeight: 0 }, { size: 0 }, { size: 0.3 }, { size: -1 }, { lineHeight: -0.5 }]) {
+    ctx.frame(320, 240, 1, { type: 'text', props, children: ['hi'] });
+    ctx.frame(320, 240, 1, { type: 'edit', props: { ...props, id: 'e', initial: 'x' }, children: [] });
+    const m = ctx.measureText('hi', props);
+    assert.ok(Number.isFinite(m.width) && Number.isFinite(m.height), JSON.stringify(props));
+  }
+  ctx.frame(320, 240, 1, { type: 'box', props: { dir: null }, children: ['x'] });
+});
+
+test('measureText inside a devtoolsTab function child leaves the frame being encoded alone', () => {
+  // The tab's child is called mid-encode; measureText shared the frame's
+  // encoder and reset its buffers ("binary frame must start with the root op").
+  const ctx = new Ctx();
+  const el = (type, props = {}, children = []) => ({ type, props, children });
+  const tab = () => el('text', {}, [`w=${Math.round(ctx.measureText('measured', { size: 14 }).width)}`]);
+  const tree = () => el('box', { title: 'Root' }, [el('devtoolsTab', { name: 'mine', label: 'Mine' }, [tab]), el('text', {}, ['after the tab'])]);
+  ctx.setDevtools(true);
+  ctx.frame(800, 600, 1, tree());
+  ctx.setDevtoolsTab('mine');
+  ctx.frame(800, 600, 1, tree());
+  const access = JSON.stringify(ctx.accessTree());
+  assert.ok(access.includes('after the tab') && access.includes('w='));
+  assert.equal(ctx.windowTitle(), 'Root');
+});
+
+test('a message comes back as it was sent: a whole number past 2^53, a string cut through an emoji', () => {
+  // The number came back a BigInt; the lone surrogate failed the frame.
+  const ctx = new Ctx();
+  const big = 9007199254740994;
+  const cut = 'ab😀'.slice(0, 3);
+  const frame = (onClick) => ctx.frame(200, 100, 1, { type: 'box', props: { width: 200, height: 100, onClick }, children: [] });
+  for (const [sent, back] of [[big, big], [{ s: cut }, { s: 'ab�' }]]) {
+    frame(sent);
+    ctx.cursor(10, 10);
+    ctx.mouse(true, 1);
+    ctx.mouse(false, 1);
+    const evs = ctx.pollEvents();
+    assert.equal(evs.length, 1);
+    assert.deepEqual(evs[0].payload, back);
+  }
+});

@@ -159,7 +159,11 @@ on 2026-10-07 and are in the archive), and RG126 from the alpha.41
 pre-tag pass (a warm cell grid 3 to 5% slower, bisected to one commit
 and not yet explained); RG127 and RG128, from the Windows and Linux
 round after alpha.41, were built the day they were filed and are in the
-archive. Everything else that has been filed has
+archive; and RG139 from the regression and smoke round after RG127 (what
+it left: Node integers that wrap, errors that name nothing, a payload's
+depth, a teardown callback's re-entry, a grid's unbounded size — RG129–
+RG138, its other ten, were built the day they were filed and are in the
+archive). Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2363,6 +2367,70 @@ does the same. WSLg could not answer two things: its window manager
 ignores a minimize (`WM_STATE` stays Normal), and it reports no
 occlusion, so X11's halves of RG45 and F103 stay as read.
 
+## From the regression and smoke round after RG127 (2026-10-07)
+
+A regression and smoke round with no release, on main at `a28e1883`
+(RG127 and RG128 built), on the same Windows machine and under WSLg's
+X11. Green on both before anything was changed: fmt, clippy, **2057
+tests** on Windows (Rust and Node) and **1842 over 138 suites** on Linux,
+the C round and the corpus's 57 scenes, Node 211 of 212 and 212 of 212
+with the corpus required, `gen`, the typecheck, the book's examples, the
+headless round and the Odin binding; on Windows the windowed round too,
+51 examples on both bases with the Node windows. Then the hunt, in three
+parts: a UI Automation walk and drive of the examples' access trees —
+the first on Windows, where nothing like `ax-audit.swift` exists, with
+AT-SPI under WSLg to compare — and two read-and-probe audits, one of the
+C doors (a scratch crate whose allocator poisons freed memory) and one
+of the Node addon (every schema prop fuzzed, headless).
+
+Ten entries, RG129–RG138, **built 2026-10-07**, the day they were
+filed, and in the archive: every static text nameless to UIA and AT-SPI
+(RG129); UIA's Expand and Collapse dropped, so a disclosure or a select
+could not be opened from Narrator (RG130); three borrows kui.h promises
+and the doors broke — the draw data's arrays (RG131), the access tree's
+strings (RG132), a menu action's text (RG133) — and the warnings past
+`cap` (RG134); a custom caret inside a character emptying the access
+tree (RG135); a text size or line height of 0 aborting a Node or Lua
+process (RG136); `measureText` inside a devtools tab breaking the frame
+(RG137); and a Node message not coming back as sent (RG138). With them:
+2070 tests on Windows and 1852 on Linux, the C round, the 57 scenes,
+Node 215 of 215 on Linux, the headless round and the Odin binding, all
+green. RG139 is what the round left.
+
+Read sound: a list's unselected rows carry no `selected` (so UIA gives
+them Invoke where the selected one has SelectionItem) by decision — the
+noise AccessKit warns about, `access.rs`; a select's choice is its UIA
+FullDescription. Not answered: WSLg's X server went down mid-round (its
+log: "screen size is bogus", after a WSL restart), so RG129's fix was
+not read back through AT-SPI.
+
+### `.` RG139 — What the round after RG127 left
+
+- **Node integers wrap.** napi's `u32` turns -1 into 4294967295:
+  `new RowHeights(-1, 20).length` is 4294967295 and `RowHeights(1e12, 20)`
+  3567587328 (`rows.rs`), `setLen(-1)` the same, and a `preedit` cursor of
+  `[-1, 1.5]` reaches a sink as `[4294967295, 1]`; by reading,
+  `mouse(true, -1)` is 255 clicks and `activateMenuItem(-1)` closes the
+  menu. The frame path refuses the same numbers with an error
+  (`binary.rs`). **Wants:** the doors to take `f64` / `i64` and refuse
+  what is not a count.
+- **Node errors that name nothing.** A number where a string is wanted
+  (`key: 5`, the root's `title: 42`, `<edit initial={5}>`) throws Node's
+  own "The \"src\" argument must be of type string"; `addImage(0, 0,
+  Buffer.alloc(0))` says it wants 0 bytes and got 0; `play(id, {volume:
+  NaN})` says serde could not convert a number. `encoder.js` promises
+  messages that name the element or the prop.
+- **A Node message nested past ~128 levels** fails the frame (serde's
+  recursion limit); Lua and C have none.
+- **A `KuiWindow.onTeardown` callback** runs inside `pump(&mut self)`, so
+  one that calls the window is a second `&mut`; the docs only ask it not
+  to. Read, not run (it needs a window).
+- **`kui_cells` sizes its buffer `rows * cols`** with no bound
+  (`cells.rs`): `u32::MAX` each is a capacity-overflow panic the guard
+  turns into a missing node; a grid big enough to fail the allocation
+  without overflowing aborts. **Wants:** a bound, and a warning past it —
+  which bound is the decision.
+
 ## After alpha.40
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -3803,3 +3871,25 @@ move.
 - `!` **RG127** — [A dead key's accent is dropped when the key after it has a key code](backlog/closed-2026-09.md#-rg127--a-dead-keys-accent-is-dropped-when-the-key-after-it-has-a-key-code--done-2026-10-07) — done (2026-10-07) — a press's text is what winit composed, and Space inserts its own
 
 - `.` **RG128** — [F103's docs say a covered Windows window skips its frames; it does not](backlog/closed-2026-09.md#-rg128--f103s-docs-say-a-covered-windows-window-skips-its-frames-it-does-not--done-2026-10-07) — done (2026-10-07)
+
+**From the regression and smoke round after RG127 (2026-10-07)** — RG129–RG138, filed and built the same day
+
+- `!` **RG129** — [A static text is nameless to UI Automation and AT-SPI](backlog/closed-2026-09.md#-rg129--a-static-text-is-nameless-to-ui-automation-and-at-spi--done-2026-10-07) — done (2026-10-07)
+
+- `!` **RG130** — [UI Automation's Expand and Collapse reach nothing](backlog/closed-2026-09.md#-rg130--ui-automations-expand-and-collapse-reach-nothing--done-2026-10-07) — done (2026-10-07)
+
+- `!` **RG131** — [A second `kui_draw_data` in a frame freed the first one's arrays](backlog/closed-2026-09.md#-rg131--a-second-kui_draw_data-in-a-frame-freed-the-first-ones-arrays--done-2026-10-07) — done (2026-10-07)
+
+- `!` **RG132** — [`kui_access_runs` freed the strings `kui_access_tree` handed out](backlog/closed-2026-09.md#-rg132--kui_access_runs-freed-the-strings-kui_access_tree-handed-out--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG133** — [A taken menu action's text died at the next menu read, and a NULL `out` dropped the action](backlog/closed-2026-09.md#-rg133--a-taken-menu-actions-text-died-at-the-next-menu-read-and-a-null-out-dropped-the-action--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG134** — [`kui_take_warnings` dropped what did not fit `cap`](backlog/closed-2026-09.md#-rg134--kui_take_warnings-dropped-what-did-not-fit-cap--done-2026-10-07) — done (2026-10-07)
+
+- `!` **RG135** — [A custom editor's caret inside a character emptied the access tree](backlog/closed-2026-09.md#-rg135--a-custom-editors-caret-inside-a-character-emptied-the-access-tree--done-2026-10-07) — done (2026-10-07)
+
+- `!` **RG136** — [A text size or line height of nothing aborted a Node or Lua process](backlog/closed-2026-09.md#-rg136--a-text-size-or-line-height-of-nothing-aborted-a-node-or-lua-process--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG137** — [`measureText` inside a `devtoolsTab` function child broke the frame](backlog/closed-2026-09.md#-rg137--measuretext-inside-a-devtoolstab-function-child-broke-the-frame--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG138** — [A Node message did not come back as it was sent, and `dir: null` threw](backlog/closed-2026-09.md#-rg138--a-node-message-did-not-come-back-as-it-was-sent-and-dir-null-threw--done-2026-10-07) — done (2026-10-07)
