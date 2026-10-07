@@ -504,7 +504,8 @@ pub struct KuiSpec {
     /// bindings: makes the node hover-tracked, becomes its accessible
     /// description, and floats `kui_core::widgets::tooltip` below it while
     /// the pointer is over it: as its last child for the `kui_open*`
-    /// family, which `kui_close` draws, and beside a leaf, anchored to it,
+    /// family and the `kui_fragment*` doors (backlog RG124), which
+    /// `kui_close` draws, and beside a leaf, anchored to it,
     /// for the leaf doors (`leaf_spec_of`, backlog RG113).
     pub tooltip: KuiStr,
     /// Modal surface (NULL = none): while this node is declared the Tab

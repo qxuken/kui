@@ -549,10 +549,13 @@ fn fragment_params<'a>(params: *const f32, count: usize) -> &'a [f32] {
 }
 
 /// A fragment's spec: the whole box vocabulary, or a bare column when the
-/// host passed NULL.
+/// host passed NULL. Its `tooltip` is drawn as well as tracked and spoken
+/// (`leaf_spec_of`): the fragment doors push no hint of their own the way
+/// `kui_open` does, so a hovered shader card with a tooltip showed nothing
+/// where the same card in JSX or Lua drew its hint (backlog RG124).
 fn fragment_spec(spec: *const KuiSpec) -> kui_core::NodeSpec {
     match unsafe { spec.as_ref() } {
-        Some(s) => spec_of(s, NONE, NONE, NONE, NONE),
+        Some(s) => leaf_spec_of(s, NONE, NONE, NONE, NONE),
         None => kui_core::NodeSpec::column(),
     }
 }

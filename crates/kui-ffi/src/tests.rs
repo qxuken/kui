@@ -3197,6 +3197,59 @@ mod run_config_headless {
         assert_eq!(kui_frame_unchanged(ctx), -1);
         kui_ctx_free(ctx);
     }
+
+    /// RG124: a C fragment that declares `KuiSpec.tooltip` draws its hint
+    /// while hovered, in both forms, as `kui_open` and the leaf doors do
+    /// and as JSX and Lua always did. It was hover-tracked and spoken, and
+    /// nothing floated.
+    #[test]
+    fn a_fragments_tooltip_is_drawn_while_hovered() {
+        let ctx = kui_ctx_new();
+        let frag = kui_fragment_add(
+            ctx,
+            ks(
+                "fn fragment(in: FragmentIn, params: array<vec4<f32>, 4>) -> vec4<f32> {\n    return params[0];\n}\n",
+            ),
+        );
+        assert_ne!(frag, 0);
+        let quads = |open: bool| {
+            kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+            let root: KuiSpec = unsafe { std::mem::zeroed() };
+            kui_root(ctx, &root);
+            let mut card: KuiSpec = unsafe { std::mem::zeroed() };
+            card.width = KuiSizing {
+                tag: 2,
+                value: 100.0,
+            };
+            card.height = KuiSizing {
+                tag: 2,
+                value: 60.0,
+            };
+            card.tooltip = ks("a hint");
+            if open {
+                kui_fragment_open(ctx, ks("card"), frag, std::ptr::null(), 0, &card);
+                kui_close(ctx);
+            } else {
+                kui_fragment(ctx, frag, std::ptr::null(), 0, &card);
+            }
+            kui_frame_finish(ctx);
+            let mut draw = KuiDrawData::default();
+            kui_draw_data(ctx, &mut draw);
+            draw.quad_count
+        };
+        for open in [false, true] {
+            kui_input_cursor(ctx, 300.0, 230.0);
+            let away = quads(open);
+            kui_input_cursor(ctx, 20.0, 20.0);
+            quads(open);
+            let over = quads(open);
+            assert!(
+                over > away,
+                "open={open}: {over} quads hovered, {away} away — the hint floats"
+            );
+        }
+        kui_ctx_free(ctx);
+    }
 }
 
 /// `KuiSpec.min_w`'s three spellings: 0 is undeclared, as a
