@@ -53,6 +53,15 @@ was the first bare bump to break an app in five releases).
   not published. CI's `check` installs a pinned Odin release (`ODIN_VERSION`)
   and runs `gen --check`, `check`, `test` and `slots`, so a header or schema
   change that was not regenerated goes red there.
+- `scripts/pack-ffi.nu`: libkui_ffi for every platform kui ships, dynamic
+  and static, with `kui.h`, rustc's `native-static-libs` as `link.txt`, a
+  tarball each and `SHA256SUMS`. It is for a C or Odin host that links a
+  library instead of building the workspace. The machine's own platform
+  is built natively. Linux x64 and arm64 (glibc 2.28) and Windows x64 are
+  built in a pinned Docker image with the release workflow's
+  cargo-zigbuild and cargo-xwin. Windows also asks for
+  `--accept-msvc-license`, for the CRT and SDK xwin downloads. macOS is
+  built on a Mac only.
 - `examples/rust/tools/schema-dump.rs`: the prop schema (props,
   composites, elements, events, the verb table, the name lists) as JSON,
   for a binding generated outside Rust.

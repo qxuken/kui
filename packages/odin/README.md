@@ -60,6 +60,25 @@ nu scripts/odin.nu slots                    # the extension contract across Odin
 system library with `-L` and an rpath into `target/<profile>`; outside this
 repository, pass your own `-extra-linker-flags`, or `-define:KUI_LIB=<name>`.
 
+## Linking a prebuilt library
+
+Outside this repository there is no cargo build to link. Use
+`nu scripts/pack-ffi.nu`, which writes `target/pack/kui-ffi-<version>-<platform>/`
+with `include/kui.h`, the dynamic and static library in `lib/`, and
+`link.txt`, the system libraries a static link needs:
+
+```sh
+# dynamic: libkui_ffi beside the program, found by rpath
+odin build app -extra-linker-flags:"-L$PACK/lib -Wl,-rpath,$PACK/lib"
+# static: a directory with only libkui_ffi.a in it, and what link.txt says
+odin build app -extra-linker-flags:"-L$STATIC_DIR $(tail -1 $PACK/link.txt)"
+```
+
+The static program carries kui and needs nothing beside it. The counter
+is 35 MB on macOS and 62 MB on Linux, dead-stripped from archives of 75 MB
+and 156 MB. Both ways run the counter's `--headless` drive green on
+macOS arm64 and Linux arm64, the Linux one in a bare Debian container.
+
 ## Extensions
 
 An Odin program can load plugins, and an Odin plugin loads into any host:
