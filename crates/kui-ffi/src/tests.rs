@@ -2202,16 +2202,16 @@ mod env_headless {
         let ctx = kui_ctx_new();
         let window = |ctx: *mut KuiCtx| unsafe { ctx.as_mut() }.unwrap().core().env.window;
         assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Opaque);
-        kui_env_set_backdrop(ctx, 3);
-        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Sidebar);
+        kui_env_set_backdrop(ctx, 2);
+        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Blur);
         kui_env_set_window(ctx, 0, true, false, false, 0.0, 0.0);
         assert_eq!(
             window(ctx).backdrop,
-            kui_core::Backdrop::Sidebar,
+            kui_core::Backdrop::Blur,
             "the window setter keeps it"
         );
         kui_env_set_backdrop(ctx, 99);
-        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Sidebar, "ignored");
+        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Blur, "ignored");
         kui_env_set_backdrop(ctx, 0);
         assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Opaque);
         kui_ctx_free(ctx);

@@ -304,7 +304,7 @@ pub const AUDIO_DEVICES: &[&str] = &["closed", "opening", "open", "failed"];
 /// What is behind a window's transparent pixels
 /// (`crate::window::Backdrop::name` spellings, in `Backdrop::ALL` order),
 /// `opaque` first so a zeroed C call reports the default.
-pub const BACKDROPS: &[&str] = &["opaque", "transparent", "window", "sidebar", "transient"];
+pub const BACKDROPS: &[&str] = &["opaque", "transparent", "blur", "tinted"];
 
 /// The roles no view can declare, because the core derives them itself,
 /// with what derives each one. Every
@@ -2613,7 +2613,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["window.backdrop"],
         lua: &["window.backdrop"],
         c: "`kui_env_set_backdrop(backdrop)`",
-        doc: "What is behind the window's transparent pixels, as the driver got it (backlog F126): `\"opaque\"` (the default, and every headless core's), `\"transparent\"` (the desktop, with no material), or the material the OS draws — `\"window\"`, `\"sidebar\"`, `\"transient\"` (`KUI_BACKDROP_*` in C, opaque 0). The app asks with `Launcher::backdrop`; this is the answer, which is less where the platform has less — a sidebar asked for on Linux reads `\"transparent\"`, on Windows 10 `\"opaque\"` — so a view that paints a translucent sidebar over the material paints it opaque when this says so. A C host reports it through its own setter, as `always_on_top` is.",
+        doc: "What is behind the window's transparent pixels, as the driver got it (backlog F126): `\"opaque\"` (the default, and every headless core's), `\"transparent\"` (the desktop as it is), `\"blur\"` (a live blur of what is behind the window) or `\"tinted\"` (the desktop's colour, not live) — `KUI_BACKDROP_*` in C, opaque 0. The app asks with `Launcher::backdrop` and decides which regions show it by painting them with alpha; this is the answer, which is less where the platform has less — a blur asked of GNOME reads `\"tinted\"`, the wallpaper kui draws itself, or `\"opaque\"` where none could be read — so a view paints its translucent regions opaque when this says so. A C host reports it through its own setter, as `always_on_top` is.",
     },
     EnvField {
         name: "audio.device",

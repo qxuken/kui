@@ -148,12 +148,17 @@ pub use kui_core::*;
 mod access_bridge;
 pub mod audio;
 mod axis_lock;
-/// What shows through the window: a material, the desktop, or nothing.
+/// What shows through the window: a blur, a tint, the desktop, or nothing.
 mod backdrop;
 mod clipboard;
 mod dialogs;
+/// The wallpaper a `Tinted` backdrop draws where the OS has no material.
+mod ground;
 mod icon;
 mod keys;
+/// A `Blur` backdrop asked of a Linux compositor.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+mod linux_blur;
 /// The traffic lights' keep-out and the OS titlebar's height, measured.
 #[cfg(target_os = "macos")]
 mod macos_chrome;
@@ -545,10 +550,11 @@ impl Launcher {
     }
 
     /// What shows through the app's windows where a frame paints nothing,
-    /// or paints with alpha (backlog F126): a material the OS draws behind
-    /// the window — the blurred desktop of a macOS sidebar, Windows 11's
-    /// Mica and Acrylic — or the desktop itself. `Backdrop::Opaque`, the
-    /// default, is the window every app had before.
+    /// or paints with alpha (backlog F126), by effect: `Transparent` (the
+    /// desktop as it is), `Blur` (a live blur of what is behind the
+    /// window), `Tinted` (the desktop's colour, steady). `Backdrop::Opaque`,
+    /// the default, is the window every app had before. Which regions show
+    /// it is the app's: paint them with alpha and the rest opaque.
     ///
     /// ```rust,no_run
     /// # use kui_native::{App, Backdrop, Ui};
@@ -556,40 +562,57 @@ impl Launcher {
     /// # impl App for Notes { fn view(&mut self, _ui: &mut Ui<'_>) {} }
     /// kui_native::app("Notes")
     ///     .custom_titlebar()
-    ///     .backdrop(Backdrop::Sidebar)
+    ///     .backdrop(Backdrop::Blur)
     ///     .run(Notes)
     ///     .unwrap();
     /// ```
     ///
-    /// Asking changes three things. The frame is cleared to nothing
-    /// rather than to the theme's `bg`, so what a view paints is all that
-    /// sits over the backdrop: a sidebar with a translucent `bg`
-    /// (`theme.bg.with_alpha(0.6)`) shows the material through it, and
-    /// the editor beside it with an opaque `bg` does not. Glyphs are
-    /// antialiased in grayscale under `TextAa::Auto`, since an LCD mask
-    /// cannot be composited over what the window cannot see. And on
-    /// Windows the device presents through DirectComposition, the one
-    /// D3D12 swapchain that takes alpha.
+    /// How each platform gives it:
     ///
-    /// What the platform gave back is `ui.env().window.backdrop`, every
-    /// frame, and is what a view decides by: the material on macOS (an
-    /// `NSVisualEffectView` — `Window` is the under-window background,
-    /// `Sidebar` the sidebar's, `Transient` the popover's) and on Windows
-    /// 11 22H2 and later (Mica, Mica Alt, Acrylic); `Transparent` on Linux
-    /// under a compositor, where there is no material; `Opaque` on
-    /// Windows 10, or wherever the surface cannot be presented with
-    /// alpha. Paint the sidebar opaque when it reads `Opaque`:
+    /// | | `Blur` | `Tinted` |
+    /// |---|---|---|
+    /// | macOS | `NSVisualEffectView`, behind-window (the sidebar material) | `NSVisualEffectView`, the window-background material |
+    /// | Windows 11 22H2+ | Acrylic | Mica |
+    /// | KDE Plasma | the compositor's blur (`ext-background-effect-v1`, `org_kde_kwin_blur`, `_KDE_NET_WM_BLUR_BEHIND_REGION`) | the wallpaper, drawn by kui |
+    /// | GNOME, other Linux, Windows 10 | the wallpaper, drawn by kui (reads `Tinted`) | the wallpaper, drawn by kui |
+    ///
+    /// "The wallpaper, drawn by kui" is the desktop's picture — GNOME's
+    /// `picture-uri` (or `-dark`), Plasma's config, Windows'
+    /// `SPI_GETDESKWALLPAPER` — read on a thread, scaled down and blurred
+    /// once, and drawn under the frame aligned to where the window sits on
+    /// its monitor (centred on Wayland, which does not say); with no
+    /// wallpaper to read, the window is opaque. Hyprland, SwayFX and picom
+    /// blur translucent windows themselves when configured to: ask for
+    /// `Transparent` there. `KUI_BACKDROP_EMULATE=1` draws the wallpaper
+    /// for `Blur` and `Tinted` on any platform, to look at it.
+    ///
+    /// Asking changes three things. Where the OS draws the effect the
+    /// frame is cleared to nothing rather than to the theme's `bg`, so what
+    /// a view paints is all that sits over it: a region with a translucent
+    /// `bg` (`theme.bg.with_alpha(0.6)`) shows the effect through it, and a
+    /// region with an opaque `bg` does not. Glyphs are antialiased in
+    /// grayscale under `TextAa::Auto`, since an LCD mask cannot be
+    /// composited over what the window cannot see. And on Windows the
+    /// device presents through DirectComposition, the one D3D12 swapchain
+    /// that takes alpha.
+    ///
+    /// What the platform gave is `ui.env().window.backdrop`, every frame,
+    /// and is what a view decides by — less where the platform has less
+    /// (a `Blur` asked of GNOME reads `Tinted`, or `Opaque` with no
+    /// wallpaper). Paint the translucent regions opaque when it reads
+    /// `Opaque`:
     ///
     /// ```rust
     /// # use kui_native::{Backdrop, Color, Env};
-    /// fn sidebar_bg(env: &Env, base: Color) -> Color {
+    /// fn pane_bg(env: &Env, base: Color) -> Color {
     ///     match env.window.backdrop {
     ///         Backdrop::Opaque => base,
+    ///         // The desktop unblurred: text over it is a lottery.
     ///         Backdrop::Transparent => base.with_alpha(0.92),
-    ///         _ => base.with_alpha(0.55),
+    ///         Backdrop::Blur | Backdrop::Tinted => base.with_alpha(0.55),
     ///     }
     /// }
-    /// # let _ = sidebar_bg(&Env::default(), Color::hex(0x202020ff));
+    /// # let _ = pane_bg(&Env::default(), Color::hex(0x202020ff));
     /// ```
     ///
     /// It applies to the main window and to every window the app's frames
@@ -2303,7 +2326,19 @@ impl DynShell<'_> {
         // the view paints is what covers the material, and a view that
         // paints no root background shows it whole.
         let ground = pane.core.theme().bg;
-        let clear = if pane.backdrop.is_translucent() {
+        // The wallpaper kui draws where the OS has no material: handed to
+        // the renderer once it has loaded, and the part behind the window
+        // set when the window moved. A wallpaper that would not read is
+        // said once, and the window is opaque from then on.
+        if let (Some(g), Some(r)) = (pane.ground.as_mut(), pane.renderer.as_mut())
+            && let Err(why) = g.prepare(window, r)
+        {
+            eprintln!("kui: no wallpaper to draw behind the window: {why}");
+            pane.ground = None;
+            pane.backdrop = Backdrop::Opaque;
+            r.clear_ground();
+        }
+        let clear = if pane.backdrop.is_translucent() && pane.ground.is_none() {
             kui_wgpu::wgpu::Color::TRANSPARENT
         } else {
             kui_wgpu::wgpu::Color {
@@ -2446,8 +2481,12 @@ impl DynShell<'_> {
                     // The window keeps its backdrop where the new surface
                     // takes alpha too; one that will not any more leaves
                     // the window opaque, and says so.
-                    if pane.backdrop.is_translucent() && !r.transparent() {
+                    if pane.backdrop.is_translucent() && pane.ground.is_none() && !r.transparent() {
                         pane.backdrop = Backdrop::Opaque;
+                    }
+                    // A wallpaper drawn by kui goes to the new renderer too.
+                    if let Some(g) = pane.ground.as_mut() {
+                        g.renderer_replaced();
                     }
                     let opened = gpu.is_none();
                     gpu.get_or_insert_with(|| r.gpu().clone());
@@ -2611,6 +2650,9 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 if let Some(r) = pane.renderer.as_mut() {
                     r.resize(size.width, size.height);
                 }
+                if let Some(g) = pane.ground.as_mut() {
+                    g.moved();
+                }
                 if pane.minimized() {
                     pane.cause.went_dark();
                     pane.redraw_for(FrameCause::RESIZE);
@@ -2624,6 +2666,16 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             }
             WindowEvent::ScaleFactorChanged { .. } => {
                 self.panes[i].redraw_for(FrameCause::SCALE);
+            }
+            // The wallpaper kui draws behind a window stays put on the
+            // screen as the window moves over it (backlog F126); nothing
+            // else here cares where the window is.
+            WindowEvent::Moved(_) => {
+                let pane = &mut self.panes[i];
+                if let Some(g) = pane.ground.as_mut() {
+                    g.moved();
+                    pane.redraw_for(FrameCause::RESIZE);
+                }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let pane = &mut self.panes[i];
@@ -3680,11 +3732,11 @@ mod tests {
     #[test]
     fn a_backdrop_takes_auto_to_grayscale() {
         assert_eq!(aa_under(TextAa::Auto, Backdrop::Opaque), TextAa::Auto);
-        for b in [Backdrop::Transparent, Backdrop::Sidebar] {
+        for b in [Backdrop::Transparent, Backdrop::Blur, Backdrop::Tinted] {
             assert_eq!(aa_under(TextAa::Auto, b), TextAa::Grayscale);
             assert_eq!(aa_under(TextAa::Subpixel, b), TextAa::Subpixel);
         }
-        assert!(!subpixel_on(aa_under(TextAa::Auto, Backdrop::Window), true));
+        assert!(!subpixel_on(aa_under(TextAa::Auto, Backdrop::Tinted), true));
     }
 
     /// An app that never asked opens its device as it always did: no
@@ -3694,7 +3746,7 @@ mod tests {
     fn only_a_backdrop_opens_a_transparent_device() {
         let shell = app("plain").dyn_shell(Empty);
         assert!(!shell.gpu_options().transparent);
-        let shell = app("glass").backdrop(Backdrop::Sidebar).dyn_shell(Empty);
+        let shell = app("glass").backdrop(Backdrop::Blur).dyn_shell(Empty);
         assert!(shell.gpu_options().transparent);
     }
 }

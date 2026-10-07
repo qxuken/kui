@@ -1652,15 +1652,17 @@ export interface WindowEnv {
    *  Keep out of it. Null means the OS draws nothing over us. */
   nativeControls: Rect | null;
   /** What is behind the window's transparent pixels, as the runner got it:
-   *  `'opaque'` (the default), `'transparent'` (the desktop, no material),
-   *  or the OS's material — `'window'`, `'sidebar'`, `'transient'`. A view
-   *  that paints a translucent sidebar over the material paints it opaque
-   *  when this is `'opaque'`. */
+   *  `'opaque'` (the default), `'transparent'` (the desktop as it is),
+   *  `'blur'` (a live blur of what is behind the window) or `'tinted'`
+   *  (the desktop's colour, steady). Less where the platform has less — a
+   *  blur asked of GNOME reads `'tinted'`, the wallpaper kui draws, or
+   *  `'opaque'` — so a view paints its translucent regions opaque when
+   *  this is `'opaque'`. */
   backdrop: Backdrop;
 }
 
 /** What is behind a window's transparent pixels (`WindowEnv.backdrop`). */
-export type Backdrop = 'opaque' | 'transparent' | 'window' | 'sidebar' | 'transient';
+export type Backdrop = 'opaque' | 'transparent' | 'blur' | 'tinted';
 
 /** A box in logical px: position and size. */
 export interface Rect {
@@ -1844,12 +1846,13 @@ export interface WindowOptions {
   maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
   /** What shows through the window where a frame paints nothing or paints
-   *  with alpha (the launcher's `backdrop`): `'opaque'` (the default),
-   *  `'transparent'` (the desktop), or an OS material — `'window'`,
-   *  `'sidebar'`, `'transient'` (macOS vibrancy, Windows 11 Mica, Mica Alt,
-   *  Acrylic). The frame is then cleared to nothing, so a translucent `bg`
-   *  shows the material through; `env().window.backdrop` says what the
-   *  platform gave, which is less where it has less. */
+   *  with alpha (the launcher's `backdrop`), by effect: `'opaque'` (the
+   *  default), `'transparent'` (the desktop as it is), `'blur'` (macOS
+   *  vibrancy, Windows 11 Acrylic, KDE's compositor blur) or `'tinted'`
+   *  (Windows 11 Mica, macOS's window-background material, the wallpaper
+   *  kui draws where the OS has neither). Paint the regions that should
+   *  show it with alpha and the rest opaque; `env().window.backdrop` says
+   *  what the platform gave, which is less where it has less. */
   backdrop?: Backdrop;
   /** How outline glyphs are antialiased: `'auto'` (the default) is LCD
    *  subpixel coverage where the GPU blends per channel and grayscale

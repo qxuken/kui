@@ -483,7 +483,7 @@ mod tests {
             crate::window::Backdrop::from_code(0),
             Some(crate::window::Backdrop::default())
         );
-        assert_eq!(crate::window::Backdrop::from_code(5), None);
+        assert_eq!(crate::window::Backdrop::from_code(4), None);
         assert_eq!(Appearance::default().code(), 0);
         assert_eq!(MotionPref::default().code(), 0);
         assert_eq!(AudioDevice::default().code(), 0);

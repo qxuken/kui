@@ -220,7 +220,7 @@ impl DynShell<'_> {
                 return;
             }
         };
-        let backdrop = crate::backdrop::apply(&window, &renderer, backdrop);
+        let applied = crate::backdrop::apply(&window, &renderer, backdrop);
         // Before it is shown: AppKit makes a window key on ordering it
         // front and on every press, and asks `canBecomeKeyWindow` first —
         // so a non-activating window answers NO (`macos_key`), and its
@@ -236,7 +236,7 @@ impl DynShell<'_> {
         core.set_subpixel_text(self.subpixel);
         core.env.window.id = id;
         self.push_pane(
-            event_loop, id, config, owner, chrome, core, window, renderer, backdrop,
+            event_loop, id, config, owner, chrome, core, window, renderer, applied,
         );
         // ADR 0009 decision 1: a non-activating popup that opens while the
         // primary button is down **joins that press**. Evaluated once, here,
@@ -352,7 +352,7 @@ impl DynShell<'_> {
         mut core: Core,
         window: Arc<Window>,
         renderer: kui_wgpu::Renderer,
-        backdrop: Backdrop,
+        applied: crate::backdrop::Applied,
     ) {
         // macOS is the one platform whose own menu is worth the app's
         // appearance, because it is the one with rows that cannot be drawn
@@ -422,7 +422,17 @@ impl DynShell<'_> {
             owner,
             activates: config.activates,
             chrome,
-            backdrop,
+            backdrop: applied.got,
+            // Read on a thread; the loop is woken when it lands.
+            ground: applied.ground.map(|path| {
+                let proxy = self.proxy.clone();
+                crate::ground::Ground::new(crate::ground::spawn(path, move || {
+                    if let Some(p) = proxy {
+                        let _ = p.send_event(access_bridge::UserEvent::Wake);
+                    }
+                }))
+            }),
+            _backdrop_keep: applied.keep,
             native_controls,
             applied_min: None,
             anchor: config.anchor,

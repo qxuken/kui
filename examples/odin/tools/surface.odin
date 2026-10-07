@@ -371,7 +371,7 @@ surface :: proc() -> bool {
 	check(kui.ime_off_get(ui), "ime_off_get")
 	kui.env_set_always_on_top(ui, true)
 	// What is behind the window, as the host got it (backlog F126).
-	kui.env_set_backdrop(ui, .Sidebar)
+	kui.env_set_backdrop(ui, .Blur)
 
 	dd, dd_ok := kui.draw_data(ui)
 	check(dd_ok && len(dd.quads) > 0 && dd.scale == 2, "the surface frame drew at scale 2")

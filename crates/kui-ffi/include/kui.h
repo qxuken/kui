@@ -2564,23 +2564,23 @@ bool kui_always_on_top_get(KuiCtx *ctx);
  * KUI_ABI_VERSION. */
 void kui_env_set_always_on_top(KuiCtx *ctx, bool always_on_top);
 /* What is behind the window's transparent pixels, as kui_env_set_backdrop
- * takes it and Node and Lua read back as env.window.backdrop: the window
- * opaque (0, the default), see-through with nothing behind it, or a
- * material the OS draws there - a window's (macOS under-window background,
- * Windows 11 Mica), a sidebar's (macOS sidebar, Mica Alt), a menu's
- * (macOS popover, Acrylic). */
+ * takes it and Node and Lua read back as env.window.backdrop, named for
+ * the effect: the window opaque (0, the default); see-through, the desktop
+ * as it is; a live blur of what is behind it (macOS vibrancy, Windows 11
+ * Acrylic, a Linux compositor's blur); or tinted with the desktop's
+ * colour, steady rather than live (Windows 11 Mica, macOS's
+ * window-background material, the wallpaper drawn by kui elsewhere). */
 enum {
     KUI_BACKDROP_OPAQUE = 0,
     KUI_BACKDROP_TRANSPARENT = 1,
-    KUI_BACKDROP_WINDOW = 2,
-    KUI_BACKDROP_SIDEBAR = 3,
-    KUI_BACKDROP_TRANSIENT = 4,
+    KUI_BACKDROP_BLUR = 2,
+    KUI_BACKDROP_TINTED = 3,
 };
 /* What your window actually has behind it, for views to read: a
  * KUI_BACKDROP_*, the answer and not the ask, so a view that paints a
- * translucent sidebar paints it opaque where the platform gave no
- * material. A host that makes its window translucent also clears each
- * frame to nothing rather than to the theme's bg. Never called, it is
+ * translucent region paints it opaque where the platform gave none. A
+ * host that makes its window translucent also clears each frame to
+ * nothing rather than to the theme's bg. Never called, it is
  * KUI_BACKDROP_OPAQUE. Its own setter, as kui_env_set_always_on_top is:
  * additive, and off KUI_ABI_VERSION. An out-of-range code is ignored. */
 void kui_env_set_backdrop(KuiCtx *ctx, uint32_t backdrop);

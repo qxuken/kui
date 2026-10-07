@@ -272,6 +272,12 @@ pub(crate) struct Pane {
     /// the theme's `bg`. `Opaque` for every window of an app that never
     /// asked, and for a popup and the devtools' window of one that did.
     pub(crate) backdrop: Backdrop,
+    /// The wallpaper kui draws as the window's ground, where the backdrop
+    /// is kui's own (`mod ground`); `None` everywhere else.
+    pub(crate) ground: Option<crate::ground::Ground>,
+    /// What keeps the OS's effect alive for as long as the window (a
+    /// Linux compositor's blur objects).
+    pub(crate) _backdrop_keep: Option<Box<dyn std::any::Any>>,
     /// The keep-out rect `env.window.native_controls` reports: measured
     /// from the window once it exists (`macos_chrome`), on the one
     /// platform whose custom chrome keeps controls of the OS's over the

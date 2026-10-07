@@ -560,19 +560,22 @@ message.
 
 ### How do I show the blurred desktop through my sidebar, like a Mac app?
 
-Ask the launcher for a backdrop — `kui_native::app("Notes")
-.backdrop(Backdrop::Sidebar)`, or `backdrop: 'sidebar'` in Node's window
-options — and paint the sidebar with alpha: `bg(t.raised.with_alpha(0.5))`.
-The frame is cleared to nothing instead of the theme's `bg`, so what you
-paint is all that covers the material: macOS's sidebar vibrancy, Windows
-11's Mica Alt (`Window` is the under-window material and Mica, `Transient`
-the popover's and Acrylic). Paint the page beside it opaque as you always
-did. Then read what the window got, every frame, from
-`ui.env().window.backdrop` (Node `env().window.backdrop`): `Opaque` on
-Windows 10 or where the surface cannot take alpha, `Transparent` — the bare
-desktop, not blurred — on Linux. Paint the sidebar opaque for the first and
-nearly opaque for the second, since text over an unblurred desktop is a
-lottery. Glyphs are grayscale under a backdrop.
+Ask the launcher for the effect — `kui_native::app("Notes")
+.backdrop(Backdrop::Blur)`, or `backdrop: 'blur'` in Node's window options
+— and paint the regions that should show it with alpha:
+`bg(t.raised.with_alpha(0.5))` on the sidebar, an opaque `bg` on the page
+beside it. kui puts the effect behind the whole window and knows nothing of
+sidebars; what you paint decides where it shows. `Blur` is a live blur of
+what is behind the window (macOS vibrancy, Windows 11's Acrylic, KDE's
+compositor blur), `Tinted` the desktop's colour, steady (Mica, macOS's
+window-background material), `Transparent` the desktop as it is. Then read
+what the window got, every frame, from `ui.env().window.backdrop` (Node
+`env().window.backdrop`): where the OS has no effect — GNOME, Windows 10 —
+it reads `Tinted`, the wallpaper kui reads, blurs once and draws under the
+frame, or `Opaque` where no wallpaper could be read; paint the sidebar
+opaque then. Hyprland, SwayFX and picom blur translucent windows
+themselves: ask for `Transparent` there. Glyphs are grayscale under a
+backdrop; `KUI_BACKDROP_EMULATE=1` shows the wallpaper path anywhere.
 
 [`window.backdrop` row](props.md#env) ·
 [`backdrop.rs`](../examples/rust/features/backdrop.rs)

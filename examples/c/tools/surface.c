@@ -355,7 +355,7 @@ static int surface(void) {
     /* What is behind the window, as the host got it (backlog F126): a
      * fact like the level, so nothing reads it back here; a code past the
      * end is ignored rather than trusted. */
-    kui_env_set_backdrop(ui, KUI_BACKDROP_SIDEBAR);
+    kui_env_set_backdrop(ui, KUI_BACKDROP_BLUR);
     kui_env_set_backdrop(ui, 99);
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;

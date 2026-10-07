@@ -431,55 +431,55 @@ impl DismissReason {
 }
 
 /// What shows through a window where its frame paints nothing, or paints
-/// with alpha: the window's own opaque ground, the desktop, or a material
-/// the OS draws behind the window — the blurred desktop of a macOS sidebar
-/// (`NSVisualEffectView`), Windows 11's Mica and Acrylic (backlog F126).
+/// with alpha (backlog F126): named for the effect, not for where an app
+/// uses it. The app decides *which* regions show it — a sidebar, a
+/// toolbar — by painting them with alpha and the rest opaque; kui knows
+/// nothing of sidebars.
 ///
 /// Asked for by the app (`kui_native::Launcher::backdrop`) and reported
 /// back, as what the driver actually got, in [`WindowEnv::backdrop`] — a
-/// platform without the material reads `Transparent` or `Opaque`, and a
-/// view that draws translucent chrome draws it opaque there. Everything
-/// but `Opaque` clears the frame to nothing rather than to the theme's
-/// `bg`, so a node's `bg` is what sits over the backdrop, with its alpha.
+/// platform that cannot give the effect reads what it gave instead, down
+/// to `Opaque`, and a view that paints translucent regions paints them
+/// opaque there.
 ///
 /// ```rust
 /// use kui_core::Backdrop;
 ///
 /// assert_eq!(Backdrop::default(), Backdrop::Opaque);
-/// assert_eq!(Backdrop::from_name("sidebar"), Some(Backdrop::Sidebar));
-/// assert!(Backdrop::Sidebar.is_material() && !Backdrop::Transparent.is_material());
+/// assert_eq!(Backdrop::from_name("blur"), Some(Backdrop::Blur));
+/// assert!(Backdrop::Tinted.is_translucent() && !Backdrop::Opaque.is_translucent());
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Backdrop {
     /// The window is opaque: what every window is unless an app asks.
     #[default]
     Opaque,
-    /// See-through where the frame is, with no material behind it: the
-    /// desktop and the windows under this one show as they are. What a
-    /// material falls back to on a platform with a compositor but no
-    /// material (Linux).
+    /// See-through where the frame is: the desktop and the windows under
+    /// this one show as they are, unblurred. A compositor that blurs
+    /// translucent windows itself (Hyprland, SwayFX, picom when configured)
+    /// makes this look like `Blur`.
     Transparent,
-    /// The material behind a window's content: macOS's under-window
-    /// background, Windows 11's Mica.
-    Window,
-    /// The material of a sidebar or a source list: macOS's sidebar,
-    /// Windows 11's Mica Alt (the tabbed-window backdrop), which is the
-    /// more tinted of its two.
-    Sidebar,
-    /// The material of a menu or a popover, more see-through than the
-    /// two above: macOS's popover material, Windows 11's Acrylic.
-    Transient,
+    /// A live blur of whatever is behind the window, other windows
+    /// included: macOS's behind-window vibrancy (an `NSVisualEffectView`),
+    /// Windows 11's Acrylic, and on Linux the compositor's blur where it
+    /// offers one (KWin's `org_kde_kwin_blur` or
+    /// `_KDE_NET_WM_BLUR_BEHIND_REGION`, `ext-background-effect-v1`).
+    Blur,
+    /// The desktop's colour, cheap and steady rather than live: Windows
+    /// 11's Mica, macOS's window-background material (the wallpaper
+    /// tinting AppKit gives a window), and elsewhere the wallpaper itself,
+    /// read, scaled down and blurred once, drawn as the window's ground.
+    Tinted,
 }
 
 impl Backdrop {
     /// Every backdrop, in wire order: the index C's `KUI_BACKDROP_*`
     /// spells. Append-only.
-    pub const ALL: [Backdrop; 5] = [
+    pub const ALL: [Backdrop; 4] = [
         Backdrop::Opaque,
         Backdrop::Transparent,
-        Backdrop::Window,
-        Backdrop::Sidebar,
-        Backdrop::Transient,
+        Backdrop::Blur,
+        Backdrop::Tinted,
     ];
 
     /// The wire name, for the bindings and the report.
@@ -487,9 +487,8 @@ impl Backdrop {
         match self {
             Backdrop::Opaque => "opaque",
             Backdrop::Transparent => "transparent",
-            Backdrop::Window => "window",
-            Backdrop::Sidebar => "sidebar",
-            Backdrop::Transient => "transient",
+            Backdrop::Blur => "blur",
+            Backdrop::Tinted => "tinted",
         }
     }
 
@@ -503,16 +502,7 @@ impl Backdrop {
         Self::ALL.get(code as usize).copied()
     }
 
-    /// Whether the OS draws a material behind the window, as against the
-    /// window being opaque or merely see-through.
-    pub fn is_material(self) -> bool {
-        matches!(
-            self,
-            Backdrop::Window | Backdrop::Sidebar | Backdrop::Transient
-        )
-    }
-
-    /// Whether the window lets anything through: everything but `Opaque`.
+    /// Whether anything shows through: everything but `Opaque`.
     pub fn is_translucent(self) -> bool {
         self != Backdrop::Opaque
     }
@@ -548,10 +538,10 @@ pub struct WindowEnv {
     /// Views keep out of it; `None` means the OS draws nothing over us.
     pub native_controls: Option<Rect>,
     /// What is behind the window's transparent pixels, as the driver got
-    /// it — not as the app asked: a `Sidebar` asked for on Linux reads
-    /// `Transparent`, and on Windows 10, or under a renderer that cannot
-    /// present with alpha, `Opaque`. A view that draws a translucent
-    /// sidebar over the material draws it opaque when this is `Opaque`
-    /// (backlog F126). `Opaque` by default and in a headless core.
+    /// it — not as the app asked: a `Blur` asked of GNOME reads `Tinted`
+    /// (the wallpaper, drawn by kui) or `Opaque` where no wallpaper could
+    /// be read. A view that paints translucent regions over the backdrop
+    /// paints them opaque when this is `Opaque` (backlog F126). `Opaque`
+    /// by default and in a headless core.
     pub backdrop: Backdrop,
 }

@@ -1,13 +1,15 @@
-//! A window with the desktop behind it (backlog F126): a sidebar painted
-//! translucent over the material the OS draws behind the window — the
-//! blurred desktop of a macOS sidebar, Windows 11's Mica Alt — and a page
-//! beside it painted opaque, the way a notes app's library and note sit.
+//! A window with the desktop behind it (backlog F126): a library painted
+//! translucent over the backdrop — a live blur of what is behind the
+//! window, or the desktop's tint — and a page beside it painted opaque,
+//! the way a notes app's library and note sit. Which region shows the
+//! effect is the app's: kui only puts the effect behind the window.
 //!
 //! The app asks with `Launcher::backdrop` (`Window::backdrop` here) and
 //! paints from what it got, `env.window.backdrop`: where the platform has
 //! no material the sidebar is opaque too, and the page says which it got.
-//! `--backdrop window|sidebar|transient|transparent|opaque` picks what to
-//! ask for; `sidebar` by default.
+//! `--backdrop blur|tinted|transparent|opaque` picks what to ask for;
+//! `blur` by default. `KUI_BACKDROP_EMULATE=1` shows the wallpaper kui
+//! draws where the OS has no material.
 //!
 //! Run: cargo run -p kui-native --example backdrop -- --dock off
 
@@ -28,7 +30,7 @@ fn sidebar_bg(env: &Env, base: Color) -> Color {
     match env.window.backdrop {
         Backdrop::Opaque => base,
         Backdrop::Transparent => base.with_alpha(0.92),
-        Backdrop::Window | Backdrop::Sidebar | Backdrop::Transient => base.with_alpha(0.45),
+        Backdrop::Blur | Backdrop::Tinted => base.with_alpha(0.45),
     }
 }
 
@@ -83,7 +85,7 @@ impl App for Library {
 impl Example for Library {
     const FLAGS: &'static [(&'static str, &'static str)] = &[(
         "--backdrop",
-        "window, sidebar (the default), transient, transparent or opaque",
+        "blur (the default), tinted, transparent or opaque",
     )];
 
     fn window(&self) -> kui_devtools::Window {
@@ -100,7 +102,7 @@ impl Example for Library {
         let mut d = Drive::new(core, 720.0, 420.0);
         d.frame(self);
         d.check(self.sidebar_alpha == 1.0, "a headless core has no backdrop")?;
-        d.core.env.window.backdrop = Backdrop::Sidebar;
+        d.core.env.window.backdrop = Backdrop::Blur;
         d.frame(self);
         d.check(self.sidebar_alpha < 0.5, "translucent over a material")?;
         d.core.env.window.backdrop = Backdrop::Transparent;
@@ -112,14 +114,14 @@ impl Example for Library {
     }
 }
 
-/// `--backdrop NAME`, or `sidebar`.
+/// `--backdrop NAME`, or `blur`.
 fn asked() -> Backdrop {
     let args: Vec<String> = std::env::args().collect();
     args.iter()
         .position(|a| a == "--backdrop")
         .and_then(|i| args.get(i + 1))
         .and_then(|name| Backdrop::from_name(name))
-        .unwrap_or(Backdrop::Sidebar)
+        .unwrap_or(Backdrop::Blur)
 }
 
 kui_devtools::main!(Library {

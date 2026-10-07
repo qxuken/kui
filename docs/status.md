@@ -225,15 +225,18 @@ fit. The three cases that do not are what the kind exists for: a list
 taller than the window, a menu near an edge with nowhere in-window to sit,
 and a panel the user wants beside the app.
 
-A window can be **translucent** (`Launcher::backdrop`, backlog F126): the
-frame cleared to nothing over a material the OS draws behind the window —
-an `NSVisualEffectView` on macOS, Mica, Mica Alt or Acrylic on Windows 11
-22H2 and later — or over the bare desktop. It is the launcher's, for every
-window of the app at once: not a per-window declaration, not changeable
-while the app runs, and not on a popup or the devtools' window. Linux has
-no material (the window is merely see-through where the compositor and the
-Vulkan surface allow), a C host under `kui_run` cannot ask for one, and on
-Windows the device then presents through DirectComposition.
+A window can be **translucent** (`Launcher::backdrop`, backlog F126), by
+effect: the desktop as it is, a live blur of what is behind it, or the
+desktop's tint — macOS's `NSVisualEffectView`, Windows 11's Acrylic and
+Mica, a KDE compositor's blur, and elsewhere the wallpaper read, blurred
+once and drawn by kui. It is the launcher's, for every window of the app
+at once: not a per-window declaration, not changeable while the app runs,
+and not on a popup or the devtools' window. GNOME has no blur to ask for
+(the wallpaper stands in, reported as `Tinted`), the wallpaper is not read
+on macOS (AppKit's material is used instead), a C host under `kui_run`
+cannot ask for one, and on Windows the device then presents through
+DirectComposition. A blur of what the app itself drew under a node (CSS's
+`backdrop-filter`) is not built; backlog F129 proposes it.
 
 There is no window **position** an app can declare or read, no app-modal
 window (decision 10 keeps modality per window), and no native menu bar.

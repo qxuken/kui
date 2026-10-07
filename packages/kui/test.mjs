@@ -5523,6 +5523,9 @@ function referenceBlocks(text) {
         // `Ctx` never has it applied — the ask is the `always-on-top` line.
         alwaysOnTop: false,
         nativeControls: w > 0 && h > 0 ? { w, h } : null,
+        // Not on the line either: no scene asks for one, and a headless
+        // `Ctx` is opaque (backlog F126).
+        backdrop: 'opaque',
       };
     }
     if (line.startsWith('step ')) {
@@ -5751,7 +5754,7 @@ test('every corpus scene lowers the way kui-core does', (t) => {
     // `customChrome: true` and the rest the defaults. Node's rect is the
     // whole `Rect` where the line carries two extents at the origin
     // (`schema::ENV_FIELDS` names that divergence).
-    const declared = env ?? { customChrome: false, maximized: false, fullscreen: false, alwaysOnTop: false, nativeControls: null };
+    const declared = env ?? { customChrome: false, maximized: false, fullscreen: false, alwaysOnTop: false, nativeControls: null, backdrop: 'opaque' };
     assert.deepEqual(
       out.ctx.env().window,
       { id: 0, ...declared, nativeControls: declared.nativeControls && { x: 0, y: 0, ...declared.nativeControls } },
@@ -6773,7 +6776,7 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
   ctx.setEnv({
     refreshHz: 60,
     focused: false,
-    window: { customChrome: true, maximized: true, fullscreen: true, alwaysOnTop: true, nativeControls: { x: 8, y: 4, w: 70, h: 20 }, backdrop: 'sidebar' },
+    window: { customChrome: true, maximized: true, fullscreen: true, alwaysOnTop: true, nativeControls: { x: 8, y: 4, w: 70, h: 20 }, backdrop: 'blur' },
   });
   const env = ctx.env();
   assert.equal(env.refreshHz, 60);
@@ -6786,9 +6789,9 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
     fullscreen: true,
     alwaysOnTop: true,
     nativeControls: { x: 8, y: 4, w: 70, h: 20 },
-    backdrop: 'sidebar',
+    backdrop: 'blur',
   });
-  // A backdrop is one of five names (backlog F126).
+  // A backdrop is one of four effects (backlog F126).
   assert.throws(() => ctx.setEnv({ window: { backdrop: 'mica' } }), /backdrop is one of/);
   // Only what you pass moves — a test declares the one fact it is about.
   ctx.setEnv({ window: { maximized: false } });

@@ -366,9 +366,9 @@ pub extern "C" fn kui_env_set_always_on_top(ptr: *mut KuiCtx, always_on_top: boo
 
 /// The window fact for views to read as `env.window.backdrop`: a
 /// `KUI_BACKDROP_*`, what is actually behind the window's transparent
-/// pixels — the material the host put there, `TRANSPARENT` for a
-/// see-through surface with none, `OPAQUE` (0, and what a host that never
-/// calls this reports) for neither (backlog F126). A host that makes its
+/// pixels — `BLUR` or `TINTED` for the effect the host got, `TRANSPARENT`
+/// for a see-through surface with none, `OPAQUE` (0, and what a host that
+/// never calls this reports) for neither (backlog F126). A host that makes its
 /// window translucent also clears its frames to nothing rather than to the
 /// theme's `bg`. Its own setter, as `kui_env_set_always_on_top` is. An
 /// out-of-range code is ignored.

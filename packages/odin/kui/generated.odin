@@ -359,9 +359,8 @@ Audio_Device :: enum u32 {
 Backdrop :: enum u32 {
 	Opaque = 0, // KUI_BACKDROP_OPAQUE
 	Transparent = 1, // KUI_BACKDROP_TRANSPARENT
-	Window = 2, // KUI_BACKDROP_WINDOW
-	Sidebar = 3, // KUI_BACKDROP_SIDEBAR
-	Transient = 4, // KUI_BACKDROP_TRANSIENT
+	Blur = 2, // KUI_BACKDROP_BLUR
+	Tinted = 3, // KUI_BACKDROP_TINTED
 }
 
 Audio_Cmd :: enum u32 {

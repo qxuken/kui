@@ -30,6 +30,10 @@ kira = { version = "0.12", default-features = false, features = ["cpal", "mp3", 
 # The platform's Open / Save / folder dialogs (backlog C51), shown by the
 # runner when an app asks. On Linux through the XDG desktop portal (no GTK).
 rfd = { version = "0.17", default-features = false, features = ["xdg-portal"], optional = true }
+# The wallpaper a `Tinted` backdrop draws where the OS has no material
+# (`mod ground`, backlog F126): decoded once, off the frame. The version
+# arboard already builds, with the formats wallpapers come in.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 # The examples' devtools (docs/adr/0021): the dock, the CLI and the
 # headless drive every example under examples/rust runs inside. A
@@ -103,6 +107,14 @@ windows-sys = { version = "0.52", features = [
 # already builds, so this adds no crate to the tree.
 [target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
 x11rb = { version = "0.13", features = ["xkb"] }
+# A `Blur` backdrop asked of the Wayland compositor (`mod linux_blur`,
+# backlog F126): KWin's `org_kde_kwin_blur` and the staging
+# `ext-background-effect-v1`, on the display winit opened. The versions
+# winit already builds; `staging` is the one feature this adds.
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-plasma = { version = "0.3", features = ["client"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

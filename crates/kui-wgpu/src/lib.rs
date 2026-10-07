@@ -690,7 +690,41 @@ pub struct Renderer {
     /// surface, so each component is the byte it lands as, the same way a
     /// quad's color is.
     pub clear_color: wgpu::Color,
+    /// A picture drawn over the clear and under everything the frame
+    /// draws ([`Renderer::set_ground`]), when there is one.
+    ground: Option<Ground>,
 }
+
+/// The picture under a frame: its texture, the part of it the window
+/// shows (`uv`), and the pipeline that draws it across the viewport.
+struct Ground {
+    pipeline: wgpu::RenderPipeline,
+    bind: wgpu::BindGroup,
+    uv: wgpu::Buffer,
+    /// Kept for the bind group, which holds a view of it.
+    _texture: wgpu::Texture,
+}
+
+/// The ground's shader: one quad over the viewport, sampling the part of
+/// the picture `g.uv` names (`u0, v0, u1, v1`), opaque.
+const GROUND_SHADER: &str = r"
+struct G { uv: vec4<f32> }
+@group(0) @binding(0) var<uniform> g: G;
+@group(0) @binding(1) var t: texture_2d<f32>;
+@group(0) @binding(2) var s: sampler;
+struct V { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> }
+@vertex fn vs(@builtin(vertex_index) i: u32) -> V {
+    let x = f32(i & 1u);
+    let y = f32((i >> 1u) & 1u);
+    var o: V;
+    o.pos = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+    o.uv = vec2<f32>(mix(g.uv.x, g.uv.z, x), mix(g.uv.y, g.uv.w, y));
+    return o;
+}
+@fragment fn fs(v: V) -> @location(0) vec4<f32> {
+    return vec4<f32>(textureSample(t, s, v.uv).rgb, 1.0);
+}
+";
 
 struct Samplers {
     linear: wgpu::Sampler,
@@ -1141,7 +1175,186 @@ impl Renderer {
                 b: 0.08,
                 a: 1.0,
             },
+            ground: None,
         })
+    }
+
+    /// Draws `rgba` (`width` by `height` pixels, four bytes each, row by
+    /// row from the top left, the bytes the surface takes as they are) over
+    /// the clear and under everything a frame draws, opaque, stretched
+    /// across the viewport and sampled with linear filtering — so a small
+    /// picture reads as a soft one. What a runner draws as a window's
+    /// ground where the OS has no material to put behind it: the
+    /// wallpaper, scaled down and blurred once (backlog F126). Which part
+    /// of the picture shows is [`Renderer::set_ground_uv`]; all of it
+    /// until that is called. A degenerate size, or pixels that are not
+    /// that size, clear it.
+    pub fn set_ground(&mut self, rgba: &[u8], width: u32, height: u32) {
+        let max = self.gpu.device().limits().max_texture_dimension_2d;
+        if width == 0
+            || height == 0
+            || width > max
+            || height > max
+            || rgba.len() != width as usize * height as usize * 4
+        {
+            self.ground = None;
+            return;
+        }
+        let device = self.gpu.device();
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("kui.ground"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.gpu.queue().write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            size,
+        );
+        let uv = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("kui.ground.uv"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.gpu
+            .queue()
+            .write_buffer(&uv, 0, bytemuck::cast_slice(&[0.0f32, 0.0, 1.0, 1.0]));
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("kui.ground"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("kui.ground"),
+            layout: &layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uv.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.samplers.linear),
+                },
+            ],
+        });
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("kui.ground"),
+            source: wgpu::ShaderSource::Wgsl(GROUND_SHADER.into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("kui.ground"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("kui.ground"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: self.config.format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        self.ground = Some(Ground {
+            pipeline,
+            bind,
+            uv,
+            _texture: texture,
+        });
+    }
+
+    /// Which part of the ground shows across the viewport: `[u0, v0, u1,
+    /// v1]` in the picture's own 0..1 coordinates, the top-left corner
+    /// first. Outside 0..1 the picture's edge is stretched. Nothing without
+    /// a ground.
+    pub fn set_ground_uv(&mut self, uv: [f32; 4]) {
+        if let Some(g) = &self.ground {
+            self.gpu
+                .queue()
+                .write_buffer(&g.uv, 0, bytemuck::cast_slice(&uv));
+        }
+    }
+
+    /// Takes the ground away ([`Renderer::set_ground`]).
+    pub fn clear_ground(&mut self) {
+        self.ground = None;
+    }
+
+    /// Whether a ground is drawn under the frame.
+    pub fn has_ground(&self) -> bool {
+        self.ground.is_some()
     }
 
     /// Whether this device can draw LCD subpixel glyphs
@@ -1425,6 +1638,13 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            // The ground first, opaque over the clear, so everything the
+            // frame paints with alpha blends over it.
+            if let Some(g) = &self.ground {
+                pass.set_pipeline(&g.pipeline);
+                pass.set_bind_group(0, &g.bind, &[]);
+                pass.draw(0..4, 0..1);
+            }
             if !self.instances.is_empty() {
                 pass.set_vertex_buffer(0, self.instance_buf.slice(..));
                 if fragment_pipelines.is_empty() && texture_binds.is_empty() {
@@ -2031,6 +2251,19 @@ mod tests {
                 .validate(&module)
                 .unwrap_or_else(|e| panic!("dual={dual}: {e:?}"));
         }
+    }
+
+    /// The ground's shader parses and validates, as the pipeline that
+    /// draws a window's wallpaper would otherwise fail in a window
+    /// (backlog F126).
+    #[test]
+    fn the_ground_shader_validates() {
+        use wgpu::naga::valid::{Capabilities, ValidationFlags, Validator};
+        let module = wgpu::naga::front::wgsl::parse_str(GROUND_SHADER)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(GROUND_SHADER)));
+        Validator::new(ValidationFlags::all(), Capabilities::empty())
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{e:?}"));
     }
 
     /// The line `report_faults` says, built without the heap (RG31): the

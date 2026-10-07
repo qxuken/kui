@@ -50,36 +50,46 @@ are new; `KuiMenuItem` has no submenu) and the Node wire at v21 (a row's
 - **A window with the desktop behind it** (backlog F126, from Noticon,
   for a sidebar like an Obsidian theme's on a Mac).
   `Launcher::backdrop(Backdrop)` — `backdrop` in Node's window options —
-  asks for what shows through the app's windows where a frame paints
-  nothing or paints with alpha: `Window`, `Sidebar` or `Transient`, a
-  material the OS draws behind the window, or `Transparent`, the bare
-  desktop. On macOS an `NSVisualEffectView` goes under the content view
-  (the under-window, sidebar or popover material, blending behind the
-  window and dimmed with it in the background) and the CAMetalLayer is not
-  opaque; on Windows 11 22H2 and later `DWMWA_SYSTEMBACKDROP_TYPE` asks
-  for Mica, Mica Alt or Acrylic over a client area extended under the
-  frame, the window has no GDI surface, and the device presents D3D12
-  through DirectComposition — the one swapchain that takes alpha
-  (`kui_wgpu::GpuOptions::transparent`, `Renderer::new_with` /
-  `new_in_with`). Linux gets a see-through window where the compositor
-  and the Vulkan surface allow, with no material. The frame is then
-  cleared to nothing rather than to the theme's `bg`, so a view's `bg`
-  with alpha is what sits over the material, and glyphs are grayscale
-  under `TextAa::Auto`. What the window got is
-  `env.window.backdrop` (`window.backdrop` in Node and Lua,
-  `kui_env_set_backdrop` for a C host that makes its own), which is less
-  where the platform has less — `Transparent` on Linux and Windows 10,
-  `Opaque` where the surface takes no alpha — so a view paints its
-  sidebar opaque when it says so. Every window of the app takes it but a
-  popup and the devtools' own; an app that does not ask opens exactly the
-  window and the swapchain it always did. Seen in a window on Windows 11:
-  Acrylic blurring a red window behind the sidebar, Mica Alt tinting it,
-  the bare desktop through it, and an opaque devtools window beside it.
-  The macOS half is written against objc2-app-kit 0.3 and has not been
-  compiled or run (no Apple target on the machine it was written on).
-  The `backdrop` example shows a sidebar and a page painted from the
-  reading. *What you can delete:* nothing — this is new.
-
+  asks for what shows through the app's windows, named for the effect:
+  `Transparent` (the desktop as it is), `Blur` (a live blur of what is
+  behind the window) or `Tinted` (the desktop's colour, steady). Which
+  regions show it is the app's, by painting them with alpha and the rest
+  opaque. macOS: an `NSVisualEffectView` under the content view, blending
+  behind the window and dimmed with it in the background — the sidebar
+  material for `Blur`, the window-background one for `Tinted`. Windows 11
+  22H2 and later: Acrylic for `Blur`, Mica for `Tinted`
+  (`DWMWA_SYSTEMBACKDROP_TYPE`, the frame extended under the client
+  area), the window without a GDI surface and the device presenting D3D12
+  through DirectComposition (`kui_wgpu::GpuOptions::transparent`,
+  `Renderer::new_with` / `new_in_with`). Linux: `Blur` asked of the
+  compositor — `ext-background-effect-v1` where it is advertised with
+  blur, KWin's `org_kde_kwin_blur`, `_KDE_NET_WM_BLUR_BEHIND_REGION` under
+  X11. Where the OS has no effect to give — GNOME, other Linux, Windows
+  10 — `Blur` and `Tinted` draw the desktop's wallpaper (GNOME's
+  `picture-uri`, Plasma's config, `SPI_GETDESKWALLPAPER`), read on a
+  thread, scaled down and blurred once and cached by path and modification
+  time, as the window's ground under the frame
+  (`Renderer::set_ground` / `set_ground_uv`), aligned to where the window
+  sits on its monitor (centred on Wayland), and report `Tinted`; with no
+  wallpaper, `Opaque`. Where the OS draws the effect the frame is cleared
+  to nothing rather than to the theme's `bg`, and glyphs are grayscale
+  under `TextAa::Auto`. What the window got is `env.window.backdrop`
+  (`window.backdrop` in Node and Lua, `kui_env_set_backdrop` for a C host
+  that makes its own), so a view paints opaque when it says `Opaque`.
+  Every window of the app takes it but a popup and the devtools' own; an
+  app that does not ask opens exactly the window and the swapchain it
+  always did. `KUI_BACKDROP_EMULATE=1` draws the wallpaper for `Blur` and
+  `Tinted` anywhere, to look at it. Seen in windows on Windows 11:
+  Acrylic blurring a red window behind the translucent region, Mica, the
+  bare desktop through `Transparent`, the wallpaper drawn by kui under
+  `KUI_BACKDROP_EMULATE`, and an opaque devtools window beside them; on
+  WSLg (Wayland, no blur protocol, no gsettings) a `Blur` reading
+  `Opaque`. The macOS half is written against objc2-app-kit 0.3 and has
+  not been compiled or run, and no KDE or GNOME session was at hand: the
+  Linux half compiles and passes clippy there, untried on either
+  desktop. The `backdrop` example paints a translucent library and an
+  opaque page from the reading. *What you can delete:* nothing — this is
+  new.
 - **Submenus** (backlog F128, from Noticon, for "Move to ▸" and "Sort by
   ▸"). `MenuItem::submenu(label, rows)` — `items` on a row in Node and
   Lua, read by the one row parser — is a row with a chevron that opens
