@@ -19,10 +19,12 @@ Custom :: struct {
 }
 
 Door :: struct {
-	rust:    string,
-	c_cell:  string, // is | as | no
-	c_text:  string,
-	doc:     string,
+	rust:      string,
+	c_cell:    string, // is | as | no
+	c_text:    string,
+	odin_cell: string, // the Odin column, which check_doors_column holds the binding to
+	odin_text: string,
+	doc:       string,
 }
 
 Event_Def :: struct {
@@ -74,7 +76,9 @@ load_schema :: proc(path: string) -> (s: Schema) {
 	for v in o["doors"].(json.Array) {
 		p := v.(json.Object)
 		cell := p["c"].(json.Object)
-		append(&s.doors, Door{str(p, "rust"), str(cell, "cell"), str(cell, "text"), str(p, "doc")})
+		odin, has_odin := p["odin"].(json.Object)
+		if !has_odin do fail("%s: DOORS has no odin column; rerun the schema dump", path)
+		append(&s.doors, Door{str(p, "rust"), str(cell, "cell"), str(cell, "text"), str(odin, "cell"), str(odin, "text"), str(p, "doc")})
 	}
 	for v in o["theme"].(json.Array) {
 		p := v.(json.Object)

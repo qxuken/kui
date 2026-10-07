@@ -913,7 +913,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
         .collect();
     assert!(
         unrowed.is_empty(),
-        "prototypes in kui.h with no row in schema::DOORS (a verb needs a row with its three other cells; \
+        "prototypes in kui.h with no row in schema::DOORS (a verb needs a row with its other cells; \
          what is not a verb is listed in this test): {unrowed:?}"
     );
 }

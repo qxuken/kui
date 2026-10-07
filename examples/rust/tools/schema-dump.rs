@@ -80,7 +80,8 @@ fn main() {
         .map(|e| json!({ "kind": e.kind, "payload": e.payload, "doc": e.doc }));
     let doors = schema::DOORS.iter().map(|d| {
         json!({
-            "rust": d.rust, "c": cell(d.c), "node": cell(d.node), "lua": cell(d.lua), "doc": d.doc,
+            "rust": d.rust, "c": cell(d.c), "odin": cell(d.odin), "node": cell(d.node), "lua": cell(d.lua),
+            "doc": d.doc,
         })
     });
     let theme = schema::THEME_ROLES
@@ -92,7 +93,8 @@ fn main() {
     let env = schema::ENV_FIELDS
         .iter()
         .map(|f| json!({ "name": f.name, "c": f.c, "doc": f.doc }));
-    let all = |it: &mut dyn Iterator<Item = &'static str>| Json::Array(it.map(Json::from).collect());
+    let all =
+        |it: &mut dyn Iterator<Item = &'static str>| Json::Array(it.map(Json::from).collect());
 
     let out = json!({
         "props": props(),

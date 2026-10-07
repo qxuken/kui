@@ -89,6 +89,7 @@ import c "c"
 	doors := plan_doors(&g)
 	emit_mirrors(&g)
 	emit_doors(&g, doors[:])
+	check_doors_column(&g, doors[:])
 	check_events(&g)
 	check_elements(&g)
 	check_stale(&g)
@@ -1190,6 +1191,25 @@ from_scalar :: proc(conv: Scalar_Conv, odin_t, v: string) -> string {
 }
 
 // -- What the hand-written half owes the schema -------------------------------
+
+// The verb table's Odin column (schema::DOORS) and the binding agree both
+// ways: every procedure the column names is one package kui has, and a verb
+// whose C function has a generated door is that door in the column - so a
+// door renamed, dropped or added shows up as a row to change.
+check_doors_column :: proc(g: ^Gen, doors: []^Function) {
+	generated := make(map[string]bool)
+	for f in doors do generated[raw_name(f.name)] = true
+	for d in g.s.doors {
+		if d.odin_cell == "is" && !generated[d.odin_text] && !g.hand_procs[d.odin_text] {
+			fail("DOORS %s: the Odin column names %s, which package kui does not have", d.rust, d.odin_text)
+		}
+		if d.c_cell != "is" do continue
+		door := raw_name(d.c_text)
+		if generated[door] && (d.odin_cell != "is" || d.odin_text != door) {
+			fail("DOORS %s: %s is package kui's generated door %s, but the Odin column says %s(%q)", d.rust, d.c_text, door, d.odin_cell, d.odin_text)
+		}
+	}
+}
 
 // Every event the core emits has a struct to decode it into, named for its
 // kind (with _Event), holding every field the schema says it carries.
