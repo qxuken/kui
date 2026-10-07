@@ -414,8 +414,12 @@ pub struct Resources {
     /// came first — Courier New's italic for Hebrew on a Mac. By name, it
     /// asks its own face and then the app's, as a registered family does.
     /// None with no list, where the monospaced faces are asked first as
-    /// before (`Core::set_fallback_fonts` keeps it).
-    pub(crate) mono: Option<String>,
+    /// before (`SessionState::name_mono` keeps it). With the name, the
+    /// weights its faces cover: by name cosmic-text takes a face of the
+    /// family only at a weight it has, and passes a single-weight family
+    /// over for bold — to the proportional lists — where the generic
+    /// family took any weight (backlog RG123).
+    pub(crate) mono: Option<(String, crate::weights::Weights)>,
     /// Handles of other sessions this registry was asked for since the
     /// last drain, each once. A `RefCell` because the resolves that find
     /// them (`family_of` under a shaping closure, `image` under the
@@ -556,8 +560,10 @@ impl Resources {
             FontFamily::Serif => cosmic_text::Family::Serif,
             FontFamily::Mono => self
                 .mono
-                .as_deref()
-                .map_or(cosmic_text::Family::Monospace, cosmic_text::Family::Name),
+                .as_ref()
+                .map_or(cosmic_text::Family::Monospace, |(name, _)| {
+                    cosmic_text::Family::Name(name)
+                }),
             FontFamily::Custom(id) => match self.font_family(id) {
                 Some(name) => cosmic_text::Family::Name(name),
                 None => cosmic_text::Family::SansSerif,
@@ -566,14 +572,19 @@ impl Resources {
     }
 
     /// The weights a style's `FontFamily` is asked at: a
-    /// registered family's own, the CSS ones for a generic family and for
-    /// an unknown or removed custom font (which shapes as sans-serif).
+    /// registered family's own, the pinned face's for `Mono` while it is
+    /// shaped by name (see `mono`), the CSS ones for a generic family and
+    /// for an unknown or removed custom font (which shapes as sans-serif).
     pub(crate) fn weights_of(&self, f: FontFamily) -> crate::weights::Weights {
         match f {
             FontFamily::Custom(id) => self
                 .fonts
                 .get(id)
                 .map_or(crate::weights::Weights::CSS, |entry| entry.weights),
+            FontFamily::Mono => self
+                .mono
+                .as_ref()
+                .map_or(crate::weights::Weights::CSS, |&(_, weights)| weights),
             _ => crate::weights::Weights::CSS,
         }
     }

@@ -106,6 +106,7 @@ impl Core {
             if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
                 sess.weights_rev += 1;
             }
+            sess.repin_mono();
             id
         };
         self.sync_font_names();
@@ -138,6 +139,7 @@ impl Core {
             if sess.resources.reweigh(sess.fonts.db(), &touched, Some(id)) {
                 sess.weights_rev += 1;
             }
+            sess.repin_mono();
             id
         };
         self.sync_font_names();
@@ -167,6 +169,7 @@ impl Core {
         if sess.resources.reweigh(sess.fonts.db(), &touched, None) {
             sess.weights_rev += 1;
         }
+        sess.repin_mono();
         added.len()
     }
 
@@ -286,6 +289,7 @@ impl Core {
             if sess.resources.reweigh(sess.fonts.db(), &touched, None) {
                 sess.weights_rev += 1;
             }
+            sess.repin_mono();
         }
         self.sync_font_names();
     }
@@ -732,15 +736,36 @@ impl crate::session::SessionState {
     /// after it rather than after every monospaced face. None with no
     /// list, or where no installed face is of the pinned name (cosmic-text's
     /// own default on a machine without it), where the generic family's
-    /// walk of the monospaced faces is the better first answer.
-    pub(crate) fn name_mono(&mut self) {
+    /// walk of the monospaced faces is the better first answer. With the
+    /// name, the weights the family's faces cover, so a single-weight face
+    /// is not passed over for bold (backlog RG123).
+    ///
+    /// Asked again wherever the faces can change under it — the list, a
+    /// rescan, and a font the app loads or removes, which can be the
+    /// pinned family's only face or a new weight of it (RG123) — and true
+    /// when the answer moved, for the caller to have every window shape
+    /// again.
+    pub(crate) fn name_mono(&mut self) -> bool {
         let db = self.fonts.db();
         let name = db.family_name(&cosmic_text::Family::Monospace);
         let installed = db
             .faces()
             .any(|face| face.families.iter().any(|(f, _)| f == name));
-        self.resources.mono =
-            (!self.resources.fallback.is_empty() && installed).then(|| name.to_string());
+        let mono = (!self.resources.fallback.is_empty() && installed)
+            .then(|| (name.to_string(), crate::weights::Weights::of(db, name)));
+        if mono == self.resources.mono {
+            return false;
+        }
+        self.resources.mono = mono;
+        true
+    }
+
+    /// [`Self::name_mono`] after a font the app loaded or removed, with
+    /// every window shaping again when `Mono` moved.
+    fn repin_mono(&mut self) {
+        if self.name_mono() {
+            self.weights_rev += 1;
+        }
     }
 
     /// `Core::reload_system_fonts`' half on the session: the faces the
@@ -1081,5 +1106,120 @@ mod tests {
         assert!(fresh.session.state().faces_shared);
         assert_eq!(file_backed(&fresh), 0, "a folder's faces shared");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A session whose generic monospace family is pinned to `name`, as
+    /// the scan pins it to the machine's (`pin_default_families`); a test
+    /// cannot install a face, so the face is one the app loads.
+    fn pinned_to(name: &str) -> Core {
+        let core = Core::new();
+        core.session
+            .state()
+            .fonts
+            .db_mut()
+            .set_monospace_family(name);
+        core
+    }
+
+    /// How far apart two `M`s are drawn in `Mono` at 20 px, bold or not:
+    /// 10 px in the fixture's face, which no installed face's is.
+    fn mono_m_apart(core: &mut Core, bold: bool) -> Option<f32> {
+        let span = crate::text::Span {
+            bold,
+            ..crate::text::Span::new("MM")
+        };
+        let mut ui = core.frame(crate::Size::new(400.0, 100.0), 1.0);
+        ui.rich_text(&[span], crate::TextStyle::new(20.0).mono());
+        ui.finish();
+        let (dl, _) = core.output();
+        let xs: Vec<f32> = dl
+            .quads
+            .iter()
+            .filter(|q| q.kind != crate::QuadKind::Solid)
+            .map(|q| q.rect.x)
+            .collect();
+        xs.get(1).zip(xs.first()).map(|(b, a)| b - a)
+    }
+
+    /// A pinned `Mono` of a single weight stays in its family for bold
+    /// (backlog RG123). By name cosmic-text takes a face of the family only
+    /// at a weight it has, and asked at 700 a regular-only family was
+    /// passed over for the proportional lists: the pinned name is asked at
+    /// the weights its faces cover, as a registered family is.
+    #[test]
+    fn a_single_weight_pinned_mono_stays_itself_in_bold() {
+        use crate::testing::{font_face, han_only_face};
+        let mut core = pinned_to("Kui RG123 Mono");
+        core.add_font_data(font_face("Kui RG123 Mono", 400, false, true))
+            .expect("the fixture registers");
+        // A list that has no `M`, so it cannot stand in for the pinned face.
+        let han = core
+            .add_font_data(han_only_face("Kui RG123 Han"))
+            .expect("a face with 字");
+        core.set_fallback_fonts(&[han]);
+        assert_eq!(
+            core.session
+                .state()
+                .resources
+                .mono
+                .as_ref()
+                .map(|m| m.0.as_str()),
+            Some("Kui RG123 Mono"),
+            "Mono is pinned by name"
+        );
+        assert_eq!(mono_m_apart(&mut core, false), Some(10.0), "regular");
+        assert_eq!(mono_m_apart(&mut core, true), Some(10.0), "and bold");
+    }
+
+    /// The pin follows the faces the app loads and removes (backlog
+    /// RG123): a pinned family whose only face the app removes leaves
+    /// `Mono` generic, not a name nothing answers to, and one that arrives
+    /// after the list was set pins it. Each move has every window shape
+    /// again.
+    #[test]
+    fn the_mono_pin_follows_the_faces_the_app_loads_and_removes() {
+        use crate::testing::{font_face, han_only_face};
+        let mut core = pinned_to("Kui RG123 Late Mono");
+        let han = core
+            .add_font_data(han_only_face("Kui RG123 Late Han"))
+            .expect("a face with 字");
+        core.set_fallback_fonts(&[han]);
+        let pinned = |core: &Core| {
+            core.session
+                .state()
+                .resources
+                .mono
+                .as_ref()
+                .map(|m| m.0.clone())
+        };
+        assert_eq!(pinned(&core), None, "no face of the name yet");
+        let weights = core.session.state().weights_rev;
+        let mono = core
+            .add_font_data(font_face("Kui RG123 Late Mono", 400, false, true))
+            .expect("the fixture registers");
+        assert_eq!(
+            pinned(&core).as_deref(),
+            Some("Kui RG123 Late Mono"),
+            "the face loaded after the list pins it"
+        );
+        assert!(
+            core.session.state().weights_rev > weights,
+            "and shapes again"
+        );
+        assert_eq!(mono_m_apart(&mut core, false), Some(10.0));
+        let weights = core.session.state().weights_rev;
+        core.remove_font(mono);
+        assert_eq!(pinned(&core), None, "its only face gone, Mono is generic");
+        assert!(
+            core.session.state().weights_rev > weights,
+            "and shapes again"
+        );
+        assert_eq!(
+            core.session
+                .state()
+                .resources
+                .family_of(crate::FontFamily::Mono),
+            cosmic_text::Family::Monospace
+        );
     }
 }
