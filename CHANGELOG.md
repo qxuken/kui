@@ -56,7 +56,10 @@ was the first bare bump to break an app in five releases).
   Run it with `nu scripts/odin.nu gen | test | slots | run counter`. It is
   not published. CI's `check` installs a pinned Odin release (`ODIN_VERSION`)
   and runs `gen --check`, `check`, `test` and `slots`, so a header or schema
-  change that was not regenerated goes red there.
+  change that was not regenerated goes red there. All four also run green
+  by hand on Windows x64 and Linux x64. On Windows the binding links
+  `kui_ffi.dll.lib`, odin.nu puts `kui_ffi.dll` beside the programs, and
+  `gen --check` reads a CRLF checkout as current.
 - `scripts/pack-ffi.nu`: libkui_ffi for every platform kui ships, dynamic
   and static, with `kui.h`, rustc's `native-static-libs` as `link.txt`, a
   tarball each and `SHA256SUMS`. It is for a C or Odin host that links a
@@ -65,7 +68,9 @@ was the first bare bump to break an app in five releases).
   built in a pinned Docker image with the release workflow's
   cargo-zigbuild and cargo-xwin. Windows also asks for
   `--accept-msvc-license`, for the CRT and SDK xwin downloads. macOS is
-  built on a Mac only.
+  built on a Mac only. A Windows pack carries windows-targets' import
+  libraries (`windows.0.53.0.lib`, `windows.0.52.0.lib`), which its
+  `link.txt` names and no SDK has, so a static link finds them.
 - `examples/rust/tools/schema-dump.rs`: the prop schema (props,
   composites, elements, events, the verb table, the name lists) as JSON,
   for a binding generated outside Rust.

@@ -5,9 +5,11 @@
 package kui_c
 
 // The library to link: kui_ffi from the system search path by default,
-// which -extra-linker-flags:"-L<dir>" points at a build. Override with
-// -define:KUI_LIB=<name or relative path>.
-KUI_LIB :: #config(KUI_LIB, "system:kui_ffi")
+// which -extra-linker-flags:"-L<dir>" (/LIBPATH:<dir> on Windows) points at
+// a build. On Windows that is kui_ffi.dll's import library, kui_ffi.dll.lib:
+// MSVC's link reads a bare name as an object file, and kui_ffi.lib is the
+// static library. Override with -define:KUI_LIB=<name or relative path>.
+KUI_LIB :: #config(KUI_LIB, "system:kui_ffi.dll.lib" when ODIN_OS == .Windows else "system:kui_ffi")
 
 // A plugin (-define:KUI_PLUGIN=true, built -build-mode:shared) links no kui
 // on macOS or Linux: every kui_* stays undefined and resolves at load from

@@ -56,9 +56,14 @@ nu scripts/odin.nu gen --check              # fail if a rerun would change anyth
 nu scripts/odin.nu slots                    # the extension contract across Odin, C and Rust
 ```
 
-`odin` comes from PATH, or set `ODIN`. The examples link `kui_ffi` as a
-system library with `-L` and an rpath into `target/<profile>`; outside this
-repository, pass your own `-extra-linker-flags`, or `-define:KUI_LIB=<name>`.
+`odin` comes from PATH, or set `ODIN` (and `ODIN_ROOT` to its directory
+if your environment points it at another Odin). The binding needs Odin
+dev-2026-09, CI's pin; dev-2026-04 rejects `run`'s `teardown = nil`. The
+examples link `kui_ffi` as a system library with `-L` and an rpath into
+`target/<profile>`; on Windows with `/LIBPATH` and `kui_ffi.dll.lib`, and
+odin.nu copies `kui_ffi.dll` into `target/odin` beside them, since Windows
+has no rpath. Outside this repository, pass your own
+`-extra-linker-flags`, or `-define:KUI_LIB=<name>`.
 
 ## Linking a prebuilt library
 
@@ -74,10 +79,27 @@ odin build app -extra-linker-flags:"-L$PACK/lib -Wl,-rpath,$PACK/lib"
 odin build app -extra-linker-flags:"-L$STATIC_DIR $(tail -1 $PACK/link.txt)"
 ```
 
-The static program carries kui and needs nothing beside it. The counter
-is 35 MB on macOS and 62 MB on Linux, dead-stripped from archives of 75 MB
-and 156 MB. Both ways run the counter's `--headless` drive green on
-macOS arm64 and Linux arm64, the Linux one in a bare Debian container.
+On Windows the two are told apart by name, so `lib/` serves both:
+
+```sh
+# dynamic: kui_ffi.dll.lib, the default; copy kui_ffi.dll beside the program
+odin build app -extra-linker-flags:"/LIBPATH:$PACK\lib"
+# static: kui_ffi.lib, link.txt's line, and Rust's CRT (the DLL one) for both
+odin build app -define:KUI_LIB=system:kui_ffi.lib -extra-linker-flags:"/LIBPATH:$PACK\lib <link.txt's last line> /NODEFAULTLIB:libcmt"
+```
+
+link.txt names `windows.0.53.0.lib` and `windows.0.52.0.lib`,
+windows-targets' import libraries, which no SDK has; the pack carries them
+in `lib/`. Odin links the static CRT and the archive was built for the
+DLL one; `/NODEFAULTLIB:libcmt` keeps one CRT in the program, as Odin's own
+vendor packages do for such a library (without it, LNK4098 warns of two).
+
+The static program carries kui and needs nothing beside it (on Windows,
+the VC++ runtime any MSVC Rust program needs). The counter is 35 MB on
+macOS, 62 MB on Linux and 14 MB on Windows, dead-stripped from archives of
+75 MB, 156 MB and 113 MB. Both ways run the counter's `--headless` drive
+green on macOS arm64, Linux arm64 (in a bare Debian container), Linux x64
+and Windows x64.
 
 ## Extensions
 
@@ -202,9 +224,12 @@ checked: `nu scripts/odin.nu test`.
 
 ## Not here yet
 
-- Windows: `KuiStr` as Odin's `string` is checked on arm64 macOS only.
-  The layout asserts hold everywhere, but how a two-word struct is passed
-  by value is each platform's C ABI.
+- A Windows leg in CI. By hand, `gen --check`, `check`, `test` and `slots`
+  run green on Windows x64 and Linux x64 as on macOS arm64. So does
+  `KuiStr` as Odin's `string`, passed by value under each one's C ABI
+  (71 parameters, through surface and the scene corpus): 16 bytes by
+  reference on Windows x64, in two registers on SysV and arm64. Windows
+  gen prints the same 848 layout asserts.
 - An ADR and a book page.
 
 ## CI

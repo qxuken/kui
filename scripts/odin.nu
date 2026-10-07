@@ -30,6 +30,11 @@ def odin [] {
     if ($o | str starts-with "~") or ($o | str contains "/") { $o | path expand } else { $o }
 }
 
+# A program's file name: Odin refuses an -out without .exe on Windows.
+def exe [name: string] {
+    if $nu.os-info.name == "windows" { $"($name).exe" } else { $name }
+}
+
 def profile [release: bool] {
     if $release { "release" } else { "debug" }
 }
@@ -37,6 +42,11 @@ def profile [release: bool] {
 def build-lib [release: bool] {
     let args = if $release { [--release] } else { [] }
     cargo build -p kui-ffi ...$args
+    # Windows has no rpath: a program finds kui_ffi.dll beside it.
+    if $nu.os-info.name == "windows" {
+        mkdir $OUT
+        cp ($ROOT | path join target (profile $release) kui_ffi.dll) $OUT
+    }
 }
 
 def link-flags [release: bool] {
@@ -51,7 +61,9 @@ def link-flags [release: bool] {
 # Every example: one file a program, examples/odin/<kind>/<name>.odin or a
 # level deeper (features/slots/host.odin).
 def examples [] {
-    glob ($ROOT | path join examples odin "**" "*.odin") | sort
+    # A glob pattern reads `\` as an escape, so a Windows root is spelled with `/`.
+    let dir = $ROOT | path join examples odin | str replace -a '\' '/'
+    glob $"($dir)/**/*.odin" | sort
 }
 
 # A plugin is an example that exports the extension contract: it is built
@@ -84,15 +96,18 @@ def "main gen" [--check] {
     let ast = $OUT | path join kui.ast.json
     let schema = $OUT | path join schema.json
     let layout_c = $OUT | path join layout.c
-    let layout_exe = $OUT | path join layout
+    let layout_exe = $OUT | path join (exe layout)
     let kui_dir = $PKG | path join kui
     clang -x c -Xclang -ast-dump=json -fsyntax-only $header | save -f $ast
     cargo run -q -p kui-core --example schema-dump -- $schema
-    ^(odin) run ($PKG | path join gen) $"-out:($OUT | path join gen)" -- $ast $header $schema $kui_dir $layout_c
+    ^(odin) run ($PKG | path join gen) $"-out:($OUT | path join (exe gen))" -- $ast $header $schema $kui_dir $layout_c
     clang -std=c11 $"-I($header | path dirname)" $layout_c -o $layout_exe
     ^$layout_exe | save -f ($kui_dir | path join c layout.odin)
     if $check {
-        let stale = $before | where {|b| (open --raw $b.path) != $b.text } | get path
+        # Line ends aside: a Windows checkout has CRLF, gen writes LF, and
+        # the layout program's text-mode stdout writes CRLF on Windows.
+        let lf = {|t| $t | str replace -a "\r\n" "\n" }
+        let stale = $before | where {|b| (do $lf (open --raw $b.path)) != (do $lf $b.text) } | get path
         $before | each {|b| $b.text | save -f --raw $b.path } | ignore
         if not ($stale | is-empty) {
             print -e $"the Odin binding is stale: run nu scripts/odin.nu gen \(($stale | path relative-to $ROOT | str join ', '))"
@@ -128,7 +143,7 @@ def --wrapped "main run" [name: string, --release, ...args] {
 
 def build-example [src: string, release: bool] {
     mkdir $OUT
-    let exe = $OUT | path join ($src | path parse | get stem)
+    let exe = $OUT | path join (exe ($src | path parse | get stem))
     let opt = if $release { [-o:speed] } else { [-debug] }
     ^(odin) build $src -file $"-out:($exe)" (link-flags $release) ...$opt
     $exe
@@ -147,14 +162,17 @@ def build-plugin [src: string, release: bool] {
         _ => []
     }
     ^(odin) build $src -file -build-mode:shared -define:KUI_PLUGIN=true $"-out:($lib)" ...$link ...$opt
-    # The contract's seven, exported under their C names.
-    if $nu.os-info.name != "windows" {
-        let exported = nm -g --defined-only $lib | lines | parse -r '\s_?(?<sym>kui_ext_\w+)$' | get sym
-        let want = [kui_ext_abi kui_ext_name kui_ext_init kui_ext_slots kui_ext_view kui_ext_on_event kui_ext_free]
-        let missing = $want | where {|w| $w not-in $exported }
-        if not ($missing | is-empty) {
-            error make { msg: $"($lib) does not export ($missing | str join ', ')" }
-        }
+    # The contract's seven, exported under their C names. A DLL's exports
+    # are a table nm does not read; llvm-readobj comes with the clang gen uses.
+    let exported = if $nu.os-info.name == "windows" {
+        llvm-readobj --coff-exports $lib | lines | parse -r '^\s*Name: (?<sym>kui_ext_\w+)$' | get sym
+    } else {
+        nm -g --defined-only $lib | lines | parse -r '\s_?(?<sym>kui_ext_\w+)$' | get sym
+    }
+    let want = [kui_ext_abi kui_ext_name kui_ext_init kui_ext_slots kui_ext_view kui_ext_on_event kui_ext_free]
+    let missing = $want | where {|w| $w not-in $exported }
+    if not ($missing | is-empty) {
+        error make { msg: $"($lib) does not export ($missing | str join ', ')" }
     }
     $lib
 }
@@ -205,7 +223,7 @@ def "main slots" [--release] {
     let pairs = [
         { pair: "Odin host + Odin panel", run: {|| ^$host --headless $odin_panel } }
         { pair: "Odin host + C panel", run: {|| ^$host --headless $c_panel } }
-        { pair: "C host + Odin panel", run: {|| ^($ROOT | path join target $profile host) --headless $odin_panel } }
+        { pair: "C host + Odin panel", run: {|| ^($ROOT | path join target $profile (exe host)) --headless $odin_panel } }
         { pair: "Rust host + Odin panel", run: {|| cargo run -q -p kui-ffi ...$rel --example c_panel -- --headless $odin_panel } }
     ]
     let results = $pairs | each {|p|

@@ -14,6 +14,8 @@
 #     include/kui.h
 #     lib/        libkui_ffi.so / .dylib / kui_ffi.dll + kui_ffi.dll.lib   dynamic
 #                 libkui_ffi.a / kui_ffi.lib                               static
+#                 windows.0.5x.0.lib (Windows): windows-targets' import
+#                 libraries, which link.txt names and no SDK has
 #     link.txt    what a static link needs besides the archive (rustc's
 #                 native-static-libs: -lm, -framework Metal, ws2_32.lib, ...)
 #     BUILD.txt   the target, the features, the toolchain it was built with
@@ -30,6 +32,9 @@
 #                            MSVC CRT and Windows SDK it downloads
 #   darwin-arm64             natively on a Mac only: Apple's SDK is not
 #                            redistributable, so no container builds it
+#
+# On a Linux machine its own arch is that native build, against the
+# machine's glibc rather than 2.28; BUILD.txt says the floor each .so has.
 #
 # Windows asks for --accept-msvc-license: the CRT and SDK xwin downloads are
 # Microsoft's, under Microsoft's license, and building the platform means
@@ -146,8 +151,22 @@ def build-native [target: string, features: list<string>] {
             print -e $r.stderr
             error make { msg: $"the ($target) build failed" }
         }
-        { dir: ($ROOT | path join target $target release), log: $r.stderr, toolchain: (rustc --version) }
+        let registry = $env.CARGO_HOME? | default ($nu.home-dir | path join .cargo) | path join registry src
+        let extra = import-lib-dirs $target | each {|d| glob ($registry | path join "*" $d | str replace -a '\' '/') } | flatten
+        { dir: ($ROOT | path join target $target release), log: $r.stderr, toolchain: (rustc --version), extra: $extra }
     }
+}
+
+# Where the import libraries a static Windows link names besides the
+# system's come from: windows-targets' `windows.0.53.0.lib` and its
+# siblings, which ship in the windows_<arch>_msvc crates (one per version
+# Cargo.lock pins), not with Windows or its SDK. As registry-relative
+# directories; nothing for other targets.
+def import-lib-dirs [target: string] {
+    if not ($target | str ends-with "windows-msvc") { return [] }
+    let krate = $"windows_($target | split row '-' | first)_msvc"
+    open --raw ($ROOT | path join Cargo.lock) | from toml | get package | where name == $krate | get version
+        | each {|v| $"($krate)-($v)/lib/*.lib" }
 }
 
 # Every tool the container legs need, built once into an image whose tag
@@ -214,10 +233,13 @@ def build-docker [target: string, builder: string, features: list<string>] {
     rm -rf $staging
     mkdir $staging
     let files = libraries $target | each {|f| $"/target/($target)/release/($f)" }
-    (docker run --rm -v kui-pack-target:/target -v $"($staging):/out" (image-tag)
-        sh -c $"cp ($files | str join ' ') /out/")
+    let imports = import-lib-dirs $target | each {|d| $"/usr/local/cargo/registry/src/*/($d)" }
+    (docker run --rm -v kui-pack-target:/target -v kui-pack-registry:/usr/local/cargo/registry
+        -v $"($staging):/out" (image-tag)
+        sh -c $"cp ($files | str join ' ') /out/ && mkdir /out/imports ($imports | each {|i| $' && cp ($i) /out/imports/' } | str join '')")
     let toolchain = docker run --rm (image-tag) rustc --version
-    { dir: $staging, log: $r.stderr, toolchain: $toolchain }
+    let extra = if ($imports | is-empty) { [] } else { glob ($staging | path join imports "*.lib" | str replace -a '\' '/') }
+    { dir: $staging, log: $r.stderr, toolchain: $toolchain, extra: $extra }
 }
 
 # The files a build leaves for a target: the dynamic library (with its
@@ -249,19 +271,42 @@ def stage [row: record, built: record, feature_note: string] {
     # rustc's own line: "note: native-static-libs: -lgcc_s -lutil ...".
     let link = $built.log | lines | where {|l| $l | str contains "native-static-libs:" } | each {|l| $l | split row "native-static-libs:" | last | str trim } | get -o 0 | default ""
     let static = libraries $row.target | last
-    $"# What linking lib/($static) needs besides the archive, as rustc's native-static-libs says it.\n($link)\n" | save -f ($dir | path join link.txt)
+    # A library the link line names that no system has (windows-targets'
+    # windows.0.53.0.lib) goes in lib/ beside the archive.
+    let bundled = $link | split row " " | where {|l| $l =~ '^windows\.[\d.]+\.lib$' } | uniq
+    for name in $bundled {
+        let src = $built.extra | where {|f| ($f | path basename) == $name } | get -o 0
+        if $src == null {
+            error make { msg: $"the static link needs ($name), and no windows_*_msvc crate Cargo.lock pins has it" }
+        }
+        cp $src ($dir | path join lib)
+    }
+    let note = if ($bundled | is-empty) { "" } else { $" \(($bundled | str join ', ') are in lib/)" }
+    $"# What linking lib/($static) needs besides the archive, as rustc's native-static-libs says it($note).\n($link)\n" | save -f ($dir | path join link.txt)
     [
         $"kui-ffi (version), ($row.platform)"
         $"target: ($row.target)"
-        $"built: ($row.how), ($row.builder)"
+        $"built: ($row.how), (if $row.how == 'native' { 'cargo' } else { $row.builder })"
         $"features: ($feature_note)"
         $"toolchain: ($built.toolchain)"
         $"ABI: (open ($ROOT | path join crates kui-ffi include kui.h) | parse -r '#define KUI_ABI_VERSION (?<v>\d+)u' | get 0.v); a host checks kui_abi_version against it"
+        ...(glibc-floor ($dir | path join lib libkui_ffi.so))
     ] | str join "\n" | save -f ($dir | path join BUILD.txt)
     if ($built.dir | str ends-with $".build-($row.target)") { rm -rf $built.dir }
     cd $OUT
     tar -czf $"($name).tar.gz" $name
     $"($name).tar.gz"
+}
+
+# The newest glibc symbol version a Linux library needs, as a BUILD.txt
+# line: 2.28 from zig, the build machine's own from a native build. Nothing
+# for other platforms, or without an objdump to read it.
+def glibc-floor [so: string] {
+    if not ($so | path exists) or (which objdump | is-empty) { return [] }
+    let versions = objdump -T $so | parse -r 'GLIBC_(?<v>[\d.]+)' | get v | uniq
+    if ($versions | is-empty) { return [] }
+    let newest = $versions | sort-by {|v| $v | split row "." | each { into int } } | last
+    [$"glibc: ($newest) or newer \(the newest GLIBC_ symbol version libkui_ffi.so needs)"]
 }
 
 def sha256sum-of [file: string] {
