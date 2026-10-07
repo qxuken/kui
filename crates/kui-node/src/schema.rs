@@ -64,6 +64,7 @@ pub fn protocol_props() -> Json {
         // Spellings in the other bindings, for the generated reference.
         p.insert("lua".into(), Json::String(def.snake_name().into()));
         p.insert("c".into(), Json::String(c_field(def)));
+        p.insert("odin".into(), Json::String(odin_field(def)));
         o.insert(def.name.into(), Json::Object(p));
     }
     for c in CUSTOM {
@@ -84,6 +85,7 @@ pub fn protocol_props() -> Json {
         p.insert("jsx".into(), Json::String(c.jsx.into()));
         p.insert("lua".into(), Json::String(c.lua.into()));
         p.insert("c".into(), Json::String(c.c.into()));
+        p.insert("odin".into(), Json::String(c.odin.into()));
         p.insert("doc".into(), Json::String(c.doc.into()));
         o.insert(c.name.into(), Json::Object(p));
     }
@@ -121,6 +123,7 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     ("jsx", |e| e.jsx),
                     ("lua", |e| e.lua),
                     ("c", |e| e.c),
+                    ("odin", |e| e.odin),
                     ("doc", |e| e.doc),
                 ],
             );
@@ -155,9 +158,8 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                 ],
             ),
         ),
-        (
-            "resources",
-            table(
+        ("resources", {
+            let mut rows = table(
                 RESOURCES,
                 &[
                     ("what", |r: &ResourceDef| r.what),
@@ -165,8 +167,13 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     ("lua", |r| r.lua),
                     ("c", |r| r.c),
                 ],
-            ),
-        ),
+            );
+            // Odin's column is C's in Odin's words (`schema::odin_from_c`).
+            for (row, def) in rows.as_array_mut().into_iter().flatten().zip(RESOURCES) {
+                row["odin"] = Json::String(odin_from_c(def.c));
+            }
+            rows
+        }),
         (
             "warnings",
             table(
@@ -303,6 +310,7 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                                 ("node", keys(f.node)),
                                 ("lua", keys(f.lua)),
                                 ("c", Json::String(f.c.into())),
+                                ("odin", Json::String(odin_from_c(f.c))),
                                 ("doc", Json::String(f.doc.into())),
                             ]
                             .into_iter()

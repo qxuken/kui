@@ -177,7 +177,7 @@ const tableOf = (header, rows) =>
 // A binding's key path(s) for one env fact; none is a dash, and the row's
 // description says where that binding carries it instead.
 const keysCell = (keys) => (keys.length ? keys.map((k) => `\`${k}\``).join(' / ') : '—');
-const propRow = ([name, def]) => [`\`${name}\``, `\`${def.lua}\``, def.c, typeOf(def), def.doc];
+const propRow = ([name, def]) => [`\`${name}\``, `\`${def.lua}\``, def.c, def.odin, typeOf(def), def.doc];
 
 // A metric's column: the number, or for a row that is the platform's the
 // pair `windows / elsewhere` — `stock` and `compact` from the addon are the
@@ -198,25 +198,26 @@ const md = `# kui props, elements, events and warnings
 those, not this file.*
 
 One prop schema serves every binding: JSX props are camelCase, Lua keys are
-their snake_case, and C uses the \`KuiSpec\` / \`KuiTextStyle\` field named
-below. Container props apply to \`<box>\` (and to \`<edit>\` / \`<image>\`
+their snake_case, C uses the \`KuiSpec\` / \`KuiTextStyle\` field named
+below, and Odin the \`Spec\` / \`Text_Style\` field of the snake_case name
+(packages/odin, whose generator checks every Odin spelling in this file). Container props apply to \`<box>\` (and to \`<edit>\` / \`<image>\`
 where they make sense); text props apply to \`<text>\` and \`<edit>\`.
 
 ## Container props
 
-${tableOf(['JSX', 'Lua', 'C', 'type', 'description'], spec.map(propRow))}
+${tableOf(['JSX', 'Lua', 'C', 'Odin', 'type', 'description'], spec.map(propRow))}
 
 ## Text props
 
-${tableOf(['JSX', 'Lua', 'C', 'type', 'description'], style.map(propRow))}
+${tableOf(['JSX', 'Lua', 'C', 'Odin', 'type', 'description'], style.map(propRow))}
 
 ## Composite props (hand-written per binding)
 
-${tableOf(['JSX', 'Lua', 'C', 'description'], custom.map(([, d]) => [d.jsx, d.lua, d.c, d.doc]))}
+${tableOf(['JSX', 'Lua', 'C', 'Odin', 'description'], custom.map(([, d]) => [d.jsx, d.lua, d.c, d.odin, d.doc]))}
 
 ## Elements
 
-${tableOf(['JSX', 'Lua', 'C', 'notes'], elements.map((e) => [e.jsx, e.lua, e.c, e.doc]))}
+${tableOf(['JSX', 'Lua', 'C', 'Odin', 'notes'], elements.map((e) => [e.jsx, e.lua, e.c, e.odin, e.doc]))}
 
 ## Events
 
@@ -231,7 +232,7 @@ ${tableOf(['kind', 'payload', 'when'], events.map((e) => [e.kind, e.payload, e.d
 
 ## Resources
 
-${tableOf(['what', 'Node', 'Lua', 'C'], resources.map((r) => [r.what, r.node, r.lua, r.c]))}
+${tableOf(['what', 'Node', 'Lua', 'C', 'Odin'], resources.map((r) => [r.what, r.node, r.lua, r.c, r.odin]))}
 
 Handles are slotmap keys with a generation: a removed resource's handle is
 rejected (an image draws nothing, a font shapes as sans) rather than
@@ -254,7 +255,8 @@ The host facts a view reads: \`ui.env()\` in Rust, \`view(env)\` in Lua,
 \`ctx.env()\` / \`win.env()\` in Node. C is the host, so it *writes* them
 (\`kui_env_set\`, \`kui_env_set_system\`, \`kui_env_set_window\`,
 \`kui_env_set_audio\`, \`kui_env_set_assistive\`) and has no
-reading; its column names the argument. A real window's runner refreshes every fact each frame;
+reading; its column names the argument, and so does Odin's, whose setters
+are C's. A real window's runner refreshes every fact each frame;
 headless, \`ctx.setEnv\` in Node and the C setters are the writers, and
 the conformance corpus drives its two chrome scenes through them. The
 \`from\` column says which Rust struct holds the fact, or that it is derived
@@ -287,8 +289,8 @@ written by the runner's bridge rather than by a settings query, and the
 one reading that changes what a view *says* rather than what it draws.
 
 ${tableOf(
-  ['field', 'from', 'Node', 'Lua', 'C', 'description'],
-  env.map((f) => [`\`${f.name}\``, f.from, keysCell(f.node), keysCell(f.lua), f.c, f.doc]),
+  ['field', 'from', 'Node', 'Lua', 'C', 'Odin', 'description'],
+  env.map((f) => [`\`${f.name}\``, f.from, keysCell(f.node), keysCell(f.lua), f.c, f.odin, f.doc]),
 )}
 
 ## Theme

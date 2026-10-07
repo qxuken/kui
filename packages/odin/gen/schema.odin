@@ -7,6 +7,7 @@ import "core:os"
 // it (examples/rust/tools/schema-dump.rs).
 
 Prop :: struct {
+	odin:        string, // its Odin spelling in docs/props.md, pinned by check_odin_spellings
 	name, snake: string,
 	kind:        string, // f32 color flag enum sizing min max msg tag str family resource keyframes enter gradient
 	values:      []string,
@@ -15,7 +16,7 @@ Prop :: struct {
 }
 
 Custom :: struct {
-	name, c, doc: string,
+	name, c, odin, doc: string,
 }
 
 Door :: struct {
@@ -32,7 +33,7 @@ Event_Def :: struct {
 }
 
 Named :: struct {
-	name, c, doc: string,
+	name, c, odin, doc: string,
 }
 
 Schema :: struct {
@@ -44,6 +45,7 @@ Schema :: struct {
 	theme:    [dynamic]Named,
 	metrics:  [dynamic]Named,
 	env:      [dynamic]Named,
+	resources: [dynamic]Named,
 	lists:    map[string][]string,
 }
 
@@ -59,15 +61,16 @@ load_schema :: proc(path: string) -> (s: Schema) {
 		append(&s.props, Prop{
 			name = str(p, "name"), snake = str(p, "snake"), kind = str(p, "kind"),
 			values = strings_of(p["values"]), target = str(p, "target"), c = str(p, "c"), doc = str(p, "doc"),
+			odin = str(p, "odin"),
 		})
 	}
 	for v in o["custom"].(json.Array) {
 		p := v.(json.Object)
-		append(&s.custom, Custom{str(p, "name"), str(p, "c"), str(p, "doc")})
+		append(&s.custom, Custom{str(p, "name"), str(p, "c"), str(p, "odin"), str(p, "doc")})
 	}
 	for v in o["elements"].(json.Array) {
 		p := v.(json.Object)
-		append(&s.elements, Named{str(p, "name"), str(p, "c"), str(p, "doc")})
+		append(&s.elements, Named{str(p, "name"), str(p, "c"), str(p, "odin"), str(p, "doc")})
 	}
 	for v in o["events"].(json.Array) {
 		p := v.(json.Object)
@@ -90,7 +93,11 @@ load_schema :: proc(path: string) -> (s: Schema) {
 	}
 	for v in o["env"].(json.Array) {
 		p := v.(json.Object)
-		append(&s.env, Named{str(p, "name"), str(p, "c"), str(p, "doc")})
+		append(&s.env, Named{str(p, "name"), str(p, "c"), str(p, "odin"), str(p, "doc")})
+	}
+	for v in o["resources"].(json.Array) {
+		p := v.(json.Object)
+		append(&s.resources, Named{name = str(p, "name"), c = str(p, "c"), odin = str(p, "odin")})
 	}
 	for k, v in o["lists"].(json.Object) do s.lists[k] = strings_of(v)
 	return

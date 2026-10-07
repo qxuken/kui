@@ -32,6 +32,8 @@ Gen :: struct {
 	hand_procs:   map[string]bool,
 	hand_structs: map[string][]string, // name -> its fields
 	used:         map[string]bool, // policy rows that matched something
+	spec_fields:  map[string]bool, // what Spec and Text_Style declare, for check_odin_spellings
+	style_fields: map[string]bool,
 	out:          strings.Builder,
 }
 
@@ -90,6 +92,7 @@ import c "c"
 	emit_mirrors(&g)
 	emit_doors(&g, doors[:])
 	check_doors_column(&g, doors[:])
+	check_odin_spellings(&g, doors[:])
 	check_events(&g)
 	check_elements(&g)
 	check_stale(&g)
@@ -305,6 +308,8 @@ Spec :: struct {`)
 		emit_doc(b, r.doc, "\t")
 		fmt.sbprintfln(b, "\t%s,", r.decl)
 	}
+	for r in spec_rows do note_fields(r.decl, &g.spec_fields)
+	for r in style_rows do note_fields(r.decl, &g.style_fields)
 	fmt.sbprintln(b, `}
 
 // Spec as kui_open reads it. The message fields with a C field are
@@ -1196,6 +1201,51 @@ from_scalar :: proc(conv: Scalar_Conv, odin_t, v: string) -> string {
 }
 
 // -- What the hand-written half owes the schema -------------------------------
+
+// "dir: Dir" and "border_w: f32,\n\tborder_color: Color" -> the names.
+note_fields :: proc(decl: string, into: ^map[string]bool) {
+	for line in strings.split(decl, ",") {
+		colon := strings.index_byte(line, ':')
+		if colon > 0 do into[strings.trim_space(line[:colon])] = true
+	}
+}
+
+// Every Odin spelling docs/props.md prints - the prop rows, the composites,
+// the elements, the resources and the env setters - names what package kui
+// has: a `kui.x` is a procedure of it, a `Spec.x` / `Text_Style.x` a field.
+check_odin_spellings :: proc(g: ^Gen, doors: []^Function) {
+	procs := make(map[string]bool)
+	for f in doors do procs[raw_name(f.name)] = true
+	for name, _ in g.hand_procs do procs[name] = true
+	check :: proc(g: ^Gen, procs: map[string]bool, table, row, text: string) {
+		for i := 0; i < len(text); i += 1 {
+			prefix, fields := "", map[string]bool{}
+			switch {
+			case strings.has_prefix(text[i:], "kui."):
+				prefix = "kui."
+			case strings.has_prefix(text[i:], "Spec."):
+				prefix, fields = "Spec.", g.spec_fields
+			case strings.has_prefix(text[i:], "Text_Style."):
+				prefix, fields = "Text_Style.", g.style_fields
+			case:
+				continue
+			}
+			if i > 0 && is_ident_byte(text[i - 1]) do continue
+			j := i + len(prefix)
+			for j < len(text) && is_ident_byte(text[j]) do j += 1
+			name := text[i + len(prefix):j]
+			known := procs[name] if prefix == "kui." else fields[name]
+			if !known do fail("props.md's %s %s: its Odin spelling names %s%s, which package kui does not have (%q)", table, row, prefix, name, text)
+			i = j
+		}
+	}
+	for p in g.s.props do check(g, procs, "prop", p.name, p.odin)
+	for c in g.s.custom do check(g, procs, "composite", c.name, c.odin)
+	for e in g.s.elements do check(g, procs, "element", e.name, e.odin)
+	for r in g.s.resources do check(g, procs, "resource", r.name, r.odin)
+	for e in g.s.env do check(g, procs, "env field", e.name, e.odin)
+	for e in g.s.elements do if e.odin == "" do fail("element %s has no Odin spelling", e.name)
+}
 
 // The verb table's Odin column (schema::DOORS) and the binding agree both
 // ways: every procedure the column names is one package kui has, and a verb

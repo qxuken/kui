@@ -59,6 +59,7 @@ fn props() -> Json {
         };
         p.insert("target".into(), target.into());
         p.insert("c".into(), schema::c_field(def).into());
+        p.insert("odin".into(), schema::odin_field(def).into());
         p.insert("doc".into(), def.doc.into());
         Json::Object(p)
     });
@@ -69,12 +70,12 @@ fn main() {
     let custom = schema::CUSTOM.iter().map(|c| {
         json!({
             "name": c.name, "id": c.id, "jsx_names": names(c.jsx_names),
-            "lua_names": names(c.lua_names), "c": c.c, "doc": c.doc,
+            "lua_names": names(c.lua_names), "c": c.c, "odin": c.odin, "doc": c.doc,
         })
     });
     let elements = schema::ELEMENTS
         .iter()
-        .map(|e| json!({ "name": e.name, "c": e.c, "doc": e.doc }));
+        .map(|e| json!({ "name": e.name, "c": e.c, "odin": e.odin, "doc": e.doc }));
     let events = schema::EVENTS
         .iter()
         .map(|e| json!({ "kind": e.kind, "payload": e.payload, "doc": e.doc }));
@@ -90,9 +91,12 @@ fn main() {
     let metrics = schema::METRIC_ROLES
         .iter()
         .map(|r| json!({ "name": r.name, "doc": r.doc }));
-    let env = schema::ENV_FIELDS
+    let env = schema::ENV_FIELDS.iter().map(
+        |f| json!({ "name": f.name, "c": f.c, "odin": schema::odin_from_c(f.c), "doc": f.doc }),
+    );
+    let resources = schema::RESOURCES
         .iter()
-        .map(|f| json!({ "name": f.name, "c": f.c, "doc": f.doc }));
+        .map(|r| json!({ "name": r.what, "c": r.c, "odin": schema::odin_from_c(r.c) }));
     let all =
         |it: &mut dyn Iterator<Item = &'static str>| Json::Array(it.map(Json::from).collect());
 
@@ -105,6 +109,7 @@ fn main() {
         "theme": Json::Array(theme.collect()),
         "metrics": Json::Array(metrics.collect()),
         "env": Json::Array(env.collect()),
+        "resources": Json::Array(resources.collect()),
         // The name lists no prop row carries, for the enums of the verbs
         // and readings: what an env setter takes, what a tree reports.
         "lists": {

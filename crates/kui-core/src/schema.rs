@@ -1351,6 +1351,10 @@ pub struct CustomProp {
     pub lua: &'static str,
     /// Where it lands in C.
     pub c: &'static str,
+    /// Where it lands in Odin (packages/odin): a `Spec` / `Text_Style`
+    /// field, or a `kui.` procedure for a window-level row. The Odin
+    /// generator checks every name here is one its package has.
+    pub odin: &'static str,
     pub doc: &'static str,
 }
 
@@ -1363,6 +1367,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`dir=\"row\" | \"column\" | \"table\"`",
         lua: "`row { }` / `column { }` / `grid { }`",
         c: "`dir` (`KUI_ROW` / `KUI_COLUMN` / `KUI_TABLE`)",
+        odin: "`Spec.dir` (`.Column` / `.Row` / `.Table`); `kui.row` and `kui.column` set it",
         doc: "Main axis; column is the default. `table` is a column whose rows' children line up in columns (the `table` element).",
     },
     CustomProp {
@@ -1373,6 +1378,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`size` (text)",
         lua: "`size`",
         c: "`KuiTextStyle.size`",
+        odin: "`Text_Style.size`",
         doc: "Font size in logical px; the text style is constructed from it, so declare it for the other style props to apply at that size.",
     },
     CustomProp {
@@ -1383,6 +1389,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`pad`, `padX`, `padY`, `padL`, `padR`, `padT`, `padB`",
         lua: "`pad = n` or `pad = { all=, x=, y=, l=, r=, t=, b= }`",
         c: "`pad_l`, `pad_r`, `pad_t`, `pad_b`",
+        odin: "`Spec.pad`: `kui.pad(16)`, `kui.pad(16, 8)`, or `{l = .., r = .., t = .., b = ..}`",
         doc: "Padding; a frontend reports the names it saw and `PadShorthand::resolve` turns them into four edges — an edge falls back to its axis, an axis to the all-round `pad`, and the specific one always wins.",
     },
     CustomProp {
@@ -1393,6 +1400,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`borderW`, `borderColor`",
         lua: "`border = { w=, color= }`",
         c: "`border_w`, `border_color`",
+        odin: "`Spec.border_w`, `Spec.border_color`",
         doc: "Border width and color (drawn inside the rect).",
     },
     CustomProp {
@@ -1403,6 +1411,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`clip`, `scrollX`, `scrollY`",
         lua: "`clip`, `scroll_x`, `scroll_y` (`scroll` = `scroll_y`)",
         c: "`overflow` bits `KUI_CLIP` | `KUI_SCROLL_X` | `KUI_SCROLL_Y`",
+        odin: "`Spec.overflow`: `{.Clip}`, `{.Scroll_X}`, `{.Scroll_Y}`",
         doc: "Clip children; scroll (implies clip) with retained offsets and live scrollbars. A `radius` on the same node rounds the clip, so a rounded card does not show square corners poking out of it; nesting two rounded clippers keeps only the corners neither of them moved, and hit-testing stays rectangular. Every frontend ORs the same bits and hands them to `NodeSpec::overflow_bits`. The wheel goes to the scroller under the pointer on the axes it scrolls, and the rest of the notch to the one around it: a `scrollY` list inside a `scrollX` strip moves the strip on a sideways swipe (backlog DX13). A scroll gesture — a swipe and its glide, a wheel spun without a pause — picks that scroller when it starts, skipping one already at its limit that way for the one around it (unless it says `overscroll: contain`), and keeps it until it ends, so content moving under a still pointer does not hand the rest of a swipe to what came under it (backlog F107). An offset is kept while the key is declared; an undeclared one is kept until the budget needs the room (1024 undeclared entries, longest-undeclared evicted first).",
     },
     CustomProp {
@@ -1413,6 +1422,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`float=\"below\" | \"above\" | \"parent\" | \"viewport\"` or `{ anchor, at, self, dx, dy, fit, clip }`",
         lua: "`float = \"below\"` or `float = { anchor=, at=, self=, dx=, dy=, fit=, clip= }`",
         c: "`float_mode`, `float_anchor_x/y`, `float_self_x/y`, `float_dx/dy`, `float_fit`, `float_clip`; `kui_spec_float_preset` fills them from a preset name",
+        odin: "`Spec.float`, a `Float` (`mode`, `anchor_x/y`, `self_x/y`, `dx/dy`, `fit`, `clip`); `kui.float_preset` fills one from a preset name",
         doc: "Out-of-flow positioning against the parent or the viewport; `fit` flips/clamps to stay on screen. A float escapes every ancestor's clip — a tooltip is not cut by the scroller it hangs from — unless it declares `clip` and is anchored to its parent (`parent`, `below`, `above`): then the parent's clip holds it as it holds a child, so a node on a `clip` canvas panned past the canvas's edge is cut there and cannot be hit past it; it still paints as a layer over its in-flow siblings. A `line`, `polygon` or `path` in its parent's box is always clipped this way. The four preset names resolve in `FloatConfig::preset`, and `anchor` takes any of them — an override left out keeps the preset's own value, so `{ anchor: \"below\", dx: 4 }` still hangs below with its 6px gap. A float is a layer of its own: above the in-flow tree and every float that opened before it, under every float that opened after, and hit-tested in the same order — so a tooltip that appears over an open menu is over it, and a popover over a scroller's bar takes the press there. A scroller's bars and the focus ring belong to the layer that owns them. There is no z-index; a float declared under a fresh key reopens on top (`docs/adr/0023-layers-stack-in-the-order-they-open.md`).",
     },
     CustomProp {
@@ -1423,6 +1433,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`keyFocus`",
         lua: "`key_focus`",
         c: "`kui_set_key_focus`",
+        odin: "`Spec.key_focus`, which calls `kui.set_key_focus` on the node",
         doc: "Focuses this node (an `onKey` sink, an editor, any focusable node) when it starts being declared: declared every frame it takes focus once, so a later Tab press is not clobbered. Declaring it on the frame a `modal` stops being declared is how a view says where focus lands on the way out — the edge stands, and the focus the modal displaced is not handed back over it (`docs/adr/0003-modal-surfaces.md`, decision 4). To move focus at any time call the binding's focus verb (`ctx.focus`, `kui_focus`, `env.set_focus`).",
     },
     CustomProp {
@@ -1433,6 +1444,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`key`",
         lua: "`key`",
         c: "`kui_open_keyed` label",
+        odin: "`Spec.key`, which opens the node keyed",
         doc: "Stable identity for retained state (scroll offsets, editors, transitions; keys are hashes of the path from the root). Retained state outlives the key's absence, under a budget on the states nobody declares (see `<edit>` and the overflow props).",
     },
     CustomProp {
@@ -1443,6 +1455,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`index`",
         lua: "`index`",
         c: "`kui_open_indexed`",
+        odin: "`Spec.index`, a `Maybe(u64)`, which opens the node indexed",
         doc: "Stable identity by *data* index rather than by name: the key auto-keying would have given this node as the `i`th child, given to it wherever it actually sits. What a virtualised list is for — a view that builds rows 900..930 of ten thousand opens each with its own row number, so the row keeps its hover, focus, edit buffer and tweens as the built range slides over it, and a list that builds every row agrees with one that builds a screenful. Wherever `key` names a node this numbers it (a box, a `line`, a `cells`, a `fragment`); declared beside `key` the index wins. Indices and names are separate namespaces, so a spacer keyed `\"lead\"` cannot collide with row 0 — but two rows on one index do, exactly as two on one name would.",
     },
     CustomProp {
@@ -1453,6 +1466,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`rowCount`",
         lua: "`row_count`",
         c: "`kui_row_count`",
+        odin: "`Spec.row_count`, a `Maybe(u64)`, which calls `kui.row_count` on the node",
         doc: "How many `index`ed rows this node's virtual list has, built or not. `uniformList` / `uniform_list` / `widgets::uniform_list` and `widgets::list` declare it on their container; a list composed by hand says it beside `scrollY`. What it buys: Select All (Cmd/Ctrl-A, the menu's row) inside a `selectable` virtual list selects the *data*, rows `0..rowCount`, rather than the rows the frame built, and the copy is a `selectionrange` ask whose `to.byte` is past the last row's length when that row is not built — cut it to the row. Without it Select All is the built rows, which is all the core can see.",
     },
     CustomProp {
@@ -1463,6 +1477,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`title` (root box only)",
         lua: "`window_title` (root table)",
         c: "`kui_window_title`",
+        odin: "`kui.window_title`",
         doc: "Declares the window title for this frame; the driver diffs and applies.",
     },
     CustomProp {
@@ -1473,6 +1488,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`alwaysOnTop` (root box only)",
         lua: "`always_on_top = true` (root table)",
         c: "`kui_set_always_on_top`",
+        odin: "`kui.set_always_on_top`",
         doc: "Declares that this frame wants the window kept above every other app's — a floating palette, a picture-in-picture player, a timer (backlog C30). Frame state the way `title` is, applied by the driver on change and free on the frames it does not change, but with a default of false rather than \"leave as-is\": a frame that stops declaring it lowers the window again, so a pin button is a toggle on the app's own state and nothing has to remember to undo it. Whether the platform has a level to set is `env.window.always_on_top`, which is what the pin button should draw its state from — Wayland has no call for it at all, so there the window never moves and the reading says so; it is the driver's record of what it set, not a query, so a level the OS dropped afterwards (a fullscreen space, a tiling manager) is not reported. A popup keeps its own level whatever its owner declares.",
     },
     CustomProp {
@@ -1483,6 +1499,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`secureInput` (root box only)",
         lua: "`secure_input = true` (root table)",
         c: "`kui_set_secure_input`",
+        odin: "`kui.set_secure_input`",
         doc: "Declares that this frame wants the keyboard to this window kept from every other process while the window has it — macOS's Secure Keyboard Entry, what a terminal turns on at a password prompt (backlog F85). Frame state the way `alwaysOnTop` is, default false: declare it on every frame the prompt is up, and the frame that stops is what turns it off, so nothing has to remember to undo it. The runner owns the platform call and its balance: `EnableSecureEventInput` is process-wide and counted, and the runner holds one count while a window whose frame asked has the keyboard, giving it back when that window loses the keyboard, closes or stops asking, and at exit — Apple's rule, since while it is on no other process can read the keyboard at all (a launcher's hotkey, a text expander, an accessibility tool). Nothing on Windows or Linux, which have no such switch. A C host with its own loop reads the ask with `kui_secure_input_get` and makes the call itself.",
     },
     CustomProp {
@@ -1493,6 +1510,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`optionAsAlt=\"left\"` — `\"none\"`, `\"left\"`, `\"right\"`, `\"both\"` (root box only)",
         lua: "`option_as_alt = \"left\"` (root table)",
         c: "`kui_set_option_as_alt` (`KUI_OPTION_AS_ALT_*`)",
+        odin: "`kui.set_option_as_alt` (an `Option_As_Alt`)",
         doc: "Declares which Option keys act as Alt in this window on macOS (backlog F113). On a Mac, Option composes: ⌥m types `µ`, and ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for the next key, so the press never reaches the app as a key and a keymap binding `<A-u>` never hears it. An Option key named here is Alt instead: it composes nothing and types nothing, and a key under it arrives as a chord of the key the layout prints unmodified — a terminal's \"Option as Meta\", an editor's Alt bindings. `\"left\"` or `\"right\"` leaves the other side composing, so a user keeps `ü` on one Option; `\"both\"` takes both; `\"none\"`, the default, is the Mac's own behaviour. Frame state the way `alwaysOnTop` is: declare it on every frame, and the frame that stops gives the Option keys back to the layout; the runner applies it to the window on change, never per frame. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. Nothing on Windows or Linux, whose Alt composes nothing. A C host with its own loop reads the ask with `kui_option_as_alt_get` and applies it itself.",
     },
     CustomProp {
@@ -1503,6 +1521,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`imeOff` (root box only)",
         lua: "`ime_off = true` (root table)",
         c: "`kui_set_ime_off`",
+        odin: "`kui.set_ime_off`",
         doc: "Declares that this window takes the keyboard as keys, with the platform's input method off (backlog F125): no composition and no candidate window, and on a Mac no dead key waiting for the next and no press-and-hold — an input method too, so a held letter repeats instead of opening the accent picker, whatever the user's `ApplePressAndHoldEnabled` says. A `key` event's `text` is still the layout's character; what goes is everything the OS would have composed from it. What a modal editor's normal mode wants — `jjjj` is how one moves, and an IME left on eats the keymap — while its insert mode stops declaring it and gets accents, dead keys and the IME back. Frame state the way `alwaysOnTop` is, default false: declare it on every frame the mode wants it, and the frame that stops gives the input method back; the runner applies it to the window on change, never per frame, and a composition in progress when it turns off ends without a commit, as an empty `preedit`. The window's, not a node's: a stock editor focused under it composes nothing either. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. On Windows and Linux the window's IME is disabled the same way, and only that: their dead keys are the layout's, and still compose. A C host with its own loop reads the ask with `kui_ime_off_get` and applies it itself.",
     },
     CustomProp {
@@ -1513,6 +1532,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`windows={[{ name, kind?, anchor?, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
         lua: "`windows = { { name=, kind=, anchor=, width=, height=, activates= } }` (root table)",
         c: "`kui_window_declare`",
+        odin: "`kui.window_declare`",
         doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape raises `{kind:\"dismiss\", reason, name, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.",
     },
     CustomProp {
@@ -1523,6 +1543,7 @@ pub const CUSTOM: &[CustomProp] = &[
         jsx: "`tooltip=\"hint\"`",
         lua: "`tooltip = \"hint\"`",
         c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
+        odin: "`Spec.tooltip` (`kui.tooltip` / `kui.tooltip_with` draw a hint that is not hover-gated)",
         doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn. On a box or a `fragment` the float is the node's last child; a leaf holds no children — a `line`, `polygon`, `path`, `cells` grid, `image` or `edit` — and its hint floats beside it instead, anchored to it, and lands below its box the same way, out of every clip and flipping above near the window's bottom (backlog RG113; `PropsOut::for_leaf`). A leaf draws its description, which is the hint unless a `description` applied after it overwrote the slot. A `line`, `polygon` or `path` is hovered by its shape, so its hint shows while the pointer is on the stroke or inside the outline, not anywhere in its box.",
     },
 ];
@@ -1667,6 +1688,27 @@ pub fn c_field(def: &PropDef) -> String {
         .unwrap_or_else(|| format!("`{}`", def.snake_name()))
 }
 
+/// The Odin spelling of a schema row: the `Spec` or `Text_Style` field of
+/// its snake_case name, which is what the Odin generator names every field.
+pub fn odin_field(def: &PropDef) -> String {
+    let record = match def.target() {
+        Target::Spec => "Spec",
+        Target::Style => "Text_Style",
+    };
+    format!("`{record}.{}`", def.snake_name())
+}
+
+/// A C cell in Odin's words, for the rows where Odin's door is C's: the
+/// binding's procedures are kui.h's functions under `kui.` without their
+/// `kui_`, and its node and text fields are `Spec.` / `Text_Style.`.
+/// `RESOURCES` and `ENV_FIELDS` take their Odin column from here, and the
+/// Odin generator checks each name it produces.
+pub fn odin_from_c(c: &str) -> String {
+    c.replace("kui_", "kui.")
+        .replace("KuiSpec.", "Spec.")
+        .replace("KuiTextStyle.", "Text_Style.")
+}
+
 /// An element (node type) and its spelling in each binding. Elements are
 /// hand-lowered per binding (their shapes differ: JSX children, Lua
 /// tables, C calls with body callbacks), so this table is documentation
@@ -1693,6 +1735,9 @@ pub struct ElementDef {
     pub jsx: &'static str,
     pub lua: &'static str,
     pub c: &'static str,
+    /// The Odin procedures (`kui.` and the name); checked by the Odin
+    /// generator like the composites' column.
+    pub odin: &'static str,
     pub doc: &'static str,
 }
 
@@ -1835,6 +1880,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<box>`",
         lua: "`row { }`, `column { }`",
         c: "`kui_open*` … `kui_close`",
+        odin: "`kui.box` / `kui.row` / `kui.column` in an `if`, closed at its end; `kui.open` … `kui.close` unscoped",
         doc: "A container: every container prop applies.",
     },
     ElementDef {
@@ -1846,6 +1892,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<box dir=\"table\">`",
         lua: "`grid { }`",
         c: "`kui_open*` with `dir = KUI_TABLE`",
+        odin: "`kui.box` with `dir = .Table`",
         doc: "A column whose rows' children line up in columns (`docs/adr/0033-a-table-is-a-column-whose-cells-align.md`): its children are the rows, each row's in-flow children its cells, the nth cell of every row column n, and a column as wide as its widest cell — so a label column sits at its longest label with nothing measured and no width picked by hand, in every binding, since the alignment is the layout's and not a widget's. A cell's `width` says how its column sizes: `fit` (the default) and a fixed number are content the column's fit width is the max of; `grow` makes the whole column grow with the table, `grow` factors splitting the room the fit columns leave; a percent takes its cut of the row; and a column's `minWidth` / `maxWidth` are the strictest its cells declared. Fit columns that overflow the row are compressed toward their floors largest first, as a row's children are, unless the table scrolls x; a fixed column never is. A bare text is a cell too, held at its column's width, so a text straight inside a row is a column; an image straight in a row is a cell the same way, its box the column wide and its own aspect tall, the pixels meeting the box by its `fit` row (wrap an icon in a box to keep its own width). The rows are the table's `row` children, ordinary rows — give them `width=\"grow\"` for the columns to grow into (a `fit` row sits at the columns' width) — with their own `gap` between cells, their own padding, background, click, hover and access rows; a row of a table never wraps (`wrap-ignored`). Anything else straight under the table — a text, a `column` section, another table — is a child with its own width and no cells. The table's own `fit` width is its columns', whatever its rows' sizing, so a table with no width is the aligned list; a `scrollX` table's rows are at least as wide as its columns, and it scrolls to them. Everything else is a column's: `gap` is the space between rows, `scrollY` scrolls them, a float in a row is not a cell. Spelled `grid { }` in Lua, since `table` is Lua's own.",
     },
     ElementDef {
@@ -1857,6 +1904,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<text>` with `<span bold italic underline strikethrough bg bgRadius color>` children",
         lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true, underline = true, bg = 0x.., bg_radius = 4 } })`",
         c: "`kui_text`, `kui_rich_text`",
+        odin: "`kui.text`, `kui.rich_text`",
         doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. A text is content plus a style and no box of its own, so the rows it reads are the style rows (`size`, `lineHeight`, `color`, `family`, `font`, `wrap`, `maxLines`, `ellipsis`, `underline`, `strikethrough`, `features`) and nothing else: a container row, an access row (`label`, `role`, `live`), `key` or `onClick` on a text is dropped with an `unknown-prop` warning naming the rows it does take — put them on the box around it. `wrap`, `maxLines` and `ellipsis` control line breaking. A span's `bg` is a background behind its glyphs alone, one rect per line it spans, so it follows the span across a wrap the way a box around a run cannot. With `bgRadius` (`bg_radius` in Lua, `KuiSpan.bg_radius` in C, `Span::bg_radius` in Rust; logical px) the background is rounded and joined into one shape with every rounded background of the same colour and radius it meets: a piece whose edge touches it exactly on the line above or below and overlaps it sideways, or that meets it end to end on its own line, in this text or another. Its corners are then convex where a line reaches past its neighbour, a fillet where it falls short, and round where nothing meets it — a selection over many rows, or over the wrapped lines of a paragraph, is one rounded outline, joined after every text of the frame is laid out and painted, so it is never a frame behind. Nothing names the shape: two that touch are one; `underline` and `strikethrough` on a span or on the whole text are lines where the face puts them. A text with no line breaks that is 4096 bytes or longer (and no `maxLines` or `ellipsis`), plain or spans alike, is shaped in ~1 KB chunks as they come on screen, so a minified bundle or a log line with a blob in it costs the screenful it shows and a keystroke into it — or a span moving along it, an editor's caret — costs the chunk it lands in; wrapped, the rows are broken from the chunks' positions, so a 100k-character paragraph costs the rows it shows. Its size is estimated from the first chunk until the rest shape (exact under monospace), and the access tree carries its value without its runs.",
     },
     ElementDef {
@@ -1868,6 +1916,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<button onClick key|index label description tooltip disabled accent>`",
         lua: "`button { label=, on_click=, key= | index=, text=, description=, tooltip=, disabled=, accent= }`",
         c: "`kui_button`, `kui_button_with`",
+        odin: "`kui.button`",
         doc: "The stock button: `widgets::button_spec(&theme, &metrics)` — the theme's accent trio as its three backgrounds, declared on the node and resolved by the core — keyed by its text (`key` overrides). It paints from the palette like every stock widget (backlog AR41): the OS's accent where the host reports one, the app's where it set or pinned one, kui's blue otherwise; the label goes black or white by the background's luminance. Its look is its spec, so the layout and paint rows are closed — declared, they are dropped with an `unknown-prop` warning naming the rows it does read — and those are the access rows: `label` when the text is not the name, `description`, `tooltip`, and `disabled` (inert, and dimmed to half). The one paint row it takes is `accent`, which on a button changes nothing (it is the accent already) and is kept for the box's sake. In Lua `label` is the name and the text both unless `text` says otherwise; in C the rows ride a `KuiSpec` whose other fields `kui_button_with` ignores. A button that needs any other row is a box with `role=\"button\"` and the same rows spelled out.",
     },
     ElementDef {
@@ -1879,6 +1928,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<edit key initial multiline autofocus>`, `<input label initial>`",
         lua: "`edit { key=, initial=, … }`, `input { label=, initial= }`",
         c: "`kui_text_edit`, `kui_text_input`",
+        odin: "`kui.text_edit`, `kui.text_input`",
         doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. The one exception is a field with `wrap` declared (`wrap=\"word\"` or `\"glyph\"`): it folds to its width the way a document does and keeps a field\'s keyboard — Enter still submits, a newline is still never admitted, the caret still opens at the end — so a rename field breaks where the label it renames breaks, and with `width=\"fit\"` plus `maxWidth` it sizes to its wrapped draft on the keystroke frame. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time.",
     },
     ElementDef {
@@ -1892,6 +1942,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<select label options={[…]} current>`",
         lua: "`dropdown { label=, options={…}, current= }`",
         c: "`kui_select`",
+        odin: "`kui.select`",
         doc: "The stock select (`widgets::select_items`, backlog F72): a field showing the choice in force that, clicked, opens the core's own menu of the options under it with the current one checked — the menu a right-click opens, drawn in the frame or the platform's where the host shows menus itself, dismissed by Escape or a press outside, its rows walked by the arrows and read as a menu. `label` is the key and the accessible name both; `options` is a list whose entries are strings (an option by its label, posting it) or menu-item objects `{ label, id, enabled }` (posting `id`), and a `{ role: \"separator\" }` is a separator; `current` is the index in force, counted from 0 in JSX and C and from 1 in Lua, or none — one past the options or on a separator is none, with a `select-current-ignored` warning on the field; an empty `options` is refused, and a key of an option object no row reads (`disabled`, where the key is `enabled`) is an `unknown-prop` warning. The app holds no open state: the choice arrives as the `menu` event a menu row posts, on the field's key — `{kind: \"menu\", role: \"custom\", item: <the option>}` — and drawing the field again with the new `current` is the whole loop. A reader hears a button named by the field, described by its choice, expanded while the menu is open. Its look is its spec, so it reads no other row: a layout, paint or access row on it is dropped with an `unknown-prop` warning. Lua spells it `dropdown`, since `select` is Lua's own.",
     },
     ElementDef {
@@ -1903,6 +1954,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<checkbox checked mixed onClick key label description tooltip disabled>text</checkbox>`",
         lua: "`checkbox { label=, checked=, mixed=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
         c: "`kui_checkbox`",
+        odin: "`kui.checkbox`",
         doc: "The stock checkbox (`widgets::toggle_with`, ADR 0034): a box drawn from the state the view declares — `checked`, or `mixed` for the select-all box over a list some of whose rows are selected, drawn as a dash and read as mixed — and its label beside it, keyed by its text (`key` overrides). The state is the app's: a press by the pointer, Space, Enter or assistive technology posts `onClick`, and the view flips its model and draws it again. Its look is its spec, so the layout and paint rows are closed and dropped with an `unknown-prop` warning; the rows it reads are its state and the access rows. In Lua `label` is the name and the text both unless `text` says otherwise. The box is the metrics' control text plus one (16 px comfortable), so `compact` and `scaled` move it with the stock button.",
     },
     ElementDef {
@@ -1914,6 +1966,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<radio checked onClick key label description tooltip disabled>text</radio>`",
         lua: "`radio { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
         c: "`kui_radio`",
+        odin: "`kui.radio`",
         doc: "The stock radio (`widgets::toggle_with`, ADR 0034): a circle drawn from `checked`, and its label, keyed by its text. Put radios in a `radioGroup`, which makes them one Tab stop whose arrows, Home and End move the choice and press the radio they land on (ADR 0007), so radios whose `onClick` each set the choice answer the keyboard with no more code. The state is the app's, as a checkbox's is; the rows are the checkbox's, `mixed` aside.",
     },
     ElementDef {
@@ -1925,6 +1978,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<radioGroup label>…radios…</radioGroup>`",
         lua: "`radio_group { label=, … }`",
         c: "`kui_radio_group_open` … `kui_close`",
+        odin: "`kui.radio_group` in an `if`, closed at its end",
         doc: "A container of radios (`widgets::radio_group_with`, ADR 0034): the `radioGroup` role, named by its `label`, laid out as a column with the stock gap — a `dir=\"row\"` lays the radios across, and its arrows run across with it. It reads every box row; the role and the name are its own whatever the rows say.",
     },
     ElementDef {
@@ -1936,6 +1990,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<switch checked onClick key label description tooltip disabled>text</switch>`",
         lua: "`switch { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
         c: "`kui_switch`",
+        odin: "`kui.toggle`",
         doc: "The stock switch (`widgets::toggle_with`, ADR 0034): a track and a knob drawn from `checked`, the knob sliding across when it changes, and its label; read as a switch, on or off. The state is the app's, as a checkbox's is; the rows are the checkbox's, `mixed` aside.",
     },
     ElementDef {
@@ -1947,6 +2002,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<slider label valueNow valueMin valueMax valueStep valueText onChange width description tooltip disabled/>`",
         lua: "`slider { label=, value_now=, value_min=, value_max=, value_step=, value_text=, on_change=, width=, … }`",
         c: "`kui_slider`",
+        odin: "`kui.slider`",
         doc: "The stock slider (`widgets::slider_with`, ADR 0034): a track, a fill to `valueNow` and a thumb, as wide as a menu (`width` sizes it), keyed by its `label`, which is also its accessible name. With `onChange` the core does the arithmetic: a press proposes the value under the pointer, a drag each new step, the arrows one `valueStep`, PageUp / PageDown ten, Home / End the ends, all clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step, as `{kind:\"change\", value, phase:\"move\"|\"end\", tag}`. The value is proposed, never applied: the view stores it and declares it as `valueNow`. Its look is its spec, so the rows it reads are the value rows, the access rows and its width.",
     },
     ElementDef {
@@ -1958,6 +2014,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<image src={id} sampling fit>`",
         lua: "`image { id=, sampling=, fit= }`",
         c: "`kui_image`, `kui_image_with`",
+        odin: "`kui.image`, `kui.image_with`",
         doc: "A registered RGBA image. Sizing: `width=\"fit\"` takes the pixel size, a fit height against a resolved width keeps the aspect, `radius` rounds it. Two rows say how the pixels meet the box (`docs/adr/0025-the-image-is-the-canvas.md`): `sampling` is `linear` (the default) or `nearest` — pixel art, an emulator, a data grid that must stay square under zoom; `fit` is `fill` (the default: the pixels stretch to the box), `contain` (the largest rect of the image's aspect that fits, centred, the rest of the box showing what is behind) or `cover` (the box filled and the pixels that do not fit cropped, centred). The box — its layout, its hit region, its access rect — is the same in every mode. The pixels come from the atlas, or from a texture of the image's own once `updateImage` has replaced them or when no atlas page could hold them; the node cannot tell and need not.",
     },
     ElementDef {
@@ -1970,6 +2027,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<polygon points={[[x,y],…]} bg/>`",
         lua: "`polygon { points={{x,y},…}, bg= }`",
         c: "`kui_polygon`",
+        odin: "`kui.polygon`, its points a `[][2]f32`",
         doc: "A filled polygon through up to eight `points`, the fill in `bg` (`docs/adr/0025-the-image-is-the-canvas.md`, decision 6): an arrowhead, a pie slice, the area under a curve. Placed as a `line` is — always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box a pixel out on each side, so it takes no room in a row or column, and painted in the parent's layer at its place in the tree, over the siblings before it and under those after (backlog F123). A polygon in its parent's box space is held by the parent's clip as a child is, its hit region with it, so it is cut at a scroller's edge with the row it is drawn in; a declared float is held that way only when it declares `clip` with a parent anchor, and a `float=\"viewport\"` polygon escapes (backlog F78, `docs/adr/0010-a-segment-primitive.md` decision 5). `transition` eases the fill and, with `slide`, its position. The outline may be concave; a self-intersecting one fills even-odd, its overlaps unfilled. Hit by its outline (`docs/adr/0026-hit-testing-by-shape.md`): with `onClick`, `onDrag`, `onHover` or `hoverable` a press inside the outline hits it and one in its box past the outline falls through, so a pie's wedges need no hit boxes; with none it takes no input and has no access row, and with input it derives one as a box would (a clickable wedge is a button), so name it. A ninth point and later are dropped with `polygon-points-truncated`; fewer than three draw nothing; no `bg`, no fill. On the wire it is one `fragment` quad painted by a WGSL function the core registers itself, so a host that draws the list gets its source from `kui_fragment_source` like any other; what it costs is that quad and one pipeline switch per run of polygons. A stroked outline is a closed `line` over it.",
     },
     ElementDef {
@@ -1992,6 +2050,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<path d=\"M … Z\" bg width color fillRule rotate pivot dash dashOffset/>`",
         lua: "`path { d = \"M … Z\", bg=, width=, color=, fill_rule=, rotate=, pivot=, dash=, dash_offset= }`",
         c: "`kui_path`",
+        odin: "`kui.path`, `kui.path_d`",
         doc: "Any outline — SVG's `d`, a pie wedge with a round arc, a map's region, an icon — filled with `bg` by `fillRule` (`nonzero`, the default, or `evenodd`) and stroked `width` wide in `color` when `width` is given, the stroke over the fill (`docs/adr/0040-a-path-is-a-mask-in-the-atlas.md`). `d` is SVG path data (`M L H V C S Q T A Z`, absolute or relative), parsed by one parser in the core, so every binding draws the same shape; one that does not parse raises `path-malformed` and draws nothing. JSX also takes `d` as a flat number array of op codes and operands, Lua the same as `ops`, and C only that form (`kui_path_parse` turns a string into it). Placed as a `line` is — always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box two pixels out on each side (half the stroke's width further), so it takes no room in a row or column, held by the parent's clip as a child is and painted in the parent's layer at its place in the tree (backlog F123). `transition` eases the fill and, with `slide`, its position; the stroke's colour does not tween, as a box's border does not. Hit by its outline under the fill rule (`docs/adr/0026-hit-testing-by-shape.md`): with `onClick`, `onDrag`, `onHover` or `hoverable` a press inside hits it and one in its box past the outline falls through, so a pie's wedges need no hit boxes; a stroke with no fill is hit by its stroke as a line is; with input it derives an access row as a box would (a clickable wedge is a button), so name it. On the wire it is one glyph-mask quad per paint, fill and stroke: the outline is rasterized once per shape, scale and quarter-pixel position into the glyph atlas and tinted like a glyph, so a host that draws text draws paths, and nothing is re-rasterized for a colour tween, a hover or a slide. The fill bleeds half a pixel, so two paths sharing an edge meet without the background showing through; a chart that wants separators gaps its own geometry. A mask a quarter of the biggest atlas page or more, or a path whose ops change twice within a few frames, draws from a texture of its own instead (a `texture` quad), and one past 8192 px on a side draws nothing, with `path-too-large`. `rotate` turns the path, in turns clockwise, about `pivot` — a point in the path's own coordinates, the centre of its box without one (`docs/adr/0041-a-mask-turns-about-its-centre.md`): the turn is the quad's and not the mask's, so a path that only turns — a spinner's arc about its circle's centre — is rasterized once and stays in the atlas at every angle. A path with `rotate` or `pivot` is boxed by the square the turn sweeps, its mask centred on the pivot on a whole pixel, and it is hit where it is drawn; `rotate` does not tween. `dash` and `dashOffset` cut the stroke into marks and gaps as a `line`'s do (backlog V2) — lengths as seen, round-capped marks, a gap the dots overlap closed — restarting at every subpath as SVG's do; the pattern is part of the stroke's mask, so a dashed stroke costs what a solid one does, a stroke with no fill is still hit along its gaps, and a `dashOffset` that changes every frame is a shape that changes every frame: the path leaves the atlas for a texture of its own while it marches.",
     },
     ElementDef {
@@ -2003,6 +2062,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<fragment src={id} image={id} params={[…]} animate>`",
         lua: "`fragment { id=, image=, params={…}, animate= }`",
         c: "`kui_fragment`, `kui_fragment_with`",
+        odin: "`kui.fragment`, `kui.fragment_with`; `kui.fragment_open` in an `if` holds children",
         doc: "A box a registered WGSL function paints (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): a conic or a moving gradient, rings, noise, shimmer — anything the paint vocabulary has no prop for. An ordinary node otherwise — it lays out, rounds, clips, fades, takes input and holds children, which paint over it — but with **no intrinsic size**, so give it a `width`/`height` or `fill` or it is zero by zero. `src` is a handle from `add_fragment`, which validates the source and warns rather than minting one that cannot compile. `params` is up to sixteen numbers the shader reads as four `vec4<f32>`; more are dropped with a warning. `image` is a registered image the function reads — `kui_sample(uv)` (bilinear) and `kui_sample_nearest(uv)` return its texels at `uv` in `[0,1]²`, and `in.image` is its texel rect, `zw` the size — which is what makes a replaced image a waveform, a heatmap, a 50k-point line or an image effect from one quad (`docs/adr/0025-the-image-is-the-canvas.md`, decision 7); the core binds the atlas or the image's own texture, whichever holds it, and a fragment whose image is not live draws nothing, as one whose `src` is not does. `animate` asks for a frame every frame, which is what a fragment that reads `time` needs and what a still one must not declare.",
     },
     ElementDef {
@@ -2031,6 +2091,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<cells rows cols cells={Uint32Array} cursorAt={[row, col]} cursorShape cursorColor size family lineHeight/>`",
         lua: "`cells { rows=, cols=, lines={\"row text\", …}, runs={{row, col, len, fg, bg, flags}, …}, cursor_at={row, col}, cursor_shape=, cursor_color=, size=, family= }`",
         c: "`kui_cells`",
+        odin: "`kui.cells`",
         doc: "A terminal's screen as one node (backlog C20): `rows × cols` cells, each a character, a foreground and background as `0xRRGGBBAA` (0 = no background), and attribute bits — 1 bold, 2 italic, 4 underline, 8 strikethrough, 16 wide (the glyph spans this cell and the next, which the app leaves blank), 32 the underline is a wave (a terminal's undercurl, SGR 4:3) and 64 dotted (SGR 4:4), either implying it — plus, optionally, the underline's own colour (SGR 58), 0 for the foreground (backlog K4). A glyph is shaped once per character and style variant and thereafter placed at `col × cell_w` without shaping, so a screen whose every cell is new each frame costs what a still one costs (~60 µs for 200 × 50). The cell width is `M`'s advance in the style's font snapped to whole pixels, the height its `lineHeight`; a cell is a cell, so ligatures never form. A character the family has no glyph for is asked of a monospaced face before the platform's fallback list, shaped smaller where it is still wider than its cells (two under wide), and drawn in their middle (backlog F120); the private use area's icons are left as they fall. Box drawing and block elements (U+2500–U+259F) and the Powerline separators (U+E0B0–U+E0BF: the arrows, and the Powerline Extra half circles and wedges) are not shaped at all but drawn from the cell box — a font's are its own line box tall, a cell is `lineHeight` tall, and through the font every `│` was a dash with a gap under it (backlog F66) and a rounded cap a fallback font's squiggle (F112) — so a TUI's frames and rounded rows are seamless in any font, and bold does not thicken a light line (the set has its heavy variants). JSX passes the cells as a `Uint32Array` (or number array) of four entries per cell — codepoint, fg, bg, flags — or five, with the underline colour, in row-major order; Lua a string per row in `lines` plus `runs` of `{row, col, len, fg, bg, flags, ul}` over them (a run's fg, bg or ul of 0 keeps the default: the style's colour, no background, the foreground); C a `KuiCell` array with `ul`. `cursorAt` (`cursor_at`) names a cell to paint under its glyph in `cursorColor` as a `block` (default), `bar` or `underline` — its own name, since `cursor` is the pointer shape. `originLine` (`origin_line`) is the absolute line number of row 0: a grid is one screenful of the app's own history, so a row number means a different line after every scroll, and stamping where the screen sits is what lets a selection keep its ends across one (`docs/adr/0017-selection-as-a-scope.md`). Saying nothing is 0, and a selection then holds only while the screen does not move. The node's own rows apply — an `onKey` makes it the terminal's sink, an `onClick` or `onDrag` carries `cell: {row, col}` on its events — and its access row is `terminal`, the rows joined as its value.",
     },
     ElementDef {
@@ -2044,6 +2105,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<line from={[x,y]} to={[x,y]} width color/>`, `<line points={[[x,y],…]} curve dash={[6, 4]} dashOffset/>`",
         lua: "`line { from={x,y}, to={x,y}, width=, color= }`, `line { points={{x,y},…}, curve=true, dash={6, 4}, dash_offset= }`",
         c: "`kui_line`, `kui_polyline`",
+        odin: "`kui.line`, `kui.polyline` (points, `[][2]f32`)",
         doc: "A round-capped stroke: one segment, a polyline through `points`, or a smooth curve through them with `curve`. Always a float in its parent's box space (`float=\"viewport\"` for viewport space), sized to its own bounding box, so it takes no room in a row or column — but a float for the room alone: in its parent's box space it paints in the parent's layer at its place in the tree, over the siblings declared before it and under those after, as a child does, and opens no layer of its own (backlog F123; a connector meant to sit under two cards is declared before them). A stroke in its parent's box space is held by the parent's clip as a child is, its hit region with it, so it is cut at a scroller's edge with the row it is drawn in; a declared float is held that way only when it declares `clip` with a parent anchor, and a `float=\"viewport\"` stroke escapes, and is a layer of its own (backlog F78, `docs/adr/0010-a-segment-primitive.md` decision 5). `width` is the stroke width (default 1) and `color` the stroke colour; `transition` eases the colour, and with `slide` beside it the stroke's position too — the points ride its box, so a stroke whose ends all move together slides with them, while one whose ends move apart resizes at once (a canvas of floats eases everything or nothing, connectors included). Hit by its shape (`docs/adr/0026-hit-testing-by-shape.md`): with `onClick`, `onDrag`, `onHover` or `hoverable` a press within half the width of any piece hits it — at least 4 px of grab, so a hairline is a target — and a press elsewhere in its bounding box falls through to what is under; with none it takes no input and has no access row, and with input it derives one as a box would (a clickable connector is a button), so name it. What it costs: one quad per segment, and a curve is flattened in the core at one piece per 6 logical px of chord (at most 32 per span) — fixed rather than tolerance-driven so every binding gets the same pieces and the corpus can pin them — so a nine-point curve over ~50 px spans is ~60 quads, and a `quadCount` budget should expect it. `dash` cuts the stroke into marks and gaps (backlog V2): one length (marks and gaps alike), a mark and a gap, or four lengths for a dash-dot, in px **as seen** — every mark is a short stroke with the stroke's round caps, so `dash` 6, 4 is 6 px of ink and 4 px of nothing at any width up to 6 (SVG's `stroke-dasharray` measures the centre line instead, so with round caps its `4 4` at a width of 4 is solid; this pattern is SVG's `mark − width, gap + width`). A mark no longer than the stroke is wide is a dot as wide as the stroke, in the same period, so its gap is that much shorter; where a mark and its gap together come to no more than the width the dots meet and the gap closes — the marks either side of it are one, and a pattern with no gap left, `dash` 2, 2 at a width of 8, draws solid (backlog RG118). The pattern runs along the stroke's whole length, so it keeps its phase round the corners of a polyline and the pieces of a curve, and `dashOffset` starts that far into it — growing it moves the marks towards the first point, a marquee's marching ants; neither tweens. A pattern with no gap, a mark and gap under a physical pixel together, or more than 16384 marks draws solid. A dashed stroke is hit along its whole length, gaps included, and costs a quad per mark per piece the mark lies on.",
     },
     ElementDef {
@@ -2057,6 +2119,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<titlebar title>` or `<titlebar>…</titlebar>`",
         lua: "`titlebar { title= }` / `titlebar { … }`",
         c: "`kui_titlebar`, `kui_titlebar_with`",
+        odin: "`kui.titlebar`, `kui.titlebar_with`",
         doc: "Adaptive titlebar for custom chrome: drag strip, native-control inset, window buttons.",
     },
     ElementDef {
@@ -2068,6 +2131,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<menuBar menu={[{ label, items: [{ label, id?, role?, accel?, enabled?, checked? }] }]}/>`",
         lua: "`menu_bar { menu = { { label=, items= { { label=, id=, role=, accel=, enabled=, checked= } } } } }`",
         c: "`kui_menu_bar`",
+        odin: "`kui.menu_bar`",
         doc: "The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `menu` is what it *is*, and where this element sits is where its titles go when they have to be drawn in the window. One call and not two, because declaring the menu and placing the strip are one decision. It draws **nothing** where the platform owns the bar — macOS, where the driver hands the same declaration to the OS — so the frame has still said what the app's menu is and the strip simply is not there; that is the contract `windowButtons` has under native decorations, and it is what makes one view portable. Its rows are the rows a context menu has: the same `role`s the core performs itself (`copy`, `paste`, `selectAll`, `cut`, `lookUp`), the same `id` payload, the same `accel` text, plus `checked` for a setting — and choosing one posts the same `{kind:\"menu\", role, item}` event, so an app handles one thing whichever menu it came from. Declared every frame and diffed: an unchanged menu costs a comparison, and an empty list takes it away. An accelerator kui can parse is rewritten into the platform's spelling, so `\"mod+s\"` reads as `⌘S` on macOS and `Ctrl+S` elsewhere and binds that key in the platform's own bar. On macOS the first menu is the application menu, which the OS titles with the app's own name whatever the label says. While a menu is open the bar is the frame's modal scope, so hovering across the titles moves the open menu, a press on the open title closes it, and Escape or a press in the app below closes it and reaches nothing else.",
     },
     ElementDef {
@@ -2079,6 +2143,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<windowButtons/>`",
         lua: "`window_buttons()`",
         c: "`kui_window_buttons`",
+        odin: "`kui.window_buttons`",
         doc: "Just the min/max/close buttons, for fully custom titlebars.",
     },
     ElementDef {
@@ -2090,6 +2155,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<tooltip value=\"hint\"/>` / `<tooltip>…</tooltip>` nodes, or the `tooltip=\"hint\"` prop (see composites)",
         lua: "`tooltip(\"hint\")` / `tooltip { … }` nodes, or the prop",
         c: "`kui_tooltip`, `kui_tooltip_with`",
+        odin: "`kui.tooltip`, `kui.tooltip_with`",
         doc: "A float hanging below the parent; the node form always draws, the prop form is hover-gated.",
     },
     ElementDef {
@@ -2101,6 +2167,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<latencyGraph/>`, `<latencyHud at/>`",
         lua: "`latency_graph()`, `latency_hud { at= }`",
         c: "`kui_latency_graph`, `kui_latency_hud`",
+        odin: "`kui.latency_graph`, `kui.latency_hud`",
         doc: "Per-phase frame timing (windowed drivers fill it; headless shows the chrome empty).",
     },
     ElementDef {
@@ -2112,6 +2179,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         jsx: "`<audio src={id} loop volume paused finish tag/>`",
         lua: "`audio { src=, loop=, volume=, paused=, finish=, tag= }`",
         c: "`kui_audio`",
+        odin: "`kui.audio`",
         doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:\"sound\", phase:\"ended\", tag}`. Draws nothing. `finish` changes what *gone* means: the node's removal releases the playback rather than stopping it, so a one-shot plays to its end and the view need not know the asset's length to declare the node for it (a loop still stops on removal — there is no end to reach — and a paused playback released has nothing to finish). Without it, the way to play a sound whole is to hold the node declared until the `tag`'s `ended` message arrives. A released playback is not free: it holds one of the device's 128 voices until its file ends, and the 129th play is refused — reported as a `playback-refused` warning and, for a `tag`, `phase: \"refused\"` rather than a wait that never returns. In the app's units, voices held = sound length × release rate: a 1.4 s chime released four times a second holds 6 of the 128 at any moment, a 10 s ambience released once a second holds 10, and every playback still declared (a loop included) counts beside them — a `refused` `sound` event is what arriving at 128 sounds like.",
     },
 ];
