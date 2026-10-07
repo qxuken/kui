@@ -791,6 +791,38 @@ impl LongLine {
             _ => 0.0,
         }
     }
+
+    /// `tab_shift` for a caret `local` bytes into chunk `i`: only the
+    /// chunk's end is past a tab the line places, which is its last
+    /// character, so only the end caret moves — and with it the line's end
+    /// caret, which then agrees with the line's width (backlog RG122).
+    fn end_shift(&self, i: usize, local: usize) -> f32 {
+        let c = &self.chunks[i];
+        match local >= c.end - c.start {
+            true => self.tab_shift(i),
+            false => 0.0,
+        }
+    }
+
+    /// The byte a point at `x` along chunk `i`'s run answers when it is on
+    /// a tab the line places: the run's tab is as wide as the chunk's own
+    /// stops make it and the drawn one as wide as the line's (`reprefix`),
+    /// so the run's hit test splits it at the wrong place. The tab before
+    /// the drawn tab's middle, the byte after it from there (backlog
+    /// RG122). `None` off such a tab.
+    fn placed_tab_hit(&self, i: usize, x: f32) -> Option<usize> {
+        let c = &self.chunks[i];
+        let (tab_x, _) = c.tab?;
+        c.width?;
+        if x < tab_x {
+            return None;
+        }
+        let drawn_end = self.prefix[i + 1] - self.prefix[i];
+        Some(match x < (tab_x + drawn_end) / 2.0 {
+            true => c.end - 1,
+            false => c.end,
+        })
+    }
 }
 
 /// The tab stop after `x` (physical px from the line's start), stops
@@ -3846,6 +3878,7 @@ impl TextSystem {
         let c = &line.chunks[i];
         let local = px - line.prefix[i];
         let byte = match self.run(c.key) {
+            Some(_) if let Some(b) = line.placed_tab_hit(i, local) => b,
             Some(e) if c.width.is_some() => {
                 let cursor = e.buffer.hit(local, py.clamp(0.0, line.line_h - 0.01))?;
                 c.start + cursor.index.min(c.end - c.start)
@@ -3888,13 +3921,20 @@ impl TextSystem {
             Some(e) if r < c.rows.len() => {
                 let rs = c.rows[r];
                 let local_x = px - if r == 0 { head_x } else { 0.0 } + rs.x;
-                let cursor = e.buffer.hit(local_x, line.line_h / 2.0)?;
                 let lo = rs.byte as usize;
                 let hi = c
                     .rows
                     .get(r + 1)
                     .map_or(c.end - c.start, |n| n.byte as usize);
-                c.start + cursor.index.clamp(lo, hi)
+                // A tab the line places, when it is on this row.
+                let tab_here = (lo..hi).contains(&(c.end - c.start - 1));
+                match line.placed_tab_hit(i, local_x) {
+                    Some(b) if tab_here => b,
+                    _ => {
+                        let cursor = e.buffer.hit(local_x, line.line_h / 2.0)?;
+                        c.start + cursor.index.clamp(lo, hi)
+                    }
+                }
             }
             _ => {
                 // The inverse of `long_caret`'s estimate: rows back into
@@ -3967,7 +4007,7 @@ impl TextSystem {
                 Some(e) if !c.rows.is_empty() => {
                     let r = c.rows.partition_point(|rs| rs.byte as usize <= local) - 1;
                     let run = e.buffer.layout_runs().next()?;
-                    let cx = caret_x(&run, local.min(c.end - c.start));
+                    let cx = caret_x(&run, local.min(c.end - c.start)) + line.end_shift(i, local);
                     (r, cx - c.rows[r].x + if r == 0 { head_x } else { 0.0 })
                 }
                 _ => {
@@ -3988,7 +4028,8 @@ impl TextSystem {
             match self.run(c.key) {
                 Some(e) if c.width.is_some() => {
                     let run = e.buffer.layout_runs().next()?;
-                    line.prefix[i] + caret_x(&run, local.min(c.end - c.start))
+                    let x = caret_x(&run, local.min(c.end - c.start));
+                    line.prefix[i] + x + line.end_shift(i, local)
                 }
                 _ => line.prefix[i] + local as f32 * line.avg,
             }

@@ -826,3 +826,93 @@ fn a_tab_after_a_long_stretch_without_one_stops_on_the_lines_stops() {
         .collect();
     assert!(off.is_empty(), "wrapped: (tab byte, advance, want) {off:?}");
 }
+
+/// `text` in `style`, `w` wide in a frame wider than any test line,
+/// framed twice (a wrapped line is laid out a frame behind the emission
+/// that shaped its chunks); returns the core and the text's key.
+fn placed(text: &str, style: TextStyle, w: f32) -> (Core, Key) {
+    let mut core = Core::new();
+    for _ in 0..2 {
+        let mut ui = core.frame(Size::new(120_000.0, 2000.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.text_in_keyed("t", NodeSpec::column().width(w), text, style);
+        ui.finish();
+    }
+    (core, Key::ROOT.str("t").index(0))
+}
+
+#[test]
+fn a_line_ending_in_a_placed_tab_ends_its_caret_where_the_line_ends() {
+    // The end caret was the chunk's run's end, which leaves out the
+    // advance the line gave its last tab (RG76): short of the line's
+    // width in mono, past it in a proportional face, and on wrapped rows
+    // the run's own tab advance (backlog RG122).
+    let text = format!("{}x\t", "abcde ".repeat(1000));
+    let len = text.len();
+    for style in [
+        mono(),
+        TextStyle::new(13.0).line_height(LH).wrap(TextWrap::None),
+    ] {
+        let (mut core, key) = placed(&text, style, 120_000.0);
+        let end = core.caret_rect(key, len).expect("drawn").x;
+        let width = core.measure_text(&text, &style, None).width;
+        assert!((end - width).abs() < 0.5, "end caret {end}, line {width}");
+        let (mut short, _) = placed("\tx", style, 1000.0);
+        let stop = short.measure_text("\t", &style, None).width;
+        let r = end % stop;
+        assert!(r.min(stop - r) < 0.5, "end caret {end} off a {stop} stop");
+        // Wrapped, the last tab keeps the advance the unwrapped line gives
+        // it.
+        let want = end - core.caret_rect(key, len - 1).expect("drawn").x;
+        let (core, key) = placed(&text, style.wrap(TextWrap::Word), 2000.0);
+        let (a, b) = (
+            core.caret_rect(key, len - 1).expect("drawn"),
+            core.caret_rect(key, len).expect("drawn"),
+        );
+        assert_eq!(a.y, b.y);
+        assert!(
+            (b.x - a.x - want).abs() < 0.5,
+            "wrapped: last tab {} wide, want {want}",
+            b.x - a.x
+        );
+    }
+}
+
+#[test]
+fn a_click_on_a_placed_tab_answers_the_side_it_is_on() {
+    // The hit test asked the chunk's run, whose tab is not as wide as the
+    // one the line drew (RG76), so a point on either half of a placed tab
+    // answered the byte after it (backlog RG122).
+    let mid = format!("{}ab\tcd\tef ", "abcde ".repeat(200)).repeat(6);
+    let end = format!("{}x\t", "abcde ".repeat(1000));
+    for text in [&mid, &end] {
+        for (wrap, w) in [
+            (TextWrap::None, 120_000.0),
+            (TextWrap::BreakSpaces, 120_000.0),
+            (TextWrap::Word, 2000.0),
+        ] {
+            let (core, key) = placed(text, wrapped(wrap), w);
+            let off: Vec<_> = text
+                .match_indices('\t')
+                .filter_map(|(b, _)| {
+                    let (a, z) = (core.caret_rect(key, b)?, core.caret_rect(key, b + 1)?);
+                    if a.y != z.y {
+                        return None;
+                    }
+                    let hit = |f: f32| {
+                        let at = Vec2::new(a.x + f * (z.x - a.x), a.y + LH / 2.0);
+                        core.text_hit(key, at).map(|h| h.byte)
+                    };
+                    let got = (hit(0.2), hit(0.8));
+                    (got != (Some(b), Some(b + 1))).then_some((b, got))
+                })
+                .take(5)
+                .collect();
+            assert!(
+                off.is_empty(),
+                "{wrap:?}, {} bytes: (tab byte, hits at 20% and 80%) {off:?}",
+                text.len()
+            );
+        }
+    }
+}
