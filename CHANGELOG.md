@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.41 (2026-10-07)
 
 **What breaks.**
 
@@ -190,6 +190,63 @@ to, so each is listed.
 `path` only to carry its `tooltip`; a pattern stretched by hand so a
 thick stroke's dots would not touch; a second `set_fallback_fonts` (or a
 redraw) sent through every other window of the session.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-07, over
+the rounds after the alpha.40 tag — `imeOff` (F125), F103's skipped
+half, RG76, RG113 and RG118, and the darwin-x64 prebuild dropped — with
+a regression pass over them first: the mechanical round, then three
+read-only reviews in worktrees (text and fonts; core paint, layout and
+bindings; the runner, the release machinery and the docs), each claim
+probed with a test before anything changed. They filed five: RG122–RG125,
+built before the tag (a long line's placed tab answering the caret and
+the click where its run had it, a pinned `Mono` asked at weights its face
+lacks and not re-pinned when the app's fonts move, a C fragment's
+tooltip never drawn, and `imeOff`'s docs promising no dead keys on
+Windows and Linux, where winit composes them whatever the IME says), and
+RG126, open: `cells_200x50_warm`, unguarded, 3 to 5% slower, bisected to
+the grid's family-by-name check and not yet explained. F103 itself was
+measured in a window first: on macOS a hidden animating window already
+built nothing, and with every frame forced to skip and no display link
+the probe went from 82,000 frames a second at a core to 60 at 2%. This
+round ran on the Mac alone; Windows and Linux did not run it for this
+tag, so F125's `set_ime_allowed` there and F103 under Windows' drag
+timer are by reading.
+
+**macOS 27.0.1 on an M3 Pro MacBook Pro, rustc 1.99.0 (the toolchain
+CI runs), Node 26.10.0, nu 0.116.1**, on the release commit's tree.
+`cargo fmt --all --check` and `cargo clippy --workspace --all-targets
+--features kui-core/conformance -- -D warnings` are clean, and so is
+`cargo audit --deny warnings`. `cargo test --workspace --features
+kui-core/conformance`: **1844 tests over 138 suites, 0 failed** (4
+ignored). The C round, `cbuild --run`, passes its five checks; the
+corpus passes its **57 scenes** in four adapters, the `path` scene now
+resting on a tooltip wedge; the ABI is **25**. Node's `node --test
+test.mjs` under `KUI_CONFORMANCE_REQUIRED=1`: **212 of 212**. `npm run
+gen` leaves no diff, the examples typecheck and their lockfile installs,
+the headless round passes all **35 drives**, the book builds and
+`scripts/book-examples.nu --check` passes.
+
+**The windowed round**, `smoke -- --node`, twice — before the fixes and
+on the release tree: **51 Rust examples and the eleven Node examples,
+each on both bases, 120 frames each, every one exiting 0** — 124
+windows, eight at a time, in 34.2 and 52.3 s, the second beside another
+session's builds — and `counter`, `host`, `c_panel` and `lua_panel` by
+hand under `KUI_SMOKE_FRAMES=120`, each exiting 0 with nothing on
+stderr: **128 windows over five hosts.** `target/debug/examples` was
+pruned first (12,280 files), the alpha.36 trap. The AX audit:
+**106/106** on both trees, the audited window raised to the front by its
+pid first, and no warning on the fixture's stderr.
+
+**The bench guard** against the alpha.40 tag: **green**, none of the 8
+guarded rows more than 10% slower — every one between −1.0% and +0.6%
+(the worst guarded run-to-run spread 2.8%), `frame_10k_segments` +0.3%
+with RG118's dash — beside other processes using ~500% CPU, so the
+medians are not the README's and its table is kept as it was. Of the
+unguarded rows the frame bench's moved by at most +1.7%; the `cells`
+bench's `warm` row read +6.0% (±1.4%) against the tag, +3.8% against
+alpha.40 with F125 merged, and is RG126.
 
 ## 0.1.0-alpha.40 (2026-10-07)
 
