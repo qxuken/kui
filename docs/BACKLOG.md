@@ -2400,9 +2400,13 @@ green. RG139 is what the round left.
 Read sound: a list's unselected rows carry no `selected` (so UIA gives
 them Invoke where the selected one has SelectionItem) by decision — the
 noise AccessKit warns about, `access.rs`; a select's choice is its UIA
-FullDescription. Not answered: WSLg's X server went down mid-round (its
-log: "screen size is bogus", after a WSL restart), so RG129's fix was
-not read back through AT-SPI.
+FullDescription. WSLg's X server went down mid-round (its log: "screen
+size is bogus", after a WSL restart); after `wsl --shutdown` RG129 was
+read back through AT-SPI too: the rows say `Inbox`, `Drafts`, `Sent`,
+the titlebar its title. Theirs, not ours: `accesskit_atspi_common` 0.21
+maps no expanded state at all, so under AT-SPI a disclosure reads as a
+plain push button whose click works (`Advanced` opens) but which never
+says it is expandable or expanded — every AccessKit app on Linux.
 
 ### `.` RG139 — What the round after RG127 left
 
