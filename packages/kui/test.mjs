@@ -1852,6 +1852,30 @@ test('menu() reads a row the way menuBar() does', () => {
   );
 });
 
+// A row's `items` are its submenu (backlog F128): `menu()` reads them
+// back under the row, and a host that shows menus itself reports a row
+// inside by its path — never the row that opens it.
+test('a row with items is a submenu, and activateMenuPath reaches inside it', () => {
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]));
+  ctx.setNativeMenus(true);
+  ctx.openMenu('card', 40, 30, [
+    { label: 'Open', id: 'open' },
+    { label: 'Move to', items: [{ label: 'Inbox', id: 'inbox' }, { label: 'Archive', id: 'archive' }] },
+  ]);
+  const move = ctx.menu().items[1];
+  assert.deepEqual(move.items.map((r) => r.label), ['Inbox', 'Archive']);
+  assert.equal(ctx.menu().items[0].items, undefined, 'a plain row reads as it did');
+  assert.equal(ctx.activateMenuItem(1), false, 'the row that opens it is never chosen');
+  assert.equal(ctx.activateMenuPath([1]), false);
+  ctx.pollEvents();
+  assert.equal(ctx.activateMenuPath([1, 1]), true);
+  const events = ctx.pollEvents();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].payload.item, 'archive');
+  assert.equal(ctx.menu(), null);
+});
+
 test('openMenu refuses an item it cannot read', () => {
   const ctx = new Ctx();
   ctx.frame(320, 240, 1, box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]));
@@ -8069,7 +8093,7 @@ test('a disabled option is refused by activateMenuItem, and a select\'s options 
   assert.deepEqual(warned.map((w) => w.code), ['unknown-prop', 'unknown-prop'], JSON.stringify(warned));
   assert.match(warned[0].message, /`disabled` is not a key of a menu item: a row takes `label`, `role`, `enabled`, `checked`, `id`, `accel`.*did you mean `enabled: false`/);
   assert.match(warned[1].message, /`Label` is not a key of a menu item.*did you mean `label`/);
-  assert.deepEqual(protocol().menuItem, { name: 'menuItem', keys: ['label', 'role', 'enabled', 'checked', 'id', 'accel'] });
+  assert.deepEqual(protocol().menuItem, { name: 'menuItem', keys: ['label', 'role', 'enabled', 'checked', 'id', 'accel', 'items'] });
   ctx.frame(320, 240, 1, view(['a', { label: 'b', disabled: true }], 0));
   assert.deepEqual(ctx.warnings(), [], 'once per key');
 });

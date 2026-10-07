@@ -1355,7 +1355,7 @@ pub fn menu_panel_spec(t: &Theme, m: &Metrics) -> NodeSpec {
         // the panel, so their right edges line up.
         .width(Sizing::Fit)
         .min_width(m.menu_width)
-        .pad(4.0)
+        .pad(MENU_PANEL_PAD)
         .gap(1.0)
         .bg(t.raised)
         .border(1.0, t.border_strong)
@@ -1365,7 +1365,28 @@ pub fn menu_panel_spec(t: &Theme, m: &Metrics) -> NodeSpec {
 /// Builds the rows of one menu into `spec`, keyed under `label`, and
 /// reports the keys they took. The one place a menu's rows are drawn:
 /// both menus kui has are this function with a different container.
+///
+/// A row with a submenu ([`MenuItem::submenu`]) is drawn with a chevron.
+/// In the core's own menus — the context menu and the drawn bar's — its
+/// menu opens beside it, as another of these panels, when the pointer
+/// rests on it, it is clicked, or the keyboard opens it (Enter, the Right
+/// arrow); an app drawing this panel itself gets the chevron and opens
+/// nothing, since the open submenus are the core's state.
 pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuItem]) -> Key {
+    menu_level(ui, label, label, spec, items, &[])
+}
+
+/// One level of a menu: `items` built into `spec` under `label`, at `path`
+/// — empty for the menu itself, the rows opened on the way for a submenu.
+/// `root` is the outermost panel's label, which names the hover groups.
+fn menu_level(
+    ui: &mut Ui<'_>,
+    root: &str,
+    label: &str,
+    spec: NodeSpec,
+    items: &[MenuItem],
+    path: &[usize],
+) -> Key {
     let t = ui.theme();
     let m = ui.metrics();
     // A wash rather than a fill, so a row's label stays readable on both
@@ -1377,8 +1398,25 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
     // with a setting in it keeps every label on the same left edge whether
     // the setting is on or off.
     let gutter = items.iter().any(|i| i.checked);
-    ui.with_keyed(label, spec, |ui| {
-        let mut first = true;
+    // Which of the core's menus this is, by the origin its nodes open
+    // under: only those have submenu state to open and close.
+    let surface = crate::runtime::MenuSurface::of(ui.origin());
+    let group = |i: usize| format!("{root}/{path:?}/{i}");
+    // Where the pointer rests opens or closes a submenu, resolved before
+    // anything is built — the frame that notices the hover draws what it
+    // opened, as the bar's titles do.
+    if let Some(s) = surface {
+        for (i, item) in items.iter().enumerate() {
+            if item.selectable() && ui.is_group_hovered(NodeSpec::hover_group_id(&group(i))) {
+                let row: Vec<usize> = path.iter().copied().chain([i]).collect();
+                ui.core().submenu_hovered(s, &row, item.has_submenu());
+            }
+        }
+    }
+    let open_here = surface.and_then(|s| ui.core().submenu_open_at(s, path));
+    let mut first_key = None;
+    let root_key = ui.with_keyed(label, spec, |ui| {
+        let mut first = path.is_empty();
         for (i, item) in items.iter().enumerate() {
             if item.role == MenuRole::Separator {
                 ui.leaf_indexed(
@@ -1395,9 +1433,12 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                 continue;
             }
             // The row posts which item it is; the core takes the event back
-            // by origin, performs the item, and what the app hears is the
-            // item's own `id` on the node the menu was about.
-            let payload = menu_row_tag(i);
+            // by origin, performs the item — or opens its submenu — and
+            // what the app hears is the item's own `id` on the node the
+            // menu was about.
+            let payload = menu_row_tag(i, path);
+            let opens = item.has_submenu();
+            let is_open = opens && open_here == Some(i);
             let mut spec = NodeSpec::row()
                 .role(Role::MenuItem)
                 .label(item.text())
@@ -1418,9 +1459,13 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
             }
             if item.enabled {
                 spec = spec.on_click(payload).hover_bg(accent).focus_bg(accent);
+                if surface.is_some() {
+                    spec = spec.hover_group(&group(i));
+                }
                 // The first row that can take focus is where the modal opens:
                 // a menu whose keyboard starts nowhere makes the arrow keys
-                // feel like they missed.
+                // feel like they missed. A submenu is no modal of its own;
+                // the keyboard that opens one puts focus in it.
                 if first {
                     spec = spec.initial_focus();
                     first = false;
@@ -1428,7 +1473,16 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
             } else {
                 spec = spec.disabled(true).opacity(t.disabled_opacity);
             }
-            ui.with_indexed(i as u64, spec, |ui| {
+            if opens {
+                // A reader hears it as a row that opens something, and
+                // whether it is open; the open one keeps the wash while the
+                // pointer is in its submenu, so the way back is visible.
+                spec = spec.expanded(is_open);
+                if is_open {
+                    spec = spec.bg(accent);
+                }
+            }
+            let row = |ui: &mut Ui<'_>| {
                 if gutter {
                     ui.with(NodeSpec::row().width(MENU_CHECK_W), |ui| {
                         if item.checked {
@@ -1443,27 +1497,114 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                     item.text(),
                     TextStyle::new(m.chrome_text).color(t.fg).nowrap(),
                 );
-                if let Some(accel) = item.accel_label() {
-                    // Pushed to the right edge by a grow spacer, so the label
-                    // stays where the eye expects it whatever the
-                    // accelerator is; at least `MENU_ACCEL_GAP` wide, so the
-                    // widest label and the widest accelerator never touch.
+                // Pushed to the right edge by a grow spacer, so the label
+                // stays where the eye expects it whatever follows it; at
+                // least `MENU_ACCEL_GAP` wide, so the widest label and the
+                // widest accelerator never touch. A submenu's row has its
+                // chevron there and no accelerator: it binds nothing.
+                let tail = if opens {
+                    Some(std::borrow::Cow::Borrowed(MENU_CHEVRON))
+                } else {
+                    item.accel_label()
+                };
+                if let Some(tail) = tail {
                     ui.leaf(NodeSpec::row().grow_width().min_width(MENU_ACCEL_GAP));
-                    ui.text(
-                        &accel,
-                        TextStyle::new(m.chrome_text).color(t.muted).nowrap(),
-                    );
+                    ui.text(&tail, TextStyle::new(m.chrome_text).color(t.muted).nowrap());
                 }
-            });
+            };
+            let key = if opens {
+                // A wrapper the submenu drops out of, so the panel is the
+                // row's *sibling* — the menu bar's reason: a `menuItem` is
+                // named from its content, and a menu inside one would be
+                // read as part of its name — and floats against the row's
+                // own box.
+                let mut key = Key::ROOT;
+                ui.with_indexed(
+                    i as u64,
+                    NodeSpec::row()
+                        .grow_width()
+                        .min_width(crate::spec::Bound::Fit),
+                    |ui| {
+                        key = ui.with_keyed(MENU_ROW_KEY, spec, row);
+                        if is_open && item.enabled {
+                            let sub: Vec<usize> = path.iter().copied().chain([i]).collect();
+                            menu_level(
+                                ui,
+                                root,
+                                MENU_SUB_KEY,
+                                menu_panel_spec(&t, &m)
+                                    .label(item.text())
+                                    // A region of its own, so a press on its
+                                    // padding or a dead row is inside the
+                                    // menu — as the outer panel's `modal`
+                                    // makes it there — and not the press
+                                    // outside that dismisses it.
+                                    .hoverable()
+                                    .float(
+                                        // Beside the row, its first row level
+                                        // with this one (the panel's padding
+                                        // above it), flipped to the other side
+                                        // at the window's edge.
+                                        FloatConfig::parent()
+                                            .at(Align::End, Align::Start)
+                                            .self_at(Align::Start, Align::Start)
+                                            .offset(MENU_PANEL_PAD, -MENU_PANEL_PAD)
+                                            .fit(),
+                                    ),
+                                &item.submenu,
+                                &sub,
+                            );
+                        }
+                    },
+                );
+                key
+            } else {
+                ui.with_indexed(i as u64, spec, row)
+            };
+            if item.enabled && first_key.is_none() {
+                first_key = Some(key);
+            }
         }
-    })
+    });
+    // The keyboard opened this submenu (Enter, the Right arrow): the
+    // first row it can take is where it lands, now that it exists.
+    if let (Some(s), Some(key)) = (surface, first_key)
+        && !path.is_empty()
+    {
+        ui.core().submenu_drawn(s, path, key);
+    }
+    root_key
 }
 
-/// What a menu row's click carries: its index in the menu's items, for
-/// the core to read back (`Core::menu_row_of`). The title of a menu-bar
-/// menu carries its index the same way, under `title`.
-fn menu_row_tag(i: usize) -> Value {
-    Value::map([("row", Value::Int(i as i64))])
+/// The padding inside a menu's panel, logical px: what a submenu is offset
+/// by so its first row sits level with the row that opened it.
+const MENU_PANEL_PAD: f32 = 4.0;
+
+/// The chevron a submenu's row draws where an accelerator would be.
+pub const MENU_CHEVRON: &str = "\u{203a}";
+/// The label a submenu's row is keyed under, inside its wrapper.
+const MENU_ROW_KEY: &str = "row";
+/// The label a submenu's panel is keyed under, beside its row.
+const MENU_SUB_KEY: &str = "sub";
+
+/// What a menu row's click carries: its index in its menu's items, and —
+/// for a row of a submenu — the rows opened on the way to it, for the core
+/// to read back (`Core::take_surface_events`). The title of a menu-bar
+/// menu carries its index the same way, under `title`. A top-level row
+/// carries `row` alone, as it always did.
+fn menu_row_tag(i: usize, path: &[usize]) -> Value {
+    let row = ("row", Value::Int(i as i64));
+    if path.is_empty() {
+        Value::map([row])
+    } else {
+        Value::map([
+            row,
+            (
+                "path",
+                Value::List(path.iter().map(|&p| Value::Int(p as i64)).collect()),
+            ),
+        ])
+    }
 }
 
 fn menu_title_tag(i: usize) -> Value {

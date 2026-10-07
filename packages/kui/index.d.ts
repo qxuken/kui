@@ -730,6 +730,10 @@ export interface OpenMenuItem {
    *  own, or its role's default (`⌘C` on a `copy` row that declared none);
    *  null where there is neither. */
   accel: string | null;
+  /** The rows of the submenu this row opens, read the same way; absent on
+   *  a row that opens none. A row with them is never chosen itself: report
+   *  a row inside with `activateMenuPath`. */
+  items?: OpenMenuItem[];
 }
 
 /** The menu a window has open (`Ctx.menu()`): where it opened, the node it
@@ -3281,6 +3285,12 @@ export declare class Ctx {
    */
   activateMenuBarItem(menu: number, item: number): boolean
   /**
+   * `activateMenuBarItem` for a row inside a submenu of menu
+   * `menu`, by its path through the rows' `items`. False for a
+   * row that is not there or that opens a submenu.
+   */
+  activateMenuBarPath(menu: number, path: Array<number>): boolean
+  /**
    * Tells the core this host can show the platform's definition
    * panel. The standard Look Up row is then offered where it
    * means something, and a force click over text asks for one.
@@ -3295,6 +3305,13 @@ export declare class Ctx {
    * stays open and nothing is posted.
    */
   activateMenuItem(index: number): boolean
+  /**
+   * `activateMenuItem` for a row inside a submenu, by its path
+   * through the rows' `items`: `[2, 0]` is the first row of the
+   * third row's submenu. False where `activateMenuItem` is, and
+   * for a row that opens a submenu, which is never chosen.
+   */
+  activateMenuPath(path: Array<number>): boolean
   /** Closes whatever menu is open; true when there was one. */
   closeMenu(): boolean
   /**
@@ -4465,6 +4482,12 @@ export declare class KuiWindow {
    */
   activateMenuBarItem(menu: number, item: number): boolean
   /**
+   * `activateMenuBarItem` for a row inside a submenu of menu
+   * `menu`, by its path through the rows' `items`. False for a
+   * row that is not there or that opens a submenu.
+   */
+  activateMenuBarPath(menu: number, path: Array<number>): boolean
+  /**
    * Tells the core this host can show the platform's definition
    * panel. The standard Look Up row is then offered where it
    * means something, and a force click over text asks for one.
@@ -4479,6 +4502,13 @@ export declare class KuiWindow {
    * stays open and nothing is posted.
    */
   activateMenuItem(index: number): boolean
+  /**
+   * `activateMenuItem` for a row inside a submenu, by its path
+   * through the rows' `items`: `[2, 0]` is the first row of the
+   * third row's submenu. False where `activateMenuItem` is, and
+   * for a row that opens a submenu, which is never chosen.
+   */
+  activateMenuPath(path: Array<number>): boolean
   /** Closes whatever menu is open; true when there was one. */
   closeMenu(): boolean
   /**

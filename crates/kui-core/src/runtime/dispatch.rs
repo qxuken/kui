@@ -449,6 +449,12 @@ impl Core {
                 }
             }
             InputEvent::Key(ek, mods) => {
+                // Inside one of the core's menus a submenu comes first: the
+                // arrows open and close one, and Escape closes the innermost
+                // before it would close the menu (backlog F128).
+                if self.submenu_key(ek) {
+                    return out;
+                }
                 // A modal owns Escape: it asks to go away, and nothing
                 // else happens (see `docs/adr/0003-modal-surfaces.md`).
                 // The core closes nothing — the app stops declaring it.

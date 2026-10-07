@@ -56,7 +56,7 @@ impl DynShell<'_> {
             // presented again.
             let events = native
                 .take_chosen()
-                .and_then(|row| self.panes[i].core.activate_menu_item(row))
+                .and_then(|path| self.panes[i].core.activate_menu_path(&path))
                 .unwrap_or_else(|| {
                     self.panes[i].core.close_menu();
                     Vec::new()
@@ -140,7 +140,7 @@ impl DynShell<'_> {
                 None => {}
                 // Reported to the window the bar was applied from, which
                 // is the one the items are about.
-                Some(macos_menu::BarPick::Item(menu, item)) => {
+                Some(macos_menu::BarPick::Item(menu, path)) => {
                     let Some(i) = self
                         .applied_menu_bar
                         .and_then(|a| match a {
@@ -151,7 +151,7 @@ impl DynShell<'_> {
                     else {
                         return;
                     };
-                    let events = self.panes[i].core.activate_menu_bar_item(menu, item);
+                    let events = self.panes[i].core.activate_menu_bar_path(menu, &path);
                     // A chosen row is input that reached the app, so the
                     // frame after it waits for the host's answer where the
                     // host answers late (`Launcher::deferred_events`) —

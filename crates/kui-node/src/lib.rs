@@ -281,6 +281,14 @@ fn menu_item_json(item: &kui_core::MenuItem) -> Json {
         "accel".into(),
         item.accel_text().map_or(Json::Null, Json::from),
     );
+    // A submenu's rows, read the same way; only on a row that has one, so
+    // every other row reads as it always did (backlog F128).
+    if item.has_submenu() {
+        o.insert(
+            "items".into(),
+            Json::Array(item.submenu.iter().map(menu_item_json).collect()),
+        );
+    }
     Json::Object(o)
 }
 fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
@@ -3713,6 +3721,19 @@ macro_rules! core_methods {
                 Ok(any)
             }
 
+            /// `activateMenuBarItem` for a row inside a submenu of menu
+            /// `menu`, by its path through the rows' `items`. False for a
+            /// row that is not there or that opens a submenu.
+            #[napi]
+            pub fn activate_menu_bar_path(&mut self, menu: u32, path: Vec<u32>) -> Result<bool> {
+                let path: Vec<usize> = path.into_iter().map(|i| i as usize).collect();
+                let events = self.$core().activate_menu_bar_path(menu as usize, &path);
+                let any = !events.is_empty();
+                self.$take(events);
+                self.$redraw();
+                Ok(any)
+            }
+
             /// Tells the core this host can show the platform's definition
             /// panel. The standard Look Up row is then offered where it
             /// means something, and a force click over text asks for one.
@@ -3731,6 +3752,21 @@ macro_rules! core_methods {
             #[napi]
             pub fn activate_menu_item(&mut self, index: u32) -> Result<bool> {
                 let Some(events) = self.$core().activate_menu_item(index as usize) else {
+                    return Ok(false);
+                };
+                self.$take(events);
+                self.$redraw();
+                Ok(true)
+            }
+
+            /// `activateMenuItem` for a row inside a submenu, by its path
+            /// through the rows' `items`: `[2, 0]` is the first row of the
+            /// third row's submenu. False where `activateMenuItem` is, and
+            /// for a row that opens a submenu, which is never chosen.
+            #[napi]
+            pub fn activate_menu_path(&mut self, path: Vec<u32>) -> Result<bool> {
+                let path: Vec<usize> = path.into_iter().map(|i| i as usize).collect();
+                let Some(events) = self.$core().activate_menu_path(&path) else {
                     return Ok(false);
                 };
                 self.$take(events);

@@ -44,6 +44,9 @@ impl KuiMenuItem {
             checked: self.checked != 0,
             id: unsafe { self.id.as_ref() }.map(|v| v.0.clone()),
             accel: opt_str(self.accel).map(|s| s.into_owned()),
+            // A submenu has no spelling in kui.h yet (backlog F128): a C
+            // row is a row.
+            submenu: Vec::new(),
         })
     }
 }

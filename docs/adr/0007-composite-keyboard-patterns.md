@@ -331,7 +331,14 @@ derived orientation are the whole surface.
   decision 5's warning is where an app feels the missing semantic half.
 - **Submenus.** Left / Right in a `menu` should close and open them. kui
   has no submenu relation (a `menu` inside a `menuItem`), so today those
-  arrows step like any other menu's.
+  arrows step like any other menu's. *Built 2026-10-08 for the core's own
+  menus (backlog F128):* Right on a row with a submenu opens it with focus
+  on its first row, Left inside one closes it with focus back on its row,
+  and Escape closes the innermost before the menu. The relation is the
+  core's state rather than a derived one — a submenu's panel is a `menu`
+  beside its row, not inside the `menuItem` (which is named from its
+  content), and the item walk already stops at a nested `menu` — so an
+  app's own `menu` composites step on Left / Right as before.
 - **`radio-without-group`.** A lone `radio` is invalid ARIA and now also
   means "no arrows here". A warning in the shape of `control-without-name`
   once something in the repo declares radios — the fixture will, so this

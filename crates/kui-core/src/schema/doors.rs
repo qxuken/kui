@@ -70,6 +70,10 @@ const NO_HANDLE: &str = "a script owns no handle: the host registers and the scr
 const ODIN_IS_C: &str =
     "Odin's doors are kui.h's (packages/odin): C has none, for the reason in C's cell";
 
+/// The reason for C's `No` on the submenu rows: `KuiMenuItem` has no
+/// field for a submenu's rows yet, so a C menu has none to report.
+const NO_SUBMENU: &str = "`KuiMenuItem` carries no submenu yet (backlog F128): a C host's rows are one level, and `kui_activate_menu_item` reaches them all";
+
 /// The reason for Node's `No` on the renderer rows (not done
 /// here).
 const NEVER_PAINTS: &str = "a Node host never paints: the renderer behind `KuiWindow` is the runner's, and a headless `Ctx` has none";
@@ -893,6 +897,14 @@ pub const DOORS: &[Door] = &[
         doc: "Reports that the host's own menu chose a row; a row that cannot be chosen (disabled, a separator) is refused and the menu stays open.",
     },
     Door {
+        rust: "Core::activate_menu_path",
+        c: No(NO_SUBMENU),
+        odin: No(ODIN_IS_C),
+        node: Is("activateMenuPath"),
+        lua: No(GUEST),
+        doc: "`activate_menu_item` for a row inside a submenu, by its path through the rows' submenus (backlog F128); a row that opens a submenu is refused.",
+    },
+    Door {
         rust: "Core::menu_bar",
         c: As(
             "`kui_menu_bar_menu_count` / `kui_menu_bar_menu` / `kui_menu_bar_item`, one row at a time",
@@ -917,6 +929,14 @@ pub const DOORS: &[Door] = &[
         node: Is("activateMenuBarItem"),
         lua: No(GUEST),
         doc: "Reports that the OS bar chose a row.",
+    },
+    Door {
+        rust: "Core::activate_menu_bar_path",
+        c: No(NO_SUBMENU),
+        odin: No(ODIN_IS_C),
+        node: Is("activateMenuBarPath"),
+        lua: No(GUEST),
+        doc: "`activate_menu_bar_item` for a row inside a submenu, by its path (backlog F128).",
     },
     // -- Windows -----------------------------------------------------------
     Door {

@@ -57,6 +57,7 @@ impl Core {
         });
         if open_moved {
             self.menu_bar_open = None;
+            self.menu_bar_sub = super::menu_api::Submenus::default();
         }
         self.menu_bar = Some(bar);
         self.menu_bar_origin = self.origin();
@@ -101,6 +102,12 @@ impl Core {
         self.menu_bar_open
     }
 
+    /// The submenus open in the drawn bar's open menu, as
+    /// [`Self::menu_submenus`] reads the context menu's (backlog F128).
+    pub fn menu_bar_submenus(&self) -> &[usize] {
+        &self.menu_bar_sub.open
+    }
+
     /// Opens one of the drawn bar's menus, closes it (`None`), and is what
     /// a press on a title goes through. Public because a keymap is as good
     /// a reason to open the File menu as a click is; out of range closes.
@@ -114,6 +121,9 @@ impl Core {
         if menu == self.menu_bar_open {
             return;
         }
+        // Another menu, or none: whatever submenus were open were the old
+        // one's (backlog F128).
+        self.menu_bar_sub = super::menu_api::Submenus::default();
         // Which editor the menu is about, remembered as the menu opens for
         // the reason `open_menu` remembers it: the rows are focusable, so
         // by the time Copy runs the field the user was in has lost focus.
@@ -140,11 +150,20 @@ impl Core {
     /// An index past the end does nothing, which is what a host reporting a
     /// row this build does not have should do.
     pub fn activate_menu_bar_item(&mut self, menu: usize, item: usize) -> Vec<UiEvent> {
+        self.activate_menu_bar_path(menu, &[item])
+    }
+
+    /// [`Self::activate_menu_bar_item`] for a row inside a submenu of menu
+    /// `menu`, by its path ([`crate::menu::MenuBar::item_at`]) — what a
+    /// platform bar whose menus nest reports (backlog F128). A row that
+    /// opens a submenu, or a path that names none, does nothing.
+    pub fn activate_menu_bar_path(&mut self, menu: usize, path: &[usize]) -> Vec<UiEvent> {
         let mut out = Vec::new();
         let Some(item) = self
             .menu_bar
             .as_ref()
-            .and_then(|b| b.item(menu, item))
+            .and_then(|b| b.item_at(menu, path))
+            .filter(|item| !item.has_submenu())
             .cloned()
         else {
             return out;
@@ -187,21 +206,27 @@ impl Core {
         // a menu is open (the bar is the modal scope then, so its titles
         // stay live and the app below does not).
         let taken = Self::take_surface_events(out, OriginId::MENU_BAR);
-        let (title, row, dismissed) = (taken.title, taken.row, taken.dismissed);
+        let (title, row, dismissed) = (taken.title, taken.row_path(), taken.dismissed);
         if let Some(i) = title {
             // A press on the open menu's own title closes it, which is
             // what every menu bar does and what makes the title a toggle.
             let next = (self.menu_bar_open != Some(i)).then_some(i);
             self.set_menu_bar_open(next);
-        } else if let Some(i) = row {
+        } else if let Some(path) = row {
             let Some(menu) = self.menu_bar_open else {
                 return;
             };
             let item = self
                 .menu_bar
                 .as_ref()
-                .and_then(|b| b.item(menu, i))
+                .and_then(|b| b.item_at(menu, &path))
                 .cloned();
+            // A row with a submenu opens it, as in the context menu.
+            if item.as_ref().is_some_and(MenuItem::has_submenu) {
+                let keyboard = self.focus_visible;
+                self.open_submenu(super::MenuSurface::Bar, path, keyboard);
+                return;
+            }
             self.set_menu_bar_open(None);
             if let Some(item) = item {
                 let (target, origin) = (self.menu_bar_target(), self.menu_bar_origin);

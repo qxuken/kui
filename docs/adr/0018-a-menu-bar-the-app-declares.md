@@ -189,6 +189,16 @@ does. An app that has to write the menu twice has not been given a menu.
   something wants one, it wants it in the context menu too, and that is one
   change to `MenuItem` rather than two features.
 
+  *Amended 2026-10-08 (backlog F128).* Something wanted one — Noticon's
+  "Move to ▸" and "Sort by ▸", in the context menu first — and it was that
+  one change: `MenuItem::submenu` (`items` in plain data, so every
+  binding's one parser reads it), drawn by the same `menu_panel` beside
+  its row, in the context menu and the drawn bar alike, and an `NSMenu`
+  submenu where the platform draws them. `BarMenu` is still one level;
+  its rows nest. There is no hover timer: the core opens or closes on a
+  *change* of hovered row, which is what keeps a pointer resting on one
+  row from undoing what the keyboard just opened.
+
 - **Standard application-menu roles** (`about`, `quit`, `services`, and
   macOS's `NSApplication` responders). They change what an item *is* — one
   the platform performs rather than one the app hears — so they need their

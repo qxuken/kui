@@ -84,11 +84,22 @@ impl Core {
     /// (`Some` and empty), which is what a host reporting a row this build
     /// does not know should do.
     pub fn activate_menu_item(&mut self, i: usize) -> Option<Vec<UiEvent>> {
+        self.activate_menu_path(&[i])
+    }
+
+    /// [`Self::activate_menu_item`] for a row inside a submenu, by its
+    /// path: `[2, 0]` is the first row of the third row's submenu
+    /// ([`MenuItem::at_path`]) — what a host whose own menu nests them
+    /// (an `NSMenu`'s submenus) reports (backlog F128). A row that opens a
+    /// submenu is refused like a disabled one: the platform opens it and
+    /// never reports it chosen. A path that names no row closes the menu
+    /// and posts nothing, as an index past the end does.
+    pub fn activate_menu_path(&mut self, path: &[usize]) -> Option<Vec<UiEvent>> {
         let menu = self.menu.as_ref()?;
         let mut out = Vec::new();
-        match menu.items.get(i) {
-            Some(item) if !item.selectable() => return None,
-            Some(_) => self.choose_menu_item(i, &mut out),
+        match MenuItem::at_path(&menu.items, path) {
+            Some(item) if !item.selectable() || item.has_submenu() => return None,
+            Some(_) => self.choose_menu_path(path, &mut out),
             None => {
                 self.close_menu();
             }
@@ -175,6 +186,8 @@ impl Core {
         // the same string back (backlog F127).
         MenuItem::normalize_accels(&mut menu.items);
         self.menu = Some(menu);
+        // A new menu opens with none of its submenus open.
+        self.menu_sub = Submenus::default();
     }
 
     /// A select field built this frame (`widgets::select`): its key and
@@ -224,9 +237,19 @@ impl Core {
         self.open_menu_raw(Menu::new(key, at, items));
     }
 
-    /// Closes it. Returns whether one was open.
+    /// Closes it, and every submenu open in it. Returns whether one was
+    /// open.
     pub fn close_menu(&mut self) -> bool {
+        self.menu_sub = Submenus::default();
         self.menu.take().is_some()
+    }
+
+    /// The submenus open in the drawn context menu: the row opened at each
+    /// level, outermost first — `[2]` is the third row's submenu, `[2, 0]`
+    /// that and the submenu of its first row. Empty when none is, and
+    /// always while the host shows menus itself (backlog F128).
+    pub fn menu_submenus(&self) -> &[usize] {
+        &self.menu_sub.open
     }
 
     /// What choosing an item left for the host: clipboard work, which is
@@ -355,8 +378,20 @@ impl Core {
             return;
         }
         let taken = Self::take_surface_events(out, OriginId::MENU);
-        if let Some(i) = taken.row {
-            self.choose_menu_item(i, out);
+        if let Some(path) = taken.row_path() {
+            // A row that opens a submenu opens it — the click, Enter, a
+            // reader's press — and stays open; any other row is chosen.
+            let opens = self
+                .menu
+                .as_ref()
+                .and_then(|m| MenuItem::at_path(&m.items, &path))
+                .is_some_and(MenuItem::has_submenu);
+            if opens {
+                let keyboard = self.focus_visible;
+                self.open_submenu(MenuSurface::Context, path, keyboard);
+            } else {
+                self.choose_menu_path(&path, out);
+            }
         } else if taken.dismissed {
             self.close_menu();
         }
@@ -381,6 +416,7 @@ impl Core {
                 taken.dismissed = true;
             } else if let Some(i) = index(&ev.payload, "row") {
                 taken.row = Some(i);
+                taken.path = row_path_of(&ev.payload);
             } else if let Some(i) = index(&ev.payload, "title") {
                 taken.title = Some(i);
             }
@@ -393,11 +429,11 @@ impl Core {
     /// finish it finishes; the clipboard three become a [`MenuAction`] for
     /// the host; everything else is the app's, and reaches it as an event
     /// on the node the menu was opened over.
-    fn choose_menu_item(&mut self, i: usize, out: &mut Vec<UiEvent>) {
+    fn choose_menu_path(&mut self, path: &[usize], out: &mut Vec<UiEvent>) {
         let Some(menu) = self.menu.clone() else {
             return;
         };
-        let Some(item) = menu.items.get(i).cloned() else {
+        let Some(item) = MenuItem::at_path(&menu.items, path).cloned() else {
             return;
         };
         self.close_menu();
@@ -513,5 +549,240 @@ impl Core {
 pub(crate) struct Taken {
     pub dismissed: bool,
     pub row: Option<usize>,
+    /// The rows opened on the way to `row`, for a row of a submenu.
+    pub path: Vec<usize>,
     pub title: Option<usize>,
+}
+
+impl Taken {
+    /// The clicked row's whole path, `path` then `row`.
+    pub fn row_path(&self) -> Option<Vec<usize>> {
+        let row = self.row?;
+        Some(self.path.iter().copied().chain([row]).collect())
+    }
+}
+
+/// The `path` a submenu row's tag carries (`widgets::menu_row_tag`);
+/// empty for a top-level row, which carries none.
+fn row_path_of(payload: &Value) -> Vec<usize> {
+    match payload.get("path") {
+        Some(Value::List(ps)) => ps
+            .iter()
+            .filter_map(Value::as_int)
+            .map(|p| p as usize)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+// -- Submenus (backlog F128) --------------------------------------------------
+// A row with a submenu opens it beside itself; the rows inside are drawn by
+// the same `menu_panel`, under the same origin, so their clicks come back
+// through `take_surface_events` like any row's, carrying the path that
+// says which submenu they are in. What is open is the core's, per drawn
+// menu: the frame cannot derive which row the pointer last rested on, or
+// that the keyboard closed what the pointer opened.
+
+/// Which of the core's two drawn menus a row belongs to, told by the
+/// origin its nodes were opened under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MenuSurface {
+    /// The context menu (`open_menu`), and a select's list.
+    Context,
+    /// The drawn menu bar's open menu.
+    Bar,
+}
+
+impl MenuSurface {
+    pub(crate) fn of(origin: OriginId) -> Option<Self> {
+        match origin {
+            OriginId::MENU => Some(MenuSurface::Context),
+            OriginId::MENU_BAR => Some(MenuSurface::Bar),
+            _ => None,
+        }
+    }
+
+    fn origin(self) -> OriginId {
+        match self {
+            MenuSurface::Context => OriginId::MENU,
+            MenuSurface::Bar => OriginId::MENU_BAR,
+        }
+    }
+}
+
+/// The submenus open in one of the core's drawn menus.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Submenus {
+    /// The row opened at each level, outermost first: `[2, 0]` is the
+    /// third row's submenu and, inside it, its first row's. Empty: none.
+    pub open: Vec<usize>,
+    /// The row the pointer was last seen on, as a path. The pointer opens
+    /// and closes submenus when this *changes*, so a keyboard that moved on
+    /// is not undone by a pointer resting where it was.
+    pub hovered: Option<Vec<usize>>,
+    /// The keyboard opened the innermost submenu: its first row takes
+    /// focus on the frame that draws it (`submenu_drawn`).
+    pub focus_first: bool,
+}
+
+impl Core {
+    fn submenus(&mut self, s: MenuSurface) -> &mut Submenus {
+        match s {
+            MenuSurface::Context => &mut self.menu_sub,
+            MenuSurface::Bar => &mut self.menu_bar_sub,
+        }
+    }
+
+    /// The rows of the menu `s` has open: the context menu's, or the bar's
+    /// open menu's.
+    fn surface_items(&self, s: MenuSurface) -> Option<&[MenuItem]> {
+        match s {
+            MenuSurface::Context => self.menu.as_ref().map(|m| m.items.as_slice()),
+            MenuSurface::Bar => {
+                let open = self.menu_bar_open?;
+                Some(self.menu_bar.as_ref()?.menus.get(open)?.items.as_slice())
+            }
+        }
+    }
+
+    /// Opens the submenu of the row at `path` — and with it the ones on the
+    /// way, closing any other — the keyboard's way when `keyboard`, which
+    /// moves focus into it once it is drawn.
+    pub(crate) fn open_submenu(&mut self, s: MenuSurface, path: Vec<usize>, keyboard: bool) {
+        let sub = self.submenus(s);
+        sub.open = path;
+        sub.focus_first = keyboard;
+    }
+
+    /// The row in the submenu at `path` that is open, if one is: what the
+    /// panel at that level draws its submenu beside.
+    pub(crate) fn submenu_open_at(&mut self, s: MenuSurface, path: &[usize]) -> Option<usize> {
+        let open = &self.submenus(s).open;
+        (open.len() > path.len() && open[..path.len()] == *path).then(|| open[path.len()])
+    }
+
+    /// The pointer is on the row at `row` (its whole path) this frame. On a
+    /// change of row: a row with a submenu opens it, closing whatever was
+    /// open beside it, and any other row closes the submenus below its own
+    /// level — the way every platform's menus follow the pointer.
+    pub(crate) fn submenu_hovered(&mut self, s: MenuSurface, row: &[usize], opens: bool) {
+        let sub = self.submenus(s);
+        if sub.hovered.as_deref() == Some(row) {
+            return;
+        }
+        sub.hovered = Some(row.to_vec());
+        sub.focus_first = false;
+        let level = row.len() - 1;
+        if opens {
+            // Kept when it is already the open one, deeper submenus and all:
+            // the pointer coming back to its row from inside it.
+            if !sub.open.starts_with(row) {
+                sub.open = row.to_vec();
+            }
+        } else if sub.open.len() > level && sub.open[..level] == row[..level] {
+            sub.open.truncate(level);
+        }
+    }
+
+    /// The submenu at `path` was drawn this frame, its first row that can
+    /// take focus at `first`: where focus lands when the keyboard opened it.
+    pub(crate) fn submenu_drawn(&mut self, s: MenuSurface, path: &[usize], first: Key) {
+        let sub = self.submenus(s);
+        if sub.focus_first && sub.open == path {
+            sub.focus_first = false;
+            self.move_focus(Some(first));
+            self.focus_visible = true;
+        }
+    }
+
+    /// The keyboard inside one of the core's drawn menus, where a submenu
+    /// changes what a key means: the Right arrow on a row with a submenu
+    /// opens it, focus on its first row; the Left arrow inside a submenu
+    /// closes it, focus back on its row; Escape closes the innermost open
+    /// submenu rather than the whole menu. Returns whether the key was
+    /// taken; every other key goes on as before (the arrows walk the rows
+    /// of whichever panel holds focus, `composite_step`).
+    pub(crate) fn submenu_key(&mut self, ek: crate::input::EditKey) -> bool {
+        use crate::input::EditKey;
+        if !matches!(ek, EditKey::Left | EditKey::Right | EditKey::Escape) {
+            return false;
+        }
+        // The focused row, if it is one of the core's: which menu, and
+        // where in it.
+        let focused = self.focus.and_then(|k| {
+            let i = self.tree.keys.iter().position(|key| *key == k)?;
+            let s = MenuSurface::of(self.tree.origins[i])?;
+            let tag = self.tree.specs[i].events().on_click.as_ref()?;
+            let row = tag.get("row").and_then(Value::as_int)? as usize;
+            let mut path = row_path_of(tag);
+            path.push(row);
+            Some((s, path))
+        });
+        match (ek, focused) {
+            (EditKey::Right, Some((s, path))) => {
+                let opens = self
+                    .surface_items(s)
+                    .and_then(|items| MenuItem::at_path(items, &path))
+                    .is_some_and(|item| item.enabled && item.has_submenu());
+                if opens {
+                    self.open_submenu(s, path, true);
+                }
+                opens
+            }
+            // A row at `[a, b, c]` is in the submenu `[a, b]` opened; what
+            // closes is that one, down to `[a]`.
+            (EditKey::Left, Some((s, path))) if path.len() > 1 => {
+                self.close_submenu(s, path.len() - 2);
+                true
+            }
+            (EditKey::Escape, focused) => {
+                // The menu the focus is in, or else whichever has a submenu
+                // open: the pointer may have opened one the keyboard is not in.
+                let s = focused.map(|(s, _)| s).or_else(|| {
+                    [MenuSurface::Context, MenuSurface::Bar]
+                        .into_iter()
+                        .find(|&s| !self.submenus(s).open.is_empty())
+                });
+                let Some(s) = s else { return false };
+                let depth = self.submenus(s).open.len();
+                if depth == 0 {
+                    return false;
+                }
+                self.close_submenu(s, depth - 1);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Closes the submenus of `s` past the first `keep` — the one the row
+    /// at `open[..=keep]` opened and every one inside it — and puts focus
+    /// on that row, which is where the closed one hung.
+    fn close_submenu(&mut self, s: MenuSurface, keep: usize) {
+        let sub = self.submenus(s);
+        if sub.open.len() <= keep {
+            return;
+        }
+        let row = sub.open[..=keep].to_vec();
+        sub.open.truncate(keep);
+        sub.focus_first = false;
+        // The row the closed submenu hangs from, found by the tag its click
+        // carries; it is in the last frame's tree, since its submenu was.
+        let (parent, i) = row.split_at(keep);
+        let origin = s.origin();
+        let at = (0..self.tree.len()).find(|&n| {
+            self.tree.origins[n] == origin
+                && self.tree.specs[n]
+                    .events()
+                    .on_click
+                    .as_ref()
+                    .is_some_and(|tag| {
+                        tag.get("row").and_then(Value::as_int) == Some(i[0] as i64)
+                            && row_path_of(tag) == parent
+                    })
+        });
+        if let Some(n) = at {
+            self.land_focus(n);
+        }
+    }
 }

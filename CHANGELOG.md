@@ -34,6 +34,36 @@ was the first bare bump to break an app in five releases).
   spelling: `"mod+shift+n"` is `⇧⌘N` or `Ctrl+Shift+N`, where it was the
   string as declared — as the menu bar's already was (under Fixed,
   F127).
+- Rust: `MenuItem` gains `submenu` (under Added, F128), so a struct
+  literal of one needs the field; `MenuItem::KEYS` is seven keys, with
+  `items`, where it was six.
+
+C stays at ABI 25 (nothing in kui.h moved; `KuiMenuItem` has no submenu)
+and the Node wire at v21 (a row's `items` rides in the JSON a row already
+was).
+
+### Added
+
+- **Submenus** (backlog F128, from Noticon, for "Move to ▸" and "Sort by
+  ▸"). `MenuItem::submenu(label, rows)` — `items` on a row in Node and
+  Lua, read by the one row parser — is a row with a chevron that opens
+  its rows in a menu beside it: when the pointer rests on it, on a click,
+  on Enter or the Right arrow (focus on its first row). Left or Escape
+  closes it, focus back on its row, and Escape again closes the menu.
+  They nest, in the context menu, a select's list and the drawn menu
+  bar's menus alike, and a chosen row inside posts its own `{kind:"menu",
+  role, item}` on the node the menu is about, as any row does; the row
+  that opens one is never chosen. On macOS the context menu and the menu
+  bar build an `NSMenu` submenu, which AppKit opens itself, and report a
+  row inside by its path. A host showing menus itself reports one with
+  `Core::activate_menu_path` / `activate_menu_bar_path` (Node
+  `activateMenuPath` / `activateMenuBarPath`); `menu()` reads a row's
+  `items` back. `Core::menu_submenus` / `menu_bar_submenus` say what is
+  open. The pointer opens and closes on a change of row, with no timer,
+  so a pointer resting on one row does not undo what the keyboard opened.
+  C's `KuiMenuItem` has no submenu field, so a C host's rows are one
+  level. *What you can delete:* a list cut short because a menu could not
+  nest — Noticon's `MOVE_TARGETS` cap on the folders a note can move to.
 
 ### Fixed
 

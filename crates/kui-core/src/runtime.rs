@@ -65,6 +65,7 @@ pub mod follow;
 mod gesture;
 pub mod inspect;
 mod menu_api;
+pub(crate) use menu_api::MenuSurface;
 mod menubar_api;
 mod resources_api;
 mod scrolling;
@@ -426,6 +427,11 @@ pub struct Core {
     menu_editor: Option<Key>,
     /// Whether the host draws menus itself (`set_native_menus`).
     native_menus: bool,
+    /// The submenus open in the drawn context menu and in the drawn bar's
+    /// open menu (backlog F128): retained, like `menu_bar_open`, because
+    /// the frame cannot derive which row the pointer last rested on.
+    menu_sub: menu_api::Submenus,
+    menu_bar_sub: menu_api::Submenus,
     /// The application menu this frame has in force, and a count bumped
     /// whenever it changes, so a driver diffs against one integer rather
     /// than against a tree.
@@ -1019,6 +1025,8 @@ impl Core {
             menu_actions: Vec::new(),
             menu_editor: None,
             native_menus: false,
+            menu_sub: Default::default(),
+            menu_bar_sub: Default::default(),
             menu_bar: None,
             menu_bar_rev: 0,
             menu_bar_origin: OriginId::HOST,

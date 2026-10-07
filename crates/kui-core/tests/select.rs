@@ -236,7 +236,9 @@ fn the_options_reader_refuses_an_empty_list() {
     assert_eq!(one.len(), 1);
     assert_eq!(
         MenuItem::KEYS.to_vec(),
-        ["label", "role", "enabled", "checked", "id", "accel"],
+        [
+            "label", "role", "enabled", "checked", "id", "accel", "items"
+        ],
         "the keys `from_value` reads"
     );
 }

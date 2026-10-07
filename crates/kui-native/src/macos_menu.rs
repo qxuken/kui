@@ -40,7 +40,9 @@
 //! chord they spell rather than binding a role, so an app that hears ⌘C
 //! itself still does.
 //!
-//! What this is still not: a submenu of the app's own, or a Services entry.
+//! A row with a submenu (backlog F128) is an `NSMenuItem` whose submenu
+//! AppKit opens itself, in both; a chosen row inside reports its path.
+//! What this is still not: a Services entry.
 
 use std::cell::{Cell, RefCell};
 
@@ -72,6 +74,10 @@ struct Pending {
 struct TargetIvars {
     pending: RefCell<Option<Pending>>,
     chosen: Cell<isize>,
+    /// The path of the row each tag names, for the menu last built: a
+    /// tag is an index here, so a row inside a submenu answers with where
+    /// it is (backlog F128).
+    map: RefCell<Vec<Vec<usize>>>,
     /// True from the moment the nested modal loop is entered until it
     /// returns, so a caller can tell "the menu is up" from "the menu has
     /// closed and here is the answer".
@@ -89,8 +95,8 @@ define_class!(
     struct MenuTarget;
 
     impl MenuTarget {
-        /// Every row's action. `tag` is the row's index in the list the
-        /// core gave us, so the answer needs no lookup.
+        /// Every row's action. `tag` indexes the paths `build` recorded,
+        /// so the answer needs no menu walk.
         #[unsafe(method(kuiMenuPick:))]
         fn pick(&self, sender: &NSMenuItem) {
             self.ivars().chosen.set(sender.tag());
@@ -104,7 +110,9 @@ define_class!(
                 return;
             };
             let mtm = MainThreadMarker::from(self);
-            let menu = build(mtm, self, &p.items);
+            let mut map = Vec::new();
+            let menu = build(mtm, self, &p.items, &[], &mut map);
+            *self.ivars().map.borrow_mut() = map;
             self.ivars().chosen.set(-1);
             // The view is flipped (winit's is), so a logical viewport
             // point is the view point, with no height to subtract.
@@ -125,6 +133,7 @@ impl MenuTarget {
         let this = Self::alloc(mtm).set_ivars(TargetIvars {
             pending: RefCell::new(None),
             chosen: Cell::new(-1),
+            map: RefCell::new(Vec::new()),
             up: Cell::new(false),
         });
         unsafe { msg_send![super(this), init] }
@@ -137,7 +146,18 @@ impl MenuTarget {
 /// state. Display only for the accelerator, since the app's own key
 /// handling is what actually runs a row; a popup menu's key equivalents
 /// fire only while it is up.
-fn build(mtm: MainThreadMarker, target: &MenuTarget, items: &[MenuItem]) -> Retained<NSMenu> {
+///
+/// A row with a submenu is an item whose submenu AppKit opens itself, with
+/// its own rows built the same way (backlog F128). Each row's tag is its
+/// index in `map`, which records the row's path from the menu's top —
+/// `path` is the rows opened on the way here.
+fn build(
+    mtm: MainThreadMarker,
+    target: &MenuTarget,
+    items: &[MenuItem],
+    path: &[usize],
+    map: &mut Vec<Vec<usize>>,
+) -> Retained<NSMenu> {
     let menu = NSMenu::new(mtm);
     // Ours to decide: without this AppKit greys out every row whose target
     // does not answer `validateMenuItem:`, which is all of them.
@@ -148,10 +168,31 @@ fn build(mtm: MainThreadMarker, target: &MenuTarget, items: &[MenuItem]) -> Reta
             menu.addItem(&NSMenuItem::separatorItem(mtm));
             continue;
         }
+        let here: Vec<usize> = path.iter().copied().chain([i]).collect();
+        if item.has_submenu() {
+            let sub = build(mtm, target, &item.submenu, &here, map);
+            menu.addItem(&submenu_row(mtm, item, &sub));
+            continue;
+        }
+        let tag = map.len();
+        map.push(here);
         let target = unsafe { &*(target as *const MenuTarget as *const AnyObject) };
-        menu.addItem(&menu_row(mtm, item, target, sel!(kuiMenuPick:), i, hints));
+        menu.addItem(&menu_row(mtm, item, target, sel!(kuiMenuPick:), tag, hints));
     }
     menu
+}
+
+/// A row that opens `sub`: its title and its enabled state, no action and
+/// no key equivalent — AppKit draws the chevron and opens the submenu on
+/// hover, a click or the Right arrow, and never reports the row itself
+/// (backlog F128).
+fn submenu_row(mtm: MainThreadMarker, item: &MenuItem, sub: &NSMenu) -> Retained<NSMenuItem> {
+    let row = NSMenuItem::new(mtm);
+    row.setTitle(&NSString::from_str(item.text()));
+    sub.setTitle(&NSString::from_str(item.text()));
+    row.setEnabled(item.enabled);
+    row.setSubmenu(Some(sub));
+    row
 }
 
 /// The accelerator a row draws without binding it: one AppKit cannot
@@ -515,11 +556,13 @@ impl MacMenu {
         true
     }
 
-    /// The row the last menu reported, taken. `None` while a menu is up,
-    /// and `None` for a menu the user dismissed.
-    pub fn take_chosen(&self) -> Option<usize> {
+    /// The row the last menu reported, taken, as its path from the menu's
+    /// top (`[i]` for a top-level row). `None` while a menu is up, and
+    /// `None` for a menu the user dismissed.
+    pub fn take_chosen(&self) -> Option<Vec<usize>> {
         let chosen = self.target.ivars().chosen.replace(-1);
-        (chosen >= 0).then_some(chosen as usize)
+        let tag = usize::try_from(chosen).ok()?;
+        self.target.ivars().map.borrow().get(tag).cloned()
     }
 
     /// Whether a menu is waiting to be shown or is on screen. False means
@@ -619,8 +662,8 @@ impl BarTarget {
 /// declaration or that window changes.
 pub struct MacMenuBar {
     target: Retained<BarTarget>,
-    /// `(menu, item)` per flat tag, so a pick is one index lookup.
-    map: RefCell<Vec<(usize, usize)>>,
+    /// `(menu, path)` per flat tag, so a pick is one index lookup.
+    map: RefCell<Vec<(usize, Vec<usize>)>>,
     /// The standard bar, built the first time it is wanted and
     /// kept: applying it again after a declaration is one `setMainMenu:`,
     /// and its Window menu stays the one `NSApp.windowsMenu` names.
@@ -717,10 +760,11 @@ impl EditState {
 }
 
 /// What the user chose from the bar, as the runner reads it back.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BarPick {
-    /// `(menu, item)` of the declared bar.
-    Item(usize, usize),
+    /// `(menu, path)` of the declared bar: the row's path inside that
+    /// menu, `[item]` for one of its own rows (backlog F128).
+    Item(usize, Vec<usize>),
     /// A row of the standard Edit menu.
     Chord(EditChord),
 }
@@ -788,16 +832,7 @@ impl MacMenuBar {
             head.setEnabled(menu.enabled);
             let sub = NSMenu::initWithTitle(NSMenu::alloc(mtm), &title);
             sub.setAutoenablesItems(false);
-            let hints = HintTab::of(&menu.items);
-            for (ii, item) in menu.items.iter().enumerate() {
-                if item.role == MenuRole::Separator {
-                    sub.addItem(&NSMenuItem::separatorItem(mtm));
-                    continue;
-                }
-                let tag = map.len();
-                map.push((mi, ii));
-                sub.addItem(&self.row(mtm, item, tag, hints));
-            }
+            self.rows(mtm, &sub, mi, &menu.items, &[], &mut map);
             if menu.label == "Edit" {
                 edit_menus.push((sub.clone(), sub.numberOfItems()));
             }
@@ -964,6 +999,38 @@ impl MacMenuBar {
         menu_row(mtm, item, target, sel!(kuiBarPick:), tag, hints)
     }
 
+    /// The rows of menu `mi` at `path` (empty for its own) into `into`,
+    /// a submenu's as a row AppKit opens, each chosen row's tag its index
+    /// in `map` (backlog F128).
+    fn rows(
+        &self,
+        mtm: MainThreadMarker,
+        into: &NSMenu,
+        mi: usize,
+        items: &[MenuItem],
+        path: &[usize],
+        map: &mut Vec<(usize, Vec<usize>)>,
+    ) {
+        let hints = HintTab::of(items);
+        for (ii, item) in items.iter().enumerate() {
+            if item.role == MenuRole::Separator {
+                into.addItem(&NSMenuItem::separatorItem(mtm));
+                continue;
+            }
+            let here: Vec<usize> = path.iter().copied().chain([ii]).collect();
+            if item.has_submenu() {
+                let sub = NSMenu::new(mtm);
+                sub.setAutoenablesItems(false);
+                self.rows(mtm, &sub, mi, &item.submenu, &here, map);
+                into.addItem(&submenu_row(mtm, item, &sub));
+                continue;
+            }
+            let tag = map.len();
+            map.push((mi, here));
+            into.addItem(&self.row(mtm, item, tag, hints));
+        }
+    }
+
     /// Stamps which rows of the standard Edit menu apply. Called after
     /// every event batch; a stamp equal to the last is a byte compare.
     pub fn set_edit_state(&self, state: EditState) {
@@ -984,8 +1051,8 @@ impl MacMenuBar {
                 .flatten()?;
             return Some(BarPick::Chord(EditChord { letter, shift }));
         }
-        let (menu, item) = self.map.borrow().get(tag as usize).copied()?;
-        Some(BarPick::Item(menu, item))
+        let (menu, path) = self.map.borrow().get(tag as usize).cloned()?;
+        Some(BarPick::Item(menu, path))
     }
 }
 

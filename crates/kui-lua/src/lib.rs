@@ -681,6 +681,12 @@ fn alias_menu_role(row: &mut Value) {
                 _ => {}
             }
         }
+        // A submenu's rows are rows too (backlog F128).
+        if k == "items"
+            && let Value::List(rows) = v
+        {
+            rows.iter_mut().for_each(alias_menu_role);
+        }
     }
 }
 

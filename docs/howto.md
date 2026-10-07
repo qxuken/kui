@@ -734,6 +734,24 @@ the same palette from the keyboard and types the same way.
 [ADR 0030](adr/0030-the-standard-menus-the-runner-keeps.md) ·
 [examples/rust/widgets/menu_bar.rs](../examples/rust/widgets/menu_bar.rs)
 
+### How do I put a submenu in a menu — "Move to ▸", "Sort by ▸"?
+
+Give the row `items`: `MenuItem::submenu("Move to", rows)` in Rust,
+`{ label: 'Move to', items: [...] }` in Node and Lua. The row draws a
+chevron and opens its rows beside it when the pointer rests on it, it is
+clicked, or Enter or the Right arrow is pressed; Left or Escape closes
+it, and Escape again closes the menu. It nests, in a context menu and in
+a menu bar, drawn or the platform's. A row inside is chosen like any
+row: one `{kind:"menu", role, item}` with its own `id`, on the node the
+menu is about. A host that shows menus itself reports one with
+`Core::activate_menu_path(&[1, 0])` (Node `activateMenuPath`); a C
+host's `KuiMenuItem` has no submenu field, so its rows are one level. An
+`accel` in the portable spelling (`"mod+shift+n"`) is drawn the
+platform's way, and the menu widens to its longest row.
+
+[ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
+[`tests/submenu.rs`](../crates/kui-core/tests/submenu.rs)
+
 ### How do I take files dropped from the Finder?
 
 Declare `onDrop` (Rust and Lua `on_drop`, C `KuiSpec.on_drop`) on the box

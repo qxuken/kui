@@ -219,6 +219,11 @@ export interface MenuItemInput {
    *  A declaration kui can parse is rewritten into the platform's own
    *  spelling, so `'mod+s'` reads as `⌘S` on macOS and `Ctrl+S` elsewhere. */
   accel?: string;
+  /** The rows of a submenu: the row draws a chevron and opens them beside
+   *  itself — on hover, a click, Enter or the Right arrow; Left or Escape
+   *  closes it — and is never chosen itself. A chosen row inside posts its
+   *  own `menu` event, on the node the menu is about. */
+  items?: MenuItemInput[];
 }
 
 /** One menu of the application menu bar (the `<menuBar menu={…}/>`

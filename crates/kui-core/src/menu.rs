@@ -197,15 +197,24 @@ pub struct MenuItem {
     /// declares none takes its role's ([`MenuRole::default_accel`]), the
     /// way an empty label takes the role's wording.
     pub accel: Option<String>,
+    /// The rows of the menu this row opens: empty for an ordinary row. A
+    /// row with a submenu is drawn with a chevron and is never chosen
+    /// itself — hovering it, clicking it, Enter or the Right arrow opens
+    /// its menu beside it, and Left or Escape closes it again — and what
+    /// a chosen row inside posts is that row's own `menu` event, on the
+    /// node the outermost menu is about (backlog F128). Nests to any
+    /// depth. `MenuItem::submenu(label, items)` builds one.
+    pub submenu: Vec<MenuItem>,
 }
 
 impl MenuItem {
     /// A row from plain data: a map with `label`, `role` (a wire name;
     /// absent is `custom`), `enabled` (default true), `checked` (default
-    /// false), `id` and `accel`. A custom row needs a label, since the
-    /// label is what it posts when it has no `id`. Every binding funnels
-    /// its rows through here — `openMenu`'s list and a menu bar's alike —
-    /// so a row can never mean two things.
+    /// false), `id`, `accel` and `items` (a submenu's rows, the same maps).
+    /// A custom row needs a label, since the label is what it posts when it
+    /// has no `id`. Every binding funnels its rows through here —
+    /// `openMenu`'s list and a menu bar's alike — so a row can never mean
+    /// two things.
     pub fn from_value(v: &Value) -> Result<Self, String> {
         let Value::Map(_) = v else {
             return Err("each menu item is an object".into());
@@ -226,6 +235,10 @@ impl MenuItem {
             checked: v.get_bool("checked").unwrap_or(false),
             id: v.get("id").filter(|id| **id != Value::Null).cloned(),
             accel: v.get_str("accel").map(str::to_string),
+            submenu: match v.get("items") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(items) => Self::list_from_value(items)?,
+            },
         })
     }
 
@@ -242,7 +255,9 @@ impl MenuItem {
     /// against this first and raises [`crate::diag::unknown_menu_item_key`]
     /// for what it dropped, so `{label, disabled: true}` is not silently a
     /// row that is enabled.
-    pub const KEYS: [&'static str; 6] = ["label", "role", "enabled", "checked", "id", "accel"];
+    pub const KEYS: [&'static str; 7] = [
+        "label", "role", "enabled", "checked", "id", "accel", "items",
+    ];
 
     /// The name a binding reports a row's dropped keys under
     /// (`diag::unknown_prop` routes it to `diag::unknown_menu_item_key`):
@@ -281,6 +296,7 @@ impl MenuItem {
             checked: false,
             id: None,
             accel: None,
+            submenu: Vec::new(),
         }
     }
 
@@ -293,7 +309,49 @@ impl MenuItem {
             checked: false,
             id: None,
             accel: None,
+            submenu: Vec::new(),
         }
+    }
+
+    /// A row that opens a menu of `items` beside it: "Move to ▸", "Sort
+    /// by ▸". It is chosen through, never itself — see the `submenu`
+    /// field — so it needs no `id`, and an `accel` on it is not drawn (the
+    /// chevron is where it would go). A submenu with no rows is an ordinary
+    /// row ([`Self::has_submenu`]).
+    ///
+    /// ```rust
+    /// use kui_core::MenuItem;
+    ///
+    /// let sort = MenuItem::submenu("Sort by", vec![
+    ///     MenuItem::new("Name").id("sort.name").checked(true),
+    ///     MenuItem::new("Date modified").id("sort.date"),
+    /// ]);
+    /// assert!(sort.has_submenu());
+    /// ```
+    pub fn submenu(label: impl Into<String>, items: Vec<MenuItem>) -> Self {
+        Self {
+            submenu: items,
+            ..Self::new(label)
+        }
+    }
+
+    /// Whether the row opens a menu rather than being chosen (the
+    /// `submenu` field). A row declared with an empty submenu is an
+    /// ordinary row.
+    pub fn has_submenu(&self) -> bool {
+        !self.submenu.is_empty()
+    }
+
+    /// The row at `path` in `items`: `[2]` is the third row, `[2, 0]` the
+    /// first row of the third row's submenu. `None` past the end of any
+    /// level, for an empty path, and through a row with no submenu.
+    pub fn at_path<'a>(items: &'a [MenuItem], path: &[usize]) -> Option<&'a MenuItem> {
+        let (&last, outer) = path.split_last()?;
+        let mut level = items;
+        for &i in outer {
+            level = &level.get(i)?.submenu;
+        }
+        level.get(last)
     }
 
     pub fn separator() -> Self {
@@ -351,7 +409,8 @@ impl MenuItem {
         self.accel_text().map(Accel::label)
     }
 
-    /// Whether the row takes focus and can be chosen.
+    /// Whether the row takes focus and can be chosen — or, for a row with
+    /// a submenu, opened.
     pub fn selectable(&self) -> bool {
         self.enabled && self.role != MenuRole::Separator
     }
@@ -369,6 +428,7 @@ impl MenuItem {
             {
                 item.accel = Some(display);
             }
+            Self::normalize_accels(&mut item.submenu);
         }
     }
 }
@@ -552,6 +612,12 @@ impl MenuBar {
     /// The item at `(menu, item)`, if it is there.
     pub fn item(&self, menu: usize, item: usize) -> Option<&MenuItem> {
         self.menus.get(menu)?.items.get(item)
+    }
+
+    /// The item at `path` inside menu `menu`, through its submenus
+    /// ([`MenuItem::at_path`]).
+    pub fn item_at(&self, menu: usize, path: &[usize]) -> Option<&MenuItem> {
+        MenuItem::at_path(&self.menus.get(menu)?.items, path)
     }
 }
 
