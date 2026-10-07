@@ -11,7 +11,7 @@ for development). A Rust project needs nothing but the dependency:
 
 ```toml
 # Cargo.toml
-kui-native = "0.1.0-alpha.41"  # `use kui_native::…`; `cargo add kui-native` writes it
+kui-native = "0.1.0-alpha.42"  # `use kui_native::…`; `cargo add kui-native` writes it
 ```
 
 crates.io has had them since 0.1.0-alpha.33; every earlier version is on

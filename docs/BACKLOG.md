@@ -180,7 +180,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.40".
+Ordered by area, not by priority. What to do next is under "After alpha.41".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -446,7 +446,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.40" below.
+not cover is in "After alpha.41" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2041,7 +2041,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.40*).
+*Distribution* under *After alpha.41*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2522,9 +2522,14 @@ RG145 is what the pass left.
   allocator each frame, which only `run` and the extension entry points
   do.
 
-## After alpha.40
+## After alpha.41
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.40" until late on 2026-10-07, when the rounds between the alpha.41
+and alpha.42 tags — the Odin binding and `pack-ffi.nu`, RG127 and RG128
+from the Windows and Linux round after alpha.41, RG129–RG138 from the
+regression and smoke round after RG127, and RG140–RG144 from alpha.42's
+pre-tag pass — had landed, and the heading moved with the tag; "After
 alpha.39" until later on 2026-10-07, when the rounds between the alpha.40
 and alpha.41 tags — `imeOff` (F125) from kawoosh's wish list, F103's
 skipped half, RG76, RG113 and RG118, the darwin-x64 prebuild dropped,

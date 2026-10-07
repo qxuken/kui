@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## Unreleased
+## 0.1.0-alpha.42 (2026-10-07)
 
 **What breaks.**
 
@@ -161,6 +161,53 @@ keep what it always promised) and the Node wire at v21 (no frame version).
   or a `menuBar` row holding a string cut through an emoji draws its lone
   surrogate as U+FFFD rather than failing the frame, and `dir: null` is
   absent like every other null prop (RG138, RG140).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-07, over
+the rounds after the alpha.41 tag — the Odin binding and `pack-ffi.nu`,
+RG127 and RG128 from the Windows and Linux round after alpha.41, and the
+regression and smoke round after RG127 (RG129–RG138) — with alpha.42's
+pre-tag pass over them on the Mac: the mechanical round, then four
+read-only reviews of the diff since alpha.41 (the Odin binding; the C
+doors and `pack-ffi.nu`; the runner's keys, the access bridge, the text
+floor and Node; the docs), each claim probed. They filed RG140–RG144,
+built before the tag (a `<select>` option or menu bar row cut through an
+emoji failing the Node frame, `kui_draw_data` while a frame built losing
+the finished frame's fragment draws, the Odin drains freeing the strings
+they returned, Odin's popups, unchecked slices and acronym kinds, a cell
+grid's infinite line height), and RG145, open.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `cargo test
+--workspace --features kui-core/conformance`: **1856 tests over 139
+suites**. The C round passes, and so do the **57 scenes**, the Odin
+binding's `gen --check`, `check`, `test` and `slots`, Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1` (**215 of 215**), `npm run gen` with no
+diff, the headless round and the book. The windowed round with Node's:
+**124 windows**. The AX audit: **106/106**. RG127's dead keys, which the
+Windows and Linux round could not reach on a Mac: twelve sequences typed
+into the `edit` example through `CGEventPostToPid` and read back through
+AX, each as AppKit composes it (`⌥e e` is `é`, `⌥e space` `´`, `⌥e z`
+`´z`). The bench guard against the alpha.41 tag: **green**, the guarded
+rows −1.2 to −0.3%, RG126's warm cell grid −0.4%.
+
+**Windows 11 x64 (MSVC) and Linux x64 (WSL Ubuntu 24.04), rustc
+1.99.0**, on the tree with the pre-tag fixes and `pack-ffi.nu`'s. fmt
+and `cargo clippy --workspace --all-targets --features
+kui-core/conformance -- -D warnings` are clean on both. `cargo test
+--workspace --features kui-core/conformance`: **1857 tests over 140
+suites** on Windows (5 ignored), **1853 over 139** on Linux (4
+ignored), **0 failed**. `cargo audit --deny warnings` is clean over
+`Cargo.lock`'s 444 crates. `pack-ffi.nu` ran every leg but macOS's: native
+on both, and linux-x64, linux-arm64 and win32-x64 (cargo-xwin) in its
+container. A C host linked against each x64 pack alone, dynamically and
+statically, ran; the arm64 pack was read, not run. It found three things,
+fixed before the tag (RG145): a CRLF `kui.h` from a CRLF checkout, the
+closing table lost off a terminal, and a `docker` that could not be
+spawned stopping the script. Earlier the same day, before the pre-tag
+fixes, the Odin binding's four steps passed on both, and the regression
+and smoke round after RG127 ran the windowed smoke and walked the
+accessibility tree through UI Automation and AT-SPI.
 
 ## 0.1.0-alpha.41 (2026-10-07)
 
