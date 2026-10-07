@@ -331,9 +331,10 @@ impl MenuItem {
         }
     }
 
-    /// What the row draws on its right: its own accelerator, or the
-    /// role's. `None` is a row with neither, which is every `Custom` one
-    /// the app did not spell a shortcut for.
+    /// The accelerator the row declares: its own, or the role's. `None` is
+    /// a row with neither, which is every `Custom` one the app did not
+    /// spell a shortcut for. As declared — [`Self::accel_label`] is what is
+    /// drawn.
     pub fn accel_text(&self) -> Option<&str> {
         match &self.accel {
             Some(accel) => Some(accel),
@@ -341,9 +342,34 @@ impl MenuItem {
         }
     }
 
+    /// What the row draws on its right: [`Self::accel_text`] in the
+    /// platform's spelling when kui can parse it (`"mod+shift+n"` reads
+    /// `⇧⌘N` on a Mac and `Ctrl+Shift+N` elsewhere), and exactly as
+    /// written when it cannot (`"gd"`, an app's own hint). See
+    /// [`Accel::label`].
+    pub fn accel_label(&self) -> Option<std::borrow::Cow<'_, str>> {
+        self.accel_text().map(Accel::label)
+    }
+
     /// Whether the row takes focus and can be chosen.
     pub fn selectable(&self) -> bool {
         self.enabled && self.role != MenuRole::Separator
+    }
+
+    /// Rewrites every accelerator in `items` that kui can parse into the
+    /// platform's own spelling ([`Accel::label`]) and leaves the rest
+    /// exactly as declared. What `declare_menu_bar` and `open_menu` do on
+    /// the way in, so the menu a host reads back (`Core::menu`,
+    /// `Core::menu_bar`) is the one the drawn menu shows, and a platform
+    /// menu parses the same string into the same key.
+    pub(crate) fn normalize_accels(items: &mut [MenuItem]) {
+        for item in items {
+            if let Some(accel) = &item.accel
+                && let std::borrow::Cow::Owned(display) = Accel::label(accel)
+            {
+                item.accel = Some(display);
+            }
+        }
     }
 }
 
@@ -644,6 +670,20 @@ impl Accel {
             }
             parts.push(&key);
             parts.join("+")
+        }
+    }
+
+    /// What a menu draws for the accelerator `spelled`: its
+    /// [`Accel::display`] when it parses, and `spelled` itself when it
+    /// does not — a shortcut kui cannot name is still one the app's own
+    /// keymap runs, and its spelling is the app's (ADR 0018, decision 7).
+    /// The drawn menu, the drawn bar and `open_menu` all read an
+    /// accelerator through this, so a portable `"mod+shift+n"` never
+    /// reaches the screen as written (backlog F127).
+    pub fn label(spelled: &str) -> std::borrow::Cow<'_, str> {
+        match Accel::parse(spelled) {
+            Some(a) => std::borrow::Cow::Owned(a.display()),
+            None => std::borrow::Cow::Borrowed(spelled),
         }
     }
 

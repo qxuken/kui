@@ -1826,9 +1826,12 @@ test('menu() reads a row the way menuBar() does', () => {
   // The role's default accelerator is the platform's: the glyph on
   // macOS, `Ctrl+C` on CI's Linux runner.
   const copyAccel = process.platform === 'darwin' ? '⌘C' : 'Ctrl+C';
+  // A declared one kui can parse reads in the platform's spelling too, as
+  // the drawn menu shows it (backlog F127).
+  const wrapAccel = process.platform === 'darwin' ? '⌥Z' : 'Alt+Z';
   assert.deepEqual(menu.items, [
     { label: 'Copy', role: 'copy', enabled: true, checked: false, accel: copyAccel },
-    { label: 'Wrap', role: 'custom', enabled: true, checked: true, accel: '⌥Z' },
+    { label: 'Wrap', role: 'custom', enabled: true, checked: true, accel: wrapAccel },
     { label: 'Gone', role: 'custom', enabled: false, checked: false, accel: null },
   ]);
   ctx.closeMenu();

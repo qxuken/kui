@@ -292,6 +292,135 @@ fn an_accelerator_is_drawn_and_is_not_read_as_part_of_the_row() {
     assert_eq!(statics, 2, "the card's two lines, and no accelerator rows");
 }
 
+/// A portable accelerator is drawn the way the platform writes it, as the
+/// menu bar's already was: `"mod+shift+n"` was drawn as those eleven
+/// characters (backlog F127, from Noticon). A spelling kui cannot parse
+/// is the app's own hint and is drawn as written (ADR 0018, decision 7).
+#[test]
+fn a_portable_accelerator_reads_as_the_platform_writes_it() {
+    let mac = cfg!(target_os = "macos");
+    let new = if mac {
+        "\u{21e7}\u{2318}N"
+    } else {
+        "Ctrl+Shift+N"
+    };
+    let row = MenuItem::new("New folder").accel("mod+shift+n");
+    assert_eq!(row.accel_label().as_deref(), Some(new));
+    assert_eq!(
+        row.accel_text(),
+        Some("mod+shift+n"),
+        "the declaration stays"
+    );
+    assert_eq!(
+        MenuItem::new("Go to definition")
+            .accel("gd")
+            .accel_label()
+            .as_deref(),
+        Some("gd")
+    );
+    // Already the platform's: read the same again.
+    assert_eq!(
+        MenuItem::new("New").accel(new).accel_label().as_deref(),
+        Some(new)
+    );
+
+    // And what a host showing the menu itself reads back is the same
+    // string, so the drawn menu and an `NSMenu` agree.
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(40.0, 30.0),
+        vec![row, MenuItem::new("Peek").accel("gd")],
+    ));
+    let menu = core.menu().unwrap();
+    assert_eq!(menu.items[0].accel.as_deref(), Some(new));
+    assert_eq!(menu.items[1].accel.as_deref(), Some("gd"));
+}
+
+/// The menu is as wide as its widest label and widest accelerator need,
+/// with a gap between them, and never wraps either: a long accelerator
+/// used to wrap onto a second line inside the menu's fixed width
+/// (backlog F127). A menu of short rows keeps the metric's width.
+#[test]
+fn the_menu_widens_to_its_widest_row_and_wraps_nothing() {
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(10.0, 10.0),
+        vec![MenuItem::new("Open"), MenuItem::new("Close")],
+    ));
+    frame(&mut core);
+    let narrow = menu_rect(&mut core).unwrap();
+    let row_h = row_rect(&mut core, "Open").h;
+    assert_eq!(
+        narrow.w,
+        kui_core::widgets::MENU_WIDTH,
+        "short rows keep the menu at the metric's width"
+    );
+
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(10.0, 10.0),
+        vec![
+            MenuItem::new("Open"),
+            MenuItem::new("Move the note to the trash, for good").accel("ctrl+alt+shift+backspace"),
+        ],
+    ));
+    frame(&mut core);
+    let wide = menu_rect(&mut core).unwrap();
+    let long = row_rect(&mut core, "Move the note to the trash, for good");
+    assert!(
+        wide.w > kui_core::widgets::MENU_WIDTH,
+        "widened for the long row: {} wide",
+        wide.w
+    );
+    assert_eq!(
+        long.h, row_h,
+        "the long row is one line, as the short one is"
+    );
+    assert_eq!(
+        row_rect(&mut core, "Open").w,
+        long.w,
+        "every row as wide as the menu"
+    );
+
+    // The accelerator sits on the row, right-aligned, clear of the label:
+    // read off the glyphs drawn on the long row's line.
+    // Quads are in physical px, which are logical ones at scale 1.
+    use kui_core::display::QuadKind;
+    let (dl, _) = core.output();
+    let glyphs: Vec<kui_core::Rect> = dl
+        .quads
+        .iter()
+        .filter(|q| matches!(q.kind, QuadKind::GlyphMask | QuadKind::GlyphSubpixel))
+        .map(|q| q.rect)
+        .filter(|r| r.y >= long.y && r.y + r.h <= long.y + long.h + 1.0)
+        .collect();
+    assert!(
+        glyphs.len() > 40,
+        "the label and the accelerator drawn: {}",
+        glyphs.len()
+    );
+    let right = glyphs.iter().map(|r| r.x + r.w).fold(f32::MIN, f32::max);
+    assert!(
+        right <= long.x + long.w,
+        "nothing drawn past the row: {right} > {}",
+        long.x + long.w
+    );
+}
+
+/// The rect of the stock row that reads `label`.
+fn row_rect(core: &mut Core, label: &str) -> kui_core::Rect {
+    let tree = core.access_tree().clone();
+    tree.nodes
+        .iter()
+        .find(|n| n.role == kui_core::Role::MenuItem && n.name.as_deref() == Some(label))
+        .unwrap_or_else(|| panic!("no menu row named {label:?}"))
+        .rect
+}
+
 /// What a reader is handed when a menu opens: a modal `menu`, its rows as
 /// `menuItem`s in the order they were given, the dead one dead, and the
 /// keyboard already on the first row that can take it — so the arrow keys

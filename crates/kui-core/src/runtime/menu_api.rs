@@ -169,6 +169,11 @@ impl Core {
         // (a press under `OriginId::MENU` is spared), but an editor's
         // lives with its focus.
         self.menu_editor = self.edit.focused();
+        // The accelerators in the platform's spelling, as the bar's are
+        // (`declare_menu_bar`): a portable `"mod+shift+n"` is drawn `⇧⌘N`
+        // or `Ctrl+Shift+N`, and a host that shows the menu itself reads
+        // the same string back (backlog F127).
+        MenuItem::normalize_accels(&mut menu.items);
         self.menu = Some(menu);
     }
 

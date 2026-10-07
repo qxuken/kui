@@ -2383,11 +2383,18 @@ mod parity_headless {
             ),
             "a standard row reads with its role's wording and shortcut"
         );
+        // A declared accelerator kui can parse reads in the platform's
+        // spelling too, as the drawn menu shows it (backlog F127).
         assert_eq!(
             read(1),
             (
                 "Wrap".into(),
-                "⌥Z".into(),
+                if cfg!(target_os = "macos") {
+                    "⌥Z"
+                } else {
+                    "Alt+Z"
+                }
+                .into(),
                 KUI_MENU_CUSTOM,
                 KUI_MENU_ITEM_ENABLED | KUI_MENU_ITEM_CHECKED
             ),

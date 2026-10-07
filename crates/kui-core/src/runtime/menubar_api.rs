@@ -230,16 +230,7 @@ impl Core {
 /// compares after normalizing rather than before.
 fn normalize(mut bar: MenuBar) -> MenuBar {
     for menu in &mut bar.menus {
-        for item in &mut menu.items {
-            normalize_item(item);
-        }
+        MenuItem::normalize_accels(&mut menu.items);
     }
     bar
-}
-
-fn normalize_item(item: &mut MenuItem) {
-    let Some(accel) = &item.accel else { return };
-    if let Some(parsed) = crate::menu::Accel::parse(accel) {
-        item.accel = Some(parsed.display());
-    }
 }

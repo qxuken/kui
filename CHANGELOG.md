@@ -23,8 +23,39 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.43 (unreleased)
 
+**What breaks.**
+
+- The drawn menu — a context menu, a select's list, a drawn menu bar's
+  dropdown — is as wide as its widest row needs, where it was always
+  `Metrics::menu_width` (now its floor), and no row's label or
+  accelerator wraps (under Fixed, F127).
+- A menu's accelerator kui can parse is drawn, and read back through
+  `Core::menu` / Node's `menu()` / C's `kui_menu_item`, in the platform's
+  spelling: `"mod+shift+n"` is `⇧⌘N` or `Ctrl+Shift+N`, where it was the
+  string as declared — as the menu bar's already was (under Fixed,
+  F127).
+
 ### Fixed
 
+- **A menu's accelerator reads as the platform writes it** (backlog
+  F127, from Noticon). `MenuItem::accel` drew its string verbatim in a
+  context menu, so a row declared with the portable `"mod+shift+n"` —
+  the spelling the docs give for a menu bar, where it was already
+  rewritten — showed those eleven characters. `open_menu` now rewrites
+  an accelerator it can parse into `Accel::display`'s spelling, as
+  `declare_menu_bar` does, and the drawn rows read every accelerator
+  through `Accel::label`, so a menu an app draws itself with
+  `widgets::context_menu` gets the same. A spelling kui cannot parse
+  (`"gd"`) is still drawn exactly as written. `MenuItem::accel_label`
+  is the drawn string; `accel_text` stays the declared one. *What you
+  can delete:* the `Accel::parse(..).display()` an app ran over its own
+  accelerators before handing them to a menu.
+- **A menu is as wide as its rows** (backlog F127). The panel was the
+  metric's 200 px whatever it held, so a long label beside a long
+  accelerator wrapped one of them onto a second line. It is now as wide
+  as its widest label plus its widest accelerator, with at least
+  `widgets::MENU_ACCEL_GAP` between them, and never narrower than
+  `Metrics::menu_width`; labels and accelerators are one line each.
 - **`scripts/npm-approve.nu` takes the version as npm spells it.**
   Approving alpha.42 as `nu scripts/npm-approve.nu
   @qxuken/kui@0.1.0-alpha.42` looked for a stage whose version was the

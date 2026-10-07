@@ -1349,7 +1349,12 @@ pub fn context_menu(ui: &mut Ui<'_>, at: Vec2, items: &[MenuItem]) -> Key {
 pub fn menu_panel_spec(t: &Theme, m: &Metrics) -> NodeSpec {
     NodeSpec::column()
         .role(Role::Menu)
-        .width(m.menu_width)
+        // As wide as its widest row and never narrower than the metric: a
+        // long accelerator beside a long label widens the menu rather than
+        // wrapping either onto a second line (backlog F127). Rows grow to
+        // the panel, so their right edges line up.
+        .width(Sizing::Fit)
+        .min_width(m.menu_width)
         .pad(4.0)
         .gap(1.0)
         .bg(t.raised)
@@ -1397,6 +1402,9 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                 .role(Role::MenuItem)
                 .label(item.text())
                 .grow_width()
+                // Its content as a floor, which is what a fit panel is
+                // sized from: a grow child alone contributes nothing.
+                .min_width(crate::spec::Bound::Fit)
                 .pad_xy(m.menu_pad_x, m.menu_pad_y)
                 .gap(8.0)
                 .radius(m.radius_inner)
@@ -1428,13 +1436,23 @@ pub fn menu_panel(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, items: &[MenuIte
                         }
                     });
                 }
-                ui.text(item.text(), TextStyle::new(m.chrome_text).color(t.fg));
-                if let Some(accel) = item.accel_text() {
+                // One line each, whatever the panel's width: the panel is
+                // sized to fit them, and a row that wrapped would be read as
+                // two.
+                ui.text(
+                    item.text(),
+                    TextStyle::new(m.chrome_text).color(t.fg).nowrap(),
+                );
+                if let Some(accel) = item.accel_label() {
                     // Pushed to the right edge by a grow spacer, so the label
                     // stays where the eye expects it whatever the
-                    // accelerator is.
-                    ui.leaf(NodeSpec::row().grow_width());
-                    ui.text(accel, TextStyle::new(m.chrome_text).color(t.muted));
+                    // accelerator is; at least `MENU_ACCEL_GAP` wide, so the
+                    // widest label and the widest accelerator never touch.
+                    ui.leaf(NodeSpec::row().grow_width().min_width(MENU_ACCEL_GAP));
+                    ui.text(
+                        &accel,
+                        TextStyle::new(m.chrome_text).color(t.muted).nowrap(),
+                    );
                 }
             });
         }
@@ -1607,6 +1625,11 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
 
 /// The checkmark gutter's width, logical px.
 const MENU_CHECK_W: f32 = 14.0;
+
+/// The least room between a row's label and its accelerator, logical px,
+/// beside the row's own gap on either side: about what AppKit leaves
+/// before a key equivalent.
+pub const MENU_ACCEL_GAP: f32 = 16.0;
 
 // -- Virtual lists ----------------------------------------------------------
 // The core culls glyphs by viewport but builds every child a view declares,
