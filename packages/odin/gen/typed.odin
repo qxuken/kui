@@ -865,6 +865,11 @@ emit_door :: proc(g: ^Gen, f: ^Function) {
 			elem_odin, elem_c, mr := elem_types(g, elem)
 			if et := typed(g, fmt.tprintf("%s.%s", f.name, p.name)); et != "" do elem_odin = et
 			if p.name == "ids" && handle_of_family(f.name) != "" do elem_odin = handle_of_family(f.name)
+			if slice.contains(POINTS, fmt.tprintf("%s.%s", f.name, p.name)) {
+				if elem != "float" || cp != 1 do fail("POINTS %s.%s: not a lone float array", f.name, p.name)
+				g.used[fmt.tprintf("points.%s.%s", f.name, p.name)] = true
+				elem_odin = "[2]f32"
+			}
 			if is_const_pointer(t) {
 				for a, k in arrays {
 					an := ident(a.name)
@@ -1296,6 +1301,7 @@ check_stale :: proc(g: ^Gen) {
 	for t in NULLABLE do if !g.used[fmt.tprintf("nullable.%s", t)] do append(&stale, fmt.tprintf("NULLABLE %s", t))
 	for t in FIELD_DEFAULTS do if !g.used[fmt.tprintf("field_default.%s", t[0])] do append(&stale, fmt.tprintf("FIELD_DEFAULTS %s", t[0]))
 	for t in SLICE_COUNTS do if !g.used[fmt.tprintf("slice_count.%s", t[0])] do append(&stale, fmt.tprintf("SLICE_COUNTS %s", t[0]))
+	for t in POINTS do if !g.used[fmt.tprintf("points.%s", t)] do append(&stale, fmt.tprintf("POINTS %s", t))
 	for t in OPENERS do if !g.used[fmt.tprintf("opener.%s", t)] do append(&stale, fmt.tprintf("OPENERS %s", t))
 	for t in INVERTED do if !g.used[fmt.tprintf("inverted.%s", t[0])] do append(&stale, fmt.tprintf("INVERTED %s", t[0]))
 	if len(stale) > 0 do fail("policy rows that matched nothing (stale, or a typo): %v", stale)

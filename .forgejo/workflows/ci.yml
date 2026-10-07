@@ -52,7 +52,7 @@
 # clippy, the workspace tests, the two C examples (C as the host, and C as an
 # extension inside a Rust host), the Node addon parity tests and the Node
 # example typecheck (which is what exercises the shipped .d.ts).
-# It is also what makes the scene corpus work: all four adapters over
+# It is also what makes the scene corpus work: all five adapters over
 # crates/kui-core/src/conformance.rs run here, on one machine with one set
 # of fonts, against one generated reference report - which is why the
 # report is never checked in and the C and Node steps depend on the
@@ -365,8 +365,12 @@ jobs:
       # .d.ts fails the Node step below. `check` vets the generator, both
       # packages and every example under -strict-style; `test` runs each
       # example's --headless drive - the counter, the header walk
-      # (tools/surface.odin calls every door), and the Odin host loading the
-      # Odin panel. `slots` is the extension contract across languages: the
+      # (tools/surface.odin calls every door), the Odin host loading the
+      # Odin panel, and the scene corpus's Odin adapter
+      # (tools/conformance.odin), which diffs against the reference the
+      # `Conformance reference report` step above exported as
+      # KUI_CONFORMANCE - so the Odin Spec's generated lowering is held to
+      # the report the other four bindings reproduce. `slots` is the extension contract across languages: the
       # Odin panel in the C host and in the Rust one (c_panel), the C panel
       # in the Odin host, each a click and a reply. It reuses what the C
       # round above built (cbuild's panel and host, the Rust host example),

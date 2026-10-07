@@ -189,6 +189,14 @@ checked: `nu scripts/odin.nu test`.
   generator as stale.
 - `gen --check` fails when the checked-in output is not what a rerun
   writes, the way `book-examples.nu --check` does.
+- The scene corpus holds what the doors *do*:
+  [`tools/conformance.odin`](../../examples/odin/tools/conformance.odin)
+  rebuilds every scene of `kui_core::conformance` through `Spec` and the
+  doors. Its report must equal the reference byte for byte, as the Rust,
+  Lua, C and Node adapters' do. All 57 scenes match. Its first run found
+  the polygon and polyline doors passing a float count where kui.h counts
+  points, so the core read past their arrays. They take `[][2]f32` now
+  (`POINTS` in the policy).
 - `run` and `new_ui` refuse a library whose `kui_abi_version()` is not
   the generated `ABI_VERSION`.
 

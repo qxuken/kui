@@ -6,9 +6,9 @@
 //! input to replay and the [`Expect`](crate::conformance::Expect)ed
 //! outcome; [`drive`](crate::conformance::drive) runs one against a `Core`
 //! and [`report`](crate::conformance::report)
-//! renders a text block that four languages can produce byte for byte.
+//! renders a text block that five languages can produce byte for byte.
 //! The crate's own tests assert the font-independent part (access rows,
-//! events, warnings, quad counts); the Lua, C and Node suites rebuild the
+//! events, warnings, quad counts); the Lua, C, Odin and Node suites rebuild the
 //! scenes through their public APIs and compare their reports against a
 //! dump made on the same machine (`cargo run -p kui-core --features
 //! conformance --example conformance-dump`). A prop or element visible to

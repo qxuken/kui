@@ -352,6 +352,13 @@ SLICE_COUNTS :: [][2]string {
 	{"AccessRun.word_starts", "word_start_count"},
 }
 
+// Arrays whose count is in points, not in floats: kui.h's `const float *xy,
+// size_t count` is x0, y0, x1, y1 ... with count the number of points. The
+// door takes [][2]f32 - the same memory - so the count is its length and a
+// half point cannot be written. (Lowered as floats, the call claimed twice
+// its points and the core read past the array; the scene corpus found it.)
+POINTS :: []string{"kui_polyline.xy", "kui_polygon.xy"}
+
 // Doors that open a node the caller closes: generated with
 // @(deferred_in), so `if kui.fragment_open(...) { ... }` closes itself.
 OPENERS :: []string{"kui_fragment_open", "kui_fragment_open_with"}

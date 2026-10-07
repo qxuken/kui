@@ -40,7 +40,11 @@ was the first bare bump to break an app in five releases).
   not call gets a generated door, so the binding covers kui.h whole: 219
   generated, 51 by hand, 2 skipped with their reason.
   `examples/odin/tools/surface.odin` is `surface.c` through it, and calls
-  every door.
+  every door, and `examples/odin/tools/conformance.odin` rebuilds the
+  scene corpus through `Spec` and the doors, matching the reference report
+  byte for byte, as the Rust, Lua, C and Node adapters do.
+  `polyline` and `polygon` take points (`[][2]f32`), the count kui.h
+  means.
 
   It covers extensions both ways. An Odin host loads a plugin with
   `ctx_add_extension` and `slot`. An Odin plugin is a shared library whose

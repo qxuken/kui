@@ -1203,8 +1203,8 @@ Rest :: struct {
 rest_view :: proc(r: ^Rest, ui: ^kui.Ui) {
 	kui.root(ui, {width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true})
 	kui.line(ui, 10, 10, 90, 70, 2, 0x7f9cf5ff)
-	kui.polyline(ui, "elbow", {0, 0, 40, 20, 80, 0}, 3, 0xd8863bff, false, dash = {6, 3, 6, 3, 0})
-	kui.polygon(ui, "tri", {0, 30, 15, 0, 30, 30}, {width = kui.px(30), height = kui.px(30), bg = 0x3b82f6ff})
+	kui.polyline(ui, "elbow", {{0, 0}, {40, 20}, {80, 0}}, 3, 0xd8863bff, false, dash = {6, 3, 6, 3, 0})
+	kui.polygon(ui, "tri", {{0, 30}, {15, 0}, {30, 30}}, {width = kui.px(30), height = kui.px(30), bg = 0x3b82f6ff})
 	kui.path(ui, "ring", r.ring, .Evenodd, 0, 0, 0, spec = {width = kui.px(80), height = kui.px(80), bg = 0xffd000ff})
 	kui.path_d(ui, "wedge", "M60 60 L100 60 A40 40 0 0 1 60 100 Z", .Nonzero, 0, 0, 0, spec = {width = kui.px(100), height = kui.px(100), bg = 0x73d98cff})
 	kui.image_with(ui, r.image, .Nearest, .Contain, {width = kui.px(16), height = kui.px(16)})

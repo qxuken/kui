@@ -2938,7 +2938,7 @@ line :: proc(ui: ^Ui, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Col
 }
 
 // kui_polyline (kui.h).
-polyline :: proc(ui: ^Ui, label: string, xy: []f32, width: f32, color: Color, curve: bool, dash: []f32 = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
+polyline :: proc(ui: ^Ui, label: string, xy: [][2]f32, width: f32, color: Color, curve: bool, dash: []f32 = nil, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
 	scratch: Scratch
 	defer scratch_free(&scratch)
 	spec_c: c.Spec
@@ -2947,7 +2947,7 @@ polyline :: proc(ui: ^Ui, label: string, xy: []f32, width: f32, color: Color, cu
 }
 
 // kui_polygon (kui.h).
-polygon :: proc(ui: ^Ui, label: string, xy: []f32, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
+polygon :: proc(ui: ^Ui, label: string, xy: [][2]f32, spec: Spec = {}, on_click: any = nil, on_drag: any = nil, on_hover: any = nil) {
 	scratch: Scratch
 	defer scratch_free(&scratch)
 	spec_c: c.Spec

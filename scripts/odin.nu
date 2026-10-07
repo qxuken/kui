@@ -163,11 +163,20 @@ def build-plugins [release: bool] {
     examples | where {|src| is-plugin $src } | each {|src| build-plugin $src $release } | ignore
 }
 
-# Every example's --headless self-check; non-zero if any failed.
+# Every example's --headless self-check; non-zero if any failed. The scene
+# corpus adapter (tools/conformance.odin) diffs against the reference
+# report KUI_CONFORMANCE names - CI's, made by an earlier step - or, without
+# one, a reference made here and now: it holds only for this machine's
+# fonts and this checkout's kui-core, so it is never reused from before.
 def "main test" [--release] {
     build-lib $release
     build-plugins $release
     cd $ROOT
+    if ($env.KUI_CONFORMANCE? | is-empty) {
+        let reference = $ROOT | path join target conformance.txt
+        cargo run -q -p kui-core --features conformance --example conformance-dump -- $reference
+        $env.KUI_CONFORMANCE = $reference
+    }
     let results = examples | where {|src| not (is-plugin $src) } | each {|src|
         let exe = build-example $src $release
         let r = do { ^$exe --headless } | complete
