@@ -94,12 +94,16 @@ keep what it always promised) and the Node wire at v21 (no frame version).
   tarball each and `SHA256SUMS`. It is for a C or Odin host that links a
   library instead of building the workspace. The machine's own platform
   is built natively. Linux x64 and arm64 (glibc 2.28) and Windows x64 are
-  built in a pinned Docker image with the release workflow's
-  cargo-zigbuild and cargo-xwin. Windows also asks for
+  built in a pinned Docker image, with cargo-zigbuild at the release
+  workflow's pins and with cargo-xwin. Windows also asks for
   `--accept-msvc-license`, for the CRT and SDK xwin downloads. macOS is
   built on a Mac only. A Windows pack carries windows-targets' import
   libraries (`windows.0.53.0.lib`, `windows.0.52.0.lib`), which its
-  `link.txt` names and no SDK has, so a static link finds them.
+  `link.txt` names and no SDK has, so a static link finds them. Every
+  leg has been run, and a C host linked against each x64 pack alone,
+  dynamically and statically, and run; the arm64 pack was read, with no
+  arm64 machine to run it on. `kui.h` ships with LF line ends from any
+  checkout.
 - `examples/rust/tools/schema-dump.rs`: the prop schema (props,
   composites, elements, events, the verb table, the name lists) as JSON,
   for a binding generated outside Rust.

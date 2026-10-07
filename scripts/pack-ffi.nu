@@ -85,7 +85,10 @@ def main [
     --no-runner # leave out the windowed runner (kui_run, kui_run_with): a library for a host with its own window
 ] {
     let host = host-platform
-    let has_docker = (which docker | is-not-empty) and ((do { docker info } | complete).exit_code == 0)
+    # `try` as well as `complete`: a docker that cannot be spawned at all
+    # (Docker Desktop's CLI mount in a WSL distro without its integration
+    # fails with EIO) is an error `complete` does not catch.
+    let has_docker = (which docker | is-not-empty) and (try { (do { docker info } | complete).exit_code == 0 } catch { false })
     let wanted = if $platforms == null { $PLATFORMS | get platform } else { $platforms | split row "," | str trim }
     for p in $wanted {
         if $p not-in ($PLATFORMS | get platform) {
@@ -136,7 +139,9 @@ def main [
     cd $OUT
     let sums = glob "kui-ffi-*.tar.gz" | each {|t| sha256sum-of ($t | path basename) } | sort
     $sums | str join "\n" | save -f SHA256SUMS
-    print ($built | wrap tarball | insert size {|r| ls $r.tarball | get 0.size })
+    # A width of its own: off a terminal (a pipe, tee, a CI log) nu reads
+    # the width as 1 and prints "Couldn't fit table" in place of it.
+    print ($built | wrap tarball | insert size {|r| ls $r.tarball | get 0.size } | table --width 100)
     print $"in ($OUT)"
 }
 
@@ -263,7 +268,9 @@ def stage [row: record, built: record, feature_note: string] {
     let dir = $OUT | path join $name
     rm -rf $dir
     mkdir ($dir | path join include) ($dir | path join lib)
-    cp ($ROOT | path join crates kui-ffi include kui.h) ($dir | path join include)
+    # With LF line ends whatever the checkout has: a CRLF one (Git for
+    # Windows' autocrlf) would otherwise ship a header that differs by host.
+    open --raw ($ROOT | path join crates kui-ffi include kui.h) | str replace -a "\r\n" "\n" | save -f --raw ($dir | path join include kui.h)
     for f in (libraries $row.target) {
         let src = $built.dir | path join $f
         if not ($src | path exists) {

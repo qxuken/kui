@@ -163,9 +163,9 @@ archive; and RG139 from the regression and smoke round after RG127 (what
 it left: Node integers that wrap, errors that name nothing, a payload's
 depth, a teardown callback's re-entry, a grid's unbounded size — RG129–
 RG138, its other ten, were built the day they were filed and are in the
-archive); and RG145 from the alpha.42 pre-tag pass (what it left: the
-`pack-ffi.nu` Docker Windows leg, RG135's offsets beside the run, the
-docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
+archive); and RG145 from the alpha.42 pre-tag pass (what it left:
+`pack-ffi.nu`'s container legs on a rootful Linux host, RG135's
+offsets beside the run, the docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
 they were filed and are in the archive). Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -2473,8 +2473,19 @@ RG145 is what the pass left.
 
 ### `.` RG145 — What the alpha.42 pre-tag pass left
 
-- **`pack-ffi.nu`'s Docker Windows leg has not run**, and three things
-  read wrong in it. On a Linux host with rootful Docker the container
+- **`pack-ffi.nu`'s Docker Windows leg has run, and three things still
+  read wrong in it.** It ran on 2026-10-07 from Windows, through Docker
+  Desktop, with the two zigbuild legs. MSVC linked a C host against the
+  xwin pack's DLL and against its static archive with `link.txt`'s
+  libraries, and both ran, as did the native Windows pack and both Linux
+  x64 packs under gcc. The arm64 pack was read: AArch64, 272 `kui_*`
+  exported, glibc 2.28. That run found three things, fixed the same day:
+  a CRLF checkout shipped a CRLF `kui.h`, the closing table read
+  "Couldn't fit table into 1 columns!" when stdout was not a terminal,
+  and a `docker` that could not be spawned (Docker Desktop's CLI mount
+  in a WSL distro without its integration fails with EIO) stopped the
+  script where it should have skipped the container legs. What it could
+  not reach is below. On a Linux host with rootful Docker the container
   copies the import libraries into `imports/` as root, and the user's
   `rm -rf` of the staging directory then fails before the tarball is
   written, and again at the next run's start. With `--no-runner` on a
@@ -2484,7 +2495,7 @@ RG145 is what the pass left.
   shares the `kui-pack-target` volume at `/src`, so a pack from one
   worktree can find another's newer build fresh and ship its library
   beside this one's `kui.h`. **Wants:** `--user`, a tolerant copy, a
-  volume per checkout — and a run of the leg. Smaller: `SHA256SUMS`
+  volume per checkout. Smaller: `SHA256SUMS`
   lists older versions' tarballs, a `--no-runner` pack overwrites a full
   one of the same name, and bsdtar's xattrs warn under GNU tar.
 - **RG135 left the offsets beside the run.** `KuiAccessNode.caret`,
