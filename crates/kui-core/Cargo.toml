@@ -88,3 +88,7 @@ harness = false
 name = "conformance-dump"
 path = "../../examples/rust/tools/conformance-dump.rs"
 required-features = ["conformance"]
+
+[[example]]
+name = "schema-dump"
+path = "../../examples/rust/tools/schema-dump.rs"

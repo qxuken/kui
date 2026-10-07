@@ -199,6 +199,7 @@ ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
 | Tool | Run | What it is |
 |---|---|---|
 | [`conformance-dump.rs`](rust/tools/conformance-dump.rs) | `cargo run -p kui-core --features conformance --example conformance-dump -- target/conformance.txt` | Writes the scene corpus's reference report the other bindings diff against; generated, never checked in |
+| [`schema-dump.rs`](rust/tools/schema-dump.rs) | `cargo run -p kui-core --example schema-dump -- target/odin/schema.json` | Writes the prop schema (`kui_core::schema`: props, composites, elements, events, the verb table, the name lists) as JSON, for a binding generated outside Rust — the Odin one's input |
 
 ## C — [`c/`](c)
 
@@ -275,3 +276,22 @@ An extension is a C shared library either way, and the same binary loads
 into a Rust, C or Node host: `<slot name="ns/panel" params={…}/>` places
 it and `ctx.addExtension(ns, path)` (or a window's `extensions` option)
 loads it.
+
+## Odin — [`odin/`](odin)
+
+The binding is [`packages/odin`](../packages/odin): `kui/c`, kui.h
+mirrored, and `kui`, the typed layer generated from kui.h and the prop
+schema with the elements written by hand. One file a program, built and
+run by [`scripts/odin.nu`](../scripts/odin.nu) against this checkout's
+`libkui_ffi` (`odin` from PATH, or `ODIN=`).
+
+| Example | Shows | Headless |
+|---|---|---|
+| [`apps/counter.odin`](odin/apps/counter.odin) | The counter from Odin, the same shape as the other four: state, a typed message union, a context menu as a modal float | ✓ `--headless`, the Rosetta drive, and a typed message's round trip |
+| [`tools/surface.odin`](odin/tools/surface.odin) | `tools/surface.c` through the typed layer, plus what the C binding walks in its other programs: every door of package `kui` called and checked | ✓ |
+
+```bash
+nu scripts/odin.nu run counter      # the window
+nu scripts/odin.nu test             # every example's --headless self-check
+nu scripts/odin.nu gen              # regenerate the binding from kui.h and the schema
+```

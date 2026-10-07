@@ -21,6 +21,31 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## Unreleased
+
+### Added
+
+- **An Odin binding, experimental** (`packages/odin`). `kui/c` mirrors
+  kui.h declaration by declaration, pinned to the C compiler's layout by
+  848 generated `#assert`s. `kui` is the typed layer, generated from
+  kui.h and the prop schema:
+  - `Spec` and `Text_Style`, one field per schema row;
+  - an enum or bit set per family of constants;
+  - a door per C function: out-params as results, arrays as slices,
+    messages as plain Odin values with `#[derive(Message)]`'s `kind`
+    rule.
+
+  The elements are written by hand: containers close at the end of their
+  `if` through `@(deferred_in)`. A C function the hand-written files do
+  not call gets a generated door, so the binding covers kui.h whole: 219
+  generated, 51 by hand, 2 skipped with their reason.
+  `examples/odin/tools/surface.odin` is `surface.c` through it, and calls
+  every door. Run it with `nu scripts/odin.nu gen | test | run counter`.
+  It is not published and not in CI yet.
+- `examples/rust/tools/schema-dump.rs`: the prop schema (props,
+  composites, elements, events, the verb table, the name lists) as JSON,
+  for a binding generated outside Rust.
+
 ## 0.1.0-alpha.41 (2026-10-07)
 
 **What breaks.**
