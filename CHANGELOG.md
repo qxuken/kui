@@ -28,12 +28,13 @@ was the first bare bump to break an app in five releases).
 - A leaf that declares `tooltip` — `line`, `polygon`, `path`, `cells`,
   `image`, `edit`, in any binding, or a Rust leaf whose spec says
   `NodeSpec::tooltip` — draws its hint while hovered, where it drew
-  nothing.
+  nothing; so does a C `kui_fragment*` node with `KuiSpec.tooltip`.
 - A `dash` gap the round-capped marks overlap closes: `dash = {2, 2}` at
   a width of 8 draws a solid line where it drew 8 px dots every 4 px.
 - With a fallback list set, `Mono` text asks the app's fallback faces
   before the machine's other monospaced ones, so a character may draw in
-  another face.
+  another face, and a single-weight monospaced face draws its bold
+  synthesized instead of in the platform's proportional face.
 - A cell grid whose family has no `M` draws its own glyphs where its face
   puts them, no longer centred as a fallback's.
 - On a line past 4 KB, a tab after more than ~512 bytes with none moves
@@ -162,6 +163,23 @@ to, so each is listed.
   drawn lumpy, at a quad a dot. Such a gap now closes and the marks
   either side are one mark; a pattern with no gap left draws solid. A
   pattern whose gaps show draws exactly as before.
+- **A long line's placed tab answers the caret and the click where it
+  is drawn** (backlog RG122, from the pre-tag pass). A line ending in such
+  a tab has its end caret, and a selection's end, at the line's width —
+  it fell short of the width in a monospaced face and past it in a
+  proportional one, and wrapped rows used the chunk's own narrower tab —
+  and a click answers the tab before the middle of the drawn tab and the
+  byte after it from there, where both halves answered the byte after.
+- **A pinned `Mono` keeps to its face at every weight, and follows the
+  fonts the app loads and removes** (backlog RG123, from the pre-tag
+  pass). A single-weight monospaced face was passed over for bold and set
+  in the platform's proportional face; it now draws in itself, with bold
+  synthesized. A pinned family whose only face the app removed left
+  `Mono` naming nothing, and one loaded after the list was set was never
+  pinned; both now move the pin, and every window shapes again.
+- **A C fragment draws its tooltip** (backlog RG124, from the pre-tag
+  pass). The four `kui_fragment*` doors tracked and spoke
+  `KuiSpec.tooltip` and floated nothing, where JSX and Lua drew it.
 - The docs of a `gradient` stop whose `$token` misses say what it does:
   `unknown-token` is raised and the stop is left out, so a gradient left
   with fewer than two stops draws nothing over its `bg` — no error, and

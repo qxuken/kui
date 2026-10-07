@@ -107,6 +107,9 @@ its pre-tag pass, filed and built with it, and
 with the alpha.39 tag RG120 — `modal-behind-content` naming a stroke
 under an in-flow modal as content over it — from its pre-tag pass,
 filed and built with it, and
+with the alpha.41 tag F103's skipped half, RG76, RG113 and RG118 —
+built together after the alpha.40 tag — and RG122–RG125 from its
+pre-tag pass, filed and built with it, and
 with the alpha.29 tag RG99 — RG96's readings, confirmed in a window on
 Linux and Windows — with RG100–RG104 from that window round, filed and
 built the same day after the alpha.28 tag, and RG105 from it, withdrawn
@@ -166,7 +169,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.39".
+Ordered by area, not by priority. What to do next is under "After alpha.40".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -432,7 +435,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.39" below.
+not cover is in "After alpha.40" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2027,7 +2030,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.39*).
+*Distribution* under *After alpha.40*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2239,7 +2242,9 @@ Windows. The C clamp of `step open` to eight paths is the one
 
 F103's skipped half, RG76, RG113 and RG118 were built on 2026-10-07,
 asked for together ("let's build F103 and RG series"), and are in the
-archive. RG121 holds what three of them left, each with its reason.
+archive. RG121 holds what three of them left, each with its reason; its
+third bullet, a click on a line-placed tab, was built as RG122 in the
+alpha.41 pre-tag pass.
 
 ### `.` RG121 — What RG76, RG113 and RG118 left
 
@@ -2258,16 +2263,49 @@ archive. RG121 holds what three of them left, each with its reason.
   right only when the app placed it straight after its base, and its own
   cell stays blank either way. **Wants:** a grid that composes a base and
   its marks into one cell — when a grid asks.
-- **A click in a line-placed tab's whitespace splits at cosmic-text's
-  midpoint** (RG76's tab). The tab that ends an off-stop chunk is drawn
-  wider than the run shaped it, to reach the line's stop, and a hit
-  inside its whitespace still splits where the run's own tab ends.
-  Cosmetic: the caret lands on one side of the tab or the other.
+- **A hairline dash-dot pattern flips between solid and dashed at the
+  width that closes one of its gaps** (RG118's dash, from the alpha.41
+  pre-tag review). A closed gap is written as the merged pair twice, so
+  the pixel floor (`finer_than`) reads the merged period, where one hair
+  narrower it reads the average of a seen pair and a near-empty one: `0.2,
+  0.2, 1, 0.5` is drawn solid at 0.399 px and 32 dashes at 0.4. Below a
+  pixel the two read alike, and the merged verdict is the right one.
+  **Wants:** the floor to pass over a pair whose seen gap is none — when
+  a sub-pixel dashed stroke whose width animates asks.
 
-## After alpha.39
+## From the alpha.41 pre-tag pass (2026-10-07)
+
+The pre-tag pass over the rounds after the alpha.40 tag — `imeOff`
+(F125), F103's skipped half, RG76, RG113, RG118 and the darwin-x64
+prebuild dropped — run as the ones before it: the mechanical round first
+(all green once `prune-target` was run ahead of the C and Node steps
+rather than between them), then three read-only reviews in worktrees
+(text and fonts; core paint, layout and bindings; the runner, the
+release machinery and the docs), each claim probed with a test before
+anything changed. Four entries, RG122–RG125, **built 2026-10-07**, the
+day they were filed, and in the archive: RG76's placed tab answering the
+caret and the click where the run has it (RG122), RG118's pinned `Mono`
+asked at weights its face lacks and not re-pinned when the app's fonts
+move (RG123), a C `fragment` whose tooltip was never drawn (RG124), and
+the docs saying `imeOff` stops dead keys everywhere and five prebuilds
+(RG125). The dash review's one other find, a hairline pattern's
+solid-or-dashed verdict flipping at the closing width, is RG121's.
+Sound by probe: a leaf's hint in a scroller, a modal, a virtual row and
+over a full-window polygon, its key, the access tree and the devtools
+tab's float; the dash against an independent capsule-union oracle over
+seven patterns and forty offsets; edits that move a long line's tab
+cuts; the measure copies' sweep; F103's deadline in every path; and
+F125 across windows, focus loss and an open preedit.
+
+## After alpha.40
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.38" until 2026-10-07, when the round between the alpha.39 and
+alpha.39" until later on 2026-10-07, when the rounds between the alpha.40
+and alpha.41 tags — `imeOff` (F125) from kawoosh's wish list, F103's
+skipped half, RG76, RG113 and RG118, the darwin-x64 prebuild dropped,
+and RG122–RG125 from alpha.41's pre-tag pass — had landed, and the
+heading moved with the tag; "After
+alpha.38" until earlier on 2026-10-07, when the round between the alpha.39 and
 alpha.40 tags — the documents the OS asks the app to open (F124) from
 kawoosh's open-documents report, and alpha.40's pre-tag pass, which
 filed nothing — had landed, and the heading moved with the tag; "After
@@ -3681,3 +3719,13 @@ move.
 - `.` **RG113** — [Two things RG112 read and left](backlog/closed-2026-09.md#-rg113--two-things-rg112-read-and-left--done-2026-10-07) — done (2026-10-07)
 
 - `.` **RG118** — [What the alpha.37 reviews read and left](backlog/closed-2026-09.md#-rg118--what-the-alpha37-reviews-read-and-left--done-2026-10-07) — done (2026-10-07)
+
+**From the alpha.41 pre-tag pass (2026-10-07)** — RG122–RG125, filed and built the same day
+
+- `.` **RG122** — [A long line's placed tab answered the caret and the click where its run had it, not where the line drew it](backlog/closed-2026-09.md#-rg122--a-long-lines-placed-tab-answered-the-caret-and-the-click-where-its-run-had-it-not-where-the-line-drew-it--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG123** — [A pinned `Mono` was asked at weights its face lacks, and did not follow the fonts the app loaded and removed](backlog/closed-2026-09.md#-rg123--a-pinned-mono-was-asked-at-weights-its-face-lacks-and-did-not-follow-the-fonts-the-app-loaded-and-removed--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG124** — [A C `fragment` with a `tooltip` was hovered and spoken and drew nothing](backlog/closed-2026-09.md#-rg124--a-c-fragment-with-a-tooltip-was-hovered-and-spoken-and-drew-nothing--done-2026-10-07) — done (2026-10-07)
+
+- `.` **RG125** — [The docs said `imeOff` stops dead keys everywhere, and that five prebuilds ship](backlog/closed-2026-09.md#-rg125--the-docs-said-imeoff-stops-dead-keys-everywhere-and-that-five-prebuilds-ship--done-2026-10-07) — done (2026-10-07)
