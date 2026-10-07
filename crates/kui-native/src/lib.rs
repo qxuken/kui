@@ -148,6 +148,8 @@ pub use kui_core::*;
 mod access_bridge;
 pub mod audio;
 mod axis_lock;
+/// What shows through the window: a material, the desktop, or nothing.
+mod backdrop;
 mod clipboard;
 mod dialogs;
 mod icon;
@@ -338,6 +340,7 @@ pub fn app(title: &str) -> Launcher {
         icon: None,
         icon_resource: None,
         frame_latency: kui_wgpu::DEFAULT_FRAME_LATENCY,
+        backdrop: Backdrop::Opaque,
     }
 }
 
@@ -382,6 +385,8 @@ pub struct Launcher {
     /// Frames queued ahead of the one on screen
     /// ([`Launcher::frame_latency`]).
     frame_latency: u32,
+    /// What shows through the app's windows ([`Launcher::backdrop`]).
+    backdrop: Backdrop,
 }
 
 impl Launcher {
@@ -539,6 +544,62 @@ impl Launcher {
         self
     }
 
+    /// What shows through the app's windows where a frame paints nothing,
+    /// or paints with alpha (backlog F126): a material the OS draws behind
+    /// the window — the blurred desktop of a macOS sidebar, Windows 11's
+    /// Mica and Acrylic — or the desktop itself. `Backdrop::Opaque`, the
+    /// default, is the window every app had before.
+    ///
+    /// ```rust,no_run
+    /// # use kui_native::{App, Backdrop, Ui};
+    /// # struct Notes;
+    /// # impl App for Notes { fn view(&mut self, _ui: &mut Ui<'_>) {} }
+    /// kui_native::app("Notes")
+    ///     .custom_titlebar()
+    ///     .backdrop(Backdrop::Sidebar)
+    ///     .run(Notes)
+    ///     .unwrap();
+    /// ```
+    ///
+    /// Asking changes three things. The frame is cleared to nothing
+    /// rather than to the theme's `bg`, so what a view paints is all that
+    /// sits over the backdrop: a sidebar with a translucent `bg`
+    /// (`theme.bg.with_alpha(0.6)`) shows the material through it, and
+    /// the editor beside it with an opaque `bg` does not. Glyphs are
+    /// antialiased in grayscale under `TextAa::Auto`, since an LCD mask
+    /// cannot be composited over what the window cannot see. And on
+    /// Windows the device presents through DirectComposition, the one
+    /// D3D12 swapchain that takes alpha.
+    ///
+    /// What the platform gave back is `ui.env().window.backdrop`, every
+    /// frame, and is what a view decides by: the material on macOS (an
+    /// `NSVisualEffectView` — `Window` is the under-window background,
+    /// `Sidebar` the sidebar's, `Transient` the popover's) and on Windows
+    /// 11 22H2 and later (Mica, Mica Alt, Acrylic); `Transparent` on Linux
+    /// under a compositor, where there is no material; `Opaque` on
+    /// Windows 10, or wherever the surface cannot be presented with
+    /// alpha. Paint the sidebar opaque when it reads `Opaque`:
+    ///
+    /// ```rust
+    /// # use kui_native::{Backdrop, Color, Env};
+    /// fn sidebar_bg(env: &Env, base: Color) -> Color {
+    ///     match env.window.backdrop {
+    ///         Backdrop::Opaque => base,
+    ///         Backdrop::Transparent => base.with_alpha(0.92),
+    ///         _ => base.with_alpha(0.55),
+    ///     }
+    /// }
+    /// # let _ = sidebar_bg(&Env::default(), Color::hex(0x202020ff));
+    /// ```
+    ///
+    /// It applies to the main window and to every window the app's frames
+    /// declare (`Ui::window`) — not to a popup, which is a menu surface,
+    /// nor to the devtools' window.
+    pub fn backdrop(mut self, backdrop: Backdrop) -> Self {
+        self.backdrop = backdrop;
+        self
+    }
+
     /// Shorthand for `.chrome(Chrome::Custom)`.
     pub fn custom_titlebar(self) -> Self {
         self.chrome(Chrome::Custom)
@@ -634,6 +695,7 @@ impl Launcher {
             max_size: self.max_size,
             text_aa: self.text_aa,
             frame_latency: wanted_frame_latency(self.frame_latency),
+            backdrop: self.backdrop,
             diagnostics,
             subpixel: false,
             extensions: self.extensions,
@@ -1427,6 +1489,20 @@ fn subpixel_on(wanted: TextAa, dual_source: bool) -> bool {
     }
 }
 
+/// The antialiasing `Auto` means for an app that asked for a backdrop
+/// (backlog F126): grayscale, since an LCD mask is a blend against the
+/// pixels under it and the window cannot see what the OS composites
+/// behind a translucent one — subpixel text over a sidebar's material
+/// draws colour fringes the size of a stem. One decision for every
+/// window of the app, made before any knows what it got. A `Subpixel`
+/// the app or `KUI_TEXT_AA` named is kept.
+fn aa_under(wanted: TextAa, backdrop: Backdrop) -> TextAa {
+    match wanted {
+        TextAa::Auto if backdrop.is_translucent() => TextAa::Grayscale,
+        other => other,
+    }
+}
+
 /// The frame latency asked for: `KUI_FRAME_LATENCY` if it is a positive
 /// number, for comparing without a rebuild, else the launcher's.
 fn wanted_frame_latency(launcher: u32) -> u32 {
@@ -1514,6 +1590,9 @@ struct Shell<A: App + ?Sized> {
     /// What every renderer is configured with: `Launcher::frame_latency`
     /// under `KUI_FRAME_LATENCY`.
     frame_latency: u32,
+    /// What the app asked to show through its windows
+    /// (`Launcher::backdrop`); what each window got is its pane's.
+    backdrop: Backdrop,
     /// What every core is created with; see `Launcher::diagnostics`.
     diagnostics: bool,
     /// Whether the GPU blends per channel, decided by the first renderer,
@@ -1753,6 +1832,13 @@ impl DynShell<'_> {
                 .as_mut()
                 .expect("the main core exists until its pane takes it"),
         }
+    }
+
+    /// What the device is opened for: surfaces that can take alpha when
+    /// the app asked for a backdrop, which on Windows is another D3D12
+    /// swapchain (backlog F126) — so only then.
+    fn gpu_options(&self) -> kui_wgpu::GpuOptions {
+        kui_wgpu::GpuOptions::transparent(self.backdrop.is_translucent())
     }
 
     /// Main inner size in logical px plus the scale factor; the launcher's
@@ -2213,12 +2299,19 @@ impl DynShell<'_> {
         // Written straight through: the renderer asks for a non-sRGB
         // surface, so a clear component is the byte it lands as, the same
         // way a quad's colour is.
+        // Over a backdrop the ground is nothing at all (backlog F126): what
+        // the view paints is what covers the material, and a view that
+        // paints no root background shows it whole.
         let ground = pane.core.theme().bg;
-        let clear = kui_wgpu::wgpu::Color {
-            r: ground.r as f64,
-            g: ground.g as f64,
-            b: ground.b as f64,
-            a: ground.a as f64,
+        let clear = if pane.backdrop.is_translucent() {
+            kui_wgpu::wgpu::Color::TRANSPARENT
+        } else {
+            kui_wgpu::wgpu::Color {
+                r: ground.r as f64,
+                g: ground.g as f64,
+                b: ground.b as f64,
+                a: ground.a as f64,
+            }
         };
         let (dl, atlas) = pane.core.output();
         let mut wait_ms = 0.0;
@@ -2329,21 +2422,33 @@ impl DynShell<'_> {
         }
         self.gpu = None;
         let mut gpu: Option<kui_wgpu::Gpu> = None;
+        let options = self.gpu_options();
         for pane in &mut self.panes {
             let px = pane.window.inner_size();
             let made = match &gpu {
-                None => pollster::block_on(kui_wgpu::Renderer::new(
+                None => pollster::block_on(kui_wgpu::Renderer::new_with(
                     pane.window.clone(),
                     px.width,
                     px.height,
+                    options,
                 )),
-                Some(gpu) => {
-                    kui_wgpu::Renderer::new_in(gpu, pane.window.clone(), px.width, px.height)
-                }
+                Some(gpu) => kui_wgpu::Renderer::new_in_with(
+                    gpu,
+                    pane.window.clone(),
+                    px.width,
+                    px.height,
+                    pane.backdrop.is_translucent(),
+                ),
             };
             match made {
                 Ok(mut r) => {
                     r.set_frame_latency(self.frame_latency);
+                    // The window keeps its backdrop where the new surface
+                    // takes alpha too; one that will not any more leaves
+                    // the window opaque, and says so.
+                    if pane.backdrop.is_translucent() && !r.transparent() {
+                        pane.backdrop = Backdrop::Opaque;
+                    }
                     let opened = gpu.is_none();
                     gpu.get_or_insert_with(|| r.gpu().clone());
                     if opened {
@@ -2366,7 +2471,8 @@ impl DynShell<'_> {
         // A changed decision empties each core's atlas (`set_subpixel_text`),
         // which the fresh renderer was going to upload whole anyway.
         if let Some(gpu) = &gpu {
-            let on = subpixel_on(wanted_text_aa(self.text_aa), gpu.dual_source());
+            let wanted = aa_under(wanted_text_aa(self.text_aa), self.backdrop);
+            let on = subpixel_on(wanted, gpu.dual_source());
             if on != self.subpixel {
                 self.subpixel = on;
                 for pane in &mut self.panes {
@@ -2404,7 +2510,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             })
             .map(|s| clamp_size(s, self.min_size, self.max_size))
             .unwrap_or(self.size);
-        let mut attrs = self.window_attrs(&self.title.clone(), size, self.chrome);
+        let mut attrs = self.window_attrs(&self.title.clone(), size, self.chrome, self.backdrop);
         if let Some((mw, mh)) = self.min_size {
             attrs = attrs.with_min_inner_size(LogicalSize::new(mw, mh));
         }
@@ -2427,16 +2533,26 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         };
         self.icon.set_on(&window);
         let px = window.inner_size();
-        let renderer =
-            pollster::block_on(kui_wgpu::Renderer::new(window.clone(), px.width, px.height));
+        let renderer = pollster::block_on(kui_wgpu::Renderer::new_with(
+            window.clone(),
+            px.width,
+            px.height,
+            self.gpu_options(),
+        ));
         let mut renderer = match renderer {
             Ok(r) => r,
             Err(e) => return self.fail_open(event_loop, format!("cannot draw in the window: {e}")),
         };
         renderer.set_frame_latency(self.frame_latency);
+        // What shows through it, now that there is a surface to present
+        // with alpha (backlog F126); before it is shown.
+        let backdrop = backdrop::apply(&window, &renderer, self.backdrop);
         // Subpixel text only where the renderer blends per channel; the
         // env var wins over the builder for quick A/B comparisons.
-        self.subpixel = subpixel_on(wanted_text_aa(self.text_aa), renderer.subpixel_text());
+        self.subpixel = subpixel_on(
+            aa_under(wanted_text_aa(self.text_aa), self.backdrop),
+            renderer.subpixel_text(),
+        );
         self.gpu = Some(renderer.gpu().clone());
         let mut core = self
             .main_core
@@ -2453,6 +2569,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             core,
             window,
             renderer,
+            backdrop,
         );
         self.panes[0].applied_title = self.title.clone();
         self.panes[0].applied_min = self.min_size;
@@ -3555,5 +3672,29 @@ mod tests {
         assert!(!subpixel_on(TextAa::Subpixel, false));
         assert!(!subpixel_on(TextAa::Grayscale, true));
         assert!(!subpixel_on(TextAa::Grayscale, false));
+    }
+
+    /// Over a backdrop `Auto` is grayscale (backlog F126): an LCD mask is
+    /// a blend against pixels the window cannot see. What the app named
+    /// stands, and an opaque window keeps `Auto`.
+    #[test]
+    fn a_backdrop_takes_auto_to_grayscale() {
+        assert_eq!(aa_under(TextAa::Auto, Backdrop::Opaque), TextAa::Auto);
+        for b in [Backdrop::Transparent, Backdrop::Sidebar] {
+            assert_eq!(aa_under(TextAa::Auto, b), TextAa::Grayscale);
+            assert_eq!(aa_under(TextAa::Subpixel, b), TextAa::Subpixel);
+        }
+        assert!(!subpixel_on(aa_under(TextAa::Auto, Backdrop::Window), true));
+    }
+
+    /// An app that never asked opens its device as it always did: no
+    /// transparent surfaces, so on Windows the swapchain on the window's
+    /// handle it always had.
+    #[test]
+    fn only_a_backdrop_opens_a_transparent_device() {
+        let shell = app("plain").dyn_shell(Empty);
+        assert!(!shell.gpu_options().transparent);
+        let shell = app("glass").backdrop(Backdrop::Sidebar).dyn_shell(Empty);
+        assert!(shell.gpu_options().transparent);
     }
 }

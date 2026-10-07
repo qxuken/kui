@@ -419,6 +419,12 @@ FRAME_CAUSE_AUDIO :: 67108864
 FRAME_CAUSE_SMOKE :: 134217728
 FRAME_CAUSE_OWED :: 268435456
 
+BACKDROP_OPAQUE :: 0
+BACKDROP_TRANSPARENT :: 1
+BACKDROP_WINDOW :: 2
+BACKDROP_SIDEBAR :: 3
+BACKDROP_TRANSIENT :: 4
+
 PATH_MOVE :: 0
 PATH_LINE :: 1
 PATH_QUAD :: 2
@@ -1074,6 +1080,7 @@ foreign lib {
 	set_always_on_top :: proc(ctx: ^Ctx, on_top: bool) ---
 	always_on_top_get :: proc(ctx: ^Ctx) -> bool ---
 	env_set_always_on_top :: proc(ctx: ^Ctx, always_on_top: bool) ---
+	env_set_backdrop :: proc(ctx: ^Ctx, backdrop: u32) ---
 	set_secure_input :: proc(ctx: ^Ctx, on: bool) ---
 	secure_input_get :: proc(ctx: ^Ctx) -> bool ---
 	set_option_as_alt :: proc(ctx: ^Ctx, option_as_alt: u32) ---

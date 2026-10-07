@@ -6735,6 +6735,7 @@ test('env() reports the defaults a headless Ctx starts with', () => {
     fullscreen: false,
     alwaysOnTop: false,
     nativeControls: null,
+    backdrop: 'opaque',
   });
   // No device and nothing playing, which is the truth for a headless host.
   assert.deepEqual(env.audio, { device: 'closed', live: 0 });
@@ -6772,7 +6773,7 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
   ctx.setEnv({
     refreshHz: 60,
     focused: false,
-    window: { customChrome: true, maximized: true, fullscreen: true, alwaysOnTop: true, nativeControls: { x: 8, y: 4, w: 70, h: 20 } },
+    window: { customChrome: true, maximized: true, fullscreen: true, alwaysOnTop: true, nativeControls: { x: 8, y: 4, w: 70, h: 20 }, backdrop: 'sidebar' },
   });
   const env = ctx.env();
   assert.equal(env.refreshHz, 60);
@@ -6785,7 +6786,10 @@ test('setEnv writes the facts a window would push, and env() reads them back', (
     fullscreen: true,
     alwaysOnTop: true,
     nativeControls: { x: 8, y: 4, w: 70, h: 20 },
+    backdrop: 'sidebar',
   });
+  // A backdrop is one of five names (backlog F126).
+  assert.throws(() => ctx.setEnv({ window: { backdrop: 'mica' } }), /backdrop is one of/);
   // Only what you pass moves — a test declares the one fact it is about.
   ctx.setEnv({ window: { maximized: false } });
   assert.equal(ctx.env().refreshHz, 60);

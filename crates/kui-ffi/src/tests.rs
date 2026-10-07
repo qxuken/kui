@@ -2194,6 +2194,29 @@ mod env_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The backdrop is a fact the host reports through its own door
+    /// (backlog F126): opaque until it says otherwise, kept by the window
+    /// setter, and a code past the end ignored rather than trusted.
+    #[test]
+    fn the_backdrop_is_reported_through_its_own_door() {
+        let ctx = kui_ctx_new();
+        let window = |ctx: *mut KuiCtx| unsafe { ctx.as_mut() }.unwrap().core().env.window;
+        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Opaque);
+        kui_env_set_backdrop(ctx, 3);
+        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Sidebar);
+        kui_env_set_window(ctx, 0, true, false, false, 0.0, 0.0);
+        assert_eq!(
+            window(ctx).backdrop,
+            kui_core::Backdrop::Sidebar,
+            "the window setter keeps it"
+        );
+        kui_env_set_backdrop(ctx, 99);
+        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Sidebar, "ignored");
+        kui_env_set_backdrop(ctx, 0);
+        assert_eq!(window(ctx).backdrop, kui_core::Backdrop::Opaque);
+        kui_ctx_free(ctx);
+    }
+
     /// A null context is a no-op, like every other entry point.
     #[test]
     fn a_null_context_is_survivable() {
@@ -2203,6 +2226,7 @@ mod env_headless {
         kui_set_always_on_top(std::ptr::null_mut(), true);
         assert!(!kui_always_on_top_get(std::ptr::null_mut()));
         kui_env_set_always_on_top(std::ptr::null_mut(), true);
+        kui_env_set_backdrop(std::ptr::null_mut(), 2);
     }
 }
 

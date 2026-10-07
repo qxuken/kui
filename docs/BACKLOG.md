@@ -1499,6 +1499,20 @@ winit's delegate answers only that the app finished launching and is
 terminating. One entry, F124, **built 2026-10-06**, the day it was
 filed, and in the archive.
 
+## From the Noticon wish list (2026-10-08)
+
+Noticon, a Markdown notes app on kui-native, brought three things it
+was working round or doing without. Its user's wife wanted the look of
+her Obsidian theme on a Mac — the sidebar showing the blurred desktop
+through — and every kui window was opaque, with nothing behind it. Its
+context menus declared accelerators in kui's own portable spelling and
+drew them as written, wrapping the long ones inside a fixed 200 px. And
+its "Move to" list was cut short because a menu could not nest, with
+"Sort by ▸" waiting on the same. Three entries, F126–F128, **built
+2026-10-08**, the day they were filed, and in the archive, with ADR
+0018's and ADR 0007's amendments. F126's macOS half was written on a
+machine with no Apple target and has not been compiled or run.
+
 ## From the kawoosh wish list (2026-10-07)
 
 kawoosh's roadmap kept one line for kui since RG16 removed F69's door:
@@ -2736,6 +2750,8 @@ Nothing of the kawoosh open-documents report is open (F124 **built
 2026-10-06**, the day it was filed).
 Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
+Nothing of the Noticon wish list is open (F126–F128 **built
+2026-10-08**, the day they were filed), but for a look at F126 on a Mac.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4001,3 +4017,11 @@ move.
 - `.` **RG143** — [Three places the Odin binding meant something kui.h and the derive do not](backlog/closed-2026-09.md#-rg143--three-places-the-odin-binding-meant-something-kuih-and-the-derive-do-not--done-2026-10-07) — done (2026-10-07)
 
 - `.` **RG144** — [An infinite line height on a cell grid put its rows at the layout's limit](backlog/closed-2026-09.md#-rg144--an-infinite-line-height-on-a-cell-grid-put-its-rows-at-the-layouts-limit--done-2026-10-07) — done (2026-10-07)
+
+**From the Noticon wish list (2026-10-08)** — F126–F128, filed and built the same day
+
+- `~` **F126** — [A notes app cannot show the desktop through its sidebar: every kui window is opaque, with nothing the OS draws behind it](backlog/closed-2026-09.md#-f126--a-notes-app-cannot-show-the-desktop-through-its-sidebar-every-kui-window-is-opaque-with-nothing-the-os-draws-behind-it--done-2026-10-08) — done (2026-10-08) — `Launcher::backdrop(Backdrop)` and `env.window.backdrop`; a premultiplied surface chosen at creation (`GpuOptions::transparent`, D3D12 through DirectComposition), `NSVisualEffectView` on macOS (not compiled here), Mica / Mica Alt / Acrylic on Windows 11, see-through on Linux; the frame cleared to nothing
+
+- `!` **F127** — [A context menu draws `mod+shift+n` as written, and wraps a long accelerator inside its fixed width](backlog/closed-2026-09.md#-f127--a-context-menu-draws-modshiftn-as-written-and-wraps-a-long-accelerator-inside-its-fixed-width--done-2026-10-08) — done (2026-10-08) — `open_menu` normalizes as `declare_menu_bar` does, rows read through `Accel::label`; the panel `fit` over the metric, nothing wraps
+
+- `~` **F128** — [A menu cannot nest: no submenu, so "Move to" lists every folder and "Sort by" has nowhere to go](backlog/closed-2026-09.md#-f128--a-menu-cannot-nest-no-submenu-so-move-to-lists-every-folder-and-sort-by-has-nowhere-to-go--done-2026-10-08) — done (2026-10-08) — `MenuItem::submenu` / `items`, drawn beside its row in both drawn menus and as `NSMenu` submenus; hover, click, Enter, Right open, Left and Escape close; `Core::activate_menu_path`

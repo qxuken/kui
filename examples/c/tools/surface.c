@@ -352,6 +352,11 @@ static int surface(void) {
     /* And the Option keys as Alt (backlog F113). */
     check(kui_option_as_alt_get(ui) == KUI_OPTION_AS_ALT_LEFT, "kui_option_as_alt_get");
     kui_env_set_always_on_top(ui, true);
+    /* What is behind the window, as the host got it (backlog F126): a
+     * fact like the level, so nothing reads it back here; a code past the
+     * end is ignored rather than trusted. */
+    kui_env_set_backdrop(ui, KUI_BACKDROP_SIDEBAR);
+    kui_env_set_backdrop(ui, 99);
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ui, &dd);

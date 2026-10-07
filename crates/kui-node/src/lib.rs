@@ -691,6 +691,17 @@ impl Ctx {
                 "fullscreen" => win.fullscreen = flag(name, v)?,
                 "alwaysOnTop" => win.always_on_top = flag(name, v)?,
                 "nativeControls" => win.native_controls = native_controls(v)?,
+                "backdrop" => {
+                    win.backdrop = v
+                        .as_str()
+                        .and_then(kui_core::Backdrop::from_name)
+                        .ok_or_else(|| {
+                            err(format!(
+                                "setEnv(): window.backdrop is one of {:?}",
+                                kui_core::schema::BACKDROPS
+                            ))
+                        })?
+                }
                 _ => return Err(err(format!("setEnv(): unknown window key {name:?}"))),
             }
         }
@@ -1796,7 +1807,7 @@ pub struct KuiWindow {
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
     /// chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-    /// | "subpixel", frameLatency, system, icon}`. The min/max pairs bound what the user can
+    /// | "subpixel", frameLatency, system, icon, backdrop}`. The min/max pairs bound what the user can
     /// resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
     /// says, for the life of the window — `{motion: 'reduced'}` is what a
     /// user who asked for less motion would get, on a machine whose owner
@@ -1891,6 +1902,26 @@ impl KuiWindow {
             Some(other) => {
                 return Err(err(format!(
                     "window options: textAa must be \"auto\", \"gray\" or \"subpixel\", not {other}"
+                )));
+            }
+        };
+        // What shows through the window (backlog F126), the launcher's
+        // `backdrop`; what came of it is `env().window.backdrop`.
+        launcher = match o.get("backdrop") {
+            None | Some(Json::Null) => launcher,
+            Some(Json::String(s)) => match kui_core::Backdrop::from_name(s) {
+                Some(b) => launcher.backdrop(b),
+                None => {
+                    return Err(err(format!(
+                        "window options: backdrop is one of {:?}, not {s:?}",
+                        kui_core::schema::BACKDROPS
+                    )));
+                }
+            },
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: backdrop is one of {:?}, not {other}",
+                    kui_core::schema::BACKDROPS
                 )));
             }
         };

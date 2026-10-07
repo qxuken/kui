@@ -471,6 +471,19 @@ mod tests {
         assert_eq!(devices, crate::schema::AUDIO_DEVICES);
         let assistive: Vec<&str> = Assistive::ALL.iter().map(|a| a.name()).collect();
         assert_eq!(assistive, crate::schema::ASSISTIVE);
+        let backdrops: Vec<&str> = crate::window::Backdrop::ALL
+            .iter()
+            .map(|b| b.name())
+            .collect();
+        assert_eq!(backdrops, crate::schema::BACKDROPS);
+        for b in crate::window::Backdrop::ALL {
+            assert_eq!(crate::window::Backdrop::from_name(b.name()), Some(b));
+        }
+        assert_eq!(
+            crate::window::Backdrop::from_code(0),
+            Some(crate::window::Backdrop::default())
+        );
+        assert_eq!(crate::window::Backdrop::from_code(5), None);
         assert_eq!(Appearance::default().code(), 0);
         assert_eq!(MotionPref::default().code(), 0);
         assert_eq!(AudioDevice::default().code(), 0);

@@ -207,6 +207,8 @@ struct GpuInner {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    /// What it was opened for ([`Gpu::new_with`]).
+    options: GpuOptions,
     dual_source: bool,
     /// One pipeline per registered fragment per surface format, built the
     /// first time a frame draws it (about 0.2 ms, paid once) and shared by
@@ -241,6 +243,29 @@ struct ImageTexture {
     rev: std::sync::Mutex<u32>,
 }
 
+/// How a [`Gpu`] is opened: what its surfaces must be able to do, decided
+/// before the first one exists because some of it is the instance's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct GpuOptions {
+    /// Its surfaces may be presented with alpha
+    /// ([`Renderer::set_transparent`]), so a window shows what is behind
+    /// it where a frame paints nothing (backlog F126). On Windows this
+    /// presents D3D12 through DirectComposition
+    /// (`Dx12SwapchainKind::DxgiFromVisual`), the one D3D12 swapchain that
+    /// takes alpha, instead of a swapchain on the window's handle; nothing
+    /// changes elsewhere. Off by default, so an opaque app keeps the
+    /// swapchain it always had.
+    pub transparent: bool,
+}
+
+impl GpuOptions {
+    /// Options whose surfaces may be transparent ([`Self::transparent`]).
+    pub fn transparent(transparent: bool) -> Self {
+        Self { transparent }
+    }
+}
+
 impl Gpu {
     /// Opens a device that can present to `target`, and returns the
     /// surface it was chosen for.
@@ -252,6 +277,15 @@ impl Gpu {
     /// the D3D12 backend is enabled unless `WGPU_BACKEND` names another.
     pub async fn new(
         target: impl Into<wgpu::SurfaceTarget<'static>>,
+    ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
+        Self::new_with(target, GpuOptions::default()).await
+    }
+
+    /// [`Gpu::new`] with `options`: what every surface opened on this
+    /// device must be able to do.
+    pub async fn new_with(
+        target: impl Into<wgpu::SurfaceTarget<'static>>,
+        options: GpuOptions,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
         report_faults();
         // Every backend the build has, as wgpu defaults — but on Windows
@@ -267,6 +301,14 @@ impl Gpu {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
         if cfg!(windows) && std::env::var_os("WGPU_BACKEND").is_none() {
             desc.backends = wgpu::Backends::DX12;
+        }
+        // A swapchain made on the window's handle is opaque whatever it is
+        // configured with; one presented through a composition visual
+        // takes premultiplied alpha. Only when asked, and under
+        // `WGPU_DX12_PRESENTATION_SYSTEM`, which still wins for a look at
+        // either.
+        if options.transparent && std::env::var_os("WGPU_DX12_PRESENTATION_SYSTEM").is_none() {
+            desc.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
         }
         let instance = wgpu::Instance::new(desc);
         let surface = instance.create_surface(target)?;
@@ -309,6 +351,7 @@ impl Gpu {
             adapter,
             device,
             queue,
+            options,
             dual_source,
             fragment_pipelines: Default::default(),
             textures: Default::default(),
@@ -364,6 +407,11 @@ impl Gpu {
         target: impl Into<wgpu::SurfaceTarget<'static>>,
     ) -> Result<wgpu::Surface<'static>, wgpu::CreateSurfaceError> {
         self.0.instance.create_surface(target)
+    }
+
+    /// What the device was opened for ([`Gpu::new_with`]).
+    pub fn options(&self) -> GpuOptions {
+        self.0.options
     }
 
     /// The wgpu instance the device was opened on.
@@ -681,6 +729,44 @@ fn upload_image(
     );
 }
 
+/// The alpha mode an opaque window presents with: `Opaque` wherever the
+/// surface offers it — every surface a window gets does — and the
+/// surface's first mode otherwise. The first mode was the choice before
+/// a surface could be transparent, and is `Opaque` everywhere but a
+/// D3D12 composition swapchain, which lists `Auto` first.
+fn opaque_mode(modes: &[wgpu::CompositeAlphaMode]) -> wgpu::CompositeAlphaMode {
+    if modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+        wgpu::CompositeAlphaMode::Opaque
+    } else {
+        modes
+            .first()
+            .copied()
+            .unwrap_or(wgpu::CompositeAlphaMode::Opaque)
+    }
+}
+
+/// The alpha mode a transparent window presents with, of the ones the
+/// surface offers, or `None` when it offers none that composites the
+/// frame kui draws — which is premultiplied. `PreMultiplied` first; on
+/// Metal, `PostMultiplied`, which is only how wgpu names a layer that is
+/// not opaque, and Core Animation composites a layer's pixels as
+/// premultiplied whatever it is called; then `Inherit`, the window
+/// system's own way, which under Wayland and an ARGB X11 visual is
+/// premultiplied too. Never `PostMultiplied` on Vulkan or D3D12, where it
+/// means straight alpha and every translucent pixel would darken.
+fn transparent_mode(
+    modes: &[wgpu::CompositeAlphaMode],
+    backend: wgpu::Backend,
+) -> Option<wgpu::CompositeAlphaMode> {
+    use wgpu::CompositeAlphaMode as M;
+    let mut wanted = vec![M::PreMultiplied];
+    if backend == wgpu::Backend::Metal {
+        wanted.push(M::PostMultiplied);
+    }
+    wanted.push(M::Inherit);
+    wanted.into_iter().find(|m| modes.contains(m))
+}
+
 /// Picks the `//DUAL:` or `//SINGLE:` lines of the shader template.
 fn preprocess_shader(src: &str, dual: bool) -> String {
     let (keep, drop) = if dual {
@@ -727,8 +813,34 @@ impl Renderer {
         width: u32,
         height: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (gpu, surface) = Gpu::new(target).await?;
-        Self::with_surface(gpu, surface, width, height)
+        Self::new_with(target, width, height, GpuOptions::default()).await
+    }
+
+    /// [`Renderer::new`] on a device opened with `options` — what every
+    /// window on it must be able to do ([`GpuOptions`]) — and, under
+    /// [`GpuOptions::transparent`], this window's surface presented with
+    /// alpha where it can be ([`Renderer::transparent`]).
+    pub async fn new_with(
+        target: impl Into<wgpu::SurfaceTarget<'static>>,
+        width: u32,
+        height: u32,
+        options: GpuOptions,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let (gpu, surface) = Gpu::new_with(target, options).await?;
+        Self::with_surface(gpu, surface, width, height, options.transparent)
+    }
+
+    /// Whether the surface is presented with alpha, so what is behind the
+    /// window shows where a frame paints nothing and through a colour with
+    /// alpha ([`Renderer::new_with`], [`Renderer::new_in_with`]). The frame
+    /// is premultiplied, which is what every quad and glyph already blends
+    /// to; clear it to a transparent [`Renderer::clear_color`] for the
+    /// window to show through.
+    pub fn transparent(&self) -> bool {
+        !matches!(
+            self.config.alpha_mode,
+            wgpu::CompositeAlphaMode::Opaque | wgpu::CompositeAlphaMode::Auto
+        )
     }
 
     /// A renderer for another window on an existing device, the one every
@@ -740,8 +852,27 @@ impl Renderer {
         width: u32,
         height: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::new_in_with(gpu, target, width, height, false)
+    }
+
+    /// [`Renderer::new_in`] for a window whose surface is presented with
+    /// alpha (`transparent`, backlog F126). Decided here, once, and not by
+    /// a reconfigure: a D3D12 swapchain keeps the alpha mode it was made
+    /// with, and resizing it later changes nothing — measured on Windows
+    /// 11, where a surface reconfigured to premultiplied after it was made
+    /// opaque went on compositing over black. Where the surface cannot
+    /// take alpha — a D3D12 device not opened with
+    /// [`GpuOptions::transparent`], a Vulkan or GL surface that offers
+    /// only opaque — it is opaque, and [`Renderer::transparent`] says so.
+    pub fn new_in_with(
+        gpu: &Gpu,
+        target: impl Into<wgpu::SurfaceTarget<'static>>,
+        width: u32,
+        height: u32,
+        transparent: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let surface = gpu.create_surface(target)?;
-        Self::with_surface(gpu.clone(), surface, width, height)
+        Self::with_surface(gpu.clone(), surface, width, height, transparent)
     }
 
     /// The device this renderer draws with, to open another window on.
@@ -770,6 +901,7 @@ impl Renderer {
         surface: wgpu::Surface<'static>,
         width: u32,
         height: u32,
+        transparent: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let device = gpu.device();
         let dual_source = gpu.dual_source();
@@ -781,13 +913,18 @@ impl Renderer {
             .copied()
             .find(|f| !f.is_srgb())
             .unwrap_or(caps.formats[0]);
+        let backend = gpu.adapter().get_info().backend;
+        let alpha_mode = transparent
+            .then(|| transparent_mode(&caps.alpha_modes, backend))
+            .flatten()
+            .unwrap_or_else(|| opaque_mode(&caps.alpha_modes));
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
             width: width.clamp(1, device.limits().max_texture_dimension_2d),
             height: height.clamp(1, device.limits().max_texture_dimension_2d),
             present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: caps.alpha_modes[0],
+            alpha_mode,
             color_space: wgpu::SurfaceColorSpace::Auto,
             view_formats: vec![],
             // See `DEFAULT_FRAME_LATENCY`; a runner that wants another
@@ -1738,6 +1875,63 @@ impl std::fmt::Write for FaultLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An opaque window keeps the mode it always had, `Opaque` — also on
+    /// a composition swapchain, which lists `Auto` first and would have
+    /// presented `DXGI_ALPHA_MODE_UNSPECIFIED` (backlog F126).
+    #[test]
+    fn an_opaque_window_presents_opaque_wherever_it_can() {
+        use wgpu::CompositeAlphaMode as M;
+        assert_eq!(opaque_mode(&[M::Opaque]), M::Opaque);
+        assert_eq!(opaque_mode(&[M::Opaque, M::PostMultiplied]), M::Opaque);
+        assert_eq!(
+            opaque_mode(&[
+                M::Auto,
+                M::Inherit,
+                M::Opaque,
+                M::PostMultiplied,
+                M::PreMultiplied
+            ]),
+            M::Opaque
+        );
+        assert_eq!(opaque_mode(&[M::Inherit]), M::Inherit);
+    }
+
+    /// A transparent one takes a mode that composites premultiplied
+    /// pixels, and none where only straight alpha or opaque is offered.
+    #[test]
+    fn a_transparent_window_presents_premultiplied_or_not_at_all() {
+        use wgpu::{Backend, CompositeAlphaMode as M};
+        // D3D12 through a composition visual.
+        let visual = [
+            M::Auto,
+            M::Inherit,
+            M::Opaque,
+            M::PostMultiplied,
+            M::PreMultiplied,
+        ];
+        assert_eq!(
+            transparent_mode(&visual, Backend::Dx12),
+            Some(M::PreMultiplied)
+        );
+        // D3D12 on the window's handle: opaque only.
+        assert_eq!(transparent_mode(&[M::Opaque], Backend::Dx12), None);
+        // Metal names its non-opaque layer post-multiplied.
+        let metal = [M::Opaque, M::PostMultiplied];
+        assert_eq!(
+            transparent_mode(&metal, Backend::Metal),
+            Some(M::PostMultiplied)
+        );
+        // Vulkan's post-multiplied is straight alpha: not that.
+        assert_eq!(
+            transparent_mode(&[M::Opaque, M::PostMultiplied], Backend::Vulkan),
+            None
+        );
+        assert_eq!(
+            transparent_mode(&[M::Opaque, M::Inherit], Backend::Vulkan),
+            Some(M::Inherit)
+        );
+    }
 
     /// The globals are one buffer read by two pipelines whose modules
     /// declare it separately: this crate's `shader.wgsl` for quads, and

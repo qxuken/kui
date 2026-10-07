@@ -51,6 +51,8 @@ pub struct Window {
     pub min_size: Option<(f64, f64)>,
     pub max_size: Option<(f64, f64)>,
     pub chrome: Chrome,
+    /// What shows through the window (`Launcher::backdrop`).
+    pub backdrop: kui_native::Backdrop,
 }
 
 impl Default for Window {
@@ -60,6 +62,7 @@ impl Default for Window {
             min_size: None,
             max_size: None,
             chrome: Chrome::Native,
+            backdrop: kui_native::Backdrop::Opaque,
         }
     }
 }
@@ -88,6 +91,11 @@ impl Window {
     /// Shorthand for `.chrome(Chrome::Custom)`.
     pub fn custom_titlebar(self) -> Self {
         self.chrome(Chrome::Custom)
+    }
+
+    pub fn backdrop(mut self, backdrop: kui_native::Backdrop) -> Self {
+        self.backdrop = backdrop;
+        self
     }
 }
 
@@ -328,6 +336,7 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
     let mut launcher = kui_native::app(&format!("kui — {name}"))
         .size(w, h)
         .chrome(window.chrome)
+        .backdrop(window.backdrop)
         .with_extensions(extensions)
         .devtools(true)
         .setup_core(move |core| {

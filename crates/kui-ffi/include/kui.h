@@ -2063,6 +2063,9 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
  *                       what the host did about kui_always_on_top_get,
  *                       its own door so an older host has nothing to
  *                       recompile - declared beside the getter, below)
+ *   kui_env_set_backdrop  backdrop                 (WindowEnv's backdrop:
+ *                       what is behind the window's transparent pixels,
+ *                       declared beside kui_env_set_always_on_top)
  *   kui_env_set_audio   device, live                (AudioEnv: what the
  *                       host's output device is doing)
  */
@@ -2560,6 +2563,27 @@ bool kui_always_on_top_get(KuiCtx *ctx);
  * the reason kui_env_set_assistive has one: additive, and off
  * KUI_ABI_VERSION. */
 void kui_env_set_always_on_top(KuiCtx *ctx, bool always_on_top);
+/* What is behind the window's transparent pixels, as kui_env_set_backdrop
+ * takes it and Node and Lua read back as env.window.backdrop: the window
+ * opaque (0, the default), see-through with nothing behind it, or a
+ * material the OS draws there - a window's (macOS under-window background,
+ * Windows 11 Mica), a sidebar's (macOS sidebar, Mica Alt), a menu's
+ * (macOS popover, Acrylic). */
+enum {
+    KUI_BACKDROP_OPAQUE = 0,
+    KUI_BACKDROP_TRANSPARENT = 1,
+    KUI_BACKDROP_WINDOW = 2,
+    KUI_BACKDROP_SIDEBAR = 3,
+    KUI_BACKDROP_TRANSIENT = 4,
+};
+/* What your window actually has behind it, for views to read: a
+ * KUI_BACKDROP_*, the answer and not the ask, so a view that paints a
+ * translucent sidebar paints it opaque where the platform gave no
+ * material. A host that makes its window translucent also clears each
+ * frame to nothing rather than to the theme's bg. Never called, it is
+ * KUI_BACKDROP_OPAQUE. Its own setter, as kui_env_set_always_on_top is:
+ * additive, and off KUI_ABI_VERSION. An out-of-range code is ignored. */
+void kui_env_set_backdrop(KuiCtx *ctx, uint32_t backdrop);
 /* Declares that this frame wants the keyboard to this window kept from
  * every other process while the window has it - macOS's Secure Keyboard
  * Entry, what a terminal turns on at a password prompt.

@@ -37,12 +37,48 @@ was the first bare bump to break an app in five releases).
 - Rust: `MenuItem` gains `submenu` (under Added, F128), so a struct
   literal of one needs the field; `MenuItem::KEYS` is seven keys, with
   `items`, where it was six.
+- Rust: `WindowEnv` gains `backdrop` (under Added, F126), so a struct
+  literal of one needs the field or `..Default::default()`; so does
+  `kui_devtools::Window`, in the examples' harness.
 
-C stays at ABI 25 (nothing in kui.h moved; `KuiMenuItem` has no submenu)
-and the Node wire at v21 (a row's `items` rides in the JSON a row already
-was).
+C stays at ABI 25 (`kui_env_set_backdrop` and the `KUI_BACKDROP_*` enum
+are new; `KuiMenuItem` has no submenu) and the Node wire at v21 (a row's
+`items` rides in the JSON a row already was).
 
 ### Added
+
+- **A window with the desktop behind it** (backlog F126, from Noticon,
+  for a sidebar like an Obsidian theme's on a Mac).
+  `Launcher::backdrop(Backdrop)` — `backdrop` in Node's window options —
+  asks for what shows through the app's windows where a frame paints
+  nothing or paints with alpha: `Window`, `Sidebar` or `Transient`, a
+  material the OS draws behind the window, or `Transparent`, the bare
+  desktop. On macOS an `NSVisualEffectView` goes under the content view
+  (the under-window, sidebar or popover material, blending behind the
+  window and dimmed with it in the background) and the CAMetalLayer is not
+  opaque; on Windows 11 22H2 and later `DWMWA_SYSTEMBACKDROP_TYPE` asks
+  for Mica, Mica Alt or Acrylic over a client area extended under the
+  frame, the window has no GDI surface, and the device presents D3D12
+  through DirectComposition — the one swapchain that takes alpha
+  (`kui_wgpu::GpuOptions::transparent`, `Renderer::new_with` /
+  `new_in_with`). Linux gets a see-through window where the compositor
+  and the Vulkan surface allow, with no material. The frame is then
+  cleared to nothing rather than to the theme's `bg`, so a view's `bg`
+  with alpha is what sits over the material, and glyphs are grayscale
+  under `TextAa::Auto`. What the window got is
+  `env.window.backdrop` (`window.backdrop` in Node and Lua,
+  `kui_env_set_backdrop` for a C host that makes its own), which is less
+  where the platform has less — `Transparent` on Linux and Windows 10,
+  `Opaque` where the surface takes no alpha — so a view paints its
+  sidebar opaque when it says so. Every window of the app takes it but a
+  popup and the devtools' own; an app that does not ask opens exactly the
+  window and the swapchain it always did. Seen in a window on Windows 11:
+  Acrylic blurring a red window behind the sidebar, Mica Alt tinting it,
+  the bare desktop through it, and an opaque devtools window beside it.
+  The macOS half is written against objc2-app-kit 0.3 and has not been
+  compiled or run (no Apple target on the machine it was written on).
+  The `backdrop` example shows a sidebar and a page painted from the
+  reading. *What you can delete:* nothing — this is new.
 
 - **Submenus** (backlog F128, from Noticon, for "Move to ▸" and "Sort by
   ▸"). `MenuItem::submenu(label, rows)` — `items` on a row in Node and
@@ -94,7 +130,12 @@ was).
   package prefix is cut off now, and a spec naming another package is
   refused by name. A release script, so nothing an app sees.
 
-**What you can delete.** Nothing.
+**What you can delete.**
+
+- The `Accel::parse(..).display()` an app ran over its accelerators
+  before handing them to a context menu (F127).
+- A menu cut short, or flattened, because menus could not nest: "Move to
+  …" rows one per folder up to a cap (F128).
 
 ## 0.1.0-alpha.42 (2026-10-07)
 

@@ -1651,7 +1651,16 @@ export interface WindowEnv {
    *  draws over our content — the macOS traffic lights under custom chrome.
    *  Keep out of it. Null means the OS draws nothing over us. */
   nativeControls: Rect | null;
+  /** What is behind the window's transparent pixels, as the runner got it:
+   *  `'opaque'` (the default), `'transparent'` (the desktop, no material),
+   *  or the OS's material — `'window'`, `'sidebar'`, `'transient'`. A view
+   *  that paints a translucent sidebar over the material paints it opaque
+   *  when this is `'opaque'`. */
+  backdrop: Backdrop;
 }
+
+/** What is behind a window's transparent pixels (`WindowEnv.backdrop`). */
+export type Backdrop = 'opaque' | 'transparent' | 'window' | 'sidebar' | 'transient';
 
 /** A box in logical px: position and size. */
 export interface Rect {
@@ -1693,6 +1702,8 @@ export interface EnvInput {
     /** `x` and `y` default to the window origin; a zero-sized rect and null
      *  both mean "nothing is drawn over us". */
     nativeControls?: Partial<Rect> | null;
+    /** What a runner would report behind the window's transparent pixels. */
+    backdrop?: Backdrop;
   };
   /** What a driver with a device would report; see `AudioEnv`. */
   audio?: {
@@ -1832,6 +1843,14 @@ export interface WindowOptions {
   maxWidth?: number;
   maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
+  /** What shows through the window where a frame paints nothing or paints
+   *  with alpha (the launcher's `backdrop`): `'opaque'` (the default),
+   *  `'transparent'` (the desktop), or an OS material — `'window'`,
+   *  `'sidebar'`, `'transient'` (macOS vibrancy, Windows 11 Mica, Mica Alt,
+   *  Acrylic). The frame is then cleared to nothing, so a translucent `bg`
+   *  shows the material through; `env().window.backdrop` says what the
+   *  platform gave, which is less where it has less. */
+  backdrop?: Backdrop;
   /** How outline glyphs are antialiased: `'auto'` (the default) is LCD
    *  subpixel coverage where the GPU blends per channel and grayscale
    *  otherwise. `KUI_TEXT_AA=gray|subpixel` in the environment still
@@ -3498,7 +3517,7 @@ export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
    * chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-   * | "subpixel", frameLatency, system, icon}`. The min/max pairs bound what the user can
+   * | "subpixel", frameLatency, system, icon, backdrop}`. The min/max pairs bound what the user can
    * resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
    * says, for the life of the window — `{motion: 'reduced'}` is what a
    * user who asked for less motion would get, on a machine whose owner

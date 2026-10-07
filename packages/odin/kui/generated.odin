@@ -356,6 +356,14 @@ Audio_Device :: enum u32 {
 	Failed = 3, // KUI_AUDIO_DEVICE_FAILED
 }
 
+Backdrop :: enum u32 {
+	Opaque = 0, // KUI_BACKDROP_OPAQUE
+	Transparent = 1, // KUI_BACKDROP_TRANSPARENT
+	Window = 2, // KUI_BACKDROP_WINDOW
+	Sidebar = 3, // KUI_BACKDROP_SIDEBAR
+	Transient = 4, // KUI_BACKDROP_TRANSIENT
+}
+
 Audio_Cmd :: enum u32 {
 	Unset = 0,
 	Play = 1, // KUI_AUDIO_PLAY
@@ -2430,6 +2438,11 @@ always_on_top_get :: proc(ui: ^Ui) -> bool {
 // kui_env_set_always_on_top (kui.h).
 env_set_always_on_top :: proc(ui: ^Ui, always_on_top: bool) {
 	c.env_set_always_on_top(ui, always_on_top)
+}
+
+// kui_env_set_backdrop (kui.h).
+env_set_backdrop :: proc(ui: ^Ui, backdrop: Backdrop) {
+	c.env_set_backdrop(ui, u32(backdrop))
 }
 
 // Declares that this frame wants secure keyboard entry while the window has

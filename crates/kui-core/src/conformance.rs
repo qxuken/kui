@@ -67,6 +67,7 @@ pub const NATIVE_CHROME: WindowEnv = WindowEnv {
     fullscreen: false,
     always_on_top: false,
     native_controls: None,
+    backdrop: crate::window::Backdrop::Opaque,
 };
 
 /// The app draws its own chrome, and the OS draws nothing over it — so
@@ -78,6 +79,7 @@ pub const CUSTOM_CHROME: WindowEnv = WindowEnv {
     fullscreen: false,
     always_on_top: false,
     native_controls: None,
+    backdrop: crate::window::Backdrop::Opaque,
 };
 
 /// Custom chrome *and* controls the OS keeps drawing over our content: the
@@ -103,6 +105,7 @@ pub const CUSTOM_CHROME_INSET: WindowEnv = WindowEnv {
         w: 78.0,
         h: 28.0,
     }),
+    backdrop: crate::window::Backdrop::Opaque,
 };
 
 /// The fixture image: 4x4 opaque white RGBA. Every binding registers the

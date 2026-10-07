@@ -234,6 +234,6 @@ pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::{Handles, Value};
 pub use window::{
-    DismissReason, WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowId, WindowKind,
-    WindowRole,
+    Backdrop, DismissReason, WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowId,
+    WindowKind, WindowRole,
 };

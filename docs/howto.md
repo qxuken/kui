@@ -558,6 +558,25 @@ message.
 [ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md) ·
 [alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
+### How do I show the blurred desktop through my sidebar, like a Mac app?
+
+Ask the launcher for a backdrop — `kui_native::app("Notes")
+.backdrop(Backdrop::Sidebar)`, or `backdrop: 'sidebar'` in Node's window
+options — and paint the sidebar with alpha: `bg(t.raised.with_alpha(0.5))`.
+The frame is cleared to nothing instead of the theme's `bg`, so what you
+paint is all that covers the material: macOS's sidebar vibrancy, Windows
+11's Mica Alt (`Window` is the under-window material and Mica, `Transient`
+the popover's and Acrylic). Paint the page beside it opaque as you always
+did. Then read what the window got, every frame, from
+`ui.env().window.backdrop` (Node `env().window.backdrop`): `Opaque` on
+Windows 10 or where the surface cannot take alpha, `Transparent` — the bare
+desktop, not blurred — on Linux. Paint the sidebar opaque for the first and
+nearly opaque for the second, since text over an unblurred desktop is a
+lottery. Glyphs are grayscale under a backdrop.
+
+[`window.backdrop` row](props.md#env) ·
+[`backdrop.rs`](../examples/rust/features/backdrop.rs)
+
 ## Interaction, focus and reading
 
 ### How do I open a popup, and when is a modal enough?

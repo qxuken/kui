@@ -301,6 +301,11 @@ pub const ASSISTIVE: &[&str] = &["unknown", "none", "listening"];
 /// call reports the default.
 pub const AUDIO_DEVICES: &[&str] = &["closed", "opening", "open", "failed"];
 
+/// What is behind a window's transparent pixels
+/// (`crate::window::Backdrop::name` spellings, in `Backdrop::ALL` order),
+/// `opaque` first so a zeroed C call reports the default.
+pub const BACKDROPS: &[&str] = &["opaque", "transparent", "window", "sidebar", "transient"];
+
 /// The roles no view can declare, because the core derives them itself,
 /// with what derives each one. Every
 /// [`Role::ALL`] variant is on this list or in [`ROLES`], and
@@ -2602,6 +2607,15 @@ pub const ENV_FIELDS: &[EnvField] = &[
         doc: "Area (logical px, window coordinates) covered by controls the OS still draws over our content — the macOS traffic lights under custom chrome. Keep out of it. Node hands back the `Rect` the core holds (`{x, y, w, h}`, or `null` for none); Lua and C flatten it to a width and height anchored at the window origin (absent in Lua, `0` in C, for none), which is the shape C's two numbers can express and where the one real instance sits.",
     },
     EnvField {
+        name: "window.backdrop",
+        get: |f| Value::str(f.env.window.backdrop.name()),
+        from: "`WindowEnv::backdrop`",
+        node: &["window.backdrop"],
+        lua: &["window.backdrop"],
+        c: "`kui_env_set_backdrop(backdrop)`",
+        doc: "What is behind the window's transparent pixels, as the driver got it (backlog F126): `\"opaque\"` (the default, and every headless core's), `\"transparent\"` (the desktop, with no material), or the material the OS draws — `\"window\"`, `\"sidebar\"`, `\"transient\"` (`KUI_BACKDROP_*` in C, opaque 0). The app asks with `Launcher::backdrop`; this is the answer, which is less where the platform has less — a sidebar asked for on Linux reads `\"transparent\"`, on Windows 10 `\"opaque\"` — so a view that paints a translucent sidebar over the material paints it opaque when this says so. A C host reports it through its own setter, as `always_on_top` is.",
+    },
+    EnvField {
         name: "audio.device",
         get: |f| Value::str(f.env.audio.device.name()),
         from: "`AudioEnv::device`",
@@ -3717,6 +3731,7 @@ mod tests {
             fullscreen: _,
             always_on_top: _,
             native_controls: _,
+            backdrop: _,
         } = window;
         let stored = [
             "refresh_hz",
@@ -3732,6 +3747,7 @@ mod tests {
             "window.fullscreen",
             "window.always_on_top",
             "window.native_controls",
+            "window.backdrop",
             "audio.device",
             "audio.live",
         ];

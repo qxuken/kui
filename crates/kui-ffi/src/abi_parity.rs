@@ -278,6 +278,10 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::ASSISTIVE, 0 => [
         "KUI_ASSISTIVE_UNKNOWN", "KUI_ASSISTIVE_NONE", "KUI_ASSISTIVE_LISTENING",
     ]);
+    abi_enum!(o, kui_core::schema::BACKDROPS, 0 => [
+        "KUI_BACKDROP_OPAQUE", "KUI_BACKDROP_TRANSPARENT", "KUI_BACKDROP_WINDOW",
+        "KUI_BACKDROP_SIDEBAR", "KUI_BACKDROP_TRANSIENT",
+    ]);
     abi_enum!(o, kui_core::schema::AUDIO_DEVICES, 0 => [
         "KUI_AUDIO_DEVICE_CLOSED", "KUI_AUDIO_DEVICE_OPENING",
         "KUI_AUDIO_DEVICE_OPEN", "KUI_AUDIO_DEVICE_FAILED",

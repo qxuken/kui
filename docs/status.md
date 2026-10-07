@@ -187,8 +187,11 @@ fixed — but its *colour* is now `theme.focus_ring`
 revisiting ADR 0002): a pale blue ring reads on a dark page and is invisible
 on a light one, and a focus indicator nobody can see is not one. ADR 0007's own follow-ups are the rest: grid navigation
 (Left/Right into a row, Up/Down between rows, which wants a `grid` / `row` /
-`cell` vocabulary), submenus, a `radio-without-group` warning, and
-multi-select.
+`cell` vocabulary), a `radio-without-group` warning, and multi-select.
+Submenus are built for the core's own menus (backlog F128) — the context
+menu and the menu bar, drawn or the platform's — and not as a derived
+relation an app's own `menu` composite gets; C's `KuiMenuItem` has no
+submenu field.
 
 **Text and editing.** Editing covers caret blink, double/triple-click
 word/line select, scroll-caret-into-view, inline IME composition, Tab focus
@@ -221,6 +224,16 @@ overflows, a `modal` float takes the dismiss) until they provably do not
 fit. The three cases that do not are what the kind exists for: a list
 taller than the window, a menu near an edge with nowhere in-window to sit,
 and a panel the user wants beside the app.
+
+A window can be **translucent** (`Launcher::backdrop`, backlog F126): the
+frame cleared to nothing over a material the OS draws behind the window —
+an `NSVisualEffectView` on macOS, Mica, Mica Alt or Acrylic on Windows 11
+22H2 and later — or over the bare desktop. It is the launcher's, for every
+window of the app at once: not a per-window declaration, not changeable
+while the app runs, and not on a popup or the devtools' window. Linux has
+no material (the window is merely see-through where the compositor and the
+Vulkan surface allow), a C host under `kui_run` cannot ask for one, and on
+Windows the device then presents through DirectComposition.
 
 There is no window **position** an app can declare or read, no app-modal
 window (decision 10 keeps modality per window), and no native menu bar.

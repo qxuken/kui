@@ -84,6 +84,9 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Registry",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
+    # The client area extended under the frame, so a system backdrop shows
+    # through it (`mod backdrop`, backlog F126): `MARGINS` lives here.
+    "Win32_UI_Controls",
     # The keyboard layout a press is read on (`keys::windows_layout`,
     # backlog F115): `HKL` lives here.
     "Win32_UI_TextServices",
@@ -145,10 +148,18 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSParagraphStyle",
     "NSStringDrawing",
     "NSText",
+    # The window's backdrop (`mod backdrop`, backlog F126): an
+    # `NSVisualEffectView` added below the content, which `NSGraphics`'s
+    # ordering constant places.
+    "NSVisualEffectView",
+    "NSGraphics",
 ] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = [
     "std",
     "CADisplayLink",
+    # The backdrop's layer kept under the one wgpu draws into.
+    "CALayer",
+    "objc2-core-foundation",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
@@ -224,6 +235,7 @@ headless = [
     "modal_editor",
     "splitmux",
     "syntax_view",
+    "backdrop",
 ]
 
 [[example]]
@@ -322,6 +334,10 @@ path = "../../examples/rust/features/popup.rs"
 [[example]]
 name = "theme"
 path = "../../examples/rust/features/theme.rs"
+
+[[example]]
+name = "backdrop"
+path = "../../examples/rust/features/backdrop.rs"
 
 [[example]]
 name = "metrics"

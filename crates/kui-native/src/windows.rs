@@ -90,7 +90,16 @@ impl DynShell<'_> {
                         } else {
                             self.chrome
                         };
-                        self.open_pane(event_loop, id, owner, config, chrome);
+                        // The app's backdrop on the app's windows, and the
+                        // same two exceptions: the devtools draw an opaque
+                        // panel, and a popup is a menu surface.
+                        let backdrop =
+                            if origin == OriginId::DEVTOOLS || config.kind == WindowKind::Popup {
+                                Backdrop::Opaque
+                            } else {
+                                self.backdrop
+                            };
+                        self.open_pane(event_loop, id, owner, config, chrome, backdrop);
                     }
                 }
                 // The app asking, rather than the declaration: a live
@@ -125,7 +134,7 @@ impl DynShell<'_> {
     }
 
     /// Opens the window a frame declared, on the shared session and device,
-    /// with `chrome` — the launcher's for the app's windows.
+    /// with `chrome` and `backdrop` — the launcher's for the app's windows.
     pub(super) fn open_pane(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -133,6 +142,7 @@ impl DynShell<'_> {
         owner: WindowId,
         config: WindowConfig,
         chrome: Chrome,
+        backdrop: Backdrop,
     ) {
         let size = if config.size.w > 0.0 && config.size.h > 0.0 {
             config.size
@@ -142,7 +152,7 @@ impl DynShell<'_> {
         // Untitled until its first frame's `window_title` lands (ADR 0004
         // decision 5): the declaration carries no string.
         let mut attrs = self
-            .window_attrs("", (size.w as f64, size.h as f64), chrome)
+            .window_attrs("", (size.w as f64, size.h as f64), chrome, backdrop)
             .with_active(config.activates);
         if config.kind == WindowKind::Popup {
             // A menu surface, not a window with the app's chrome: no
@@ -193,7 +203,13 @@ impl DynShell<'_> {
             return;
         };
         let px = window.inner_size();
-        let renderer = match kui_wgpu::Renderer::new_in(&gpu, window.clone(), px.width, px.height) {
+        let renderer = match kui_wgpu::Renderer::new_in_with(
+            &gpu,
+            window.clone(),
+            px.width,
+            px.height,
+            backdrop.is_translucent(),
+        ) {
             Ok(mut r) => {
                 r.set_frame_latency(self.frame_latency);
                 r
@@ -204,6 +220,7 @@ impl DynShell<'_> {
                 return;
             }
         };
+        let backdrop = crate::backdrop::apply(&window, &renderer, backdrop);
         // Before it is shown: AppKit makes a window key on ordering it
         // front and on every press, and asks `canBecomeKeyWindow` first —
         // so a non-activating window answers NO (`macos_key`), and its
@@ -219,7 +236,7 @@ impl DynShell<'_> {
         core.set_subpixel_text(self.subpixel);
         core.env.window.id = id;
         self.push_pane(
-            event_loop, id, config, owner, chrome, core, window, renderer,
+            event_loop, id, config, owner, chrome, core, window, renderer, backdrop,
         );
         // ADR 0009 decision 1: a non-activating popup that opens while the
         // primary button is down **joins that press**. Evaluated once, here,
@@ -335,6 +352,7 @@ impl DynShell<'_> {
         mut core: Core,
         window: Arc<Window>,
         renderer: kui_wgpu::Renderer,
+        backdrop: Backdrop,
     ) {
         // macOS is the one platform whose own menu is worth the app's
         // appearance, because it is the one with rows that cannot be drawn
@@ -404,6 +422,7 @@ impl DynShell<'_> {
             owner,
             activates: config.activates,
             chrome,
+            backdrop,
             native_controls,
             applied_min: None,
             anchor: config.anchor,
@@ -457,15 +476,17 @@ impl DynShell<'_> {
         sync_env(pane, &self.system, self.pinned_system, audio);
     }
 
-    /// The attributes a window of this app is created with: `chrome` —
-    /// the launcher's for the app's own windows — the launcher's icon, and
-    /// hidden until the accessibility adapter has hooked it (the platform
-    /// adapters must see the window before it is shown).
+    /// The attributes a window of this app is created with: `chrome` and
+    /// `backdrop` — the launcher's for the app's own windows — the
+    /// launcher's icon, and hidden until the accessibility adapter has
+    /// hooked it (the platform adapters must see the window before it is
+    /// shown).
     pub(super) fn window_attrs(
         &self,
         title: &str,
         (w, h): (f64, f64),
         chrome: Chrome,
+        backdrop: Backdrop,
     ) -> winit::window::WindowAttributes {
         #[allow(unused_mut)]
         let mut attrs = Window::default_attributes()
@@ -473,6 +494,7 @@ impl DynShell<'_> {
             .with_inner_size(LogicalSize::new(w, h))
             .with_visible(false);
         attrs = self.icon.apply(attrs);
+        attrs = crate::backdrop::attrs(attrs, backdrop);
         match chrome {
             Chrome::Native => {}
             Chrome::Custom => {

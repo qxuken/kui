@@ -64,6 +64,7 @@ pub(crate) fn sync_env(
         // asked of it.
         always_on_top: pane.applied_on_top && pane.level_supported,
         native_controls: pane.native_controls,
+        backdrop: pane.backdrop,
     };
     // One device per app, so every pane reads the same state; per-frame
     // because the driver opens it off-thread and closes it when idle, and
@@ -265,6 +266,12 @@ pub(crate) struct Pane {
     /// app's windows, [`Chrome::Native`] for the devtools' own — which
     /// the core declares and nothing in the app draws a titlebar for.
     pub(crate) chrome: Chrome,
+    /// What shows through this window, as the platform gave it
+    /// (`backdrop::apply`, backlog F126): what `env.window.backdrop`
+    /// reports, and whether a frame is cleared to nothing rather than to
+    /// the theme's `bg`. `Opaque` for every window of an app that never
+    /// asked, and for a popup and the devtools' window of one that did.
+    pub(crate) backdrop: Backdrop,
     /// The keep-out rect `env.window.native_controls` reports: measured
     /// from the window once it exists (`macos_chrome`), on the one
     /// platform whose custom chrome keeps controls of the OS's over the

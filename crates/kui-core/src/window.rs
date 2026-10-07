@@ -430,6 +430,94 @@ impl DismissReason {
     }
 }
 
+/// What shows through a window where its frame paints nothing, or paints
+/// with alpha: the window's own opaque ground, the desktop, or a material
+/// the OS draws behind the window — the blurred desktop of a macOS sidebar
+/// (`NSVisualEffectView`), Windows 11's Mica and Acrylic (backlog F126).
+///
+/// Asked for by the app (`kui_native::Launcher::backdrop`) and reported
+/// back, as what the driver actually got, in [`WindowEnv::backdrop`] — a
+/// platform without the material reads `Transparent` or `Opaque`, and a
+/// view that draws translucent chrome draws it opaque there. Everything
+/// but `Opaque` clears the frame to nothing rather than to the theme's
+/// `bg`, so a node's `bg` is what sits over the backdrop, with its alpha.
+///
+/// ```rust
+/// use kui_core::Backdrop;
+///
+/// assert_eq!(Backdrop::default(), Backdrop::Opaque);
+/// assert_eq!(Backdrop::from_name("sidebar"), Some(Backdrop::Sidebar));
+/// assert!(Backdrop::Sidebar.is_material() && !Backdrop::Transparent.is_material());
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Backdrop {
+    /// The window is opaque: what every window is unless an app asks.
+    #[default]
+    Opaque,
+    /// See-through where the frame is, with no material behind it: the
+    /// desktop and the windows under this one show as they are. What a
+    /// material falls back to on a platform with a compositor but no
+    /// material (Linux).
+    Transparent,
+    /// The material behind a window's content: macOS's under-window
+    /// background, Windows 11's Mica.
+    Window,
+    /// The material of a sidebar or a source list: macOS's sidebar,
+    /// Windows 11's Mica Alt (the tabbed-window backdrop), which is the
+    /// more tinted of its two.
+    Sidebar,
+    /// The material of a menu or a popover, more see-through than the
+    /// two above: macOS's popover material, Windows 11's Acrylic.
+    Transient,
+}
+
+impl Backdrop {
+    /// Every backdrop, in wire order: the index C's `KUI_BACKDROP_*`
+    /// spells. Append-only.
+    pub const ALL: [Backdrop; 5] = [
+        Backdrop::Opaque,
+        Backdrop::Transparent,
+        Backdrop::Window,
+        Backdrop::Sidebar,
+        Backdrop::Transient,
+    ];
+
+    /// The wire name, for the bindings and the report.
+    pub fn name(self) -> &'static str {
+        match self {
+            Backdrop::Opaque => "opaque",
+            Backdrop::Transparent => "transparent",
+            Backdrop::Window => "window",
+            Backdrop::Sidebar => "sidebar",
+            Backdrop::Transient => "transient",
+        }
+    }
+
+    /// The backdrop a wire name spells: the inverse of [`Self::name`].
+    pub fn from_name(name: &str) -> Option<Backdrop> {
+        Self::ALL.into_iter().find(|b| b.name() == name)
+    }
+
+    /// The backdrop at C's index, `None` past the end.
+    pub fn from_code(code: u32) -> Option<Backdrop> {
+        Self::ALL.get(code as usize).copied()
+    }
+
+    /// Whether the OS draws a material behind the window, as against the
+    /// window being opaque or merely see-through.
+    pub fn is_material(self) -> bool {
+        matches!(
+            self,
+            Backdrop::Window | Backdrop::Sidebar | Backdrop::Transient
+        )
+    }
+
+    /// Whether the window lets anything through: everything but `Opaque`.
+    pub fn is_translucent(self) -> bool {
+        self != Backdrop::Opaque
+    }
+}
+
 /// What the host knows about its window, pushed into `Env` by the frame
 /// driver. Views (e.g. `widgets::titlebar`) read this to adapt: reserve
 /// space for native controls, pick the maximize/restore glyph, or render
@@ -459,4 +547,11 @@ pub struct WindowEnv {
     /// draws over our content — macOS traffic lights under custom chrome.
     /// Views keep out of it; `None` means the OS draws nothing over us.
     pub native_controls: Option<Rect>,
+    /// What is behind the window's transparent pixels, as the driver got
+    /// it — not as the app asked: a `Sidebar` asked for on Linux reads
+    /// `Transparent`, and on Windows 10, or under a renderer that cannot
+    /// present with alpha, `Opaque`. A view that draws a translucent
+    /// sidebar over the material draws it opaque when this is `Opaque`
+    /// (backlog F126). `Opaque` by default and in a headless core.
+    pub backdrop: Backdrop,
 }
