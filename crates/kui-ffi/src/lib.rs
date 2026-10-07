@@ -264,14 +264,19 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             fragment_source: String::new(),
             fragment_draws: Vec::new(),
             texture_draws: Vec::new(),
+            draws_current: false,
             image_pixels: None,
             last_warnings: Vec::new(),
+            pending_warnings: Vec::new(),
             last_access: Default::default(),
+            last_runs: Vec::new(),
             last_announcements: Vec::new(),
             window_commands: VecDeque::new(),
             menu_actions: VecDeque::new(),
             menu_text: String::new(),
+            row_text: String::new(),
             menu_accel: String::new(),
+            copy_text: String::new(),
             menu_html: String::new(),
             devtools_key: String::new(),
             file_request: None,
@@ -820,7 +825,8 @@ pub extern "C" fn kui_text_cache_bytes(ptr: *mut KuiCtx) -> usize {
 
 /// Drains the warnings the core raised since the last call (silent
 /// misconfigurations it noticed while finishing frames, each once) into
-/// `out`, up to `cap`, and returns the count. The strings stay valid
+/// `out`, up to `cap` (the rest wait for the next call), and returns the
+/// count. The strings stay valid
 /// until the next call on this context. A standalone context starts with
 /// the checks off ([`kui_set_diagnostics`] turns them on); `kui_run`
 /// prints them to stderr itself in debug builds.
@@ -833,9 +839,14 @@ pub extern "C" fn kui_take_warnings(ptr: *mut KuiCtx, out: *mut KuiWarning, cap:
         if out.is_null() || cap == 0 {
             return 0;
         }
-        c.last_warnings = c.core().take_warnings();
-        let n = c.last_warnings.len().min(cap);
-        for (i, w) in c.last_warnings.iter().take(n).enumerate() {
+        // Drained from the core into the context's queue, and handed out
+        // from there `cap` at a time: the rest wait, as kui.h says, where
+        // they were dropped.
+        let raised = c.core().take_warnings();
+        c.pending_warnings.extend(raised);
+        let n = c.pending_warnings.len().min(cap);
+        c.last_warnings = c.pending_warnings.drain(..n).collect();
+        for (i, w) in c.last_warnings.iter().enumerate() {
             let s = |s: &str| KuiStr {
                 ptr: s.as_ptr(),
                 len: s.len(),

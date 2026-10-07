@@ -3267,3 +3267,166 @@ fn a_min_of_zero_is_undeclared_and_min_none_declares_zero() {
     assert!(min_of(KUI_MIN_FIT).is_fit());
     assert_eq!(min_of(12.0).resolved(), 12.0);
 }
+
+/// What a door hands out stays where kui.h says it stays: each of these
+/// was freed by some other call first (the 2026-10-07 round's audit), and
+/// each is pinned here by the pointer the host was given still being the
+/// one the context holds, or by what was left waiting.
+#[cfg(test)]
+mod borrows {
+    use super::*;
+
+    fn zspec() -> KuiSpec {
+        unsafe { std::mem::zeroed() }
+    }
+    fn none() -> KuiStr {
+        KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        }
+    }
+
+    /// Two `kui_draw_data` calls in a frame hand out the same arrays; the
+    /// second one freed the first's. A frame with none is NULL, not an
+    /// empty Vec's dangling pointer.
+    #[test]
+    fn draw_data_twice_in_a_frame_hands_out_the_same_arrays() {
+        let ctx = kui_ctx_new();
+        let frame = |polygon: bool| {
+            kui_frame_begin(ctx, 200.0, 200.0, 1.0);
+            kui_root(ctx, &zspec());
+            if polygon {
+                let mut s = zspec();
+                s.bg = 0xff0000ff;
+                let xy = [[0.0f32, 0.0], [50.0, 0.0], [25.0, 40.0]];
+                let null = std::ptr::null_mut();
+                kui_polygon(ctx, none(), xy.as_ptr().cast(), 3, &s, null, null, null);
+            }
+            kui_frame_finish(ctx);
+        };
+        frame(true);
+        let (mut a, mut b) = (KuiDrawData::default(), KuiDrawData::default());
+        assert!(kui_draw_data(ctx, &mut a));
+        assert!(a.fragment_count >= 1, "a polygon is a fragment draw");
+        let first = unsafe { *a.fragments };
+        assert!(kui_draw_data(ctx, &mut b));
+        assert_eq!(a.fragments, b.fragments, "the same array, not a new one");
+        assert_eq!(unsafe { (*a.fragments).fragment }, first.fragment);
+        assert_eq!(a.fragments, unsafe { (*ctx).fragment_draws.as_ptr() });
+        // The next frame transcribes again, and an empty list is NULL.
+        frame(false);
+        assert!(kui_draw_data(ctx, &mut a));
+        assert_eq!((a.fragments, a.fragment_count), (std::ptr::null(), 0));
+        assert_eq!((a.textures, a.texture_count), (std::ptr::null(), 0));
+        kui_ctx_free(ctx);
+    }
+
+    /// `kui_access_runs` leaves the strings `kui_access_tree` handed out
+    /// alone; it replaced the whole tree they live in.
+    #[test]
+    fn access_runs_leave_the_tree_its_strings() {
+        let ctx = kui_ctx_new();
+        let mut spec = zspec();
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 300.0,
+        };
+        spec.label = ks("Document name");
+        kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+        let key = kui_text_edit(
+            ctx,
+            ks("doc"),
+            ks("hello world"),
+            std::ptr::null(),
+            2,
+            &spec,
+        );
+        kui_frame_finish(ctx);
+        let mut nodes = [unsafe { std::mem::zeroed::<KuiAccessNode>() }; 4];
+        let n = kui_access_tree(ctx, nodes.as_mut_ptr(), nodes.len());
+        let ed = *nodes[..n].iter().find(|n| n.key == key).unwrap();
+        assert_eq!(&*kstr(ed.name), "Document name");
+        let mut runs = [unsafe { std::mem::zeroed::<KuiAccessRun>() }; 4];
+        assert!(kui_access_runs(ctx, key, runs.as_mut_ptr(), runs.len()) >= 1);
+        assert_eq!(&*kstr(runs[0].text), "hello world");
+        let held = unsafe { &(*ctx).last_access };
+        let node = held.get(Key(key)).unwrap();
+        assert_eq!(
+            node.name.as_deref().unwrap().as_ptr(),
+            ed.name.ptr,
+            "still the tree handed out"
+        );
+        assert_eq!(node.value.as_deref().unwrap().as_ptr(), ed.value.ptr);
+        kui_ctx_free(ctx);
+    }
+
+    /// A taken menu action's text outlives reading a menu row and asking
+    /// for a copy, which wrote over it; and an `out` the door cannot write
+    /// leaves the action queued, where it was dropped.
+    #[test]
+    fn a_menu_actions_text_outlives_reading_a_menu() {
+        let ctx = kui_ctx_new();
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        kui_root(ctx, &zspec());
+        let key = kui_open_keyed(ctx, ks("t"), &zspec(), std::ptr::null_mut());
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        kui_set_clipboard(ctx, ks("copied text payload"), none());
+        assert!(!kui_take_menu_action(ctx, std::ptr::null_mut()), "no out");
+        let mut a: KuiMenuAction = unsafe { std::mem::zeroed() };
+        a.size = std::mem::size_of::<KuiMenuAction>() as u32;
+        assert!(kui_take_menu_action(ctx, &mut a), "still queued");
+        assert_eq!(a.kind, KUI_MENU_ACTION_SET_CLIPBOARD);
+        let item = KuiMenuItem {
+            label: ks("Row"),
+            role: KUI_MENU_CUSTOM,
+            enabled: 1,
+            id: std::ptr::null(),
+            accel: none(),
+            checked: 0,
+        };
+        assert!(kui_open_menu(ctx, key, 10.0, 10.0, &item, 1));
+        let mut label = none();
+        let null = std::ptr::null_mut();
+        assert!(kui_menu_item(
+            ctx,
+            0,
+            &mut label,
+            std::ptr::null_mut(),
+            null,
+            null
+        ));
+        assert_eq!(&*kstr(label), "Row");
+        let mut copy = none();
+        kui_request_copy(ctx, &mut copy);
+        assert_eq!(a.text.ptr, unsafe { (*ctx).menu_text.as_ptr() });
+        assert_eq!(&*kstr(a.text), "copied text payload");
+        kui_ctx_free(ctx);
+    }
+
+    /// `kui_take_warnings` with a short `cap` leaves the rest for the next
+    /// call, as kui.h says; it dropped them.
+    #[test]
+    fn warnings_past_cap_wait() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        kui_root(ctx, &zspec());
+        for name in ["a", "a", "b", "b", "c", "c"] {
+            kui_slot(ctx, ks(name), std::ptr::null());
+        }
+        kui_frame_finish(ctx);
+        let mut out = [unsafe { std::mem::zeroed::<KuiWarning>() }; 8];
+        let mut all = Vec::new();
+        loop {
+            let n = kui_take_warnings(ctx, out.as_mut_ptr(), 1);
+            if n == 0 {
+                break;
+            }
+            assert_eq!(n, 1);
+            all.push(kstr(out[0].code).into_owned());
+        }
+        assert!(all.len() >= 3, "every warning, one a call: {all:?}");
+        kui_ctx_free(ctx);
+    }
+}

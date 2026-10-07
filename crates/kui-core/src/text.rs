@@ -4631,10 +4631,21 @@ fn widest_unbreakable(buffer: &Buffer, anywhere: bool) -> f32 {
     widest.max(ink)
 }
 
+/// The shaper's metrics for a font size and line height in physical px,
+/// each at least one pixel: cosmic-text asserts a line height is not 0,
+/// which aborted a Node or Lua process over `lineHeight = 0` (or a size
+/// under 0.4, whose derived height rounds to 0), and a negative one spun
+/// its layout without end. A NaN or an infinity is a pixel too. Every
+/// buffer kui shapes into is made through here.
+pub(crate) fn shaper_metrics(size: f32, line_height: f32) -> Metrics {
+    let px = |v: f32| if v.is_finite() { v.max(1.0) } else { 1.0 };
+    Metrics::new(px(size), px(line_height))
+}
+
 /// A buffer set up for the style's line breaking: cosmic-text's wrap mode,
 /// plus tail ellipsizing at the line budget when asked for.
 fn new_buffer(fs: &mut FontSystem, style: &TextStyle, scale: f32) -> Buffer {
-    let metrics = Metrics::new(style.size * scale, style.line_height * scale);
+    let metrics = shaper_metrics(style.size * scale, style.line_height * scale);
     let mut buffer = Buffer::new(fs, metrics);
     buffer.set_wrap(match style.wrap {
         TextWrap::Word | TextWrap::BreakSpaces => Wrap::WordOrGlyph,

@@ -396,8 +396,55 @@ fn opt_f32(r: &mut Reader<'_>) -> Result<Option<f32>> {
 }
 
 fn payload(s: &str) -> Result<kui_core::Value> {
-    let json: Json = serde_json::from_str(s).map_err(|e| err(format!("bad payload JSON: {e}")))?;
+    let s = well_formed(s);
+    let json: Json = serde_json::from_str(&s).map_err(|e| err(format!("bad payload JSON: {e}")))?;
     Ok(value_of(&json))
+}
+
+/// `s` with every lone surrogate escape `JSON.stringify` writes (a string
+/// cut through an emoji: `'ab😀'.slice(0, 3)`) turned into `�`, the
+/// character a text child shows for it. serde_json refuses one, which
+/// failed the whole frame over one message; a pair is left as it is.
+fn well_formed(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains("\\ud") && !s.contains("\\uD") {
+        return s.into();
+    }
+    let unit = |b: &[u8], at: usize| -> Option<u16> {
+        let hex = b.get(at..at + 6)?;
+        if hex[0] != b'\\' || hex[1] != b'u' {
+            return None;
+        }
+        u16::from_str_radix(std::str::from_utf8(&hex[2..]).ok()?, 16).ok()
+    };
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let (mut i, mut copied) = (0, 0);
+    while i < b.len() {
+        if b[i] != b'\\' {
+            i += 1;
+            continue;
+        }
+        let Some(u) = unit(b, i) else {
+            // Another escape: it and the character it escapes, so an
+            // escaped backslash before a `u` is not read as one.
+            i += 2;
+            continue;
+        };
+        let high = (0xD800..0xDC00).contains(&u);
+        let low = (0xDC00..0xE000).contains(&u);
+        if high && unit(b, i + 6).is_some_and(|n| (0xDC00..0xE000).contains(&n)) {
+            i += 12;
+        } else if high || low {
+            out.push_str(&s[copied..i]);
+            out.push_str("\\uFFFD");
+            i += 6;
+            copied = i;
+        } else {
+            i += 6;
+        }
+    }
+    out.push_str(&s[copied..]);
+    out.into()
 }
 
 /// The binary prop parser —
@@ -1477,6 +1524,38 @@ mod tests {
     use super::*;
     use kui_core::schema::{CUSTOM, PROPS};
     use kui_core::{Align, Color, Size, Sizing, Value};
+
+    /// A payload with a lone surrogate (what `JSON.stringify` writes for a
+    /// string cut through an emoji) decodes with U+FFFD in its place, a
+    /// pair decodes whole, and an escaped backslash before a `u` is text.
+    #[test]
+    fn a_payloads_lone_surrogate_is_a_replacement_character() {
+        let str_of = |json: &str| match payload(json).unwrap() {
+            Value::Str(s) => s,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(str_of(r#""ab\ud83d""#), "ab\u{FFFD}");
+        assert_eq!(
+            str_of(r#""\udc00x\ud83d\ud83d""#),
+            "\u{FFFD}x\u{FFFD}\u{FFFD}"
+        );
+        assert_eq!(str_of(r#""😀""#), "😀");
+        assert_eq!(str_of(r#""\\ud83d""#), "\\ud83d");
+        assert_eq!(str_of(r#""\"\ud83d""#), "\"\u{FFFD}");
+        assert!(payload("{\"a\": \"plain\"}").is_ok());
+    }
+
+    /// A whole number past 2^53 was a JS float, and stays one: as an Int
+    /// it came back a BigInt.
+    #[test]
+    fn a_payload_integer_js_cannot_hold_is_a_float() {
+        assert_eq!(payload("9007199254740992").unwrap(), Value::Int(1 << 53));
+        assert_eq!(
+            payload("9007199254740994").unwrap(),
+            Value::Float(9007199254740994.0)
+        );
+        assert_eq!(payload("-5").unwrap(), Value::Int(-5));
+    }
 
     /// Decodes one prop list from a hand-built stream.
     fn decode(stream: &[f64], strings: &[u8]) -> PropsOut {

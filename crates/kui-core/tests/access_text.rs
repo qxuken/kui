@@ -261,6 +261,27 @@ fn custom_frame_in(
     sink
 }
 
+/// A caret byte inside a character is that character's start, and the
+/// tree is still there: slicing the run at it panicked, which the frame's
+/// guard turned into an empty access tree every frame it stood.
+#[test]
+fn a_custom_caret_inside_a_character_lands_before_it() {
+    let mut core = Core::new();
+    // Two runs, "é" and "é": byte 1 is inside the first, 3 the second.
+    for (caret, run, character) in [(1, 0, 0), (2, 1, 0), (3, 1, 0), (4, 1, 1)] {
+        let sink = custom_frame(&mut core, &["éé"], (0, caret), None);
+        let tree = core.access_tree().clone();
+        let node = tree.get(sink).expect("the editor is in the tree");
+        assert_eq!(node.runs.len(), 2);
+        let focus = node.focus.expect("a caret");
+        assert_eq!(
+            (focus.run, focus.character),
+            (node.runs[run].key, character),
+            "caret at byte {caret}"
+        );
+    }
+}
+
 #[test]
 fn a_custom_editor_declares_its_lines_caret_and_selection() {
     let mut core = Core::new();

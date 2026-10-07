@@ -52,8 +52,12 @@ export function withEffects(model, ...effects) {
 
 // A frame crosses the boundary one way: JS encodes the tree into one
 // Float64Array + string table and the addon lowers it zero-copy. One encoder
-// serves every context — its buffers are consumed synchronously.
+// serves every context — its buffers are consumed synchronously. Measuring
+// has one of its own: a `<devtoolsTab>`'s function child is called in the
+// middle of an encode, and a `measureText` there reset the frame's buffers
+// under it ("binary frame must start with the root op").
 const encoder = createEncoder(native.protocol());
+const measurer = createEncoder(native.protocol());
 
 // A prop name the schema does not know has no wire id, so it never crosses:
 // the encoder is the only side that can see it, and it reports what it
@@ -206,7 +210,7 @@ KuiWindow.prototype.setView = function setView(tree, window) {
 // it draws. A style name the schema does not know is reported like a
 // view's would be.
 function measureText(content, style, maxWidth) {
-  const { stream, strings, unknown, unknownTokens } = encoder.encodeText(content, style, this[TOKENS]);
+  const { stream, strings, unknown, unknownTokens } = measurer.encodeText(content, style, this[TOKENS]);
   const m = this.measureTextBinary(stream, strings, maxWidth);
   reportUnknown(this, unknown, unknownTokens);
   return m;

@@ -46,7 +46,7 @@
 //! Powerline separators are not shaped at all but rasterized from the cell
 //! box, so a TUI's frames are seamless in any font.
 
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, Style as FontStyle};
+use cosmic_text::{Attrs, Buffer, FontSystem, Shaping, Style as FontStyle};
 use rustc_hash::FxHashMap;
 
 use crate::atlas::GlyphAtlas;
@@ -841,7 +841,7 @@ fn shape_one(
     fs: &mut FontSystem,
     scale: f32,
 ) -> Option<Shaped> {
-    let metrics = Metrics::new(style.size * scale * fit, style.line_height * scale);
+    let metrics = crate::text::shaper_metrics(style.size * scale * fit, style.line_height * scale);
     let mut buffer = Buffer::new(fs, metrics);
     buffer.set_size(None, None);
     // Bold at a weight the family has a face for, never another family's.

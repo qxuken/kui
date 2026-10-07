@@ -155,12 +155,12 @@ pub extern "C" fn kui_request_copy(ptr: *mut KuiCtx, out: *mut KuiStr) -> u32 {
         };
         match c.core().request_copy() {
             kui_core::CopyRequest::Ready(text) => {
-                c.menu_text = text;
+                c.copy_text = text;
                 if !out.is_null() {
                     unsafe {
                         out.write(KuiStr {
-                            ptr: c.menu_text.as_ptr(),
-                            len: c.menu_text.len(),
+                            ptr: c.copy_text.as_ptr(),
+                            len: c.copy_text.len(),
                         })
                     };
                 }
@@ -273,6 +273,12 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
         };
         if c.menu_actions.is_empty() {
             c.menu_actions = c.core().take_menu_actions().into();
+        }
+        // Checked before the action leaves the queue, as kui_poll_event
+        // does: an `out` this library cannot write keeps it for the next
+        // call rather than dropping a clipboard write.
+        if !out_accepts(out) {
+            return false;
         }
         let Some(action) = c.menu_actions.pop_front() else {
             return false;
@@ -434,12 +440,12 @@ pub extern "C" fn kui_menu_bar_menu(
             return 0;
         };
         let (text, on, count) = (m.label.clone(), m.enabled, m.items.len());
-        c.menu_text = text;
+        c.row_text = text;
         if !label.is_null() {
             unsafe {
                 label.write(KuiStr {
-                    ptr: c.menu_text.as_ptr(),
-                    len: c.menu_text.len(),
+                    ptr: c.row_text.as_ptr(),
+                    len: c.row_text.len(),
                 })
             };
         }
@@ -492,13 +498,13 @@ fn write_row(
     role: *mut u32,
     flags: *mut u32,
 ) {
-    c.menu_text = row.text().to_string();
+    c.row_text = row.text().to_string();
     c.menu_accel = row.accel_text().unwrap_or_default().to_string();
     if !label.is_null() {
         unsafe {
             label.write(KuiStr {
-                ptr: c.menu_text.as_ptr(),
-                len: c.menu_text.len(),
+                ptr: c.row_text.as_ptr(),
+                len: c.row_text.len(),
             })
         };
     }

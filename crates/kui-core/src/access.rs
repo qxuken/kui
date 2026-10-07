@@ -686,14 +686,19 @@ impl AccessNode {
     }
 
     /// The run position of a byte offset into line `line`'s text: the
-    /// run holding it, or the line's last run for its end.
+    /// run holding it, or the line's last run for its end. An offset inside
+    /// a character is the character's start: a custom editor's `caret` is
+    /// the app's number, and slicing there panicked, which emptied the
+    /// whole tree for every frame it stood.
     pub fn text_pos(&self, line: usize, offset: usize) -> Option<TextPos> {
+        let chars_before =
+            |r: &AccessRun, at: usize| r.text[..r.text.floor_char_boundary(at)].chars().count();
         let mut last = None;
         for r in self.runs.iter().filter(|r| r.line == line) {
             if offset >= r.start && offset < r.end {
                 return Some(TextPos {
                     run: r.key,
-                    character: r.text[..offset - r.start].chars().count(),
+                    character: chars_before(r, offset - r.start),
                 });
             }
             last = Some(r);
@@ -701,9 +706,7 @@ impl AccessNode {
         let r = last?;
         Some(TextPos {
             run: r.key,
-            character: r.text[..(offset.max(r.start) - r.start).min(r.end - r.start)]
-                .chars()
-                .count(),
+            character: chars_before(r, (offset.max(r.start) - r.start).min(r.end - r.start)),
         })
     }
 }

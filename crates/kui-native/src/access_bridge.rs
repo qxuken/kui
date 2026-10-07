@@ -140,35 +140,7 @@ mod imp {
                     self.active = false;
                     None
                 }
-                AkWindowEvent::ActionRequested(req) => {
-                    let action = match req.action {
-                        Action::Click => AccessAction::Click,
-                        Action::Focus => AccessAction::Focus,
-                        Action::Blur => AccessAction::Blur,
-                        Action::SetValue => AccessAction::SetValue,
-                        Action::Increment => AccessAction::Increment,
-                        Action::Decrement => AccessAction::Decrement,
-                        Action::ScrollIntoView => AccessAction::ScrollIntoView,
-                        Action::ScrollUp => AccessAction::ScrollUp,
-                        Action::ScrollDown => AccessAction::ScrollDown,
-                        Action::ScrollLeft => AccessAction::ScrollLeft,
-                        Action::ScrollRight => AccessAction::ScrollRight,
-                        Action::SetTextSelection => AccessAction::SetTextSelection,
-                        Action::ReplaceSelectedText => AccessAction::ReplaceSelectedText,
-                        _ => return None,
-                    };
-                    let mut out = AccessRequest::new(Key(req.target_node.0), action);
-                    match req.data {
-                        Some(ActionData::Value(s)) => out.value = Some(s.to_string()),
-                        Some(ActionData::NumericValue(n)) => out.value = Some(n.to_string()),
-                        Some(ActionData::SetTextSelection(sel)) => {
-                            out.anchor = Some(pos_of(sel.anchor));
-                            out.focus = Some(pos_of(sel.focus));
-                        }
-                        _ => {}
-                    }
-                    Some(out)
-                }
+                AkWindowEvent::ActionRequested(req) => request_of(req),
             }
         }
 
@@ -275,6 +247,43 @@ mod imp {
         }
     }
 
+    /// A platform's action request as the core's. Expand and Collapse are
+    /// a click: a node carries `expanded` because clicking it shows or
+    /// hides something (a disclosure, a select's list), and UIA's
+    /// ExpandCollapse pattern — the only one AccessKit gives such a node,
+    /// in place of Invoke — asks for the state it does not have yet, which
+    /// AccessKit checks before it sends. They were dropped, so a
+    /// disclosure could not be opened from Narrator.
+    fn request_of(req: accesskit::ActionRequest) -> Option<AccessRequest> {
+        let action = match req.action {
+            Action::Click | Action::Expand | Action::Collapse => AccessAction::Click,
+            Action::Focus => AccessAction::Focus,
+            Action::Blur => AccessAction::Blur,
+            Action::SetValue => AccessAction::SetValue,
+            Action::Increment => AccessAction::Increment,
+            Action::Decrement => AccessAction::Decrement,
+            Action::ScrollIntoView => AccessAction::ScrollIntoView,
+            Action::ScrollUp => AccessAction::ScrollUp,
+            Action::ScrollDown => AccessAction::ScrollDown,
+            Action::ScrollLeft => AccessAction::ScrollLeft,
+            Action::ScrollRight => AccessAction::ScrollRight,
+            Action::SetTextSelection => AccessAction::SetTextSelection,
+            Action::ReplaceSelectedText => AccessAction::ReplaceSelectedText,
+            _ => return None,
+        };
+        let mut out = AccessRequest::new(Key(req.target_node.0), action);
+        match req.data {
+            Some(ActionData::Value(s)) => out.value = Some(s.to_string()),
+            Some(ActionData::NumericValue(n)) => out.value = Some(n.to_string()),
+            Some(ActionData::SetTextSelection(sel)) => {
+                out.anchor = Some(pos_of(sel.anchor));
+                out.focus = Some(pos_of(sel.focus));
+            }
+            _ => {}
+        }
+        Some(out)
+    }
+
     fn rect_of(r: kui_core::Rect) -> Rect {
         Rect {
             x0: r.x as f64,
@@ -352,6 +361,16 @@ mod imp {
             }
             if let Some(v) = &n.value {
                 node.set_value(v.as_str());
+            } else if role == AkRole::Label
+                && let Some(name) = &n.name
+            {
+                // A `Label`'s name is its *value* to AccessKit
+                // (`label_comes_from_value`): UIA's Name and AT-SPI's
+                // name read the value alone, so a static text with only a
+                // label was nameless on Windows and Linux — every line of
+                // text, a list row's content, a drawn title. macOS reads
+                // the label first and the value after, the same string.
+                node.set_value(name.as_str());
             }
             if let (Some(anchor), Some(focus)) = (n.anchor, n.focus) {
                 node.set_text_selection(TextSelection {
@@ -441,6 +460,65 @@ mod imp {
             tree: Some(TreeInfo::new(root)),
             tree_id: TreeId::ROOT,
             focus: NodeId(tree.focus.unwrap_or(root_key).0),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use kui_core::{Core, NodeSpec, Size, TextStyle};
+
+        /// A static text reaches every platform with its words: AccessKit
+        /// names a `Label` by its value, which is what UIA's Name and
+        /// AT-SPI's name read, so the text is the value as well as the
+        /// label. A row's text was nameless under UI Automation, and so
+        /// was every line of text in every window.
+        #[test]
+        fn a_static_text_is_named_by_its_value() {
+            let mut core = Core::new();
+            let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+            ui.text("Hello", TextStyle::new(14.0));
+            ui.leaf_keyed("b", NodeSpec::row().on_click("b").label("Save"));
+            ui.finish();
+            let update = tree_update(core.access_tree(), 1.0, &[]);
+            let label = update
+                .nodes
+                .iter()
+                .map(|(_, n)| n)
+                .find(|n| n.role() == AkRole::Label)
+                .expect("a Label for the text");
+            assert_eq!(label.value(), Some("Hello"));
+            assert_eq!(label.label(), Some("Hello"));
+            // A button keeps its name where its role reads it, and no value.
+            let button = update
+                .nodes
+                .iter()
+                .map(|(_, n)| n)
+                .find(|n| n.role() == AkRole::Button)
+                .expect("a Button");
+            assert_eq!((button.label(), button.value()), (Some("Save"), None));
+        }
+
+        /// UIA's Expand and Collapse reach the node as the click that
+        /// shows or hides what it discloses; an action kui has no answer
+        /// for still reaches nothing.
+        #[test]
+        fn expand_and_collapse_are_a_click() {
+            let req = |action| accesskit::ActionRequest {
+                action,
+                target_tree: TreeId::ROOT,
+                target_node: NodeId(7),
+                data: None,
+            };
+            for a in [Action::Click, Action::Expand, Action::Collapse] {
+                let out = request_of(req(a)).expect("a request");
+                assert_eq!(
+                    (out.key, out.action),
+                    (Key(7), AccessAction::Click),
+                    "{a:?}"
+                );
+            }
+            assert!(request_of(req(Action::ShowContextMenu)).is_none());
         }
     }
 }
