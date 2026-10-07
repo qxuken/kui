@@ -457,6 +457,48 @@ fn the_second_channel_of_a_press_is_one_table() {
     assert_eq!(plain(KeyCode::Insert).edit_event(), None);
 }
 
+/// A dead key that does not combine with the key after it types its
+/// accent with that key, and the press carries what the platform composed
+/// (backlog RG127): German's `^ space` is a Space whose text is `^`, and
+/// `^ z` a `z` whose text is `^z`. The editor inserts the press's text —
+/// Space's too — where it inserted a space and a bare `z`.
+#[test]
+fn a_press_after_a_dead_key_inserts_what_the_platform_composed() {
+    let plain = |code| KeyPress::new(code, KeyMods::default());
+    let text = |s: &str| Some(InputEvent::Text(s.to_string()));
+    assert_eq!(plain(KeyCode::Space).with_text("^").edit_event(), text("^"));
+    assert_eq!(plain(KeyCode::Space).with_text("´").edit_event(), text("´"));
+    assert_eq!(
+        plain(KeyCode::Char('z')).with_text("^z").edit_event(),
+        text("^z")
+    );
+    // A Space with no text, or a control character for one, is a space.
+    assert_eq!(plain(KeyCode::Space).edit_event(), text(" "));
+    assert_eq!(
+        plain(KeyCode::Space).with_text("\u{0}").edit_event(),
+        text(" ")
+    );
+    // Under a chord it is still a chord, whatever it carries.
+    let ctrl = KeyMods::NONE.with_ctrl();
+    assert_eq!(
+        KeyPress::new(KeyCode::Space, ctrl)
+            .with_text("^")
+            .edit_event(),
+        None
+    );
+
+    // And through a window's editor, end to end.
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(300.0, 80.0), 1.0);
+    let field = kui_core::widgets::text_input(&mut ui, "field", "");
+    ui.finish();
+    core.set_focus(Some(field));
+    core.press(plain(KeyCode::Space).with_text("^"));
+    core.press(plain(KeyCode::Char('z')).with_text("^z"));
+    core.press(plain(KeyCode::Space).with_text(" "));
+    assert_eq!(core.edit_text(field).as_deref(), Some("^^z "));
+}
+
 /// A key sink inside a modal — the field report's editor — and the two
 /// channels one Escape travels: the keymap hears it, *and* the modal asks
 /// to go away. Driving only `KeyDown` is what left every one of those

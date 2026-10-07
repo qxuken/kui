@@ -157,9 +157,9 @@ round after alpha.40 — what RG76, RG113 and RG118 left, each with its
 reason (F103's skipped half, RG76, RG113 and RG118 themselves were built
 on 2026-10-07 and are in the archive), and RG126 from the alpha.41
 pre-tag pass (a warm cell grid 3 to 5% slower, bisected to one commit
-and not yet explained), and RG127 and RG128 from the Windows and Linux
-round after alpha.41 (a dead key's accent dropped before a key it does
-not combine with, and F103's docs on a covered Windows window). Everything else that has been filed has
+and not yet explained); RG127 and RG128, from the Windows and Linux
+round after alpha.41, were built the day they were filed and are in the
+archive. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2353,54 +2353,15 @@ without a fallback list (RG118, RG123). Read sound by probe:
 - C32 is gone: `Mono` on this machine is upright, and the app's list is
   asked ahead of the platform's.
 
-Two entries, RG127 and RG128. Not kui's: on Windows the first dead key
+Two entries, RG127 and RG128, **built 2026-10-07**, the day they were
+filed, and in the archive: a dead key's accent dropped before a key it
+does not combine with, on Windows always and under X11 with `imeOff`
+(RG127), and F103's docs saying a covered Windows window skips its
+frames (RG128). Not kui's: on Windows the first dead key
 after the layout changes is lost, `^ e` typing `e` — a bare winit window
 does the same. WSLg could not answer two things: its window manager
 ignores a minimize (`WM_STATE` stays Normal), and it reports no
 occlusion, so X11's halves of RG45 and F103 stay as read.
-
-### `!` RG127 — A dead key's accent is dropped when the key after it has a key code
-
-On Windows with German (and US-International, where `'` and `"` are
-dead), a dead key and then a key it does not combine with types the
-second key alone: `^ space` is ` ` where it is `^`, `´ space` is ` `
-where it is `´`, and `^ z` is `z` where it is `^z` — in a `text_input`
-and in a key sink's `text`, `imeOff` or not. Under X11 it is the same
-with `imeOff` on: `^ space` and `´ space` are ` ` where xkb says `^` and
-`'`. (With the input method on, X11 composes through XIM and every case
-is right.) A US-International user cannot type a quote.
-
-Not winit's: a bare winit 0.30.13 window driven the same way gets
-`event.text` right in every case — `"^"`, `"´"`, `"^z"`, `"^^"`. The
-runner reads a press's `KeyPress::text` off the *logical* key
-(`kui-native/src/keys.rs`, the `ktext` match — Space is `" "` outright,
-and winit's logical key for `^ z` is the `z` it falls back to), and
-`KeyPress::edit_event` turns that text into the editor's `Text`
-(`kui-core/src/input.rs`; Space is `" "` there too). The `Text` of
-winit's composed `event.text` further down `on_key` is reached only when
-`edit_event` gave nothing, which is why `^ ^` — a dead key, code
-`Unknown` — comes through whole. **Wants:** the runner to set a plain
-press's `text` from `event.text` (where `ktext` is today's answer when
-winit has none), and Space's arm of `edit_event` to insert the press's
-`text` when it has one; a probe like this round's, driven with German
-on both platforms, to pin it.
-
-### `.` RG128 — F103's docs say a covered Windows window skips its frames; it does not
-
-The CHANGELOG's F103 entry ("where the platform never says a window is
-covered — Windows behind other windows, Wayland …") and
-`kui-native/src/retry.rs`'s module doc ("a platform that never says it
-is covered (Windows, Wayland)") both have an animating Windows window
-behind others skip frames. Measured, DWM composes a covered window and
-nothing is skipped: 241 frames a second at 25% of a core with a topmost
-window over it, the same as uncovered (241 at 22%); minimized, 0 at
-0.3%. F103's wait never engages there, and a covered animation costs
-what a visible one does. **Wants:** the two docs to say a Windows frame is
-skipped only when an acquire times out (a minimized window asks for none,
-RG45) — and,
-separately, whether a covered Windows window should stop on its own
-(`DwmGetWindowAttribute(DWMWA_CLOAKED)` covers only cloaked ones), when
-an app's battery report asks.
 
 ## After alpha.40
 
@@ -3836,3 +3797,9 @@ move.
 - `.` **RG124** — [A C `fragment` with a `tooltip` was hovered and spoken and drew nothing](backlog/closed-2026-09.md#-rg124--a-c-fragment-with-a-tooltip-was-hovered-and-spoken-and-drew-nothing--done-2026-10-07) — done (2026-10-07)
 
 - `.` **RG125** — [The docs said `imeOff` stops dead keys everywhere, and that five prebuilds ship](backlog/closed-2026-09.md#-rg125--the-docs-said-imeoff-stops-dead-keys-everywhere-and-that-five-prebuilds-ship--done-2026-10-07) — done (2026-10-07)
+
+**From the Windows and Linux round after alpha.41 (2026-10-07)** — RG127 and RG128, filed and built the same day
+
+- `!` **RG127** — [A dead key's accent is dropped when the key after it has a key code](backlog/closed-2026-09.md#-rg127--a-dead-keys-accent-is-dropped-when-the-key-after-it-has-a-key-code--done-2026-10-07) — done (2026-10-07) — a press's text is what winit composed, and Space inserts its own
+
+- `.` **RG128** — [F103's docs say a covered Windows window skips its frames; it does not](backlog/closed-2026-09.md#-rg128--f103s-docs-say-a-covered-windows-window-skips-its-frames-it-does-not--done-2026-10-07) — done (2026-10-07)

@@ -1374,11 +1374,18 @@ impl KeyPress {
             // any other modifier it is a chord like every other chord —
             // an IME toggle, an Emacs mark — and inserts nothing (AR10;
             // before that it said " " whatever was held, so Ctrl+Space
-            // typed a space into an editor and clicked a control).
+            // typed a space into an editor and clicked a control). What it
+            // inserts is its `text` when it has some: after a dead key it
+            // is the accent, `^ space` typing `^` (backlog RG127).
             KeyCode::Space => {
                 let m = self.mods;
+                let text = self
+                    .text
+                    .as_deref()
+                    .filter(|t| t.chars().any(|c| !c.is_control()))
+                    .unwrap_or(" ");
                 return (!m.ctrl && !m.alt && !m.super_key)
-                    .then(|| InputEvent::Text(" ".to_string()));
+                    .then(|| InputEvent::Text(text.to_string()));
             }
             // Anything else inserts whatever it inserts. A driver leaves
             // `text` unset for a chord, so this is where one stops.

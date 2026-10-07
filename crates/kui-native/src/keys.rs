@@ -445,6 +445,32 @@ pub(crate) fn script_after(tracked: LayoutScript, layout: KeyCode, at: KeyCode) 
     }
 }
 
+/// What a plain press types (`KeyPress::text`): the platform's composed
+/// text where it has any, else the layout's character, or a space for
+/// Space; nothing under a chord. Composed first, because a dead key that
+/// does not combine with the key after it types its accent with that
+/// key: `^ z` is `"^z"`, `^ space` and `´ space` the accent alone, while
+/// the logical key is the `z`, or the Space, it fell back to — and the
+/// editor inserts this text (backlog RG127). A control character is no
+/// text: Enter's `"\r"` and Tab's `"\t"` are keys to the editor.
+pub(crate) fn press_text(
+    logical: &WinitKey,
+    composed: Option<&str>,
+    plain: bool,
+) -> Option<String> {
+    if !plain {
+        return None;
+    }
+    if let Some(text) = composed.filter(|t| t.chars().any(|c| !c.is_control())) {
+        return Some(text.to_string());
+    }
+    match logical {
+        WinitKey::Character(s) => Some(s.to_string()),
+        WinitKey::Named(NamedKey::Space) => Some(" ".to_string()),
+        _ => None,
+    }
+}
+
 /// Whether a letter is Latin: ASCII, Latin-1, Latin Extended-A and -B,
 /// the IPA block and Latin Extended Additional — every letter a Latin
 /// layout puts on a key.
@@ -643,46 +669,41 @@ impl DynShell<'_> {
         };
         // Where the key *is*, which no layout moves.
         let physical = physical_code(event.physical_key);
-        let (logical_code, ktext) = match &logical {
-            WinitKey::Character(s) => (
-                KeyCode::Char(s.chars().next().unwrap_or('\u{fffd}')),
-                plain.then(|| s.to_string()),
-            ),
-            WinitKey::Named(n) => (
-                match n {
-                    NamedKey::Space => KeyCode::Space,
-                    NamedKey::ArrowLeft => KeyCode::Left,
-                    NamedKey::ArrowRight => KeyCode::Right,
-                    NamedKey::ArrowUp => KeyCode::Up,
-                    NamedKey::ArrowDown => KeyCode::Down,
-                    NamedKey::Home => KeyCode::Home,
-                    NamedKey::End => KeyCode::End,
-                    NamedKey::PageUp => KeyCode::PageUp,
-                    NamedKey::PageDown => KeyCode::PageDown,
-                    NamedKey::Backspace => KeyCode::Backspace,
-                    NamedKey::Delete => KeyCode::Delete,
-                    NamedKey::Enter => KeyCode::Enter,
-                    NamedKey::Tab => KeyCode::Tab,
-                    NamedKey::Escape => KeyCode::Escape,
-                    NamedKey::Insert => KeyCode::Insert,
-                    NamedKey::F1 => KeyCode::F(1),
-                    NamedKey::F2 => KeyCode::F(2),
-                    NamedKey::F3 => KeyCode::F(3),
-                    NamedKey::F4 => KeyCode::F(4),
-                    NamedKey::F5 => KeyCode::F(5),
-                    NamedKey::F6 => KeyCode::F(6),
-                    NamedKey::F7 => KeyCode::F(7),
-                    NamedKey::F8 => KeyCode::F(8),
-                    NamedKey::F9 => KeyCode::F(9),
-                    NamedKey::F10 => KeyCode::F(10),
-                    NamedKey::F11 => KeyCode::F(11),
-                    NamedKey::F12 => KeyCode::F(12),
-                    other => named_code(other),
-                },
-                (plain && *n == NamedKey::Space).then(|| " ".to_string()),
-            ),
-            _ => (KeyCode::Unknown, None),
+        let logical_code = match &logical {
+            WinitKey::Character(s) => KeyCode::Char(s.chars().next().unwrap_or('\u{fffd}')),
+            WinitKey::Named(n) => match n {
+                NamedKey::Space => KeyCode::Space,
+                NamedKey::ArrowLeft => KeyCode::Left,
+                NamedKey::ArrowRight => KeyCode::Right,
+                NamedKey::ArrowUp => KeyCode::Up,
+                NamedKey::ArrowDown => KeyCode::Down,
+                NamedKey::Home => KeyCode::Home,
+                NamedKey::End => KeyCode::End,
+                NamedKey::PageUp => KeyCode::PageUp,
+                NamedKey::PageDown => KeyCode::PageDown,
+                NamedKey::Backspace => KeyCode::Backspace,
+                NamedKey::Delete => KeyCode::Delete,
+                NamedKey::Enter => KeyCode::Enter,
+                NamedKey::Tab => KeyCode::Tab,
+                NamedKey::Escape => KeyCode::Escape,
+                NamedKey::Insert => KeyCode::Insert,
+                NamedKey::F1 => KeyCode::F(1),
+                NamedKey::F2 => KeyCode::F(2),
+                NamedKey::F3 => KeyCode::F(3),
+                NamedKey::F4 => KeyCode::F(4),
+                NamedKey::F5 => KeyCode::F(5),
+                NamedKey::F6 => KeyCode::F(6),
+                NamedKey::F7 => KeyCode::F(7),
+                NamedKey::F8 => KeyCode::F(8),
+                NamedKey::F9 => KeyCode::F(9),
+                NamedKey::F10 => KeyCode::F(10),
+                NamedKey::F11 => KeyCode::F(11),
+                NamedKey::F12 => KeyCode::F(12),
+                other => named_code(other),
+            },
+            _ => KeyCode::Unknown,
         };
+        let ktext = press_text(&logical, event.text.as_deref(), plain);
         // `KeyPress::from_layout` resolves the two into the code a keymap
         // binds against — the layout's key while it speaks ASCII, the
         // US-QWERTY key at that position as Shift prints it when it does
@@ -1060,6 +1081,33 @@ mod tests {
         assert_eq!(location_of(L::Right), KeyLocation::Right);
         assert_eq!(location_of(L::Standard), KeyLocation::Standard);
         assert_eq!(named_code(&NamedKey::AltGraph), KeyCode::Alt, "RG96");
+    }
+
+    /// A press's text is what the platform composed, which a dead key
+    /// that did not combine makes differ from the logical key (backlog
+    /// RG127) — winit's readings on Windows with German, driven by
+    /// `keybd_event`, and under X11 with `imeOff`.
+    #[test]
+    fn a_press_types_what_the_platform_composed() {
+        let ch = |s: &str| WinitKey::Character(s.into());
+        let space = WinitKey::Named(NamedKey::Space);
+        let text = |s: &str| Some(s.to_string());
+        // `^ z`: the logical key falls back to `z`, the text is both.
+        assert_eq!(press_text(&ch("z"), Some("^z"), true), text("^z"));
+        // `^ space` and `´ space`: Space, typing the accent.
+        assert_eq!(press_text(&space, Some("^"), true), text("^"));
+        assert_eq!(press_text(&space, Some("´"), true), text("´"));
+        // `^ e`: the two agree.
+        assert_eq!(press_text(&ch("ê"), Some("ê"), true), text("ê"));
+        // No composed text: the layout's character, a space for Space.
+        assert_eq!(press_text(&ch("w"), None, true), text("w"));
+        assert_eq!(press_text(&space, None, true), text(" "));
+        // A control character is a key's, not text; a dead key types
+        // nothing yet; a chord types nothing at all.
+        let enter = WinitKey::Named(NamedKey::Enter);
+        assert_eq!(press_text(&enter, Some("\r"), true), None);
+        assert_eq!(press_text(&WinitKey::Dead(Some('^')), None, true), None);
+        assert_eq!(press_text(&ch("z"), Some("^z"), false), None);
     }
 
     /// The record goes by where a key is, the bit by what it means

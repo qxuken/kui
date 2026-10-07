@@ -23,6 +23,15 @@ was the first bare bump to break an app in five releases).
 
 ## Unreleased
 
+**What breaks.**
+
+- A press after a dead key it does not combine with carries what the
+  platform typed in its `text`: German's `^ space` is a Space whose
+  `text` is `^`, and `^ z` a `z` whose `text` is `^z`, where they said `" "`
+  and `z` — in a key sink's payload and in what an editor inserts (under
+  Fixed, RG127). A keymap that binds Space by its `text` rather than its
+  `code` sees the accent there.
+
 ### Added
 
 - **An Odin binding, experimental** (`packages/odin`). `kui/c` mirrors
@@ -74,6 +83,27 @@ was the first bare bump to break an app in five releases).
 - `examples/rust/tools/schema-dump.rs`: the prop schema (props,
   composites, elements, events, the verb table, the name lists) as JSON,
   for a binding generated outside Rust.
+
+### Fixed
+
+- **A dead key types its accent before a key it does not combine with**
+  (backlog RG127, from the Windows and Linux round after alpha.41). With
+  German, `^ space` typed a space where it types `^`, `´ space` a space
+  where it types `´`, and `^ z` a `z` where it types `^z` — on Windows
+  always, and under X11 with `imeOff` on; on US-International, where `'`
+  and `"` are dead, a quote could not be typed at all. winit composed it
+  right: the runner read a press's text off the logical key, which is
+  the key the accent fell back to, and Space's insert was a space
+  whatever the press carried. A press's text is now what the platform
+  composed, the layout's character where it composed nothing, and Space
+  inserts its own. `^ e` was right and is unchanged; with the input
+  method on, X11 composes through XIM as before.
+- The docs of F103 (alpha.41) said an animating Windows window behind
+  other windows skips its frames. It does not: DWM composes a covered
+  window, and it draws at the display's rate, 241 frames a second here,
+  as an uncovered one does; minimized, it asks for none (RG45). F103's
+  wait holds there only for an acquire that times out. `retry.rs` says so
+  now (backlog RG128).
 
 ## 0.1.0-alpha.41 (2026-10-07)
 

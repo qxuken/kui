@@ -25,10 +25,13 @@
 //! An animation is the other thing that asks while the surface skips,
 //! and it asks every turn of the loop: a skip returns at once, with no
 //! drawable to wait for and no vsync behind it, so an animating window
-//! on a platform that never says it is covered (Windows, Wayland), or
-//! whose acquires time out, built and dropped frames as fast as the loop
-//! went round — about 8,300 in a second and a half, the first time it
-//! was counted (backlog F103). So the animation's next frame after a skip
+//! whose surface skips on a platform that never says it is covered
+//! (Wayland), or whose acquires time out, built and dropped frames as
+//! fast as the loop went round — about 8,300 in a second and a half, the
+//! first time it was counted (backlog F103). Not Windows behind other
+//! windows: DWM composes a covered window, so nothing is skipped and it
+//! draws at the display's rate, as an uncovered one does (backlog RG128);
+//! there it is an acquire that times out. So the animation's next frame after a skip
 //! waits out the same retry interval ([`Retry::animation_waits`]): at
 //! most one try a retry apart while the surface will not take them, and
 //! back at the display's rate with the first frame that lands.
