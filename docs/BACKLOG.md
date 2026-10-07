@@ -155,7 +155,9 @@ texture upload's second copy),
 DX16 from the DX sweep (declined with a condition), and RG121 from the
 round after alpha.40 — what RG76, RG113 and RG118 left, each with its
 reason (F103's skipped half, RG76, RG113 and RG118 themselves were built
-on 2026-10-07 and are in the archive). Everything else that has been filed has
+on 2026-10-07 and are in the archive), and RG126 from the alpha.41
+pre-tag pass (a warm cell grid 3 to 5% slower, bisected to one commit
+and not yet explained). Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2289,13 +2291,32 @@ asked at weights its face lacks and not re-pinned when the app's fonts
 move (RG123), a C `fragment` whose tooltip was never drawn (RG124), and
 the docs saying `imeOff` stops dead keys everywhere and five prebuilds
 (RG125). The dash review's one other find, a hairline pattern's
-solid-or-dashed verdict flipping at the closing width, is RG121's.
+solid-or-dashed verdict flipping at the closing width, is RG121's. The
+bench guard was green; one unguarded row moved, and is RG126, open.
 Sound by probe: a leaf's hint in a scroller, a modal, a virtual row and
 over a full-window polygon, its key, the access tree and the devtools
 tab's float; the dash against an independent capsule-union oracle over
 seven patterns and forty offsets; edits that move a long line's tab
 cuts; the measure copies' sweep; F103's deadline in every path; and
 F125 across windows, focus loss and an open preedit.
+
+### `.` RG126 — A warm cell grid reads 3 to 5% slower since a grid tells its family's glyphs by name
+
+`cells_200x50_warm`, unguarded, read **+6.0% (±1.4%)** against the
+alpha.40 tag in the pre-tag pass, +3.8% against alpha.40 with F125
+merged; `streaming` and `as_text_nodes` within their noise. Bisected by
+building the `cells` bench at seven commits of the round and running the
+binaries alternately, twice: flat (53.6–54.5 µs) through `644040b`, then
+**56.1–57.0 µs from `6394559`** — RG118's grid change, `StyleTable::own`
+(a face id per variant) for `family: String` and a family-name check in
+`shape_cell` — and flat after. A warm frame never reaches the changed
+code: every cell is a table read in `lookup`, the miss path is where the
+check lives. Moving that miss out of line (`#[cold]`, `#[inline(never)]`)
+brought `streaming` back to the base and left `warm` where it was, so it
+was not kept. About 3 µs on a 10,000-cell frame, well inside the 0.2 ms
+warm gate the grid was built to. **Wants:** an xctrace sample of the
+warm loop at `6394559^` and `6394559` (the C41 recipe: leaf addresses →
+objdump) before anything is changed.
 
 ## After alpha.40
 
