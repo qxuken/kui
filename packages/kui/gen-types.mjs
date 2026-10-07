@@ -354,10 +354,11 @@ ${tableOf(
 ## Doors
 
 The verbs — what an app or a host *calls* on its context, as against what
-it declares in the tree above — one row per verb across the four bindings
+it declares in the tree above — one row per verb across the five bindings
 (\`schema::DOORS\`, backlog B1a). A cell is the binding's spelling (a
-\`kui_*\` function; a method on both of Node's classes, or on the one it
-is prefixed with; a function on Lua's \`env\`), the same thing in another
+\`kui_*\` function; a procedure of Odin's package \`kui\`; a method on
+both of Node's classes, or on the one it is prefixed with; a function on
+Lua's \`env\`), the same thing in another
 form (a prop, a reading, a callback, a constructor option), or — in
 italics — the reason the binding has none. The reasons are the point: the
 bindings are not one surface. A Lua script is a guest in the host's frame
@@ -365,15 +366,18 @@ bindings are not one surface. A Lua script is a guest in the host's frame
 a reading, so registering, driving, pacing and reading back are the
 host's; Node's \`Ctx\` drives a headless core and its \`KuiWindow\` is
 driven by the runner, so the driver's half is on \`Ctx\` alone; and a
-Node host never paints, so the renderer's rows are C's.
+Node host never paints, so the renderer's rows are C's. Odin's doors are
+kui.h's, so its column follows C's: the same function without its
+\`kui_\`, and no door where C has none.
 
 Each binding's own test pins its column both ways: every spelling here is
 a door there, and every door there is a row here — so a verb added to one
-binding is a row with its three other cells, or a red test.
+binding is a row with its other cells, or a red test. Odin's is pinned by
+its generator (\`nu scripts/odin.nu gen --check\`).
 
 ${tableOf(
-  ['verb', 'C', 'Node', 'Lua', 'description'],
-  doors.map((d) => [`\`${d.rust}\``, doorCell(d.c), doorCell(d.node), doorCell(d.lua), d.doc]),
+  ['verb', 'C', 'Odin', 'Node', 'Lua', 'description'],
+  doors.map((d) => [`\`${d.rust}\``, doorCell(d.c), doorCell(d.odin), doorCell(d.node), doorCell(d.lua), d.doc]),
 )}
 `;
 

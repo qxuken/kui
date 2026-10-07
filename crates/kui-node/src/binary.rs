@@ -221,6 +221,7 @@ pub fn protocol_json() -> Json {
                         [
                             ("rust", Json::String(d.rust.into())),
                             ("c", cell(d.c)),
+                            ("odin", cell(d.odin)),
                             ("node", cell(d.node)),
                             ("lua", cell(d.lua)),
                             ("doc", Json::String(d.doc.into())),

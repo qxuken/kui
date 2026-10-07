@@ -1890,6 +1890,8 @@ export type DoorCell = { is: string } | { as: string } | { no: string };
 export interface Door {
   rust: string;
   c: DoorCell;
+  /** The Odin binding's (packages/odin), pinned by its generator. */
+  odin: DoorCell;
   node: DoorCell;
   lua: DoorCell;
   doc: string;
