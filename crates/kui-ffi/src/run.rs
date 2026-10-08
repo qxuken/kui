@@ -273,7 +273,7 @@ fn launcher_for(title: &str, options: RunOptions) -> kui_native::Launcher {
     if let Some(frames) = options.frame_latency {
         l = l.frame_latency(frames);
     }
-    l
+    l.backdrop(options.backdrop)
 }
 
 #[cfg(test)]

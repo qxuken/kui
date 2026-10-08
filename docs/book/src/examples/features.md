@@ -5,6 +5,8 @@ One cross-cutting behaviour, with exactly the widgets it touches.
 - [`accessibility`](features/accessibility.md)
 - [`align`](features/align.md)
 - [`audio`](features/audio.md)
+- [`backdrop`](features/backdrop.md)
+- [`backdrop_blur`](features/backdrop_blur.md)
 - [`clipboard`](features/clipboard.md)
 - [`devtools_tab`](features/devtools_tab.md)
 - [`drag`](features/drag.md)

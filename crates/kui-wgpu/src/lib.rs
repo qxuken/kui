@@ -92,6 +92,8 @@
 
 pub use wgpu;
 
+mod backdrop;
+
 use kui_core::atlas::GlyphAtlas;
 use kui_core::{Clip, DisplayList, Quad, QuadKind};
 
@@ -156,6 +158,10 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
         // Drawn by the image branch with its own texture bound in the
         // atlas's place.
         QuadKind::Texture => 3.0,
+        // Never drawn by this pipeline: the pass breaks at it and
+        // `backdrop` blurs what is under it. A solid with no colour, so
+        // one a frame did not plan a blur for draws nothing in a run.
+        QuadKind::Backdrop => 0.0,
     };
     // `uv` is atlas texels on every kind but two: a segment carries its
     // endpoints there as f32 bits, and a texture quad an index into the
@@ -173,6 +179,19 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
             q.uv[3] as f32,
         ]
     };
+    if q.kind == QuadKind::Backdrop {
+        return Instance {
+            pos: [q.rect.x, q.rect.y],
+            size: [0.0, 0.0],
+            color: [0.0; 4],
+            border_color: [0.0; 4],
+            params: [0.0; 4],
+            uv: [0.0; 4],
+            clip: [0.0; 4],
+            radii: [0.0; 4],
+            clip_radii: [0.0; 4],
+        };
+    }
     Instance {
         pos: [q.rect.x, q.rect.y],
         size: [q.rect.w, q.rect.h],
@@ -693,6 +712,16 @@ pub struct Renderer {
     /// A picture drawn over the clear and under everything the frame
     /// draws ([`Renderer::set_ground`]), when there is one.
     ground: Option<Ground>,
+    /// The backdrop blur's pipelines (backlog F129): made the first time a
+    /// frame blurs, kept for the renderer's life.
+    backdrop_pipes: Option<backdrop::Pipes>,
+    /// Its offscreen frame and scratch textures, at the surface's size:
+    /// made when a frame blurs, dropped after `backdrop::IDLE_FRAMES`
+    /// frames that do not.
+    backdrop_targets: Option<backdrop::Targets>,
+    backdrop_idle: u32,
+    /// The frame's blurs, in paint order.
+    blurs: Vec<backdrop::Blur>,
 }
 
 /// The picture under a frame: its texture, the part of it the window
@@ -1176,6 +1205,10 @@ impl Renderer {
                 a: 1.0,
             },
             ground: None,
+            backdrop_pipes: None,
+            backdrop_targets: None,
+            backdrop_idle: 0,
+            blurs: Vec::new(),
         })
     }
 
@@ -1422,6 +1455,150 @@ impl Renderer {
         }
     }
 
+    /// Plans the frame's backdrop blurs (backlog F129), and makes or drops
+    /// what drawing them takes: the pipelines once, the offscreen frame and
+    /// scratch textures at the surface's size, a parameter slot per blur.
+    /// `any` is whether the list has a backdrop quad at all, noticed while
+    /// the instances were written, so a frame without one scans nothing.
+    fn plan_backdrops(&mut self, dl: &DisplayList, any: bool) {
+        self.blurs.clear();
+        let (w, h) = (self.config.width, self.config.height);
+        if any {
+            for (i, q) in dl.quads.iter().enumerate() {
+                if q.kind == QuadKind::Backdrop
+                    && let Some(b) = backdrop::plan(i as u32, q, dl.clip_of(q), w, h)
+                {
+                    self.blurs.push(b);
+                }
+            }
+        }
+        if self.blurs.is_empty() {
+            self.backdrop_idle = self.backdrop_idle.saturating_add(1);
+            if self.backdrop_idle > backdrop::IDLE_FRAMES {
+                self.backdrop_targets = None;
+            }
+            return;
+        }
+        self.backdrop_idle = 0;
+        let device = self.gpu.device();
+        let align = self.uniform_align;
+        let format = self.config.format;
+        let pipes = self
+            .backdrop_pipes
+            .get_or_insert_with(|| backdrop::Pipes::new(device, format, align));
+        let mut rebind = false;
+        if self.blurs.len() > pipes.params_cap {
+            pipes.params_cap = self.blurs.len().next_power_of_two();
+            pipes.params = backdrop::params_buffer(device, pipes.params_cap, align);
+            rebind = true;
+        }
+        if rebind
+            || self
+                .backdrop_targets
+                .as_ref()
+                .is_none_or(|t| t.size != (w, h))
+        {
+            self.backdrop_targets = Some(backdrop::Targets::new(device, pipes, format, w, h));
+        }
+        let slot = align as usize;
+        let mut bytes = vec![0u8; self.blurs.len() * slot];
+        for (i, b) in self.blurs.iter().enumerate() {
+            let mut p = b.params;
+            p.sizes[2] = w as f32;
+            p.sizes[3] = h as f32;
+            bytes[i * slot..i * slot + std::mem::size_of::<backdrop::Params>()]
+                .copy_from_slice(bytemuck::bytes_of(&p));
+        }
+        self.gpu.queue().write_buffer(&pipes.params, 0, &bytes);
+    }
+
+    /// Draws the instances in `range` into `pass`: in one instanced draw,
+    /// or — where a fragment or a texture-backed image interrupts the run
+    /// — the run before it with the über-pipeline, then that one quad with
+    /// its own pipeline (a fragment) or its own group 0 (a texture), then
+    /// on. Consecutive quads of the same handle still take one set each
+    /// (about 0.6 us); runs of ordinary quads are unbroken.
+    fn draw_quads(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        dl: &DisplayList,
+        range: std::ops::Range<u32>,
+        fragment_pipelines: &[wgpu::RenderPipeline],
+        texture_binds: &[Option<u64>],
+    ) {
+        if range.is_empty() {
+            return;
+        }
+        pass.set_vertex_buffer(0, self.instance_buf.slice(..));
+        if fragment_pipelines.is_empty() && texture_binds.is_empty() {
+            // The whole run in one instanced draw, as a frame has always
+            // been. Nothing below runs.
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.draw(0..6, range);
+            return;
+        }
+        let mut run_start = range.start;
+        let mut on_quads = false;
+        for i in range.clone() {
+            let q = &dl.quads[i as usize];
+            if q.kind != QuadKind::Fragment && q.kind != QuadKind::Texture {
+                continue;
+            }
+            if i > run_start {
+                if !on_quads {
+                    pass.set_pipeline(&self.pipeline);
+                    pass.set_bind_group(0, &self.bind_group, &[]);
+                    on_quads = true;
+                }
+                pass.draw(0..6, run_start..i);
+            }
+            // `uv[0]` is the index into the side list, which is also this
+            // fragment's parameter slot, or this texture's bind.
+            let slot = q.uv[0] as usize;
+            if q.kind == QuadKind::Texture {
+                if let Some(Some(id)) = texture_binds.get(slot)
+                    && let Some(b) = self.texture_binds.get(id)
+                {
+                    pass.set_pipeline(&self.pipeline);
+                    pass.set_bind_group(0, &b.bind, &[]);
+                    on_quads = false;
+                    pass.draw(0..6, i..i + 1);
+                }
+            } else if let Some(pipeline) = fragment_pipelines.get(slot) {
+                // A fragment reading a texture-backed image takes that
+                // image's group 0 — the texture in the atlas's place,
+                // `atlas_size` its size — exactly as a texture quad does;
+                // one reading the atlas, or nothing, takes the frame's. A
+                // texture the device could not make (a degenerate or
+                // oversized image) draws the fragment against the atlas
+                // with a zero rect, which `kui_sample` reads as no image.
+                let group0 = match draw_image_texture(&dl.fragments[slot]) {
+                    Some(index) => texture_binds
+                        .get(index)
+                        .copied()
+                        .flatten()
+                        .and_then(|id| self.texture_binds.get(&id))
+                        .map_or(&self.bind_group, |b| &b.bind),
+                    None => &self.bind_group,
+                };
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, group0, &[]);
+                pass.set_bind_group(1, &self.fragment_bind, &[slot as u32 * self.uniform_align]);
+                on_quads = false;
+                pass.draw(0..6, i..i + 1);
+            }
+            run_start = i + 1;
+        }
+        if range.end > run_start {
+            if !on_quads {
+                pass.set_pipeline(&self.pipeline);
+                pass.set_bind_group(0, &self.bind_group, &[]);
+            }
+            pass.draw(0..6, run_start..range.end);
+        }
+    }
+
     /// Draws one frame and presents it.
     ///
     /// Uploads the atlas when it changed since the last frame (and clears
@@ -1447,11 +1624,12 @@ impl Renderer {
         self.sync_atlas(atlas);
 
         self.instances.clear();
-        self.instances.extend(
-            dl.quads
-                .iter()
-                .map(|q| instance_of(q, &dl.clips, &dl.textures)),
-        );
+        let mut any_backdrop = false;
+        self.instances.extend(dl.quads.iter().map(|q| {
+            any_backdrop |= q.kind == QuadKind::Backdrop;
+            instance_of(q, &dl.clips, &dl.textures)
+        }));
+        self.plan_backdrops(dl, any_backdrop);
         if self.instances.len() > self.instance_cap {
             self.instance_cap = self.instances.len().next_power_of_two();
             self.instance_buf = create_instance_buffer(self.gpu.device(), self.instance_cap);
@@ -1614,22 +1792,84 @@ impl Renderer {
             }
         };
         let vsync_wait_ms = t_wait.elapsed().as_secs_f32() * 1e3;
-        let view = frame
+        let surface_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .gpu
             .device()
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
-        {
+        // A frame that blurs draws into the offscreen copy, so what it has
+        // drawn can be read back, and breaks its pass at each blur
+        // (backlog F129); one that does not draws to the surface in one
+        // pass, as it always has.
+        let blurring = !self.blurs.is_empty();
+        let offscreen = match (&self.backdrop_targets, blurring) {
+            (Some(t), true) => Some(t),
+            _ => None,
+        };
+        let target = offscreen.map_or(&surface_view, |t| &t.frame);
+        let end = self.instances.len() as u32;
+        let mut start = 0u32;
+        let mut next = 0usize;
+        loop {
+            let stop = self.blurs.get(next).map_or(end, |b| b.quad);
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("kui"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: target,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: if next == 0 {
+                                wgpu::LoadOp::Clear(self.clear_color)
+                            } else {
+                                wgpu::LoadOp::Load
+                            },
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                // The ground first, opaque over the clear, so everything
+                // the frame paints with alpha blends over it.
+                if next == 0
+                    && let Some(g) = &self.ground
+                {
+                    pass.set_pipeline(&g.pipeline);
+                    pass.set_bind_group(0, &g.bind, &[]);
+                    pass.draw(0..4, 0..1);
+                }
+                self.draw_quads(
+                    &mut pass,
+                    dl,
+                    start..stop,
+                    &fragment_pipelines,
+                    &texture_binds,
+                );
+            }
+            let (Some(b), Some(pipes), Some(t)) =
+                (self.blurs.get(next), &self.backdrop_pipes, offscreen)
+            else {
+                break;
+            };
+            backdrop::record(&mut encoder, pipes, t, b, next as u32 * self.uniform_align);
+            start = b.quad + 1;
+            next += 1;
+        }
+        if let (Some(pipes), Some(t)) = (&self.backdrop_pipes, offscreen) {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("kui"),
+                label: Some("kui.backdrop.blit"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: &surface_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.clear_color),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -1638,98 +1878,9 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // The ground first, opaque over the clear, so everything the
-            // frame paints with alpha blends over it.
-            if let Some(g) = &self.ground {
-                pass.set_pipeline(&g.pipeline);
-                pass.set_bind_group(0, &g.bind, &[]);
-                pass.draw(0..4, 0..1);
-            }
-            if !self.instances.is_empty() {
-                pass.set_vertex_buffer(0, self.instance_buf.slice(..));
-                if fragment_pipelines.is_empty() && texture_binds.is_empty() {
-                    // The whole frame in one instanced draw, as it has
-                    // always been. Nothing below runs.
-                    pass.set_pipeline(&self.pipeline);
-                    pass.set_bind_group(0, &self.bind_group, &[]);
-                    pass.draw(0..6, 0..self.instances.len() as u32);
-                } else {
-                    // A fragment or a texture-backed image interrupts the
-                    // run: draw what came before with the über-pipeline,
-                    // then that one quad with its own pipeline (a
-                    // fragment) or its own group 0 (a texture), then
-                    // carry on. Consecutive quads of the same handle
-                    // still take one set each (about 0.6 us); runs of
-                    // ordinary quads are unbroken.
-                    let mut run_start = 0u32;
-                    let mut on_quads = false;
-                    for (i, q) in dl.quads.iter().enumerate() {
-                        if q.kind != QuadKind::Fragment && q.kind != QuadKind::Texture {
-                            continue;
-                        }
-                        let i = i as u32;
-                        if i > run_start {
-                            if !on_quads {
-                                pass.set_pipeline(&self.pipeline);
-                                pass.set_bind_group(0, &self.bind_group, &[]);
-                                on_quads = true;
-                            }
-                            pass.draw(0..6, run_start..i);
-                        }
-                        // `uv[0]` is the index into the side list, which
-                        // is also this fragment's parameter slot, or this
-                        // texture's bind.
-                        let slot = q.uv[0] as usize;
-                        if q.kind == QuadKind::Texture {
-                            if let Some(Some(id)) = texture_binds.get(slot)
-                                && let Some(b) = self.texture_binds.get(id)
-                            {
-                                pass.set_pipeline(&self.pipeline);
-                                pass.set_bind_group(0, &b.bind, &[]);
-                                on_quads = false;
-                                pass.draw(0..6, i..i + 1);
-                            }
-                        } else if let Some(pipeline) = fragment_pipelines.get(slot) {
-                            // A fragment reading a texture-backed image
-                            // takes that image's group 0 — the texture in
-                            // the atlas's place, `atlas_size` its size —
-                            // exactly as a texture quad does; one reading
-                            // the atlas, or nothing, takes the frame's.
-                            // A texture the device could not make (a
-                            // degenerate or oversized image) draws the
-                            // fragment against the atlas with a zero rect,
-                            // which `kui_sample` reads as no image.
-                            let group0 = match draw_image_texture(&dl.fragments[slot]) {
-                                Some(index) => texture_binds
-                                    .get(index)
-                                    .copied()
-                                    .flatten()
-                                    .and_then(|id| self.texture_binds.get(&id))
-                                    .map_or(&self.bind_group, |b| &b.bind),
-                                None => &self.bind_group,
-                            };
-                            pass.set_pipeline(pipeline);
-                            pass.set_bind_group(0, group0, &[]);
-                            pass.set_bind_group(
-                                1,
-                                &self.fragment_bind,
-                                &[slot as u32 * self.uniform_align],
-                            );
-                            on_quads = false;
-                            pass.draw(0..6, i..i + 1);
-                        }
-                        run_start = i + 1;
-                    }
-                    let end = self.instances.len() as u32;
-                    if end > run_start {
-                        if !on_quads {
-                            pass.set_pipeline(&self.pipeline);
-                            pass.set_bind_group(0, &self.bind_group, &[]);
-                        }
-                        pass.draw(0..6, run_start..end);
-                    }
-                }
-            }
+            pass.set_pipeline(&pipes.blit);
+            pass.set_bind_group(0, &t.blit, &[0]);
+            pass.draw(0..3, 0..1);
         }
         self.gpu.queue().submit([encoder.finish()]);
         self.gpu.queue().present(frame);
@@ -2264,6 +2415,44 @@ mod tests {
         Validator::new(ValidationFlags::all(), Capabilities::empty())
             .validate(&module)
             .unwrap_or_else(|e| panic!("{e:?}"));
+    }
+
+    /// The backdrop blur's shader (backlog F129), every entry point, and
+    /// its `Params` the size the Rust struct writes.
+    #[test]
+    fn the_backdrop_shader_validates() {
+        use wgpu::naga::valid::{Capabilities, ValidationFlags, Validator};
+        let src = include_str!("backdrop.wgsl");
+        let module = wgpu::naga::front::wgsl::parse_str(src)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(src)));
+        Validator::new(ValidationFlags::all(), Capabilities::empty())
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let names: Vec<&str> = module
+            .entry_points
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        for want in [
+            "vs",
+            "fs_down",
+            "fs_blur_h",
+            "fs_blur_v",
+            "fs_composite",
+            "fs_blit",
+        ] {
+            assert!(names.contains(&want), "{want} in {names:?}");
+        }
+        let params = module
+            .types
+            .iter()
+            .find(|(_, t)| t.name.as_deref() == Some("Params"))
+            .expect("Params")
+            .1;
+        let wgpu::naga::TypeInner::Struct { span, .. } = params.inner else {
+            panic!("Params is a struct");
+        };
+        assert_eq!(span as usize, std::mem::size_of::<backdrop::Params>());
     }
 
     /// The line `report_faults` says, built without the heap (RG31): the

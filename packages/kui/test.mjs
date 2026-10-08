@@ -5002,7 +5002,7 @@ SCENE_TREES.sampler = (fx) =>
         'card',
       ),
       box({ dir: 'row', width: 60, height: 10, bg: '#3a3f52', window: 'drag' }, [], 'strip'),
-      box({ dir: 'row', focusRegion: true, gap: 4, height: 30, mainAlign: 'center', crossAlign: 'end' }, [
+      box({ dir: 'row', focusRegion: true, gap: 4, height: 30, mainAlign: 'center', crossAlign: 'end', backdropBlur: 6 }, [
         box({ dir: 'row', width: 20, height: 20, bg: '#2a2d3a', focusable: true, role: 'button', label: 'Stop' }, [], 'stop'),
       ], 'dock'),
       box({ width: 60 }, [
@@ -5411,7 +5411,7 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   const stride = quadStride();
   const count = quads.byteLength / stride;
   lines.push(`quads ${count} ${quadDigest(quads, Buffer.from(ctx.clips()))}`);
-  const kinds = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const kinds = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   for (let off = 0; off < quads.byteLength; off += stride) kinds[quads.readUInt32LE(off + KIND_WORD * 4)]++;
   lines.push(`kinds ${kinds.join(' ')}`);
   // A fragment's parameters ride a side list, not the quad, so the digest

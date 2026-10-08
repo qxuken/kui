@@ -642,6 +642,15 @@ fn inspector(
                     None,
                 ),
                 ("opacity", format!("{:.2}", n.opacity), None),
+                (
+                    "backdrop blur",
+                    if n.backdrop_blur > 0.0 {
+                        px(n.backdrop_blur)
+                    } else {
+                        "—".into()
+                    },
+                    None,
+                ),
             ],
         ),
         (

@@ -106,6 +106,9 @@ pub struct NodeInfo {
     pub border_w: f32,
     pub border_color: Color,
     pub opacity: f32,
+    /// Its `backdrop_blur` radius in logical px, 0 for none (backlog
+    /// F129).
+    pub backdrop_blur: f32,
     /// A scroller's offset, `None` for a node that does not scroll.
     pub scroll: Option<Vec2>,
     /// Every handler it declared, with the payload it would post:
@@ -166,6 +169,7 @@ impl NodeInfo {
                 Value::Int(self.border_color.to_hex() as i64),
             ),
             ("opacity", Value::float(self.opacity)),
+            ("backdrop_blur", Value::float(self.backdrop_blur)),
             ("scroll", Value::opt(self.scroll, Vec2::to_value)),
             (
                 "events",
@@ -371,6 +375,7 @@ impl Core {
                 border_w: spec.style.border_w,
                 border_color: spec.style.border_color,
                 opacity: spec.style.opacity,
+                backdrop_blur: spec.interact().backdrop_blur,
                 scroll: (l.scroll_x || l.scroll_y).then(|| self.scroll.drawn(tree.keys[i])),
                 events,
                 key: tree.keys[i],

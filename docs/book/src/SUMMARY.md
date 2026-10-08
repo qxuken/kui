@@ -47,6 +47,8 @@
   - [accessibility](examples/features/accessibility.md)
   - [align](examples/features/align.md)
   - [audio](examples/features/audio.md)
+  - [backdrop](examples/features/backdrop.md)
+  - [backdrop_blur](examples/features/backdrop_blur.md)
   - [clipboard](examples/features/clipboard.md)
   - [devtools_tab](examples/features/devtools_tab.md)
   - [drag](examples/features/drag.md)

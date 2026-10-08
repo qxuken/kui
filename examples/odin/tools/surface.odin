@@ -370,8 +370,11 @@ surface :: proc() -> bool {
 	check(kui.option_as_alt_get(ui) == .Left, "option_as_alt_get")
 	check(kui.ime_off_get(ui), "ime_off_get")
 	kui.env_set_always_on_top(ui, true)
-	// What is behind the window, as the host got it (backlog F126).
+	// What is behind the window, as the host got it (backlog F126), read back
+	// as a view reads it.
+	check(kui.ctx_backdrop(ui) == .Opaque, "a window is opaque until told")
 	kui.env_set_backdrop(ui, .Blur)
+	check(kui.ctx_backdrop(ui) == .Blur, "ctx_backdrop reads the blur back")
 
 	dd, dd_ok := kui.draw_data(ui)
 	check(dd_ok && len(dd.quads) > 0 && dd.scale == 2, "the surface frame drew at scale 2")
@@ -752,10 +755,13 @@ surface :: proc() -> bool {
 	// The application menu bar (ADR 0018): declared in a frame, read back the
 	// way a host with a bar of its own reads it, and one row chosen.
 	{
+		sort := []kui.Menu_Item{{label = "Name", role = .Custom}, {label = "Date", role = .Custom, checked = true}}
 		file := []kui.Menu_Item {
 			{label = "Save", role = .Custom, id = "file.save", accel = "mod+s"},
 			{role = .Separator},
 			{label = "Wrap", role = .Custom, checked = true},
+			// A submenu (backlog F128), read and chosen by its path.
+			{label = "Sort by", role = .Custom, submenu = sort},
 		}
 		menus := []kui.Bar_Menu{{label = "File", items = file}}
 		kui.frame_begin(ui, 320, 240, 1)
@@ -765,20 +771,27 @@ surface :: proc() -> bool {
 		count, rev := kui.menu_bar_menu_count(ui)
 		check(count == 1 && rev > 0, "one menu, at a revision")
 		items, label, on := kui.menu_bar_menu(ui, 0)
-		check(items == 3 && strings.contains(label, "File") && on, "menu_bar_menu reads the title back")
+		check(items == 4 && strings.contains(label, "File") && on, "menu_bar_menu reads the title back")
 		wrap, _, role, flags, ok := kui.menu_bar_item(ui, 0, 2)
 		check(ok && strings.contains(wrap, "Wrap") && role == .Custom && .Checked in flags && .Enabled in flags, "menu_bar_item reads a checked row back")
 		_, accel, _, _, save_ok := kui.menu_bar_item(ui, 0, 0)
 		check(save_ok && len(accel) > 0, "and the accelerator, in this platform's spelling")
 		_, _, _, _, ok = kui.menu_bar_item(ui, 9, 9)
 		check(!ok, "a row that is not there is false")
+		_, _, _, flags, ok = kui.menu_bar_item(ui, 0, 3)
+		check(ok && .Submenu in flags, "a row with rows of its own says so")
+		check(kui.menu_bar_submenu_count(ui, 0, {3}) == 2 && kui.menu_bar_submenu_count(ui, 0, {}) == 4, "menu_bar_submenu_count")
+		date, _, _, date_flags, date_ok := kui.menu_bar_item_path(ui, 0, {3, 1})
+		check(date_ok && strings.contains(date, "Date") && .Checked in date_flags, "menu_bar_item_path reads a row inside")
+		check(!kui.activate_menu_bar_path(ui, 0, {3}), "the row that opens the submenu is not chosen")
 
 		// The choice a native bar reports: the same event a press on the
 		// drawn bar's row produces.
 		check(kui.activate_menu_bar_item(ui, 0, 0), "activate_menu_bar_item")
+		check(kui.activate_menu_bar_path(ui, 0, {3, 0}), "activate_menu_bar_path")
 		menus_heard := 0
 		for mev in kui.poll_event(ui) do if strings.contains(kui.kind(mev.payload), "menu") do menus_heard += 1
-		check(menus_heard == 1, "and the app hears one menu event")
+		check(menus_heard == 2, "and the app hears a menu event for each")
 	}
 
 	// -- The rest of the header, so that the walk is what it says it is.
@@ -1065,6 +1078,17 @@ surface :: proc() -> bool {
 		check(kui.open_menu(ui, k.card, 0, 0, rows) && kui.close_menu(ui), "close_menu")
 		check(!kui.close_menu(ui), "false when nothing was open")
 		check(!kui.open_menu(ui, 0, 0, 0, rows), "a key of 0 opens nothing")
+		// A submenu, by its path (backlog F128).
+		nested := []kui.Menu_Item {
+			{label = "Open", role = .Custom},
+			{label = "Sort by", role = .Custom, submenu = {{label = "Name", role = .Custom}, {label = "Date", role = .Custom}}},
+		}
+		check(kui.open_menu(ui, k.card, 0, 0, nested), "a menu with a submenu opens")
+		check(kui.menu_submenu_count(ui, {1}) == 2 && kui.menu_submenu_count(ui, {}) == 2, "menu_submenu_count")
+		name, _, _, _, name_ok := kui.menu_item_path(ui, {1, 0})
+		check(name_ok && strings.contains(name, "Name"), "menu_item_path reads a row inside")
+		check(!kui.activate_menu_path(ui, {1}) && kui.activate_menu_path(ui, {1, 0}), "activate_menu_path chooses the row inside")
+		for _ in kui.poll_event(ui) {}
 		kui.set_native_menus(ui, false)
 		kui.set_native_menu_bar(ui, false)
 	}

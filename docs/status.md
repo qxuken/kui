@@ -44,7 +44,7 @@ alpha multiply rather than an offscreen composite, so overlapping pieces of one
 faded subtree show their seams. There is no z-index: floats stack in tree order.
 A fragment is one draw call of its own, so a hundred of them is about 0.7% of
 a 120 Hz frame and ten thousand is the wrong tool; it cannot read what is
-behind it (no backdrop blur), sample anything but its own parameters, run a
+behind it (a ackdropBlur box under it can), sample anything but its own parameters, run a
 second pass, or hit-test per pixel — its edge is its box, like everything
 else here.
 Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
@@ -190,8 +190,8 @@ on a light one, and a focus indicator nobody can see is not one. ADR 0007's own 
 `cell` vocabulary), a `radio-without-group` warning, and multi-select.
 Submenus are built for the core's own menus (backlog F128) — the context
 menu and the menu bar, drawn or the platform's — and not as a derived
-relation an app's own `menu` composite gets; C's `KuiMenuItem` has no
-submenu field.
+relation an app's own `menu` composite gets. C nests them through
+`KuiMenuItem.submenu` and reports a row inside by its path.
 
 **Text and editing.** Editing covers caret blink, double/triple-click
 word/line select, scroll-caret-into-view, inline IME composition, Tab focus
@@ -233,10 +233,13 @@ once and drawn by kui. It is the launcher's, for every window of the app
 at once: not a per-window declaration, not changeable while the app runs,
 and not on a popup or the devtools' window. GNOME has no blur to ask for
 (the wallpaper stands in, reported as `Tinted`), the wallpaper is not read
-on macOS (AppKit's material is used instead), a C host under `kui_run`
-cannot ask for one, and on Windows the device then presents through
-DirectComposition. A blur of what the app itself drew under a node (CSS's
-`backdrop-filter`) is not built; backlog F129 proposes it.
+on macOS (AppKit's material is used instead), and on Windows the device
+then presents through DirectComposition. A C host asks with
+`KuiRunConfig.backdrop` under `kui_run_with`. A box can also blur what the
+app itself drew under it (`backdropBlur`, CSS's `backdrop-filter`, backlog
+F129): kui-wgpu draws such a frame offscreen and blurs the region under
+the box at reduced resolution; a renderer that cannot read its frame back
+draws the box unblurred, and the radius does not tween.
 
 There is no window **position** an app can declare or read, no app-modal
 window (decision 10 keeps modality per window), and no native menu bar.

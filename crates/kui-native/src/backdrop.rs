@@ -263,7 +263,7 @@ mod windows {
 mod macos {
     use kui_core::Backdrop;
     use objc2::rc::Retained;
-    use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
+    use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send};
     use objc2_app_kit::{
         NSAutoresizingMaskOptions, NSResponder, NSView, NSVisualEffectBlendingMode,
         NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode,

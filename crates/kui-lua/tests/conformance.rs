@@ -977,7 +977,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                      text("ab", {{ size = 12 }}) }},
               row {{ key = "strip", width = 60, height = 10, bg = 0x3a3f52ff, window = "drag" }},
               row {{ key = "dock", focus_region = true, gap = 4, height = 30,
-                     main_align = "center", cross_align = "end",
+                     main_align = "center", cross_align = "end", backdrop_blur = 6,
                      row {{ key = "stop", width = 20, height = 20, bg = 0x2a2d3aff,
                             focusable = true, role = "button", label = "Stop" }} }},
               column {{ width = 60,

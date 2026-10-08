@@ -427,6 +427,15 @@ impl Core {
             }
             NodeContent::Container => Leaf::Container,
         };
+        // A backdrop blur before anything the node paints — its shadow,
+        // its background — so all of it lies over the blurred picture
+        // (backlog F129). Cold, and looked for only on a frame that has one.
+        if self.tree.any_backdrop_blur {
+            let r = self.tree.specs[i].interact().backdrop_blur;
+            if r > 0.0 {
+                backdrop_quad(&mut self.display.quads, rect, &style, &paint, r);
+            }
+        }
         let first_quad = self.display.quads.len();
         painter!(self).paint_box(rect, &style, &paint, leaf);
         // A gradient over the background the box just painted. Out of
@@ -1496,6 +1505,12 @@ impl Core {
                 scale,
                 opacity,
             };
+            // A departing box blurs what is under it for as long as it
+            // fades, as it did while it was declared.
+            let blur = node.spec.interact().backdrop_blur;
+            if blur > 0.0 {
+                backdrop_quad(&mut self.display.quads, rect, &style, &paint, blur);
+            }
             let first_quad = self.display.quads.len();
             painter!(self).paint_box(rect, &style, &paint, leaf);
             // A departing box keeps its gradient, from the slot it had.
@@ -2874,6 +2889,43 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, sc
         clip: clip_id,
         uv: [0; 4],
     }
+}
+
+/// A node's `backdrop_blur` (backlog F129): one [`QuadKind::Backdrop`]
+/// over the box, rounded and clipped as its background is, `blur` the
+/// radius in physical px and the group opacity in `color.a` — how much of
+/// the blurred picture replaces the sharp one. Pushed before the node's
+/// own quads, so it is not in the run their fade multiplies; it carries
+/// the opacity itself.
+#[cold]
+#[inline(never)]
+fn backdrop_quad(
+    quads: &mut Vec<Quad>,
+    rect: Rect,
+    style: &crate::spec::VisualStyle,
+    paint: &Paint,
+    radius: f32,
+) {
+    let px = rect.scaled(paint.scale);
+    if px.w <= 0.0 || px.h <= 0.0 || paint.opacity <= 0.0 {
+        return;
+    }
+    quads.push(Quad {
+        rect: if style.pixel_snap { px.on_pixels() } else { px },
+        color: Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: paint.opacity.min(1.0),
+        },
+        border_color: Color::TRANSPARENT,
+        radius: style.radius.map(|r| r * paint.scale),
+        border_w: 0.0,
+        blur: radius * paint.scale,
+        kind: QuadKind::Backdrop,
+        clip: paint.clip_id,
+        uv: [0; 4],
+    });
 }
 
 /// Multiplies a group opacity into a run of quads. Alpha only: every quad

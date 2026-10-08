@@ -30,13 +30,39 @@ pub struct KuiMenuItem {
     /// own check state where the host renders the menu): a setting the row
     /// *is*, not a command it runs.
     pub checked: u32,
+    /// The rows this row opens, `submenu_count` of them in the same
+    /// struct (backlog F128); null / 0 is an ordinary row. ABI 26.
+    pub submenu: *const KuiMenuItem,
+    pub submenu_count: usize,
 }
 
+/// How deep a C menu nests before the read refuses it: far past any menu
+/// a person can use, and the end of a row that names itself as its own
+/// submenu, which would otherwise recurse until the stack ran out.
+const MAX_MENU_DEPTH: usize = 32;
+
 impl KuiMenuItem {
-    /// Reads one item. `None` for a role this build does not know, which
-    /// is a host built against a newer header.
+    /// Reads one item and the submenus under it. `None` for a role this
+    /// build does not know anywhere in it, which is a host built against a
+    /// newer header, and for a menu nested past [`MAX_MENU_DEPTH`].
     pub(crate) fn to_core(self) -> Option<kui_core::MenuItem> {
+        self.to_core_at(0)
+    }
+
+    fn to_core_at(self, depth: usize) -> Option<kui_core::MenuItem> {
         let role = *kui_core::MenuRole::ALL.get(self.role as usize)?;
+        let submenu = if self.submenu.is_null() || self.submenu_count == 0 {
+            Vec::new()
+        } else if depth >= MAX_MENU_DEPTH {
+            return None;
+        } else {
+            // SAFETY: the header's contract, `submenu_count` rows behind
+            // `submenu`, read while the call runs.
+            let rows = unsafe { std::slice::from_raw_parts(self.submenu, self.submenu_count) };
+            rows.iter()
+                .map(|r| r.to_core_at(depth + 1))
+                .collect::<Option<Vec<_>>>()?
+        };
         Some(kui_core::MenuItem {
             label: kstr(self.label).into_owned(),
             role,
@@ -44,11 +70,25 @@ impl KuiMenuItem {
             checked: self.checked != 0,
             id: unsafe { self.id.as_ref() }.map(|v| v.0.clone()),
             accel: opt_str(self.accel).map(|s| s.into_owned()),
-            // A submenu has no spelling in kui.h yet (backlog F128): a C
-            // row is a row.
-            submenu: Vec::new(),
+            submenu,
         })
     }
+}
+
+/// A row's path as the header spells it — `depth` indices behind `path`,
+/// outermost first — or `None` for a NULL `path` with a depth to read.
+///
+/// # Safety
+/// `path`, when not null, points at `depth` readable `size_t`s.
+unsafe fn path_of<'a>(path: *const usize, depth: usize) -> Option<&'a [usize]> {
+    if depth == 0 {
+        return Some(&[]);
+    }
+    if path.is_null() {
+        return None;
+    }
+    // SAFETY: the caller's promise.
+    Some(unsafe { std::slice::from_raw_parts(path, depth) })
 }
 
 /// Opens a context menu at `(x, y)` (logical viewport px) over `key`, with
@@ -531,6 +571,9 @@ fn write_row(
         if row.checked {
             bits |= KUI_MENU_ITEM_CHECKED;
         }
+        if row.has_submenu() {
+            bits |= KUI_MENU_ITEM_SUBMENU;
+        }
         unsafe { flags.write(bits) };
     }
 }
@@ -605,6 +648,165 @@ pub extern "C" fn kui_activate_menu_bar_item(ptr: *mut KuiCtx, menu: usize, item
             return false;
         };
         let events = c.core().activate_menu_bar_item(menu, item);
+        let any = !events.is_empty();
+        c.absorb(events);
+        any
+    })
+}
+
+/// How many rows the open menu's row at `path` opens (`depth` indices,
+/// outermost first): 0 for a row with no submenu or one not there, and at
+/// a depth of 0 the menu's own rows, as `kui_menu_item_count` counts them.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_submenu_count(
+    ptr: *mut KuiCtx,
+    path: *const usize,
+    depth: usize,
+) -> usize {
+    guard(0, || {
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, unsafe { path_of(path, depth) }) else {
+            return 0;
+        };
+        let Some(menu) = c.core().menu() else {
+            return 0;
+        };
+        if path.is_empty() {
+            return menu.items.len();
+        }
+        kui_core::MenuItem::at_path(&menu.items, path).map_or(0, |r| r.submenu.len())
+    })
+}
+
+/// Reads the open menu's row at `path`, spelled as `kui_menu_item` spells
+/// one; `KUI_MENU_ITEM_SUBMENU` in its flags when it opens rows of its own.
+/// False for a row that is not there, and for an empty path.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_item_path(
+    ptr: *mut KuiCtx,
+    path: *const usize,
+    depth: usize,
+    label: *mut KuiStr,
+    accel: *mut KuiStr,
+    role: *mut u32,
+    flags: *mut u32,
+) -> bool {
+    guard(false, || {
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, unsafe { path_of(path, depth) }) else {
+            return false;
+        };
+        let Some(row) = c
+            .core()
+            .menu()
+            .and_then(|m| kui_core::MenuItem::at_path(&m.items, path))
+            .cloned()
+        else {
+            return false;
+        };
+        write_row(c, &row, label, accel, role, flags);
+        true
+    })
+}
+
+/// Reports that the host's own menu chose the row at `path`, inside its
+/// submenus: `Core::activate_menu_path`. False when nothing was taken — no
+/// menu open, an empty path, a row not there, or one that cannot be
+/// chosen (dead, a separator, or one that opens a submenu, which the host
+/// opens), the menu then left open and nothing posted.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_activate_menu_path(
+    ptr: *mut KuiCtx,
+    path: *const usize,
+    depth: usize,
+) -> bool {
+    guard(false, || {
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, unsafe { path_of(path, depth) }) else {
+            return false;
+        };
+        if path.is_empty() {
+            return false;
+        }
+        let Some(events) = c.core().activate_menu_path(path) else {
+            return false;
+        };
+        c.absorb(events);
+        true
+    })
+}
+
+/// How many rows the bar's row at `path` in menu `menu` opens: 0 for a row
+/// with no submenu or one not there, and at a depth of 0 the menu's own
+/// rows, as `kui_menu_bar_menu` counts them.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_submenu_count(
+    ptr: *mut KuiCtx,
+    menu: usize,
+    path: *const usize,
+    depth: usize,
+) -> usize {
+    guard(0, || {
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, unsafe { path_of(path, depth) }) else {
+            return 0;
+        };
+        let Some(bar) = c.core().menu_bar() else {
+            return 0;
+        };
+        if path.is_empty() {
+            return bar.menus.get(menu).map_or(0, |m| m.items.len());
+        }
+        bar.item_at(menu, path).map_or(0, |r| r.submenu.len())
+    })
+}
+
+/// Reads the bar's row at `path` in menu `menu`, spelled as
+/// `kui_menu_bar_item` spells one. False for a row that is not there, and
+/// for an empty path.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_item_path(
+    ptr: *mut KuiCtx,
+    menu: usize,
+    path: *const usize,
+    depth: usize,
+    label: *mut KuiStr,
+    accel: *mut KuiStr,
+    role: *mut u32,
+    flags: *mut u32,
+) -> bool {
+    guard(false, || {
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, unsafe { path_of(path, depth) }) else {
+            return false;
+        };
+        let Some(row) = c
+            .core()
+            .menu_bar()
+            .and_then(|b| b.item_at(menu, path))
+            .cloned()
+        else {
+            return false;
+        };
+        write_row(c, &row, label, accel, role, flags);
+        true
+    })
+}
+
+/// Reports that the platform's menu bar chose the row at `path` in menu
+/// `menu`, inside its submenus: `Core::activate_menu_bar_path`. Returns
+/// whether a row was performed; a row that opens a submenu, a dead one and
+/// one not there are not.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_activate_menu_bar_path(
+    ptr: *mut KuiCtx,
+    menu: usize,
+    path: *const usize,
+    depth: usize,
+) -> bool {
+    guard(false, || {
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, unsafe { path_of(path, depth) }) else {
+            return false;
+        };
+        if path.is_empty() {
+            return false;
+        }
+        let events = c.core().activate_menu_bar_path(menu, path);
         let any = !events.is_empty();
         c.absorb(events);
         any

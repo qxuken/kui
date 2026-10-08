@@ -320,6 +320,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "overscroll" => s.overscroll = KUI_OVERSCROLL_CONTAIN,
             "scrollAxes" => s.scroll_axes = KUI_SCROLL_AXES_X,
             "scrollMods" => s.scroll_mods = KUI_KMOD_CTRL,
+            "backdropBlur" => s.backdrop_blur = F,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -510,6 +511,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         bounce: 0.3,
         gradient: std::ptr::null(),
         scroll_mods: KUI_KMOD_CTRL | KUI_KMOD_SUPER,
+        backdrop_blur: 6.0,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -607,6 +609,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .overscroll(kui_core::Overscroll::Contain)
         .scroll_axes(kui_core::ScrollAxes::Y)
         .scroll_mods(kui_core::KeyMods::NONE.with_ctrl().with_super())
+        .backdrop_blur(6.0)
         .modifier_keys()
         .initial_focus()
         .disabled(true)
@@ -890,6 +893,8 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_ctx_new",
             "kui_ctx_free",
             "kui_ctx_window",
+            // The env's backdrop, read back: a reading, as the window id is.
+            "kui_ctx_backdrop",
             "kui_ctx_extension_error",
             "kui_frame_begin",
             "kui_frame_finish",

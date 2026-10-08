@@ -328,6 +328,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         "KUI_QUAD_SOLID", "KUI_QUAD_GLYPH_MASK", "KUI_QUAD_GLYPH_COLOR",
         "KUI_QUAD_IMAGE", "KUI_QUAD_GLYPH_SUBPIXEL", "KUI_QUAD_SHADOW",
         "KUI_QUAD_SEGMENT", "KUI_QUAD_FRAGMENT", "KUI_QUAD_TEXTURE",
+        "KUI_QUAD_BACKDROP",
     ]);
     abi_enum!(o, kui_core::Sampling::ALL, 0 => [
         "KUI_SAMPLING_LINEAR", "KUI_SAMPLING_NEAREST",
@@ -437,6 +438,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_MOD_DOC,
             KUI_MENU_ITEM_ENABLED,
             KUI_MENU_ITEM_CHECKED,
+            KUI_MENU_ITEM_SUBMENU,
             KUI_MENU_ACTION_SET_CLIPBOARD,
             KUI_MENU_ACTION_PASTE,
             KUI_MENU_ACTION_LOOK_UP,
@@ -589,6 +591,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         id: *const KuiValue => "const KuiValue *",
         accel: KuiStr => "KuiStr",
         checked: u32 => "uint32_t",
+        submenu: *const KuiMenuItem => "const struct KuiMenuItem *",
+        submenu_count: usize => "size_t",
     });
 
     abi_struct!(o, KuiMenu {
@@ -795,6 +799,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         bounce: f32 => "float",
         gradient: *const KuiGradient => "const KuiGradient *",
         scroll_mods: u32 => "uint32_t",
+        backdrop_blur: f32 => "float",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1046,6 +1051,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         text_aa: u32 => "uint32_t",
         diagnostics: u32 => "uint32_t",
         frame_latency: u32 => "uint32_t",
+        backdrop: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiWindowCommand {
@@ -1472,8 +1478,10 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `on_button` and `buttons`; then `overscroll` and
         // `scroll_axes`. ABI 21: `modifier_keys`. ABI 22: the four
         // `*_size` clamps. ABI 23:
-        // `bounce`. ABI 24: `gradient`. ABI 25: `scroll_mods`.
-        ("KuiSpec", 704, 25),
+        // `bounce`. ABI 24: `gradient`. ABI 25: `scroll_mods`. ABI 26:
+        // `backdrop_blur` (backlog F129), into what was the tail padding,
+        // so the 64-bit size stayed at 704 while the layout moved.
+        ("KuiSpec", 704, 26),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),
@@ -1484,12 +1492,14 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // the 64-bit size stayed at 40 while the layout moved.
         ("KuiSpan", 40, 20),
         ("KuiCell", 20, 17),
-        ("KuiMenuItem", 56, 16),
+        // ABI 26: `submenu` and `submenu_count` (backlog F128).
+        ("KuiMenuItem", 72, 26),
         ("KuiMenu", 40, 16),
         ("KuiPlay", 12, 16),
         ("KuiAudio", 24, 16),
         ("KuiWindowConfig", 32, 16),
-        ("KuiRunConfig", 40, 19),
+        // ABI 26: `backdrop` (backlog F126).
+        ("KuiRunConfig", 44, 26),
         // ABI 19: the file dialogs.
         ("KuiFileFilter", 32, 19),
         ("KuiFileDialog", 72, 19),

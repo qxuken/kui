@@ -1364,6 +1364,15 @@ pub struct InteractSpec {
     /// one image quad from the atlas, rounded by the node's radius. It
     /// does not tween, and the state backgrounds replace `bg`, not it.
     pub gradient: Option<crate::gradient::Gradient>,
+    /// Blur what the app drew beneath this node, inside its rounded rect,
+    /// by this radius in logical px — CSS's `backdrop-filter: blur()`
+    /// (backlog F129). The blurred pixels are what was painted before the
+    /// node (earlier siblings, ancestors, the window's backdrop), never
+    /// the node's own `bg` or children, which paint over them; give it a
+    /// translucent `bg` for frosted glass. Clipped as the node is; faded
+    /// by its group opacity. 0 is none. A renderer with no way to read
+    /// back its frame (the CPU raster) draws the node unblurred.
+    pub backdrop_blur: f32,
 }
 
 /// A scrolling node's bars, per node. Every field's default is the stock
@@ -1504,6 +1513,7 @@ impl InteractSpec {
         rules: None,
         rule_w: 0.0,
         gradient: None,
+        backdrop_blur: 0.0,
     };
 }
 
@@ -2081,6 +2091,20 @@ impl NodeSpec {
     /// its children (see the `gradient` field).
     pub fn gradient(mut self, gradient: crate::gradient::Gradient) -> Self {
         self.interact_mut().gradient = Some(gradient);
+        self
+    }
+
+    /// Blurs what was drawn beneath this node, inside its rounded rect,
+    /// by `radius` logical px (see the `backdrop_blur` field). A
+    /// translucent `bg` over it makes frosted glass:
+    ///
+    /// ```
+    /// # use kui_core::{Color, NodeSpec};
+    /// let bar = NodeSpec::row().backdrop_blur(16.0).bg(Color::hex(0xffffff40));
+    /// assert_eq!(bar.interact().backdrop_blur, 16.0);
+    /// ```
+    pub fn backdrop_blur(mut self, radius: f32) -> Self {
+        self.interact_mut().backdrop_blur = radius.max(0.0);
         self
     }
 

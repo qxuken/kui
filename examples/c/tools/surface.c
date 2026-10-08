@@ -353,10 +353,12 @@ static int surface(void) {
     check(kui_option_as_alt_get(ui) == KUI_OPTION_AS_ALT_LEFT, "kui_option_as_alt_get");
     kui_env_set_always_on_top(ui, true);
     /* What is behind the window, as the host got it (backlog F126): a
-     * fact like the level, so nothing reads it back here; a code past the
+     * fact like the level, read back as a view reads it; a code past the
      * end is ignored rather than trusted. */
+    check(kui_ctx_backdrop(ui) == KUI_BACKDROP_OPAQUE, "a window is opaque until told");
     kui_env_set_backdrop(ui, KUI_BACKDROP_BLUR);
     kui_env_set_backdrop(ui, 99);
+    check(kui_ctx_backdrop(ui) == KUI_BACKDROP_BLUR, "kui_ctx_backdrop: the blur, and not 99");
 
     KuiDrawData dd = KUI_DRAW_DATA_INIT;
     kui_draw_data(ui, &dd);
@@ -795,14 +797,22 @@ static int surface(void) {
      * the way that host reports a choice. */
     {
         KuiValue *save = kui_value_str(KUI_STR("file.save"));
+        KuiMenuItem sort[] = {
+            {.label = KUI_STR("Name"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+            {.label = KUI_STR("Date"), .role = KUI_MENU_CUSTOM, .enabled = 1, .checked = 1},
+        };
         KuiMenuItem file[] = {
             {.label = KUI_STR("Save"), .role = KUI_MENU_CUSTOM, .enabled = 1,
              .id = save, .accel = KUI_STR("mod+s")},
             {.role = KUI_MENU_SEPARATOR},
             {.label = KUI_STR("Wrap"), .role = KUI_MENU_CUSTOM, .enabled = 1, .checked = 1},
+            /* A submenu (backlog F128): rows of its own, read and chosen by
+             * path. */
+            {.label = KUI_STR("Sort by"), .role = KUI_MENU_CUSTOM, .enabled = 1,
+             .submenu = sort, .submenu_count = 2},
         };
         KuiMenu menus[] = {
-            {.label = KUI_STR("File"), .items = file, .count = 3, .enabled = 1},
+            {.label = KUI_STR("File"), .items = file, .count = 4, .enabled = 1},
         };
         kui_frame_begin(ui, 320, 240, 1);
         check(kui_menu_bar(ui, menus, 1), "kui_menu_bar declares and draws");
@@ -813,7 +823,7 @@ static int surface(void) {
         check(kui_menu_bar_menu_count(ui, &rev) == 1 && rev > 0, "one menu, at a revision");
         KuiStr label = {0};
         bool on = false;
-        check(kui_menu_bar_menu(ui, 0, &label, &on) == 3 && has(label, "File") && on,
+        check(kui_menu_bar_menu(ui, 0, &label, &on) == 4 && has(label, "File") && on,
               "kui_menu_bar_menu reads the title back");
         KuiStr accel = {0};
         uint32_t role = 99, flags = 0;
@@ -823,20 +833,47 @@ static int surface(void) {
               "kui_menu_bar_item reads a checked row back");
         check(kui_menu_bar_item(ui, 0, 0, &label, &accel, &role, &flags) && accel.len > 0,
               "and the accelerator, in this platform's spelling");
+#ifdef __APPLE__
+        check(has(accel, "\xE2\x8C\x98S"), "mod+s reads as the bar draws it: Command-S");
+#else
+        check(has(accel, "Ctrl+S"), "mod+s reads as the bar draws it: Ctrl+S");
+#endif
+        /* The submenu, by path (backlog F128). */
+        const size_t sort_row[] = {3}, date_row[] = {3, 1}, name_row[] = {3, 0};
+        check(kui_menu_bar_item(ui, 0, 3, NULL, NULL, NULL, &flags)
+                  && (flags & KUI_MENU_ITEM_SUBMENU),
+              "a row with rows of its own says so");
+        check(kui_menu_bar_submenu_count(ui, 0, NULL, 0) == 4
+                  && kui_menu_bar_submenu_count(ui, 0, sort_row, 1) == 2
+                  && kui_menu_bar_submenu_count(ui, 0, date_row, 2) == 0,
+              "kui_menu_bar_submenu_count: the menu's rows, the submenu's, and none");
+        check(kui_menu_bar_item_path(ui, 0, date_row, 2, &label, &accel, &role, &flags)
+                  && has(label, "Date") && (flags & KUI_MENU_ITEM_CHECKED)
+                  && !(flags & KUI_MENU_ITEM_SUBMENU),
+              "kui_menu_bar_item_path reads a row inside");
+        check(!kui_menu_bar_item_path(ui, 0, date_row, 2 + 1, NULL, NULL, NULL, NULL)
+                  && !kui_menu_bar_item_path(ui, 0, NULL, 0, NULL, NULL, NULL, NULL),
+              "through a row with no submenu, or no path, is false");
+        check(!kui_activate_menu_bar_path(ui, 0, sort_row, 1),
+              "the row that opens the submenu is not chosen");
         check(!kui_menu_bar_item(ui, 9, 9, &label, &accel, &role, &flags),
               "a row that is not there is false");
 
         /* The choice a native bar reports: the same event a press on the
          * drawn bar's row produces. */
         check(kui_activate_menu_bar_item(ui, 0, 0), "kui_activate_menu_bar_item");
+        check(kui_activate_menu_bar_path(ui, 0, name_row, 2), "kui_activate_menu_bar_path");
         KuiEvent mev = KUI_EVENT_INIT;
-        int menus_heard = 0;
+        int menus_heard = 0, names_heard = 0;
         while (kui_poll_event(ui, &mev)) {
             const KuiValue *kind = kui_value_get(mev.payload, KUI_STR("kind"));
+            const KuiValue *item = kui_value_get(mev.payload, KUI_STR("item"));
             KuiStr s = {0};
             if (kind && kui_value_as_str(kind, &s) && has(s, "menu")) menus_heard++;
+            if (item && kui_value_as_str(item, &s) && has(s, "Name")) names_heard++;
         }
-        check(menus_heard == 1, "and the app hears one menu event");
+        check(menus_heard == 2, "and the app hears a menu event for each");
+        check(names_heard == 1, "the one inside the submenu posting its own row");
     }
 
     /* -- The rest of the header, so that the walk is what it says it is
@@ -1174,6 +1211,90 @@ static int surface(void) {
         check(!kui_open_menu(ui, 0, 0, 0, rows, 3), "a key of 0 opens nothing");
         kui_set_native_menus(ui, false);
         kui_set_native_menu_bar(ui, false);
+    }
+
+    /* The menu the core draws (backlog F127, F128): an accelerator read
+     * back as it is drawn, in the platform's spelling; the menu as wide as
+     * its widest row, which stays one line; and a submenu read and chosen
+     * by its path. */
+    {
+        KuiMenuItem sort[] = {
+            {.label = KUI_STR("Name"), .role = KUI_MENU_CUSTOM, .enabled = 1},
+            {.label = KUI_STR("Date"), .role = KUI_MENU_CUSTOM, .enabled = 1, .checked = 1},
+        };
+        KuiMenuItem rows[] = {
+            {.label = KUI_STR("Open"), .role = KUI_MENU_CUSTOM, .enabled = 1,
+             .accel = KUI_STR("mod+o")},
+            {.label = KUI_STR("Sort by"), .role = KUI_MENU_CUSTOM, .enabled = 1,
+             .submenu = sort, .submenu_count = 2},
+        };
+        KuiMenuItem wide[] = {
+            {.label = KUI_STR("Open"), .role = KUI_MENU_CUSTOM, .enabled = 1,
+             .accel = KUI_STR("mod+o")},
+            {.label = KUI_STR("Move the note to the trash, for good"),
+             .role = KUI_MENU_CUSTOM, .enabled = 1,
+             .accel = KUI_STR("ctrl+alt+shift+backspace")},
+        };
+        KuiAccessNode an[256];
+        /* The row named `name` in the drawn menu: its width and height. */
+#define MENU_ROW(NAME, OUT_W, OUT_H)                                           \
+    do {                                                                       \
+        size_t got_ = kui_access_tree(ui, an, sizeof an / sizeof an[0]);       \
+        for (size_t i_ = 0; i_ < got_; i_++)                                   \
+            if (an[i_].role == KUI_ROLE_MENU_ITEM && has(an[i_].name, NAME)) { \
+                OUT_W = an[i_].w;                                              \
+                OUT_H = an[i_].h;                                              \
+            }                                                                  \
+    } while (0)
+        check(kui_open_menu(ui, k.card, 10, 10, rows, 2), "a menu with a submenu opens");
+        kui_frame_begin(ui, 800, 600, 1.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        float narrow_w = 0, open_h = 0, sort_w = 0, sort_h = 0;
+        MENU_ROW("Open", narrow_w, open_h);
+        MENU_ROW("Sort by", sort_w, sort_h);
+        check(narrow_w > 0 && narrow_w == sort_w, "every row as wide as the menu");
+        KuiStr label = {0}, accel = {0};
+        uint32_t role = 99, flags = 0;
+        check(kui_menu_item(ui, 0, &label, &accel, &role, &flags) && accel.len > 0,
+              "the row's accelerator reads back");
+#ifdef __APPLE__
+        check(has(accel, "\xE2\x8C\x98O"), "mod+o in the platform's spelling: Command-O");
+#else
+        check(has(accel, "Ctrl+O"), "mod+o in the platform's spelling: Ctrl+O");
+#endif
+        check(kui_menu_item(ui, 1, NULL, NULL, NULL, &flags) && (flags & KUI_MENU_ITEM_SUBMENU),
+              "the submenu's row says it has rows");
+        const size_t sort_row[] = {1}, date_row[] = {1, 1}, name_row[] = {1, 0};
+        check(kui_menu_submenu_count(ui, NULL, 0) == 2 && kui_menu_submenu_count(ui, sort_row, 1) == 2,
+              "kui_menu_submenu_count: the menu's rows and the submenu's");
+        check(kui_menu_item_path(ui, date_row, 2, &label, NULL, &role, &flags) && has(label, "Date")
+                  && (flags & KUI_MENU_ITEM_CHECKED),
+              "kui_menu_item_path reads a row inside");
+        check(!kui_activate_menu_path(ui, sort_row, 1) && kui_menu_item_count(ui, NULL, NULL, NULL) == 2,
+              "the row that opens the submenu is not chosen, and the menu stays open");
+        check(kui_activate_menu_path(ui, name_row, 2), "kui_activate_menu_path chooses the row inside");
+        check(kui_menu_item_count(ui, NULL, NULL, NULL) == 0, "which closed the menu");
+        KuiEvent mev = KUI_EVENT_INIT;
+        int named = 0;
+        while (kui_poll_event(ui, &mev)) {
+            const KuiValue *item = mev.payload ? kui_value_get(mev.payload, KUI_STR("item")) : NULL;
+            KuiStr s = {0};
+            if (item && kui_value_as_str(item, &s) && has(s, "Name") && mev.key == k.card) named++;
+        }
+        check(named == 1, "and the app heard the row inside, on the node");
+
+        check(kui_open_menu(ui, k.card, 10, 10, wide, 2), "a menu with a long row opens");
+        kui_frame_begin(ui, 800, 600, 1.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        float wide_w = 0, long_w = 0, long_h = 0, wide_open_h = 0;
+        MENU_ROW("Open", wide_w, wide_open_h);
+        MENU_ROW("Move the note to the trash, for good", long_w, long_h);
+        check(wide_w > narrow_w && wide_w == long_w, "the menu widens to its widest row");
+        check(long_h == wide_open_h && wide_open_h == open_h, "and the long row is one line");
+#undef MENU_ROW
+        check(kui_close_menu(ui), "closed");
     }
 
     /* The devtools doors (ADR 0024): the panel, its dock, its theme,

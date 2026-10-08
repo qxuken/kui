@@ -306,8 +306,22 @@ extern "C" {
  * 64-bit size is 704. Recompile.
  * Still at 25, since nothing a host had laid out moved: kui_input_open,
  * one function, the documents the OS asked the app to open.
+ *
+ * ABI 26 appends backdrop_blur to KuiSpec: blur what was drawn beneath
+ * the node, inside its rounded box, by this radius; zeroed, none. It
+ * fills what was the tail padding, so the 64-bit size stays 704 while the
+ * layout moved. KUI_QUAD_BACKDROP is a new quad kind, the blur a
+ * renderer applies; a host's own renderer that does not know it draws
+ * nothing for it, which leaves the node over an unblurred backdrop.
+ * KuiMenuItem appends submenu and submenu_count, the rows a row opens -
+ * an array element, so the stride moved (64-bit 72 bytes), as ABI 13's
+ * checked moved it. KuiRunConfig appends backdrop, a KUI_BACKDROP_* for
+ * what shows through kui_run_with's window. New functions with them:
+ * kui_ctx_backdrop, the path readers and kui_activate_menu_path /
+ * kui_activate_menu_bar_path. Recompile; a zeroed tail is what every
+ * spec, row and config had before.
  */
-#define KUI_ABI_VERSION 25u
+#define KUI_ABI_VERSION 26u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -467,9 +481,21 @@ enum {
  * bytes with kui_image_pixels, upload them when `rev` moved, bind that
  * texture in the atlas's place and draw it as an image. On both image
  * kinds `border_w` is the `sampling` flag: 0 linear, 1 nearest. */
+/* KUI_QUAD_BACKDROP: blur what is already drawn under `rect` - a node's
+ * backdrop_blur. `blur` is the radius (a Gaussian's standard deviation)
+ * in physical px; radius, clip and the clip's radii shape the region as
+ * they shape a solid; `color.a` is the group opacity, how much of the
+ * blurred picture replaces the sharp one, and the rest of `color` is zero.
+ * It paints nothing of its own: a renderer reads back the pixels drawn so
+ * far under the rect, plus a margin of three `blur` so the edge pulls in
+ * what lies outside it, blurs them and writes them back inside the
+ * shape. Emitted just before the node's own quads, so what the node
+ * paints lies over the blur. A renderer that cannot read its target
+ * draws nothing for it. ABI 26. */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
        KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5,
-       KUI_QUAD_SEGMENT = 6, KUI_QUAD_FRAGMENT = 7, KUI_QUAD_TEXTURE = 8 };
+       KUI_QUAD_SEGMENT = 6, KUI_QUAD_FRAGMENT = 7, KUI_QUAD_TEXTURE = 8,
+       KUI_QUAD_BACKDROP = 9 };
 /* How an image's texels are read between pixels (kui_image_with) */
 enum { KUI_SAMPLING_LINEAR = 0, KUI_SAMPLING_NEAREST = 1 };
 /* How an image's pixels meet its box (kui_image_with): stretched, the
@@ -1147,6 +1173,16 @@ typedef struct KuiSpec {
      * carry `mods`. 0
      * (the zeroed spec): a handler like any other. ABI 25. */
     uint32_t scroll_mods;
+    /* Blur what was drawn beneath this node, inside its rounded box, by
+     * this radius in logical px - CSS's backdrop-filter: blur(), the
+     * radius its standard deviation (backdropBlur). What blurs is
+     * everything painted before the node - ancestors, siblings under it,
+     * content scrolling beneath it, the window's backdrop - and the node's
+     * own bg, border and children paint over it, so a translucent bg
+     * (0xffffff40) makes frosted glass. Clipped as the node is, faded by
+     * its opacity. The display list carries it as a KUI_QUAD_BACKDROP.
+     * 0 (the zeroed spec): none. ABI 26. */
+    float backdrop_blur;
 } KuiSpec;
 
 /* Size expressions, built from parts so nothing is parsed:
@@ -1470,6 +1506,19 @@ typedef struct KuiMenuItem {
      * own check state where the host renders the menu: a setting the row
      * *is* (View > Show Sidebar), not a command it runs. */
     uint32_t checked;
+    /* A submenu: `submenu_count` rows this row opens, in the same struct,
+     * nested as deep as a menu needs ("Sort by" > Name, Date; "Move to" >
+     * every folder). The row is drawn with a chevron and opens them beside
+     * it - hover, click, Enter or Right - and is never chosen itself; a
+     * row inside posts {kind:"menu", role, item} like any other, its `id`
+     * or its text. In the context menu (kui_open_menu), the select
+     * (kui_select) and the menu bar (kui_menu_bar) alike, and as NSMenu
+     * submenus where macOS draws the bar. Read while the call runs, as
+     * the rows are. Nested past 32 levels - a row that is its own
+     * ancestor - the call refuses it, as it refuses a role this build does
+     * not know. NULL / 0 (the zeroed row): an ordinary row. ABI 26. */
+    const struct KuiMenuItem *submenu;
+    size_t submenu_count;
 } KuiMenuItem;
 
 /* -- The application menu bar ---------------------------------------------
@@ -1493,10 +1542,14 @@ typedef struct KuiMenu {
     uint32_t enabled;
 } KuiMenu;
 
-/* KuiMenu item flags, as kui_menu_bar_item reports them. */
+/* KuiMenu item flags, as kui_menu_bar_item and kui_menu_item report them.
+ * SUBMENU marks a row that opens rows of its own: read them by path
+ * (kui_menu_item_path, kui_menu_bar_item_path), and report one chosen with
+ * kui_activate_menu_path / kui_activate_menu_bar_path. */
 enum {
     KUI_MENU_ITEM_ENABLED = 1u << 0,
     KUI_MENU_ITEM_CHECKED = 1u << 1,
+    KUI_MENU_ITEM_SUBMENU = 1u << 2,
 };
 
 /* KuiMenuAction.kind. LOOK_UP carries the text to show a definition panel
@@ -2044,7 +2097,8 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
  * statement of the shape every binding's reading is pinned to). A C host is
  * the frame driver, so it writes the facts and has no reading of them back
  * - Rust's ui.env(), Lua's view(env) and Node's ctx.env() are the readers -
- * except the window id, which kui_ctx_window answers. The two facts Lua and
+ * except the window id, which kui_ctx_window answers, and the backdrop a
+ * window got, which kui_ctx_backdrop does. The two facts Lua and
  * Node derive or carry beside these (the frame budget, the viewport) are
  * the host's own numbers here. kui-ffi's tests hold these prototypes to the
  * table:
@@ -2584,6 +2638,13 @@ enum {
  * KUI_BACKDROP_OPAQUE. Its own setter, as kui_env_set_always_on_top is:
  * additive, and off KUI_ABI_VERSION. An out-of-range code is ignored. */
 void kui_env_set_backdrop(KuiCtx *ctx, uint32_t backdrop);
+/* The window's backdrop as views read it, a KUI_BACKDROP_*: what
+ * kui_env_set_backdrop set, and in a kui_run_with view callback what the
+ * runner got for KuiRunConfig.backdrop - the answer and not the ask, so
+ * KUI_BACKDROP_OPAQUE where the platform could give none, and the view
+ * paints its translucent regions opaque. KUI_BACKDROP_OPAQUE on a bad
+ * context. */
+uint32_t kui_ctx_backdrop(KuiCtx *ctx);
 /* Declares that this frame wants the keyboard to this window kept from
  * every other process while the window has it - macOS's Secure Keyboard
  * Entry, what a terminal turns on at a password prompt.
@@ -3243,6 +3304,17 @@ bool kui_menu_bar_item(KuiCtx *ctx, size_t menu, size_t item, KuiStr *label,
  * the same path a press on the drawn bar's row takes. Out of range does
  * nothing and returns false. */
 bool kui_activate_menu_bar_item(KuiCtx *ctx, size_t menu, size_t item);
+/* The same three for a row inside a submenu, by its path: `path` is
+ * `depth` row indices, outermost first - {2} is the third row of the menu,
+ * {2, 0} the first row of the submenu the third row opens. A depth of 1 is
+ * the call above. kui_menu_bar_submenu_count is how many rows the row at
+ * `path` opens: 0 for a row with no submenu, or one not there (a depth of
+ * 0 is the menu's own rows). kui_activate_menu_bar_path refuses a row that
+ * opens a submenu, as it refuses a dead one: the platform opens it. */
+size_t kui_menu_bar_submenu_count(KuiCtx *ctx, size_t menu, const size_t *path, size_t depth);
+bool kui_menu_bar_item_path(KuiCtx *ctx, size_t menu, const size_t *path, size_t depth,
+                            KuiStr *label, KuiStr *accel, uint32_t *role, uint32_t *flags);
+bool kui_activate_menu_bar_path(KuiCtx *ctx, size_t menu, const size_t *path, size_t depth);
 
 /* The window's selected text - a `selectable` scope's, a `cells` grid's,
  * or the focused editor's, whichever it holds. False when nothing is
@@ -3340,6 +3412,18 @@ bool kui_menu_item(KuiCtx *ctx, size_t item, KuiStr *label, KuiStr *accel,
  * open, or the row cannot be chosen (disabled, a separator), in which
  * case the menu stays open and nothing is posted. */
 bool kui_activate_menu_item(KuiCtx *ctx, size_t index);
+/* The open menu's submenus, for a host that shows them itself: the same
+ * three by path - `depth` row indices, outermost first, {1, 0} the first
+ * row of the submenu the second row opens. kui_menu_submenu_count is how
+ * many rows the row at `path` opens (0 for none; a depth of 0 is the
+ * menu's own rows, as kui_menu_item_count counts them), kui_menu_item_path
+ * reads one row as kui_menu_item does, and kui_activate_menu_path reports
+ * one chosen - refusing a row that opens a submenu, a dead row and a
+ * separator, with the menu left open and nothing posted. */
+size_t kui_menu_submenu_count(KuiCtx *ctx, const size_t *path, size_t depth);
+bool kui_menu_item_path(KuiCtx *ctx, const size_t *path, size_t depth, KuiStr *label,
+                        KuiStr *accel, uint32_t *role, uint32_t *flags);
+bool kui_activate_menu_path(KuiCtx *ctx, const size_t *path, size_t depth);
 /* Tells the core this host can show the platform's definition panel
  * (macOS's Look Up). The standard Look Up row is then offered where it
  * means something and a force click over text asks for one; without it the
@@ -3773,6 +3857,11 @@ typedef struct KuiRunConfig {
                             * latency), and 1 on Windows, where one already
                             * gets every vsync. KUI_FRAME_LATENCY in the
                             * environment still overrides. ABI 19. */
+    uint32_t backdrop;     /* KUI_BACKDROP_*: what shows through the
+                            * window's transparent pixels - the desktop, a
+                            * live blur of it, or a steady tint of it - where
+                            * the platform can; 0 is opaque. What the window
+                            * got is kui_ctx_backdrop, in the view. ABI 26. */
 } KuiRunConfig;
 #define KUI_RUN_CONFIG_INIT ((KuiRunConfig){0})
 

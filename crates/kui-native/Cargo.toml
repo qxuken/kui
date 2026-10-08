@@ -352,6 +352,10 @@ name = "backdrop"
 path = "../../examples/rust/features/backdrop.rs"
 
 [[example]]
+name = "backdrop_blur"
+path = "../../examples/rust/features/backdrop_blur.rs"
+
+[[example]]
 name = "metrics"
 path = "../../examples/rust/features/metrics.rs"
 

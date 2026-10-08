@@ -2121,7 +2121,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open_keyed(ui, KUI_STR("strip"), &strip, NULL);
     kui_close(ui);
     KuiSpec dock = {.dir = KUI_ROW, .focus_region = 1, .gap = 4, .height = {KUI_FIXED, 30},
-                    .main_align = KUI_CENTER, .cross_align = KUI_END};
+                    .main_align = KUI_CENTER, .cross_align = KUI_END, .backdrop_blur = 6};
     kui_open_keyed(ui, KUI_STR("dock"), &dock, NULL);
     KuiSpec stop = {.dir = KUI_ROW, .width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20},
                     .bg = 0x2a2d3aff, .focusable = 1, .role = KUI_ROLE_BUTTON,
@@ -2664,12 +2664,12 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     repf(out, "quads %zu %016llx\n", dd.quad_count,
          (unsigned long long)quad_digest(dd.quads, dd.quad_count, dd.clips,
                                          dd.clip_count));
-    size_t kinds[9] = {0};
+    size_t kinds[10] = {0};
     for (size_t i = 0; i < dd.quad_count; i++) {
-        if (dd.quads[i].kind < 9) kinds[dd.quads[i].kind]++;
+        if (dd.quads[i].kind < 10) kinds[dd.quads[i].kind]++;
     }
-    repf(out, "kinds %zu %zu %zu %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1], kinds[2],
-         kinds[3], kinds[4], kinds[5], kinds[6], kinds[7], kinds[8]);
+    repf(out, "kinds %zu %zu %zu %zu %zu %zu %zu %zu %zu %zu\n", kinds[0], kinds[1],
+         kinds[2], kinds[3], kinds[4], kinds[5], kinds[6], kinds[7], kinds[8], kinds[9]);
     /* A fragment's parameters ride a side list, not the quad, so the digest
      * cannot reach them; the report carries them as bits, like the core's. */
     for (size_t i = 0; i < dd.fragment_count; i++) {

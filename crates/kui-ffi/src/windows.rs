@@ -382,3 +382,22 @@ pub extern "C" fn kui_env_set_backdrop(ptr: *mut KuiCtx, backdrop: u32) {
         }
     });
 }
+
+/// The window's backdrop as views read it, a `KUI_BACKDROP_*`:
+/// `env.window.backdrop`, what `kui_env_set_backdrop` set — and in a
+/// `kui_run_with` view callback what the runner got for
+/// `KuiRunConfig.backdrop`, the answer and not the ask. Opaque on a bad
+/// context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_ctx_backdrop(ptr: *mut KuiCtx) -> u32 {
+    guard(0, || match unsafe { ctx(ptr) } {
+        Some(c) => {
+            let b = c.core().env.window.backdrop;
+            kui_core::Backdrop::ALL
+                .iter()
+                .position(|x| *x == b)
+                .unwrap_or(0) as u32
+        }
+        None => 0,
+    })
+}

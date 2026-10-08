@@ -1514,35 +1514,10 @@ its "Move to" list was cut short because a menu could not nest, with
 user's word, named by effect rather than by where it is used, with
 Linux asked of the compositor and the wallpaper drawn by kui where
 nothing can be asked. F126's macOS half was written on a machine with
-no Apple target and has not been compiled or run, and its Linux half has
-not met KDE or GNOME. F129 is what the rebuild left: a blur of what the
-app itself drew.
-
-### `~` F129 — A translucent toolbar cannot frost what the app draws under it: a backdrop is the OS's, behind the window
-
-F126 blurs what is behind the *window*. A toolbar over a scrolling page —
-the page sliding under it frosted, CSS's `backdrop-filter: blur()` — is
-the app's own pixels, and no backdrop reaches them; on GNOME and Wayland,
-where the OS blurs nothing, it is the only glass there can be.
-
-**Proposal.** A node prop, `NodeSpec::backdrop_blur(radius)` (`backdropBlur`
-in JSX and Lua, a `KuiSpec` field in C — an ABI step): the node blurs what
-the frame drew beneath it inside its own rounded rect, then draws itself
-over that. In kui-wgpu the frame renders into an offscreen colour target
-whenever a list carries one (the surface texture is a render attachment
-only, and cannot be copied from); at the node's place in the quad order
-the pass ends, the node's rect (its clip and its scroll applied, a
-margin of the radius around it) is copied out, downsampled and blurred —
-a separable Gaussian or a dual Kawase at quarter size — and drawn back
-clipped to the node's rounded rect, and the pass resumes with the node.
-One more pass per blurring node, so a list that carries none keeps its one
-draw call; the core emits a new `QuadKind` with the radius, which a
-backend that predates it draws as nothing, as it does a fragment. The
-headless and raster paths draw the node unblurred and say so in the
-devtools, rather than a CPU blur nobody would profile.
-
-**Wants:** a translucent region that frosts the app's own content, on
-every platform, with nothing asked of the OS.
+no Apple target, and compiled and ran on a Mac the same day; its Linux
+half has not met KDE or GNOME. F129 is what the rebuild left — a blur of
+what the app itself drew — **built 2026-10-08** too, with the C binding
+of all four (ABI 26), and in the archive.
 
 ## From the kawoosh wish list (2026-10-07)
 
@@ -2781,9 +2756,8 @@ Nothing of the kawoosh open-documents report is open (F124 **built
 2026-10-06**, the day it was filed).
 Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
-Of the Noticon wish list, F129 is open (F126–F128 **built 2026-10-08**,
-the day they were filed, but for a look at F126 on a Mac and on KDE and
-GNOME).
+Nothing of the Noticon wish list is open (F126–F129 **built 2026-10-08**,
+the day they were filed, but for a look at F126 on KDE and GNOME).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4050,10 +4024,12 @@ move.
 
 - `.` **RG144** — [An infinite line height on a cell grid put its rows at the layout's limit](backlog/closed-2026-09.md#-rg144--an-infinite-line-height-on-a-cell-grid-put-its-rows-at-the-layouts-limit--done-2026-10-07) — done (2026-10-07)
 
-**From the Noticon wish list (2026-10-08)** — F126–F128, filed and built the same day
+**From the Noticon wish list (2026-10-08)** — F126–F129, filed and built the same day
 
-- `~` **F126** — [A notes app cannot show the desktop through its sidebar: every kui window is opaque, with nothing the OS draws behind it](backlog/closed-2026-09.md#-f126--a-notes-app-cannot-show-the-desktop-through-its-sidebar-every-kui-window-is-opaque-with-nothing-the-os-draws-behind-it--done-2026-10-08) — done (2026-10-08) — `Launcher::backdrop(Backdrop)` by effect (`Transparent`, `Blur`, `Tinted`) and `env.window.backdrop`; a premultiplied surface chosen at creation (`GpuOptions::transparent`, D3D12 through DirectComposition), `NSVisualEffectView` on macOS (not compiled here), Acrylic / Mica on Windows 11, the compositor's blur on KDE, and elsewhere the wallpaper drawn by kui (`Renderer::set_ground`)
+- `~` **F126** — [A notes app cannot show the desktop through its sidebar: every kui window is opaque, with nothing the OS draws behind it](backlog/closed-2026-09.md#-f126--a-notes-app-cannot-show-the-desktop-through-its-sidebar-every-kui-window-is-opaque-with-nothing-the-os-draws-behind-it--done-2026-10-08) — done (2026-10-08) — `Launcher::backdrop(Backdrop)` by effect (`Transparent`, `Blur`, `Tinted`) and `env.window.backdrop`; a premultiplied surface chosen at creation (`GpuOptions::transparent`, D3D12 through DirectComposition), `NSVisualEffectView` on macOS, Acrylic / Mica on Windows 11, the compositor's blur on KDE, and elsewhere the wallpaper drawn by kui (`Renderer::set_ground`)
 
 - `!` **F127** — [A context menu draws `mod+shift+n` as written, and wraps a long accelerator inside its fixed width](backlog/closed-2026-09.md#-f127--a-context-menu-draws-modshiftn-as-written-and-wraps-a-long-accelerator-inside-its-fixed-width--done-2026-10-08) — done (2026-10-08) — `open_menu` normalizes as `declare_menu_bar` does, rows read through `Accel::label`; the panel `fit` over the metric, nothing wraps
 
 - `~` **F128** — [A menu cannot nest: no submenu, so "Move to" lists every folder and "Sort by" has nowhere to go](backlog/closed-2026-09.md#-f128--a-menu-cannot-nest-no-submenu-so-move-to-lists-every-folder-and-sort-by-has-nowhere-to-go--done-2026-10-08) — done (2026-10-08) — `MenuItem::submenu` / `items`, drawn beside its row in both drawn menus and as `NSMenu` submenus; hover, click, Enter, Right open, Left and Escape close; `Core::activate_menu_path`
+
+- `~` **F129** — [A translucent toolbar cannot frost what the app draws under it: a backdrop is the OS's, behind the window](backlog/closed-2026-09.md#-f129--a-translucent-toolbar-cannot-frost-what-the-app-draws-under-it-a-backdrop-is-the-oss-behind-the-window--done-2026-10-08) — done (2026-10-08) — `NodeSpec::backdrop_blur` / `backdropBlur` / `KuiSpec.backdrop_blur`: a `QuadKind::Backdrop` the core emits before the node's paint, and kui-wgpu's offscreen frame, downsampled separable blur and rounded, clipped composite

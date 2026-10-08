@@ -929,6 +929,12 @@ export type WarningCode =
    *  after every width is. The ratio sizes a fit height from the width, or a
    *  fit width from a fixed height. */
   | 'aspect-ignored'
+  /** A `backdropBlur` under an opaque `bg` of the node's own: the background
+   *  paints over the whole blur, so nothing of it shows and the copy and the
+   *  passes are spent for nothing. Give the `bg` some transparency
+   *  (`#ffffff40`) — frosted glass is a translucent fill over a blur (backlog
+   *  F129). */
+  | 'backdrop-blur-hidden'
   /** A text node sits more than four levels below the `line` row above it,
    *  which is as far as a text's place remembers its ancestors — so `textHit` /
    *  `caretRect` asked by that row's key cannot find the run, and a press
@@ -1373,6 +1379,8 @@ export interface NodeInfo {
   /** `0xRRGGBBAA`. */
   borderColor: number;
   opacity: number;
+  /** Its `backdropBlur` radius in px, 0 for none (backlog F129). */
+  backdropBlur: number;
   /** A scroller's offset; `null` for a node that does not scroll. */
   scroll: { x: number; y: number } | null;
   /** Every handler it declared with the payload it would post: `click`,

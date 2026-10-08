@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 25
+ABI_VERSION :: 26
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -83,6 +83,7 @@ QUAD_SHADOW :: 5
 QUAD_SEGMENT :: 6
 QUAD_FRAGMENT :: 7
 QUAD_TEXTURE :: 8
+QUAD_BACKDROP :: 9
 
 SAMPLING_LINEAR :: 0
 SAMPLING_NEAREST :: 1
@@ -328,6 +329,7 @@ MENU_LOOK_UP :: 6
 
 MENU_ITEM_ENABLED :: 1
 MENU_ITEM_CHECKED :: 2
+MENU_ITEM_SUBMENU :: 4
 
 MENU_ACTION_SET_CLIPBOARD :: 0
 MENU_ACTION_PASTE :: 1
@@ -619,6 +621,7 @@ Spec :: struct {
 	bounce: f32,
 	gradient: ^Gradient,
 	scroll_mods: u32,
+	backdrop_blur: f32,
 }
 
 Announcement :: struct {
@@ -701,6 +704,8 @@ MenuItem :: struct {
 	id: ^Value,
 	accel: string,
 	checked: u32,
+	submenu: [^]MenuItem,
+	submenu_count: uint,
 }
 
 Menu :: struct {
@@ -1005,6 +1010,7 @@ RunConfig :: struct {
 	text_aa: u32,
 	diagnostics: u32,
 	frame_latency: u32,
+	backdrop: u32,
 }
 
 // -- Functions
@@ -1080,6 +1086,7 @@ foreign lib {
 	always_on_top_get :: proc(ctx: ^Ctx) -> bool ---
 	env_set_always_on_top :: proc(ctx: ^Ctx, always_on_top: bool) ---
 	env_set_backdrop :: proc(ctx: ^Ctx, backdrop: u32) ---
+	ctx_backdrop :: proc(ctx: ^Ctx) -> u32 ---
 	set_secure_input :: proc(ctx: ^Ctx, on: bool) ---
 	secure_input_get :: proc(ctx: ^Ctx) -> bool ---
 	set_option_as_alt :: proc(ctx: ^Ctx, option_as_alt: u32) ---
@@ -1179,6 +1186,9 @@ foreign lib {
 	menu_bar_menu :: proc(ctx: [^]Ctx, menu: uint, label: ^string, enabled: ^bool) -> uint ---
 	menu_bar_item :: proc(ctx: [^]Ctx, menu: uint, item: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
 	activate_menu_bar_item :: proc(ctx: [^]Ctx, menu: uint, item: uint) -> bool ---
+	menu_bar_submenu_count :: proc(ctx: [^]Ctx, menu: uint, path: [^]uint, depth: uint) -> uint ---
+	menu_bar_item_path :: proc(ctx: [^]Ctx, menu: uint, path: [^]uint, depth: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
+	activate_menu_bar_path :: proc(ctx: [^]Ctx, menu: uint, path: [^]uint, depth: uint) -> bool ---
 	selection_text :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	selection_html :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	selection_ends :: proc(ctx: ^Ctx, anchor_index: ^i64, anchor_byte: ^uint, focus_index: ^i64, focus_byte: ^uint) -> bool ---
@@ -1195,6 +1205,9 @@ foreign lib {
 	menu_item_count :: proc(ctx: ^Ctx, target: ^u64, x: ^f32, y: ^f32) -> uint ---
 	menu_item :: proc(ctx: [^]Ctx, item: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
 	activate_menu_item :: proc(ctx: [^]Ctx, index: uint) -> bool ---
+	menu_submenu_count :: proc(ctx: ^Ctx, path: [^]uint, depth: uint) -> uint ---
+	menu_item_path :: proc(ctx: ^Ctx, path: [^]uint, depth: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
+	activate_menu_path :: proc(ctx: ^Ctx, path: [^]uint, depth: uint) -> bool ---
 	set_lookup_available :: proc(ctx: ^Ctx, on: bool) ---
 	take_menu_action :: proc(ctx: ^Ctx, out: ^MenuAction) -> bool ---
 	request_files :: proc(ctx: ^Ctx, dialog: ^FileDialog, tag: ^Value) -> bool ---

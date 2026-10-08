@@ -40,10 +40,20 @@ was the first bare bump to break an app in five releases).
 - Rust: `WindowEnv` gains `backdrop` (under Added, F126), so a struct
   literal of one needs the field or `..Default::default()`; so does
   `kui_devtools::Window`, in the examples' harness.
+- Rust: `QuadKind` gains `Backdrop` (under Added, F129), so a `match` on
+  a quad's kind needs the arm — a renderer of its own draws nothing for
+  it; `InteractSpec` and `NodeInfo` gain `backdrop_blur`, for a struct
+  literal of either. The conformance report's `kinds` line has a tenth
+  column, `backdrop`.
+- C: ABI 26. `KuiSpec` appends `backdrop_blur` (into the tail padding:
+  the 64-bit size stays 704), `KuiMenuItem` appends `submenu` and
+  `submenu_count` (an array element, so its stride moved, to 72), and
+  `KuiRunConfig` appends `backdrop` (44). `KUI_QUAD_BACKDROP` is a new
+  quad kind. Recompile; a zeroed tail is what every spec, row and config
+  had.
 
-C stays at ABI 25 (`kui_env_set_backdrop` and the `KUI_BACKDROP_*` enum
-are new; `KuiMenuItem` has no submenu) and the Node wire at v21 (a row's
-`items` rides in the JSON a row already was).
+The Node wire stays at v21: `backdropBlur` is a number row like any
+other, and a row's `items` rides in the JSON a row already was.
 
 ### Added
 
@@ -84,12 +94,45 @@ are new; `KuiMenuItem` has no submenu) and the Node wire at v21 (a row's
   bare desktop through `Transparent`, the wallpaper drawn by kui under
   `KUI_BACKDROP_EMULATE`, and an opaque devtools window beside them; on
   WSLg (Wayland, no blur protocol, no gsettings) a `Blur` reading
-  `Opaque`. The macOS half is written against objc2-app-kit 0.3 and has
-  not been compiled or run, and no KDE or GNOME session was at hand: the
-  Linux half compiles and passes clippy there, untried on either
-  desktop. The `backdrop` example paints a translucent library and an
-  opaque page from the reading. *What you can delete:* nothing — this is
-  new.
+  `Opaque`. On a Mac, built through Noticon, the library column shows the
+  vibrancy. No KDE or GNOME session was at hand: the Linux half compiles
+  and passes clippy there, untried on either desktop. C asks with
+  `KuiRunConfig.backdrop` (a `KUI_BACKDROP_*`) and a view reads what the
+  window got with `kui_ctx_backdrop`, the answer and not the ask; Odin's
+  `Run_Config.backdrop` and `kui.ctx_backdrop`. The `backdrop` example
+  paints a translucent library and an opaque page from the reading.
+  *What you can delete:* nothing — this is new.
+- **A node blurs what is drawn beneath it** (backlog F129, from Noticon,
+  for a frosted toolbar over a scrolling note): CSS's `backdrop-filter:
+  blur()`. `NodeSpec::backdrop_blur(radius)` — `backdropBlur` in JSX,
+  `backdrop_blur` in Lua and Odin, `KuiSpec.backdrop_blur` in C — blurs
+  everything painted before the node, inside its rounded box, by that
+  radius in logical px (the Gaussian's standard deviation, as CSS's):
+  the ancestors' backgrounds, the siblings and the content scrolling
+  under it, and the window's backdrop where it has one. The node's own
+  `bg`, border and children paint over the blur, so a translucent `bg`
+  is frosted glass; it is clipped as the node is and faded by its
+  `opacity`. The core emits a `QuadKind::Backdrop` quad
+  (`KUI_QUAD_BACKDROP`) just before the node's own paint, carrying the
+  shape, the clip, the radius in physical px and the group opacity.
+  kui-wgpu draws a frame that has one into an offscreen copy of the
+  surface, breaks the pass at each, copies out the region under the node
+  plus three radii around it, averages it down by a power of two that
+  leaves a kernel of two to four texels, blurs it along each axis, and
+  writes it back inside the node's rounded rect and its clip, mixing by
+  coverage and opacity with blending off so a transparent window stays
+  premultiplied; then blits the frame to the surface. A frame without
+  one is drawn exactly as before, and the offscreen textures go after
+  120 frames without one. A renderer that cannot read back what it drew
+  draws nothing for the quad, which leaves the node over an unblurred
+  backdrop; a headless core has the quad in its display list and no
+  pixels. `diag::BACKDROP_BLUR_HIDDEN` warns of one under an opaque `bg`
+  of its own, which hides all of it. The devtools inspector and
+  `Core::nodes` (`backdropBlur` in Node) read the radius. Seen on Windows
+  11 in the new `backdrop_blur` example, in an opaque window and over
+  Acrylic: the cards under the toolbar smeared, the edge below it sharp,
+  the badge's blur inside its corners. *What you can delete:* a
+  toolbar's opaque fill over content that scrolls under it.
 - **Submenus** (backlog F128, from Noticon, for "Move to ▸" and "Sort by
   ▸"). `MenuItem::submenu(label, rows)` — `items` on a row in Node and
   Lua, read by the one row parser — is a row with a chevron that opens
@@ -107,8 +150,16 @@ are new; `KuiMenuItem` has no submenu) and the Node wire at v21 (a row's
   `items` back. `Core::menu_submenus` / `menu_bar_submenus` say what is
   open. The pointer opens and closes on a change of row, with no timer,
   so a pointer resting on one row does not undo what the keyboard opened.
-  C's `KuiMenuItem` has no submenu field, so a C host's rows are one
-  level. *What you can delete:* a list cut short because a menu could not
+  In C a row's `submenu` / `submenu_count` (ABI 26) nest the same
+  `KuiMenuItem`s, in `kui_open_menu`, `kui_select` and `kui_menu_bar`; a
+  row's flags carry `KUI_MENU_ITEM_SUBMENU`, and a host showing its own
+  menus reads and reports a row inside by its path —
+  `kui_menu_submenu_count` / `kui_menu_item_path` /
+  `kui_activate_menu_path`, and the bar's `kui_menu_bar_submenu_count` /
+  `kui_menu_bar_item_path` / `kui_activate_menu_bar_path`; Odin's
+  `Menu_Item.submenu` and the same doors. A C menu nested past 32 levels
+  — a row that is its own submenu — is refused, as an unknown role is.
+  *What you can delete:* a list cut short because a menu could not
   nest — Noticon's `MOVE_TARGETS` cap on the folders a note can move to.
 
 ### Fixed

@@ -174,6 +174,7 @@ pub const P_BOUNCE: u32 = 122;
 pub const P_GRADIENT: u32 = 123;
 pub const P_SCROLL_MODS: u32 = 124;
 pub const P_IME_OFF: u32 = 125;
+pub const P_BACKDROP_BLUR: u32 = 126;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -859,6 +860,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Gradient,
         apply: Apply::SpecGradient(|s, g| s.gradient(g)),
         doc: "A gradient painted over the node's `bg` and under its border and its children (`docs/adr/0042-a-gradient-is-an-image-the-core-paints.md`): `{ to: 'bottom', stops: [...] }` towards a side or a corner (`right`, `bottom left`, …; the default is `bottom`), `{ angle: 0.125, stops }` in turns clockwise from east, or `{ radial: true, at: [0.5, 0], stops }` out from a centre (fractions of the box, the middle by default) to its farthest corner. A stop is a colour — a `$token` too — or `[colour, position]` with the position 0 to 1; stops without one are spaced evenly between those with. Two stops at one position are a hard edge. The gradient is defined on the box's unit square and stretched to it, so a side or a corner is CSS's and any other `angle` runs corner to corner at an eighth of a turn whatever the box's aspect, where CSS's pixel-measured `45deg` does not. Stops mix in straight sRGB with the alpha premultiplied, as CSS's do. What it costs is one image quad: the core rasterizes each distinct gradient once into the glyph atlas — a 256-texel strip along an axis, a 128-texel square otherwise, within half an 8-bit level of the gradient computed per pixel for a linear one and 1.2 for a radial — keyed by the gradient and not the box, so a box that resizes and a thousand boxes that share one rasterize nothing, and a host that draws an image draws it; a gradient box costs about 55 ns over a flat one, so ten thousand of them are half a millisecond. A hard edge is as soft as the raster stretched to the box (a 256th of its length along a strip); stripes are boxes. It does not tween — `transition` eases the `bg` under it and `opacity` fades it — and `hoverBg` and the other state backgrounds replace `bg`, not the gradient; one that changes every frame is a raster a frame, and a shimmer is a `fragment`'s. Ignored on a `line`, a `polygon` and a `path`. Fewer than two stops are an error in JSX and Lua, as a malformed `keyframes` is, and draw nothing in Rust and C. A stop whose `$token` misses is not an error: it is raised as `unknown-token` and left out, as a miss leaves any slot unset, and the rest are spaced as if it had not been declared — so a gradient left with fewer than two stops, a two-stop one with a typo, draws nothing over its `bg` (backlog RG118).",
+    },
+    PropDef {
+        name: "backdropBlur",
+        id: P_BACKDROP_BLUR,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.backdrop_blur(v)),
+        doc: "Blur what was drawn beneath the node, inside its rounded box, by this radius in logical px — CSS's `backdrop-filter: blur()`, the radius its standard deviation (backlog F129). What blurs is everything painted before the node: its ancestors' backgrounds, the siblings under it, content scrolling beneath it, the window's `backdrop` where the window has one. The node's own `bg`, border and children paint over the blur, so a translucent `bg` (`#ffffff40`) makes frosted glass and an opaque one hides it. Clipped as the node is, faded by its `opacity`; 0 is none. The GPU renderer reads back only the box (and a margin of three radii around it) and blurs it at reduced resolution, so it costs a copy and three small passes per blurred node on a frame that has one and nothing on a frame that does not. A renderer that cannot read back what it drew — a host's own, or anything older — leaves the node over an unblurred backdrop; the display list carries it as a `backdrop` quad (`KUI_QUAD_BACKDROP` in C) either way.",
     },
     PropDef {
         name: "rules",
@@ -2612,8 +2620,8 @@ pub const ENV_FIELDS: &[EnvField] = &[
         from: "`WindowEnv::backdrop`",
         node: &["window.backdrop"],
         lua: &["window.backdrop"],
-        c: "`kui_env_set_backdrop(backdrop)`",
-        doc: "What is behind the window's transparent pixels, as the driver got it (backlog F126): `\"opaque\"` (the default, and every headless core's), `\"transparent\"` (the desktop as it is), `\"blur\"` (a live blur of what is behind the window) or `\"tinted\"` (the desktop's colour, not live) — `KUI_BACKDROP_*` in C, opaque 0. The app asks with `Launcher::backdrop` and decides which regions show it by painting them with alpha; this is the answer, which is less where the platform has less — a blur asked of GNOME reads `\"tinted\"`, the wallpaper kui draws itself, or `\"opaque\"` where none could be read — so a view paints its translucent regions opaque when this says so. A C host reports it through its own setter, as `always_on_top` is.",
+        c: "`kui_env_set_backdrop(backdrop)`; read back with `kui_ctx_backdrop()`",
+        doc: "What is behind the window's transparent pixels, as the driver got it (backlog F126): `\"opaque\"` (the default, and every headless core's), `\"transparent\"` (the desktop as it is), `\"blur\"` (a live blur of what is behind the window) or `\"tinted\"` (the desktop's colour, not live) — `KUI_BACKDROP_*` in C, opaque 0. The app asks with `Launcher::backdrop` and decides which regions show it by painting them with alpha; this is the answer, which is less where the platform has less — a blur asked of GNOME reads `\"tinted\"`, the wallpaper kui draws itself, or `\"opaque\"` where none could be read — so a view paints its translucent regions opaque when this says so. A C host reports it through its own setter, as `always_on_top` is; a C app asks with `KuiRunConfig.backdrop` and its view reads the answer with `kui_ctx_backdrop`.",
     },
     EnvField {
         name: "audio.device",

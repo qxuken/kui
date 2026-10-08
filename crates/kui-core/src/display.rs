@@ -107,12 +107,26 @@ pub enum QuadKind {
     /// binds the texture in place of the atlas for the run and draws it
     /// as an `Image`; one that predates the kind draws nothing.
     Texture,
+    /// Blur what is already drawn beneath `rect` — CSS's
+    /// `backdrop-filter: blur()`, a node's `backdrop_blur` (backlog
+    /// F129). `blur` is the radius in physical px; `radius`, `clip` and
+    /// the clip's radii shape the region as they shape a solid; `color`
+    /// carries the group opacity in its alpha (`rgb` zero), how much of
+    /// the blurred picture replaces the sharp one. The core emits it just
+    /// before the node's own background, so what the node paints lies on
+    /// top of the blur. It paints nothing of its own: a backend reads back
+    /// the pixels drawn so far under the rect (plus a margin of `blur` so
+    /// the edge pulls in what lies outside it), blurs them, and writes
+    /// them back inside the shape. A backend that cannot read its target —
+    /// the CPU raster, anything predating the kind — draws nothing, which
+    /// leaves the node over an unblurred backdrop.
+    Backdrop,
 }
 
 impl QuadKind {
     /// Every kind, in discriminant order — what the conformance report's
     /// `kinds` line counts and the C header's `KUI_QUAD_*` mirror.
-    pub const ALL: [QuadKind; 9] = [
+    pub const ALL: [QuadKind; 10] = [
         QuadKind::Solid,
         QuadKind::GlyphMask,
         QuadKind::GlyphColor,
@@ -122,6 +136,7 @@ impl QuadKind {
         QuadKind::Segment,
         QuadKind::Fragment,
         QuadKind::Texture,
+        QuadKind::Backdrop,
     ];
 }
 

@@ -70,10 +70,6 @@ const NO_HANDLE: &str = "a script owns no handle: the host registers and the scr
 const ODIN_IS_C: &str =
     "Odin's doors are kui.h's (packages/odin): C has none, for the reason in C's cell";
 
-/// The reason for C's `No` on the submenu rows: `KuiMenuItem` has no
-/// field for a submenu's rows yet, so a C menu has none to report.
-const NO_SUBMENU: &str = "`KuiMenuItem` carries no submenu yet (backlog F128): a C host's rows are one level, and `kui_activate_menu_item` reaches them all";
-
 /// The reason for Node's `No` on the renderer rows (not done
 /// here).
 const NEVER_PAINTS: &str = "a Node host never paints: the renderer behind `KuiWindow` is the runner's, and a headless `Ctx` has none";
@@ -874,8 +870,12 @@ pub const DOORS: &[Door] = &[
     },
     Door {
         rust: "Core::menu",
-        c: As("`kui_menu_item_count` / `kui_menu_item`, one row at a time"),
-        odin: As("`menu_item_count` / `menu_item`, one row at a time"),
+        c: As(
+            "`kui_menu_item_count` / `kui_menu_item`, one row at a time, and a submenu's by path with `kui_menu_submenu_count` / `kui_menu_item_path`",
+        ),
+        odin: As(
+            "`menu_item_count` / `menu_item`, one row at a time, and a submenu's by path with `menu_submenu_count` / `menu_item_path`",
+        ),
         node: Is("menu"),
         lua: No(GUEST),
         doc: "The open menu, for a host showing it natively.",
@@ -898,8 +898,8 @@ pub const DOORS: &[Door] = &[
     },
     Door {
         rust: "Core::activate_menu_path",
-        c: No(NO_SUBMENU),
-        odin: No(ODIN_IS_C),
+        c: Is("kui_activate_menu_path"),
+        odin: Is("activate_menu_path"),
         node: Is("activateMenuPath"),
         lua: No(GUEST),
         doc: "`activate_menu_item` for a row inside a submenu, by its path through the rows' submenus (backlog F128); a row that opens a submenu is refused.",
@@ -907,9 +907,11 @@ pub const DOORS: &[Door] = &[
     Door {
         rust: "Core::menu_bar",
         c: As(
-            "`kui_menu_bar_menu_count` / `kui_menu_bar_menu` / `kui_menu_bar_item`, one row at a time",
+            "`kui_menu_bar_menu_count` / `kui_menu_bar_menu` / `kui_menu_bar_item`, one row at a time, and a submenu's by path with `kui_menu_bar_submenu_count` / `kui_menu_bar_item_path`",
         ),
-        odin: As("`menu_bar_menu_count` / `menu_bar_menu` / `menu_bar_item`, one row at a time"),
+        odin: As(
+            "`menu_bar_menu_count` / `menu_bar_menu` / `menu_bar_item`, one row at a time, and a submenu's by path with `menu_bar_submenu_count` / `menu_bar_item_path`",
+        ),
         node: Is("menuBar"),
         lua: No(GUEST),
         doc: "The declared menu bar, for a host handing it to the OS.",
@@ -932,8 +934,8 @@ pub const DOORS: &[Door] = &[
     },
     Door {
         rust: "Core::activate_menu_bar_path",
-        c: No(NO_SUBMENU),
-        odin: No(ODIN_IS_C),
+        c: Is("kui_activate_menu_bar_path"),
+        odin: Is("activate_menu_bar_path"),
         node: Is("activateMenuBarPath"),
         lua: No(GUEST),
         doc: "`activate_menu_bar_item` for a row inside a submenu, by its path (backlog F128).",

@@ -226,6 +226,9 @@ Run_Config :: struct {
 	text_aa:       Text_AA,
 	diagnostics:   Diagnostics,
 	frame_latency: u32,
+	// What shows through the window's transparent pixels (backlog F126);
+	// .Opaque, the zero, is none. What it got is ctx_backdrop, in the view.
+	backdrop:      Backdrop,
 }
 
 // -- Lowering, for the generated spec_to_c -----------------------------------
@@ -367,3 +370,4 @@ lower_gradient :: proc(g: Gradient) -> ^c.Gradient {
 #assert(offset_of(Run_Config, text_aa) == offset_of(c.RunConfig, text_aa))
 #assert(offset_of(Run_Config, diagnostics) == offset_of(c.RunConfig, diagnostics))
 #assert(offset_of(Run_Config, frame_latency) == offset_of(c.RunConfig, frame_latency))
+#assert(offset_of(Run_Config, backdrop) == offset_of(c.RunConfig, backdrop))

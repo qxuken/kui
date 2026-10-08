@@ -133,7 +133,14 @@
 /// - ABI 25: `scroll_mods` on `KuiSpec` (64-bit size 704). Still 25 with
 ///   `kui_input_open`, `kui_set_ime_off` and `kui_ime_off_get`, new
 ///   functions.
-pub const KUI_ABI_VERSION: u32 = 25;
+/// - ABI 26: `backdrop_blur` on `KuiSpec` (into the tail padding: the
+///   64-bit size stays 704) and the
+///   `KUI_QUAD_BACKDROP` quad kind (backlog F129); `submenu` and
+///   `submenu_count` on `KuiMenuItem`, an array element, so the stride
+///   moved (backlog F128); `backdrop` on `KuiRunConfig` (backlog F126).
+///   New functions with them: `kui_ctx_backdrop`, the menu path readers
+///   and `kui_activate_menu_path` / `kui_activate_menu_bar_path`.
+pub const KUI_ABI_VERSION: u32 = 26;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

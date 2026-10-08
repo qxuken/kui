@@ -670,24 +670,31 @@ mirror_fields :: proc(g: ^Gen, c_name: string) -> (out: [dynamic]M_Field) {
 			ccount := odin_type(rec.fields[i + 1].type)
 			elem := pointee(fl.type)
 			elem_odin, elem_c, conv := elem_types(g, elem)
+			// A struct that holds an array of itself - a menu row's
+			// submenu - is still an Alias placeholder while its own fields
+			// are lowered, but it is a Mirror: it has this slice.
+			self_ref := conv != nil && conv.c_name == c_name
 			to, from: string
-			if conv != nil && needs_call(conv) {
+			if conv != nil && (needs_call(conv) || self_ref) {
+				to_x := fmt.tprintf("%s_to_c(x, scratch)", snake_of(conv.odin)) if self_ref else to_c_expr(conv, "x")
 				to = fmt.tprintf(
 					"{{ tmp := make([]%s, len(v.%s), context.temp_allocator); for x, k in v.%s do tmp[k] = %s; out.%s, out.%s = raw_data(tmp), %s(len(tmp)) }}",
 					elem_c,
 					n,
 					n,
-					to_c_expr(conv, "x"),
+					to_x,
 					n,
 					cn,
 					ccount,
 				)
-				if conv.kind == .Mirror {
+				if conv.kind == .Mirror || self_ref {
+					at := fmt.tprintf("v.%s[k]", n)
+					from_x := fmt.tprintf("%s_from_c(%s)", snake_of(conv.odin), at) if self_ref else from_c_expr(conv, at)
 					from = fmt.tprintf(
 						"{{ tmp := make([]%s, v.%s, context.temp_allocator); for &x, k in tmp do x = %s; out.%s = tmp }}",
 						elem_odin,
 						cn,
-						from_c_expr(conv, fmt.tprintf("v.%s[k]", n)),
+						from_x,
 						n,
 					)
 				}

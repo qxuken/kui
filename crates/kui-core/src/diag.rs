@@ -255,6 +255,12 @@ warnings! {
     /// which is resolved only after every width is. The ratio sizes a fit
     /// height from the width, or a fit width from a fixed height.
     pub const ASPECT_IGNORED: &str = "aspect-ignored";
+    /// A `backdropBlur` under an opaque `bg` of the node's own: the
+    /// background paints over the whole blur, so nothing of it shows and
+    /// the copy and the passes are spent for nothing. Give the `bg` some
+    /// transparency (`#ffffff40`) — frosted glass is a translucent fill
+    /// over a blur (backlog F129).
+    pub const BACKDROP_BLUR_HIDDEN: &str = "backdrop-blur-hidden";
     /// A text node sits more than four levels below the `line` row above
     /// it, which is as far as a text's place remembers its ancestors — so
     /// `textHit` / `caretRect` asked by that row's key cannot find the run,
@@ -986,6 +992,9 @@ impl Diagnostics {
         self.check_grow_weights(tree);
         self.check_wrap(tree);
         self.check_align(tree);
+        if tree.any_backdrop_blur {
+            self.check_backdrop_blur(tree);
+        }
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
         self.check_modal(tree);
@@ -1348,6 +1357,24 @@ impl Diagnostics {
                     format!("aspectRatio {} has no effect: {why}", l.aspect)
                 });
             }
+        }
+    }
+
+    /// A backdrop blur its own background hides: see
+    /// [`BACKDROP_BLUR_HIDDEN`]. Asked only on a frame that has one.
+    fn check_backdrop_blur(&mut self, tree: &Tree) {
+        for i in 0..tree.len() {
+            let spec = &tree.specs[i];
+            let blur = spec.interact().backdrop_blur;
+            if blur <= 0.0 || spec.style.bg.a < 1.0 || spec.style.opacity < 1.0 {
+                continue;
+            }
+            self.warn(BACKDROP_BLUR_HIDDEN, tree.keys[i], || {
+                format!(
+                    "backdropBlur {blur} is hidden: the node's own bg is opaque and paints over \
+                     the whole blur (give the bg some transparency, #ffffff40, for frosted glass)"
+                )
+            });
         }
     }
 

@@ -580,6 +580,28 @@ backdrop; `KUI_BACKDROP_EMULATE=1` shows the wallpaper path anywhere.
 [`window.backdrop` row](props.md#env) ·
 [`backdrop.rs`](../examples/rust/features/backdrop.rs)
 
+In C, `KuiRunConfig.backdrop` asks (`KUI_BACKDROP_BLUR`) and
+`kui_ctx_backdrop(ctx)` in the view reads what the window got.
+
+### How do I frost a toolbar over content that scrolls under it?
+
+Give the toolbar a `backdropBlur` and a translucent `bg`:
+`NodeSpec::row().backdrop_blur(16.0).bg(Color::WHITE.with_alpha(0.25))`
+in Rust, `backdropBlur: 16` in JSX, `backdrop_blur` in Lua, Odin and C's
+`KuiSpec`. What blurs is everything painted before the node — the page,
+the rows scrolling under it, the window's backdrop where there is one —
+inside the node's rounded box and its clip, by the radius in logical px
+(CSS's `backdrop-filter: blur()`). The node's own `bg`, border and
+children lie on top, so an opaque `bg` hides the blur, and a
+`backdrop-blur-hidden` warning says so. Float the toolbar over the
+scroller, after it in the tree, so the scroller paints first. It costs a
+copy and three small passes per blurred node on a frame that has one, and
+nothing on a frame that does not; a renderer of your own that cannot read
+back its frame draws the node unblurred.
+
+[`backdropBlur` row](props.md#container-props) ·
+[`backdrop_blur.rs`](../examples/rust/features/backdrop_blur.rs)
+
 ## Interaction, focus and reading
 
 ### How do I open a popup, and when is a modal enough?
@@ -766,8 +788,11 @@ it, and Escape again closes the menu. It nests, in a context menu and in
 a menu bar, drawn or the platform's. A row inside is chosen like any
 row: one `{kind:"menu", role, item}` with its own `id`, on the node the
 menu is about. A host that shows menus itself reports one with
-`Core::activate_menu_path(&[1, 0])` (Node `activateMenuPath`); a C
-host's `KuiMenuItem` has no submenu field, so its rows are one level. An
+`Core::activate_menu_path(&[1, 0])` (Node `activateMenuPath`, C
+`kui_activate_menu_path` with a path of `size_t`s). In C a row's
+`submenu` / `submenu_count` nest the same `KuiMenuItem`s, and
+`KUI_MENU_ITEM_SUBMENU` in a row's flags says it has rows, read with
+`kui_menu_item_path`. An
 `accel` in the portable spelling (`"mod+shift+n"`) is drawn the
 platform's way, and the menu widens to its longest row.
 

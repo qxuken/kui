@@ -74,6 +74,8 @@ mod widgets_headless {
                 id: std::ptr::null(),
                 accel: ks(""),
                 checked: 0,
+                submenu: std::ptr::null(),
+                submenu_count: 0,
             },
             KuiMenuItem {
                 label: ks("Latin"),
@@ -82,6 +84,8 @@ mod widgets_headless {
                 id: la,
                 accel: ks(""),
                 checked: 0,
+                submenu: std::ptr::null(),
+                submenu_count: 0,
             },
         ];
         let build = |current: i64| {
@@ -147,6 +151,8 @@ mod widgets_headless {
             id,
             accel: ks(""),
             checked: 0,
+            submenu: std::ptr::null(),
+            submenu_count: 0,
         };
         let items = [
             row("English", KUI_MENU_CUSTOM, 1, std::ptr::null()),
@@ -2356,6 +2362,8 @@ mod parity_headless {
                 id: std::ptr::null(),
                 accel: ks(""),
                 checked: 0,
+                submenu: std::ptr::null(),
+                submenu_count: 0,
             },
             KuiMenuItem {
                 label: ks("Wrap"),
@@ -2364,6 +2372,8 @@ mod parity_headless {
                 id: std::ptr::null(),
                 accel: ks("⌥Z"),
                 checked: 1,
+                submenu: std::ptr::null(),
+                submenu_count: 0,
             },
             KuiMenuItem {
                 label: ks("Gone"),
@@ -2372,6 +2382,8 @@ mod parity_headless {
                 id: std::ptr::null(),
                 accel: ks(""),
                 checked: 0,
+                submenu: std::ptr::null(),
+                submenu_count: 0,
             },
         ];
         assert!(kui_open_menu(
@@ -3049,6 +3061,7 @@ mod run_config_headless {
             text_aa: KUI_TEXT_AA_GRAYSCALE,
             diagnostics: KUI_DIAG_OFF,
             frame_latency: 1,
+            backdrop: 3, // KUI_BACKDROP_TINTED
         };
         assert_eq!(
             run_options_of(Some(&full)).unwrap(),
@@ -3062,6 +3075,7 @@ mod run_config_headless {
                 text_aa: KUI_TEXT_AA_GRAYSCALE,
                 diagnostics: Some(false),
                 frame_latency: Some(1),
+                backdrop: kui_core::Backdrop::Tinted,
             }
         );
         assert_eq!(
@@ -3111,6 +3125,13 @@ mod run_config_headless {
                 ..zero
             })
             .contains("max_w must be")
+        );
+        assert!(
+            refused(KuiRunConfig {
+                backdrop: 4,
+                ..zero
+            })
+            .contains("KUI_BACKDROP_TINTED, not 4")
         );
     }
 
@@ -3439,6 +3460,8 @@ mod borrows {
             id: std::ptr::null(),
             accel: none(),
             checked: 0,
+            submenu: std::ptr::null(),
+            submenu_count: 0,
         };
         assert!(kui_open_menu(ctx, key, 10.0, 10.0, &item, 1));
         let mut label = none();
@@ -3456,6 +3479,137 @@ mod borrows {
         kui_request_copy(ctx, &mut copy);
         assert_eq!(a.text.ptr, unsafe { (*ctx).menu_text.as_ptr() });
         assert_eq!(&*kstr(a.text), "copied text payload");
+        kui_ctx_free(ctx);
+    }
+
+    /// A C row's submenu reaches the core in all three menus — the context
+    /// menu, the select and the bar — nested, and a row that is its own
+    /// submenu is refused rather than read until the stack runs out
+    /// (backlog F128).
+    #[test]
+    fn a_c_submenu_reaches_every_menu_and_a_cycle_is_refused() {
+        let row = |label: &'static str| KuiMenuItem {
+            label: ks(label),
+            role: KUI_MENU_CUSTOM,
+            enabled: 1,
+            id: std::ptr::null(),
+            accel: none(),
+            checked: 0,
+            submenu: std::ptr::null(),
+            submenu_count: 0,
+        };
+        let deeper = [row("Oldest first")];
+        let mut date = row("Date");
+        date.submenu = deeper.as_ptr();
+        date.submenu_count = 1;
+        let sort = [row("Name"), date];
+        let mut sort_by = row("Sort by");
+        sort_by.submenu = sort.as_ptr();
+        sort_by.submenu_count = 2;
+        let rows = [row("Open"), sort_by];
+
+        let ctx = kui_ctx_new();
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        kui_root(ctx, &zspec());
+        let key = kui_open_keyed(ctx, ks("t"), &zspec(), std::ptr::null_mut());
+        kui_close(ctx);
+        let select = kui_select(ctx, ks("Order"), rows.as_ptr(), rows.len(), 0);
+        let menus = [KuiMenu {
+            label: ks("View"),
+            items: rows.as_ptr(),
+            count: rows.len(),
+            enabled: 1,
+        }];
+        assert!(kui_menu_bar(ctx, menus.as_ptr(), 1));
+        kui_frame_finish(ctx);
+        assert_ne!(select, 0, "the select takes a row with a submenu");
+
+        assert!(kui_open_menu(
+            ctx,
+            key,
+            10.0,
+            10.0,
+            rows.as_ptr(),
+            rows.len()
+        ));
+        let c = unsafe { &mut *ctx };
+        let menu = c.core().menu().expect("open").clone();
+        let inner = kui_core::MenuItem::at_path(&menu.items, &[1, 1, 0]).expect("three deep");
+        assert_eq!(inner.label, "Oldest first");
+        let bar = c.core().menu_bar().expect("declared").clone();
+        assert_eq!(
+            bar.item_at(0, &[1, 0]).map(|r| r.label.as_str()),
+            Some("Name")
+        );
+        let path = [1usize, 1];
+        assert_eq!(kui_menu_submenu_count(ctx, path.as_ptr(), 2), 1);
+        assert_eq!(kui_menu_bar_submenu_count(ctx, 0, path.as_ptr(), 2), 1);
+        assert_eq!(
+            kui_menu_submenu_count(ctx, std::ptr::null(), 1),
+            0,
+            "a NULL path with a depth reads nothing"
+        );
+        assert!(!kui_activate_menu_path(ctx, std::ptr::null(), 0));
+        kui_close_menu(ctx);
+
+        // A row whose submenu is itself.
+        let mut cycle = [row("Again")];
+        cycle[0].submenu = cycle.as_ptr();
+        cycle[0].submenu_count = 1;
+        assert!(
+            !kui_open_menu(ctx, key, 10.0, 10.0, cycle.as_ptr(), 1),
+            "refused, as an unknown role is"
+        );
+        assert_eq!(
+            kui_menu_item_count(
+                ctx,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut()
+            ),
+            0
+        );
+        kui_ctx_free(ctx);
+    }
+
+    /// `KuiSpec.backdrop_blur` reaches the display list as a
+    /// `KUI_QUAD_BACKDROP` before the node's background, its radius in
+    /// physical px (backlog F129).
+    #[test]
+    fn a_backdrop_blur_draws_a_backdrop_quad() {
+        let ctx = kui_ctx_new();
+        kui_frame_begin(ctx, 200.0, 100.0, 2.0);
+        kui_root(ctx, &zspec());
+        let mut spec = zspec();
+        spec.width = KuiSizing {
+            tag: 2,
+            value: 80.0,
+        };
+        spec.height = KuiSizing {
+            tag: 2,
+            value: 40.0,
+        };
+        spec.bg = 0xffffff40;
+        spec.backdrop_blur = 10.0;
+        kui_open_keyed(ctx, ks("glass"), &spec, std::ptr::null_mut());
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+        let mut dd: KuiDrawData = unsafe { std::mem::zeroed() };
+        dd.size = std::mem::size_of::<KuiDrawData>() as u32;
+        assert!(kui_draw_data(ctx, &mut dd));
+        let quads = unsafe { std::slice::from_raw_parts(dd.quads, dd.quad_count) };
+        let backdrop = kui_core::QuadKind::Backdrop as u32;
+        let i = quads
+            .iter()
+            .position(|q| q.kind == backdrop)
+            .expect("a KUI_QUAD_BACKDROP");
+        assert_eq!(backdrop, 9, "KUI_QUAD_BACKDROP");
+        assert_eq!(quads[i].blur, 20.0, "10 logical px at scale 2");
+        assert_eq!(
+            quads[i + 1].kind,
+            kui_core::QuadKind::Solid as u32,
+            "the bg over it"
+        );
         kui_ctx_free(ctx);
     }
 

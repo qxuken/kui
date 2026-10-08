@@ -5986,7 +5986,7 @@ pub struct Output {
     pub quad_count: usize,
     pub quad_digest: u64,
     /// Per [`QuadKind`], in its discriminant order.
-    pub kinds: [usize; 9],
+    pub kinds: [usize; 10],
     /// Every `FragmentDraw` the frame emitted, in the order the quads
     /// index them. The parameters are not on the quad, so the digest
     /// cannot reach them; the report carries them instead, as bits, so no
@@ -6420,7 +6420,7 @@ pub fn drive(
     let fragment_images = dl.fragments.iter().map(|f| f.image).collect();
     let quads = &dl.quads;
     let clips = &dl.clips;
-    let mut kinds = [0usize; 9];
+    let mut kinds = [0usize; 10];
     for q in quads.iter() {
         kinds[match q.kind {
             QuadKind::Solid => 0,
@@ -6432,6 +6432,7 @@ pub fn drive(
             QuadKind::Segment => 6,
             QuadKind::Fragment => 7,
             QuadKind::Texture => 8,
+            QuadKind::Backdrop => 9,
         }] += 1;
     }
     Output {
@@ -6565,7 +6566,7 @@ pub fn write_command(cmd: &WindowCommand, out: &mut String) {
 ///                            which Option keys the frame asked to act as Alt
 /// ime-off <0|1>            whether the frame asked for the input method off
 /// quads <count> <digest:016x>
-/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment> <fragment> <texture>
+/// kinds <solid> <glyphMask> <glyphColor> <image> <glyphSubpixel> <shadow> <segment> <fragment> <texture> <backdrop>
 /// fragment <i> <16 × params as f32 bits>
 /// fragment-image <i> <atlas|texture> <texture index|-> <x> <y> <w> <h>
 ///                            where a fragment's `image` is; omitted with none
@@ -6593,7 +6594,7 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
     let _ = writeln!(s, "quads {} {:016x}", out.quad_count, out.quad_digest);
     let _ = writeln!(
         s,
-        "kinds {} {} {} {} {} {} {} {} {}",
+        "kinds {} {} {} {} {} {} {} {} {} {}",
         out.kinds[0],
         out.kinds[1],
         out.kinds[2],
@@ -6602,7 +6603,8 @@ pub fn report(name: &str, env: WindowEnv, steps: &[Step], out: &Output) -> Strin
         out.kinds[5],
         out.kinds[6],
         out.kinds[7],
-        out.kinds[8]
+        out.kinds[8],
+        out.kinds[9]
     );
     for (i, params) in out.fragments.iter().enumerate() {
         let _ = write!(s, "fragment {i}");
@@ -6783,7 +6785,9 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 .gap(4.0)
                 .height(30.0)
                 .main_align(Align::Center)
-                .cross_align(Align::End),
+                .cross_align(Align::End)
+                // A frosted dock: what the card drew blurs under it.
+                .backdrop_blur(6.0),
             |ui| {
                 ui.leaf_keyed(
                     "stop",

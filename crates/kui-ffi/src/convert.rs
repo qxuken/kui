@@ -329,6 +329,9 @@ pub(crate) fn spec_of(
         let stops = unsafe { std::slice::from_raw_parts(s.keyframes, s.keyframes_len) };
         spec = spec.keyframes(stops.iter().map(keyframe_of).collect());
     }
+    if s.backdrop_blur > 0.0 {
+        spec = spec.backdrop_blur(s.backdrop_blur);
+    }
     if s.scroll_mods != 0 {
         spec = spec.scroll_mods(kui_core::KeyMods::from_bits(s.scroll_mods));
     }

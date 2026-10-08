@@ -1550,15 +1550,17 @@ impl Core {
         }
         inner.events = None;
         inner.access = None;
-        // The gradient is paint over the children's box, so it goes with
-        // them; the rest of the row is addressed (RG115).
+        // The gradient and the backdrop blur are paint over the children's
+        // box, so they go with them; the rest of the row is addressed
+        // (RG115).
         inner.interact = spec
             .interact
             .as_ref()
-            .and_then(|i| i.gradient.clone())
-            .map(|g| {
+            .filter(|i| i.gradient.is_some() || i.backdrop_blur > 0.0)
+            .map(|i| {
                 Box::new(crate::spec::InteractSpec {
-                    gradient: Some(g),
+                    gradient: i.gradient.clone(),
+                    backdrop_blur: i.backdrop_blur,
                     ..Default::default()
                 })
             });

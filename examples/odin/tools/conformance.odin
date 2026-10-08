@@ -1764,13 +1764,14 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		}
 		if kui.row(ui, {key = "strip", width = kui.px(60), height = kui.px(10), bg = 0x3a3f52ff, window = .Drag}) {}
 		dock := kui.Spec {
-			key          = "dock",
-			dir          = .Row,
-			focus_region = true,
-			gap          = 4,
-			height       = kui.px(30),
-			main_align   = .Center,
-			cross_align  = .End,
+			key           = "dock",
+			dir           = .Row,
+			focus_region  = true,
+			gap           = 4,
+			height        = kui.px(30),
+			main_align    = .Center,
+			cross_align   = .End,
+			backdrop_blur = 6,
 		}
 		if kui.box(ui, dock) {
 			stop := kui.Spec {
@@ -2306,13 +2307,13 @@ run_scene :: proc(scene: Scene, env: Env, steps: []Step, out: ^strings.Builder) 
 
 	dd := kui.draw_data(ui)
 	fmt.sbprintf(out, "quads %d %016x\n", len(dd.quads), quad_digest(dd.quads, dd.clips))
-	kinds: [9]int
+	kinds: [10]int
 	for q in dd.quads {
-		if u32(q.kind) < 9 do kinds[int(q.kind)] += 1
+		if u32(q.kind) < 10 do kinds[int(q.kind)] += 1
 	}
 	fmt.sbprintf(
 		out,
-		"kinds %d %d %d %d %d %d %d %d %d\n",
+		"kinds %d %d %d %d %d %d %d %d %d %d\n",
 		kinds[0],
 		kinds[1],
 		kinds[2],
@@ -2322,6 +2323,7 @@ run_scene :: proc(scene: Scene, env: Env, steps: []Step, out: ^strings.Builder) 
 		kinds[6],
 		kinds[7],
 		kinds[8],
+		kinds[9],
 	)
 	// A fragment's parameters ride a side list, not the quad, so the digest
 	// cannot reach them; the report carries them as bits.

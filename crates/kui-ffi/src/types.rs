@@ -776,6 +776,10 @@ pub struct KuiSpec {
     /// with one of them held, ahead of every scroller under the pointer.
     /// 0 is none: a handler like any other. ABI 25.
     pub scroll_mods: u32,
+    /// Blur what was drawn beneath the node, inside its rounded box, by
+    /// this radius in logical px (`backdropBlur`, backlog F129); 0 is
+    /// none. ABI 26.
+    pub backdrop_blur: f32,
 }
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
@@ -1589,6 +1593,10 @@ pub struct KuiRunConfig {
     /// Frames queued ahead of the one on screen; zero is the default.
     /// `KUI_FRAME_LATENCY` in the environment still overrides. ABI 19.
     pub frame_latency: u32,
+    /// `KUI_BACKDROP_*`: what shows through the window's transparent
+    /// pixels where the platform can (`Launcher::backdrop`); 0 is opaque.
+    /// What the window got is `kui_ctx_backdrop`. ABI 26.
+    pub backdrop: u32,
 }
 
 /// `KUI_CHROME_NATIVE`: the OS's decorations.
@@ -1629,6 +1637,8 @@ pub(crate) struct RunOptions {
     pub diagnostics: Option<bool>,
     /// `None` is the launcher's default.
     pub frame_latency: Option<u32>,
+    /// The backdrop asked for, checked.
+    pub backdrop: kui_core::Backdrop,
 }
 
 /// A max side left at zero is unbounded: a bound no display reaches, as
@@ -1692,6 +1702,12 @@ pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, Str
             ));
         }
     };
+    let Some(backdrop) = kui_core::Backdrop::from_code(c.backdrop) else {
+        return Err(format!(
+            "KuiRunConfig.backdrop must be KUI_BACKDROP_OPAQUE, KUI_BACKDROP_TRANSPARENT, KUI_BACKDROP_BLUR or KUI_BACKDROP_TINTED, not {}",
+            c.backdrop
+        ));
+    };
     Ok(RunOptions {
         size,
         min_size,
@@ -1700,6 +1716,7 @@ pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, Str
         text_aa: c.text_aa,
         diagnostics,
         frame_latency: (c.frame_latency > 0).then_some(c.frame_latency),
+        backdrop,
     })
 }
 
@@ -2334,6 +2351,8 @@ pub const KUI_MENU_LOOK_UP: u32 = 6;
 /// report on a row.
 pub const KUI_MENU_ITEM_ENABLED: u32 = 1 << 0;
 pub const KUI_MENU_ITEM_CHECKED: u32 = 1 << 1;
+/// `KUI_MENU_ITEM_SUBMENU`: the row opens rows of its own (backlog F128).
+pub const KUI_MENU_ITEM_SUBMENU: u32 = 1 << 2;
 
 /// `KUI_MENU_ACTION_*`: a `KuiMenuAction.kind`.
 pub const KUI_MENU_ACTION_SET_CLIPBOARD: u32 = 0;

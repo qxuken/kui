@@ -192,6 +192,9 @@ pub struct Tree {
     /// Whether any node declares a `gradient`: emission looks for one
     /// only on a frame that has one.
     pub any_gradient: bool,
+    /// Whether any node declares a `backdrop_blur` (backlog F129):
+    /// emission looks for one only on a frame that has one.
+    pub any_backdrop_blur: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
     /// Whether any node is a `role="line"` row — what a pointer payload
@@ -338,6 +341,7 @@ impl Tree {
         self.any_wrap = false;
         self.any_table = false;
         self.any_gradient = false;
+        self.any_backdrop_blur = false;
         self.any_text = false;
         self.any_line = false;
         self.any_selectable = false;
@@ -402,6 +406,7 @@ impl Tree {
         if let Some(i) = spec.interact.as_deref() {
             self.any_selectable |= i.selectable;
             self.any_region |= i.focus_region;
+            self.any_backdrop_blur |= i.backdrop_blur > 0.0;
         }
         if let Some(a) = spec.access.as_deref() {
             self.any_line |= a.role == Some(crate::access::Role::Line);

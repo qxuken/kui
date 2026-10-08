@@ -434,6 +434,7 @@ Menu_Role :: enum u32 {
 Menu_Item_Flag :: enum u32 {
 	Enabled = 0, // KUI_MENU_ITEM_ENABLED
 	Checked = 1, // KUI_MENU_ITEM_CHECKED
+	Submenu = 2, // KUI_MENU_ITEM_SUBMENU
 }
 Menu_Item_Flags :: bit_set[Menu_Item_Flag;u32]
 
@@ -534,6 +535,7 @@ Quad_Kind :: enum u32 {
 	Segment = 6, // KUI_QUAD_SEGMENT
 	Fragment = 7, // KUI_QUAD_FRAGMENT
 	Texture = 8, // KUI_QUAD_TEXTURE
+	Backdrop = 9, // KUI_QUAD_BACKDROP
 }
 
 Fragment_Image :: enum u32 {
@@ -715,6 +717,10 @@ Spec :: struct {
 	// centre (fractions of the box, the middle by default) to its farthest
 	// corner.
 	gradient: Maybe(Gradient),
+	// Blur what was drawn beneath the node, inside its rounded box, by this
+	// radius in logical px — CSS's `backdrop-filter: blur()`, the radius its
+	// standard deviation (backlog F129).
+	backdrop_blur: f32,
 	// On a table (`dir="table"`, ADR 0033): grid lines of this colour between its
 	// columns and between its rows (backlog DX21) — down the middle of each gap
 	// between the columns of its widest row, from the first row's top to the last
@@ -963,6 +969,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.disabled = 1 if s.disabled else 0
 	out.hover_bg = s.hover_bg
 	if gr, ok := s.gradient.?; ok do out.gradient = lower_gradient(gr)
+	out.backdrop_blur = s.backdrop_blur
 	out.rules = s.rules
 	out.rule_w = s.rule_width
 	out.drop_bg = s.drop_bg
@@ -1613,6 +1620,7 @@ Menu_Item :: struct {
 	id: any,
 	accel: string,
 	checked: bool,
+	submenu: []Menu_Item,
 }
 
 menu_item_to_c :: proc(v: Menu_Item, scratch: ^Scratch) -> (out: c.MenuItem) {
@@ -1622,6 +1630,7 @@ menu_item_to_c :: proc(v: Menu_Item, scratch: ^Scratch) -> (out: c.MenuItem) {
 	out.id = borrow(scratch, v.id)
 	out.accel = v.accel
 	out.checked = 1 if v.checked else 0
+	{ tmp := make([]c.MenuItem, len(v.submenu), context.temp_allocator); for x, k in v.submenu do tmp[k] = menu_item_to_c(x, scratch); out.submenu, out.submenu_count = raw_data(tmp), uint(len(tmp)) }
 	return
 }
 
@@ -1631,6 +1640,7 @@ menu_item_from_c :: proc(v: c.MenuItem) -> (out: Menu_Item) {
 	out.disabled = v.enabled == 0
 	out.accel = v.accel
 	out.checked = v.checked != 0
+	{ tmp := make([]Menu_Item, v.submenu_count, context.temp_allocator); for &x, k in tmp do x = menu_item_from_c(v.submenu[k]); out.submenu = tmp }
 	return
 }
 
@@ -2444,6 +2454,11 @@ env_set_backdrop :: proc(ui: ^Ui, backdrop: Backdrop) {
 	c.env_set_backdrop(ui, u32(backdrop))
 }
 
+// kui_ctx_backdrop (kui.h).
+ctx_backdrop :: proc(ui: ^Ui) -> Backdrop {
+	return Backdrop(c.ctx_backdrop(ui))
+}
+
 // Declares that this frame wants secure keyboard entry while the window has
 // the keyboard — a password prompt (backlog F85).
 // Rust: Ui::secure_input.
@@ -3137,6 +3152,28 @@ activate_menu_bar_item :: proc(ui: ^Ui, menu: int, item: int) -> bool {
 	return c.activate_menu_bar_item(ui, uint(menu), uint(item))
 }
 
+// kui_menu_bar_submenu_count (kui.h).
+menu_bar_submenu_count :: proc(ui: ^Ui, menu: int, path: []uint) -> int {
+	return int(c.menu_bar_submenu_count(ui, uint(menu), ([^]uint)(raw_data(path)), uint(len(path))))
+}
+
+// kui_menu_bar_item_path (kui.h).
+menu_bar_item_path :: proc(ui: ^Ui, menu: int, path: []uint) -> (label: string, accel: string, role: Menu_Role, flags: Menu_Item_Flags, ok: bool) {
+	c_role: u32
+	c_flags: u32
+	ok = c.menu_bar_item_path(ui, uint(menu), ([^]uint)(raw_data(path)), uint(len(path)), &label, &accel, &c_role, &c_flags)
+	role = Menu_Role(c_role)
+	flags = transmute(Menu_Item_Flags)c_flags
+	return
+}
+
+// `activate_menu_bar_item` for a row inside a submenu, by its path (backlog
+// F128).
+// Rust: Core::activate_menu_bar_path.
+activate_menu_bar_path :: proc(ui: ^Ui, menu: int, path: []uint) -> bool {
+	return c.activate_menu_bar_path(ui, uint(menu), ([^]uint)(raw_data(path)), uint(len(path)))
+}
+
 // The window's selected text — a scope's, a grid's or the focused editor's.
 // Rust: Ui::selection_text.
 selection_text :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
@@ -3273,6 +3310,28 @@ menu_item :: proc(ui: ^Ui, item: int) -> (label: string, accel: string, role: Me
 // Rust: Core::activate_menu_item.
 activate_menu_item :: proc(ui: ^Ui, index: int) -> bool {
 	return c.activate_menu_item(ui, uint(index))
+}
+
+// kui_menu_submenu_count (kui.h).
+menu_submenu_count :: proc(ui: ^Ui, path: []uint) -> int {
+	return int(c.menu_submenu_count(ui, ([^]uint)(raw_data(path)), uint(len(path))))
+}
+
+// kui_menu_item_path (kui.h).
+menu_item_path :: proc(ui: ^Ui, path: []uint) -> (label: string, accel: string, role: Menu_Role, flags: Menu_Item_Flags, ok: bool) {
+	c_role: u32
+	c_flags: u32
+	ok = c.menu_item_path(ui, ([^]uint)(raw_data(path)), uint(len(path)), &label, &accel, &c_role, &c_flags)
+	role = Menu_Role(c_role)
+	flags = transmute(Menu_Item_Flags)c_flags
+	return
+}
+
+// `activate_menu_item` for a row inside a submenu, by its path through the
+// rows' submenus (backlog F128); a row that opens a submenu is refused.
+// Rust: Core::activate_menu_path.
+activate_menu_path :: proc(ui: ^Ui, path: []uint) -> bool {
+	return c.activate_menu_path(ui, ([^]uint)(raw_data(path)), uint(len(path)))
 }
 
 // Whether the host can show the platform's definition panel, which decides
