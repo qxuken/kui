@@ -788,7 +788,9 @@ export function createEncoder(P) {
         ulStyle: p.underlineStyle ?? st.ulStyle,
         bgRadius: p.bgRadius ?? st.bgRadius,
         family: p.family ?? st.family,
-        font: p.font != null ? String(p.font) : st.font,
+        // A span naming a family drops the handle it inherited, which
+        // would otherwise win over it.
+        font: p.font != null ? String(p.font) : p.family != null ? null : st.font,
         size: p.size ?? st.size,
       },
       out,

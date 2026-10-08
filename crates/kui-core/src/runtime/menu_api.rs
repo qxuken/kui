@@ -98,7 +98,7 @@ impl Core {
         let menu = self.menu.as_ref()?;
         let mut out = Vec::new();
         match MenuItem::at_path(&menu.items, path) {
-            Some(item) if !item.selectable() || item.has_submenu() => return None,
+            Some(_) if !MenuItem::choosable_at(&menu.items, path) => return None,
             Some(_) => self.choose_menu_path(path, &mut out),
             None => {
                 self.close_menu();
@@ -705,6 +705,13 @@ impl Core {
     pub(crate) fn submenu_key(&mut self, ek: crate::input::EditKey) -> bool {
         use crate::input::EditKey;
         if !matches!(ek, EditKey::Left | EditKey::Right | EditKey::Escape) {
+            return false;
+        }
+        // No menu of the core's open, no submenu to work: an editor's
+        // arrows skip the walk below, and an app drawing `context_menu`
+        // itself — whose hovers still note a submenu — cannot leave one
+        // behind for a later Escape to be spent on.
+        if self.menu.is_none() && self.menu_bar_open.is_none() {
             return false;
         }
         // The focused row, if it is one of the core's: which menu, and

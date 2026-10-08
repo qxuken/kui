@@ -415,6 +415,24 @@ impl MenuItem {
         self.enabled && self.role != MenuRole::Separator
     }
 
+    /// Whether the row at `path` can be chosen the way the drawn menu
+    /// reaches it: every row on the way enabled, the last one selectable
+    /// and opening nothing. A host's report of a row the menu could not
+    /// have shown it is refused rather than performed.
+    pub(crate) fn choosable_at(items: &[MenuItem], path: &[usize]) -> bool {
+        let mut level = items;
+        for (n, &i) in path.iter().enumerate() {
+            let Some(item) = level.get(i).filter(|item| item.selectable()) else {
+                return false;
+            };
+            if n + 1 == path.len() {
+                return !item.has_submenu();
+            }
+            level = &item.submenu;
+        }
+        false
+    }
+
     /// Rewrites every accelerator in `items` that kui can parse into the
     /// platform's own spelling ([`Accel::label`]) and leaves the rest
     /// exactly as declared. What `declare_menu_bar` and `open_menu` do on
@@ -685,11 +703,14 @@ impl Accel {
                 "shift" => mods.shift = true,
                 // The key, and only one of them: `"s+s"` is a typo.
                 _ if code.is_some() => return None,
+                // A key as `display` writes it reads back as that key, so
+                // the menu that normalized `"mod+backspace"` into `⌘⌫`
+                // binds Backspace and not a `⌫` no keyboard types.
                 _ => {
                     code = Some(if part.chars().count() == 1 {
-                        KeyCode::Char(part.chars().next().unwrap())
+                        key_from_label(part).unwrap_or(KeyCode::Char(part.chars().next().unwrap()))
                     } else {
-                        KeyCode::from_name(&lower)?
+                        KeyCode::from_name(&lower).or_else(|| key_from_label(part))?
                     });
                 }
             }
@@ -799,8 +820,22 @@ impl Accel {
 /// (`⇧`, `⌫`, `↩`), and the spelled word everywhere else. A key name is
 /// wire vocabulary (`"pageup"`); this is the label beside a row.
 fn key_label(code: crate::input::KeyCode) -> String {
+    key_label_on(code, cfg!(target_os = "macos"))
+}
+
+/// The key [`key_label`] writes as `label`, on either platform's spelling:
+/// what [`Accel::parse`] reads a displayed accelerator back through.
+fn key_from_label(label: &str) -> Option<crate::input::KeyCode> {
+    crate::input::KeyCode::named()
+        .iter()
+        .map(|(k, _)| *k)
+        .find(|&k| {
+            key_label_on(k, true) == label || key_label_on(k, false).eq_ignore_ascii_case(label)
+        })
+}
+
+fn key_label_on(code: crate::input::KeyCode, mac: bool) -> String {
     use crate::input::KeyCode;
-    let mac = cfg!(target_os = "macos");
     match code {
         KeyCode::Char(c) => return c.to_uppercase().to_string(),
         KeyCode::F(n) => return format!("F{n}"),
@@ -962,6 +997,30 @@ mod tests {
             "ctrl+shift+i"
         );
         assert_eq!(Accel::parse("win+f12").unwrap().spelling(), "super+f12");
+    }
+
+    /// What a menu draws parses back to the chord it was drawn from: the
+    /// macOS bar binds its key equivalent off the normalized text, and a
+    /// `⌘⌫` read as the character `⌫` bound a key no keyboard has.
+    #[test]
+    fn the_displayed_spelling_parses_back_to_the_same_chord() {
+        for (code, _) in KeyCode::named() {
+            let mods = KeyMods::NONE.with_shift().with_super();
+            let a = Accel { code: *code, mods };
+            // A modifier is no shortcut's key, and Play/Pause's pause key
+            // is spelled as Pause's: that one reads back as Pause.
+            if code.is_modifier() || *code == KeyCode::MediaPause {
+                continue;
+            }
+            assert_eq!(Accel::parse(&a.display()), Some(a), "{}", a.display());
+            for mac in [true, false] {
+                let label = key_label_on(*code, mac);
+                assert_eq!(key_from_label(&label), Some(*code), "{label}");
+            }
+        }
+        let trash = Accel::parse(&Accel::label("mod+backspace")).unwrap();
+        assert_eq!(trash.code, KeyCode::Backspace);
+        assert_eq!(trash.key_equivalent().as_deref(), Some("\u{8}"));
     }
 
     #[test]

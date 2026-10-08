@@ -592,7 +592,8 @@ it reads `Tinted`, the wallpaper kui reads, blurs once and draws under the
 frame, or `Opaque` where no wallpaper could be read; paint the sidebar
 opaque then. Hyprland, SwayFX and picom blur translucent windows
 themselves: ask for `Transparent` there. Glyphs are grayscale under a
-backdrop; `KUI_BACKDROP_EMULATE=1` shows the wallpaper path anywhere.
+backdrop; `KUI_BACKDROP_EMULATE=1` shows the wallpaper path on Windows and Linux
+(macOS reads no wallpaper, so the window there is `Opaque`).
 
 [`window.backdrop` row](props.md#env) ·
 [`backdrop.rs`](../examples/rust/features/backdrop.rs)

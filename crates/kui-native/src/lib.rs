@@ -584,7 +584,8 @@ impl Launcher {
     /// wallpaper to read, the window is opaque. Hyprland, SwayFX and picom
     /// blur translucent windows themselves when configured to: ask for
     /// `Transparent` there. `KUI_BACKDROP_EMULATE=1` draws the wallpaper
-    /// for `Blur` and `Tinted` on any platform, to look at it.
+    /// for `Blur` and `Tinted` on Windows and Linux, to look at it (macOS
+    /// reads no wallpaper, so the window there is `Opaque`).
     ///
     /// Asking changes three things. Where the OS draws the effect the
     /// frame is cleared to nothing rather than to the theme's `bg`, so what

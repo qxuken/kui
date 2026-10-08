@@ -28,7 +28,8 @@
 //!   read and blurred once and drawn by kui as the window's ground
 //!   (`mod ground`), reported as `Tinted`; and with no wallpaper to read,
 //!   `Opaque`. `KUI_BACKDROP_EMULATE=1` takes that path for `Blur` and
-//!   `Tinted` on any platform, to see it where the OS would do better.
+//!   `Tinted` on Windows and Linux, to see it where the OS would do
+//!   better (macOS reads no wallpaper, so it is `Opaque` there).
 //!
 //! What came of it is the pane's, and every frame's `env.window.backdrop`,
 //! so a view paints its translucent regions only over something.
@@ -76,7 +77,7 @@ impl Applied {
 }
 
 /// `KUI_BACKDROP_EMULATE`: the wallpaper kui draws, for `Blur` and
-/// `Tinted`, wherever the app runs.
+/// `Tinted`, wherever kui can read one (not macOS).
 fn emulate_forced() -> bool {
     std::env::var_os("KUI_BACKDROP_EMULATE").is_some_and(|v| !v.is_empty() && v != "0")
 }

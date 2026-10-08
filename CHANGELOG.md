@@ -58,6 +58,14 @@ was the first bare bump to break an app in five releases).
 - Node: the wire is v22 — a span carries its face and size after its
   background's radius — so the addon and the package go together, as
   every wire step has.
+- `Accel::parse` reads a named key's label as that key: `"⌘⌫"` is ⌘
+  Backspace and `"Ctrl+Page Up"` parses, where the first was the
+  character `⌫` and the second nothing (under Fixed, RG146).
+- A host's report of a dead menu row — `Core::activate_menu_bar_item` /
+  `_path`, Node's `activateMenuBarItem`, C's `kui_activate_menu_bar_*`,
+  or a row under a dead submenu row through `activate_menu_path` — is
+  refused and posts nothing, where it was performed (under Fixed,
+  RG147).
 
 `backdropBlur` is a number row like any other, and a row's `items` rides
 in the JSON a row already was.
@@ -96,7 +104,8 @@ in the JSON a row already was.
   Every window of the app takes it but a popup and the devtools' own; an
   app that does not ask opens exactly the window and the swapchain it
   always did. `KUI_BACKDROP_EMULATE=1` draws the wallpaper for `Blur` and
-  `Tinted` anywhere, to look at it. Seen in windows on Windows 11:
+  `Tinted` on Windows and Linux, to look at it (macOS reads no wallpaper,
+  so a window there reads `Opaque`). Seen in windows on Windows 11:
   Acrylic blurring a red window behind the translucent region, Mica, the
   bare desktop through `Transparent`, the wallpaper drawn by kui under
   `KUI_BACKDROP_EMULATE`, and an opaque devtools window beside them; on
@@ -220,6 +229,18 @@ in the JSON a row already was.
   @qxuken/kui@@qxuken/kui@0.1.0-alpha.42" while the stage sat there. The
   package prefix is cut off now, and a spec naming another package is
   refused by name. A release script, so nothing an app sees.
+- **A macOS menu shortcut on a named key works** (backlog RG146). The
+  bar (since alpha.11) and now the context menu build each item's key
+  equivalent from the accelerator in the platform's spelling, and
+  `Accel::parse` read `⌘⌫`'s `⌫` as a character: AppKit drew ⌘⌫ beside
+  the row and the chord did nothing, as with ⌘↩, ⌘← and every named
+  key. `parse` now reads a key as `Accel::display` writes it, in either
+  platform's spelling.
+- **A dead menu row cannot be chosen by reporting it** (backlog RG147).
+  The bar's activate doors performed a disabled row, or one in a
+  disabled menu — kui.h said they refused it — and `activate_menu_path`
+  a row under a disabled submenu row. Every row on the path must be
+  enabled now, as the drawn menus need.
 
 **What you can delete.**
 
@@ -227,6 +248,39 @@ in the JSON a row already was.
   before handing them to a context menu (F127).
 - A menu cut short, or flattened, because menus could not nest: "Move to
   …" rows one per folder up to a cap (F128).
+- A toolbar's opaque fill over content that scrolls under it (F129).
+- Inline code drawn in the body face, or as a box beside the text (F130).
+- A toolbar's opaque fill over content that scrolls under it (F129).
+- Inline code drawn in the body face, or as a box beside the text (F130).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-08, over
+F126–F130 from the Noticon wish list, with alpha.43's pre-tag pass over
+them on the Mac: the mechanical round, then three read-only reviews of
+the diff since alpha.42 (the window backdrop and the blur; the menus and
+the span's face; the docs), each claim probed. They filed RG146–RG149,
+built before the tag (a macOS menu shortcut on a named key binding no
+key, a host's report of a dead menu row performed, an Escape spent on a
+submenu an app-drawn menu had noted, a Node span's family losing to an
+inherited font handle), and RG150, open.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **1911 tests over 142 suites**, 0 failed. The C round
+passes, and so do the **57 scenes**; Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1` (**218 of 218**), `npm run gen` with no
+diff, the examples' typecheck, the headless round (with `backdrop_blur`'s
+drive, which the roster had left out) and the book. The windowed round
+with Node's: **128 windows** (one `transition` window hung at the
+timeout on a first run four at a time and drew on eight runs alone and a
+whole second round). The AX audit: **106/106**. The bench guard against the alpha.42 tag:
+**green**, the guarded rows −0.4 to +3.1% (`deep_nesting_64_levels`,
+−2.1% on a second run); the stream, long-line and cell grid rows flat.
+The Odin
+binding's four steps did not run here — the machine's `odin` links an
+`llvm@22` no longer installed — so CI's check on the tag is their run.
+F126's macOS half and F128's macOS menus were compiled and run on a Mac
+the day they were built, through Noticon; F126 has not met KDE or GNOME.
 
 ## 0.1.0-alpha.42 (2026-10-07)
 

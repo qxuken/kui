@@ -248,6 +248,7 @@ headless = [
     "splitmux",
     "syntax_view",
     "backdrop",
+    "backdrop_blur",
 ]
 
 [[example]]

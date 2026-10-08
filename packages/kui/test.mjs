@@ -1584,6 +1584,13 @@ test('a span takes a face and a size of its own', () => {
   assert.ok(big.height > sans.height * 1.8, `${big.height} against ${sans.height}`);
   assert.throws(() => ctx.measureText([el('span', { size: -1 }, ['x'])], style), /bad size/);
   assert.throws(() => ctx.measureText([el('span', { family: 3 }, ['x'])], style), /bad family/);
+  // A span's own family beats a font handle the enclosing span gave it:
+  // the handle wins only on the span that declares both.
+  const face = ['Helvetica', 'Arial', 'DejaVu Sans', 'Liberation Sans'].map((n) => ctx.addSystemFont(n)).find((id) => id != null);
+  if (face != null) {
+    const nested = ctx.measureText([el('span', { font: face }, [el('span', { family: 'mono' }, ['iiiiii'])])], style);
+    assert.ok(Math.abs(nested.width - mono.width) < 0.5, `${nested.width} against ${mono.width}`);
+  }
 });
 
 // OpenType features on a text style (backlog C23): one string every

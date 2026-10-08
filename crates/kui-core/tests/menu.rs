@@ -398,9 +398,14 @@ fn the_menu_widens_to_its_widest_row_and_wraps_nothing() {
         .map(|q| q.rect)
         .filter(|r| r.y >= long.y && r.y + r.h <= long.y + long.h + 1.0)
         .collect();
+    // The accelerator's spelling is the platform's - four glyphs on macOS
+    // (`⌃⌥⇧⌫`), a word each elsewhere - so count what this one draws.
+    let ink = |s: &str| s.chars().filter(|c| !c.is_whitespace()).count();
+    let want = ink("Move the note to the trash, for good")
+        + ink(&kui_core::Accel::label("ctrl+alt+shift+backspace"));
     assert!(
-        glyphs.len() > 40,
-        "the label and the accelerator drawn: {}",
+        glyphs.len() >= want,
+        "the label and the accelerator drawn: {} of {want}",
         glyphs.len()
     );
     let right = glyphs.iter().map(|r| r.x + r.w).fold(f32::MIN, f32::max);

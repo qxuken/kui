@@ -166,7 +166,11 @@ RG138, its other ten, were built the day they were filed and are in the
 archive); and RG145 from the alpha.42 pre-tag pass (what it left:
 `pack-ffi.nu`'s container legs on a rootful Linux host, RG135's
 offsets beside the run, the docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
-they were filed and are in the archive). Everything else that has been filed has
+they were filed and are in the archive); and RG150 from the alpha.43
+pre-tag pass (what it left: a menu's width ceiling, submenus by the
+pointer, the blur's scratch, Windows' and Linux's backdrop by reading —
+RG146–RG149 were built the day they were filed and are in the
+archive). Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -180,7 +184,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.41".
+Ordered by area, not by priority. What to do next is under "After alpha.42".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -446,7 +450,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.41" below.
+not cover is in "After alpha.42" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2062,7 +2066,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.41*).
+*Distribution* under *After alpha.42*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2543,9 +2547,86 @@ RG145 is what the pass left.
   allocator each frame, which only `run` and the extension entry points
   do.
 
-## After alpha.41
+## From the alpha.43 pre-tag pass (2026-10-08)
+
+The pass before the alpha.43 tag, on the macOS machine, over F126–F130
+from the Noticon wish list: the mechanical round (fmt, clippy, 1911 Rust tests in 142 suites,
+the book, the C round and the 57 scenes, Node 218 of 218 with the corpus
+required, gen with no diff, the headless round), the windowed smoke with
+Node's (128 windows; one `transition` window hung at the timeout four at a time and drew on every run after), the AX audit (106 of 106), the frame bench guard against
+alpha.42 (green, −0.4 to +3.1% on the guarded rows, `deep_nesting_64_levels`'s +3.1% −2.1% on a second run; the stream, long-line and cell grid rows flat), and three read-only reviewers over the diff since
+alpha.42 (the window backdrop and the blur; the menus and the span's
+face; the docs), each claim probed. The Odin binding's four steps did
+not run: the machine's `odin` links an `llvm@22` that is no longer
+installed, so CI's check on the tag is their run.
+
+Four entries, RG146–RG149, **built 2026-10-08**, the day they were
+filed, and in the archive: a macOS menu shortcut on a named key binding
+no key (RG146, since alpha.11); a host's report of a dead menu row
+performed (RG147); an Escape spent on a submenu an app-drawn menu had
+noted (RG148); and a Node span's family losing to an inherited font
+handle (RG149). The pass's own corrections went in the same day: F127's
+width test counted the accelerator in the Linux spelling and failed on
+a Mac; `backdrop_blur` was missing from the headless roster, so its
+drive never ran; `KUI_BACKDROP_EMULATE` was documented as working
+anywhere, which on macOS (no wallpaper read) it does not; and the
+archive's and `status.md`'s slips. RG150 is what the pass left.
+
+### `.` RG150 — What the alpha.43 pre-tag pass left
+
+- **A menu has no width ceiling** (F127). The panel is `Fit` over a
+  `min_width` of the metric with every label and accelerator `nowrap`,
+  and nothing caps it: a `<select>` of file paths or a long recent-file
+  row is wider than a narrow window, and the viewport float pins its left
+  edge, so the right side — the accelerators — is cut. It used to wrap
+  at 200 px. **Wants:** a ceiling (the window, less a margin) and the
+  label ellipsized under it, which the shrink must be taught to do for a
+  `nowrap` text beside a fixed accelerator.
+- **Submenus by the pointer, by reading** (F128). A submenu opens and
+  closes the moment the pointer crosses a row: travelling diagonally to
+  a lower row of an open submenu crosses the parent's next rows and
+  closes it (no delay, no aim triangle); and a submenu the keyboard
+  closed does not reopen when the pointer comes back to its row until
+  another row is visited (`Submenus::hovered` is unchanged).
+- **Rows without an `id` collide across submenus** (F128): "Name" under
+  "Sort by ▸" and under "Group by ▸" post the same `item`. The docs show
+  label-only rows; they should say to give nested rows an `id`.
+- **Nested rows are checked less than top-level ones** (F128): Lua's and
+  the encoder's unknown-key checks look at a menu's own rows only, and
+  `MenuItem::from_value` takes `items` on a `<select>` option too, whose
+  `current` semantics were not designed for a submenu.
+- **The blur's scratch is the whole surface** (F129,
+  `kui-wgpu/src/backdrop.rs`). `frame`, `sharp`, `ping` and `pong` are
+  surface-sized and each step is `Clear` + `Store`, which a tiler writes
+  back whole whatever the scissor: about 236 MB at 5K and three
+  full-surface stores per blurred node, not "three small passes". And
+  `IDLE_FRAMES` counts rendered frames, so a window that went quiet
+  after its frosted sheet closed keeps all four. **Wants:** targets sized
+  to the largest region, `Load`, and a release on a timer or a resize.
+- **Windows: two variables decide one thing** (F126). The window keeps
+  its redirection bitmap whenever `WGPU_BACKEND` is set at all, and the
+  GPU presents through a composition visual unless
+  `WGPU_DX12_PRESENTATION_SYSTEM` is set; `WGPU_BACKEND=dx12` gets
+  translucency over black while the env says `Blur`. Read, not run.
+- **Linux, read, not run** (F126): the wallpaper's path is found on the
+  event loop at window creation — up to three `gsettings` processes on
+  GNOME before the window shows — where the loader thread (`ground::spawn`)
+  could; and each window binds a registry and a blur manager on kui's own
+  queue that are never released.
+- **Docs.** `DOORS`' `Launcher::size` row lists the launcher options each
+  binding carries without `backdrop`; `docs/props.md`'s `family`, `font`
+  and `size` rows name `KuiTextStyle` and not `KuiSpan`'s fields (the
+  `<text>` row does). Both strings reach the Odin generator, which could
+  not run on the Mac this pass (its `odin` links an `llvm@22` that is no
+  longer installed), so they were left for a machine where it can.
+
+## After alpha.42
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.41" until 2026-10-08, when the round between the alpha.42 and
+alpha.43 tags — F126–F130 from the Noticon wish list and RG146–RG149
+from alpha.43's pre-tag pass — had landed, and the heading moved with
+the tag; "After
 alpha.40" until late on 2026-10-07, when the rounds between the alpha.41
 and alpha.42 tags — the Odin binding and `pack-ffi.nu`, RG127 and RG128
 from the Windows and Linux round after alpha.41, RG129–RG138 from the
@@ -4036,3 +4117,13 @@ move.
 - `~` **F129** — [A translucent toolbar cannot frost what the app draws under it: a backdrop is the OS's, behind the window](backlog/closed-2026-09.md#-f129--a-translucent-toolbar-cannot-frost-what-the-app-draws-under-it-a-backdrop-is-the-oss-behind-the-window--done-2026-10-08) — done (2026-10-08) — `NodeSpec::backdrop_blur` / `backdropBlur` / `KuiSpec.backdrop_blur`: a `QuadKind::Backdrop` the core emits before the node's paint, and kui-wgpu's offscreen frame, downsampled separable blur and rounded, clipped composite
 
 - `~` **F130** — [A span cannot change face: inline code is drawn in the body's font with a wash behind it](backlog/closed-2026-09.md#-f130--a-span-cannot-change-face-inline-code-is-drawn-in-the-bodys-font-with-a-wash-behind-it--done-2026-10-08) — done (2026-10-08) — `Span::family` / `mono` / `size`, shaped in its face inside the one flow; lines as tall as their tallest span
+
+**From the alpha.43 pre-tag pass (2026-10-08)** — RG146–RG149, filed and built the same day
+
+- `!` **RG146** — [On macOS a menu shortcut on a named key bound no key: `⌘⌫` was read back as the character `⌫`](backlog/closed-2026-09.md#-rg146--on-macos-a-menu-shortcut-on-a-named-key-bound-no-key--was-read-back-as-the-character---done-2026-10-08) — done (2026-10-08)
+
+- `.` **RG147** — [A host could choose a dead menu row, or one under a dead row or menu, by reporting it](backlog/closed-2026-09.md#-rg147--a-host-could-choose-a-dead-menu-row-or-one-under-a-dead-row-or-menu-by-reporting-it--done-2026-10-08) — done (2026-10-08)
+
+- `.` **RG148** — [Escape was spent on a submenu an app-drawn menu had noted](backlog/closed-2026-09.md#-rg148--escape-was-spent-on-a-submenu-an-app-drawn-menu-had-noted--done-2026-10-08) — done (2026-10-08)
+
+- `.` **RG149** — [In Node a span's `family` lost to a font handle the enclosing span gave it](backlog/closed-2026-09.md#-rg149--in-node-a-spans-family-lost-to-a-font-handle-the-enclosing-span-gave-it--done-2026-10-08) — done (2026-10-08)

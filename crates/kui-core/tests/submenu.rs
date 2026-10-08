@@ -414,3 +414,87 @@ fn the_drawn_bar_opens_submenus_too() {
         "the submenu's own row"
     );
 }
+
+/// A host's report of a row the menu could not have shown it — a dead row,
+/// one under a dead submenu row, one in a dead bar menu — is refused, as a
+/// dead top-level row always was in the context menu; the bar's path door
+/// performed them all.
+#[test]
+fn a_host_cannot_choose_a_row_the_menu_would_not_reach() {
+    let rows = || {
+        vec![
+            MenuItem::new("Undo").id("undo").enabled(false),
+            MenuItem::submenu("Sort by", vec![MenuItem::new("Name").id("sort.name")])
+                .enabled(false),
+            MenuItem::submenu("Group by", vec![MenuItem::new("Day").id("group.day")]),
+        ]
+    };
+    let bar = MenuBar::new(vec![
+        BarMenu::new("View", rows()),
+        BarMenu::new("Dead", vec![MenuItem::new("Go").id("go")]).enabled(false),
+    ]);
+    let mut core = Core::new();
+    frame_with(&mut core, Some(bar));
+    assert!(
+        core.activate_menu_bar_path(0, &[0]).is_empty(),
+        "a dead row"
+    );
+    assert!(
+        core.activate_menu_bar_item(0, 0).is_empty(),
+        "a dead row, by index"
+    );
+    assert!(
+        core.activate_menu_bar_path(0, &[1, 0]).is_empty(),
+        "under a dead row"
+    );
+    assert!(
+        core.activate_menu_bar_path(1, &[0]).is_empty(),
+        "in a dead menu"
+    );
+    let evs = core.activate_menu_bar_path(0, &[2, 0]);
+    assert_eq!(evs[0].payload.get_str("item"), Some("group.day"));
+
+    let card = frame(&mut core);
+    core.open_menu(Menu::new(card, Vec2::new(20.0, 20.0), rows()));
+    frame(&mut core);
+    assert_eq!(core.activate_menu_path(&[1, 0]), None, "under a dead row");
+    assert!(core.menu().is_some(), "and the menu stays open");
+    let evs = core.activate_menu_path(&[2, 0]).expect("taken");
+    assert_eq!(evs[0].payload.get_str("item"), Some("group.day"));
+}
+
+/// An app drawing `widgets::context_menu` itself opens no submenu, but the
+/// pointer resting on one of its submenu rows used to note one open in the
+/// core's state all the same — and with no menu of the core's left to
+/// close, the next Escape was spent on it and never reached the modal.
+#[test]
+fn an_app_drawn_menu_leaves_no_submenu_for_escape_to_spend() {
+    let draw = |core: &mut Core, with_menu: bool| -> Key {
+        let mut ui = core.frame(Size::new(600.0, 400.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let dialog = ui.leaf_keyed(
+            "dialog",
+            NodeSpec::column()
+                .size(200.0, 100.0)
+                .float(kui_core::FloatConfig::viewport())
+                .modal(Value::Null)
+                .label("Dialog"),
+        );
+        if with_menu {
+            kui_core::widgets::context_menu(&mut ui, Vec2::new(20.0, 20.0), &items());
+        }
+        ui.finish();
+        dialog
+    };
+    let mut core = Core::new();
+    draw(&mut core, true);
+    let at = row_center(&mut core, "Move to");
+    hover(&mut core, at);
+    draw(&mut core, true);
+    hover(&mut core, Vec2::new(500.0, 350.0));
+    let dialog = draw(&mut core, false);
+    let evs = key(&mut core, EditKey::Escape);
+    assert_eq!(evs.len(), 1, "{evs:?}");
+    assert_eq!(evs[0].key, dialog);
+    assert_eq!(evs[0].kind(), Some("dismiss"));
+}

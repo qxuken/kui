@@ -44,8 +44,8 @@ alpha multiply rather than an offscreen composite, so overlapping pieces of one
 faded subtree show their seams. There is no z-index: floats stack in tree order.
 A fragment is one draw call of its own, so a hundred of them is about 0.7% of
 a 120 Hz frame and ten thousand is the wrong tool; it cannot read what is
-behind it (a ackdropBlur box under it can), sample anything but its own parameters, run a
-second pass, or hit-test per pixel — its edge is its box, like everything
+behind it (a `backdropBlur` box drawn over it can blur it), sample anything
+but its own parameters, run a second pass, or hit-test per pixel — its edge is its box, like everything
 else here.
 Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
 `enter`) and departure (`exit`) — a node the view stops declaring is copied out

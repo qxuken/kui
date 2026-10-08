@@ -156,14 +156,16 @@ impl Core {
     /// [`Self::activate_menu_bar_item`] for a row inside a submenu of menu
     /// `menu`, by its path ([`crate::menu::MenuBar::item_at`]) — what a
     /// platform bar whose menus nest reports (backlog F128). A row that
-    /// opens a submenu, or a path that names none, does nothing.
+    /// opens a submenu, a dead row or one under a dead row or menu, or a
+    /// path that names none, does nothing.
     pub fn activate_menu_bar_path(&mut self, menu: usize, path: &[usize]) -> Vec<UiEvent> {
         let mut out = Vec::new();
         let Some(item) = self
             .menu_bar
             .as_ref()
-            .and_then(|b| b.item_at(menu, path))
-            .filter(|item| !item.has_submenu())
+            .and_then(|b| b.menus.get(menu))
+            .filter(|m| m.enabled && MenuItem::choosable_at(&m.items, path))
+            .and_then(|m| MenuItem::at_path(&m.items, path))
             .cloned()
         else {
             return out;
