@@ -173,6 +173,11 @@ from the alpha.44 pre-tag pass, and RG154 — what that pass left: the
 accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag.
+F131–F138, from the berainder review of 2026-10-08 — a turn and a
+scale on any node, position stops and a count on keyframes, the
+frame clock read and a frame asked at a time, the exit named at the
+removal, a lookup by accessible name, the runner's decoder — are
+open, filed the day the app said what it had worked round.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1505,6 +1510,239 @@ launch before any window exists, with nothing in the arguments — and
 winit's delegate answers only that the app finished launching and is
 terminating. One entry, F124, **built 2026-10-06**, the day it was
 filed, and in the archive.
+
+## From the berainder review (2026-10-08)
+
+berainder — a card-swiping game on kui-native alpha.44, the app that
+filed RG151 and RG152 — was asked, when it was done, what it thought of
+kui and whether it would pick something else. It would pick kui again
+for this app, and it named what it had worked round: a card cannot
+tilt as it is dragged, so depth was faked by tweening width and height;
+a sparkle cannot be keyframed along a path, so each is a float entering
+from far below with a seven-second transition; the view cannot read a
+clock, so the app keeps its own, with a thread that sleeps and wakes
+the loop for every toast; a fling by button needs two frames, one to
+aim the `exit` and one to remove the card; a keyframed node redraws
+every vsync for good; `key_of` reads the key label and not the
+accessible name; and the runner decodes no JPEG, so the app links the
+`image` crate. Each was checked against the tree before it was filed.
+Two of them the user had already named — a turn and keyframes — and
+they are the first two below. F131–F138, open.
+
+### `~` F131 — No node but a `path` can turn or scale: a dragged card cannot tilt
+
+- **The ask.** A card that tilts as it is dragged, by a few degrees
+  towards the side it is leaving, is the gesture's whole look; berainder
+  tweens `width` and `height` instead and calls it depth. Every
+  transition kui has is a slot of a box — size, colour, radius,
+  position, opacity, shadow (`anim::Slot`) — and none of them is a
+  turn or a scale. ADR 0041 gave `rotate` to a `path` alone, and
+  listed "a transform on any node" under *Considered options* as "the
+  general thing, and a different document", with the costs: every quad
+  kind turns, glyphs leave the pixel grid, the clip stops being a rect
+  in framebuffer space, a scroller inside a turned box scrolls along a
+  tilted axis, hit-testing inverts a matrix per ancestor, the access
+  tree's rects become bounding boxes. That document is this entry.
+- **What the tree already has.** The vertex stage turns a quad about
+  its own centre, by an angle in the `blur` slot, for kinds 1 and 3
+  (`shader.wgsl`, ADR 0041) — a path's mask, a path's texture. The
+  fragment stage reads `local` and `uv` in the quad's own space, so a
+  turned quad's radii, border and image sampling already come out
+  right; only the clip, tested against `pos` in framebuffer space,
+  does not turn. ADR 0026 hits by shape — a `polygon`'s outline is
+  tested as a polygon — so a turned rect, four points, is a hit test
+  the core knows how to do. A `path`'s turn does not tween (ADR 0041's
+  amendment), because its angle is not a slot.
+- **Wants.** An ADR, then the build. The shape it should argue for:
+  `rotate` (turns, clockwise, as a `path`'s) and `scale` (one factor,
+  or two) on any node — a box, an image, a text — about `pivot`
+  (fractions of the box, the centre by default), **paint-only**: layout
+  is untouched, as `opacity`'s is, so a tilted card takes the room its
+  upright self does and nothing around it moves. Every quad the subtree
+  emits turns with it, about the *node's* pivot and not the quad's, so
+  the instance carries a pivot and an angle and a scale for the
+  subtree (the ABI's question; `params.w` is the one free slot today).
+  The clip of a node inside a turned subtree turns with it — the photo
+  stays inside the card's rounded corners — and a clip from outside
+  (the scroller the card sits in) stays upright; a turned fragment's
+  rect is the bounding box. Hit where drawn: the node's outline is the
+  turned rect, by ADR 0026, so a tilted card is grabbed on its tilted
+  edge. The access rect is the bounding box. A turn and a scale are a
+  **slot** (`Slot::Transform`: angle, sx, sy), so they `transition` —
+  follow the pointer while dragging, spring back on release, as
+  position does — and a keyframe stop names them (F132's shape): a
+  wobble, a pulse, a spinner are then keyframes on a box, with no
+  `path`. A `path`'s own `rotate` composes under the node's, as ADR
+  0041 said it would, and starts to tween for free. Text under a turn
+  leaves the pixel grid, as a turned glyph mask already does; say so.
+  A scroller inside a turned node is not refused: its wheel hits by
+  the turned outline and its content turns with it. Four bindings and
+  the Odin layer, `props.md`'s row, the `transforms` example.
+- **Not this.** A matrix, skew, 3D. CSS's `transform` is the general
+  thing; a turn and a scale are what every app this repo has seen
+  asked for.
+
+### `.` F132 — A keyframe stop cannot name a position: a sparkle's path is an `enter` with a seven-second transition
+
+- **The ask.** berainder's sparkles drift up through the room. kui has
+  no keyframes for position, so each is a float declared where it ends,
+  entering from far below (`enter: {dx: sway, dy: travel}`) over a
+  `transition` as long as its life, and leaving by an `exit` aimed on
+  up — the app's own words in `sparkle.rs`. It works and is indirect:
+  the motion is the entrance, the life is the transition, and a second
+  leg (rise, pause, drift) is not expressible at all.
+- **What the tree already has.** `Enter` carries `dx`/`dy` beside its
+  `Slots`; `Keyframe` carries only the `Slots` (`width`, `height`,
+  `bg`, `radius`, `opacity`), so the two shapes agree everywhere but
+  here. `Slot::Pos` exists and is driven by `Core::ease_positions` on
+  its own; `ease_transitioning` samples any slot a track names
+  (`builder.rs`), so a position track is the one slot the sampler is
+  not asked for. Every binding funnels its stops through
+  `keyframes::parse`, so the stop's shape is one place.
+- **Wants.** `dx`/`dy` on a keyframe stop — an offset from where
+  layout put the node, as an entrance's is — sampled from the cycle
+  and added where `ease_positions` adds the eased position; hit where
+  drawn, as a sliding node is. `KuiKeyframe` gains two floats (an ABI
+  bump), the JSX, Lua and Odin shapes take the two names they take on
+  `enter` already, and a `$length` token resolves in them as in a
+  stop's `width`. With F133, a sparkle is one node with three stops
+  and no transition arithmetic.
+
+### `.` F133 — Keyframes run forever: a one-shot cannot be keyframed, so a celebration asks for a frame every frame for 3.4 seconds
+
+- **The ask.** "Keyframes on any node keep the window redrawing every
+  vsync" — true, and what `howto.md` warns of under the blinking
+  caret: a cycle never stops. berainder's match sequence — avatars,
+  a burst, a line typed out, three stars, a button — is timed off the
+  app's own clock with `ui.request_frame()` on every frame until it is
+  done (`celebrate.rs`), and its sparkles are entrances for the same
+  reason: a bounce, a shake, a burst that plays once has no spelling.
+  `repeat` is CSS's `animation-direction` and the cycle is "always
+  infinite" (`anim.rs`).
+- **Wants.** `iterations` on a node (CSS's `animation-iteration-count`;
+  a count, infinite by default): after the last cycle the keyframed
+  slots rest at the last stop (CSS's `forwards`) and the node owes
+  nothing — `animating()` and `owed()` go quiet, as a settled
+  transition's do. `delay` already staggers siblings, so a stagger of
+  one-shots is `delay` plus `iterations: 1`. A test's `advance` runs
+  it out. Four bindings and `props.md`'s row; the caret how-to's
+  warning stays, since a blink is a cycle.
+
+### `.` F134 — The view cannot read the frame clock, so an app keeps a second one a test cannot move
+
+- **The ask.** "The view can't read a clock. I built my own `Clock`."
+  berainder reads `Instant::now()` in `view` for its toasts, its honey
+  drop, its sparkles' births and its match beats, behind a `Clock {
+  skew }` so its `Drive` tests can push it forward by hand — a second
+  clock beside the one the core eases by. The core has the first:
+  `AnimStore::time()` is the driver's monotonic seconds, set before
+  every frame, moved by `Drive::advance` and Node's `advance`, and the
+  frame's transitions and cycles read it. `Ui` has no door to it
+  (`ui.rs`: the env, the theme, the metrics, the viewport, and no
+  time), so an app's "is this toast due" and the core's "is this fade
+  done" disagree the moment a test advances one of them.
+- **Wants.** `ui.now()` — the frame clock, seconds, the driver's
+  origin, `None`-less (0 with no clock, as a snapped transition reads)
+  — in four bindings: Rust `Ui::now`, C `kui_now`, Lua `env.now`,
+  Node where the loop's `tick.msg(now)` already hands the same number
+  out. The how-to under "How do I move time in a test?" says the app's
+  deadlines are read from it so `advance` moves them too.
+
+### `.` F135 — An app cannot ask for a frame at a time: a toast's expiry is a thread that sleeps
+
+- **The ask.** "Waker threads for toast expiry and the honey drop."
+  berainder's `wake_at(at)` spawns a thread per deadline that sleeps
+  and calls `Waker::wake` (`main.rs`), because the Rust runner's two
+  asks are a frame now (`request_frame`) and a wake from any thread
+  (`Waker`), and nothing in between. Node's loop takes `tick: {every,
+  msg}`, a timer the runner fires; the Rust `App` has no such row.
+  The shell already parks with a deadline when it knows one — the
+  caret's blink, a transition's next frame, Windows' animation timer —
+  through `next_deadline`, `None` being `ControlFlow::Wait`.
+- **Wants.** `ui.request_frame_at(secs)` (on the frame clock, F134's)
+  and `Waker::wake_at(Instant)`: the earliest of the app's deadlines
+  joins the shell's, the loop wakes then and `view` runs; a deadline
+  that has passed is a frame now; a window that closes drops its
+  deadlines. Headless, `advance` past it draws the frame, as a `tick`
+  inside the span fires in Node. Four bindings: C `kui_request_frame_at`,
+  Lua `env.request_frame_at`, Node's `tick` already there.
+
+### `.` F136 — The `exit` a node leaves by is the one it declared the frame before it went, so a fling by button takes two frames
+
+- **The ask.** "Exit direction comes from the previous frame. Throwing
+  a card left or right needs a two-frame dance (`Fling { shown }`):
+  draw it once with the exit aimed, then remove it." `depart` reads
+  `spec.anim().exit` from the kept tree of the last frame that had the
+  node (`depart.rs`), which is the rule ADR 0012 built and the one
+  `props.md` states. For a drag the app has the workaround in one
+  frame: it aims the exit by the lean on every frame of the drag, so
+  the release removes a card whose exit already points the right way
+  (`deck.rs`). For the Like and Nope *buttons*, pressed with the card
+  at rest, the last frame's exit points the default way, so the app
+  draws one more frame with it aimed and `request_frame`, and removes
+  the card on the next — a model field, a frame of latency and a
+  comment explaining both.
+- **Wants.** `ui.exit_with(key, Enter)` (and `Core::set_exit`, so an
+  `on_event_with` can call it): the exit this key leaves by *if it
+  leaves this frame*, read by `depart` over the kept spec's own and
+  cleared at the frame's end; with a transition of its own for a kept
+  spec that had none. A handler that decides a removal then says how
+  it goes in the same turn, and the view simply stops declaring the
+  node. Four bindings (`kui_exit_with`, Lua `env.exit_with`, Node
+  `ctx.exitWith`), a `props.md` verb, and the `exit` row's sentence
+  about the frame before gains "unless `exit_with` said otherwise".
+
+### `.` F137 — `key_of(label)` reads the key label and `texts_under(label)` the accessible name, and the docs call both "label"
+
+- **The ask.** "`key_of` looks up the key label, not the accessibility
+  label, which confused me once." On one `Drive`, `key_of(label)` is
+  the name a node was opened under (`with_keyed("see-date", ..)`) and
+  `texts_under(label)` is the `label` row — the accessible name
+  (`testing.rs`). `props.md` names the row `label` and the verb's
+  argument "the label itself"; the core's doc says "opened under
+  `label`". Both are right and a reader has to know which.
+- **Wants.** Words first: "key label" and "name" (the accessible one)
+  told apart in `props.md`'s `label` row, `Ui::key_of`, `Drive::key_of`
+  and `texts_under`'s docs. Then the lookup the confusion wanted:
+  `Drive::key_named(name)` — the first node in tree order whose
+  accessible name (the `label` row, or a control's derived name) is
+  `name` — so a test clicks "the button named Like" as a reader would,
+  with the same `ambiguous-key`-style warning when two have it. Node
+  and C test surfaces alike (`keyNamed`, `kui_key_named`).
+
+### `.` F138 — The runner decodes a wallpaper but not an app's photo, so an app that ships a JPEG links a second decoder
+
+- **The ask.** "kui doesn't decode JPEG or PNG, so the app adds the
+  `image` crate." Since F126 the runner links `image` with `png`,
+  `jpeg` and `webp` for the wallpaper it draws behind a `Blur` window
+  (`ground.rs`), so the decoder is already in every kui-native binary
+  and the app's `image = { features = ["jpeg"] }` is the same crate
+  reached through a second door — unified by cargo, so no second copy,
+  but a dependency the app declares, a version it pins, and a
+  `[profile.dev.package."*"]` line it wrote to make it fast.
+- **Wants.** `kui_native::decode_image(bytes) -> Result<Pixels, _>`
+  (straight RGBA, width, height, the shape `add_image` and
+  `icon` take; a failure named), and `Launcher::icon_bytes(bytes)` for
+  an icon from a PNG. The runner's capability, as the icon and the
+  wallpaper are, not the core's: Node and C hosts have their own
+  decoders and get the door where the runner is bound (`decodeImage`
+  on the addon, `kui_decode_image` under `runner`), and a Lua script
+  is a guest. The image how-to shows it.
+
+### Theirs, not ours
+
+- **Pinning `=0.1.0-alpha.44`.** cargo's caret accepts a later
+  pre-release of the same version, so `"0.1.0-alpha.44"` would have
+  taken alpha.45 on its own; the exact pin is the app's choice, and
+  the changelog's **What breaks.** list is what it reads before moving
+  it. Nothing to file.
+- **A clock the app keeps for its own game time** (how long the round
+  took) is the app's, F134 or not.
+- **"Her photo" and "find your girly bear"** in berainder's
+  `Cargo.toml` predate its own change and are its to fix.
+- **Tauri, Slint, Bevy.** The agent's answer — CSS transforms and
+  keyframes make this app's polish cheap elsewhere — is fair, and
+  F131–F133 are what close the gap it named.
 
 ## From the Noticon wish list (2026-10-08)
 
@@ -2843,6 +3081,11 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
+Open from the berainder review of 2026-10-08: F131–F138 — F131, a
+turn and a scale on any node, is an ADR first, and F132 and F133 are
+its keyframe companions; F134–F136 are three doors in four bindings;
+F137 is words and a lookup; F138 is a decoder the runner already
+links.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
