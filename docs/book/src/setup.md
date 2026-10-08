@@ -10,7 +10,7 @@ kui's crates publish to crates.io, so the dependency is one line:
 
 ```toml
 [dependencies]
-kui-native = "0.1.0-alpha.43"
+kui-native = "0.1.0-alpha.44"
 ```
 
 `cargo add kui-native` writes that line for you. Every version is an

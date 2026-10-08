@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.44 (unreleased)
+## 0.1.0-alpha.44 (2026-10-08)
 
 **What breaks.**
 
