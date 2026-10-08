@@ -174,12 +174,12 @@ accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
 the alpha.45 pre-tag pass over it filed nothing.
-F135–F138, from the berainder review of 2026-10-08 — a frame asked at a
-time, the exit named at the removal, a lookup by accessible name, the
-runner's decoder — are open, filed the day the app said what it had
-worked round; F131, a turn and a scale on any node, was built the same
-day (ADR 0043), and F132 and F133, position stops and a count on a
-cycle, and F134 — the frame clock read — the day after, and are in the
+F136–F138, from the berainder review of 2026-10-08 — the exit named at
+the removal, a lookup by accessible name, the runner's decoder — are
+open, filed the day the app said what it had worked round; F131, a turn
+and a scale on any node, was built the same day (ADR 0043), and F132 and
+F133, position stops and a count on a cycle, and F134–F135 — the frame
+clock read, a frame asked at a time — the day after, and are in the
 archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
@@ -1532,27 +1532,8 @@ accessible name; and the runner decodes no JPEG, so the app links the
 Two of them the user had already named — a turn and keyframes — and
 they are the first two below. F131, the turn, was **built 2026-10-08**, the
 day it was filed, as ADR 0043, and F132 and F133, position stops and a
-count on a cycle, **built 2026-10-09**, as F134 was the same day; they
-are in the archive, and F135–F138 are open.
-
-### `.` F135 — An app cannot ask for a frame at a time: a toast's expiry is a thread that sleeps
-
-- **The ask.** "Waker threads for toast expiry and the honey drop."
-  berainder's `wake_at(at)` spawns a thread per deadline that sleeps
-  and calls `Waker::wake` (`main.rs`), because the Rust runner's two
-  asks are a frame now (`request_frame`) and a wake from any thread
-  (`Waker`), and nothing in between. Node's loop takes `tick: {every,
-  msg}`, a timer the runner fires; the Rust `App` has no such row.
-  The shell already parks with a deadline when it knows one — the
-  caret's blink, a transition's next frame, Windows' animation timer —
-  through `next_deadline`, `None` being `ControlFlow::Wait`.
-- **Wants.** `ui.request_frame_at(secs)` (on the frame clock, F134's)
-  and `Waker::wake_at(Instant)`: the earliest of the app's deadlines
-  joins the shell's, the loop wakes then and `view` runs; a deadline
-  that has passed is a frame now; a window that closes drops its
-  deadlines. Headless, `advance` past it draws the frame, as a `tick`
-  inside the span fires in Node. Four bindings: C `kui_request_frame_at`,
-  Lua `env.request_frame_at`, Node's `tick` already there.
+count on a cycle, **built 2026-10-09**, as F134–F135 were the same day;
+they are in the archive, and F136–F138 are open.
 
 ### `.` F136 — The `exit` a node leaves by is the one it declared the frame before it went, so a fling by button takes two frames
 
@@ -3000,9 +2981,9 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
-Open from the berainder review of 2026-10-08: F135–F138; F131 (**built
-2026-10-08**, ADR 0043), F132, F133 and F134 (**built 2026-10-09**) are
-done.
+Open from the berainder review of 2026-10-08: F136–F138; F131 (**built
+2026-10-08**, ADR 0043), F132, F133 and F134–F135 (**built 2026-10-09**)
+are done.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4295,7 +4276,7 @@ move.
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
 
-**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132, F133 and F134 the day after; F135–F138 open
+**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132, F133 and F134–F135 the day after; F136–F138 open
 
 - `~` **F131** — [No node but a `path` can turn or scale: a dragged card cannot tilt](backlog/closed-2026-09.md#-f131--no-node-but-a-path-can-turn-or-scale-a-dragged-card-cannot-tilt--done-2026-10-08) — done (2026-10-08) — `rotate`, `scale`, `pivotX` / `pivotY` on any node (ADR 0043): paint-only, the turn and the inner clip on the clip entry, hit where drawn, the access rect the bounding box, one tweening slot an entrance, an exit and a keyframe stop name; ABI 27
 
@@ -4304,6 +4285,8 @@ move.
 - `.` **F133** — [Keyframes run forever: a one-shot cannot be keyframed, so a celebration asks for a frame every frame for 3.4 seconds](backlog/closed-2026-09.md#-f133--keyframes-run-forever-a-one-shot-cannot-be-keyframed-so-a-celebration-asks-for-a-frame-every-frame-for-34-seconds--done-2026-10-09) — done (2026-10-09) — `iterations` on the node: a finite cycle starts when its node is first declared with it (`AnimStore::starts`), fills both ways, rests and owes nothing once over; `KuiSpec.iterations` (ABI 27)
 
 - `.` **F134** — [The view cannot read the frame clock, so an app keeps a second one a test cannot move](backlog/closed-2026-09.md#-f134--the-view-cannot-read-the-frame-clock-so-an-app-keeps-a-second-one-a-test-cannot-move--done-2026-10-09) — done (2026-10-09) — `Ui::now` / `Core::now`, `env.now`, `kui_now`, `ctx.now()`: the frame clock a view times its deadlines by
+
+- `.` **F135** — [An app cannot ask for a frame at a time: a toast's expiry is a thread that sleeps](backlog/closed-2026-09.md#-f135--an-app-cannot-ask-for-a-frame-at-a-time-a-toasts-expiry-is-a-thread-that-sleeps--done-2026-10-09) — done (2026-10-09) — `request_frame_at` / `next_frame_at` in four bindings and `Waker::wake_at`: the runner sleeps to the time, nothing owed until then
 
 **From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
 

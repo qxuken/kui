@@ -101,6 +101,15 @@ was the first bare bump to break an app in five releases).
   `keyframes` read this frame, 0 before a driver sets one. A deadline
   read off it — a toast's expiry, a sequence's beats — agrees with the
   core's easing, and a test's `advance` moves both.
+- **A frame asked for at a time** (backlog F135). `Ui::request_frame_at`
+  / `Core::request_frame_at` and `Core::next_frame_at` in Rust,
+  `env.request_frame_at` in Lua, `kui_request_frame_at` /
+  `kui_next_frame_at` in C (`INFINITY` for none), the same doors in Odin,
+  `ctx.requestFrameAt` / `nextFrameAt` in Node; `Waker::wake_at(Instant)`
+  for a thread. On the frame clock: the runner sleeps to the earliest
+  time asked for and runs the view, with nothing owed until then, so
+  `animating()` stays false. A time already past is a frame now; the
+  time is kept until a frame reaches it.
 
 **What you can delete.**
 
@@ -112,6 +121,8 @@ was the first bare bump to break an app in five releases).
   (F132): its stops say the path.
 - A clock of the app's own, beside the core's, that a test had to push
   forward by hand (F134): read `now()`.
+- A thread per deadline that sleeps and then calls `Waker::wake` (F135):
+  `request_frame_at`, or `Waker::wake_at` from off the view.
 - A clock of the app's own and `request_frame` on every frame to time a
   sequence that plays once — a burst, a pop, a row of stars — and the
   frame owed for good by a cycle the app meant to stop (F133).

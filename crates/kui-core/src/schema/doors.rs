@@ -1436,6 +1436,22 @@ pub const DOORS: &[Door] = &[
         doc: "The clock the tweens read; a window's runner sets it from the display.",
     },
     Door {
+        rust: "Ui::request_frame_at",
+        c: Is("kui_request_frame_at"),
+        odin: Is("request_frame_at"),
+        node: Is("requestFrameAt"),
+        lua: Is("request_frame_at"),
+        doc: "Asks for a frame at a time on the frame clock — a toast's expiry, a sequence's beat — with nothing owed until then.",
+    },
+    Door {
+        rust: "Core::next_frame_at",
+        c: Is("kui_next_frame_at"),
+        odin: Is("next_frame_at"),
+        node: Is("nextFrameAt"),
+        lua: No(GUEST),
+        doc: "The time a driver should next draw at for a frame asked at a time; infinity in C and Odin, null in Node, for none.",
+    },
+    Door {
         rust: "Ui::now",
         c: Is("kui_now"),
         odin: Is("now"),

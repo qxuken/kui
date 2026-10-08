@@ -19,6 +19,7 @@
  * would be asserting against whatever the host's OS happened to be set to.
  */
 #include <stdlib.h>
+#include <math.h>
 #include "../common.h"
 
 /* Body callback for the widgets that host custom content. */
@@ -329,6 +330,10 @@ static int surface(void) {
     kui_frame_finish(ui);
     kui_set_time(ui, 0.05);
     check(kui_now(ui) == 0.05, "kui_now reads the clock kui_set_time set");
+    check(isinf(kui_next_frame_at(ui)), "nothing asked for at a time yet");
+    kui_request_frame_at(ui, 3.0);
+    check(kui_next_frame_at(ui) == 3.0, "kui_request_frame_at sets a deadline");
+    check(!kui_animating(ui), "and owes nothing until then");
     kui_frame_begin(ui, 800, 600, 2.0f);
     surface_view(&k, ui);
     kui_frame_finish(ui);

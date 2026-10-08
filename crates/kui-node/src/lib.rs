@@ -3318,6 +3318,24 @@ macro_rules! core_methods {
                 self.$core().now()
             }
 
+            /// Asks for a frame at `at` on the frame clock (backlog F135),
+            /// in seconds: a toast's expiry, a sequence's next beat. Nothing
+            /// is owed until then, so `animating()` stays false; a window
+            /// sleeps to it and draws, and the earliest time asked for wins.
+            /// A headless loop's `advance` past it draws the frame it ends
+            /// on, as it does for a `tick`.
+            #[napi]
+            pub fn request_frame_at(&mut self, at: f64) {
+                self.$core().request_frame_at(at);
+            }
+
+            /// The frame-clock time the next asked-for frame is due at, in
+            /// seconds; `null` when none was asked for.
+            #[napi]
+            pub fn next_frame_at(&mut self) -> Option<f64> {
+                self.$core().next_frame_at()
+            }
+
             /// Whether there is a caret to blink: a focused `<edit>`'s, or
             /// the `caret` a `line` under the focused sink declares — unless
             /// the line declares it `caretSolid`, which

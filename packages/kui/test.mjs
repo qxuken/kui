@@ -1681,6 +1681,21 @@ test('now() reads the frame clock setTime set', () => {
   assert.ok(!ctx.nodes().some((n) => n.label === 'toast'), 'after it');
 });
 
+// A frame at a time (backlog F135): a deadline the driver sleeps to, with
+// nothing owed until then; a past time is a frame now.
+test('requestFrameAt sets a deadline and owes nothing until it', () => {
+  const ctx = new Ctx();
+  ctx.setTime(1);
+  ctx.frame(100, 100, 1, box({}));
+  assert.equal(ctx.nextFrameAt(), null, 'nothing asked for');
+  ctx.requestFrameAt(4);
+  assert.equal(ctx.nextFrameAt(), 4);
+  assert.equal(ctx.animating(), false);
+  ctx.setTime(4);
+  ctx.frame(100, 100, 1, box({}));
+  assert.equal(ctx.nextFrameAt(), null, 'the frame at the time spends it');
+});
+
 test('a sink with a caret line reads the blink phase and draws its caret on it', () => {
   const ctx = new Ctx();
   const mono = { size: 14, family: 'mono', lineHeight: 20 };

@@ -2511,6 +2511,15 @@ void kui_set_time(KuiCtx *ctx, double now_secs);
  * F134): what a view reads a deadline off - a toast's expiry, a sequence's
  * beats - so that a test moving the clock moves them with the tweens. */
 double kui_now(KuiCtx *ctx);
+/* A frame at a time on that clock (backlog F135): kui_request_frame_at
+ * asks for one - a toast's expiry, a sequence's next beat - and nothing is
+ * owed until then, so kui_animating stays false; the earliest time asked
+ * for wins, and one already past is a frame now. Under kui_run the runner
+ * sleeps to it. A host driving its own window reads kui_next_frame_at,
+ * INFINITY when nothing was asked for, and draws a frame once its clock
+ * reaches it. */
+void kui_request_frame_at(KuiCtx *ctx, double at);
+double kui_next_frame_at(KuiCtx *ctx);
 /* True when the last frame left a transition mid-flight: draw another frame
  * without waiting for input. */
 bool kui_animating(KuiCtx *ctx);

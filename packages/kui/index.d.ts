@@ -3059,6 +3059,20 @@ export declare class Ctx {
    */
   now(): number
   /**
+   * Asks for a frame at `at` on the frame clock (backlog F135),
+   * in seconds: a toast's expiry, a sequence's next beat. Nothing
+   * is owed until then, so `animating()` stays false; a window
+   * sleeps to it and draws, and the earliest time asked for wins.
+   * A headless loop's `advance` past it draws the frame it ends
+   * on, as it does for a `tick`.
+   */
+  requestFrameAt(at: number): void
+  /**
+   * The frame-clock time the next asked-for frame is due at, in
+   * seconds; `null` when none was asked for.
+   */
+  nextFrameAt(): number | null
+  /**
    * Whether there is a caret to blink: a focused `<edit>`'s, or
    * the `caret` a `line` under the focused sink declares — unless
    * the line declares it `caretSolid`, which
@@ -4262,6 +4276,20 @@ export declare class KuiWindow {
    * `Date.now()`, so `advance` moves both.
    */
   now(): number
+  /**
+   * Asks for a frame at `at` on the frame clock (backlog F135),
+   * in seconds: a toast's expiry, a sequence's next beat. Nothing
+   * is owed until then, so `animating()` stays false; a window
+   * sleeps to it and draws, and the earliest time asked for wins.
+   * A headless loop's `advance` past it draws the frame it ends
+   * on, as it does for a `tick`.
+   */
+  requestFrameAt(at: number): void
+  /**
+   * The frame-clock time the next asked-for frame is due at, in
+   * seconds; `null` when none was asked for.
+   */
+  nextFrameAt(): number | null
   /**
    * Whether there is a caret to blink: a focused `<edit>`'s, or
    * the `caret` a `line` under the focused sink declares — unless

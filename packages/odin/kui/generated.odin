@@ -2318,6 +2318,20 @@ set_time :: proc(ui: ^Ui, now_secs: f64) {
 	c.set_time(ui, now_secs)
 }
 
+// Asks for a frame at a time on the frame clock — a toast's expiry, a
+// sequence's beat — with nothing owed until then.
+// Rust: Ui::request_frame_at.
+request_frame_at :: proc(ui: ^Ui, at: f64) {
+	c.request_frame_at(ui, at)
+}
+
+// The time a driver should next draw at for a frame asked at a time; infinity
+// in C and Odin, null in Node, for none.
+// Rust: Core::next_frame_at.
+next_frame_at :: proc(ui: ^Ui) -> f64 {
+	return c.next_frame_at(ui)
+}
+
 // The frame clock in seconds, the one the tweens read: what a view times its
 // own deadlines by.
 // Rust: Ui::now.

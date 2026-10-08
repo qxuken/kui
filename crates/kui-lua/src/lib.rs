@@ -159,7 +159,8 @@
 //! Facts:
 //!
 //! - Timing and size: `refresh_hz`, `frame_budget_ms`, `viewport_w`,
-//!   `viewport_h`. A fact the host cannot tell is left out rather than nil.
+//!   `viewport_h`, `now` (the frame clock in seconds). A fact the host
+//!   cannot tell is left out rather than nil.
 //! - Focus: `focused` (the window has the keyboard), `focus` (the focused
 //!   node's key, nil for none), `focus_visible`, `caret_visible`, `region`.
 //! - Window: `window.id`, `window.fullscreen`, `window.maximized`,
@@ -184,6 +185,8 @@
 //!   `extension_namespaces()`.
 //! - Focus: `set_focus(key)`, `blur()`, `focus_next()`, `focus_prev()`,
 //!   `focus_region(key)`, `announce(text, politeness)`.
+//! - Time: `request_frame_at(at)`, a frame at a time on the frame clock
+//!   (`env.now + 3` is a toast's expiry).
 //! - Scrolling: `reveal(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
 //!   `set_scroll(key, x, y)`, `shift_scroll(key, drawn, target)`.
 //! - Text and selection: `text_hit(key, x, y)`, `caret_rect(key, byte)`,
@@ -732,7 +735,8 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// see `key_arg`), the editor verb `set_edit_text(key_or_label, text)` (whose
 /// label spelling reaches an editor this view is about to declare),
 /// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
-/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`
+/// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`,
+/// `request_frame_at(at)` (a frame at a time on the frame clock, `now`)
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `shift_scroll(key, drawn, target)` / `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
@@ -939,6 +943,15 @@ fn env_table<'scope, 'env: 'scope>(
     // The key is an integer or a declared label (`key_arg`): "focus the
     // editor I just created" is `env.set_focus("editor")`, with no event
     // from it needed first.
+    // A frame at a time on the frame clock (backlog F135): `env.now + 3`
+    // is a toast's expiry, with nothing owed until then.
+    t.set(
+        "request_frame_at",
+        scope.create_function(move |_, at: f64| {
+            ui.borrow_mut().request_frame_at(at);
+            Ok(())
+        })?,
+    )?;
     t.set(
         "set_focus",
         scope.create_function(move |_, key: mlua::Value| {
@@ -4891,6 +4904,27 @@ mod tests {
         core.set_time(2.5);
         frame(&mut core, &mut ext);
         assert!(core.key_of("toast").is_none(), "after it");
+    }
+
+    /// A script asks for a frame at a time (backlog F135): the deadline is
+    /// the host's to sleep to, and nothing is owed until then.
+    #[test]
+    fn a_script_asks_for_a_frame_at_a_time() {
+        let mut ext = LuaExtension::from_source(
+            "toast",
+            r#"
+                function view(env)
+                  env.request_frame_at(env.now + 3)
+                  return column { key = "toast", width = 10, height = 10 }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_time(1.0);
+        frame(&mut core, &mut ext);
+        assert_eq!(core.next_frame_at(), Some(4.0));
+        assert!(!core.animating());
     }
 
     /// A script's editor blinks (backlog C35): `env.caret_visible` is the

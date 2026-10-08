@@ -1765,6 +1765,23 @@ that takes it away agree, and `advance` or `Drive::advance` moves both.
 A view that reads `Instant::now()` or `Date.now()` keeps
 a second clock no test can move.
 
+### How do I hide a toast after three seconds without a timer thread?
+
+Keep the time it is due on the frame clock, and ask for a frame then:
+`ui.request_frame_at(shown_at + 3.0)` in Rust (`env.request_frame_at` in
+Lua, `kui_request_frame_at` in C, `ctx.requestFrameAt` in Node), read
+`now()` in the view, and stop drawing the toast once it is past. The
+runner sleeps to that time and runs the view, and nothing is owed in
+between, so `animating()` stays false and an idle app stays idle. The
+earliest time asked for wins and is kept until a frame reaches it, so a
+view may ask every frame or once. From a thread that is not the view's —
+a download finishing on its own schedule — `Waker::wake_at(instant)`
+says the same thing to every window. A test moves the clock past the
+time and draws; a host driving its own window reads
+`kui_next_frame_at` and sleeps to it.
+
+[`now` in the env](props.md#env)
+
 [alpha.8 `**What breaks.**`](../CHANGELOG.md#010-alpha8-2026-09-07) ·
 [`now` in the env](props.md#env)
 

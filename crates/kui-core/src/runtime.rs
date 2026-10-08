@@ -528,6 +528,11 @@ pub struct Core {
     /// A view asked for one more frame (`request_frame`); cleared by
     /// `begin_frame`, reported through `animating`.
     frame_requested: bool,
+    /// The earliest frame-clock time a view or a handler asked for a frame
+    /// at (`request_frame_at`, backlog F135): kept until a frame is begun
+    /// at or after it, and read by a driver through `next_frame_at` as a
+    /// deadline to wake for rather than a frame to draw now.
+    frame_due: Option<f64>,
     /// Why frames run: the reasons, and — traced — who held an owed one
     /// and whether a frame changed anything (`runtime/cause.rs`).
     trace: cause::Trace,
@@ -1060,6 +1065,7 @@ impl Core {
             ghost_clip_ids: Vec::new(),
             ghost_rect: Vec::new(),
             frame_requested: false,
+            frame_due: None,
             trace: cause::Trace::default(),
             pending_reveal: Vec::new(),
             pending_reveal_labels: Vec::new(),
@@ -1384,6 +1390,33 @@ impl Core {
         self.trace_request();
     }
 
+    /// Asks for a frame at `at` on the frame clock (`Core::now`'s seconds,
+    /// backlog F135): a toast's expiry, a sequence's next beat. Not a
+    /// frame now and not one every vsync — the driver wakes at that time
+    /// (`next_frame_at`) and the view runs; until then nothing is owed, so
+    /// `animating()` stays false. The earliest of the times asked for wins
+    /// and is kept until a frame is begun at or past it, so a view need not
+    /// ask again every frame (asking again is harmless). A time already
+    /// past, or with no clock, is a frame now, as `request_frame` is. A
+    /// time that is not a number is ignored.
+    pub fn request_frame_at(&mut self, at: f64) {
+        if at.is_nan() {
+            return;
+        }
+        if self.anim.time().is_none_or(|now| at <= now) {
+            self.request_frame();
+            return;
+        }
+        self.frame_due = Some(self.frame_due.map_or(at, |d| d.min(at)));
+    }
+
+    /// The frame-clock time a driver should next draw at for a
+    /// `request_frame_at`, `None` when nothing was asked for: what a
+    /// runner folds into the deadline it sleeps to.
+    pub fn next_frame_at(&self) -> Option<f64> {
+        self.frame_due
+    }
+
     /// Starts a frame. Build the tree through the returned `Ui` (or the
     /// `Core` builder methods directly), then `Ui::finish` — the one door
     /// out of a frame, which runs the extension fills, the devtools panel
@@ -1457,6 +1490,12 @@ impl Core {
     /// calls first. A binding that drives the builder methods on the core
     /// directly starts here and ends with `Ui::wrap(core).finish()`.
     pub fn begin_frame(&mut self, viewport: Size, scale: f32) {
+        // A frame at or past the time asked for is that frame.
+        if let (Some(due), Some(now)) = (self.frame_due, self.anim.time())
+            && due <= now
+        {
+            self.frame_due = None;
+        }
         // First, while the last frame's tree and every store's reading of
         // it are still whole: why this frame runs, and who held it
         // (backlog F111).

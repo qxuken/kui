@@ -484,6 +484,13 @@ impl<'a> Ui<'a> {
         self.core.modifiers()
     }
 
+    /// Asks for a frame at `at` on the frame clock (backlog F135); see
+    /// `Core::request_frame_at`. `ui.request_frame_at(ui.now() + 3.0)` is
+    /// a toast's expiry, with no thread and nothing owed in between.
+    pub fn request_frame_at(&mut self, at: f64) {
+        self.core.request_frame_at(at);
+    }
+
     /// The frame clock in the driver's seconds (backlog F134); see
     /// `Core::now`. A view's deadlines read from it — a toast's expiry, a
     /// sequence's beats — so a test's `advance` moves them with the

@@ -275,6 +275,15 @@ impl Waker {
     pub fn wake(&self) {
         let _ = self.0.send_event(access_bridge::UserEvent::Wake);
     }
+
+    /// Asks every window for a frame at `at` (backlog F135): the loop
+    /// sleeps until then and `view` runs, with no thread waiting for it.
+    /// The earliest time asked for wins; one already past is a wake now.
+    /// From the view itself `Ui::request_frame_at`, on the frame clock,
+    /// says the same thing without a `Waker`.
+    pub fn wake_at(&self, at: std::time::Instant) {
+        let _ = self.0.send_event(access_bridge::UserEvent::WakeAt(at));
+    }
 }
 
 impl std::fmt::Debug for Waker {
@@ -759,6 +768,7 @@ impl Launcher {
             swallowed_press: None,
             proxy: None,
             next_deadline: None,
+            wake_at: None,
             saw_event: false,
             woke: false,
             deferred_events: self.deferred_events,
@@ -1760,6 +1770,8 @@ struct Shell<A: App + ?Sized> {
     /// so a host that owns the loop can read it (`PumpRunner::next_deadline`).
     /// `None` is `ControlFlow::Wait`: nothing the shell knows about is due.
     next_deadline: Option<std::time::Instant>,
+    /// The earliest `Waker::wake_at` not yet reached (backlog F135).
+    wake_at: Option<std::time::Instant>,
     /// Whether this batch carried an OS event the shell acted on. A driver
     /// cannot see most of them — a pointer crossing a window that declares no
     /// hover produces no *app* event at all, and neither does a key nothing
@@ -3162,6 +3174,12 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         // A wake is the app saying "what `view` shows has changed": every
         // window draws, as after any input. Coalesced by the platform's
         // queue, so a thread waking a thousand times a frame costs one.
+        // A wake for later is a deadline, not a frame: the loop sleeps to
+        // it in `about_to_wait`.
+        if let access_bridge::UserEvent::WakeAt(at) = event {
+            self.wake_at = Some(self.wake_at.map_or(at, |w| w.min(at)));
+            return;
+        }
         self.saw_event = true;
         if matches!(event, access_bridge::UserEvent::Wake) {
             for pane in &self.panes {
@@ -3249,6 +3267,31 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         self.apply_audio();
         let now = std::time::Instant::now();
         let mut deadline: Option<std::time::Instant> = None;
+        // A frame asked for at a time (backlog F135): by a `Waker` for
+        // every window, by a view for its own (`Core::next_frame_at`, on
+        // the frame clock, whose origin is `epoch`). Drawn once it is due,
+        // and slept to until then.
+        if let Some(at) = self.wake_at {
+            if at <= now {
+                self.wake_at = None;
+                for pane in &self.panes {
+                    pane.redraw_for(FrameCause::WAKE);
+                }
+            } else {
+                deadline = Some(deadline.map_or(at, |d| d.min(at)));
+            }
+        }
+        for pane in &self.panes {
+            let Some(secs) = pane.core.next_frame_at().filter(|s| s.is_finite()) else {
+                continue;
+            };
+            let at = self.epoch + std::time::Duration::from_secs_f64(secs.max(0.0));
+            if at <= now {
+                pane.redraw_for(FrameCause::WAKE);
+            } else {
+                deadline = Some(deadline.map_or(at, |d| d.min(at)));
+            }
+        }
         // A new device owed (`reopen_owed`): made now if its second is
         // up, and otherwise — or when this try left a window without one —
         // woken for when it is. This deadline is the only thing that

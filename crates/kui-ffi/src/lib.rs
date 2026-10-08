@@ -714,6 +714,32 @@ pub extern "C" fn kui_set_time(ptr: *mut KuiCtx, now_secs: f64) {
     });
 }
 
+/// Asks for a frame at `at` on the frame clock (backlog F135): the driver
+/// wakes then and the view runs, with nothing owed in between. The
+/// earliest time asked for wins; one already past is a frame now. Under
+/// `kui_run` the runner sleeps to it; a host driving its own window reads
+/// `kui_next_frame_at`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_request_frame_at(ptr: *mut KuiCtx, at: f64) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().request_frame_at(at);
+        }
+    });
+}
+
+/// When a host driving its own window should next draw for a
+/// `kui_request_frame_at`, on the frame clock; `INFINITY` when nothing was
+/// asked for.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_next_frame_at(ptr: *mut KuiCtx) -> f64 {
+    guard(f64::INFINITY, || {
+        unsafe { ctx(ptr) }
+            .and_then(|c| c.core().next_frame_at())
+            .unwrap_or(f64::INFINITY)
+    })
+}
+
 /// The frame clock in seconds, as `kui_set_time` last set it (0 before
 /// any): what a view times its own deadlines by, so that moving the clock
 /// in a test moves them with the transitions (backlog F134).

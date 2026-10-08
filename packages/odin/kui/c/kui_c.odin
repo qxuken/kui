@@ -1089,6 +1089,8 @@ foreign lib {
 	tokens_derive :: proc(ctx: ^Ctx, derived: [^]DerivedToken, count: uint) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---
+	request_frame_at :: proc(ctx: ^Ctx, at: f64) ---
+	next_frame_at :: proc(ctx: ^Ctx) -> f64 ---
 	animating :: proc(ctx: ^Ctx) -> bool ---
 	owed :: proc(ctx: ^Ctx) -> u32 ---
 	set_frame_trace :: proc(ctx: ^Ctx, on: bool) ---
