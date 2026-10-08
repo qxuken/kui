@@ -174,12 +174,13 @@ accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
 the alpha.45 pre-tag pass over it filed nothing.
-F133–F138, from the berainder review of 2026-10-08 — a count on
-keyframes, the frame clock read and a frame asked at a time, the exit
-named at the removal, a lookup by accessible name, the runner's decoder
-— are open, filed the day the app said what it had worked round; F131,
-a turn and a scale on any node, was built the same day (ADR 0043), and
-F132, position stops, the day after, and both are in the archive.
+F134–F138, from the berainder review of 2026-10-08 — the frame clock
+read and a frame asked at a time, the exit named at the removal, a
+lookup by accessible name, the runner's decoder — are open, filed the
+day the app said what it had worked round; F131, a turn and a scale on
+any node, was built the same day (ADR 0043), and F132 and F133, position
+stops and a count on a cycle, the day after, and all three are in the
+archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1530,28 +1531,9 @@ accessible name; and the runner decodes no JPEG, so the app links the
 `image` crate. Each was checked against the tree before it was filed.
 Two of them the user had already named — a turn and keyframes — and
 they are the first two below. F131, the turn, was **built 2026-10-08**, the
-day it was filed, as ADR 0043, and F132, position stops, **built
-2026-10-09**; both are in the archive, and F133–F138 are open.
-
-### `.` F133 — Keyframes run forever: a one-shot cannot be keyframed, so a celebration asks for a frame every frame for 3.4 seconds
-
-- **The ask.** "Keyframes on any node keep the window redrawing every
-  vsync" — true, and what `howto.md` warns of under the blinking
-  caret: a cycle never stops. berainder's match sequence — avatars,
-  a burst, a line typed out, three stars, a button — is timed off the
-  app's own clock with `ui.request_frame()` on every frame until it is
-  done (`celebrate.rs`), and its sparkles are entrances for the same
-  reason: a bounce, a shake, a burst that plays once has no spelling.
-  `repeat` is CSS's `animation-direction` and the cycle is "always
-  infinite" (`anim.rs`).
-- **Wants.** `iterations` on a node (CSS's `animation-iteration-count`;
-  a count, infinite by default): after the last cycle the keyframed
-  slots rest at the last stop (CSS's `forwards`) and the node owes
-  nothing — `animating()` and `owed()` go quiet, as a settled
-  transition's do. `delay` already staggers siblings, so a stagger of
-  one-shots is `delay` plus `iterations: 1`. A test's `advance` runs
-  it out. Four bindings and `props.md`'s row; the caret how-to's
-  warning stays, since a blink is a cycle.
+day it was filed, as ADR 0043, and F132 and F133, position stops and a
+count on a cycle, **built 2026-10-09**; the three are in the archive,
+and F134–F138 are open.
 
 ### `.` F134 — The view cannot read the frame clock, so an app keeps a second one a test cannot move
 
@@ -3038,11 +3020,10 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
-Open from the berainder review of 2026-10-08: F133–F138 — F133 is the
-last keyframe companion of F131 (**built 2026-10-08**, ADR 0043) and
-F132 (**built 2026-10-09**); F134–F136 are three doors in four
-bindings; F137 is words and a lookup; F138 is a decoder the runner
-already links.
+Open from the berainder review of 2026-10-08: F134–F138 — F131 (**built
+2026-10-08**, ADR 0043), F132 and F133 (**built 2026-10-09**) are done;
+F134–F136 are three doors in four bindings; F137 is words and a lookup;
+F138 is a decoder the runner already links.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4335,11 +4316,13 @@ move.
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
 
-**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132 the day after; F133–F138 open
+**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132 and F133 the day after; F134–F138 open
 
 - `~` **F131** — [No node but a `path` can turn or scale: a dragged card cannot tilt](backlog/closed-2026-09.md#-f131--no-node-but-a-path-can-turn-or-scale-a-dragged-card-cannot-tilt--done-2026-10-08) — done (2026-10-08) — `rotate`, `scale`, `pivotX` / `pivotY` on any node (ADR 0043): paint-only, the turn and the inner clip on the clip entry, hit where drawn, the access rect the bounding box, one tweening slot an entrance, an exit and a keyframe stop name; ABI 27
 
 - `.` **F132** — [A keyframe stop cannot name a position: a sparkle's path is an `enter` with a seven-second transition](backlog/closed-2026-09.md#-f132--a-keyframe-stop-cannot-name-a-position-a-sparkles-path-is-an-enter-with-a-seven-second-transition--done-2026-10-09) — done (2026-10-09) — `dx` / `dy` on a stop, an offset from the node's place sampled off the cycle in its own pass after the layout events: drawn, hit and read there, layout and `onLayout` its place's; `KuiKeyframe` `dx` / `dy` with `KUI_KF_OFFSET` (ABI 27)
+
+- `.` **F133** — [Keyframes run forever: a one-shot cannot be keyframed, so a celebration asks for a frame every frame for 3.4 seconds](backlog/closed-2026-09.md#-f133--keyframes-run-forever-a-one-shot-cannot-be-keyframed-so-a-celebration-asks-for-a-frame-every-frame-for-34-seconds--done-2026-10-09) — done (2026-10-09) — `iterations` on the node: a finite cycle starts when its node is first declared with it (`AnimStore::starts`), fills both ways, rests and owes nothing once over; `KuiSpec.iterations` (ABI 27)
 
 **From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
 

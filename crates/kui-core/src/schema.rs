@@ -179,6 +179,7 @@ pub const P_ROTATE: u32 = 127;
 pub const P_SCALE: u32 = 128;
 pub const P_PIVOT_X: u32 = 129;
 pub const P_PIVOT_Y: u32 = 130;
+pub const P_ITERATIONS: u32 = 131;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1151,6 +1152,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`); siblings with different delays run out of phase.",
     },
     PropDef {
+        name: "iterations",
+        id: P_ITERATIONS,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.iterations(v)),
+        doc: "How many times the `keyframes` cycle runs (CSS `animation-iteration-count`, backlog F133); left out, for ever. A finite cycle plays from the first frame the node is declared with it — a node that leaves and comes back plays again — holds its first stop through its `delay`, and rests where its last iteration ended (CSS's fill `both`): `1` plays a burst or a shake once, `2` with `repeat: \"alternate\"` goes out and back and ends where it began, `0.5` stops halfway. Once it is over the node owes no frame, so `animating()` and `owed()` go quiet as a settled transition's do; `delay` plus `iterations: 1` staggers one-shots. A count that is not a positive number is for ever. C: 0 is for ever.",
+    },
+    PropDef {
         name: "clickSound",
         id: P_CLICK_SOUND,
         kind: Kind::Resource,
@@ -1615,6 +1623,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("gradient", "`gradient` (`const KuiGradient *`)"),
     ("repeat", "`repeat` (`KUI_REPEAT_*`)"),
     ("delay", "`delay_ms`"),
+    ("iterations", "`iterations` (0 is for ever)"),
     ("enter", "`enter` (`KuiEnter`, with `set` bits)"),
     ("exit", "`exit` (`KuiEnter`, with `set` bits)"),
     ("opacity", "`opacity` with `opacity_set`"),

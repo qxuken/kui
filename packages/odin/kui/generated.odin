@@ -874,6 +874,9 @@ Spec :: struct {
 	// Holds the `keyframes` cycle back by this many ms (CSS `animation-delay`);
 	// siblings with different delays run out of phase.
 	delay: f32,
+	// How many times the `keyframes` cycle runs (CSS `animation-iteration-count`,
+	// backlog F133); left out, for ever.
+	iterations: f32,
 	// A registered sound (addSound) played when the node is clicked; implies
 	// hover tracking.
 	click_sound: Sound,
@@ -1028,6 +1031,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.exit = transmute(c.Enter)s.exit
 	out.repeat = u32(s.repeat)
 	out.delay_ms = s.delay
+	out.iterations = s.iterations
 	out.click_sound = u64(s.click_sound)
 	out.hover_sound = u64(s.hover_sound)
 	out.role = u32(s.role)

@@ -5056,6 +5056,7 @@ SCENE_TREES.sampler = (fx) =>
           bounce: 0.3,
           slide: true,
           delay: 20,
+          iterations: 0.25,
           repeat: 'alternate',
           keyframes: [{ bg: '#1b1d27' }, { at: 1, bg: '#3b5bd4', radius: 12, dy: -4 }],
           enter: { dx: -12, opacity: 0 },

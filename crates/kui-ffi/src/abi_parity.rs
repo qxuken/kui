@@ -819,6 +819,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         pivot_set: u32 => "uint32_t",
         pivot_x: f32 => "float",
         pivot_y: f32 => "float",
+        iterations: f32 => "float",
     });
 
     abi_struct!(o, KuiAccessNode {

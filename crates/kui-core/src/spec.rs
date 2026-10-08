@@ -1170,6 +1170,14 @@ pub struct AnimSpec {
     /// across frames, and a `transition` with a duration; without both, a
     /// removed node vanishes at once as it always did.
     pub exit: Option<Enter>,
+    /// How many times the `keyframes` cycle runs (CSS's
+    /// `animation-iteration-count`, backlog F133); `None`, the default, is
+    /// for ever. A finite cycle plays from the first frame its node is
+    /// declared with it, holds its first stop through its `delay`, and
+    /// rests where its last iteration ended once it is over, owing no
+    /// frame (CSS's `animation-fill-mode: both`). A fraction of an
+    /// iteration ends partway through one.
+    pub iterations: Option<f32>,
 }
 
 impl AnimSpec {
@@ -1179,6 +1187,7 @@ impl AnimSpec {
         keyframes: Vec::new(),
         enter: None,
         exit: None,
+        iterations: None,
     };
 }
 
@@ -2644,6 +2653,24 @@ impl NodeSpec {
     pub fn keyframes(mut self, stops: Vec<Keyframe>) -> Self {
         self.transition.get_or_insert(Transition::ms(200.0));
         self.anim_mut().keyframes = stops;
+        self
+    }
+
+    /// Runs this node's keyframe cycle `n` times and then rests where the
+    /// last one ended (see the `iterations` field, backlog F133): a burst,
+    /// a shake, a bounce that plays once. A count that is not a positive
+    /// number is the default, for ever.
+    ///
+    /// ```
+    /// # use kui_core::{Keyframe, NodeSpec};
+    /// let pop = NodeSpec::column()
+    ///     .transition(300.0)
+    ///     .keyframes(vec![Keyframe::default().scale(1.0), Keyframe::default().scale(1.2)])
+    ///     .iterations(1.0);
+    /// assert_eq!(pop.anim().iterations, Some(1.0));
+    /// ```
+    pub fn iterations(mut self, n: f32) -> Self {
+        self.anim_mut().iterations = (n.is_finite() && n > 0.0).then_some(n);
         self
     }
 

@@ -1784,6 +1784,7 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			bounce         = 0.3,
 			slide          = true,
 			delay          = 20,
+			iterations     = 0.25,
 			repeat         = .Alternate,
 			keyframes      = stops,
 			enter          = {set = {.Offset, .Opacity}, dx = -12, opacity = 0},

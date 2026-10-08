@@ -81,6 +81,20 @@ was the first bare bump to break an app in five releases).
   place's, and an `onLayout` node reports its layout rect, not a cycle
   that would post an event every frame it ran. The `transition` example
   has a bob and a sparkle.
+- **A keyframe cycle plays so many times** (backlog F133, from
+  berainder's review). `iterations` — CSS's `animation-iteration-count`:
+  `NodeSpec::iterations` in Rust, the row in JSX and Lua, `KuiSpec.iterations`
+  in C (0 is for ever; ABI 27), the generated `Spec.iterations` in Odin.
+  Left out, a cycle runs for ever and reads the clock as it always did,
+  so siblings stay in phase. A finite one plays from the first frame its
+  node is declared with it, holds its first stop through its `delay`,
+  and rests where its last iteration ended (CSS's fill `both`); then it
+  owes no frame, so `animating()`, `owed()` and the frame trace go quiet
+  as a settled transition's do. `1` plays a burst or a shake once, `2`
+  alternating goes out and back, `0.5` stops halfway; `delay` plus
+  `iterations: 1` staggers one-shots. A node that leaves and comes back
+  plays again, and so does one whose stops the view drops for a frame
+  and declares again: that is how a view replays it.
 
 **What you can delete.**
 
@@ -90,6 +104,9 @@ was the first bare bump to break an app in five releases).
 - A float declared where a drifting thing ends, entering from where it
   starts over a transition as long as its life, to move it along a path
   (F132): its stops say the path.
+- A clock of the app's own and `request_frame` on every frame to time a
+  sequence that plays once — a burst, a pop, a row of stars — and the
+  frame owed for good by a cycle the app meant to stop (F133).
 
 ## 0.1.0-alpha.45 (2026-10-08)
 

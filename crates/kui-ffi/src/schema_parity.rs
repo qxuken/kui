@@ -333,6 +333,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "scale" => s.scale = F,
             "pivotX" => (s.pivot_set, s.pivot_x) = (KUI_PIVOT_X, F),
             "pivotY" => (s.pivot_set, s.pivot_y) = (KUI_PIVOT_Y, F),
+            "iterations" => s.iterations = F,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -537,6 +538,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         pivot_set: KUI_PIVOT_X | KUI_PIVOT_Y,
         pivot_x: 0.25,
         pivot_y: 0.75,
+        iterations: 2.0,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -638,6 +640,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .rotate(0.1)
         .scale(1.2)
         .pivot(0.25, 0.75)
+        .iterations(2.0)
         .modifier_keys()
         .initial_focus()
         .disabled(true)

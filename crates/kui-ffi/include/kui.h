@@ -328,7 +328,8 @@ extern "C" {
  * it was eight, a [lib] array element, so a host that strides
  * KuiDrawData.clips reads the new stride; a renderer that ignores the
  * new words draws a turned subtree upright. KuiSpec appends rotate,
- * scale, pivot_set, pivot_x and pivot_y (64-bit size 744). KuiKeyframe
+ * scale, pivot_set, pivot_x and pivot_y, and iterations, a keyframe
+ * cycle's count (backlog F133). KuiKeyframe
  * and KuiEnter append rotate and scale, with KUI_KF_ROTATE / KUI_KF_SCALE
  * and KUI_ENTER_ROTATE / KUI_ENTER_SCALE, and KuiKeyframe dx and dy with
  * KUI_KF_OFFSET, a stop's position (backlog F132) - array elements, so
@@ -1229,6 +1230,12 @@ typedef struct KuiSpec {
      * at the top-left corner stays expressible. ABI 27. */
     uint32_t pivot_set;
     float pivot_x, pivot_y;
+    /* How many times the keyframes cycle runs (iterations, backlog F133):
+     * a finite cycle plays from the first frame the node is declared with
+     * it, holds its first stop through delay_ms, rests where its last
+     * iteration ended and then owes no frame. A fraction ends partway
+     * through one. 0 (the zeroed spec): for ever. ABI 27. */
+    float iterations;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

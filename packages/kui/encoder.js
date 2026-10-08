@@ -1162,7 +1162,11 @@ export function createEncoder(P) {
         f[fi++] = pivot ? pivot[0] : 0;
         f[fi++] = pivot ? pivot[1] : 0;
         if (pathDash) for (const n of pathDash) f[fi++] = n;
-        props(p, el.key, false);
+        // A path's `rotate` is its own turn (ADR 0041), carried above; the
+        // node's `rotate` row (ADR 0043) is another thing, so it is kept
+        // off the rows here, as Lua's `path` arm does.
+        const { rotate: _ownTurn, ...rows } = p;
+        props(rows, el.key, false);
         return;
       }
       case 'line': {

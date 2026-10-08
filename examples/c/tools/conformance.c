@@ -2138,7 +2138,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
         .click_sound = f->sound, .hover_sound = f->sound,
         .animate = 1,
         .transition_ms = 100, .easing = KUI_EASE_IN_OUT, .bounce = 0.3f, .slide = 1,
-        .delay_ms = 20, .repeat = KUI_REPEAT_ALTERNATE,
+        .delay_ms = 20, .repeat = KUI_REPEAT_ALTERNATE, .iterations = 0.25f,
         .keyframes = stops, .keyframes_len = 2,
         .enter = {.set = KUI_ENTER_OFFSET | KUI_ENTER_OPACITY, .dx = -12, .opacity = 0},
         .role = KUI_ROLE_TAB, .label = KUI_STR("Card"),

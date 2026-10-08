@@ -642,6 +642,7 @@ Spec :: struct {
 	pivot_set: u32,
 	pivot_x: f32,
 	pivot_y: f32,
+	iterations: f32,
 }
 
 Announcement :: struct {

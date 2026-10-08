@@ -69,8 +69,27 @@ it. The node and everything under it are drawn and hit where the stop
 puts them, and the offset adds to a `slide`, but the room it takes is its
 place's: siblings do not move, and `onLayout` reports the layout rect
 rather than a cycle that would post an event every frame. A cycle runs
-for as long as the node is declared and asks for a frame every vsync, so
-stop declaring the stops when the motion should stop.
+for as long as the node is declared and asks for a frame every vsync,
+unless `iterations` says how many times.
+
+[`keyframes` row](props.md#container-props) ·
+[`transition` example](../examples/rust/features/transition.rs)
+
+### How do I play a keyframe animation once?
+
+`iterations: 1` on the node with the `keyframes` (CSS's
+`animation-iteration-count`). The cycle plays from the first frame the
+node is declared with it, rests where it ended — the last stop, or the
+first for `reverse`, or the start again for `2` alternating — and then
+asks for nothing, so `animating()` goes quiet and a test's `advance` runs
+it out. Before its `delay` it holds its first stop, so a row of stars
+given `delay: i * 150` and `iterations: 1` pops in one after another
+without showing their own values first. To play it again, drop the
+stops for a frame and declare them again, or give the node a new key: a
+finite cycle restarts whenever a frame went without it. A blinking caret
+is still not keyframes (see the caret how-to): it is a cycle with no end.
+
+[`iterations` row](props.md#container-props)
 
 [`keyframes` row](props.md#container-props) ·
 [`transition` example](../examples/rust/features/transition.rs)

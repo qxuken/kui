@@ -273,12 +273,20 @@ date: 2026-10-08
   so `kui_c.odin`, `layout.odin`, `generated.odin`, `types.odin` and the
   generator's policy were written as the generator writes them, and
   CI's `odin.nu gen --check` is what says whether they match.
+  It did not, at first: `KuiSpec` embeds `KuiEnter` twice (`enter`,
+  `exit`), whose eight new bytes moved every field after them by 16,
+  and the hand-written `layout.odin` moved only the tail. Found while
+  building F133 (2026-10-09) and rewritten from the C mirror's own
+  asserts (`target/kui-abi-assert.c`), all 77 offsets, with every field
+  of every mirrored struct checked to have one.
 - **Lua's `path` strips the row.** Lua reads every key of a table as a
   schema row before an element reads its own, so `path { rotate = }`
   turned the node as well as the mask and the `path` scene's digest
   moved; the arm now drops the node transform the generic walk read.
-  Node's encoder keeps an element's own names off the rows already, and
-  C and Odin take a path's turn as an argument.
+  Node's encoder had the same fault and the same fix (its `path` case
+  writes the rows without `rotate`): the full run that cleared this ADR
+  loaded a stale addon and passed, and the next one, building F133,
+  caught it. C and Odin take a path's turn as an argument.
 - **The conformance digest hashes twenty words a clip** in all five
   adapters, and the `transform` scene is the first whose digest moves
   if a turn, a scale or an inner clip does.

@@ -1732,7 +1732,9 @@ impl Core {
             else {
                 continue;
             };
-            let Some(o) = self.anim.sample_cycle(&track, t) else {
+            let key = self.tree.keys[i];
+            let iterations = spec.anim().iterations;
+            let Some(o) = self.anim.sample_cycle(key, &track, t, iterations) else {
                 continue;
             };
             // Whole physical pixels, as a slide's are.

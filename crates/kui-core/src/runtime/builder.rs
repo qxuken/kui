@@ -176,10 +176,11 @@ impl Core {
         let tracks = (!spec.anim().keyframes.is_empty()).then(|| Tracks::of(spec));
         let track = |slot: Slot| tracks.as_ref().and_then(|k| k.get(slot));
         let enter = spec.anim().enter.unwrap_or_default();
+        let iterations = spec.anim().iterations;
         // Each slot: sampled from its track when keyframed, else tweened
         // toward its declared value from where the entrance says it starts.
         let mut ease = |slot: Slot, target: [f32; 4]| match track(slot) {
-            Some(track) => anim.sample(track, t).unwrap_or(target),
+            Some(track) => anim.sample(track, t, iterations).unwrap_or(target),
             None => anim.drive(slot, enter.lanes(slot), target, t, true),
         };
         let mut sizing = |slot: Slot, s: Sizing| match s.amount() {
@@ -223,7 +224,10 @@ impl Core {
             })
         };
         let v = match track {
-            Some(track) => self.anim.sample_cycle(&track, t).unwrap_or(base),
+            Some(track) => self
+                .anim
+                .sample_cycle(key, &track, t, spec.anim().iterations)
+                .unwrap_or(base),
             None => {
                 let from = spec.anim().enter.and_then(|e| e.transform_lanes(base));
                 self.anim.drive_turn(key, from, base, t)

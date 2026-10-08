@@ -556,8 +556,13 @@ impl Core {
         if owed.cycle && self.anim.time().is_some() {
             for i in 0..self.tree.len() {
                 let spec = &self.tree.specs[i];
-                if spec.transition.is_some_and(|t| t.duration_ms > 0.0)
+                // A finite cycle that is over holds no frame (F133).
+                if let Some(t) = spec.transition
+                    && t.duration_ms > 0.0
                     && !spec.anim().keyframes.is_empty()
+                    && self
+                        .anim
+                        .cycle_running(self.tree.keys[i], t, spec.anim().iterations)
                 {
                     by.cycles.push(names.holder(self.tree.keys[i], None));
                 }

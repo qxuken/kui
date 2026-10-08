@@ -812,6 +812,11 @@ pub struct KuiSpec {
     pub pivot_set: u32,
     pub pivot_x: f32,
     pub pivot_y: f32,
+    /// How many times the `keyframes` cycle runs (`iterations`, backlog
+    /// F133); 0, the zeroed spec, is for ever. A finite cycle plays from
+    /// the first frame the node is declared with it and rests where its
+    /// last iteration ended. ABI 27.
+    pub iterations: f32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

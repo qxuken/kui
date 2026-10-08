@@ -205,6 +205,33 @@ impl Repeat {
         };
         p as f32
     }
+
+    /// Whether iteration `k` (from 0) runs its stops first to last.
+    fn forward(self, k: u64) -> bool {
+        match self {
+            Repeat::Normal => true,
+            Repeat::Reverse => false,
+            Repeat::Alternate => k.is_multiple_of(2),
+            Repeat::AlternateReverse => !k.is_multiple_of(2),
+        }
+    }
+
+    /// Where a cycle of `n` iterations (backlog F133) stands once it is
+    /// over: the end of its last iteration, which a fraction of one cuts
+    /// short — CSS's `animation-fill-mode: forwards`. An alternate cycle
+    /// of two ends where it began.
+    fn end(self, n: f64) -> f32 {
+        let k = (n.ceil() as u64).saturating_sub(1);
+        let frac = (n - k as f64).clamp(0.0, 1.0) as f32;
+        if self.forward(k) { frac } else { 1.0 - frac }
+    }
+
+    /// Where a cycle stands before it begins, during its `delay`: the
+    /// start of its first iteration — CSS's `backwards` fill, so a
+    /// staggered one-shot does not show the node's own value first.
+    fn start(self) -> f32 {
+        if self.forward(0) { 0.0 } else { 1.0 }
+    }
 }
 
 /// Spring integration step (seconds); a frame is split into steps this
@@ -529,6 +556,12 @@ pub struct AnimStore {
     /// turn: kept apart from `tweens` so the nodes that do not — almost
     /// all of them — carry nothing for it.
     turns: FxHashMap<Key, Option<Tween>>,
+    /// When a finite keyframe cycle began (backlog F133), by node, with
+    /// the last frame that sampled it: a cycle of `iterations` plays from
+    /// the first frame its node is declared with them, where an infinite
+    /// one reads the clock as it is so that siblings stay in phase. A node
+    /// a frame went without starts again, as an entrance does.
+    starts: FxHashMap<Key, (f64, u64)>,
     /// Driver time in seconds; None until the driver first sets it.
     now: Option<f64>,
     /// The core's frame counter as of `begin_frame`.
@@ -585,6 +618,11 @@ impl AnimStore {
         {
             self.tweens
                 .retain(|_, slots| slots.iter().flatten().any(|t| t.last_used >= cutoff));
+        }
+        if !self.starts.is_empty()
+            && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
+        {
+            self.starts.retain(|_, (_, used)| *used >= cutoff);
         }
         if !self.turns.is_empty()
             && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
@@ -662,11 +700,34 @@ impl AnimStore {
     pub(crate) fn node(&mut self, key: Key) -> NodeAnim<'_> {
         NodeAnim {
             slots: self.tweens.entry(key).or_default(),
+            key,
+            starts: &mut self.starts,
             now: self.now,
             frame_no: self.frame_no,
             active: &mut self.owes_transition,
             cycling: &mut self.owes_cycle,
         }
+    }
+
+    /// Whether `key`'s keyframe cycle is still running at this frame's
+    /// clock: always for an infinite one, and for one of `iterations`
+    /// until its last iteration ends (backlog F133) — what a trace of the
+    /// frames owed names as a cycle.
+    pub(crate) fn cycle_running(
+        &self,
+        key: Key,
+        transition: Transition,
+        iterations: Option<f32>,
+    ) -> bool {
+        let Some(n) = iterations else {
+            return true;
+        };
+        let (Some(now), Some(&(start, _))) = (self.drove_at.or(self.now), self.starts.get(&key))
+        else {
+            return false;
+        };
+        let dur = transition.duration_ms as f64 / 1000.0;
+        dur > 0.0 && (now - start - transition.delay_ms as f64 / 1000.0) / dur < n as f64
     }
 
     /// [`NodeAnim::drive`] for the transform slot, whose tweens are kept
@@ -695,27 +756,62 @@ impl AnimStore {
     /// hold — the transform's, a position's (backlog F132).
     pub(crate) fn sample_cycle(
         &mut self,
+        key: Key,
         track: &Track,
         transition: Transition,
+        iterations: Option<f32>,
     ) -> Option<[f32; 4]> {
-        let v = sample_track(track, transition, self.now);
-        if v.is_some() {
+        let now = self.now?;
+        let finite =
+            iterations.map(|n| (n, cycle_start(&mut self.starts, key, now, self.frame_no)));
+        let (v, running) = sample_track(track, transition, Some(now), finite)?;
+        if running {
             self.owes_cycle = true;
         }
-        v
+        Some(v)
     }
 }
 
 /// Where `now` lands in `track`'s cycle, shaped by `transition`'s easing.
 /// The walk behind [`NodeAnim::sample`]. None without a clock or a
 /// duration.
-fn sample_track(track: &Track, transition: Transition, now: Option<f64>) -> Option<[f32; 4]> {
+///
+/// `finite` is a cycle of so many iterations and the clock reading it began
+/// at (backlog F133): it holds its first stop through its `delay`, runs its
+/// iterations, then rests where the last one ended. The bool is whether the
+/// cycle is still running — a finite one that is over owes no frame.
+fn sample_track(
+    track: &Track,
+    transition: Transition,
+    now: Option<f64>,
+    finite: Option<(f32, f64)>,
+) -> Option<([f32; 4], bool)> {
     let dur = transition.duration_ms as f64 / 1000.0;
     let (Some(now), true, Some(&(_, first))) = (now, dur > 0.0, track.first()) else {
         return None;
     };
-    let u = (now - transition.delay_ms as f64 / 1000.0) / dur;
-    let p = transition.repeat.progress(u);
+    let delay = transition.delay_ms as f64 / 1000.0;
+    let (p, running) = match finite {
+        None => (transition.repeat.progress((now - delay) / dur), true),
+        Some((n, start)) => {
+            let u = (now - start - delay) / dur;
+            if u <= 0.0 {
+                (transition.repeat.start(), true)
+            } else if u >= n as f64 {
+                (transition.repeat.end(n as f64), false)
+            } else {
+                (transition.repeat.progress(u), true)
+            }
+        }
+    };
+    let v = segment_at(track, transition, p, first);
+    Some((v, running))
+}
+
+/// The value at cycle position `p` (0..=1) along `track`, the easing
+/// applied per segment, as CSS applies its timing function per keyframe
+/// interval.
+fn segment_at(track: &Track, transition: Transition, p: f32, first: [f32; 4]) -> [f32; 4] {
     let mut from = (0.0, first);
     for &(at, value) in track {
         if p < at {
@@ -726,11 +822,22 @@ fn sample_track(track: &Track, transition: Transition, now: Option<f64>) -> Opti
             for i in 0..4 {
                 out[i] = va[i] + (value[i] - va[i]) * e;
             }
-            return Some(out);
+            return out;
         }
         from = (at, value);
     }
-    Some(from.1)
+    from.1
+}
+
+/// When `key`'s finite cycle began: now, the first frame it is sampled
+/// and the first after a frame that went without it; else what it was.
+fn cycle_start(starts: &mut FxHashMap<Key, (f64, u64)>, key: Key, now: f64, frame_no: u64) -> f64 {
+    let e = starts.entry(key).or_insert((now, frame_no));
+    if e.1 + 1 < frame_no {
+        e.0 = now;
+    }
+    e.1 = frame_no;
+    e.0
 }
 
 /// One node's animation state for this frame: its retained tween slots,
@@ -738,6 +845,9 @@ fn sample_track(track: &Track, transition: Transition, now: Option<f64>) -> Opti
 /// [`AnimStore::node`].
 pub(crate) struct NodeAnim<'a> {
     slots: &'a mut [Option<Tween>; SLOTS],
+    /// The node, for a finite cycle's start (`starts`).
+    key: Key,
+    starts: &'a mut FxHashMap<Key, (f64, u64)>,
     /// Driver time in seconds; None until the driver first sets it.
     now: Option<f64>,
     frame_no: u64,
@@ -767,12 +877,20 @@ impl NodeAnim<'_> {
     /// ends, and a wait for the transitions to run out must not wait on
     /// it. The walk itself is [`sample_track`] and takes no
     /// key.
-    pub(crate) fn sample(&mut self, track: &Track, transition: Transition) -> Option<[f32; 4]> {
-        let v = sample_track(track, transition, self.now);
-        if v.is_some() {
+    pub(crate) fn sample(
+        &mut self,
+        track: &Track,
+        transition: Transition,
+        iterations: Option<f32>,
+    ) -> Option<[f32; 4]> {
+        let now = self.now?;
+        let finite =
+            iterations.map(|n| (n, cycle_start(self.starts, self.key, now, self.frame_no)));
+        let (v, running) = sample_track(track, transition, Some(now), finite)?;
+        if running {
             *self.cycling = true;
         }
-        v
+        Some(v)
     }
 
     #[inline]
@@ -1345,7 +1463,7 @@ mod tests {
             let t = Transition::ms(1000.0).easing(Easing::Linear).repeat(repeat);
             a.set_time(now);
             a.begin_frame(frame.next());
-            let v = a.node(Key::ROOT).sample(&track, t).unwrap()[0];
+            let v = a.node(Key::ROOT).sample(&track, t, None).unwrap()[0];
             assert!(a.animating(), "a keyframed slot always owes a frame");
             v
         };
@@ -1374,25 +1492,31 @@ mod tests {
         let t = Transition::ms(1000.0).easing(Easing::Linear);
         a.set_time(0.25);
         a.begin_frame(frame.next());
-        assert!((a.node(Key::ROOT).sample(&track, t).unwrap()[0] - 5.0).abs() < 1e-3);
+        assert!((a.node(Key::ROOT).sample(&track, t, None).unwrap()[0] - 5.0).abs() < 1e-3);
         // Held back 250ms: reads what an undelayed node read at 0.
         a.set_time(0.25);
         a.begin_frame(frame.next());
-        assert!((a.node(Key::ROOT).sample(&track, t.delay(250.0)).unwrap()[0]).abs() < 1e-3);
+        assert!(
+            (a.node(Key::ROOT)
+                .sample(&track, t.delay(250.0), None)
+                .unwrap()[0])
+                .abs()
+                < 1e-3
+        );
         // Ease-in per segment: a quarter of the way through the first leg
         // sits well below linear's 5.
         a.set_time(0.125);
         a.begin_frame(frame.next());
         let v = a
             .node(Key::ROOT)
-            .sample(&track, t.easing(Easing::EaseIn))
+            .sample(&track, t.easing(Easing::EaseIn), None)
             .unwrap()[0];
         assert!(v > 0.0 && v < 2.0, "{v}");
         // Stops that don't start at 0 hold the first value until they do.
         let late = [(0.5, one(3.0)), (1.0, one(9.0))];
         a.set_time(0.1);
         a.begin_frame(frame.next());
-        assert_eq!(a.node(Key::ROOT).sample(&late, t).unwrap()[0], 3.0);
+        assert_eq!(a.node(Key::ROOT).sample(&late, t, None).unwrap()[0], 3.0);
     }
 
     #[test]
@@ -1403,7 +1527,7 @@ mod tests {
         a.begin_frame(frame.next());
         assert!(
             a.node(Key::ROOT)
-                .sample(&track, Transition::ms(100.0))
+                .sample(&track, Transition::ms(100.0), None)
                 .is_none()
         );
         assert!(!a.animating());
@@ -1411,12 +1535,12 @@ mod tests {
         a.begin_frame(frame.next());
         assert!(
             a.node(Key::ROOT)
-                .sample(&track, Transition::ms(0.0))
+                .sample(&track, Transition::ms(0.0), None)
                 .is_none()
         );
         assert!(
             a.node(Key::ROOT)
-                .sample(&[], Transition::ms(100.0))
+                .sample(&[], Transition::ms(100.0), None)
                 .is_none()
         );
         assert!(!a.animating());

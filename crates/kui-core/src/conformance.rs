@@ -6807,6 +6807,10 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             .slide()
             .delay(20.0)
             .repeat(Repeat::Alternate)
+            // A quarter of one iteration (backlog F133): over by the 60 ms
+            // step, so the card rests where it stopped, which an infinite
+            // cycle would have run past.
+            .iterations(0.25)
             .keyframes(vec![
                 Keyframe::default().bg(Color::hex(0x1b1d27ff)),
                 Keyframe::default()

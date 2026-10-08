@@ -347,6 +347,9 @@ pub(crate) fn spec_of(
     if s.backdrop_blur > 0.0 {
         spec = spec.backdrop_blur(s.backdrop_blur);
     }
+    if s.iterations > 0.0 {
+        spec = spec.iterations(s.iterations);
+    }
     if s.rotate != 0.0 {
         spec = spec.rotate(s.rotate);
     }
