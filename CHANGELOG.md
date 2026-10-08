@@ -27,8 +27,9 @@ was the first bare bump to break an app in five releases).
 
 - A menu row wider than the window — a recent file's path, a long
   `<select>` option — draws its label cut short with "…" in a menu as
-  wide as the window less 8 px a side, where the menu ran off the edge
-  (under Fixed, RG150).
+  wide as the window less 8 px a side (and never narrower than the
+  metric's menu width, 200 px), where the menu ran off the edge (under
+  Fixed, RG150).
 - With a frame clock (every runner sets one), moving the pointer from an
   open submenu's row to another row of its menu switches after 0.3 s of
   rest there, not at once (under Fixed, RG150). A driver that sets no
@@ -42,6 +43,15 @@ was the first bare bump to break an app in five releases).
   `Tinted` (or `Opaque`), where it was translucent over black and
   reported `Blur`; a transparent window whose `WGPU_BACKEND` lists D3D12
   among others opens D3D12 alone (under Fixed, RG150).
+- Windows and Linux: a `Blur` or `Tinted` window on a desktop with no
+  wallpaper kui can read (a solid colour, a file it cannot decode) reads
+  `Tinted` for its first frame or frames and `Opaque` once the loader's
+  thread has answered, where alpha.43 read the path on the event loop
+  and said `Opaque` from the first frame (under Fixed, RG150). A view
+  that branches on the backdrop sees it change once, early.
+- An image or a fragment that declares `border` draws it, as a ring over
+  the content, where it drew none (under Fixed, RG152): an app that
+  kept the `border` and drew its own ring around the picture draws two.
 
 ### Added
 
@@ -60,9 +70,9 @@ was the first bare bump to break an app in five releases).
   pass). F127 made a menu as wide as its widest row, with nothing above
   it: a long path or `<select>` option ran the panel and its
   accelerators off a narrow window. A menu is now never wider than the
-  window less 8 px a side (a narrower ceiling the caller declared
-  stands), and a row's label is bounded by what its accelerator leaves it
-  and ends in "…".
+  window less 8 px a side (a narrower ceiling the caller declared in px
+  stands; the metric's menu width is the floor), and a row's label is
+  bounded by what its accelerator leaves it and ends in "…".
 - **A submenu survives the pointer passing over a row on its way in**
   (backlog RG150). A diagonal path from a row to a lower row of its
   submenu crosses the rows below it, and each one closed the submenu. A
@@ -91,8 +101,10 @@ was the first bare bump to break an app in five releases).
   up to three `gsettings` runs at window creation on GNOME before the
   window showed; and Wayland's blur managers are bound once per process,
   not once per window and never released. A window with no wallpaper to
-  read now reads `Opaque` before its first frame is built. Compiled and
-  read, not run.
+  read is `Tinted` until the thread answers, within its first frames,
+  and `Opaque` from then on (see What breaks). Compiled and read, not
+  run; the Linux half built and smoked under WSLg's X11 in the pre-tag
+  pass.
 
 - **A box that becomes a float keeps a float it held above it** (backlog
   RG151, from berainder). The float stack kept last frame's floats in
@@ -104,7 +116,19 @@ was the first bare bump to break an app in five releases).
 - **`border` on an image draws** (backlog RG152, from berainder). The
   border was painted with the background, under the picture, which
   covered it; on an image or a fragment it is now a ring over the
-  content, as over a gradient.
+  content, as over a gradient. And an image with a `gradient` and a
+  `border` no longer carries an empty quad where the gradient's own
+  ring went (from the alpha.44 pre-tag pass).
+- **The float stack keeps the order of two floats a box held, and
+  sorts a float moved into one** (backlog RG153, from the alpha.44
+  pre-tag pass). RG151's move put each held float just above the box in
+  turn, so of two — a name panel and a tip opened over it — the first
+  came out on top; and a float that moves into another float under a
+  key the app keeps (`open_key`, `leaf_key`) changed no rank, so the
+  steady path kept it under the float it is now in and the debug
+  assertion tripped by RG151's other road. A held float now waits for
+  the float it is in and goes just above it, in the order it had; and
+  the steady order is checked for nesting and rebuilt when it fails.
 
 **What you can delete.**
 
@@ -112,8 +136,51 @@ was the first bare bump to break an app in five releases).
   (RG150).
 - A key of its own for a box on each side of becoming a float — the
   card behind and the card on top — kept only to stop a float inside it
-  falling under it (RG151).
+  falling under it (RG151), or to keep two floats inside it in the order
+  they opened (RG153).
 - A padded box around an image to draw its border (RG152).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-08, over
+RG150 from alpha.43's pre-tag pass and berainder's RG151 and RG152, with
+alpha.44's pre-tag pass over them on the Windows machine and under WSLg:
+the mechanical round on both, then three read-only reviews of the diff
+since alpha.43 (the menus; the backdrop and the blur, read against
+wgpu's and wayland-client's sources; the floats, the image border and
+the docs), each claim probed. They filed RG153, built before the tag
+(the float stack reversing two floats a box held, and keeping a float
+moved into another under a kept key below it), and RG154, open; and the
+round itself caught F127's width test failing on both platforms under
+RG150's ceiling (its accelerator is a word each there, wider than the
+test's window).
+
+**Windows**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu --node`: **2144 tests over 143 suites**, 0 failed. The C round passes (6 checks), and so do the **57 scenes**
+through Rust, Lua, C, Node and Odin; the Odin binding's four steps with
+CI's pinned `dev-2026-09`; Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1` (**218 of 219**, the one skip Windows'),
+`npm run gen` with no diff, the examples' typecheck, the headless round
+(37 drives) and the book's listing. The windowed round with Node's:
+**53 examples on both bases**, every one clean on a first run; `counter`
+and `host` opened by hand after `cbuild`. The bench guard against the
+alpha.43 tag: **green**, the guarded rows −5.9% to +3.6%
+(`frame_10k_rects_with_access_tree`; `frame_10k_rects` itself −5.9%),
+the worst run-to-run spread on a guarded row 5.4%.
+
+**Linux**, under WSLg (llvmpipe), the same commit with the pass's
+fixes: fmt and clippy clean; `cargo test --workspace`: **1921 tests
+over 142 suites**, 0 failed; the C round (5 checks) and the 57 scenes
+through every adapter, the Odin binding's four steps, Node **219 of
+219** with the corpus required, gen clean, the typecheck, the headless
+round. The windowed round under X11 with Node's: 53 examples on both
+bases; eight windows of a first run four at a time died with
+"X connection to :0 broken" — XWayland's, twice — and the four
+examples drew every frame run again one at a time. Nothing opened a
+Wayland window (Weston's decorations crash under winit here) and
+nothing read a wallpaper: F126's Linux half is still compiled and read,
+not met on KDE or GNOME. No Mac ran this round: the AX audit and the
+macOS halves of RG150 are CI's check and the next Mac round's.
 
 ## 0.1.0-alpha.43 (2026-10-08)
 
@@ -342,8 +409,6 @@ in the JSON a row already was.
   before handing them to a context menu (F127).
 - A menu cut short, or flattened, because menus could not nest: "Move to
   …" rows one per folder up to a cap (F128).
-- A toolbar's opaque fill over content that scrolls under it (F129).
-- Inline code drawn in the body face, or as a box beside the text (F130).
 - A toolbar's opaque fill over content that scrolls under it (F129).
 - Inline code drawn in the body face, or as a box beside the text (F130).
 

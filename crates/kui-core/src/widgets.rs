@@ -1633,7 +1633,7 @@ fn menu_level(
 const MENU_PANEL_PAD: f32 = 4.0;
 
 /// How far a menu at its widest stays from each side of the window.
-const MENU_EDGE: f32 = 8.0;
+pub const MENU_EDGE: f32 = 8.0;
 
 /// Between a row's checkmark, label, spacer and accelerator.
 const MENU_ROW_GAP: f32 = 8.0;

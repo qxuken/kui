@@ -383,6 +383,84 @@ fn a_box_that_becomes_a_float_stays_under_the_float_it_held() {
     );
 }
 
+/// Two floats held by the box that becomes a float keep their order over
+/// it: the second, opened over the first, stays over it. Moving each up
+/// to just above the box in turn put the first on top (backlog RG153,
+/// from the alpha.44 pre-tag pass).
+#[test]
+fn two_floats_held_by_a_box_that_becomes_a_float_keep_their_order() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, floating: bool| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let card = if floating {
+            float_at(100.0, RED)
+        } else {
+            NodeSpec::column().size(200.0, 100.0).bg(RED)
+        };
+        ui.with_keyed("card", card, |ui| {
+            ui.leaf_keyed("name", float_at(120.0, BLUE));
+            ui.leaf_keyed("tip", float_at(130.0, GREEN));
+        });
+        ui.finish();
+    };
+    build(&mut core, false);
+    assert_eq!(painted(&mut core), ["red", "blue", "green"]);
+    build(&mut core, true);
+    assert_eq!(
+        painted(&mut core),
+        ["red", "blue", "green"],
+        "the tip, opened over the name, stays over it"
+    );
+    build(&mut core, true);
+    assert_eq!(painted(&mut core), ["red", "blue", "green"]);
+}
+
+/// A float that moves into another float under a key the app keeps
+/// (`leaf_key`): nothing opened or closed and every rank is where it was,
+/// so the steady order would have left it under the float it is now in —
+/// the box-to-float case's assertion, by another road (backlog RG153,
+/// from the alpha.44 pre-tag pass).
+#[test]
+fn a_float_moved_into_a_float_under_its_own_key_goes_above_it() {
+    let mut core = Core::new();
+    let tip = kui_core::Key::ROOT.str("tip");
+    // The tip alone; then a panel opened before it in tree order, so the
+    // tip (opened first) is under it; then the tip declared inside the
+    // panel, at the same ranks.
+    let build = |core: &mut Core, panel: bool, inside: bool| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        if panel {
+            ui.with_keyed("panel", float_at(100.0, RED), |ui| {
+                if inside {
+                    ui.leaf_key(tip, float_at(120.0, BLUE));
+                }
+            });
+        }
+        if !inside {
+            ui.leaf_key(tip, float_at(120.0, BLUE));
+        }
+        ui.finish();
+    };
+    build(&mut core, false, false);
+    assert_eq!(painted(&mut core), ["blue"]);
+    build(&mut core, true, false);
+    assert_eq!(
+        painted(&mut core),
+        ["blue", "red"],
+        "the panel opened over the tip"
+    );
+    build(&mut core, true, true);
+    assert_eq!(
+        painted(&mut core),
+        ["red", "blue"],
+        "the tip is above the panel it moved into"
+    );
+    build(&mut core, true, true);
+    assert_eq!(painted(&mut core), ["red", "blue"]);
+}
+
 /// A float from outside the modal's scope that opens over it, holding a
 /// control, is the same inert-over-interactive surface
 /// `modal-behind-content` names for an in-flow modal. A picture over it

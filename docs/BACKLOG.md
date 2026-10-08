@@ -168,7 +168,11 @@ archive); and RG145 from the alpha.42 pre-tag pass (what it left:
 offsets beside the run, the docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
 they were filed and are in the archive); RG146–RG150, from the alpha.43
 pre-tag pass and what it left, were built the day they were filed and
-are in the archive, as were RG151 and RG152 from berainder. Everything else that has been filed has
+are in the archive, as were RG151 and RG152 from berainder and RG153
+from the alpha.44 pre-tag pass; RG154 is what that pass left (the
+accelerator unbounded in a window narrower than it, a `Calc` ceiling,
+the bar's pending switch, the backdrop's first frame, Wayland's shared
+queue, three test gaps). Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -182,7 +186,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.42".
+Ordered by area, not by priority. What to do next is under "After alpha.43".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -448,7 +452,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.42" below.
+not cover is in "After alpha.43" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2064,7 +2068,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.42*).
+*Distribution* under *After alpha.43*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2573,10 +2577,95 @@ the same day after the tag (a menu's width ceiling, submenus by the
 pointer, nested rows checked, the blur's scratch, Windows' and Linux's
 backdrop) and in the archive.
 
-## After alpha.42
+## From the alpha.44 pre-tag pass (2026-10-08)
+
+The pass before the alpha.44 tag, on the Windows machine and under WSLg,
+over RG150 (the menus' ceiling and submenus, the blur's scratch, the
+Windows and Linux backdrop) and berainder's RG151 and RG152: the
+mechanical round on both (2144 Rust tests in 143 suites on Windows,
+1921 in 142 under WSL; the book listing; the 57 scenes through Rust,
+Lua, C, Node and Odin; the C round; the Odin binding's four steps on
+both; Node 218 of 219 with the corpus required on Windows and 219 of
+219 on Linux; gen with no diff; the typecheck; the headless round, 37
+drives), the windowed smoke with Node's on Windows (53 examples on both
+bases, clean first time) and under WSLg's X11 (the same 53; eight
+windows of a first run four at a time lost to XWayland's "X connection
+to :0 broken", and clean one at a time), the C hosts opened by hand
+after `cbuild`, the frame bench guard against alpha.43 (green, the
+guarded rows −5.9% to +3.6%, `frame_10k_rects_with_access_tree` the
+high one, spread up to 5.4%), and three read-only reviewers over the diff since alpha.43 (the menus;
+the backdrop and the blur, read against wgpu's and wayland-client's
+sources; the floats, the image border and the docs), each claim probed.
+
+What the round itself found: F127's width test, rewritten by alpha.43's
+pre-tag pass for a Mac, failed on Windows and Linux — the long row with
+its accelerator spelled out as a word each (`Ctrl+Alt+Shift+Backspace`)
+is wider than the 400 px test window, so RG150's ceiling ellipsized the
+label it counts; it now runs in an 800 px window, and the ceiling test
+asserts the margin too. One entry, RG153, **built 2026-10-08**, the day
+it was filed, and in the archive: the float stack reversing two floats a
+box held when it became one, and keeping a float moved into another
+under a kept key below it (the steady path never checked nesting). The
+pass's other corrections went in the same day: an image with a
+`gradient` and a `border` carried an empty second ring; ADR 0023 said
+the reverse "cannot happen"; the changelog overstated the menu's floor
+and the Linux backdrop's first-frame answer, and left RG152's ring and
+the `Tinted`→`Opaque` flip out of What breaks; an empty `if let` in
+kui-lua's dropdown. RG154 is what the pass left.
+
+### `.` RG154 — What the alpha.44 pre-tag pass left
+
+- **The accelerator is never bounded** (RG150, `widgets.rs` `menu_level`).
+  `label_max` is what the inside leaves after the tail, clamped to 0,
+  and the tail is drawn whole; in a window narrower than the tail plus
+  the paddings and gaps (about 230 px with `Ctrl+Alt+Shift+Backspace`)
+  the label is a 0-wide box and the accelerator runs past the panel
+  again. **Wants:** a floor for the label (a few glyphs and the
+  ellipsis) and the tail ellipsized under what that leaves.
+- **A caller-declared ceiling as a `Calc` is not the label's cap**
+  (RG150). `max_width(Bound::Calc(..))` stores `max_w < 0`, so the panel
+  is bounded by the calc and the label by the window: rows wider than
+  the panel. `menu_panel` is `pub`, so an app's own panel can reach it;
+  px ceilings are right.
+- **An owed frame the bar's pending switch never clears** (RG150,
+  `menu_api.rs` `submenu_waiting`). `pending` is cleared by a pass over
+  the drawn panel or by an open or close. A bar's declaration is kept
+  across frames, so an app that stops drawing `widgets::menu_bar` (or
+  turns the native bar on) inside the 0.3 s with a sibling row hovered
+  keeps `pending`, and `owed().requested` with it, until the bar is
+  drawn again or `set_menu_bar_open` runs. The context menu cannot: `Ui::finish`
+  draws it every frame.
+- **The backdrop's first frame on Linux and Windows is a race** (RG150,
+  `backdrop.rs` `Applied::emulated`, `ground.rs`). The pane is `Tinted`
+  and the first redraw is requested while the loader's thread is still
+  finding the wallpaper's path; on a desktop with none to read the
+  answer `Opaque` lands a frame or more later. Documented as a break for
+  alpha.44; a `push_pane` that settles the slot once before the first
+  redraw, when the thread has answered already, would narrow it, and a
+  read of the path on the loop (fast on Windows, up to three `gsettings`
+  runs on GNOME) would close it at the cost RG150 moved off the loop.
+- **Wayland's shared queue is drained once per window** (RG150,
+  `linux_blur.rs`): `dispatch_pending` runs at window creation only, so
+  registry events between windows (an output or seat hotplug) wait for
+  the next one. Bounded by the hotplugs; alpha.43's per-window queues
+  were never dispatched at all.
+- **Test gaps.** kui-lua's
+  `a_stray_key_inside_a_submenu_warns_and_an_option_takes_no_items`
+  asserts the two warnings and never that the option took no items
+  (Node's does); `submenu.rs` does not cover the pointer leaving the
+  menu with a switch pending (the one path `submenu_pass(false)` clears
+  it on); no test opens a menu in a window narrower than
+  `menu_width + 16`, where the floor wins and the menu overhangs the
+  window by design.
+
+## After alpha.43
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.41" until 2026-10-08, when the round between the alpha.42 and
+alpha.42" until 2026-10-08, when the round between the alpha.43 and
+alpha.44 tags — RG150 from alpha.43's pre-tag pass, RG151 and RG152
+from berainder, and RG153 from alpha.44's pre-tag pass — had landed,
+and the heading moved with the tag; "After
+alpha.41" until earlier on 2026-10-08, when the round between the alpha.42 and
 alpha.43 tags — F126–F130 from the Noticon wish list and RG146–RG149
 from alpha.43's pre-tag pass — had landed, and the heading moved with
 the tag; "After
@@ -4090,3 +4179,7 @@ move.
 - `!` **RG151** — [A box that became a float left a float it held below it](backlog/closed-2026-09.md#-rg151--a-box-that-became-a-float-left-a-float-it-held-below-it--done-2026-10-08) — done (2026-10-08)
 
 - `.` **RG152** — [`border` on an image drew nothing](backlog/closed-2026-09.md#-rg152--border-on-an-image-drew-nothing--done-2026-10-08) — done (2026-10-08)
+
+**From the alpha.44 pre-tag pass (2026-10-08)** — RG153, filed and built the same day; RG154 is what it left, open above
+
+- `!` **RG153** — [The float stack reversed two floats a box held, and kept a float moved into one below it](backlog/closed-2026-09.md#-rg153--the-float-stack-reversed-two-floats-a-box-held-and-kept-a-float-moved-into-one-below-it--done-2026-10-08) — done (2026-10-08)

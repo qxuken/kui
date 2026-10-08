@@ -15,7 +15,12 @@ fn style() -> TextStyle {
 /// A card of selectable text, and whatever menu the core has open drawn
 /// over it by `Ui::finish`.
 fn frame(core: &mut Core) -> Key {
-    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    frame_in(core, Size::new(400.0, 300.0))
+}
+
+/// The same card in a window of `size`.
+fn frame_in(core: &mut Core, size: Size) -> Key {
+    let mut ui = core.frame(size, 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
         ui.text("one", style());
@@ -345,13 +350,16 @@ fn a_portable_accelerator_reads_as_the_platform_writes_it() {
 #[test]
 fn the_menu_widens_to_its_widest_row_and_wraps_nothing() {
     let mut core = Core::new();
-    let scope = frame(&mut core);
+    // A window wide enough that RG150's ceiling (the window less a margin)
+    // never bites: the long row with its accelerator spelled out as a word
+    // each, as Windows and Linux do, is wider than the 400 px frame.
+    let scope = frame_in(&mut core, Size::new(800.0, 300.0));
     core.open_menu(Menu::new(
         scope,
         Vec2::new(10.0, 10.0),
         vec![MenuItem::new("Open"), MenuItem::new("Close")],
     ));
-    frame(&mut core);
+    frame_in(&mut core, Size::new(800.0, 300.0));
     let narrow = menu_rect(&mut core).unwrap();
     let row_h = row_rect(&mut core, "Open").h;
     assert_eq!(
@@ -368,7 +376,7 @@ fn the_menu_widens_to_its_widest_row_and_wraps_nothing() {
             MenuItem::new("Move the note to the trash, for good").accel("ctrl+alt+shift+backspace"),
         ],
     ));
-    frame(&mut core);
+    frame_in(&mut core, Size::new(800.0, 300.0));
     let wide = menu_rect(&mut core).unwrap();
     let long = row_rect(&mut core, "Move the note to the trash, for good");
     assert!(
@@ -915,6 +923,10 @@ fn a_menu_wider_than_the_window_is_capped_and_its_label_ellipsized() {
     assert!(
         menu.x >= 0.0 && menu.x + menu.w <= 400.0,
         "the menu inside the 400 px window: {menu:?}"
+    );
+    assert!(
+        menu.w <= 400.0 - 2.0 * kui_core::widgets::MENU_EDGE,
+        "and under the ceiling, the window less a margin a side: {menu:?}"
     );
     assert_eq!(long.h, row_h, "the long row is still one line");
     assert!(

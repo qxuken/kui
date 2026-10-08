@@ -1759,16 +1759,43 @@ impl Core {
     /// answer are the same read.
     fn stack_floats(&mut self, roots: &[u32]) -> Vec<u32> {
         let keys = &self.tree.keys;
+        let parent = &self.tree.parent;
+        let float_root = &self.float_root;
+        // The float a root is in, or NIL for one in the flow.
+        let outer_of = |root: u32| {
+            let p = parent[root as usize];
+            if p == NIL {
+                NIL
+            } else {
+                float_root[p as usize]
+            }
+        };
+        // Every nested float above the float it is in.
+        let nested_above = |order: &[u32]| {
+            order.iter().enumerate().all(|(pos, &r)| {
+                let outer = outer_of(r);
+                outer == NIL || order[..pos].contains(&outer)
+            })
+        };
         let stack = &mut self.float_stack;
         let steady = stack.len() == roots.len()
             && stack
                 .iter()
                 .all(|&(k, rank)| keys[roots[rank as usize] as usize] == k);
+        // The steady order holds unless a root moved into a float under a
+        // key the app keeps (`open_key`), which changes no rank: then the
+        // rebuild below sorts it, as it does a root the stack is new to
+        // (backlog RG151).
         let order: Vec<u32> = if steady {
             stack
                 .iter()
                 .map(|&(_, rank)| roots[rank as usize])
                 .collect()
+        } else {
+            Vec::new()
+        };
+        let order = if steady && nested_above(&order) {
+            order
         } else {
             // A float opened or closed: the ranks are found again, by key.
             let rank_of: FxHashMap<Key, u32> = roots
@@ -1790,51 +1817,52 @@ impl Core {
                 }
             }
             // A box that kept its key while it became a float is new here,
-            // and a float it already held is not: the held one moves up to
-            // just above it (and its own nested ones after it, in turn), so
-            // a nested float stays over the float it is in (backlog RG151).
-            let outer_of = |rank: u32| {
-                let parent = self.tree.parent[roots[rank as usize] as usize];
-                if parent == NIL {
-                    NIL
+            // and a float it already held is not: the held one waits for
+            // it and goes just above it, and what it holds in turn after
+            // that — each in the order it had — so a nested float stays
+            // over the float it is in and two held side by side keep
+            // their order (backlog RG151).
+            let rank_of_outer = |root: u32| {
+                let outer = outer_of(root);
+                if outer == NIL {
+                    None
                 } else {
-                    self.float_root[parent as usize]
+                    rank_of.get(&keys[outer as usize]).copied()
                 }
             };
-            let mut pos = 0;
-            while pos < next.len() {
-                let outer = outer_of(next[pos].1);
-                let below = outer != NIL
-                    && next[pos + 1..]
-                        .iter()
-                        .any(|&(_, rank)| roots[rank as usize] == outer);
-                if below {
-                    let at = next
-                        .iter()
-                        .position(|&(_, rank)| roots[rank as usize] == outer)
-                        .unwrap();
-                    let held = next.remove(pos);
-                    next.insert(at, held);
-                } else {
-                    pos += 1;
+            let mut out: Vec<(Key, u32)> = Vec::with_capacity(next.len());
+            let mut out_has = vec![false; roots.len()];
+            let mut waiting: Vec<(Key, u32)> = Vec::new();
+            for e in next {
+                match rank_of_outer(roots[e.1 as usize]) {
+                    Some(outer) if !out_has[outer as usize] => waiting.push(e),
+                    _ => {
+                        out_has[e.1 as usize] = true;
+                        out.push(e);
+                        // What waited on it, and on those, in turn.
+                        while let Some(i) = waiting.iter().position(|w| {
+                            rank_of_outer(roots[w.1 as usize])
+                                .is_none_or(|outer| out_has[outer as usize])
+                        }) {
+                            let w = waiting.remove(i);
+                            out_has[w.1 as usize] = true;
+                            out.push(w);
+                        }
+                    }
                 }
             }
-            *stack = next;
+            debug_assert!(
+                waiting.is_empty(),
+                "a float inside a float this frame has no root"
+            );
+            *stack = out;
             stack
                 .iter()
                 .map(|&(_, rank)| roots[rank as usize])
                 .collect()
         };
-        // A nested float is above the float it is in — by construction,
-        // since its key derives from its parent's and so cannot have been
-        // opened first; said here so the construction cannot drift.
-        debug_assert!(order.iter().enumerate().all(|(pos, &r)| {
-            let parent = self.tree.parent[r as usize];
-            parent == NIL || {
-                let outer = self.float_root[parent as usize];
-                outer == NIL || order[..pos].contains(&outer)
-            }
-        }));
+        // Said here so the placement above cannot drift.
+        debug_assert!(nested_above(&order));
         order
     }
 
@@ -2307,8 +2335,10 @@ impl Painter<'_> {
             return;
         }
         // The border as a ring of its own, above the gradient; what is
-        // left under it is the background alone.
-        let ring = bordered.then(|| Quad {
+        // left under it is the background alone. A picture's or a
+        // fragment's border is a ring over the content already
+        // (`ring_over_content`), and its solid has none left to give.
+        let ring = (bordered && quads[at].border_w > 0.0).then(|| Quad {
             color: Color::TRANSPARENT,
             ..quads[at]
         });

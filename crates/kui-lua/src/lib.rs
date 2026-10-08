@@ -2170,10 +2170,10 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             let mut rows = lua_list_to_value(&options)?;
             if let Value::List(rows) = &mut rows {
                 rows.iter_mut().for_each(alias_menu_role);
-                // A key of a row table no row reads — `disabled` for
-                // `enabled = false` — is dropped by the reader, so it is
-                // reported as an unknown prop is (backlog RG10).
             }
+            // A key of a row table no row reads — `disabled` for
+            // `enabled = false` — is dropped by the reader, so it is
+            // reported as an unknown prop is (backlog RG10).
             if ui.core().diagnostics() {
                 for k in kui_core::MenuItem::stray_option_keys(&rows) {
                     ui.core().warn(kui_core::diag::unknown_menu_item_key(&k));

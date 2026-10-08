@@ -180,10 +180,17 @@ and none of which the tree order gives:
   declares it under a fresh key. This is the only "raise" and it is not a
   row; see *What was declined*.
 
-A nested float is above its enclosing float without a rule: it opened
-the same frame (appended after its parent, in tree order) or a later one
-(appended above). The key scheme means the reverse cannot happen, and a
-`debug_assert` says so where the stack is rebuilt.
+A nested float is above its enclosing float, and almost always without a
+rule: it opened the same frame (appended after its parent, in tree
+order) or a later one (appended above), and a key derived from its
+parent's cannot have been opened first. Two roads reach the reverse,
+both under a key the app keeps across the change (backlog RG151 and
+RG153, 2026-10-08): a box that becomes a float around a float it already
+held — the box is new to the stack and the held float is not — and a
+float that moves into another float under `open_key`, which changes no
+rank. So the rebuild places each float after the float it is in, the
+held ones in the order they had, and the steady order is checked for the
+same and rebuilt when it fails. A `debug_assert` says the result holds.
 
 The steady state — the same float roots as last frame — is one
 comparison of two short key lists and costs nothing more; the first
