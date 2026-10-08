@@ -59,6 +59,11 @@ pub(crate) enum Source {
 /// `Some(Some(path))` for the file, and `None` where only the thread can
 /// tell (GNOME and every desktop asked through its keys).
 pub(crate) fn known_path() -> Option<Option<PathBuf>> {
+    // One `stat` on the loop. Explorer draws from a local copy
+    // (`TranscodedWallpaper`) and Plasma from a path under the user's
+    // config, so the file is local; a wallpaper set to a share nobody can
+    // reach would make this wait on SMB's timeout, which no desktop does
+    // by default.
     platform::known_path().map(|p| p.filter(|p| p.is_file()))
 }
 
