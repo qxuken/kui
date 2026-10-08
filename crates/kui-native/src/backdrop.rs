@@ -11,7 +11,10 @@
 //!   winit's `with_transparent` — on macOS a non-opaque window with a
 //!   clear background, on X11 an ARGB visual — and on Windows a window
 //!   with no GDI surface (`WS_EX_NOREDIRECTIONBITMAP`), whose only content
-//!   is the swapchain DirectComposition presents.
+//!   is the swapchain DirectComposition presents, wherever
+//!   `kui_wgpu::see_through_by_visual` says D3D12 will present it so
+//!   (`WGPU_BACKEND` and `WGPU_DX12_PRESENTATION_SYSTEM` can say not;
+//!   the window is then opaque and reported so).
 //! - **The surface**, presented with alpha (`Renderer::new_in_with`): a
 //!   CAMetalLayer that is not opaque, a D3D12 swapchain presented through
 //!   DirectComposition, a Vulkan surface that offers a premultiplied or
@@ -195,12 +198,14 @@ mod windows {
     /// backdrop, or the desktop. With a redirection surface under the
     /// swapchain its pixels showed instead: black, opaque, measured in a
     /// window on Windows 11 with a white at 45% reading as a flat grey.
-    /// Not where `WGPU_BACKEND` names another backend: only D3D12 presents
-    /// through a visual, and a window with no surface of its own and a
-    /// swapchain on its handle draws nothing.
+    /// Only where the device will present through a visual
+    /// (`kui_wgpu::see_through_by_visual`, which decides that too): a
+    /// window with no surface of its own and a swapchain on its handle
+    /// draws nothing. Where it will not, the window keeps its surface, the
+    /// renderer is opaque, and [`super::apply`] reports what that leaves.
     pub(super) fn attrs(attrs: WindowAttributes) -> WindowAttributes {
         use winit::platform::windows::WindowAttributesExtWindows;
-        if std::env::var_os("WGPU_BACKEND").is_some() {
+        if !kui_wgpu::see_through_by_visual() {
             return attrs;
         }
         attrs.with_no_redirection_bitmap(true)

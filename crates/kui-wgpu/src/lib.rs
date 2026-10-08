@@ -228,6 +228,10 @@ struct GpuInner {
     queue: wgpu::Queue,
     /// What it was opened for ([`Gpu::new_with`]).
     options: GpuOptions,
+    /// Whether a surface on this device can be presented with alpha at
+    /// all: everywhere but Windows, and there only on D3D12 presenting
+    /// through a composition visual ([`see_through_by_visual`]).
+    alpha: bool,
     dual_source: bool,
     /// One pipeline per registered fragment per surface format, built the
     /// first time a frame draws it (about 0.2 ms, paid once) and shared by
@@ -267,14 +271,16 @@ struct ImageTexture {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct GpuOptions {
-    /// Its surfaces may be presented with alpha
-    /// ([`Renderer::set_transparent`]), so a window shows what is behind
-    /// it where a frame paints nothing (backlog F126). On Windows this
+    /// Its surfaces may be presented with alpha ([`Renderer::new_in_with`],
+    /// [`Renderer::transparent`]), so a window shows what is behind it
+    /// where a frame paints nothing (backlog F126). On Windows this
     /// presents D3D12 through DirectComposition
     /// (`Dx12SwapchainKind::DxgiFromVisual`), the one D3D12 swapchain that
-    /// takes alpha, instead of a swapchain on the window's handle; nothing
-    /// changes elsewhere. Off by default, so an opaque app keeps the
-    /// swapchain it always had.
+    /// takes alpha, instead of a swapchain on the window's handle — where
+    /// [`see_through_by_visual`] says the window was made for it, and
+    /// nowhere else, so there the surfaces stay opaque otherwise; nothing
+    /// changes on other platforms. Off by default, so an opaque app keeps
+    /// the swapchain it always had.
     pub transparent: bool,
 }
 
@@ -285,6 +291,56 @@ impl GpuOptions {
     }
 }
 
+/// Whether a see-through window on Windows is presented by D3D12 through
+/// a DirectComposition visual — the one way its translucent pixels show
+/// what is behind it (backlog F126, RG150). Read from the process's
+/// environment once, so the two things it decides cannot disagree: the
+/// runner creates the window with no GDI surface of its own
+/// (`WS_EX_NOREDIRECTIONBITMAP`) only when it is true, and
+/// [`Gpu::new_with`] under [`GpuOptions::transparent`] presents through a
+/// visual only when it is true. A window with a GDI surface under a
+/// visual composites its translucent pixels over that surface's black;
+/// a window with no surface and a swapchain on its handle draws nothing.
+/// When it is false a transparent window is opaque, and
+/// [`Renderer::transparent`] says so. Only Windows reads it.
+///
+/// See [`see_through_by_visual_with`] for what the two variables say.
+pub fn see_through_by_visual() -> bool {
+    static DECIDED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DECIDED.get_or_init(|| {
+        // `var`, not `var_os`: wgpu reads both this way, so a value that
+        // is not Unicode is unset here as it is there.
+        see_through_by_visual_with(
+            std::env::var("WGPU_BACKEND").ok().as_deref(),
+            std::env::var("WGPU_DX12_PRESENTATION_SYSTEM")
+                .ok()
+                .as_deref(),
+        )
+    })
+}
+
+/// [`see_through_by_visual`] from the values of `WGPU_BACKEND` and
+/// `WGPU_DX12_PRESENTATION_SYSTEM` (`None` for unset), each parsed the
+/// way wgpu parses it:
+///
+/// - `WGPU_BACKEND` unset is D3D12 alone, which is what kui opens on
+///   Windows; set, it must list D3D12 (`dx12` or `d3d12`, in wgpu's
+///   comma-separated, case-insensitive list). A list naming others too
+///   is narrowed to D3D12 for a transparent device ([`Gpu::new_with`]),
+///   so the window this decided on is the one the device presents to.
+/// - `WGPU_DX12_PRESENTATION_SYSTEM` naming the handle (`hwnd`,
+///   `DxgiFromHwnd`) is a swapchain on the window's handle, which takes
+///   no alpha; unset, naming the visual (`visual`, `DxgiFromVisual`), or
+///   a value wgpu does not recognise leaves kui's choice, the visual.
+pub fn see_through_by_visual_with(backend: Option<&str>, presentation: Option<&str>) -> bool {
+    let d3d12 =
+        backend.is_none_or(|b| wgpu::Backends::from_comma_list(b).contains(wgpu::Backends::DX12));
+    // Untrimmed, as wgpu matches it (`Dx12SwapchainKind::from_env`).
+    let hwnd =
+        presentation.is_some_and(|p| matches!(p.to_lowercase().as_str(), "dxgifromhwnd" | "hwnd"));
+    d3d12 && !hwnd
+}
+
 impl Gpu {
     /// Opens a device that can present to `target`, and returns the
     /// surface it was chosen for.
@@ -293,7 +349,9 @@ impl Gpu {
     /// picked, so it comes back with the device; later windows get theirs
     /// from [`Gpu::create_surface`]. Most runners call [`Renderer::new`]
     /// instead, which does both and builds the renderer. On Windows only
-    /// the D3D12 backend is enabled unless `WGPU_BACKEND` names another.
+    /// the D3D12 backend is enabled unless `WGPU_BACKEND` names another;
+    /// for [`GpuOptions::transparent`], a list naming D3D12 among others
+    /// is narrowed to it ([`see_through_by_visual_with`]).
     pub async fn new(
         target: impl Into<wgpu::SurfaceTarget<'static>>,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
@@ -318,15 +376,24 @@ impl Gpu {
         // `nvwgf2umx.dll` reports the removal, and the shell reopens the
         // device (`Gpu::lost`).
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
-        if cfg!(windows) && std::env::var_os("WGPU_BACKEND").is_none() {
-            desc.backends = wgpu::Backends::DX12;
-        }
         // A swapchain made on the window's handle is opaque whatever it is
         // configured with; one presented through a composition visual
-        // takes premultiplied alpha. Only when asked, and under
-        // `WGPU_DX12_PRESENTATION_SYSTEM`, which still wins for a look at
-        // either.
-        if options.transparent && std::env::var_os("WGPU_DX12_PRESENTATION_SYSTEM").is_none() {
+        // takes premultiplied alpha. Only when asked, and only where the
+        // runner made the window for it: `see_through_by_visual` decides
+        // both, from `WGPU_BACKEND` and `WGPU_DX12_PRESENTATION_SYSTEM`.
+        let by_visual = cfg!(windows) && options.transparent && see_through_by_visual();
+        if cfg!(windows) {
+            if std::env::var("WGPU_BACKEND").is_err() {
+                desc.backends = wgpu::Backends::DX12;
+            } else if by_visual {
+                // A list that names D3D12 among others, narrowed to it:
+                // the window was made with no surface of its own, and
+                // only D3D12 presents to such a window. Left to choose,
+                // wgpu takes Vulkan first.
+                desc.backends &= wgpu::Backends::DX12;
+            }
+        }
+        if by_visual {
             desc.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
         }
         let instance = wgpu::Instance::new(desc);
@@ -337,6 +404,11 @@ impl Gpu {
                 ..Default::default()
             })
             .await?;
+        // On Windows a surface takes alpha only through the visual, and
+        // only D3D12 presents through one (the backends were narrowed to
+        // it above; this is the check that they held).
+        let alpha =
+            !cfg!(windows) || (by_visual && adapter.get_info().backend == wgpu::Backend::Dx12);
         // Per-channel blending for LCD subpixel text, when the device has it.
         let dual_source = adapter
             .features()
@@ -371,6 +443,7 @@ impl Gpu {
             device,
             queue,
             options,
+            alpha,
             dual_source,
             fragment_pipelines: Default::default(),
             textures: Default::default(),
@@ -976,7 +1049,10 @@ impl Renderer {
             .find(|f| !f.is_srgb())
             .unwrap_or(caps.formats[0]);
         let backend = gpu.adapter().get_info().backend;
-        let alpha_mode = transparent
+        // Not on a device whose surfaces cannot show what is behind the
+        // window (Windows, unless `see_through_by_visual`): there a mode
+        // with alpha would composite over black and still say transparent.
+        let alpha_mode = (transparent && gpu.0.alpha)
             .then(|| transparent_mode(&caps.alpha_modes, backend))
             .flatten()
             .unwrap_or_else(|| opaque_mode(&caps.alpha_modes));
@@ -2266,6 +2342,37 @@ mod tests {
             M::Opaque
         );
         assert_eq!(opaque_mode(&[M::Inherit]), M::Inherit);
+    }
+
+    /// One answer for the window's style and the swapchain (backlog
+    /// RG150): D3D12 through a visual unless the backend list leaves
+    /// D3D12 out or the presentation system names the handle — each
+    /// variable read as wgpu reads it.
+    #[test]
+    fn the_window_and_the_swapchain_are_decided_together() {
+        let by = see_through_by_visual_with;
+        // Nothing set: kui opens D3D12 alone, through the visual.
+        assert!(by(None, None));
+        // `WGPU_BACKEND` naming D3D12, alone or in a list, in either
+        // spelling and any case, spaces stripped.
+        for b in ["dx12", "D3D12", "DX12", "vulkan,dx12", " gl , d3d12 "] {
+            assert!(by(Some(b), None), "{b}");
+        }
+        // Naming only others, or nothing wgpu knows.
+        for b in ["vulkan", "gl", "vk,gl", "", "directx", "dx11"] {
+            assert!(!by(Some(b), None), "{b}");
+        }
+        // The presentation system: the handle's swapchain takes no alpha;
+        // the visual's, or a value wgpu does not read, leave kui's choice.
+        for p in ["hwnd", "Hwnd", "DxgiFromHwnd", "dxgifromhwnd"] {
+            assert!(!by(None, Some(p)), "{p}");
+            assert!(!by(Some("dx12"), Some(p)), "{p}");
+        }
+        for p in ["visual", "DxgiFromVisual", "", "nonsense", " hwnd"] {
+            assert!(by(None, Some(p)), "{p}");
+        }
+        // Both must allow it.
+        assert!(!by(Some("vulkan"), Some("visual")));
     }
 
     /// A transparent one takes a mode that composites premultiplied
