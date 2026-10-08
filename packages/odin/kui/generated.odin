@@ -216,6 +216,7 @@ Span_Flag :: enum u32 {
 	Italic = 1, // KUI_SPAN_ITALIC
 	Underline = 2, // KUI_SPAN_UNDERLINE
 	Strikethrough = 3, // KUI_SPAN_STRIKETHROUGH
+	Family = 4, // KUI_SPAN_FAMILY
 }
 Span_Flags :: bit_set[Span_Flag;u32]
 

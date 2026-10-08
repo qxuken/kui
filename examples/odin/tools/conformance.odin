@@ -139,6 +139,8 @@ scene_layout :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			{text = "a "},
 			{text = "b", color = 0x73d98cff, flags = {.Bold}},
 			{text = " c", flags = {.Italic}},
+			{text = " d()", flags = {.Family}, family = .Mono},
+			{text = " E", size = 20},
 		}
 		kui.rich_text(ui, spans, {size = 13})
 	}

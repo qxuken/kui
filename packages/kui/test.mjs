@@ -1569,6 +1569,23 @@ test('a rounded span background is joined with the ones it meets (F101)', () => 
   assert.throws(() => draw([row('x', { bgRadius: 'round' })]), /bad bgRadius/);
 });
 
+// A span's own face and size: inline code in `mono` measures as the
+// monospace face does, a larger span makes its line taller, and both are
+// inherited by a nested span; a bad one is refused where it is declared.
+test('a span takes a face and a size of its own', () => {
+  const ctx = new Ctx();
+  const style = { size: 14 };
+  const sans = ctx.measureText(['iiiiii'], style);
+  const code = ctx.measureText([el('span', { family: 'mono' }, ['iiiiii'])], style);
+  const mono = ctx.measureText('iiiiii', { size: 14, family: 'mono' });
+  assert.ok(Math.abs(code.width - mono.width) < 0.5, `${code.width} against ${mono.width}`);
+  assert.ok(code.width > sans.width + 4, `${code.width} against ${sans.width}`);
+  const big = ctx.measureText(['a', el('span', { size: 28 }, [el('span', { bold: true }, ['B'])])], style);
+  assert.ok(big.height > sans.height * 1.8, `${big.height} against ${sans.height}`);
+  assert.throws(() => ctx.measureText([el('span', { size: -1 }, ['x'])], style), /bad size/);
+  assert.throws(() => ctx.measureText([el('span', { family: 3 }, ['x'])], style), /bad family/);
+});
+
 // OpenType features on a text style (backlog C23): one string every
 // binding shares, part of what the text is shaped as. The ligature half runs
 // only where a font with one is installed.
@@ -4083,7 +4100,7 @@ const SCENE_TREES = {
         ),
         box({ padX: 9, padY: 3, padB: 1, bg: '#2a2d3a' }),
         text(
-          ['a ', el('span', { bold: true, color: '#73d98c' }, ['b']), el('span', { italic: true }, [' c'])],
+          ['a ', el('span', { bold: true, color: '#73d98c' }, ['b']), el('span', { italic: true }, [' c']), el('span', { family: 'mono' }, [' d()']), el('span', { size: 20 }, [' E'])],
           { size: 13 },
         ),
       ]),

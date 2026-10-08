@@ -787,6 +787,20 @@ fn with_spans<R>(
             if s.bg_radius > 0.0 {
                 span = span.bg_radius(s.bg_radius);
             }
+            if s.font != 0 {
+                span = span.family(kui_core::FontFamily::Custom(kui_core::FontId::from_ffi(
+                    s.font,
+                )));
+            } else if s.flags & KUI_SPAN_FAMILY != 0 {
+                span = span.family(match s.family {
+                    1 => kui_core::FontFamily::Serif,
+                    2 => kui_core::FontFamily::Mono,
+                    _ => kui_core::FontFamily::Sans,
+                });
+            }
+            if s.size > 0.0 {
+                span = span.size(s.size);
+            }
             span
         })
         .collect();

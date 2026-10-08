@@ -49,11 +49,18 @@ was the first bare bump to break an app in five releases).
   the 64-bit size stays 704), `KuiMenuItem` appends `submenu` and
   `submenu_count` (an array element, so its stride moved, to 72), and
   `KuiRunConfig` appends `backdrop` (44). `KUI_QUAD_BACKDROP` is a new
-  quad kind. Recompile; a zeroed tail is what every spec, row and config
-  had.
+  quad kind. `KuiSpan` appends `family`, `size` and `font` (an array
+  element, so its stride moved, to 56), with the `KUI_SPAN_FAMILY` flag
+  (under Added, F130). Recompile; a zeroed tail is what every spec, row,
+  span and config had.
+- Rust: `text::Span` gains `family` and `size` (under Added, F130), for a
+  struct literal of one; `Span::new` and the builders are unchanged.
+- Node: the wire is v22 — a span carries its face and size after its
+  background's radius — so the addon and the package go together, as
+  every wire step has.
 
-The Node wire stays at v21: `backdropBlur` is a number row like any
-other, and a row's `items` rides in the JSON a row already was.
+`backdropBlur` is a number row like any other, and a row's `items` rides
+in the JSON a row already was.
 
 ### Added
 
@@ -161,6 +168,29 @@ other, and a row's `items` rides in the JSON a row already was.
   — a row that is its own submenu — is refused, as an unknown role is.
   *What you can delete:* a list cut short because a menu could not
   nest — Noticon's `MOVE_TARGETS` cap on the folders a note can move to.
+
+- **A span in a face and a size of its own** (backlog F130, from
+  Noticon, whose inline `code` was drawn in the body face with a wash).
+  `Span::family(FontFamily)` / `Span::mono()` and `Span::size(px)` —
+  `family`, `font` and `size` on a JSX `<span>` and in a Lua span table,
+  `KuiSpan.family` (with `KUI_SPAN_FAMILY`), `.font` and `.size` in C,
+  the same fields on Odin's `Span`. The paragraph still shapes as one
+  flow; each span's glyphs are shaped in its face, at that family's
+  weights, so a caret, a hit, a selection and the measurement read the
+  glyphs that are drawn and byte positions stay exact across a change of
+  face mid-line. A sized span's line height scales at the paragraph's
+  ratio, a line is as tall as its tallest span (every span then carries
+  its metrics, so a line of only smaller ones never comes out shorter),
+  measurement sums the lines' own heights, a selection and a caret are
+  their line's height, and a span's background is its own height around
+  its glyphs rather than the line's. A paragraph with a sized span is
+  shaped whole, never chunked as a long line. Pinned by
+  `tests/span_face.rs` (the mono width, carets and hits across the
+  change, line heights, the caret, the wash), Node's `a span takes a face
+  and a size of its own`, and the corpus's first scene, which gained a
+  mono span and a sized one in all five adapters; the `text` example
+  shows inline code and a larger word. *What you can delete:* inline code
+  drawn in the body face, or as a box beside the text.
 
 ### Fixed
 

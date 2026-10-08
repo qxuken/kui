@@ -684,7 +684,7 @@ pub const SCENES: &[Scene] = &[
                 "0 window ||",
                 "1 staticText ab||",
                 "1 staticText cd||",
-                "1 staticText a b c||",
+                "1 staticText a b c d() E||",
             ],
             events: &[],
             announcements: &[],
@@ -3756,6 +3756,10 @@ fn build_layout(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                     Span::new("a "),
                     Span::new("b").bold().color(Color::hex(0x73d98cff)),
                     Span::new(" c").italic(),
+                    // A face and a size of the span's own: inline code,
+                    // and a larger word that makes the line taller.
+                    Span::new(" d()").mono(),
+                    Span::new(" E").size(20.0),
                 ],
                 TextStyle::new(13.0),
             );

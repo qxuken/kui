@@ -278,6 +278,23 @@ gap, to keep it apart.
 [ADR 0035](adr/0035-a-rounded-background-is-joined-by-meeting.md) ·
 [alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-2026-09-28)
 
+### How do I set inline code in monospace inside a paragraph?
+
+Give the span a face of its own: `<span family="mono">cargo test</span>`,
+`Span::new("cargo test").mono()` in Rust, `{ "cargo test", family = "mono" }`
+in Lua, `.flags = KUI_SPAN_FAMILY, .family = KUI_FONT_MONO` on a C
+`KuiSpan` (`.font` for a registered font, which wins). Any family name the
+text's `family` takes works, and `size` gives a span its own size — a
+larger first word, a smaller footnote mark — with the line as tall as its
+tallest span. The paragraph still shapes as one flow, and its carets, hit
+tests and selection are measured in the face each glyph is drawn in, so a
+byte position means the same thing on either side of the change. Add a
+`bg` and a `bgRadius` for the usual wash; it is the span's own height,
+not the line's.
+
+[`text` element](props.md#elements) ·
+[`text.rs`](../examples/rust/widgets/text.rs)
+
 ### How do I list the installed fonts, the monospaced ones first?
 
 `ctx.systemFonts()` (Rust `Core::system_fonts()`, C `kui_system_fonts`)

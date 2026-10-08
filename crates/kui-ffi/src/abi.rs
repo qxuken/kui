@@ -140,6 +140,9 @@
 ///   moved (backlog F128); `backdrop` on `KuiRunConfig` (backlog F126).
 ///   New functions with them: `kui_ctx_backdrop`, the menu path readers
 ///   and `kui_activate_menu_path` / `kui_activate_menu_bar_path`.
+///   `family`, `size` and `font` on `KuiSpan` with `KUI_SPAN_FAMILY`, a
+///   span's own face and size — an array element, so its stride moved
+///   (64-bit 56).
 pub const KUI_ABI_VERSION: u32 = 26;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

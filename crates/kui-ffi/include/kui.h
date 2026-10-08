@@ -319,7 +319,9 @@ extern "C" {
  * what shows through kui_run_with's window. New functions with them:
  * kui_ctx_backdrop, the path readers and kui_activate_menu_path /
  * kui_activate_menu_bar_path. Recompile; a zeroed tail is what every
- * spec, row and config had before.
+ * spec, row and config had before. KuiSpan appends family, size and
+ * font, a span's own face and size (with the KUI_SPAN_FAMILY flag) - an
+ * array element again, so its stride moved, to 56.
  */
 #define KUI_ABI_VERSION 26u
 uint32_t kui_abi_version(void);
@@ -512,6 +514,7 @@ enum {
     KUI_SPAN_ITALIC = 1u << 1,
     KUI_SPAN_UNDERLINE = 1u << 2,     /* a line under the span, where the face puts it */
     KUI_SPAN_STRIKETHROUGH = 1u << 3, /* a line through it */
+    KUI_SPAN_FAMILY = 1u << 4,        /* KuiSpan.family names the span's face (ABI 26) */
 };
 /* KuiTextStyle.decoration: the same two lines over a whole text. */
 enum { KUI_DECO_UNDERLINE = 1u << 0, KUI_DECO_STRIKETHROUGH = 1u << 1 };
@@ -1732,6 +1735,14 @@ typedef struct KuiSpan {
                         own line, in this text or another: convex where a line reaches past
                         its neighbour, a fillet where it falls short, round where nothing
                         meets it. A selection over rows is one outline. ABI 20. */
+    uint32_t family; /* with KUI_SPAN_FAMILY in flags, the span's own face, a KUI_FONT_*:
+                        inline code in KUI_FONT_MONO inside a sans line; without it, the
+                        paragraph's (a zeroed span). ABI 26. */
+    float size;      /* the span's own size, logical px; its line height scales with it at
+                        the paragraph's ratio, and a line is as tall as its tallest span.
+                        0 = the paragraph's. ABI 26. */
+    uint64_t font;   /* a registered font handle (kui_font_add*), the span's face; non-zero
+                        overrides family, as KuiTextStyle.font does. ABI 26. */
 } KuiSpan;
 
 /* The window an app starts in - the one kui_run opens - which is always

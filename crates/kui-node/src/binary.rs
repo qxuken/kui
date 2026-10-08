@@ -103,7 +103,12 @@ use crate::{Result, err, value_of};
 /// expression in prefix code (`calc::from_code`); `maxWidth` and
 /// `maxHeight` are two slots, (mode, value), where they were one.
 /// v20: `path` is a new op (ADR 0040).
-pub const VERSION: u32 = 21;
+/// v21: a path's dash (backlog V2).
+/// v22: a span's own face and size: after its background's radius, a
+/// strref for `family` (a stock name or an installed family's; absent
+/// for the paragraph's), a strref for `font` (a handle, which wins;
+/// absent for none) and `size` (0 for the paragraph's).
+pub const VERSION: u32 = 22;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -910,7 +915,21 @@ fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a
         let bg = r.f()?;
         let ul = r.f()?;
         let radius = r.f()?;
+        // v22: the span's own face and size.
+        let family = r.str_ref()?;
+        let font = r.str_ref()?;
+        let size = r.f()?;
         let mut s = Span::new(text);
+        if let Some(handle) = font {
+            s = s.family(kui_core::FontFamily::Custom(kui_core::FontId::from_ffi(
+                crate::parse_u64(handle)?,
+            )));
+        } else if let Some(name) = family {
+            s = s.family(refs.names.family(name));
+        }
+        if size > 0.0 {
+            s = s.size(size as f32);
+        }
         if flags & 1 != 0 {
             s = s.bold();
         }

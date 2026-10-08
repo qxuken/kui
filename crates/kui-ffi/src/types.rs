@@ -1371,6 +1371,14 @@ pub struct KuiSpan {
     /// neighbour and filleted inside where it falls short: a selection
     /// over rows is one outline. ABI 20.
     pub bg_radius: f32,
+    /// With `KUI_SPAN_FAMILY` in `flags`, the span's own face, a
+    /// `KUI_FONT_*`; without it the paragraph's. ABI 26.
+    pub family: u32,
+    /// The span's own size, logical px; 0 is the paragraph's. ABI 26.
+    pub size: f32,
+    /// A registered font handle, the span's face; non-zero overrides
+    /// `family`. ABI 26.
+    pub font: u64,
 }
 
 /// One colour token as `kui_tokens_set` reads it: a name and a value per
@@ -2264,6 +2272,8 @@ pub const KUI_SPAN_BOLD: u32 = 1 << 0;
 pub const KUI_SPAN_ITALIC: u32 = 1 << 1;
 pub const KUI_SPAN_UNDERLINE: u32 = 1 << 2;
 pub const KUI_SPAN_STRIKETHROUGH: u32 = 1 << 3;
+/// `KUI_SPAN_FAMILY`: `KuiSpan.family` names the span's face (ABI 26).
+pub const KUI_SPAN_FAMILY: u32 = 1 << 4;
 
 /// `KUI_UNDERLINE_*`: an underline's shape, `KuiTextStyle.underline_style`
 /// and `KuiSpan.underline_style`.

@@ -92,6 +92,25 @@ impl App for Text {
                             ],
                             TextStyle::new(16.0).line_height(26.0).color(t.muted),
                         );
+                        // A span in a face and a size of its own: inline
+                        // code in the monospace face on a soft rounded
+                        // wash, and a larger word that makes its line
+                        // taller.
+                        ui.rich_text(
+                            &[
+                                Span::new("Run "),
+                                Span::new(" cargo test ")
+                                    .mono()
+                                    .bg(t.accent_soft)
+                                    .bg_radius(4.0),
+                                Span::new(" before you push; a span can also be "),
+                                Span::new("larger").size(24.0).bold(),
+                                Span::new(" than its paragraph, or "),
+                                Span::new("smaller").size(11.0),
+                                Span::new(", and the line is as tall as its tallest span."),
+                            ],
+                            TextStyle::new(16.0).line_height(26.0),
+                        );
                     },
                 );
 

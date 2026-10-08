@@ -383,6 +383,19 @@ pub struct Span<'a> {
     /// reaches past its neighbour, concave where it falls short, round
     /// where nothing meets it. What a selection over lines looks like.
     pub bg_radius: f32,
+    /// The span's own face, in place of the paragraph's: inline `code` in
+    /// `FontFamily::Mono` inside a sans line. `None` is the paragraph's.
+    /// The span keeps the paragraph's weights for its family (bold is the
+    /// family's bold), and its glyphs, carets and selection are measured
+    /// in the face they are drawn in, so byte positions stay exact across
+    /// the change.
+    pub family: Option<FontFamily>,
+    /// The span's own size in logical px, in place of the paragraph's: a
+    /// heading's larger first word, a smaller footnote mark. Its line
+    /// height scales with it at the paragraph's ratio, and a line is as
+    /// tall as its tallest span. `None` is the paragraph's. A paragraph
+    /// with a sized span is shaped whole, never chunked as a long line.
+    pub size: Option<f32>,
 }
 
 impl<'a> Span<'a> {
@@ -398,7 +411,33 @@ impl<'a> Span<'a> {
             strikethrough: false,
             bg: None,
             bg_radius: 0.0,
+            family: None,
+            size: None,
         }
+    }
+
+    /// The span in its own face (see the `family` field).
+    pub fn family(mut self, family: FontFamily) -> Self {
+        self.family = Some(family);
+        self
+    }
+
+    /// The span in the monospace face: inline code.
+    ///
+    /// ```
+    /// # use kui_core::{FontFamily, text::Span};
+    /// let code = Span::new("cargo test").mono();
+    /// assert_eq!(code.family, Some(FontFamily::Mono));
+    /// ```
+    pub fn mono(self) -> Self {
+        self.family(FontFamily::Mono)
+    }
+
+    /// The span at its own size in logical px (see the `size` field); a
+    /// size that is not a positive number is the paragraph's.
+    pub fn size(mut self, px: f32) -> Self {
+        self.size = (px.is_finite() && px > 0.0).then_some(px);
+        self
     }
 
     pub fn color(mut self, c: Color) -> Self {
@@ -465,14 +504,16 @@ impl<'a> Span<'a> {
             strikethrough: self.strikethrough,
             bg: self.bg,
             bg_radius: self.bg_radius,
+            family: self.family,
+            size: self.size,
         }
     }
 
-    fn attrs(
+    fn attrs<'r>(
         &self,
-        family: cosmic_text::Family<'a>,
+        family: cosmic_text::Family<'r>,
         weights: crate::weights::Weights,
-    ) -> Attrs<'a> {
+    ) -> Attrs<'r> {
         // Pin the family (the paragraph base's) so weight/style variants
         // stay in one typeface instead of falling back to whatever face
         // matches first — at weights it has faces for (backlog F100).
@@ -506,6 +547,8 @@ struct SpanAttrs {
     strikethrough: bool,
     bg: Option<Color>,
     bg_radius: f32,
+    family: Option<FontFamily>,
+    size: Option<f32>,
 }
 
 impl SpanAttrs {
@@ -521,6 +564,8 @@ impl SpanAttrs {
             strikethrough: self.strikethrough,
             bg: self.bg,
             bg_radius: self.bg_radius,
+            family: self.family,
+            size: self.size,
         }
     }
 }
@@ -1992,7 +2037,11 @@ impl TextSystem {
             e.touch(frame_no);
             return key;
         }
-        if spans.iter().any(|s| has_line_break(s.text))
+        // A sized span makes a line as tall as it is, which the long
+        // line's one estimated row height cannot follow: shaped whole.
+        if spans
+            .iter()
+            .any(|s| has_line_break(s.text) || s.size.is_some())
             || len < LONG_LINE_BYTES && spans.iter().any(|s| has_rtl(s.text))
         {
             return self.intern_rich_keyed(key, spans, base, res, fs);
@@ -2434,6 +2483,18 @@ impl TextSystem {
                 s.underline_color.is_some() as u8,
             ]);
             mix(&s.bg_radius.to_bits().to_le_bytes());
+            // The span's own face and size: a different shaping, so a
+            // different entry.
+            let (tag, font) = match s.family {
+                None => (0u8, 0u64),
+                Some(FontFamily::Sans) => (1, 0),
+                Some(FontFamily::Serif) => (2, 0),
+                Some(FontFamily::Mono) => (3, 0),
+                Some(FontFamily::Custom(id)) => (4, id.to_ffi()),
+            };
+            mix(&[tag]);
+            mix(&font.to_le_bytes());
+            mix(&s.size.map_or(0, f32::to_bits).to_le_bytes());
             for c in [s.color, s.bg, s.underline_color].into_iter().flatten() {
                 mix(&c.r.to_bits().to_le_bytes());
                 mix(&c.g.to_bits().to_le_bytes());
@@ -2460,21 +2521,49 @@ impl TextSystem {
             let family = res.family_of(base.family);
             let weights = res.weights_of(base.family);
             let features = cosmic_features(&base.features);
+            // Once one span has a size of its own every span carries its
+            // metrics: cosmic-text makes a line as tall as the tallest
+            // glyph that names its own, so a line holding only a smaller
+            // span would otherwise come out shorter than the paragraph's.
+            let sized = spans.iter().any(|s| s.size.is_some());
+            let metrics_of = |size: Option<f32>| {
+                let size = size.unwrap_or(base.size);
+                let ratio = if base.size > 0.0 {
+                    base.line_height / base.size
+                } else {
+                    1.0
+                };
+                shaper_metrics(size * scale, size * ratio * scale)
+            };
             // Each span's index rides its glyphs as metadata, which is how
-            // the decoration rects find their span after layout.
+            // the decoration rects find their span after layout. A span
+            // with a face of its own is shaped in it, at its weights.
             buffer.set_rich_text(
                 spans.iter().enumerate().map(|(i, s)| {
-                    (
-                        s.text,
-                        s.attrs(family, weights)
-                            .font_features(features.clone())
-                            .metadata(i),
-                    )
+                    let (family, weights) = match s.family {
+                        Some(f) => (res.family_of(f), res.weights_of(f)),
+                        None => (family, weights),
+                    };
+                    let mut attrs = s
+                        .attrs(family, weights)
+                        .font_features(features.clone())
+                        .metadata(i);
+                    if sized {
+                        attrs = attrs.metrics(metrics_of(s.size));
+                    }
+                    (s.text, attrs)
                 }),
-                &weights.apply(
-                    Attrs::new().family(family).font_features(features.clone()),
-                    false,
-                ),
+                &{
+                    let attrs = weights.apply(
+                        Attrs::new().family(family).font_features(features.clone()),
+                        false,
+                    );
+                    if sized {
+                        attrs.metrics(metrics_of(None))
+                    } else {
+                        attrs
+                    }
+                },
                 Shaping::Advanced,
                 None,
             );
@@ -3395,12 +3484,30 @@ fn build_decorations(
                     prev.w = (x1 - prev.x).max(prev.w);
                 }
                 (Some(bg), _) => {
+                    // A span shorter than its line (`Span::size`, a line
+                    // a larger span made taller) has a background its own
+                    // height, around its glyphs, not the line's.
+                    let (y, h) = match group[0].line_height_opt {
+                        Some(lh) if lh < run.line_height - 0.01 => {
+                            let g = &group[0];
+                            let (asc, desc) = fs
+                                .get_font(g.font_id, g.font_weight)
+                                .map(|font| {
+                                    let m = font.as_swash().metrics(&[]).scale(g.font_size);
+                                    (m.ascent, m.descent)
+                                })
+                                .unwrap_or((0.8 * g.font_size, 0.2 * g.font_size));
+                            let mid = run.line_y - (asc - desc) / 2.0;
+                            (mid - lh / 2.0, lh)
+                        }
+                        _ => (run.line_top, run.line_height),
+                    };
                     last_bg = Some(out.len());
                     out.push(DecoTemplate {
                         x: x0,
-                        y: run.line_top,
+                        y,
                         w,
-                        h: run.line_height,
+                        h,
                         color: Some(bg),
                         under: true,
                         style: UnderlineStyle::Solid,
@@ -4077,7 +4184,9 @@ impl TextSystem {
             if run.line_i < a.line || run.line_i > b.line {
                 continue;
             }
-            let h = entry.buffer.metrics().line_height;
+            // The run's own height: a line holding a larger span is taller
+            // than the paragraph's metric.
+            let h = run.line_height;
             let mut any = false;
             for (x, w) in run.highlight(a, b) {
                 any = true;
@@ -4688,12 +4797,19 @@ fn line_cap(max_lines: usize) -> usize {
 pub(crate) fn measure_buffer(buffer: &Buffer, max_lines: usize) -> (Size, u32) {
     let mut w = 0.0f32;
     let mut lines = 0u32;
+    // Lines as tall as their tallest span (`Span::size`): the sum of the
+    // runs' own heights, and the metric times the count when every run is
+    // the metric's, exactly as before.
+    let lh = buffer.metrics().line_height;
+    let (mut sum, mut uniform) = (0.0f32, true);
     for run in buffer.layout_runs().take(line_cap(max_lines)) {
         w = w.max(run.line_w);
         lines += 1;
+        sum += run.line_height;
+        uniform &= run.line_height == lh;
     }
     (
-        Size::new(w, lines as f32 * buffer.metrics().line_height),
+        Size::new(w, if uniform { lines as f32 * lh } else { sum }),
         lines,
     )
 }

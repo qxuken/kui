@@ -2391,6 +2391,11 @@ struct SpanPart {
     /// `bg_radius`: the background rounded, one shape with the ones it
     /// meets.
     bg_radius: f32,
+    /// `family` (a stock name or an installed family's) or `font` (a
+    /// handle, which wins): the span's own face.
+    family: Option<kui_core::FontFamily>,
+    /// `size`: the span's own, logical px.
+    size: Option<f32>,
 }
 
 fn span_of(p: &SpanPart) -> Span<'_> {
@@ -2422,6 +2427,12 @@ fn span_of(p: &SpanPart) -> Span<'_> {
     if p.bg_radius > 0.0 {
         s = s.bg_radius(p.bg_radius);
     }
+    if let Some(f) = p.family {
+        s = s.family(f);
+    }
+    if let Some(px) = p.size {
+        s = s.size(px);
+    }
     s
 }
 
@@ -2441,6 +2452,8 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                 color: None,
                 bg: None,
                 bg_radius: 0.0,
+                family: None,
+                size: None,
             }),
             mlua::Value::Table(t) => {
                 let text: String = t
@@ -2473,7 +2486,30 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                             })?,
                     ),
                 };
+                // The span's face: `font` (a handle) over `family` (a
+                // name), as a text's own style reads them.
+                let family = match t.get::<mlua::Value>("font")? {
+                    mlua::Value::Nil => match t.get::<mlua::Value>("family")? {
+                        mlua::Value::Nil => None,
+                        v => match parse_value(&Kind::Family, &v, refs)
+                            .map_err(|e| bad(format!("span family: {e}")))?
+                        {
+                            Some(Parsed::Family(f)) => Some(f),
+                            _ => None,
+                        },
+                    },
+                    v => match parse_value(&Kind::Resource, &v, refs)
+                        .map_err(|e| bad(format!("span font: {e}")))?
+                    {
+                        Some(Parsed::Resource(id)) => {
+                            Some(kui_core::FontFamily::Custom(kui_core::FontId::from_ffi(id)))
+                        }
+                        _ => None,
+                    },
+                };
                 out.push(SpanPart {
+                    family,
+                    size: t.get::<Option<f32>>("size")?,
                     text,
                     bold: t.get::<Option<bool>>("bold")?.unwrap_or(false),
                     italic: t.get::<Option<bool>>("italic")?.unwrap_or(false),

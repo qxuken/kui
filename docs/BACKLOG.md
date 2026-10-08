@@ -1517,7 +1517,8 @@ nothing can be asked. F126's macOS half was written on a machine with
 no Apple target, and compiled and ran on a Mac the same day; its Linux
 half has not met KDE or GNOME. F129 is what the rebuild left — a blur of
 what the app itself drew — **built 2026-10-08** too, with the C binding
-of all four (ABI 26), and in the archive.
+of all four (ABI 26), and in the archive; and F130, a span's own face and
+size for inline code, the same day.
 
 ## From the kawoosh wish list (2026-10-07)
 
@@ -2756,7 +2757,7 @@ Nothing of the kawoosh open-documents report is open (F124 **built
 2026-10-06**, the day it was filed).
 Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
-Nothing of the Noticon wish list is open (F126–F129 **built 2026-10-08**,
+Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
@@ -4024,7 +4025,7 @@ move.
 
 - `.` **RG144** — [An infinite line height on a cell grid put its rows at the layout's limit](backlog/closed-2026-09.md#-rg144--an-infinite-line-height-on-a-cell-grid-put-its-rows-at-the-layouts-limit--done-2026-10-07) — done (2026-10-07)
 
-**From the Noticon wish list (2026-10-08)** — F126–F129, filed and built the same day
+**From the Noticon wish list (2026-10-08)** — F126–F130, filed and built the same day
 
 - `~` **F126** — [A notes app cannot show the desktop through its sidebar: every kui window is opaque, with nothing the OS draws behind it](backlog/closed-2026-09.md#-f126--a-notes-app-cannot-show-the-desktop-through-its-sidebar-every-kui-window-is-opaque-with-nothing-the-os-draws-behind-it--done-2026-10-08) — done (2026-10-08) — `Launcher::backdrop(Backdrop)` by effect (`Transparent`, `Blur`, `Tinted`) and `env.window.backdrop`; a premultiplied surface chosen at creation (`GpuOptions::transparent`, D3D12 through DirectComposition), `NSVisualEffectView` on macOS, Acrylic / Mica on Windows 11, the compositor's blur on KDE, and elsewhere the wallpaper drawn by kui (`Renderer::set_ground`)
 
@@ -4033,3 +4034,5 @@ move.
 - `~` **F128** — [A menu cannot nest: no submenu, so "Move to" lists every folder and "Sort by" has nowhere to go](backlog/closed-2026-09.md#-f128--a-menu-cannot-nest-no-submenu-so-move-to-lists-every-folder-and-sort-by-has-nowhere-to-go--done-2026-10-08) — done (2026-10-08) — `MenuItem::submenu` / `items`, drawn beside its row in both drawn menus and as `NSMenu` submenus; hover, click, Enter, Right open, Left and Escape close; `Core::activate_menu_path`
 
 - `~` **F129** — [A translucent toolbar cannot frost what the app draws under it: a backdrop is the OS's, behind the window](backlog/closed-2026-09.md#-f129--a-translucent-toolbar-cannot-frost-what-the-app-draws-under-it-a-backdrop-is-the-oss-behind-the-window--done-2026-10-08) — done (2026-10-08) — `NodeSpec::backdrop_blur` / `backdropBlur` / `KuiSpec.backdrop_blur`: a `QuadKind::Backdrop` the core emits before the node's paint, and kui-wgpu's offscreen frame, downsampled separable blur and rounded, clipped composite
+
+- `~` **F130** — [A span cannot change face: inline code is drawn in the body's font with a wash behind it](backlog/closed-2026-09.md#-f130--a-span-cannot-change-face-inline-code-is-drawn-in-the-bodys-font-with-a-wash-behind-it--done-2026-10-08) — done (2026-10-08) — `Span::family` / `mono` / `size`, shaped in its face inside the one flow; lines as tall as their tallest span

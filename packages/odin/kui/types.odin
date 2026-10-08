@@ -157,6 +157,12 @@ Span :: struct {
 	underline_color: Color,
 	underline_style: Underline_Style,
 	bg_radius:       f32,
+	// The span's own face with .Family in flags (inline code in .Mono),
+	// its own size in px (0 the paragraph's), and a registered font that
+	// overrides family.
+	family:          Font_Family,
+	size:            f32,
+	font:            Font,
 }
 
 // One cell of a `cells` grid: a character and its colours.
@@ -346,6 +352,9 @@ lower_gradient :: proc(g: Gradient) -> ^c.Gradient {
 #assert(offset_of(Span, underline_color) == offset_of(c.Span, underline_color))
 #assert(offset_of(Span, underline_style) == offset_of(c.Span, underline_style))
 #assert(offset_of(Span, bg_radius) == offset_of(c.Span, bg_radius))
+#assert(offset_of(Span, family) == offset_of(c.Span, family))
+#assert(offset_of(Span, size) == offset_of(c.Span, size))
+#assert(offset_of(Span, font) == offset_of(c.Span, font))
 
 #assert(size_of(Cell) == size_of(c.Cell))
 #assert(offset_of(Cell, fg) == offset_of(c.Cell, fg))

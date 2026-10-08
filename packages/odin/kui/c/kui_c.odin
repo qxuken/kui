@@ -105,6 +105,7 @@ SPAN_BOLD :: 1
 SPAN_ITALIC :: 2
 SPAN_UNDERLINE :: 4
 SPAN_STRIKETHROUGH :: 8
+SPAN_FAMILY :: 16
 
 DECO_UNDERLINE :: 1
 DECO_STRIKETHROUGH :: 2
@@ -804,6 +805,9 @@ Span :: struct {
 	underline_color: u32,
 	underline_style: u32,
 	bg_radius: f32,
+	family: u32,
+	size: f32,
+	font: u64,
 }
 
 WindowConfig :: struct {

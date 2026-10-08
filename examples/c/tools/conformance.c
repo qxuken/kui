@@ -208,9 +208,11 @@ static void conf_layout(KuiCtx *ui, const Fixtures *f, int phase) {
         {.text = KUI_STR("a ")},
         {.text = KUI_STR("b"), .color = 0x73d98cff, .flags = KUI_SPAN_BOLD},
         {.text = KUI_STR(" c"), .flags = KUI_SPAN_ITALIC},
+        {.text = KUI_STR(" d()"), .flags = KUI_SPAN_FAMILY, .family = KUI_FONT_MONO},
+        {.text = KUI_STR(" E"), .size = 20},
     };
     KuiTextStyle s13 = {.size = 13};
-    kui_rich_text(ui, spans, 3, &s13);
+    kui_rich_text(ui, spans, 5, &s13);
     kui_close(ui);
 }
 

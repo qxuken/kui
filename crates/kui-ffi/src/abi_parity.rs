@@ -426,6 +426,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_SPAN_ITALIC,
             KUI_SPAN_UNDERLINE,
             KUI_SPAN_STRIKETHROUGH,
+            KUI_SPAN_FAMILY,
             KUI_KMOD_SHIFT,
             KUI_KMOD_CTRL,
             KUI_KMOD_ALT,
@@ -979,6 +980,9 @@ fn asserts() -> (String, Vec<&'static str>) {
         underline_color: u32 => "uint32_t",
         underline_style: u32 => "uint32_t",
         bg_radius: f32 => "float",
+        family: u32 => "uint32_t",
+        size: f32 => "float",
+        font: u64 => "uint64_t",
     });
 
     abi_struct!(o, KuiColorToken {
@@ -1490,7 +1494,8 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiTextStyle", 72, 17),
         // ABI 20: `bg_radius` appended into what was the tail padding, so
         // the 64-bit size stayed at 40 while the layout moved.
-        ("KuiSpan", 40, 20),
+        // ABI 26: `family`, `size` and `font` (a span's own face).
+        ("KuiSpan", 56, 26),
         ("KuiCell", 20, 17),
         // ABI 26: `submenu` and `submenu_count` (backlog F128).
         ("KuiMenuItem", 72, 26),

@@ -606,6 +606,18 @@ export interface SpanProps extends Keyed {
    *  A selection over rows, or over a paragraph's wrapped lines, is one
    *  outline. Nested spans inherit; 0 (the default) is square. */
   bgRadius?: number;
+  /** The span's own face: `sans`, `serif`, `mono` or an installed family's
+   *  name, as the text's `family` takes — inline code in `mono` inside a
+   *  sans paragraph. Carets, hits and selection are measured in the face
+   *  the glyphs are drawn in. Nested spans inherit. */
+  family?: string;
+  /** A registered font handle (`addFont` / `addSystemFont`), the span's
+   *  face; wins over `family`. Nested spans inherit. */
+  font?: string;
+  /** The span's own size, logical px: its line height scales with it at
+   *  the paragraph's ratio, and a line is as tall as its tallest span.
+   *  Nested spans inherit. */
+  size?: number;
   children?: KuiNode;
 }
 

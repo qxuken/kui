@@ -38,7 +38,8 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                     text("cd", { size = 12 }) },
               column { pad = { x = 9, y = 3, b = 1 }, bg = 0x2a2d3aff },
               text({ "a ", { "b", bold = true, color = 0x73d98cff },
-                     { " c", italic = true } }, { size = 13 }),
+                     { " c", italic = true }, { " d()", family = "mono" },
+                     { " E", size = 20 } }, { size = 13 }),
             }
         "#
         .to_string(),
