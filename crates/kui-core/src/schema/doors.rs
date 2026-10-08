@@ -1530,7 +1530,7 @@ pub const DOORS: &[Door] = &[
         odin: As("`width` / `height` in the `Run_Config` `kui.run` takes"),
         node: As("`width` / `height` in `WindowOptions`"),
         lua: No(GUEST),
-        doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` / `frame_latency` are the rest of the set, and each binding's form carries them all (`min_w`, `chrome`, `text_aa`, `diagnostics`, `frame_latency` in C; `minWidth`, `chrome`, `textAa`, `diagnostics`, `frameLatency` in Node). `Launcher::devtools` and `Launcher::core` are the two the others reach another way: `kui_set_devtools` / `setDevtools` on the context, and the context handed to `kui_run_with` *is* the core.",
+        doc: "The window's opening size; `min_size` / `max_size` / `chrome` / `text_aa` / `diagnostics` / `frame_latency` / `backdrop` are the rest of the set, and each binding's form carries them all (`min_w`, `chrome`, `text_aa`, `diagnostics`, `frame_latency`, `backdrop` in C and Odin; `minWidth`, `chrome`, `textAa`, `diagnostics`, `frameLatency`, `backdrop` in Node). `Launcher::devtools` and `Launcher::core` are the two the others reach another way: `kui_set_devtools` / `setDevtools` on the context, and the context handed to `kui_run_with` *is* the core.",
     },
     Door {
         rust: "Launcher::icon",
