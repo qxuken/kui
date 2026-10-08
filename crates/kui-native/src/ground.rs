@@ -39,16 +39,27 @@ const SIGMA: f32 = 6.0;
 /// What a window's ground is while it loads and after.
 pub(crate) type Slot = Arc<Mutex<Option<Result<Arc<Wallpaper>, String>>>>;
 
-/// Starts loading the wallpaper at `path` on a thread of its own and
-/// returns where the answer lands; `wake` is called once it has, so the
-/// loop draws the frame that shows it.
-pub(crate) fn spawn(path: PathBuf, wake: impl FnOnce() + Send + 'static) -> Slot {
+/// Whether this platform has a wallpaper kui can read: everywhere but
+/// macOS (see its `platform::wallpaper_path`). Where it has, a window
+/// that falls back to the wallpaper is `Tinted` from creation and
+/// corrected to `Opaque` on the frame the thread finds none.
+pub(crate) const READS: bool = cfg!(not(target_os = "macos"));
+
+/// Starts finding and loading the desktop's wallpaper on a thread of its
+/// own and returns where the answer lands; `wake` is called once it has,
+/// so the loop draws the frame that shows it — or, with no wallpaper to
+/// read, the frame that says the window is opaque. Finding it is the
+/// thread's too: on GNOME that is up to three `gsettings` processes,
+/// which the event loop would otherwise wait on before the window shows.
+pub(crate) fn spawn(wake: impl FnOnce() + Send + 'static) -> Slot {
     let slot: Slot = Arc::new(Mutex::new(None));
     let out = slot.clone();
     let spawned = std::thread::Builder::new()
         .name("kui-wallpaper".into())
         .spawn(move || {
-            let got = load(&path);
+            let got = wallpaper_path()
+                .ok_or_else(|| "the desktop names no wallpaper file kui can read".to_string())
+                .and_then(|path| load(&path));
             *out.lock().unwrap_or_else(|e| e.into_inner()) = Some(got);
             wake();
         });
@@ -142,26 +153,33 @@ impl Ground {
         self.moved = true;
     }
 
-    /// Before a frame: hands the renderer the picture once it has loaded
-    /// and the part of it behind `window` when that changed. `Err` once,
-    /// with why, when the wallpaper could not be read — the window is
-    /// opaque from then on. Cheap on a frame with nothing to do: a lock
-    /// while loading, two flags after.
-    pub(crate) fn prepare(
-        &mut self,
-        window: &winit::window::Window,
-        renderer: &mut kui_wgpu::Renderer,
-    ) -> Result<(), String> {
+    /// Before a frame's view runs: takes the thread's answer once it has
+    /// landed. `Err` once, with why, when there was no wallpaper to read
+    /// or it would not decode — the window is opaque from then on, and
+    /// the view of the frame this is called for already reads so. A lock
+    /// while loading, a flag after.
+    pub(crate) fn settle(&mut self) -> Result<(), String> {
         if self.wallpaper.is_none() {
             let got = self.slot.lock().unwrap_or_else(|e| e.into_inner()).take();
             match got {
-                None => return Ok(()),
+                None => {}
                 Some(Err(e)) => return Err(e),
                 Some(Ok(w)) => self.wallpaper = Some(w),
             }
         }
+        Ok(())
+    }
+
+    /// Before a frame is drawn: hands the renderer the picture once it
+    /// has loaded and the part of it behind `window` when that changed.
+    /// Cheap on a frame with nothing to do: two flags.
+    pub(crate) fn prepare(
+        &mut self,
+        window: &winit::window::Window,
+        renderer: &mut kui_wgpu::Renderer,
+    ) {
         let Some(w) = &self.wallpaper else {
-            return Ok(());
+            return;
         };
         if !self.uploaded {
             renderer.set_ground(&w.rgba, w.width, w.height);
@@ -186,7 +204,6 @@ impl Ground {
                 (w.width, w.height),
             ));
         }
-        Ok(())
     }
 }
 
@@ -468,6 +485,32 @@ mod tests {
         let ramp: Vec<u8> = (50..70).map(|x| at(x, 45)).collect();
         assert!(ramp.windows(2).all(|p| p[0] <= p[1]), "{ramp:?}");
         assert!(ramp[0] < ramp[ramp.len() - 1]);
+    }
+
+    /// The thread's answer is taken before a frame's view: nothing while
+    /// it loads, `Err` once when there was no wallpaper (the window goes
+    /// opaque), and the picture kept once it landed.
+    #[test]
+    fn the_answer_is_settled_before_the_view() {
+        let slot: Slot = Arc::new(Mutex::new(None));
+        let mut g = Ground::new(slot.clone());
+        assert_eq!(g.settle(), Ok(()));
+        assert!(g.wallpaper.is_none(), "still loading");
+        *slot.lock().unwrap() = Some(Err("none".into()));
+        assert_eq!(g.settle(), Err("none".into()));
+        assert_eq!(g.settle(), Ok(()), "said once");
+
+        let slot: Slot = Arc::new(Mutex::new(None));
+        let mut g = Ground::new(slot.clone());
+        let w = Arc::new(soften(image::RgbaImage::from_pixel(
+            4,
+            4,
+            image::Rgba([1, 2, 3, 255]),
+        )));
+        *slot.lock().unwrap() = Some(Ok(w.clone()));
+        assert_eq!(g.settle(), Ok(()));
+        assert!(Arc::ptr_eq(g.wallpaper.as_ref().unwrap(), &w));
+        assert_eq!(g.settle(), Ok(()));
     }
 
     /// Decoded once: a second load of the same unchanged file is the same

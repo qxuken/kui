@@ -28,9 +28,10 @@
 //!   Linux: `Blur` asked of the compositor (`mod linux_blur`).
 //! - **The fallback**, where the OS has no effect to give — GNOME, a
 //!   Linux compositor with no blur protocol, Windows 10: the wallpaper,
-//!   read and blurred once and drawn by kui as the window's ground
-//!   (`mod ground`), reported as `Tinted`; and with no wallpaper to read,
-//!   `Opaque`. `KUI_BACKDROP_EMULATE=1` takes that path for `Blur` and
+//!   found, read and blurred once on a thread and drawn by kui as the
+//!   window's ground (`mod ground`), reported as `Tinted`; and from the
+//!   frame that thread finds no wallpaper to read, or one that will not
+//!   decode, `Opaque`. `KUI_BACKDROP_EMULATE=1` takes that path for `Blur` and
 //!   `Tinted` on Windows and Linux, to see it where the OS would do
 //!   better (macOS reads no wallpaper, so it is `Opaque` there).
 //!
@@ -38,7 +39,6 @@
 //! so a view paints its translucent regions only over something.
 
 use std::any::Any;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use kui_core::Backdrop;
@@ -48,9 +48,11 @@ use winit::window::{Window, WindowAttributes};
 pub(crate) struct Applied {
     /// What `env.window.backdrop` reports.
     pub got: Backdrop,
-    /// The wallpaper kui draws as the window's ground, where the effect is
-    /// kui's own (`mod ground`): read on a thread once the pane exists.
-    pub ground: Option<PathBuf>,
+    /// Whether kui draws the desktop's wallpaper as the window's ground,
+    /// where the effect is kui's own (`mod ground`): found and read on a
+    /// thread once the pane exists, and `got` corrected to `Opaque` on the
+    /// frame that thread finds none.
+    pub ground: bool,
     /// What must live as long as the window for the effect to stay (a
     /// Linux compositor's blur objects).
     pub keep: Option<Box<dyn Any>>,
@@ -60,21 +62,26 @@ impl Applied {
     fn just(got: Backdrop) -> Self {
         Applied {
             got,
-            ground: None,
+            ground: false,
             keep: None,
         }
     }
 
-    /// The wallpaper drawn by kui, or the opaque window where there is
-    /// none to read.
+    /// The wallpaper drawn by kui, or the opaque window where the platform
+    /// has none kui reads. Whether the desktop names one is found on the
+    /// loader's thread, not here on the event loop (`ground::spawn`): the
+    /// window is `Tinted` until then, and `Opaque` from the frame the
+    /// thread says there is none, the path a wallpaper that will not
+    /// decode takes too.
     fn emulated() -> Self {
-        match crate::ground::wallpaper_path() {
-            Some(path) => Applied {
+        if crate::ground::READS {
+            Applied {
                 got: Backdrop::Tinted,
-                ground: Some(path),
+                ground: true,
                 keep: None,
-            },
-            None => Applied::just(Backdrop::Opaque),
+            }
+        } else {
+            Applied::just(Backdrop::Opaque)
         }
     }
 }
@@ -173,7 +180,7 @@ fn effect(window: &Window, renderer: &kui_wgpu::Renderer, backdrop: Backdrop) ->
     {
         return Applied {
             got: Backdrop::Blur,
-            ground: None,
+            ground: false,
             keep: Some(keep),
         };
     }
@@ -386,13 +393,16 @@ mod tests {
         }
     }
 
-    /// The fallback is honest: the wallpaper reads `Tinted` only with a
-    /// wallpaper to draw, and the opaque window otherwise.
+    /// The fallback is honest: the wallpaper reads `Tinted` only where a
+    /// wallpaper is being read to draw (and is corrected on the frame the
+    /// thread finds none), and the opaque window where none can be.
     #[test]
     fn the_fallback_reports_what_it_draws() {
         let got = Applied::emulated();
-        assert_eq!(got.got == Backdrop::Tinted, got.ground.is_some());
-        if got.ground.is_none() {
+        assert_eq!(got.got == Backdrop::Tinted, got.ground);
+        assert_eq!(got.ground, crate::ground::READS);
+        assert_eq!(got.ground, !cfg!(target_os = "macos"));
+        if !got.ground {
             assert_eq!(got.got, Backdrop::Opaque);
         }
         assert!(got.keep.is_none());

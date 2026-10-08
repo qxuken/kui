@@ -2175,6 +2175,17 @@ impl DynShell<'_> {
             ..
         } = self;
         let pane = &mut panes[i];
+        // The wallpaper kui draws where the OS has no material, found and
+        // read on a thread: an answer that there is none to draw, or none
+        // that decodes, is said once, and the window is opaque from then
+        // on — before the view runs, so this frame's already reads it.
+        if let Some(g) = pane.ground.as_mut()
+            && let Err(why) = g.settle()
+        {
+            eprintln!("kui: no wallpaper to draw behind the window: {why}");
+            pane.ground = None;
+            pane.backdrop = Backdrop::Opaque;
+        }
         // What the driver knows and the view only reads, refreshed for
         // this frame (it was already filled in when the pane opened).
         sync_env(pane, system, *pinned_system, audio.env());
@@ -2329,15 +2340,9 @@ impl DynShell<'_> {
         let ground = pane.core.theme().bg;
         // The wallpaper kui draws where the OS has no material: handed to
         // the renderer once it has loaded, and the part behind the window
-        // set when the window moved. A wallpaper that would not read is
-        // said once, and the window is opaque from then on.
-        if let (Some(g), Some(r)) = (pane.ground.as_mut(), pane.renderer.as_mut())
-            && let Err(why) = g.prepare(window, r)
-        {
-            eprintln!("kui: no wallpaper to draw behind the window: {why}");
-            pane.ground = None;
-            pane.backdrop = Backdrop::Opaque;
-            r.clear_ground();
+        // set when the window moved.
+        if let (Some(g), Some(r)) = (pane.ground.as_mut(), pane.renderer.as_mut()) {
+            g.prepare(window, r);
         }
         let clear = if pane.backdrop.is_translucent() && pane.ground.is_none() {
             kui_wgpu::wgpu::Color::TRANSPARENT
