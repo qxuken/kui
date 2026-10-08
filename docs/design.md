@@ -728,7 +728,13 @@ change twice within a few frames, draws from a texture of its own
 `rotate` is boxed by the square its turn sweeps about its pivot and
 drawn from one upright mask, the angle in the quad's `blur` for the
 backend to turn the corners by
-([ADR 0041](adr/0041-a-mask-turns-about-its-centre.md)).
+([ADR 0041](adr/0041-a-mask-turns-about-its-centre.md)). Any node turns
+and scales about its pivot
+([ADR 0043](adr/0043-a-node-turns-about-its-pivot.md)): the clip entry
+its quads name carries the similarity they are drawn through and a
+second clip in the turned space, the backend turns the corners and
+tests both clips, and hits and access rects follow the turn; layout
+does not see it.
 
 Lines: `ui.line(from, to, Stroke::new(width, color), spec)` draws a
 round-capped segment, `ui.polyline(&points, stroke, spec)` a polyline, and

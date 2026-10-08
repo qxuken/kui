@@ -1373,6 +1373,58 @@ pub struct InteractSpec {
     /// by its group opacity. 0 is none. A renderer with no way to read
     /// back its frame (the CPU raster) draws the node unblurred.
     pub backdrop_blur: f32,
+    /// A turn and a uniform scale about a pivot, applied to everything
+    /// the node and its subtree draw, after layout (ADR 0043): `None`
+    /// when the node declares none of `rotate`, `scale` and `pivot`.
+    pub transform: Option<TransformSpec>,
+}
+
+/// A node's `rotate`, `scale` and `pivot` (ADR 0043): paint-only, so the
+/// node takes the room its upright self takes and everything after layout
+/// — its quads, its clip, its hit region, its access rect — is drawn, cut,
+/// hit and read through the turn. Nests by composition; tweens with
+/// `transition` as one slot; an entrance, an exit and a keyframe stop name
+/// `rotate` and `scale`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TransformSpec {
+    /// Turns, clockwise with y down; 0 is none.
+    pub rotate: f32,
+    /// The uniform factor; 1 is none.
+    pub scale: f32,
+    /// The point the turn and the scale are about, as fractions of the
+    /// node's box: `(0.5, 0.5)` is the centre.
+    pub pivot: crate::geom::Vec2,
+}
+
+impl Default for TransformSpec {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
+impl TransformSpec {
+    /// No turn and no scale, about the centre.
+    pub const NONE: Self = Self {
+        rotate: 0.0,
+        scale: 1.0,
+        pivot: crate::geom::Vec2 { x: 0.5, y: 0.5 },
+    };
+
+    /// Whether this moves anything: a turn, or a scale that is not 1.
+    #[inline]
+    pub fn active(&self) -> bool {
+        self.rotate != 0.0 || self.scale != 1.0
+    }
+
+    /// The transform for a node laid out at `rect` (logical px, in the
+    /// space its parent paints in).
+    pub fn at(&self, rect: crate::geom::Rect) -> crate::geom::Transform {
+        let pivot = crate::geom::Vec2::new(
+            rect.x + rect.w * self.pivot.x,
+            rect.y + rect.h * self.pivot.y,
+        );
+        crate::geom::Transform::about(pivot, self.rotate, self.scale)
+    }
 }
 
 /// A scrolling node's bars, per node. Every field's default is the stock
@@ -1514,6 +1566,7 @@ impl InteractSpec {
         rule_w: 0.0,
         gradient: None,
         backdrop_blur: 0.0,
+        transform: None,
     };
 }
 
@@ -2106,6 +2159,43 @@ impl NodeSpec {
     pub fn backdrop_blur(mut self, radius: f32) -> Self {
         self.interact_mut().backdrop_blur = radius.max(0.0);
         self
+    }
+
+    /// Turns this node and everything under it by `turns`, clockwise,
+    /// about its pivot (the centre unless `pivot` says), after layout
+    /// (see [`TransformSpec`], ADR 0043). Tweens with `transition`:
+    ///
+    /// ```
+    /// # use kui_core::NodeSpec;
+    /// let card = NodeSpec::column().rotate(0.02).transition(300.0);
+    /// assert_eq!(card.interact().transform.unwrap().rotate, 0.02);
+    /// ```
+    pub fn rotate(mut self, turns: f32) -> Self {
+        self.transform_mut().rotate = turns;
+        self
+    }
+
+    /// Scales this node and everything under it by `scale` about its
+    /// pivot, after layout (see [`TransformSpec`]); 1 is none.
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.transform_mut().scale = scale;
+        self
+    }
+
+    /// The point `rotate` and `scale` are about, as fractions of the box:
+    /// `(0.5, 0.5)` — the default — is the centre, `(0.0, 1.0)` the
+    /// bottom-left corner.
+    pub fn pivot(mut self, fx: f32, fy: f32) -> Self {
+        self.transform_mut().pivot = crate::geom::Vec2::new(fx, fy);
+        self
+    }
+
+    /// The node's transform, allocated on first write.
+    #[inline]
+    pub(crate) fn transform_mut(&mut self) -> &mut TransformSpec {
+        self.interact_mut()
+            .transform
+            .get_or_insert(TransformSpec::NONE)
     }
 
     /// A table's grid rules in `c` (see the `rules` field).

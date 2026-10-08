@@ -2735,13 +2735,16 @@ impl TextSystem {
         let (clip, clip_id) = if line.wrap == TextWrap::None {
             let own = Rect::new(ox, oy, (node.w * scale).ceil(), (node.h * scale).ceil());
             let clip = clip.intersect(own, crate::display::SQUARE);
-            if clip.rect.w <= 0.0 || clip.rect.h <= 0.0 {
+            let vis = clip.visible();
+            if vis.w <= 0.0 || vis.h <= 0.0 {
                 return;
             }
             (clip, crate::display::intern_clip(clips, clip))
         } else {
             (clip, clip_id)
         };
+        // What can show, in the glyphs' own space (ADR 0043).
+        let vis = clip.visible();
         if let Some(((from, to), tint)) = sel {
             let rects = self.long_highlight(line, from, to);
             push_highlight(&rects, ox, oy, nudge, tint, clip_id, out);
@@ -2756,8 +2759,8 @@ impl TextSystem {
             if line.chunks.is_empty() {
                 return;
             }
-            let a = line.chunk_at(clip.rect.x - ox).saturating_sub(1);
-            let b = (line.chunk_at(clip.rect.x + clip.rect.w - ox) + 1).min(line.chunks.len() - 1);
+            let a = line.chunk_at(vis.x - ox).saturating_sub(1);
+            let b = (line.chunk_at(vis.x + vis.w - ox) + 1).min(line.chunks.len() - 1);
             (a, b)
         };
         for i in first..=last {
@@ -2932,12 +2935,11 @@ impl TextSystem {
         atlas: &mut GlyphAtlas,
         out: &mut Vec<Quad>,
     ) {
+        let vis = clip.visible();
         let (first, last) = {
             let line = self.long(key).expect("a long line");
-            let ra = ((clip.rect.y - oy) / line.line_h).floor().max(0.0) as u32;
-            let rb = ((clip.rect.y + clip.rect.h - oy) / line.line_h)
-                .floor()
-                .max(0.0) as u32;
+            let ra = ((vis.y - oy) / line.line_h).floor().max(0.0) as u32;
+            let rb = ((vis.y + vis.h - oy) / line.line_h).floor().max(0.0) as u32;
             let Some((a, b)) = line.chunks_on_rows(ra, rb) else {
                 return;
             };
@@ -3020,6 +3022,8 @@ fn emit_entry_rows(
     joins: &mut Vec<JoinBg>,
 ) {
     build_templates(entry, raster, fs, atlas);
+    // What can show, in the glyphs' own space (ADR 0043).
+    let vis = clip.visible();
     // A decoration rect spans glyphs of the unwrapped run; the row a
     // glyph is on is decided by its byte, and a rect by its x — row `r`
     // covers `rows[r].x..rows[r + 1].x` of the run — so a rect a row
@@ -3037,13 +3041,10 @@ fn emit_entry_rows(
             let dx = if r == 0 { head_x } else { 0.0 } - ra;
             let x = ox + a + dx;
             let y = oy + d.y + r as f32 * line_h;
-            if y >= clip.rect.y + clip.rect.h {
+            if y >= vis.y + vis.h {
                 break;
             }
-            if y + d.h <= clip.rect.y
-                || x >= clip.rect.x + clip.rect.w
-                || x + (b - a) <= clip.rect.x
-            {
+            if y + d.h <= vis.y || x >= vis.x + vis.w || x + (b - a) <= vis.x {
                 continue;
             }
             let quad = Quad {
@@ -3105,10 +3106,10 @@ fn emit_entry_rows(
         // has no pixel inside it, and which glyph that is depends on the
         // face the machine resolved `Mono` to (the alpha.12 Windows round
         // saw two, after C32 moved the face).
-        if y >= clip.rect.y + clip.rect.h {
+        if y >= vis.y + vis.h {
             break;
         }
-        if y + g.h <= clip.rect.y || x >= clip.rect.x + clip.rect.w || x + g.w <= clip.rect.x {
+        if y + g.h <= vis.y || x >= vis.x + vis.w || x + g.w <= vis.x {
             continue;
         }
         out.push(Quad {
@@ -3311,12 +3312,14 @@ fn emit_entry(
     joins: &mut Vec<JoinBg>,
 ) {
     build_templates(entry, raster, fs, atlas);
+    // What can show, in the glyphs' own space (ADR 0043).
+    let vis = clip.visible();
     {
         let inside = |x: f32, y: f32, w: f32, h: f32| {
-            oy + y + h >= clip.rect.y
-                && oy + y <= clip.rect.y + clip.rect.h
-                && ox + x < clip.rect.x + clip.rect.w
-                && ox + x + w > clip.rect.x
+            oy + y + h >= vis.y
+                && oy + y <= vis.y + vis.h
+                && ox + x < vis.x + vis.w
+                && ox + x + w > vis.x
         };
         let deco_quad = |d: &DecoTemplate| Quad {
             rect: Rect::new(ox + d.x, oy + d.y, d.w, d.h),
@@ -3360,11 +3363,9 @@ fn emit_entry(
                 .glyphs
                 .iter()
                 .filter(|g| {
-                    oy + g.y + g.h >= clip.rect.y
-                        && ox + g.x < clip.rect.x + clip.rect.w
-                        && ox + g.x + g.w > clip.rect.x
+                    oy + g.y + g.h >= vis.y && ox + g.x < vis.x + vis.w && ox + g.x + g.w > vis.x
                 })
-                .take_while(|g| oy + g.y <= clip.rect.y + clip.rect.h)
+                .take_while(|g| oy + g.y <= vis.y + vis.h)
                 .map(|g| Quad {
                     rect: Rect::new(ox + g.x, oy + g.y, g.w, g.h),
                     color: g.color.unwrap_or(color),

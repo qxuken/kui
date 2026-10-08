@@ -337,9 +337,12 @@ pub(crate) enum Slot {
     /// The shadow's geometry as one vector: dx, dy, blur, spread.
     Shadow = 7,
     ShadowColor = 8,
+    /// The node's turn in turns and its scale, as one vector: rotate,
+    /// scale, two spare (ADR 0043).
+    Transform = 9,
 }
 
-const SLOTS: usize = 9;
+const SLOTS: usize = 10;
 
 impl Slot {
     /// Every slot, at its index.
@@ -353,6 +356,7 @@ impl Slot {
         Slot::Opacity,
         Slot::Shadow,
         Slot::ShadowColor,
+        Slot::Transform,
     ];
 
     /// The names of the slots set in `mask` (bit `slot as u16`), in slot
@@ -378,11 +382,12 @@ impl Slot {
             Slot::Opacity => "opacity",
             Slot::Shadow => "shadow",
             Slot::ShadowColor => "shadowColor",
+            Slot::Transform => "transform",
         }
     }
 }
 
-/// One slot's retained motion. Nine of these per transitioning node, held
+/// One slot's retained motion. Ten of these per transitioning node, held
 /// across frames, so what is *not* on it matters: a 10,000-node frame with
 /// a transition on every node walks the lot of them.
 ///
@@ -624,7 +629,7 @@ impl AnimStore {
 
     /// The tween slots of one node, borrowed once.
     ///
-    /// A node that declares a transition drives up to nine slots in a row
+    /// A node that declares a transition drives up to ten slots in a row
     /// (`Core::ease_transitioning`), and each of those used to ask the map
     /// for the same key — nine hashes and nine probes per node per frame,
     /// which on a frame where every node transitions was the largest single

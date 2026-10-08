@@ -193,6 +193,177 @@ impl Rect {
     }
 }
 
+/// A similarity transform — a turn and a uniform scale about the origin,
+/// then a move: `p' = R(angle) · scale · p + t`, y down, so a positive
+/// angle turns clockwise on screen. What a node's `rotate`, `scale` and
+/// `pivot` compose to (ADR 0043), carried by the clip entry its quads
+/// name (`display::Clip::transform`) in the same units as the entry's
+/// rect.
+///
+/// `#[repr(C)]`: four floats, which is how `KuiClip` and the Node
+/// `clips()` buffer read it.
+///
+/// ```rust
+/// use kui_core::{Rect, Transform, Vec2};
+/// // A quarter turn about the centre of a 100 × 50 box at (10, 10).
+/// let t = Transform::about(Vec2::new(60.0, 35.0), 0.25, 1.0);
+/// let p = t.apply(Vec2::new(10.0, 10.0));
+/// assert!((p.x - 85.0).abs() < 1e-4 && (p.y - (-15.0)).abs() < 1e-4);
+/// let back = t.unapply(p);
+/// assert!((back.x - 10.0).abs() < 1e-4 && (back.y - 10.0).abs() < 1e-4);
+/// // Its bounding box is the box turned: 50 wide, 100 tall, same centre.
+/// let b = t.bounds(Rect::new(10.0, 10.0, 100.0, 50.0));
+/// assert!((b.w - 50.0).abs() < 1e-3 && (b.h - 100.0).abs() < 1e-3);
+/// ```
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Transform {
+    /// Radians, clockwise with y down.
+    pub angle: f32,
+    /// The uniform factor; 1 for none.
+    pub scale: f32,
+    /// The move after the turn and the scale.
+    pub tx: f32,
+    pub ty: f32,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
+impl Transform {
+    /// No turn, no scale, no move.
+    pub const IDENTITY: Transform = Transform {
+        angle: 0.0,
+        scale: 1.0,
+        tx: 0.0,
+        ty: 0.0,
+    };
+
+    /// A turn of `turns` (clockwise, y down) and a scale of `scale` about
+    /// `pivot`, which stays where it is.
+    pub fn about(pivot: Vec2, turns: f32, scale: f32) -> Self {
+        let angle = turns * std::f32::consts::TAU;
+        let (s, c) = angle.sin_cos();
+        // t = pivot − R·s·pivot
+        let rx = (pivot.x * c - pivot.y * s) * scale;
+        let ry = (pivot.x * s + pivot.y * c) * scale;
+        Transform {
+            angle,
+            scale,
+            tx: pivot.x - rx,
+            ty: pivot.y - ry,
+        }
+    }
+
+    pub fn is_identity(&self) -> bool {
+        self.angle == 0.0 && self.scale == 1.0 && self.tx == 0.0 && self.ty == 0.0
+    }
+
+    /// `p` through this transform.
+    pub fn apply(&self, p: Vec2) -> Vec2 {
+        let (s, c) = self.angle.sin_cos();
+        let x = p.x * self.scale;
+        let y = p.y * self.scale;
+        Vec2 {
+            x: x * c - y * s + self.tx,
+            y: x * s + y * c + self.ty,
+        }
+    }
+
+    /// The point that maps to `p`: the inverse. A scale of zero has no
+    /// inverse; the answer is then the pivot-less origin, which nothing
+    /// hits, as nothing is drawn.
+    pub fn unapply(&self, p: Vec2) -> Vec2 {
+        if self.scale == 0.0 {
+            return Vec2::new(f32::NAN, f32::NAN);
+        }
+        let (s, c) = (-self.angle).sin_cos();
+        let x = p.x - self.tx;
+        let y = p.y - self.ty;
+        Vec2 {
+            x: (x * c - y * s) / self.scale,
+            y: (x * s + y * c) / self.scale,
+        }
+    }
+
+    /// This transform, then `outer`: the composition a nested turn is
+    /// (`inner.then(outer)` maps a point as `outer.apply(inner.apply(p))`).
+    pub fn then(&self, outer: &Transform) -> Transform {
+        let t = outer.apply(Vec2::new(self.tx, self.ty));
+        Transform {
+            angle: self.angle + outer.angle,
+            scale: self.scale * outer.scale,
+            tx: t.x,
+            ty: t.y,
+        }
+    }
+
+    /// Logical to physical pixels: the move scales, the turn and the
+    /// factor do not.
+    pub fn scaled(&self, s: f32) -> Transform {
+        Transform {
+            angle: self.angle,
+            scale: self.scale,
+            tx: self.tx * s,
+            ty: self.ty * s,
+        }
+    }
+
+    /// The smallest axis-aligned rect holding `r` put through this
+    /// transform: what an access rect and a cull read.
+    pub fn bounds(&self, r: Rect) -> Rect {
+        let corners = [
+            self.apply(Vec2::new(r.x, r.y)),
+            self.apply(Vec2::new(r.x + r.w, r.y)),
+            self.apply(Vec2::new(r.x + r.w, r.y + r.h)),
+            self.apply(Vec2::new(r.x, r.y + r.h)),
+        ];
+        let mut x0 = f32::INFINITY;
+        let mut y0 = f32::INFINITY;
+        let mut x1 = f32::NEG_INFINITY;
+        let mut y1 = f32::NEG_INFINITY;
+        for c in corners {
+            x0 = x0.min(c.x);
+            y0 = y0.min(c.y);
+            x1 = x1.max(c.x);
+            y1 = y1.max(c.y);
+        }
+        Rect::new(x0, y0, x1 - x0, y1 - y0)
+    }
+
+    /// The bounding box of `r` pulled back through this transform: the
+    /// rect in this transform's source space that covers everything of
+    /// `r` in its target space — how a clip from outside a turn is
+    /// approximated inside it (ADR 0043, decision 4).
+    pub fn unbounds(&self, r: Rect) -> Rect {
+        if self.scale == 0.0 {
+            return Rect::new(0.0, 0.0, 0.0, 0.0);
+        }
+        let inv = Transform {
+            angle: -self.angle,
+            scale: 1.0 / self.scale,
+            tx: 0.0,
+            ty: 0.0,
+        };
+        let o = inv.apply(Vec2::new(-self.tx, -self.ty));
+        Transform {
+            tx: o.x,
+            ty: o.y,
+            ..inv
+        }
+        .bounds(r)
+    }
+
+    /// The four lanes a tween carries for the slot: angle in turns, the
+    /// scale, and two spare.
+    pub(crate) fn lanes(turns: f32, scale: f32) -> [f32; 4] {
+        [turns, scale, 0.0, 0.0]
+    }
+}
+
 /// Per-side lengths: padding, borders.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

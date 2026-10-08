@@ -45,6 +45,14 @@ struct Instance {
     @location(7) radii: vec4<f32>,
     // radii of the clip itself, same order; all zero = a plain rect clip
     @location(8) clip_radii: vec4<f32>,
+    // the turn every quad of its clip entry is drawn through (ADR 0043):
+    // angle in radians (clockwise, y down), scale, tx, ty — the identity
+    // (0, 1, 0, 0) on a frame that turns nothing
+    @location(9) xform: vec4<f32>,
+    // the clip in the quad's own space, before the turn: x, y, w, h
+    @location(10) inner: vec4<f32>,
+    // its radii, as clip_radii are the outer clip's
+    @location(11) inner_radii: vec4<f32>,
 };
 
 struct VsOut {
@@ -62,6 +70,12 @@ struct VsOut {
     // has been divided by the atlas size, which is right for a glyph and
     // meaningless here.
     @location(9) seg: vec4<f32>,
+    // The fragment's position before the turn, in the quad's own space
+    // (physical px): what the inner clip and a segment's capsule are
+    // tested against. Affine in position, so the interpolation is exact.
+    @location(10) pre: vec2<f32>,
+    @location(11) inner: vec4<f32>,
+    @location(12) inner_radii: vec4<f32>,
 };
 
 @vertex
@@ -85,6 +99,15 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
         px = inst.pos + inst.size * 0.5
             + vec2<f32>(rel.x * cs.x - rel.y * cs.y, rel.x * cs.y + rel.y * cs.x);
     }
+    // Then the node's turn (ADR 0043): the clip entry's similarity,
+    // `R(angle) · scale · p + t`, over the corner the path's own turn
+    // left. Branchless — the identity is cos 0, sin 0, a scale of 1 and
+    // no move — so a frame that turns nothing pays six multiplies a
+    // vertex and no divergence. `pre` keeps the corner before the turn.
+    let pre = px;
+    let xs = vec2<f32>(cos(inst.xform.x), sin(inst.xform.x));
+    let sp = pre * inst.xform.y;
+    px = vec2<f32>(sp.x * xs.x - sp.y * xs.y, sp.x * xs.y + sp.y * xs.x) + inst.xform.zw;
     let ndc = vec2<f32>(
         px.x / globals.viewport.x * 2.0 - 1.0,
         1.0 - px.y / globals.viewport.y * 2.0,
@@ -102,6 +125,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
     out.radii = inst.radii;
     out.clip_radii = inst.clip_radii;
     out.seg = inst.uv;
+    out.pre = pre;
+    out.inner = inst.inner;
+    out.inner_radii = inst.inner_radii;
     return out;
 }
 
@@ -161,6 +187,21 @@ fn shade(in: VsOut) -> Shaded {
         let cd = sd_rounded_box(p - (in.clip.xy + ch), ch, in.clip_radii);
         inside = 1.0 - smoothstep(-AA, AA, cd);
     }
+    // The clip from inside a turned subtree, in the quad's own space, so
+    // against the position before the turn (ADR 0043, decision 5). On a
+    // frame that turns nothing it is the clip that clips nothing, and
+    // the plain test passes.
+    let q = in.pre;
+    if all(in.inner_radii <= vec4<f32>(0.0)) {
+        inside *= f32(
+            q.x >= in.inner.x && q.y >= in.inner.y
+            && q.x <= in.inner.x + in.inner.z && q.y <= in.inner.y + in.inner.w
+        );
+    } else {
+        let ih = in.inner.zw * 0.5;
+        let id = sd_rounded_box(q - (in.inner.xy + ih), ih, in.inner_radii);
+        inside *= 1.0 - smoothstep(-AA, AA, id);
+    }
 
     let kind = u32(in.params.z + 0.5);
 
@@ -181,12 +222,13 @@ fn shade(in: VsOut) -> Shaded {
     }
 
     if kind == 6u {
-        // A round-capped stroke between two endpoints, in the same
-        // framebuffer space as the clip: the capsule SDF against the
-        // fragment, half the stroke width as its radius, ramped over the
-        // same AA as every other edge. The quad is the bounding box padded
-        // past the ramp, so nothing is cut by its edge.
-        let d = sd_segment(p, in.seg.xy, in.seg.zw, in.params.y * 0.5);
+        // A round-capped stroke between two endpoints, in the quad's own
+        // space (the framebuffer's when nothing turns): the capsule SDF
+        // against the fragment's position before the turn, half the stroke
+        // width as its radius, ramped over the same AA as every other
+        // edge. The quad is the bounding box padded past the ramp, so
+        // nothing is cut by its edge.
+        let d = sd_segment(q, in.seg.xy, in.seg.zw, in.params.y * 0.5);
         let cov = 1.0 - smoothstep(-AA, AA, d);
         return Shaded(in.color.rgb, vec3<f32>(in.color.a * cov * inside));
     }

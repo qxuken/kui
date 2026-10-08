@@ -695,7 +695,7 @@ mod tests {
     fn a_clip_narrows_what_is_written_and_what_is_read() {
         let clip = Clip {
             rect: Rect::new(0.0, 0.0, 150.0, 600.0),
-            radius: [0.0; 4],
+            ..Clip::NONE
         };
         let b = plan(
             0,
@@ -729,7 +729,7 @@ mod tests {
         );
         let clip = Clip {
             rect: Rect::new(50.0, 50.0, 10.0, 10.0),
-            radius: [0.0; 4],
+            ..Clip::NONE
         };
         assert!(
             plan(0, &quad(r, 5.0, 1.0), clip, 100, 100).is_none(),
@@ -1011,6 +1011,7 @@ mod tests {
                 Clip {
                     rect: Rect::new(90.0, 20.0, 60.0, 80.0),
                     radius: [10.0; 4],
+                    ..Clip::NONE
                 },
             )],
             // Quartered, past the right and bottom edges, off the pixel grid.

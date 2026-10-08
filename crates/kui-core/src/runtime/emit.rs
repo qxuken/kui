@@ -72,7 +72,7 @@ impl Core {
         &mut self,
         i: usize,
         rect: Rect,
-        clip: Rect,
+        clip: Clip,
         drop: Option<crate::input::DropOwner>,
         hits: &mut Vec<HitRegion>,
     ) {
@@ -185,7 +185,8 @@ impl Core {
             key: self.tree.keys[i],
             origin: self.tree.origins[i],
             rect,
-            clip,
+            clip: clip.rect,
+            turn: crate::input::HitTurn::of(&clip),
             shape,
             payload: spec.events().on_click.clone().filter(|_| live),
             drag: spec.events().on_drag.clone().filter(|_| live),
@@ -217,7 +218,7 @@ impl Core {
         i: usize,
         key: Key,
         rect: Rect,
-        clip: Rect,
+        clip: Clip,
         scale: f32,
         drop: Option<crate::input::DropOwner>,
         hits: &mut Vec<HitRegion>,
@@ -238,7 +239,8 @@ impl Core {
             key,
             origin: self.tree.origins[i],
             rect,
-            clip,
+            clip: clip.rect,
+            turn: crate::input::HitTurn::of(&clip),
             // A field's corners round its hit too (ADR 0026).
             shape: if spec.style.radius != crate::display::SQUARE {
                 crate::input::HitShape::Rounded(spec.style.radius)
@@ -326,7 +328,7 @@ impl Core {
         // A stroke emits no hit region: it takes no input (ADR 0010,
         // decision 7).
         if spec.hover_tracked() && interactive {
-            self.push_hit(i, rect, clip.rect, drop.clone(), hits);
+            self.push_hit(i, rect, clip, drop.clone(), hits);
         }
         let spec = &self.tree.specs[i];
         // An `on_scroll` node takes the wheel the way a container does —
@@ -346,6 +348,7 @@ impl Core {
                 node: i as u32,
                 rect,
                 clip: clip.rect,
+                turn: crate::input::HitTurn::of(&clip),
                 inert: !interactive,
                 handler,
                 takes_x,
@@ -364,7 +367,7 @@ impl Core {
         if let NodeContent::Edit(key) = self.tree.content[i]
             && interactive
         {
-            self.push_edit_hit(i, key, rect, clip.rect, scale, drop, hits);
+            self.push_edit_hit(i, key, rect, clip, scale, drop, hits);
         }
         // The content, resolved to what the painter needs — a text node's
         // selection and its place, an editor's focus — then painted by the
@@ -845,8 +848,11 @@ impl Core {
         self.display.time = self.anim.time().unwrap_or(0.0) as f32;
 
         // Read once each: what the frame declared, noted by `Tree::push`
-        // (and by `configure_root`, whose spec replaces the root's).
-        let any_clip = self.tree.any_clip;
+        // (and by `configure_root`, whose spec replaces the root's). A
+        // turn rides on the clip entry (ADR 0043), so a frame with one
+        // tracks the per-node clip as a frame with a clipper does.
+        let any_transform = self.tree.any_transform;
+        let any_clip = self.tree.any_clip || any_transform;
         let any_rounded_clip = self.tree.any_rounded_clip;
         let any_opacity = self.tree.any_opacity;
         let any_float = self.tree.any_float;
@@ -1001,9 +1007,29 @@ impl Core {
             let (clip, clip_id) = if !any_clip {
                 (Clip::NONE, no_clip)
             } else {
-                // Floating nodes escape ancestor clips.
-                let (clip, id) = if parent == NIL || (floats_here && !drawn_in_parent) {
+                // Floating nodes escape ancestor clips. One anchored to
+                // its parent keeps the parent's turn, as the parent's
+                // content does (ADR 0043, decision 3); a viewport float
+                // and a node-anchored one do not.
+                let (mut clip, mut id) = if parent == NIL {
                     (Clip::NONE, no_clip)
+                } else if floats_here && !drawn_in_parent {
+                    let p = parent as usize;
+                    let turned = any_transform
+                        && self.clips[p].turned()
+                        && self.tree.specs[i]
+                            .layout
+                            .float
+                            .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Parent);
+                    if turned {
+                        let c = Clip {
+                            transform: self.clips[p].transform,
+                            ..Clip::NONE
+                        };
+                        (c, self.display.intern_clip(c.scaled(scale)))
+                    } else {
+                        (Clip::NONE, no_clip)
+                    }
                 } else {
                     let p = parent as usize;
                     if self.tree.specs[p].layout.clips() {
@@ -1024,6 +1050,15 @@ impl Core {
                         (self.clips[p], self.clip_ids[p])
                     }
                 };
+                // The node's own turn enters a new space for everything
+                // it draws and holds (ADR 0043, decision 4).
+                if any_transform
+                    && let Some(tr) = self.tree.specs[i].interact().transform
+                    && tr.active()
+                {
+                    clip = clip.turned_by(tr.at(rect));
+                    id = self.display.intern_clip(clip.scaled(scale));
+                }
                 self.clips[i] = clip;
                 self.clip_ids[i] = id;
                 (clip, id)
@@ -1041,8 +1076,9 @@ impl Core {
             }
             // Entirely clipped away: skip drawing and hit-testing.
             // Rect, not rounded: a node that survives only in a corner's
-            // arc is drawn and clipped rather than culled.
-            let visible = rect.intersect(&clip.rect);
+            // arc is drawn and clipped rather than culled. Under a turn,
+            // by the clip pulled back into the node's space.
+            let visible = rect.intersect(&clip.visible());
             if visible.w <= 0.0 || visible.h <= 0.0 {
                 // Culled — but a text run inside a selection scope keeps
                 // its place in the order and its content reachable, so a
@@ -1128,7 +1164,7 @@ impl Core {
                     let clip = if any_clip { self.clips[i] } else { Clip::NONE };
                     let clip_id = if any_clip { self.clip_ids[i] } else { no_clip };
                     let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
-                    let visible = rect.intersect(&clip.rect);
+                    let visible = rect.intersect(&clip.visible());
                     if visible.w <= 0.0 || visible.h <= 0.0 {
                         continue;
                     }
@@ -1423,7 +1459,7 @@ impl Core {
                 .layout
                 .float
                 .is_some_and(|f| !f.clipped_by_parent());
-            let (clip, clip_id) = if node.parent == NIL || escapes {
+            let (mut clip, mut clip_id) = if node.parent == NIL || escapes {
                 (Clip::NONE, NO_CLIP_ID)
             } else {
                 let p = node.parent as usize;
@@ -1436,10 +1472,32 @@ impl Core {
                     (inherited, self.ghost_clip_ids[p])
                 }
             };
+            // A ghost keeps its turn (ADR 0043, decision 9): each node's
+            // own, and the root's eased toward the exit's.
+            let own = if node.parent == NIL {
+                play.transform
+                    .map(|(rotate, scale)| crate::spec::TransformSpec {
+                        rotate,
+                        scale,
+                        pivot: node
+                            .spec
+                            .interact()
+                            .transform
+                            .map_or(crate::spec::TransformSpec::NONE.pivot, |t| t.pivot),
+                    })
+            } else {
+                node.spec.interact().transform
+            };
+            if let Some(tr) = own
+                && tr.active()
+            {
+                clip = clip.turned_by(tr.at(rect));
+                clip_id = self.display.intern_clip(clip.scaled(scale));
+            }
             self.ghost_clip[i] = clip;
             self.ghost_clip_ids[i] = clip_id;
             self.ghost_rect[i] = rect;
-            let visible = rect.intersect(&clip.rect);
+            let visible = rect.intersect(&clip.visible());
             if visible.w <= 0.0 || visible.h <= 0.0 {
                 continue;
             }
@@ -1938,7 +1996,7 @@ impl Core {
         let clip = self.clips.get(i).copied().unwrap_or(Clip::NONE);
         // No entry means nothing clipped this frame, which is entry zero.
         let clip_id = self.clip_ids.get(i).copied().unwrap_or(NO_CLIP_ID);
-        let visible = rect.intersect(&clip.rect);
+        let visible = rect.intersect(&clip.visible());
         if visible.w <= 0.0 || visible.h <= 0.0 {
             return;
         }

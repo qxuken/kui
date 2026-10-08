@@ -143,7 +143,14 @@
 ///   `family`, `size` and `font` on `KuiSpan` with `KUI_SPAN_FAMILY`, a
 ///   span's own face and size — an array element, so its stride moved
 ///   (64-bit 56).
-pub const KUI_ABI_VERSION: u32 = 26;
+/// - ABI 27: `KuiClip` gains `transform`, `inner` and `inner_radius`
+///   (ADR 0043) — a `[lib]` array element, so its stride moved (80
+///   bytes); `KuiSpec` appends `rotate`, `scale`, `pivot_set`, `pivot_x`
+///   and `pivot_y` (64-bit 744); `KuiKeyframe` and `KuiEnter` append
+///   `rotate` and `scale` with `KUI_KF_ROTATE` / `KUI_KF_SCALE` and
+///   `KUI_ENTER_ROTATE` / `KUI_ENTER_SCALE` — array elements, so their
+///   strides moved (44 and 48).
+pub const KUI_ABI_VERSION: u32 = 27;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

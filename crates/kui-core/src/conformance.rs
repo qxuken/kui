@@ -1259,6 +1259,36 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "transform",
+        doc: "A node turned about its pivot (ADR 0043): a rounded, clipping               card tilted an eighth of a turn about its top-left corner,               holding a child wider than itself, which the card cuts in its               own turned space, and a badge floating with it; beside it a               box scaled half again about its centre. Layout is the upright               one — the quads' rects are where the boxes were laid out — and               the clip entries carry the turn, the scale and the inner clip,               so the digest moves if any of the three does. A binding that               drops `rotate`, `scale` or `pivot` interns the identity entries.",
+        custom: &["dir", "overflow", "float"],
+        elements: &["box"],
+        build: build_transform,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
         name: "clip-access",
         doc: "An access rect is what is drawn (backlog F93): a toolbar over \
               a `clip` canvas beside a scroller. On the canvas, a `clip` \
@@ -6141,6 +6171,21 @@ pub fn quad_digest(quads: &[Quad], clips: &[Clip]) -> u64 {
             clip.radius[1],
             clip.radius[2],
             clip.radius[3],
+            // The entry's space (ADR 0043): its transform and inner clip,
+            // in the struct's word order — twenty words a clip, where it
+            // was eight — so a turn that moved is a report that moved.
+            clip.transform.angle,
+            clip.transform.scale,
+            clip.transform.tx,
+            clip.transform.ty,
+            clip.inner.x,
+            clip.inner.y,
+            clip.inner.w,
+            clip.inner.h,
+            clip.inner_radius[0],
+            clip.inner_radius[1],
+            clip.inner_radius[2],
+            clip.inner_radius[3],
         ] {
             mix(&mut h, v.to_bits());
         }
@@ -6885,6 +6930,43 @@ fn build_pixel_snap(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         );
         ui.leaf(cell(0x73d98cff).pixel_snap());
         ui.leaf(cell(0x3b5bd4ff));
+    });
+}
+
+fn build_transform(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with(NodeSpec::row(), |ui| {
+        ui.with_keyed(
+            "card",
+            NodeSpec::column()
+                .size(60.0, 40.0)
+                .radius(8.0)
+                .clip()
+                .bg(Color::hex(0x3b5bd4ff))
+                .rotate(0.125)
+                .pivot(0.0, 0.0),
+            |ui| {
+                ui.leaf_keyed(
+                    "wide",
+                    NodeSpec::column()
+                        .size(90.0, 20.0)
+                        .bg(Color::hex(0xd9738cff)),
+                );
+                ui.leaf_keyed(
+                    "badge",
+                    NodeSpec::column()
+                        .size(12.0, 12.0)
+                        .bg(Color::hex(0xf6d55cff))
+                        .float(FloatConfig::parent().offset(54.0, -6.0)),
+                );
+            },
+        );
+        ui.leaf_keyed(
+            "big",
+            NodeSpec::column()
+                .size(40.0, 40.0)
+                .bg(Color::hex(0x73d98cff))
+                .scale(1.5),
+        );
     });
 }
 

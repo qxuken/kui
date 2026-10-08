@@ -4363,6 +4363,16 @@ const SCENE_TREES = {
       cell('#3b5bd4'),
     ])]);
   },
+  // ADR 0043: a rounded, clipping card tilted an eighth of a turn about
+  // its top-left corner, holding a child wider than itself and a badge
+  // floating with it; beside it a box scaled half again.
+  'transform': () => root({}, [box({ dir: 'row' }, [
+    box({ key: 'card', width: 60, height: 40, radius: 8, clip: true, bg: '#3b5bd4', rotate: 0.125, pivotX: 0, pivotY: 0 }, [
+      box({ key: 'wide', width: 90, height: 20, bg: '#d9738c' }),
+      box({ key: 'badge', width: 12, height: 12, bg: '#f6d55c', float: { anchor: 'parent', dx: 54, dy: -6 } }),
+    ]),
+    box({ key: 'big', width: 40, height: 40, bg: '#73d98c', scale: 1.5 }),
+  ])]),
   // Rounded span backgrounds joined across four texts (backlog F101), the
   // fourth in another colour.
   'joined-backgrounds': () => {
@@ -5269,7 +5279,8 @@ const MASK = 0xffffffffffffffffn;
 /** FNV-1a over each quad's words 0..18 — `KuiQuad` without its `uv`, which
  *  depends on glyph insertion order, and without the clip index — plus the
  *  `uv` of a segment quad (kind 6), where it is the endpoints, and then the
- *  eight words of the clip that index names. The clip is digested resolved
+ *  twenty words of the clip that index names (its rect, radii, transform,
+ *  inner clip and its radii). The clip is digested resolved
  *  rather than as the index, so the number says what a backend clips by and
  *  not how this frame interned it. Mirrors `conformance::quad_digest`. */
 function quadDigest(buffer, clipBuffer) {
@@ -5295,7 +5306,7 @@ function quadDigest(buffer, clipBuffer) {
     const words = [...Array(19).keys(), ...(geometry ? [20, 21, 22, 23] : [])];
     for (const i of words) mix(view.getUint32(off + i * 4, true));
     const clip = view.getUint32(off + 19 * 4, true) * clipStrideBytes;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 20; i++) {
       mix(clip + (i + 1) * 4 <= clipBuffer.byteLength ? clipView.getUint32(clip + i * 4, true) : 0);
     }
   }

@@ -3,7 +3,8 @@
 //!
 //! Without one, a node's first sight snaps into place. `NodeSpec::enter`
 //! takes an [`Enter`] naming where the slots start instead (`dx`/`dy` for
-//! the position, plus width, height, bg, radius and opacity), and they
+//! the position, plus width, height, bg, radius, opacity, rotate and
+//! scale), and they
 //! ease from there to what the view declares over the node's
 //! `transition`. `NodeSpec::exit` takes the same type read the other way:
 //! where the slots end after the view stops declaring the node.
@@ -44,8 +45,8 @@ pub struct Enter {
     /// slides in from the left.
     pub dx: f32,
     pub dy: f32,
-    /// Width, height, bg, radius and opacity — the slots a keyframe stop
-    /// names too.
+    /// Width, height, bg, radius, opacity, rotate and scale — the slots a
+    /// keyframe stop names too.
     pub slots: Slots,
 }
 
@@ -74,7 +75,7 @@ impl Enter {
 }
 
 /// An entrance from plain data: a map with any of `dx`, `dy`, `width`,
-/// `height`, `bg`, `radius`, `opacity`, in the forms the props themselves take (the
+/// `height`, `bg`, `radius`, `opacity`, `rotate`, `scale`, in the forms the props themselves take (the
 /// same shapes a keyframe stop accepts). Every binding funnels `enter`
 /// through here, so the shape is the same in JSX, Lua and C.
 pub fn parse(v: &Value) -> Result<Enter, String> {

@@ -1579,14 +1579,43 @@ pub enum HitShape {
 /// handle is wider than its line everywhere.
 pub const MIN_STROKE_GRAB: f32 = 4.0;
 
+/// The turn a region is drawn through (ADR 0043): the clip entry's
+/// transform, and the clip from inside the turned subtree, in the
+/// region's own space.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HitTurn {
+    /// Logical px: the region's space to the viewport's.
+    pub transform: crate::geom::Transform,
+    /// The inner clip, in the region's space; `NO_CLIP` for none.
+    pub inner: Rect,
+}
+
+impl HitTurn {
+    /// The turn a clip entry carries, when it carries one.
+    pub fn of(clip: &crate::display::Clip) -> Option<Self> {
+        clip.turned().then_some(HitTurn {
+            transform: clip.transform,
+            inner: clip.inner,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HitRegion {
     pub key: Key,
     pub origin: OriginId,
-    /// Logical coordinates.
+    /// Logical coordinates, in the node's own space (ADR 0043: the space
+    /// its clip entry's transform maps from; the viewport's when nothing
+    /// above it turns).
     pub rect: Rect,
-    /// Ancestor clip; a point must be inside both to hit.
+    /// Ancestor clip in viewport coordinates; a point must be inside both
+    /// to hit.
     pub clip: Rect,
+    /// The turn the node is drawn through, when one is (ADR 0043): the
+    /// pointer is pulled back through it before `rect`, `shape` and the
+    /// inner clip are tested, so a tilted card is hit on its tilted edge.
+    /// `None` for the region every frame had before.
+    pub turn: Option<HitTurn>,
     /// The shape inside `rect` a point must also be in, when there is one.
     pub shape: HitShape,
     /// Click payload; None for hover-only regions (hoverable, edits) — a
@@ -1799,6 +1828,8 @@ pub struct ScrollRegion {
     pub(crate) node: u32,
     pub rect: Rect,
     pub clip: Rect,
+    /// The turn the scroller is drawn through, as a hit region's.
+    pub turn: Option<HitTurn>,
     /// Outside the frame's modal scope: the bar still draws, the wheel
     /// and the thumb do nothing.
     pub inert: bool,
@@ -1830,6 +1861,20 @@ pub struct ScrollRegion {
     /// around this one in the tree, [`crate::tree::NIL`] for none: where
     /// a gesture this one passes goes next, whatever else is painted under the pointer.
     pub(crate) parent: u32,
+}
+
+impl ScrollRegion {
+    /// Whether `p` (viewport px) is over the scroller's box: pulled back
+    /// through its turn first, when it has one (ADR 0043).
+    pub(crate) fn under(&self, p: Vec2) -> bool {
+        match &self.turn {
+            None => self.rect.contains(p),
+            Some(turn) => {
+                let q = turn.transform.unapply(p);
+                turn.inner.contains(q) && self.rect.contains(q)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2035,7 +2080,22 @@ impl Interaction {
     /// region pays; the shape is paid by the few under the pointer.
     #[inline]
     fn contains(&self, h: &HitRegion, p: Vec2) -> bool {
-        if !(h.rect.contains(p) && h.clip.contains(p)) {
+        if !h.clip.contains(p) {
+            return false;
+        }
+        // Under a turn the rect, the shape and the inner clip are in the
+        // node's own space, so the pointer goes there first (ADR 0043).
+        let p = match &h.turn {
+            None => p,
+            Some(turn) => {
+                let q = turn.transform.unapply(p);
+                if !turn.inner.contains(q) {
+                    return false;
+                }
+                q
+            }
+        };
+        if !h.rect.contains(p) {
             return false;
         }
         if h.shape == HitShape::Rect {
@@ -2118,9 +2178,10 @@ impl Interaction {
     /// the innermost scroller moves on one axis only.
     pub(crate) fn scroll_regions_at(&self) -> impl Iterator<Item = &ScrollRegion> {
         let p = self.cursor;
-        self.scroll_regions.iter().rev().filter(move |r| {
-            p.is_some_and(|p| !r.inert && r.rect.contains(p) && r.clip.contains(p))
-        })
+        self.scroll_regions
+            .iter()
+            .rev()
+            .filter(move |r| p.is_some_and(|p| !r.inert && r.clip.contains(p) && r.under(p)))
     }
 
     /// The content origin the editor `key` was drawn at this frame — what
@@ -2770,6 +2831,7 @@ mod tests {
             origin: OriginId(origin),
             rect: Rect::new(x, y, w, h),
             clip: Rect::new(-1e9, -1e9, 2e9, 2e9),
+            turn: None,
             shape: HitShape::Rect,
             payload: Some(Value::str(tag)),
             drag: None,

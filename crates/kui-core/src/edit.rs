@@ -1468,6 +1468,8 @@ impl EditStore {
         // scrolls inside is the clip emission was handed.
         let origin = Vec2::new(origin.x - s.offset_x, origin.y);
 
+        // What can show, in the glyphs' own space (ADR 0043).
+        let vis = clip.visible();
         s.editor.with_buffer(|b| {
             let line_height = b.metrics().line_height;
             // Runs come in line order: skip everything above the clip and
@@ -1475,8 +1477,8 @@ impl EditStore {
             // emits only the visible screenful of quads.
             let runs = b
                 .layout_runs()
-                .filter(|run| origin.y + run.line_top + line_height >= clip.rect.y)
-                .take_while(|run| origin.y + run.line_top <= clip.rect.y + clip.rect.h);
+                .filter(|run| origin.y + run.line_top + line_height >= vis.y)
+                .take_while(|run| origin.y + run.line_top <= vis.y + vis.h);
             for run in runs {
                 // Selection highlight for this run (mixed BiDi runs can
                 // yield several disjoint spans). `highlight` is only valid

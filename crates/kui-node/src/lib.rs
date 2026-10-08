@@ -4758,6 +4758,8 @@ mod readback_pins {
                 "[].borderColor",
                 "[].opacity",
                 "[].backdropBlur",
+                "[].rotate",
+                "[].scale",
                 "[].scroll",
                 "[].scroll.x",
                 "[].scroll.y",

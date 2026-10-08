@@ -77,6 +77,8 @@ Keyframe_Slot :: enum u32 {
 	Bg = 3, // KUI_KF_BG
 	Radius = 4, // KUI_KF_RADIUS
 	Opacity = 5, // KUI_KF_OPACITY
+	Rotate = 6, // KUI_KF_ROTATE
+	Scale = 7, // KUI_KF_SCALE
 }
 Keyframe_Slots :: bit_set[Keyframe_Slot;u32]
 
@@ -87,6 +89,8 @@ Enter_Slot :: enum u32 {
 	Bg = 3, // KUI_ENTER_BG
 	Radius = 4, // KUI_ENTER_RADIUS
 	Opacity = 5, // KUI_ENTER_OPACITY
+	Rotate = 6, // KUI_ENTER_ROTATE
+	Scale = 7, // KUI_ENTER_SCALE
 }
 Enter_Slots :: bit_set[Enter_Slot;u32]
 
@@ -722,6 +726,22 @@ Spec :: struct {
 	// radius in logical px — CSS's `backdrop-filter: blur()`, the radius its
 	// standard deviation (backlog F129).
 	backdrop_blur: f32,
+	// Turns this node and everything under it, in turns clockwise (0.25 is a
+	// quarter turn right), about its pivot — the centre unless `pivotX` /
+	// `pivotY` say — after layout
+	// (`docs/adr/0043-a-node-turns-about-its-pivot.md`).
+	rotate: f32,
+	// Scales this node and everything under it by this factor, uniformly, about
+	// its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`);
+	// 1 is none, 0 draws nothing.
+	scale: f32,
+	// Where across the box `rotate` and `scale` are about, as a fraction of its
+	// width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge;
+	// outside 0..1 is a point past the box.
+	pivot_x: Maybe(f32),
+	// Where down the box `rotate` and `scale` are about, as a fraction of its
+	// height: 0 the top, 0.5 (the default) the middle, 1 the bottom.
+	pivot_y: Maybe(f32),
 	// On a table (`dir="table"`, ADR 0033): grid lines of this colour between its
 	// columns and between its rows (backlog DX21) — down the middle of each gap
 	// between the columns of its widest row, from the first row's top to the last
@@ -833,18 +853,20 @@ Spec :: struct {
 	bounce: f32,
 	// With transition: also ease the node's position (reordered siblings slide).
 	slide: bool,
-	// CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`:
-	// the slots they name cycle through them over `transition` ms, forever,
-	// without the view redrawing; `at` is 0..1 and spreads evenly when omitted.
+	// CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity?, rotate?,
+	// scale? }, …]`: the slots they name cycle through them over `transition`
+	// ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly
+	// when omitted.
 	keyframes: []Keyframe,
 	// Where the node starts the first frame it is seen `{ dx?, dy?, width?,
-	// height?, bg?, radius?, opacity? }`: those slots ease in from there over
-	// `transition` ms instead of snapping (`dx`/`dy` slide it in from that far
-	// away, `opacity: 0` fades the whole subtree in).
+	// height?, bg?, radius?, opacity?, rotate?, scale? }`: those slots ease in
+	// from there over `transition` ms instead of snapping (`dx`/`dy` slide it in
+	// from that far away, `opacity: 0` fades the whole subtree in, `scale: 0.8`
+	// settles it in).
 	enter: Enter,
 	// Where the node ends the frame after the view stops declaring it `{ dx?,
-	// dy?, width?, height?, bg?, radius?, opacity? }` — an `enter` read the
-	// other way.
+	// dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }` — an
+	// `enter` read the other way.
 	exit: Enter,
 	// How `keyframes` cycle (CSS `animation-direction`, default normal).
 	repeat: Repeat,
@@ -971,6 +993,10 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.hover_bg = s.hover_bg
 	if gr, ok := s.gradient.?; ok do out.gradient = lower_gradient(gr)
 	out.backdrop_blur = s.backdrop_blur
+	out.rotate = s.rotate
+	out.scale = s.scale
+	if v, ok := s.pivot_x.?; ok do out.pivot_set, out.pivot_x = out.pivot_set | c.PIVOT_X, v
+	if v, ok := s.pivot_y.?; ok do out.pivot_set, out.pivot_y = out.pivot_set | c.PIVOT_Y, v
 	out.rules = s.rules
 	out.rule_w = s.rule_width
 	out.drop_bg = s.drop_bg

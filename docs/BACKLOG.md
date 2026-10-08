@@ -173,11 +173,12 @@ from the alpha.44 pre-tag pass, and RG154 — what that pass left: the
 accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag.
-F131–F138, from the berainder review of 2026-10-08 — a turn and a
-scale on any node, position stops and a count on keyframes, the
-frame clock read and a frame asked at a time, the exit named at the
-removal, a lookup by accessible name, the runner's decoder — are
-open, filed the day the app said what it had worked round.
+F132–F138, from the berainder review of 2026-10-08 — position stops
+and a count on keyframes, the frame clock read and a frame asked at a
+time, the exit named at the removal, a lookup by accessible name, the
+runner's decoder — are open, filed the day the app said what it had
+worked round; F131, a turn and a scale on any node, was built the same
+day (ADR 0043) and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1527,60 +1528,9 @@ every vsync for good; `key_of` reads the key label and not the
 accessible name; and the runner decodes no JPEG, so the app links the
 `image` crate. Each was checked against the tree before it was filed.
 Two of them the user had already named — a turn and keyframes — and
-they are the first two below. F131–F138, open.
-
-### `~` F131 — No node but a `path` can turn or scale: a dragged card cannot tilt
-
-- **The ask.** A card that tilts as it is dragged, by a few degrees
-  towards the side it is leaving, is the gesture's whole look; berainder
-  tweens `width` and `height` instead and calls it depth. Every
-  transition kui has is a slot of a box — size, colour, radius,
-  position, opacity, shadow (`anim::Slot`) — and none of them is a
-  turn or a scale. ADR 0041 gave `rotate` to a `path` alone, and
-  listed "a transform on any node" under *Considered options* as "the
-  general thing, and a different document", with the costs: every quad
-  kind turns, glyphs leave the pixel grid, the clip stops being a rect
-  in framebuffer space, a scroller inside a turned box scrolls along a
-  tilted axis, hit-testing inverts a matrix per ancestor, the access
-  tree's rects become bounding boxes. That document is this entry.
-- **What the tree already has.** The vertex stage turns a quad about
-  its own centre, by an angle in the `blur` slot, for kinds 1 and 3
-  (`shader.wgsl`, ADR 0041) — a path's mask, a path's texture. The
-  fragment stage reads `local` and `uv` in the quad's own space, so a
-  turned quad's radii, border and image sampling already come out
-  right; only the clip, tested against `pos` in framebuffer space,
-  does not turn. ADR 0026 hits by shape — a `polygon`'s outline is
-  tested as a polygon — so a turned rect, four points, is a hit test
-  the core knows how to do. A `path`'s turn does not tween (ADR 0041's
-  amendment), because its angle is not a slot.
-- **Wants.** An ADR, then the build. The shape it should argue for:
-  `rotate` (turns, clockwise, as a `path`'s) and `scale` (one factor,
-  or two) on any node — a box, an image, a text — about `pivot`
-  (fractions of the box, the centre by default), **paint-only**: layout
-  is untouched, as `opacity`'s is, so a tilted card takes the room its
-  upright self does and nothing around it moves. Every quad the subtree
-  emits turns with it, about the *node's* pivot and not the quad's, so
-  the instance carries a pivot and an angle and a scale for the
-  subtree (the ABI's question; `params.w` is the one free slot today).
-  The clip of a node inside a turned subtree turns with it — the photo
-  stays inside the card's rounded corners — and a clip from outside
-  (the scroller the card sits in) stays upright; a turned fragment's
-  rect is the bounding box. Hit where drawn: the node's outline is the
-  turned rect, by ADR 0026, so a tilted card is grabbed on its tilted
-  edge. The access rect is the bounding box. A turn and a scale are a
-  **slot** (`Slot::Transform`: angle, sx, sy), so they `transition` —
-  follow the pointer while dragging, spring back on release, as
-  position does — and a keyframe stop names them (F132's shape): a
-  wobble, a pulse, a spinner are then keyframes on a box, with no
-  `path`. A `path`'s own `rotate` composes under the node's, as ADR
-  0041 said it would, and starts to tween for free. Text under a turn
-  leaves the pixel grid, as a turned glyph mask already does; say so.
-  A scroller inside a turned node is not refused: its wheel hits by
-  the turned outline and its content turns with it. Four bindings and
-  the Odin layer, `props.md`'s row, the `transforms` example.
-- **Not this.** A matrix, skew, 3D. CSS's `transform` is the general
-  thing; a turn and a scale are what every app this repo has seen
-  asked for.
+they are the first two below. F131, the turn, was **built 2026-10-08**, the
+day it was filed, as ADR 0043, and is in the archive; F132–F138 are
+open.
 
 ### `.` F132 — A keyframe stop cannot name a position: a sparkle's path is an `enter` with a seven-second transition
 
@@ -3081,11 +3031,11 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
-Open from the berainder review of 2026-10-08: F131–F138 — F131, a
-turn and a scale on any node, is an ADR first, and F132 and F133 are
-its keyframe companions; F134–F136 are three doors in four bindings;
-F137 is words and a lookup; F138 is a decoder the runner already
-links.
+Open from the berainder review of 2026-10-08: F132–F138 — F132 and
+F133 are the keyframe companions of F131 (**built 2026-10-08**, ADR
+0043, the day it was filed); F134–F136 are three doors in four
+bindings; F137 is words and a lookup; F138 is a decoder the runner
+already links.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4377,6 +4327,10 @@ move.
 **After alpha.43 (2026-10-08)** — RG150, filed by the alpha.43 pre-tag pass and built the same day
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
+
+**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132–F138 open
+
+- `~` **F131** — [No node but a `path` can turn or scale: a dragged card cannot tilt](backlog/closed-2026-09.md#-f131--no-node-but-a-path-can-turn-or-scale-a-dragged-card-cannot-tilt--done-2026-10-08) — done (2026-10-08) — `rotate`, `scale`, `pivotX` / `pivotY` on any node (ADR 0043): paint-only, the turn and the inner clip on the clip entry, hit where drawn, the access rect the bounding box, one tweening slot an entrance, an exit and a keyframe stop name; ABI 27
 
 **From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
 

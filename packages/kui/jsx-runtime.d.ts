@@ -125,6 +125,10 @@ export interface KeyframeProp {
   radius?: number;
   /** Group opacity, 0..1. */
   opacity?: number;
+  /** A turn in turns clockwise (ADR 0043). */
+  rotate?: number;
+  /** A uniform scale about the node's pivot. */
+  scale?: number;
 }
 
 /** Where a node starts the first frame it is seen, for `enter`: the slots
@@ -141,6 +145,10 @@ export interface EnterProp {
   radius?: number;
   /** Group opacity, 0..1: `{ opacity: 0 }` fades the whole subtree in. */
   opacity?: number;
+  /** A turn in turns clockwise (ADR 0043): `{ rotate: -0.02 }` swings in. */
+  rotate?: number;
+  /** A uniform scale about the node's pivot: `{ scale: 0.8 }` settles in. */
+  scale?: number;
 }
 
 /** A gradient painted over a box's `bg`, under its border and children
@@ -296,9 +304,9 @@ export interface GeneratedSpecProps {
   dropBg?: ColorProp;
   /** Easing for `transition` (default easeOut). The springs — `smooth` (no overshoot), `snappy`, `spring` and `bouncy` (the most), each a `bounce` of its own — integrate with momentum, so a value retargeted mid-flight keeps moving the way it was; `transition` is then about how long one takes to get there. */
   easing?: 'easeOut' | 'linear' | 'easeIn' | 'easeInOut' | 'spring' | 'bouncy' | 'smooth' | 'snappy';
-  /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in). */
+  /** Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in, `scale: 0.8` settles it in). */
   enter?: EnterProp;
-  /** Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }` — an `enter` read the other way. It plays when the node itself is removed, its parent still declared; a node that goes because an ancestor went — a tab switched away, a panel closed around it — goes at once with it, unless that ancestor has an `exit` of its own, whose picture carries it (backlog DX19; React's `AnimatePresence` rule). With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, in its place (the pass it painted in, just under the node that painted after it — a panel under a HUD leaves under it) and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. Needs a stable key across frames. */
+  /** Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }` — an `enter` read the other way. It plays when the node itself is removed, its parent still declared; a node that goes because an ancestor went — a tab switched away, a panel closed around it — goes at once with it, unless that ancestor has an `exit` of its own, whose picture carries it (backlog DX19; React's `AnimatePresence` rule). With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, in its place (the pass it painted in, just under the node that painted after it — a panel under a HUD leaves under it) and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. Needs a stable key across frames. */
   exit?: EnterProp;
   /** A disclosure's state: what a node that shows and hides something (a twisty, an accordion header, a menu button) reads as. Unset, the node does not expand at all — which is why this names its state instead of being a flag. */
   expanded?: 'collapsed' | 'expanded';
@@ -328,7 +336,7 @@ export interface GeneratedSpecProps {
   keepFocus?: boolean;
   /** With `onKey`: releases arrive too, as the same payload with phase:"up" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice. */
   keyUp?: boolean;
-  /** CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
+  /** CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
   keyframes?: KeyframeProp[];
   /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). */
   label?: string;
@@ -378,6 +386,10 @@ export interface GeneratedSpecProps {
   opacity?: LengthProp;
   /** What a scroll gesture that starts over this scroller does when it is already at its limit that way (backlog F107, CSS's `overscroll-behavior`): `auto` (the default) passes the gesture on to the scroller around it, `contain` keeps it here, moving nothing until it turns back. A gesture picks its target once, when it starts — the innermost scroller under the pointer that can still move the way it goes — and keeps it until it ends, wherever the pointer or the content has gone; one that reaches a limit midway stops there, whatever this says. Only on the axes the node scrolls: a `scrollY` list that contains still passes a sideways swipe to the strip around it. For a panel or a popup's list whose scrolling must never move what is behind it. */
   overscroll?: 'auto' | 'contain';
+  /** Where across the box `rotate` and `scale` are about, as a fraction of its width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge; outside 0..1 is a point past the box. C: `pivot_x` with `pivot_set`. */
+  pivotX?: LengthProp;
+  /** Where down the box `rotate` and `scale` are about, as a fraction of its height: 0 the top, 0.5 (the default) the middle, 1 the bottom. C: `pivot_y` with `pivot_set`. */
+  pivotY?: LengthProp;
   /** Paint this node's background, border, shadow and fragment with each edge on a whole physical pixel: `x` and `x + width` rounded on their own, from where layout put them, as a text's span backgrounds are. Off by default, and a box is drawn where layout put it, so a 1 px `gap` between boxes is there at any scale. On, boxes that share an edge in layout meet on one pixel line, where a join inside a pixel was drawn by halves and left a seam — rows of a band stacked at a pitch that is not whole pixels, or a box that continues a text's selection. Layout, hit-testing, the clip and the children are untouched. A snapped box can draw up to half a pixel from its layout edge and its size can differ by a pixel, so a snapped hairline is 1 or 2 px thick by where it sits. */
   pixelSnap?: boolean;
   /** Background while pressed (or while its hoverGroup is); implies hover tracking. */
@@ -396,10 +408,14 @@ export interface GeneratedSpecProps {
   repeat?: 'normal' | 'reverse' | 'alternate' | 'alternateReverse';
   /** What the node is to assistive technology. Unset, the core derives one (an `onClick` node is a button, an editor a text input, a scrolling box a scroll view, a plain box nothing); `none` hides the node and its subtree from the access tree. A `radio` belongs inside a `radioGroup` and a `tab` inside a `tabList`, labelled with what the choice is: the pair is a composite (`docs/adr/0007-composite-keyboard-patterns.md`) — one Tab stop for the set, the arrows, Home and End moving the choice inside it (each step is the item's click, so the choice follows focus), and a screen reader reading "2 of 3". A `radio` or `tab` with no container above it is a Tab stop of its own that no arrow moves, and the core warns (`item-outside-container`). `menu` holds `menuItem`s and `list` holds `listItem`s the same way. */
   role?: 'none' | 'button' | 'checkbox' | 'radio' | 'switch' | 'slider' | 'tab' | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog' | 'group' | 'textInput' | 'multilineTextInput' | 'line' | 'radioGroup' | 'menu' | 'menuItem' | 'terminal';
+  /** Turns this node and everything under it, in turns clockwise (0.25 is a quarter turn right), about its pivot — the centre unless `pivotX` / `pivotY` say — after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`). Paint-only: the node takes the room its upright self takes, nothing around it moves, `onLayout` reports the layout rect. Everything the subtree draws turns with it — backgrounds, borders, shadows, text, images, strokes, fragments — and so does what it clips: a child cut by a turned card's rounded corners stays inside them. Hit where drawn: a tilted card is grabbed on its tilted edge and a press in its box past its edge falls through; drag payloads stay in viewport px. The access rect is the bounding box. Nests by composition. Tweens with `transition` as one slot with `scale`, and an entrance, an exit or a keyframe stop may name it (`enter: { rotate: -0.02 }`, `keyframes: [{ rotate: 0 }, { rotate: 1 }]` spins a box). A float anchored to the parent turns with it; a viewport float does not. On a `path` this is the path's own turn (ADR 0041), which does not tween — wrap it in a box for one that does. Text under a turn leaves the pixel grid, as a turned mask does. `backdropBlur` under a turn blurs the upright box. */
+  rotate?: LengthProp;
   /** The width of a table's `rules` in logical px; 1 when unset. */
   ruleWidth?: LengthProp;
   /** On a table (`dir="table"`, ADR 0033): grid lines of this colour between its columns and between its rows (backlog DX21) — down the middle of each gap between the columns of its widest row, from the first row's top to the last row's bottom, and across the middle of each gap between rows, the content box wide. Drawn with the table's box, under its cells and on whole pixels, so give the table and its rows a `gap` at least `ruleWidth` for the lines to show between cells; the outer edge is the table's `border`. Ignored on anything but a table. */
   rules?: ColorProp;
+  /** Scales this node and everything under it by this factor, uniformly, about its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`); 1 is none, 0 draws nothing. Paint-only, as `rotate` is: layout, the room taken and `onLayout` are the upright node's; what it draws, clips and hits scales. Tweens with `transition` as one slot with `rotate`; `enter: { scale: 0.8 }` settles a chip in, `keyframes: [{ scale: 1.05, at: 0.5 }]` pulses. The edge ramps scale with the box, so a box scaled far up reads soft. In C, 0 is unset (1). */
+  scale?: LengthProp;
   /** Which axes `onScroll` takes (backlog F107): `both` (the default), `x` or `y`. A scroll gesture on an axis the node does not take passes it by, to the scroller around it, and hears nothing here: a terminal that scrolls its history says `y`, and a sideways swipe that starts over it moves the strip it sits in. (A swipe that started elsewhere is not the node's either way: a gesture keeps the target it started with.) Meaningless without `onScroll`. */
   scrollAxes?: 'both' | 'x' | 'y';
   /** The modifiers `onScroll` is for (backlog F122): `"shift"`, `"ctrl"`, `"alt"` and `"super"` (⌘, the Windows key), separated by spaces or commas — `"ctrl super"`. With any named, the node hears only a scroll gesture that began with one of them held, and hears it first: ahead of every scroll container and every `onScroll` that names none, wherever under the pointer the gesture began, the innermost such node winning — so a Ctrl-wheel zoom declared on the window's root is heard over a list, and the list does not scroll. A wheel with none of them held passes the node by, as if it had no `onScroll`: a node that scrolls as well (`overflow`) scrolls for it as any container does. Its `scroll` events carry `mods`, the modifiers held when the gesture began; the gesture stays the node's to the end of its glide, whatever is let go meanwhile, and one begun without them never becomes its. A word that is none of the four is skipped. Unset, a handler like any other. Meaningless without `onScroll`. */

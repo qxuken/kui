@@ -63,6 +63,7 @@
   - [selection](examples/features/selection.md)
   - [spring](examples/features/spring.md)
   - [theme](examples/features/theme.md)
+  - [transform](examples/features/transform.md)
   - [transition](examples/features/transition.md)
   - [waker](examples/features/waker.md)
 - [tools](examples/tools.md)

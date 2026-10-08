@@ -1956,7 +1956,13 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // form, a list of numbers); the fill is the `bg` row, `fill_rule`
             // its rule; `width` and `color` are the stroke's, as a line's,
             // and no `width` is no stroke (ADR 0040).
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let mut p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            // A path's `rotate` is its own (ADR 0041), not the node's
+            // (ADR 0043, decision 1): the generic walk above read it as
+            // the row every other element takes, and that reading goes.
+            if let Some(i) = p.spec.interact.as_deref_mut() {
+                i.transform = None;
+            }
             let rule = match t.get::<Option<String>>("fill_rule")? {
                 Some(name) => kui_core::FillRule::parse(&name)
                     .ok_or_else(|| bad("fill_rule is \"nonzero\" or \"evenodd\""))?,

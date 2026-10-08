@@ -197,6 +197,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             bg: 0,
             radius: F,
             opacity: 0.0,
+            rotate: 0.0,
+            scale: 0.0,
         }];
         let gradient_stops = [
             KuiGradientStop { color: C, at: -1.0 },
@@ -281,6 +283,8 @@ fn every_schema_prop_has_a_c_counterpart() {
                     bg: 0,
                     radius: F,
                     opacity: 0.0,
+                    rotate: 0.0,
+                    scale: 0.0,
                 }
             }
             "exit" => {
@@ -293,6 +297,8 @@ fn every_schema_prop_has_a_c_counterpart() {
                     bg: 0,
                     radius: F,
                     opacity: 0.0,
+                    rotate: 0.0,
+                    scale: 0.0,
                 }
             }
             "repeat" => s.repeat = 1,
@@ -321,6 +327,10 @@ fn every_schema_prop_has_a_c_counterpart() {
             "scrollAxes" => s.scroll_axes = KUI_SCROLL_AXES_X,
             "scrollMods" => s.scroll_mods = KUI_KMOD_CTRL,
             "backdropBlur" => s.backdrop_blur = F,
+            "rotate" => s.rotate = F,
+            "scale" => s.scale = F,
+            "pivotX" => (s.pivot_set, s.pivot_x) = (KUI_PIVOT_X, F),
+            "pivotY" => (s.pivot_set, s.pivot_y) = (KUI_PIVOT_Y, F),
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -391,6 +401,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
             bg: 0x11_22_33_ff,
             radius: 0.0,
             opacity: 0.0,
+            rotate: 0.0,
+            scale: 0.0,
         },
         KuiKeyframe {
             set: KUI_KF_AT | KUI_KF_WIDTH | KUI_KF_HEIGHT | KUI_KF_RADIUS,
@@ -400,6 +412,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
             bg: 0,
             radius: 9.0,
             opacity: 0.0,
+            rotate: 0.0,
+            scale: 0.0,
         },
     ];
     let modal_tag = KuiValue(Value::str("m"));
@@ -512,6 +526,11 @@ fn fully_populated_spec_matches_the_rust_builder() {
         gradient: std::ptr::null(),
         scroll_mods: KUI_KMOD_CTRL | KUI_KMOD_SUPER,
         backdrop_blur: 6.0,
+        rotate: 0.1,
+        scale: 1.2,
+        pivot_set: KUI_PIVOT_X | KUI_PIVOT_Y,
+        pivot_x: 0.25,
+        pivot_y: 0.75,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -610,6 +629,9 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .scroll_axes(kui_core::ScrollAxes::Y)
         .scroll_mods(kui_core::KeyMods::NONE.with_ctrl().with_super())
         .backdrop_blur(6.0)
+        .rotate(0.1)
+        .scale(1.2)
+        .pivot(0.25, 0.75)
         .modifier_keys()
         .initial_focus()
         .disabled(true)

@@ -651,6 +651,15 @@ fn inspector(
                     },
                     None,
                 ),
+                (
+                    "transform",
+                    if n.rotate != 0.0 || n.scale != 1.0 {
+                        format!("{:+.3} turn × {:.2}", n.rotate, n.scale)
+                    } else {
+                        "—".into()
+                    },
+                    None,
+                ),
             ],
         ),
         (

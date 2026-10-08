@@ -46,6 +46,14 @@ pub enum Content<'a> {
     ),
 }
 
+/// The transform slot's lanes a node declares: `[rotate, scale, 0, 0]`,
+/// the identity for a node that declares none (ADR 0043).
+#[inline]
+fn transform_lanes(spec: &NodeSpec) -> [f32; 4] {
+    let t = spec.interact().transform.unwrap_or_default();
+    crate::geom::Transform::lanes(t.rotate, t.scale)
+}
+
 /// A node's keyframes flattened per slot for `ease_spec`, built once per
 /// node per frame (only for nodes that declare keyframes).
 struct Tracks {
@@ -54,6 +62,7 @@ struct Tracks {
     bg: Option<Vec<(f32, [f32; 4])>>,
     radius: Option<Vec<(f32, [f32; 4])>>,
     opacity: Option<Vec<(f32, [f32; 4])>>,
+    transform: Option<Vec<(f32, [f32; 4])>>,
 }
 
 impl Tracks {
@@ -71,6 +80,12 @@ impl Tracks {
             bg: track(Slot::Bg, Some(spec.style.bg.lanes())),
             radius: track(Slot::Radius, Some(spec.style.radius)),
             opacity: track(Slot::Opacity, Some(one(spec.style.opacity))),
+            // A stop's lanes are filled from the node's own transform, so
+            // a stop naming only `rotate` keeps the scale (ADR 0043).
+            transform: {
+                let base = transform_lanes(spec);
+                keyframes::track(frames, &offsets, base, |k| k.transform_lanes(base))
+            },
         }
     }
 
@@ -81,6 +96,7 @@ impl Tracks {
             Slot::Bg => self.bg.as_deref(),
             Slot::Radius => self.radius.as_deref(),
             Slot::Opacity => self.opacity.as_deref(),
+            Slot::Transform => self.transform.as_deref(),
             // Keyframing a shadow would need stops for four more numbers
             // and a color; a shadow tweens with `transition` and no more.
             Slot::Border | Slot::Pos | Slot::Shadow | Slot::ShadowColor => None,
@@ -160,6 +176,24 @@ impl Core {
         spec.style.shadow.spread = geom[3];
         spec.style.opacity = ease(Slot::Opacity, one(spec.style.opacity))[0].clamp(0.0, 1.0);
         spec.style.radius = ease(Slot::Radius, spec.style.radius);
+        // The turn and the scale (ADR 0043), as one slot. Only a node that
+        // declares one, or whose entrance or stops name one, pays the
+        // branch; the eased lanes land on the spec's transform, allocated
+        // for an entrance or a cycle that turns a node declaring none.
+        let base = transform_lanes(spec);
+        let from = enter.transform_lanes(base);
+        let declared = spec.interact().transform.is_some();
+        if declared || from.is_some() || track(Slot::Transform).is_some() {
+            let v = match track(Slot::Transform) {
+                Some(track) => anim.sample(track, t).unwrap_or(base),
+                None => anim.drive(Slot::Transform, from, base, t, true),
+            };
+            if declared || v != base {
+                let tr = spec.transform_mut();
+                tr.rotate = v[0];
+                tr.scale = v[1];
+            }
+        }
     }
 
     /// The root node's key — for hover/press queries or `set_key_focus` when

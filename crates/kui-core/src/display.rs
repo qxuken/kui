@@ -46,7 +46,7 @@
 //! those the first time it meets them.
 
 use crate::color::Color;
-use crate::geom::{Rect, Size};
+use crate::geom::{Rect, Size, Transform};
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -221,6 +221,16 @@ pub const SQUARE: [f32; 4] = [0.0; 4];
 ///
 /// One rounded rect cannot name the intersection of two, so nesting is
 /// approximated by [`Clip::intersect`], which says what it gives up.
+///
+/// An entry is the *space* a quad is painted in, not only what cuts it
+/// (ADR 0043): `transform` is the similarity every quad naming it is drawn
+/// through — the identity on every entry of a frame with no `rotate` or
+/// `scale` — and `inner` is a second clip in the quad's own space, before
+/// the transform, from clipping nodes inside a turned subtree. `rect` and
+/// `radius` stay the clip in framebuffer space, from clipping nodes
+/// outside any turn. A backend that reads only `rect` and `radius` draws
+/// a turned subtree upright and cut by its outer clip, which is what every
+/// backend did before.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clip {
@@ -228,6 +238,17 @@ pub struct Clip {
     /// Clockwise from the top-left: `[tl, tr, br, bl]`. All zero = a plain
     /// rect clip.
     pub radius: [f32; 4],
+    /// The turn, scale and move every quad naming this entry is drawn
+    /// through: `pixel = R(angle) · scale · p + (tx, ty)` for `p` a point
+    /// of the quad's own rect. The identity when nothing turns.
+    pub transform: Transform,
+    /// The clip in the quad's own space, before `transform`: what a
+    /// clipping node inside a turned subtree cuts. [`NO_CLIP`] when
+    /// nothing inside the turn clips, and on every entry of a frame with
+    /// no turn.
+    pub inner: Rect,
+    /// `inner`'s corner radii, as `radius` is `rect`'s.
+    pub inner_radius: [f32; 4],
 }
 
 impl Clip {
@@ -235,14 +256,14 @@ impl Clip {
     pub const NONE: Clip = Clip {
         rect: NO_CLIP,
         radius: SQUARE,
+        transform: Transform::IDENTITY,
+        inner: NO_CLIP,
+        inner_radius: SQUARE,
     };
 
     /// A plain rect clip.
     pub fn rect(rect: Rect) -> Self {
-        Self {
-            rect,
-            radius: SQUARE,
-        }
+        Self { rect, ..Self::NONE }
     }
 
     /// Logical to physical pixels.
@@ -250,7 +271,69 @@ impl Clip {
         Clip {
             rect: self.rect.scaled(s),
             radius: self.radius.map(|r| r * s),
+            transform: self.transform.scaled(s),
+            inner: self.inner.scaled(s),
+            inner_radius: self.inner_radius.map(|r| r * s),
         }
+    }
+
+    /// Whether every quad naming this entry is drawn through a turn or a
+    /// scale.
+    #[inline]
+    pub fn turned(&self) -> bool {
+        !self.transform.is_identity()
+    }
+
+    /// This space, entered by a node that turns by `own` (about its
+    /// pivot, in this space's own coordinates): the transform composes,
+    /// the outer clip is untouched, and the inner clip is pulled back
+    /// into the new space as its bounding box there, its corners square
+    /// (ADR 0043, decision 4: a clip between two nested turns is
+    /// approximated).
+    pub fn turned_by(&self, own: Transform) -> Clip {
+        let inner = if self.inner == NO_CLIP {
+            NO_CLIP
+        } else {
+            own.unbounds(self.inner)
+        };
+        Clip {
+            rect: self.rect,
+            radius: self.radius,
+            transform: own.then(&self.transform),
+            inner,
+            inner_radius: SQUARE,
+        }
+    }
+
+    /// The rect, in the quad's own space, outside which nothing it draws
+    /// can show: `rect` itself when nothing turns, else the inner clip
+    /// narrowed by the outer one pulled back through the transform. What
+    /// a glyph cull and a visibility test read, since both compare
+    /// positions in the quad's space.
+    #[inline]
+    pub fn visible(&self) -> Rect {
+        if !self.turned() {
+            return self.rect;
+        }
+        let outer = if self.rect == NO_CLIP {
+            NO_CLIP
+        } else {
+            self.transform.unbounds(self.rect)
+        };
+        self.inner.intersect(&outer)
+    }
+
+    /// Where `rect`, a box in the quad's own space, shows on screen:
+    /// itself cut to the clip when nothing turns, else the bounding box
+    /// of its turned shape, cut to the outer clip. What the access tree
+    /// reports (ADR 0043, decision 7).
+    pub fn shown(&self, rect: Rect) -> Rect {
+        if !self.turned() {
+            return rect.intersect(&self.rect);
+        }
+        self.transform
+            .bounds(rect.intersect(&self.inner))
+            .intersect(&self.rect)
     }
 
     /// This clip narrowed by a clipping node's box and that node's radii.
@@ -267,19 +350,42 @@ impl Clip {
     /// into a rounded corner moves that corner, so its radius drops to zero
     /// and a sliver at the very corner goes unclipped. A second clipper
     /// offset from the first, both rounded, is the shape that does it.
+    ///
+    /// Under a turn the box is in the quad's own space, so it narrows the
+    /// inner clip and leaves the framebuffer one alone (ADR 0043).
     pub fn intersect(&self, box_rect: Rect, box_radius: [f32; 4]) -> Clip {
-        let rect = self.rect.intersect(&box_rect);
-        if self.radius == SQUARE && box_radius == SQUARE {
-            return Clip::rect(rect);
+        if self.turned() {
+            let (inner, inner_radius) = narrow(self.inner, self.inner_radius, box_rect, box_radius);
+            return Clip {
+                inner,
+                inner_radius,
+                ..*self
+            };
         }
-        let mut radius = SQUARE;
-        for (i, r) in radius.iter_mut().enumerate() {
-            let mine = surviving(rect, self.rect, self.radius[i], i);
-            let theirs = surviving(rect, box_rect, box_radius[i], i);
-            *r = mine.max(theirs);
+        let (rect, radius) = narrow(self.rect, self.radius, box_rect, box_radius);
+        Clip {
+            rect,
+            radius,
+            ..*self
         }
-        Clip { rect, radius }
     }
+}
+
+/// One rounded rect narrowed by another: the plain intersection, and per
+/// corner whichever of the two rounds it more while that corner is still
+/// its own (see [`Clip::intersect`]).
+fn narrow(rect: Rect, radius: [f32; 4], box_rect: Rect, box_radius: [f32; 4]) -> (Rect, [f32; 4]) {
+    let out = rect.intersect(&box_rect);
+    if radius == SQUARE && box_radius == SQUARE {
+        return (out, SQUARE);
+    }
+    let mut r = SQUARE;
+    for (i, c) in r.iter_mut().enumerate() {
+        let mine = surviving(out, rect, radius[i], i);
+        let theirs = surviving(out, box_rect, box_radius[i], i);
+        *c = mine.max(theirs);
+    }
+    (out, r)
 }
 
 /// `radius`, if corner `i` of `rect` is still corner `i` of `src`; else 0.

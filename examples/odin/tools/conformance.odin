@@ -552,6 +552,37 @@ scene_pixel_snap :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// conformance::build_transform (ADR 0043): a rounded, clipping card tilted an
+// eighth of a turn about its top-left corner, holding a child wider than
+// itself and a badge floating with it; beside it a box scaled half again.
+scene_transform :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	if kui.row(ui) {
+		card := kui.Spec {
+			key      = "card",
+			width    = kui.px(60),
+			height   = kui.px(40),
+			radius   = 8,
+			overflow = {.Clip},
+			bg       = 0x3b5bd4ff,
+			rotate   = 0.125,
+			pivot_x  = 0,
+			pivot_y  = 0,
+		}
+		if kui.box(ui, card) {
+			if kui.box(ui, {key = "wide", width = kui.px(90), height = kui.px(20), bg = 0xd9738cff}) {}
+			badge := kui.Spec {
+				key    = "badge",
+				float  = {mode = .Parent, dx = 54, dy = -6},
+				width  = kui.px(12),
+				height = kui.px(12),
+				bg     = 0xf6d55cff,
+			}
+			if kui.box(ui, badge) {}
+		}
+		if kui.box(ui, {key = "big", width = kui.px(40), height = kui.px(40), bg = 0x73d98cff, scale = 1.5}) {}
+	}
+}
+
 // conformance::build_clip_access (backlog F93): access rects cut to the clip.
 scene_clip_access :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	if kui.box(ui, {width = kui.GROW, height = kui.GROW}) {
@@ -1870,6 +1901,7 @@ SCENES := [?]Scene {
 	{"float", scene_float},
 	{"clip-float", scene_clip_float},
 	{"pixel-snap", scene_pixel_snap},
+	{"transform", scene_transform},
 	{"clip-access", scene_clip_access},
 	{"tooltip", scene_tooltip},
 	{"select", scene_select},
@@ -1965,7 +1997,7 @@ ACTION_NAMES := [?]string {
 // index - plus the uv of a segment or texture quad, then the eight words of
 // the clip that index names. Mirrors conformance::quad_digest.
 #assert(size_of(kui.Quad) == 24 * size_of(u32))
-#assert(size_of(kui.Clip) == 8 * size_of(u32))
+#assert(size_of(kui.Clip) == 20 * size_of(u32))
 
 digest_words :: proc(h: ^u64, words: []u32) {
 	for word in words {
@@ -1984,8 +2016,8 @@ quad_digest :: proc(quads: []kui.Quad, clips: []kui.Clip) -> u64 {
 		w := transmute([24]u32)q
 		digest_words(&h, w[:19])
 		if q.kind == .Segment || q.kind == .Texture do digest_words(&h, w[20:24])
-		cw: [8]u32
-		if int(q.clip) < len(clips) do cw = transmute([8]u32)clips[q.clip]
+		cw: [20]u32
+		if int(q.clip) < len(clips) do cw = transmute([20]u32)clips[q.clip]
 		digest_words(&h, cw[:])
 	}
 	return h

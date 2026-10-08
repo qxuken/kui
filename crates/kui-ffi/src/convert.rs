@@ -56,6 +56,12 @@ pub(crate) fn enter_of(e: &KuiEnter) -> Enter {
     if e.set & KUI_ENTER_OPACITY != 0 {
         en = en.opacity(e.opacity);
     }
+    if e.set & KUI_ENTER_ROTATE != 0 {
+        en = en.rotate(e.rotate);
+    }
+    if e.set & KUI_ENTER_SCALE != 0 {
+        en = en.scale(e.scale);
+    }
     en
 }
 
@@ -78,6 +84,12 @@ pub(crate) fn keyframe_of(k: &KuiKeyframe) -> Keyframe {
     }
     if k.set & KUI_KF_OPACITY != 0 {
         kf = kf.opacity(k.opacity);
+    }
+    if k.set & KUI_KF_ROTATE != 0 {
+        kf = kf.rotate(k.rotate);
+    }
+    if k.set & KUI_KF_SCALE != 0 {
+        kf = kf.scale(k.scale);
     }
     kf
 }
@@ -331,6 +343,20 @@ pub(crate) fn spec_of(
     }
     if s.backdrop_blur > 0.0 {
         spec = spec.backdrop_blur(s.backdrop_blur);
+    }
+    if s.rotate != 0.0 {
+        spec = spec.rotate(s.rotate);
+    }
+    if s.scale != 0.0 && s.scale != 1.0 {
+        spec = spec.scale(s.scale);
+    }
+    if s.pivot_set & KUI_PIVOT_X != 0 {
+        let fy = spec.interact().transform.map_or(0.5, |t| t.pivot.y);
+        spec = spec.pivot(s.pivot_x, fy);
+    }
+    if s.pivot_set & KUI_PIVOT_Y != 0 {
+        let fx = spec.interact().transform.map_or(0.5, |t| t.pivot.x);
+        spec = spec.pivot(fx, s.pivot_y);
     }
     if s.scroll_mods != 0 {
         spec = spec.scroll_mods(kui_core::KeyMods::from_bits(s.scroll_mods));

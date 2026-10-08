@@ -157,8 +157,8 @@ const TYPE_DOC = {
   tag: 'tag (a message merged into the event under `tag`, or `null` for none)',
   str: 'string',
   resource: 'resource handle',
-  keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius?, opacity? }, …]`)',
-  enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`)',
+  keyframes: 'keyframe list (`[{ at?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`)',
+  enter: 'entrance (`{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }`)',
   gradient: 'gradient (`{ to? \\| angle? \\| radial?, at?, stops: [color \\| [color, at], …] }`)',
 };
 

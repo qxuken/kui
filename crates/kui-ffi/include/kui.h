@@ -322,8 +322,19 @@ extern "C" {
  * spec, row and config had before. KuiSpan appends family, size and
  * font, a span's own face and size (with the KUI_SPAN_FAMILY flag) - an
  * array element again, so its stride moved, to 56.
+ *
+ * ABI 27 is a node's turn (docs/adr/0043-a-node-turns-about-its-pivot.md).
+ * KuiClip appends transform, inner and inner_radius - twenty words where
+ * it was eight, a [lib] array element, so a host that strides
+ * KuiDrawData.clips reads the new stride; a renderer that ignores the
+ * new words draws a turned subtree upright. KuiSpec appends rotate,
+ * scale, pivot_set, pivot_x and pivot_y (64-bit size 744). KuiKeyframe
+ * and KuiEnter append rotate and scale, with KUI_KF_ROTATE / KUI_KF_SCALE
+ * and KUI_ENTER_ROTATE / KUI_ENTER_SCALE - array elements, so their
+ * strides moved, to 44 and 48. Recompile; a zeroed tail is what every
+ * spec, stop and entrance had before.
  */
-#define KUI_ABI_VERSION 26u
+#define KUI_ABI_VERSION 27u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -629,6 +640,8 @@ enum {
     KUI_KF_BG = 1u << 3,
     KUI_KF_RADIUS = 1u << 4,
     KUI_KF_OPACITY = 1u << 5,
+    KUI_KF_ROTATE = 1u << 6, /* ABI 27 */
+    KUI_KF_SCALE = 1u << 7,  /* ABI 27 */
 };
 
 /* One CSS-style keyframe stop. A zeroed stop sets nothing: `set` says which
@@ -644,6 +657,8 @@ typedef struct KuiKeyframe {
     uint32_t bg; /* 0xRRGGBBAA */
     float radius;
     float opacity; /* group opacity 0..1 */
+    float rotate;  /* turns clockwise (KUI_KF_ROTATE), ADR 0043; ABI 27 */
+    float scale;   /* a uniform scale about the pivot (KUI_KF_SCALE); ABI 27 */
 } KuiKeyframe;
 
 /* A box's gradient (KuiSpec.gradient,
@@ -685,6 +700,8 @@ enum {
     KUI_ENTER_BG = 1u << 3,
     KUI_ENTER_RADIUS = 1u << 4,
     KUI_ENTER_OPACITY = 1u << 5,
+    KUI_ENTER_ROTATE = 1u << 6, /* ABI 27 */
+    KUI_ENTER_SCALE = 1u << 7,  /* ABI 27 */
 };
 
 /* Where a node starts the first frame it is seen (KuiSpec.enter): the slots
@@ -700,6 +717,9 @@ typedef struct KuiEnter {
     uint32_t bg; /* 0xRRGGBBAA */
     float radius;
     float opacity; /* group opacity 0..1; 0 fades the subtree in */
+    float rotate;  /* turns clockwise (KUI_ENTER_ROTATE), ADR 0043; ABI 27 */
+    float scale;   /* a uniform scale (KUI_ENTER_SCALE): 0 grows the
+                      subtree in from nothing; ABI 27 */
 } KuiEnter;
 
 /* [in] Zero-initialized KuiSpec is a fit-sized transparent column. Colors
@@ -1186,7 +1206,30 @@ typedef struct KuiSpec {
      * its opacity. The display list carries it as a KUI_QUAD_BACKDROP.
      * 0 (the zeroed spec): none. ABI 26. */
     float backdrop_blur;
+    /* A turn of the node and everything under it, in turns clockwise
+     * (0.25 is a quarter turn right), about its pivot, after layout
+     * (rotate, docs/adr/0043-a-node-turns-about-its-pivot.md). Paint-only:
+     * the node takes the room its upright self takes, and what it draws,
+     * clips and hits turns. Tweens with transition_ms, as one slot with
+     * scale. 0 (the zeroed spec): none. ABI 27. */
+    float rotate;
+    /* A uniform scale about the pivot (scale). 0, the zeroed spec, is 1:
+     * a scale of nothing is opacity's job. ABI 27. */
+    float scale;
+    /* With KUI_PIVOT_X / KUI_PIVOT_Y in pivot_set, pivot_x / pivot_y are
+     * where the turn and the scale are about, as fractions of the box
+     * (pivotX / pivotY): 0 the left or top edge, 0.5 the middle, 1 the
+     * right or bottom edge. An axis not set keeps the centre, so a pivot
+     * at the top-left corner stays expressible. ABI 27. */
+    uint32_t pivot_set;
+    float pivot_x, pivot_y;
 } KuiSpec;
+
+/* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
+enum {
+    KUI_PIVOT_X = 1u << 0,
+    KUI_PIVOT_Y = 1u << 1,
+};
 
 /* Size expressions, built from parts so nothing is parsed:
  *
@@ -1873,6 +1916,24 @@ typedef struct KuiClip {
      * rounded clipper - is the plain rect clip, so a renderer that ignores
      * this field is correct until an app rounds one. */
     float radius[4];
+    /* The turn every quad naming this entry is drawn through (ADR 0043):
+     * angle in radians (clockwise, y down), scale, tx, ty - a pixel of
+     * the quad's own rect at p lands at R(angle) * scale * p + (tx, ty).
+     * {0, 1, 0, 0}, the identity, on every entry of a frame that turns
+     * nothing, so a renderer that ignores it draws a turned subtree
+     * upright and is otherwise correct. Turn the four corners, keep
+     * everything the fragment stage reads in the quad's own space; the
+     * shader in crates/kui-wgpu/src/shader.wgsl is the reference. ABI
+     * 27. */
+    float transform[4];
+    /* A second clip in the quad's own space, before the turn: x, y, w, h
+     * (physical px), from clipping nodes inside a turned subtree - test
+     * it against the pixel's position before the turn. A rect past any
+     * pixel when nothing inside a turn clips, and on every entry of a
+     * frame with no turn. ABI 27. */
+    float inner[4];
+    /* inner's corner radii, as radius is rect's. */
+    float inner_radius[4];
 } KuiClip;
 
 /* Where a KuiFragmentDraw's `image` is: none, the atlas, or a

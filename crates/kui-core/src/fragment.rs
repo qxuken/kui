@@ -246,6 +246,9 @@ fn kui_fs_fragment(
     @location(6) clip: vec4<f32>,
     @location(7) radii: vec4<f32>,
     @location(8) clip_radii: vec4<f32>,
+    @location(10) pre: vec2<f32>,
+    @location(11) inner: vec4<f32>,
+    @location(12) inner_radii: vec4<f32>,
 ) -> @location(0) vec4<f32> {
     var kui_in: FragmentIn;
     kui_in.local = local;
@@ -284,6 +287,18 @@ fn kui_fs_fragment(
         let kui_ch = clip.zw * 0.5;
         let kui_cd = kui_sd_rounded_box(kui_p - (clip.xy + kui_ch), kui_ch, clip_radii);
         kui_inside = 1.0 - smoothstep(-KUI_AA, KUI_AA, kui_cd);
+    }
+    // And the clip from inside a turned subtree, in the quad's own space
+    // (ADR 0043): against the position before the turn.
+    if all(inner_radii <= vec4<f32>(0.0)) {
+        kui_inside *= f32(
+            pre.x >= inner.x && pre.y >= inner.y
+            && pre.x <= inner.x + inner.z && pre.y <= inner.y + inner.w
+        );
+    } else {
+        let kui_ih = inner.zw * 0.5;
+        let kui_id = kui_sd_rounded_box(pre - (inner.xy + kui_ih), kui_ih, inner_radii);
+        kui_inside *= 1.0 - smoothstep(-KUI_AA, KUI_AA, kui_id);
     }
 
     // `color.a` is the group opacity the subtree inherited, times the fill

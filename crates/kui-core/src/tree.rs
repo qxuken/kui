@@ -195,6 +195,9 @@ pub struct Tree {
     /// Whether any node declares a `backdrop_blur` (backlog F129):
     /// emission looks for one only on a frame that has one.
     pub any_backdrop_blur: bool,
+    /// Whether any node turns or scales (ADR 0043): the per-node clip
+    /// space is tracked only on a frame that has one.
+    pub any_transform: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
     /// Whether any node is a `role="line"` row — what a pointer payload
@@ -342,6 +345,7 @@ impl Tree {
         self.any_table = false;
         self.any_gradient = false;
         self.any_backdrop_blur = false;
+        self.any_transform = false;
         self.any_text = false;
         self.any_line = false;
         self.any_selectable = false;
@@ -407,6 +411,7 @@ impl Tree {
             self.any_selectable |= i.selectable;
             self.any_region |= i.focus_region;
             self.any_backdrop_blur |= i.backdrop_blur > 0.0;
+            self.any_transform |= i.transform.is_some_and(|t| t.active());
         }
         if let Some(a) = spec.access.as_deref() {
             self.any_line |= a.role == Some(crate::access::Role::Line);

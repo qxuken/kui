@@ -222,6 +222,10 @@ pub(crate) struct Playback {
     /// Multiplied into the root's own opacity.
     pub opacity: f32,
     pub base_opacity: f32,
+    /// The root's turn and scale, eased toward the exit's when it names
+    /// either; `None` for a root that declares none and an exit that
+    /// names none (ADR 0043).
+    pub transform: Option<(f32, f32)>,
 }
 
 impl Ghost {
@@ -253,6 +257,18 @@ impl Ghost {
                 None => root.style.opacity,
             },
             base_opacity: self.base_opacity,
+            transform: {
+                let own = root.interact().transform;
+                if own.is_none() && e.rotate.is_none() && e.scale.is_none() {
+                    None
+                } else {
+                    let own = own.unwrap_or_default();
+                    Some((
+                        e.rotate.map_or(own.rotate, |to| lerp(own.rotate, to)),
+                        e.scale.map_or(own.scale, |to| lerp(own.scale, to)),
+                    ))
+                }
+            },
         })
     }
 }

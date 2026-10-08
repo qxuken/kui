@@ -111,6 +111,14 @@ struct Instance {
     radii: [f32; 4],
     /// Radii of the clip itself; all zero = a plain rect clip.
     clip_radii: [f32; 4],
+    /// The turn the quad is drawn through (ADR 0043): angle in radians,
+    /// scale, tx, ty — the clip entry's `transform`. The identity on
+    /// every quad of a frame with no `rotate` or `scale`.
+    xform: [f32; 4],
+    /// The clip in the quad's own space, before the turn: x, y, w, h.
+    inner: [f32; 4],
+    /// Its radii, as `clip_radii` are the outer clip's.
+    inner_radii: [f32; 4],
 }
 
 /// The frame's own numbers, at group 0 binding 0 for both pipelines.
@@ -190,6 +198,9 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
             clip: [0.0; 4],
             radii: [0.0; 4],
             clip_radii: [0.0; 4],
+            xform: [0.0, 1.0, 0.0, 0.0],
+            inner: [0.0; 4],
+            inner_radii: [0.0; 4],
         };
     }
     Instance {
@@ -207,6 +218,14 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
         clip: [clip.rect.x, clip.rect.y, clip.rect.w, clip.rect.h],
         radii: q.radius,
         clip_radii: clip.radius,
+        xform: [
+            clip.transform.angle,
+            clip.transform.scale,
+            clip.transform.tx,
+            clip.transform.ty,
+        ],
+        inner: [clip.inner.x, clip.inner.y, clip.inner.w, clip.inner.h],
+        inner_radii: clip.inner_radius,
     }
 }
 
@@ -709,10 +728,11 @@ struct FragmentLayouts {
 
 /// The instance attributes both pipelines read; one array so the vertex
 /// layout cannot differ between them.
-const INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
+const INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
     0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
     3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
     6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
+    9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
 ];
 
 fn instance_buffer_layout(attrs: &[wgpu::VertexAttribute]) -> wgpu::VertexBufferLayout<'_> {

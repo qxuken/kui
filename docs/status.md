@@ -30,7 +30,11 @@ tween is free and a shape that changes every frame pays a raster each,
 from a texture of its own; one that only turns does not, since `rotate`
 turns the quad and not the mask
 ([ADR 0041](adr/0041-a-mask-turns-about-its-centre.md)), though a
-`rotate` does not tween. A `polygon` of at most eight points
+path's own `rotate` does not tween. Any node turns and scales about a
+pivot ([ADR 0043](adr/0043-a-node-turns-about-its-pivot.md)): `rotate`,
+`scale`, `pivotX` / `pivotY`, paint-only, everything under the node
+drawn, clipped, hit and read through the turn, and the turn a slot that
+tweens, enters, exits and keyframes. A `polygon` of at most eight points
 ([ADR 0025](adr/0025-the-image-is-the-canvas.md)) is the fill that costs
 nothing per frame however it moves: concave is fine, more vertices is two
 polygons, and two sharing an edge show a hairline. All three take input **by shape**

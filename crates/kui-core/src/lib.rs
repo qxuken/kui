@@ -182,7 +182,7 @@ pub use event::{
     TextInput,
 };
 pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
-pub use geom::{Edges, Rect, Size, Vec2};
+pub use geom::{Edges, Rect, Size, Transform, Vec2};
 pub use gradient::{Gradient, Side, Stop as GradientStop};
 pub use input::ScrollAxis;
 pub use input::{
@@ -220,8 +220,8 @@ pub use slot::{
 pub use spec::{
     Align, Bound, Dir, FLOAT_PRESETS, FloatAnchor, FloatConfig, FontFamily, FontFeatures, Min,
     NodeSpec, OVERFLOW_CLIP, OVERFLOW_SCROLL_X, OVERFLOW_SCROLL_Y, Overscroll, PadShorthand,
-    ScrollAxes, Scrollbar, ScrollbarMode, Shadow, Sizing, TextStyle, TextWrap, UnderlineStyle,
-    Vec2Offset, corner,
+    ScrollAxes, Scrollbar, ScrollbarMode, Shadow, Sizing, TextStyle, TextWrap, TransformSpec,
+    UnderlineStyle, Vec2Offset, corner,
 };
 pub use stats::{FrameSample, FrameStats};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};

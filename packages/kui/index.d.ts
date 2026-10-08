@@ -1381,6 +1381,10 @@ export interface NodeInfo {
   opacity: number;
   /** Its `backdropBlur` radius in px, 0 for none (backlog F129). */
   backdropBlur: number;
+  /** Its turn in turns and its scale as drawn this frame, eased (ADR
+   *  0043): 0 and 1 for a node that declares none. */
+  rotate: number;
+  scale: number;
   /** A scroller's offset; `null` for a node that does not scroll. */
   scroll: { x: number; y: number } | null;
   /** Every handler it declared with the payload it would post: `click`,

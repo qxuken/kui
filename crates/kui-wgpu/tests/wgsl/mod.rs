@@ -81,6 +81,34 @@ pub fn inside(clip: &kui_core::Clip, x: f32, y: f32) -> f32 {
     1.0 - smoothstep(-AA, AA, d)
 }
 
+/// `vs_main`'s turn (ADR 0043): where a point of a quad's own rect lands
+/// on screen, through its clip entry's transform — `R(angle) · scale · p
+/// + t`, y down. The identity on a frame that turns nothing.
+pub fn turned(clip: &kui_core::Clip, x: f32, y: f32) -> (f32, f32) {
+    let t = clip.transform;
+    let (s, c) = t.angle.sin_cos();
+    let (sx, sy) = (x * t.scale, y * t.scale);
+    (sx * c - sy * s + t.tx, sx * s + sy * c + t.ty)
+}
+
+/// `shade`'s second `inside` factor — how much of the fragment whose
+/// pre-turn position is (`x`, `y`) the inner clip lets through — the
+/// rect test while the radii are zero, the rounded SDF otherwise.
+pub fn inside_inner(clip: &kui_core::Clip, x: f32, y: f32) -> f32 {
+    let r = clip.inner;
+    if clip.inner_radius.iter().all(|v| *v <= 0.0) {
+        let ok = x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h;
+        return f32::from(ok);
+    }
+    let half = [r.w * 0.5, r.h * 0.5];
+    let d = sd_rounded_box(
+        [x - (r.x + half[0]), y - (r.y + half[1])],
+        half,
+        clip.inner_radius,
+    );
+    1.0 - smoothstep(-AA, AA, d)
+}
+
 /// `kui_core::fragment::JOIN`'s shape (backlog F101), line for line: the
 /// alpha of the piece at the pixel centred on `local` (physical px from
 /// the quad's top-left) of a quad `size` tall, from its sixteen params,

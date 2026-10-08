@@ -175,6 +175,10 @@ pub const P_GRADIENT: u32 = 123;
 pub const P_SCROLL_MODS: u32 = 124;
 pub const P_IME_OFF: u32 = 125;
 pub const P_BACKDROP_BLUR: u32 = 126;
+pub const P_ROTATE: u32 = 127;
+pub const P_SCALE: u32 = 128;
+pub const P_PIVOT_X: u32 = 129;
+pub const P_PIVOT_Y: u32 = 130;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -869,6 +873,40 @@ pub const PROPS: &[PropDef] = &[
         doc: "Blur what was drawn beneath the node, inside its rounded box, by this radius in logical px — CSS's `backdrop-filter: blur()`, the radius its standard deviation (backlog F129). What blurs is everything painted before the node: its ancestors' backgrounds, the siblings under it, content scrolling beneath it, the window's `backdrop` where the window has one. The node's own `bg`, border and children paint over the blur, so a translucent `bg` (`#ffffff40`) makes frosted glass and an opaque one hides it. Clipped as the node is, faded by its `opacity`; 0 is none. The GPU renderer reads back only the box (and a margin of three radii around it) and blurs it at reduced resolution, so it costs a copy and three small passes per blurred node on a frame that has one and nothing on a frame that does not. A renderer that cannot read back what it drew — a host's own, or anything older — leaves the node over an unblurred backdrop; the display list carries it as a `backdrop` quad (`KUI_QUAD_BACKDROP` in C) either way.",
     },
     PropDef {
+        name: "rotate",
+        id: P_ROTATE,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.rotate(v)),
+        doc: "Turns this node and everything under it, in turns clockwise (0.25 is a quarter turn right), about its pivot — the centre unless `pivotX` / `pivotY` say — after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`). Paint-only: the node takes the room its upright self takes, nothing around it moves, `onLayout` reports the layout rect. Everything the subtree draws turns with it — backgrounds, borders, shadows, text, images, strokes, fragments — and so does what it clips: a child cut by a turned card's rounded corners stays inside them. Hit where drawn: a tilted card is grabbed on its tilted edge and a press in its box past its edge falls through; drag payloads stay in viewport px. The access rect is the bounding box. Nests by composition. Tweens with `transition` as one slot with `scale`, and an entrance, an exit or a keyframe stop may name it (`enter: { rotate: -0.02 }`, `keyframes: [{ rotate: 0 }, { rotate: 1 }]` spins a box). A float anchored to the parent turns with it; a viewport float does not. On a `path` this is the path's own turn (ADR 0041), which does not tween — wrap it in a box for one that does. Text under a turn leaves the pixel grid, as a turned mask does. `backdropBlur` under a turn blurs the upright box.",
+    },
+    PropDef {
+        name: "scale",
+        id: P_SCALE,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| s.scale(v)),
+        doc: "Scales this node and everything under it by this factor, uniformly, about its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`); 1 is none, 0 draws nothing. Paint-only, as `rotate` is: layout, the room taken and `onLayout` are the upright node's; what it draws, clips and hits scales. Tweens with `transition` as one slot with `rotate`; `enter: { scale: 0.8 }` settles a chip in, `keyframes: [{ scale: 1.05, at: 0.5 }]` pulses. The edge ramps scale with the box, so a box scaled far up reads soft. In C, 0 is unset (1).",
+    },
+    PropDef {
+        name: "pivotX",
+        id: P_PIVOT_X,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| {
+            let fy = s.interact().transform.map_or(0.5, |t| t.pivot.y);
+            s.pivot(v, fy)
+        }),
+        doc: "Where across the box `rotate` and `scale` are about, as a fraction of its width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge; outside 0..1 is a point past the box. C: `pivot_x` with `pivot_set`.",
+    },
+    PropDef {
+        name: "pivotY",
+        id: P_PIVOT_Y,
+        kind: Kind::F32,
+        apply: Apply::SpecF32(|s, v| {
+            let fx = s.interact().transform.map_or(0.5, |t| t.pivot.x);
+            s.pivot(fx, v)
+        }),
+        doc: "Where down the box `rotate` and `scale` are about, as a fraction of its height: 0 the top, 0.5 (the default) the middle, 1 the bottom. C: `pivot_y` with `pivot_set`.",
+    },
+    PropDef {
         name: "rules",
         id: P_RULES,
         kind: Kind::Color,
@@ -1082,21 +1120,21 @@ pub const PROPS: &[PropDef] = &[
         id: P_KEYFRAMES,
         kind: Kind::Keyframes,
         apply: Apply::SpecKeyframes(|s, k| s.keyframes(k)),
-        doc: "CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted.",
+        doc: "CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted.",
     },
     PropDef {
         name: "enter",
         id: P_ENTER,
         kind: Kind::Enter,
         apply: Apply::SpecEnter(|s, e| s.enter(e)),
-        doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in).",
+        doc: "Where the node starts the first frame it is seen `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }`: those slots ease in from there over `transition` ms instead of snapping (`dx`/`dy` slide it in from that far away, `opacity: 0` fades the whole subtree in, `scale: 0.8` settles it in).",
     },
     PropDef {
         name: "exit",
         id: P_EXIT,
         kind: Kind::Enter,
         apply: Apply::SpecEnter(|s, e| s.exit(e)),
-        doc: "Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity? }` — an `enter` read the other way. It plays when the node itself is removed, its parent still declared; a node that goes because an ancestor went — a tab switched away, a panel closed around it — goes at once with it, unless that ancestor has an `exit` of its own, whose picture carries it (backlog DX19; React's `AnimatePresence` rule). With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, in its place (the pass it painted in, just under the node that painted after it — a panel under a HUD leaves under it) and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. Needs a stable key across frames.",
+        doc: "Where the node ends the frame after the view stops declaring it `{ dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }` — an `enter` read the other way. It plays when the node itself is removed, its parent still declared; a node that goes because an ancestor went — a tab switched away, a panel closed around it — goes at once with it, unless that ancestor has an `exit` of its own, whose picture carries it (backlog DX19; React's `AnimatePresence` rule). With a `transition`, the departing subtree is copied out of the last frame that had it and replayed frozen, in its place (the pass it painted in, just under the node that painted after it — a panel under a HUD leaves under it) and inert (no clicks, no Tab stop, no access row) while those slots ease from where they were, then dropped; without one it vanishes at once as it always did. `width`/`height` resize the departing node's own box only — the subtree inside it is a picture and is not laid out again. Needs a stable key across frames.",
     },
     PropDef {
         name: "repeat",
@@ -1580,6 +1618,9 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("enter", "`enter` (`KuiEnter`, with `set` bits)"),
     ("exit", "`exit` (`KuiEnter`, with `set` bits)"),
     ("opacity", "`opacity` with `opacity_set`"),
+    ("scale", "`scale` (0 is 1)"),
+    ("pivotX", "`pivot_x` with `pivot_set`"),
+    ("pivotY", "`pivot_y` with `pivot_set`"),
     ("radiusTL", "`radius_tl` with `per_corner`"),
     ("radiusTR", "`radius_tr` with `per_corner`"),
     ("radiusBR", "`radius_br` with `per_corner`"),

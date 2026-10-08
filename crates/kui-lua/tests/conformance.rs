@@ -270,6 +270,20 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
             }
         "#
         .to_string(),
+        // ADR 0043: a rounded, clipping card tilted an eighth of a turn
+        // about its top-left corner, holding a child wider than itself and
+        // a badge floating with it; beside it a box scaled half again.
+        "transform" => r#"
+            return row {
+              column { key = "card", width = 60, height = 40, radius = 8, clip = true,
+                       bg = 0x3b5bd4ff, rotate = 0.125, pivot_x = 0, pivot_y = 0,
+                       column { key = "wide", width = 90, height = 20, bg = 0xd9738cff },
+                       column { key = "badge", width = 12, height = 12, bg = 0xf6d55cff,
+                                float = { anchor = "parent", dx = 54, dy = -6 } } },
+              column { key = "big", width = 40, height = 40, bg = 0x73d98cff, scale = 1.5 },
+            }
+        "#
+        .to_string(),
         // Backlog F93: access rects cut to the clip — three nodes on a
         // `clip` canvas past its top, three rows in a short scroller.
         "clip-access" => r#"

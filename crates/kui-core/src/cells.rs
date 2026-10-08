@@ -511,11 +511,13 @@ impl CellStore {
             clip: clip_id,
             uv,
         };
-        // Only the rows and columns the clip can show.
-        let r0 = (((clip.rect.y - oy) / ch).floor().max(0.0)) as usize;
-        let r1 = (((clip.rect.y + clip.rect.h - oy) / ch).ceil().max(0.0) as usize).min(entry.rows);
-        let c0 = (((clip.rect.x - ox) / cw).floor().max(0.0)) as usize;
-        let c1 = (((clip.rect.x + clip.rect.w - ox) / cw).ceil().max(0.0) as usize).min(entry.cols);
+        // Only the rows and columns the clip can show, in the grid's
+        // own space (ADR 0043).
+        let vis = clip.visible();
+        let r0 = (((vis.y - oy) / ch).floor().max(0.0)) as usize;
+        let r1 = (((vis.y + vis.h - oy) / ch).ceil().max(0.0) as usize).min(entry.rows);
+        let c0 = (((vis.x - ox) / cw).floor().max(0.0)) as usize;
+        let c1 = (((vis.x + vis.w - ox) / cw).ceil().max(0.0) as usize).min(entry.cols);
         if r0 >= r1 || c0 >= c1 {
             return;
         }

@@ -109,6 +109,11 @@ pub struct NodeInfo {
     /// Its `backdrop_blur` radius in logical px, 0 for none (backlog
     /// F129).
     pub backdrop_blur: f32,
+    /// Its turn in turns and its scale (ADR 0043): `0.0` and `1.0` for a
+    /// node that declares none — what it is drawn through this frame,
+    /// eased.
+    pub rotate: f32,
+    pub scale: f32,
     /// A scroller's offset, `None` for a node that does not scroll.
     pub scroll: Option<Vec2>,
     /// Every handler it declared, with the payload it would post:
@@ -170,6 +175,8 @@ impl NodeInfo {
             ),
             ("opacity", Value::float(self.opacity)),
             ("backdrop_blur", Value::float(self.backdrop_blur)),
+            ("rotate", Value::float(self.rotate)),
+            ("scale", Value::float(self.scale)),
             ("scroll", Value::opt(self.scroll, Vec2::to_value)),
             (
                 "events",
@@ -376,6 +383,8 @@ impl Core {
                 border_color: spec.style.border_color,
                 opacity: spec.style.opacity,
                 backdrop_blur: spec.interact().backdrop_blur,
+                rotate: spec.interact().transform.map_or(0.0, |t| t.rotate),
+                scale: spec.interact().transform.map_or(1.0, |t| t.scale),
                 scroll: (l.scroll_x || l.scroll_y).then(|| self.scroll.drawn(tree.keys[i])),
                 events,
                 key: tree.keys[i],

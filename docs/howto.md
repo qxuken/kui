@@ -37,6 +37,27 @@ because the removal is judged whole rather than half-animated, and the
 [ADR 0012](adr/0012-the-exit-budget.md) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I tilt a card as it is dragged?
+
+`rotate` on the card, in turns clockwise (`0.03` is a tilt, `0.25` a
+quarter turn), read from the drag's `dx` in `on_event`; `scale` and
+`pivotX` / `pivotY` (fractions of the box, the centre by default) sit
+beside it. The turn is paint-only — the card keeps the room its upright
+self takes — and everything under it turns with it: the photo it clips
+inside its rounded corners, a badge floating on its corner, its text,
+and its hit region, so it is grabbed on its tilted edge. Leave the
+`transition` off while the pointer holds the card, so the tilt follows
+at once, and put it back on release: the turn is a slot like `bg` or
+`width`, so the spring brings it home. `enter: { scale: 0.8 }` settles
+a chip in, `exit: { rotate: 0.1, scale: 0 }` spins one away, and a
+spinner is a box with `keyframes: [{ rotate: 0 }, { rotate: 1 }]`. A
+`path`'s own `rotate` is ADR 0041's and does not tween; put the path in
+a box for one that does.
+
+[`rotate` row](props.md#container-props) ·
+[ADR 0043](adr/0043-a-node-turns-about-its-pivot.md) ·
+[`transform` example](../examples/rust/features/transform.rs)
+
 ### How do I draw a connector between two boxes?
 
 `<line from={[x, y]} to={[x, y]} width color/>` is one round-capped stroke,

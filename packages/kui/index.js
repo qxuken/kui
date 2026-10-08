@@ -1412,6 +1412,14 @@ export function decodeClips(buffer) {
       // Corner radii clockwise from the top-left: a clipping node with a
       // radius rounds what it clips. All zero = a plain rect clip.
       radii: [f[4], f[5], f[6], f[7]],
+      // The turn every quad naming this entry is drawn through (ADR
+      // 0043): angle in radians, scale, tx, ty — `[0, 1, 0, 0]`, the
+      // identity, on a frame that turns nothing.
+      transform: [f[8], f[9], f[10], f[11]],
+      // A second clip in the quad's own space, before the turn, and its
+      // radii: from clipping nodes inside a turned subtree.
+      inner: [f[12], f[13], f[14], f[15]],
+      innerRadii: [f[16], f[17], f[18], f[19]],
     });
   }
   return clips;

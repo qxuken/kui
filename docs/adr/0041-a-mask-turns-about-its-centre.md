@@ -143,7 +143,9 @@ date: 2026-10-05
   framebuffer space, a scroller inside a turned box scrolls along a
   tilted axis, hit-testing inverts a matrix per ancestor, and the access
   tree's rects become bounding boxes. Not built here, and this does not
-  rule it out: a path's own `rotate` would compose under it.
+  rule it out: a path's own `rotate` would compose under it. *Built as
+  [ADR 0043](0043-a-node-turns-about-its-pivot.md) on 2026-10-08, with
+  the path's turn composing under the node's as said.*
 - **A stock arc fragment** (an SDF sector, angles in its params, as
   `polygon` is a stock fragment). A turn is then two floats a frame and
   no raster, exact at any angle. ADR 0040 declined a `sector` element

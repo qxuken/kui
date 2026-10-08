@@ -525,6 +525,12 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_ENTER_BG,
             KUI_ENTER_RADIUS,
             KUI_ENTER_OPACITY,
+            KUI_KF_ROTATE,
+            KUI_KF_SCALE,
+            KUI_ENTER_ROTATE,
+            KUI_ENTER_SCALE,
+            KUI_PIVOT_X,
+            KUI_PIVOT_Y,
             KUI_OP_LIFT,
             KUI_OP_DARKEN,
             KUI_OP_RAISE,
@@ -656,6 +662,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         bg: u32 => "uint32_t",
         radius: f32 => "float",
         opacity: f32 => "float",
+        rotate: f32 => "float",
+        scale: f32 => "float",
     });
 
     abi_struct!(o, KuiGradientStop {
@@ -681,6 +689,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         bg: u32 => "uint32_t",
         radius: f32 => "float",
         opacity: f32 => "float",
+        rotate: f32 => "float",
+        scale: f32 => "float",
     });
 
     abi_struct!(o, KuiSpec {
@@ -801,6 +811,11 @@ fn asserts() -> (String, Vec<&'static str>) {
         gradient: *const KuiGradient => "const KuiGradient *",
         scroll_mods: u32 => "uint32_t",
         backdrop_blur: f32 => "float",
+        rotate: f32 => "float",
+        scale: f32 => "float",
+        pivot_set: u32 => "uint32_t",
+        pivot_x: f32 => "float",
+        pivot_y: f32 => "float",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1114,6 +1129,9 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_struct!(o, KuiClip {
         rect: [f32; 4] => "float *",
         radius: [f32; 4] => "float *",
+        transform: [f32; 4] => "float *",
+        inner: [f32; 4] => "float *",
+        inner_radius: [f32; 4] => "float *",
     });
 
     abi_struct!(o, KuiDrawData {
@@ -1484,13 +1502,16 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `*_size` clamps. ABI 23:
         // `bounce`. ABI 24: `gradient`. ABI 25: `scroll_mods`. ABI 26:
         // `backdrop_blur` (backlog F129), into what was the tail padding,
-        // so the 64-bit size stayed at 704 while the layout moved.
-        ("KuiSpec", 704, 26),
+        // so the 64-bit size stayed at 704 while the layout moved. ABI
+        // 27: `rotate`, `scale`, `pivot_set`, `pivot_x` and `pivot_y`
+        // (ADR 0043).
+        ("KuiSpec", 744, 27),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),
-        ("KuiKeyframe", 36, 16),
-        ("KuiEnter", 40, 16),
+        // ABI 27: `rotate` and `scale` on both (ADR 0043).
+        ("KuiKeyframe", 44, 27),
+        ("KuiEnter", 48, 27),
         ("KuiTextStyle", 72, 17),
         // ABI 20: `bg_radius` appended into what was the tail padding, so
         // the 64-bit size stayed at 40 while the layout moved.

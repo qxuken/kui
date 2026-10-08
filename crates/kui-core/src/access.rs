@@ -1013,13 +1013,22 @@ fn clipped(rect: Rect, clip: Rect) -> Rect {
 /// to the clip it was emitted under.
 fn node_rect(tree: &Tree, src: &Sources<'_>, i: usize) -> Rect {
     if i == 0 {
-        Rect::new(0.0, 0.0, src.viewport.w, src.viewport.h)
-    } else {
-        clipped(
-            Rect::from_pos_size(tree.pos[i], tree.size[i]),
-            clip_of(src, i),
-        )
+        return Rect::new(0.0, 0.0, src.viewport.w, src.viewport.h);
     }
+    let rect = Rect::from_pos_size(tree.pos[i], tree.size[i]);
+    // Under a turn the rect assistive technology gets is the bounding
+    // box of the turned box, cut inside the turn first and outside it
+    // after (ADR 0043, decision 7).
+    if let Some(c) = src.clips.get(i)
+        && c.turned()
+    {
+        let inner = clipped(rect, c.inner);
+        if inner.w <= 0.0 && inner.h <= 0.0 {
+            return inner;
+        }
+        return clipped(c.transform.bounds(inner), c.rect);
+    }
+    clipped(rect, clip_of(src, i))
 }
 
 /// What an editor's runs are cut to: the node's clip and, for a field

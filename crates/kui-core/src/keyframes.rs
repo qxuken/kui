@@ -39,8 +39,8 @@ use crate::value::Value;
 pub struct Keyframe {
     /// Position in the cycle, 0..=1; None spreads evenly.
     pub at: Option<f32>,
-    /// Width, height, bg, radius and opacity — the slots an entrance names
-    /// too.
+    /// Width, height, bg, radius, opacity, rotate and scale — the slots an
+    /// entrance names too.
     pub slots: Slots,
 }
 
@@ -54,7 +54,7 @@ impl Keyframe {
 }
 
 /// Stops from plain data: a list of maps with any of `at`, `width`,
-/// `height`, `bg`, `radius`, `opacity`, in the forms the props themselves take
+/// `height`, `bg`, `radius`, `opacity`, `rotate`, `scale`, in the forms the props themselves take
 /// (sizings as a number, `"grow"`, `"50%"`, `{grow}` / `{percent}`;
 /// colors as `0xRRGGBBAA` or `"#hex"`). Every binding funnels its
 /// keyframes through here, so the shape is the same in JSX, Lua and C.

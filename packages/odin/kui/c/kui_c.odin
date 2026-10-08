@@ -194,6 +194,8 @@ KF_HEIGHT :: 4
 KF_BG :: 8
 KF_RADIUS :: 16
 KF_OPACITY :: 32
+KF_ROTATE :: 64
+KF_SCALE :: 128
 
 GRADIENT_LINEAR :: 0
 GRADIENT_RADIAL :: 1
@@ -204,6 +206,11 @@ ENTER_HEIGHT :: 4
 ENTER_BG :: 8
 ENTER_RADIUS :: 16
 ENTER_OPACITY :: 32
+ENTER_ROTATE :: 64
+ENTER_SCALE :: 128
+
+PIVOT_X :: 1
+PIVOT_Y :: 2
 
 SCROLLBAR_VISIBLE :: 1
 SCROLLBAR_HIDDEN :: 2
@@ -478,6 +485,8 @@ Keyframe :: struct {
 	bg: u32,
 	radius: f32,
 	opacity: f32,
+	rotate: f32,
+	scale: f32,
 }
 
 GradientStop :: struct {
@@ -503,6 +512,8 @@ Enter :: struct {
 	bg: u32,
 	radius: f32,
 	opacity: f32,
+	rotate: f32,
+	scale: f32,
 }
 
 Spec :: struct {
@@ -623,6 +634,11 @@ Spec :: struct {
 	gradient: ^Gradient,
 	scroll_mods: u32,
 	backdrop_blur: f32,
+	rotate: f32,
+	scale: f32,
+	pivot_set: u32,
+	pivot_x: f32,
+	pivot_y: f32,
 }
 
 Announcement :: struct {
@@ -860,6 +876,9 @@ Quad :: struct {
 Clip :: struct {
 	rect: [4]f32,
 	radius: [4]f32,
+	transform: [4]f32,
+	inner: [4]f32,
+	inner_radius: [4]f32,
 }
 
 FragmentDraw :: struct {

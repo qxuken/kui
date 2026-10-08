@@ -304,6 +304,8 @@ pub const KUI_KF_HEIGHT: u32 = 1 << 2;
 pub const KUI_KF_BG: u32 = 1 << 3;
 pub const KUI_KF_RADIUS: u32 = 1 << 4;
 pub const KUI_KF_OPACITY: u32 = 1 << 5;
+pub const KUI_KF_ROTATE: u32 = 1 << 6;
+pub const KUI_KF_SCALE: u32 = 1 << 7;
 
 /// One keyframe stop (`KuiSpec.keyframes`): a zeroed stop sets nothing.
 /// `set` says which fields count, so 0 stays a legal value for each.
@@ -320,6 +322,10 @@ pub struct KuiKeyframe {
     pub radius: f32,
     /// Group opacity 0..1 (KUI_KF_OPACITY).
     pub opacity: f32,
+    /// A turn in turns clockwise (KUI_KF_ROTATE), ADR 0043. ABI 27.
+    pub rotate: f32,
+    /// A uniform scale about the node's pivot (KUI_KF_SCALE). ABI 27.
+    pub scale: f32,
 }
 
 /// `KuiGradient.kind`: along a line, or out from a centre.
@@ -368,6 +374,8 @@ pub const KUI_ENTER_HEIGHT: u32 = 1 << 2;
 pub const KUI_ENTER_BG: u32 = 1 << 3;
 pub const KUI_ENTER_RADIUS: u32 = 1 << 4;
 pub const KUI_ENTER_OPACITY: u32 = 1 << 5;
+pub const KUI_ENTER_ROTATE: u32 = 1 << 6;
+pub const KUI_ENTER_SCALE: u32 = 1 << 7;
 
 /// Where a node starts the first frame it is seen (`KuiSpec.enter`): the
 /// slots `set` names ease in from these values over `transition_ms`
@@ -386,6 +394,11 @@ pub struct KuiEnter {
     pub radius: f32,
     /// Group opacity 0..1 (KUI_ENTER_OPACITY); 0 fades the subtree in.
     pub opacity: f32,
+    /// A turn in turns clockwise (KUI_ENTER_ROTATE), ADR 0043. ABI 27.
+    pub rotate: f32,
+    /// A uniform scale (KUI_ENTER_SCALE); 0 scales the subtree in from
+    /// nothing. ABI 27.
+    pub scale: f32,
 }
 
 /// Everything a box node is built from: size, layout, paint, behaviour
@@ -780,7 +793,25 @@ pub struct KuiSpec {
     /// this radius in logical px (`backdropBlur`, backlog F129); 0 is
     /// none. ABI 26.
     pub backdrop_blur: f32,
+    /// A turn of the node and everything under it, in turns clockwise,
+    /// about its pivot, after layout (`rotate`, ADR 0043); 0 is none.
+    /// ABI 27.
+    pub rotate: f32,
+    /// A uniform scale about the pivot (`scale`); 0, the zeroed spec, is
+    /// 1 — a scale of nothing is `opacity`'s job. ABI 27.
+    pub scale: f32,
+    /// `KUI_PIVOT_X` / `KUI_PIVOT_Y` bits saying which of `pivot_x` /
+    /// `pivot_y` hold — fractions of the box (`pivotX` / `pivotY`); an
+    /// axis not set keeps the centre, so a pivot on the top edge or at
+    /// the top-left corner stays expressible. ABI 27.
+    pub pivot_set: u32,
+    pub pivot_x: f32,
+    pub pivot_y: f32,
 }
+
+/// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.
+pub const KUI_PIVOT_X: u32 = 1 << 0;
+pub const KUI_PIVOT_Y: u32 = 1 << 1;
 
 /// One laid-out run of an editor's text (`kui_access_runs`): what a
 /// screen reader reads by character and word. `text` ends with `"\n"`
@@ -1919,6 +1950,18 @@ pub struct KuiClip {
     /// outside the rounded clip are transparent too. All zero — every clip
     /// of a frame with no rounded clipper — is the plain rect clip.
     pub radius: [f32; 4],
+    /// The turn every quad naming this entry is drawn through (ADR
+    /// 0043): angle in radians (clockwise, y down), scale, tx, ty —
+    /// `pixel = R(angle) · scale · p + (tx, ty)` for `p` a point of the
+    /// quad's own rect. `{0, 1, 0, 0}`, the identity, on every entry of a
+    /// frame that turns nothing. ABI 27.
+    pub transform: [f32; 4],
+    /// A second clip in the quad's own space, before the turn: x, y, w,
+    /// h, from clipping nodes inside a turned subtree. The clip that clips
+    /// nothing (a rect past any pixel) when nothing inside a turn clips.
+    pub inner: [f32; 4],
+    /// `inner`'s corner radii, as `radius` is `rect`'s.
+    pub inner_radius: [f32; 4],
 }
 
 /// One `KUI_QUAD_FRAGMENT`'s draw, addressed by that quad's `uv[0]`.

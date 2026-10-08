@@ -271,6 +271,8 @@ LOWERING :: [][2]string {
 	{"radiusTR", "lower_corner(s.{f}, s.radius, &out.radius_tr, &out.per_corner)"},
 	{"radiusBR", "lower_corner(s.{f}, s.radius, &out.radius_br, &out.per_corner)"},
 	{"radiusBL", "lower_corner(s.{f}, s.radius, &out.radius_bl, &out.per_corner)"},
+	{"pivotX", "if v, ok := s.{f}.?; ok do out.pivot_set, out.pivot_x = out.pivot_set | c.PIVOT_X, v"},
+	{"pivotY", "if v, ok := s.{f}.?; ok do out.pivot_set, out.pivot_y = out.pivot_set | c.PIVOT_Y, v"},
 }
 
 // What a lowering helper (types.odin) writes, which a scan of the
@@ -281,7 +283,7 @@ HELPER_WRITES :: [][2]string {
 
 // Rows whose Odin type is a Maybe: their C side says "unset" with a bit or
 // a flag rather than a zero, so `opacity = 0` must stay expressible.
-MAYBE_ROWS :: []string{"opacity", "valueNow", "valueMin", "valueMax", "valueStep", "caret", "selectionAnchor", "radiusTL", "radiusTR", "radiusBR", "radiusBL"}
+MAYBE_ROWS :: []string{"opacity", "valueNow", "valueMin", "valueMax", "valueStep", "caret", "selectionAnchor", "radiusTL", "radiusTR", "radiusBR", "radiusBL", "pivotX", "pivotY"}
 
 // Rows whose C side is an integer though the schema's kind is a number.
 INT_ROWS :: []string{"maxLines", "caret", "selectionAnchor"}

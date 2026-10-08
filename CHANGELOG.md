@@ -38,6 +38,48 @@ was the first bare bump to break an app in five releases).
   wallpaper kui can read is `Opaque` from its first frame again, as it
   was in alpha.43; alpha.44's `Tinted`-then-`Opaque` is GNOME's alone
   now (under Fixed, RG154).
+- C ABI 27 (under Added, F131): `KuiClip` grows from eight words to
+  twenty — `transform`, `inner` and `inner_radius` — so a host that
+  strides `KuiDrawData.clips` reads the new stride and the conformance
+  digest hashes the whole entry; `KuiSpec` appends `rotate`, `scale`,
+  `pivot_set`, `pivot_x` and `pivot_y` (64-bit size 744), `KuiKeyframe`
+  and `KuiEnter` append `rotate` and `scale` (strides 44 and 48).
+  Recompile; a zeroed tail is what every spec, stop and entrance had
+  before. Node's `clips()` buffer has the same stride, and `decodeClips`
+  reads `transform`, `inner` and `innerRadii`. A renderer of its own that
+  ignores the new words draws a turned subtree upright.
+
+### Added
+
+- **A node turns about its pivot** (backlog F131, from berainder's
+  review; [ADR 0043](docs/adr/0043-a-node-turns-about-its-pivot.md)).
+  `rotate` (turns, clockwise), `scale` (a uniform factor) and
+  `pivotX` / `pivotY` (fractions of the box, the centre by default) on
+  any node — `NodeSpec::rotate` / `scale` / `pivot` in Rust, the rows in
+  JSX and Lua, `KuiSpec.rotate` / `scale` / `pivot_set` with
+  `KUI_PIVOT_X` / `KUI_PIVOT_Y` in C (ABI 27), the generated `Spec`
+  fields in Odin. Paint-only: the node takes the room its upright self
+  takes and `onLayout` reports the layout rect; everything the subtree
+  draws turns with it — backgrounds, borders, shadows, text, images,
+  strokes, fragments — and so does what it clips, so a photo stays
+  inside a tilted card's rounded corners. Hit where drawn: a tilted
+  card is grabbed on its tilted edge, a press in its box past its edge
+  falls through, a scroller inside a turn takes the wheel where it is
+  drawn; the access rect is the bounding box. Turns nest by
+  composition; a float anchored to its parent turns with it, a viewport
+  float does not. A turn and a scale are one slot that tweens with
+  `transition` — a card follows the pointer while a drag holds the
+  transition off and springs back when it is on — and an entrance, an
+  exit and a keyframe stop name `rotate` and `scale` (`enter: { scale:
+  0.8 }`, `keyframes: [{ rotate: 0 }, { rotate: 1 }]` spins a box); a
+  departing subtree keeps its turn. On the wire the clip entry carries
+  the space (`Clip::transform`, `inner`, `inner_radius`); the quad does
+  not change. A `path`'s own `rotate` keeps ADR 0041's meaning and
+  composes under the node's. The `transform` example.
+- `Transform`, the similarity a clip entry carries, with `about`,
+  `apply`, `unapply`, `then`, `bounds`; `Clip::turned`, `turned_by`,
+  `visible`, `shown`; `HitTurn` on a hit region and a scroll region;
+  `NodeInfo::rotate` / `scale` in the devtools' facts (F131).
 
 ### Fixed
 
@@ -65,6 +107,9 @@ was the first bare bump to break an app in five releases).
 
 **What you can delete.**
 
+- A width and a height tweened against each other to fake a card's
+  tilt, and a `path` drawn in a box's place so that it could turn
+  (F131).
 - A shorter accelerator chosen for a menu that has to fit a narrow
   window (RG154).
 - A frame an app requested itself after stopping its menu bar, to let

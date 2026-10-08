@@ -54,12 +54,13 @@ static void repf(Rep *r, const char *fmt, ...) {
 /* FNV-1a over each quad's words 0..18 - KuiQuad without its uv, which
  * follows glyph insertion order, and without the clip index - plus the uv
  * of a KUI_QUAD_SEGMENT, where it is the endpoints, or of a
- * KUI_QUAD_TEXTURE, where it is the side-list index, and then the eight
- * words of the clip that index names. The clip is digested resolved, not
+ * KUI_QUAD_TEXTURE, where it is the side-list index, and then the twenty
+ * words of the clip that index names (its rect, radii, transform, inner
+ * clip and its radii, ABI 27). The clip is digested resolved, not
  * as the index, so the number says what a backend clips by and not how the
  * frame interned it. Mirrors conformance::quad_digest. */
 _Static_assert(sizeof(KuiQuad) == 24 * sizeof(uint32_t), "KuiQuad is not 24 words");
-_Static_assert(sizeof(KuiClip) == 8 * sizeof(uint32_t), "KuiClip is not 8 words");
+_Static_assert(sizeof(KuiClip) == 20 * sizeof(uint32_t), "KuiClip is not 20 words");
 
 static void digest_words(uint64_t *h, const uint32_t *w, int n) {
     for (int j = 0; j < n; j++) {
@@ -82,9 +83,9 @@ static uint64_t quad_digest(const KuiQuad *quads, size_t count,
         if (quads[i].kind == KUI_QUAD_SEGMENT || quads[i].kind == KUI_QUAD_TEXTURE) {
             digest_words(&h, w + 20, 4);
         }
-        uint32_t c[8] = {0};
+        uint32_t c[20] = {0};
         if (quads[i].clip < clip_count) memcpy(c, &clips[quads[i].clip], sizeof c);
-        digest_words(&h, c, 8);
+        digest_words(&h, c, 20);
     }
     return h;
 }
@@ -656,6 +657,35 @@ static void conf_float(KuiCtx *ui, const Fixtures *f, int phase) {
 /* One of conf_clip_float's two nodes: a parent-anchored float at (dx, -20)
  * on the canvas that posts `key` when clicked, cut by the canvas's clip
  * when `clip` is set (float_clip, ABI 19). */
+/* conformance::build_transform (ADR 0043): a rounded, clipping card tilted an
+ * eighth of a turn about its top-left corner (rotate, pivot_x/pivot_y with
+ * KUI_PIVOT_X | KUI_PIVOT_Y; ABI 27), holding a child wider than itself and
+ * a badge floating with it, and beside it a box scaled half again. */
+static void conf_transform(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec row = {.dir = KUI_ROW};
+    kui_open(ui, &row, NULL);
+    KuiSpec card = {.width = {KUI_FIXED, 60}, .height = {KUI_FIXED, 40},
+                    .radius = 8, .overflow = KUI_CLIP, .bg = 0x3b5bd4ff,
+                    .rotate = 0.125f,
+                    .pivot_set = KUI_PIVOT_X | KUI_PIVOT_Y, .pivot_x = 0, .pivot_y = 0};
+    kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
+    KuiSpec wide = {.width = {KUI_FIXED, 90}, .height = {KUI_FIXED, 20}, .bg = 0xd9738cff};
+    kui_open_keyed(ui, KUI_STR("wide"), &wide, NULL);
+    kui_close(ui);
+    KuiSpec badge = {.float_mode = KUI_FLOAT_PARENT, .float_dx = 54, .float_dy = -6,
+                     .width = {KUI_FIXED, 12}, .height = {KUI_FIXED, 12}, .bg = 0xf6d55cff};
+    kui_open_keyed(ui, KUI_STR("badge"), &badge, NULL);
+    kui_close(ui);
+    kui_close(ui);
+    KuiSpec big = {.width = {KUI_FIXED, 40}, .height = {KUI_FIXED, 40}, .bg = 0x73d98cff,
+                   .scale = 1.5f};
+    kui_open_keyed(ui, KUI_STR("big"), &big, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 static void conf_clip_float_node(KuiCtx *ui, const char *key, float dx, uint32_t clip,
                                  uint32_t bg, const char *label) {
     KuiValue *tag = kui_value_map();
@@ -2220,6 +2250,7 @@ static const ConfScene CONF_SCENES[] = {
     {"float", conf_float},
     {"clip-float", conf_clip_float},
     {"pixel-snap", conf_pixel_snap},
+    {"transform", conf_transform},
     {"clip-access", conf_clip_access},
     {"tooltip", conf_tooltip},
     {"select", conf_select},

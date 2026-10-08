@@ -1,5 +1,5 @@
 //! The animatable slots an entrance or a keyframe stop may name (width,
-//! height, bg, radius, opacity) as one value.
+//! height, bg, radius, opacity, rotate, scale) as one value.
 //!
 //! You rarely build a [`Slots`] directly: [`crate::enter::Enter`] (where
 //! a node starts on first sight) and [`crate::keyframes::Keyframe`] (a
@@ -33,6 +33,10 @@ pub struct Slots {
     pub radius: Option<f32>,
     /// Group opacity, 0..=1.
     pub opacity: Option<f32>,
+    /// The node's turn, in turns clockwise (ADR 0043).
+    pub rotate: Option<f32>,
+    /// The node's uniform scale about its pivot.
+    pub scale: Option<f32>,
 }
 
 impl Slots {
@@ -61,10 +65,20 @@ impl Slots {
         self
     }
 
+    pub fn rotate(mut self, turns: f32) -> Self {
+        self.rotate = Some(turns);
+        self
+    }
+
+    pub fn scale(mut self, scale: f32) -> Self {
+        self.scale = Some(scale);
+        self
+    }
+
     /// Reads one field of a stop or an entrance from plain data, in the
     /// form the prop itself takes (sizings as a number, `"grow"`, `"50%"`,
     /// `{grow}` / `{percent}`; colours as `0xRRGGBBAA` or `"#hex"`).
-    /// `Ok(false)` when `name` is none of the five, so the caller can read
+    /// `Ok(false)` when `name` is none of the seven, so the caller can read
     /// its own fields after. Every binding funnels through here, so the
     /// shape is the same in JSX, Lua and C. With `refs`, a `$name` in a
     /// colour or length slot resolves through it, and one that misses
@@ -104,6 +118,8 @@ impl Slots {
             "bg" => self.bg = Some(color_value(v)?),
             "radius" => self.radius = Some(num("radius")?),
             "opacity" => self.opacity = Some(num("opacity")?.clamp(0.0, 1.0)),
+            "rotate" => self.rotate = Some(num("rotate")?),
+            "scale" => self.scale = Some(num("scale")?),
             _ => return Ok(false),
         }
         Ok(true)
@@ -122,8 +138,28 @@ impl Slots {
             Slot::Bg => self.bg.map(Color::lanes),
             Slot::Radius => self.radius.map(|r| [r; 4]),
             Slot::Opacity => self.opacity.map(one),
+            // A lane left out is the node's own, which the caller knows
+            // and this does not: `transform_lanes`.
+            Slot::Transform => None,
             Slot::Border | Slot::Pos | Slot::Shadow | Slot::ShadowColor => None,
         }
+    }
+
+    /// The transform slot's lanes — `[rotate, scale, 0, 0]` — when the
+    /// stop or the entrance names either, each lane it leaves out taken
+    /// from `base`, the node's own value: a stop that names only `rotate`
+    /// does not shrink the box to a scale of nothing.
+    #[inline]
+    pub(crate) fn transform_lanes(&self, base: [f32; 4]) -> Option<[f32; 4]> {
+        if self.rotate.is_none() && self.scale.is_none() {
+            return None;
+        }
+        Some([
+            self.rotate.unwrap_or(base[0]),
+            self.scale.unwrap_or(base[1]),
+            0.0,
+            0.0,
+        ])
     }
 }
 
@@ -133,7 +169,7 @@ pub(crate) fn one(v: f32) -> [f32; 4] {
     [v, 0.0, 0.0, 0.0]
 }
 
-/// The five delegating builders on a type with a `slots: Slots` field, so
+/// The seven delegating builders on a type with a `slots: Slots` field, so
 /// `Enter::from(..).bg(..)` and `Keyframe::default().at(..).bg(..)` read
 /// the same and are written once.
 macro_rules! slot_builders {
@@ -172,6 +208,18 @@ macro_rules! slot_builders {
 
             pub fn radius(mut self, radius: f32) -> Self {
                 self.slots = self.slots.radius(radius);
+                self
+            }
+
+            /// A turn in turns clockwise (ADR 0043), as on a spec.
+            pub fn rotate(mut self, turns: f32) -> Self {
+                self.slots = self.slots.rotate(turns);
+                self
+            }
+
+            /// A uniform scale about the node's pivot, as on a spec.
+            pub fn scale(mut self, scale: f32) -> Self {
+                self.slots = self.slots.scale(scale);
                 self
             }
 
