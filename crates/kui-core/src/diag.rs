@@ -819,7 +819,22 @@ pub fn select_current_ignored(
 /// [`crate::MenuItem::from_value`] does not read — `disabled` for
 /// `enabled: false` — so the row was built without it.
 /// Keyed by the name, as [`unknown_prop`]'s are: one line per spelling.
+/// `items` is a row's key, so it arrives here only from a select's option
+/// ([`crate::MenuItem::stray_option_keys`]), and says so.
 pub fn unknown_menu_item_key(name: &str) -> Warning {
+    let key = Key::ROOT
+        .str(UNKNOWN_PROP)
+        .str(crate::MenuItem::NAME)
+        .str(name);
+    if name == "items" {
+        return Warning {
+            code: UNKNOWN_PROP,
+            key,
+            message: "`items` on a select's option is dropped: an option is chosen, never \
+                      opened, so it has no submenu"
+                .into(),
+        };
+    }
     let keys = crate::MenuItem::KEYS
         .iter()
         .map(|k| format!("`{k}`"))
@@ -841,10 +856,7 @@ pub fn unknown_menu_item_key(name: &str) -> Warning {
     };
     Warning {
         code: UNKNOWN_PROP,
-        key: Key::ROOT
-            .str(UNKNOWN_PROP)
-            .str(crate::MenuItem::NAME)
-            .str(name),
+        key,
         message: format!(
             "`{name}` is not a key of a menu item: a row takes {keys}, so this declaration is \
              dropped{hint}"

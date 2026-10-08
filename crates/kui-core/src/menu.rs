@@ -259,6 +259,40 @@ impl MenuItem {
         "label", "role", "enabled", "checked", "id", "accel", "items",
     ];
 
+    /// The keys of `rows` — a list of row maps, as [`Self::list_from_value`]
+    /// takes — that no row reads, a submenu's rows' included: what a binding
+    /// raises [`crate::diag::unknown_menu_item_key`] for. A check of the
+    /// outer rows alone let `{label, disabled: true}` inside a submenu be
+    /// a row that is enabled (backlog RG150).
+    pub fn stray_keys(rows: &Value) -> Vec<String> {
+        let mut out = Vec::new();
+        Self::stray_into(rows, false, &mut out);
+        out
+    }
+
+    /// [`Self::stray_keys`] for a select's options: `items` is one of them,
+    /// since an option is chosen and never opens anything —
+    /// [`Self::options_from_value`] leaves it out.
+    pub fn stray_option_keys(options: &Value) -> Vec<String> {
+        let mut out = Vec::new();
+        Self::stray_into(options, true, &mut out);
+        out
+    }
+
+    fn stray_into(rows: &Value, options: bool, out: &mut Vec<String>) {
+        let Value::List(rows) = rows else { return };
+        for row in rows {
+            let Value::Map(fields) = row else { continue };
+            for (k, v) in fields.iter() {
+                if !Self::KEYS.contains(&k.as_str()) || (options && k == "items") {
+                    out.push(k.clone());
+                } else if k == "items" {
+                    Self::stray_into(v, false, out);
+                }
+            }
+        }
+    }
+
     /// The name a binding reports a row's dropped keys under
     /// (`diag::unknown_prop` routes it to `diag::unknown_menu_item_key`):
     /// a row is not an element, so it is not in `schema::ELEMENTS`, and
@@ -268,7 +302,9 @@ impl MenuItem {
     /// A select's options from plain data (`widgets::select_items` in the
     /// bindings): a list whose entries are strings — an option by its
     /// label, posting it — or [`Self::from_value`] maps, for an option
-    /// that posts an `id` of its own or is disabled. An empty list is
+    /// that posts an `id` of its own or is disabled. An option's `items`
+    /// are left out ([`Self::stray_option_keys`] reports them): an option
+    /// is chosen, never opened. An empty list is
     /// refused: a select with nothing to choose from is a field that opens
     /// a menu of no rows, which only Escape leaves.
     pub fn options_from_value(v: &Value) -> Result<Vec<Self>, String> {
@@ -282,7 +318,10 @@ impl MenuItem {
             .map(|row| match row {
                 Value::Str(label) if !label.is_empty() => Ok(Self::new(label.as_str())),
                 Value::Str(_) => Err("an option needs a label".into()),
-                other => Self::from_value(other),
+                other => Self::from_value(other).map(|mut option| {
+                    option.submenu = Vec::new();
+                    option
+                }),
             })
             .collect()
     }
@@ -317,7 +356,9 @@ impl MenuItem {
     /// by ▸". It is chosen through, never itself — see the `submenu`
     /// field — so it needs no `id`, and an `accel` on it is not drawn (the
     /// chevron is where it would go). A submenu with no rows is an ordinary
-    /// row ([`Self::has_submenu`]).
+    /// row ([`Self::has_submenu`]). Its rows want an `id` each: a row
+    /// without one posts its label, which a row of the same name in
+    /// another submenu posts too.
     ///
     /// ```rust
     /// use kui_core::MenuItem;
@@ -620,6 +661,18 @@ impl MenuBar {
             });
         }
         Ok(Self::new(out))
+    }
+
+    /// [`MenuItem::stray_keys`] over every menu's rows.
+    pub fn stray_keys(v: &Value) -> Vec<String> {
+        let Value::List(menus) = v else {
+            return Vec::new();
+        };
+        menus
+            .iter()
+            .filter_map(|menu| menu.get("items"))
+            .flat_map(MenuItem::stray_keys)
+            .collect()
     }
 
     /// Nothing declared: the bar the platform is asked to take away.

@@ -691,13 +691,23 @@ fn alias_menu_role(row: &mut Value) {
 }
 
 /// A menu's rows, from a Lua list of row tables, read by the core's one
-/// row reader.
-fn menu_items(t: &mlua::Table) -> mlua::Result<Vec<kui_core::MenuItem>> {
+/// row reader, with the keys of them no row reads (`MenuItem::stray_keys`).
+fn menu_items(t: &mlua::Table) -> mlua::Result<(Vec<kui_core::MenuItem>, Vec<String>)> {
     let mut rows = lua_list_to_value(t)?;
     if let Value::List(rows) = &mut rows {
         rows.iter_mut().for_each(alias_menu_role);
     }
-    kui_core::MenuItem::list_from_value(&rows).map_err(mlua::Error::runtime)
+    let items = kui_core::MenuItem::list_from_value(&rows).map_err(mlua::Error::runtime)?;
+    Ok((items, kui_core::MenuItem::stray_keys(&rows)))
+}
+
+/// Raises `unknown_menu_item_key` for each of `keys`, as a dropped prop is.
+fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
+    if core.diagnostics() {
+        for k in keys {
+            core.warn(kui_core::diag::unknown_menu_item_key(&k));
+        }
+    }
 }
 
 /// Host facts handed to `view(env)`, the reading `schema::ENV_FIELDS`
@@ -1095,7 +1105,8 @@ fn env_table<'scope, 'env: 'scope>(
                 let Some(target) = key_query(&mut ui, key)? else {
                     return Ok(false);
                 };
-                let items = menu_items(&items)?;
+                let (items, stray) = menu_items(&items)?;
+                warn_stray_menu_keys(ui.core(), stray);
                 ui.open_menu(kui_core::Menu::new(
                     target,
                     kui_core::Vec2::new(x, y),
@@ -1583,9 +1594,9 @@ fn element_of(ty: &str) -> &str {
     }
 }
 
-fn menu_bar_of(t: &Table) -> mlua::Result<kui_core::MenuBar> {
+fn menu_bar_of(t: &Table) -> mlua::Result<(kui_core::MenuBar, Vec<String>)> {
     let Some(list) = t.get::<Option<Table>>("menu")? else {
-        return Ok(kui_core::MenuBar::default());
+        return Ok((kui_core::MenuBar::default(), Vec::new()));
     };
     let mut menus = lua_list_to_value(&list)?;
     if let Value::List(menus) = &mut menus {
@@ -1605,7 +1616,8 @@ fn menu_bar_of(t: &Table) -> mlua::Result<kui_core::MenuBar> {
             }
         }
     }
-    kui_core::MenuBar::from_value(&menus).map_err(mlua::Error::runtime)
+    let bar = kui_core::MenuBar::from_value(&menus).map_err(mlua::Error::runtime)?;
+    Ok((bar, kui_core::MenuBar::stray_keys(&menus)))
 }
 
 fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
@@ -2161,15 +2173,10 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 // A key of a row table no row reads — `disabled` for
                 // `enabled = false` — is dropped by the reader, so it is
                 // reported as an unknown prop is (backlog RG10).
-                if ui.core().diagnostics() {
-                    for row in rows.iter() {
-                        let Value::Map(fields) = row else { continue };
-                        for (k, _) in fields.iter() {
-                            if !kui_core::MenuItem::KEYS.contains(&k.as_str()) {
-                                ui.core().warn(kui_core::diag::unknown_menu_item_key(k));
-                            }
-                        }
-                    }
+            }
+            if ui.core().diagnostics() {
+                for k in kui_core::MenuItem::stray_option_keys(&rows) {
+                    ui.core().warn(kui_core::diag::unknown_menu_item_key(&k));
                 }
             }
             let items =
@@ -2207,7 +2214,9 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             Ok(())
         }
         "menu_bar" => {
-            widgets::menu_bar(ui, menu_bar_of(t)?);
+            let (bar, stray) = menu_bar_of(t)?;
+            warn_stray_menu_keys(ui.core(), stray);
+            widgets::menu_bar(ui, bar);
             Ok(())
         }
         "latency_graph" => {
@@ -4541,6 +4550,41 @@ mod tests {
     /// unknown prop does, `current` past the end or on a separator warns
     /// and is none, and a disabled option reported chosen is refused with
     /// the menu still open.
+    /// A key no row reads warns inside a submenu too, and a dropdown's
+    /// option is chosen, never opened: its `items` warn and are dropped
+    /// (backlog RG150).
+    #[test]
+    fn a_stray_key_inside_a_submenu_warns_and_an_option_takes_no_items() {
+        let mut ext = LuaExtension::from_source(
+            "sub",
+            r#"
+                function view(env)
+                  return column {
+                    menu_bar { menu = { { label = "View", items = {
+                      { label = "Sort by", items = { { label = "Name", disabled = true } } },
+                    } } } },
+                    dropdown { label = "sort",
+                               options = { "Name", { label = "Date", items = { { label = "Newest" } } } } },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let warned = core.take_warnings();
+        let messages: Vec<&str> = warned.iter().map(|w| w.message.as_str()).collect();
+        assert_eq!(warned.len(), 2, "{messages:?}");
+        assert!(
+            messages[0].contains("`disabled` is not a key of a menu item"),
+            "{messages:?}"
+        );
+        assert!(
+            messages[1].contains("`items` on a select's option is dropped"),
+            "{messages:?}"
+        );
+    }
+
     #[test]
     fn a_dropdowns_bad_rows_and_current_are_warned_and_a_disabled_option_is_refused() {
         let mut ext = LuaExtension::from_source(

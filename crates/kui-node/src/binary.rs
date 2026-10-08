@@ -1485,7 +1485,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             // One JSON blob, read by the same parser `openMenu`'s items go
             // through: a menu nests, and two readers of one shape are two
             // things to keep in step.
-            let bar = crate::menu_bar_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
+            let (bar, stray) = crate::menu_bar_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
+            crate::warn_stray_menu_keys(ui.core(), stray);
             widgets::menu_bar(ui, bar);
             Ok(())
         }

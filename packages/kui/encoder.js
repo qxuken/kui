@@ -1026,7 +1026,9 @@ export function createEncoder(P) {
         for (const o of p.options) {
           const ok = (typeof o === 'string' && o.length > 0) || (o !== null && typeof o === 'object' && !Array.isArray(o));
           if (!ok) throw new Error('<select> options are non-empty strings or menu item objects { label, id, enabled }');
-          if (typeof o === 'object') for (const k in o) if (!MENU_ITEM_KEYS.has(k)) unknown.push([MENU_ITEM, k]);
+          // An option is chosen, never opened: its `items` are dropped,
+          // so they are reported as any key no option reads (RG150).
+          if (typeof o === 'object') for (const k in o) if (!MENU_ITEM_KEYS.has(k) || k === 'items') unknown.push([MENU_ITEM, k]);
         }
         const current = p.current;
         if (current != null && (!Number.isInteger(current) || current < 0)) {

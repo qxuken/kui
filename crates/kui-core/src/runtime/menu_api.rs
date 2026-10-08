@@ -623,6 +623,47 @@ pub(crate) struct Submenus {
     /// The keyboard opened the innermost submenu: its first row takes
     /// focus on the frame that draws it (`submenu_drawn`).
     pub focus_first: bool,
+    /// A switch away from an open submenu the pointer asked for, waiting
+    /// [`SUBMENU_SWITCH_DELAY`] in case it is only passing over the row on
+    /// its way into that submenu (backlog RG150).
+    pub pending: Option<PendingSwitch>,
+    /// Some row of this menu was under the pointer during the frame's
+    /// build: a pass that sees none forgets `hovered`, so coming back to
+    /// a row the keyboard closed opens it again.
+    pub seen: bool,
+}
+
+/// A row the pointer moved onto while a submenu beside another was open.
+#[derive(Clone, Debug)]
+pub(crate) struct PendingSwitch {
+    pub row: Vec<usize>,
+    pub opens: bool,
+    /// The frame clock's reading when the pointer arrived.
+    pub since: f64,
+}
+
+/// How long the pointer rests on another row before an open submenu gives
+/// way to it. Travelling diagonally from a row to a lower row of its
+/// submenu crosses the rows below it; without the wait each one closed
+/// the submenu the pointer was heading for.
+pub(crate) const SUBMENU_SWITCH_DELAY: f64 = 0.3;
+
+impl Submenus {
+    /// What the pointer on `row` means for what is open: a row with a
+    /// submenu opens it, closing whatever was open beside it; any other
+    /// row closes the submenus below its own level.
+    fn switch_to(&mut self, row: &[usize], opens: bool) {
+        let level = row.len() - 1;
+        if opens {
+            // Kept when it is already the open one, deeper submenus and all:
+            // the pointer coming back to its row from inside it.
+            if !self.open.starts_with(row) {
+                self.open = row.to_vec();
+            }
+        } else if self.open.len() > level && self.open[..level] == row[..level] {
+            self.open.truncate(level);
+        }
+    }
 }
 
 impl Core {
@@ -652,6 +693,7 @@ impl Core {
         let sub = self.submenus(s);
         sub.open = path;
         sub.focus_first = keyboard;
+        sub.pending = None;
     }
 
     /// The row in the submenu at `path` that is open, if one is: what the
@@ -665,23 +707,63 @@ impl Core {
     /// change of row: a row with a submenu opens it, closing whatever was
     /// open beside it, and any other row closes the submenus below its own
     /// level — the way every platform's menus follow the pointer.
+    ///
+    /// A row that would close a submenu open beside another — a sibling of
+    /// the row that opened it, or a row further out — waits
+    /// [`SUBMENU_SWITCH_DELAY`] on the frame clock first, and moving into
+    /// that submenu meanwhile cancels it. A driver that sets no clock
+    /// switches at once, as its transitions snap.
     pub(crate) fn submenu_hovered(&mut self, s: MenuSurface, row: &[usize], opens: bool) {
+        let now = self.anim.time();
         let sub = self.submenus(s);
+        sub.seen = true;
         if sub.hovered.as_deref() == Some(row) {
+            // Still resting there: a switch it is waiting on ripens.
+            if let Some(p) = &sub.pending
+                && p.row == row
+                && now.is_none_or(|t| t - p.since >= SUBMENU_SWITCH_DELAY)
+            {
+                let p = sub.pending.take().unwrap();
+                sub.switch_to(&p.row, p.opens);
+            }
             return;
         }
         sub.hovered = Some(row.to_vec());
         sub.focus_first = false;
         let level = row.len() - 1;
-        if opens {
-            // Kept when it is already the open one, deeper submenus and all:
-            // the pointer coming back to its row from inside it.
-            if !sub.open.starts_with(row) {
-                sub.open = row.to_vec();
+        let away = sub.open.len() > level && !sub.open.starts_with(row);
+        match now {
+            Some(since) if away => {
+                sub.pending = Some(PendingSwitch {
+                    row: row.to_vec(),
+                    opens,
+                    since,
+                });
             }
-        } else if sub.open.len() > level && sub.open[..level] == row[..level] {
-            sub.open.truncate(level);
+            _ => {
+                sub.pending = None;
+                sub.switch_to(row, opens);
+            }
         }
+    }
+
+    /// The build of the menu on `s` begins (`begin`) or ends: a build in
+    /// which the pointer was on none of its rows forgets the row it was
+    /// last on, and any switch waiting on it.
+    pub(crate) fn submenu_pass(&mut self, s: MenuSurface, begin: bool) {
+        let sub = self.submenus(s);
+        if begin {
+            sub.seen = false;
+        } else if !sub.seen {
+            sub.hovered = None;
+            sub.pending = None;
+        }
+    }
+
+    /// Whether a switch is waiting on the clock: the driver owes the
+    /// frames that let it ripen.
+    pub(crate) fn submenu_waiting(&self) -> bool {
+        self.menu_sub.pending.is_some() || self.menu_bar_sub.pending.is_some()
     }
 
     /// The submenu at `path` was drawn this frame, its first row that can
@@ -773,6 +855,7 @@ impl Core {
         let row = sub.open[..=keep].to_vec();
         sub.open.truncate(keep);
         sub.focus_first = false;
+        sub.pending = None;
         // The row the closed submenu hangs from, found by the tag its click
         // carries; it is in the last frame's tree, since its submenu was.
         let (parent, i) = row.split_at(keep);

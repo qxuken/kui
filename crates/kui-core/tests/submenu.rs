@@ -498,3 +498,76 @@ fn an_app_drawn_menu_leaves_no_submenu_for_escape_to_spend() {
     assert_eq!(evs[0].key, dialog);
     assert_eq!(evs[0].kind(), Some("dismiss"));
 }
+
+/// On the frame clock, the pointer crossing a row on its way into an open
+/// submenu does not close it: a row below "Move to" is what a diagonal
+/// path to a lower row of its submenu passes over, and each one used to
+/// close the submenu the pointer was heading for. Resting on that row
+/// does switch, once the wait is up, and the frames for it are owed
+/// meanwhile (backlog RG150).
+#[test]
+fn passing_over_a_row_on_the_way_into_a_submenu_keeps_it_open() {
+    let mut core = Core::new();
+    core.set_time(10.0);
+    open(&mut core);
+    let at = row_center(&mut core, "Move to");
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1]);
+
+    // Over "Delete", then on into the submenu's last row.
+    core.set_time(10.05);
+    let at = row_center(&mut core, "Delete");
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1], "passing over Delete");
+    assert!(core.animating(), "the wait owes its frames");
+    core.set_time(10.1);
+    let at = row_center(&mut core, "Projects");
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1, 2], "reached, and opened");
+    core.set_time(11.0);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1, 2], "nothing left waiting");
+
+    // Resting on Delete: the submenus give way once the wait is up.
+    core.set_time(12.0);
+    let at = row_center(&mut core, "Delete");
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1, 2]);
+    core.set_time(12.2);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1, 2], "not yet");
+    core.set_time(12.4);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[] as &[usize], "rested long enough");
+    assert_eq!(menus(&mut core), ["Menu"]);
+    assert!(!core.animating(), "and nothing owed after");
+}
+
+/// A submenu the keyboard closed opens again when the pointer leaves the
+/// menu and comes back to its row: the row the pointer was last on is
+/// forgotten once it is on none, where it used to need another row
+/// visited first (backlog RG150).
+#[test]
+fn a_row_the_keyboard_closed_reopens_when_the_pointer_comes_back() {
+    let mut core = Core::new();
+    open(&mut core);
+    let at = row_center(&mut core, "Move to");
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1]);
+    key(&mut core, EditKey::Escape);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[] as &[usize]);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[] as &[usize], "a resting pointer");
+
+    hover(&mut core, Vec2::new(590.0, 390.0));
+    frame(&mut core);
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1], "open again");
+}

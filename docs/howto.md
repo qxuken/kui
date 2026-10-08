@@ -805,14 +805,19 @@ clicked, or Enter or the Right arrow is pressed; Left or Escape closes
 it, and Escape again closes the menu. It nests, in a context menu and in
 a menu bar, drawn or the platform's. A row inside is chosen like any
 row: one `{kind:"menu", role, item}` with its own `id`, on the node the
-menu is about. A host that shows menus itself reports one with
+menu is about. Give the rows inside an `id`: a row without one posts its
+label, and "Name" under "Sort by ▸" and "Name" under "Group by ▸" would
+post the same `item`. A host that shows menus itself reports one with
 `Core::activate_menu_path(&[1, 0])` (Node `activateMenuPath`, C
 `kui_activate_menu_path` with a path of `size_t`s). In C a row's
 `submenu` / `submenu_count` nest the same `KuiMenuItem`s, and
 `KUI_MENU_ITEM_SUBMENU` in a row's flags says it has rows, read with
 `kui_menu_item_path`. An
 `accel` in the portable spelling (`"mod+shift+n"`) is drawn the
-platform's way, and the menu widens to its longest row.
+platform's way, and the menu widens to its longest row, up to the window
+less a margin, where a longer label ends in an ellipsis. On the frame
+clock, an open submenu waits 0.3 s before giving way to a row the
+pointer crosses, so a diagonal path into it does not close it.
 
 [ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
 [`tests/submenu.rs`](../crates/kui-core/tests/submenu.rs)

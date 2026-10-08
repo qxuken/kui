@@ -462,10 +462,17 @@ pub fn select_with(
     } else {
         t.border
     };
+    // An option is chosen, never opened: rows it was handed with a submenu
+    // (a C `KuiMenuItem`'s `submenu`, a data option's `items`) are dropped,
+    // so `current` always names a row of this one menu (backlog RG150).
     let menu: Vec<MenuItem> = items
         .iter()
         .enumerate()
-        .map(|(i, item)| item.clone().checked(current == Some(i)))
+        .map(|(i, item)| {
+            let mut row = item.clone().checked(current == Some(i));
+            row.submenu = Vec::new();
+            row
+        })
         .collect();
     ui.core().declare_select(key, menu);
     ui.with_keyed(
@@ -1389,6 +1396,27 @@ fn menu_level(
 ) -> Key {
     let t = ui.theme();
     let m = ui.metrics();
+    // Never wider than the window, less a margin each side: a row wider
+    // than that — a recent file's whole path — ellipsizes its label
+    // instead of running the panel, and its accelerator, off the edge
+    // (backlog RG150). A ceiling the caller declared that is narrower
+    // stands.
+    let ceiling = (ui.viewport().w - 2.0 * MENU_EDGE).max(m.menu_width);
+    let spec = if spec.layout.max_w >= 0.0 && spec.layout.max_w > ceiling {
+        spec.max_width(ceiling)
+    } else {
+        spec
+    };
+    // What a row's label may take of it: the panel's inside, less the
+    // row's padding, the gutter and the accelerator or chevron with their
+    // gaps. A row is sized from its content (the panel is `Fit` over its
+    // rows), so the label is what is bounded, and it ellipsizes there.
+    let cap = if spec.layout.max_w >= 0.0 {
+        spec.layout.max_w
+    } else {
+        ceiling
+    };
+    let inside = cap - 2.0 * (MENU_PANEL_PAD + 1.0) - 2.0 * m.menu_pad_x;
     // A wash rather than a fill, so a row's label stays readable on both
     // bases without the view guessing a frame ahead of the core — see
     // `Theme::accent_soft`.
@@ -1404,7 +1432,13 @@ fn menu_level(
     let group = |i: usize| format!("{root}/{path:?}/{i}");
     // Where the pointer rests opens or closes a submenu, resolved before
     // anything is built — the frame that notices the hover draws what it
-    // opened, as the bar's titles do.
+    // opened, as the bar's titles do. The outermost level brackets the
+    // build, so a build with the pointer on no row at all is known.
+    if let Some(s) = surface
+        && path.is_empty()
+    {
+        ui.core().submenu_pass(s, true);
+    }
     if let Some(s) = surface {
         for (i, item) in items.iter().enumerate() {
             if item.selectable() && ui.is_group_hovered(NodeSpec::hover_group_id(&group(i))) {
@@ -1447,7 +1481,7 @@ fn menu_level(
                 // sized from: a grow child alone contributes nothing.
                 .min_width(crate::spec::Bound::Fit)
                 .pad_xy(m.menu_pad_x, m.menu_pad_y)
-                .gap(8.0)
+                .gap(MENU_ROW_GAP)
                 .radius(m.radius_inner)
                 .main_align(Align::Start)
                 .cross_align(Align::Center);
@@ -1482,7 +1516,21 @@ fn menu_level(
                     spec = spec.bg(accent);
                 }
             }
+            let tail = if opens {
+                Some(std::borrow::Cow::Borrowed(MENU_CHEVRON))
+            } else {
+                item.accel_label()
+            };
             let row = |ui: &mut Ui<'_>| {
+                let tail_style = TextStyle::new(m.chrome_text).color(t.muted).nowrap();
+                let mut label_max = inside;
+                if gutter {
+                    label_max -= MENU_CHECK_W + MENU_ROW_GAP;
+                }
+                if let Some(tail) = &tail {
+                    let w = ui.measure_text(tail, &tail_style, None).width;
+                    label_max -= 2.0 * MENU_ROW_GAP + MENU_ACCEL_GAP + w;
+                }
                 if gutter {
                     ui.with(NodeSpec::row().width(MENU_CHECK_W), |ui| {
                         if item.checked {
@@ -1493,23 +1541,22 @@ fn menu_level(
                 // One line each, whatever the panel's width: the panel is
                 // sized to fit them, and a row that wrapped would be read as
                 // two.
-                ui.text(
+                ui.text_in(
+                    NodeSpec::row().max_width(label_max.max(0.0)),
                     item.text(),
-                    TextStyle::new(m.chrome_text).color(t.fg).nowrap(),
+                    TextStyle::new(m.chrome_text)
+                        .color(t.fg)
+                        .nowrap()
+                        .ellipsis(),
                 );
                 // Pushed to the right edge by a grow spacer, so the label
                 // stays where the eye expects it whatever follows it; at
                 // least `MENU_ACCEL_GAP` wide, so the widest label and the
                 // widest accelerator never touch. A submenu's row has its
                 // chevron there and no accelerator: it binds nothing.
-                let tail = if opens {
-                    Some(std::borrow::Cow::Borrowed(MENU_CHEVRON))
-                } else {
-                    item.accel_label()
-                };
-                if let Some(tail) = tail {
+                if let Some(tail) = &tail {
                     ui.leaf(NodeSpec::row().grow_width().min_width(MENU_ACCEL_GAP));
-                    ui.text(&tail, TextStyle::new(m.chrome_text).color(t.muted).nowrap());
+                    ui.text(tail, tail_style);
                 }
             };
             let key = if opens {
@@ -1573,12 +1620,23 @@ fn menu_level(
     {
         ui.core().submenu_drawn(s, path, key);
     }
+    if let Some(s) = surface
+        && path.is_empty()
+    {
+        ui.core().submenu_pass(s, false);
+    }
     root_key
 }
 
 /// The padding inside a menu's panel, logical px: what a submenu is offset
 /// by so its first row sits level with the row that opened it.
 const MENU_PANEL_PAD: f32 = 4.0;
+
+/// How far a menu at its widest stays from each side of the window.
+const MENU_EDGE: f32 = 8.0;
+
+/// Between a row's checkmark, label, spacer and accelerator.
+const MENU_ROW_GAP: f32 = 8.0;
 
 /// The chevron a submenu's row draws where an accelerator would be.
 pub const MENU_CHEVRON: &str = "\u{203a}";

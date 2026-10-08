@@ -1331,7 +1331,10 @@ impl Core {
             transition,
             cycle,
             depart: self.depart.animating(),
-            requested: self.frame_requested || self.tree.any_animate || self.fonts_moved(),
+            requested: self.frame_requested
+                || self.tree.any_animate
+                || self.fonts_moved()
+                || self.submenu_waiting(),
             autoscroll: self.autoscrolling(),
             scroll: self.scroll.animating(),
         }

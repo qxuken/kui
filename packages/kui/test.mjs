@@ -1900,6 +1900,36 @@ test('a row with items is a submenu, and activateMenuPath reaches inside it', ()
   assert.equal(ctx.menu(), null);
 });
 
+// A key no row reads warns inside a submenu too — `disabled` there was
+// silently an enabled row — in openMenu's rows and a menuBar's; and a
+// <select> option is chosen, never opened, so its `items` warn and are
+// dropped (backlog RG150).
+test('a stray key inside a submenu warns, and a select option takes no items', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const card = () => box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]);
+  ctx.frame(320, 240, 1, card());
+  ctx.openMenu('card', 40, 30, [{ label: 'Move to', items: [{ label: 'Inbox', disabled: true }] }]);
+  ctx.frame(320, 240, 1, card());
+  let warned = ctx.warnings();
+  assert.equal(warned.length, 1, JSON.stringify(warned));
+  assert.match(warned[0].message, /`disabled` is not a key of a menu item.*did you mean `enabled: false`/);
+  ctx.closeMenu();
+
+  ctx.frame(320, 240, 1, box({}, [el('menuBar', { menu: [{ label: 'View', items: [{ label: 'Sort by', items: [{ label: 'Name', Label: 'x' }] }] }] })]));
+  warned = ctx.warnings();
+  assert.equal(warned.length, 1, JSON.stringify(warned));
+  assert.match(warned[0].message, /`Label` is not a key of a menu item/);
+
+  const select = box({ pad: 10 }, [el('select', { label: 'sort', options: ['Name', { label: 'Date', items: [{ label: 'Newest' }] }] })]);
+  ctx.frame(320, 240, 1, select);
+  warned = ctx.warnings();
+  assert.equal(warned.length, 1, JSON.stringify(warned));
+  assert.match(warned[0].message, /`items` on a select's option is dropped: an option is chosen, never opened/);
+  ctx.access('sort', 'click');
+  assert.equal(ctx.menu().items[1].items, undefined, 'the option opens nothing');
+});
+
 test('openMenu refuses an item it cannot read', () => {
   const ctx = new Ctx();
   ctx.frame(320, 240, 1, box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]));

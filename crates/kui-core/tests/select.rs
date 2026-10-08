@@ -242,3 +242,46 @@ fn the_options_reader_refuses_an_empty_list() {
         "the keys `from_value` reads"
     );
 }
+
+/// An option is chosen, never opened: one handed over with a submenu — a
+/// C `KuiMenuItem`'s `submenu`, a data option's `items` — opens a menu of
+/// plain rows, so `current` names a row of that one menu; and the keys
+/// no row reads are found inside a submenu as well as outside it, with
+/// an option's `items` among them (backlog RG150).
+#[test]
+fn an_option_opens_no_submenu_and_stray_keys_are_found_inside_one() {
+    use kui_core::MenuItem;
+    let items = vec![
+        MenuItem::new("Name"),
+        MenuItem::submenu("Date", vec![MenuItem::new("Newest")]),
+    ];
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(20.0));
+    widgets::select_items(&mut ui, "sort", &items, Some(1));
+    ui.finish();
+    let field = rect_of(&mut core, Role::Button, "sort").unwrap();
+    click(&mut core, center(field));
+    let menu = core.menu().expect("open");
+    assert!(
+        menu.items.iter().all(|i| !i.has_submenu()),
+        "{:?}",
+        menu.items
+    );
+    assert!(menu.items[1].checked);
+
+    let nested = Value::List(vec![Value::map([
+        ("label", Value::str("Sort by")),
+        (
+            "items",
+            Value::List(vec![Value::map([
+                ("label", Value::str("Name")),
+                ("disabled", Value::Bool(true)),
+            ])]),
+        ),
+    ])]);
+    assert_eq!(MenuItem::stray_keys(&nested), ["disabled"]);
+    assert_eq!(MenuItem::stray_option_keys(&nested), ["items"]);
+    let options = MenuItem::options_from_value(&nested).unwrap();
+    assert!(!options[0].has_submenu(), "the reader leaves them out too");
+}

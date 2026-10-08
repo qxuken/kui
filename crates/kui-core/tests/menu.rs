@@ -889,3 +889,61 @@ fn a_passage_is_not_offered_to_a_dictionary() {
     ));
     assert_eq!(core.lookup_text().as_deref(), Some("one"));
 }
+
+/// A row wider than the window — a recent file's whole path, a `<select>`
+/// of them — caps the menu at the window, less a margin, and cuts the
+/// label short with an ellipsis rather than the accelerator: before the
+/// cap the panel ran off the right edge and its accelerators with it
+/// (backlog RG150).
+#[test]
+fn a_menu_wider_than_the_window_is_capped_and_its_label_ellipsized() {
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    let path = "/Users/someone/Documents/notes/archive/2026/october/the-long-name-of-a-note.md";
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(10.0, 10.0),
+        vec![
+            MenuItem::new("Open"),
+            MenuItem::new(path).accel("ctrl+alt+shift+backspace"),
+        ],
+    ));
+    frame(&mut core);
+    let menu = menu_rect(&mut core).unwrap();
+    let row_h = row_rect(&mut core, "Open").h;
+    let long = row_rect(&mut core, path);
+    assert!(
+        menu.x >= 0.0 && menu.x + menu.w <= 400.0,
+        "the menu inside the 400 px window: {menu:?}"
+    );
+    assert_eq!(long.h, row_h, "the long row is still one line");
+    assert!(
+        long.x + long.w <= menu.x + menu.w,
+        "{long:?} inside {menu:?}"
+    );
+
+    use kui_core::display::QuadKind;
+    let (dl, _) = core.output();
+    let glyphs: Vec<kui_core::Rect> = dl
+        .quads
+        .iter()
+        .filter(|q| matches!(q.kind, QuadKind::GlyphMask | QuadKind::GlyphSubpixel))
+        .map(|q| q.rect)
+        .filter(|r| r.y >= long.y && r.y + r.h <= long.y + long.h + 1.0)
+        .collect();
+    let right = glyphs.iter().map(|r| r.x + r.w).fold(f32::MIN, f32::max);
+    assert!(
+        right <= long.x + long.w,
+        "nothing drawn past the row: {right} > {}",
+        long.x + long.w
+    );
+    // The accelerator is whole: as many glyphs as its spelling has ink,
+    // on top of a label cut short of its own.
+    let ink = |s: &str| s.chars().filter(|c| !c.is_whitespace()).count();
+    let accel = ink(&kui_core::Accel::label("ctrl+alt+shift+backspace"));
+    assert!(
+        glyphs.len() > accel && glyphs.len() < accel + ink(path),
+        "{} glyphs: the accelerator's {accel} and a label cut short",
+        glyphs.len()
+    );
+}

@@ -291,18 +291,33 @@ fn menu_item_json(item: &kui_core::MenuItem) -> Json {
     }
     Json::Object(o)
 }
-fn menu_items(v: &Json) -> Result<Vec<kui_core::MenuItem>> {
-    kui_core::MenuItem::list_from_value(&value_of(v)).map_err(err)
+/// A menu's rows, with the keys of them no row reads
+/// (`MenuItem::stray_keys`, a submenu's rows' included).
+fn menu_items(v: &Json) -> Result<(Vec<kui_core::MenuItem>, Vec<String>)> {
+    let rows = value_of(v);
+    let items = kui_core::MenuItem::list_from_value(&rows).map_err(err)?;
+    Ok((items, kui_core::MenuItem::stray_keys(&rows)))
+}
+
+/// Raises `unknown_menu_item_key` for each of `keys`, as a dropped prop is.
+pub(crate) fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
+    if core.diagnostics() {
+        for k in keys {
+            core.warn(kui_core::diag::unknown_menu_item_key(&k));
+        }
+    }
 }
 
 /// The root's `menu` prop, as the JSON the encoder writes: a list of
 /// `{ label, items, enabled? }`, whose items are the same objects
 /// `openMenu` takes. One
 /// reader for both menus, so a row can never mean two things.
-pub(crate) fn menu_bar_of(json: &str) -> Result<kui_core::MenuBar> {
+pub(crate) fn menu_bar_of(json: &str) -> Result<(kui_core::MenuBar, Vec<String>)> {
     let parsed: Json = serde_json::from_str(&crate::binary::well_formed(json))
         .map_err(|e| err(format!("menu: {e}")))?;
-    kui_core::MenuBar::from_value(&value_of(&parsed)).map_err(err)
+    let menus = value_of(&parsed);
+    let bar = kui_core::MenuBar::from_value(&menus).map_err(err)?;
+    Ok((bar, kui_core::MenuBar::stray_keys(&menus)))
 }
 
 /// A `<select>`'s `options` prop, as the JSON the encoder writes: strings
@@ -3521,7 +3536,8 @@ macro_rules! core_methods {
                 let Some(target) = resolve_query(self.$core(), &key) else {
                     return Ok(false);
                 };
-                let items = menu_items(&items)?;
+                let (items, stray) = menu_items(&items)?;
+                warn_stray_menu_keys(self.$core(), stray);
                 self.$core().open_menu(kui_core::Menu::new(
                     target,
                     Vec2::new(x as f32, y as f32),
