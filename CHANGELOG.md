@@ -21,6 +21,84 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.44 (unreleased)
+
+**What breaks.**
+
+- A menu row wider than the window — a recent file's path, a long
+  `<select>` option — draws its label cut short with "…" in a menu as
+  wide as the window less 8 px a side, where the menu ran off the edge
+  (under Fixed, RG150).
+- With a frame clock (every runner sets one), moving the pointer from an
+  open submenu's row to another row of its menu switches after 0.3 s of
+  rest there, not at once (under Fixed, RG150). A driver that sets no
+  clock switches at once, as before.
+- A `<select>` option given `items` (or a C `KuiMenuItem` with
+  `submenu`) opens no submenu: the rows are dropped, with an
+  `unknown-prop` warning in Node and Lua (under Fixed, RG150).
+- Windows: a `Blur` or `Tinted` window whose environment presents through
+  the window's handle (`WGPU_DX12_PRESENTATION_SYSTEM=hwnd`) or names no
+  D3D12 in `WGPU_BACKEND` draws the wallpaper kui reads and reports
+  `Tinted` (or `Opaque`), where it was translucent over black and
+  reported `Blur`; a transparent window whose `WGPU_BACKEND` lists D3D12
+  among others opens D3D12 alone (under Fixed, RG150).
+
+### Added
+
+- `MenuItem::stray_keys`, `MenuItem::stray_option_keys` and
+  `MenuBar::stray_keys`: the keys of plain-data menu rows no row reads,
+  a submenu's rows' included, for a binding to warn about (backlog
+  RG150).
+- `kui_wgpu::see_through_by_visual` (and `_with`, its pure form): whether
+  a Windows window can be seen through, by the environment wgpu reads —
+  the one answer the window's surface and the swapchain both take
+  (backlog RG150).
+
+### Fixed
+
+- **A menu has a width ceiling** (backlog RG150, from alpha.43's pre-tag
+  pass). F127 made a menu as wide as its widest row, with nothing above
+  it: a long path or `<select>` option ran the panel and its
+  accelerators off a narrow window. A menu is now never wider than the
+  window less 8 px a side (a narrower ceiling the caller declared
+  stands), and a row's label is bounded by what its accelerator leaves it
+  and ends in "…".
+- **A submenu survives the pointer passing over a row on its way in**
+  (backlog RG150). A diagonal path from a row to a lower row of its
+  submenu crosses the rows below it, and each one closed the submenu. A
+  row that would close one now waits 0.3 s of rest on the frame clock,
+  and moving into the submenu cancels it; the frames for the wait are
+  owed. And a submenu the keyboard closed opens again when the pointer
+  leaves the menu and comes back to its row.
+- **A stray key inside a submenu warns** (backlog RG150). Only a select's
+  top-level options were checked, so `{ label, disabled: true }` inside a
+  submenu was silently an enabled row; Node's `openMenu` and `<menuBar>`
+  and Lua's `open_menu` and `menu_bar` now warn for every level.
+- **The backdrop blur's scratch is the size of what it blurs** (backlog
+  RG150). Four surface-sized textures, cleared and stored by every pass,
+  were ~236 MB at 5K and three full-surface stores per blurred node, and
+  were kept by a window gone idle. The scratch is now the largest
+  region's, its passes load rather than clear, the composite rides in the
+  pass that follows, and the first frame without a blur drops it all:
+  65.5 MB → 16.8 MB and ~230 → ~150 µs a frame at 2560×1600 for one
+  toolbar, the output bit-identical.
+- **Windows: one answer for the window's surface and the swapchain**
+  (backlog RG150). `WGPU_BACKEND` decided the first and
+  `WGPU_DX12_PRESENTATION_SYSTEM` the second, so `WGPU_BACKEND=dx12` drew
+  translucency over black while the window reported `Blur`. Compiled and
+  read, not run.
+- **Linux: the wallpaper is found off the event loop** (backlog RG150):
+  up to three `gsettings` runs at window creation on GNOME before the
+  window showed; and Wayland's blur managers are bound once per process,
+  not once per window and never released. A window with no wallpaper to
+  read now reads `Opaque` before its first frame is built. Compiled and
+  read, not run.
+
+**What you can delete.**
+
+- An app's own truncation of menu labels to keep a menu on screen
+  (RG150).
+
 ## 0.1.0-alpha.43 (2026-10-08)
 
 **What breaks.**

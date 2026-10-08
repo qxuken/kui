@@ -166,11 +166,9 @@ RG138, its other ten, were built the day they were filed and are in the
 archive); and RG145 from the alpha.42 pre-tag pass (what it left:
 `pack-ffi.nu`'s container legs on a rootful Linux host, RG135's
 offsets beside the run, the docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
-they were filed and are in the archive); and RG150 from the alpha.43
-pre-tag pass (what it left: a menu's width ceiling, submenus by the
-pointer, the blur's scratch, Windows' and Linux's backdrop by reading —
-RG146–RG149 were built the day they were filed and are in the
-archive). Everything else that has been filed has
+they were filed and are in the archive); RG146–RG150, from the alpha.43
+pre-tag pass and what it left, were built the day they were filed and
+are in the archive. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2570,55 +2568,10 @@ width test counted the accelerator in the Linux spelling and failed on
 a Mac; `backdrop_blur` was missing from the headless roster, so its
 drive never ran; `KUI_BACKDROP_EMULATE` was documented as working
 anywhere, which on macOS (no wallpaper read) it does not; and the
-archive's and `status.md`'s slips. RG150 is what the pass left.
-
-### `.` RG150 — What the alpha.43 pre-tag pass left
-
-- **A menu has no width ceiling** (F127). The panel is `Fit` over a
-  `min_width` of the metric with every label and accelerator `nowrap`,
-  and nothing caps it: a `<select>` of file paths or a long recent-file
-  row is wider than a narrow window, and the viewport float pins its left
-  edge, so the right side — the accelerators — is cut. It used to wrap
-  at 200 px. **Wants:** a ceiling (the window, less a margin) and the
-  label ellipsized under it, which the shrink must be taught to do for a
-  `nowrap` text beside a fixed accelerator.
-- **Submenus by the pointer, by reading** (F128). A submenu opens and
-  closes the moment the pointer crosses a row: travelling diagonally to
-  a lower row of an open submenu crosses the parent's next rows and
-  closes it (no delay, no aim triangle); and a submenu the keyboard
-  closed does not reopen when the pointer comes back to its row until
-  another row is visited (`Submenus::hovered` is unchanged).
-- **Rows without an `id` collide across submenus** (F128): "Name" under
-  "Sort by ▸" and under "Group by ▸" post the same `item`. The docs show
-  label-only rows; they should say to give nested rows an `id`.
-- **Nested rows are checked less than top-level ones** (F128): Lua's and
-  the encoder's unknown-key checks look at a menu's own rows only, and
-  `MenuItem::from_value` takes `items` on a `<select>` option too, whose
-  `current` semantics were not designed for a submenu.
-- **The blur's scratch is the whole surface** (F129,
-  `kui-wgpu/src/backdrop.rs`). `frame`, `sharp`, `ping` and `pong` are
-  surface-sized and each step is `Clear` + `Store`, which a tiler writes
-  back whole whatever the scissor: about 236 MB at 5K and three
-  full-surface stores per blurred node, not "three small passes". And
-  `IDLE_FRAMES` counts rendered frames, so a window that went quiet
-  after its frosted sheet closed keeps all four. **Wants:** targets sized
-  to the largest region, `Load`, and a release on a timer or a resize.
-- **Windows: two variables decide one thing** (F126). The window keeps
-  its redirection bitmap whenever `WGPU_BACKEND` is set at all, and the
-  GPU presents through a composition visual unless
-  `WGPU_DX12_PRESENTATION_SYSTEM` is set; `WGPU_BACKEND=dx12` gets
-  translucency over black while the env says `Blur`. Read, not run.
-- **Linux, read, not run** (F126): the wallpaper's path is found on the
-  event loop at window creation — up to three `gsettings` processes on
-  GNOME before the window shows — where the loader thread (`ground::spawn`)
-  could; and each window binds a registry and a blur manager on kui's own
-  queue that are never released.
-- **Docs.** `DOORS`' `Launcher::size` row lists the launcher options each
-  binding carries without `backdrop`; `docs/props.md`'s `family`, `font`
-  and `size` rows name `KuiTextStyle` and not `KuiSpan`'s fields (the
-  `<text>` row does). Both strings reach the Odin generator, which could
-  not run on the Mac this pass (its `odin` links an `llvm@22` that is no
-  longer installed), so they were left for a machine where it can.
+archive's and `status.md`'s slips. RG150 is what the pass left, built
+the same day after the tag (a menu's width ceiling, submenus by the
+pointer, nested rows checked, the blur's scratch, Windows' and Linux's
+backdrop) and in the archive.
 
 ## After alpha.42
 
@@ -4127,3 +4080,7 @@ move.
 - `.` **RG148** — [Escape was spent on a submenu an app-drawn menu had noted](backlog/closed-2026-09.md#-rg148--escape-was-spent-on-a-submenu-an-app-drawn-menu-had-noted--done-2026-10-08) — done (2026-10-08)
 
 - `.` **RG149** — [In Node a span's `family` lost to a font handle the enclosing span gave it](backlog/closed-2026-09.md#-rg149--in-node-a-spans-family-lost-to-a-font-handle-the-enclosing-span-gave-it--done-2026-10-08) — done (2026-10-08)
+
+**After alpha.43 (2026-10-08)** — RG150, filed by the alpha.43 pre-tag pass and built the same day
+
+- `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
