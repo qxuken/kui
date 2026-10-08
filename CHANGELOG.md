@@ -77,6 +77,42 @@ was the first bare bump to break an app in five releases).
 - A frame an app requested itself after stopping its menu bar, to let
   the core settle (RG154).
 
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-08, over
+RG154 — what alpha.44's pre-tag pass left — with alpha.45's pre-tag pass
+over it on the Windows machine and under WSLg: the mechanical round on
+both, then a read-only review of the diff since alpha.44, each claim
+probed. It filed nothing; its one finding, a `Calc` ceiling read against
+the window for a panel anchored elsewhere, was corrected inside RG154
+before the tag.
+
+**Windows**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu --node`: **2148 tests over 143 suites**, 0 failed. The
+C round passes (6 checks), and so do the **57 scenes** through Rust,
+Lua, C, Node and Odin; the Odin binding's four steps with CI's pinned
+`dev-2026-09`; Node's tests under `KUI_CONFORMANCE_REQUIRED=1` (**218 of
+219**, the one skip Windows'), `npm run gen` with no diff, the
+examples' typecheck and the headless round. The windowed round with
+Node's: **53 examples on both bases**, clean on a first run; `counter`
+and `host` opened by hand after `cbuild`, and the backdrop examples
+opened with and without `KUI_BACKDROP_EMULATE`. The bench guard against
+the alpha.44 tag, on a quiet machine: **green**, the eight guarded rows
+−0.7% to +2.1% (`frame_10k_rects_with_access_tree` the high one), the
+worst run-to-run spread 3.5%. A first run beside the WSL round read two
+rows unreadable at 13 and 21% spread, which is why it was run again.
+
+**Linux**, under WSLg (llvmpipe), the same commit: fmt and clippy
+clean; `cargo test --workspace`: **1926 tests over 142 suites**, 0
+failed; the C round (5 checks) and the 57 scenes through every adapter,
+Node **219 of 219** with the corpus required, gen clean, the typecheck,
+the headless round. The windowed round under X11 with Node's: **53
+examples on both bases**, clean on a first run, two at a time. The
+backdrop examples under X11 read no wallpaper (WSLg has none to name)
+and went `Opaque`, as they should; Plasma's on-the-loop read is
+compiled and read, not run. No Mac ran this round: the AX audit is CI's
+and the next Mac round's.
+
 ## 0.1.0-alpha.44 (2026-10-08)
 
 **What breaks.**

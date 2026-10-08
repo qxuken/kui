@@ -172,8 +172,9 @@ are in the archive, as were RG151 and RG152 from berainder and RG153
 from the alpha.44 pre-tag pass, and RG154 — what that pass left: the
 accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
-queue, three test gaps — built the same day after the alpha.44 tag.
-Everything else that has been filed has
+queue, three test gaps — built the same day after the alpha.44 tag;
+the alpha.45 pre-tag pass over it filed nothing. Everything else that
+has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -187,7 +188,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.43".
+Ordered by area, not by priority. What to do next is under "After alpha.44".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -453,7 +454,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.43" below.
+not cover is in "After alpha.44" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2069,7 +2070,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.43*).
+*Distribution* under *After alpha.44*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2619,10 +2620,42 @@ frame on Windows and Linux, Wayland's shared queue, three test gaps —
 **built 2026-10-08**, the same day after the alpha.44 tag, and in the
 archive (the Wayland queue declined there, with its reason).
 
-## After alpha.43
+## From the alpha.45 pre-tag pass (2026-10-08)
+
+The pass before the alpha.45 tag, on the Windows machine and under
+WSLg, over RG154: the mechanical round on both (2148 Rust tests in 143
+suites on Windows, 1926 in 142 under WSL; the 57 scenes through Rust,
+Lua, C, Node and Odin; the C round; the Odin binding's four steps on
+Windows; Node 218 of 219 with the corpus required on Windows and 219 of
+219 on Linux; gen with no diff; the typecheck; the headless round), the
+windowed smoke with Node's on both (53 examples on both bases, clean
+first time on each, XWayland included this time), the C hosts opened by
+hand after `cbuild`, the frame bench guard against alpha.44 (green on a
+quiet machine, the guarded rows −0.7% to +2.1%, spread up to 3.5%),
+and one read-only reviewer over the diff since alpha.44, each claim
+probed.
+
+Nothing filed. The reviewer's one finding went into RG154 the same
+day: its `Calc` ceiling was read against the window for every panel,
+while layout reads it against the panel's anchor, so a `menu_panel`
+anchored to a node still sized its labels for the window; the window is
+now the room for a viewport float alone, as the archive's outcome says.
+With it: the backdrop module's doc still said every fallback was
+`Tinted` first; the `is_file` the loop now runs has its note (a
+wallpaper on an unreachable share would wait on SMB); and What breaks
+names the wait that starts again when a bar the app left out comes
+back. The first Windows run of the round died on a full disk —
+`target/debug` had grown to 141 GB, 37 of it incremental state — and
+ran again after a prune.
+
+## After alpha.44
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.42" until 2026-10-08, when the round between the alpha.43 and
+alpha.43" until 2026-10-08, when the round between the alpha.44 and
+alpha.45 tags — RG154, what alpha.44's pre-tag pass left, and alpha.45's
+pre-tag pass over it — had landed, and the heading moved with the tag;
+"After
+alpha.42" until earlier on 2026-10-08, when the round between the alpha.43 and
 alpha.44 tags — RG150 from alpha.43's pre-tag pass, RG151 and RG152
 from berainder, and RG153 from alpha.44's pre-tag pass — had landed,
 and the heading moved with the tag; "After
