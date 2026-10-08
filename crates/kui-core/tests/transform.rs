@@ -403,7 +403,7 @@ fn the_region_s_rect_is_the_upright_one_and_its_turn_rides_beside_it() {
         .find(|h| h.key == key)
         .expect("a hit region");
     assert_eq!(h.rect, Rect::new(20.0, 20.0, 100.0, 50.0));
-    let turn = h.turn.expect("the region carries its turn");
+    let turn = h.turn.as_deref().expect("the region carries its turn");
     assert!(near(turn.transform.angle, TAU / 4.0));
     assert_eq!(turn.inner, NO_CLIP);
 }

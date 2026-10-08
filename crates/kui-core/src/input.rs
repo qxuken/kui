@@ -1614,8 +1614,10 @@ pub struct HitRegion {
     /// The turn the node is drawn through, when one is (ADR 0043): the
     /// pointer is pulled back through it before `rect`, `shape` and the
     /// inner clip are tested, so a tilted card is hit on its tilted edge.
-    /// `None` for the region every frame had before.
-    pub turn: Option<HitTurn>,
+    /// `None` for the region every frame had before. Boxed: a region is
+    /// written per hit node per frame, and the 36 bytes inline cost a frame
+    /// of a thousand buttons 1% when nothing turned.
+    pub turn: Option<Box<HitTurn>>,
     /// The shape inside `rect` a point must also be in, when there is one.
     pub shape: HitShape,
     /// Click payload; None for hover-only regions (hoverable, edits) — a

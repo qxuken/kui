@@ -338,15 +338,23 @@ pub(crate) enum Slot {
     Shadow = 7,
     ShadowColor = 8,
     /// The node's turn in turns and its scale, as one vector: rotate,
-    /// scale, two spare (ADR 0043).
+    /// scale, two spare (ADR 0043). Not one of the [`SLOTS`] every
+    /// transitioning node carries: retained beside them, in
+    /// `AnimStore::turns`, for the nodes that turn.
     Transform = 9,
 }
 
-const SLOTS: usize = 10;
+/// The slots retained per transitioning node, in a fixed array: every slot
+/// but [`Slot::Transform`]. A slot here is 96 bytes on every node that
+/// declares a `transition`, whether or not it ever drives that slot, and
+/// the tenth cost a frame of 10,000 transitioning boxes 2.6% when it was
+/// one of them (ADR 0043's amendment).
+const SLOTS: usize = 9;
 
 impl Slot {
-    /// Every slot, at its index.
-    const ALL: [Slot; SLOTS] = [
+    /// Every slot, at its index: the [`SLOTS`] retained in the array, then
+    /// the transform.
+    const ALL: [Slot; SLOTS + 1] = [
         Slot::Width,
         Slot::Height,
         Slot::Bg,
@@ -517,6 +525,10 @@ impl Tween {
 #[derive(Default)]
 pub struct AnimStore {
     tweens: FxHashMap<Key, [Option<Tween>; SLOTS]>,
+    /// The transform slot's tweens (ADR 0043), by node, for the nodes that
+    /// turn: kept apart from `tweens` so the nodes that do not — almost
+    /// all of them — carry nothing for it.
+    turns: FxHashMap<Key, Option<Tween>>,
     /// Driver time in seconds; None until the driver first sets it.
     now: Option<f64>,
     /// The core's frame counter as of `begin_frame`.
@@ -574,6 +586,12 @@ impl AnimStore {
             self.tweens
                 .retain(|_, slots| slots.iter().flatten().any(|t| t.last_used >= cutoff));
         }
+        if !self.turns.is_empty()
+            && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
+        {
+            self.turns
+                .retain(|_, t| t.is_some_and(|t| t.last_used >= cutoff));
+        }
     }
 
     /// Every slot the last frame drove and left mid-flight, by node: what
@@ -587,20 +605,24 @@ impl AnimStore {
         let Some(now) = self.drove_at.or(self.now) else {
             return;
         };
-        for (&key, slots) in &self.tweens {
-            for (i, tw) in slots.iter().enumerate() {
-                let Some(tw) = tw else { continue };
-                if tw.last_used != self.frame_no {
-                    continue;
-                }
-                let moving = if tw.easing.is_spring() {
+        let moving = |tw: &Tween| {
+            tw.last_used == self.frame_no
+                && if tw.easing.is_spring() {
                     tw.value != tw.to || tw.velocity != [0.0; 4]
                 } else {
                     tw.progress_at(now) < 1.0
-                };
-                if moving {
+                }
+        };
+        for (&key, slots) in &self.tweens {
+            for (i, tw) in slots.iter().enumerate() {
+                if tw.as_ref().is_some_and(moving) {
                     each(key, Slot::ALL[i]);
                 }
+            }
+        }
+        for (&key, tw) in &self.turns {
+            if tw.as_ref().is_some_and(moving) {
+                each(key, Slot::Transform);
             }
         }
     }
@@ -645,6 +667,41 @@ impl AnimStore {
             active: &mut self.owes_transition,
             cycling: &mut self.owes_cycle,
         }
+    }
+
+    /// [`NodeAnim::drive`] for the transform slot, whose tweens are kept
+    /// apart (`turns`): the same leg, the same rules.
+    pub(crate) fn drive_turn(
+        &mut self,
+        key: Key,
+        enter_from: Option<[f32; 4]>,
+        target: [f32; 4],
+        transition: Transition,
+    ) -> [f32; 4] {
+        let entry = self.turns.entry(key).or_default();
+        drive_entry(
+            entry,
+            self.now,
+            self.frame_no,
+            &mut self.owes_transition,
+            enter_from,
+            target,
+            transition,
+            true,
+        )
+    }
+
+    /// [`NodeAnim::sample`] for the transform slot.
+    pub(crate) fn sample_turn(
+        &mut self,
+        track: &Track,
+        transition: Transition,
+    ) -> Option<[f32; 4]> {
+        let v = sample_track(track, transition, self.now);
+        if v.is_some() {
+            self.owes_cycle = true;
+        }
+        v
     }
 }
 
@@ -725,9 +782,39 @@ impl NodeAnim<'_> {
         transition: Transition,
         follow: bool,
     ) -> [f32; 4] {
-        let frame_no = self.frame_no;
-        let now = self.now;
-        let entry = &mut self.slots[slot as usize];
+        // The transform slot is not in the array (see `SLOTS`); its
+        // tweens are driven through `AnimStore::drive_turn`.
+        debug_assert!(slot != Slot::Transform);
+        drive_entry(
+            &mut self.slots[slot as usize],
+            self.now,
+            self.frame_no,
+            self.active,
+            enter_from,
+            target,
+            transition,
+            follow,
+        )
+    }
+}
+
+/// One slot's leg driven toward `target` this frame — what
+/// [`NodeAnim::drive`] and [`AnimStore::drive_turn`] both are, over the
+/// entry each keeps. Inlined: it is the body of the first, which is asked
+/// up to nine times per transitioning node per frame.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn drive_entry(
+    entry: &mut Option<Tween>,
+    now: Option<f64>,
+    frame_no: u64,
+    active: &mut bool,
+    enter_from: Option<[f32; 4]>,
+    target: [f32; 4],
+    transition: Transition,
+    follow: bool,
+) -> [f32; 4] {
+    {
         let stale = entry.is_none_or(|t| t.last_used + 1 < frame_no);
         let Some(now) = now else {
             *entry = Some(Tween::settled(target, 0.0, 0.0, transition, frame_no));
@@ -770,7 +857,7 @@ impl NodeAnim<'_> {
             tw.duration_ms = transition.duration_ms;
             tw.easing = transition.curve();
             if tw.spring_step(now, zeta) {
-                *self.active = true;
+                *active = true;
             }
             return tw.value;
         }
@@ -790,7 +877,7 @@ impl NodeAnim<'_> {
         }
         let p = tw.progress_at(now);
         if p < 1.0 {
-            *self.active = true;
+            *active = true;
         }
         tw.value = tw.at(p);
         tw.value

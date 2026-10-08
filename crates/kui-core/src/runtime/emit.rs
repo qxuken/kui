@@ -72,7 +72,8 @@ impl Core {
         &mut self,
         i: usize,
         rect: Rect,
-        clip: Clip,
+        clip: Rect,
+        turn: Option<crate::input::HitTurn>,
         drop: Option<crate::input::DropOwner>,
         hits: &mut Vec<HitRegion>,
     ) {
@@ -185,8 +186,8 @@ impl Core {
             key: self.tree.keys[i],
             origin: self.tree.origins[i],
             rect,
-            clip: clip.rect,
-            turn: crate::input::HitTurn::of(&clip),
+            clip,
+            turn: turn.map(Box::new),
             shape,
             payload: spec.events().on_click.clone().filter(|_| live),
             drag: spec.events().on_drag.clone().filter(|_| live),
@@ -218,7 +219,8 @@ impl Core {
         i: usize,
         key: Key,
         rect: Rect,
-        clip: Clip,
+        clip: Rect,
+        turn: Option<crate::input::HitTurn>,
         scale: f32,
         drop: Option<crate::input::DropOwner>,
         hits: &mut Vec<HitRegion>,
@@ -239,8 +241,8 @@ impl Core {
             key,
             origin: self.tree.origins[i],
             rect,
-            clip: clip.rect,
-            turn: crate::input::HitTurn::of(&clip),
+            clip,
+            turn: turn.map(Box::new),
             // A field's corners round its hit too (ADR 0026).
             shape: if spec.style.radius != crate::display::SQUARE {
                 crate::input::HitShape::Rounded(spec.style.radius)
@@ -304,7 +306,16 @@ impl Core {
         hits: &mut Vec<HitRegion>,
         scroll_regions: &mut Vec<ScrollRegion>,
     ) {
-        let Paint { clip, scale, .. } = paint;
+        let Paint {
+            clip_rect, scale, ..
+        } = paint;
+        // The turn the node is drawn through, for its regions (ADR 0043):
+        // looked up by node, and only on a frame that turns something.
+        let turn = if self.tree.any_transform {
+            self.clips.get(i).and_then(crate::input::HitTurn::of)
+        } else {
+            None
+        };
         // Behind a modal a node still draws, and stops taking input.
         let interactive = self.interactive(i);
         let spec = &self.tree.specs[i];
@@ -328,7 +339,7 @@ impl Core {
         // A stroke emits no hit region: it takes no input (ADR 0010,
         // decision 7).
         if spec.hover_tracked() && interactive {
-            self.push_hit(i, rect, clip, drop.clone(), hits);
+            self.push_hit(i, rect, clip_rect, turn, drop.clone(), hits);
         }
         let spec = &self.tree.specs[i];
         // An `on_scroll` node takes the wheel the way a container does —
@@ -347,8 +358,8 @@ impl Core {
                 key: self.tree.keys[i],
                 node: i as u32,
                 rect,
-                clip: clip.rect,
-                turn: crate::input::HitTurn::of(&clip),
+                clip: clip_rect,
+                turn,
                 inert: !interactive,
                 handler,
                 takes_x,
@@ -367,7 +378,7 @@ impl Core {
         if let NodeContent::Edit(key) = self.tree.content[i]
             && interactive
         {
-            self.push_edit_hit(i, key, rect, clip, scale, drop, hits);
+            self.push_edit_hit(i, key, rect, clip_rect, turn, scale, drop, hits);
         }
         // The content, resolved to what the painter needs — a text node's
         // selection and its place, an editor's focus — then painted by the
@@ -494,7 +505,10 @@ impl Core {
             } else {
                 crate::display::SQUARE
             };
-            let clip = paint.clip.intersect(rect, radius);
+            // The logical clip the table was emitted under, by node: the
+            // painter carries only its rect (see `Paint`).
+            let inherited = self.clips.get(i).copied().unwrap_or(Clip::NONE);
+            let clip = inherited.intersect(rect, radius);
             self.display.intern_clip(clip.scaled(paint.scale))
         } else {
             paint.clip_id
@@ -559,7 +573,8 @@ impl Core {
         let spec = &g.nodes[i].spec;
         let lines = rule_lines(rect, spec.layout.padding, spec.interact().rule_w, &children);
         let clip_id = if spec.layout.clips() {
-            let clip = paint.clip.intersect(rect, spec.style.radius);
+            let inherited = self.ghost_clip.get(i).copied().unwrap_or(Clip::NONE);
+            let clip = inherited.intersect(rect, spec.style.radius);
             self.display.intern_clip(clip.scaled(paint.scale))
         } else {
             paint.clip_id
@@ -866,11 +881,16 @@ impl Core {
         // rather than found, so `clip_of` has something to answer with
         // even on a frame that emitted no quad at all.
         let no_clip = self.display.intern_clip(Clip::NONE.scaled(scale));
+        // Filled in tree order by the walk below, one push per node: every
+        // node writes its entry and a parent's is written before its
+        // children read it, so a fill of "clips nothing" first would only
+        // be overwritten — eighty bytes a node since ADR 0043, which a
+        // scrolling list's short frame measured.
         self.clips.clear();
         self.clip_ids.clear();
         if any_clip {
-            self.clips.resize(self.tree.len(), Clip::NONE);
-            self.clip_ids.resize(self.tree.len(), no_clip);
+            self.clips.reserve(self.tree.len());
+            self.clip_ids.reserve(self.tree.len());
         }
         self.opacity.clear();
         if any_opacity {
@@ -1004,8 +1024,14 @@ impl Core {
                     .layout
                     .float
                     .is_some_and(|f| f.clipped_by_parent());
-            let (clip, clip_id) = if !any_clip {
-                (Clip::NONE, no_clip)
+            // What the walk carries on: the clip's rect in framebuffer space
+            // (what the node's regions are cut by), the rect it is culled
+            // against in its own space, and the interned id. The whole clip
+            // — eighty bytes since ADR 0043 — stays in `self.clips`: a value
+            // that size built per node cost a frame of 10,000 boxes 2% when
+            // this walk carried it, on frames that clip and turn nothing.
+            let (clip_rect, cull_rect, clip_id) = if !any_clip {
+                (crate::display::NO_CLIP, crate::display::NO_CLIP, no_clip)
             } else {
                 // Floating nodes escape ancestor clips. One anchored to
                 // its parent keeps the parent's turn, as the parent's
@@ -1059,9 +1085,16 @@ impl Core {
                     clip = clip.turned_by(tr.at(rect));
                     id = self.display.intern_clip(clip.scaled(scale));
                 }
-                self.clips[i] = clip;
-                self.clip_ids[i] = id;
-                (clip, id)
+                debug_assert_eq!(self.clips.len(), i, "one entry per node, in order");
+                self.clips.push(clip);
+                self.clip_ids.push(id);
+                // Under a turn the cull is in the node's own space.
+                let cull = if any_transform {
+                    clip.visible()
+                } else {
+                    clip.rect
+                };
+                (clip.rect, cull, id)
             };
             if any_float && self.float_root[i] != NIL {
                 continue; // deferred to its layer, in the float pass
@@ -1077,8 +1110,8 @@ impl Core {
             // Entirely clipped away: skip drawing and hit-testing.
             // Rect, not rounded: a node that survives only in a corner's
             // arc is drawn and clipped rather than culled. Under a turn,
-            // by the clip pulled back into the node's space.
-            let visible = rect.intersect(&clip.visible());
+            // by the clip pulled back into the node's space (`cull_rect`).
+            let visible = rect.intersect(&cull_rect);
             if visible.w <= 0.0 || visible.h <= 0.0 {
                 // Culled — but a text run inside a selection scope keeps
                 // its place in the order and its content reachable, so a
@@ -1106,7 +1139,7 @@ impl Core {
                 continue;
             }
             let paint = Paint {
-                clip,
+                clip_rect,
                 clip_id,
                 scale,
                 opacity,
@@ -1161,15 +1194,20 @@ impl Core {
                         });
                     }
                     let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-                    let clip = if any_clip { self.clips[i] } else { Clip::NONE };
+                    let (clip_rect, cull_rect) = match self.clips.get(i) {
+                        Some(c) if any_clip => {
+                            (c.rect, if any_transform { c.visible() } else { c.rect })
+                        }
+                        _ => (crate::display::NO_CLIP, crate::display::NO_CLIP),
+                    };
                     let clip_id = if any_clip { self.clip_ids[i] } else { no_clip };
                     let opacity = if any_opacity { self.opacity[i] } else { 1.0 };
-                    let visible = rect.intersect(&clip.visible());
+                    let visible = rect.intersect(&cull_rect);
                     if visible.w <= 0.0 || visible.h <= 0.0 {
                         continue;
                     }
                     let paint = Paint {
-                        clip,
+                        clip_rect,
                         clip_id,
                         scale,
                         opacity,
@@ -1559,7 +1597,7 @@ impl Core {
                 },
             };
             let paint = Paint {
-                clip,
+                clip_rect: clip.rect,
                 clip_id,
                 scale,
                 opacity,
@@ -2286,12 +2324,11 @@ impl Painter<'_> {
         leaf: Leaf<'_>,
     ) {
         let Paint {
-            clip,
             clip_id,
             scale,
             opacity,
+            ..
         } = *paint;
-        let clip_px = clip.scaled(scale);
         let first_quad = self.display.quads.len();
         if style.shadow.is_visible() {
             self.display
@@ -2329,6 +2366,14 @@ impl Painter<'_> {
             // over the content, as it does over a gradient (backlog RG152).
             let covers = matches!(leaf, Leaf::Image(..) | Leaf::Fragment(..));
             let solid = self.display.quads.len().checked_sub(1);
+            // The clip in physical px is the entry the node's quads name,
+            // already scaled when it was interned; only a leaf reads it.
+            let clip_px = self
+                .display
+                .clips
+                .get(clip_id as usize)
+                .copied()
+                .unwrap_or(Clip::NONE);
             self.paint_leaf(rect, style, paint, clip_px, leaf);
             if covers && style.border_w > 0.0 && style.border_color.is_visible() {
                 ring_over_content(&mut self.display.quads, solid);
@@ -2780,8 +2825,16 @@ struct MaskAt {
 
 #[derive(Clone, Copy)]
 struct Paint {
-    clip: Clip,
-    /// `clip`, scaled and interned: what the node's quads name.
+    /// The rect of the clip the node was emitted under, logical px, in
+    /// framebuffer space: what its hit and scroll regions are cut by. The
+    /// whole clip — its radii, its turn, its inner clip (ADR 0043) — is
+    /// eighty bytes and almost nothing reads it, so it is not carried:
+    /// the painter reads the scaled entry `clip_id` names out of the
+    /// display list, and the rare paths that want the logical clip look
+    /// it up by node. Carrying it cost every node of every frame a copy
+    /// and a rescale (`frame_10k_rects` +6% when it was).
+    clip_rect: Rect,
+    /// The clip, scaled and interned: what the node's quads name.
     clip_id: ClipId,
     scale: f32,
     /// Multiplied into the alpha of every quad the node emits.

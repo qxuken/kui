@@ -46,6 +46,23 @@ pub enum Content<'a> {
     ),
 }
 
+/// Whether a transitioning node has a transform slot to ease: it declares
+/// a turn or a scale, or its entrance or a stop names one (ADR 0043). Two
+/// box checks for the node that does none of it.
+#[inline]
+fn turns(spec: &NodeSpec) -> bool {
+    spec.interact
+        .as_deref()
+        .is_some_and(|i| i.transform.is_some())
+        || spec.anim.as_deref().is_some_and(|a| {
+            a.enter
+                .is_some_and(|e| e.rotate.is_some() || e.scale.is_some())
+                || a.keyframes
+                    .iter()
+                    .any(|k| k.rotate.is_some() || k.scale.is_some())
+        })
+}
+
 /// The transform slot's lanes a node declares: `[rotate, scale, 0, 0]`,
 /// the identity for a node that declares none (ADR 0043).
 #[inline]
@@ -62,7 +79,6 @@ struct Tracks {
     bg: Option<Vec<(f32, [f32; 4])>>,
     radius: Option<Vec<(f32, [f32; 4])>>,
     opacity: Option<Vec<(f32, [f32; 4])>>,
-    transform: Option<Vec<(f32, [f32; 4])>>,
 }
 
 impl Tracks {
@@ -80,12 +96,6 @@ impl Tracks {
             bg: track(Slot::Bg, Some(spec.style.bg.lanes())),
             radius: track(Slot::Radius, Some(spec.style.radius)),
             opacity: track(Slot::Opacity, Some(one(spec.style.opacity))),
-            // A stop's lanes are filled from the node's own transform, so
-            // a stop naming only `rotate` keeps the scale (ADR 0043).
-            transform: {
-                let base = transform_lanes(spec);
-                keyframes::track(frames, &offsets, base, |k| k.transform_lanes(base))
-            },
         }
     }
 
@@ -96,7 +106,8 @@ impl Tracks {
             Slot::Bg => self.bg.as_deref(),
             Slot::Radius => self.radius.as_deref(),
             Slot::Opacity => self.opacity.as_deref(),
-            Slot::Transform => self.transform.as_deref(),
+            // Eased apart, in `ease_transform`.
+            Slot::Transform => None,
             // Keyframing a shadow would need stops for four more numbers
             // and a color; a shadow tweens with `transition` and no more.
             Slot::Border | Slot::Pos | Slot::Shadow | Slot::ShadowColor => None,
@@ -140,6 +151,13 @@ impl Core {
     pub(super) fn ease_spec(&mut self, key: Key, spec: &mut NodeSpec) {
         if let Some(t) = spec.transition {
             self.ease_transitioning(key, spec, t);
+            // The turn and the scale (ADR 0043) are eased apart, after the
+            // other slots and out of line, so `ease_transitioning` is the
+            // code it was before ADR 0043 (a test for the turn inside it
+            // measured about 2% on a frame of 10,000 transitioning boxes).
+            if turns(spec) {
+                self.ease_transform(key, spec, t);
+            }
         }
     }
 
@@ -176,23 +194,39 @@ impl Core {
         spec.style.shadow.spread = geom[3];
         spec.style.opacity = ease(Slot::Opacity, one(spec.style.opacity))[0].clamp(0.0, 1.0);
         spec.style.radius = ease(Slot::Radius, spec.style.radius);
-        // The turn and the scale (ADR 0043), as one slot. Only a node that
-        // declares one, or whose entrance or stops name one, pays the
-        // branch; the eased lanes land on the spec's transform, allocated
-        // for an entrance or a cycle that turns a node declaring none.
-        let base = transform_lanes(spec);
-        let from = enter.transform_lanes(base);
+    }
+
+    /// The transform slot of a transitioning node that turns
+    /// ([`turns`]): sampled from its stops when they name `rotate` or
+    /// `scale`, else tweened from where its entrance says. The eased
+    /// lanes land on the spec's transform, allocated for an entrance or a
+    /// cycle that turns a node declaring none.
+    #[cold]
+    #[inline(never)]
+    fn ease_transform(&mut self, key: Key, spec: &mut NodeSpec, t: crate::anim::Transition) {
         let declared = spec.interact().transform.is_some();
-        if declared || from.is_some() || track(Slot::Transform).is_some() {
-            let v = match track(Slot::Transform) {
-                Some(track) => anim.sample(track, t).unwrap_or(base),
-                None => anim.drive(Slot::Transform, from, base, t, true),
-            };
-            if declared || v != base {
-                let tr = spec.transform_mut();
-                tr.rotate = v[0];
-                tr.scale = v[1];
+        let base = transform_lanes(spec);
+        let frames = &spec.anim().keyframes;
+        // A stop's lanes are filled from the node's own transform, so a
+        // stop naming only `rotate` keeps the scale.
+        let track = if frames.is_empty() {
+            None
+        } else {
+            keyframes::track(frames, &keyframes::offsets(frames), base, |k| {
+                k.transform_lanes(base)
+            })
+        };
+        let v = match track {
+            Some(track) => self.anim.sample_turn(&track, t).unwrap_or(base),
+            None => {
+                let from = spec.anim().enter.and_then(|e| e.transform_lanes(base));
+                self.anim.drive_turn(key, from, base, t)
             }
+        };
+        if declared || v != base {
+            let tr = spec.transform_mut();
+            tr.rotate = v[0];
+            tr.scale = v[1];
         }
     }
 
