@@ -774,6 +774,7 @@ impl NodeAnim<'_> {
         v
     }
 
+    #[inline]
     pub(crate) fn drive(
         &mut self,
         slot: Slot,
@@ -800,9 +801,14 @@ impl NodeAnim<'_> {
 
 /// One slot's leg driven toward `target` this frame — what
 /// [`NodeAnim::drive`] and [`AnimStore::drive_turn`] both are, over the
-/// entry each keeps. Inlined: it is the body of the first, which is asked
-/// up to nine times per transitioning node per frame.
-#[inline(always)]
+/// entry each keeps.
+///
+/// Out of line, and the one body both call: `NodeAnim::drive` was an
+/// out-of-line function before ADR 0043, with `Tween::eased_at` and
+/// `spring_step` inlined into it as its only callers. Inlined into the two
+/// instead, each helper had two callers, the compiler stopped inlining
+/// them, and a frame of 10,000 transitioning boxes paid 4% for the calls.
+#[inline(never)]
 #[allow(clippy::too_many_arguments)]
 fn drive_entry(
     entry: &mut Option<Tween>,

@@ -351,11 +351,11 @@ pub(crate) fn spec_of(
         spec = spec.scale(s.scale);
     }
     if s.pivot_set & KUI_PIVOT_X != 0 {
-        let fy = spec.interact().transform.map_or(0.5, |t| t.pivot.y);
+        let fy = spec.transform_spec().map_or(0.5, |t| t.pivot.y);
         spec = spec.pivot(s.pivot_x, fy);
     }
     if s.pivot_set & KUI_PIVOT_Y != 0 {
-        let fx = spec.interact().transform.map_or(0.5, |t| t.pivot.x);
+        let fx = spec.transform_spec().map_or(0.5, |t| t.pivot.x);
         spec = spec.pivot(fx, s.pivot_y);
     }
     if s.scroll_mods != 0 {

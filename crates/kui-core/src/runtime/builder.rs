@@ -54,20 +54,26 @@ fn turns(spec: &NodeSpec) -> bool {
     spec.interact
         .as_deref()
         .is_some_and(|i| i.transform.is_some())
-        || spec.anim.as_deref().is_some_and(|a| {
-            a.enter
-                .is_some_and(|e| e.rotate.is_some() || e.scale.is_some())
-                || a.keyframes
-                    .iter()
-                    .any(|k| k.rotate.is_some() || k.scale.is_some())
-        })
+        || spec.anim.as_deref().is_some_and(anim_turns)
+}
+
+/// [`turns`]'s half for the animation group, out of line: inlined, its
+/// scan of the stops made `prepare_spec` too big to inline into
+/// `open_content`, and every node paid the call (ADR 0043's amendment).
+#[inline(never)]
+fn anim_turns(a: &crate::spec::AnimSpec) -> bool {
+    a.enter
+        .is_some_and(|e| e.rotate.is_some() || e.scale.is_some())
+        || a.keyframes
+            .iter()
+            .any(|k| k.rotate.is_some() || k.scale.is_some())
 }
 
 /// The transform slot's lanes a node declares: `[rotate, scale, 0, 0]`,
 /// the identity for a node that declares none (ADR 0043).
 #[inline]
 fn transform_lanes(spec: &NodeSpec) -> [f32; 4] {
-    let t = spec.interact().transform.unwrap_or_default();
+    let t = spec.transform_spec().unwrap_or_default();
     crate::geom::Transform::lanes(t.rotate, t.scale)
 }
 

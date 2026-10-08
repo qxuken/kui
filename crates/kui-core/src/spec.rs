@@ -1376,7 +1376,10 @@ pub struct InteractSpec {
     /// A turn and a uniform scale about a pivot, applied to everything
     /// the node and its subtree draw, after layout (ADR 0043): `None`
     /// when the node declares none of `rotate`, `scale` and `pivot`.
-    pub transform: Option<TransformSpec>,
+    /// Boxed, as the group is: inline, its twenty bytes moved every node
+    /// that declares any interaction — a gradient, a hover — into a larger
+    /// allocation class (`frame_10k_rects_with_gradient` +2%).
+    pub transform: Option<Box<TransformSpec>>,
 }
 
 /// A node's `rotate`, `scale` and `pivot` (ADR 0043): paint-only, so the
@@ -2168,7 +2171,7 @@ impl NodeSpec {
     /// ```
     /// # use kui_core::NodeSpec;
     /// let card = NodeSpec::column().rotate(0.02).transition(300.0);
-    /// assert_eq!(card.interact().transform.unwrap().rotate, 0.02);
+    /// assert_eq!(card.transform_spec().unwrap().rotate, 0.02);
     /// ```
     pub fn rotate(mut self, turns: f32) -> Self {
         self.transform_mut().rotate = turns;
@@ -2195,7 +2198,16 @@ impl NodeSpec {
     pub(crate) fn transform_mut(&mut self) -> &mut TransformSpec {
         self.interact_mut()
             .transform
-            .get_or_insert(TransformSpec::NONE)
+            .get_or_insert_with(|| Box::new(TransformSpec::NONE))
+    }
+
+    /// The node's `rotate`, `scale` and `pivot` (ADR 0043), when it
+    /// declares any.
+    #[inline]
+    pub fn transform_spec(&self) -> Option<TransformSpec> {
+        self.interact
+            .as_deref()
+            .and_then(|i| i.transform.as_deref().copied())
     }
 
     /// A table's grid rules in `c` (see the `rules` field).

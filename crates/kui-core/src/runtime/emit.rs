@@ -980,6 +980,13 @@ impl Core {
         // content, painted at its place in the tree and held by the
         // parent's clip, as a child is.
         let mut roots: Vec<u32> = Vec::new();
+        // The last clipper whose children were cut, and the child whose
+        // entry in `self.clips` is the clip it cuts them by: a one-entry
+        // cache, since a clipper's children come one after another between
+        // their own subtrees. Two indices and not the clip, which kept
+        // ninety-six bytes live across every iteration of a walk that
+        // never clips (`deep_nesting_64_levels` +3% when it did).
+        let mut clipped_by: (u32, u32) = (NIL, NIL);
         for i in 0..self.tree.len() {
             let parent = self.tree.parent[i];
             let floats_here = any_float && self.tree.opens_layer(i);
@@ -1059,17 +1066,32 @@ impl Core {
                 } else {
                     let p = parent as usize;
                     if self.tree.specs[p].layout.clips() {
-                        // A clipper with a radius rounds what it clips, so
-                        // the children of a rounded card stay inside its
-                        // corners (see `display::Clip`).
-                        let box_rect = Rect::from_pos_size(self.tree.pos[p], self.tree.size[p]);
-                        let box_radius = if any_rounded_clip {
-                            self.tree.specs[p].style.radius
-                        } else {
-                            crate::display::SQUARE
-                        };
-                        let clip = self.clips[p].intersect(box_rect, box_radius);
-                        (clip, self.display.intern_clip(clip.scaled(scale)))
+                        match clipped_by {
+                            // A sibling already asked: every child of one
+                            // clipper is cut by the same clip, so the rows
+                            // of a list intersect and intern it once
+                            // rather than once each.
+                            (q, j) if q == p as u32 => {
+                                (self.clips[j as usize], self.clip_ids[j as usize])
+                            }
+                            _ => {
+                                // A clipper with a radius rounds what it
+                                // clips, so the children of a rounded card
+                                // stay inside its corners (see
+                                // `display::Clip`).
+                                let box_rect =
+                                    Rect::from_pos_size(self.tree.pos[p], self.tree.size[p]);
+                                let box_radius = if any_rounded_clip {
+                                    self.tree.specs[p].style.radius
+                                } else {
+                                    crate::display::SQUARE
+                                };
+                                let clip = self.clips[p].intersect(box_rect, box_radius);
+                                let id = self.display.intern_clip(clip.scaled(scale));
+                                clipped_by = (p as u32, i as u32);
+                                (clip, id)
+                            }
+                        }
                     } else {
                         // The overwhelming case: the clip is the parent's,
                         // so the entry is too, and nothing is compared.
@@ -1079,11 +1101,16 @@ impl Core {
                 // The node's own turn enters a new space for everything
                 // it draws and holds (ADR 0043, decision 4).
                 if any_transform
-                    && let Some(tr) = self.tree.specs[i].interact().transform
+                    && let Some(tr) = self.tree.specs[i].transform_spec()
                     && tr.active()
                 {
                     clip = clip.turned_by(tr.at(rect));
                     id = self.display.intern_clip(clip.scaled(scale));
+                    // Its entry is its own turned space now, not its
+                    // clipper's clip: the next sibling asks again.
+                    if clipped_by.1 == i as u32 {
+                        clipped_by = (NIL, NIL);
+                    }
                 }
                 debug_assert_eq!(self.clips.len(), i, "one entry per node, in order");
                 self.clips.push(clip);
@@ -1519,12 +1546,11 @@ impl Core {
                         scale,
                         pivot: node
                             .spec
-                            .interact()
-                            .transform
+                            .transform_spec()
                             .map_or(crate::spec::TransformSpec::NONE.pivot, |t| t.pivot),
                     })
             } else {
-                node.spec.interact().transform
+                node.spec.transform_spec()
             };
             if let Some(tr) = own
                 && tr.active()
@@ -2366,15 +2392,7 @@ impl Painter<'_> {
             // over the content, as it does over a gradient (backlog RG152).
             let covers = matches!(leaf, Leaf::Image(..) | Leaf::Fragment(..));
             let solid = self.display.quads.len().checked_sub(1);
-            // The clip in physical px is the entry the node's quads name,
-            // already scaled when it was interned; only a leaf reads it.
-            let clip_px = self
-                .display
-                .clips
-                .get(clip_id as usize)
-                .copied()
-                .unwrap_or(Clip::NONE);
-            self.paint_leaf(rect, style, paint, clip_px, leaf);
+            self.paint_leaf(rect, style, paint, leaf);
             if covers && style.border_w > 0.0 && style.border_color.is_visible() {
                 ring_over_content(&mut self.display.quads, solid);
             }
@@ -2459,6 +2477,20 @@ impl Painter<'_> {
         }
     }
 
+    /// The clip a node's quads name, in physical px: the entry `clip_id`
+    /// interned, already scaled. Read by the leaves that cull by it — a
+    /// text, a cell grid, an editor — and by nothing else: eighty bytes
+    /// copied per leaf cost a frame of 10,000 strokes 2% when every leaf
+    /// took it (ADR 0043's amendment).
+    #[inline]
+    fn clip_px(&self, clip_id: ClipId) -> Clip {
+        self.display
+            .clips
+            .get(clip_id as usize)
+            .copied()
+            .unwrap_or(Clip::NONE)
+    }
+
     /// What a leaf draws inside its box: text, cells, an editor, an
     /// image, a fragment, a polygon's fill or a stroke. Out of line, so the
     /// kinds a plain box never takes do not weigh on every node's
@@ -2469,13 +2501,13 @@ impl Painter<'_> {
         rect: Rect,
         style: &crate::spec::VisualStyle,
         paint: &Paint,
-        clip_px: crate::display::Clip,
         leaf: Leaf<'_>,
     ) {
         let Paint { clip_id, scale, .. } = *paint;
         match leaf {
             Leaf::Container => {}
             Leaf::Text { tid, sel } => {
+                let clip_px = self.clip_px(clip_id);
                 let sess = &mut *self.session.state();
                 self.text.emit(
                     tid,
@@ -2492,6 +2524,7 @@ impl Painter<'_> {
                 );
             }
             Leaf::Cells { cid, at, sel, tint } => {
+                let clip_px = self.clip_px(clip_id);
                 let sess = &mut *self.session.state();
                 self.cells.emit(
                     cid,
@@ -2519,6 +2552,7 @@ impl Painter<'_> {
                 // Narrowing the clip makes a new one, so it needs an entry
                 // of its own; an editor that folds to its width — a
                 // document, or a field with `wrap` (F44) — keeps the node's.
+                let clip_px = self.clip_px(clip_id);
                 let (edit_clip, edit_clip_id) = if self.edit.folds(key) {
                     (clip_px, clip_id)
                 } else {

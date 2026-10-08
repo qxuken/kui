@@ -411,7 +411,7 @@ impl Tree {
             self.any_selectable |= i.selectable;
             self.any_region |= i.focus_region;
             self.any_backdrop_blur |= i.backdrop_blur > 0.0;
-            self.any_transform |= i.transform.is_some_and(|t| t.active());
+            self.any_transform |= i.transform.as_deref().is_some_and(|t| t.active());
         }
         if let Some(a) = spec.access.as_deref() {
             self.any_line |= a.role == Some(crate::access::Role::Line);

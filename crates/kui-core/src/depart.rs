@@ -258,7 +258,7 @@ impl Ghost {
             },
             base_opacity: self.base_opacity,
             transform: {
-                let own = root.interact().transform;
+                let own = root.transform_spec();
                 if own.is_none() && e.rotate.is_none() && e.scale.is_none() {
                     None
                 } else {

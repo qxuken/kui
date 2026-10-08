@@ -282,21 +282,75 @@ date: 2026-10-08
 - **The conformance digest hashes twenty words a clip** in all five
   adapters, and the `transform` scene is the first whose digest moves
   if a turn, a scale or an inner clip does.
-- **Measured** with `bench-check.nu` against `v0.1.0-alpha.44`, fastest
-  samples, base then head, on the building Mac. The guard passed (no
-  guarded row 10% slower), but the frames that turn nothing did not
-  come out free, against *Measurements to take*'s expectation:
+- **Measured, and given back (2026-10-09).** The first build passed
+  the bench guard against `v0.1.0-alpha.44` with every frame that turns
+  nothing 4% to 9% slower. Investigated before merging, against the
+  build's own parent (`acbbbb4d`, RG154 — which reads as alpha.44 does,
+  so all of it was this ADR's), by alternating the two bench binaries
+  and profiling with `sample`. Five costs, each found by an experiment
+  before it was fixed:
 
-  | row | alpha.44 | this build | change |
+  1. **The paint path carried the whole clip.** `Paint` held the
+     80-byte `Clip` by value into `emit_node` and `paint_box`, which
+     rescaled all twenty floats for every node. It holds the clip's rect
+     and id now; a leaf that culls — a text, a grid, an editor — reads
+     the scaled entry from the display list, and the table rules look
+     the logical clip up by node.
+  2. **The walk carried it too.** `emit_frame` built an 80-byte value
+     per node and read its rect. It carries the rect, the cull rect and
+     the id; the clip stays in `self.clips`, which is pushed in tree
+     order instead of filled and overwritten, and children of one
+     clipper share one intersect and one intern through a two-index
+     cache (a list's rows were interning the same 80 bytes each).
+  3. **A tenth tween slot on every transitioning node.** 96 bytes a
+     node whether it turned or not. The turn's tween lives in
+     `AnimStore::turns`, for the nodes that turn.
+  4. **The test for a turn inside `ease_transitioning`.** It is eased
+     after the other slots, in `ease_transform`, out of line, behind a
+     two-box check in `ease_spec`; `ease_transitioning` is alpha.44's.
+  5. **An inlining cliff.** The drive body shared by the array slots and
+     the turn was force-inlined into both callers, so `Tween::eased_at`
+     and `spring_step` gained a second caller and stopped being inlined —
+     4% on the transitioning row by itself. The shared body is the
+     out-of-line function now, as `NodeAnim::drive` was, and the
+     helpers inline into it again.
+
+  6. **A test that stopped `prepare_spec` inlining.** The check for a
+     turn in `ease_spec` scanned the keyframe stops inline, which made
+     `prepare_spec` too big to inline into `open_content`, and every node
+     paid a call (+2% on 10,000 gradient cells). The scan is out of line.
+
+  Smaller: the hit region's turn is boxed (36 bytes inline was 1% on a
+  thousand buttons), the transform inside the interact group is boxed
+  (so a gradient or a hover allocates the group in the class it did),
+  the leaves that do not cull by the clip never copy it, and the
+  turned-space cull is asked only on a frame that turns. Medians against
+  RG154, on mains power:
+
+  | row | first build | now (median) | now (fastest) |
   | --- | --- | --- | --- |
-  | `frame_10k_rects` | 762.6 µs | 803 µs | +5.3% |
-  | `frame_1k_typical` | 124.9 µs | 130 µs | +4.1% |
-  | `frame_10k_rects_all_transitioning` | 1.516 ms | 1.621 ms | +6.9% |
-  | `frame_1k_curves` | 241.8 µs | 246.7 µs | +2.0% |
+  | `frame_10k_rects` | +5.9% | +0.5% | +0.5% |
+  | `frame_1k_typical` | +4.7% | −0.3% | −0.1% |
+  | `frame_10k_rects_with_text_and_hits` | +4.5% | −0.3% | −0.6% |
+  | `frame_10k_segments` | +5.2% | +0.2% | +0.6% |
+  | `frame_10k_rects_with_access_tree` | +4.1% | −0.1% | −0.5% |
+  | `list_10k_rows_virtual` | +8.1% | +0.4% | +2.1% |
+  | `frame_1k_curves` | +1.1% | +0.1% | +0.3% |
+  | `frame_10k_rects_all_transitioning` | +11.0% | −2.7% | −3.9% |
+  | `deep_nesting_64_levels` | +5.7% | +3.0% | +0.5% |
+  | `frame_10k_rects_with_gradient` | +6.2% | +1.2% | +1.6% |
+  | `frame_10k_rects_all_declaring_exit` | +13.6% | +4.6% | +0.6% |
+  | `frame_10k_rects_rounded_clip` | +17.4% | −6.1% | −6.0% |
 
-  The likely costs, not yet bisected: `Clip` grew from 32 to 80 bytes
-  and `Paint` carries it by value through `emit_node` and `paint_box`;
-  `clip.visible()` is a call where `clip.rect` was a field read; and a
-  tenth tween slot is walked for every transitioning node, which is the
-  largest of the three. Owed: bisect the three, and if `Paint` is it,
-  carry the clip id and look the entry up on the rare turned path.
+  `deep_nesting_64_levels` never clips or turns, and what moved in it is
+  layout, whose code is unchanged and the same size: placement, not
+  cost. The exit row's medians span 15% on this machine, and its fastest
+  samples are level; what it keeps is its entrance and exit, 16 bytes
+  bigger each for `rotate` and `scale`, which every node declaring one
+  allocates. The rounded clip is faster than before ADR 0043 because a
+  clipper's children now share one intersect. Two
+  traps for the next one: the Mac on battery, and another session's
+  builds, made the transitioning row unreadable (medians spanning 2×)
+  until the race waited out `rustc` and read the fastest sample beside
+  the median; and the guard's base was alpha.44, which hid that RG154
+  sat between it and this build.

@@ -891,7 +891,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_PIVOT_X,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| {
-            let fy = s.interact().transform.map_or(0.5, |t| t.pivot.y);
+            let fy = s.transform_spec().map_or(0.5, |t| t.pivot.y);
             s.pivot(v, fy)
         }),
         doc: "Where across the box `rotate` and `scale` are about, as a fraction of its width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge; outside 0..1 is a point past the box. C: `pivot_x` with `pivot_set`.",
@@ -901,7 +901,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_PIVOT_Y,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| {
-            let fx = s.interact().transform.map_or(0.5, |t| t.pivot.x);
+            let fx = s.transform_spec().map_or(0.5, |t| t.pivot.x);
             s.pivot(fx, v)
         }),
         doc: "Where down the box `rotate` and `scale` are about, as a fraction of its height: 0 the top, 0.5 (the default) the middle, 1 the bottom. C: `pivot_y` with `pivot_set`.",
