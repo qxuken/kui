@@ -344,6 +344,45 @@ fn a_nested_float_is_above_the_float_it_is_in() {
     assert_eq!(painted(&mut core), ["red", "green", "blue"]);
 }
 
+/// A box that keeps its key while it becomes a float, around a float it
+/// already held: the outer float is new to the stack and the inner one is
+/// not, and the inner one used to stay below it — painted under its own
+/// parent, and the nested-above-its-float assertion tripped in a debug
+/// build. Seen in berainder, a card stacked behind the top one becoming
+/// the top card, its name panel a float inside it (backlog RG151).
+#[test]
+fn a_box_that_becomes_a_float_stays_under_the_float_it_held() {
+    let mut core = Core::new();
+    let build = |core: &mut Core, floating: bool| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let card = if floating {
+            float_at(100.0, RED)
+        } else {
+            NodeSpec::column().size(200.0, 100.0).bg(RED)
+        };
+        ui.with_keyed("card", card, |ui| {
+            ui.leaf_keyed("name", float_at(120.0, BLUE));
+            ui.leaf_keyed("photo", NodeSpec::row().size(40.0, 20.0).bg(GREEN));
+        });
+        ui.finish();
+    };
+    build(&mut core, false);
+    assert_eq!(painted(&mut core), ["red", "green", "blue"]);
+    build(&mut core, true);
+    assert_eq!(
+        painted(&mut core),
+        ["red", "green", "blue"],
+        "the name panel is above the card that became a float"
+    );
+    build(&mut core, true);
+    assert_eq!(
+        painted(&mut core),
+        ["red", "green", "blue"],
+        "and stays there"
+    );
+}
+
 /// A float from outside the modal's scope that opens over it, holding a
 /// control, is the same inert-over-interactive surface
 /// `modal-behind-content` names for an in-flow modal. A picture over it
@@ -748,4 +787,45 @@ fn a_stroke_is_hit_at_its_place_among_its_siblings() {
         Some("glyph"),
         "declared after the card, the stroke is over it"
     );
+}
+
+/// An image fills its box, so a border painted with the box's background,
+/// under the content, was covered by the picture: `border` on an image
+/// drew nothing. The border is a ring over the image, as it is over a
+/// gradient; the background stays under it (backlog RG152, from
+/// berainder's match screen).
+#[test]
+fn an_images_border_is_drawn_over_the_picture() {
+    let mut core = Core::new();
+    let img = core.resources.add_image(2, 2, vec![0xff; 16]);
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.image(
+        img,
+        NodeSpec::column()
+            .size(80.0, 80.0)
+            .bg(GREY)
+            .radius(40.0)
+            .border(3.0, RED),
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    let kinds: Vec<(QuadKind, bool)> = dl
+        .quads
+        .iter()
+        .map(|q| (q.kind, q.border_w > 0.0 && q.border_color == RED))
+        .collect();
+    let image = kinds.iter().position(|(k, _)| *k == QuadKind::Image);
+    let ring = kinds.iter().position(|(_, ringed)| *ringed);
+    assert!(
+        matches!((image, ring), (Some(i), Some(r)) if r > i),
+        "the border after the picture: {kinds:?}"
+    );
+    assert_eq!(
+        kinds.iter().filter(|(_, ringed)| *ringed).count(),
+        1,
+        "drawn once: {kinds:?}"
+    );
+    let bg = dl.quads.iter().position(|q| q.color == GREY).unwrap();
+    assert!(bg < image.unwrap(), "the background stays under it");
 }

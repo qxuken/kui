@@ -94,10 +94,26 @@ was the first bare bump to break an app in five releases).
   read now reads `Opaque` before its first frame is built. Compiled and
   read, not run.
 
+- **A box that becomes a float keeps a float it held above it** (backlog
+  RG151, from berainder). The float stack kept last frame's floats in
+  their order and put a new one on top, so a box that kept its key while
+  turning into a float went over the float inside it: a debug build
+  panicked on the stack's own assertion, a release build painted and hit
+  the inner float under its parent. A float found below the one it is in
+  now moves to just above it.
+- **`border` on an image draws** (backlog RG152, from berainder). The
+  border was painted with the background, under the picture, which
+  covered it; on an image or a fragment it is now a ring over the
+  content, as over a gradient.
+
 **What you can delete.**
 
 - An app's own truncation of menu labels to keep a menu on screen
   (RG150).
+- A key of its own for a box on each side of becoming a float — the
+  card behind and the card on top — kept only to stop a float inside it
+  falling under it (RG151).
+- A padded box around an image to draw its border (RG152).
 
 ## 0.1.0-alpha.43 (2026-10-08)
 

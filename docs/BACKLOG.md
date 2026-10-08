@@ -168,7 +168,7 @@ archive); and RG145 from the alpha.42 pre-tag pass (what it left:
 offsets beside the run, the docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
 they were filed and are in the archive); RG146–RG150, from the alpha.43
 pre-tag pass and what it left, were built the day they were filed and
-are in the archive. Everything else that has been filed has
+are in the archive, as were RG151 and RG152 from berainder. Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -4084,3 +4084,9 @@ move.
 **After alpha.43 (2026-10-08)** — RG150, filed by the alpha.43 pre-tag pass and built the same day
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
+
+**From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
+
+- `!` **RG151** — [A box that became a float left a float it held below it](backlog/closed-2026-09.md#-rg151--a-box-that-became-a-float-left-a-float-it-held-below-it--done-2026-10-08) — done (2026-10-08)
+
+- `.` **RG152** — [`border` on an image drew nothing](backlog/closed-2026-09.md#-rg152--border-on-an-image-drew-nothing--done-2026-10-08) — done (2026-10-08)

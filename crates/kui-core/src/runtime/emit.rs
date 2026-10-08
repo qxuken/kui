@@ -1789,6 +1789,36 @@ impl Core {
                     next.push((keys[r as usize], rank as u32));
                 }
             }
+            // A box that kept its key while it became a float is new here,
+            // and a float it already held is not: the held one moves up to
+            // just above it (and its own nested ones after it, in turn), so
+            // a nested float stays over the float it is in (backlog RG151).
+            let outer_of = |rank: u32| {
+                let parent = self.tree.parent[roots[rank as usize] as usize];
+                if parent == NIL {
+                    NIL
+                } else {
+                    self.float_root[parent as usize]
+                }
+            };
+            let mut pos = 0;
+            while pos < next.len() {
+                let outer = outer_of(next[pos].1);
+                let below = outer != NIL
+                    && next[pos + 1..]
+                        .iter()
+                        .any(|&(_, rank)| roots[rank as usize] == outer);
+                if below {
+                    let at = next
+                        .iter()
+                        .position(|&(_, rank)| roots[rank as usize] == outer)
+                        .unwrap();
+                    let held = next.remove(pos);
+                    next.insert(at, held);
+                } else {
+                    pos += 1;
+                }
+            }
             *stack = next;
             stack
                 .iter()
@@ -2207,7 +2237,15 @@ impl Painter<'_> {
             });
         }
         if !matches!(leaf, Leaf::Container) {
+            // A picture or a fragment fills its box, so a border painted
+            // under it with the background is covered: it moves to a ring
+            // over the content, as it does over a gradient (backlog RG152).
+            let covers = matches!(leaf, Leaf::Image(..) | Leaf::Fragment(..));
+            let solid = self.display.quads.len().checked_sub(1);
             self.paint_leaf(rect, style, paint, clip_px, leaf);
+            if covers && style.border_w > 0.0 && style.border_color.is_visible() {
+                ring_over_content(&mut self.display.quads, solid);
+            }
         }
         if opacity < 1.0 {
             fade(&mut self.display.quads[first_quad..], opacity);
@@ -3234,4 +3272,24 @@ fn push_fragment(
         clip: clip_id,
         uv: [index, 0, 0, 0],
     });
+}
+
+/// The box's own solid, at `solid`, gives its border to a ring pushed
+/// after what the box drew over it, and keeps the background (backlog
+/// RG152). Out of `paint_box`: a bordered picture is rare.
+#[cold]
+#[inline(never)]
+fn ring_over_content(quads: &mut Vec<Quad>, solid: Option<usize>) {
+    let Some(at) =
+        solid.filter(|&at| quads[at].kind == QuadKind::Solid && quads[at].border_w > 0.0)
+    else {
+        return;
+    };
+    let ring = Quad {
+        color: Color::TRANSPARENT,
+        ..quads[at]
+    };
+    quads[at].border_w = 0.0;
+    quads[at].border_color = Color::TRANSPARENT;
+    quads.push(ring);
 }
