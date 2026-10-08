@@ -4,19 +4,27 @@
 //! frame with one draws into an offscreen copy of the surface instead, so
 //! what it has drawn can be read back: the render pass ends at each
 //! backdrop quad, the region under it (the node, clipped, plus three
-//! sigmas around it) is copied out, downsampled, blurred along each axis
-//! and written back inside the node's rounded rect, and the pass resumes
-//! where it stopped. The frame is then drawn onto the surface in one blit.
-//! Everything here is made the first time a frame needs it, kept while
-//! frames go on needing it, and dropped after [`IDLE_FRAMES`] without one.
+//! sigmas around it) is copied out, downsampled, and blurred along each
+//! axis in three small passes, and the pass resumes where it stopped,
+//! writing the blur back inside the node's rounded rect before it draws
+//! on. The frame is then drawn onto the surface in one blit.
+//!
+//! Only the offscreen frame is the surface's size: it is the whole frame.
+//! The scratch is as big as the largest region of a frame and its
+//! downsampled image (backlog RG150), grown by half again when a frame
+//! needs more, so a sheet sliding open does not remake it every frame.
+//! The three scratch passes load what was there rather than clear it, as
+//! the shaders never read past the image they are given: on a tiler a
+//! cleared and stored attachment writes back every tile, scissor or not.
+//!
+//! Everything here but the pipelines is made the first time a frame needs
+//! it and dropped by the first frame that does not. kui draws no frames
+//! while nothing changes, so a frame counted or a clock checked after the
+//! last blur goes might never come; the frame that stops drawing the blur
+//! always does. Coming back costs a few allocations: 0.1 to 0.2 ms of CPU
+//! at 2560 x 1600 on an M-series Mac (measured in RG150).
 
 use kui_core::{Clip, Quad};
-
-/// How many frames without a backdrop blur keep the offscreen textures
-/// alive: a second at 120 Hz, so a blur that comes and goes with a panel
-/// does not reallocate each time, and a window that had one once does not
-/// hold four screens of memory for the rest of its life.
-pub(crate) const IDLE_FRAMES: u32 = 120;
 
 /// The deepest downsample: past it the blurred image is too coarse for a
 /// bilinear upsample to hide.
@@ -37,6 +45,7 @@ pub(crate) struct Params {
     pub clip_radii: [f32; 4],
     pub blur: [f32; 4],
     pub sizes: [f32; 4],
+    pub sharp_size: [f32; 4],
 }
 
 /// One blur of a frame: its numbers, and the whole pixels the steps read
@@ -112,8 +121,9 @@ pub(crate) fn plan(index: u32, q: &Quad, clip: Clip, width: u32, height: u32) ->
             clip: [clip.rect.x, clip.rect.y, clip.rect.w, clip.rect.h],
             clip_radii: clip.radius,
             blur: [df, s, opacity.min(1.0), taps],
-            // The scratch size is filled in by the renderer, which owns it.
+            // The scratch's sizes are filled in by `Scratch::params`.
             sizes: [down[0] as f32, down[1] as f32, 0.0, 0.0],
+            sharp_size: [0.0; 4],
         },
         region: [region[0], region[1], rw, rh],
         down,
@@ -124,6 +134,52 @@ pub(crate) fn plan(index: u32, q: &Quad, clip: Clip, width: u32, height: u32) ->
             scissor[3] - scissor[1],
         ],
     })
+}
+
+/// What a frame's blurs need of the scratch, each side the largest of
+/// any blur's: the region `sharp` holds, and the image `ping` and `pong`
+/// blur.
+pub(crate) fn need(blurs: &[Blur]) -> Need {
+    blurs.iter().fold(
+        Need {
+            sharp: (1, 1),
+            down: (1, 1),
+        },
+        |n, b| Need {
+            sharp: (n.sharp.0.max(b.region[2]), n.sharp.1.max(b.region[3])),
+            down: (n.down.0.max(b.down[0]), n.down.1.max(b.down[1])),
+        },
+    )
+}
+
+/// The scratch sizes a frame's blurs need: see [`need`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Need {
+    pub sharp: (u32, u32),
+    pub down: (u32, u32),
+}
+
+/// The size a scratch texture of size `have` is remade at to hold `need`,
+/// or `None` when it already does. Each side that is short grows to what
+/// is needed or by half again, whichever is more, rounded up to 64 and no
+/// larger than `cap` (the surface, which no region exceeds): a region that
+/// grows a pixel a frame across a 2560 x 1600 surface remakes it some
+/// fifteen times in those 2560 frames, not each one.
+pub(crate) fn grow(have: (u32, u32), need: (u32, u32), cap: (u32, u32)) -> Option<(u32, u32)> {
+    if need.0 <= have.0 && need.1 <= have.1 {
+        return None;
+    }
+    let side = |have: u32, need: u32, cap: u32| {
+        if need <= have {
+            have
+        } else {
+            need.max(have + have / 2)
+                .next_multiple_of(64)
+                .min(cap)
+                .max(need)
+        }
+    };
+    Some((side(have.0, need.0, cap.0), side(have.1, need.1, cap.1)))
 }
 
 /// The pipelines and the parameter buffer: made once per renderer, the
@@ -234,6 +290,41 @@ impl Pipes {
             params_cap,
         }
     }
+
+    /// A bind group of `src` and `sharp` over the parameter buffer.
+    fn bind(
+        &self,
+        device: &wgpu::Device,
+        src: &wgpu::TextureView,
+        sharp: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("kui.backdrop"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &self.params,
+                        offset: 0,
+                        size: std::num::NonZeroU64::new(std::mem::size_of::<Params>() as u64),
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(src),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(sharp),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        })
+    }
 }
 
 pub(crate) fn params_buffer(device: &wgpu::Device, cap: usize, align: u32) -> wgpu::Buffer {
@@ -245,131 +336,240 @@ pub(crate) fn params_buffer(device: &wgpu::Device, cap: usize, align: u32) -> wg
     })
 }
 
-/// The offscreen frame and the three scratch textures, at the surface's
-/// size, with the bind group of each step.
-pub(crate) struct Targets {
-    pub size: (u32, u32),
-    pub frame: wgpu::TextureView,
-    pub down: wgpu::BindGroup,
-    pub blur_h: wgpu::BindGroup,
-    pub blur_v: wgpu::BindGroup,
-    pub composite: wgpu::BindGroup,
-    pub blit: wgpu::BindGroup,
-    pub sharp: wgpu::Texture,
-    pub ping: wgpu::TextureView,
-    pub pong: wgpu::TextureView,
-    /// Kept for the views above.
-    pub frame_texture: wgpu::Texture,
+fn texture(
+    device: &wgpu::Device,
+    label: &str,
+    format: wgpu::TextureFormat,
+    (width, height): (u32, u32),
+    usage: wgpu::TextureUsages,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage,
+        view_formats: &[],
+    })
 }
 
-impl Targets {
+fn view(t: &wgpu::Texture) -> wgpu::TextureView {
+    t.create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+/// The offscreen frame, at the surface's size — the whole frame is drawn
+/// into it — and the bind group that blits it onto the surface.
+pub(crate) struct Frame {
+    pub size: (u32, u32),
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub blit: wgpu::BindGroup,
+}
+
+impl Frame {
     pub fn new(
         device: &wgpu::Device,
         pipes: &Pipes,
         format: wgpu::TextureFormat,
-        width: u32,
-        height: u32,
+        size: (u32, u32),
     ) -> Self {
-        let make = |label, usage| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage,
-                view_formats: &[],
-            })
-        };
         use wgpu::TextureUsages as U;
         // COPY_DST for nothing the renderer does: a test writes a picture
         // into it to blur.
-        let frame_texture = make(
+        let texture = texture(
+            device,
             "kui.backdrop.frame",
+            format,
+            size,
             U::RENDER_ATTACHMENT | U::TEXTURE_BINDING | U::COPY_SRC | U::COPY_DST,
         );
-        let sharp = make("kui.backdrop.sharp", U::TEXTURE_BINDING | U::COPY_DST);
-        let ping = make(
-            "kui.backdrop.ping",
-            U::RENDER_ATTACHMENT | U::TEXTURE_BINDING,
-        );
-        let pong = make(
-            "kui.backdrop.pong",
-            U::RENDER_ATTACHMENT | U::TEXTURE_BINDING,
-        );
-        let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
-        let (frame, sharp_view, ping, pong) =
-            (view(&frame_texture), view(&sharp), view(&ping), view(&pong));
-        let bind = |src: &wgpu::TextureView| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("kui.backdrop"),
-                layout: &pipes.layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: &pipes.params,
-                            offset: 0,
-                            size: std::num::NonZeroU64::new(std::mem::size_of::<Params>() as u64),
-                        }),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(src),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::TextureView(&sharp_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::Sampler(&pipes.sampler),
-                    },
-                ],
-            })
-        };
+        let view = view(&texture);
+        // The blit reads nothing but `src`; the frame fills the other slot.
+        let blit = pipes.bind(device, &view, &view);
         Self {
-            size: (width, height),
-            down: bind(&sharp_view),
-            blur_h: bind(&ping),
-            blur_v: bind(&pong),
-            composite: bind(&ping),
-            blit: bind(&frame),
-            frame,
+            size,
+            texture,
+            view,
+            blit,
+        }
+    }
+
+    /// The bytes it holds.
+    #[cfg(test)]
+    pub fn bytes(&self) -> u64 {
+        u64::from(self.size.0) * u64::from(self.size.1) * 4
+    }
+}
+
+/// The scratch a blur goes through: `sharp`, the region copied out of the
+/// frame at its own origin, and `ping` and `pong`, its downsampled image
+/// blurred one axis at a time — each as big as the largest of a frame's
+/// regions and images asks (see [`grow`]), not the surface.
+pub(crate) struct Scratch {
+    /// `sharp`'s size.
+    pub sharp_size: (u32, u32),
+    /// `ping`'s and `pong`'s.
+    pub down_size: (u32, u32),
+    pub sharp: wgpu::Texture,
+    pub ping: wgpu::TextureView,
+    pub pong: wgpu::TextureView,
+    pub down: wgpu::BindGroup,
+    pub blur_h: wgpu::BindGroup,
+    pub blur_v: wgpu::BindGroup,
+    pub composite: wgpu::BindGroup,
+}
+
+impl Scratch {
+    pub fn new(
+        device: &wgpu::Device,
+        pipes: &Pipes,
+        format: wgpu::TextureFormat,
+        sharp_size: (u32, u32),
+        down_size: (u32, u32),
+    ) -> Self {
+        use wgpu::TextureUsages as U;
+        let sharp = texture(
+            device,
+            "kui.backdrop.sharp",
+            format,
+            sharp_size,
+            U::TEXTURE_BINDING | U::COPY_DST,
+        );
+        let ping = texture(
+            device,
+            "kui.backdrop.ping",
+            format,
+            down_size,
+            U::RENDER_ATTACHMENT | U::TEXTURE_BINDING,
+        );
+        let pong = texture(
+            device,
+            "kui.backdrop.pong",
+            format,
+            down_size,
+            U::RENDER_ATTACHMENT | U::TEXTURE_BINDING,
+        );
+        let (sharp_view, ping, pong) = (view(&sharp), view(&ping), view(&pong));
+        Self {
+            sharp_size,
+            down_size,
+            down: pipes.bind(device, &sharp_view, &sharp_view),
+            blur_h: pipes.bind(device, &ping, &sharp_view),
+            blur_v: pipes.bind(device, &pong, &sharp_view),
+            composite: pipes.bind(device, &ping, &sharp_view),
             sharp,
             ping,
             pong,
-            frame_texture,
         }
+    }
+
+    /// `b`'s numbers with this scratch's sizes in: what its slot holds.
+    pub fn params(&self, b: &Blur) -> Params {
+        let mut p = b.params;
+        p.sizes[2] = self.down_size.0 as f32;
+        p.sizes[3] = self.down_size.1 as f32;
+        p.sharp_size = [self.sharp_size.0 as f32, self.sharp_size.1 as f32, 0.0, 0.0];
+        p
+    }
+
+    /// The bytes it holds.
+    #[cfg(test)]
+    pub fn bytes(&self) -> u64 {
+        let (s, d) = (self.sharp_size, self.down_size);
+        (u64::from(s.0) * u64::from(s.1) + 2 * u64::from(d.0) * u64::from(d.1)) * 4
+    }
+}
+
+/// What a renderer keeps for its blurs from one frame to the next: the
+/// offscreen frame and the scratch, both made by the first frame that
+/// blurs and both dropped by the first that does not.
+#[derive(Default)]
+pub(crate) struct Targets {
+    pub frame: Option<Frame>,
+    pub scratch: Option<Scratch>,
+}
+
+impl Targets {
+    /// Makes, grows or drops the frame and the scratch for a frame of
+    /// `blurs` over a `size` surface. No blurs drops both there and then:
+    /// kui draws nothing while nothing changes, so the frame that stops
+    /// drawing a blur may be the last for a long while, and textures kept
+    /// for a later one would be kept for good.
+    pub fn fit(
+        &mut self,
+        device: &wgpu::Device,
+        pipes: &Pipes,
+        format: wgpu::TextureFormat,
+        size: (u32, u32),
+        blurs: &[Blur],
+    ) {
+        if blurs.is_empty() {
+            *self = Self::default();
+            return;
+        }
+        if self.frame.as_ref().is_none_or(|f| f.size != size) {
+            self.frame = Some(Frame::new(device, pipes, format, size));
+        }
+        let need = need(blurs);
+        let have = self
+            .scratch
+            .as_ref()
+            .map_or(((0, 0), (0, 0)), |s| (s.sharp_size, s.down_size));
+        let sharp = grow(have.0, need.sharp, size);
+        let down = grow(have.1, need.down, size);
+        if sharp.is_some() || down.is_some() {
+            self.scratch = Some(Scratch::new(
+                device,
+                pipes,
+                format,
+                sharp.unwrap_or(have.0),
+                down.unwrap_or(have.1),
+            ));
+        }
+    }
+
+    /// Both, when a frame blurs.
+    pub fn get(&self) -> Option<(&Frame, &Scratch)> {
+        self.frame.as_ref().zip(self.scratch.as_ref())
+    }
+
+    /// The bytes they hold.
+    #[cfg(test)]
+    pub fn bytes(&self) -> u64 {
+        self.frame.as_ref().map_or(0, Frame::bytes)
+            + self.scratch.as_ref().map_or(0, Scratch::bytes)
     }
 }
 
 /// Records one blur into `encoder`, between the pass that drew everything
-/// before the quad and the one that resumes after it: the copy, the three
-/// steps into the scratch textures, and the composite into the frame.
-/// `slot` is the blur's parameter slot, a byte offset.
+/// before the quad and the one that resumes after it: the copy out of the
+/// frame, then the three steps through the scratch. The pass that resumes
+/// starts with [`composite`]. `slot` is the blur's parameter slot, a byte
+/// offset.
 pub(crate) fn record(
     encoder: &mut wgpu::CommandEncoder,
     pipes: &Pipes,
-    t: &Targets,
+    frame: &Frame,
+    s: &Scratch,
     b: &Blur,
     slot: u32,
 ) {
     let [rx, ry, rw, rh] = b.region;
     encoder.copy_texture_to_texture(
         wgpu::TexelCopyTextureInfo {
-            texture: &t.frame_texture,
+            texture: &frame.texture,
             mip_level: 0,
             origin: wgpu::Origin3d { x: rx, y: ry, z: 0 },
             aspect: wgpu::TextureAspect::All,
         },
         wgpu::TexelCopyTextureInfo {
-            texture: &t.sharp,
+            texture: &s.sharp,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
@@ -383,18 +583,21 @@ pub(crate) fn record(
     let [dw, dh] = b.down;
     let step = |encoder: &mut wgpu::CommandEncoder,
                 target: &wgpu::TextureView,
-                load: wgpu::LoadOp<wgpu::Color>,
                 pipeline: &wgpu::RenderPipeline,
-                bind: &wgpu::BindGroup,
-                (x, y, w, h): (u32, u32, u32, u32)| {
+                bind: &wgpu::BindGroup| {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("kui.backdrop"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target,
                 depth_slice: None,
                 resolve_target: None,
+                // Loaded, not cleared: each step writes every texel of the
+                // image in its corner and reads none outside it — `fs_down`
+                // clamps to the region, `gauss` to the image, and the
+                // composite's bilinear tap to the image's outer texel
+                // centres — so what lies past it is never seen.
                 ops: wgpu::Operations {
-                    load,
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -405,45 +608,30 @@ pub(crate) fn record(
         });
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, bind, &[slot]);
-        pass.set_scissor_rect(x, y, w, h);
+        pass.set_scissor_rect(0, 0, dw, dh);
         pass.draw(0..3, 0..1);
     };
-    // The scratch textures are cleared, which is free on a tiler and
-    // costs nothing that matters elsewhere; only their corner is drawn.
-    let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
-    step(
-        encoder,
-        &t.ping,
-        clear,
-        &pipes.down,
-        &t.down,
-        (0, 0, dw, dh),
-    );
-    step(
-        encoder,
-        &t.pong,
-        clear,
-        &pipes.blur_h,
-        &t.blur_h,
-        (0, 0, dw, dh),
-    );
-    step(
-        encoder,
-        &t.ping,
-        clear,
-        &pipes.blur_v,
-        &t.blur_v,
-        (0, 0, dw, dh),
-    );
+    step(encoder, &s.ping, &pipes.down, &s.down);
+    step(encoder, &s.pong, &pipes.blur_h, &s.blur_h);
+    step(encoder, &s.ping, &pipes.blur_v, &s.blur_v);
+}
+
+/// Writes blur `b`, recorded by [`record`], back into the frame: the first
+/// draw of the pass that resumes after its quad, scissored to the node, so
+/// the frame is not loaded and stored once more for it alone. The caller
+/// sets the scissor back to the whole frame before drawing on.
+pub(crate) fn composite(
+    pass: &mut wgpu::RenderPass<'_>,
+    pipes: &Pipes,
+    s: &Scratch,
+    b: &Blur,
+    slot: u32,
+) {
     let [sx, sy, sw, sh] = b.scissor;
-    step(
-        encoder,
-        &t.frame,
-        wgpu::LoadOp::Load,
-        &pipes.composite,
-        &t.composite,
-        (sx, sy, sw, sh),
-    );
+    pass.set_pipeline(&pipes.composite);
+    pass.set_bind_group(0, &s.composite, &[slot]);
+    pass.set_scissor_rect(sx, sy, sw, sh);
+    pass.draw(0..3, 0..1);
 }
 
 #[cfg(test)]
@@ -549,78 +737,123 @@ mod tests {
         );
     }
 
-    /// The blur itself, on whatever GPU the machine has: a black and white
-    /// edge under a node comes out softened inside the node and sharp
-    /// around it, and half an opacity is half way. Skipped, saying so,
-    /// where there is no adapter.
-    #[test]
-    fn an_edge_under_the_node_is_softened_and_one_beside_it_is_not() {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
-        let Ok(adapter) =
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-        else {
-            eprintln!("no adapter: the backdrop blur is not drawn here");
-            return;
-        };
-        let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .expect("a device");
-        const W: u32 = 64;
-        const H: u32 = 32;
-        let format = wgpu::TextureFormat::Rgba8Unorm;
-        let align = device.limits().min_uniform_buffer_offset_alignment;
-        let pipes = Pipes::new(&device, format, align);
-        let targets = Targets::new(&device, &pipes, format, W, H);
-        // Black on the left half, white on the right, opaque.
-        let mut px = vec![0u8; (W * H * 4) as usize];
-        for y in 0..H {
-            for x in 0..W {
-                let o = ((y * W + x) * 4) as usize;
-                let v = if x < W / 2 { 0 } else { 255 };
-                px[o..o + 4].copy_from_slice(&[v, v, v, 255]);
-            }
+    const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+    /// A device and the pipelines, or `None`, saying so, where the machine
+    /// has no adapter.
+    struct Rig {
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        pipes: Pipes,
+        align: u32,
+    }
+
+    impl Rig {
+        fn new() -> Option<Self> {
+            let instance = wgpu::Instance::new(
+                wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
+            );
+            let Ok(adapter) = pollster::block_on(
+                instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
+            ) else {
+                eprintln!("no adapter: the backdrop blur is not drawn here");
+                return None;
+            };
+            let (device, queue) =
+                pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                    .expect("a device");
+            let align = device.limits().min_uniform_buffer_offset_alignment;
+            let pipes = Pipes::new(&device, FORMAT, align);
+            Some(Self {
+                device,
+                queue,
+                pipes,
+                align,
+            })
         }
-        let size = wgpu::Extent3d {
-            width: W,
-            height: H,
-            depth_or_array_layers: 1,
-        };
-        let draw = |opacity: f32| -> Vec<u8> {
-            queue.write_texture(
+
+        /// Scratch exactly as big as `blurs` need, not rounded up as the
+        /// renderer's is, with every texel of it something no blur wrote.
+        fn tight_and_dirty(&self, blurs: &[Blur]) -> Scratch {
+            let n = need(blurs);
+            let s = Scratch::new(&self.device, &self.pipes, FORMAT, n.sharp, n.down);
+            let junk = vec![0xc3u8; (n.sharp.0 * n.sharp.1 * 4) as usize];
+            self.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
-                    texture: &targets.frame_texture,
+                    texture: &s.sharp,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                &px,
+                &junk,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(W * 4),
-                    rows_per_image: Some(H),
+                    bytes_per_row: Some(n.sharp.0 * 4),
+                    rows_per_image: Some(n.sharp.1),
                 },
-                size,
+                extent(n.sharp),
             );
-            let mut q = quad(Rect::new(8.0, 4.0, 48.0, 24.0), 4.0, opacity);
-            q.radius = [0.0; 4];
-            let b = plan(0, &q, Clip::NONE, W, H).expect("a blur");
-            let mut p = b.params;
-            p.sizes[2] = W as f32;
-            p.sizes[3] = H as f32;
-            queue.write_buffer(&pipes.params, 0, bytemuck::bytes_of(&p));
-            let mut enc = device.create_command_encoder(&Default::default());
-            record(&mut enc, &pipes, &targets, &b, 0);
-            let bpr = (W * 4).next_multiple_of(256);
-            let buf = device.create_buffer(&wgpu::BufferDescriptor {
+            let mut enc = self.device.create_command_encoder(&Default::default());
+            for view in [&s.ping, &s.pong] {
+                let _ = pass(
+                    &mut enc,
+                    view,
+                    wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 1.0,
+                        g: 0.0,
+                        b: 1.0,
+                        a: 1.0,
+                    }),
+                );
+            }
+            self.queue.submit([enc.finish()]);
+            s
+        }
+
+        /// Blurs `blurs` over the picture `px` as the renderer does — each
+        /// recorded, then written back at the start of the pass after its
+        /// quad — through `scratch`, and reads the frame back.
+        fn draw(&self, frame: &Frame, scratch: &Scratch, px: &[u8], blurs: &[Blur]) -> Vec<u8> {
+            let (w, h) = frame.size;
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &frame.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                px,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(w * 4),
+                    rows_per_image: Some(h),
+                },
+                extent(frame.size),
+            );
+            let slot = self.align as usize;
+            let mut bytes = vec![0u8; blurs.len() * slot];
+            for (i, b) in blurs.iter().enumerate() {
+                bytes[i * slot..i * slot + std::mem::size_of::<Params>()]
+                    .copy_from_slice(bytemuck::bytes_of(&scratch.params(b)));
+            }
+            self.queue.write_buffer(&self.pipes.params, 0, &bytes);
+            let mut enc = self.device.create_command_encoder(&Default::default());
+            for (i, b) in blurs.iter().enumerate() {
+                let slot = i as u32 * self.align;
+                record(&mut enc, &self.pipes, frame, scratch, b, slot);
+                let mut pass = pass(&mut enc, &frame.view, wgpu::LoadOp::Load);
+                composite(&mut pass, &self.pipes, scratch, b, slot);
+            }
+            let bpr = (w * 4).next_multiple_of(256);
+            let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
-                size: (bpr * H) as u64,
+                size: (bpr * h) as u64,
                 usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
             enc.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
-                    texture: &targets.frame_texture,
+                    texture: &frame.texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
@@ -630,26 +863,85 @@ mod tests {
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         bytes_per_row: Some(bpr),
-                        rows_per_image: Some(H),
+                        rows_per_image: Some(h),
                     },
                 },
-                size,
+                extent(frame.size),
             );
-            queue.submit([enc.finish()]);
+            self.queue.submit([enc.finish()]);
             let slice = buf.slice(..);
             slice.map_async(wgpu::MapMode::Read, |_| {});
-            let _ = device.poll(wgpu::PollType::Wait {
+            let _ = self.device.poll(wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: None,
             });
             let data = slice.get_mapped_range().expect("mapped");
-            let mut out = Vec::with_capacity((W * H) as usize);
-            for y in 0..H {
-                for x in 0..W {
-                    out.push(data[(y * bpr + x * 4) as usize]);
-                }
+            let mut out = Vec::with_capacity((w * h * 4) as usize);
+            for y in 0..h {
+                let o = (y * bpr) as usize;
+                out.extend_from_slice(&data[o..o + (w * 4) as usize]);
             }
             out
+        }
+    }
+
+    fn extent((width, height): (u32, u32)) -> wgpu::Extent3d {
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        }
+    }
+
+    fn pass<'e>(
+        enc: &'e mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        load: wgpu::LoadOp<wgpu::Color>,
+    ) -> wgpu::RenderPass<'e> {
+        enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        })
+    }
+
+    /// The blur itself, on whatever GPU the machine has: a black and white
+    /// edge under a node comes out softened inside the node and sharp
+    /// around it, and half an opacity is half way. Skipped, saying so,
+    /// where there is no adapter.
+    #[test]
+    fn an_edge_under_the_node_is_softened_and_one_beside_it_is_not() {
+        let Some(rig) = Rig::new() else { return };
+        const W: u32 = 64;
+        const H: u32 = 32;
+        let frame = Frame::new(&rig.device, &rig.pipes, FORMAT, (W, H));
+        // Black on the left half, white on the right, opaque.
+        let mut px = vec![0u8; (W * H * 4) as usize];
+        for y in 0..H {
+            for x in 0..W {
+                let o = ((y * W + x) * 4) as usize;
+                let v = if x < W / 2 { 0 } else { 255 };
+                px[o..o + 4].copy_from_slice(&[v, v, v, 255]);
+            }
+        }
+        let draw = |opacity: f32| -> Vec<u8> {
+            let mut q = quad(Rect::new(8.0, 4.0, 48.0, 24.0), 4.0, opacity);
+            q.radius = [0.0; 4];
+            let b = plan(0, &q, Clip::NONE, W, H).expect("a blur");
+            let scratch = rig.tight_and_dirty(&[b]);
+            let out = rig.draw(&frame, &scratch, &px, &[b]);
+            out.chunks(4).map(|p| p[0]).collect()
         };
         let full = draw(1.0);
         let at = |img: &[u8], x: u32, y: u32| img[(y * W + x) as usize];
@@ -670,6 +962,183 @@ mod tests {
         let mid = at(&half, 32, 16) as i32;
         let want = (255 + r as i32) / 2;
         assert!((mid - want).abs() <= 3, "{mid} against {want}");
+    }
+
+    const PW: u32 = 200;
+    const PH: u32 = 120;
+
+    /// A busy translucent picture: stripes, a gradient, a checker of noise,
+    /// premultiplied, its alpha rising left to right.
+    fn picture() -> Vec<u8> {
+        let mut px = vec![0u8; (PW * PH * 4) as usize];
+        let mut s = 0x9e37_79b9u32;
+        for y in 0..PH {
+            for x in 0..PW {
+                s ^= s << 13;
+                s ^= s >> 17;
+                s ^= s << 5;
+                let o = ((y * PW + x) * 4) as usize;
+                let a = 128 + ((x * 127) / PW);
+                let r = if (x / 7) % 2 == 0 { 255u32 } else { 20 };
+                let g = (y * 255) / PH;
+                let b = if ((x / 16) + (y / 16)) % 2 == 0 {
+                    230u32
+                } else {
+                    s & 0xff
+                };
+                let pm = |c: u32| ((c * a) / 255) as u8;
+                px[o..o + 4].copy_from_slice(&[pm(r), pm(g), pm(b), a as u8]);
+            }
+        }
+        px
+    }
+
+    /// Frames of blurs over [`picture`]: each downsample, a rounded clip,
+    /// one past two edges, and two of different sizes in one frame.
+    fn scenes() -> Vec<Vec<Blur>> {
+        let q = |x, y, w, h, sigma, op, radius: [f32; 4]| {
+            let mut q = quad(Rect::new(x, y, w, h), sigma, op);
+            q.radius = radius;
+            q
+        };
+        let none = Clip::NONE;
+        let frames = vec![
+            // Small radius, no downsample.
+            vec![(q(20.0, 15.0, 40.0, 30.0, 1.5, 1.0, [6.0; 4]), none)],
+            // Halved, inside a rounded clip that cuts it.
+            vec![(
+                q(100.0, 10.0, 70.0, 50.0, 4.0, 1.0, [0.0; 4]),
+                Clip {
+                    rect: Rect::new(90.0, 20.0, 60.0, 80.0),
+                    radius: [10.0; 4],
+                },
+            )],
+            // Quartered, past the right and bottom edges, off the pixel grid.
+            vec![(q(150.5, 70.25, 60.0, 60.0, 10.0, 1.0, [12.0; 4]), none)],
+            // A toolbar along the top edge, then a larger sheet over part
+            // of it, which reads the toolbar's result.
+            vec![
+                (q(0.0, 0.0, 200.0, 24.0, 6.0, 1.0, [0.0; 4]), none),
+                (q(60.0, 10.0, 80.0, 90.0, 20.0, 0.8, [16.0; 4]), none),
+            ],
+            // The deepest downsample, across nearly all of it, faded.
+            vec![(q(10.0, 10.0, 180.0, 100.0, 40.0, 0.7, [8.0; 4]), none)],
+        ];
+        frames
+            .into_iter()
+            .map(|f| {
+                f.iter()
+                    .enumerate()
+                    .map(|(i, (q, c))| plan(i as u32, q, *c, PW, PH).expect("a blur"))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// The scratch sized to the regions, and loaded rather than cleared
+    /// (backlog RG150), draws what scratch the surface's size, fresh, does:
+    /// with every texel past each blur's region and image dirty, not one
+    /// pixel of the frame differs, so no step reads past what it was given.
+    #[test]
+    fn scratch_the_size_of_the_region_draws_what_scratch_the_size_of_the_surface_does() {
+        let Some(rig) = Rig::new() else { return };
+        let px = picture();
+        let frame = Frame::new(&rig.device, &rig.pipes, FORMAT, (PW, PH));
+        for (n, blurs) in scenes().iter().enumerate() {
+            let roomy = Scratch::new(&rig.device, &rig.pipes, FORMAT, (PW, PH), (PW, PH));
+            let want = rig.draw(&frame, &roomy, &px, blurs);
+            let tight = rig.tight_and_dirty(blurs);
+            assert!(tight.sharp_size.0 < PW || tight.down_size.0 < PW);
+            let got = rig.draw(&frame, &tight, &px, blurs);
+            let differ = want.iter().zip(&got).filter(|(a, b)| a != b).count();
+            assert_eq!(differ, 0, "frame {n}: {differ} bytes differ");
+            assert_ne!(got, px, "frame {n} blurred something");
+        }
+    }
+
+    /// The frame and the scratch are made by a frame that blurs, kept and
+    /// not remade while blurs fit them, grown when one does not, and
+    /// dropped by the very next frame without one (backlog RG150): kui
+    /// draws no frames while nothing changes, so a release that waited for
+    /// more frames would never come.
+    #[test]
+    fn a_frame_without_a_blur_drops_the_frame_and_the_scratch() {
+        let Some(rig) = Rig::new() else { return };
+        let size = (2560, 1600);
+        let toolbar = |w: f32, h: f32| {
+            plan(
+                0,
+                &quad(Rect::new(400.0, 200.0, w, h), 16.0, 1.0),
+                Clip::NONE,
+                size.0,
+                size.1,
+            )
+            .expect("a blur")
+        };
+        let mut t = Targets::default();
+        assert!(t.get().is_none() && t.bytes() == 0);
+        t.fit(
+            &rig.device,
+            &rig.pipes,
+            FORMAT,
+            size,
+            &[toolbar(300.0, 60.0)],
+        );
+        let (frame, scratch) = t.get().expect("made by a frame that blurs");
+        assert_eq!(frame.size, size, "the frame is the surface's size");
+        // A 300 x 60 toolbar's scratch is under a fortieth of the frame's 16 MB.
+        assert!(
+            scratch.bytes() * 40 < frame.bytes(),
+            "{} against {}",
+            scratch.bytes(),
+            frame.bytes()
+        );
+        let sharp = scratch.sharp.clone();
+        // A smaller blur fits: nothing is remade.
+        t.fit(
+            &rig.device,
+            &rig.pipes,
+            FORMAT,
+            size,
+            &[toolbar(200.0, 40.0)],
+        );
+        assert!(t.get().expect("kept").1.sharp == sharp, "not remade");
+        // A larger one does not: the scratch grows to hold it.
+        let wide = toolbar(1200.0, 60.0);
+        t.fit(&rig.device, &rig.pipes, FORMAT, size, &[wide]);
+        let (_, grown) = t.get().expect("kept");
+        assert!(grown.sharp != sharp, "remade");
+        assert!(grown.sharp_size.0 >= wide.region[2] && grown.down_size.0 >= wide.down[0]);
+        // The first frame without a blur drops the lot.
+        t.fit(&rig.device, &rig.pipes, FORMAT, size, &[]);
+        assert!(t.get().is_none() && t.frame.is_none() && t.scratch.is_none());
+        assert_eq!(t.bytes(), 0);
+    }
+
+    /// A region that grows a pixel a frame — a sheet sliding open — remakes
+    /// the scratch some fifteen times in 2560 frames, not every frame, and never smaller
+    /// than asked or larger than the surface.
+    #[test]
+    fn a_growing_region_remakes_the_scratch_now_and_then() {
+        let cap = (2560, 1600);
+        let mut have = (0, 0);
+        let mut remade = 0;
+        for w in 1..=cap.0 {
+            let need = (w, 1 + w / 3);
+            if let Some(next) = grow(have, need, cap) {
+                assert!(
+                    next.0 >= need.0 && next.1 >= need.1,
+                    "{next:?} for {need:?}"
+                );
+                assert!(next.0 <= cap.0 && next.1 <= cap.1, "{next:?}");
+                assert!(next.0 >= have.0 && next.1 >= have.1, "never shrinks");
+                have = next;
+                remade += 1;
+            }
+        }
+        assert!(remade <= 16, "remade {remade} times");
+        assert_eq!(grow((64, 64), (64, 10), cap), None, "it fits");
+        assert_eq!(grow((0, 0), (300, 60), cap), Some((320, 64)));
     }
 
     #[test]

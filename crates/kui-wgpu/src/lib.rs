@@ -715,11 +715,10 @@ pub struct Renderer {
     /// The backdrop blur's pipelines (backlog F129): made the first time a
     /// frame blurs, kept for the renderer's life.
     backdrop_pipes: Option<backdrop::Pipes>,
-    /// Its offscreen frame and scratch textures, at the surface's size:
-    /// made when a frame blurs, dropped after `backdrop::IDLE_FRAMES`
-    /// frames that do not.
-    backdrop_targets: Option<backdrop::Targets>,
-    backdrop_idle: u32,
+    /// Its offscreen frame, at the surface's size, and its scratch, at the
+    /// largest blur's (backlog RG150): made when a frame blurs, dropped by
+    /// the first frame that does not.
+    backdrop: backdrop::Targets,
     /// The frame's blurs, in paint order.
     blurs: Vec<backdrop::Blur>,
 }
@@ -1206,8 +1205,7 @@ impl Renderer {
             },
             ground: None,
             backdrop_pipes: None,
-            backdrop_targets: None,
-            backdrop_idle: 0,
+            backdrop: backdrop::Targets::default(),
             blurs: Vec::new(),
         })
     }
@@ -1456,10 +1454,14 @@ impl Renderer {
     }
 
     /// Plans the frame's backdrop blurs (backlog F129), and makes or drops
-    /// what drawing them takes: the pipelines once, the offscreen frame and
-    /// scratch textures at the surface's size, a parameter slot per blur.
-    /// `any` is whether the list has a backdrop quad at all, noticed while
-    /// the instances were written, so a frame without one scans nothing.
+    /// what drawing them takes: the pipelines once, the offscreen frame at
+    /// the surface's size, the scratch at what the largest blur needs, a
+    /// parameter slot per blur. `any` is whether the list has a backdrop
+    /// quad at all, noticed while the instances were written, so a frame
+    /// without one scans nothing.
+    ///
+    /// A frame without a blur drops the frame and the scratch there and
+    /// then (backlog RG150; [`backdrop::Targets::fit`] says why).
     fn plan_backdrops(&mut self, dl: &DisplayList, any: bool) {
         self.blurs.clear();
         let (w, h) = (self.config.width, self.config.height);
@@ -1473,41 +1475,31 @@ impl Renderer {
             }
         }
         if self.blurs.is_empty() {
-            self.backdrop_idle = self.backdrop_idle.saturating_add(1);
-            if self.backdrop_idle > backdrop::IDLE_FRAMES {
-                self.backdrop_targets = None;
-            }
+            self.backdrop = backdrop::Targets::default();
             return;
         }
-        self.backdrop_idle = 0;
         let device = self.gpu.device();
         let align = self.uniform_align;
         let format = self.config.format;
         let pipes = self
             .backdrop_pipes
             .get_or_insert_with(|| backdrop::Pipes::new(device, format, align));
-        let mut rebind = false;
         if self.blurs.len() > pipes.params_cap {
             pipes.params_cap = self.blurs.len().next_power_of_two();
             pipes.params = backdrop::params_buffer(device, pipes.params_cap, align);
-            rebind = true;
+            // Every bind group names the old buffer.
+            self.backdrop = backdrop::Targets::default();
         }
-        if rebind
-            || self
-                .backdrop_targets
-                .as_ref()
-                .is_none_or(|t| t.size != (w, h))
-        {
-            self.backdrop_targets = Some(backdrop::Targets::new(device, pipes, format, w, h));
-        }
+        self.backdrop
+            .fit(device, pipes, format, (w, h), &self.blurs);
+        let Some((_, scratch)) = self.backdrop.get() else {
+            return;
+        };
         let slot = align as usize;
         let mut bytes = vec![0u8; self.blurs.len() * slot];
         for (i, b) in self.blurs.iter().enumerate() {
-            let mut p = b.params;
-            p.sizes[2] = w as f32;
-            p.sizes[3] = h as f32;
             bytes[i * slot..i * slot + std::mem::size_of::<backdrop::Params>()]
-                .copy_from_slice(bytemuck::bytes_of(&p));
+                .copy_from_slice(bytemuck::bytes_of(&scratch.params(b)));
         }
         self.gpu.queue().write_buffer(&pipes.params, 0, &bytes);
     }
@@ -1804,11 +1796,11 @@ impl Renderer {
         // (backlog F129); one that does not draws to the surface in one
         // pass, as it always has.
         let blurring = !self.blurs.is_empty();
-        let offscreen = match (&self.backdrop_targets, blurring) {
-            (Some(t), true) => Some(t),
+        let offscreen = match (&self.backdrop_pipes, self.backdrop.get(), blurring) {
+            (Some(p), Some((f, s)), true) => Some((p, f, s)),
             _ => None,
         };
-        let target = offscreen.map_or(&surface_view, |t| &t.frame);
+        let target = offscreen.map_or(&surface_view, |(_, f, _)| &f.view);
         let end = self.instances.len() as u32;
         let mut start = 0u32;
         let mut next = 0usize;
@@ -1844,6 +1836,15 @@ impl Renderer {
                     pass.set_bind_group(0, &g.bind, &[]);
                     pass.draw(0..4, 0..1);
                 }
+                // The blur the last pass stopped for, written back before
+                // anything after its quad draws over it.
+                if let Some(((pipes, frame, scratch), b)) =
+                    offscreen.zip(next.checked_sub(1).and_then(|i| self.blurs.get(i)))
+                {
+                    let slot = (next - 1) as u32 * self.uniform_align;
+                    backdrop::composite(&mut pass, pipes, scratch, b, slot);
+                    pass.set_scissor_rect(0, 0, frame.size.0, frame.size.1);
+                }
                 self.draw_quads(
                     &mut pass,
                     dl,
@@ -1852,16 +1853,15 @@ impl Renderer {
                     &texture_binds,
                 );
             }
-            let (Some(b), Some(pipes), Some(t)) =
-                (self.blurs.get(next), &self.backdrop_pipes, offscreen)
-            else {
+            let (Some(b), Some((pipes, frame, scratch))) = (self.blurs.get(next), offscreen) else {
                 break;
             };
-            backdrop::record(&mut encoder, pipes, t, b, next as u32 * self.uniform_align);
+            let slot = next as u32 * self.uniform_align;
+            backdrop::record(&mut encoder, pipes, frame, scratch, b, slot);
             start = b.quad + 1;
             next += 1;
         }
-        if let (Some(pipes), Some(t)) = (&self.backdrop_pipes, offscreen) {
+        if let Some((pipes, frame, _)) = offscreen {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("kui.backdrop.blit"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1879,7 +1879,7 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_pipeline(&pipes.blit);
-            pass.set_bind_group(0, &t.blit, &[0]);
+            pass.set_bind_group(0, &frame.blit, &[0]);
             pass.draw(0..3, 0..1);
         }
         self.gpu.queue().submit([encoder.finish()]);
