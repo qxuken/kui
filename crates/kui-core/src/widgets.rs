@@ -1410,9 +1410,13 @@ fn menu_level(
     // What a row's label may take of it: the panel's inside, less the
     // row's padding, the gutter and the accelerator or chevron with their
     // gaps. A row is sized from its content (the panel is `Fit` over its
-    // rows), so the label is what is bounded, and it ellipsizes there.
+    // rows), so the label is what is bounded, and it ellipsizes there. A
+    // ceiling the caller declared as a size expression is read against
+    // the window, which is what the panel floats in (backlog RG154).
     let cap = if spec.layout.max_w >= 0.0 {
         spec.layout.max_w
+    } else if let Some(calc) = crate::spec::max_calc(spec.layout.max_w) {
+        calc.resolve(ui.viewport().w).min(ceiling)
     } else {
         ceiling
     };
@@ -1527,8 +1531,15 @@ fn menu_level(
                 if gutter {
                     label_max -= MENU_CHECK_W + MENU_ROW_GAP;
                 }
+                // The accelerator takes what the label's floor leaves it,
+                // and ellipsizes past that: in a window narrower than the
+                // accelerator and its gaps, the label used to shrink to
+                // nothing and the accelerator ran past the panel anyway
+                // (backlog RG154).
+                let tail_max =
+                    (label_max - 2.0 * MENU_ROW_GAP - MENU_ACCEL_GAP - MENU_LABEL_MIN).max(0.0);
                 if let Some(tail) = &tail {
-                    let w = ui.measure_text(tail, &tail_style, None).width;
+                    let w = ui.measure_text(tail, &tail_style, None).width.min(tail_max);
                     label_max -= 2.0 * MENU_ROW_GAP + MENU_ACCEL_GAP + w;
                 }
                 if gutter {
@@ -1556,7 +1567,11 @@ fn menu_level(
                 // chevron there and no accelerator: it binds nothing.
                 if let Some(tail) = &tail {
                     ui.leaf(NodeSpec::row().grow_width().min_width(MENU_ACCEL_GAP));
-                    ui.text(tail, tail_style);
+                    ui.text_in(
+                        NodeSpec::row().max_width(tail_max),
+                        tail,
+                        tail_style.ellipsis(),
+                    );
                 }
             };
             let key = if opens {
@@ -1634,6 +1649,11 @@ const MENU_PANEL_PAD: f32 = 4.0;
 
 /// How far a menu at its widest stays from each side of the window.
 pub const MENU_EDGE: f32 = 8.0;
+
+/// The least a row's label keeps when its accelerator would take the rest:
+/// a few glyphs and the ellipsis at the chrome size. Past this the
+/// accelerator is what ellipsizes.
+pub const MENU_LABEL_MIN: f32 = 48.0;
 
 /// Between a row's checkmark, label, spacer and accelerator.
 const MENU_ROW_GAP: f32 = 8.0;

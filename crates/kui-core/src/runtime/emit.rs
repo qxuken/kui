@@ -576,6 +576,7 @@ impl Core {
         self.layout_frame();
         self.emit_frame();
         self.building = false;
+        self.submenu_frame_end();
         // A focus the view moved, or a focused node the frame declared
         // `on_focus` on or dropped (backlog DX18).
         let mut out = std::mem::take(&mut self.pending);

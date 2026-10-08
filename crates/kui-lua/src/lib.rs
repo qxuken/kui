@@ -4583,6 +4583,19 @@ mod tests {
             messages[1].contains("`items` on a select's option is dropped"),
             "{messages:?}"
         );
+        // And dropped they are: the dropdown's menu opens with plain rows.
+        let field = core.key_of("sort").unwrap();
+        core.handle_input(InputEvent::Access(kui_core::AccessRequest::new(
+            field,
+            kui_core::AccessAction::Click,
+        )));
+        let menu = core.menu().expect("the dropdown opened");
+        assert_eq!(menu.items.len(), 2);
+        assert!(
+            menu.items.iter().all(|i| !i.has_submenu()),
+            "{:?}",
+            menu.items
+        );
     }
 
     #[test]

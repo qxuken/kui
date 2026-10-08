@@ -21,6 +21,55 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.45 (unreleased)
+
+**What breaks.**
+
+- A menu row whose accelerator would leave its label under 48 px — a
+  window narrower than the accelerator with its gaps — draws the
+  accelerator cut short with "…" and the label's first glyphs, where it
+  drew the whole accelerator past the panel's edge and no label (under
+  Fixed, RG154).
+- A `menu_panel` whose caller declared its ceiling as a size expression
+  (`max_width(Bound::Calc(..))`, `"50%"`) bounds its labels by that
+  ceiling read against the window, where it bounded them by the window
+  alone (under Fixed, RG154).
+- Windows and Plasma: a `Blur` or `Tinted` window on a desktop with no
+  wallpaper kui can read is `Opaque` from its first frame again, as it
+  was in alpha.43; alpha.44's `Tinted`-then-`Opaque` is GNOME's alone
+  now (under Fixed, RG154).
+
+### Fixed
+
+- **The accelerator is bounded too** (backlog RG154, from the alpha.44
+  pre-tag pass). A row's label was what the panel's width bounded, and
+  its accelerator was drawn whole: in a window narrower than the
+  accelerator the label shrank to nothing and the accelerator ran past
+  the panel, which is what RG150 set out to stop. The label keeps a
+  floor of 48 px (`widgets::MENU_LABEL_MIN`) and the accelerator takes
+  what that leaves, ending in "…". And a ceiling declared as a size
+  expression now caps the labels as a px one does.
+- **A menu bar the app stops drawing owes no frames** (backlog RG154).
+  A submenu switch waiting its 0.3 s was cleared by the next build of the
+  bar's menu; an app that stopped drawing the bar inside the wait (or
+  handed it to the platform) kept the switch, and the frames it owed,
+  for good. A frame that builds no menu on a surface drops the switch
+  waiting there.
+- **Windows and Plasma: no wallpaper, opaque from the first frame**
+  (backlog RG154). RG150 moved finding the wallpaper's path to the
+  loader's thread for GNOME's sake, where it is up to three `gsettings`
+  processes; on Windows it is one call and on Plasma one file read, so
+  the loop asks there and a window with none to draw never reads
+  `Tinted` first. GNOME keeps the thread. Windows run on screen;
+  Plasma compiled and read.
+
+**What you can delete.**
+
+- A shorter accelerator chosen for a menu that has to fit a narrow
+  window (RG154).
+- A frame an app requested itself after stopping its menu bar, to let
+  the core settle (RG154).
+
 ## 0.1.0-alpha.44 (2026-10-08)
 
 **What breaks.**

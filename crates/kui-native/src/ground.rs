@@ -39,25 +39,45 @@ const SIGMA: f32 = 6.0;
 /// What a window's ground is while it loads and after.
 pub(crate) type Slot = Arc<Mutex<Option<Result<Arc<Wallpaper>, String>>>>;
 
-/// Whether this platform has a wallpaper kui can read: everywhere but
-/// macOS (see its `platform::wallpaper_path`). Where it has, a window
-/// that falls back to the wallpaper is `Tinted` from creation and
-/// corrected to `Opaque` on the frame the thread finds none.
-pub(crate) const READS: bool = cfg!(not(target_os = "macos"));
+/// Where a window's wallpaper comes from: a file the event loop already
+/// named, or one the thread has yet to find.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Source {
+    /// The desktop is asked on the thread: GNOME's `gsettings`, up to
+    /// three processes, which the loop must not wait on before the window
+    /// shows.
+    Find,
+    /// The file, found on the loop where finding it is one call.
+    Load(PathBuf),
+}
 
-/// Starts finding and loading the desktop's wallpaper on a thread of its
-/// own and returns where the answer lands; `wake` is called once it has,
-/// so the loop draws the frame that shows it — or, with no wallpaper to
-/// read, the frame that says the window is opaque. Finding it is the
-/// thread's too: on GNOME that is up to three `gsettings` processes,
-/// which the event loop would otherwise wait on before the window shows.
-pub(crate) fn spawn(wake: impl FnOnce() + Send + 'static) -> Slot {
+/// The wallpaper's file where naming it is a call and not a process —
+/// Windows' `SystemParametersInfoW`, Plasma's config file — so a window
+/// with none to draw is `Opaque` from its first frame rather than
+/// `Tinted` until the thread says so (backlog RG154): `Some(None)` for
+/// none (macOS, where kui never reads one, and a desktop with none set),
+/// `Some(Some(path))` for the file, and `None` where only the thread can
+/// tell (GNOME and every desktop asked through its keys).
+pub(crate) fn known_path() -> Option<Option<PathBuf>> {
+    platform::known_path().map(|p| p.filter(|p| p.is_file()))
+}
+
+/// Starts loading the desktop's wallpaper — finding it first, for
+/// [`Source::Find`] — on a thread of its own and returns where the answer
+/// lands; `wake` is called once it has, so the loop draws the frame that
+/// shows it, or, with no wallpaper to read or one that will not decode,
+/// the frame that says the window is opaque.
+pub(crate) fn spawn(source: Source, wake: impl FnOnce() + Send + 'static) -> Slot {
     let slot: Slot = Arc::new(Mutex::new(None));
     let out = slot.clone();
     let spawned = std::thread::Builder::new()
         .name("kui-wallpaper".into())
         .spawn(move || {
-            let got = wallpaper_path()
+            let path = match source {
+                Source::Load(path) => Some(path),
+                Source::Find => wallpaper_path(),
+            };
+            let got = path
                 .ok_or_else(|| "the desktop names no wallpaper file kui can read".to_string())
                 .and_then(|path| load(&path));
             *out.lock().unwrap_or_else(|e| e.into_inner()) = Some(got);
@@ -248,6 +268,11 @@ mod platform {
         SPI_GETDESKWALLPAPER, SystemParametersInfoW,
     };
 
+    /// One call, so the loop asks.
+    pub(super) fn known_path() -> Option<Option<PathBuf>> {
+        Some(wallpaper_path())
+    }
+
     /// `SPI_GETDESKWALLPAPER`: the path Explorer draws from — often
     /// `TranscodedWallpaper`, a JPEG with no extension, which the decoder
     /// knows by its bytes.
@@ -276,6 +301,10 @@ mod platform {
 /// read): `KUI_BACKDROP_EMULATE` finds nothing and the ground is opaque.
 #[cfg(target_os = "macos")]
 mod platform {
+    pub(super) fn known_path() -> Option<Option<std::path::PathBuf>> {
+        Some(None)
+    }
+
     pub(super) fn wallpaper_path() -> Option<std::path::PathBuf> {
         None
     }
@@ -285,19 +314,24 @@ mod platform {
 mod platform {
     use std::path::PathBuf;
 
+    fn is_plasma() -> bool {
+        std::env::var("XDG_CURRENT_DESKTOP")
+            .unwrap_or_default()
+            .split(':')
+            .any(|d| d.eq_ignore_ascii_case("KDE"))
+    }
+
+    /// Plasma's is a file read, so the loop asks; every other desktop's
+    /// is `gsettings`, the thread's.
+    pub(super) fn known_path() -> Option<Option<PathBuf>> {
+        is_plasma().then(plasma_path)
+    }
+
     /// Plasma's from its own config, GNOME's (and every desktop that keeps
     /// GNOME's keys) from `gsettings`, by the colour scheme in force.
     pub(super) fn wallpaper_path() -> Option<PathBuf> {
-        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-        if desktop.split(':').any(|d| d.eq_ignore_ascii_case("KDE")) {
-            let home = std::env::var_os("HOME")?;
-            let config = std::env::var_os("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(&home).join(".config"));
-            let ini =
-                std::fs::read_to_string(config.join("plasma-org.kde.plasma.desktop-appletsrc"))
-                    .ok()?;
-            return super::plasma_image(&ini).and_then(|v| super::resolve(&v));
+        if is_plasma() {
+            return plasma_path();
         }
         let gsettings = |schema: &str, key: &str| -> Option<String> {
             let out = std::process::Command::new("gsettings")
@@ -319,6 +353,17 @@ mod platform {
             .filter(|s| !super::unquote(s).is_empty())
             .or_else(|| gsettings("org.gnome.desktop.background", "picture-uri"))?;
         super::resolve(super::unquote(&uri))
+    }
+
+    /// The first `org.kde.image` wallpaper in Plasma's applets config.
+    fn plasma_path() -> Option<PathBuf> {
+        let home = std::env::var_os("HOME")?;
+        let config = std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(&home).join(".config"));
+        let ini =
+            std::fs::read_to_string(config.join("plasma-org.kde.plasma.desktop-appletsrc")).ok()?;
+        super::plasma_image(&ini).and_then(|v| super::resolve(&v))
     }
 }
 

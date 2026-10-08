@@ -169,10 +169,11 @@ offsets beside the run, the docs guard's gaps, Odin's latent ones — RG140–RG
 they were filed and are in the archive); RG146–RG150, from the alpha.43
 pre-tag pass and what it left, were built the day they were filed and
 are in the archive, as were RG151 and RG152 from berainder and RG153
-from the alpha.44 pre-tag pass; RG154 is what that pass left (the
+from the alpha.44 pre-tag pass, and RG154 — what that pass left: the
 accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
-queue, three test gaps). Everything else that has been filed has
+queue, three test gaps — built the same day after the alpha.44 tag.
+Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
 they were filed (2026-09-07), F25–F31 from the alpha.8 ones by the day
@@ -2611,52 +2612,12 @@ pass's other corrections went in the same day: an image with a
 the reverse "cannot happen"; the changelog overstated the menu's floor
 and the Linux backdrop's first-frame answer, and left RG152's ring and
 the `Tinted`→`Opaque` flip out of What breaks; an empty `if let` in
-kui-lua's dropdown. RG154 is what the pass left.
-
-### `.` RG154 — What the alpha.44 pre-tag pass left
-
-- **The accelerator is never bounded** (RG150, `widgets.rs` `menu_level`).
-  `label_max` is what the inside leaves after the tail, clamped to 0,
-  and the tail is drawn whole; in a window narrower than the tail plus
-  the paddings and gaps (about 230 px with `Ctrl+Alt+Shift+Backspace`)
-  the label is a 0-wide box and the accelerator runs past the panel
-  again. **Wants:** a floor for the label (a few glyphs and the
-  ellipsis) and the tail ellipsized under what that leaves.
-- **A caller-declared ceiling as a `Calc` is not the label's cap**
-  (RG150). `max_width(Bound::Calc(..))` stores `max_w < 0`, so the panel
-  is bounded by the calc and the label by the window: rows wider than
-  the panel. `menu_panel` is `pub`, so an app's own panel can reach it;
-  px ceilings are right.
-- **An owed frame the bar's pending switch never clears** (RG150,
-  `menu_api.rs` `submenu_waiting`). `pending` is cleared by a pass over
-  the drawn panel or by an open or close. A bar's declaration is kept
-  across frames, so an app that stops drawing `widgets::menu_bar` (or
-  turns the native bar on) inside the 0.3 s with a sibling row hovered
-  keeps `pending`, and `owed().requested` with it, until the bar is
-  drawn again or `set_menu_bar_open` runs. The context menu cannot: `Ui::finish`
-  draws it every frame.
-- **The backdrop's first frame on Linux and Windows is a race** (RG150,
-  `backdrop.rs` `Applied::emulated`, `ground.rs`). The pane is `Tinted`
-  and the first redraw is requested while the loader's thread is still
-  finding the wallpaper's path; on a desktop with none to read the
-  answer `Opaque` lands a frame or more later. Documented as a break for
-  alpha.44; a `push_pane` that settles the slot once before the first
-  redraw, when the thread has answered already, would narrow it, and a
-  read of the path on the loop (fast on Windows, up to three `gsettings`
-  runs on GNOME) would close it at the cost RG150 moved off the loop.
-- **Wayland's shared queue is drained once per window** (RG150,
-  `linux_blur.rs`): `dispatch_pending` runs at window creation only, so
-  registry events between windows (an output or seat hotplug) wait for
-  the next one. Bounded by the hotplugs; alpha.43's per-window queues
-  were never dispatched at all.
-- **Test gaps.** kui-lua's
-  `a_stray_key_inside_a_submenu_warns_and_an_option_takes_no_items`
-  asserts the two warnings and never that the option took no items
-  (Node's does); `submenu.rs` does not cover the pointer leaving the
-  menu with a switch pending (the one path `submenu_pass(false)` clears
-  it on); no test opens a menu in a window narrower than
-  `menu_width + 16`, where the floor wins and the menu overhangs the
-  window by design.
+kui-lua's dropdown. RG154 is what the pass left — the accelerator
+unbounded in a window narrower than it, a `Calc` ceiling the label cap
+ignored, the bar's pending switch owing frames, the backdrop's first
+frame on Windows and Linux, Wayland's shared queue, three test gaps —
+**built 2026-10-08**, the same day after the alpha.44 tag, and in the
+archive (the Wayland queue declined there, with its reason).
 
 ## After alpha.43
 
@@ -4180,6 +4141,8 @@ move.
 
 - `.` **RG152** — [`border` on an image drew nothing](backlog/closed-2026-09.md#-rg152--border-on-an-image-drew-nothing--done-2026-10-08) — done (2026-10-08)
 
-**From the alpha.44 pre-tag pass (2026-10-08)** — RG153, filed and built the same day; RG154 is what it left, open above
+**From the alpha.44 pre-tag pass (2026-10-08)** — RG153, filed and built the same day; RG154, what it left, built the same day after the alpha.44 tag
 
 - `!` **RG153** — [The float stack reversed two floats a box held, and kept a float moved into one below it](backlog/closed-2026-09.md#-rg153--the-float-stack-reversed-two-floats-a-box-held-and-kept-a-float-moved-into-one-below-it--done-2026-10-08) — done (2026-10-08)
+
+- `.` **RG154** — [What the alpha.44 pre-tag pass left](backlog/closed-2026-09.md#-rg154--what-the-alpha44-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08) — the accelerator ellipsized past the label's floor, a `Calc` ceiling read against the window, the bar's pending switch dropped by a frame that does not build it, the wallpaper's path read on the loop where it is a call (Windows, Plasma), three tests; the Wayland queue declined

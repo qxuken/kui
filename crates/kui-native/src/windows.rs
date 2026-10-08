@@ -424,9 +424,9 @@ impl DynShell<'_> {
             chrome,
             backdrop: applied.got,
             // Read on a thread; the loop is woken when it lands.
-            ground: applied.ground.then(|| {
+            ground: applied.ground.map(|source| {
                 let proxy = self.proxy.clone();
-                crate::ground::Ground::new(crate::ground::spawn(move || {
+                crate::ground::Ground::new(crate::ground::spawn(source, move || {
                     if let Some(p) = proxy {
                         let _ = p.send_event(access_bridge::UserEvent::Wake);
                     }

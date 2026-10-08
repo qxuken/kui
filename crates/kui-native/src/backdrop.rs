@@ -48,11 +48,12 @@ use winit::window::{Window, WindowAttributes};
 pub(crate) struct Applied {
     /// What `env.window.backdrop` reports.
     pub got: Backdrop,
-    /// Whether kui draws the desktop's wallpaper as the window's ground,
-    /// where the effect is kui's own (`mod ground`): found and read on a
-    /// thread once the pane exists, and `got` corrected to `Opaque` on the
-    /// frame that thread finds none.
-    pub ground: bool,
+    /// The desktop's wallpaper kui draws as the window's ground, where the
+    /// effect is kui's own (`mod ground`): the file the loop named, or one
+    /// the thread finds, read on that thread once the pane exists; `got`
+    /// is corrected to `Opaque` on the frame the thread finds none, or
+    /// one that will not decode.
+    pub ground: Option<crate::ground::Source>,
     /// What must live as long as the window for the effect to stay (a
     /// Linux compositor's blur objects).
     pub keep: Option<Box<dyn Any>>,
@@ -62,26 +63,30 @@ impl Applied {
     fn just(got: Backdrop) -> Self {
         Applied {
             got,
-            ground: false,
+            ground: None,
             keep: None,
         }
     }
 
-    /// The wallpaper drawn by kui, or the opaque window where the platform
-    /// has none kui reads. Whether the desktop names one is found on the
-    /// loader's thread, not here on the event loop (`ground::spawn`): the
-    /// window is `Tinted` until then, and `Opaque` from the frame the
-    /// thread says there is none, the path a wallpaper that will not
-    /// decode takes too.
+    /// The wallpaper drawn by kui, or the opaque window where the desktop
+    /// names none. Whether it names one is asked here, on the event loop,
+    /// where that is one call (`ground::known_path`: Windows, Plasma,
+    /// macOS's never) — so a window with none to draw is `Opaque` from
+    /// its first frame — and on the loader's thread where it is a process
+    /// (GNOME's `gsettings`): there the window is `Tinted` until the
+    /// thread answers, and `Opaque` from the frame it says there is none,
+    /// the path a wallpaper that will not decode takes everywhere.
     fn emulated() -> Self {
-        if crate::ground::READS {
-            Applied {
-                got: Backdrop::Tinted,
-                ground: true,
-                keep: None,
-            }
-        } else {
-            Applied::just(Backdrop::Opaque)
+        use crate::ground::Source;
+        let source = match crate::ground::known_path() {
+            Some(None) => return Applied::just(Backdrop::Opaque),
+            Some(Some(path)) => Source::Load(path),
+            None => Source::Find,
+        };
+        Applied {
+            got: Backdrop::Tinted,
+            ground: Some(source),
+            keep: None,
         }
     }
 }
@@ -180,7 +185,7 @@ fn effect(window: &Window, renderer: &kui_wgpu::Renderer, backdrop: Backdrop) ->
     {
         return Applied {
             got: Backdrop::Blur,
-            ground: false,
+            ground: None,
             keep: Some(keep),
         };
     }
@@ -395,15 +400,27 @@ mod tests {
 
     /// The fallback is honest: the wallpaper reads `Tinted` only where a
     /// wallpaper is being read to draw (and is corrected on the frame the
-    /// thread finds none), and the opaque window where none can be.
+    /// thread finds none), and the opaque window where none can be — from
+    /// the first frame, where the desktop could be asked on the loop
+    /// (backlog RG154).
     #[test]
     fn the_fallback_reports_what_it_draws() {
+        use crate::ground::Source;
         let got = Applied::emulated();
-        assert_eq!(got.got == Backdrop::Tinted, got.ground);
-        assert_eq!(got.ground, crate::ground::READS);
-        assert_eq!(got.ground, !cfg!(target_os = "macos"));
-        if !got.ground {
-            assert_eq!(got.got, Backdrop::Opaque);
+        assert_eq!(got.got == Backdrop::Tinted, got.ground.is_some());
+        match crate::ground::known_path() {
+            Some(None) => assert_eq!(got.got, Backdrop::Opaque),
+            Some(Some(path)) => assert_eq!(got.ground, Some(Source::Load(path))),
+            None => assert_eq!(got.ground, Some(Source::Find)),
+        }
+        if cfg!(target_os = "macos") {
+            assert_eq!(got.got, Backdrop::Opaque, "never read on macOS");
+        }
+        if cfg!(target_os = "windows") {
+            assert!(
+                crate::ground::known_path().is_some(),
+                "Windows answers on the loop"
+            );
         }
         assert!(got.keep.is_none());
     }

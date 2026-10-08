@@ -959,3 +959,123 @@ fn a_menu_wider_than_the_window_is_capped_and_its_label_ellipsized() {
         glyphs.len()
     );
 }
+
+/// The glyphs drawn on the line of `row`, as rects.
+fn glyphs_on(core: &mut Core, row: kui_core::Rect) -> Vec<kui_core::Rect> {
+    use kui_core::display::QuadKind;
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .filter(|q| matches!(q.kind, QuadKind::GlyphMask | QuadKind::GlyphSubpixel))
+        .map(|q| q.rect)
+        .filter(|r| r.y >= row.y && r.y + r.h <= row.y + row.h + 1.0)
+        .collect()
+}
+
+/// A window narrower than the accelerator with its gaps: the label keeps
+/// a floor of its own and the accelerator is what ellipsizes, where the
+/// label shrank to nothing and the accelerator ran past the panel anyway
+/// (backlog RG154).
+#[test]
+fn a_menu_narrower_than_its_accelerator_keeps_some_label() {
+    let mut core = Core::new();
+    let size = Size::new(240.0, 300.0);
+    let scope = frame_in(&mut core, size);
+    let label = "Move the note to the trash";
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(10.0, 10.0),
+        vec![
+            MenuItem::new("Open"),
+            MenuItem::new(label).accel("ctrl+alt+shift+backspace"),
+        ],
+    ));
+    frame_in(&mut core, size);
+    let menu = menu_rect(&mut core).unwrap();
+    assert!(
+        menu.w <= 240.0 - 2.0 * kui_core::widgets::MENU_EDGE,
+        "under the ceiling: {menu:?}"
+    );
+    let long = row_rect(&mut core, label);
+    let glyphs = glyphs_on(&mut core, long);
+    let right = glyphs.iter().map(|r| r.x + r.w).fold(f32::MIN, f32::max);
+    assert!(
+        right <= long.x + long.w,
+        "nothing drawn past the row: {right} > {}",
+        long.x + long.w
+    );
+    // The label's floor: glyphs at the row's left, under the floor's
+    // width; and the accelerator at its right.
+    let pad = core.metrics().menu_pad_x;
+    let at_left = glyphs
+        .iter()
+        .filter(|g| g.x < long.x + pad + kui_core::widgets::MENU_LABEL_MIN)
+        .count();
+    assert!(at_left >= 2, "the label kept {at_left} glyphs: {glyphs:?}");
+    assert!(
+        glyphs.iter().any(|g| g.x + g.w > long.x + long.w * 0.75),
+        "the accelerator is drawn: {glyphs:?}"
+    );
+    // And something gave: the two do not both fit.
+    let ink = |s: &str| s.chars().filter(|c| !c.is_whitespace()).count();
+    let want = ink(label) + ink(&kui_core::Accel::label("ctrl+alt+shift+backspace"));
+    assert!(glyphs.len() < want, "{} of {want} drawn", glyphs.len());
+}
+
+/// A window narrower than the metric's menu width: the floor wins, the
+/// menu overhangs the window by that much — a menu of 100 px would not be
+/// readable — and its label still ellipsizes under the floor (backlog
+/// RG154, pinning what RG150 chose).
+#[test]
+fn a_window_narrower_than_the_menus_floor_gets_the_floor() {
+    let mut core = Core::new();
+    let size = Size::new(150.0, 300.0);
+    let scope = frame_in(&mut core, size);
+    let label = "Move the note to the trash, for good";
+    core.open_menu(Menu::new(
+        scope,
+        Vec2::new(10.0, 10.0),
+        vec![MenuItem::new("Open"), MenuItem::new(label)],
+    ));
+    frame_in(&mut core, size);
+    let menu = menu_rect(&mut core).unwrap();
+    assert_eq!(menu.w, kui_core::widgets::MENU_WIDTH, "the floor: {menu:?}");
+    assert!(
+        menu.x >= 0.0 && menu.x + menu.w > 150.0,
+        "overhangs: {menu:?}"
+    );
+    let long = row_rect(&mut core, label);
+    let glyphs = glyphs_on(&mut core, long);
+    let right = glyphs.iter().map(|r| r.x + r.w).fold(f32::MIN, f32::max);
+    assert!(right <= long.x + long.w, "{right} > {}", long.x + long.w);
+    let ink = label.chars().filter(|c| !c.is_whitespace()).count();
+    assert!(glyphs.len() < ink, "cut short: {} of {ink}", glyphs.len());
+}
+
+/// A ceiling the caller declares as a size expression — `menu_panel` under
+/// `max_width("50%")` — caps the labels as a px one does, where it capped
+/// the panel alone and the rows were sized for the window (backlog RG154).
+#[test]
+fn a_calc_ceiling_caps_the_labels_as_a_px_one_does() {
+    use kui_core::spec::Bound;
+    let mut core = Core::new();
+    let half = kui_core::calc::intern(kui_core::calc::parse("50%").unwrap()).unwrap();
+    let path = "/Users/someone/Documents/notes/archive/2026/october/the-long-name-of-a-note.md";
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let (t, m) = (ui.theme(), ui.metrics());
+    kui_core::widgets::menu_panel(
+        &mut ui,
+        "panel",
+        kui_core::widgets::menu_panel_spec(&t, &m).max_width(Bound::Calc(half)),
+        &[MenuItem::new(path).accel("ctrl+s")],
+    );
+    ui.finish();
+    let row = row_rect(&mut core, path);
+    assert!(row.x + row.w <= 200.0 + 0.5, "inside the half: {row:?}");
+    let glyphs = glyphs_on(&mut core, row);
+    let right = glyphs.iter().map(|r| r.x + r.w).fold(f32::MIN, f32::max);
+    assert!(right <= row.x + row.w, "{right} > {}", row.x + row.w);
+    let ink = path.chars().filter(|c| !c.is_whitespace()).count();
+    assert!(glyphs.len() < ink, "cut short: {} of {ink}", glyphs.len());
+}

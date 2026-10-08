@@ -816,7 +816,8 @@ post the same `item`. A host that shows menus itself reports one with
 `accel` in the portable spelling (`"mod+shift+n"`) is drawn the
 platform's way, and the menu widens to its longest row, up to the window
 less a margin (and never below the metric's menu width), where a longer
-label ends in an ellipsis. On the frame
+label ends in an ellipsis — and past the label's 48 px floor, the
+accelerator does. On the frame
 clock, an open submenu waits 0.3 s before giving way to a row the
 pointer crosses, so a diagonal path into it does not close it.
 

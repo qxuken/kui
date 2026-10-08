@@ -631,6 +631,12 @@ pub(crate) struct Submenus {
     /// build: a pass that sees none forgets `hovered`, so coming back to
     /// a row the keyboard closed opens it again.
     pub seen: bool,
+    /// The menu was built this frame (`submenu_pass` ran). A frame that
+    /// builds no menu on this surface — an app that stopped drawing the
+    /// bar, or handed it to the platform — has no rows for a switch to
+    /// ripen on, so a pending one is dropped at the frame's end rather
+    /// than owing frames for good (backlog RG154).
+    pub built: bool,
 }
 
 /// A row the pointer moved onto while a submenu beside another was open.
@@ -754,9 +760,24 @@ impl Core {
         let sub = self.submenus(s);
         if begin {
             sub.seen = false;
+            sub.built = true;
         } else if !sub.seen {
             sub.hovered = None;
             sub.pending = None;
+        }
+    }
+
+    /// The frame is over: a switch waiting on a menu the frame did not
+    /// build has no rows to ripen on and is dropped, so the frames it
+    /// owed are not owed by a bar the app stopped drawing (backlog
+    /// RG154). The context menu is built by every `Ui::finish` that has
+    /// one open; the bar only where `widgets::menu_bar` is called.
+    pub(crate) fn submenu_frame_end(&mut self) {
+        for sub in [&mut self.menu_sub, &mut self.menu_bar_sub] {
+            if !sub.built {
+                sub.pending = None;
+            }
+            sub.built = false;
         }
     }
 

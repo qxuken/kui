@@ -571,3 +571,74 @@ fn a_row_the_keyboard_closed_reopens_when_the_pointer_comes_back() {
     frame(&mut core);
     assert_eq!(core.menu_submenus(), &[1], "open again");
 }
+
+/// The pointer leaving the menu with a switch waiting: the switch is
+/// dropped — the one path a build with no row hovered clears it on — the
+/// submenu stays open, and nothing is owed (backlog RG154).
+#[test]
+fn the_pointer_leaving_the_menu_drops_a_waiting_switch() {
+    let mut core = Core::new();
+    core.set_time(10.0);
+    open(&mut core);
+    let at = row_center(&mut core, "Move to");
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1]);
+    core.set_time(10.05);
+    let at = row_center(&mut core, "Delete");
+    hover(&mut core, at);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1]);
+    assert!(core.animating(), "waiting");
+    core.set_time(10.1);
+    hover(&mut core, Vec2::new(590.0, 390.0));
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1], "still open");
+    assert!(!core.animating(), "nothing waiting once the pointer is off");
+    core.set_time(11.0);
+    frame(&mut core);
+    assert_eq!(core.menu_submenus(), &[1], "no switch ripened off the menu");
+}
+
+/// A bar the app stops drawing while a switch waits — or hands to the
+/// platform — has no rows for the switch to ripen on: the switch is
+/// dropped at the frame's end, so the frames it owed are not owed for
+/// good (backlog RG154).
+#[test]
+fn a_bar_the_app_stops_drawing_owes_nothing_for_a_waiting_switch() {
+    let bar = || {
+        MenuBar::new(vec![BarMenu::new(
+            "View",
+            vec![
+                MenuItem::new("Zoom in").id("zoom"),
+                MenuItem::submenu("Sort by", vec![MenuItem::new("Name").id("sort.name")]),
+            ],
+        )])
+    };
+    let mut core = Core::new();
+    core.set_time(10.0);
+    frame_with(&mut core, Some(bar()));
+    let at = row_center(&mut core, "View");
+    click(&mut core, at);
+    frame_with(&mut core, Some(bar()));
+    let at = row_center(&mut core, "Sort by");
+    hover(&mut core, at);
+    frame_with(&mut core, Some(bar()));
+    assert_eq!(core.menu_bar_submenus(), &[1]);
+    core.set_time(10.05);
+    let at = row_center(&mut core, "Zoom in");
+    hover(&mut core, at);
+    frame_with(&mut core, Some(bar()));
+    assert_eq!(core.menu_bar_submenus(), &[1], "waiting");
+    assert!(core.animating());
+    // The app stops drawing the bar; the declaration stands.
+    frame_with(&mut core, None);
+    assert!(
+        !core.animating(),
+        "nothing owed for a bar that is not drawn"
+    );
+    core.set_time(11.0);
+    frame_with(&mut core, None);
+    assert!(!core.animating());
+    assert_eq!(core.menu_bar_submenus(), &[1], "nothing switched either");
+}
