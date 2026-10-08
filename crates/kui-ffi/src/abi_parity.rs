@@ -527,6 +527,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_ENTER_OPACITY,
             KUI_KF_ROTATE,
             KUI_KF_SCALE,
+            KUI_KF_OFFSET,
             KUI_ENTER_ROTATE,
             KUI_ENTER_SCALE,
             KUI_PIVOT_X,
@@ -664,6 +665,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         opacity: f32 => "float",
         rotate: f32 => "float",
         scale: f32 => "float",
+        dx: f32 => "float",
+        dy: f32 => "float",
     });
 
     abi_struct!(o, KuiGradientStop {
@@ -1509,8 +1512,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),
-        // ABI 27: `rotate` and `scale` on both (ADR 0043).
-        ("KuiKeyframe", 44, 27),
+        // ABI 27: `rotate` and `scale` on both (ADR 0043), and `dx` and
+        // `dy` on a stop (backlog F132).
+        ("KuiKeyframe", 52, 27),
         ("KuiEnter", 48, 27),
         ("KuiTextStyle", 72, 17),
         // ABI 20: `bg_radius` appended into what was the tail padding, so

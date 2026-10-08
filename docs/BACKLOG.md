@@ -174,12 +174,12 @@ accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
 the alpha.45 pre-tag pass over it filed nothing.
-F132–F138, from the berainder review of 2026-10-08 — position stops
-and a count on keyframes, the frame clock read and a frame asked at a
-time, the exit named at the removal, a lookup by accessible name, the
-runner's decoder — are open, filed the day the app said what it had
-worked round; F131, a turn and a scale on any node, was built the same
-day (ADR 0043) and is in the archive.
+F133–F138, from the berainder review of 2026-10-08 — a count on
+keyframes, the frame clock read and a frame asked at a time, the exit
+named at the removal, a lookup by accessible name, the runner's decoder
+— are open, filed the day the app said what it had worked round; F131,
+a turn and a scale on any node, was built the same day (ADR 0043), and
+F132, position stops, the day after, and both are in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1530,34 +1530,8 @@ accessible name; and the runner decodes no JPEG, so the app links the
 `image` crate. Each was checked against the tree before it was filed.
 Two of them the user had already named — a turn and keyframes — and
 they are the first two below. F131, the turn, was **built 2026-10-08**, the
-day it was filed, as ADR 0043, and is in the archive; F132–F138 are
-open.
-
-### `.` F132 — A keyframe stop cannot name a position: a sparkle's path is an `enter` with a seven-second transition
-
-- **The ask.** berainder's sparkles drift up through the room. kui has
-  no keyframes for position, so each is a float declared where it ends,
-  entering from far below (`enter: {dx: sway, dy: travel}`) over a
-  `transition` as long as its life, and leaving by an `exit` aimed on
-  up — the app's own words in `sparkle.rs`. It works and is indirect:
-  the motion is the entrance, the life is the transition, and a second
-  leg (rise, pause, drift) is not expressible at all.
-- **What the tree already has.** `Enter` carries `dx`/`dy` beside its
-  `Slots`; `Keyframe` carries only the `Slots` (`width`, `height`,
-  `bg`, `radius`, `opacity`), so the two shapes agree everywhere but
-  here. `Slot::Pos` exists and is driven by `Core::ease_positions` on
-  its own; `ease_transitioning` samples any slot a track names
-  (`builder.rs`), so a position track is the one slot the sampler is
-  not asked for. Every binding funnels its stops through
-  `keyframes::parse`, so the stop's shape is one place.
-- **Wants.** `dx`/`dy` on a keyframe stop — an offset from where
-  layout put the node, as an entrance's is — sampled from the cycle
-  and added where `ease_positions` adds the eased position; hit where
-  drawn, as a sliding node is. `KuiKeyframe` gains two floats (an ABI
-  bump), the JSX, Lua and Odin shapes take the two names they take on
-  `enter` already, and a `$length` token resolves in them as in a
-  stop's `width`. With F133, a sparkle is one node with three stops
-  and no transition arithmetic.
+day it was filed, as ADR 0043, and F132, position stops, **built
+2026-10-09**; both are in the archive, and F133–F138 are open.
 
 ### `.` F133 — Keyframes run forever: a one-shot cannot be keyframed, so a celebration asks for a frame every frame for 3.4 seconds
 
@@ -3064,9 +3038,9 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
-Open from the berainder review of 2026-10-08: F132–F138 — F132 and
-F133 are the keyframe companions of F131 (**built 2026-10-08**, ADR
-0043, the day it was filed); F134–F136 are three doors in four
+Open from the berainder review of 2026-10-08: F133–F138 — F133 is the
+last keyframe companion of F131 (**built 2026-10-08**, ADR 0043) and
+F132 (**built 2026-10-09**); F134–F136 are three doors in four
 bindings; F137 is words and a lookup; F138 is a decoder the runner
 already links.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
@@ -4361,9 +4335,11 @@ move.
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
 
-**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132–F138 open
+**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132 the day after; F133–F138 open
 
 - `~` **F131** — [No node but a `path` can turn or scale: a dragged card cannot tilt](backlog/closed-2026-09.md#-f131--no-node-but-a-path-can-turn-or-scale-a-dragged-card-cannot-tilt--done-2026-10-08) — done (2026-10-08) — `rotate`, `scale`, `pivotX` / `pivotY` on any node (ADR 0043): paint-only, the turn and the inner clip on the clip entry, hit where drawn, the access rect the bounding box, one tweening slot an entrance, an exit and a keyframe stop name; ABI 27
+
+- `.` **F132** — [A keyframe stop cannot name a position: a sparkle's path is an `enter` with a seven-second transition](backlog/closed-2026-09.md#-f132--a-keyframe-stop-cannot-name-a-position-a-sparkles-path-is-an-enter-with-a-seven-second-transition--done-2026-10-09) — done (2026-10-09) — `dx` / `dy` on a stop, an offset from the node's place sampled off the cycle in its own pass after the layout events: drawn, hit and read there, layout and `onLayout` its place's; `KuiKeyframe` `dx` / `dy` with `KUI_KF_OFFSET` (ABI 27)
 
 **From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
 

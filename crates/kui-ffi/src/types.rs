@@ -306,6 +306,7 @@ pub const KUI_KF_RADIUS: u32 = 1 << 4;
 pub const KUI_KF_OPACITY: u32 = 1 << 5;
 pub const KUI_KF_ROTATE: u32 = 1 << 6;
 pub const KUI_KF_SCALE: u32 = 1 << 7;
+pub const KUI_KF_OFFSET: u32 = 1 << 8;
 
 /// One keyframe stop (`KuiSpec.keyframes`): a zeroed stop sets nothing.
 /// `set` says which fields count, so 0 stays a legal value for each.
@@ -326,6 +327,10 @@ pub struct KuiKeyframe {
     pub rotate: f32,
     /// A uniform scale about the node's pivot (KUI_KF_SCALE). ABI 27.
     pub scale: f32,
+    /// Logical px from where layout put the node (KUI_KF_OFFSET, both
+    /// together; backlog F132). ABI 27.
+    pub dx: f32,
+    pub dy: f32,
 }
 
 /// `KuiGradient.kind`: along a line, or out from a centre.

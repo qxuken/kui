@@ -12,7 +12,9 @@
 //! - `keyframes`: a cycle of stops the node walks by itself — width, colour,
 //!   radius, opacity — with `repeat` saying which way (normal, reverse,
 //!   alternate) and `delay` holding siblings out of phase, which is what a
-//!   chase light is;
+//!   chase light is; a stop's `dx`/`dy` move the node from its place, so a
+//!   box bobs and a sparkle drifts up and fades, and the room either takes
+//!   stays where layout put it;
 //!
 //! Nothing here calls an animation; each frame declares the value it wants
 //! and the core is between the last frame and this one.
@@ -204,6 +206,36 @@ impl App for Motion {
                                     ]));
                         }
                     });
+                    // Position stops (backlog F132): a bob, alternating
+                    // between its place and 8 px up, and a sparkle that
+                    // drifts up and sideways as it fades, on a loop.
+                    ui.leaf_keyed(
+                        "bob",
+                        NodeSpec::row()
+                            .size(24.0, 24.0)
+                            .radius(12.0)
+                            .bg(t.accent)
+                            .transition(700.0)
+                            .easing(Easing::EaseInOut)
+                            .repeat(Repeat::Alternate)
+                            .keyframes(vec![
+                                Keyframe::default().dy(0.0),
+                                Keyframe::default().dy(-8.0),
+                            ]),
+                    );
+                    ui.text_in_keyed(
+                        "sparkle",
+                        NodeSpec::row()
+                            .transition(1800.0)
+                            .easing(Easing::Linear)
+                            .keyframes(vec![
+                                Keyframe::default().offset(0.0, 0.0).opacity(0.0),
+                                Keyframe::default().at(0.2).offset(2.0, -6.0).opacity(1.0),
+                                Keyframe::default().at(1.0).offset(8.0, -36.0).opacity(0.0),
+                            ]),
+                        "✦",
+                        TextStyle::new(16.0).color(t.accent),
+                    );
                 });
                 ui.text(
                     "every value above is what this frame declared; the core is between the last frame and this one",
@@ -258,7 +290,22 @@ impl Example for Motion {
         d.check(
             d.core.animating(),
             "and the float slides rather than jumping",
-        )
+        )?;
+        // The bob walks its stops by itself: drawn 8 px up at the far end
+        // of a leg, and back at its place a leg later.
+        let bob = d.key_of("bob").ok_or("no bob")?;
+        let y = |d: &Drive<'_>| d.rect_of(bob).map_or(f32::NAN, |r| r.y);
+        let rest = y(&d);
+        d.advance(0.7);
+        d.frame(self);
+        let up = y(&d);
+        d.check(
+            (rest - up - 8.0).abs() < 1.0,
+            &format!("the bob rises 8 px over a leg: {rest} then {up}"),
+        )?;
+        d.advance(0.7);
+        d.frame(self);
+        d.check((y(&d) - rest).abs() < 1.0, "and comes back down")
     }
 }
 

@@ -119,6 +119,10 @@ export type AlignProp = 'start' | 'center' | 'end';
  *  animate their amount only, in the form the prop itself declares. */
 export interface KeyframeProp {
   at?: number;
+  /** Logical px across from where layout put the node, at this stop (backlog F132): the node and its subtree are drawn and hit there. Left out, 0. */
+  dx?: number;
+  /** Logical px down from where layout put the node, at this stop: `[{ dy: 0 }, { dy: -6 }]` with `repeat: 'alternate'` bobs it. Left out, 0. */
+  dy?: number;
   width?: SizingProp;
   height?: SizingProp;
   bg?: ColorProp;
@@ -336,7 +340,7 @@ export interface GeneratedSpecProps {
   keepFocus?: boolean;
   /** With `onKey`: releases arrive too, as the same payload with phase:"up" (`text` null, `repeat` false) — for a held-key interaction (WASD, press-and-hold, a key that arms a mode while it is down). A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so nothing is left stuck down. Without it a sink hears presses only, which is what a keymap wants — one that heard both halves would run every binding twice. */
   keyUp?: boolean;
-  /** CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. */
+  /** CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. `dx` / `dy` are logical px from where layout put the node (backlog F132), as an entrance's are: the node and its subtree are drawn and hit that far away at the stop, a lane a stop leaves out is 0, and the offset adds to a `slide`'s, so `[{ dy: 0 }, { dy: -6 }]` with `repeat: 'alternate'` bobs a box and a sparkle drifts up its stops. Layout and the room the node takes are its own place's; an `onLayout` node reports where it is drawn, every frame it moves. */
   keyframes?: KeyframeProp[];
   /** The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). */
   label?: string;

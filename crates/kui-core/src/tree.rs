@@ -198,6 +198,9 @@ pub struct Tree {
     /// Whether any node turns or scales (ADR 0043): the per-node clip
     /// space is tracked only on a frame that has one.
     pub any_transform: bool,
+    /// Whether any node's keyframe stops name a position (backlog F132):
+    /// the pass that moves them runs only on a frame that has one.
+    pub any_offset_stop: bool,
     /// Whether any node is text (a `Text` or `Edit` content).
     pub any_text: bool,
     /// Whether any node is a `role="line"` row — what a pointer payload
@@ -346,6 +349,7 @@ impl Tree {
         self.any_gradient = false;
         self.any_backdrop_blur = false;
         self.any_transform = false;
+        self.any_offset_stop = false;
         self.any_text = false;
         self.any_line = false;
         self.any_selectable = false;
@@ -433,6 +437,8 @@ impl Tree {
             match spec.anim.as_deref() {
                 Some(anim) => {
                     self.any_slide |= spec.slide || anim.enter.is_some_and(|e| e.offsets());
+                    self.any_offset_stop |=
+                        !anim.keyframes.is_empty() && anim.keyframes.iter().any(|k| k.offsets());
                     self.any_exit |= anim.exit.is_some();
                 }
                 None => self.any_slide |= spec.slide,

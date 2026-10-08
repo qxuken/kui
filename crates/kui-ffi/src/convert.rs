@@ -91,6 +91,9 @@ pub(crate) fn keyframe_of(k: &KuiKeyframe) -> Keyframe {
     if k.set & KUI_KF_SCALE != 0 {
         kf = kf.scale(k.scale);
     }
+    if k.set & KUI_KF_OFFSET != 0 {
+        kf = kf.offset(k.dx, k.dy);
+    }
     kf
 }
 

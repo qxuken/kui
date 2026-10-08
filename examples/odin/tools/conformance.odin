@@ -1744,7 +1744,7 @@ scene_drop :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 // declares, on four nodes.
 scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	if kui.box(ui, {pad = kui.pad(8), gap = 6}) {
-		stops := []kui.Keyframe{{set = {.Bg}, bg = 0x1b1d27ff}, {set = {.At, .Bg, .Radius}, at = 1, bg = 0x3b5bd4ff, radius = 12}}
+		stops := []kui.Keyframe{{set = {.Bg}, bg = 0x1b1d27ff}, {set = {.At, .Bg, .Radius, .Offset}, at = 1, bg = 0x3b5bd4ff, radius = 12, dy = -4}}
 		card := kui.Spec {
 			key            = "card",
 			dir            = .Row,

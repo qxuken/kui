@@ -986,7 +986,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                      click_sound = {snd}, hover_sound = {snd}, animate = true,
                      transition = 100, easing = "easeInOut", bounce = 0.3, slide = true, delay = 20,
                      direction = "alternate",
-                     keyframes = {{ {{ bg = 0x1b1d27ff }}, {{ at = 1, bg = 0x3b5bd4ff, radius = 12 }} }},
+                     keyframes = {{ {{ bg = 0x1b1d27ff }}, {{ at = 1, bg = 0x3b5bd4ff, radius = 12, dy = -4 }} }},
                      enter = {{ dx = -12, opacity = 0 }},
                      role = "tab", label = "Card",
                      text("ab", {{ size = 12 }}) }},

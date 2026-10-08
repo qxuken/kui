@@ -30,7 +30,8 @@ was the first bare bump to break an app in five releases).
   strides `KuiDrawData.clips` reads the new stride and the conformance
   digest hashes the whole entry; `KuiSpec` appends `rotate`, `scale`,
   `pivot_set`, `pivot_x` and `pivot_y` (64-bit size 744), `KuiKeyframe`
-  and `KuiEnter` append `rotate` and `scale` (strides 44 and 48).
+  and `KuiEnter` append `rotate` and `scale`, and `KuiKeyframe` `dx`
+  and `dy` with `KUI_KF_OFFSET` (strides 52 and 48; F132).
   Recompile; a zeroed tail is what every spec, stop and entrance had
   before. Node's `clips()` buffer has the same stride, and `decodeClips`
   reads `transform`, `inner` and `innerRadii`. A renderer of its own that
@@ -67,12 +68,28 @@ was the first bare bump to break an app in five releases).
   `apply`, `unapply`, `then`, `bounds`; `Clip::turned`, `turned_by`,
   `visible`, `shown`; `HitTurn` on a hit region and a scroll region;
   `NodeInfo::rotate` / `scale` in the devtools' facts (F131).
+- **A keyframe stop names a position** (backlog F132, from berainder's
+  review). `dx` / `dy` on a stop — `Keyframe::dx` / `dy` / `offset` in
+  Rust, the stop's fields in JSX and Lua, `KuiKeyframe.dx` / `dy` with
+  `KUI_KF_OFFSET` in C (ABI 27), `Keyframe.dx` / `dy` with `.Offset` in
+  Odin — are logical px from where layout put the node, as an entrance's
+  are: the node and its subtree are drawn, hit and read by assistive
+  technology that far away at the stop, a lane a stop leaves out is 0,
+  and the offset adds to a `slide`'s. `[{ dy: 0 }, { dy: -6 }]` with
+  `repeat: 'alternate'` bobs a box; three stops drift a sparkle up as it
+  fades. Paint, hit and access only: the room the node takes is its
+  place's, and an `onLayout` node reports its layout rect, not a cycle
+  that would post an event every frame it ran. The `transition` example
+  has a bob and a sparkle.
 
 **What you can delete.**
 
 - A width and a height tweened against each other to fake a card's
   tilt, and a `path` drawn in a box's place so that it could turn
   (F131).
+- A float declared where a drifting thing ends, entering from where it
+  starts over a transition as long as its life, to move it along a path
+  (F132): its stops say the path.
 
 ## 0.1.0-alpha.45 (2026-10-08)
 

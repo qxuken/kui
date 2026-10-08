@@ -58,6 +58,23 @@ a box for one that does.
 [ADR 0043](adr/0043-a-node-turns-about-its-pivot.md) ·
 [`transform` example](../examples/rust/features/transform.rs)
 
+### How do I make a node bob, drift or shake by itself?
+
+Give it `keyframes` whose stops name `dx` / `dy`: logical px from where
+layout put it, sampled off the cycle like any other slot, so the view
+declares the stops once and never redraws for them. `[{ dy: 0 }, { dy:
+-6 }]` with `repeat: 'alternate'` bobs it; stops that rise and fade drift
+a sparkle up; a few small alternating `dx` stops on a short cycle shake
+it. The node and everything under it are drawn and hit where the stop
+puts them, and the offset adds to a `slide`, but the room it takes is its
+place's: siblings do not move, and `onLayout` reports the layout rect
+rather than a cycle that would post an event every frame. A cycle runs
+for as long as the node is declared and asks for a frame every vsync, so
+stop declaring the stops when the motion should stop.
+
+[`keyframes` row](props.md#container-props) ·
+[`transition` example](../examples/rust/features/transition.rs)
+
 ### How do I draw a connector between two boxes?
 
 `<line from={[x, y]} to={[x, y]} width color/>` is one round-capped stroke,

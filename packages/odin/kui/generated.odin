@@ -79,6 +79,7 @@ Keyframe_Slot :: enum u32 {
 	Opacity = 5, // KUI_KF_OPACITY
 	Rotate = 6, // KUI_KF_ROTATE
 	Scale = 7, // KUI_KF_SCALE
+	Offset = 8, // KUI_KF_OFFSET
 }
 Keyframe_Slots :: bit_set[Keyframe_Slot;u32]
 
@@ -853,10 +854,10 @@ Spec :: struct {
 	bounce: f32,
 	// With transition: also ease the node's position (reordered siblings slide).
 	slide: bool,
-	// CSS-style stops `[{ at?, width?, height?, bg?, radius?, opacity?, rotate?,
-	// scale? }, …]`: the slots they name cycle through them over `transition`
-	// ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly
-	// when omitted.
+	// CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?,
+	// rotate?, scale? }, …]`: the slots they name cycle through them over
+	// `transition` ms, forever, without the view redrawing; `at` is 0..1 and
+	// spreads evenly when omitted.
 	keyframes: []Keyframe,
 	// Where the node starts the first frame it is seen `{ dx?, dy?, width?,
 	// height?, bg?, radius?, opacity?, rotate?, scale? }`: those slots ease in

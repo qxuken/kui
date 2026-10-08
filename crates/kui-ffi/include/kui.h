@@ -330,9 +330,10 @@ extern "C" {
  * new words draws a turned subtree upright. KuiSpec appends rotate,
  * scale, pivot_set, pivot_x and pivot_y (64-bit size 744). KuiKeyframe
  * and KuiEnter append rotate and scale, with KUI_KF_ROTATE / KUI_KF_SCALE
- * and KUI_ENTER_ROTATE / KUI_ENTER_SCALE - array elements, so their
- * strides moved, to 44 and 48. Recompile; a zeroed tail is what every
- * spec, stop and entrance had before.
+ * and KUI_ENTER_ROTATE / KUI_ENTER_SCALE, and KuiKeyframe dx and dy with
+ * KUI_KF_OFFSET, a stop's position (backlog F132) - array elements, so
+ * their strides moved, to 52 and 48. Recompile; a zeroed tail is what
+ * every spec, stop and entrance had before.
  */
 #define KUI_ABI_VERSION 27u
 uint32_t kui_abi_version(void);
@@ -642,6 +643,7 @@ enum {
     KUI_KF_OPACITY = 1u << 5,
     KUI_KF_ROTATE = 1u << 6, /* ABI 27 */
     KUI_KF_SCALE = 1u << 7,  /* ABI 27 */
+    KUI_KF_OFFSET = 1u << 8, /* dx and dy, together; ABI 27 */
 };
 
 /* One CSS-style keyframe stop. A zeroed stop sets nothing: `set` says which
@@ -659,6 +661,10 @@ typedef struct KuiKeyframe {
     float opacity; /* group opacity 0..1 */
     float rotate;  /* turns clockwise (KUI_KF_ROTATE), ADR 0043; ABI 27 */
     float scale;   /* a uniform scale about the pivot (KUI_KF_SCALE); ABI 27 */
+    /* Logical px from where layout put the node (KUI_KF_OFFSET, both
+     * together): the node and its subtree are drawn and hit that far away
+     * at this stop - a bob, a drift, a shake. ABI 27 (backlog F132). */
+    float dx, dy;
 } KuiKeyframe;
 
 /* A box's gradient (KuiSpec.gradient,

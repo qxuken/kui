@@ -691,8 +691,9 @@ impl AnimStore {
         )
     }
 
-    /// [`NodeAnim::sample`] for the transform slot.
-    pub(crate) fn sample_turn(
+    /// [`NodeAnim::sample`] for a track the node's slot array does not
+    /// hold — the transform's, a position's (backlog F132).
+    pub(crate) fn sample_cycle(
         &mut self,
         track: &Track,
         transition: Transition,

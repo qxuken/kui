@@ -66,7 +66,7 @@ const SAMPLE = {
   resource: '0000000000000007',
   keyframes: [
     { width: { grow: 0 }, bg: '#112233' },
-    { at: 0.75, width: 'grow', height: '50%', radius: 9, opacity: 0.25 },
+    { at: 0.75, width: 'grow', height: '50%', radius: 9, opacity: 0.25, dx: 3, dy: -2 },
   ],
   enter: { dx: -40, dy: 8, width: { grow: 0 }, bg: '#11223300', radius: 0, opacity: 0 },
   gradient: { to: 'bottom right', stops: ['#112233', ['#ffffff', 0.5], '#000000'] },
@@ -5057,7 +5057,7 @@ SCENE_TREES.sampler = (fx) =>
           slide: true,
           delay: 20,
           repeat: 'alternate',
-          keyframes: [{ bg: '#1b1d27' }, { at: 1, bg: '#3b5bd4', radius: 12 }],
+          keyframes: [{ bg: '#1b1d27' }, { at: 1, bg: '#3b5bd4', radius: 12, dy: -4 }],
           enter: { dx: -12, opacity: 0 },
           role: 'tab',
           label: 'Card',

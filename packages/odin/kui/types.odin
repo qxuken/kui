@@ -135,6 +135,7 @@ Keyframe :: struct {
 	opacity:       f32,
 	rotate:        f32, // turns clockwise (ADR 0043)
 	scale:         f32, // a uniform scale about the pivot
+	dx, dy:        f32, // px from the node's place, with .Offset (backlog F132)
 }
 
 // Where an entering node starts from, or a leaving one ends at; `set` names
@@ -338,6 +339,8 @@ lower_gradient :: proc(g: Gradient) -> ^c.Gradient {
 #assert(offset_of(Keyframe, opacity) == offset_of(c.Keyframe, opacity))
 #assert(offset_of(Keyframe, rotate) == offset_of(c.Keyframe, rotate))
 #assert(offset_of(Keyframe, scale) == offset_of(c.Keyframe, scale))
+#assert(offset_of(Keyframe, dx) == offset_of(c.Keyframe, dx))
+#assert(offset_of(Keyframe, dy) == offset_of(c.Keyframe, dy))
 
 #assert(size_of(Enter) == size_of(c.Enter))
 #assert(offset_of(Enter, dx) == offset_of(c.Enter, dx))

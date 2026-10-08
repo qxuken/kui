@@ -39,6 +39,12 @@ use crate::value::Value;
 pub struct Keyframe {
     /// Position in the cycle, 0..=1; None spreads evenly.
     pub at: Option<f32>,
+    /// An offset from where layout put the node, logical px, as an
+    /// entrance's `dx`/`dy` is (backlog F132): the node and its subtree
+    /// are drawn and hit that far away at this stop. One left out is 0,
+    /// the node's own place, so a stop naming only `dy` bobs it upright.
+    pub dx: Option<f32>,
+    pub dy: Option<f32>,
     /// Width, height, bg, radius, opacity, rotate and scale — the slots an
     /// entrance names too.
     pub slots: Slots,
@@ -51,10 +57,43 @@ impl Keyframe {
         self.at = Some(at);
         self
     }
+
+    /// This stop `dx`, `dy` px from where layout put the node (F132).
+    pub fn offset(mut self, dx: f32, dy: f32) -> Self {
+        self.dx = Some(dx);
+        self.dy = Some(dy);
+        self
+    }
+
+    /// This stop `dx` px across from the node's place; `dy` stays 0.
+    pub fn dx(mut self, dx: f32) -> Self {
+        self.dx = Some(dx);
+        self
+    }
+
+    /// This stop `dy` px down from the node's place; `dx` stays 0.
+    pub fn dy(mut self, dy: f32) -> Self {
+        self.dy = Some(dy);
+        self
+    }
+
+    /// Whether the stop names a position.
+    #[inline]
+    pub fn offsets(&self) -> bool {
+        self.dx.is_some() || self.dy.is_some()
+    }
+
+    /// The position lanes a stop names — `[dx, dy, 0, 0]`, a lane left out
+    /// 0 — for the track `Core::ease_positions` samples.
+    pub(crate) fn offset_lanes(&self) -> Option<[f32; 4]> {
+        self.offsets()
+            .then(|| [self.dx.unwrap_or(0.0), self.dy.unwrap_or(0.0), 0.0, 0.0])
+    }
 }
 
-/// Stops from plain data: a list of maps with any of `at`, `width`,
-/// `height`, `bg`, `radius`, `opacity`, `rotate`, `scale`, in the forms the props themselves take
+/// Stops from plain data: a list of maps with any of `at`, `dx`, `dy`,
+/// `width`, `height`, `bg`, `radius`, `opacity`, `rotate`, `scale`, in the
+/// forms the props themselves take
 /// (sizings as a number, `"grow"`, `"50%"`, `{grow}` / `{percent}`;
 /// colors as `0xRRGGBBAA` or `"#hex"`). Every binding funnels its
 /// keyframes through here, so the shape is the same in JSX, Lua and C.
@@ -104,6 +143,17 @@ pub fn parse_with(
                     }
                     last_at = at;
                     kf.at = Some(at);
+                }
+                "dx" | "dy" => {
+                    let n = v
+                        .as_float()
+                        .ok_or_else(|| bad(&format!("{k} must be a number of px")))?
+                        as f32;
+                    if k == "dx" {
+                        kf.dx = Some(n);
+                    } else {
+                        kf.dy = Some(n);
+                    }
                 }
                 other => return Err(bad(&format!("unknown field {other:?}"))),
             }

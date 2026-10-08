@@ -661,6 +661,11 @@ impl Core {
         }
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);
+        // A stop's position, once the layout events and the checks have
+        // read the layout's (backlog F132).
+        if self.tree.any_offset_stop {
+            self.offset_stops();
+        }
         // Text set for a key nothing had declared yet was held for this
         // frame (backlog F25). What it declared has taken its seed; what
         // is left named an editor no view draws, so drop it and say so.
@@ -1690,6 +1695,48 @@ impl Core {
             // and not at the end means the last frame lands exactly on the
             // layout position, as it did before.
             let d = Vec2::new(v[0] - target.x, v[1] - target.y).snapped(self.scale);
+            if d.x == 0.0 && d.y == 0.0 {
+                continue;
+            }
+            let end = self.tree.subtree_end(i);
+            for p in &mut self.tree.pos[i..end] {
+                p.x += d.x;
+                p.y += d.y;
+            }
+        }
+    }
+
+    /// After the layout events: every node whose keyframe stops name a
+    /// position (backlog F132) is moved, with its subtree, by the offset
+    /// the cycle is at — after `ease_positions`, so a slide and a bob
+    /// compose, and after `emit_layout_events`, so an `onLayout` node
+    /// reports its layout rect and not a cycle that would post an event
+    /// every frame for as long as it runs. Drawn, hit and read by
+    /// assistive technology where it is moved to; the room it takes is
+    /// its place's.
+    #[inline(never)]
+    fn offset_stops(&mut self) {
+        for i in 0..self.tree.len() {
+            let spec = &self.tree.specs[i];
+            let Some(t) = spec.transition else {
+                continue;
+            };
+            let frames = &spec.anim().keyframes;
+            if frames.is_empty() || !frames.iter().any(|k| k.offsets()) {
+                continue;
+            }
+            // A stop that names no position is the node's own place, 0.
+            let offsets = crate::keyframes::offsets(frames);
+            let Some(track) =
+                crate::keyframes::track(frames, &offsets, [0.0; 4], |k| k.offset_lanes())
+            else {
+                continue;
+            };
+            let Some(o) = self.anim.sample_cycle(&track, t) else {
+                continue;
+            };
+            // Whole physical pixels, as a slide's are.
+            let d = Vec2::new(o[0], o[1]).snapped(self.scale);
             if d.x == 0.0 && d.y == 0.0 {
                 continue;
             }

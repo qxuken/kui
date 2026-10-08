@@ -2117,7 +2117,8 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_value_map_set(force, KUI_STR("kind"), kui_value_str(KUI_STR("force")));
     KuiKeyframe stops[] = {
         {.set = KUI_KF_BG, .bg = 0x1b1d27ff},
-        {.set = KUI_KF_AT | KUI_KF_BG | KUI_KF_RADIUS, .at = 1, .bg = 0x3b5bd4ff, .radius = 12},
+        {.set = KUI_KF_AT | KUI_KF_BG | KUI_KF_RADIUS | KUI_KF_OFFSET, .at = 1, .bg = 0x3b5bd4ff,
+         .radius = 12, .dy = -4},
     };
     KuiSpec card = {
         .dir = KUI_ROW,

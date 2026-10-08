@@ -6812,7 +6812,10 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 Keyframe::default()
                     .at(1.0)
                     .bg(Color::hex(0x3b5bd4ff))
-                    .radius(12.0),
+                    .radius(12.0)
+                    // A position stop (backlog F132): the card rises as
+                    // the cycle runs, sampled at the 60 ms step.
+                    .dy(-4.0),
             ])
             .enter(Enter::from(-12.0, 0.0).opacity(0.0))
             // A tab reports `selected` either way, where a button keeps

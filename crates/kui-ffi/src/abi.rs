@@ -149,7 +149,9 @@
 ///   and `pivot_y` (64-bit 744); `KuiKeyframe` and `KuiEnter` append
 ///   `rotate` and `scale` with `KUI_KF_ROTATE` / `KUI_KF_SCALE` and
 ///   `KUI_ENTER_ROTATE` / `KUI_ENTER_SCALE` — array elements, so their
-///   strides moved (44 and 48).
+///   strides moved (48 for `KuiEnter`); `KuiKeyframe` also appends `dx`
+///   and `dy` with `KUI_KF_OFFSET`, a stop's position (backlog F132), to
+///   52.
 pub const KUI_ABI_VERSION: u32 = 27;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

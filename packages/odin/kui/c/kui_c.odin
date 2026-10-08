@@ -196,6 +196,7 @@ KF_RADIUS :: 16
 KF_OPACITY :: 32
 KF_ROTATE :: 64
 KF_SCALE :: 128
+KF_OFFSET :: 256
 
 GRADIENT_LINEAR :: 0
 GRADIENT_RADIAL :: 1
@@ -487,6 +488,8 @@ Keyframe :: struct {
 	opacity: f32,
 	rotate: f32,
 	scale: f32,
+	dx: f32,
+	dy: f32,
 }
 
 GradientStop :: struct {

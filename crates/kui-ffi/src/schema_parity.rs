@@ -199,6 +199,8 @@ fn every_schema_prop_has_a_c_counterpart() {
             opacity: 0.0,
             rotate: 0.0,
             scale: 0.0,
+            dx: 0.0,
+            dy: 0.0,
         }];
         let gradient_stops = [
             KuiGradientStop { color: C, at: -1.0 },
@@ -403,6 +405,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
             opacity: 0.0,
             rotate: 0.0,
             scale: 0.0,
+            dx: 0.0,
+            dy: 0.0,
         },
         KuiKeyframe {
             set: KUI_KF_AT | KUI_KF_WIDTH | KUI_KF_HEIGHT | KUI_KF_RADIUS,
@@ -414,6 +418,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
             opacity: 0.0,
             rotate: 0.0,
             scale: 0.0,
+            dx: 0.0,
+            dy: 0.0,
         },
     ];
     let modal_tag = KuiValue(Value::str("m"));

@@ -223,7 +223,7 @@ impl Core {
             })
         };
         let v = match track {
-            Some(track) => self.anim.sample_turn(&track, t).unwrap_or(base),
+            Some(track) => self.anim.sample_cycle(&track, t).unwrap_or(base),
             None => {
                 let from = spec.anim().enter.and_then(|e| e.transform_lanes(base));
                 self.anim.drive_turn(key, from, base, t)
