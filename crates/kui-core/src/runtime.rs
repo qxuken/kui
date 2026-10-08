@@ -762,6 +762,7 @@ impl Core {
             focus_visible: self.focus_visible(),
             region: self.region(),
             caret_visible: self.caret_visible(),
+            now: self.now(),
         }
     }
 
@@ -1310,6 +1311,16 @@ impl Core {
     pub fn set_time(&mut self, now_secs: f64) {
         self.anim.set_time(now_secs);
         self.scroll.set_time(now_secs);
+    }
+
+    /// The frame clock (backlog F134): the driver's monotonic seconds the
+    /// transitions and cycles of this frame read, from whatever origin the
+    /// driver chose; 0 before a driver sets one. What a view reads for
+    /// "is this toast due", so that the app's deadlines and the core's
+    /// easing agree, and a test that moves the clock (`Drive::advance`,
+    /// Node's `advance`, `kui_set_time`) moves both.
+    pub fn now(&self) -> f64 {
+        self.anim.time().unwrap_or(0.0)
     }
 
     /// True when the last frame left a transition mid-flight, or a view

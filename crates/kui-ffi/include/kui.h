@@ -2507,6 +2507,10 @@ bool kui_tokens_derive(KuiCtx *ctx, const KuiDerivedToken *derived, size_t count
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
  * each kui_frame_begin; never setting it makes transitions snap. */
 void kui_set_time(KuiCtx *ctx, double now_secs);
+/* The frame clock as kui_set_time last set it, 0 before any (backlog
+ * F134): what a view reads a deadline off - a toast's expiry, a sequence's
+ * beats - so that a test moving the clock moves them with the tweens. */
+double kui_now(KuiCtx *ctx);
 /* True when the last frame left a transition mid-flight: draw another frame
  * without waiting for input. */
 bool kui_animating(KuiCtx *ctx);

@@ -1436,6 +1436,14 @@ pub const DOORS: &[Door] = &[
         doc: "The clock the tweens read; a window's runner sets it from the display.",
     },
     Door {
+        rust: "Ui::now",
+        c: Is("kui_now"),
+        odin: Is("now"),
+        node: Is("now"),
+        lua: As("`env.now`, a reading"),
+        doc: "The frame clock in seconds, the one the tweens read: what a view times its own deadlines by.",
+    },
+    Door {
         rust: "Core::env",
         c: As("`kui_env_set` and its four siblings, `ENV_FIELDS`' C column"),
         odin: As("`env_set` and its four siblings"),

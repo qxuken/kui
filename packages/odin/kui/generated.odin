@@ -2318,6 +2318,13 @@ set_time :: proc(ui: ^Ui, now_secs: f64) {
 	c.set_time(ui, now_secs)
 }
 
+// The frame clock in seconds, the one the tweens read: what a view times its
+// own deadlines by.
+// Rust: Ui::now.
+now :: proc(ui: ^Ui) -> f64 {
+	return c.now(ui)
+}
+
 // Whether the last frame left a transition mid-flight, so the host draws
 // another without waiting for input.
 // Rust: Core::animating.

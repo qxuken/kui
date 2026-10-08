@@ -174,12 +174,12 @@ accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
 the alpha.45 pre-tag pass over it filed nothing.
-F134–F138, from the berainder review of 2026-10-08 — the frame clock
-read and a frame asked at a time, the exit named at the removal, a
-lookup by accessible name, the runner's decoder — are open, filed the
-day the app said what it had worked round; F131, a turn and a scale on
-any node, was built the same day (ADR 0043), and F132 and F133, position
-stops and a count on a cycle, the day after, and all three are in the
+F135–F138, from the berainder review of 2026-10-08 — a frame asked at a
+time, the exit named at the removal, a lookup by accessible name, the
+runner's decoder — are open, filed the day the app said what it had
+worked round; F131, a turn and a scale on any node, was built the same
+day (ADR 0043), and F132 and F133, position stops and a count on a
+cycle, and F134 — the frame clock read — the day after, and are in the
 archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
@@ -1532,28 +1532,8 @@ accessible name; and the runner decodes no JPEG, so the app links the
 Two of them the user had already named — a turn and keyframes — and
 they are the first two below. F131, the turn, was **built 2026-10-08**, the
 day it was filed, as ADR 0043, and F132 and F133, position stops and a
-count on a cycle, **built 2026-10-09**; the three are in the archive,
-and F134–F138 are open.
-
-### `.` F134 — The view cannot read the frame clock, so an app keeps a second one a test cannot move
-
-- **The ask.** "The view can't read a clock. I built my own `Clock`."
-  berainder reads `Instant::now()` in `view` for its toasts, its honey
-  drop, its sparkles' births and its match beats, behind a `Clock {
-  skew }` so its `Drive` tests can push it forward by hand — a second
-  clock beside the one the core eases by. The core has the first:
-  `AnimStore::time()` is the driver's monotonic seconds, set before
-  every frame, moved by `Drive::advance` and Node's `advance`, and the
-  frame's transitions and cycles read it. `Ui` has no door to it
-  (`ui.rs`: the env, the theme, the metrics, the viewport, and no
-  time), so an app's "is this toast due" and the core's "is this fade
-  done" disagree the moment a test advances one of them.
-- **Wants.** `ui.now()` — the frame clock, seconds, the driver's
-  origin, `None`-less (0 with no clock, as a snapped transition reads)
-  — in four bindings: Rust `Ui::now`, C `kui_now`, Lua `env.now`,
-  Node where the loop's `tick.msg(now)` already hands the same number
-  out. The how-to under "How do I move time in a test?" says the app's
-  deadlines are read from it so `advance` moves them too.
+count on a cycle, **built 2026-10-09**, as F134 was the same day; they
+are in the archive, and F135–F138 are open.
 
 ### `.` F135 — An app cannot ask for a frame at a time: a toast's expiry is a thread that sleeps
 
@@ -3020,10 +3000,9 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
-Open from the berainder review of 2026-10-08: F134–F138 — F131 (**built
-2026-10-08**, ADR 0043), F132 and F133 (**built 2026-10-09**) are done;
-F134–F136 are three doors in four bindings; F137 is words and a lookup;
-F138 is a decoder the runner already links.
+Open from the berainder review of 2026-10-08: F135–F138; F131 (**built
+2026-10-08**, ADR 0043), F132, F133 and F134 (**built 2026-10-09**) are
+done.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4316,13 +4295,15 @@ move.
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
 
-**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132 and F133 the day after; F134–F138 open
+**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132, F133 and F134 the day after; F135–F138 open
 
 - `~` **F131** — [No node but a `path` can turn or scale: a dragged card cannot tilt](backlog/closed-2026-09.md#-f131--no-node-but-a-path-can-turn-or-scale-a-dragged-card-cannot-tilt--done-2026-10-08) — done (2026-10-08) — `rotate`, `scale`, `pivotX` / `pivotY` on any node (ADR 0043): paint-only, the turn and the inner clip on the clip entry, hit where drawn, the access rect the bounding box, one tweening slot an entrance, an exit and a keyframe stop name; ABI 27
 
 - `.` **F132** — [A keyframe stop cannot name a position: a sparkle's path is an `enter` with a seven-second transition](backlog/closed-2026-09.md#-f132--a-keyframe-stop-cannot-name-a-position-a-sparkles-path-is-an-enter-with-a-seven-second-transition--done-2026-10-09) — done (2026-10-09) — `dx` / `dy` on a stop, an offset from the node's place sampled off the cycle in its own pass after the layout events: drawn, hit and read there, layout and `onLayout` its place's; `KuiKeyframe` `dx` / `dy` with `KUI_KF_OFFSET` (ABI 27)
 
 - `.` **F133** — [Keyframes run forever: a one-shot cannot be keyframed, so a celebration asks for a frame every frame for 3.4 seconds](backlog/closed-2026-09.md#-f133--keyframes-run-forever-a-one-shot-cannot-be-keyframed-so-a-celebration-asks-for-a-frame-every-frame-for-34-seconds--done-2026-10-09) — done (2026-10-09) — `iterations` on the node: a finite cycle starts when its node is first declared with it (`AnimStore::starts`), fills both ways, rests and owes nothing once over; `KuiSpec.iterations` (ABI 27)
+
+- `.` **F134** — [The view cannot read the frame clock, so an app keeps a second one a test cannot move](backlog/closed-2026-09.md#-f134--the-view-cannot-read-the-frame-clock-so-an-app-keeps-a-second-one-a-test-cannot-move--done-2026-10-09) — done (2026-10-09) — `Ui::now` / `Core::now`, `env.now`, `kui_now`, `ctx.now()`: the frame clock a view times its deadlines by
 
 **From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
 

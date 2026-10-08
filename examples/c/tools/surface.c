@@ -328,6 +328,7 @@ static int surface(void) {
     surface_view(&k, ui);
     kui_frame_finish(ui);
     kui_set_time(ui, 0.05);
+    check(kui_now(ui) == 0.05, "kui_now reads the clock kui_set_time set");
     kui_frame_begin(ui, 800, 600, 2.0f);
     surface_view(&k, ui);
     kui_frame_finish(ui);

@@ -4867,6 +4867,32 @@ mod tests {
         );
     }
 
+    /// A script reads the frame clock (backlog F134): `env.now` is the
+    /// core's seconds, so a deadline a script keeps moves with the host's
+    /// clock and a test's.
+    #[test]
+    fn a_script_reads_the_frame_clock() {
+        let mut ext = LuaExtension::from_source(
+            "clock",
+            r#"
+                function view(env)
+                  if env.now < 2 then
+                    return column { key = "toast", width = 10, height = 10 }
+                  end
+                  return column {}
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_time(1.5);
+        frame(&mut core, &mut ext);
+        assert!(core.key_of("toast").is_some(), "before the deadline");
+        core.set_time(2.5);
+        frame(&mut core, &mut ext);
+        assert!(core.key_of("toast").is_none(), "after it");
+    }
+
     /// A script's editor blinks (backlog C35): `env.caret_visible` is the
     /// phase, read in `view`; the `caret` row on its line is what the
     /// host's clock is armed on, kept through the off phase.

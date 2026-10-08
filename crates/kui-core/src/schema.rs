@@ -2514,6 +2514,8 @@ pub struct EnvFacts {
     pub focus_visible: bool,
     pub region: Option<crate::key::Key>,
     pub caret_visible: bool,
+    /// The frame clock in seconds (`Core::now`, backlog F134).
+    pub now: f64,
 }
 
 fn key_value(k: Option<crate::key::Key>) -> Value {
@@ -2750,6 +2752,15 @@ pub const ENV_FIELDS: &[EnvField] = &[
         lua: &["caret_visible"],
         c: "`kui_caret_visible()`",
         doc: "The caret's blink phase — `true` draws it (backlog C35). The driver's clock sets it while there is a caret to blink: a focused `edit`'s, or the `caret` a `line` under a focused `onKey` sink declares; a custom editor draws its caret node on the on phase and skips it on the off, keeping the `caret` row on its `line` either way, so it blinks in step with the stock editor and, in a window without the keyboard, not at all. Always `true` headless. Node: `caretVisible()` on the context (`setCaretVisible` is the driver's half, for a test that drives the phase).",
+    },
+    EnvField {
+        name: "now",
+        get: |f| Value::Float(f.now),
+        from: "`Core::now()`, the frame's",
+        node: &[],
+        lua: &["now"],
+        c: "`kui_now()`",
+        doc: "The frame clock in seconds (backlog F134): the driver's monotonic clock, any origin, the one `transition` and `keyframes` read this frame — 0 before a driver sets one. Read a deadline off it (a toast's expiry, a sequence's beats) rather than off a clock of the app's own, so a test that moves the frame clock moves both. Node: `now()` on the context.",
     },
     EnvField {
         name: "region",

@@ -714,6 +714,14 @@ pub extern "C" fn kui_set_time(ptr: *mut KuiCtx, now_secs: f64) {
     });
 }
 
+/// The frame clock in seconds, as `kui_set_time` last set it (0 before
+/// any): what a view times its own deadlines by, so that moving the clock
+/// in a test moves them with the transitions (backlog F134).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_now(ptr: *mut KuiCtx) -> f64 {
+    guard(0.0, || unsafe { ctx(ptr) }.map_or(0.0, |c| c.core().now()))
+}
+
 /// True when the last frame left a transition mid-flight: draw another
 /// frame without waiting for input.
 #[unsafe(no_mangle)]

@@ -1757,7 +1757,16 @@ re-renders. `ctx.setTime` under a loop throws and names `advance` — the loop
 owns the clock — and `startTime` in the options pins where that clock starts
 so assertions on `tick.msg(now)` are exact.
 
-[alpha.8 `**What breaks.**`](../CHANGELOG.md#010-alpha8-2026-09-07)
+Keep the app's own deadlines on that clock too. `now()` — `ui.now()` in
+Rust, `env.now` in Lua, `kui_now` in C, `ctx.now()` in Node — is the
+frame clock in seconds, the one `transition` and `keyframes` read (0
+before a driver sets it), so a toast due at `shownAt + 3` and the fade
+that takes it away agree, and `advance` or `Drive::advance` moves both.
+A view that reads `Instant::now()` or `Date.now()` keeps
+a second clock no test can move.
+
+[alpha.8 `**What breaks.**`](../CHANGELOG.md#010-alpha8-2026-09-07) ·
+[`now` in the env](props.md#env)
 
 ### How do I test the real window, not a headless core?
 

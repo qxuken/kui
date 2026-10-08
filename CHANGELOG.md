@@ -95,6 +95,12 @@ was the first bare bump to break an app in five releases).
   `iterations: 1` staggers one-shots. A node that leaves and comes back
   plays again, and so does one whose stops the view drops for a frame
   and declares again: that is how a view replays it.
+- **The view reads the frame clock** (backlog F134). `Ui::now` /
+  `Core::now` in Rust, `env.now` in Lua, `kui_now` in C, `now` in Odin,
+  `ctx.now()` in Node: the driver's seconds that `transition` and
+  `keyframes` read this frame, 0 before a driver sets one. A deadline
+  read off it — a toast's expiry, a sequence's beats — agrees with the
+  core's easing, and a test's `advance` moves both.
 
 **What you can delete.**
 
@@ -104,6 +110,8 @@ was the first bare bump to break an app in five releases).
 - A float declared where a drifting thing ends, entering from where it
   starts over a transition as long as its life, to move it along a path
   (F132): its stops say the path.
+- A clock of the app's own, beside the core's, that a test had to push
+  forward by hand (F134): read `now()`.
 - A clock of the app's own and `request_frame` on every frame to time a
   sequence that plays once — a burst, a pop, a row of stars — and the
   frame owed for good by a cycle the app meant to stop (F133).

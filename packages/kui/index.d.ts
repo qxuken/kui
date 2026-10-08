@@ -3052,6 +3052,13 @@ export declare class Ctx {
    */
   caretVisible(): boolean
   /**
+   * The frame clock in seconds (backlog F134): the one the
+   * tweens and cycles read, `setTime` or the loop's own, 0
+   * before either. Read a deadline off it rather than off
+   * `Date.now()`, so `advance` moves both.
+   */
+  now(): number
+  /**
    * Whether there is a caret to blink: a focused `<edit>`'s, or
    * the `caret` a `line` under the focused sink declares — unless
    * the line declares it `caretSolid`, which
@@ -4248,6 +4255,13 @@ export declare class KuiWindow {
    * while the window has no keyboard. Always `true` headless.
    */
   caretVisible(): boolean
+  /**
+   * The frame clock in seconds (backlog F134): the one the
+   * tweens and cycles read, `setTime` or the loop's own, 0
+   * before either. Read a deadline off it rather than off
+   * `Date.now()`, so `advance` moves both.
+   */
+  now(): number
   /**
    * Whether there is a caret to blink: a focused `<edit>`'s, or
    * the `caret` a `line` under the focused sink declares — unless

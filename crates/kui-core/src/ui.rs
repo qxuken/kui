@@ -484,6 +484,14 @@ impl<'a> Ui<'a> {
         self.core.modifiers()
     }
 
+    /// The frame clock in the driver's seconds (backlog F134); see
+    /// `Core::now`. A view's deadlines read from it — a toast's expiry, a
+    /// sequence's beats — so a test's `advance` moves them with the
+    /// core's own easing.
+    pub fn now(&self) -> f64 {
+        self.core.now()
+    }
+
     /// The caret's blink phase — `true` draws it; see
     /// `Core::caret_visible`. A custom editor draws its caret node on the
     /// on phase and skips it on the off, keeping the `caret` row on its

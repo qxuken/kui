@@ -350,6 +350,7 @@ surface :: proc() -> bool {
 	kui.set_time(ui, 0)
 	kui.frame(ui, &k, surface_view, 800, 600, 2)
 	kui.set_time(ui, 0.05)
+	check(kui.now(ui) == 0.05, "now reads the clock set_time set")
 	kui.frame(ui, &k, surface_view, 800, 600, 2)
 
 	check(k.checkbox != 0 && k.gain != 0, "checkbox and slider return their keys")

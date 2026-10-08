@@ -1665,6 +1665,22 @@ test('a composition and its commit reach the focused sink, anchored at its caret
 // under the focused sink is a caret to blink, the phase the driver sets
 // is what the view reads, and the `caret` row stays declared through the
 // off phase so the clock stays armed.
+// The view reads the frame clock (backlog F134): `now()` is the seconds
+// `setTime` set, 0 before it, so a deadline kept on it moves with the clock.
+test('now() reads the frame clock setTime set', () => {
+  const ctx = new Ctx();
+  assert.equal(ctx.now(), 0, 'no clock yet');
+  ctx.setTime(4.5);
+  assert.equal(ctx.now(), 4.5);
+  const view = () => box({}, ctx.now() < 5 ? [box({ width: 4, height: 4 }, [], 'toast')] : []);
+  ctx.setInspect(true);
+  ctx.frame(100, 100, 1, view());
+  assert.ok(ctx.nodes().some((n) => n.label === 'toast'), 'before the deadline');
+  ctx.setTime(5.5);
+  ctx.frame(100, 100, 1, view());
+  assert.ok(!ctx.nodes().some((n) => n.label === 'toast'), 'after it');
+});
+
 test('a sink with a caret line reads the blink phase and draws its caret on it', () => {
   const ctx = new Ctx();
   const mono = { size: 14, family: 'mono', lineHeight: 20 };
