@@ -28,10 +28,14 @@
 //!   Linux: `Blur` asked of the compositor (`mod linux_blur`).
 //! - **The fallback**, where the OS has no effect to give — GNOME, a
 //!   Linux compositor with no blur protocol, Windows 10: the wallpaper,
-//!   found, read and blurred once on a thread and drawn by kui as the
-//!   window's ground (`mod ground`), reported as `Tinted`; and from the
-//!   frame that thread finds no wallpaper to read, or one that will not
-//!   decode, `Opaque`. `KUI_BACKDROP_EMULATE=1` takes that path for `Blur` and
+//!   read and blurred once on a thread and drawn by kui as the window's
+//!   ground (`mod ground`), reported as `Tinted`. Whether the desktop
+//!   names one is asked on the loop where that is one call (Windows,
+//!   Plasma), so a window with none is `Opaque` from its first frame; on
+//!   GNOME the thread finds it (`gsettings`), and the window is `Tinted`
+//!   until the frame it says there is none. One that will not decode is
+//!   `Opaque` from that frame everywhere (backlog RG150, RG154).
+//!   `KUI_BACKDROP_EMULATE=1` takes that path for `Blur` and
 //!   `Tinted` on Windows and Linux, to see it where the OS would do
 //!   better (macOS reads no wallpaper, so it is `Opaque` there).
 //!

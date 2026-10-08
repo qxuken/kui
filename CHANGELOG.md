@@ -21,23 +21,10 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.45 (unreleased)
+## 0.1.0-alpha.46 (unreleased)
 
 **What breaks.**
 
-- A menu row whose accelerator would leave its label under 48 px — a
-  window narrower than the accelerator with its gaps — draws the
-  accelerator cut short with "…" and the label's first glyphs, where it
-  drew the whole accelerator past the panel's edge and no label (under
-  Fixed, RG154).
-- A `menu_panel` whose caller declared its ceiling as a size expression
-  (`max_width(Bound::Calc(..))`, `"50%"`) bounds its labels by that
-  ceiling read against the window, where it bounded them by the window
-  alone (under Fixed, RG154).
-- Windows and Plasma: a `Blur` or `Tinted` window on a desktop with no
-  wallpaper kui can read is `Opaque` from its first frame again, as it
-  was in alpha.43; alpha.44's `Tinted`-then-`Opaque` is GNOME's alone
-  now (under Fixed, RG154).
 - C ABI 27 (under Added, F131): `KuiClip` grows from eight words to
   twenty — `transform`, `inner` and `inner_radius` — so a host that
   strides `KuiDrawData.clips` reads the new stride and the conformance
@@ -81,6 +68,34 @@ was the first bare bump to break an app in five releases).
   `visible`, `shown`; `HitTurn` on a hit region and a scroll region;
   `NodeInfo::rotate` / `scale` in the devtools' facts (F131).
 
+**What you can delete.**
+
+- A width and a height tweened against each other to fake a card's
+  tilt, and a `path` drawn in a box's place so that it could turn
+  (F131).
+
+## 0.1.0-alpha.45 (2026-10-08)
+
+**What breaks.**
+
+- A menu row whose accelerator would leave its label under 48 px — a
+  window narrower than the accelerator with its gaps — draws the
+  accelerator cut short with "…" and the label's first glyphs, where it
+  drew the whole accelerator past the panel's edge and no label (under
+  Fixed, RG154).
+- A `menu_panel` floating in the viewport whose caller declared its
+  ceiling as a size expression (`max_width(Bound::Calc(..))`, `"50%"`)
+  bounds its labels by that ceiling read against the window, where it
+  bounded them by the window alone (under Fixed, RG154). A panel
+  anchored elsewhere keeps the window as its labels' bound.
+- A menu bar the app leaves out of a frame while a submenu switch waits
+  its 0.3 s starts the wait again when the bar is back, where the switch
+  went through at once on the next build (under Fixed, RG154).
+- Windows and Plasma: a `Blur` or `Tinted` window on a desktop with no
+  wallpaper kui can read is `Opaque` from its first frame again, as it
+  was in alpha.43; alpha.44's `Tinted`-then-`Opaque` is GNOME's alone
+  now (under Fixed, RG154).
+
 ### Fixed
 
 - **The accelerator is bounded too** (backlog RG154, from the alpha.44
@@ -90,7 +105,10 @@ was the first bare bump to break an app in five releases).
   the panel, which is what RG150 set out to stop. The label keeps a
   floor of 48 px (`widgets::MENU_LABEL_MIN`) and the accelerator takes
   what that leaves, ending in "…". And a ceiling declared as a size
-  expression now caps the labels as a px one does.
+  expression on a panel floating in the viewport now caps the labels as
+  a px one does, read against the window; a panel anchored to a node
+  keeps the window's ceiling for its labels, since the room layout will
+  read the expression against is not placed when the rows are built.
 - **A menu bar the app stops drawing owes no frames** (backlog RG154).
   A submenu switch waiting its 0.3 s was cleared by the next build of the
   bar's menu; an app that stopped drawing the bar inside the wait (or
@@ -107,13 +125,46 @@ was the first bare bump to break an app in five releases).
 
 **What you can delete.**
 
-- A width and a height tweened against each other to fake a card's
-  tilt, and a `path` drawn in a box's place so that it could turn
-  (F131).
 - A shorter accelerator chosen for a menu that has to fit a narrow
   window (RG154).
 - A frame an app requested itself after stopping its menu bar, to let
   the core settle (RG154).
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-08, over
+RG154 — what alpha.44's pre-tag pass left — with alpha.45's pre-tag pass
+over it on the Windows machine and under WSLg: the mechanical round on
+both, then a read-only review of the diff since alpha.44, each claim
+probed. It filed nothing; its one finding, a `Calc` ceiling read against
+the window for a panel anchored elsewhere, was corrected inside RG154
+before the tag.
+
+**Windows**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu --node`: **2148 tests over 143 suites**, 0 failed. The
+C round passes (6 checks), and so do the **57 scenes** through Rust,
+Lua, C, Node and Odin; the Odin binding's four steps with CI's pinned
+`dev-2026-09`; Node's tests under `KUI_CONFORMANCE_REQUIRED=1` (**218 of
+219**, the one skip Windows'), `npm run gen` with no diff, the
+examples' typecheck and the headless round. The windowed round with
+Node's: **53 examples on both bases**, clean on a first run; `counter`
+and `host` opened by hand after `cbuild`, and the backdrop examples
+opened with and without `KUI_BACKDROP_EMULATE`. The bench guard against
+the alpha.44 tag, on a quiet machine: **green**, the eight guarded rows
+−0.7% to +2.1% (`frame_10k_rects_with_access_tree` the high one), the
+worst run-to-run spread 3.5%. A first run beside the WSL round read two
+rows unreadable at 13 and 21% spread, which is why it was run again.
+
+**Linux**, under WSLg (llvmpipe), the same commit: fmt and clippy
+clean; `cargo test --workspace`: **1926 tests over 142 suites**, 0
+failed; the C round (5 checks) and the 57 scenes through every adapter,
+Node **219 of 219** with the corpus required, gen clean, the typecheck,
+the headless round. The windowed round under X11 with Node's: **53
+examples on both bases**, clean on a first run, two at a time. The
+backdrop examples under X11 read no wallpaper (WSLg has none to name)
+and went `Opaque`, as they should; Plasma's on-the-loop read is
+compiled and read, not run. No Mac ran this round: the AX audit is CI's
+and the next Mac round's.
 
 ## 0.1.0-alpha.44 (2026-10-08)
 

@@ -1412,10 +1412,19 @@ fn menu_level(
     // gaps. A row is sized from its content (the panel is `Fit` over its
     // rows), so the label is what is bounded, and it ellipsizes there. A
     // ceiling the caller declared as a size expression is read against
-    // the window, which is what the panel floats in (backlog RG154).
+    // the window where that is the panel's room — a float anchored to the
+    // viewport, as the core's own menus are — and left to the window's
+    // ceiling where layout will read it against a parent this build has
+    // not placed yet (backlog RG154).
+    let in_viewport = spec
+        .layout
+        .float
+        .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Viewport);
     let cap = if spec.layout.max_w >= 0.0 {
         spec.layout.max_w
-    } else if let Some(calc) = crate::spec::max_calc(spec.layout.max_w) {
+    } else if let Some(calc) = crate::spec::max_calc(spec.layout.max_w)
+        && in_viewport
+    {
         calc.resolve(ui.viewport().w).min(ceiling)
     } else {
         ceiling

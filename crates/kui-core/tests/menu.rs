@@ -1052,12 +1052,15 @@ fn a_window_narrower_than_the_menus_floor_gets_the_floor() {
     assert!(glyphs.len() < ink, "cut short: {} of {ink}", glyphs.len());
 }
 
-/// A ceiling the caller declares as a size expression — `menu_panel` under
-/// `max_width("50%")` — caps the labels as a px one does, where it capped
-/// the panel alone and the rows were sized for the window (backlog RG154).
+/// A ceiling the caller declares as a size expression — `menu_panel`
+/// floating in the viewport under `max_width("50%")` — caps the labels as
+/// a px one does, where it capped the panel alone and the rows were sized
+/// for the window (backlog RG154). The window is the room only for a
+/// viewport float; a panel anchored elsewhere keeps the window's ceiling.
 #[test]
 fn a_calc_ceiling_caps_the_labels_as_a_px_one_does() {
     use kui_core::spec::Bound;
+    use kui_core::{Align, FloatConfig};
     let mut core = Core::new();
     let half = kui_core::calc::intern(kui_core::calc::parse("50%").unwrap()).unwrap();
     let path = "/Users/someone/Documents/notes/archive/2026/october/the-long-name-of-a-note.md";
@@ -1067,7 +1070,9 @@ fn a_calc_ceiling_caps_the_labels_as_a_px_one_does() {
     kui_core::widgets::menu_panel(
         &mut ui,
         "panel",
-        kui_core::widgets::menu_panel_spec(&t, &m).max_width(Bound::Calc(half)),
+        kui_core::widgets::menu_panel_spec(&t, &m)
+            .max_width(Bound::Calc(half))
+            .float(FloatConfig::viewport().inside(Align::Start, Align::Start)),
         &[MenuItem::new(path).accel("ctrl+s")],
     );
     ui.finish();
