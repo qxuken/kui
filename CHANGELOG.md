@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.51 (unreleased)
+## 0.1.0-alpha.51 (2026-10-09)
 
 **What breaks.**
 
@@ -89,6 +89,31 @@ being built; after it, a frame that did not ask has no answer — `None`,
   a host makes before `slot_replay`.
 - Counting a pane's own views to learn whether a frame replayed it, where
   `slot_fill` read a frame stale.
+
+### Native verification
+
+The by-hand round on 2026-10-09, over the round since alpha.50 — F154,
+Carnet's title arrows, and F155 and F156 from kawoosh's native-view
+replay — on the Mac: the mechanical round as CI runs it, the Odin
+binding with an Odin built locally rather than CI's pinned one in its
+image, and the bench guard. The windowed round, the accessibility audit
+and the other checks that need someone at the screen were not run this
+time.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **2060 tests over 154 suites**, 0 failed, 4 ignored.
+The C round passes (5 checks), and so do the **58 scenes** through
+Rust, Lua, C, Odin and Node; Node's tests under `KUI_CONFORMANCE_REQUIRED=1`,
+**228 of 228**; `npm run gen` with no diff, the examples' typecheck,
+the headless round (5.4 s), the book's examples current. `nu
+scripts/odin.nu gen --check` says the binding is current, `odin.nu
+check` vets both packages and every example, and `odin.nu test` runs
+its four. The bench guard against the alpha.50 tag: **green**, the
+eight guarded rows within tolerance (the widest spread 2.4%, on a
+machine another job was loading), `slot_1500_nodes_fresh` and
+`slot_1500_nodes_replayed` unchanged at 294 and 223 µs. Not run: the
+windowed round over every example and the four hosts, and the AX audit.
+No Windows or Linux machine ran this round.
 
 ## 0.1.0-alpha.50 (2026-10-09)
 
