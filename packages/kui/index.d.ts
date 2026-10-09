@@ -3068,6 +3068,16 @@ export declare class Ctx {
    */
   requestFrameAt(at: number): void
   /**
+   * The exit the node `key` leaves by if it leaves in the frame
+   * that finishes next (backlog F136), over the `exit` it
+   * declared: `{dx: 400, opacity: 0}`, the same fields as
+   * `exit`. A card a button throws aside is removed in the same
+   * handler, with no frame drawn first to aim it. It aims a node
+   * that declares an `exit`, with that node's transition, and is
+   * forgotten when that frame finishes.
+   */
+  exitWith(key: string, exit: Json): void
+  /**
    * The frame-clock time the next asked-for frame is due at, in
    * seconds; `null` when none was asked for.
    */
@@ -4285,6 +4295,16 @@ export declare class KuiWindow {
    * on, as it does for a `tick`.
    */
   requestFrameAt(at: number): void
+  /**
+   * The exit the node `key` leaves by if it leaves in the frame
+   * that finishes next (backlog F136), over the `exit` it
+   * declared: `{dx: 400, opacity: 0}`, the same fields as
+   * `exit`. A card a button throws aside is removed in the same
+   * handler, with no frame drawn first to aim it. It aims a node
+   * that declares an `exit`, with that node's transition, and is
+   * forgotten when that frame finishes.
+   */
+  exitWith(key: string, exit: Json): void
   /**
    * The frame-clock time the next asked-for frame is due at, in
    * seconds; `null` when none was asked for.

@@ -351,6 +351,7 @@ surface :: proc() -> bool {
 	kui.frame(ui, &k, surface_view, 800, 600, 2)
 	kui.set_time(ui, 0.05)
 	check(kui.now(ui) == 0.05, "now reads the clock set_time set")
+	kui.exit_with(ui, kui.key_of(ui, "nobody"), kui.Enter{set = {.Offset, .Opacity}, dx = 400})
 	kui.request_frame_at(ui, 3)
 	check(kui.next_frame_at(ui) == 3, "request_frame_at sets a deadline")
 	kui.frame(ui, &k, surface_view, 800, 600, 2)

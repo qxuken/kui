@@ -331,9 +331,15 @@ static int surface(void) {
     kui_set_time(ui, 0.05);
     check(kui_now(ui) == 0.05, "kui_now reads the clock kui_set_time set");
     check(isinf(kui_next_frame_at(ui)), "nothing asked for at a time yet");
+    KuiEnter thrown = {0};
+    thrown.set = KUI_ENTER_OFFSET | KUI_ENTER_OPACITY;
+    thrown.dx = 400.0f;
+    kui_exit_with(ui, kui_key_of(ui, KUI_STR("nobody")), &thrown);
+    kui_exit_with(ui, kui_key_of(ui, KUI_STR("nobody")), NULL);
     kui_request_frame_at(ui, 3.0);
     check(kui_next_frame_at(ui) == 3.0, "kui_request_frame_at sets a deadline");
-    check(!kui_animating(ui), "and owes nothing until then");
+    /* The keyframes in the view owe their cycle; the deadline adds nothing. */
+    check(!(kui_owed(ui) & KUI_OWED_REQUESTED), "and owes nothing until then");
     kui_frame_begin(ui, 800, 600, 2.0f);
     surface_view(&k, ui);
     kui_frame_finish(ui);

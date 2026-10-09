@@ -1696,6 +1696,25 @@ test('requestFrameAt sets a deadline and owes nothing until it', () => {
   assert.equal(ctx.nextFrameAt(), null, 'the frame at the time spends it');
 });
 
+// The exit named at the removal (backlog F136): a card thrown right, over
+// the fade it declared, removed in the same handler that aims it.
+test('exitWith aims the exit a node leaves by in the frame that drops it', () => {
+  const ctx = new Ctx();
+  const card = () => box({
+    width: 40, height: 40, bg: '#ffffff',
+    transition: 1000, easing: 'linear', exit: { opacity: 0 },
+  }, [], 'card');
+  ctx.setTime(0);
+  ctx.frame(600, 200, 1, box({ pad: 20 }, [card()]));
+  ctx.exitWith('card', { dx: 400, opacity: 0 });
+  ctx.frame(600, 200, 1, box({ pad: 20 }));
+  ctx.setTime(0.5);
+  ctx.frame(600, 200, 1, box({ pad: 20 }));
+  const xs = decodeQuads(ctx.quads()).filter((q) => q.kind === 0).map((q) => q.x);
+  assert.ok(xs.some((x) => Math.abs(x - 220) < 1), `halfway along the throw: ${xs}`);
+  assert.throws(() => ctx.exitWith('card', { dx: 'far' }), /exitWith/);
+});
+
 test('a sink with a caret line reads the blink phase and draws its caret on it', () => {
   const ctx = new Ctx();
   const mono = { size: 14, family: 'mono', lineHeight: 20 };

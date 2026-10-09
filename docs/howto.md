@@ -37,6 +37,23 @@ because the removal is judged whole rather than half-animated, and the
 [ADR 0012](adr/0012-the-exit-budget.md) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07)
 
+### How do I throw a card left or right from a button?
+
+Aim the exit in the handler that removes the card:
+`ui.exit_with(key, Enter::from(400.0, 0.0).opacity(0.0))` in Rust
+(`env.exit_with` in Lua, `kui_exit_with` in C, `ctx.exitWith(key, { dx:
+400, opacity: 0 })` in Node), then stop declaring the card. The exit a
+node leaves by is otherwise the one its last frame declared, so a Like
+button pressed with the card at rest would send it the default way; the
+named exit wins for the frame the card goes in, and lapses when that
+frame finishes if the card stayed. It aims a node that declares an
+`exit` and a `transition`, and plays with that transition — so give the
+card a default `exit`, and a drag that already aims it by the lean on
+every frame needs nothing more.
+
+[`exit` row](props.md#container-props) ·
+[`Ui::exit_with` door](props.md#doors)
+
 ### How do I tilt a card as it is dragged?
 
 `rotate` on the card, in turns clockwise (`0.03` is a tilt, `0.25` a
@@ -1765,6 +1782,9 @@ that takes it away agree, and `advance` or `Drive::advance` moves both.
 A view that reads `Instant::now()` or `Date.now()` keeps
 a second clock no test can move.
 
+[alpha.8 `**What breaks.**`](../CHANGELOG.md#010-alpha8-2026-09-07) ·
+[`now` in the env](props.md#env)
+
 ### How do I hide a toast after three seconds without a timer thread?
 
 Keep the time it is due on the frame clock, and ask for a frame then:
@@ -1780,9 +1800,6 @@ says the same thing to every window. A test moves the clock past the
 time and draws; a host driving its own window reads
 `kui_next_frame_at` and sleeps to it.
 
-[`now` in the env](props.md#env)
-
-[alpha.8 `**What breaks.**`](../CHANGELOG.md#010-alpha8-2026-09-07) ·
 [`now` in the env](props.md#env)
 
 ### How do I test the real window, not a headless core?

@@ -174,12 +174,12 @@ accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
 the alpha.45 pre-tag pass over it filed nothing.
-F136–F138, from the berainder review of 2026-10-08 — the exit named at
-the removal, a lookup by accessible name, the runner's decoder — are
-open, filed the day the app said what it had worked round; F131, a turn
-and a scale on any node, was built the same day (ADR 0043), and F132 and
-F133, position stops and a count on a cycle, and F134–F135 — the frame
-clock read, a frame asked at a time — the day after, and are in the
+F137–F138, from the berainder review of 2026-10-08 — a lookup by
+accessible name, the runner's decoder — are open, filed the day the app
+said what it had worked round; F131, a turn and a scale on any node, was
+built the same day (ADR 0043), and F132 and F133, position stops and a
+count on a cycle, and F134–F136 — the frame clock read, a frame asked at
+a time, the exit named at the removal — the day after, and are in the
 archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
@@ -1532,33 +1532,8 @@ accessible name; and the runner decodes no JPEG, so the app links the
 Two of them the user had already named — a turn and keyframes — and
 they are the first two below. F131, the turn, was **built 2026-10-08**, the
 day it was filed, as ADR 0043, and F132 and F133, position stops and a
-count on a cycle, **built 2026-10-09**, as F134–F135 were the same day;
-they are in the archive, and F136–F138 are open.
-
-### `.` F136 — The `exit` a node leaves by is the one it declared the frame before it went, so a fling by button takes two frames
-
-- **The ask.** "Exit direction comes from the previous frame. Throwing
-  a card left or right needs a two-frame dance (`Fling { shown }`):
-  draw it once with the exit aimed, then remove it." `depart` reads
-  `spec.anim().exit` from the kept tree of the last frame that had the
-  node (`depart.rs`), which is the rule ADR 0012 built and the one
-  `props.md` states. For a drag the app has the workaround in one
-  frame: it aims the exit by the lean on every frame of the drag, so
-  the release removes a card whose exit already points the right way
-  (`deck.rs`). For the Like and Nope *buttons*, pressed with the card
-  at rest, the last frame's exit points the default way, so the app
-  draws one more frame with it aimed and `request_frame`, and removes
-  the card on the next — a model field, a frame of latency and a
-  comment explaining both.
-- **Wants.** `ui.exit_with(key, Enter)` (and `Core::set_exit`, so an
-  `on_event_with` can call it): the exit this key leaves by *if it
-  leaves this frame*, read by `depart` over the kept spec's own and
-  cleared at the frame's end; with a transition of its own for a kept
-  spec that had none. A handler that decides a removal then says how
-  it goes in the same turn, and the view simply stops declaring the
-  node. Four bindings (`kui_exit_with`, Lua `env.exit_with`, Node
-  `ctx.exitWith`), a `props.md` verb, and the `exit` row's sentence
-  about the frame before gains "unless `exit_with` said otherwise".
+count on a cycle, **built 2026-10-09**, as F134–F136 were the same day;
+they are in the archive, and F137–F138 are open.
 
 ### `.` F137 — `key_of(label)` reads the key label and `texts_under(label)` the accessible name, and the docs call both "label"
 
@@ -2981,8 +2956,8 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
-Open from the berainder review of 2026-10-08: F136–F138; F131 (**built
-2026-10-08**, ADR 0043), F132, F133 and F134–F135 (**built 2026-10-09**)
+Open from the berainder review of 2026-10-08: F137–F138; F131 (**built
+2026-10-08**, ADR 0043), F132, F133 and F134–F136 (**built 2026-10-09**)
 are done.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
@@ -4276,7 +4251,7 @@ move.
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
 
-**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132, F133 and F134–F135 the day after; F136–F138 open
+**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132, F133 and F134–F136 the day after; F137–F138 open
 
 - `~` **F131** — [No node but a `path` can turn or scale: a dragged card cannot tilt](backlog/closed-2026-09.md#-f131--no-node-but-a-path-can-turn-or-scale-a-dragged-card-cannot-tilt--done-2026-10-08) — done (2026-10-08) — `rotate`, `scale`, `pivotX` / `pivotY` on any node (ADR 0043): paint-only, the turn and the inner clip on the clip entry, hit where drawn, the access rect the bounding box, one tweening slot an entrance, an exit and a keyframe stop name; ABI 27
 
@@ -4287,6 +4262,8 @@ move.
 - `.` **F134** — [The view cannot read the frame clock, so an app keeps a second one a test cannot move](backlog/closed-2026-09.md#-f134--the-view-cannot-read-the-frame-clock-so-an-app-keeps-a-second-one-a-test-cannot-move--done-2026-10-09) — done (2026-10-09) — `Ui::now` / `Core::now`, `env.now`, `kui_now`, `ctx.now()`: the frame clock a view times its deadlines by
 
 - `.` **F135** — [An app cannot ask for a frame at a time: a toast's expiry is a thread that sleeps](backlog/closed-2026-09.md#-f135--an-app-cannot-ask-for-a-frame-at-a-time-a-toasts-expiry-is-a-thread-that-sleeps--done-2026-10-09) — done (2026-10-09) — `request_frame_at` / `next_frame_at` in four bindings and `Waker::wake_at`: the runner sleeps to the time, nothing owed until then
+
+- `.` **F136** — [The `exit` a node leaves by is the one it declared the frame before it went, so a fling by button takes two frames](backlog/closed-2026-09.md#-f136--the-exit-a-node-leaves-by-is-the-one-it-declared-the-frame-before-it-went-so-a-fling-by-button-takes-two-frames--done-2026-10-09) — done (2026-10-09) — Ui::exit_with / Core::set_exit read by depart over the kept exit for the frame the node goes in, four bindings
 
 **From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
 

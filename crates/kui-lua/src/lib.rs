@@ -186,6 +186,7 @@
 //! - Focus: `set_focus(key)`, `blur()`, `focus_next()`, `focus_prev()`,
 //!   `focus_region(key)`, `announce(text, politeness)`.
 //! - Time: `request_frame_at(at)`, a frame at a time on the frame clock
+//! - Exits: `exit_with(key, exit)`, the exit a node leaves by this frame
 //!   (`env.now + 3` is a toast's expiry).
 //! - Scrolling: `reveal(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
 //!   `set_scroll(key, x, y)`, `shift_scroll(key, drawn, target)`.
@@ -736,7 +737,8 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// label spelling reaches an editor this view is about to declare),
 /// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`,
-/// `request_frame_at(at)` (a frame at a time on the frame clock, `now`)
+/// `request_frame_at(at)` (a frame at a time on the frame clock, `now`),
+/// `exit_with(key, exit)` (the exit a node leaves by this frame)
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `shift_scroll(key, drawn, target)` / `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
@@ -949,6 +951,20 @@ fn env_table<'scope, 'env: 'scope>(
         "request_frame_at",
         scope.create_function(move |_, at: f64| {
             ui.borrow_mut().request_frame_at(at);
+            Ok(())
+        })?,
+    )?;
+    // The exit a node leaves by if it leaves this frame (backlog F136),
+    // over the one it declared: `env.exit_with("card", { dx = 400,
+    // opacity = 0 })` aims a throw before the view drops the card.
+    t.set(
+        "exit_with",
+        scope.create_function(move |_, (key, exit): (mlua::Value, mlua::Value)| {
+            let mut ui = ui.borrow_mut();
+            let key = key_arg(&mut ui, key)?;
+            let e = kui_core::enter::parse(&lua_to_value(&exit)?)
+                .map_err(|m| mlua::Error::runtime(format!("exit_with: {m}")))?;
+            ui.exit_with(key, e);
             Ok(())
         })?,
     )?;
@@ -4925,6 +4941,42 @@ mod tests {
         frame(&mut core, &mut ext);
         assert_eq!(core.next_frame_at(), Some(4.0));
         assert!(!core.animating());
+    }
+
+    /// A script aims the exit a card leaves by in the frame that drops it
+    /// (backlog F136): thrown right, over the fade it declared.
+    #[test]
+    fn a_script_names_the_exit_at_the_removal() {
+        let mut ext = LuaExtension::from_source(
+            "throw",
+            r##"
+                function view(env)
+                  if env.now < 1 then
+                    return column { pad = 20,
+                      column { key = "card", width = 40, height = 40, bg = "#ffffff",
+                        transition = 1000, easing = "linear", exit = { opacity = 0 } } }
+                  end
+                  if env.now < 1.1 then env.exit_with("card", { dx = 400, opacity = 0 }) end
+                  return column { pad = 20 }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_time(0.0);
+        frame(&mut core, &mut ext);
+        core.set_time(1.0);
+        frame(&mut core, &mut ext);
+        core.set_time(1.5);
+        frame(&mut core, &mut ext);
+        let xs: Vec<f32> = kui_core::testing::solids(&mut core)
+            .iter()
+            .map(|q| q.rect.x)
+            .collect();
+        assert!(
+            xs.iter().any(|x| (x - 220.0).abs() < 1.0),
+            "halfway along the throw: {xs:?}"
+        );
     }
 
     /// A script's editor blinks (backlog C35): `env.caret_visible` is the

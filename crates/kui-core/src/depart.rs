@@ -424,9 +424,12 @@ impl DepartStore {
         lines: &crate::line::LineStore,
         fragments: &crate::fragment::FragmentList,
         paths: &crate::path::PathStore,
+        exit_with: Option<Enter>,
     ) {
         let spec = &tree.specs[root];
-        let (Some(t), Some(exit)) = (spec.transition, spec.anim().exit) else {
+        // The exit named at the removal (`Core::set_exit`, backlog F136)
+        // over the one the kept frame declared.
+        let (Some(t), Some(exit)) = (spec.transition, exit_with.or(spec.anim().exit)) else {
             return;
         };
         let duration = t.duration_ms.max(0.0) as f64 / 1000.0;
@@ -737,7 +740,7 @@ mod tests {
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame(frame.next());
         d.depart(
-            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
         );
         assert_eq!(d.node_count(), 3, "the subtree, not just its root");
 
@@ -766,7 +769,7 @@ mod tests {
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame(frame.next());
         d.depart(
-            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
         );
         assert_eq!(d.keys().collect::<Vec<_>>(), vec![Key::ROOT.str("x")]);
         d.retire(Key::ROOT.str("x"));
@@ -791,13 +794,13 @@ mod tests {
         let tree = tree_with(departing(NodeSpec::column()), 2);
         d.begin_frame(frame.next());
         d.depart(
-            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
         );
         assert_eq!(d.keys().count(), 1);
         assert_eq!(d.node_count(), 3);
 
         d.depart(
-            &tree, 1, 0.05, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            &tree, 1, 0.05, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
         );
         assert_eq!(d.keys().count(), 1, "one picture of one node, not two");
         assert_eq!(d.node_count(), 3, "and the budget charged once for it");
@@ -823,7 +826,7 @@ mod tests {
             let tree = tree_with(spec, 0);
             d.begin_frame(frame.next());
             d.depart(
-                &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+                &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
             );
             assert!(d.is_empty());
         }
@@ -863,7 +866,9 @@ mod tests {
                     NodeContent::Container,
                 );
             }
-            d.depart(&t, 1, now, 1.0, IN_FLOW, &text, &lines, &fragments, &paths);
+            d.depart(
+                &t, 1, now, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
+            );
         }
     }
 
@@ -950,7 +955,7 @@ mod tests {
         let tree = tree_with(departing(NodeSpec::column()), 0);
         d.begin_frame(frame.next());
         d.depart(
-            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
         );
         // Frames without a replay: the sweep runs on the 240th.
         for _ in 0..480 {
@@ -975,7 +980,7 @@ mod tests {
         let tree = tree_with(spec, 0);
         d.begin_frame(frame.next());
         d.depart(
-            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
         );
         let mut x = 0.0;
         d.replay(0.05, |_, p| x = p.offset.x);
@@ -1006,7 +1011,7 @@ mod tests {
         tree.size[1] = crate::geom::Size::new(40.0, 20.0);
         d.begin_frame(frame.next());
         d.depart(
-            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths,
+            &tree, 1, 0.0, 1.0, IN_FLOW, &text, &lines, &fragments, &paths, None,
         );
         d.replay(0.05, |_, p| {
             assert!((p.opacity - 0.5).abs() < 1e-4, "halfway faded");

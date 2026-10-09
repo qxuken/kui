@@ -1436,6 +1436,14 @@ pub const DOORS: &[Door] = &[
         doc: "The clock the tweens read; a window's runner sets it from the display.",
     },
     Door {
+        rust: "Ui::exit_with",
+        c: Is("kui_exit_with"),
+        odin: Is("exit_with"),
+        node: Is("exitWith"),
+        lua: Is("exit_with"),
+        doc: "Names the exit a node leaves by if this frame stops declaring it, over the one it declared: a throw a button aims.",
+    },
+    Door {
         rust: "Ui::request_frame_at",
         c: Is("kui_request_frame_at"),
         odin: Is("request_frame_at"),

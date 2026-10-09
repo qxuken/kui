@@ -595,6 +595,11 @@ impl Core {
         self.emit_frame();
         self.building = false;
         self.submenu_frame_end();
+        // An exit named for a removal is for this frame's departures,
+        // which `emit_frame` has collected (backlog F136).
+        if !self.exits_named.is_empty() {
+            self.exits_named.clear();
+        }
         // A focus the view moved, or a focused node the frame declared
         // `on_focus` on or dropped (backlog DX18).
         let mut out = std::mem::take(&mut self.pending);
@@ -1450,6 +1455,7 @@ impl Core {
                 base *= self.prev_tree.specs[a as usize].style.opacity;
                 a = self.prev_tree.parent[a as usize];
             }
+            let exit_with = self.exits_named.get(&self.prev_tree.keys[i]).copied();
             self.depart.depart(
                 &self.prev_tree,
                 i,
@@ -1460,6 +1466,7 @@ impl Core {
                 &self.lines,
                 &self.fragments,
                 &self.paths,
+                exit_with,
             );
         }
         // Named now, while a tree still has them (backlog F111).

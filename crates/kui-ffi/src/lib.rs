@@ -714,6 +714,24 @@ pub extern "C" fn kui_set_time(ptr: *mut KuiCtx, now_secs: f64) {
     });
 }
 
+/// The exit the node `key` leaves by if it leaves in the frame that
+/// finishes next (backlog F136), over the `exit` it declared: a card a
+/// button throws aside, removed in the same frame with no frame drawn to
+/// aim it. Read during the call; NULL clears nothing and names nothing.
+/// It aims a node that declares an `exit`, with that node's transition.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_exit_with(ptr: *mut KuiCtx, key: u64, exit: *const KuiEnter) {
+    guard((), || {
+        if exit.is_null() {
+            return;
+        }
+        let e = crate::convert::enter_of(unsafe { &*exit });
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_exit(kui_core::Key(key), e);
+        }
+    });
+}
+
 /// Asks for a frame at `at` on the frame clock (backlog F135): the driver
 /// wakes then and the view runs, with nothing owed in between. The
 /// earliest time asked for wins; one already past is a frame now. Under

@@ -533,6 +533,10 @@ pub struct Core {
     /// at or after it, and read by a driver through `next_frame_at` as a
     /// deadline to wake for rather than a frame to draw now.
     frame_due: Option<f64>,
+    /// Exits named for a removal (`set_exit`, backlog F136), by key: read
+    /// by the departures of the frame that finishes next, over the exit
+    /// the kept frame declared, and cleared when it finishes.
+    exits_named: rustc_hash::FxHashMap<Key, crate::enter::Enter>,
     /// Why frames run: the reasons, and — traced — who held an owed one
     /// and whether a frame changed anything (`runtime/cause.rs`).
     trace: cause::Trace,
@@ -1066,6 +1070,7 @@ impl Core {
             ghost_rect: Vec::new(),
             frame_requested: false,
             frame_due: None,
+            exits_named: Default::default(),
             trace: cause::Trace::default(),
             pending_reveal: Vec::new(),
             pending_reveal_labels: Vec::new(),
@@ -1408,6 +1413,18 @@ impl Core {
             return;
         }
         self.frame_due = Some(self.frame_due.map_or(at, |d| d.min(at)));
+    }
+
+    /// The exit `key` leaves by if it leaves in the frame that finishes
+    /// next (backlog F136), over the `exit` the node declared: a card
+    /// thrown left by a button that was resting with its exit aimed the
+    /// other way. Called from a handler between frames, or from the view
+    /// of the frame that stops declaring the node; cleared when that frame
+    /// finishes, so a node that stays is not left with it. It aims an
+    /// `exit` the node declares — a node that declares none leaves no
+    /// picture to replay — with the node's own `transition`.
+    pub fn set_exit(&mut self, key: Key, exit: crate::enter::Enter) {
+        self.exits_named.insert(key, exit);
     }
 
     /// The frame-clock time a driver should next draw at for a

@@ -132,7 +132,7 @@ c_type! {
     KuiAudioCommand => "KuiAudioCommand", KuiTheme => "KuiTheme",
     KuiMetrics => "KuiMetrics", KuiColorToken => "KuiColorToken",
     KuiLengthToken => "KuiLengthToken", KuiColorOp => "KuiColorOp",
-    KuiDerivedToken => "KuiDerivedToken",
+    KuiDerivedToken => "KuiDerivedToken", KuiEnter => "KuiEnter",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
     KuiRunConfig => "KuiRunConfig",
     KuiFileFilter => "KuiFileFilter", KuiFileDialog => "KuiFileDialog",

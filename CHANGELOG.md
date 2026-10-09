@@ -110,6 +110,13 @@ was the first bare bump to break an app in five releases).
   time asked for and runs the view, with nothing owed until then, so
   `animating()` stays false. A time already past is a frame now; the
   time is kept until a frame reaches it.
+- **The exit named at the removal** (backlog F136). `Ui::exit_with` /
+  `Core::set_exit` in Rust, `env.exit_with` in Lua, `kui_exit_with` in
+  C, `exit_with` in Odin, `ctx.exitWith` in Node: the exit a node leaves
+  by if it leaves in the frame that finishes next, over the one its
+  last frame declared, so the handler that removes a card says which way
+  it goes. It lapses when that frame finishes; it aims a node that
+  declares an `exit`, with that node's `transition`.
 
 **What you can delete.**
 
@@ -123,6 +130,9 @@ was the first bare bump to break an app in five releases).
   forward by hand (F134): read `now()`.
 - A thread per deadline that sleeps and then calls `Waker::wake` (F135):
   `request_frame_at`, or `Waker::wake_at` from off the view.
+- A frame drawn with the exit aimed before the frame that removes the
+  card, and the model field and `request_frame` that schedule it
+  (F136): `exit_with` in the handler.
 - A clock of the app's own and `request_frame` on every frame to time a
   sequence that plays once — a burst, a pop, a row of stars — and the
   frame owed for good by a cycle the app meant to stop (F133).

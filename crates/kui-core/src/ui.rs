@@ -484,6 +484,14 @@ impl<'a> Ui<'a> {
         self.core.modifiers()
     }
 
+    /// The exit `key` leaves by if this frame stops declaring it (backlog
+    /// F136); see `Core::set_exit`. The view that removes a card thrown
+    /// by a button names the throw in the same frame, with no frame drawn
+    /// first to aim it.
+    pub fn exit_with(&mut self, key: Key, exit: crate::enter::Enter) {
+        self.core.set_exit(key, exit);
+    }
+
     /// Asks for a frame at `at` on the frame clock (backlog F135); see
     /// `Core::request_frame_at`. `ui.request_frame_at(ui.now() + 3.0)` is
     /// a toast's expiry, with no thread and nothing owed in between.

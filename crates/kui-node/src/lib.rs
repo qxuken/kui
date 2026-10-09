@@ -3329,6 +3329,23 @@ macro_rules! core_methods {
                 self.$core().request_frame_at(at);
             }
 
+            /// The exit the node `key` leaves by if it leaves in the frame
+            /// that finishes next (backlog F136), over the `exit` it
+            /// declared: `{dx: 400, opacity: 0}`, the same fields as
+            /// `exit`. A card a button throws aside is removed in the same
+            /// handler, with no frame drawn first to aim it. It aims a node
+            /// that declares an `exit`, with that node's transition, and is
+            /// forgotten when that frame finishes.
+            #[napi]
+            pub fn exit_with(&mut self, key: String, exit: Json) -> Result<()> {
+                let e = kui_core::enter::parse(&value_of(&exit))
+                    .map_err(|m| napi::Error::from_reason(format!("exitWith: {m}")))?;
+                let core = self.$core();
+                let key = resolve_key(core, &key)?;
+                core.set_exit(key, e);
+                Ok(())
+            }
+
             /// The frame-clock time the next asked-for frame is due at, in
             /// seconds; `null` when none was asked for.
             #[napi]
