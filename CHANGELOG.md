@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.47 (unreleased)
+## 0.1.0-alpha.47 (2026-10-09)
 
 ### Fixed
 
@@ -35,6 +35,36 @@ was the first bare bump to break an app in five releases).
   of them against the upright node. A square clipper inside a turn now
   smooths its edge as a rounded one does instead of stairing, in the
   renderer and the fragment epilogue.
+
+### Native verification
+
+The by-hand round on 2026-10-09, over RG155 — what alpha.46's pre-tag
+pass left — on the Mac: the mechanical round as CI runs it, the Odin
+binding regenerated and type-checked with CI's pinned Odin in a Debian
+container (the lesson of alpha.46's tag), the windowed round, the
+accessibility audit and the bench guard, then one read-only reviewer of
+the diff since alpha.46, each claim probed. It found two of RG155's
+paths written the wrong way — `text_hit` and `caret_rect` turned in the
+host's space where the turns are the window's, which a devtools dock on
+the left made twice its width wrong, and a sink's `line` and `byte` read
+through the sink's turn alone, not a turned column inside it — and a
+lookup every frame with a clip paid; all three were corrected before the
+tag, with tests that fail without them.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **2003 tests over 150 suites**, 0 failed. The C round
+passes (5 checks), and so do the **58 scenes** through Rust, Lua, C and
+Node; Node's tests under `KUI_CONFORMANCE_REQUIRED=1`, **224 of 224**;
+`npm run gen` with no diff, the examples' typecheck, the headless
+round, the book. The Odin generator's output matches the tree byte for
+byte, and the package and its five examples pass `odin check -vet
+-strict-style`. The windowed round with Node's: **55 examples on both
+bases**, clean on a first run. The accessibility audit: **106 of 106**.
+The bench guard against the alpha.46 tag: **green**, the eight guarded
+rows −0.7% to +3.5% on a machine another session had just been
+building on, and the two high rows re-read at +0.2%
+(`frame_10k_rects`) and +1.1% (`list_10k_rows_virtual`) once it was
+quiet. No Windows or Linux machine ran this round.
 
 ## 0.1.0-alpha.46 (2026-10-09)
 
@@ -227,9 +257,9 @@ the crates on crates.io and staged the npm package, from the same
 commit, so the tag stays where it is. Nothing shipped differs: the Odin
 package is in neither registry. The file was regenerated with CI's
 pinned Odin (`dev-2026-09`) in a Debian container, the package and every
-Odin example type-checked there, and the fix is on main after the tag;
-`scripts/release-local.nu` publishes the drydock9 crates with the
-Forgejo npm copy.
+Odin example type-checked there, and the fix is on main after the tag.
+alpha.46 was left off the drydock9 registry; alpha.47 is the next
+release there.
 
 ## 0.1.0-alpha.45 (2026-10-08)
 

@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0-alpha.46"
+version = "0.1.0-alpha.47"
 edition = "2024"
 license = "MIT"
 # `homepage` is the book (docs/book), which is what a reader arriving from
@@ -31,13 +31,13 @@ categories = ["gui"]
 # their kui-* dependencies too - one manifest cannot name both, and
 # crates.io refuses a dependency from any other registry
 # (scripts/publish-crates.nu).
-kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.46" }
-kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.46" }
-kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.46" }
-kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.46" }
+kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.47" }
+kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.47" }
+kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.47" }
+kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.47" }
 # `default-features = false` here so a member asks for the windowed C entry
 # points explicitly; the cdylib build gets them from kui-ffi's own manifest.
-kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.46", default-features = false }
+kui-ffi = { path = "crates/kui-ffi", version = "0.1.0-alpha.47", default-features = false }
 kui-devtools = { path = "examples/devtools" }
 
 slotmap = "1.1.1"
