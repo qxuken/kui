@@ -158,7 +158,10 @@
 ///   W22): how tall the macOS titlebar is under `KUI_CHROME_CUSTOM`.
 /// - ABI 29: `bold` on `KuiTextStyle`, into its tail padding (backlog
 ///   F150): the family's bold on a whole text or an editor.
-pub const KUI_ABI_VERSION: u32 = 29;
+/// - ABI 30: `replay` on `KuiMenuItem`, into the padding before `submenu`
+///   (backlog F151): a row that plays its chord, with
+///   `KUI_MENU_ITEM_REPLAY`.
+pub const KUI_ABI_VERSION: u32 = 30;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

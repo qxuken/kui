@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 29
+ABI_VERSION :: 30
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -340,6 +340,7 @@ MENU_LOOK_UP :: 6
 MENU_ITEM_ENABLED :: 1
 MENU_ITEM_CHECKED :: 2
 MENU_ITEM_SUBMENU :: 4
+MENU_ITEM_REPLAY :: 8
 
 MENU_ACTION_SET_CLIPBOARD :: 0
 MENU_ACTION_PASTE :: 1
@@ -730,6 +731,7 @@ MenuItem :: struct {
 	id: ^Value,
 	accel: string,
 	checked: u32,
+	replay: u32,
 	submenu: [^]MenuItem,
 	submenu_count: uint,
 }

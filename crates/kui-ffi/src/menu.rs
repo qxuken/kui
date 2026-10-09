@@ -30,6 +30,10 @@ pub struct KuiMenuItem {
     /// own check state where the host renders the menu): a setting the row
     /// *is*, not a command it runs.
     pub checked: u32,
+    /// Non-zero: the row *is* its `accel` — chosen, it plays that chord
+    /// where the keyboard is and posts no `menu` event (backlog F151).
+    /// Into the padding before `submenu`, so the stride stays 72. ABI 30.
+    pub replay: u32,
     /// The rows this row opens, `submenu_count` of them in the same
     /// struct (backlog F128); null / 0 is an ordinary row. ABI 26.
     pub submenu: *const KuiMenuItem,
@@ -71,6 +75,7 @@ impl KuiMenuItem {
             id: unsafe { self.id.as_ref() }.map(|v| v.0.clone()),
             accel: opt_str(self.accel).map(|s| s.into_owned()),
             submenu,
+            replay: self.replay != 0,
         })
     }
 }
@@ -573,6 +578,9 @@ fn write_row(
         }
         if row.has_submenu() {
             bits |= KUI_MENU_ITEM_SUBMENU;
+        }
+        if row.replay {
+            bits |= KUI_MENU_ITEM_REPLAY;
         }
         unsafe { flags.write(bits) };
     }

@@ -1566,35 +1566,8 @@ band, F153 asks only the horizontal half), two meet a condition an ADR
 wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
 entries, F144–F153, and W23, filed open; F148, F144–F146 as ADR 0011's
-decision 10, F147, F149 and F150 **built 2026-10-09**, the day they
+decision 10, F147 and F149–F151 **built 2026-10-09**, the day they
 were filed, and in the archive.
-
-### `~` F151 — A declared row's shortcut takes the key from every field: no row replays its chord the way the standard Edit rows do
-
-**Found.** ADR 0018 decision 7: a parseable accelerator becomes an
-`NSMenuItem` key equivalent, and AppKit consumes the key before the
-window sees it. ADR 0030 decision 3 solved this for the *standard* Edit
-menu — its rows replay their chord to the key-focused sink and the
-runner's `edit_chord`, so an editor copies through the code its key
-takes — but a declared bar's rows cannot ask for the same. So every row
-with a shortcut has to be bound only where it means what the key would
-have meant. Noticon rebuilds its bar on every focus change: a row that
-acts on the page is unbound while a field has the keyboard (so ⌥↑ in
-the title stays the title's), its clipboard rows switch between
-`MenuRole`s and its own replays, Undo and Redo are dropped from the
-menu while a field is focused so the field keeps ⌘Z, and every bound
-row's handler parses its own accelerator back into a `KeyPress` and
-plays it to whichever sink has focus. Every app with a declared bar and
-an editor will write that.
-
-**Do.** A row that *is* its chord: `MenuItem::chord(spec)` (or a
-`replay` flag beside `accel`) — the runner binds the key equivalent and,
-when chosen by mouse or key, replays the press through the path ADR
-0030 decision 3 built (key-focused sink, then `edit_chord`, then F144's
-bubbling), posting no `menu` event. With it, Undo, Redo and the
-clipboard rows of a declared Edit menu are the field's while a field
-has focus and the app's sink's otherwise, with no rebuild. On the drawn
-bar the same row dispatches the chord as a key press. ADR 0018 amended.
 
 ### `.` F152 — A declared bar has no Hide, Hide Others, Show All or Quit
 
@@ -3104,9 +3077,9 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round (F151–F153, W23; F144–F150
-built): F151
-and F152 as ADR 0018's; W23 needs a Mac before anything is built.
+**Build next.** Noticon's polish round (F152, F153, W23; F144–F151
+built): F152 as ADR 0018's second amendment, F153 at the sink's drag;
+W23 needs a Mac before anything is built.
 Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
 (`#[derive(Message)]`), was **built 2026-09-25**; C47 was
@@ -4533,3 +4506,5 @@ move.
 - `.` **F149** — [`edit` has no placeholder](backlog/closed-2026-09.md#-f149--edit-has-no-placeholder--done-2026-10-09) — done (2026-10-09) — `EditOptions::placeholder` / `placeholder` / `kui_text_edit_placeholder`: drawn in `faint` while the editor is empty, never the value, the description when none is declared
 
 - `.` **F150** — [`TextStyle` has no weight: a plain text or an editor cannot be bold](backlog/closed-2026-09.md#-f150--textstyle-has-no-weight-a-plain-text-or-an-editor-cannot-be-bold--done-2026-10-09) — done (2026-10-09) — `TextStyle::bold` / the `bold` row / `KuiTextStyle.bold` (ABI 29): the family's bold on a whole text or an editor, spans inside it bold too
+
+- `~` **F151** — [A declared row's shortcut takes the key from every field: no row replays its chord the way the standard Edit rows do](backlog/closed-2026-09.md#-f151--a-declared-rows-shortcut-takes-the-key-from-every-field-no-row-replays-its-chord-the-way-the-standard-edit-rows-do--done-2026-10-09) — done (2026-10-09) — `MenuItem::replay` / `replay` / `KuiMenuItem.replay` (ABI 30): chosen, the row plays its `accel` where the keyboard is (`Shell::replay_key`, `Core::replay_chord`) and posts nothing

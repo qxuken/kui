@@ -2444,6 +2444,8 @@ pub const KUI_MENU_ITEM_ENABLED: u32 = 1 << 0;
 pub const KUI_MENU_ITEM_CHECKED: u32 = 1 << 1;
 /// `KUI_MENU_ITEM_SUBMENU`: the row opens rows of its own (backlog F128).
 pub const KUI_MENU_ITEM_SUBMENU: u32 = 1 << 2;
+/// `KUI_MENU_ITEM_REPLAY`: the row is its chord (backlog F151).
+pub const KUI_MENU_ITEM_REPLAY: u32 = 1 << 3;
 
 /// `KUI_MENU_ACTION_*`: a `KuiMenuAction.kind`.
 pub const KUI_MENU_ACTION_SET_CLIPBOARD: u32 = 0;

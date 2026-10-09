@@ -440,6 +440,10 @@ pub struct Core {
     /// The editor that held focus when the menu opened, since the menu's
     /// own rows take focus from it — what Cut, Copy and Select All act on.
     menu_editor: Option<Key>,
+    /// The node that held focus when the menu opened, whatever it was:
+    /// where a `replay` row's chord goes once the menu is gone (backlog
+    /// F151), since a key goes where the keyboard was.
+    menu_focus: Option<Key>,
     /// Whether the host draws menus itself (`set_native_menus`).
     native_menus: bool,
     /// The submenus open in the drawn context menu and in the drawn bar's
@@ -1102,6 +1106,7 @@ impl Core {
             menu: None,
             menu_actions: Vec::new(),
             menu_editor: None,
+            menu_focus: None,
             native_menus: false,
             menu_sub: Default::default(),
             menu_bar_sub: Default::default(),

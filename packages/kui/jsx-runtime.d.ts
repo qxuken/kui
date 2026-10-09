@@ -236,6 +236,13 @@ export interface MenuItemInput {
    *  closes it — and is never chosen itself. A chosen row inside posts its
    *  own `menu` event, on the node the menu is about. */
   items?: MenuItemInput[];
+  /** The row *is* its `accel`: chosen — by the pointer, or by the key
+   *  equivalent a platform menu bar binds — it plays that chord where the
+   *  keyboard is and posts no `menu` event, as the standard Edit menu's rows
+   *  do. A field with focus undoes or copies through its own key, a sink
+   *  that binds the chord hears it. A row whose `accel` kui cannot parse is
+   *  an ordinary row. */
+  replay?: boolean;
 }
 
 /** One menu of the application menu bar (the `<menuBar menu={…}/>`

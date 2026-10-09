@@ -343,8 +343,13 @@ extern "C" {
  * ABI 29 appends bold to KuiTextStyle, into its tail padding (the 64-bit
  * size stays 72): the family's bold on a whole text or an editor (backlog
  * F150). Recompile; zeroed, the text is the weight it was.
+ *
+ * ABI 30 adds replay to KuiMenuItem, into the padding before submenu (the
+ * 64-bit stride stays 72): a row that plays its accel where the keyboard
+ * is, with KUI_MENU_ITEM_REPLAY (backlog F151). Recompile; zeroed, a row
+ * posts its menu event as it did.
  */
-#define KUI_ABI_VERSION 29u
+#define KUI_ABI_VERSION 30u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1580,6 +1585,13 @@ typedef struct KuiMenuItem {
      * own check state where the host renders the menu: a setting the row
      * *is* (View > Show Sidebar), not a command it runs. */
     uint32_t checked;
+    /* Non-zero: the row *is* its accel. Chosen - by the pointer, or by the
+     * key equivalent macOS binds - it plays that chord where the keyboard
+     * is, as the standard Edit menu's rows do: the press to the key sink,
+     * a focused field's undo, copy or caret through the code its key
+     * takes. It posts no menu event. A row whose accel does not parse is
+     * an ordinary row. ABI 30. */
+    uint32_t replay;
     /* A submenu: `submenu_count` rows this row opens, in the same struct,
      * nested as deep as a menu needs ("Sort by" > Name, Date; "Move to" >
      * every folder). The row is drawn with a chevron and opens them beside
@@ -1624,6 +1636,7 @@ enum {
     KUI_MENU_ITEM_ENABLED = 1u << 0,
     KUI_MENU_ITEM_CHECKED = 1u << 1,
     KUI_MENU_ITEM_SUBMENU = 1u << 2,
+    KUI_MENU_ITEM_REPLAY = 1u << 3,
 };
 
 /* KuiMenuAction.kind. LOOK_UP carries the text to show a definition panel

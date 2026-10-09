@@ -1961,6 +1961,28 @@ test('openMenu draws a menu whose chosen row posts on the target', () => {
   assert.equal(ctx.closeMenu(), false, 'choosing closed it already');
 });
 
+// A row that is its chord plays it where the keyboard was and posts no
+// `menu` event: the shell around the field hears it (backlog F151).
+test('a replay row plays its chord to the sink instead of posting', () => {
+  const ctx = new Ctx();
+  const view = () => box({ onKey: 'shell' }, [el('edit', { initial: 'ab', autofocus: true, label: 'Field', width: 200 }, [], 'field')]);
+  ctx.frame(320, 240, 1, view());
+  ctx.frame(320, 240, 1, view());
+  ctx.pollEvents();
+  ctx.openMenu('field', 20, 60, [{ label: 'New Note', accel: 'ctrl+n', replay: true }]);
+  ctx.frame(320, 240, 1, view());
+  const row = ctx.accessTree().nodes.find((n) => n.role === 'menuItem').rect;
+  ctx.cursor(row.x + row.w / 2, row.y + row.h / 2);
+  ctx.mouse(true, 1);
+  ctx.mouse(false);
+  const events = ctx.pollEvents().map((e) => e.payload);
+  assert.deepEqual(
+    events.map((p) => [p.kind, p.code, p.tag]),
+    [['key', 'n', 'shell']],
+    JSON.stringify(events),
+  );
+});
+
 // A host that shows menus itself reads a row the way it reads a bar's:
 // the drawn text, the accelerator the drawn menu would show (the role's
 // where the row declared none), `enabled` and `checked` both present. One
@@ -8308,7 +8330,7 @@ test('a disabled option is refused by activateMenuItem, and a select\'s options 
   assert.deepEqual(warned.map((w) => w.code), ['unknown-prop', 'unknown-prop'], JSON.stringify(warned));
   assert.match(warned[0].message, /`disabled` is not a key of a menu item: a row takes `label`, `role`, `enabled`, `checked`, `id`, `accel`.*did you mean `enabled: false`/);
   assert.match(warned[1].message, /`Label` is not a key of a menu item.*did you mean `label`/);
-  assert.deepEqual(protocol().menuItem, { name: 'menuItem', keys: ['label', 'role', 'enabled', 'checked', 'id', 'accel', 'items'] });
+  assert.deepEqual(protocol().menuItem, { name: 'menuItem', keys: ['label', 'role', 'enabled', 'checked', 'id', 'accel', 'items', 'replay'] });
   ctx.frame(320, 240, 1, view(['a', { label: 'b', disabled: true }], 0));
   assert.deepEqual(ctx.warnings(), [], 'once per key');
 });

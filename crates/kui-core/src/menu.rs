@@ -205,6 +205,15 @@ pub struct MenuItem {
     /// node the outermost menu is about (backlog F128). Nests to any
     /// depth. `MenuItem::submenu(label, items)` builds one.
     pub submenu: Vec<MenuItem>,
+    /// The row *is* its `accel` (backlog F151): chosen — by the pointer, or
+    /// by the key equivalent a platform menu binds — it plays that chord to
+    /// wherever the keyboard is, as the standard Edit menu's rows do (ADR
+    /// 0030, decision 3), and posts no `menu` event. A field with focus
+    /// then undoes, copies or moves its caret through the code its key
+    /// takes, and a sink that binds the chord hears it — so a declared
+    /// Edit or Format menu needs no rebuilding as focus moves. A row whose
+    /// `accel` does not parse is an ordinary row.
+    pub replay: bool,
 }
 
 impl MenuItem {
@@ -235,6 +244,7 @@ impl MenuItem {
             checked: v.get_bool("checked").unwrap_or(false),
             id: v.get("id").filter(|id| **id != Value::Null).cloned(),
             accel: v.get_str("accel").map(str::to_string),
+            replay: v.get_bool("replay").unwrap_or(false),
             submenu: match v.get("items") {
                 None | Some(Value::Null) => Vec::new(),
                 Some(items) => Self::list_from_value(items)?,
@@ -255,8 +265,8 @@ impl MenuItem {
     /// against this first and raises [`crate::diag::unknown_menu_item_key`]
     /// for what it dropped, so `{label, disabled: true}` is not silently a
     /// row that is enabled.
-    pub const KEYS: [&'static str; 7] = [
-        "label", "role", "enabled", "checked", "id", "accel", "items",
+    pub const KEYS: [&'static str; 8] = [
+        "label", "role", "enabled", "checked", "id", "accel", "items", "replay",
     ];
 
     /// The keys of `rows` — a list of row maps, as [`Self::list_from_value`]
@@ -270,9 +280,10 @@ impl MenuItem {
         out
     }
 
-    /// [`Self::stray_keys`] for a select's options: `items` is one of them,
-    /// since an option is chosen and never opens anything —
-    /// [`Self::options_from_value`] leaves it out.
+    /// [`Self::stray_keys`] for a select's options: `items` and `replay`
+    /// are among them, since an option is chosen, posts, and never opens
+    /// anything or plays a chord — [`Self::options_from_value`] leaves
+    /// both out.
     pub fn stray_option_keys(options: &Value) -> Vec<String> {
         let mut out = Vec::new();
         Self::stray_into(options, true, &mut out);
@@ -284,7 +295,11 @@ impl MenuItem {
         for row in rows {
             let Value::Map(fields) = row else { continue };
             for (k, v) in fields.iter() {
-                if !Self::KEYS.contains(&k.as_str()) || (options && k == "items") {
+                // An option is chosen and posts: it opens nothing and plays
+                // no chord.
+                if !Self::KEYS.contains(&k.as_str())
+                    || (options && (k == "items" || k == "replay"))
+                {
                     out.push(k.clone());
                 } else if k == "items" {
                     Self::stray_into(v, false, out);
@@ -320,6 +335,7 @@ impl MenuItem {
                 Value::Str(_) => Err("an option needs a label".into()),
                 other => Self::from_value(other).map(|mut option| {
                     option.submenu = Vec::new();
+                    option.replay = false;
                     option
                 }),
             })
@@ -336,6 +352,7 @@ impl MenuItem {
             id: None,
             accel: None,
             submenu: Vec::new(),
+            replay: false,
         }
     }
 
@@ -349,6 +366,7 @@ impl MenuItem {
             id: None,
             accel: None,
             submenu: Vec::new(),
+            replay: false,
         }
     }
 
@@ -414,6 +432,38 @@ impl MenuItem {
     pub fn id(mut self, id: impl Into<Value>) -> Self {
         self.id = Some(id.into());
         self
+    }
+
+    /// Makes the row its chord: chosen, it plays its `accel` to wherever
+    /// the keyboard is instead of posting a `menu` event (the `replay`
+    /// field).
+    pub fn replay(mut self) -> Self {
+        self.replay = true;
+        self
+    }
+
+    /// The key press a `replay` row plays: its `accel` as the keyboard
+    /// would have sent it — a letter in the case Shift gives it, the
+    /// physical key the letter itself. `None` for a row that is not
+    /// `replay`, or whose `accel` does not parse.
+    pub fn replayed(&self) -> Option<crate::input::KeyPress> {
+        use crate::input::{KeyCode, KeyPress};
+        if !self.replay {
+            return None;
+        }
+        let a = Accel::parse(self.accel.as_deref()?)?;
+        Some(match a.code {
+            KeyCode::Char(c) => {
+                let lower = c.to_lowercase().next().unwrap_or(c);
+                let code = if a.mods.shift {
+                    c.to_uppercase().next().unwrap_or(c)
+                } else {
+                    lower
+                };
+                KeyPress::new(KeyCode::Char(code), a.mods).with_physical(KeyCode::Char(lower))
+            }
+            code => KeyPress::new(code, a.mods),
+        })
     }
 
     pub fn accel(mut self, a: impl Into<String>) -> Self {

@@ -31,8 +31,9 @@ was the first bare bump to break an app in five releases).
 - An arrow, Backspace or Delete at the edge of an editor's text emits a
   `boundary` event, where it emitted nothing.
 - An editor that lost the keyboard no longer draws its selection.
-- `KUI_ABI_VERSION` is 29: `KuiTextStyle` gains `bold`. Recompile a C or
-  Odin host.
+- `KUI_ABI_VERSION` is 30: `KuiTextStyle` gains `bold` (29) and
+  `KuiMenuItem` `replay` (30). Recompile a C or Odin host.
+- `MenuItem` has a `replay` field: a struct literal of it needs one.
 
 `UiEvent::message` read the payload first and the `tag` second, and a
 core event's payload is `{kind: "key", …}`, `{kind: "open", …}`, `{kind:
@@ -74,8 +75,9 @@ selection is what Copy will copy. A screenshot test of a blurred field
 with a selection changes.
 
 `KuiTextStyle` appends `bold` into its tail padding — the 64-bit size stays
-72 — for F150 below; the layout moved, so the ABI did. A zeroed field is
-the weight a text had.
+72 — for F150 below, and `KuiMenuItem` puts `replay` into the padding
+before `submenu`, its stride still 72, for F151; the layouts moved, so
+the ABI did, twice. Zeroed fields are what a text and a row were.
 
 ### Added
 
@@ -90,6 +92,14 @@ the weight a text had.
   instead of walking the focus ring, so a list or an outline built from
   fields indents on Tab. A document keeps Tab either way. A new flag
   bit, no ABI change.
+- **A menu row that is its chord** — `MenuItem::replay`, `replay` on a
+  plain-data row (JSX, Lua), `KuiMenuItem.replay` and
+  `KUI_MENU_ITEM_REPLAY` in C, `replay` on Odin's `Menu_Item` (backlog
+  F151, ADR 0018 amended): chosen — by the pointer, or by the key
+  equivalent the macOS bar binds — it plays its `accel` where the
+  keyboard is, as the standard Edit menu's rows do, and posts no `menu`
+  event. A declared Edit menu's Undo is a field's undo while a field has
+  focus and the app's otherwise, with no rebuilding of the bar.
 - **`bold` on a whole text or an editor** — `TextStyle::bold`, `bold` in
   JSX and Lua, `KuiTextStyle.bold` in C (ABI 29), `bold` on Odin's
   `Text_Style` (backlog F150): the family's bold — its bold face, or its
@@ -117,6 +127,8 @@ the weight a text had.
   kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
 - Routing an app's shortcuts through a declared menu bar, or a field's
   own key handling, so they work while a field has focus.
+- Rebuilding a declared menu bar as focus moves, unbinding rows a field
+  needs its key for, and replaying a chosen row's accelerator by hand.
 - A one-span `rich_text` or a registered bold face standing in for a bold
   heading, and a bold title that could not be an editor.
 - A faint text floated over an empty field and positioned by hand to

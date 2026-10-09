@@ -151,6 +151,23 @@ impl DynShell<'_> {
                     else {
                         return;
                     };
+                    // A row that is its chord is played as one, to the
+                    // window with the keyboard (backlog F151).
+                    let replayed = self.panes[i]
+                        .core
+                        .menu_bar()
+                        .and_then(|bar| bar.menus.get(menu))
+                        .and_then(|m| kui_core::MenuItem::at_path(&m.items, &path))
+                        .and_then(kui_core::MenuItem::replayed);
+                    if let Some(kp) = replayed {
+                        let to = self
+                            .panes
+                            .iter()
+                            .position(|p| p.core.env.focused)
+                            .unwrap_or(i);
+                        self.replay_key(event_loop, to, kp);
+                        return;
+                    }
                     let events = self.panes[i].core.activate_menu_bar_path(menu, &path);
                     // A chosen row is input that reached the app, so the
                     // frame after it waits for the host's answer where the

@@ -180,6 +180,7 @@ impl Core {
         // (a press under `OriginId::MENU` is spared), but an editor's
         // lives with its focus.
         self.menu_editor = self.edit.focused();
+        self.menu_focus = self.focus;
         // The accelerators in the platform's spelling, as the bar's are
         // (`declare_menu_bar`): a portable `"mod+shift+n"` is drawn `⇧⌘N`
         // or `Ctrl+Shift+N`, and a host that shows the menu itself reads
@@ -457,8 +458,38 @@ impl Core {
         origin: crate::tree::OriginId,
         out: &mut Vec<UiEvent>,
     ) {
-        match item.role {
-            MenuRole::Separator => return,
+        // A row that is its chord plays it instead (backlog F151).
+        if let Some(kp) = item.replayed() {
+            self.replay_chord(kp, out);
+            return;
+        }
+        if item.role == MenuRole::Separator {
+            return;
+        }
+        self.perform_role(item.role, target, out);
+        // Every chosen item posts, including the standard ones: an app
+        // that wants to know its editor was cut from does not have to
+        // guess, and one that does not simply ignores the event.
+        let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
+        out.push(UiEvent {
+            origin,
+            window: WindowId::MAIN,
+            key: target,
+            payload: Value::map([
+                ("kind", Value::str("menu")),
+                ("role", Value::str(item.role.name())),
+                ("item", payload),
+            ]),
+            slot: None,
+        });
+    }
+
+    /// What a standard role does, against [`Core::menu_editor`] or the
+    /// window's selection: everything [`Self::perform_menu_item`] does
+    /// but post the `menu` event.
+    fn perform_role(&mut self, role: MenuRole, target: Key, out: &mut Vec<UiEvent>) {
+        match role {
+            MenuRole::Separator => {}
             MenuRole::SelectAll => {
                 // The one standard item that needs nobody: an editor
                 // selects its own text, a scope selects its runs.
@@ -526,21 +557,71 @@ impl Core {
             }
             MenuRole::Custom => {}
         }
-        // Every chosen item posts, including the standard ones: an app
-        // that wants to know its editor was cut from does not have to
-        // guess, and one that does not simply ignores the event.
-        let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
-        out.push(UiEvent {
-            origin,
-            window: WindowId::MAIN,
-            key: target,
-            payload: Value::map([
-                ("kind", Value::str("menu")),
-                ("role", Value::str(item.role.name())),
-                ("item", payload),
-            ]),
-            slot: None,
-        });
+    }
+}
+
+impl Core {
+    /// A `replay` row chosen from a menu the core draws, or reported by a
+    /// host's: its chord, played where the keyboard was before the menu
+    /// took it, as the keyboard would have sent it — the press to the key
+    /// sink, the editing key or the text it maps to, the release — and
+    /// for the clipboard and undo chords a driver performs itself
+    /// (`Shell::edit_chord`), the same thing done here, against the editor
+    /// or the selection: the core has no driver to ask (backlog F151).
+    pub(crate) fn replay_chord(&mut self, kp: crate::input::KeyPress, out: &mut Vec<UiEvent>) {
+        use crate::input::{EditKey, InputEvent, KeyCode, Mods};
+        // The menu that was chosen from is still the last frame's modal
+        // scope, and everything outside it inert, until the next frame
+        // lays the window out without it. The chord is for the window
+        // under it, so it is routed as that frame will see it: under the
+        // app's own modal if there is one, else under none.
+        if let Some((i, ..)) = self.modal
+            && matches!(self.tree.origins[i], OriginId::MENU | OriginId::MENU_BAR)
+        {
+            self.modal = (0..i)
+                .rev()
+                .find(|&j| {
+                    self.tree.specs[j].events().modal.is_some()
+                        && !self.tree.origins[j].is_core_surface()
+                })
+                .map(|j| (j, self.tree.subtree_end(j), self.tree.keys[j]));
+        }
+        if let Some(k) = self.menu_focus.take()
+            && self.tree.keys.contains(&k)
+        {
+            self.move_focus(Some(k));
+        }
+        out.extend(self.route_input(InputEvent::KeyDown(kp.clone())));
+        let letter = match kp.code {
+            KeyCode::Char(c) if kp.mods.primary() => Some(c.to_ascii_lowercase()),
+            _ => None,
+        };
+        let editor = self.edit.focused();
+        let scope = self.selection().is_some() || self.cell_selection().is_some();
+        let role = match letter {
+            _ if editor.is_none() && !scope => None,
+            Some('c') => Some(MenuRole::Copy),
+            Some('x') => Some(MenuRole::Cut),
+            Some('v') => Some(MenuRole::Paste),
+            Some('a') => Some(MenuRole::SelectAll),
+            _ => None,
+        };
+        let history = match letter {
+            Some('z') if kp.mods.shift => Some(EditKey::Redo),
+            Some('z') => Some(EditKey::Undo),
+            Some('y') => Some(EditKey::Redo),
+            _ => None,
+        };
+        if let Some(role) = role {
+            self.menu_editor = editor;
+            let target = editor.unwrap_or(Key::ROOT);
+            self.perform_role(role, target, out);
+        } else if let (Some(ek), Some(_)) = (history, editor) {
+            out.extend(self.route_input(InputEvent::Key(ek, Mods::default())));
+        } else if let Some(ev) = kp.edit_event() {
+            out.extend(self.route_input(ev));
+        }
+        out.extend(self.route_input(InputEvent::KeyUp(kp.released())));
     }
 }
 

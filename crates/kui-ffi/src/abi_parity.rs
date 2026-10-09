@@ -441,6 +441,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_MENU_ITEM_ENABLED,
             KUI_MENU_ITEM_CHECKED,
             KUI_MENU_ITEM_SUBMENU,
+            KUI_MENU_ITEM_REPLAY,
             KUI_MENU_ACTION_SET_CLIPBOARD,
             KUI_MENU_ACTION_PASTE,
             KUI_MENU_ACTION_LOOK_UP,
@@ -603,6 +604,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         id: *const KuiValue => "const KuiValue *",
         accel: KuiStr => "KuiStr",
         checked: u32 => "uint32_t",
+        replay: u32 => "uint32_t",
         submenu: *const KuiMenuItem => "const struct KuiMenuItem *",
         submenu_count: usize => "size_t",
     });
@@ -1540,7 +1542,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiSpan", 56, 26),
         ("KuiCell", 20, 17),
         // ABI 26: `submenu` and `submenu_count` (backlog F128).
-        ("KuiMenuItem", 72, 26),
+        // ABI 30: `replay` into the padding before `submenu` (backlog
+        // F151).
+        ("KuiMenuItem", 72, 30),
         ("KuiMenu", 40, 16),
         ("KuiPlay", 12, 16),
         ("KuiAudio", 24, 16),

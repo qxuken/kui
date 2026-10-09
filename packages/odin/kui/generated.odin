@@ -448,6 +448,7 @@ Menu_Item_Flag :: enum u32 {
 	Enabled = 0, // KUI_MENU_ITEM_ENABLED
 	Checked = 1, // KUI_MENU_ITEM_CHECKED
 	Submenu = 2, // KUI_MENU_ITEM_SUBMENU
+	Replay = 3, // KUI_MENU_ITEM_REPLAY
 }
 Menu_Item_Flags :: bit_set[Menu_Item_Flag;u32]
 
@@ -1664,6 +1665,7 @@ Menu_Item :: struct {
 	id: any,
 	accel: string,
 	checked: bool,
+	replay: bool,
 	submenu: []Menu_Item,
 }
 
@@ -1674,6 +1676,7 @@ menu_item_to_c :: proc(v: Menu_Item, scratch: ^Scratch) -> (out: c.MenuItem) {
 	out.id = borrow(scratch, v.id)
 	out.accel = v.accel
 	out.checked = 1 if v.checked else 0
+	out.replay = 1 if v.replay else 0
 	{ tmp := make([]c.MenuItem, len(v.submenu), context.temp_allocator); for x, k in v.submenu do tmp[k] = menu_item_to_c(x, scratch); out.submenu, out.submenu_count = raw_data(tmp), uint(len(tmp)) }
 	return
 }
@@ -1684,6 +1687,7 @@ menu_item_from_c :: proc(v: c.MenuItem) -> (out: Menu_Item) {
 	out.disabled = v.enabled == 0
 	out.accel = v.accel
 	out.checked = v.checked != 0
+	out.replay = v.replay != 0
 	{ tmp := make([]Menu_Item, v.submenu_count, context.temp_allocator); for &x, k in tmp do x = menu_item_from_c(v.submenu[k]); out.submenu = tmp }
 	return
 }

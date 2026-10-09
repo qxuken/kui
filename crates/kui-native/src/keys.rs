@@ -1011,13 +1011,32 @@ impl DynShell<'_> {
         };
         let kp =
             KeyPress::new(KeyCode::Char(code), mods).with_physical(KeyCode::Char(chord.letter));
+        self.replay_key(event_loop, i, kp);
+    }
+
+    /// A chord replayed as the keyboard would have sent it: the press to
+    /// the key-focused sink, then what the runner does with the rest of a
+    /// press — its own clipboard half for the primary modifier and a
+    /// letter, else the editing key or text it maps to — then the
+    /// release. The standard Edit menu's rows and a declared `replay` row
+    /// (backlog F151) both end here, so a row is exactly its key.
+    #[cfg(target_os = "macos")]
+    pub(super) fn replay_key(&mut self, event_loop: &ActiveEventLoop, i: usize, kp: KeyPress) {
         // Each step may close the window the next is for (backlog AR39):
         // re-found by id after every one.
         let here = self.panes[i].id;
         let Some(i) = self.dispatch(event_loop, i, InputEvent::KeyDown(kp.clone())) else {
             return;
         };
-        self.edit_chord(event_loop, i, chord.letter, chord.shift);
+        let letter = match kp.physical {
+            KeyCode::Char(c) if kp.mods.primary() => Some(c.to_ascii_lowercase()),
+            _ => None,
+        };
+        let performed = letter.is_some_and(|c| self.edit_chord(event_loop, i, c, kp.mods.shift));
+        let Some(i) = self.pane_of(here) else { return };
+        if !performed && let Some(ev) = kp.edit_event() {
+            self.dispatch(event_loop, i, ev);
+        }
         let Some(i) = self.pane_of(here) else { return };
         let Some(i) = self.dispatch(event_loop, i, InputEvent::KeyUp(kp.released())) else {
             return;

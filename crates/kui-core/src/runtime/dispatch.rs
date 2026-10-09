@@ -308,7 +308,7 @@ impl Core {
         }
     }
 
-    fn route_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
+    pub(super) fn route_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
         let mut out = std::mem::take(&mut self.pending);
         // Chrome commands say which window they are about, and a hit
         // region does not know: the interaction store reads it from here.

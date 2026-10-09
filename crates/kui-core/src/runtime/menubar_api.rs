@@ -174,6 +174,7 @@ impl Core {
         // window and takes none — so the editor is simply whichever one has
         // it now.
         self.menu_editor = self.edit.focused();
+        self.menu_focus = self.focus;
         let (target, origin) = (self.menu_bar_target(), self.menu_bar_origin);
         self.perform_menu_item(&item, target, origin, &mut out);
         out
@@ -248,6 +249,7 @@ impl Core {
     /// earlier menu was about.
     pub(crate) fn note_menu_bar_editor(&mut self) {
         self.menu_editor = self.edit.focused();
+        self.menu_focus = self.focus;
     }
 }
 

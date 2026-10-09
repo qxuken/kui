@@ -281,6 +281,11 @@ fn menu_item_json(item: &kui_core::MenuItem) -> Json {
         "accel".into(),
         item.accel_text().map_or(Json::Null, Json::from),
     );
+    // Only on a row that is its chord, so every other row reads as it
+    // always did (backlog F151).
+    if item.replay {
+        o.insert("replay".into(), Json::Bool(true));
+    }
     // A submenu's rows, read the same way; only on a row that has one, so
     // every other row reads as it always did (backlog F128).
     if item.has_submenu() {

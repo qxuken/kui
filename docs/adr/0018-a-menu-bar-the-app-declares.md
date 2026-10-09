@@ -164,6 +164,23 @@ does. An app that has to write the menu twice has not been given a menu.
    disabled row's in the disabled colour, since AppKit draws an
    attributed title as given). The rule is unchanged; the Mac keeps it.
 
+   *Amended 2026-10-09 (backlog F151).* The key equivalent made every
+   bound row a trap: AppKit takes ⌘Z before a focused field sees it, so an
+   app with a declared Edit menu and a field had to unbind its Undo row
+   while the field had focus, and rebuild the bar each time focus moved —
+   Noticon did. A row can now *be* its chord: `MenuItem::replay` (`replay`
+   in the plain-data row, `KuiMenuItem.replay` in C, ABI 30). Chosen — by
+   the pointer, or by the key equivalent — it plays its `accel` where the
+   keyboard is, exactly as the standard Edit menu's rows do (ADR 0030,
+   decision 3): the press to the key sink, then the runner's clipboard
+   half or the editing key, then the release (`Shell::replay_key`, which
+   the standard rows now go through too). It posts no `menu` event; the
+   chord is what it says. In a menu the core draws, or reports for a host,
+   `Core::replay_chord` does the same where the menu took the keyboard
+   from, with the core doing the clipboard and undo chords itself. The
+   core still binds nothing: a replay row on a drawn bar is still only
+   chosen by the pointer, and the key is the app's as it always was.
+
 8. **The bar is per application, and the frontmost window's declaration
    wins.** macOS has one menu bar for the process; kui has a `Core` per
    window. The runner applies the declaration of the window that holds the
