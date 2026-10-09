@@ -144,11 +144,6 @@ impl Core {
             if !self.tree.any_line {
                 continue;
             }
-            // The line and the byte are read off the node's upright layout,
-            // so a point over a turned node is pulled back through its turn
-            // first (ADR 0043), as `cell_row_col` does; `x` / `y` stay as
-            // drawn.
-            let point = self.unturned(ev.key, point);
             // The sink: this node, or the nearest above it.
             let mut sink = i;
             while self.tree.specs[sink].events().on_key.is_none() {
@@ -162,11 +157,17 @@ impl Core {
                 continue;
             }
             let lines = crate::access::lines_under(&self.tree, sink);
+            // Each line is read on its own upright layout: the point is
+            // pulled back through the turns that line is drawn under (ADR
+            // 0043) — the sink's, or a column's between it and its lines;
+            // `x` / `y` stay as drawn.
+            let at = |l: usize| self.unturned_at(l, point);
             // Nearest vertically — inside one is a gap of zero — ties to
             // the earlier line.
             let gap = |l: usize| {
                 let (top, h) = (self.tree.pos[l].y, self.tree.size[l].h);
-                (top - point.y).max(point.y - (top + h)).max(0.0)
+                let y = at(l).y;
+                (top - y).max(y - (top + h)).max(0.0)
             };
             let Some((line, l)) = lines
                 .iter()
@@ -182,7 +183,7 @@ impl Core {
             };
             let byte = self
                 .text
-                .hit_at(self.tree.keys[l], point, self.building)
+                .hit_at(self.tree.keys[l], at(l), self.building)
                 .map_or(0, |h| h.byte);
             // A `button` event's press carries its own count and its move
             // and release none (backlog F105): `clicks` here is the last

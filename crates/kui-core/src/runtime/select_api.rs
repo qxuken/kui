@@ -83,7 +83,7 @@ impl Core {
         };
         // A grid is laid out upright: a point over a turned one is read
         // there (ADR 0043).
-        let point = self.unturned(key, point);
+        let point = self.unturned_at(i, point);
         let cell = {
             let sess = &mut *self.session.state();
             self.cells

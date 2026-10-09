@@ -1150,24 +1150,37 @@ impl Core {
     /// node being declared has no layout yet. A wrapped node answers in
     /// the width it was drawn at.
     pub fn text_hit(&self, key: Key, point: Vec2) -> Option<TextHit> {
+        // The host's point is its own viewport's; the turns, like the
+        // text, are the window's, so the shift comes first.
         self.text.hit_at(
             key,
-            self.unturned(key, point).plus(self.dt_shift()),
+            self.unturned(key, point.plus(self.dt_shift())),
             self.building,
         )
     }
 
-    /// `p`, a pointer point, pulled back through every turn the node `key`
+    /// `p`, a window point, pulled back through every turn the node `key`
     /// was drawn under in the frame that finished (ADR 0043): where on the
     /// node's upright layout — the space its text, its caret and its
-    /// content origin are in — the point falls. The point itself when
-    /// nothing turns it, and during a build, which has no finished node
-    /// to read the turn off.
+    /// content origin are in — the point falls. The point itself on a
+    /// frame that turns nothing, which pays one branch, and during a
+    /// build, which has no finished node to read the turn off.
     pub(crate) fn unturned(&self, key: Key, p: Vec2) -> Vec2 {
-        if self.building || self.clips.is_empty() {
+        if self.building || !self.tree.any_transform {
             return p;
         }
-        match self.tree.index_of(key).and_then(|i| self.clips.get(i)) {
+        self.tree
+            .index_of(key)
+            .map_or(p, |i| self.unturned_at(i, p))
+    }
+
+    /// [`Self::unturned`] for the node at tree index `i` of the frame that
+    /// finished, for a caller that has the index.
+    pub(crate) fn unturned_at(&self, i: usize, p: Vec2) -> Vec2 {
+        if self.building || !self.tree.any_transform {
+            return p;
+        }
+        match self.clips.get(i) {
             Some(c) if c.turned() => c.transform.unapply(p),
             _ => p,
         }
@@ -1177,7 +1190,7 @@ impl Core {
     /// it covers through the node's turns (ADR 0043), the way the access
     /// rect is a turned node's bounding box. `r` itself when nothing turns.
     pub(crate) fn turned_rect(&self, key: Key, r: Rect) -> Rect {
-        if self.building || self.clips.is_empty() {
+        if self.building || !self.tree.any_transform {
             return r;
         }
         match self.tree.index_of(key).and_then(|i| self.clips.get(i)) {
@@ -1194,7 +1207,9 @@ impl Core {
         let shift = self.dt_shift();
         self.text
             .caret_at(key, byte, self.building)
-            .map(|r| self.turned_rect(key, Rect::new(r.x - shift.x, r.y - shift.y, r.w, r.h)))
+            // Turned in the window's space, then moved into the host's.
+            .map(|r| self.turned_rect(key, r))
+            .map(|r| Rect::new(r.x - shift.x, r.y - shift.y, r.w, r.h))
     }
 
     // -- Announcements ---------------------------------------------------

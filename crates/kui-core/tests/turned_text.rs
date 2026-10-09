@@ -7,7 +7,8 @@
 
 use kui_core::testing::{edit_key, press, release};
 use kui_core::{
-    Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, TextStyle, Vec2,
+    Core, DevtoolsDock, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Role, Size,
+    TextStyle, Value, Vec2,
 };
 
 const VIEW: Size = Size { w: 400.0, h: 200.0 };
@@ -107,4 +108,90 @@ fn text_hit_and_a_selection_drag_read_the_drawn_text() {
     release(&mut core);
     let got = core.selection_text().unwrap_or_default();
     assert_eq!(got.trim(), "alpha", "the drawn first word");
+}
+
+/// A host's points are its own viewport's, and a devtools dock on the left
+/// moves the app over: `text_hit` and `caret_rect` turn in the window's
+/// space and answer in the host's, so the dock changes nothing they say.
+#[test]
+fn text_hit_and_caret_rect_agree_with_a_dock_open() {
+    let read = |dock: bool| {
+        let mut core = Core::new();
+        if dock {
+            core.set_devtools(true);
+            core.set_devtools_dock(DevtoolsDock::Left);
+        }
+        let mut p = Key(0);
+        for _ in 0..3 {
+            p = paragraph(&mut core, 0.5);
+        }
+        let hit = core
+            .text_hit(p, drawn(Vec2::new(29.0, 36.0)))
+            .map(|h| h.byte);
+        let x = core.caret_rect(p, 0).map(|r| r.x);
+        (hit, x)
+    };
+    let (hit, x) = read(false);
+    assert!(hit.is_some_and(|b| b <= 1), "{hit:?}");
+    assert_eq!(read(true), (hit, x), "the dock open");
+}
+
+/// A sink's pointer events carry the `line` and the `byte` under the
+/// pointer, read on each line's own layout: a turn on a column between
+/// the sink and its lines is pulled back too, not only the sink's own.
+#[test]
+fn a_sinks_line_and_byte_read_through_a_turn_below_it() {
+    const LH: f32 = 20.0;
+    let frame = |core: &mut Core, outer: f32, inner: f32| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().pad(10.0));
+        let style = TextStyle::new(14.0).mono().line_height(LH);
+        let sink = ui.with_keyed(
+            "editor",
+            NodeSpec::row()
+                .size(300.0, 60.0)
+                .key_sink()
+                .rotate(outer)
+                .on_drag("sel")
+                .on_click(Value::map([("kind", Value::str("hit"))]))
+                .role(Role::MultilineTextInput),
+            |ui| {
+                ui.with(NodeSpec::column().size(300.0, 60.0).rotate(inner), |ui| {
+                    for line in ["hello world", "second line", "third"] {
+                        ui.with(NodeSpec::row().height(LH).role(Role::Line), |ui| {
+                            ui.text(line, style);
+                        });
+                    }
+                });
+            },
+        );
+        ui.take_key_focus(sink);
+        ui.finish();
+    };
+    let read = |outer: f32, inner: f32| {
+        let mut core = Core::new();
+        for _ in 0..3 {
+            frame(&mut core, outer, inner);
+        }
+        // Upright, line 0 starts at (12, 15); the sink's centre is (160, 40).
+        let start = Vec2::new(12.0, 15.0);
+        let at = if outer + inner == 0.5 {
+            Vec2::new(320.0 - start.x, 80.0 - start.y)
+        } else {
+            start
+        };
+        let evs = press(&mut core, at);
+        let d = evs
+            .iter()
+            .find(|e| e.payload.get_str("kind") == Some("drag"))
+            .expect("a drag event");
+        (
+            d.payload.get("line").cloned(),
+            d.payload.get("byte").cloned(),
+        )
+    };
+    let upright = read(0.0, 0.0);
+    assert_eq!(upright, (Some(Value::Int(0)), Some(Value::Int(0))));
+    assert_eq!(read(0.5, 0.0), upright, "the sink turned");
+    assert_eq!(read(0.0, 0.5), upright, "a column inside it turned");
 }
