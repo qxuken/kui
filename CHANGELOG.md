@@ -26,6 +26,10 @@ was the first bare bump to break an app in five releases).
 **What breaks.**
 
 - `UiEvent::message` reads a core event's `tag` before its payload.
+- A chord a focused editor does not act on reaches the `on_key` sink
+  above it, where it went nowhere.
+- An arrow, Backspace or Delete at the edge of an editor's text emits a
+  `boundary` event, where it emitted nothing.
 
 `UiEvent::message` read the payload first and the `tag` second, and a
 core event's payload is `{kind: "key", …}`, `{kind: "open", …}`, `{kind:
@@ -39,6 +43,39 @@ is still the app's message as-is, whatever its `kind`. An app that
 matched its own variant against a tagged core event, meaning to or not,
 now gets the tag.
 
+A focused editor kept the whole keyboard: ⌘N, Ctrl+K — any
+press — went to the editor and, if it did nothing with it, nowhere, so an
+app's shortcuts were dead while its search box had focus. ADR 0011
+deferred this until an app wanted it (backlog F144, Noticon's title and
+search fields). An editor now claims what it acts on — the editing keys,
+whatever it types, Space, the clipboard and undo chords — and anything
+pressed without Control or Command, which is typing; any other chord
+goes to the nearest `on_key` sink above it, with its release, as a chord
+bubbles from a control. A shell sink that binds a chord now hears it
+from inside a field, which is the point; one that should not act while
+a field has focus has to check `focused` itself.
+
+An editing key that meets the edge of the text — ↑ on the first line, ↓
+on the last, ← or Backspace at the start, → or Delete at the end, with
+no selection and no Shift — now emits `{kind: "boundary", key, edge,
+word, doc}` on the editor (backlog F145). A handler that counted an
+editor's events, or matched every event on an editor's key as a change,
+sees one more.
+
+### Added
+
+- **Chords out of a focused editor** (backlog F144, ADR 0011 decision
+  10): see *What breaks*.
+- **`boundary`, an editing key at the edge of the text** (backlog
+  F145): the event a block editor joins blocks and moves between fields
+  by. A field has one line, so its ↑ and ↓ always report.
+- **`keep_tab` on an editor** — `EditOptions::keep_tab`, `keepTab` in
+  JSX, `keep_tab` in Lua, `KUI_EDIT_KEEP_TAB` in C, `.Keep_Tab` in Odin
+  (backlog F146): a field's Tab and Shift-Tab go to the sink above it
+  instead of walking the focus ring, so a list or an outline built from
+  fields indents on Tab. A document keeps Tab either way. A new flag
+  bit, no ABI change.
+
 ### Fixed
 
 - **A message variant named like a core event no longer catches it**
@@ -48,6 +85,11 @@ now gets the tag.
 
 - Renaming a message variant, or a sink's tag, away from a core event's
   kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
+- Routing an app's shortcuts through a declared menu bar, or a field's
+  own key handling, so they work while a field has focus.
+- Comparing an editor's text before and after an arrow or Backspace to
+  tell whether it reached the edge, or a separate key sink over a field
+  to hear ↑ and ↓.
 
 ## 0.1.0-alpha.49 (2026-10-09)
 

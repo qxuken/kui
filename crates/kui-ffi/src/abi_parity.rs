@@ -434,6 +434,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_EDIT_MULTILINE,
             KUI_EDIT_AUTOFOCUS,
             KUI_EDIT_WRAP,
+            KUI_EDIT_KEEP_TAB,
             KUI_MOD_SHIFT,
             KUI_MOD_WORD,
             KUI_MOD_DOC,

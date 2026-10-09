@@ -578,8 +578,15 @@ enum {
  * is the wrap row declared on a single-line field: it folds to its width
  * by KuiTextStyle.wrap the way a document does, and keeps a field's
  * keyboard - Enter submits, no newline is admitted, the caret opens at
- * the end. A MULTILINE editor wraps either way. */
-enum { KUI_EDIT_MULTILINE = 1u << 0, KUI_EDIT_AUTOFOCUS = 1u << 1, KUI_EDIT_WRAP = 1u << 2 };
+ * the end. A MULTILINE editor wraps either way. KEEP_TAB makes a field's
+ * Tab the app's: the press goes to the on_key sink above it instead of
+ * walking the focus ring (a MULTILINE editor keeps Tab either way). */
+enum {
+    KUI_EDIT_MULTILINE = 1u << 0,
+    KUI_EDIT_AUTOFOCUS = 1u << 1,
+    KUI_EDIT_WRAP = 1u << 2,
+    KUI_EDIT_KEEP_TAB = 1u << 3
+};
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */
 enum { KUI_FLOAT_NONE = 0, KUI_FLOAT_PARENT = 1, KUI_FLOAT_VIEWPORT = 2 };

@@ -69,6 +69,13 @@ pub struct EditOptions {
     /// only while nothing holds focus: never from a focused control, and
     /// never again after a blur.
     pub autofocus: bool,
+    /// A single-line editor whose Tab is the app's: Tab and Shift-Tab do
+    /// not walk the focus ring from it, and the press goes to the key
+    /// sink above it as a chord the editor does not claim does — so a
+    /// list or an outline built from fields indents on Tab (backlog F146).
+    /// With no sink above, Tab does nothing here. A `multiline` editor
+    /// keeps Tab for indentation either way and ignores this.
+    pub keep_tab: bool,
     /// Selection highlight color. `None` is the theme's `selection`,
     /// which is what a field gets unless the caller says otherwise — so a
     /// selection over a label and one over a field are the same tint on
@@ -76,11 +83,41 @@ pub struct EditOptions {
     pub accent: Option<Color>,
 }
 
+/// What an editing key did to an editor: whether the text changed,
+/// whether it submitted the field, and the edge it met when it could do
+/// neither (backlog F145).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct KeyOutcome {
+    pub changed: bool,
+    pub submit: bool,
+    pub boundary: Option<Edge>,
+}
+
+/// Which end of an editor's text a key met: the start (↑ on the first
+/// line, ← or Backspace at offset 0) or the end (↓ on the last line, → or
+/// Delete at the end).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Edge {
+    Start,
+    End,
+}
+
+impl Edge {
+    pub fn name(self) -> &'static str {
+        match self {
+            Edge::Start => "start",
+            Edge::End => "end",
+        }
+    }
+}
+
 pub(crate) struct EditState {
     editor: Editor<'static>,
     pub(crate) style: TextStyle,
     pub(crate) accent: Color,
     pub(crate) multiline: bool,
+    /// `EditOptions::keep_tab`, as last declared.
+    keep_tab: bool,
     /// Whether the buffer is laid out to its box's width: a document, or a
     /// field with `wrap` declared. What `wrapped`,
     /// `line_offset` and emission's clip decide by — a field that does not
@@ -643,6 +680,7 @@ impl EditStore {
                 style: opts.style,
                 accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline: opts.multiline,
+                keep_tab: opts.keep_tab,
                 folds: false,
                 origin,
                 scale,
@@ -664,6 +702,7 @@ impl EditStore {
         state.autofocus = opts.autofocus;
         state.origin = origin;
         state.multiline = opts.multiline;
+        state.keep_tab = opts.keep_tab;
         state.accent = opts.accent.unwrap_or(crate::select::TINT);
         // A document wraps between words whatever its style says, as it
         // always has; a field folds only when asked, and then by the mode
@@ -1000,14 +1039,19 @@ impl EditStore {
         ek: EditKey,
         mods: Mods,
         fs: &mut FontSystem,
-    ) -> (bool, bool) {
+    ) -> KeyOutcome {
         let Some(s) = self.states.get_mut(&key) else {
-            return (false, false);
+            return KeyOutcome::default();
         };
         // Keys reaching the editor mid-composition mean the IME let them
         // through; act on committed text only.
         let mut changed = s.abandon_preedit();
         let mut submit = false;
+        // Where the caret was, to tell a key that moved or deleted nothing
+        // — the caret at an edge of the text — from one that did.
+        let at = |e: &Editor<'static>| (e.cursor().line, e.cursor().index);
+        let before = (at(&s.editor), s.editor.selection());
+        let composing = changed;
         match ek {
             EditKey::Left
             | EditKey::Right
@@ -1098,12 +1142,32 @@ impl EditStore {
             }
         }
         s.editor.shape_as_needed(fs, false);
+        // A key the editor holds but could not act on (backlog F145): an
+        // arrow, Backspace or Delete that left the caret where it was and
+        // changed nothing, from a caret with no selection — the caret was
+        // at the edge of the text the key moves toward. Not under Shift,
+        // which extends a selection and has no edge to report, nor
+        // mid-composition, whose key the IME let through.
+        let still = !changed
+            && !composing
+            && !mods.shift
+            && before.1 == Selection::None
+            && (at(&s.editor), s.editor.selection()) == before;
+        let boundary = match ek {
+            EditKey::Up | EditKey::Left | EditKey::Backspace if still => Some(Edge::Start),
+            EditKey::Down | EditKey::Right | EditKey::Delete if still => Some(Edge::End),
+            _ => None,
+        };
         if changed {
             s.version += 1;
             s.invalidate_measurements();
         }
         self.touch_caret(key);
-        (changed, submit)
+        KeyOutcome {
+            changed,
+            submit,
+            boundary,
+        }
     }
 
     /// Mouse press inside the edit at content-local logical position.
@@ -1244,6 +1308,14 @@ impl EditStore {
 
     pub fn is_multiline(&self, key: Key) -> bool {
         self.states.get(&key).is_some_and(|s| s.multiline)
+    }
+
+    /// Whether Tab in `key` is the app's rather than the focus ring's: a
+    /// field declared with `keep_tab` (a document's Tab is its own).
+    pub fn keeps_tab(&self, key: Key) -> bool {
+        self.states
+            .get(&key)
+            .is_some_and(|s| s.keep_tab && !s.multiline)
     }
 
     /// Whether `key` lays its text out to its box's width: a document, or

@@ -624,6 +624,7 @@ package kui_c
 #assert(EDIT_MULTILINE == 1)
 #assert(EDIT_AUTOFOCUS == 2)
 #assert(EDIT_WRAP == 4)
+#assert(EDIT_KEEP_TAB == 8)
 #assert(FLOAT_NONE == 0)
 #assert(FLOAT_PARENT == 1)
 #assert(FLOAT_VIEWPORT == 2)

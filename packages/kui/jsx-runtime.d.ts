@@ -733,6 +733,11 @@ export interface EditProps extends TextProps, GeneratedSpecProps, CustomSpecProp
    *  while nothing holds focus (ADR 0022, decision 9); a blur afterwards
    *  stands. `focus(key)` moves it at any other time. */
   autofocus?: boolean;
+  /** A field's Tab is the app's: Tab and Shift-Tab do not walk the focus
+   *  ring from it, and the press goes to the `onKey` sink above it — so a
+   *  list built from fields indents on Tab. A `multiline` editor keeps Tab
+   *  either way. */
+  keepTab?: boolean;
 }
 
 type Component<P> = (props: P) => KuiNode;

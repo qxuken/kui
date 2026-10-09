@@ -1112,6 +1112,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 style: p.style,
                 multiline: flags & 1 != 0,
                 autofocus: flags & 2 != 0,
+                // Bit 8: `keepTab`, a field's Tab the app's (backlog F146).
+                keep_tab: flags & 8 != 0,
                 wrap: p.wrap,
                 ..Default::default()
             };

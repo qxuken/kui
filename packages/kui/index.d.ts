@@ -468,6 +468,19 @@ export type ModifiersMsg = {
  *  key is on the event, so `editText(ev.key)` reads it back. */
 export type EditMsg = { kind: 'changed' } | { kind: 'submit' };
 
+/** An editing key that met the edge of an editor's text and did nothing
+ *  (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on
+ *  the last line, → or Delete at the end — from a caret with no selection
+ *  and without Shift. On the editor's key. `word` and `doc` are the
+ *  editing modifiers the key carried. */
+export type BoundaryMsg = {
+  kind: 'boundary';
+  key: 'up' | 'down' | 'left' | 'right' | 'backspace' | 'delete';
+  edge: 'start' | 'end';
+  word: boolean;
+  doc: boolean;
+};
+
 /** A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its
  *  own — never when something stopped it. On an `<audio>` node's key, or the
  *  root for `play`. `'refused'` is the device declining to start it at all
@@ -506,6 +519,7 @@ export type CoreMsg =
   | WindowMsg
   | ModifiersMsg
   | EditMsg
+  | BoundaryMsg
   | SoundMsg
   | AccessMsg
   | ChangeMsg

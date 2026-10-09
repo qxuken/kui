@@ -693,6 +693,22 @@ test('a key sink that asks for releases hears both halves of a held key', () => 
   assert.equal(ctx.pollEvents().length, 0, 'no phantom release');
 });
 
+// A focused editor keeps what it acts on and lets a chord it does not
+// reach the sink above it; `keepTab` makes a field's Tab the app's
+// (backlog F144, F146).
+test('a chord and a keepTab field\'s Tab reach the sink above the editor', () => {
+  const build = () =>
+    box({ onKey: 'shell' }, [el('edit', { initial: 'ab', autofocus: true, keepTab: true, width: 200 }, [], 'f')]);
+  const { ctx } = run(build);
+  ctx.frame(320, 240, 1, build());
+  ctx.pollEvents();
+  ctx.keyDown('tab');
+  ctx.keyDown('n', { ctrl: true });
+  ctx.keyDown('q');
+  const keys = ctx.pollEvents().filter((e) => e.payload.kind === 'key').map((e) => [e.payload.code, e.payload.tag]);
+  assert.deepEqual(keys, [['tab', 'shell'], ['n', 'shell']], 'typing stays in the field');
+});
+
 // Where a key is and what the locks hold ride on every key payload, and
 // the modifier keys themselves reach only a sink that asks (backlog F108).
 test('a key says where it is, the locks, and the modifier keys when asked', () => {

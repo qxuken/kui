@@ -2288,6 +2288,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 style: p.style,
                 multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
                 autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
+                keep_tab: t.get::<Option<bool>>("keep_tab")?.unwrap_or(false),
                 wrap: p.wrap,
                 ..Default::default()
             };
@@ -4831,6 +4832,36 @@ mod tests {
             (Some(1), Some(0))
         );
         assert_eq!(p.get_str("tag"), Some("keys"));
+    }
+
+    /// `keep_tab` lowers: a field's Tab goes to the sink above it, and focus
+    /// stays in the field (backlog F146).
+    #[test]
+    fn keep_tab_hands_a_fields_tab_to_the_sink_above() {
+        let mut ext = LuaExtension::from_source(
+            "keep_tab",
+            r#"
+                function view(env)
+                  return column { on_key = "shell",
+                    edit { key = "f", initial = "ab", autofocus = true, keep_tab = true, width = 200 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let focused = core.focus();
+        let events = core.handle_input(InputEvent::KeyDown(kui_core::KeyPress::new(
+            kui_core::KeyCode::Tab,
+            kui_core::KeyMods::default(),
+        )));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].payload.get_str("code"), Some("tab"));
+        assert_eq!(events[0].payload.get_str("tag"), Some("shell"));
+        core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
+        assert_eq!(core.focus(), focused, "focus stays in the field");
     }
 
     /// Editors: autofocus, typing produces a "changed" event carrying the

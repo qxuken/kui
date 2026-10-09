@@ -159,6 +159,34 @@ around its content, which is what both reports already wrote.
    pointer's rule is untouched: a click past the clip still finds
    nothing.
 
+10. **An editor claims what it acts on, and a chord it does not bubbles**
+    (amended 2026-10-09, backlog F144–F146; the deferral under
+    *Considered options* met its condition — Noticon wanted ⌘N, ⌘F and
+    its sidebar's chord from inside its title and search fields, which is
+    "⌘K from inside its search box"). `Core::editor_claims` is decision
+    2's claim for an editor, static like it: every press its editing
+    channel acts on (`KeyPress::edit_event` — the editing keys, Space,
+    whatever types), the clipboard and undo chords the runner performs
+    for it (the primary modifier with C, X, V, A, Z or Y, the table
+    `Shell::edit_chord` reads), and every press without Control or
+    Command, which is typing — a Mac's Option composes, and a key with no
+    text yet may be the first half of a composition. Anything else goes
+    to the nearest sink above the editor, exactly as a chord bubbles from
+    a control, its release with it. The runner's chord table did not move
+    into the core: the core claims those chords by name and the runner
+    performs them, and what the ADR feared — ⌘C in a field reaching the
+    shell and copying — cannot happen while the claim names them. With no
+    sink above, the press goes nowhere, as before. Two things came with
+    it. A field declared `keep_tab` does not claim Tab: Tab and Shift-Tab
+    go to the sink above instead of walking the ring, so a list built
+    from fields indents on Tab (a document keeps Tab either way). And an
+    editing key the editor holds but cannot act on — ↑ on its first line,
+    ↓ on its last, ← or Backspace at the start, → or Delete at the end,
+    from a caret with no selection and without Shift — emits `boundary
+    {key, edge}` on the editor, so a block editor joins and moves between
+    its fields; the key itself still never bubbles, since the editor did
+    claim it.
+
 ## Considered options
 
 - **A `keys` allow-list on the sink** (`onKey={handler} keys={['space',
@@ -200,7 +228,9 @@ around its content, which is what both reports already wrote.
   tells those apart from a shell (splitmux's sink encloses focusable
   panes and binds chords; a terminal's encloses nothing and binds Tab).
   Decision 4 gives a shell the same outcome in one line of its own code.
-- **Bubble out of a focused editor too.** Deferred, deliberately. An
+- **Bubble out of a focused editor too.** *Built 2026-10-09 as decision
+  10 (backlog F144); what follows is the deferral as it was written.*
+  Deferred, deliberately. An
   editor claims the whole printable keyboard plus the editing keys, so
   what is left is chords — and the clipboard chords are handled *above*
   the core, in the runner (`crates/kui-native/src/lib.rs`), which the core cannot
@@ -254,5 +284,5 @@ around its content, which is what both reports already wrote.
   modal boundary. The corpus's `keys` scene gains the shell over a ring,
   so all four bindings reproduce it byte for byte.
 - **What is still one keyboard away:** an editor's leftovers (deferred
-  above), and a sink hearing a press that landed on a *window* it does not
+  above; built 2026-10-09 as decision 10), and a sink hearing a press that landed on a *window* it does not
   own, which is ADR 0004's routing and not this one's.

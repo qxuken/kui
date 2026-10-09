@@ -1002,7 +1002,7 @@ export function createEncoder(P) {
         f[fi++] = OP.edit;
         strRef(label);
         strRef(p.initial ?? '');
-        f[fi++] = (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0);
+        f[fi++] = (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0) | (p.keepTab ? 8 : 0);
         props(p, null, false);
         return;
       }

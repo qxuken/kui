@@ -475,23 +475,40 @@ impl Core {
                 // indentation — or a key sink does: a sink is an app that
                 // owns its keyboard, Tab included (it hands focus on with
                 // `focus_next`). With nothing focused Tab enters the ring.
+                // A field declared `keep_tab` is the other exception: its
+                // Tab went to the sink above it as a press (backlog F146).
                 let sink = self.focused_sink();
                 let traverse = ek == EditKey::Tab
                     && match self.edit.focused() {
-                        Some(k) => !self.edit.is_multiline(k),
+                        Some(k) => !self.edit.is_multiline(k) && !self.edit.keeps_tab(k),
                         None => !sink,
                     };
                 if traverse {
                     self.focus_next(!mods.shift);
                 } else if let Some(key) = self.edit.focused() {
-                    let (changed, submit) =
-                        self.edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, fs));
+                    let done = self.edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, fs));
                     self.editor_took_selection(key);
-                    if changed {
+                    if done.changed {
                         self.push_edit_event(key, "changed", &mut out);
                     }
-                    if submit {
+                    if done.submit {
                         self.push_edit_event(key, "submit", &mut out);
+                    }
+                    // The key met the edge of the text and did nothing:
+                    // the app's to act on — join a block, move to the
+                    // next field (backlog F145).
+                    if let Some(edge) = done.boundary {
+                        out.push(UiEvent::on(
+                            self.edit.origin_of(key).unwrap_or(OriginId::HOST),
+                            key,
+                            Value::map([
+                                ("kind", Value::str("boundary")),
+                                ("key", Value::Str(boundary_code(ek).name())),
+                                ("edge", Value::str(edge.name())),
+                                ("word", Value::Bool(mods.word)),
+                                ("doc", Value::Bool(mods.doc)),
+                            ]),
+                        ));
                     }
                     if ek == EditKey::Escape {
                         self.move_focus(None);
@@ -1208,20 +1225,40 @@ impl Core {
     }
 
     /// Delivers one key event to the sink it resolves to, tagged with that
-    /// sink's `on_key` payload; returns whether anything took it. The
-    /// focused edit widget owns the keyboard (it takes the Text/EditKey
-    /// path), so a sink only hears while no editor is focused and it is
-    /// still in the last frame's hit list. *Which* sink is
-    /// [`Self::key_target`]'s answer: the focused one, or — when a control
-    /// holds focus and does not claim this key — the nearest one above it.
+    /// sink's `on_key` payload; returns whether anything took it. *Which*
+    /// sink is [`Self::key_target`]'s answer: the focused one, or — when a
+    /// control holds focus and does not claim this key — the nearest one
+    /// above it.
+    ///
+    /// A focused editor keeps every press it acts on — the editing keys,
+    /// what it types, the clipboard chords — and a press it does not
+    /// (⌘N, Ctrl+K, a field's Tab under `keep_tab`) goes to the nearest
+    /// sink above it, as a chord bubbles from a control (`docs/adr/0011`,
+    /// amended for backlog F144). A release goes where its press went:
+    /// it only arrives here for a press a sink took.
     fn route_key(&mut self, kp: &KeyPress, phase: KeyPhase, out: &mut Vec<UiEvent>) -> bool {
-        if self.edit.focused().is_some() {
-            return false;
-        }
-        let Some(target) =
-            self.key_target(kp.code, kp.mods.ctrl || kp.mods.alt || kp.mods.super_key)
-        else {
-            return false;
+        let target = match self.edit.focused() {
+            Some(editor) => {
+                if phase == KeyPhase::Down && self.editor_claims(editor, kp) {
+                    return false;
+                }
+                let Some(j) = self
+                    .tree
+                    .index_of(editor)
+                    .and_then(|i| self.enclosing_sink(i))
+                else {
+                    return false;
+                };
+                self.tree.keys[j]
+            }
+            None => {
+                let Some(target) =
+                    self.key_target(kp.code, kp.mods.ctrl || kp.mods.alt || kp.mods.super_key)
+                else {
+                    return false;
+                };
+                target
+            }
         };
         // A sink hears releases only by asking (`key_up`): press-only is
         // the keymap case, and a keymap handed both halves runs every
@@ -1508,6 +1545,28 @@ impl Core {
         }
     }
 
+    /// Whether the focused editor `key` takes the press `kp` for itself:
+    /// every key its editing channel acts on (`KeyPress::edit_event` — the
+    /// arrows, Home and End, the pages, Backspace, Delete, Enter, Tab,
+    /// Escape, and whatever types), the clipboard and undo chords a driver
+    /// performs for it (⌘C/X/V/A, ⌘Z, ⇧⌘Z, ⌘Y — the primary modifier, as
+    /// the runner's `edit_chord` reads it), and anything pressed without
+    /// Control or Command, which is typing: a Mac's Option composes ø,
+    /// and a key with no text yet may be the first half of one. Static,
+    /// like `claims`: the press is resolved before the channel that acts
+    /// on it arrives.
+    fn editor_claims(&self, key: Key, kp: &KeyPress) -> bool {
+        if kp.code == KeyCode::Tab && self.edit.keeps_tab(key) {
+            return false;
+        }
+        if kp.edit_event().is_some() {
+            return true;
+        }
+        let clipboard = kp.mods.primary()
+            && matches!(kp.code, KeyCode::Char(c) if "cxvazy".contains(c.to_ascii_lowercase()));
+        clipboard || !(kp.mods.ctrl || kp.mods.super_key)
+    }
+
     /// Whether the focused node is a key sink (it owns its keys).
     fn focused_sink(&self) -> bool {
         self.focus_index()
@@ -1712,6 +1771,19 @@ impl Core {
 /// press. `None` for the editing vocabulary
 /// with no control behaviour behind it (Backspace, PageUp, Undo): those
 /// arms do nothing on a control either way.
+/// The key a `boundary` event names: one of the six that can meet an
+/// edge, spelled as a key event spells it.
+fn boundary_code(ek: EditKey) -> KeyCode {
+    match ek {
+        EditKey::Up => KeyCode::Up,
+        EditKey::Down => KeyCode::Down,
+        EditKey::Left => KeyCode::Left,
+        EditKey::Right => KeyCode::Right,
+        EditKey::Backspace => KeyCode::Backspace,
+        _ => KeyCode::Delete,
+    }
+}
+
 fn edit_key_code(ek: EditKey) -> Option<KeyCode> {
     Some(match ek {
         EditKey::Enter => KeyCode::Enter,

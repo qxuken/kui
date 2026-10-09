@@ -1565,63 +1565,9 @@ one was already true of the code (a drag's `line` is documented by
 band, F153 asks only the horizontal half), two meet a condition an ADR
 wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
-entries, F144–F153, and W23, filed open; F148 **built 2026-10-09**,
-the day it was filed, and in the archive.
-
-### `~` F144 — A chord never leaves a focused editor: ⌘N in a search field reaches nothing
-
-**Found.** `route_key` returns before any sink is asked while an editor
-holds focus (`runtime/dispatch.rs:1218`, `if self.edit.focused().is_some()
-{ return false; }`), and `focused_control` skips editors (:1514), so
-`key_target`'s bubbling (ADR 0011 decision 2) never starts from one.
-Noticon's root sink binds ⌘N, ⌘F, ⌘\ and ⌘. — new note, find, the
-sidebar, zen — and each does nothing while the title or the search has
-the keyboard; the app routes them through its declared menu bar
-instead, which works only on macOS (F151). ADR 0011 deferred this on
-purpose and named the case that would change it: "an app that wants ⌘K
-from inside its search box". This is that app.
-
-**Do.** What the ADR wrote: a claim function for editors beside
-decision 2's — an editor claims the printable keyboard, the editing
-keys and the chords it performs (⌘C/X/V/A, ⌘Z/⇧⌘Z, the word and line
-motions), and a chord it does not claim bubbles to the nearest sink —
-with the runner's clipboard table (`Shell::edit_chord`,
-`kui-native/src/keys.rs:894`) moved into the core so both sides agree
-on what an editor claims. Whether it is opt-in (`EditOptions::bubble`)
-or the default is the ADR amendment's call; a default breaks no
-consumer that binds no chord at a sink above an editor.
-
-### `~` F145 — An editor says nothing of a key it could not act on: ↓ on its last line, ↑ on its first, ⌫ at its start
-
-**Found.** `EditState::apply_key` (`edit.rs:997`) returns `(changed,
-submit)`, and `push_edit_event` (`dispatch.rs:1583`) emits only those
-two. ↑ and ↓ run `Motion::Up`/`Down` and swallow the key even in a
-single-line field, where there is no line to move to, and there is no
-public query for the caret's offset. A block editor needs exactly these
-three to join blocks and move between them; Noticon's note body
-avoided it by owning the page, but its title is a kui field, and ↓ from
-the title into the note below cannot be built (↑ from the note into the
-title can, since the note is the app's).
-
-**Do.** One event, `boundary { key, edge }` — an edit key the editor
-held but could not act on: ↑/Home at the start, ↓/End at the end, ⌫ at
-offset 0, ⌦ at the end, ← / → at either end — emitted in place of
-nothing, so an app that listens joins or moves, and one that does not
-sees no change. `apply_key` reports "nothing moved, nothing deleted";
-the EditKey arm (`dispatch.rs:470–500`) turns that into the event.
-
-### `.` F146 — Tab in a single-line editor always walks the focus ring
-
-**Found.** `dispatch.rs:476–483`: `traverse = ek == Tab &&
-!is_multiline(k)`. Right for a form and for table cells; wrong for a
-list item, an outline row or a code cell built from single-line
-editors, which indent on Tab. The only way to keep Tab is `multiline`,
-which changes Enter too.
-
-**Do.** `EditOptions::tab` — `traverse` (today's single-line answer) or
-`keep` (the editor hears Tab as an edit key, inserting `\t` or emitting
-F145's `boundary` when told not to insert) — with the multiline default
-unchanged.
+entries, F144–F153, and W23, filed open; F148, then F144–F146 as
+ADR 0011's decision 10, **built 2026-10-09**, the day they were filed,
+and in the archive.
 
 ### `.` F147 — An editor that lost the keyboard keeps painting its selection
 
@@ -3197,9 +3143,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round (F144–F147, F149–F153, W23;
-F148 built): F144, F145 and F146 together as
-ADR 0011's amendment, since all three are what an editor claims; F151
+**Build next.** Noticon's polish round (F147, F149–F153, W23; F144–F146
+and F148 built): F147, F149 and F150 at the editor; F151
 and F152 as ADR 0018's; W23 needs a Mac before anything is built.
 Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
@@ -4615,3 +4560,9 @@ move.
 **From the Noticon polish round (2026-10-09)** — filed open, each built in turn
 
 - `!` **F148** — [`UiEvent::message` takes the payload's `kind` before the sink's tag](backlog/closed-2026-09.md#-f148--uieventmessage-takes-the-payloads-kind-before-the-sinks-tag--done-2026-10-09) — done (2026-10-09) — `UiEvent::message` reads a core event's tag before its payload, a click's payload as itself
+
+- `~` **F144** — [A chord never leaves a focused editor: ⌘N in a search field reaches nothing](backlog/closed-2026-09.md#-f144--a-chord-never-leaves-a-focused-editor-n-in-a-search-field-reaches-nothing--done-2026-10-09) — done (2026-10-09) — an editor claims what it acts on (`Core::editor_claims`) and any other chord goes to the sink above it, its release with it (ADR 0011 decision 10)
+
+- `~` **F145** — [An editor says nothing of a key it could not act on: ↓ on its last line, ↑ on its first, ⌫ at its start](backlog/closed-2026-09.md#-f145--an-editor-says-nothing-of-a-key-it-could-not-act-on--on-its-last-line--on-its-first--at-its-start--done-2026-10-09) — done (2026-10-09) — `{kind: "boundary", key, edge, word, doc}` on the editor when ↑ ↓ ← → Backspace or Delete meets the text's edge with no selection and no Shift
+
+- `.` **F146** — [Tab in a single-line editor always walks the focus ring](backlog/closed-2026-09.md#-f146--tab-in-a-single-line-editor-always-walks-the-focus-ring--done-2026-10-09) — done (2026-10-09) — `EditOptions::keep_tab` / `keepTab` / `keep_tab` / `KUI_EDIT_KEEP_TAB`: a field's Tab goes to the sink above it

@@ -247,6 +247,7 @@ Edit_Flag :: enum u32 {
 	Multiline = 0, // KUI_EDIT_MULTILINE
 	Autofocus = 1, // KUI_EDIT_AUTOFOCUS
 	Wrap = 2, // KUI_EDIT_WRAP
+	Keep_Tab = 3, // KUI_EDIT_KEEP_TAB
 }
 Edit_Flags :: bit_set[Edit_Flag;u32]
 

@@ -197,8 +197,16 @@ fn backspace_at_buffer_start_emits_nothing() {
     // At the buffer start there is nothing to delete leftwards; the field
     // opens at its end (F20), so go there first.
     rig.press(EditKey::Home, Mods::default());
-    let events = rig.press(EditKey::Backspace, Mods::default());
-    assert_eq!(events, 0, "boundary backspace is not a change");
+    let events = rig
+        .core
+        .handle_input(InputEvent::Key(EditKey::Backspace, Mods::default()));
+    // What it says instead is that it met the start (backlog F145).
+    let kinds: Vec<_> = events.iter().map(|e| e.kind()).collect();
+    assert_eq!(
+        kinds,
+        [Some("boundary")],
+        "boundary backspace is not a change"
+    );
     assert_eq!(rig.text(), "x");
 }
 

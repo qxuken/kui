@@ -2385,6 +2385,9 @@ pub const KUI_KLAYOUT_NONLATIN: u32 = kui_core::LayoutScript::NON_LATIN;
 pub const KUI_EDIT_MULTILINE: u32 = 1 << 0;
 pub const KUI_EDIT_AUTOFOCUS: u32 = 1 << 1;
 pub const KUI_EDIT_WRAP: u32 = 1 << 2;
+/// A field whose Tab is the app's: the press goes to the sink above it
+/// instead of walking the focus ring (backlog F146).
+pub const KUI_EDIT_KEEP_TAB: u32 = 1 << 3;
 
 /// `KUI_MOD_*`: the editing modifiers `kui_input_key` takes — extend the
 /// selection, move by word, move by document.
