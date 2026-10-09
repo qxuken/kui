@@ -183,12 +183,28 @@ impl crate::input::UiEvent {
     /// The event's own fields stay on `payload` — a drag's `phase` and
     /// `x`/`y`, a change's `value` — so a handler matches on the message and
     /// reads those beside it.
+    ///
+    /// A core event's tag is read before its payload: an app's `Msg::Key`
+    /// is `{kind: "key"}`, and so is every key event a sink hears, so
+    /// reading the payload first would hand the app its own variant for a
+    /// key meant for another sink's tag (backlog F148). A click's payload
+    /// is the app's own message, whatever its `kind`, and reads as itself.
     pub fn message<M>(&self) -> Option<M>
     where
         M: for<'a> TryFrom<&'a Value>,
     {
-        M::try_from(&self.payload)
-            .ok()
-            .or_else(|| self.payload.get("tag").and_then(|t| M::try_from(t).ok()))
+        let tag = || self.payload.get("tag").and_then(|t| M::try_from(t).ok());
+        if self.kind().is_some_and(is_core_event)
+            && let Some(m) = tag()
+        {
+            return Some(m);
+        }
+        M::try_from(&self.payload).ok().or_else(tag)
     }
+}
+
+/// A `kind` the core's own events carry, the app's message under their
+/// `tag`. `click` is not one: a click's payload is the app's message as-is.
+fn is_core_event(kind: &str) -> bool {
+    kind != "click" && crate::schema::EVENTS.iter().any(|e| e.kind == kind)
 }

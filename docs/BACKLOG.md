@@ -1565,7 +1565,8 @@ one was already true of the code (a drag's `line` is documented by
 band, F153 asks only the horizontal half), two meet a condition an ADR
 wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
-entries, F144–F153, and W23, filed open.
+entries, F144–F153, and W23, filed open; F148 **built 2026-10-09**,
+the day it was filed, and in the archive.
 
 ### `~` F144 — A chord never leaves a focused editor: ⌘N in a search field reaches nothing
 
@@ -1636,22 +1637,6 @@ the persistence as intended.
 platform's own convention: grey, not accent) or not at all, keeping the
 range so focus coming back restores it; a theme token for the inactive
 tint if it is drawn.
-
-### `!` F148 — `UiEvent::message` takes the payload's `kind` before the sink's tag
-
-**Found.** `message.rs:186–192`: `M::try_from(&self.payload).ok()
-.or_else(|| payload.get("tag")…)`. A core event's payload is
-`{kind: "key", …}`, `{kind: "open", …}`, `{kind: "changed", …}`,
-`{kind: "menu", …}`, and `derive(Message)` matches a unit variant by
-name — so an app's `Msg::Key` catches every key event from *every*
-sink, its own tag never consulted. Noticon named its root sink's tag
-`Key` and the page's keys went to the root. Nothing warns.
-
-**Do.** Read the tag first when the payload has one (a sink event,
-whose tag is the app's own word for it), the payload otherwise; or keep
-the order and have `derive(Message)` refuse a unit variant that shadows
-a core event kind. The first is the fix; the second is what makes the
-old order safe.
 
 ### `.` F149 — `edit` has no placeholder
 
@@ -3212,8 +3197,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round (F144–F153, W23): F148 first,
-a defect with a one-line fix; then F144, F145 and F146 together as
+**Build next.** Noticon's polish round (F144–F147, F149–F153, W23;
+F148 built): F144, F145 and F146 together as
 ADR 0011's amendment, since all three are what an editor claims; F151
 and F152 as ADR 0018's; W23 needs a Mac before anything is built.
 Nothing from the second bake-off: C51, the file
@@ -4626,3 +4611,7 @@ move.
 - `~` **F142** — [A plugin's pane costs its whole fill every frame the window draws, whatever brought the frame](backlog/closed-2026-09.md#-f142--a-plugins-pane-costs-its-whole-fill-every-frame-the-window-draws-whatever-brought-the-frame--done-2026-10-09) — done (2026-10-09) — `Ui::slot_kept` / `Ui::slot_replay` (ADR 0045, amending ADR 0016): the host vouches for what the extension reads from it, the core checks the params, every fact of the frame the kept fill read and the slot's place, and pushes the kept fill's nodes again through their doors or runs the extension and says why; C, Lua and Node doors; nested slots filled fresh; a fill the journal cannot vouch for refused by count
 
 - `.` **F143** — [A Lua fill costs about 2 µs a node in the walk from its tables to the tree, sixty times the push](backlog/closed-2026-09.md#-f143--a-lua-fill-costs-about-2-µs-a-node-in-the-walk-from-its-tables-to-the-tree-sixty-times-the-push--done-2026-10-09) — done (2026-10-09) — one `for_each` pass a table with keys read off the stack as bytes (no registry reference), rows hashed, `size`/`radius`/`value`/`spans`/a span's keys/a pad's edges and the unknown-prop check folded into it; the walk bench 2.55 → 1.64 ms (diagnostics off), kawoosh's settings pane's walk 3.45 → 2.27 ms
+
+**From the Noticon polish round (2026-10-09)** — filed open, each built in turn
+
+- `!` **F148** — [`UiEvent::message` takes the payload's `kind` before the sink's tag](backlog/closed-2026-09.md#-f148--uieventmessage-takes-the-payloads-kind-before-the-sinks-tag--done-2026-10-09) — done (2026-10-09) — `UiEvent::message` reads a core event's tag before its payload, a click's payload as itself

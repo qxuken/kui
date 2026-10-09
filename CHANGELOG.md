@@ -21,6 +21,34 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.50 (unreleased)
+
+**What breaks.**
+
+- `UiEvent::message` reads a core event's `tag` before its payload.
+
+`UiEvent::message` read the payload first and the `tag` second, and a
+core event's payload is `{kind: "key", …}`, `{kind: "open", …}`, `{kind:
+"menu", …}` — so an app whose message enum had a `Key` variant got
+`Msg::Key` back for every key event any of its sinks heard, the sink's
+own tag never consulted (backlog F148, from Noticon, whose root sink
+was tagged `Key` and took the page's keys). A core event — any `kind`
+the events table lists but `click` — now reads as its tag when the tag
+is an `M`, and as the payload otherwise, as before. A click's payload
+is still the app's message as-is, whatever its `kind`. An app that
+matched its own variant against a tagged core event, meaning to or not,
+now gets the tag.
+
+### Fixed
+
+- **A message variant named like a core event no longer catches it**
+  (backlog F148): see *What breaks*.
+
+**What you can delete.**
+
+- Renaming a message variant, or a sink's tag, away from a core event's
+  kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
+
 ## 0.1.0-alpha.49 (2026-10-09)
 
 ### Changed

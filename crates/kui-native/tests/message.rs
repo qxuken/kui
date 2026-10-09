@@ -27,6 +27,8 @@ enum Msg {
     Pick(usize),
     #[message(kind = "add10")]
     AddTen,
+    Key,
+    Open,
     Note {
         text: Option<String>,
         tags: Vec<String>,
@@ -201,4 +203,31 @@ fn ui_event_message_reads_a_click_and_a_drags_tag() {
     assert_eq!(drag.payload.get_str("phase"), Some("start"));
     // A message of another type is not this one.
     assert_eq!(drag.message::<Resize>(), None);
+}
+
+/// A variant named like a core event (`Msg::Key` is `{kind: "key"}`) is not
+/// what a sink's key event reads as: the event's tag is (backlog F148). A
+/// click whose own message is named so still reads as itself.
+#[test]
+fn a_variant_named_like_a_core_event_does_not_catch_it() {
+    let sink_key = Value::map([
+        ("kind", Value::str("key")),
+        ("key", Value::str("a")),
+        ("tag", Value::from(Msg::Focus { pane: 2 })),
+    ]);
+    let ev = kui_native::UiEvent::on(kui_native::OriginId::HOST, kui_native::Key::ROOT, sink_key);
+    assert_eq!(ev.message::<Msg>(), Some(Msg::Focus { pane: 2 }));
+
+    // A tag of another type: the payload is what is left to read.
+    let other = Value::map([("kind", Value::str("key")), ("tag", Value::str("x"))]);
+    let ev = kui_native::UiEvent::on(kui_native::OriginId::HOST, kui_native::Key::ROOT, other);
+    assert_eq!(ev.message::<Msg>(), Some(Msg::Key));
+
+    // A click on `on_click(Msg::Open)`: the payload is the message.
+    let click = kui_native::UiEvent::on(
+        kui_native::OriginId::HOST,
+        kui_native::Key::ROOT,
+        Value::from(Msg::Open),
+    );
+    assert_eq!(click.message::<Msg>(), Some(Msg::Open));
 }
