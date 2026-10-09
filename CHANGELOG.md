@@ -21,6 +21,39 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.51 (unreleased)
+
+**What breaks.**
+
+- ↑ and ↓ on an editor's first or last visual line emit `boundary`
+  wherever the caret is on it, not only from the line's end.
+
+F145's `boundary` reported ↑ and ↓ only when the key left the caret
+exactly where it was, but on a field's one line ↓ walks the caret to the
+end first: the edge came on the second press. Carnet's ↓ from the middle
+of its title stayed in the title (backlog F154). ↑ on the first visual
+line and ↓ on the last now report on the first press, wherever along the
+line the caret was; the editor still moves its caret as it always did.
+←, →, Backspace and Delete are unchanged.
+
+### Added
+
+- **An editor's caret by point** — `Core::edit_caret_rect(key)`, the
+  caret in logical viewport px, and `Core::edit_caret_to(key, point)`,
+  the caret put at the character nearest a point without a click
+  (backlog F154): what carries a column between a field and an app's own
+  text. Rust only for now.
+
+### Fixed
+
+- **↓ from the middle of a field is its edge at once** (backlog F154):
+  see *What breaks*.
+
+**What you can delete.**
+
+- Pressing ↓ twice, or watching `changed` and the caret, to leave a field
+  from the middle of its line.
+
 ## 0.1.0-alpha.50 (2026-10-09)
 
 **What breaks.**

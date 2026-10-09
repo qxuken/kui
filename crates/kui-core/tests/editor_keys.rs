@@ -6,7 +6,7 @@
 
 use kui_core::{
     Core, EditKey, EditOptions, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Size,
-    UiEvent, Value,
+    UiEvent, Value, Vec2,
 };
 
 /// A shell sink around one editor (and a button after it, for Tab to
@@ -297,4 +297,45 @@ fn tab_walks_the_ring_from_a_field_unless_it_keeps_tab() {
     assert_eq!(heard(&evs, shell)[0], ("down".into(), "tab".into()));
     assert_eq!(core.focus(), Some(field));
     assert_eq!(core.edit_text(field).as_deref(), Some("ab"), "no tab typed");
+}
+
+/// ↓ from the middle of a field's one line is the field's end at once: the
+/// key leaves the caret on its visual line, wherever along it, and that is
+/// the edge (backlog F154). The same for ↑ on a document's first line.
+#[test]
+fn up_and_down_on_the_edge_line_report_wherever_the_caret_is() {
+    let (mut core, _, field) = rig(EditOptions::default(), true);
+    edit(&mut core, EditKey::Left, NONE);
+    assert_eq!(
+        boundary(&edit(&mut core, EditKey::Down, NONE), field),
+        Some(("down".into(), "end".into())),
+        "the first ↓ from the middle"
+    );
+    edit(&mut core, EditKey::Home, NONE);
+    edit(&mut core, EditKey::Right, NONE);
+    assert_eq!(
+        boundary(&edit(&mut core, EditKey::Up, NONE), field),
+        Some(("up".into(), "start".into()))
+    );
+}
+
+/// An editor's caret in window coordinates, and a caret put back by a
+/// point: what carries a column from a field to the app's own text and
+/// back (backlog F154).
+#[test]
+fn an_editors_caret_is_readable_and_placeable_by_point() {
+    let (mut core, _, field) = rig(EditOptions::default(), true);
+    // "ab", the caret at the end.
+    let end = core.edit_caret_rect(field).expect("a caret");
+    edit(&mut core, EditKey::Home, NONE);
+    let start = core.edit_caret_rect(field).expect("a caret");
+    assert!(end.x > start.x && (end.y - start.y).abs() < 0.5);
+    assert!(end.h > 0.0);
+    // Back to the end by its point, then to the start by a point left of it.
+    assert!(core.edit_caret_to(field, Vec2::new(end.x + 50.0, end.y + 2.0)));
+    assert_eq!(core.edit.caret_and_selection(field), Some((2, None)));
+    assert!(core.edit_caret_to(field, Vec2::new(start.x - 30.0, start.y + 2.0)));
+    assert_eq!(core.edit.caret_and_selection(field), Some((0, None)));
+    assert_eq!(core.focus(), Some(field));
+    assert!(!core.edit_caret_to(Key::ROOT, Vec2::new(0.0, 0.0)));
 }

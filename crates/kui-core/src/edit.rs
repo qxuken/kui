@@ -1087,6 +1087,11 @@ impl EditStore {
         // — the caret at an edge of the text — from one that did.
         let at = |e: &Editor<'static>| (e.cursor().line, e.cursor().index);
         let before = (at(&s.editor), s.editor.selection());
+        // The visual line the caret is on, for ↑ and ↓: on the first or
+        // last one the motion moves the caret along it (to an end of the
+        // text) but not off it, and that is the edge.
+        let row = |e: &Editor<'static>| e.cursor_position().map(|(_, y)| y);
+        let row_before = row(&s.editor);
         let composing = changed;
         match ek {
             EditKey::Left
@@ -1184,14 +1189,18 @@ impl EditStore {
         // at the edge of the text the key moves toward. Not under Shift,
         // which extends a selection and has no edge to report, nor
         // mid-composition, whose key the IME let through.
-        let still = !changed
-            && !composing
-            && !mods.shift
-            && before.1 == Selection::None
-            && (at(&s.editor), s.editor.selection()) == before;
+        let plain = !changed && !composing && !mods.shift && before.1 == Selection::None;
+        let still = plain && (at(&s.editor), s.editor.selection()) == before;
+        // ↑ and ↓ meet the edge when they leave the caret on its visual
+        // line, wherever along it they moved it: a field's ↓ from the
+        // middle of its one line is the end of the field, not a caret
+        // walked to the end first and an edge on the second press.
+        let same_row = plain && row_before.is_some() && row(&s.editor) == row_before;
         let boundary = match ek {
-            EditKey::Up | EditKey::Left | EditKey::Backspace if still => Some(Edge::Start),
-            EditKey::Down | EditKey::Right | EditKey::Delete if still => Some(Edge::End),
+            EditKey::Up if same_row => Some(Edge::Start),
+            EditKey::Down if same_row => Some(Edge::End),
+            EditKey::Left | EditKey::Backspace if still => Some(Edge::Start),
+            EditKey::Right | EditKey::Delete if still => Some(Edge::End),
             _ => None,
         };
         if changed {
@@ -1374,6 +1383,21 @@ impl EditStore {
             y as f32,
             (2.0 * s.scale).max(2.0),
             line_height,
+        ))
+    }
+
+    /// The caret of `key` in logical px from the start of its text, as laid
+    /// out and before a field's scroll: zero wide, one line tall.
+    pub(crate) fn caret_local(&mut self, key: Key, fs: &mut FontSystem) -> Option<Rect> {
+        let s = self.states.get_mut(&key)?;
+        s.editor.shape_as_needed(fs, false);
+        let (x, y) = s.editor.cursor_position()?;
+        let line_height = s.editor.with_buffer(|b| b.metrics().line_height);
+        Some(Rect::new(
+            x as f32 / s.scale,
+            y as f32 / s.scale,
+            0.0,
+            line_height / s.scale,
         ))
     }
 

@@ -1710,6 +1710,40 @@ impl Core {
         Some(text)
     }
 
+    /// Where editor `key`'s caret is, in logical viewport px — zero wide,
+    /// one line tall, where the last frame drew the editor — or `None`
+    /// for a key with no editor in that frame. With
+    /// [`Self::edit_caret_to`] it carries a column between an editor and
+    /// whatever the app moves the keyboard to: a block editor's ↓ from a
+    /// title into its first line lands under the title's caret (backlog
+    /// F154). The rect [`Self::caret_rect`] answers for a text node, for
+    /// an editor.
+    pub fn edit_caret_rect(&mut self, key: Key) -> Option<Rect> {
+        self.note_read(|| replay::Read::Opaque);
+        let origin = self.interaction.edit_origin_of(key)?;
+        let local = self.edit_with_fonts(|edit, fs| edit.caret_local(key, fs))?;
+        Some(self.turned_rect(
+            key,
+            Rect::new(origin.x + local.x, origin.y + local.y, 0.0, local.h),
+        ))
+    }
+
+    /// Puts editor `key`'s caret at the character nearest `point` (logical
+    /// viewport px), with no selection, as a click there would — without
+    /// the click: focus, the window's selection and the pointer are left
+    /// alone, so an app moving the keyboard into the editor places its
+    /// caret first and focuses it after (backlog F154). False for a key
+    /// with no editor in the last frame.
+    pub fn edit_caret_to(&mut self, key: Key, point: Vec2) -> bool {
+        let Some(origin) = self.interaction.edit_origin_of(key) else {
+            return false;
+        };
+        let q = self.unturned(key, point);
+        let local = Vec2::new(q.x - origin.x, q.y - origin.y);
+        self.edit_with_fonts(|edit, fs| edit.click(key, local, 1, false, fs));
+        true
+    }
+
     /// Current text of an editor by key.
     pub fn edit_text(&self, key: Key) -> Option<String> {
         let t = self.edit.text(key);
