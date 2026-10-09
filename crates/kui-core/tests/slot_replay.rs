@@ -651,3 +651,46 @@ fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
     assert_eq!(r.frame(false), Some(SlotFill::Replayed));
     assert_eq!(r.views.get(), 1);
 }
+
+/// `Core::slot_fill` after a frame reads that frame's answer, and a frame
+/// that did not ask `slot_replay` — it kept the slot, filled it plainly,
+/// or did not declare it — has none; only while the next frame is built,
+/// before its slot, does it read the frame before's (backlog F156).
+#[test]
+fn slot_fill_after_a_frame_that_did_not_replay_is_none() {
+    let mut r = rig(Ext {
+        rows: 1,
+        ..Default::default()
+    });
+    r.frame(true);
+    assert_eq!(r.core.slot_fill("outer/root"), None, "kept, not asked");
+    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.core.slot_fill("outer/root"), Some(SlotFill::Replayed));
+
+    // Kept: the extension ran, and nothing was asked of `slot_replay`.
+    assert_eq!(r.frame(true), None);
+    assert_eq!(r.views.get(), 2);
+    assert_eq!(r.core.slot_fill("outer/root"), None);
+    assert_eq!(r.core.slot_fill_why("outer/root"), None);
+
+    // Filled plainly, or not declared: the same.
+    for declare in [true, false] {
+        // An answer first, so the frame after has one to fall back on.
+        assert!(r.frame(false).is_some());
+        assert!(r.core.slot_fill("outer/root").is_some());
+        let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
+        if declare {
+            ui.slot_with("outer/root", &params("a title"));
+        }
+        ui.finish();
+        assert_eq!(r.core.slot_fill("outer/root"), None, "declared: {declare}");
+    }
+
+    // While a frame is built, before its slot: the frame before's answer.
+    r.frame(true);
+    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
+    assert_eq!(ui.core().slot_fill("outer/root"), Some(SlotFill::Replayed));
+    ui.finish();
+    assert_eq!(r.core.slot_fill("outer/root"), None, "and after it, none");
+}

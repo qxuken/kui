@@ -98,7 +98,8 @@ pub extern "C" fn kui_slot_replay(ptr: *mut KuiCtx, name: KuiStr, params: *const
 
 /// What the last `kui_slot_replay` of `name` answered this frame (or the
 /// frame before, while this one is being built), as its `KUI_SLOT_*`
-/// code; `KUI_SLOT_UNDECLARED` when it was not asked.
+/// code; `KUI_SLOT_UNDECLARED` when it was not asked — a frame that kept
+/// the slot with [`kui_slot_kept`], filled it plainly or skipped it.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_slot_fill(ptr: *mut KuiCtx, name: KuiStr) -> i32 {
     guard(-1, || {

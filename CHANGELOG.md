@@ -30,6 +30,9 @@ was the first bare bump to break an app in five releases).
 - A slot fill kept with `slot_kept` that read the theme or the metrics
   is run again by `slot_replay` when either changes (`SlotFill::Reads`),
   where it was replayed in the old colours.
+- `Core::slot_fill` — `kui_slot_fill`, Lua's `env.slot_fill`, Node's
+  `ctx.slotFill` — answers `None` after a frame that asked `slot_replay`
+  nothing of the slot, where it answered the frame before's.
 
 F145's `boundary` reported ↑ and ↓ only when the key left the caret
 exactly where it was, but on a field's one line ↓ walks the caret to the
@@ -51,6 +54,16 @@ compared by value, so a palette set again to what it was is no change;
 a host that replays a pane across a theme change sees `Reads`, and the
 pane drawn in the new palette, where it saw `Replayed`.
 
+`slot_fill` read this frame's answers and then the last frame's, so a
+view could ask before its slot was declared; but it did so after the
+frame too, and a frame that kept its pane with `slot_kept`, filled it
+with `slot_with` or skipped it answered the frame before's `Replayed`
+(backlog F156, from kawoosh, whose test read the pane's own count
+instead). The frame before's answers now stand in only while a frame is
+being built; after it, a frame that did not ask has no answer — `None`,
+`KUI_SLOT_UNDECLARED` in C, `nil` in Lua, `null` in Node — the answer
+`slot_fill` already gave for a slot no frame declared.
+
 ### Added
 
 - **An editor's caret by point** — `Core::edit_caret_rect(key)`, the
@@ -65,6 +78,8 @@ pane drawn in the new palette, where it saw `Replayed`.
   see *What breaks*.
 - **A replayed pane follows a theme change** (backlog F155): see *What
   breaks*.
+- **`slot_fill` after a kept frame is that frame's** (backlog F156): see
+  *What breaks*.
 
 **What you can delete.**
 
@@ -72,6 +87,8 @@ pane drawn in the new palette, where it saw `Replayed`.
   from the middle of its line.
 - The palette's hash, or a theme revision of the host's own, in the claim
   a host makes before `slot_replay`.
+- Counting a pane's own views to learn whether a frame replayed it, where
+  `slot_fill` read a frame stale.
 
 ## 0.1.0-alpha.50 (2026-10-09)
 

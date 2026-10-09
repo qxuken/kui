@@ -585,6 +585,12 @@ impl Core {
     /// The last answer `Ui::slot_replay` gave for `name` this frame, or
     /// the frame before while this one is being built — for a host's
     /// own ledger of what its panes cost, and for a test.
+    ///
+    /// `None` for a frame that asked `slot_replay` nothing of `name`: one
+    /// that kept the slot with `slot_kept`, filled it with `slot_with`, or
+    /// did not declare it. Once a frame is finished its own answers are
+    /// the only ones read (backlog F156); the frame before's stand in
+    /// only while the next is built, until its slot is declared.
     pub fn slot_fill(&self, name: &str) -> Option<SlotFill> {
         self.find_slot_fill(name).map(|(f, _)| f)
     }
@@ -597,11 +603,19 @@ impl Core {
     }
 
     fn find_slot_fill(&self, name: &str) -> Option<(SlotFill, Option<&str>)> {
-        // This frame's answers first, newest first, then the last frame's.
+        // This frame's answers first, newest first, then — while this
+        // frame is being built, and only then — the last frame's. After
+        // `finish_frame` the frame before's are a frame stale: a frame
+        // that kept, filled plainly or skipped the slot answered nothing.
+        let last: &[_] = if self.building {
+            &self.slot_fills_last
+        } else {
+            &[]
+        };
         self.slot_fills
             .iter()
             .rev()
-            .chain(self.slot_fills_last.iter().rev())
+            .chain(last.iter().rev())
             .find(|(n, ..)| n == name)
             .map(|(_, f, w)| (*f, w.as_deref()))
     }

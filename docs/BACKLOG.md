@@ -1605,21 +1605,8 @@ the last fill (its `design/native.md`, "Native views replayed"). It
 left two kui notes in its backlog, one a hole in what the core checks
 before a replay and one in what `slot_fill` reads back. Both were
 checked against the tree at `b19e0993` before they were filed. Two
-entries, F155 and F156, filed open; F155 **built 2026-10-09**, the day
-it was filed, and in the archive.
-
-### `.` F156 — `slot_fill` after a frame that kept its slot answers the frame before's replay
-
-**Found.** kawoosh's native-replay round: "`Core::slot_fill` after a
-frame that filled with `slot_kept` answers the frame before's
-`slot_replay` answer, not nothing"; its test reads the pane's own
-count instead. `find_slot_fill` chains this frame's answers into the
-last frame's whether or not a frame is being built, so after a frame
-that asked nothing of `slot_replay` — it kept the slot, filled it
-plainly, or did not declare it — the answer read is a frame stale.
-
-**Do.** Read the frame before's answers only while a frame is being
-built, before its slot; after a frame, that frame's answers alone.
+entries, F155 and F156, **built 2026-10-09**, the day they were filed,
+and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4483,6 +4470,8 @@ move.
 
 - `~` **F154** — [↓ from the middle of a field is no edge until the caret has walked to the end, and nothing carries a column out of an editor](backlog/closed-2026-09.md#-f154---from-the-middle-of-a-field-is-no-edge-until-the-caret-has-walked-to-the-end-and-nothing-carries-a-column-out-of-an-editor--done-2026-10-09) — done (2026-10-09) — ↑ and ↓ on an edge line report wherever the caret is; `Core::edit_caret_rect` / `edit_caret_to` carry a column out of an editor and back
 
-**From the kawoosh native-replay round (2026-10-09)** — filed open, each built in turn
+**From the kawoosh native-replay round (2026-10-09)** — F155 and F156, filed and built the same day
 
 - `~` **F155** — [A kept fill that drew from the theme is replayed across a theme change](backlog/closed-2026-09.md#-f155--a-kept-fill-that-drew-from-the-theme-is-replayed-across-a-theme-change--done-2026-10-09) — done (2026-10-09) — a kept fill's theme, metrics and accent reads noted once a fill at `Core::theme` / `metrics` / `token_lookup` / `has_accent` and compared by value before a replay; every binding's reader caught there
+
+- `.` **F156** — [`slot_fill` after a frame that kept its slot answers the frame before's replay](backlog/closed-2026-09.md#-f156--slot_fill-after-a-frame-that-kept-its-slot-answers-the-frame-befores-replay--done-2026-10-09) — done (2026-10-09) — `None` after a frame that asked `slot_replay` nothing of the slot — kept, filled plainly or skipped; the frame before's answers read only while a frame is built

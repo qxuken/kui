@@ -2937,8 +2937,11 @@ bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
  * is kept as not replayable. What the host vouches for is its own side
  * only: a view that reads the clock off a reading handed out whole is one
  * its host must not replay. kui_slot_fill reads back what the last
- * kui_slot_replay of the name answered this frame. New symbols, so
- * KUI_ABI_VERSION stays. */
+ * kui_slot_replay of the name answered this frame (the frame before's
+ * while this one is built, until the slot is declared), and
+ * KUI_SLOT_UNDECLARED after a frame that kept it with kui_slot_kept,
+ * filled it with kui_slot or skipped it. New symbols, so KUI_ABI_VERSION
+ * stays. */
 #define KUI_SLOT_UNDECLARED (-1)    /* not declared: a duplicate, or outside a frame */
 #define KUI_SLOT_REPLAYED 0         /* last frame's nodes, pushed again; the extension not asked */
 #define KUI_SLOT_NOT_KEPT 1         /* nothing kept: its first frame, or a frame skipped it */
