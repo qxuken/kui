@@ -156,13 +156,20 @@ impl Core {
     #[inline]
     pub(super) fn ease_spec(&mut self, key: Key, spec: &mut NodeSpec) {
         if let Some(t) = spec.transition {
+            // A turn the node starts declaring eases in from upright when
+            // the node was already drawn: read before `ease_transitioning`
+            // marks its other slots used this frame.
+            let declares = turns(spec);
+            let upright = declares && self.anim.turn_starts_upright(key);
             self.ease_transitioning(key, spec, t);
             // The turn and the scale (ADR 0043) are eased apart, after the
             // other slots and out of line, so `ease_transitioning` is the
             // code it was before ADR 0043 (a test for the turn inside it
             // measured about 2% on a frame of 10,000 transitioning boxes).
-            if turns(spec) {
-                self.ease_transform(key, spec, t);
+            // A turn the node stops declaring eases back to upright on the
+            // tween it had.
+            if declares || self.anim.turn_live(key) {
+                self.ease_transform(key, spec, t, upright);
             }
         }
     }
@@ -210,7 +217,13 @@ impl Core {
     /// cycle that turns a node declaring none.
     #[cold]
     #[inline(never)]
-    fn ease_transform(&mut self, key: Key, spec: &mut NodeSpec, t: crate::anim::Transition) {
+    fn ease_transform(
+        &mut self,
+        key: Key,
+        spec: &mut NodeSpec,
+        t: crate::anim::Transition,
+        upright: bool,
+    ) {
         let declared = spec.interact().transform.is_some();
         let base = transform_lanes(spec);
         let frames = &spec.anim().keyframes;
@@ -229,8 +242,19 @@ impl Core {
                 .sample_cycle(key, &track, t, spec.anim().iterations)
                 .unwrap_or(base),
             None => {
-                let from = spec.anim().enter.and_then(|e| e.transform_lanes(base));
-                self.anim.drive_turn(key, from, base, t)
+                // Already drawn upright, the turn eases in from there; a
+                // node new this frame enters as its `enter` says.
+                const UPRIGHT: [f32; 4] = [0.0, 1.0, 0.0, 0.0];
+                let from = if upright {
+                    Some(UPRIGHT)
+                } else {
+                    spec.anim().enter.and_then(|e| e.transform_lanes(base))
+                };
+                let v = self.anim.drive_turn(key, from, base, t);
+                if !declared && v == UPRIGHT {
+                    self.anim.forget_settled_turn(key, UPRIGHT);
+                }
+                v
             }
         };
         if declared || v != base {

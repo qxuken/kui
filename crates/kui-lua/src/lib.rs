@@ -1989,8 +1989,15 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // A path's `rotate` is its own (ADR 0041), not the node's
             // (ADR 0043, decision 1): the generic walk above read it as
             // the row every other element takes, and that reading goes.
-            if let Some(i) = p.spec.interact.as_deref_mut() {
-                i.transform = None;
+            // The node's `scale` and pivot stay, as Node's encoder keeps
+            // them.
+            if let Some(i) = p.spec.interact.as_deref_mut()
+                && let Some(tr) = i.transform.as_deref_mut()
+            {
+                tr.rotate = 0.0;
+                if *tr == kui_core::TransformSpec::NONE {
+                    i.transform = None;
+                }
             }
             let rule = match t.get::<Option<String>>("fill_rule")? {
                 Some(name) => kui_core::FillRule::parse(&name)
@@ -4899,6 +4906,36 @@ mod tests {
     /// A script reads the frame clock (backlog F134): `env.now` is the
     /// core's seconds, so a deadline a script keeps moves with the host's
     /// clock and a test's.
+    /// A path's `rotate` is its own turn (ADR 0041); the node's `scale`
+    /// beside it stays the node's, as Node's encoder keeps it.
+    #[test]
+    fn a_path_keeps_the_node_scale_beside_its_own_rotate() {
+        let mut ext = LuaExtension::from_source(
+            "p",
+            r#"
+                function view(env)
+                  return column {
+                    path { key = "p", d = "M0 0 H10 V10 H0 Z", bg = 0xffffffff,
+                           rotate = 0.25, scale = 2 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_inspect(true);
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let node = core
+            .nodes()
+            .iter()
+            .find(|n| n.kind == kui_core::NodeKind::Path)
+            .cloned()
+            .expect("the path");
+        assert_eq!(node.scale, 2.0, "the node's scale stays");
+        assert_eq!(node.rotate, 0.0, "the turn is the path's own");
+    }
+
     #[test]
     fn a_script_reads_the_frame_clock() {
         let mut ext = LuaExtension::from_source(

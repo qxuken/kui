@@ -1772,7 +1772,7 @@ pub fn decode_animation(bytes: Buffer) -> Result<DecodedAnimation> {
 }
 
 /// Which of the frames with these `delays` shows `elapsed` seconds after
-/// the animation started, playing `loops` times (null for ever), and when
+/// the animation started, playing `loops` times (null or 0 for ever), and when
 /// the next is due: `animationAt(gif.delays, gif.loops, ctx.now() -
 /// started)`, then `updateImage` when the index moved and
 /// `requestFrameAt(started + next)`.
@@ -1788,7 +1788,8 @@ pub fn animation_at(delays: Vec<f64>, loops: Option<u32>, elapsed: f64) -> Anima
                 delay,
             })
             .collect(),
-        loops,
+        // 0 is for ever, as C's and Odin's `loops` say it.
+        loops: loops.filter(|&n| n != 0),
     };
     let s = a.at(elapsed);
     AnimationShowing {
@@ -3426,7 +3427,7 @@ macro_rules! core_methods {
             /// handler, with no frame drawn first to aim it. It aims a node
             /// that declares an `exit`, with that node's transition, and is
             /// forgotten when that frame finishes.
-            #[napi]
+            #[napi(ts_args_type = "key: string, exit: EnterProp")]
             pub fn exit_with(&mut self, key: String, exit: Json) -> Result<()> {
                 let e = kui_core::enter::parse(&value_of(&exit))
                     .map_err(|m| napi::Error::from_reason(format!("exitWith: {m}")))?;
@@ -3484,8 +3485,9 @@ macro_rules! core_methods {
                 Ok(())
             }
 
-            /// The hex key of the node a label names — the label a `key`
-            /// prop declared, resolved through the frame being built so
+            /// The hex key of the node a key label names — the label a `key`
+            /// prop declared, not the accessible name a reader hears
+            /// (`keyNamed`), resolved through the frame being built so
             /// far and then the last finished one — or null when no node
             /// declared it. The door for holding a key across frames;
             /// every call that takes a key takes the label too, so this

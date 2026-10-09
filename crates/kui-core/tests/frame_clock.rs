@@ -93,6 +93,8 @@ fn a_time_already_past_or_with_no_clock_is_a_frame_now() {
     frame_at(&mut core, 1.0, Some(f64::NAN));
     assert_eq!(core.next_frame_at(), None, "not a number is ignored");
     assert!(!core.animating());
+    frame_at(&mut core, 1.0, Some(f64::INFINITY));
+    assert_eq!(core.next_frame_at(), None, "nor is a time that never comes");
 }
 
 /// A handler between frames asks too: the toast an event shows, due later.

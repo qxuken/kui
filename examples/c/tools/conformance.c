@@ -654,9 +654,6 @@ static void conf_float(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
-/* One of conf_clip_float's two nodes: a parent-anchored float at (dx, -20)
- * on the canvas that posts `key` when clicked, cut by the canvas's clip
- * when `clip` is set (float_clip, ABI 19). */
 /* conformance::build_transform (ADR 0043): a rounded, clipping card tilted an
  * eighth of a turn about its top-left corner (rotate, pivot_x/pivot_y with
  * KUI_PIVOT_X | KUI_PIVOT_Y; ABI 27), holding a child wider than itself and
@@ -686,6 +683,9 @@ static void conf_transform(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* One of conf_clip_float's two nodes: a parent-anchored float at (dx, -20)
+ * on the canvas that posts `key` when clicked, cut by the canvas's clip
+ * when `clip` is set (float_clip, ABI 19). */
 static void conf_clip_float_node(KuiCtx *ui, const char *key, float dx, uint32_t clip,
                                  uint32_t bg, const char *label) {
     KuiValue *tag = kui_value_map();

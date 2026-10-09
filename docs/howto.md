@@ -106,8 +106,7 @@ stops for a frame and declare them again, or give the node a new key: a
 finite cycle restarts whenever a frame went without it. A blinking caret
 is still not keyframes (see the caret how-to): it is a cycle with no end.
 
-[`iterations` row](props.md#container-props)
-
+[`iterations` row](props.md#container-props) ·
 [`keyframes` row](props.md#container-props) ·
 [`transition` example](../examples/rust/features/transition.rs)
 
@@ -121,7 +120,7 @@ is (`decodeImage` in Node, `kui_decode_image` in C, freed with
 animated GIF, APNG or WebP, `decode_animation` keeps every frame — the
 whole canvas each, as a browser composites it — with the seconds each
 shows. Play it on the frame clock: keep when it started, ask
-`Animation::at(ui.now() - started)` which frame shows and when the next
+`anim.at(ui.now() - started)` which frame shows and when the next
 is due, `update_image_with` the pixels when the index moved, and
 `request_frame_at(started + next)`. Nothing is owed between steps, so a
 spinner at 80 ms a step costs twelve frames a second and an idle window
@@ -1303,7 +1302,8 @@ blinks in the background. Headless the phase stays true;
 `setCaretVisible(false)` / `kui_set_caret_visible` is how a test sees
 the off phase drawn, and how a C host with its own window drives it
 (`kui_has_caret`, `kui_caret_stamp` are the clock's inputs). Never use
-`keyframes` for this: they ask for a frame every vsync and never stop.
+`keyframes` for this: a blink has no end, and an endless cycle asks for a
+frame every vsync.
 
 A caret that does not blink — the block of a modal editor's normal mode —
 declares `caretSolid` (Lua `caret_solid = true`, C `KUI_VALUE_CARET_SOLID`

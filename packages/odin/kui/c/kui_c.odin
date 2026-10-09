@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 26
+ABI_VERSION :: 27
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -1090,8 +1090,8 @@ foreign lib {
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---
 	request_frame_at :: proc(ctx: ^Ctx, at: f64) ---
-	exit_with :: proc(ctx: ^Ctx, key: u64, exit: ^Enter) ---
 	next_frame_at :: proc(ctx: ^Ctx) -> f64 ---
+	exit_with :: proc(ctx: ^Ctx, key: u64, exit: ^Enter) ---
 	animating :: proc(ctx: ^Ctx) -> bool ---
 	owed :: proc(ctx: ^Ctx) -> u32 ---
 	set_frame_trace :: proc(ctx: ^Ctx, on: bool) ---

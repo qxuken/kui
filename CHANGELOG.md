@@ -29,13 +29,26 @@ was the first bare bump to break an app in five releases).
   twenty — `transform`, `inner` and `inner_radius` — so a host that
   strides `KuiDrawData.clips` reads the new stride and the conformance
   digest hashes the whole entry; `KuiSpec` appends `rotate`, `scale`,
-  `pivot_set`, `pivot_x` and `pivot_y` (64-bit size 744), `KuiKeyframe`
-  and `KuiEnter` append `rotate` and `scale`, and `KuiKeyframe` `dx`
-  and `dy` with `KUI_KF_OFFSET` (strides 52 and 48; F132).
-  Recompile; a zeroed tail is what every spec, stop and entrance had
-  before. Node's `clips()` buffer has the same stride, and `decodeClips`
-  reads `transform`, `inner` and `innerRadii`. A renderer of its own that
+  `pivot_set`, `pivot_x`, `pivot_y` and `iterations` (F133; 64-bit size
+  744), `KuiKeyframe` and `KuiEnter` append `rotate` and `scale`, and
+  `KuiKeyframe` `dx` and `dy` with `KUI_KF_OFFSET` (strides 52 and 48;
+  F132). `KuiSpec` holds `KuiEnter` twice by value, as `enter` and
+  `exit`, so its fields after `enter` move by 8 bytes and those after
+  `exit` by 16: recompile, and re-derive the offsets of a hand-written
+  mirror (ctypes, Zig, an Odin of its own) rather than append to it. A
+  zeroed field is what every spec, stop and entrance had before. Node's
+  `clips()` buffer has the same stride, and `decodeClips` reads
+  `transform`, `inner` and `innerRadii`. A renderer of its own that
   ignores the new words draws a turned subtree upright.
+- Rust struct literals: none of these is `#[non_exhaustive]`, so a
+  literal that names every field gains the new ones or a `..` base —
+  `Clip` (`transform`, `inner`, `inner_radius`; it has no `Default`,
+  so `..Clip::NONE`), `Keyframe` (`dx`, `dy`), `Slots` and `Enter`
+  (`rotate`, `scale`), `AnimSpec::iterations`,
+  `InteractSpec::transform`, `NodeInfo` (`rotate`, `scale`),
+  `HitRegion::turn`, `ScrollRegion::turn` and `EnvFacts::now`.
+- Node's `WarningCode` union gains `'ambiguous-name'` (F137): a
+  `switch` over it that TypeScript checks for exhaustiveness names it.
 
 ### Added
 
@@ -133,7 +146,8 @@ was the first bare bump to break an app in five releases).
   `Animation::at(elapsed)` says which frame shows and when the next is
   due, so a GIF plays on the frame clock through `update_image_with` and
   `request_frame_at` with nothing owed between steps.
-  `Launcher::icon_bytes` takes an icon from a PNG. C: `kui_decode_image`,
+  `Launcher::icon_bytes` takes an icon from a PNG
+  (`Launcher::try_icon_bytes` for bytes from outside the program). C: `kui_decode_image`,
   `kui_decode_animation`, `kui_animation_at` and `kui_pixels_free`, with
   `runner`; Odin: `decode_image`, `decode_animation`, `animation_at`,
   copied into the context allocator; Node: `decodeImage`,
@@ -149,6 +163,9 @@ was the first bare bump to break an app in five releases).
 - A float declared where a drifting thing ends, entering from where it
   starts over a transition as long as its life, to move it along a path
   (F132): its stops say the path.
+- A clock of the app's own and `request_frame` on every frame to time a
+  sequence that plays once — a burst, a pop, a row of stars — and the
+  frame owed for good by a cycle the app meant to stop (F133).
 - A clock of the app's own, beside the core's, that a test had to push
   forward by hand (F134): read `now()`.
 - A thread per deadline that sleeps and then calls `Waker::wake` (F135):
@@ -159,9 +176,6 @@ was the first bare bump to break an app in five releases).
 - The `image` dependency an app added to decode its photos, its version
   pin and the `[profile.dev.package."*"]` line that made it fast, and a
   GIF crate beside it (F138): `decode_image` and `decode_animation`.
-- A clock of the app's own and `request_frame` on every frame to time a
-  sequence that plays once — a burst, a pop, a row of stars — and the
-  frame owed for good by a cycle the app meant to stop (F133).
 
 ## 0.1.0-alpha.45 (2026-10-08)
 

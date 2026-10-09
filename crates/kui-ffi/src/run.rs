@@ -286,10 +286,9 @@ fn launcher_for(title: &str, options: RunOptions) -> kui_native::Launcher {
 fn hand_out(rgba: &[u8], delays: &[f64]) -> (*mut u8, *const f64) {
     let px_words = rgba.len().div_ceil(8);
     let words = 2 + px_words + delays.len();
-    let mut block = vec![0u64; words];
+    let mut block = vec![0u64; words].into_boxed_slice();
     block[0] = words as u64;
-    let base = block.as_mut_ptr();
-    std::mem::forget(block);
+    let base = Box::into_raw(block).cast::<u64>();
     // SAFETY: `base` owns `words` words; the pixels fit in the `px_words`
     // after the first two and the delays in the rest, each written once.
     unsafe {
@@ -450,7 +449,9 @@ pub extern "C" fn kui_pixels_free(pixels: *mut u8) {
         unsafe {
             let base = pixels.cast::<u64>().sub(2);
             let words = *base as usize;
-            drop(Vec::from_raw_parts(base, words, words));
+            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                base, words,
+            )));
         }
     });
 }

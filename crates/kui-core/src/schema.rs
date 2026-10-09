@@ -885,7 +885,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_SCALE,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.scale(v)),
-        doc: "Scales this node and everything under it by this factor, uniformly, about its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`); 1 is none, 0 draws nothing. Paint-only, as `rotate` is: layout, the room taken and `onLayout` are the upright node's; what it draws, clips and hits scales. Tweens with `transition` as one slot with `rotate`; `enter: { scale: 0.8 }` settles a chip in, `keyframes: [{ scale: 1.05, at: 0.5 }]` pulses. The edge ramps scale with the box, so a box scaled far up reads soft. In C, 0 is unset (1).",
+        doc: "Scales this node and everything under it by this factor, uniformly, about its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`); 1 is none. 0 draws nothing in Rust, Node and Lua; in C and Odin, where a zeroed field is unset, 0 is 1. Paint-only, as `rotate` is: layout, the room taken and `onLayout` are the upright node's; what it draws, clips and hits scales. Tweens with `transition` as one slot with `rotate`; `enter: { scale: 0.8 }` settles a chip in, `keyframes: [{ scale: 1.05, at: 0.5 }]` pulses. The edge ramps scale with the box, so a box scaled far up reads soft.",
     },
     PropDef {
         name: "pivotX",
@@ -1121,7 +1121,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_KEYFRAMES,
         kind: Kind::Keyframes,
         apply: Apply::SpecKeyframes(|s, k| s.keyframes(k)),
-        doc: "CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`: the slots they name cycle through them over `transition` ms, forever, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. `dx` / `dy` are logical px from where layout put the node (backlog F132), as an entrance's are: the node and its subtree are drawn and hit that far away at the stop, a lane a stop leaves out is 0, and the offset adds to a `slide`'s, so `[{ dy: 0 }, { dy: -6 }]` with `repeat: 'alternate'` bobs a box and a sparkle drifts up its stops. Paint, hit and access only: layout and the room the node takes are its own place's, and an `onLayout` node reports its layout rect, not the cycle, which would post an event every frame it runs.",
+        doc: "CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`: the slots they name cycle through them over `transition` ms, for ever unless `iterations` says how many times, without the view redrawing; `at` is 0..1 and spreads evenly when omitted. `dx` / `dy` are logical px from where layout put the node (backlog F132), as an entrance's are: the node and its subtree are drawn and hit that far away at the stop, a lane a stop leaves out is 0, and the offset adds to a `slide`'s, so `[{ dy: 0 }, { dy: -6 }]` with `repeat: 'alternate'` bobs a box and a sparkle drifts up its stops. Paint, hit and access only: layout and the room the node takes are its own place's, and an `onLayout` node reports its layout rect, not the cycle, which would post an event every frame it runs.",
     },
     PropDef {
         name: "enter",

@@ -1422,10 +1422,12 @@ impl TransformSpec {
         pivot: crate::geom::Vec2 { x: 0.5, y: 0.5 },
     };
 
-    /// Whether this moves anything: a turn, or a scale that is not 1.
+    /// Whether this moves anything: a turn, or a scale that is not 1. A
+    /// turn or a scale that is not a finite number is none.
     #[inline]
     pub fn active(&self) -> bool {
-        self.rotate != 0.0 || self.scale != 1.0
+        (self.rotate != 0.0 && self.rotate.is_finite())
+            || (self.scale != 1.0 && self.scale.is_finite())
     }
 
     /// The transform for a node laid out at `rect` (logical px, in the
@@ -1435,7 +1437,11 @@ impl TransformSpec {
             rect.x + rect.w * self.pivot.x,
             rect.y + rect.h * self.pivot.y,
         );
-        crate::geom::Transform::about(pivot, self.rotate, self.scale)
+        crate::geom::Transform::about(
+            pivot,
+            crate::geom::finite_or(self.rotate, 0.0),
+            crate::geom::finite_or(self.scale, 1.0),
+        )
     }
 }
 

@@ -145,8 +145,10 @@
 ///   (64-bit 56).
 /// - ABI 27: `KuiClip` gains `transform`, `inner` and `inner_radius`
 ///   (ADR 0043) — a `[lib]` array element, so its stride moved (80
-///   bytes); `KuiSpec` appends `rotate`, `scale`, `pivot_set`, `pivot_x`
-///   and `pivot_y` (64-bit 744); `KuiKeyframe` and `KuiEnter` append
+///   bytes); `KuiSpec` appends `rotate`, `scale`, `pivot_set`, `pivot_x`,
+///   `pivot_y` and `iterations` (64-bit 744), and holds `KuiEnter` twice
+///   by value (`enter`, `exit`), so its fields after `enter` move by 8 and
+///   after `exit` by 16; `KuiKeyframe` and `KuiEnter` append
 ///   `rotate` and `scale` with `KUI_KF_ROTATE` / `KUI_KF_SCALE` and
 ///   `KUI_ENTER_ROTATE` / `KUI_ENTER_SCALE` — array elements, so their
 ///   strides moved (48 for `KuiEnter`); `KuiKeyframe` also appends `dx`

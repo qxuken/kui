@@ -732,6 +732,44 @@ impl AnimStore {
 
     /// [`NodeAnim::drive`] for the transform slot, whose tweens are kept
     /// apart (`turns`): the same leg, the same rules.
+    /// Whether `key` has a turn tween the last frame drove: a node that
+    /// stops declaring its turn eases back to upright on it rather than
+    /// snapping. One branch while nothing anywhere turns.
+    #[inline]
+    pub(crate) fn turn_live(&self, key: Key) -> bool {
+        !self.turns.is_empty()
+            && self
+                .turns
+                .get(&key)
+                .and_then(Option::as_ref)
+                .is_some_and(|t| t.last_used + 1 >= self.frame_no)
+    }
+
+    /// Whether `key` was drawn transitioning last frame with no live turn:
+    /// a turn it declares now eases in from upright, as a width it starts
+    /// declaring eases from the one it had, rather than appearing at once.
+    /// Read before this frame drives the node's other slots.
+    pub(crate) fn turn_starts_upright(&self, key: Key) -> bool {
+        let prev = self.frame_no.wrapping_sub(1);
+        !self.turn_live(key)
+            && self
+                .tweens
+                .get(&key)
+                .is_some_and(|s| s.iter().flatten().any(|t| t.last_used == prev))
+    }
+
+    /// Drops `key`'s turn tween once it has come to rest upright on a node
+    /// that declares no turn, so the node stops paying the lookup.
+    pub(crate) fn forget_settled_turn(&mut self, key: Key, identity: [f32; 4]) {
+        if let Some(Some(t)) = self.turns.get(&key)
+            && t.value == identity
+            && t.to == identity
+            && t.velocity == [0.0; 4]
+        {
+            self.turns.remove(&key);
+        }
+    }
+
     pub(crate) fn drive_turn(
         &mut self,
         key: Key,

@@ -734,7 +734,7 @@ Spec :: struct {
 	rotate: f32,
 	// Scales this node and everything under it by this factor, uniformly, about
 	// its pivot, after layout (`docs/adr/0043-a-node-turns-about-its-pivot.md`);
-	// 1 is none, 0 draws nothing.
+	// 1 is none.
 	scale: f32,
 	// Where across the box `rotate` and `scale` are about, as a fraction of its
 	// width: 0 the left edge, 0.5 (the default) the middle, 1 the right edge;
@@ -856,8 +856,8 @@ Spec :: struct {
 	slide: bool,
 	// CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?,
 	// rotate?, scale? }, …]`: the slots they name cycle through them over
-	// `transition` ms, forever, without the view redrawing; `at` is 0..1 and
-	// spreads evenly when omitted.
+	// `transition` ms, for ever unless `iterations` says how many times, without
+	// the view redrawing; `at` is 0..1 and spreads evenly when omitted.
 	keyframes: []Keyframe,
 	// Where the node starts the first frame it is seen `{ dx?, dy?, width?,
 	// height?, bg?, radius?, opacity?, rotate?, scale? }`: those slots ease in

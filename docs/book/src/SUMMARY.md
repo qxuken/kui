@@ -50,6 +50,7 @@
   - [backdrop](examples/features/backdrop.md)
   - [backdrop_blur](examples/features/backdrop_blur.md)
   - [clipboard](examples/features/clipboard.md)
+  - [decode](examples/features/decode.md)
   - [devtools_tab](examples/features/devtools_tab.md)
   - [drag](examples/features/drag.md)
   - [drop](examples/features/drop.md)

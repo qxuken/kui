@@ -8,6 +8,7 @@ One cross-cutting behaviour, with exactly the widgets it touches.
 - [`backdrop`](features/backdrop.md)
 - [`backdrop_blur`](features/backdrop_blur.md)
 - [`clipboard`](features/clipboard.md)
+- [`decode`](features/decode.md)
 - [`devtools_tab`](features/devtools_tab.md)
 - [`drag`](features/drag.md)
 - [`drop`](features/drop.md)

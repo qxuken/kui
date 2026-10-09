@@ -437,6 +437,78 @@ fn a_turn_tweens_with_transition() {
     assert!(!core.animating());
 }
 
+/// A turn that comes and goes as a prop does, the way C's zeroed field
+/// and an omitted JSX or Lua prop say "none": it eases in from upright and
+/// back out to it, as a declared 0 does, rather than snapping.
+#[test]
+fn a_turn_that_comes_and_goes_eases_from_and_to_upright() {
+    let mut core = Core::new();
+    let turn = |core: &mut Core, now: f64, turns: Option<f32>| {
+        core.set_time(now);
+        frame(core, |ui| {
+            ui.configure_root(NodeSpec::column().pad(20.0));
+            let mut spec = card().transition_with(Transition::ms(100.0).easing(Easing::Linear));
+            if let Some(t) = turns {
+                spec = spec.rotate(t);
+            }
+            ui.leaf_keyed("card", spec);
+        });
+        solids_with_clips(core)[0].1.transform.angle
+    };
+    assert!(near(turn(&mut core, 0.0, None), 0.0));
+    assert!(
+        near(turn(&mut core, 0.0, Some(0.25)), 0.0),
+        "it starts upright"
+    );
+    assert!(core.animating());
+    assert!(
+        near(turn(&mut core, 0.05, Some(0.25)), TAU / 8.0),
+        "halfway in"
+    );
+    assert!(near(turn(&mut core, 0.2, Some(0.25)), TAU / 4.0));
+    assert!(!core.animating());
+    assert!(
+        near(turn(&mut core, 0.2, None), TAU / 4.0),
+        "dropped, it starts where it was"
+    );
+    assert!(core.animating());
+    assert!(near(turn(&mut core, 0.25, None), TAU / 8.0), "halfway out");
+    assert!(near(turn(&mut core, 0.4, None), 0.0));
+    assert!(!core.animating(), "and rests upright");
+    // A node new to the frame with a turn still appears turned.
+    let mut fresh = Core::new();
+    assert!(near(turn(&mut fresh, 0.0, Some(0.25)), TAU / 4.0));
+}
+
+/// A turn or a scale that is not a finite number — a NaN from a binding's
+/// raw field — is none: it draws upright and never reaches a tween.
+#[test]
+fn a_turn_or_scale_that_is_not_a_number_is_none() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    frame(&mut core, |ui| {
+        ui.configure_root(NodeSpec::column().pad(20.0));
+        ui.leaf_keyed(
+            "card",
+            card()
+                .rotate(f32::NAN)
+                .scale(f32::INFINITY)
+                .transition(100.0)
+                .enter(Enter::default().scale(f32::NAN)),
+        );
+    });
+    let (q, clip) = solids_with_clips(&mut core)[0];
+    assert!(q.rect.x.is_finite() && q.rect.w.is_finite());
+    assert!(near(clip.transform.angle, 0.0) && near(clip.transform.scale, 1.0));
+    assert!(!core.animating());
+    let tree = core.access_tree();
+    assert!(
+        tree.nodes
+            .iter()
+            .all(|n| n.rect.x.is_finite() && n.rect.w.is_finite())
+    );
+}
+
 #[test]
 fn an_entrance_scales_in_and_a_stop_naming_only_rotate_keeps_the_scale() {
     let mut core = Core::new();

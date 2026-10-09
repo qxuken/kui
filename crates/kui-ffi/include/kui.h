@@ -2519,15 +2519,15 @@ double kui_now(KuiCtx *ctx);
  * INFINITY when nothing was asked for, and draws a frame once its clock
  * reaches it. */
 void kui_request_frame_at(KuiCtx *ctx, double at);
+double kui_next_frame_at(KuiCtx *ctx);
 /* The exit the node `key` leaves by if it leaves in the frame that
  * finishes next (backlog F136), over the `exit` its spec declared: a card
  * a button throws aside is removed in the same frame, with no frame drawn
  * first to aim it. Call it from an event handler or from the view of the
  * frame that drops the node; it is cleared when that frame finishes. It
  * aims a node that declares an exit, with that node's transition_ms.
- * Read during the call. */
+ * Read during the call; NULL names nothing. */
 void kui_exit_with(KuiCtx *ctx, uint64_t key, const KuiEnter *exit);
-double kui_next_frame_at(KuiCtx *ctx);
 /* True when the last frame left a transition mid-flight: draw another frame
  * without waiting for input. */
 bool kui_animating(KuiCtx *ctx);
@@ -2945,7 +2945,9 @@ uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
 void kui_set_key_focus(KuiCtx *ctx, uint64_t key);
 /* Moves focus to key now (0 blurs). */
 void kui_focus(KuiCtx *ctx, uint64_t key);
-/* The key of the node opened under label in the last finished frame (from
+/* The key of the node opened under the key label `label` - the name the
+ * view gave it, not the accessible name a reader hears, which
+ * kui_key_named looks up - in the last finished frame (from
  * inside a view callback: this frame so far, then the last one); 0 for a
  * label no node declared. Keys hash the path from the root, through the
  * auto-keyed ancestors a host cannot spell, so a node no event has come

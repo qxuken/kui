@@ -68,3 +68,39 @@ fn no_node_with_the_name_is_none() {
     deck(&mut core, false);
     assert_eq!(core.key_named("Superlike"), None);
 }
+
+/// Asked from inside a view, the lookup reads the last tree derived and
+/// leaves the frame in progress alone: a half-built frame cached as the
+/// access tree would be what a reader got for the whole frame.
+#[test]
+fn asked_mid_frame_it_does_not_cache_half_a_tree() {
+    let mut core = Core::new();
+    deck(&mut core, false);
+    assert!(core.key_named("Like").is_some(), "the last frame's tree");
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.with(NodeSpec::row(), |ui| {
+        ui.leaf_keyed(
+            "alpha",
+            NodeSpec::column()
+                .size(10.0, 10.0)
+                .on_click("a")
+                .label("Alpha"),
+        );
+        let mid = ui.core().key_named("Like");
+        assert!(mid.is_some(), "mid-frame, still the last frame's");
+        ui.leaf_keyed(
+            "beta",
+            NodeSpec::column()
+                .size(10.0, 10.0)
+                .on_click("b")
+                .label("Beta"),
+        );
+    });
+    ui.finish();
+    assert_eq!(
+        core.key_named("Beta"),
+        core.key_of("beta"),
+        "the whole frame"
+    );
+    assert_eq!(core.key_named("Like"), None, "and not the last one");
+}

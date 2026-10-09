@@ -154,9 +154,11 @@ impl Slots {
         if self.rotate.is_none() && self.scale.is_none() {
             return None;
         }
+        // A value that is not a finite number is the base's, as unnamed.
+        let pick = |v: Option<f32>, b: f32| v.filter(|v| v.is_finite()).unwrap_or(b);
         Some([
-            self.rotate.unwrap_or(base[0]),
-            self.scale.unwrap_or(base[1]),
+            pick(self.rotate, base[0]),
+            pick(self.scale, base[1]),
             0.0,
             0.0,
         ])

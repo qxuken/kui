@@ -274,8 +274,8 @@ impl Transform {
     }
 
     /// The point that maps to `p`: the inverse. A scale of zero has no
-    /// inverse; the answer is then the pivot-less origin, which nothing
-    /// hits, as nothing is drawn.
+    /// inverse; the answer is then NaN, which no rect contains, so nothing
+    /// is hit, as nothing is drawn.
     pub fn unapply(&self, p: Vec2) -> Vec2 {
         if self.scale == 0.0 {
             return Vec2::new(f32::NAN, f32::NAN);
@@ -358,9 +358,11 @@ impl Transform {
     }
 
     /// The four lanes a tween carries for the slot: angle in turns, the
-    /// scale, and two spare.
+    /// scale, and two spare. A turn or a scale that is not a finite number
+    /// is none, so a NaN from a binding never reaches a tween it would hold
+    /// for good.
     pub(crate) fn lanes(turns: f32, scale: f32) -> [f32; 4] {
-        [turns, scale, 0.0, 0.0]
+        [finite_or(turns, 0.0), finite_or(scale, 1.0), 0.0, 0.0]
     }
 }
 
@@ -402,6 +404,13 @@ impl Edges {
     pub fn y(&self) -> f32 {
         self.t + self.b
     }
+}
+
+/// `v`, or `none` when `v` is NaN or infinite: a turn or a scale from a
+/// binding's raw field.
+#[inline]
+pub(crate) fn finite_or(v: f32, none: f32) -> f32 {
+    if v.is_finite() { v } else { none }
 }
 
 #[cfg(test)]

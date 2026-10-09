@@ -173,7 +173,11 @@ from the alpha.44 pre-tag pass, and RG154 — what that pass left: the
 accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
-the alpha.45 pre-tag pass over it filed nothing.
+the alpha.45 pre-tag pass over it filed nothing. RG155, from the alpha.46
+pre-tag pass, is open: inside a turned node the caret, a selection drag
+and a text hit read the pointer upright, the inner clip's edge is not
+smoothed, and ADR 0043 owes a measurement; the pass's other finds were
+corrected before the tag.
 F131–F138, from the berainder review of 2026-10-08, were built the day
 it was filed and the day after — a turn and a scale on any node (ADR
 0043), position stops and a count on a cycle, the frame clock read and a
@@ -193,7 +197,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.44".
+Ordered by area, not by priority. What to do next is under "After alpha.45".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -459,7 +463,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.44" below.
+not cover is in "After alpha.45" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -1528,7 +1532,7 @@ every vsync for good; `key_of` reads the key label and not the
 accessible name; and the runner decodes no JPEG, so the app links the
 `image` crate. Each was checked against the tree before it was filed.
 Two of them the user had already named — a turn and keyframes — and
-they are the first two below. F131, the turn, was **built 2026-10-08**, the
+they were built first. F131, the turn, was **built 2026-10-08**, the
 day it was filed, as ADR 0043, and F132 and F133, position stops and a
 count on a cycle, **built 2026-10-09**, as F134–F138 were the same day;
 they are in the archive.
@@ -2111,7 +2115,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.44*).
+*Distribution* under *After alpha.45*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2689,9 +2693,58 @@ back. The first Windows run of the round died on a full disk —
 `target/debug` had grown to 141 GB, 37 of it incremental state — and
 ran again after a prune.
 
-## After alpha.44
+## From the alpha.46 pre-tag pass (2026-10-09)
+
+The pass before the alpha.46 tag, on the Mac, over F131–F138: the
+mechanical round as CI runs it (1993 Rust tests in 149 suites; the 58
+scenes through Rust, Lua, C and Node; the C round; Node 224 of 224 with
+the corpus required; gen; the typecheck; the headless round; the Odin
+steps could not run, the local compiler linking an LLVM that is gone),
+`cargo audit` over the lockfile the decoder grew, the windowed smoke
+with Node's (55 examples on both bases, clean first time), the
+accessibility audit (106 of 106), the frame bench guard against
+alpha.45 (green, the guarded rows −0.7% to +1.2%), and three read-only
+reviewers — the core and the renderer, the bindings, the docs — each
+claim probed.
+
+Corrected before the tag: the hand-written Odin layer still said ABI 26,
+so every Odin program refused the library, and its layout lacked the
+seven new constant asserts; a turn a node started or stopped declaring
+snapped where it should tween, which C's zeroed field and an omitted prop
+both do; a lookup by name from inside a view cached half a frame's
+access tree for the whole frame; a NaN or infinite `rotate` or `scale`
+reached the tweens and the access rects, and an infinite deadline was
+kept; Lua dropped a path's node `scale` with its own `rotate`; Node's
+`animationAt` read a loop count of 0 as none where C's and Odin's read
+for ever; `kui_pixels_free` relied on a `Vec`'s capacity; the book had
+no page for the `decode` example, so CI's first step failed;
+`exitWith`'s exit was typed `Json`, which the examples' typecheck
+rejected; and the changelog's What breaks left out `KuiSpec`'s moved
+offsets, `iterations`, the Rust struct literals and the new warning
+code. One entry is what the pass left.
+
+### `~` RG155 — Inside a turned node the caret, a selection drag and a text hit read the pointer upright
+
+ADR 0043 hits a turned node where it is drawn — a press finds an editor
+inside a tilted card — but the press's caret, the drag that extends it,
+a static text's selection drag and `text_hit` subtract the content
+origin from the viewport pointer (`dispatch.rs`, the press and the
+force click; the drag paths in `follow.rs` and `select_api.rs`), so the
+caret in an editor under `rotate: 0.25`, or under a `scale: 1.2` pulse,
+lands on the wrong character. The fix is one pull of the pointer back
+through the region's `HitTurn` wherever a content origin is subtracted,
+with the drag's held origin carrying the turn. Beside it, from the same
+review: the inner clip (a square clipper inside a turn) is a hard step
+in the shader and `fragment::EPILOGUE`, with no ramp, so its edge
+stairs when turned; and the ADR's second measurement — a frame of 1,000
+turned boxes against the same frame upright — was never taken.
+
+## After alpha.45
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.44" until 2026-10-09, when the round between the alpha.45 and
+alpha.46 tags — F131–F138 from the berainder review and alpha.46's
+pre-tag pass — had landed, and the heading moved with the tag; "After
 alpha.43" until 2026-10-08, when the round between the alpha.44 and
 alpha.45 tags — RG154, what alpha.44's pre-tag pass left, and alpha.45's
 pre-tag pass over it — had landed, and the heading moved with the tag;

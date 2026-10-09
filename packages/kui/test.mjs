@@ -1721,6 +1721,7 @@ test('decodeImage and decodeAnimation read a GIF, and animationAt plays it', () 
   assert.equal(over.index, 1);
   assert.equal(over.next, Infinity, 'played out');
   assert.deepEqual(animationAt(gif.delays, null, 0.16), { index: 0, next: 0.2 }, 'for ever');
+  assert.deepEqual(animationAt(gif.delays, 0, 0.16), { index: 0, next: 0.2 }, '0 is for ever, as in C');
 
   const ctx = new Ctx();
   const id = ctx.addImage(gif.width, gif.height, gif.frames[0]);

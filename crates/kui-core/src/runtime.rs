@@ -1405,7 +1405,8 @@ impl Core {
     /// past, or with no clock, is a frame now, as `request_frame` is. A
     /// time that is not a number is ignored.
     pub fn request_frame_at(&mut self, at: f64) {
-        if at.is_nan() {
+        // NaN asks for nothing, and so does a time that never comes.
+        if at.is_nan() || at == f64::INFINITY {
             return;
         }
         if self.anim.time().is_none_or(|now| at <= now) {

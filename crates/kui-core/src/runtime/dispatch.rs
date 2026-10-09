@@ -1122,7 +1122,8 @@ impl Core {
     /// name (a button's text inside it). Not the key label `key_of` reads,
     /// which is the name the view opened the node under and a reader never
     /// hears. The window itself is not matched. More than one node with
-    /// the name raises `ambiguous-name`; None when none has it.
+    /// the name raises `ambiguous-name`; None when none has it. From
+    /// inside a view, the tree is the last one derived ([`Self::access_tree`]).
     pub fn key_named(&mut self, name: &str) -> Option<Key> {
         let (first, count) = {
             let mut hits = self
@@ -1143,9 +1144,11 @@ impl Core {
 
     /// The access tree of the last finished frame (see [`crate::access`]):
     /// derived on the first call after a frame, then reused. A driver that
-    /// never asks pays nothing.
+    /// never asks pays nothing. Asked while a frame is being built, it is
+    /// the last tree derived, unchanged: the frame in progress is half a
+    /// tree, and caching it would serve that half for the whole frame.
     pub fn access_tree(&mut self) -> &crate::access::AccessTree {
-        if self.access_built != self.frame_no {
+        if self.access_built != self.frame_no && !self.building {
             let src = crate::access::Sources {
                 text: &self.text,
                 cells: &self.cells,

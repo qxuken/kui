@@ -1,6 +1,7 @@
 import type {
   AppMsg,
   BoxProps,
+  EnterProp,
   GeneratedSpecProps,
   KuiNode,
   MenuItemInput,
@@ -3082,7 +3083,7 @@ export declare class Ctx {
    * that declares an `exit`, with that node's transition, and is
    * forgotten when that frame finishes.
    */
-  exitWith(key: string, exit: Json): void
+  exitWith(key: string, exit: EnterProp): void
   /**
    * The frame-clock time the next asked-for frame is due at, in
    * seconds; `null` when none was asked for.
@@ -3119,8 +3120,9 @@ export declare class Ctx {
    */
   focus(key: string): void
   /**
-   * The hex key of the node a label names — the label a `key`
-   * prop declared, resolved through the frame being built so
+   * The hex key of the node a key label names — the label a `key`
+   * prop declared, not the accessible name a reader hears
+   * (`keyNamed`), resolved through the frame being built so
    * far and then the last finished one — or null when no node
    * declared it. The door for holding a key across frames;
    * every call that takes a key takes the label too, so this
@@ -3613,7 +3615,7 @@ export declare function decodeAnimation(bytes: Buffer): DecodedAnimation
 
 /**
  * Which of the frames with these `delays` shows `elapsed` seconds after
- * the animation started, playing `loops` times (null for ever), and when
+ * the animation started, playing `loops` times (null or 0 for ever), and when
  * the next is due: `animationAt(gif.delays, gif.loops, ctx.now() -
  * started)`, then `updateImage` when the index moved and
  * `requestFrameAt(started + next)`.
@@ -4380,7 +4382,7 @@ export declare class KuiWindow {
    * that declares an `exit`, with that node's transition, and is
    * forgotten when that frame finishes.
    */
-  exitWith(key: string, exit: Json): void
+  exitWith(key: string, exit: EnterProp): void
   /**
    * The frame-clock time the next asked-for frame is due at, in
    * seconds; `null` when none was asked for.
@@ -4417,8 +4419,9 @@ export declare class KuiWindow {
    */
   focus(key: string): void
   /**
-   * The hex key of the node a label names — the label a `key`
-   * prop declared, resolved through the frame being built so
+   * The hex key of the node a key label names — the label a `key`
+   * prop declared, not the accessible name a reader hears
+   * (`keyNamed`), resolved through the frame being built so
    * far and then the last finished one — or null when no node
    * declared it. The door for holding a key across frames;
    * every call that takes a key takes the label too, so this
