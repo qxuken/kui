@@ -1369,6 +1369,7 @@ impl<A: App> PumpRunner<A> {
         events: impl IntoIterator<Item = UiEvent>,
         mut to_app: impl FnMut(&mut A, UiEvent, &mut Core),
     ) {
+        self.shell_mut().stamp_clock();
         let Shell {
             extensions,
             app,
@@ -1879,6 +1880,25 @@ impl ApplicationHandler<access_bridge::UserEvent> for Handler<'_, '_> {
 }
 
 impl DynShell<'_> {
+    /// Brings every core's frame clock up to now (backlog F139). The
+    /// frame stamps it too, but the loop parks between frames, so input
+    /// handled after an idle stretch and the handlers it reaches would
+    /// otherwise read the last frame's time: a toast stamped in a click
+    /// handler would expire early, a type-ahead would extend a search
+    /// typed seconds ago. Called before input is handled and before
+    /// events reach the app. The clock only moves forward, and a frame's
+    /// own readings go by the time its frame began (`AnimStore`'s
+    /// `drove_at`), so stamping between frames changes no drawing.
+    fn stamp_clock(&mut self) {
+        let now = self.epoch.elapsed().as_secs_f64();
+        for p in &mut self.panes {
+            p.core.set_time(now);
+        }
+        if let Some(core) = &mut self.main_core {
+            core.set_time(now);
+        }
+    }
+
     /// The main window's core: its pane's once it exists, the one the
     /// launcher built before that.
     fn core_mut(&mut self) -> &mut Core {
@@ -2043,6 +2063,7 @@ impl DynShell<'_> {
         self.audio_touch = t0;
         let completes = input_completes(&ev);
         let here = self.panes[i].id;
+        self.stamp_clock();
         let events = self.panes[i].core.handle_input(ev);
         let reached_app = self.route_events(events);
         self.owe_for(reached_app && completes);
@@ -2137,6 +2158,7 @@ impl DynShell<'_> {
     /// Returns whether anything reached the app (as against an extension
     /// answering for itself).
     fn route_events(&mut self, events: Vec<UiEvent>) -> bool {
+        self.stamp_clock();
         let mut reached_app = false;
         // An extension's replies go to whoever declared its slot (ADR 0014
         // decision 6): not routed by origin — a reply is addressed by being

@@ -205,7 +205,12 @@ impl<C: BorrowMut<Core>> Drive<C> {
     }
 
     /// One input, its events to `app`, and back to the caller too.
+    /// The core reads the clock as [`Self::advance`] left it, as the
+    /// runner stamps it before input, so a handler after an `advance`
+    /// reads the advanced time and not the last frame's.
     pub fn input(&mut self, app: &mut impl App, ev: InputEvent) -> Vec<UiEvent> {
+        let now = self.now;
+        self.core().set_time(now);
         let out = self.core().handle_input(ev);
         self.deliver(app, out.clone());
         out

@@ -146,6 +146,12 @@ impl Core {
     /// search under way.
     pub(crate) fn type_ahead(&mut self, i: usize, text: &str, out: &mut Vec<UiEvent>) -> bool {
         let typed: String = text.chars().filter(|c| !c.is_control()).collect();
+        // Aged here as well as at the frame: a window parks between
+        // frames, so after a quiet second the keystroke can come before
+        // any frame has aged the buffer, and the driver stamped the clock
+        // for it (backlog F139). Before the Space test, so a Space after
+        // the pause presses rather than extending a search gone stale.
+        self.age_type_ahead();
         if typed.is_empty() || (typed == " " && self.type_ahead.is_empty()) {
             return false;
         }
@@ -245,8 +251,9 @@ impl Core {
     }
 
     /// Clears a type-ahead buffer that has gone stale. Run at the start of
-    /// a frame, which is where the clock already is: input routing stays
-    /// timeless, and a frame with nothing typed pays one comparison.
+    /// a frame, where a frame with nothing typed pays one comparison, and
+    /// before each keystroke, against the clock the driver stamped for it
+    /// (backlog F139).
     pub(crate) fn age_type_ahead(&mut self) {
         if self.type_ahead.is_empty() {
             return;

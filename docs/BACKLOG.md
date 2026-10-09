@@ -182,7 +182,9 @@ F131–F138, from the berainder review of 2026-10-08, were built the day
 it was filed and the day after — a turn and a scale on any node (ADR
 0043), position stops and a count on a cycle, the frame clock read and a
 frame asked at a time, the exit named at the removal, a lookup by
-accessible name, the runner's decoder — and are in the archive.
+accessible name, the runner's decoder — and are in the archive; and
+F139, from berainder's alpha.47 upgrade the day after — a handler
+reading the last frame's clock — was built the day it was filed.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -821,6 +823,15 @@ changing shape; **mipmaps** are what a photo viewer minifying a
 12-megapixel texture needs and an app rendering at `w × scale` does not.
 **Condition:** a stream that changes a corner of a large frame, or a
 viewer that shows a photo smaller than it is.
+
+**The second half's condition, met (2026-10-09).** berainder's alpha.47
+upgrade shows its bear photos on cards smaller than the files and in a
+0.9-scaled under-card smaller again. With `decode_image` in place of
+the `image` crate it still keeps a 25-line crop-and-resample in
+`bears.rs` to bring each photo down to card size before `add_image`,
+because the renderer samples the full image with no mip chain and a
+minified sample aliases. An app that loads a photo and declares it at
+the size it wants to show is what the mips are for.
 
 ### `.` V7 — A core `zoom` row — declined with a condition
 
@@ -1515,6 +1526,59 @@ launch before any window exists, with nothing in the arguments — and
 winit's delegate answers only that the app finished launching and is
 terminating. One entry, F124, **built 2026-10-06**, the day it was
 filed, and in the archive.
+
+## From the berainder alpha.47 upgrade (2026-10-09)
+
+berainder moved from alpha.44 to alpha.47 and took F131–F138 in place
+of the workarounds it had reported: the card tilts as it is dragged, the
+under-card is a true 0.9 scale, the burst is one-shot keyframes on
+position, a fling by button is one frame with `exit_with`, the app's
+own `Clock` and its per-toast waker threads are gone for `ui.now()` and
+`request_frame_at`, and the `image` crate for `decode_image`. Its
+report named four things it met on the way, each checked against the
+tree before it was filed. One was a bug in the runner: a handler that
+reads the clock after the window sat idle reads the last frame's time,
+so the app stamps its deadlines in `view` instead (F139, **built
+2026-10-09**, the day it was filed, and in the archive). Two are docs
+(F140, F141). The fourth, the 25-line resampler the app keeps because
+nothing minifies an image, is V6's condition met, and is written there.
+
+### `.` F140 — `role="none"` is the decorative door, and neither the warning nor the docs point a caption at it
+
+- **The ask.** "kui has no way to mark a caption as decorative." The
+  `ambiguous-name` warning (F137) caught berainder's like button and the
+  "like" caption under it with one accessible name — a reader heard each
+  twice — and the app, finding no decorative flag, renamed the buttons
+  ("like this bear"). The door exists: an explicit `role="none"` takes
+  a node and its subtree out of the access tree (ADR 0001's derivation
+  rules), and `props.md` names it for decorative images under
+  `image-without-label`. Nothing names it for text, and the warning
+  that found the duplicate says nothing about it.
+- **Wants.** `ambiguous-name`'s message, when one of the two is static
+  text beside a control that carries the same name, says that a
+  caption a reader need not hear takes `role="none"`; the `role` row in
+  `props.md` and the accessibility how-to say `none` is "decorative,
+  out of the tree", for text as for an image. The renaming berainder
+  chose stays the better answer where the caption is all the button
+  says, and the how-to says that too.
+
+**Found** by berainder's alpha.47 upgrade, 2026-10-09.
+
+### `.` F141 — A spring easing on a keyframed node runs as ease-out, and the `keyframes` row does not say so
+
+- **The ask.** "Springs sample as ease-out inside a cycle, which works
+  for a landing." berainder found it by trying. It is the design — a
+  keyframed slot is sampled straight off the clock, not integrated, and
+  a spring has no closed form to sample (`anim.rs`: "Springs are
+  integrated, not sampled; as a curve, ease out") — but the
+  `keyframes` and `easing` rows in `props.md` describe springs as
+  integrating with momentum and say nothing of a cycle.
+- **Wants.** One sentence on the `keyframes` row (and the `easing`
+  row's springs clause): between stops a spring easing is drawn as
+  `easeOut`, and `bounce` does nothing there; an overshoot in a cycle
+  is a stop past the target.
+
+**Found** by berainder's alpha.47 upgrade, 2026-10-09.
 
 ## From the berainder review (2026-10-08)
 
@@ -2961,6 +3025,8 @@ Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
 Nothing of the berainder review is open (F131 **built 2026-10-08**, ADR
 0043; F132–F138 **built 2026-10-09**).
+Of the berainder alpha.47 upgrade, F140 and F141 — two docs — are
+open (F139 **built 2026-10-09**, the day it was filed).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4286,3 +4352,7 @@ move.
 **From the alpha.46 pre-tag pass (2026-10-09)** — RG155, what it left, built the same day after the alpha.46 tag
 
 - `~` **RG155** — [Inside a turned node the caret, a selection drag and a text hit read the pointer upright](backlog/closed-2026-09.md#-rg155--inside-a-turned-node-the-caret-a-selection-drag-and-a-text-hit-read-the-pointer-upright--done-2026-10-09) — done (2026-10-09) — a pointer pulled back through the turn wherever a text position is read (`Core::unturned`: the press, the force click, the caret drag, `selection_hit`, `cell_row_col`, the pointer fields, `text_hit`), `caret_rect` and the IME anchor as drawn, the square inner clip ramped, and the measurement taken (`frame_1k_turned_rects`)
+
+**From the berainder alpha.47 upgrade (2026-10-09)** — F139, filed and built the same day
+
+- `~` **F139** — [A handler reads the last frame's clock: the runner stamps it only when it draws](backlog/closed-2026-09.md#-f139--a-handler-reads-the-last-frames-clock-the-runner-stamps-it-only-when-it-draws--done-2026-10-09) — done (2026-10-09) — the runner stamps every core's clock before input and before events reach the app; `Drive` stamps it before input; a keystroke ages the type-ahead itself

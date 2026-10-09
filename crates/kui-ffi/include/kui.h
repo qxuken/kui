@@ -2505,7 +2505,9 @@ typedef struct KuiDerivedToken {
 bool kui_tokens_derive(KuiCtx *ctx, const KuiDerivedToken *derived, size_t count);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
- * each kui_frame_begin; never setting it makes transitions snap. */
+ * each kui_frame_begin, and before handing the context input after the host
+ * sat idle, so kui_now read in an event's answer is the time it runs at
+ * (backlog F139); never setting it makes transitions snap. */
 void kui_set_time(KuiCtx *ctx, double now_secs);
 /* The frame clock as kui_set_time last set it, 0 before any (backlog
  * F134): what a view reads a deadline off - a toast's expiry, a sequence's

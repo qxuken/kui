@@ -310,6 +310,29 @@ fn type_ahead_extends_and_ages() {
     assert_eq!(core.focus(), Some(r[2]));
 }
 
+/// A window parks between frames, so after a quiet second the next
+/// keystroke can come before any frame has aged the buffer. The driver
+/// stamps the clock for the input (backlog F139) and the keystroke ages
+/// the buffer itself: "s" is Sent and not "ds", and a Space after the
+/// pause presses the item rather than extending a search gone stale.
+#[test]
+fn type_ahead_ages_at_the_keystroke_with_no_frame_between() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let rows = &["Inbox", "Drafts", "Sent"];
+    let (r, _) = frame(&mut core, Role::List, Role::ListItem, rows, 0);
+    tab(&mut core, false);
+    typed(&mut core, "d");
+    frame(&mut core, Role::List, Role::ListItem, rows, 0);
+    assert_eq!(core.focus(), Some(r[1]));
+    core.set_time(2.0);
+    typed(&mut core, "s");
+    assert_eq!(core.focus(), Some(r[2]));
+    frame(&mut core, Role::List, Role::ListItem, rows, 0);
+    core.set_time(4.0);
+    assert_eq!(typed(&mut core, " "), vec!["Sent".to_string()]);
+}
+
 /// With no clock every keystroke starts a fresh search: the useful half of
 /// type-ahead, and a behaviour a headless driver can rely on.
 #[test]

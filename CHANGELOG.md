@@ -21,6 +21,27 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.48 (unreleased)
+
+### Fixed
+
+- **A handler reads the clock at the time it runs** (backlog F139).
+  The windowed runner set the frame clock only when it drew, and the
+  loop parks between frames, so after an idle stretch `now()` in an
+  event handler read the last frame's time: a toast stamped in a click
+  handler counted from a frame drawn seconds before. The runner now
+  stamps every window's clock before it handles input and before
+  events reach the app, and `Drive` does the same after `advance`. A
+  composite's type-ahead ages at the keystroke as well as at the frame,
+  so a letter typed after a quiet second starts a new search, and a
+  Space after the pause presses the item rather than extending the old
+  one.
+
+**What you can delete.**
+
+- Stamping deadlines in `view` because a handler's `now()` was stale:
+  `core.now()` read in `on_event_with` is the time of the event.
+
 ## 0.1.0-alpha.47 (2026-10-09)
 
 ### Fixed

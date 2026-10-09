@@ -612,9 +612,11 @@ pub struct Core {
     pending_scroll_labels: Vec<(String, crate::tree::OriginId, Vec2)>,
     /// Type-ahead inside a composite: the
     /// characters typed so far, and the frame clock reading of the last
-    /// keystroke. The buffer is cleared at the start of the first frame
-    /// more than [`TYPE_AHEAD_SECS`] after it, so input routing stays
-    /// timeless — the aging happens where time already lives. With no
+    /// keystroke. The buffer is cleared at the start of the first frame,
+    /// or the first keystroke, more than [`TYPE_AHEAD_SECS`] after it —
+    /// the keystroke's against the clock its driver stamped before the
+    /// input (backlog F139), since a parked window draws no frame in
+    /// between. With no
     /// clock set `type_ahead_at` is None and every keystroke starts a
     /// fresh search, which is the useful half of type-ahead.
     type_ahead: String,
@@ -1364,8 +1366,11 @@ impl Core {
     }
 
     /// The frame clock for transitions: monotonic seconds, any origin.
-    /// Drivers set it before every frame; a driver that never does gets
-    /// snapping instead of animation.
+    /// Drivers set it before every frame, and before handing the core
+    /// input or the app its events (backlog F139) — the windowed runner
+    /// does both — so a handler that reads [`Self::now`] after an idle
+    /// stretch reads the time it runs at, not the last frame's. A driver
+    /// that never sets it gets snapping instead of animation.
     pub fn set_time(&mut self, now_secs: f64) {
         self.anim.set_time(now_secs);
         self.scroll.set_time(now_secs);
@@ -1376,7 +1381,11 @@ impl Core {
     /// driver chose; 0 before a driver sets one. What a view reads for
     /// "is this toast due", so that the app's deadlines and the core's
     /// easing agree, and a test that moves the clock (`Drive::advance`,
-    /// Node's `advance`, `kui_set_time`) moves both.
+    /// Node's `advance`, `kui_set_time`) moves both. Read from an event
+    /// handler it is the time the input was handled at: the windowed
+    /// runner stamps the clock before input as well as before a frame
+    /// (backlog F139), so a deadline set in a click handler after the
+    /// window sat idle counts from the click.
     pub fn now(&self) -> f64 {
         self.anim.time().unwrap_or(0.0)
     }

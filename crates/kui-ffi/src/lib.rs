@@ -703,8 +703,11 @@ fn theme_of(t: &KuiTheme) -> kui_core::Theme {
 }
 
 /// The frame clock for transitions, in monotonic seconds from any origin.
-/// Set it before each [`kui_frame_begin`]; a host that never does sees
-/// transitions snap to their targets.
+/// Set it before each [`kui_frame_begin`], and before handing the context
+/// input after the host sat idle (backlog F139), so what reads the clock
+/// between frames — `kui_now` in an event's answer, a type-ahead's age —
+/// reads the time it runs at; a host that never sets it sees transitions
+/// snap to their targets.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_set_time(ptr: *mut KuiCtx, now_secs: f64) {
     guard((), || {

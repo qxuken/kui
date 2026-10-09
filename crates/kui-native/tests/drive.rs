@@ -301,3 +301,34 @@ fn a_view_reads_why_its_frame_runs() {
     assert!(asks[0].0.ends_with("drive.rs"), "{asks:?}");
     assert_eq!(asks[0].1, app.asked_at);
 }
+
+/// A handler reads the clock at the time it runs, not the last frame's
+/// (backlog F139): the runner stamps the clock before input, and `Drive`
+/// does the same after `advance`, so a toast a click stamps after the
+/// window sat idle counts its three seconds from the click.
+#[test]
+fn a_handler_reads_the_clock_it_runs_at() {
+    #[derive(Default)]
+    struct Toaster {
+        until: Option<f64>,
+    }
+    impl App for Toaster {
+        fn view(&mut self, ui: &mut Ui<'_>) {
+            ui.leaf_keyed("toast", NodeSpec::row().size(80.0, 30.0).on_click("toast"));
+        }
+        fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+            if ev.payload.as_str() == Some("toast") {
+                self.until = Some(core.now() + 3.0);
+            }
+        }
+    }
+
+    let mut app = Toaster::default();
+    let mut d = Drive::new(Core::new(), 200.0, 100.0);
+    d.frame(&mut app);
+    // Ten idle seconds with no frame drawn, as a parked window spends them.
+    d.advance(10.0);
+    let toast = d.key_of("toast").expect("the toast button");
+    d.click_key(&mut app, toast);
+    assert_eq!(app.until, Some(13.0));
+}
