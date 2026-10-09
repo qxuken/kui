@@ -32,7 +32,7 @@
 
 use kui_devtools::Example;
 use kui_native::widgets;
-use kui_native::{Align, App, NodeSpec, TextStyle, Titlebar, Ui, UiEvent, Value};
+use kui_native::{Align, App, Color, NodeSpec, TextStyle, Titlebar, Ui, UiEvent, Value};
 
 const TABS: [&str; 3] = ["main.rs", "layout.rs", "README"];
 
@@ -52,22 +52,25 @@ impl App for Chrome {
         ui.always_on_top(self.pinned);
         ui.with(NodeSpec::column().fill().bg(t.bg), |ui| {
             // The strip, with tabs in it: the tabs are clickable, the rest
-            // drags the window.
+            // drags the window. The tabs are centred in the strip, as the
+            // title is, so they sit on the traffic lights' line whatever
+            // the titlebar's height (`--titlebar`); the chosen one is the
+            // raised pill.
             widgets::titlebar_with(ui, |ui| {
                 let t = ui.theme();
                 ui.with(
                     NodeSpec::row()
                         .fill()
                         .gap(4.0)
-                        .cross_align(Align::End),
+                        .cross_align(Align::Center),
                     |ui| {
                         for (i, name) in TABS.iter().enumerate() {
                             let on = i == self.tab;
                             ui.text_in_keyed(name, NodeSpec::row()
-                                    .pad_xy(12.0, 6.0)
-                                    .radius_top(6.0)
-                                    .bg(if on { t.bg } else { t.surface })
-                                    .hover_bg(if on { t.bg } else { t.hover })
+                                    .pad_xy(12.0, 5.0)
+                                    .radius(6.0)
+                                    .bg(if on { t.surface } else { Color::TRANSPARENT })
+                                    .hover_bg(if on { t.surface } else { t.hover })
                                     .on_click(Value::map([
                                         ("kind", Value::str("tab")),
                                         ("name", Value::str(*name)),
