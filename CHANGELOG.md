@@ -21,6 +21,38 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.49 (unreleased)
+
+### Changed
+
+- **A Lua view lowers in about two-thirds of the time** (backlog F143).
+  kui-lua reads each table in one pass: `Table::for_each` with a key
+  type that copies a string key's bytes off the Lua stack instead of
+  making a registry reference for it (a `pairs` step made one for every
+  key and every string or table value, and dropped it again), the keys
+  matched as bytes, the schema rows looked up in a hash map rather than
+  scanned, `size` and `radius` read in the same pass and still applied
+  before the rows they underlie, a text's `value` and `spans` taken from
+  it, and a span's twelve style keys, a `pad` table's seven edges and
+  the unknown-prop check — a second walk over every table while the
+  core's diagnostics are on — folded into it. Nothing a view writes
+  changes, and a table in an unusual shape (a number for a text's
+  `value`, a span's `size` as a string) is read through `get` as before.
+  Measured over a settings pane's worth of tables (`cargo bench -p
+  kui-lua --bench walk`, medians): **2.55 → 1.64 ms** a frame with the
+  diagnostics off, as a release build of the windowed runner has them,
+  and **3.42 → 1.75 ms** with them on; in kawoosh's settings, themes,
+  theme lab and grammars panes the walk went 3.45 → 2.27, 3.51 → 2.13,
+  2.12 → 1.42 and 1.46 → 1.06 ms on the frames a pane is rebuilt in.
+  The rest of the walk is mlua's own reference for each string and
+  table value, which its safe API does not let a binding skip.
+
+**What you can delete.**
+
+- Hand-flattening a Lua view's tree, or building it in fewer, larger
+  tables, to keep the lowering off the frame: kawoosh's settings pane
+  lowers at about 1.4 µs a table where it took 2.2.
+
 ## 0.1.0-alpha.48 (2026-10-09)
 
 **What breaks.**

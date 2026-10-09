@@ -84,6 +84,8 @@ that prop costs.
 | `list_100k_rows_variable_learning` | the same 100k list learning a visible row's height | ~14.7 µs |
 | `slot_1500_nodes_fresh` | an extension filling a slot with 500 rows — a box, a text and a hover-tracking box each, 1,500 nodes — built fresh every frame (ADR 0045) | ~277 µs |
 | `slot_1500_nodes_replayed` | the same frame replayed from what the first fill kept: the gap is the extension's own pushes, which a Rust fill has little of and a Lua or C fill's walk is most of | ~208 µs |
+| `walk` (`-p kui-lua --bench walk`) | a settings pane's worth of Lua tables (120 settings: a name, a line of spans, four chips with a background, a radius, a pad and a click payload), built once and lowered every frame, layout and emission included; the diagnostics off, as a release runner has them (on: ~1.75 ms) | ~1.64 ms |
+| `build_and_walk` | the same tables built by the view each frame, as a view does: the gap is the script's own time | ~2.50 ms |
 | `warm_50x200` (`--bench stream`) | fifty 200-column mono lines, the same every frame — a terminal pane at rest | ~85 µs |
 | `stream_50x200_log` | the same pane with every line new each frame, thirty-word log vocabulary plus numbers | ~25 ms |
 | `stream_50x200_random` | every line new and random printable ASCII, nothing for the shape-run cache to hit | ~64 ms |

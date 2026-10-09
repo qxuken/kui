@@ -31,7 +31,7 @@
 
 use std::sync::LazyLock;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::access::Role;
 use crate::anim::{Easing, Repeat};
@@ -3113,11 +3113,25 @@ pub fn by_name(name: &str) -> Option<&'static PropDef> {
     PROPS.iter().find(|d| d.name == name)
 }
 
-pub fn by_snake_name(name: &str) -> Option<&'static PropDef> {
+/// The rows by their snake_case name, for a binding that looks one up per
+/// prop per node every frame (kui-lua's walk, backlog F143): a scan of the
+/// ~200 names was 8% of a Lua view's lowering.
+static BY_SNAKE: LazyLock<FxHashMap<&'static [u8], usize>> = LazyLock::new(|| {
     SNAKE_NAMES
         .iter()
-        .position(|n| *n == name)
-        .map(|i| &PROPS[i])
+        .enumerate()
+        .map(|(i, n)| (n.as_bytes(), i))
+        .collect()
+});
+
+pub fn by_snake_name(name: &str) -> Option<&'static PropDef> {
+    by_snake_bytes(name.as_bytes())
+}
+
+/// [`by_snake_name`] by the name's bytes: a key read off a Lua table is
+/// bytes, and is looked up without being checked as UTF-8 first.
+pub fn by_snake_bytes(name: &[u8]) -> Option<&'static PropDef> {
+    BY_SNAKE.get(name).map(|&i| &PROPS[i])
 }
 
 pub fn by_id(id: u32) -> Option<&'static PropDef> {

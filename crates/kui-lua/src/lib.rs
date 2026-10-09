@@ -1853,12 +1853,14 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
 /// whole match was 64 KB of stack a level in a debug build, and 32
 /// nested columns overflowed a test thread.
 fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
-    let ty: String = t.get("type")?;
-    match ty.as_str() {
+    let ty: mlua::LuaString = t.get("type")?;
+    let ty = ty.to_str()?;
+    let ty: &str = &ty;
+    match ty {
         "fill" => build_fill(ui, t),
         "devtools_tab" => build_devtools_tab(ui, t),
         "row" | "column" | "grid" => {
-            open_box(ui, t, &ty)?;
+            open_box(ui, t, ty)?;
             build_children(ui, t)?;
             ui.close();
             Ok(())
@@ -1869,15 +1871,14 @@ fn build_one(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
             ui.close();
             Ok(())
         }
-        "titlebar" | "tooltip" | "radio_group" => build_holder(ui, t, &ty),
-        _ => build_widget(ui, t, &ty),
+        "titlebar" | "tooltip" | "radio_group" => build_holder(ui, t, ty),
+        _ => build_widget(ui, t, ty),
     }
 }
 
 #[inline(never)]
 fn open_box(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
-    check_props(ui, t, element_of(ty))?;
-    let mut p = with_refs(ui, |refs| parse_props(t, ty == "row", refs))?;
+    let (mut p, _) = node_props(ui, t, ty == "row", element_of(ty))?;
     // A grid is a column whose rows' cells line up (ADR 0033).
     p.spec.layout.table = ty == "grid";
     ui.core().open_from(p, Content::Box);
@@ -1886,7 +1887,6 @@ fn open_box(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
 
 #[inline(never)]
 fn open_fragment(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
-    check_props(ui, t, element_of("fragment"))?;
     // Handle from the host (kui_fragment_add / Core::add_fragment),
     // passed to scripts as a plain integer, like an image's — and
     // `image`, the image handle the function samples (backlog V1),
@@ -1897,7 +1897,7 @@ fn open_fragment(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         Some(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
         None => Vec::new(),
     };
-    let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+    let (p, _) = node_props(ui, t, false, element_of("fragment"))?;
     let frag = kui_core::FragmentRef {
         id: kui_core::FragmentId::from_ffi(id as u64),
         image: image
@@ -1912,7 +1912,9 @@ fn open_fragment(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
 /// rest for the same reason as [`open_box`].
 #[inline(never)]
 fn build_holder(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
-    check_props(ui, t, element_of(ty))?;
+    if ty != "radio_group" {
+        check_props(ui, t, element_of(ty))?;
+    }
     match ty {
         "titlebar" => {
             if t.raw_len() > 0 {
@@ -1936,7 +1938,7 @@ fn build_holder(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // Every box row; the role, the name and, with no `gap`, the
             // stock spacing are the group's (`widgets::radio_group_with`).
             let label: String = t.get("label")?;
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let (p, _) = node_props(ui, t, false, element_of(ty))?;
             let mut result = Ok(());
             widgets::radio_group_with(ui, &label, p.spec, |ui| result = build_children(ui, t));
             result
@@ -1947,14 +1949,29 @@ fn build_holder(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
 
 #[inline(never)]
 fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
-    check_props(ui, t, element_of(ty))?;
-    match ty {
+    // Set by the arms whose props are the node table's own: the
+    // unknown-prop check was made in their walk (`node_props`); the
+    // others are checked here after.
+    let mut checked = false;
+    let built = match ty {
         "text" => {
-            let style = with_refs(ui, |refs| parse_props(t, false, refs))?.style;
-            if let Some(spans) = t.get::<Option<Table>>("spans")? {
+            checked = true;
+            let (p, walked) = node_props(ui, t, false, element_of(ty))?;
+            let style = p.style;
+            // What the walk found, in the shapes nearly every text has;
+            // anything else goes through `get`'s own conversion (a number
+            // as its string) and its errors, as before the walk.
+            let spans = match walked.spans {
+                Some(mlua::Value::Table(spans)) => Some(spans),
+                Some(_) => t.get::<Option<Table>>("spans")?,
+                None => None,
+            };
+            if let Some(spans) = spans {
                 let parts = with_refs(ui, |refs| collect_spans(&spans, refs))?;
                 let spans: Vec<Span<'_>> = parts.iter().map(span_of).collect();
                 ui.rich_text(&spans, style);
+            } else if let Some(mlua::Value::String(value)) = walked.value {
+                ui.text(&value.to_str()?, style);
             } else {
                 let value: String = t.get("value")?;
                 ui.text(&value, style);
@@ -1967,9 +1984,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // are the rows ADR 0025 gives the element, by name.
             let id: i64 = t.get("id")?;
             // A leaf: its `tooltip` floats beside it (backlog RG113).
-            let spec = with_refs(ui, |refs| parse_props(t, false, refs))?
-                .for_leaf()
-                .spec;
+            let spec = props_of(ui, t, ty, &mut checked)?.for_leaf().spec;
             let named = |row: &str, names: &[&str]| -> mlua::Result<usize> {
                 match t.get::<Option<String>>(row)? {
                     None => Ok(0),
@@ -1992,7 +2007,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
         "polygon" => {
             // `points`, each a `{x, y}` pair; the fill is the `bg` row, read
             // by parse_props like any node's (ADR 0025, decision 6).
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let p = props_of(ui, t, ty, &mut checked)?;
             let Some(list) = t.get::<Option<Table>>("points")? else {
                 return Err(bad("polygon needs points"));
             };
@@ -2013,7 +2028,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // form, a list of numbers); the fill is the `bg` row, `fill_rule`
             // its rule; `width` and `color` are the stroke's, as a line's,
             // and no `width` is no stroke (ADR 0040).
-            let mut p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let mut p = props_of(ui, t, ty, &mut checked)?;
             // A path's `rotate` is its own (ADR 0041), not the node's
             // (ADR 0043, decision 1): the generic walk above read it as
             // the row every other element takes, and that reading goes.
@@ -2071,7 +2086,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // line's sizing with its own box. `color` is the text-colour
             // row, read off the parsed style, so it defaults to the
             // foreground like a text node's.
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let p = props_of(ui, t, ty, &mut checked)?;
             let point = |v: mlua::Value| -> mlua::Result<kui_core::Vec2> {
                 let mlua::Value::Table(pt) = v else {
                     return Err(bad("a line point is a {x, y} table"));
@@ -2114,7 +2129,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // attribute spans over them (0 keeps the default; `ul` is the
             // underline's own colour, backlog K4). The style rows size
             // the cells; the node rows are the node's.
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?;
+            let p = props_of(ui, t, ty, &mut checked)?;
             let rows: usize = t.get::<Option<usize>>("rows")?.unwrap_or(0);
             let cols: usize = t.get::<Option<usize>>("cols")?.unwrap_or(0);
             if rows == 0 || cols == 0 {
@@ -2263,7 +2278,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
         }
         "edit" => {
             // A leaf: its `tooltip` floats beside it (backlog RG113).
-            let p = with_refs(ui, |refs| parse_props(t, false, refs))?.for_leaf();
+            let p = props_of(ui, t, ty, &mut checked)?.for_leaf();
             let label = match p.key.clone().or(t.get::<Option<String>>("label")?) {
                 Some(l) => l,
                 None => return Err(bad("edit needs a key (state is retained by key)")),
@@ -2425,7 +2440,11 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             Ok(())
         }
         other => Err(mlua::Error::runtime(format!("unknown node type '{other}'"))),
+    };
+    if !checked {
+        check_props(ui, t, element_of(ty))?;
     }
+    built
 }
 
 /// Reads the rows `names` off `t` by their Lua names and applies them over
@@ -2534,73 +2553,7 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
                 family: None,
                 size: None,
             }),
-            mlua::Value::Table(t) => {
-                let text: String = t
-                    .get::<Option<String>>(1)?
-                    .ok_or_else(|| bad("span table needs its text at [1]"))?;
-                let color = match t.get::<mlua::Value>("color")? {
-                    mlua::Value::Nil => None,
-                    v => parse_color(&v, refs)?,
-                };
-                let bg = match t.get::<mlua::Value>("bg")? {
-                    mlua::Value::Nil => None,
-                    v => parse_color(&v, refs)?,
-                };
-                let underline_color = match t.get::<mlua::Value>("underline_color")? {
-                    mlua::Value::Nil => None,
-                    v => parse_color(&v, refs)?,
-                };
-                let underline_style = match t.get::<Option<String>>("underline_style")? {
-                    None => None,
-                    Some(name) => Some(
-                        kui_core::UnderlineStyle::NAMES
-                            .iter()
-                            .position(|n| *n == name)
-                            .map(|i| kui_core::UnderlineStyle::from_index(i as u32))
-                            .ok_or_else(|| {
-                                bad(format!(
-                                    "underline_style must be one of {}, got {name:?}",
-                                    kui_core::UnderlineStyle::NAMES.join(" | ")
-                                ))
-                            })?,
-                    ),
-                };
-                // The span's face: `font` (a handle) over `family` (a
-                // name), as a text's own style reads them.
-                let family = match t.get::<mlua::Value>("font")? {
-                    mlua::Value::Nil => match t.get::<mlua::Value>("family")? {
-                        mlua::Value::Nil => None,
-                        v => match parse_value(&Kind::Family, &v, refs)
-                            .map_err(|e| bad(format!("span family: {e}")))?
-                        {
-                            Some(Parsed::Family(f)) => Some(f),
-                            _ => None,
-                        },
-                    },
-                    v => match parse_value(&Kind::Resource, &v, refs)
-                        .map_err(|e| bad(format!("span font: {e}")))?
-                    {
-                        Some(Parsed::Resource(id)) => {
-                            Some(kui_core::FontFamily::Custom(kui_core::FontId::from_ffi(id)))
-                        }
-                        _ => None,
-                    },
-                };
-                out.push(SpanPart {
-                    family,
-                    size: t.get::<Option<f32>>("size")?,
-                    text,
-                    bold: t.get::<Option<bool>>("bold")?.unwrap_or(false),
-                    italic: t.get::<Option<bool>>("italic")?.unwrap_or(false),
-                    underline: t.get::<Option<bool>>("underline")?.unwrap_or(false),
-                    underline_color,
-                    underline_style,
-                    strikethrough: t.get::<Option<bool>>("strikethrough")?.unwrap_or(false),
-                    color,
-                    bg,
-                    bg_radius: t.get::<Option<f32>>("bg_radius")?.unwrap_or(0.0).max(0.0),
-                });
-            }
+            mlua::Value::Table(t) => out.push(span_part(&t, refs)?),
             other => {
                 return Err(bad(format!(
                     "span must be a string or table, got {}",
@@ -2610,6 +2563,124 @@ fn collect_spans(spans: &Table, refs: &mut Refs<'_>) -> mlua::Result<Vec<SpanPar
         }
     }
     Ok(out)
+}
+
+/// One span table: its text at `[1]` and its style keys, read in one
+/// `pairs` walk rather than a lookup for each of the twelve keys a span
+/// may carry and seldom does (backlog F143: a text of spans looked up
+/// thirteen keys a span, most of them absent). A key no span reads is
+/// passed over, as a lookup never asked for it. A value in a shape the
+/// walk does not take is read again through `get`, whose conversion and
+/// errors are the ones a span had before.
+fn span_part(t: &Table, refs: &mut Refs<'_>) -> mlua::Result<SpanPart> {
+    let mut text = None;
+    let (mut color, mut bg, mut underline_color) = (None, None, None);
+    let (mut underline_style, mut font, mut family) = (None, None, None);
+    let (mut size, mut bg_radius) = (None, None);
+    let (mut bold, mut italic, mut underline, mut strikethrough) = (false, false, false, false);
+    // A boolean key as `get::<Option<bool>>` reads it: nil false, a
+    // boolean itself, anything else true.
+    let flag = |v: &mlua::Value| !matches!(v, mlua::Value::Nil | mlua::Value::Boolean(false));
+    t.for_each::<NodeKey, mlua::Value>(|k, v| {
+        match &k {
+            NodeKey::Int(1) => text = Some(v),
+            NodeKey::Str { .. } => match k.bytes() {
+                b"color" => color = Some(v),
+                b"bg" => bg = Some(v),
+                b"underline_color" => underline_color = Some(v),
+                b"underline_style" => underline_style = Some(v),
+                b"font" => font = Some(v),
+                b"family" => family = Some(v),
+                b"size" => size = Some(v),
+                b"bg_radius" => bg_radius = Some(v),
+                b"bold" => bold = flag(&v),
+                b"italic" => italic = flag(&v),
+                b"underline" => underline = flag(&v),
+                b"strikethrough" => strikethrough = flag(&v),
+                _ => {}
+            },
+            _ => {}
+        }
+        Ok(())
+    })?;
+    let text = match text {
+        Some(mlua::Value::String(s)) => s.to_str()?.to_string(),
+        _ => t
+            .get::<Option<String>>(1)?
+            .ok_or_else(|| bad("span table needs its text at [1]"))?,
+    };
+    let color = match color {
+        Some(v) => parse_color(&v, refs)?,
+        None => None,
+    };
+    let bg = match bg {
+        Some(v) => parse_color(&v, refs)?,
+        None => None,
+    };
+    let underline_color = match underline_color {
+        Some(v) => parse_color(&v, refs)?,
+        None => None,
+    };
+    let underline_style = match underline_style {
+        None => None,
+        Some(_) => {
+            let name: String = t.get("underline_style")?;
+            Some(
+                kui_core::UnderlineStyle::NAMES
+                    .iter()
+                    .position(|n| *n == name)
+                    .map(|i| kui_core::UnderlineStyle::from_index(i as u32))
+                    .ok_or_else(|| {
+                        bad(format!(
+                            "underline_style must be one of {}, got {name:?}",
+                            kui_core::UnderlineStyle::NAMES.join(" | ")
+                        ))
+                    })?,
+            )
+        }
+    };
+    // The span's face: `font` (a handle) over `family` (a name), as a
+    // text's own style reads them.
+    let family = match (font, family) {
+        (Some(v), _) => match parse_value(&Kind::Resource, &v, refs)
+            .map_err(|e| bad(format!("span font: {e}")))?
+        {
+            Some(Parsed::Resource(id)) => {
+                Some(kui_core::FontFamily::Custom(kui_core::FontId::from_ffi(id)))
+            }
+            _ => None,
+        },
+        (None, Some(v)) => match parse_value(&Kind::Family, &v, refs)
+            .map_err(|e| bad(format!("span family: {e}")))?
+        {
+            Some(Parsed::Family(f)) => Some(f),
+            _ => None,
+        },
+        (None, None) => None,
+    };
+    let number = |v: Option<mlua::Value>, key: &str| -> mlua::Result<Option<f32>> {
+        match v {
+            None => Ok(None),
+            Some(v) => match number(&v) {
+                Some(n) => Ok(Some(n)),
+                None => t.get::<Option<f32>>(key),
+            },
+        }
+    };
+    Ok(SpanPart {
+        family,
+        size: number(size, "size")?,
+        text,
+        bold,
+        italic,
+        underline,
+        underline_color,
+        underline_style,
+        strikethrough,
+        color,
+        bg,
+        bg_radius: number(bg_radius, "bg_radius")?.unwrap_or(0.0).max(0.0),
+    })
 }
 
 /// Reads a `tokens` table as a [`kui_core::Tokens`].
@@ -2855,43 +2926,234 @@ fn length_of(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<f32>> 
 /// schema does not own (`type`, `value`, `label`, the children) fall
 /// through. `refs` is what a `$name` resolves through.
 pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result<PropsOut> {
+    parse_node(t, is_row, refs, Check::Off).map(|(out, _)| out)
+}
+
+/// What one walk over a node table found besides its props: the keys no
+/// table claims, collected when asked (the unknown-prop check, folded
+/// into the walk rather than a second one: it was a quarter of a Lua
+/// view's lowering, backlog F143), and a text's `value` and `spans`, so
+/// the text arm reads them without looking them up again.
+#[derive(Default)]
+struct Walked {
+    unknown: Vec<NodeKey>,
+    value: Option<mlua::Value>,
+    spans: Option<mlua::Value>,
+}
+
+/// A table's key as the walks read it (backlog F143): a string key's
+/// bytes held inline, an integer key, or anything else. Read off the Lua
+/// stack by [`Table::for_each`] through `from_stack`, a string key costs
+/// no registry reference — each `pairs` step made one for every key, a
+/// quarter of a Lua view's lowering spent creating and dropping them.
+/// `from_lua` reads the same from a [`mlua::Value`], so a mlua that stops
+/// calling `from_stack` loses the speed and nothing else.
+#[derive(Clone)]
+enum NodeKey {
+    /// A string key of up to [`NodeKey::INLINE`] bytes: every prop name.
+    Str {
+        len: u8,
+        buf: [u8; NodeKey::INLINE],
+    },
+    /// A longer string key, copied out: no prop is that long, so it is
+    /// only ever unclaimed, and the check names it.
+    Long(String),
+    Int(i64),
+    Other,
+}
+
+impl NodeKey {
+    const INLINE: usize = 30;
+
+    fn of_bytes(b: &[u8]) -> Self {
+        if b.len() <= Self::INLINE {
+            let mut buf = [0; Self::INLINE];
+            buf[..b.len()].copy_from_slice(b);
+            NodeKey::Str {
+                len: b.len() as u8,
+                buf,
+            }
+        } else {
+            NodeKey::Long(String::from_utf8_lossy(b).into_owned())
+        }
+    }
+
+    /// The key's bytes, for a string key that fits; empty otherwise.
+    fn bytes(&self) -> &[u8] {
+        match self {
+            NodeKey::Str { len, buf } => &buf[..*len as usize],
+            _ => &[],
+        }
+    }
+
+    /// The key as a name for a warning: its text, or what it is.
+    fn name(&self) -> String {
+        match self {
+            NodeKey::Str { .. } => String::from_utf8_lossy(self.bytes()).into_owned(),
+            NodeKey::Long(name) => name.clone(),
+            NodeKey::Int(i) => i.to_string(),
+            NodeKey::Other => "<a key>".into(),
+        }
+    }
+}
+
+impl mlua::FromLua for NodeKey {
+    fn from_lua(value: mlua::Value, _: &Lua) -> mlua::Result<Self> {
+        Ok(match value {
+            mlua::Value::String(s) => NodeKey::of_bytes(&s.as_bytes()),
+            mlua::Value::Integer(i) => NodeKey::Int(i),
+            _ => NodeKey::Other,
+        })
+    }
+
+    unsafe fn from_stack(idx: std::ffi::c_int, lua: &mlua::state::RawLua) -> mlua::Result<Self> {
+        use mlua::ffi;
+        let state = lua.state();
+        // SAFETY: `idx` is the key `lua_next` left on the stack. A string
+        // is read where it is (`lua_tolstring` converts nothing on one,
+        // so the traversal is undisturbed) and copied out before
+        // anything can pop it; a number is read without conversion.
+        unsafe {
+            Ok(match ffi::lua_type(state, idx) {
+                ffi::LUA_TSTRING => {
+                    let mut len = 0;
+                    let ptr = ffi::lua_tolstring(state, idx, &mut len);
+                    NodeKey::of_bytes(std::slice::from_raw_parts(ptr as *const u8, len))
+                }
+                ffi::LUA_TNUMBER if ffi::lua_isinteger(state, idx) != 0 => {
+                    NodeKey::Int(ffi::lua_tointeger(state, idx))
+                }
+                _ => NodeKey::Other,
+            })
+        }
+    }
+}
+
+/// What the walk collects for the unknown-prop check: nothing (the
+/// core's diagnostics are off), the keys no table claims (an element that
+/// reads every row and composite, whose claimed keys are all known), or
+/// every key but `type` (an element that reads only some rows — a text
+/// — where a row it does not read warns too).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Check {
+    Off,
+    Unclaimed,
+    All,
+}
+
+/// A key of a node table, as the walk sorts it: a composite or special
+/// `parse_props` reads itself, or a schema row.
+enum Item {
+    Pad,
+    Border,
+    Overflow(u32),
+    Float,
+    KeyFocus,
+    Key,
+    Index,
+    RowCount,
+    Tooltip,
+    Row(&'static schema::PropDef),
+}
+
+/// The walk under [`parse_props`]: one pass of `pairs` over the table,
+/// every key sorted by its bytes (no `String`, no `from_utf8` for the
+/// keys the table claims), the props applied after it so `size` and
+/// `radius` still land first — `size` resets the text style and
+/// `radius` sets the corners a `radius_tl` row then overrides, and a
+/// table's iteration order is not one to rely on. `check` collects the
+/// keys [`Check`] asks for, for [`node_props`] to judge against the
+/// element.
+fn parse_node(
+    t: &Table,
+    is_row: bool,
+    refs: &mut Refs<'_>,
+    check: Check,
+) -> mlua::Result<(PropsOut, Walked)> {
     let mut out = PropsOut::new();
     if is_row {
         out.spec = kui_core::NodeSpec::row();
     }
-    match t.get::<mlua::Value>("size")? {
-        mlua::Value::Nil => {}
-        v => {
-            if let Some(size) = length_of(&v, refs)? {
-                out.style = kui_core::TextStyle::new(size);
-            }
+    let mut walked = Walked::default();
+    let mut size = None;
+    let mut radius = None;
+    let mut items: Vec<(Item, mlua::Value)> = Vec::with_capacity(8);
+    t.for_each::<NodeKey, mlua::Value>(|k, v| {
+        if !matches!(k, NodeKey::Str { .. } | NodeKey::Long(_)) {
+            return Ok(());
         }
+        if check == Check::All && k.bytes() != b"type" {
+            walked.unknown.push(k.clone());
+        }
+        let item = match k.bytes() {
+            b"size" => {
+                size = Some(v);
+                return Ok(());
+            }
+            b"radius" => {
+                radius = Some(v);
+                return Ok(());
+            }
+            b"pad" => Item::Pad,
+            b"border" => Item::Border,
+            b"clip" => Item::Overflow(kui_core::OVERFLOW_CLIP),
+            b"scroll_x" => Item::Overflow(kui_core::OVERFLOW_SCROLL_X),
+            b"scroll" | b"scroll_y" => Item::Overflow(kui_core::OVERFLOW_SCROLL_Y),
+            b"float" => Item::Float,
+            b"key_focus" => Item::KeyFocus,
+            b"key" => Item::Key,
+            b"index" => Item::Index,
+            b"row_count" => Item::RowCount,
+            b"tooltip" => Item::Tooltip,
+            name => {
+                // `repeat` is a Lua keyword, so that row also answers to
+                // CSS's own name for it (`schema::LUA_ALIASES`, which the
+                // unknown-prop check reads too).
+                let name = schema::LUA_ALIASES
+                    .iter()
+                    .find(|(alias, _)| alias.as_bytes() == name)
+                    .map_or(name, |(_, real)| real.as_bytes());
+                match schema::by_snake_bytes(name) {
+                    Some(def) => Item::Row(def),
+                    None => {
+                        match name {
+                            b"value" => walked.value = Some(v),
+                            b"spans" => walked.spans = Some(v),
+                            _ => {}
+                        }
+                        // `type` is the prelude's element tag, not a prop.
+                        if check == Check::Unclaimed && name != b"type" {
+                            walked.unknown.push(k);
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+        };
+        items.push((item, v));
+        Ok(())
+    })?;
+    if let Some(v) = size
+        && let Some(size) = length_of(&v, refs)?
+    {
+        out.style = kui_core::TextStyle::new(size);
     }
-    // `radius` sets all four corners, so it must land before any
-    // `radius_tl`-style override — table iteration order is undefined.
-    match t.get::<mlua::Value>("radius")? {
-        mlua::Value::Nil => {}
-        v => {
-            if let Some(r) = length_of(&v, refs)? {
-                out.with_spec(|s| s.radius(r));
-            }
-        }
+    if let Some(v) = radius
+        && let Some(r) = length_of(&v, refs)?
+    {
+        out.with_spec(|s| s.radius(r));
     }
     // Overflow bits accumulate across the walk (`clip` and `scroll` are
     // separate keys) and are applied once, so nothing here has to know that
     // scrolling clips too.
     let mut overflow = 0;
-    for pair in t.pairs::<mlua::Value, mlua::Value>() {
-        let (k, v) = pair?;
-        let mlua::Value::String(k) = k else { continue };
-        let k = k.to_str()?;
-        match k.as_ref() {
-            "size" | "radius" => {}
-            "pad" => {
+    for (item, v) in items {
+        match item {
+            Item::Pad => {
                 let pad = parse_pad(&v, refs)?;
                 out.apply_pad(pad);
             }
-            "border" => {
+            Item::Border => {
                 let b = match v {
                     mlua::Value::Table(b) => b,
                     _ => return Err(bad("border must be a table {w=, color=}")),
@@ -2901,27 +3163,25 @@ pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result
                     .unwrap_or(Color::TRANSPARENT);
                 out.with_spec(|s| s.border(w, c));
             }
-            "clip" => overflow |= bit(&v, kui_core::OVERFLOW_CLIP),
-            "scroll_x" => overflow |= bit(&v, kui_core::OVERFLOW_SCROLL_X),
-            "scroll" | "scroll_y" => overflow |= bit(&v, kui_core::OVERFLOW_SCROLL_Y),
-            "float" => {
+            Item::Overflow(flag) => overflow |= bit(&v, flag),
+            Item::Float => {
                 let cfg = parse_float(&v)?;
                 out.with_spec(|s| s.float(cfg));
             }
-            "key_focus" => out.key_focus = truthy(&v),
-            "key" => {
+            Item::KeyFocus => out.key_focus = truthy(&v),
+            Item::Key => {
                 let mlua::Value::String(s) = &v else {
                     return Err(bad("key must be a string"));
                 };
                 out.key = Some(s.to_str()?.to_string());
             }
-            "index" => {
+            Item::Index => {
                 let Some(i) = v.as_number().or_else(|| v.as_integer().map(|i| i as f64)) else {
                     return Err(bad("index must be a number (the row's data index)"));
                 };
                 out.index = Some(i.max(0.0) as u64);
             }
-            "row_count" => {
+            Item::RowCount => {
                 let Some(n) = v.as_number().or_else(|| v.as_integer().map(|i| i as f64)) else {
                     return Err(bad(
                         "row_count must be a number (how many indexed rows the list has)",
@@ -2929,22 +3189,15 @@ pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result
                 };
                 out.row_count = Some(n.max(0.0) as u64);
             }
-            "tooltip" => {
+            Item::Tooltip => {
                 let mlua::Value::String(s) = &v else {
                     return Err(bad("tooltip must be a string"));
                 };
                 out.apply_tooltip(s.to_str()?.as_ref());
             }
-            name => {
-                // `repeat` is a Lua keyword, so that row also answers to
-                // CSS's own name for it (`schema::LUA_ALIASES`, which the
-                // unknown-prop check reads too).
-                let name = schema::lua_alias(name).unwrap_or(name);
-                let Some(def) = schema::by_snake_name(name) else {
-                    continue;
-                };
-                if let Some(parsed) =
-                    parse_value(&def.kind, &v, refs).map_err(|e| bad(format!("{name}: {e}")))?
+            Item::Row(def) => {
+                if let Some(parsed) = parse_value(&def.kind, &v, refs)
+                    .map_err(|e| bad(format!("{}: {e}", schema::snake_case(def.name))))?
                 {
                     schema::apply(def, parsed, &mut out).map_err(bad)?;
                 }
@@ -2952,7 +3205,42 @@ pub fn parse_props(t: &Table, is_row: bool, refs: &mut Refs<'_>) -> mlua::Result
         }
     }
     out.with_spec(|s| s.overflow_bits(overflow));
-    Ok(out)
+    Ok((out, walked))
+}
+
+/// [`node_props`] for a widget arm: the props alone, and `checked` set
+/// so [`build_widget`] does not walk the table again for the check.
+fn props_of(ui: &mut Ui<'_>, t: &Table, ty: &str, checked: &mut bool) -> mlua::Result<PropsOut> {
+    *checked = true;
+    node_props(ui, t, false, element_of(ty)).map(|(out, _)| out)
+}
+
+/// A node's props read under the frame's token lookup, the unknown-prop
+/// check made in the same walk when the core's diagnostics are on: what
+/// every element whose props are the node table's own goes through, in
+/// place of [`check_props`] and a second walk.
+fn node_props(
+    ui: &mut Ui<'_>,
+    t: &Table,
+    is_row: bool,
+    element: &str,
+) -> mlua::Result<(PropsOut, Walked)> {
+    let check = if !ui.core().diagnostics() {
+        Check::Off
+    } else if schema::element_rows(element, schema::Spelling::Snake).is_some() {
+        Check::All
+    } else {
+        Check::Unclaimed
+    };
+    let (out, walked) = with_refs(ui, |refs| parse_node(t, is_row, refs, check))?;
+    for k in &walked.unknown {
+        let name = k.name();
+        if !schema::known_prop(element, &name, schema::Spelling::Snake) {
+            let w = kui_core::diag::unknown_prop(element, &name, schema::Spelling::Snake);
+            ui.core().warn(w);
+        }
+    }
+    Ok((out, walked))
 }
 
 fn truthy(v: &mlua::Value) -> bool {
@@ -3161,20 +3449,37 @@ fn parse_sizing(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Siz
 fn parse_pad(v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<PadShorthand> {
     match v {
         mlua::Value::Table(t) => {
-            let mut edge = |k: &str| -> mlua::Result<Option<f32>> {
-                match t.get::<mlua::Value>(k)? {
-                    mlua::Value::Nil => Ok(None),
-                    v => length_of(&v, refs),
+            // One walk over the edges the table names (backlog F143),
+            // rather than a lookup for each of the seven it may.
+            let mut edges: [Option<mlua::Value>; 7] = Default::default();
+            t.for_each::<NodeKey, mlua::Value>(|k, v| {
+                let at = match k.bytes() {
+                    b"all" => 0,
+                    b"x" => 1,
+                    b"y" => 2,
+                    b"l" => 3,
+                    b"r" => 4,
+                    b"t" => 5,
+                    b"b" => 6,
+                    _ => return Ok(()),
+                };
+                edges[at] = Some(v);
+                Ok(())
+            })?;
+            let mut edge = |i: usize| -> mlua::Result<Option<f32>> {
+                match edges[i].take() {
+                    None => Ok(None),
+                    Some(v) => length_of(&v, refs),
                 }
             };
             Ok(PadShorthand {
-                all: edge("all")?,
-                x: edge("x")?,
-                y: edge("y")?,
-                l: edge("l")?,
-                r: edge("r")?,
-                t: edge("t")?,
-                b: edge("b")?,
+                all: edge(0)?,
+                x: edge(1)?,
+                y: edge(2)?,
+                l: edge(3)?,
+                r: edge(4)?,
+                t: edge(5)?,
+                b: edge(6)?,
             })
         }
         v => Ok(PadShorthand {
@@ -4139,6 +4444,88 @@ mod tests {
             );
             assert!(w.contains("`max_lines`"), "names the rows it reads: {w}");
         }
+    }
+
+    /// The walk applies `size` before the style rows and `radius` before
+    /// the corner rows whatever order the table hands its keys in (backlog
+    /// F143: one pass, the props applied after it). Each table is built
+    /// both ways round, and a table's iteration order follows its
+    /// construction closely enough that one of the two meets the specific
+    /// row first.
+    #[test]
+    fn size_and_radius_land_first_whatever_the_order() {
+        let lua = Lua::new();
+        for src in [
+            "return { radius = 8, radius_tl = 2, size = 20, color = 0xff0000ff, line_height = 30 }",
+            "return { line_height = 30, color = 0xff0000ff, size = 20, radius_tl = 2, radius = 8 }",
+        ] {
+            let t = eval_table(&lua, src);
+            let p = parse_props(&t, false, &mut test_refs()).unwrap();
+            assert_eq!(p.spec.style.radius, [2.0, 8.0, 8.0, 8.0], "{src}");
+            assert_eq!(p.style.size, 20.0, "{src}");
+            assert_eq!(p.style.line_height, 30.0, "the row over size's own: {src}");
+            assert_eq!(p.style.color, Some(Color::hex(0xff0000ff)), "{src}");
+        }
+    }
+
+    /// The unknown-prop check made in the props walk (backlog F143) warns
+    /// on what the separate walk warned on, element by element: a key no
+    /// table claims, once, on every element with props of its own; and on
+    /// a text, a schema row it does not read.
+    #[test]
+    fn the_folded_check_warns_as_the_walk_did() {
+        let mut ext = LuaExtension::from_source(
+            "folded",
+            r#"
+                function view(env)
+                  return column { bogus_box = 1,
+                    row { bogus_row = 1 },
+                    grid { bogus_grid = 1 },
+                    text("t", { bogus_text = 1, on_click = "go" }),
+                    image { id = 0, bogus_image = 1 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let mut warned: Vec<String> = core
+            .take_warnings()
+            .into_iter()
+            .filter(|w| w.code == kui_core::diag::UNKNOWN_PROP)
+            .map(|w| {
+                [
+                    "bogus_box",
+                    "bogus_row",
+                    "bogus_grid",
+                    "bogus_text",
+                    "on_click",
+                    "bogus_image",
+                ]
+                .into_iter()
+                .find(|k| w.message.contains(&format!("`{k}`")))
+                .unwrap_or("?")
+                .to_string()
+            })
+            .collect();
+        warned.sort();
+        assert_eq!(
+            warned,
+            [
+                "bogus_box",
+                "bogus_grid",
+                "bogus_image",
+                "bogus_row",
+                "bogus_text",
+                "on_click"
+            ]
+        );
+        // And nothing at all with the diagnostics off.
+        let mut core = Core::new();
+        core.set_diagnostics(false);
+        frame(&mut core, &mut ext);
+        assert!(core.take_warnings().is_empty());
     }
 
     /// `direction` is the Lua spelling of the `repeat` row (a Lua keyword),

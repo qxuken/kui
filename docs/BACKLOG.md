@@ -188,8 +188,8 @@ reading the last frame's clock, the decorative role a caption wants, a
 spring between keyframe stops — were built the day they were filed; and
 F142, from the kawoosh non-editor-pane profile of the same day — a slot
 replayed by its host (ADR 0045, amending ADR 0016) — the day it was
-filed, with F143 beside it, the Lua binding's walk from its tables to
-the tree made cheaper, open.
+filed, and F143 beside it, the Lua binding's walk from its tables to
+the tree made cheaper, the same day after the alpha.48 tag.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -4365,33 +4365,8 @@ move.
 
 - `.` **W22** — [The traffic lights cannot sit lower: no titlebar a toolbar's height under custom chrome](backlog/closed-2026-09.md#-w22--the-traffic-lights-cannot-sit-lower-no-titlebar-a-toolbars-height-under-custom-chrome--done-2026-10-09) — done (2026-10-09) — `Launcher::titlebar(Titlebar::Medium | Tall)`: an empty `NSToolbar` in the compact or full style, AppKit's titlebar 40 or 52 pt about the lights; the keep-out measured twice the lights' centre; the window's `titlebar_h` metric the strip's height — measured on macOS, 40 or 52 off it (`Core::set_platform_titlebar_h`, the stock number standing for it); Node `titlebar`, `KuiRunConfig.titlebar` (ABI 28), Odin `Run_Config.titlebar`
 
-**From the kawoosh non-editor-pane profile (2026-10-09)** — F142, filed and built the same day; F143 open
+**From the kawoosh non-editor-pane profile (2026-10-09)** — F142, filed and built the same day; F143 the same day after alpha.48
 
 - `~` **F142** — [A plugin's pane costs its whole fill every frame the window draws, whatever brought the frame](backlog/closed-2026-09.md#-f142--a-plugins-pane-costs-its-whole-fill-every-frame-the-window-draws-whatever-brought-the-frame--done-2026-10-09) — done (2026-10-09) — `Ui::slot_kept` / `Ui::slot_replay` (ADR 0045, amending ADR 0016): the host vouches for what the extension reads from it, the core checks the params, every fact of the frame the kept fill read and the slot's place, and pushes the kept fill's nodes again through their doors or runs the extension and says why; C, Lua and Node doors; nested slots filled fresh; a fill the journal cannot vouch for refused by count
 
-### `.` F143 — A Lua fill costs about 2 µs a node in the walk from its tables to the tree, sixty times the push
-
-- **The ask.** kawoosh's perf log of 2026-10-09 (release build, forty
-  frames each, medians): the settings pane's view runs in 1.25 ms and
-  kui-lua's `build_node` over the 1,561 tables it returned takes
-  3.0 ms; themes 1.33 against 3.1 ms over 1,832 tables; the theme lab
-  0.83 against 2.0 ms over 1,532. kui's layout of the same frame is
-  0.3 ms. A `sample`(1) over the build spreads it thin: `pairs` over
-  every key of every table, a `from_utf8` per key, `by_snake_name`'s
-  linear scan of the prop names per prop per node, a `ValueRef` clone
-  and drop per value, `lua_xmove` / `lua_settop` / `lua_pushvalue`
-  traffic, and malloc under all of it — no one line to fix.
-- **Wants.** The walk made cheaper by a factor, without a new contract:
-  the prop lookup a perfect hash or a sorted table bisected rather than
-  a scan; keys read as borrowed bytes and matched without a `String`;
-  one stack traversal per table rather than `pairs` plus `get` per
-  known key; spans and children read in place. Measured against the
-  same three panes through `KAWOOSH_PERF_LOG`'s `kui-lua build` span,
-  and a kui-lua bench of a 1,500-table tree. F142's replay removes the
-  walk on the frames where the view would have built the same tree;
-  this is the frames where it would not — a key in the pane, a scroll,
-  a hover change — and a native (C) fill pays the ABI's per-node calls
-  the same way, smaller.
-
-**Found** by the kawoosh non-editor-pane profile of 2026-10-09, beside
-F142.
+- `.` **F143** — [A Lua fill costs about 2 µs a node in the walk from its tables to the tree, sixty times the push](backlog/closed-2026-09.md#-f143--a-lua-fill-costs-about-2-µs-a-node-in-the-walk-from-its-tables-to-the-tree-sixty-times-the-push--done-2026-10-09) — done (2026-10-09) — one `for_each` pass a table with keys read off the stack as bytes (no registry reference), rows hashed, `size`/`radius`/`value`/`spans`/a span's keys/a pad's edges and the unknown-prop check folded into it; the walk bench 2.55 → 1.64 ms (diagnostics off), kawoosh's settings pane's walk 3.45 → 2.27 ms
