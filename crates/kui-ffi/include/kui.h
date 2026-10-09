@@ -3933,6 +3933,37 @@ void kui_on_teardown(KuiTeardownFn teardown);
  * reason: kui_run takes no config (ABI still 18). */
 bool kui_set_icon(const uint8_t *rgba, uint32_t width, uint32_t height, uint32_t resource);
 
+/* The runner's image decoder (backlog F138), the one its wallpaper uses:
+ * PNG, JPEG, WebP or GIF bytes (an animated file's first frame) to
+ * straight RGBA, *width x *height pixels, four bytes each, row by row from
+ * the top left, alpha not premultiplied - what kui_add_image,
+ * kui_update_image and kui_set_icon take. Free the pixels with
+ * kui_pixels_free. NULL, with the reason on stderr and both sides 0, for
+ * bytes that are not an image or do not decode. */
+uint8_t *kui_decode_image(const uint8_t *bytes, size_t len, uint32_t *width, uint32_t *height);
+/* Every frame of an animated GIF, PNG (APNG) or WebP, each the whole
+ * canvas (the file's partial frames composited): *count frames back to
+ * back, width * height * 4 bytes each, and *delays - inside the same
+ * allocation - the seconds each shows; a GIF frame asking for 10 ms or
+ * less shows for 100, as browsers show it. *loops is how many times the
+ * sequence plays, 0 for ever. A still image is one frame with an infinite
+ * delay. One kui_pixels_free frees pixels and delays. NULL, with the
+ * reason on stderr and every out 0, for bytes that do not decode. */
+uint8_t *kui_decode_animation(const uint8_t *bytes, size_t len, uint32_t *width,
+                              uint32_t *height, uint32_t *count, uint32_t *loops,
+                              const double **delays);
+/* Which of count frames shows `elapsed` seconds after the animation
+ * started, playing loops times (0 for ever); *next, when not NULL, is the
+ * seconds after the start the next frame is due - the start plus it is
+ * what kui_request_frame_at takes - and INFINITY once a finite animation
+ * has played out. A view keeps the start on the frame clock (kui_now), calls
+ * this, kui_update_image when the index moved, and asks for the next. */
+uint32_t kui_animation_at(const double *delays, uint32_t count, uint32_t loops, double elapsed,
+                          double *next);
+/* Frees what kui_decode_image or kui_decode_animation returned; NULL is
+ * nothing. Only those pointers. */
+void kui_pixels_free(uint8_t *pixels);
+
 /* What kui_run's window opens as: the chrome, the antialiasing and the
  * diagnostics words KuiRunConfig takes. Zero is the default of each. */
 enum { KUI_CHROME_NATIVE = 0, KUI_CHROME_CUSTOM = 1, KUI_CHROME_BORDERLESS = 2 };

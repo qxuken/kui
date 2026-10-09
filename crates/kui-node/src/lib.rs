@@ -1707,6 +1707,96 @@ fn frame_stats_json(stats: &FrameStats, pumps: u64, woken_pumps: u64) -> Json {
     Json::Object(o)
 }
 
+/// Decoded pixels (`decodeImage`): `width` by `height`, four bytes each
+/// (RGBA), row by row from the top left, alpha not premultiplied — what
+/// `addImage`, `updateImage` and a window's `icon` take.
+#[napi(object)]
+pub struct DecodedImage {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Buffer,
+}
+
+/// Every frame of an animated image (`decodeAnimation`), each the whole
+/// canvas, with the seconds each shows and how many times the sequence
+/// plays (absent: for ever).
+#[napi(object)]
+pub struct DecodedAnimation {
+    pub width: u32,
+    pub height: u32,
+    pub frames: Vec<Buffer>,
+    pub delays: Vec<f64>,
+    pub loops: Option<u32>,
+}
+
+/// Which frame shows at a moment (`animationAt`), and the seconds after
+/// the start the next is due — `Infinity` once a finite animation has
+/// played out.
+#[napi(object)]
+pub struct AnimationShowing {
+    pub index: u32,
+    pub next: f64,
+}
+
+/// Decodes PNG, JPEG, WebP or GIF bytes (an animated file's first frame)
+/// with the runner's decoder (backlog F138), so an app that ships a photo
+/// needs no image package: `ctx.addImage(d.width, d.height, d.rgba)`.
+/// Throws, naming why, for bytes that are not an image or do not decode.
+#[napi]
+pub fn decode_image(bytes: Buffer) -> Result<DecodedImage> {
+    let p = kui_native::decode_image(&bytes)
+        .map_err(|e| napi::Error::from_reason(format!("decodeImage: {e}")))?;
+    Ok(DecodedImage {
+        width: p.width,
+        height: p.height,
+        rgba: p.rgba.into(),
+    })
+}
+
+/// Decodes every frame of an animated GIF, PNG (APNG) or WebP, each the
+/// whole canvas, and the seconds each shows; a GIF frame asking for 10 ms
+/// or less shows for 100, as browsers show it. A still image is one frame
+/// shown for ever. Play it on the frame clock with `animationAt`,
+/// `updateImage` and `requestFrameAt`.
+#[napi]
+pub fn decode_animation(bytes: Buffer) -> Result<DecodedAnimation> {
+    let a = kui_native::decode_animation(&bytes)
+        .map_err(|e| napi::Error::from_reason(format!("decodeAnimation: {e}")))?;
+    Ok(DecodedAnimation {
+        width: a.width,
+        height: a.height,
+        delays: a.frames.iter().map(|f| f.delay).collect(),
+        frames: a.frames.into_iter().map(|f| f.rgba.into()).collect(),
+        loops: a.loops,
+    })
+}
+
+/// Which of the frames with these `delays` shows `elapsed` seconds after
+/// the animation started, playing `loops` times (null for ever), and when
+/// the next is due: `animationAt(gif.delays, gif.loops, ctx.now() -
+/// started)`, then `updateImage` when the index moved and
+/// `requestFrameAt(started + next)`.
+#[napi]
+pub fn animation_at(delays: Vec<f64>, loops: Option<u32>, elapsed: f64) -> AnimationShowing {
+    let a = kui_native::Animation {
+        width: 0,
+        height: 0,
+        frames: delays
+            .into_iter()
+            .map(|delay| kui_native::AnimationFrame {
+                rgba: Vec::new(),
+                delay,
+            })
+            .collect(),
+        loops,
+    };
+    let s = a.at(elapsed);
+    AnimationShowing {
+        index: s.index as u32,
+        next: s.next,
+    }
+}
+
 /// Byte stride of one quad in the `quads()` buffer.
 #[napi]
 pub fn quad_stride() -> u32 {

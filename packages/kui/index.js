@@ -3,7 +3,10 @@
 import native from './native.cjs';
 import { createEncoder } from './encoder.js';
 
-export const { Ctx, KuiWindow, RowHeights, quadStride, clipStride, protocol } = native;
+export const {
+  Ctx, KuiWindow, RowHeights, quadStride, clipStride, protocol,
+  decodeImage, decodeAnimation, animationAt,
+} = native;
 export { createEncoder };
 
 // The brand on what `update` (or a function `init`) returns to hand the loop

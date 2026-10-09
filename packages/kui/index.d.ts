@@ -3560,6 +3560,66 @@ export declare class Ctx {
   setEditText(key: string, text: string): void
 }
 
+/**
+ * Decoded pixels (`decodeImage`): `width` by `height`, four bytes each
+ * (RGBA), row by row from the top left, alpha not premultiplied — what
+ * `addImage`, `updateImage` and a window's `icon` take.
+ */
+export interface DecodedImage {
+  width: number
+  height: number
+  rgba: Buffer
+}
+
+/**
+ * Every frame of an animated image (`decodeAnimation`), each the whole
+ * canvas, with the seconds each shows and how many times the sequence
+ * plays (absent: for ever).
+ */
+export interface DecodedAnimation {
+  width: number
+  height: number
+  frames: Array<Buffer>
+  delays: Array<number>
+  loops?: number
+}
+
+/**
+ * Which frame shows at a moment (`animationAt`), and the seconds after
+ * the start the next is due — `Infinity` once a finite animation has
+ * played out.
+ */
+export interface AnimationShowing {
+  index: number
+  next: number
+}
+
+/**
+ * Decodes PNG, JPEG, WebP or GIF bytes (an animated file's first frame)
+ * with the runner's decoder (backlog F138), so an app that ships a photo
+ * needs no image package: `ctx.addImage(d.width, d.height, d.rgba)`.
+ * Throws, naming why, for bytes that are not an image or do not decode.
+ */
+export declare function decodeImage(bytes: Buffer): DecodedImage
+
+/**
+ * Decodes every frame of an animated GIF, PNG (APNG) or WebP, each the
+ * whole canvas, and the seconds each shows; a GIF frame asking for 10 ms
+ * or less shows for 100, as browsers show it. A still image is one frame
+ * shown for ever. Play it on the frame clock with `animationAt`,
+ * `updateImage` and `requestFrameAt`.
+ */
+export declare function decodeAnimation(bytes: Buffer): DecodedAnimation
+
+/**
+ * Which of the frames with these `delays` shows `elapsed` seconds after
+ * the animation started, playing `loops` times (null for ever), and when
+ * the next is due: `animationAt(gif.delays, gif.loops, ctx.now() -
+ * started)`, then `updateImage` when the index moved and
+ * `requestFrameAt(started + next)`.
+ */
+export declare function animationAt(delays: Array<number>, loops: number | undefined | null, elapsed: number): AnimationShowing
+
 /** Byte stride of one quad in the `quads()` buffer. */
 export declare function quadStride(): number
 

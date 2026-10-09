@@ -25,8 +25,9 @@
 pub enum Cell {
     /// The binding has the verb under this name: a `kui_*` function in C;
     /// a procedure of package `kui` in Odin; a method in Node, on both
-    /// classes unless prefixed `Ctx.` or `KuiWindow.`; a function on `env`
-    /// in Lua. Checked by the binding's test.
+    /// classes unless prefixed `Ctx.` or `KuiWindow.`, or a function the
+    /// package exports when prefixed `kui.`; a function on `env` in Lua.
+    /// Checked by the binding's test.
     Is(&'static str),
     /// The binding has the same thing in another form — a prop, a
     /// reading of `env`, a callback, a constructor option — and the text
@@ -1581,6 +1582,38 @@ pub const DOORS: &[Door] = &[
         doc: "The icon every window of the app is created with — RGBA pixels and their size — shown by Windows in the title bar, Alt-Tab and the taskbar and by X11's window manager; macOS (the bundle's `.icns`) and Wayland (the `.desktop` file's) have no window icon (backlog F86). `Launcher::icon_resource` is the Windows executable's own icon resource, which wins there — C's `resource` argument, Node's `icon.resource`. C's is a free function called before `kui_run`, for `kui_on_teardown`'s reason.",
     },
     Door {
+        rust: "Launcher::icon_bytes",
+        c: As("`kui_decode_image`, then `kui_set_icon`"),
+        odin: As("`decode_image`, then `set_icon`"),
+        node: As("`kui.decodeImage`, then `icon` in `WindowOptions`"),
+        lua: No(GUEST),
+        doc: "The icon from an image file's bytes, a PNG most often, through the runner's decoder.",
+    },
+    Door {
+        rust: "kui_native::decode_image",
+        c: Is("kui_decode_image"),
+        odin: Is("decode_image"),
+        node: Is("kui.decodeImage"),
+        lua: No(GUEST),
+        doc: "PNG, JPEG, WebP or GIF bytes to straight RGBA with the runner's decoder, the shape `add_image` takes; C's frees with `kui_pixels_free`.",
+    },
+    Door {
+        rust: "kui_native::decode_animation",
+        c: Is("kui_decode_animation"),
+        odin: Is("decode_animation"),
+        node: Is("kui.decodeAnimation"),
+        lua: No(GUEST),
+        doc: "Every frame of an animated GIF, APNG or WebP, each the whole canvas, with the seconds each shows and the loop count.",
+    },
+    Door {
+        rust: "Animation::at",
+        c: Is("kui_animation_at"),
+        odin: Is("animation_at"),
+        node: Is("kui.animationAt"),
+        lua: No(GUEST),
+        doc: "Which frame of an animation a moment shows and when the next is due: what `update_image` and `request_frame_at` take to play a GIF on the frame clock.",
+    },
+    Door {
         rust: "App::teardown",
         c: Is("kui_on_teardown"),
         odin: As("the `teardown` procedure `kui.run` takes"),
@@ -1597,7 +1630,8 @@ mod tests {
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs`, `Core::` under `runtime/`, `SharedResources::`
     /// in `session.rs`, `Tokens::` in `tokens.rs`, `Launcher::` in the
-    /// `kui-native` crate, and `App::` a method of that crate's `App` trait (a
+    /// `kui-native` crate, `kui_native::` and `Animation::` in its
+    /// `decode.rs`, and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
     /// removed verb is a red row and not a stale one, which is the pin
     /// Rust's column can have without reflection.
@@ -1618,6 +1652,7 @@ mod tests {
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
+        let decode = read(root.join("../../kui-native/src/decode.rs"));
         // The `App` trait's body: a method of it is a callback the app
         // writes, spelled `fn name(` and public by being the trait's.
         let app_trait = launcher
@@ -1632,6 +1667,7 @@ mod tests {
                 "SharedResources" => &session,
                 "Tokens" => &tokens,
                 "Launcher" => &launcher,
+                "kui_native" | "Animation" => &decode,
                 "App" => app_trait,
                 other => panic!("{}: {other} is not a prefix the table knows", d.rust),
             };

@@ -151,6 +151,8 @@ mod axis_lock;
 /// What shows through the window: a blur, a tint, the desktop, or nothing.
 mod backdrop;
 mod clipboard;
+mod decode;
+pub use decode::{Animation, AnimationFrame, Pixels, Showing, decode_animation, decode_image};
 mod dialogs;
 /// The wallpaper a `Tinted` backdrop draws where the OS has no material.
 mod ground;
@@ -544,6 +546,25 @@ impl Launcher {
     pub fn try_icon(mut self, rgba: Vec<u8>, width: u32, height: u32) -> Result<Self, String> {
         self.icon = Some(icon::from_rgba(rgba, width, height)?);
         Ok(self)
+    }
+
+    /// [`Launcher::icon`] from an image file's bytes — a PNG, JPEG, WebP
+    /// or GIF, decoded by [`decode_image`] (backlog F138):
+    /// `.icon_bytes(include_bytes!("icon.png"))`. Panics, naming why, on
+    /// bytes that are not an image; [`Launcher::try_icon_bytes`] returns
+    /// the reason instead.
+    pub fn icon_bytes(self, bytes: &[u8]) -> Self {
+        match self.try_icon_bytes(bytes) {
+            Ok(this) => this,
+            Err(e) => panic!("kui: {e}"),
+        }
+    }
+
+    /// [`Launcher::icon_bytes`] for a file that came from outside the
+    /// program, refused with the reason rather than a panic.
+    pub fn try_icon_bytes(self, bytes: &[u8]) -> Result<Self, String> {
+        let p = decode_image(bytes).map_err(|e| format!("an icon: {e}"))?;
+        self.try_icon(p.rgba, p.width, p.height)
     }
 
     /// The executable's icon resource `id` as every window's icon, on
@@ -3694,6 +3715,19 @@ mod tests {
             .devtools_key(Accel::parse("f12").unwrap())
             .dyn_shell(Empty);
         assert_eq!(shell.core_mut().devtools_key().spelling(), "f12");
+    }
+
+    /// An icon from a PNG's bytes (backlog F138), and bytes that are not
+    /// one refused with the reason.
+    #[test]
+    fn launcher_takes_an_icon_from_a_png() {
+        let img = image::RgbaImage::from_pixel(16, 16, image::Rgba([10, 20, 30, 255]));
+        let mut png = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let l = app("t").try_icon_bytes(png.get_ref()).unwrap();
+        assert!(l.icon.is_some());
+        let e = app("t").try_icon_bytes(b"not a png").err().unwrap();
+        assert!(e.starts_with("an icon: not an image"), "{e}");
     }
 
     #[test]

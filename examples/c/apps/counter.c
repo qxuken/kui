@@ -15,6 +15,7 @@
  * adapter used to live in this file; they are tools/surface.c and
  * tools/conformance.c now, since neither is a counter.
  */
+#include <math.h>
 #include <stdlib.h>
 #include "../common.h"
 
@@ -285,6 +286,37 @@ static int headless(void) {
         return 1;
     }
     printf("kui_set_icon refused a size with no pixels and a 17-bit resource\n");
+
+    /* The runner's decoder (backlog F138), which needs no window either:
+     * a 2x2 GIF, red for 50 ms then blue for 100, played once. */
+    static const uint8_t gif[] = {
+    0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x02, 0x00, 0x02, 0x00, 0x80, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x21, 0xff, 0x0b, 0x4e, 0x45,
+    0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2e, 0x30, 0x03, 0x01, 0x01,
+    0x00, 0x00, 0x21, 0xf9, 0x04, 0x08, 0x05, 0x00, 0x00, 0x00, 0x2c, 0x00,
+    0x00, 0x00, 0x00, 0x02, 0x00, 0x02, 0x00, 0x80, 0xff, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x02, 0x02, 0x84, 0x51, 0x00, 0x21, 0xf9, 0x04, 0x08, 0x0a,
+    0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x02, 0x00,
+    0x80, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x02, 0x02, 0x84, 0x51, 0x00,
+    0x3b,
+    };
+    uint32_t w = 0, h = 0, count = 0, loops = 0;
+    uint8_t *still = kui_decode_image(gif, sizeof gif, &w, &h);
+    int still_ok = still && w == 2 && h == 2 && still[0] == 255 && still[2] == 0;
+    kui_pixels_free(still);
+    const double *delays = NULL;
+    uint8_t *frames = kui_decode_animation(gif, sizeof gif, &w, &h, &count, &loops, &delays);
+    double next = 0;
+    int anim_ok = frames && count == 2 && loops == 1 && delays[0] == 0.05 && delays[1] == 0.1 &&
+                  frames[w * h * 4 + 2] == 255 &&
+                  kui_animation_at(delays, count, loops, 0.07, &next) == 1 && fabs(next - 0.15) < 1e-9 &&
+                  kui_animation_at(delays, count, loops, 5.0, &next) == 1 && isinf(next);
+    kui_pixels_free(frames);
+    if (!still_ok || !anim_ok || kui_decode_image((const uint8_t *)"nope", 4, &w, &h) || w) {
+        fprintf(stderr, "FAIL: kui_decode_image / kui_decode_animation\n");
+        return 1;
+    }
+    printf("decoded a GIF's first frame, both frames and their delays\n");
 
     printf("headless self-test OK\n");
     return 0;

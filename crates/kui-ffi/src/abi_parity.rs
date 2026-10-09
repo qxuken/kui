@@ -1316,8 +1316,17 @@ fn every_entry_point_is_pinned() {
             }
         }
     }
-    // The runner's four are pinned only in a build that has them.
-    let runner = ["kui_run", "kui_run_with", "kui_on_teardown", "kui_set_icon"];
+    // The runner's eight are pinned only in a build that has them.
+    let runner = [
+        "kui_run",
+        "kui_run_with",
+        "kui_on_teardown",
+        "kui_set_icon",
+        "kui_decode_image",
+        "kui_decode_animation",
+        "kui_animation_at",
+        "kui_pixels_free",
+    ];
     let mut expected = declared.clone();
     if cfg!(not(feature = "runner")) {
         for name in runner {

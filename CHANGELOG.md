@@ -125,6 +125,21 @@ was the first bare bump to break an app in five releases).
   Two with one name raise the new `ambiguous-name` warning. The docs now
   say "key label" for what `key_of` and `texts_under` read, the name the
   view opened a node under, and "accessible name" for the `label` row.
+- **The runner decodes images, GIFs included** (backlog F138).
+  `kui_native::decode_image(bytes)` turns PNG, JPEG, WebP or GIF bytes
+  into straight RGBA and a size, the shape `add_image` takes;
+  `decode_animation` keeps every frame of an animated GIF, APNG or WebP,
+  composited to the whole canvas, with its delay and the loop count, and
+  `Animation::at(elapsed)` says which frame shows and when the next is
+  due, so a GIF plays on the frame clock through `update_image_with` and
+  `request_frame_at` with nothing owed between steps.
+  `Launcher::icon_bytes` takes an icon from a PNG. C: `kui_decode_image`,
+  `kui_decode_animation`, `kui_animation_at` and `kui_pixels_free`, with
+  `runner`; Odin: `decode_image`, `decode_animation`, `animation_at`,
+  copied into the context allocator; Node: `decodeImage`,
+  `decodeAnimation` and `animationAt` on the package. The runner's
+  `image` gains its `gif` feature. The `decode` example plays a shipped
+  spinner.
 
 **What you can delete.**
 
@@ -141,6 +156,9 @@ was the first bare bump to break an app in five releases).
 - A frame drawn with the exit aimed before the frame that removes the
   card, and the model field and `request_frame` that schedule it
   (F136): `exit_with` in the handler.
+- The `image` dependency an app added to decode its photos, its version
+  pin and the `[profile.dev.package."*"]` line that made it fast, and a
+  GIF crate beside it (F138): `decode_image` and `decode_animation`.
 - A clock of the app's own and `request_frame` on every frame to time a
   sequence that plays once — a burst, a pop, a row of stars — and the
   frame owed for good by a cycle the app meant to stop (F133).

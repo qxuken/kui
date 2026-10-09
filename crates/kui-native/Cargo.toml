@@ -33,7 +33,7 @@ rfd = { version = "0.17", default-features = false, features = ["xdg-portal"], o
 # The wallpaper a `Tinted` backdrop draws where the OS has no material
 # (`mod ground`, backlog F126): decoded once, off the frame. The version
 # arboard already builds, with the formats wallpapers come in.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 
 # The examples' devtools (docs/adr/0021): the dock, the CLI and the
 # headless drive every example under examples/rust runs inside. A
@@ -41,6 +41,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # (it depends on this crate) is the kind cargo allows for dev-dependencies.
 [dev-dependencies]
 kui-devtools.workspace = true
+# A GIF frame placed off the origin, for `decode.rs`'s compositing test:
+# `image`'s own encoder writes every frame at (0, 0). The version `image` decodes with.
+gif = "0.14"
 
 [features]
 default = ["audio", "accesskit", "derive", "dialogs"]
@@ -250,6 +253,7 @@ headless = [
     "backdrop",
     "backdrop_blur",
     "transform",
+    "decode",
 ]
 
 [[example]]
@@ -340,6 +344,10 @@ path = "../../examples/rust/features/exit_budget.rs"
 [[example]]
 name = "waker"
 path = "../../examples/rust/features/waker.rs"
+
+[[example]]
+name = "decode"
+path = "../../examples/rust/features/decode.rs"
 
 [[example]]
 name = "popup"

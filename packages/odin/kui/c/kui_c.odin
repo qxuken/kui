@@ -1324,6 +1324,10 @@ foreign lib {
 	run :: proc(title: string, view: ViewFn, on_event: EventFn, user: rawptr) -> bool ---
 	on_teardown :: proc(teardown: TeardownFn) ---
 	set_icon :: proc(rgba: [^]u8, width: u32, height: u32, resource: u32) -> bool ---
+	decode_image :: proc(bytes: [^]u8, len: uint, width: ^u32, height: ^u32) -> [^]u8 ---
+	decode_animation :: proc(bytes: [^]u8, len: uint, width: ^u32, height: ^u32, count: ^u32, loops: ^u32, delays: ^[^]f64) -> [^]u8 ---
+	animation_at :: proc(delays: [^]f64, count: u32, loops: u32, elapsed: f64, next: ^f64) -> u32 ---
+	pixels_free :: proc(pixels: [^]u8) ---
 	run_with :: proc(ctx: ^Ctx, title: string, config: ^RunConfig, view: ViewFn, on_event: EventFn, user: rawptr) -> bool ---
 	slot_name :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	slot_namespace :: proc(ctx: ^Ctx, out: ^string) -> bool ---

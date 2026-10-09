@@ -13,7 +13,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ctx, KuiWindow, RowHeights, clipStride, createApp, createEncoder, decodeQuads, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
+import * as pkg from './index.js';
+import { Ctx, KuiWindow, RowHeights, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -1694,6 +1695,37 @@ test('requestFrameAt sets a deadline and owes nothing until it', () => {
   ctx.setTime(4);
   ctx.frame(100, 100, 1, box({}));
   assert.equal(ctx.nextFrameAt(), null, 'the frame at the time spends it');
+});
+
+// The runner's decoder (backlog F138): a 2x2 GIF, red for 50 ms and then
+// blue for 100, played once — decoded, registered and played on the frame
+// clock with no image package.
+const TINY_GIF = Buffer.from(
+  'R0lGODlhAgACAIAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEBAAAh+QQIBQAAACwAAAAAAgACAID/AAAAAAACAoRRACH5BAgKAAAALAAAAAACAAIAgAAA/wAAAAIChFEAOw==',
+  'base64',
+);
+
+test('decodeImage and decodeAnimation read a GIF, and animationAt plays it', () => {
+  const still = decodeImage(TINY_GIF);
+  assert.equal(still.width, 2);
+  assert.equal(still.height, 2);
+  assert.deepEqual([...still.rgba.subarray(0, 4)], [255, 0, 0, 255], 'the first frame');
+  const gif = decodeAnimation(TINY_GIF);
+  assert.equal(gif.frames.length, 2);
+  assert.deepEqual(gif.delays, [0.05, 0.1]);
+  assert.equal(gif.loops, 1);
+  assert.deepEqual([...gif.frames[1].subarray(0, 4)], [0, 0, 255, 255]);
+  assert.deepEqual(animationAt(gif.delays, gif.loops, 0.02), { index: 0, next: 0.05 });
+  assert.equal(animationAt(gif.delays, gif.loops, 0.07).index, 1);
+  const over = animationAt(gif.delays, gif.loops, 5);
+  assert.equal(over.index, 1);
+  assert.equal(over.next, Infinity, 'played out');
+  assert.deepEqual(animationAt(gif.delays, null, 0.16), { index: 0, next: 0.2 }, 'for ever');
+
+  const ctx = new Ctx();
+  const id = ctx.addImage(gif.width, gif.height, gif.frames[0]);
+  assert.match(id, /^[0-9a-f]{16}$/);
+  assert.throws(() => decodeImage(Buffer.from('not an image')), /decodeImage: not an image/);
 });
 
 // A lookup by accessible name (backlog F137): the `label` prop or a
@@ -7967,7 +7999,9 @@ test('useWindow is on both classes, and a headless Ctx is the main window alone 
 // The verb table (`schema::DOORS`, backlog B1a) is the one statement of
 // which doors each binding has; this is Node's pin to it, both ways. A
 // row's Node cell names a method — on both classes, or on the one it is
-// prefixed with — and every method of either class is a row's cell or one
+// prefixed with, or a function the package exports when the prefix is
+// `kui` (the runner's decoder, which needs no context) — and every method
+// of either class is a row's cell or one
 // of the few named here as plumbing: the wire's own ends (the binary
 // frame, the raw tokens, the encoder's warnings), the two-class mechanics
 // (`useWindow`, `pump`, `size`, `close`), and the draw list's other
@@ -7982,6 +8016,10 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
   for (const d of protocol().doors) {
     if (!('is' in d.node)) continue;
     const [cls, name] = d.node.is.includes('.') ? d.node.is.split('.') : [null, d.node.is];
+    if (cls === 'kui') {
+      assert.equal(typeof pkg[name], 'function', `${d.rust}: the package exports no ${name}`);
+      continue;
+    }
     for (const c of cls ? [cls] : ['Ctx', 'KuiWindow']) {
       assert.ok(on[c].has(name), `${d.rust}: ${c}.prototype.${name} is not a function`);
       named.add(`${c}.${name}`);

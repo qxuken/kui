@@ -276,6 +276,185 @@ fn launcher_for(title: &str, options: RunOptions) -> kui_native::Launcher {
     l.backdrop(options.backdrop)
 }
 
+// ---------------------------------------------------------------------------
+// The runner's image decoder (backlog F138)
+
+/// One allocation handed to C: a word holding its own length in words, a
+/// spare word, the pixels, then the delays on a word boundary — so
+/// `kui_pixels_free` needs only the pixel pointer, and a `double *` into
+/// it is aligned. `u64` words, because a `Vec<u8>`'s alignment is one.
+fn hand_out(rgba: &[u8], delays: &[f64]) -> (*mut u8, *const f64) {
+    let px_words = rgba.len().div_ceil(8);
+    let words = 2 + px_words + delays.len();
+    let mut block = vec![0u64; words];
+    block[0] = words as u64;
+    let base = block.as_mut_ptr();
+    std::mem::forget(block);
+    // SAFETY: `base` owns `words` words; the pixels fit in the `px_words`
+    // after the first two and the delays in the rest, each written once.
+    unsafe {
+        let px = base.add(2).cast::<u8>();
+        std::ptr::copy_nonoverlapping(rgba.as_ptr(), px, rgba.len());
+        let d = base.add(2 + px_words).cast::<f64>();
+        std::ptr::copy_nonoverlapping(delays.as_ptr(), d, delays.len());
+        (px, d)
+    }
+}
+
+/// # Safety
+/// `bytes`, when not null, points at `len` readable bytes.
+unsafe fn bytes_of<'a>(bytes: *const u8, len: usize) -> &'a [u8] {
+    if bytes.is_null() || len == 0 {
+        &[]
+    } else {
+        // SAFETY: the caller's promise.
+        unsafe { std::slice::from_raw_parts(bytes, len) }
+    }
+}
+
+/// Decodes PNG, JPEG, WebP or GIF bytes (an animated file's first frame)
+/// to straight RGBA, `*width * *height * 4` bytes row by row from the top
+/// left — what `kui_add_image`, `kui_update_image` and `kui_set_icon`
+/// take. Free the pixels with `kui_pixels_free`. NULL, with the reason on
+/// stderr and both sides 0, for bytes that are not an image or do not
+/// decode.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_decode_image(
+    bytes: *const u8,
+    len: usize,
+    width: *mut u32,
+    height: *mut u32,
+) -> *mut u8 {
+    guard(std::ptr::null_mut(), || {
+        let put = |w: u32, h: u32| unsafe {
+            if !width.is_null() {
+                *width = w;
+            }
+            if !height.is_null() {
+                *height = h;
+            }
+        };
+        put(0, 0);
+        match kui_native::decode_image(unsafe { bytes_of(bytes, len) }) {
+            Ok(p) => {
+                put(p.width, p.height);
+                hand_out(&p.rgba, &[]).0
+            }
+            Err(why) => {
+                eprintln!("kui: kui_decode_image: {why}");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Decodes every frame of an animated GIF, PNG (APNG) or WebP, each the
+/// whole `*width` by `*height` canvas: `*count` frames back to back,
+/// `w * h * 4` bytes each, and `*delays` (inside the same allocation) the
+/// seconds each shows. `*loops` is how many times the sequence plays, 0
+/// for ever. A still image is one frame shown for ever (an infinite
+/// delay). One `kui_pixels_free` frees pixels and delays. NULL, with the
+/// reason on stderr and every out 0, for bytes that do not decode.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_decode_animation(
+    bytes: *const u8,
+    len: usize,
+    width: *mut u32,
+    height: *mut u32,
+    count: *mut u32,
+    loops: *mut u32,
+    delays: *mut *const f64,
+) -> *mut u8 {
+    guard(std::ptr::null_mut(), || {
+        let put = |w: u32, h: u32, n: u32, l: u32, d: *const f64| unsafe {
+            for (p, v) in [(width, w), (height, h), (count, n), (loops, l)] {
+                if !p.is_null() {
+                    *p = v;
+                }
+            }
+            if !delays.is_null() {
+                *delays = d;
+            }
+        };
+        put(0, 0, 0, 0, std::ptr::null());
+        match kui_native::decode_animation(unsafe { bytes_of(bytes, len) }) {
+            Ok(a) => {
+                let rgba: Vec<u8> = a
+                    .frames
+                    .iter()
+                    .flat_map(|f| f.rgba.iter().copied())
+                    .collect();
+                let ds: Vec<f64> = a.frames.iter().map(|f| f.delay).collect();
+                let (px, d) = hand_out(&rgba, &ds);
+                put(a.width, a.height, ds.len() as u32, a.loops.unwrap_or(0), d);
+                px
+            }
+            Err(why) => {
+                eprintln!("kui: kui_decode_animation: {why}");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Which of `count` frames with these `delays` (seconds) shows `elapsed`
+/// seconds after the animation started, playing `loops` times (0 for
+/// ever); `*next`, when not NULL, is the seconds after the start when the
+/// next frame is due — what to hand `kui_request_frame_at` with the start
+/// added — and `INFINITY` once a finite animation has played out.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_animation_at(
+    delays: *const f64,
+    count: u32,
+    loops: u32,
+    elapsed: f64,
+    next: *mut f64,
+) -> u32 {
+    guard(0, || {
+        let ds: &[f64] = if delays.is_null() || count == 0 {
+            &[]
+        } else {
+            // SAFETY: the caller's promise, `count` delays.
+            unsafe { std::slice::from_raw_parts(delays, count as usize) }
+        };
+        let a = kui_native::Animation {
+            width: 0,
+            height: 0,
+            frames: ds
+                .iter()
+                .map(|&delay| kui_native::AnimationFrame {
+                    rgba: Vec::new(),
+                    delay,
+                })
+                .collect(),
+            loops: (loops != 0).then_some(loops),
+        };
+        let s = a.at(elapsed);
+        if !next.is_null() {
+            unsafe { *next = s.next };
+        }
+        s.index as u32
+    })
+}
+
+/// Frees what `kui_decode_image` or `kui_decode_animation` returned; NULL
+/// is nothing. Only those pointers: the length is kept just before them.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_pixels_free(pixels: *mut u8) {
+    guard((), || {
+        if pixels.is_null() {
+            return;
+        }
+        // SAFETY: `pixels` is two words past the start of a `hand_out`
+        // block, whose first word is its length in words.
+        unsafe {
+            let base = pixels.cast::<u64>().sub(2);
+            let words = *base as usize;
+            drop(Vec::from_raw_parts(base, words, words));
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

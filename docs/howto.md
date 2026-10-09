@@ -111,6 +111,28 @@ is still not keyframes (see the caret how-to): it is a cycle with no end.
 [`keyframes` row](props.md#container-props) ·
 [`transition` example](../examples/rust/features/transition.rs)
 
+### How do I show a photo or a GIF my app ships?
+
+Decode it with the runner, which links the decoder it draws its
+wallpaper with: `kui_native::decode_image(bytes)` turns PNG, JPEG, WebP
+or GIF bytes into straight RGBA and a size, which `add_image` takes as it
+is (`decodeImage` in Node, `kui_decode_image` in C, freed with
+`kui_pixels_free`). No `image` dependency of the app's own. For an
+animated GIF, APNG or WebP, `decode_animation` keeps every frame — the
+whole canvas each, as a browser composites it — with the seconds each
+shows. Play it on the frame clock: keep when it started, ask
+`Animation::at(ui.now() - started)` which frame shows and when the next
+is due, `update_image_with` the pixels when the index moved, and
+`request_frame_at(started + next)`. Nothing is owed between steps, so a
+spinner at 80 ms a step costs twelve frames a second and an idle window
+otherwise, and a paused one asks for nothing. A GIF frame that says 10 ms
+or less shows for 100, the way browsers show it; a finite loop count
+rests on the last frame. Lua is a guest and gets the handle from its
+host.
+
+[`decode` example](../examples/rust/features/decode.rs) ·
+[`image` element](props.md#elements)
+
 ### How do I draw a connector between two boxes?
 
 `<line from={[x, y]} to={[x, y]} width color/>` is one round-capped stroke,
@@ -2053,7 +2075,8 @@ it again after an upgrade; it is generated, never edited.
 Tell the launcher, once, and every window it creates carries it:
 `kui_native::app("t").icon(rgba, w, h)` with straight RGBA pixels, row by row
 — something a taskbar shrinks cleanly, 64 to 256 px, rendered from your
-drawing at build time or decoded from a PNG you ship — and, for a
+drawing at build time — or `.icon_bytes(include_bytes!("icon.png"))` for
+a PNG you ship, decoded by the runner — and, for a
 Windows program, `.icon_resource(1)` too. A Windows program's icon is a
 resource linked into its executable (a `1 ICON "app.ico"` line in its
 `.rc`, compiled by `embed-resource` or the like in `build.rs`), which is

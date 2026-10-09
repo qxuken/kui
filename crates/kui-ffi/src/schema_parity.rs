@@ -932,6 +932,9 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_abi_version",
             "kui_run",
             "kui_run_with",
+            // What frees the decoder's pixels: C's half of a Rust `Vec`
+            // going out of scope, so no verb.
+            "kui_pixels_free",
         ];
         name.starts_with("kui_value_")
             // A size expression's builders make values, as `kui_value_*`

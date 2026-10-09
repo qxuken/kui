@@ -576,6 +576,10 @@ for (const line of defsSrc.trim().split('\n')) {
     const cls = { name: item.name, doc: item.js_doc, body: item.def ? [item.def] : [] };
     classes.set(item.name, cls);
     parts.push({ cls });
+  } else if (item.kind === 'interface') {
+    // A `#[napi(object)]`: plain data handed back, a field a line.
+    parts.push({ text: `${item.js_doc}export interface ${item.name} {\n${indent(item.def)}\n}` });
+    members += 1;
   } else if (item.kind === 'impl') {
     const cls = classes.get(item.name);
     if (!cls) throw new Error(`impl for an unknown class: ${item.name}`);
