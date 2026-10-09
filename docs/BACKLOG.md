@@ -1574,9 +1574,12 @@ on a Mac, with a regression test kept.
 ### Theirs, not ours
 
 - **A menu titled `Window` is the platform's Window menu** (ADR 0030
-  decision 2): AppKit adds Minimize, Zoom, the tiling rows and Enter
-  Full Screen to it. Noticon's own Minimize (⌘M) and Zoom rows in its
-  `Window` menu duplicate AppKit's, and can be dropped.
+  decision 2): AppKit adds Fill, Center, the tiling rows and the window
+  list to it, and kui adds Enter Full Screen. Minimize and Zoom are not
+  among them — kui's standard bar adds those two by hand
+  (`macos_menu.rs`) — so Noticon's own Minimize (⌘M) and Zoom rows stay.
+  *Corrected 2026-10-09:* this note first said they duplicated AppKit's
+  and could be dropped; Carnet's integration found otherwise in the code.
 - **Text glyphs make poor icons** — a "+" lands where the font's
   metrics put it. Noticon draws its icons from `line` and `polyline`
   now, which centre exactly. Advice for the book, not a change.
