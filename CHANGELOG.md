@@ -204,6 +204,18 @@ layer this round needed is checked by CI's `odin.nu` steps on the tag,
 and its layout was compared by script against the C side's asserts. No
 Windows or Linux machine ran this round.
 
+Those steps failed on the tag: `odin.nu gen --check` found the
+hand-written `generated.odin` with the `now` door one place out of the
+generator's order, so Forgejo's `check` failed and its publish to the
+drydock9 cargo registry was skipped. GitHub's pipeline had already put
+the crates on crates.io and staged the npm package, from the same
+commit, so the tag stays where it is. Nothing shipped differs: the Odin
+package is in neither registry. The file was regenerated with CI's
+pinned Odin (`dev-2026-09`) in a Debian container, the package and every
+Odin example type-checked there, and the fix is on main after the tag;
+`scripts/release-local.nu` publishes the drydock9 crates with the
+Forgejo npm copy.
+
 ## 0.1.0-alpha.45 (2026-10-08)
 
 **What breaks.**

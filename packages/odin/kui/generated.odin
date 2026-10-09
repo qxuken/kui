@@ -2318,6 +2318,13 @@ set_time :: proc(ui: ^Ui, now_secs: f64) {
 	c.set_time(ui, now_secs)
 }
 
+// The frame clock in seconds, the one the tweens read: what a view times its
+// own deadlines by.
+// Rust: Ui::now.
+now :: proc(ui: ^Ui) -> f64 {
+	return c.now(ui)
+}
+
 // Asks for a frame at a time on the frame clock — a toast's expiry, a
 // sequence's beat — with nothing owed until then.
 // Rust: Ui::request_frame_at.
@@ -2330,13 +2337,6 @@ request_frame_at :: proc(ui: ^Ui, at: f64) {
 // Rust: Core::next_frame_at.
 next_frame_at :: proc(ui: ^Ui) -> f64 {
 	return c.next_frame_at(ui)
-}
-
-// The frame clock in seconds, the one the tweens read: what a view times its
-// own deadlines by.
-// Rust: Ui::now.
-now :: proc(ui: ^Ui) -> f64 {
-	return c.now(ui)
 }
 
 // Whether the last frame left a transition mid-flight, so the host draws
