@@ -1566,21 +1566,8 @@ band, F153 asks only the horizontal half), two meet a condition an ADR
 wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
 entries, F144–F153, and W23, filed open; F148, F144–F146 as ADR 0011's
-decision 10, F147 and F149–F152 **built 2026-10-09**, the day they
-were filed, and in the archive.
-
-### `.` F153 — A sink's `drag` names a line for a press in the margin beside it, and says nothing of where the press was
-
-**Found.** The nearest line is chosen by vertical gap alone
-(`dispatch.rs:165–182`). `props.md:199` and the comment at
-`dispatch.rs:111–115` cover above and below the text and a
-`role="none"` gutter, but not a press to the left or right of a row's
-text, which reads "line 3, byte 0" exactly as a press on its first
-character does. Noticon tells a margin drag (block selection) from a
-text drag by comparing `x` against the row's rect.
-
-**Do.** `inside: bool` on the drag payload (the press was within a
-line's text box), and a sentence in the events table.
+decision 10, F147 and F149–F153 **built 2026-10-09**, the day they
+were filed, and in the archive. W23 is open.
 
 ### `!` W23 — Over a `Titlebar::Tall` strip the window hears no pointer: hover never fires, `cursor()` reads nothing, no frame comes
 
@@ -3055,8 +3042,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round (F153, W23; F144–F152 built):
-F153 at the sink's drag; W23 needs a Mac before anything is built.
+**Build next.** Noticon's polish round: W23 alone is open (F144–F153
+built), and needs a Mac before anything is built.
 Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
 (`#[derive(Message)]`), was **built 2026-09-25**; C47 was
@@ -4487,3 +4474,5 @@ move.
 - `~` **F151** — [A declared row's shortcut takes the key from every field: no row replays its chord the way the standard Edit rows do](backlog/closed-2026-09.md#-f151--a-declared-rows-shortcut-takes-the-key-from-every-field-no-row-replays-its-chord-the-way-the-standard-edit-rows-do--done-2026-10-09) — done (2026-10-09) — `MenuItem::replay` / `replay` / `KuiMenuItem.replay` (ABI 30): chosen, the row plays its `accel` where the keyboard is (`Shell::replay_key`, `Core::replay_chord`) and posts nothing
 
 - `.` **F152** — [A declared bar has no Hide, Hide Others, Show All or Quit](backlog/closed-2026-09.md#-f152--a-declared-bar-has-no-hide-hide-others-show-all-or-quit--done-2026-10-09) — done (2026-10-09) — `MenuRole::About` / `Hide` / `HideOthers` / `ShowAll` / `Quit` (`KUI_MENU_*`, no ABI bump): AppKit's own rows on a Mac bar, About and Quit posted in a drawn menu, the other three not offered
+
+- `.` **F153** — [A sink's `drag` names a line for a press in the margin beside it, and says nothing of where the press was](backlog/closed-2026-09.md#-f153--a-sinks-drag-names-a-line-for-a-press-in-the-margin-beside-it-and-says-nothing-of-where-the-press-was--done-2026-10-09) — done (2026-10-09) — `inside` beside `line` and `byte`: whether the point is within the line's own box, false in the margin, above and below

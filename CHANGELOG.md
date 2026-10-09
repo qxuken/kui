@@ -34,6 +34,8 @@ was the first bare bump to break an app in five releases).
 - `KUI_ABI_VERSION` is 30: `KuiTextStyle` gains `bold` (29) and
   `KuiMenuItem` `replay` (30). Recompile a C or Odin host.
 - `MenuItem` has a `replay` field: a struct literal of it needs one.
+- A pointer event inside a key sink that draws `role="line"` rows carries
+  `inside` beside `line` and `byte` — a click's own map payload too.
 - `MenuRole` has five more variants (`About`, `Hide`, `HideOthers`,
   `ShowAll`, `Quit`): an exhaustive `match` on it needs them.
 
@@ -94,6 +96,10 @@ the ABI did, twice. Zeroed fields are what a text and a row were.
   instead of walking the focus ring, so a list or an outline built from
   fields indents on Tab. A document keeps Tab either way. A new flag
   bit, no ABI change.
+- **`inside` on a line sink's pointer events** (backlog F153): whether the
+  point is within the line's own box, false above, below and in the
+  margin beside a row — so a margin gesture is told from a press on the
+  text without comparing `x` to a rect.
 - **The application menu's rows** — `MenuRole::About`, `Hide`,
   `HideOthers`, `ShowAll`, `Quit`; `"about"`, `"hide"`, `"hideOthers"`,
   `"showAll"`, `"quit"` as a row's `role`; `KUI_MENU_ABOUT` …
@@ -138,6 +144,8 @@ the ABI did, twice. Zeroed fields are what a text and a row were.
   kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
 - Routing an app's shortcuts through a declared menu bar, or a field's
   own key handling, so they work while a field has focus.
+- Comparing a drag's `x` against a line's rect to tell a margin press
+  from a press on its text.
 - Sending `hide:`, `hideOtherApplications:` or `unhideAllApplications:`
   to `NSApplication` by hand, and quitting from a declared bar by closing
   the window.

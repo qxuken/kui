@@ -112,7 +112,10 @@ impl Core {
     /// and `clicks` — the press's count, so a double click is a word
     /// without a timer the app keeps; a point above the
     /// first line is the first, below the last the last, and one in a
-    /// gutter is the line beside it. The point is the event's own for a
+    /// gutter is the line beside it — and `inside`, whether the point is
+    /// within that line's own box at all, so a press in the margin beside
+    /// a row is told from one on its text without the app comparing `x`
+    /// against a rect (backlog F153). The point is the event's own for a
     /// drag and the cursor's for a click. Not opt-in, like `cell`: the
     /// fields appear wherever the shape they describe is drawn, and a
     /// handler that does not read them is not slower for their being
@@ -185,6 +188,12 @@ impl Core {
                 .text
                 .hit_at(self.tree.keys[l], at(l), self.building)
                 .map_or(0, |h| h.byte);
+            // Within the line's box, both ways: on its band, between its
+            // left and right edges.
+            let inside = {
+                let (p, x, w) = (at(l), self.tree.pos[l].x, self.tree.size[l].w);
+                gap(l) == 0.0 && p.x >= x && p.x <= x + w
+            };
             // A `button` event's press carries its own count and its move
             // and release none (backlog F105): `clicks` here is the last
             // primary press's. The core's is told by its `phase` and
@@ -196,6 +205,7 @@ impl Core {
             if let Value::Map(entries) = &mut ev.payload {
                 entries.push(("line".to_string(), Value::Int(line as i64)));
                 entries.push(("byte".to_string(), Value::Int(byte as i64)));
+                entries.push(("inside".to_string(), Value::Bool(inside)));
                 if !own_count {
                     entries.push(("clicks".to_string(), Value::Int(clicks as i64)));
                 }

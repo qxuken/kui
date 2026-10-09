@@ -1888,7 +1888,7 @@ test('a press in a sink names the line, the byte and the click count, and the si
   assert.equal(start.byte, 3);
   assert.equal(start.clicks, 2);
   const hit = evs.find((p) => p.kind === 'hit');
-  assert.deepEqual(hit, { kind: 'hit', line: 1, byte: 3, clicks: 2 });
+  assert.deepEqual(hit, { kind: 'hit', line: 1, byte: 3, inside: true, clicks: 2 });
   // The clipboard: the two doors queue what a menu's Copy and Paste
   // would, and the host answers a paste with `commit`, which the sink
   // hears as `text`.

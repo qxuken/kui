@@ -89,6 +89,8 @@ fn a_press_in_a_sink_says_which_line_and_where() {
     assert_eq!(field(start, "line"), Some(Value::Int(1)));
     assert_eq!(field(start, "byte"), Some(Value::Int(6)));
     assert_eq!(field(start, "clicks"), Some(Value::Int(1)));
+    // On the line's own box (backlog F153).
+    assert_eq!(field(start, "inside"), Some(Value::Bool(true)));
     // A move carries the line and byte under the pointer now.
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(
         10.0 + GUTTER + 2.8 * w,
@@ -127,6 +129,8 @@ fn a_click_carries_the_press_count_and_the_gutter_is_the_line_beside_it() {
     assert_eq!(field(click, "line"), Some(Value::Int(1)));
     assert_eq!(field(click, "byte"), Some(Value::Int(0)));
     assert_eq!(field(click, "clicks"), Some(Value::Int(2)));
+    // Beside the line, not on it: a margin press says so (backlog F153).
+    assert_eq!(field(click, "inside"), Some(Value::Bool(false)));
     // The drag's start carried the same count.
 }
 
@@ -142,6 +146,8 @@ fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() 
     assert_eq!(field(start, "line"), Some(Value::Int(0)));
     // Past the end of the line's text: its length.
     assert_eq!(field(start, "byte"), Some(Value::Int(4)));
+    // Below it, so not on it (backlog F153).
+    assert_eq!(field(start, "inside"), Some(Value::Bool(false)));
     release(&mut core);
 
     // A sink that draws no lines: the payload is as it was.
@@ -161,6 +167,7 @@ fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() 
         .find(|e| kind(e).as_deref() == Some("drag"))
         .expect("the drag started");
     assert_eq!(field(start, "line"), None);
+    assert_eq!(field(start, "inside"), None);
     assert_eq!(field(start, "byte"), None);
     assert_eq!(field(start, "clicks"), None);
     release(&mut core);

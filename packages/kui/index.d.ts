@@ -149,9 +149,11 @@ export type ButtonMsg<T = AppMsg> = {
   /** On a `cells` grid: the cell under the pointer, clamped to the grid. */
   cell?: { row: number; col: number };
   /** Inside an `onKey` sink that draws `role="line"` rows: the line and
-   *  the byte in its text, as a drag carries them. */
+   *  the byte in its text, as a drag carries them, and whether the point
+   *  is within that line's own box (false in the margin beside it). */
   line?: number;
   byte?: number;
+  inside?: boolean;
   tag?: T;
 };
 
