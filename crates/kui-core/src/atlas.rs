@@ -130,8 +130,10 @@ pub struct GlyphAtlas {
     pub stamp: u64,
     map: FxHashMap<CacheKey, Option<GlyphSlot>>,
     /// Registered images blitted into the same page (one texture, one draw
-    /// call). Keyed by handle; re-blitted from `Resources` after a reset.
-    images: FxHashMap<ImageId, Option<GlyphSlot>>,
+    /// call). Keyed by handle and level — 0 the image, `n` the image
+    /// halved `n` times (ADR 0044) — and re-blitted from `Resources` after
+    /// a reset.
+    images: FxHashMap<(ImageId, u8), Option<GlyphSlot>>,
     /// Shapes drawn from a cell box rather than a font — box drawing,
     /// blocks, Powerline — keyed on the character and the
     /// cell size in physical px, so one cell size shares one slot and
@@ -729,7 +731,23 @@ impl GlyphAtlas {
         h: u32,
         rgba: &[u8],
     ) -> Option<GlyphSlot> {
-        if let Some(&slot) = self.images.get(&id) {
+        self.get_or_insert_image_level(id, 0, w, h, || rgba)
+    }
+
+    /// [`Self::get_or_insert_image`] for one level of the image's chain
+    /// (ADR 0044): `w × h` and the pixels `rgba` hands over are that
+    /// level's, asked for only on a miss, so a level already in the page
+    /// is never made.
+    pub fn get_or_insert_image_level<'p>(
+        &mut self,
+        id: ImageId,
+        level: u8,
+        w: u32,
+        h: u32,
+        rgba: impl FnOnce() -> &'p [u8],
+    ) -> Option<GlyphSlot> {
+        let key = (id, level);
+        if let Some(&slot) = self.images.get(&key) {
             // A refused image draws from a texture of its own: it takes
             // nothing of the page and wants nothing of it.
             if let Some(slot) = slot {
@@ -737,11 +755,12 @@ impl GlyphAtlas {
             }
             return slot;
         }
-        debug_assert_eq!(rgba.len(), (w * h * 4) as usize);
         let Some((x, y)) = self.alloc_or_make_room(w, h) else {
-            self.images.insert(id, None);
+            self.images.insert(key, None);
             return None;
         };
+        let rgba = rgba();
+        debug_assert_eq!(rgba.len(), (w * h * 4) as usize);
         self.blit(x, y, w, h, rgba);
         let slot = GlyphSlot {
             x,
@@ -754,26 +773,33 @@ impl GlyphAtlas {
             subpixel: false,
         };
         self.note_slot(slot);
-        self.images.insert(id, Some(slot));
+        self.images.insert(key, Some(slot));
         Some(slot)
     }
 
-    /// Forget an image's slot (its pixels are reclaimed at the next reset).
-    /// Call when the host removes the image from `Resources`.
+    /// Forget an image's slots, every level's (their pixels are reclaimed
+    /// at the next reset). Call when the host removes the image from
+    /// `Resources`.
     pub fn evict_image(&mut self, id: ImageId) {
-        self.images.remove(&id);
+        self.images.retain(|(i, _), _| *i != id);
     }
 
     /// Keeps the slots of the images `live` says still exist and forgets
     /// the rest — how a window learns of removals made through another
     /// window of its session.
     pub fn retain_images(&mut self, live: impl Fn(ImageId) -> bool) {
-        self.images.retain(|id, _| live(*id));
+        self.images.retain(|(id, _), _| live(*id));
     }
 
-    /// Whether the atlas holds a slot for `id`.
+    /// Whether the atlas holds a slot for `id`, at any level.
     pub fn has_image(&self, id: ImageId) -> bool {
-        self.images.contains_key(&id)
+        self.images.keys().any(|(i, _)| *i == id)
+    }
+
+    /// Whether the atlas holds `id`'s level `level` (ADR 0044): 0 the
+    /// image, `n` the image halved `n` times.
+    pub fn has_image_level(&self, id: ImageId, level: u8) -> bool {
+        matches!(self.images.get(&(id, level)), Some(Some(_)))
     }
 }
 

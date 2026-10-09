@@ -23,6 +23,24 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.48 (unreleased)
 
+### Added
+
+- **An image drawn smaller is drawn from a level the core halves**
+  (backlog V6, ADR 0044). An `image` drawn at less than half its
+  texels a pixel — a photo on a card, a thumbnail — samples a level
+  of the image halved on the CPU, 2×2 means in linear light with the
+  alpha premultiplied, instead of skipping texels: no shimmer as it
+  moves, no false patterns in fine detail. The level is the deepest
+  with at least a texel a pixel, counting the display's scale and any
+  `scale` the node is drawn through; it is made once per session at
+  the first draw that wants it (about 10 ms for a 12-megapixel photo's
+  first level) and kept in the atlas in place of the whole image, so a
+  photo only ever shown small never puts its full size in the page.
+  `sampling: nearest` and an image ever updated (a stream) draw the
+  whole image, as before. Nothing to declare and no binding changed:
+  a C host drawing `KuiDrawData` finds the level in the page it already
+  uploads. The `image` example shows a zone plate both ways.
+
 ### Fixed
 
 - **A handler reads the clock at the time it runs** (backlog F139).
@@ -41,6 +59,8 @@ was the first bare bump to break an app in five releases).
 
 - Stamping deadlines in `view` because a handler's `now()` was stale:
   `core.now()` read in `on_event_with` is the time of the event.
+- Resampling a photo to the size it is shown at before `add_image`:
+  register it as decoded and declare the box.
 
 ## 0.1.0-alpha.47 (2026-10-09)
 

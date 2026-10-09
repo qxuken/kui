@@ -707,7 +707,13 @@ the app rasterised — and from then on the image draws from a texture of its
 own, as does one too big for a page; `ui.image_with(id, ImageOpts { sampling,
 fit }, spec)` says how the pixels meet the box (`nearest` for pixel art,
 `contain` / `cover` for another aspect), and the `layout` event's `scale`
-says how many pixels to render for it.
+says how many pixels to render for it. An image drawn at less than half
+its texels a pixel is drawn from a level the core halved it to
+([ADR 0044](adr/0044-an-image-drawn-smaller-is-drawn-from-a-level.md)):
+2×2 means in linear light, made once per session at the first draw that
+wants them and kept in the page in place of the whole image, so a photo
+is registered as decoded and shown at any size; `nearest` and a stream
+draw the whole image.
 
 Polygons: `ui.polygon(&points, spec)` fills an outline of up to eight points
 with the spec's `bg`, placed like a line — a float in the parent's box space

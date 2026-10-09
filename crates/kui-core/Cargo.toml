@@ -82,6 +82,10 @@ harness = false
 name = "cells"
 harness = false
 
+[[bench]]
+name = "levels"
+harness = false
+
 # See the note in crates/kui-native/Cargo.toml: examples live under examples/ at the
 # root, so cargo needs the path.
 [[example]]

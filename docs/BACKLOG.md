@@ -833,6 +833,19 @@ because the renderer samples the full image with no mip chain and a
 minified sample aliases. An app that loads a photo and declares it at
 the size it wants to show is what the mips are for.
 
+**Mipmaps built 2026-10-09**, the same day, as [ADR
+0044](adr/0044-an-image-drawn-smaller-is-drawn-from-a-level.md): an
+image drawn at less than half its texels a pixel is drawn from a level
+the core halves it to on the CPU (2×2 means in linear light, made once
+per session at the first draw that wants them) and keeps in the atlas
+in place of the whole image; no binding or backend changed. What stays
+open here is the first half — dirty rects on `update_image` — and levels
+for a *stream*, which draws its whole image: halving a frame on every
+update is milliseconds a frame, so a minified stream wants a GPU mip
+chain on its own texture, under the same condition as the dirty rect.
+The ADR's amendment has the measurements: 10.1 ms to halve a phone
+photo once, and a smaller GPU saving than ADR 0025's split bench read.
+
 ### `.` V7 — A core `zoom` row — declined with a condition
 
 A per-subtree scale as scroll's sibling: layout in the subtree's own
@@ -1541,7 +1554,8 @@ reads the clock after the window sat idle reads the last frame's time,
 so the app stamps its deadlines in `view` instead (F139, **built
 2026-10-09**, the day it was filed, and in the archive). Two are docs
 (F140, F141). The fourth, the 25-line resampler the app keeps because
-nothing minifies an image, is V6's condition met, and is written there.
+nothing minifies an image, is V6's condition met, and is written there;
+its mipmap half was built the same day as ADR 0044.
 
 ### `.` F140 — `role="none"` is the decorative door, and neither the warning nor the docs point a caption at it
 

@@ -6,7 +6,10 @@
 //! every frame with `update_image_with`, rendered at exactly the pixel count
 //! the `layout` event's `scale` says the box covers, shown `nearest`
 //! beside `linear`; and `contain` / `cover` against a box of another
-//! aspect.
+//! aspect. And, since ADR 0044, an image drawn smaller than it is: a zone
+//! plate's fine rings drawn at a sixth, from the level the core halved it
+//! to, beside the same through `nearest`, which skips the texels between
+//! the ones it takes and draws rings that are not there.
 //!
 //! Run: cargo run -p kui-native --example image [-- --headless]
 
@@ -54,6 +57,23 @@ fn checker(w: u32, h: u32) -> Vec<u8> {
     px
 }
 
+/// A zone plate: rings whose frequency rises from the centre to half a
+/// cycle a pixel at the corners — the finest detail an image can hold,
+/// and the first thing drawing it smaller gets wrong.
+fn zone_plate(size: u32) -> Vec<u8> {
+    let mut px = Vec::with_capacity((size * size * 4) as usize);
+    let c = size as f32 / 2.0;
+    let k = std::f32::consts::PI / (2.0 * c * std::f32::consts::SQRT_2);
+    for y in 0..size {
+        for x in 0..size {
+            let (dx, dy) = (x as f32 - c, y as f32 - c);
+            let v = (128.0 + 127.0 * (k * (dx * dx + dy * dy)).cos()) as u8;
+            px.extend_from_slice(&[v, v, v, 0xff]);
+        }
+    }
+    px
+}
+
 /// A frame of plasma at `w`×`h`, `phase` along, written into `out`
 /// (`w × h × 4` bytes): what a video decoder, a camera or a plot library
 /// would hand back — pixels the app made.
@@ -77,6 +97,7 @@ fn plasma(w: u32, h: u32, phase: f32, out: &mut [u8]) {
 struct Gallery {
     sky: Option<ImageId>,
     checker: Option<ImageId>,
+    zone: Option<ImageId>,
     /// The stream: registered once at a token size, then replaced every
     /// frame at the size the layout event last reported.
     stream: Option<ImageId>,
@@ -101,6 +122,9 @@ impl App for Gallery {
         let checker_id = *self
             .checker
             .get_or_insert_with(|| ui.core().resources.add_image(96, 96, checker(96, 96)));
+        let zone_id = *self
+            .zone
+            .get_or_insert_with(|| ui.core().resources.add_image(768, 768, zone_plate(768)));
         let stream_id = *self
             .stream
             .get_or_insert_with(|| ui.core().resources.add_image(16, 9, vec![0; 16 * 9 * 4]));
@@ -230,6 +254,26 @@ impl App for Gallery {
                         );
                     }
                 });
+
+                ui.text(
+                    "A 768-px zone plate drawn at 128: linear draws from a level the core halved it to (ADR 0044), nearest from the image itself",
+                    muted,
+                );
+                ui.with(NodeSpec::row().gap(16.0), |ui| {
+                    for (sampling, label) in [
+                        (Sampling::Linear, "a zone plate, drawn from a level"),
+                        (Sampling::Nearest, "the same zone plate, nearest-sampled"),
+                    ] {
+                        ui.image_with(
+                            zone_id,
+                            ImageOpts {
+                                sampling,
+                                ..ImageOpts::default()
+                            },
+                            NodeSpec::column().size(128.0, 128.0).label(label),
+                        );
+                    }
+                });
             },
         );
     }
@@ -285,7 +329,12 @@ impl Example for Gallery {
                     .count(),
                 dl.quads
                     .iter()
-                    .filter(|q| q.kind == kui_native::QuadKind::Image && q.rect.w >= 100.0)
+                    // The zone plates below are 128 px square.
+                    .filter(|q| {
+                        q.kind == kui_native::QuadKind::Image
+                            && q.rect.w >= 100.0
+                            && q.rect.w != 128.0
+                    })
                     .copied()
                     .collect::<Vec<_>>(),
             )
@@ -308,8 +357,23 @@ impl Example for Gallery {
             "contain paints a shorter rect than fill",
         )?;
         d.check(
-            fits[2].uv[2] < fits[0].uv[2],
-            "cover shows fewer texels than fill",
+            fits[2].uv[2] == fits[2].uv[3] && fits[0].uv[2] != fits[0].uv[3],
+            "cover shows a square of texels, fill the whole 16:9",
+        )?;
+        // The zone plate at a sixth, at scale 1: linear names the level
+        // halved twice, 192 texels, nearest the whole 768.
+        let zone: Vec<(u32, f32)> = d
+            .core
+            .output()
+            .0
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_native::QuadKind::Image && q.rect.w == 128.0)
+            .map(|q| (q.uv[2], q.border_w))
+            .collect();
+        d.check(
+            zone == [(192, 0.0), (768, 1.0)],
+            "the zone plate draws from a level, and nearest from the image",
         )?;
         Ok(())
     }
@@ -318,6 +382,7 @@ impl Example for Gallery {
 kui_devtools::main!(Gallery {
     sky: None,
     checker: None,
+    zone: None,
     stream: None,
     stream_px: (0, 0),
     phase: 0.0,

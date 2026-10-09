@@ -22,6 +22,12 @@
 //!                                                      # images instead of fragments —
 //!                                                      # the split is a group-0 swap
 //!                                                      # under the same pipeline
+//!   TEX=1 LEVEL=2 cargo bench -p kui-wgpu --bench split
+//!                                                      # ADR 0044: the same boxes drawn
+//!                                                      # from the 1080p image halved twice,
+//!                                                      # the level the core picks for them
+//!                                                      # (NOISE=1: texels a GPU cannot
+//!                                                      # compress, as a photo's)
 
 use std::time::Instant;
 
@@ -30,7 +36,7 @@ const H: u32 = 1440;
 
 /// Mirrors the private `Instance` in `lib.rs`, field for field.
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Default)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Instance {
     pos: [f32; 2],
     size: [f32; 2],
@@ -41,10 +47,27 @@ struct Instance {
     clip: [f32; 4],
     radii: [f32; 4],
     clip_radii: [f32; 4],
+    /// ADR 0043's turn: angle, scale, tx, ty.
+    xform: [f32; 4],
+    /// The clip before the turn, and its radii.
+    inner: [f32; 4],
+    inner_radii: [f32; 4],
 }
 
-/// 32 floats. A mismatch here means `lib.rs` moved and this bench did not.
-const _: () = assert!(std::mem::size_of::<Instance>() == 128);
+/// Zero but for the turn, which is the identity, and the inner clip,
+/// which clips nothing — a zeroed `xform` draws every quad at scale 0.
+impl Default for Instance {
+    fn default() -> Self {
+        Self {
+            xform: [0.0, 1.0, 0.0, 0.0],
+            inner: [-1e9, -1e9, 2e9, 2e9],
+            ..bytemuck::Zeroable::zeroed()
+        }
+    }
+}
+
+/// 44 floats. A mismatch here means `lib.rs` moved and this bench did not.
+const _: () = assert!(std::mem::size_of::<Instance>() == 176);
 
 /// Mirrors the private `Globals` in `lib.rs`, field for field. The quad
 /// pipeline here is built from that crate's `shader.wgsl`, so this is the
@@ -128,6 +151,7 @@ fn quads(n: usize) -> Vec<Instance> {
                 clip: [0.0, 0.0, W as f32, H as f32],
                 radii: [4.0; 4],
                 clip_radii: [0.0; 4],
+                ..Default::default()
             }
         })
         .collect()
@@ -155,7 +179,8 @@ fn fragment_instance(i: usize) -> Instance {
         color: [1.0; 4],
         params: [0.0, 0.0, if textures { 3.0 } else { 0.0 }, 0.0],
         uv: if textures {
-            [0.0, 0.0, 1920.0, 1080.0]
+            let (tw, th) = tex_size();
+            [0.0, 0.0, tw as f32, th as f32]
         } else {
             [0.0; 4]
         },
@@ -163,6 +188,20 @@ fn fragment_instance(i: usize) -> Instance {
         radii: [8.0; 4],
         ..Default::default()
     }
+}
+
+/// The texture `TEX=1` samples: 1080p, or under `LEVEL=n` that halved
+/// `n` times (ADR 0044), the size a minified image is drawn from.
+fn tex_size() -> (u32, u32) {
+    let n: u32 = std::env::var("LEVEL")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let (mut w, mut h) = (1920u32, 1080u32);
+    for _ in 0..n {
+        (w, h) = (w.div_ceil(2), h.div_ceil(2));
+    }
+    (w, h)
 }
 
 struct Run {
@@ -369,6 +408,7 @@ impl Bench {
             0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
             6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
+            9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
         ];
         let vbuf = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Instance>() as u64,
@@ -416,7 +456,8 @@ impl Bench {
         let globals = Globals {
             viewport: [W as f32, H as f32],
             atlas_size: if textures {
-                [1920.0, 1080.0]
+                let (tw, th) = tex_size();
+                [tw as f32, th as f32]
             } else {
                 [1024.0, 1024.0]
             },
@@ -483,11 +524,12 @@ impl Bench {
         let bind0 = group0(&atlas_view);
         // A second texture, the size of a 1080p stream, for the `TEX=1`
         // mode: the split there is this bind group in place of `bind0`.
+        let (tw, th) = tex_size();
         let stream = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("stream"),
             size: wgpu::Extent3d {
-                width: 1920,
-                height: 1080,
+                width: tw,
+                height: th,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -498,7 +540,23 @@ impl Bench {
             view_formats: &[],
         });
         // Solid orange, so `verify` can tell the texture was sampled.
-        let orange: Vec<u8> = [0xd8u8, 0x86, 0x3b, 0xff].repeat(1920 * 1080);
+        let mut orange: Vec<u8> = [0xd8u8, 0x86, 0x3b, 0xff].repeat((tw * th) as usize);
+        // Under `NOISE=1` every texel is jittered by up to ±15, still
+        // orange to `verify`: a flat texture can be compressed by the GPU
+        // and read for nothing however it is minified, which a photo
+        // cannot.
+        if std::env::var("NOISE").is_ok() {
+            let mut x = 0x9e37_79b9u32;
+            for (i, c) in orange.iter_mut().enumerate() {
+                if i % 4 == 3 {
+                    continue;
+                }
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                *c = (*c as i32 + (x % 31) as i32 - 15) as u8;
+            }
+        }
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &stream,
@@ -509,12 +567,12 @@ impl Bench {
             &orange,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(1920 * 4),
-                rows_per_image: Some(1080),
+                bytes_per_row: Some(tw * 4),
+                rows_per_image: Some(th),
             },
             wgpu::Extent3d {
-                width: 1920,
-                height: 1080,
+                width: tw,
+                height: th,
                 depth_or_array_layers: 1,
             },
         );
@@ -687,7 +745,8 @@ impl Bench {
             color: [1.0; 4],
             params: [0.0, 0.0, if self.textures { 3.0 } else { 0.0 }, 0.0],
             uv: if self.textures {
-                [0.0, 0.0, 1920.0, 1080.0]
+                let (tw, th) = tex_size();
+                [0.0, 0.0, tw as f32, th as f32]
             } else {
                 [0.0; 4]
             },
@@ -776,6 +835,7 @@ impl Bench {
             0 => Float32x2, 1 => Float32x2, 2 => Float32x4,
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
             6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
+            9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
         ];
         let vbuf = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Instance>() as u64,

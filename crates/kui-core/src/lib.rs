@@ -131,6 +131,7 @@ pub mod line;
 pub mod menu;
 pub mod message;
 pub mod metrics;
+pub mod mip;
 pub mod path;
 pub mod resources;
 pub(crate) mod retain;

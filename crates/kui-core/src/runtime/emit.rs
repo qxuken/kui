@@ -2558,6 +2558,42 @@ impl Painter<'_> {
             .unwrap_or(Clip::NONE)
     }
 
+    /// The level an `image` node draws (ADR 0044): `None` for level 0 —
+    /// sampled `nearest`, an image ever updated, a draw at no more than
+    /// two texels a pixel — else the level and its pixels, made now if
+    /// no draw has asked for it before. The ratio is the texel rect `fit`
+    /// picks over the drawn rect in physical px, times the scale the clip
+    /// entry draws the quad through. A level past a page is not drawn
+    /// from (it would want a texture of its own); level 0 is.
+    fn image_level(
+        &self,
+        rect: Rect,
+        scale: f32,
+        clip_id: ClipId,
+        entry: &crate::resources::ImageEntry,
+        opts: crate::resources::ImageOpts,
+    ) -> Option<(u8, std::sync::Arc<crate::resources::Level>)> {
+        if opts.sampling != crate::resources::Sampling::Linear || !entry.levels_allowed() {
+            return None;
+        }
+        let (drawn, texels) = fit_image(
+            opts.fit,
+            rect,
+            Size::new(entry.width as f32, entry.height as f32),
+            [0, 0, entry.width, entry.height],
+        );
+        let k = scale * self.clip_px(clip_id).transform.scale.abs();
+        let n = crate::mip::level_for(
+            (texels[2] as f32, texels[3] as f32),
+            (drawn.w * k, drawn.h * k),
+            entry.depth(),
+        );
+        let level = entry.level(n)?;
+        (level.width <= crate::atlas::MAX_ATLAS_SIZE
+            && level.height <= crate::atlas::MAX_ATLAS_SIZE)
+            .then_some((n, level))
+    }
+
     /// What a leaf draws inside its box: text, cells, an editor, an
     /// image, a fragment, a polygon's fill or a stroke. Out of line, so the
     /// kinds a plain box never takes do not weigh on every node's
@@ -2650,16 +2686,32 @@ impl Painter<'_> {
             Leaf::Image(id, opts) => {
                 let sess = self.session.state();
                 if let Some(entry) = sess.resources.image(id) {
-                    // Atlas-backed unless the entry says otherwise — or
-                    // unless the atlas cannot take it after all, which
+                    // Drawn smaller than it is, from a level of the image
+                    // halved (ADR 0044) when the page can take it; else
+                    // level 0, atlas-backed unless the entry says otherwise
+                    // — or unless the atlas cannot take it after all, which
                     // used to draw nothing (ADR 0025, decision 2).
-                    let slot =
-                        match entry.backing {
-                            crate::resources::ImageBacking::Atlas => self
-                                .atlas
-                                .get_or_insert_image(id, entry.width, entry.height, &entry.rgba),
-                            crate::resources::ImageBacking::Texture => None,
-                        };
+                    let level = self.image_level(rect, scale, clip_id, entry, opts);
+                    let mut size = (entry.width, entry.height);
+                    let mut slot = level.and_then(|(n, level)| {
+                        let slot = self.atlas.get_or_insert_image_level(
+                            id,
+                            n,
+                            level.width,
+                            level.height,
+                            || &level.rgba,
+                        )?;
+                        size = (level.width, level.height);
+                        Some(slot)
+                    });
+                    if slot.is_none() && entry.backing == crate::resources::ImageBacking::Atlas {
+                        slot = self.atlas.get_or_insert_image(
+                            id,
+                            entry.width,
+                            entry.height,
+                            &entry.rgba,
+                        );
+                    }
                     let (kind, uv) = match slot {
                         Some(slot) => (QuadKind::Image, [slot.x, slot.y, slot.w, slot.h]),
                         None => (
@@ -2671,8 +2723,8 @@ impl Painter<'_> {
                     let (rect, tex_uv) = fit_image(
                         opts.fit,
                         rect,
-                        Size::new(entry.width as f32, entry.height as f32),
-                        [0, 0, entry.width, entry.height],
+                        Size::new(size.0 as f32, size.1 as f32),
+                        [0, 0, size.0, size.1],
                     );
                     if kind == QuadKind::Image {
                         // The crop, if any, applied inside the atlas slot.

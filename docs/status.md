@@ -41,7 +41,11 @@ polygons, and two sharing an edge show a hairline. All three take input **by sha
 ([ADR 0026](adr/0026-hit-testing-by-shape.md)): a press within a
 stroke's width (at least 4 px of grab) or inside an outline hits it, one in
 the bounding box off the shape falls through, and a stroke or fill with a
-click is a button to a screen reader, so name it. A raster the app made — a frame of video, a plot, a
+click is a button to a screen reader, so name it. A photo drawn smaller
+than it is is drawn from a level the core halves it to
+([ADR 0044](adr/0044-an-image-drawn-smaller-is-drawn-from-a-level.md)),
+one level per quad and no trilinear blend, so a size animated across a
+power of two steps in sharpness there. A raster the app made — a frame of video, a plot, a
 page — is an `image` whose pixels it replaces; there is no drawing-command
 canvas and no callback over the GPU. Opacity is a per-quad
 alpha multiply rather than an offscreen composite, so overlapping pieces of one

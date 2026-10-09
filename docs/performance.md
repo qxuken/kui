@@ -96,6 +96,9 @@ that prop costs.
 | `cells_200x50_warm` (`--bench cells`) | a terminal's screen as one `ui.cells` node, unchanged | ~58 µs |
 | `cells_200x50_streaming` | the same grid with every character new each frame | ~60 µs |
 | `cells_200x50_as_text_nodes` | the same 10k cells as one text node each — the path an app had | ~2.2 ms |
+| `halve_4032x3024` (`--bench levels`) | a phone photo's first level (ADR 0044): three million texels, each the linear-light mean of four, opaque (measured 2026-10-09) | ~10.1 ms |
+| `first_small_draw` | the frame that first draws that photo on a 400×300 card at 2×: levels 1 to 3 made and level 3 blitted into the page — once per photo per session | ~13.2 ms |
+| `warm_small_draw` | every frame after it: the level is on the entry and in the page | ~0.33 µs |
 
 What the pairs say. Deriving the access tree costs **~1.10×** the frame it
 follows — it was 1.35× before ADR 0016's one built decision, the digest

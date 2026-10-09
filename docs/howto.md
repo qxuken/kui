@@ -116,7 +116,11 @@ Decode it with the runner, which links the decoder it draws its
 wallpaper with: `kui_native::decode_image(bytes)` turns PNG, JPEG, WebP
 or GIF bytes into straight RGBA and a size, which `add_image` takes as it
 is (`decodeImage` in Node, `kui_decode_image` in C, freed with
-`kui_pixels_free`). No `image` dependency of the app's own. For an
+`kui_pixels_free`). No `image` dependency of the app's own, and no
+resampling to the size it is shown at: register the photo as decoded
+and declare the box, and a photo drawn smaller is drawn from a level the
+core halves it to (ADR 0044), the page holding that level and not the
+whole photo. For an
 animated GIF, APNG or WebP, `decode_animation` keeps every frame — the
 whole canvas each, as a browser composites it — with the seconds each
 shows. Play it on the frame clock: keep when it started, ask

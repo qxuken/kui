@@ -249,7 +249,11 @@ date: 2026-09-11
   one at another; it is the node's to say, like `radius`.
 - **Mipmaps.** Deferred: `contain`/`cover` plus an app that renders at
   `w × scale` pixels needs none; a photo viewer minifying a 12-megapixel
-  texture does, and that is the view that files it.
+  texture does, and that is the view that files it. Filed by a card game
+  instead (backlog V6, 2026-10-09) and built as [ADR
+  0044](0044-an-image-drawn-smaller-is-drawn-from-a-level.md): levels the
+  core halves on the CPU and keeps in the atlas, for every image but a
+  stream.
 - **A core `zoom` row** — a per-subtree scale as scroll's sibling, layout
   in the subtree's own logical space, `env.scale × zoom` composed at emit
   (`runtime/emit.rs:418` is the one seam), local-space payloads and
@@ -346,7 +350,11 @@ the one to read carefully: at a hundred boxes the texture case is slower
 than the fragment case not because of the split but because each box
 samples a 1920×1080 texture minified into 320×180 pixels with no mips —
 that is the fill's bill, and the mipmap deferral (V6) is what it argues
-for once a view minifies a large stream. At the sizes an app draws a
+for once a view minifies a large stream. (Measured again on 2026-10-09
+for ADR 0044 on an M-series Mac, with texels a GPU cannot compress:
+the same hundred boxes drawn from the texture halved twice saved 0.03
+ms of the 0.79 — minification is a small part of that bill there, and
+the rest of the gap to the fragments' 0.46 is not minification.) At the sizes an app draws a
 stream (one box, near its own size) the row that matters is 1: within
 noise of no split at all.
 

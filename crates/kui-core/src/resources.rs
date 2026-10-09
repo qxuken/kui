@@ -257,6 +257,68 @@ pub struct ImageEntry {
     pub(crate) spare: Option<std::sync::Arc<Vec<u8>>>,
     /// [`Resources::frames`] when `spare` was last set.
     spare_at: u64,
+    /// The levels below level 0 made so far
+    /// (`docs/adr/0044-an-image-drawn-smaller-is-drawn-from-a-level.md`):
+    /// `levels[n]` is level `n + 1`, made at the first draw that wants it
+    /// or one below it and kept for every window of the session, so a
+    /// second window, or an atlas page that was reset, blits it again
+    /// without halving again. An update drops them; an updated image
+    /// draws level 0.
+    levels: std::sync::Mutex<Vec<std::sync::Arc<Level>>>,
+}
+
+/// One level of an image's chain: the image halved `n` times
+/// ([`crate::mip::halve`]), straight RGBA.
+#[derive(Debug)]
+pub struct Level {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+impl ImageEntry {
+    /// Whether a draw may take a level below 0 from this image: one never
+    /// updated. An update makes a stream, and a stream is drawn whole —
+    /// halving one on every update is milliseconds a frame (ADR 0044,
+    /// decision 4).
+    pub fn levels_allowed(&self) -> bool {
+        self.rev == 0
+    }
+
+    /// How many levels the chain has below level 0.
+    pub fn depth(&self) -> u8 {
+        crate::mip::depth(self.width, self.height)
+    }
+
+    /// Level `n` (1 and up) of the chain, made now if no draw has asked
+    /// for it or a level below it before, each from the one above.
+    /// `None` for `n` 0 (the entry's own pixels) or past the chain.
+    pub fn level(&self, n: u8) -> Option<std::sync::Arc<Level>> {
+        if n == 0 || n > self.depth() {
+            return None;
+        }
+        let mut chain = self.levels.lock().unwrap_or_else(|e| e.into_inner());
+        while chain.len() < n as usize {
+            let (w, h, rgba) = match chain.last() {
+                Some(l) => crate::mip::halve(l.width, l.height, &l.rgba),
+                None => crate::mip::halve(self.width, self.height, &self.rgba),
+            };
+            chain.push(std::sync::Arc::new(Level {
+                width: w,
+                height: h,
+                rgba,
+            }));
+        }
+        Some(chain[n as usize - 1].clone())
+    }
+
+    /// Forgets the chain, for pixels that changed.
+    fn drop_levels(&mut self) {
+        self.levels
+            .get_mut()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+    }
 }
 
 /// How many frames an image's spare buffer outlives its last update.
@@ -601,6 +663,7 @@ impl Resources {
                 rev: 0,
                 spare: None,
                 spare_at: 0,
+                levels: Default::default(),
                 // Past a page it has nowhere to go but its own texture;
                 // before ADR 0025 it was dropped at emission, silently.
                 backing: if width > crate::atlas::MAX_ATLAS_SIZE
@@ -639,6 +702,7 @@ impl Resources {
         entry.spare = None;
         entry.rev = entry.rev.wrapping_add(1);
         entry.backing = ImageBacking::Texture;
+        entry.drop_levels();
         true
     }
 
@@ -707,6 +771,7 @@ impl Resources {
         entry.height = height;
         entry.rev = entry.rev.wrapping_add(1);
         entry.backing = ImageBacking::Texture;
+        entry.drop_levels();
         let buf = Arc::get_mut(&mut entry.rgba).expect("unshared: checked or replaced above");
         buf.resize(len, 0);
         // A stream that shrank does not keep its old size's allocation.
