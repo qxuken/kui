@@ -21,6 +21,21 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.47 (unreleased)
+
+### Fixed
+
+- **Text inside a turned node is read where it is drawn** (backlog
+  RG155, ADR 0043). A press on an editor in a tilted or scaled card puts
+  the caret under the pointer, and so does the drag that extends it, a
+  selection drag over a paragraph or a grid, a double or triple click,
+  `text_hit`, and the `line` / `byte` / `cell` a sink's pointer events
+  carry; `caret_rect` and the IME's anchor are where the caret is drawn,
+  so the candidate window opens beside a tilted field. alpha.46 read all
+  of them against the upright node. A square clipper inside a turn now
+  smooths its edge as a rounded one does instead of stairing, in the
+  renderer and the fragment epilogue.
+
 ## 0.1.0-alpha.46 (2026-10-09)
 
 **What breaks.**

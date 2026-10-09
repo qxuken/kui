@@ -1150,8 +1150,40 @@ impl Core {
     /// node being declared has no layout yet. A wrapped node answers in
     /// the width it was drawn at.
     pub fn text_hit(&self, key: Key, point: Vec2) -> Option<TextHit> {
-        self.text
-            .hit_at(key, point.plus(self.dt_shift()), self.building)
+        self.text.hit_at(
+            key,
+            self.unturned(key, point).plus(self.dt_shift()),
+            self.building,
+        )
+    }
+
+    /// `p`, a pointer point, pulled back through every turn the node `key`
+    /// was drawn under in the frame that finished (ADR 0043): where on the
+    /// node's upright layout — the space its text, its caret and its
+    /// content origin are in — the point falls. The point itself when
+    /// nothing turns it, and during a build, which has no finished node
+    /// to read the turn off.
+    pub(crate) fn unturned(&self, key: Key, p: Vec2) -> Vec2 {
+        if self.building || self.clips.is_empty() {
+            return p;
+        }
+        match self.tree.index_of(key).and_then(|i| self.clips.get(i)) {
+            Some(c) if c.turned() => c.transform.unapply(p),
+            _ => p,
+        }
+    }
+
+    /// `r`, a rect in the node `key`'s upright layout, as drawn: the box
+    /// it covers through the node's turns (ADR 0043), the way the access
+    /// rect is a turned node's bounding box. `r` itself when nothing turns.
+    pub(crate) fn turned_rect(&self, key: Key, r: Rect) -> Rect {
+        if self.building || self.clips.is_empty() {
+            return r;
+        }
+        match self.tree.index_of(key).and_then(|i| self.clips.get(i)) {
+            Some(c) if c.turned() => c.transform.bounds(r),
+            _ => r,
+        }
     }
 
     /// The caret rect for byte `byte` of the text node `key` drew: logical
@@ -1162,7 +1194,7 @@ impl Core {
         let shift = self.dt_shift();
         self.text
             .caret_at(key, byte, self.building)
-            .map(|r| Rect::new(r.x - shift.x, r.y - shift.y, r.w, r.h))
+            .map(|r| self.turned_rect(key, Rect::new(r.x - shift.x, r.y - shift.y, r.w, r.h)))
     }
 
     // -- Announcements ---------------------------------------------------

@@ -189,14 +189,15 @@ fn shade(in: VsOut) -> Shaded {
     }
     // The clip from inside a turned subtree, in the quad's own space, so
     // against the position before the turn (ADR 0043, decision 5). On a
-    // frame that turns nothing it is the clip that clips nothing, and
-    // the plain test passes.
+    // frame that turns nothing it is the clip that clips nothing, a box a
+    // billion px across, and every fragment is deep inside it. Its edges
+    // are turned on screen, so a square one is ramped over `AA` as a
+    // rounded one is, or it stairs (backlog RG155).
     let q = in.pre;
     if all(in.inner_radii <= vec4<f32>(0.0)) {
-        inside *= f32(
-            q.x >= in.inner.x && q.y >= in.inner.y
-            && q.x <= in.inner.x + in.inner.z && q.y <= in.inner.y + in.inner.w
-        );
+        let ih = in.inner.zw * 0.5;
+        let iq = abs(q - (in.inner.xy + ih)) - ih;
+        inside *= 1.0 - smoothstep(-AA, AA, max(iq.x, iq.y));
     } else {
         let ih = in.inner.zw * 0.5;
         let id = sd_rounded_box(q - (in.inner.xy + ih), ih, in.inner_radii);

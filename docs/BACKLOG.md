@@ -173,11 +173,11 @@ from the alpha.44 pre-tag pass, and RG154 — what that pass left: the
 accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
-the alpha.45 pre-tag pass over it filed nothing. RG155, from the alpha.46
-pre-tag pass, is open: inside a turned node the caret, a selection drag
-and a text hit read the pointer upright, the inner clip's edge is not
-smoothed, and ADR 0043 owes a measurement; the pass's other finds were
-corrected before the tag.
+the alpha.45 pre-tag pass over it filed nothing. RG155, what the alpha.46
+pre-tag pass left — the caret, a selection drag and a text hit inside a
+turned node, the inner clip's edge, ADR 0043's measurement — was built
+the day after the alpha.46 tag; the pass's other finds were corrected
+before it.
 F131–F138, from the berainder review of 2026-10-08, were built the day
 it was filed and the day after — a turn and a scale on any node (ADR
 0043), position stops and a count on a cycle, the frame clock read and a
@@ -2721,23 +2721,8 @@ no page for the `decode` example, so CI's first step failed;
 `exitWith`'s exit was typed `Json`, which the examples' typecheck
 rejected; and the changelog's What breaks left out `KuiSpec`'s moved
 offsets, `iterations`, the Rust struct literals and the new warning
-code. One entry is what the pass left.
-
-### `~` RG155 — Inside a turned node the caret, a selection drag and a text hit read the pointer upright
-
-ADR 0043 hits a turned node where it is drawn — a press finds an editor
-inside a tilted card — but the press's caret, the drag that extends it,
-a static text's selection drag and `text_hit` subtract the content
-origin from the viewport pointer (`dispatch.rs`, the press and the
-force click; the drag paths in `follow.rs` and `select_api.rs`), so the
-caret in an editor under `rotate: 0.25`, or under a `scale: 1.2` pulse,
-lands on the wrong character. The fix is one pull of the pointer back
-through the region's `HitTurn` wherever a content origin is subtracted,
-with the drag's held origin carrying the turn. Beside it, from the same
-review: the inner clip (a square clipper inside a turn) is a hard step
-in the shader and `fragment::EPILOGUE`, with no ramp, so its edge
-stairs when turned; and the ADR's second measurement — a frame of 1,000
-turned boxes against the same frame upright — was never taken.
+code. One entry, RG155, is what the pass left, **built 2026-10-09** the
+same day after the tag, and in the archive.
 
 ## After alpha.45
 
@@ -4293,3 +4278,7 @@ move.
 - `!` **RG153** — [The float stack reversed two floats a box held, and kept a float moved into one below it](backlog/closed-2026-09.md#-rg153--the-float-stack-reversed-two-floats-a-box-held-and-kept-a-float-moved-into-one-below-it--done-2026-10-08) — done (2026-10-08)
 
 - `.` **RG154** — [What the alpha.44 pre-tag pass left](backlog/closed-2026-09.md#-rg154--what-the-alpha44-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08) — the accelerator ellipsized past the label's floor, a `Calc` ceiling read against the window, the bar's pending switch dropped by a frame that does not build it, the wallpaper's path read on the loop where it is a call (Windows, Plasma), three tests; the Wayland queue declined
+
+**From the alpha.46 pre-tag pass (2026-10-09)** — RG155, what it left, built the same day after the alpha.46 tag
+
+- `~` **RG155** — [Inside a turned node the caret, a selection drag and a text hit read the pointer upright](backlog/closed-2026-09.md#-rg155--inside-a-turned-node-the-caret-a-selection-drag-and-a-text-hit-read-the-pointer-upright--done-2026-10-09) — done (2026-10-09) — a pointer pulled back through the turn wherever a text position is read (`Core::unturned`: the press, the force click, the caret drag, `selection_hit`, `cell_row_col`, the pointer fields, `text_hit`), `caret_rect` and the IME anchor as drawn, the square inner clip ramped, and the measurement taken (`frame_1k_turned_rects`)

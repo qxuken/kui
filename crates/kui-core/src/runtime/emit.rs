@@ -2163,9 +2163,18 @@ impl Core {
         ))
     }
 
+    /// The IME's anchor: the focused caret where it is drawn, the box it
+    /// covers through any turn its editor is under (ADR 0043), so the
+    /// candidate window opens beside a tilted field's caret.
     fn focused_caret_rect(&mut self) -> Option<Rect> {
+        let drawn = |clips: &[crate::display::Clip], i: usize, r: Rect| match clips.get(i) {
+            Some(c) if c.turned() => c.transform.bounds(r),
+            _ => r,
+        };
         if let Some(key) = self.edit.focused() {
-            return self.stock_caret_viewport_rect(key).map(|(_, r)| r);
+            return self
+                .stock_caret_viewport_rect(key)
+                .map(|(i, r)| drawn(&self.clips, i, r));
         }
         // A custom editor (backlog C17): the focused node's subtree holds
         // the `line` rows it draws, and the one carrying `caret` says
@@ -2173,7 +2182,9 @@ impl Core {
         // is the question `caret_rect` answers. This runs after the text
         // pass, so the places it reads are this frame's.
         let (l, caret, _) = self.sink_caret_line()?;
-        self.text.caret_at(self.tree.keys[l], caret as usize, false)
+        self.text
+            .caret_at(self.tree.keys[l], caret as usize, false)
+            .map(|r| drawn(&self.clips, l, r))
     }
 
     /// The `line` under the focused node that declares `caret`, the

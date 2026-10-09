@@ -97,8 +97,12 @@ pub fn turned(clip: &kui_core::Clip, x: f32, y: f32) -> (f32, f32) {
 pub fn inside_inner(clip: &kui_core::Clip, x: f32, y: f32) -> f32 {
     let r = clip.inner;
     if clip.inner_radius.iter().all(|v| *v <= 0.0) {
-        let ok = x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h;
-        return f32::from(ok);
+        let half = [r.w * 0.5, r.h * 0.5];
+        let q = [
+            (x - (r.x + half[0])).abs() - half[0],
+            (y - (r.y + half[1])).abs() - half[1],
+        ];
+        return 1.0 - smoothstep(-AA, AA, q[0].max(q[1]));
     }
     let half = [r.w * 0.5, r.h * 0.5];
     let d = sd_rounded_box(

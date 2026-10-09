@@ -81,6 +81,9 @@ impl Core {
         let crate::tree::NodeContent::Cells(id) = self.tree.content[i] else {
             return None;
         };
+        // A grid is laid out upright: a point over a turned one is read
+        // there (ADR 0043).
+        let point = self.unturned(key, point);
         let cell = {
             let sess = &mut *self.session.state();
             self.cells
@@ -374,6 +377,9 @@ impl Core {
     /// nothing the pointer could land in — an off-screen run is part of
     /// the scope's text but is under no pointer.
     pub fn selection_hit(&self, scope: Key, point: Vec2) -> Option<Endpoint> {
+        // A scope's text is laid out upright: a point over a turned scope
+        // is read there (ADR 0043).
+        let point = self.unturned(scope, point);
         let (node, byte) = self.text.scope_hit(scope, point, self.building)?;
         Some(Endpoint::new(node, byte).in_row(self.row_of(node)))
     }

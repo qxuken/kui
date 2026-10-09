@@ -289,12 +289,12 @@ fn kui_fs_fragment(
         kui_inside = 1.0 - smoothstep(-KUI_AA, KUI_AA, kui_cd);
     }
     // And the clip from inside a turned subtree, in the quad's own space
-    // (ADR 0043): against the position before the turn.
+    // (ADR 0043): against the position before the turn, ramped as the
+    // renderer's is, since its edges are turned on screen.
     if all(inner_radii <= vec4<f32>(0.0)) {
-        kui_inside *= f32(
-            pre.x >= inner.x && pre.y >= inner.y
-            && pre.x <= inner.x + inner.z && pre.y <= inner.y + inner.w
-        );
+        let kui_ih = inner.zw * 0.5;
+        let kui_iq = abs(pre - (inner.xy + kui_ih)) - kui_ih;
+        kui_inside *= 1.0 - smoothstep(-KUI_AA, KUI_AA, max(kui_iq.x, kui_iq.y));
     } else {
         let kui_ih = inner.zw * 0.5;
         let kui_id = kui_sd_rounded_box(pre - (inner.xy + kui_ih), kui_ih, inner_radii);

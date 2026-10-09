@@ -144,6 +144,11 @@ impl Core {
             if !self.tree.any_line {
                 continue;
             }
+            // The line and the byte are read off the node's upright layout,
+            // so a point over a turned node is pulled back through its turn
+            // first (ADR 0043), as `cell_row_col` does; `x` / `y` stay as
+            // drawn.
+            let point = self.unturned(ev.key, point);
             // The sink: this node, or the nearest above it.
             let mut sink = i;
             while self.tree.specs[sink].events().on_key.is_none() {
@@ -718,7 +723,11 @@ impl Core {
                                 // selection, which is the whole gesture.
                                 let extend = shift && self.edit.focused() == Some(key);
                                 self.move_focus(Some(key));
-                                let local = Vec2::new(p.x - origin.x, p.y - origin.y);
+                                // The caret lands where the pointer is on
+                                // the editor's upright layout, through any
+                                // turn it is drawn under (ADR 0043).
+                                let q = self.unturned(key, p);
+                                let local = Vec2::new(q.x - origin.x, q.y - origin.y);
                                 self.edit_with_fonts(|edit, fs| {
                                     edit.click(key, local, clicks, extend, fs)
                                 });
@@ -888,7 +897,8 @@ impl Core {
         self.edit.dragging = None;
         self.drag_follow = None;
         if let Some((key, content_origin)) = editor {
-            let local = Vec2::new(p.x - content_origin.x, p.y - content_origin.y);
+            let q = self.unturned(key, p);
+            let local = Vec2::new(q.x - content_origin.x, q.y - content_origin.y);
             self.move_focus(Some(key));
             self.edit_with_fonts(|edit, fs| edit.click(key, local, 2, false, fs));
             self.menu_editor = Some(key);

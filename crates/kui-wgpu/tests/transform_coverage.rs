@@ -144,3 +144,39 @@ fn a_clipper_outside_the_turn_cuts_in_framebuffer_space() {
         "no inner clip"
     );
 }
+
+/// A square clipper inside a turn cuts on edges that are turned on screen:
+/// its test ramps over `AA` as a rounded one does, rather than stairing
+/// (backlog RG155); and the clip that clips nothing stays exactly 1.
+#[test]
+fn a_square_clip_inside_a_turn_ramps_its_edge() {
+    let qs = solids(
+        |ui| {
+            ui.with_keyed(
+                "card",
+                NodeSpec::column().size(100.0, 100.0).rotate(0.1),
+                |ui| {
+                    ui.with(NodeSpec::column().size(60.0, 60.0).clip(), |ui| {
+                        ui.leaf(NodeSpec::column().size(90.0, 90.0).bg(Color::WHITE));
+                    });
+                },
+            );
+        },
+        1.0,
+    );
+    let (_, clip) = qs.last().copied().expect("the child");
+    let r = clip.inner;
+    assert!(r != kui_core::NO_CLIP, "the clipper is inside the turn");
+    let mid_y = r.y + r.h * 0.5;
+    assert_eq!(
+        inside_inner(&clip, r.x + r.w * 0.5, mid_y),
+        1.0,
+        "well inside"
+    );
+    let edge = inside_inner(&clip, r.x + r.w, mid_y);
+    assert!(edge > 0.4 && edge < 0.6, "half covered on the edge: {edge}");
+    assert_eq!(inside_inner(&clip, r.x + r.w + 1.0, mid_y), 0.0, "past it");
+    let mut none = clip;
+    none.inner = kui_core::NO_CLIP;
+    assert_eq!(inside_inner(&none, 37.0, -512.0), 1.0, "no inner clip");
+}

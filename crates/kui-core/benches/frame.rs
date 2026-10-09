@@ -296,6 +296,47 @@ fn frame_1k_rects(bencher: divan::Bencher) {
     bencher.bench_local(|| run_frame(&mut core, g));
 }
 
+/// The plain 32 × 32 grid's cells, each turned by its own small angle
+/// (ADR 0043): every cell is its own clip entry, composed with its parent's
+/// and culled by its bounding box. Its own builder rather than a `Grid`
+/// field, so the rows above keep the code they were measured with.
+fn turned_grid(ui: &mut Ui<'_>) {
+    ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(4.0));
+    for r in 0..32usize {
+        ui.with(NodeSpec::row().grow_width().gap(4.0), |ui| {
+            for c in 0..32usize {
+                let color = Color::rgb8(r as u8, c as u8, 128);
+                ui.leaf(
+                    NodeSpec::column()
+                        .grow_width()
+                        .height(14.0)
+                        .bg(color)
+                        .radius(2.0)
+                        .rotate(0.01 + (r * 32 + c) as f32 * 1e-5),
+                );
+            }
+        });
+    }
+}
+
+/// [`frame_1k_rects`] with every cell turned, read against it: what a
+/// turn costs a node — the per-node compose and its interned entry, the
+/// bounding-box cull, the turned hit region (ADR 0043's measurement).
+#[divan::bench]
+fn frame_1k_turned_rects(bencher: divan::Bencher) {
+    let mut core = Core::new();
+    // As `run_frame` does: the frame, then the display list read.
+    let run = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(1920.0, 1080.0), 2.0);
+        turned_grid(&mut ui);
+        ui.finish();
+        let (dl, _) = core.output();
+        dl.quads.len()
+    };
+    run(&mut core);
+    bencher.bench_local(|| run(&mut core));
+}
+
 /// A gradient's raster, cold: the strip a side takes, three stops.
 #[divan::bench]
 fn raster_gradient_strip(bencher: divan::Bencher) {

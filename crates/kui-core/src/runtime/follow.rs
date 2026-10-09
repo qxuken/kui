@@ -205,7 +205,8 @@ impl Core {
             .edit_origin_of(key)
             .or_else(|| self.edit.dragging.map(|(_, o)| o));
         if let Some(origin) = origin {
-            let local = Vec2::new(p.x - origin.x, p.y - origin.y);
+            let q = self.unturned(key, p);
+            let local = Vec2::new(q.x - origin.x, q.y - origin.y);
             self.edit_with_fonts(|edit, fs| edit.drag(key, local, fs));
         }
     }
