@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 27
+ABI_VERSION :: 28
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -464,6 +464,10 @@ TEXT_AA_SUBPIXEL :: 2
 DIAG_DEFAULT :: 0
 DIAG_ON :: 1
 DIAG_OFF :: 2
+
+TITLEBAR_STANDARD :: 0
+TITLEBAR_MEDIUM :: 1
+TITLEBAR_TALL :: 2
 
 // -- Callbacks
 ViewFn :: #type proc "c" (rawptr, ^Ctx)
@@ -1038,6 +1042,7 @@ RunConfig :: struct {
 	diagnostics: u32,
 	frame_latency: u32,
 	backdrop: u32,
+	titlebar: u32,
 }
 
 // -- Functions

@@ -1646,6 +1646,11 @@ pub struct KuiRunConfig {
     /// pixels where the platform can (`Launcher::backdrop`); 0 is opaque.
     /// What the window got is `kui_ctx_backdrop`. ABI 26.
     pub backdrop: u32,
+    /// `KUI_TITLEBAR_*`: how tall the OS's titlebar is under
+    /// `KUI_CHROME_CUSTOM` on macOS, and so where the traffic lights sit
+    /// (`Launcher::titlebar`, backlog W22); 0 is the standard one. Nothing
+    /// elsewhere. ABI 28.
+    pub titlebar: u32,
 }
 
 /// `KUI_CHROME_NATIVE`: the OS's decorations.
@@ -1655,6 +1660,13 @@ pub const KUI_CHROME_NATIVE: u32 = 0;
 pub const KUI_CHROME_CUSTOM: u32 = 1;
 /// `KUI_CHROME_BORDERLESS`: no decorations and no chrome expectations.
 pub const KUI_CHROME_BORDERLESS: u32 = 2;
+/// `KUI_TITLEBAR_STANDARD`: the titlebar a window without a toolbar has.
+pub const KUI_TITLEBAR_STANDARD: u32 = 0;
+/// `KUI_TITLEBAR_MEDIUM`: a compact toolbar's (40 pt on macOS 27).
+pub const KUI_TITLEBAR_MEDIUM: u32 = 1;
+/// `KUI_TITLEBAR_TALL`: a full toolbar's (52 pt about the lights on
+/// macOS 27).
+pub const KUI_TITLEBAR_TALL: u32 = 2;
 /// `KUI_TEXT_AA_AUTO`: LCD subpixel coverage when the GPU can blend per
 /// channel, grayscale otherwise.
 pub const KUI_TEXT_AA_AUTO: u32 = 0;
@@ -1688,6 +1700,8 @@ pub(crate) struct RunOptions {
     pub frame_latency: Option<u32>,
     /// The backdrop asked for, checked.
     pub backdrop: kui_core::Backdrop,
+    /// `KUI_TITLEBAR_*`, checked.
+    pub titlebar: u32,
 }
 
 /// A max side left at zero is unbounded: a bound no display reaches, as
@@ -1757,6 +1771,12 @@ pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, Str
             c.backdrop
         ));
     };
+    if c.titlebar > KUI_TITLEBAR_TALL {
+        return Err(format!(
+            "KuiRunConfig.titlebar must be KUI_TITLEBAR_STANDARD, KUI_TITLEBAR_MEDIUM or KUI_TITLEBAR_TALL, not {}",
+            c.titlebar
+        ));
+    }
     Ok(RunOptions {
         size,
         min_size,
@@ -1766,6 +1786,7 @@ pub(crate) fn run_options_of(c: Option<&KuiRunConfig>) -> Result<RunOptions, Str
         diagnostics,
         frame_latency: (c.frame_latency > 0).then_some(c.frame_latency),
         backdrop,
+        titlebar: c.titlebar,
     })
 }
 

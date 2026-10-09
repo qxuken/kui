@@ -513,6 +513,9 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_DIAG_DEFAULT,
             KUI_DIAG_ON,
             KUI_DIAG_OFF,
+            KUI_TITLEBAR_STANDARD,
+            KUI_TITLEBAR_MEDIUM,
+            KUI_TITLEBAR_TALL,
             KUI_KF_AT,
             KUI_KF_WIDTH,
             KUI_KF_HEIGHT,
@@ -1075,6 +1078,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         diagnostics: u32 => "uint32_t",
         frame_latency: u32 => "uint32_t",
         backdrop: u32 => "uint32_t",
+        titlebar: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiWindowCommand {
@@ -1538,8 +1542,8 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiPlay", 12, 16),
         ("KuiAudio", 24, 16),
         ("KuiWindowConfig", 32, 16),
-        // ABI 26: `backdrop` (backlog F126).
-        ("KuiRunConfig", 44, 26),
+        // ABI 26: `backdrop` (backlog F126); ABI 28: `titlebar` (W22).
+        ("KuiRunConfig", 48, 28),
         // ABI 19: the file dialogs.
         ("KuiFileFilter", 32, 19),
         ("KuiFileDialog", 72, 19),

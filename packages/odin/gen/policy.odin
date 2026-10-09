@@ -77,6 +77,7 @@ ENUMS :: []Enum_Rule {
 	{name = "Chrome", first = "KUI_CHROME_NATIVE", prefix = "KUI_CHROME_"},
 	{name = "Text_AA", first = "KUI_TEXT_AA_AUTO", prefix = "KUI_TEXT_AA_"},
 	{name = "Diagnostics", first = "KUI_DIAG_DEFAULT", prefix = "KUI_DIAG_"},
+	{name = "Titlebar", first = "KUI_TITLEBAR_STANDARD", prefix = "KUI_TITLEBAR_"},
 	{name = "Menu_Role", first = "KUI_MENU_CUSTOM", prefix = "KUI_MENU_", list = "menuRoles"},
 	{name = "Menu_Item_Flags", first = "KUI_MENU_ITEM_ENABLED", prefix = "KUI_MENU_ITEM_", flag = "Menu_Item_Flag"},
 	{name = "Menu_Action_Kind", first = "KUI_MENU_ACTION_SET_CLIPBOARD", prefix = "KUI_MENU_ACTION_"},

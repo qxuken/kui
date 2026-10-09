@@ -154,7 +154,9 @@
 ///   strides moved (48 for `KuiEnter`); `KuiKeyframe` also appends `dx`
 ///   and `dy` with `KUI_KF_OFFSET`, a stop's position (backlog F132), to
 ///   52.
-pub const KUI_ABI_VERSION: u32 = 27;
+/// - ABI 28: `titlebar` on `KuiRunConfig`, a `KUI_TITLEBAR_*` (backlog
+///   W22): how tall the macOS titlebar is under `KUI_CHROME_CUSTOM`.
+pub const KUI_ABI_VERSION: u32 = 28;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

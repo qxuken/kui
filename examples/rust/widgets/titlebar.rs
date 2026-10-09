@@ -24,11 +24,15 @@
 //! the flag: a window manager can refuse or drop the level, and on Wayland
 //! there is none to ask for.
 //!
-//! Run: cargo run -p kui-native --example titlebar
+//! `--titlebar medium|tall` asks macOS for a taller titlebar
+//! (`Launcher::titlebar`, backlog W22): AppKit centres the lights in it,
+//! the keep-out grows with it, and the strip follows the keep-out.
+//!
+//! Run: cargo run -p kui-native --example titlebar [-- --titlebar tall]
 
 use kui_devtools::Example;
 use kui_native::widgets;
-use kui_native::{Align, App, NodeSpec, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, NodeSpec, TextStyle, Titlebar, Ui, UiEvent, Value};
 
 const TABS: [&str; 3] = ["main.rs", "layout.rs", "README"];
 
@@ -37,6 +41,8 @@ struct Chrome {
     tab: usize,
     /// The app's ask; what the window has is `env.window.always_on_top`.
     pinned: bool,
+    /// `--titlebar`: the macOS titlebar's height.
+    titlebar: Titlebar,
 }
 
 impl App for Chrome {
@@ -83,7 +89,8 @@ impl App for Chrome {
                         TextStyle::new(13.0).color(t.muted),
                     );
                     let facts = format!(
-                        "custom_chrome {} · maximized {} · fullscreen {} · always_on_top {} · native controls {}",
+                        "titlebar {:?} · custom_chrome {} · maximized {} · fullscreen {} · always_on_top {} · native controls {}",
+                        self.titlebar,
                         win.custom_chrome,
                         win.maximized,
                         win.fullscreen,
@@ -146,6 +153,11 @@ impl App for Chrome {
 }
 
 impl Example for Chrome {
+    const FLAGS: &'static [(&'static str, &'static str)] = &[(
+        "--titlebar",
+        "standard (the default), medium or tall: the macOS titlebar's height",
+    )];
+
     const KEYS: &'static [(&'static str, &'static str)] = &[
         ("drag the strip", "move the window"),
         ("double-click it", "maximize (where the platform does)"),
@@ -159,6 +171,7 @@ impl Example for Chrome {
         kui_devtools::Window::default()
             .size(640.0, 360.0)
             .custom_titlebar()
+            .titlebar(self.titlebar)
     }
 
     /// The dock below the strip, so the strip stays the window's top edge.
@@ -167,4 +180,17 @@ impl Example for Chrome {
     }
 }
 
-kui_devtools::main!(Chrome::default());
+/// `--titlebar NAME`, or `standard`.
+fn asked() -> Titlebar {
+    let args: Vec<String> = std::env::args().collect();
+    args.iter()
+        .position(|a| a == "--titlebar")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|name| Titlebar::from_name(name))
+        .unwrap_or_default()
+}
+
+kui_devtools::main!(Chrome {
+    titlebar: asked(),
+    ..Chrome::default()
+});

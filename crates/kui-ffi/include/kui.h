@@ -335,8 +335,12 @@ extern "C" {
  * KUI_KF_OFFSET, a stop's position (backlog F132) - array elements, so
  * their strides moved, to 52 and 48. Recompile; a zeroed tail is what
  * every spec, stop and entrance had before.
+ *
+ * ABI 28 appends titlebar to KuiRunConfig, a KUI_TITLEBAR_*: how tall
+ * the macOS titlebar is under KUI_CHROME_CUSTOM, and so where the traffic
+ * lights sit (backlog W22). Recompile; zeroed, the window is what it was.
  */
-#define KUI_ABI_VERSION 27u
+#define KUI_ABI_VERSION 28u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -3973,6 +3977,13 @@ void kui_pixels_free(uint8_t *pixels);
 enum { KUI_CHROME_NATIVE = 0, KUI_CHROME_CUSTOM = 1, KUI_CHROME_BORDERLESS = 2 };
 enum { KUI_TEXT_AA_AUTO = 0, KUI_TEXT_AA_GRAYSCALE = 1, KUI_TEXT_AA_SUBPIXEL = 2 };
 enum { KUI_DIAG_DEFAULT = 0, KUI_DIAG_ON = 1, KUI_DIAG_OFF = 2 };
+/* How tall the OS's titlebar is under KUI_CHROME_CUSTOM on macOS, and so
+ * where the traffic lights sit: the standard one (32 pt with them at 9,9
+ * on macOS 27), a compact toolbar's (40, at 12,13), a full toolbar's (52
+ * about them, at 19,19). AppKit's, made with an empty toolbar; the
+ * runner measures what the window got into the env's controls rect, and
+ * kui_titlebar lays out against it. Nothing elsewhere. */
+enum { KUI_TITLEBAR_STANDARD = 0, KUI_TITLEBAR_MEDIUM = 1, KUI_TITLEBAR_TALL = 2 };
 
 /* [in] How kui_run_with opens its window: the options a Rust host's
  * Launcher has and Node's WindowOptions carry, as one struct. Read
@@ -4009,6 +4020,10 @@ typedef struct KuiRunConfig {
                             * live blur of it, or a steady tint of it - where
                             * the platform can; 0 is opaque. What the window
                             * got is kui_ctx_backdrop, in the view. ABI 26. */
+    uint32_t titlebar;     /* KUI_TITLEBAR_*: the macOS titlebar's height
+                            * under KUI_CHROME_CUSTOM, and so where the
+                            * traffic lights sit; 0 is the standard one.
+                            * Nothing elsewhere. ABI 28. */
 } KuiRunConfig;
 #define KUI_RUN_CONFIG_INIT ((KuiRunConfig){0})
 

@@ -310,6 +310,51 @@ pub enum Chrome {
     Borderless,
 }
 
+/// How tall the OS's titlebar is under [`Chrome::Custom`] on macOS, and
+/// so where the traffic lights sit in it (backlog W22). The lights are
+/// AppKit's to place: a taller titlebar is AppKit's own taller one, made
+/// by giving the window an empty toolbar, and the lights are centred in
+/// it by AppKit through resizing, fullscreen and focus. Measured on macOS
+/// 27, the strip and the close button's top-left corner:
+///
+/// | | strip | lights at |
+/// |---|---|---|
+/// | `Standard` | 32 | (9, 9) |
+/// | `Medium` | 40 | (12, 13) |
+/// | `Tall` | 66 | (19, 19) |
+///
+/// The numbers are the OS's, and moved between releases before; what the
+/// window got is `env.window.native_controls`, measured, and
+/// `widgets::titlebar` lays out against it. Nothing under
+/// [`Chrome::Native`] or [`Chrome::Borderless`], nor on other platforms,
+/// where the strip under custom chrome is the app's and
+/// `Metrics::titlebar_h` is its height.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Titlebar {
+    /// The titlebar a window without a toolbar has (the default).
+    #[default]
+    Standard,
+    /// A compact toolbar's (`NSWindowToolbarStyle::UnifiedCompact`).
+    Medium,
+    /// A full toolbar's (`NSWindowToolbarStyle::Unified`).
+    Tall,
+}
+
+impl Titlebar {
+    /// Every name [`Titlebar::from_name`] reads, in order.
+    pub const NAMES: [&'static str; 3] = ["standard", "medium", "tall"];
+
+    /// The variant a binding names in lower case (`"medium"`).
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "standard" => Some(Self::Standard),
+            "medium" => Some(Self::Medium),
+            "tall" => Some(Self::Tall),
+            _ => None,
+        }
+    }
+}
+
 /// How outline glyphs are antialiased.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TextAa {
@@ -357,6 +402,7 @@ pub fn app(title: &str) -> Launcher {
         icon_resource: None,
         frame_latency: kui_wgpu::DEFAULT_FRAME_LATENCY,
         backdrop: Backdrop::Opaque,
+        titlebar: Titlebar::Standard,
     }
 }
 
@@ -403,6 +449,9 @@ pub struct Launcher {
     frame_latency: u32,
     /// What shows through the app's windows ([`Launcher::backdrop`]).
     backdrop: Backdrop,
+    /// How tall the macOS titlebar is under custom chrome
+    /// ([`Launcher::titlebar`]).
+    titlebar: Titlebar,
 }
 
 impl Launcher {
@@ -654,6 +703,28 @@ impl Launcher {
         self
     }
 
+    /// How tall the OS's titlebar is under [`Chrome::Custom`] on macOS,
+    /// and so where the traffic lights sit; see [`Titlebar`]. Applies to
+    /// the main window and every window the app's frames declare, as
+    /// [`Launcher::chrome`] does; nothing elsewhere.
+    ///
+    /// ```rust,no_run
+    /// # use kui_native::{App, Titlebar, Ui};
+    /// # struct Notes;
+    /// # impl App for Notes { fn view(&mut self, ui: &mut Ui<'_>) {
+    /// #     kui_native::widgets::titlebar(ui, "Notes");
+    /// # } }
+    /// kui_native::app("Notes")
+    ///     .custom_titlebar()
+    ///     .titlebar(Titlebar::Tall)
+    ///     .run(Notes)
+    ///     .unwrap();
+    /// ```
+    pub fn titlebar(mut self, titlebar: Titlebar) -> Self {
+        self.titlebar = titlebar;
+        self
+    }
+
     /// Shorthand for `.chrome(Chrome::Custom)`.
     pub fn custom_titlebar(self) -> Self {
         self.chrome(Chrome::Custom)
@@ -750,6 +821,7 @@ impl Launcher {
             text_aa: self.text_aa,
             frame_latency: wanted_frame_latency(self.frame_latency),
             backdrop: self.backdrop,
+            titlebar: self.titlebar,
             diagnostics,
             subpixel: false,
             extensions: self.extensions,
@@ -1649,6 +1721,10 @@ struct Shell<A: App + ?Sized> {
     /// What the app asked to show through its windows
     /// (`Launcher::backdrop`); what each window got is its pane's.
     backdrop: Backdrop,
+    /// The macOS titlebar's height under custom chrome
+    /// (`Launcher::titlebar`), for every window opened with it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    titlebar: Titlebar,
     /// What every core is created with; see `Launcher::diagnostics`.
     diagnostics: bool,
     /// Whether the GPU blends per channel, decided by the first renderer,

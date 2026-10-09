@@ -1913,7 +1913,8 @@ pub struct KuiWindow {
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
     /// chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-    /// | "subpixel", frameLatency, system, icon, backdrop}`. The min/max pairs bound what the user can
+    /// | "subpixel", frameLatency, system, icon, backdrop, titlebar:
+    /// "standard" | "medium" | "tall"}`. The min/max pairs bound what the user can
     /// resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
     /// says, for the life of the window — `{motion: 'reduced'}` is what a
     /// user who asked for less motion would get, on a machine whose owner
@@ -2028,6 +2029,20 @@ impl KuiWindow {
                 return Err(err(format!(
                     "window options: backdrop is one of {:?}, not {other}",
                     kui_core::schema::BACKDROPS
+                )));
+            }
+        };
+        // How tall the macOS titlebar is under custom chrome (backlog
+        // W22), the launcher's `titlebar`.
+        launcher = match o.get("titlebar") {
+            None | Some(Json::Null) => launcher,
+            Some(Json::String(s)) if kui_native::Titlebar::from_name(s).is_some() => {
+                launcher.titlebar(kui_native::Titlebar::from_name(s).unwrap_or_default())
+            }
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: titlebar is one of {:?}, not {other}",
+                    kui_native::Titlebar::NAMES
                 )));
             }
         };

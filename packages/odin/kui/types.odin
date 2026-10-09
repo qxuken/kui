@@ -240,6 +240,10 @@ Run_Config :: struct {
 	// What shows through the window's transparent pixels (backlog F126);
 	// .Opaque, the zero, is none. What it got is ctx_backdrop, in the view.
 	backdrop:      Backdrop,
+	// How tall the macOS titlebar is under .Custom chrome, and so where the
+	// traffic lights sit (backlog W22); .Standard, the zero, is the OS's
+	// plain one. Nothing elsewhere.
+	titlebar:      Titlebar,
 }
 
 // -- Lowering, for the generated spec_to_c -----------------------------------
@@ -391,3 +395,4 @@ lower_gradient :: proc(g: Gradient) -> ^c.Gradient {
 #assert(offset_of(Run_Config, diagnostics) == offset_of(c.RunConfig, diagnostics))
 #assert(offset_of(Run_Config, frame_latency) == offset_of(c.RunConfig, frame_latency))
 #assert(offset_of(Run_Config, backdrop) == offset_of(c.RunConfig, backdrop))
+#assert(offset_of(Run_Config, titlebar) == offset_of(c.RunConfig, titlebar))

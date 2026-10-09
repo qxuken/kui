@@ -23,7 +23,29 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.48 (unreleased)
 
+**What breaks.**
+
+- C ABI 28 (under Added, W22): `KuiRunConfig` appends `titlebar`, a
+  `KUI_TITLEBAR_*` (64-bit size 48). Recompile; zeroed, the window is
+  what it was. A hand-written mirror (ctypes, Zig) appends one `u32`.
+
 ### Added
+
+- **The traffic lights sit lower in a taller titlebar** (backlog W22).
+  `Launcher::titlebar(Titlebar::Medium | Tall)` under `Chrome::Custom`
+  makes macOS's own titlebar a compact toolbar's height (40 pt, the
+  lights at 12,13 on macOS 27) or a full toolbar's (52 pt about the
+  lights, at 19,19), against the plain one's 32 at 9,9 — the look of a
+  Mac app with a toolbar, with the app's own strip in it. kui gives the
+  window an empty `NSToolbar` in that style and leaves the buttons to
+  AppKit, which keeps them in place through resizing, fullscreen and
+  focus; nothing runs per frame. `env.window.native_controls` measures
+  where they landed, so `widgets::titlebar` grows and insets with them,
+  and the toolbar takes no clicks: tabs in the strip press and the empty
+  strip drags as before. `titlebar: 'standard' | 'medium' | 'tall'` in
+  Node's window options, `KuiRunConfig.titlebar` in C,
+  `Run_Config.titlebar` in Odin; nothing on Windows and Linux. The
+  `titlebar` example takes `--titlebar tall`.
 
 - **An image drawn smaller is drawn from a level the core halves**
   (backlog V6, ADR 0044). An `image` drawn at less than half its

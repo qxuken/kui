@@ -246,7 +246,7 @@ recorded under [adr/](adr); this page is their consequences for an app.
   Alt-Tab and the taskbar (`icon` in Node's `WindowOptions`,
   `kui_set_icon` in C); macOS and Wayland take the app's icon from the
   bundle and the `.desktop` file instead. Custom chrome is an opt-in:
-  `kui_native::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content; Windows/Linux go
+  `kui_native::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content (`.titlebar(Titlebar::Tall)` makes AppKit's titlebar a toolbar's height and centres them lower, backlog W22); Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions
   (HTCAPTION / HTMINBUTTON / HTMAXBUTTON / HTCLOSE + resize borders), so

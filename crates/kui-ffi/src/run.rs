@@ -274,6 +274,11 @@ fn launcher_for(title: &str, options: RunOptions) -> kui_native::Launcher {
         l = l.frame_latency(frames);
     }
     l.backdrop(options.backdrop)
+        .titlebar(match options.titlebar {
+            KUI_TITLEBAR_MEDIUM => kui_native::Titlebar::Medium,
+            KUI_TITLEBAR_TALL => kui_native::Titlebar::Tall,
+            _ => kui_native::Titlebar::Standard,
+        })
 }
 
 // ---------------------------------------------------------------------------

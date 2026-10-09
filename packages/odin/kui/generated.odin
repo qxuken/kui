@@ -427,6 +427,12 @@ Diagnostics :: enum u32 {
 	Off = 2, // KUI_DIAG_OFF
 }
 
+Titlebar :: enum u32 {
+	Standard = 0, // KUI_TITLEBAR_STANDARD
+	Medium = 1, // KUI_TITLEBAR_MEDIUM
+	Tall = 2, // KUI_TITLEBAR_TALL
+}
+
 Menu_Role :: enum u32 {
 	Custom = 0, // KUI_MENU_CUSTOM
 	Separator = 1, // KUI_MENU_SEPARATOR

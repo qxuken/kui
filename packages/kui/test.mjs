@@ -6731,6 +6731,9 @@ test("a cells cursor's shapes are the addon's list, and a window's size and chro
   // refused the same way.
   assert.equal(windowOptions({ textAa: 'gray' }).textAa, 'gray');
   assert.throws(() => new KuiWindow('t', { textAa: 'lcd' }), /textAa must be "auto", "gray" or "subpixel"/);
+  // `titlebar` is the launcher's (backlog W22), the same way.
+  assert.equal(windowOptions({ titlebar: 'tall' }).titlebar, 'tall');
+  assert.throws(() => new KuiWindow('t', { titlebar: 'huge' }), /titlebar is one of \["standard", "medium", "tall"\]/);
 });
 
 test('an index is a row number, and anything else is refused', () => {

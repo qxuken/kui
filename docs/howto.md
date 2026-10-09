@@ -700,6 +700,30 @@ backdrop; `KUI_BACKDROP_EMULATE=1` shows the wallpaper path on Windows and Linux
 In C, `KuiRunConfig.backdrop` asks (`KUI_BACKDROP_BLUR`) and
 `kui_ctx_backdrop(ctx)` in the view reads what the window got.
 
+### How do I move the traffic lights down, like a Mac app with a toolbar?
+
+Ask for a taller titlebar: `kui_native::app("Notes").custom_titlebar()
+.titlebar(Titlebar::Tall)`, or `titlebar: 'tall'` beside `chrome:
+'custom'` in Node's window options. `Medium` is a compact toolbar's
+titlebar (40 pt, the lights at 12,13 on macOS 27) and `Tall` a full
+toolbar's (52 pt about the lights, at 19,19), against `Standard`'s 32 pt
+at 9,9. kui does not move the buttons: it gives the window an empty
+`NSToolbar` in the style that makes AppKit's own titlebar that tall, so
+AppKit keeps the lights where they belong through resizing, fullscreen
+and focus. The runner measures where they landed into
+`env.window.native_controls`, and `widgets::titlebar` takes its height
+and inset from it, so a strip of tabs or a search field centres on the
+lights with nothing else to change. The toolbar takes no clicks: a
+button in the strip is pressed as before, and the empty strip still
+drags. Nothing on Windows and Linux, where the strip under custom chrome
+is the app's and `Metrics::titlebar_h` is its height.
+
+[`titlebar.rs`](../examples/rust/widgets/titlebar.rs) (`-- --titlebar tall`) ·
+[`window.native_controls` row](props.md#env)
+
+In C, `KuiRunConfig.titlebar` asks (`KUI_TITLEBAR_TALL`); in Odin,
+`Run_Config.titlebar`.
+
 ### How do I frost a toolbar over content that scrolls under it?
 
 Give the toolbar a `backdropBlur` and a translucent `bg`:

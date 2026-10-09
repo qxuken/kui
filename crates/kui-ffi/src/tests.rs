@@ -3062,6 +3062,7 @@ mod run_config_headless {
             diagnostics: KUI_DIAG_OFF,
             frame_latency: 1,
             backdrop: 3, // KUI_BACKDROP_TINTED
+            titlebar: KUI_TITLEBAR_TALL,
         };
         assert_eq!(
             run_options_of(Some(&full)).unwrap(),
@@ -3076,6 +3077,7 @@ mod run_config_headless {
                 diagnostics: Some(false),
                 frame_latency: Some(1),
                 backdrop: kui_core::Backdrop::Tinted,
+                titlebar: KUI_TITLEBAR_TALL,
             }
         );
         assert_eq!(
@@ -3097,6 +3099,13 @@ mod run_config_headless {
         );
         assert!(
             refused(KuiRunConfig { text_aa: 9, ..zero }).contains("KUI_TEXT_AA_SUBPIXEL, not 9")
+        );
+        assert!(
+            refused(KuiRunConfig {
+                titlebar: 3,
+                ..zero
+            })
+            .contains("KUI_TITLEBAR_TALL, not 3")
         );
         assert!(
             refused(KuiRunConfig {

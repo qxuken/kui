@@ -1541,6 +1541,19 @@ winit's delegate answers only that the app finished launching and is
 terminating. One entry, F124, **built 2026-10-06**, the day it was
 filed, and in the archive.
 
+## From the traffic-lights question (2026-10-09)
+
+The user asked whether kui can shift the macOS traffic lights. It could
+not: under `Chrome::Custom` winit makes the titlebar transparent over a
+full-size content view, AppKit lays the buttons out at its plain
+titlebar's place, and the runner only measures them (W17). Two ways
+were weighed — moving the buttons by hand, which AppKit undoes on every
+resize, fullscreen exit and focus change, so the runner would re-place
+them on each and flicker on a live resize; or asking AppKit for the
+taller titlebar an empty toolbar makes, at the few heights its styles
+give — and the user chose the toolbar to start with. One entry, W22,
+**built 2026-10-09**, the day it was asked for, and in the archive.
+
 ## From the berainder alpha.47 upgrade (2026-10-09)
 
 berainder moved from alpha.44 to alpha.47 and took F131–F138 in place
@@ -3007,6 +3020,9 @@ Nothing of the berainder review is open (F131 **built 2026-10-08**, ADR
 Nothing of the berainder alpha.47 upgrade is open (F139–F141 **built
 2026-10-09**, the day they were filed; its fourth point, V6's mipmaps,
 built the same day as ADR 0044).
+Nothing of the traffic-lights question is open (W22 **built
+2026-10-09**, the day it was asked; moving the buttons by hand, the
+other way, not asked for).
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
 Nothing of the Windows regression round of 2026-09-26 is open
@@ -4340,3 +4356,7 @@ move.
 - `.` **F140** — [`role="none"` is the decorative door, and neither the warning nor the docs point a caption at it](backlog/closed-2026-09.md#-f140--rolenone-is-the-decorative-door-and-neither-the-warning-nor-the-docs-point-a-caption-at-it--done-2026-10-09) — done (2026-10-09) — `ambiguous-name` names `role="none"` on the box around a caption that shares its control's name; the `role` row and the how-to call `none` the decorative door
 
 - `.` **F141** — [A spring easing on a keyframed node runs as ease-out, and the `keyframes` row does not say so](backlog/closed-2026-09.md#-f141--a-spring-easing-on-a-keyframed-node-runs-as-ease-out-and-the-keyframes-row-does-not-say-so--done-2026-10-09) — done (2026-10-09) — the `keyframes`, `easing` and `bounce` rows say so, and a test pins it
+
+**From the traffic-lights question (2026-10-09)** — W22, filed and built the same day
+
+- `.` **W22** — [The traffic lights cannot sit lower: no titlebar a toolbar's height under custom chrome](backlog/closed-2026-09.md#-w22--the-traffic-lights-cannot-sit-lower-no-titlebar-a-toolbars-height-under-custom-chrome--done-2026-10-09) — done (2026-10-09) — `Launcher::titlebar(Titlebar::Medium | Tall)`: an empty `NSToolbar` in the compact or full style, AppKit's titlebar 40 or 52 pt about the lights; the keep-out measured twice the lights' centre; Node `titlebar`, `KuiRunConfig.titlebar` (ABI 28), Odin `Run_Config.titlebar`

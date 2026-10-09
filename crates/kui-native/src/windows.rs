@@ -394,6 +394,13 @@ impl DynShell<'_> {
         // view that never asked never gets one (ADR 0017, decision 6).
         #[cfg(target_os = "macos")]
         macos_force::configure(&window);
+        // The titlebar's height under custom chrome (backlog W22), before
+        // the window is shown so the lights do not jump, and before they
+        // are measured below.
+        #[cfg(target_os = "macos")]
+        if chrome == Chrome::Custom {
+            macos_chrome::set_titlebar(&window, self.titlebar);
+        }
         window.set_visible(true);
         window.set_ime_allowed(true);
         // Answer the palette and dictation, which winit's view does not

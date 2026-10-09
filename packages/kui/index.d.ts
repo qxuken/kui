@@ -1867,6 +1867,16 @@ export interface WindowOptions {
   maxWidth?: number;
   maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
+  /** How tall the OS's titlebar is under `chrome: 'custom'` on macOS, and
+   *  so where the traffic lights sit (the launcher's `titlebar`, backlog
+   *  W22): `'standard'` (the default; 32 px with the lights at 9,9 on
+   *  macOS 27), `'medium'` (a compact toolbar's, 40 at 12,13) or `'tall'`
+   *  (a full toolbar's, 52 about the lights at 19,19). AppKit's own,
+   *  made with an empty toolbar, so the lights stay where AppKit puts
+   *  them through resizing and fullscreen; what the window got is
+   *  `env().window.nativeControls`, and `titlebar` lays out against it.
+   *  Nothing elsewhere. */
+  titlebar?: 'standard' | 'medium' | 'tall';
   /** What shows through the window where a frame paints nothing or paints
    *  with alpha (the launcher's `backdrop`), by effect: `'opaque'` (the
    *  default), `'transparent'` (the desktop as it is), `'blur'` (macOS
@@ -3644,7 +3654,8 @@ export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
    * chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-   * | "subpixel", frameLatency, system, icon, backdrop}`. The min/max pairs bound what the user can
+   * | "subpixel", frameLatency, system, icon, backdrop, titlebar:
+   * "standard" | "medium" | "tall"}`. The min/max pairs bound what the user can
    * resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
    * says, for the life of the window — `{motion: 'reduced'}` is what a
    * user who asked for less motion would get, on a machine whose owner

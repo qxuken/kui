@@ -53,6 +53,9 @@ pub struct Window {
     pub chrome: Chrome,
     /// What shows through the window (`Launcher::backdrop`).
     pub backdrop: kui_native::Backdrop,
+    /// The macOS titlebar's height under custom chrome
+    /// (`Launcher::titlebar`).
+    pub titlebar: kui_native::Titlebar,
 }
 
 impl Default for Window {
@@ -63,6 +66,7 @@ impl Default for Window {
             max_size: None,
             chrome: Chrome::Native,
             backdrop: kui_native::Backdrop::Opaque,
+            titlebar: kui_native::Titlebar::Standard,
         }
     }
 }
@@ -95,6 +99,11 @@ impl Window {
 
     pub fn backdrop(mut self, backdrop: kui_native::Backdrop) -> Self {
         self.backdrop = backdrop;
+        self
+    }
+
+    pub fn titlebar(mut self, titlebar: kui_native::Titlebar) -> Self {
+        self.titlebar = titlebar;
         self
     }
 }
@@ -337,6 +346,7 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
         .size(w, h)
         .chrome(window.chrome)
         .backdrop(window.backdrop)
+        .titlebar(window.titlebar)
         .with_extensions(extensions)
         .devtools(true)
         .setup_core(move |core| {
