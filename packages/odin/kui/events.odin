@@ -82,6 +82,7 @@ Button_Event :: struct {
 	cell:   Maybe(Cell_Position), // on a cells grid
 	line:   Maybe(int),
 	byte:   Maybe(int),
+	inside: Maybe(bool), // on the line's own box, not the margin beside it
 	tag:    Value,
 }
 
@@ -158,6 +159,15 @@ Modifiers_Event :: struct {
 Changed_Event :: struct {}
 
 Submit_Event :: struct {}
+
+// An editing key that met the edge of an editor's text and did nothing
+// (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on the
+// last, → or Delete at the end. On the editor's key.
+Boundary_Event :: struct {
+	key:       string, // "up" | "down" | "left" | "right" | "backspace" | "delete"
+	edge:      string, // "start" | "end"
+	word, doc: bool, // the editing modifiers the key carried
+}
 
 Sound_Event :: struct {
 	phase:    string, // "ended" | "refused"

@@ -532,7 +532,7 @@ package kui_c
 #assert(offset_of(RunConfig, frame_latency) == 36)
 #assert(offset_of(RunConfig, backdrop) == 40)
 #assert(offset_of(RunConfig, titlebar) == 44)
-#assert(ABI_VERSION == 28)
+#assert(ABI_VERSION == 30)
 #assert(MIN_FIT == -1)
 #assert(MIN_NONE == -2)
 #assert(WINDOW_MAIN == 0)

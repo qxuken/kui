@@ -172,7 +172,7 @@ TYPED :: [][2]string {
 }
 
 // uint32_t fields that are a yes or no.
-BOOL_FIELDS :: []string{"looped", "paused", "finish", "checked", "multiple", "monospaced", "italic", "rtl"}
+BOOL_FIELDS :: []string{"looped", "paused", "finish", "checked", "replay", "multiple", "monospaced", "italic", "rtl"}
 
 // A yes-or-no whose C zero is the unusual case: an Odin literal leaves a
 // field it does not name at zero, so the field is turned around, and a menu
@@ -327,7 +327,6 @@ CUSTOM_RULES :: []Custom_Rule {
 SKIP :: [][2]string {
 	{"kui_button", "kui.button lowers to kui_button_with, which with an empty spec is kui_button"},
 	{"kui_run", "kui.run lowers to kui_run_with, which with no context and no config is kui_run"},
-	{"kui_text_edit_placeholder", "kui.text_edit lowers to it when its placeholder is set"},
 }
 
 // A parameter's default, which makes it and everything after it optional:
