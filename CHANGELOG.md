@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.49 (unreleased)
+## 0.1.0-alpha.49 (2026-10-09)
 
 ### Changed
 
@@ -52,6 +52,27 @@ was the first bare bump to break an app in five releases).
 - Hand-flattening a Lua view's tree, or building it in fewer, larger
   tables, to keep the lowering off the frame: kawoosh's settings pane
   lowers at about 1.4 µs a table where it took 2.2.
+
+### Native verification
+
+The by-hand round on 2026-10-09, over F143 — kui-lua's walk from a
+view's tables to the tree — on the Mac: the mechanical round as CI runs
+it, the Odin binding checked with CI's pinned Odin in its Debian image,
+the windowed round, the accessibility audit and the bench guard.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **2034 tests over 152 suites**, 0 failed. The C round
+passes (5 checks), and so do the **58 scenes** through Rust, Lua, C and
+Node; Node's tests under `KUI_CONFORMANCE_REQUIRED=1`, **225 of 225**;
+`npm run gen` with no diff, the examples' typecheck, the headless round
+(4.0 s). `nu scripts/odin.nu gen --check` says the binding is current
+and `odin.nu check` vets both packages and every example. The windowed
+round with Node's: **55 examples on both bases**, clean on a first run,
+and `counter`, `host`, `c_panel` and `lua_panel` for 120 frames each.
+The accessibility audit: **106 of 106**. The bench guard against the
+alpha.48 tag: **green**, the eight guarded rows within tolerance; the
+new `walk` rows are in docs/performance.md. No Windows or Linux machine
+ran this round.
 
 ## 0.1.0-alpha.48 (2026-10-09)
 
