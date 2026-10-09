@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.48 (unreleased)
+## 0.1.0-alpha.48 (2026-10-09)
 
 **What breaks.**
 
@@ -149,6 +149,35 @@ was the first bare bump to break an app in five releases).
   `core.now()` read in `on_event_with` is the time of the event.
 - Resampling a photo to the size it is shown at before `add_image`:
   register it as decoded and declare the box.
+
+### Native verification
+
+The by-hand round on 2026-10-09, over F142 and W22 — the slot replayed
+by its host, and the taller macOS titlebar with the metric that follows
+it — on the Mac: the mechanical round as CI runs it, the Odin binding
+regenerated and type-checked with CI's pinned Odin (`dev-2026-09`, in a
+Debian image with the checkout mounted at its own path, since the Mac
+has no `odin`), the windowed round, the accessibility audit and the
+bench guard. The first attempt of the round filled the disk — 118 MB
+left under three build trees — and was run again whole once 61 GB were
+cleared; nothing of it is read from the partial run.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **2032 tests over 152 suites**, 0 failed. The C round
+passes (5 checks), and so do the **58 scenes** through Rust, Lua, C and
+Node; Node's tests under `KUI_CONFORMANCE_REQUIRED=1`, **225 of 225**;
+`npm run gen` with no diff beyond the three `DOORS` rows of this
+release, the examples' typecheck, the headless round (3.4 s). `nu
+scripts/odin.nu gen --check` says the binding is current and `odin.nu
+check` vets both packages and every example; its `test` and `slots`
+rounds run Linux binaries and are CI's. The windowed round with Node's:
+**55 examples on both bases**, clean on a first run, and `counter`,
+`host`, `c_panel` and `lua_panel` for 120 frames each. The accessibility audit:
+**106 of 106**. The bench guard against the alpha.47 tag: **green**, the
+eight guarded rows within tolerance, and the two new rows
+`slot_1500_nodes_fresh` / `slot_1500_nodes_replayed` at 277 and 208 µs
+(now in docs/performance.md). No Windows or Linux machine ran this
+round.
 
 ## 0.1.0-alpha.47 (2026-10-09)
 

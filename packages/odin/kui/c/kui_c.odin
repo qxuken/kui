@@ -1137,6 +1137,9 @@ foreign lib {
 	open_indexed :: proc(ctx: ^Ctx, index: u64, spec: ^Spec, on_click: ^Value) -> u64 ---
 	row_count :: proc(ctx: ^Ctx, rows: u64) ---
 	slot :: proc(ctx: ^Ctx, name: string, params: ^Value) -> bool ---
+	slot_kept :: proc(ctx: ^Ctx, name: string, params: ^Value) -> bool ---
+	slot_replay :: proc(ctx: ^Ctx, name: string, params: ^Value) -> i32 ---
+	slot_fill :: proc(ctx: ^Ctx, name: string) -> i32 ---
 	ctx_add_extension :: proc(ctx: ^Ctx, namespace_: string, path: string) -> bool ---
 	ctx_extension_error :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	ctx_extension_count :: proc(ctx: ^Ctx) -> u32 ---

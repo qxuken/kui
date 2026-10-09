@@ -2581,6 +2581,35 @@ slot :: proc(ui: ^Ui, name: string, params: any = nil) -> bool {
 	return c.slot(ui, name, borrow(&scratch, params))
 }
 
+// Declares a slot as `slot` does and keeps what the fill built — every node
+// as its door saw it, the slots inside, every fact of the frame it read —
+// for `slot_replay` to push again (ADR 0045).
+// Rust: Ui::slot_kept.
+slot_kept :: proc(ui: ^Ui, name: string, params: any = nil) -> bool {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.slot_kept(ui, name, borrow(&scratch, params))
+}
+
+// The host's claim that nothing it feeds the extension changed: the core
+// checks the params, every fact the kept fill read and the slot's place, and
+// pushes the kept nodes again without the extension, or fills and keeps and
+// says why (ADR 0045).
+// Rust: Ui::slot_replay.
+slot_replay :: proc(ui: ^Ui, name: string, params: any = nil) -> i32 {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	return c.slot_replay(ui, name, borrow(&scratch, params))
+}
+
+// What the last `slot_replay` of a name answered this frame, or the frame
+// before while this one is being built: replayed, or why it was filled fresh
+// (ADR 0045).
+// Rust: Core::slot_fill.
+slot_fill :: proc(ui: ^Ui, name: string) -> i32 {
+	return c.slot_fill(ui, name)
+}
+
 // Loads a plugin under a namespace; a `KuiWindow` takes its list at
 // construction (`extensions`).
 // Rust: Ui::add_extension.

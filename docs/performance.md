@@ -82,6 +82,8 @@ that prop costs.
 | `list_10k_rows_variable_learning_far` | the same frame told about a row nowhere near the window, so everything between it and the window is summed again | ~20.1 µs |
 | `list_100k_rows_variable` | an order of magnitude more variable rows, where an O(n) rebuild would show | ~14.9 µs |
 | `list_100k_rows_variable_learning` | the same 100k list learning a visible row's height | ~14.7 µs |
+| `slot_1500_nodes_fresh` | an extension filling a slot with 500 rows — a box, a text and a hover-tracking box each, 1,500 nodes — built fresh every frame (ADR 0045) | ~277 µs |
+| `slot_1500_nodes_replayed` | the same frame replayed from what the first fill kept: the gap is the extension's own pushes, which a Rust fill has little of and a Lua or C fill's walk is most of | ~208 µs |
 | `warm_50x200` (`--bench stream`) | fifty 200-column mono lines, the same every frame — a terminal pane at rest | ~85 µs |
 | `stream_50x200_log` | the same pane with every line new each frame, thirty-word log vocabulary plus numbers | ~25 ms |
 | `stream_50x200_random` | every line new and random printable ASCII, nothing for the shape-run cache to hit | ~64 ms |
