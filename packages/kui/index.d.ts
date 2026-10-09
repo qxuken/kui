@@ -810,7 +810,10 @@ export type WarningCode =
    *  `kui_key_named`) found more than one node with that name in the last frame
    *  — two buttons both read as "Delete" — and used the first in tree order. A
    *  reader hears the same name twice too: give each a `label` that says which,
-   *  or look the one meant up by its key label. */
+   *  or look the one meant up by its key label. When one of them is static text
+   *  and another is not — a caption under the button it repeats — the message
+   *  says so: a caption a reader need not hear is decorative, and `role="none"`
+   *  on the box around it takes it out of the tree (backlog F140). */
   | 'ambiguous-name'
   /** A `focusRegion(name)` (`Core::focus_region`, `env.focus_region`,
    *  `kui_focus_region`) named a node the frame after it did not declare as a

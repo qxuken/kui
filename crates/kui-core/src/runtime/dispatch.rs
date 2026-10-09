@@ -1136,19 +1136,34 @@ impl Core {
     /// the name raises `ambiguous-name`; None when none has it. From
     /// inside a view, the tree is the last one derived ([`Self::access_tree`]).
     pub fn key_named(&mut self, name: &str) -> Option<Key> {
-        let (first, count) = {
+        use crate::access::Role;
+        let (first, count, caption) = {
             let mut hits = self
                 .access_tree()
                 .nodes
                 .iter()
                 .skip(1)
                 .filter(|n| n.name.as_deref() == Some(name));
-            let first = hits.next()?.key;
-            (first, 1 + hits.count())
+            let head = hits.next()?;
+            // A caption beside the control it repeats is text and a
+            // control under one name (backlog F140).
+            let (mut count, mut text, mut other) = (0, false, false);
+            for n in std::iter::once(head).chain(hits) {
+                count += 1;
+                if n.role == Role::StaticText {
+                    text = true;
+                } else {
+                    other = true;
+                }
+            }
+            (head.key, count, text && other)
         };
         if count > 1 {
-            self.diag
-                .raise(crate::diag::ambiguous_name(name, first, count));
+            self.diag.raise(if caption {
+                crate::diag::ambiguous_caption(name, first, count)
+            } else {
+                crate::diag::ambiguous_name(name, first, count)
+            });
         }
         Some(first)
     }

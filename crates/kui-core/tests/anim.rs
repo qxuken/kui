@@ -662,3 +662,50 @@ fn enter_without_a_clock_snaps_like_everything_else() {
     assert_eq!(float_x(&mut core, 100.0, spec()), 100.0);
     assert!(!core.animating());
 }
+
+/// The row's width at `now` under a keyframed grow 0 → 1 over a second,
+/// with `t` as the transition (its easing and bounce).
+fn keyframed_width(t: Transition, now: f64) -> f32 {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        ui.leaf_keyed(
+            "left",
+            NodeSpec::column()
+                .width(Sizing::Grow(0.0))
+                .grow_height()
+                .transition_with(t)
+                .keyframes(vec![
+                    Keyframe::default().width(Sizing::Grow(0.0)),
+                    Keyframe::default().grow_width(),
+                ]),
+        );
+        ui.leaf_keyed("right", NodeSpec::column().fill());
+        ui.finish();
+    };
+    frame(&mut core);
+    core.set_time(now);
+    frame(&mut core);
+    left_width(&mut core)
+}
+
+/// A spring between keyframe stops is drawn as `easeOut` and its `bounce`
+/// does nothing (backlog F141): a cycle is sampled off the clock, and a
+/// spring is integrated, so there is no spring to sample. What the
+/// `keyframes` and `easing` rows now say.
+#[test]
+fn a_spring_in_a_cycle_is_ease_out_and_bounce_does_nothing() {
+    for now in [0.2, 0.5, 0.8] {
+        let ease_out = keyframed_width(Transition::ms(1000.0).easing(Easing::EaseOut), now);
+        for t in [
+            Transition::ms(1000.0).easing(Easing::Spring),
+            Transition::ms(1000.0).easing(Easing::Bouncy),
+            Transition::ms(1000.0).easing(Easing::Spring).bounce(0.8),
+            Transition::ms(1000.0).easing(Easing::EaseOut).bounce(0.5),
+        ] {
+            assert_eq!(keyframed_width(t, now), ease_out, "{t:?} at {now}");
+        }
+    }
+}

@@ -147,6 +147,8 @@ impl Easing {
 }
 
 /// How keyframes cycle: CSS's `animation-direction`, always infinite.
+/// Between two stops the transition's [`Easing::apply`] curve is used, so
+/// a spring there is `EaseOut` and its bounce unread (backlog F141).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Repeat {
     /// Forward, then jump back and replay.

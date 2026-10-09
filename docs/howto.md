@@ -1838,9 +1838,16 @@ that a screen reader can. `key_of` asks a different question: the *key
 label*, the name the view opened the node under (`with_keyed("like",
 ..)`, a `key` prop), which a reader never hears and `texts_under` reads
 too. Two nodes with one name resolve to the first in tree order and raise
-`ambiguous-name` — the same two a reader cannot tell apart.
+`ambiguous-name` — the same two a reader cannot tell apart. When one of
+them is a caption under the control it repeats (a round "like" button
+over the word "like"), either the caption is decorative — `role="none"`
+on the box around it, `NodeSpec::role(Role::None)` in Rust, takes it out
+of the tree — or the control's `label` says what it does ("like this
+bear"), which a reader is better off with when the caption is all the
+button says.
 
 [`label` row](props.md#container-props) ·
+[`role` row](props.md#container-props) ·
 [`ambiguous-name`](props.md#warnings)
 
 ### How do I test the real window, not a headless core?

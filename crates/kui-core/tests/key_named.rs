@@ -104,3 +104,62 @@ fn asked_mid_frame_it_does_not_cache_half_a_tree() {
     );
     assert_eq!(core.key_named("Like"), None, "and not the last one");
 }
+
+/// berainder's deck (backlog F140): a round button labelled "like" and the
+/// caption "like" under it are one name twice to a reader. The warning
+/// says the caption is the decorative kind, and `role: none` on the box
+/// around it takes it out of the tree — the lookup then finds the button
+/// alone and says nothing.
+#[test]
+fn a_caption_beside_its_control_is_pointed_at_role_none() {
+    use kui_core::Role;
+    let deck = |core: &mut Core, decorative: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.with(NodeSpec::column(), |ui| {
+            ui.leaf_keyed(
+                "like",
+                NodeSpec::column()
+                    .size(40.0, 40.0)
+                    .on_click("like")
+                    .label("like"),
+            );
+            let caption = if decorative {
+                NodeSpec::row().role(Role::None)
+            } else {
+                NodeSpec::row()
+            };
+            ui.text_in_keyed("caption", caption, "like", TextStyle::new(12.0));
+        });
+        ui.finish();
+    };
+    let mut core = Core::new();
+    deck(&mut core, false);
+    assert_eq!(core.key_named("like"), core.key_of("like"));
+    let warnings = core.take_warnings();
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].code, "ambiguous-name");
+    assert!(
+        warnings[0].message.contains("role=\"none\""),
+        "{}",
+        warnings[0].message
+    );
+
+    deck(&mut core, true);
+    assert_eq!(core.key_named("like"), core.key_of("like"));
+    assert!(core.take_warnings().is_empty(), "the caption left the tree");
+}
+
+/// Two buttons with one name are not a caption: the plain message, which
+/// names `label` and not `role="none"`.
+#[test]
+fn two_controls_with_one_name_get_the_plain_message() {
+    let mut core = Core::new();
+    deck(&mut core, true);
+    core.key_named("Delete");
+    let warnings = core.take_warnings();
+    assert!(
+        !warnings[0].message.contains("role="),
+        "{}",
+        warnings[0].message
+    );
+}

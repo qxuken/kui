@@ -54,6 +54,18 @@ was the first bare bump to break an app in five releases).
   so a letter typed after a quiet second starts a new search, and a
   Space after the pause presses the item rather than extending the old
   one.
+- **`ambiguous-name` points a caption at `role="none"`** (backlog
+  F140). When the nodes sharing a name are a control and the text
+  beside it that repeats it — a round "like" button over the word
+  "like" — the warning says the caption is decorative and that
+  `role="none"` on the box around it takes it out of the tree, or that
+  the control's `label` can say what it does. The `role` row calls
+  `none` the decorative door.
+- **The docs say what a spring does between keyframe stops** (backlog
+  F141): it is drawn as `easeOut`, and `bounce` does nothing there,
+  since a cycle is sampled off the clock; an overshoot in a cycle is a
+  stop past the target. Unchanged behaviour, now on the `keyframes`,
+  `easing` and `bounce` rows and pinned by a test.
 
 **What you can delete.**
 

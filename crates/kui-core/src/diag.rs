@@ -126,6 +126,10 @@ warnings! {
     /// last frame — two buttons both read as "Delete" — and used the first
     /// in tree order. A reader hears the same name twice too: give each a
     /// `label` that says which, or look the one meant up by its key label.
+    /// When one of them is static text and another is not — a caption
+    /// under the button it repeats — the message says so: a caption a
+    /// reader need not hear is decorative, and `role="none"` on the box
+    /// around it takes it out of the tree (backlog F140).
     pub const AMBIGUOUS_NAME: &str = "ambiguous-name";
     /// A `focusRegion(name)` (`Core::focus_region`, `env.focus_region`,
     /// `kui_focus_region`) named a node the frame after it did not declare
@@ -787,6 +791,20 @@ pub fn ambiguous_key(label: &str, first: Key, count: usize) -> Warning {
             "{count} nodes are keyed {label:?} under different parents; the first in tree order \
              ({:016x}) was used — give the one meant a label nothing else declares, or pass its \
              hex key",
+            first.0
+        ),
+    }
+}
+
+/// [`ambiguous_name`] when one of the nodes is static text and another is
+/// not: a caption beside the control it repeats (backlog F140). The
+/// message names the decorative door as well as the `label` one.
+pub fn ambiguous_caption(name: &str, first: Key, count: usize) -> Warning {
+    Warning {
+        code: AMBIGUOUS_NAME,
+        key: first,
+        message: format!(
+            "{count} nodes are named {name:?} to a reader, and one is text beside a control              with the same name; the first in tree order ({:016x}) was used — a caption a              reader need not hear is decorative: put `role=\"none\"` on the box around it              and it leaves the tree; or give the control a `label` that says what it does",
             first.0
         ),
     }
