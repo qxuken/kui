@@ -76,6 +76,11 @@ pub struct EditOptions {
     /// With no sink above, Tab does nothing here. A `multiline` editor
     /// keeps Tab for indentation either way and ignores this.
     pub keep_tab: bool,
+    /// What an empty editor shows where its text would be, in the theme's
+    /// `faint` (backlog F149): never part of the value, gone with the
+    /// first character typed or composed, and read by assistive
+    /// technology as the field's description when it declares none.
+    pub placeholder: Option<String>,
     /// Selection highlight color. `None` is the theme's `selection`,
     /// which is what a field gets unless the caller says otherwise — so a
     /// selection over a label and one over a field are the same tint on
@@ -118,6 +123,9 @@ pub(crate) struct EditState {
     pub(crate) multiline: bool,
     /// `EditOptions::keep_tab`, as last declared.
     keep_tab: bool,
+    /// `EditOptions::placeholder`, shaped in a buffer of its own at the
+    /// editor's metrics, beside the `metrics_rev` it was shaped at.
+    placeholder: Option<(String, u32, Buffer)>,
     /// Whether the buffer is laid out to its box's width: a document, or a
     /// field with `wrap` declared. What `wrapped`,
     /// `line_offset` and emission's clip decide by — a field that does not
@@ -681,6 +689,7 @@ impl EditStore {
                 accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline: opts.multiline,
                 keep_tab: opts.keep_tab,
+                placeholder: None,
                 folds: false,
                 origin,
                 scale,
@@ -736,8 +745,34 @@ impl EditStore {
             state.metrics_rev = state.metrics_rev.wrapping_add(1);
             state.invalidate_measurements();
         }
+        // The placeholder, shaped again only when its text or the
+        // editor's metrics moved.
+        match opts.placeholder.as_deref().filter(|p| !p.is_empty()) {
+            None => state.placeholder = None,
+            Some(p) => {
+                let rev = state.metrics_rev;
+                if state
+                    .placeholder
+                    .as_ref()
+                    .is_none_or(|(t, r, _)| t != p || *r != rev)
+                {
+                    let metrics = state.editor.with_buffer(|b| b.metrics());
+                    let mut b = Buffer::new(fs, metrics);
+                    b.set_size(None, None);
+                    b.set_text(p, &attrs_for(&opts.style, res), Shaping::Advanced, None);
+                    b.shape_until_scroll(fs, false);
+                    state.placeholder = Some((p.to_string(), rev, b));
+                }
+            }
+        }
         // `autofocus` is the core's decision (it owns the one focus).
         edge
+    }
+
+    /// The placeholder `key` was declared with, if any.
+    pub fn placeholder(&self, key: Key) -> Option<&str> {
+        let s = self.states.get(&key)?;
+        s.placeholder.as_ref().map(|(t, ..)| t.as_str())
     }
 
     pub fn contains(&self, key: Key) -> bool {
@@ -1511,6 +1546,7 @@ impl EditStore {
         origin: Vec2,
         focused: bool,
         selected: bool,
+        faint: Color,
         clip: Clip,
         clip_id: ClipId,
         fs: &mut FontSystem,
@@ -1547,6 +1583,39 @@ impl EditStore {
 
         // What can show, in the glyphs' own space (ADR 0043).
         let vis = clip.visible();
+        // An empty editor shows its placeholder where its text would start,
+        // under the caret (backlog F149).
+        let empty = s.preedit.is_none()
+            && s.editor
+                .with_buffer(|b| b.lines.len() == 1 && b.lines[0].text().is_empty());
+        if empty && let Some((_, _, b)) = &s.placeholder {
+            for run in b.layout_runs() {
+                for glyph in run.glyphs.iter() {
+                    let physical = glyph.physical((0.0, 0.0), 1.0);
+                    let Some(slot) =
+                        crate::text::raster_glyph(physical.cache_key, fs, raster, atlas)
+                    else {
+                        continue;
+                    };
+                    out.push(Quad {
+                        rect: Rect::new(
+                            origin.x + physical.x as f32 + slot.left as f32,
+                            origin.y + run.line_y.round() + physical.y as f32 - slot.top as f32,
+                            slot.w as f32,
+                            slot.h as f32,
+                        ),
+                        color: faint,
+                        border_color: Color::TRANSPARENT,
+                        radius: [0.0; 4],
+                        border_w: 0.0,
+                        blur: 0.0,
+                        kind: crate::text::glyph_kind(&slot),
+                        uv: [slot.x, slot.y, slot.w, slot.h],
+                        clip: clip_id,
+                    });
+                }
+            }
+        }
         s.editor.with_buffer(|b| {
             let line_height = b.metrics().line_height;
             // Runs come in line order: skip everything above the clip and

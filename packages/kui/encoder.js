@@ -1003,6 +1003,7 @@ export function createEncoder(P) {
         strRef(label);
         strRef(p.initial ?? '');
         f[fi++] = (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0) | (p.keepTab ? 8 : 0);
+        strRef(p.placeholder ?? null);
         props(p, null, false);
         return;
       }
@@ -1018,6 +1019,7 @@ export function createEncoder(P) {
         strRef(String(label));
         strRef(p.initial ?? '');
         f[fi++] = 4;
+        strRef(null);
         props({}, null, false);
         return;
       }

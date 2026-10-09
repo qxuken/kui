@@ -554,3 +554,54 @@ fn an_unfocused_editor_keeps_its_selection_and_hides_it() {
     );
     assert!(highlighted(&mut rig), "the menu's selection stays drawn");
 }
+
+/// A placeholder shows, faint, while the editor is empty and goes with
+/// the first character; it is never the value, and it is the field's
+/// description to assistive technology (backlog F149).
+#[test]
+fn a_placeholder_shows_while_the_editor_is_empty() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let k = ui.text_edit(
+            "find",
+            "",
+            &EditOptions {
+                autofocus: true,
+                placeholder: Some("Search".into()),
+                ..Default::default()
+            },
+            NodeSpec::column().size(200.0, 30.0).label("Find"),
+        );
+        ui.finish();
+        k
+    };
+    let key = frame(&mut core);
+    frame(&mut core);
+    let faint = core.theme().faint;
+    let faint_glyphs = |core: &mut Core| {
+        let (dl, _) = core.output();
+        dl.quads
+            .iter()
+            .filter(|q| {
+                matches!(
+                    q.kind,
+                    kui_core::QuadKind::GlyphMask | kui_core::QuadKind::GlyphSubpixel
+                ) && q.color == faint
+            })
+            .count()
+    };
+    assert_eq!(faint_glyphs(&mut core), 6, "\"Search\" in faint");
+    assert_eq!(core.edit_text(key).as_deref(), Some(""), "not the value");
+    let n = core.access_tree().get(key).unwrap();
+    assert_eq!(n.description.as_deref(), Some("Search"));
+    assert_eq!(n.name.as_deref(), Some("Find"));
+
+    core.handle_input(InputEvent::Text("q".into()));
+    frame(&mut core);
+    assert_eq!(faint_glyphs(&mut core), 0, "typing hides it");
+    core.handle_input(InputEvent::Key(EditKey::Backspace, Mods::default()));
+    frame(&mut core);
+    assert_eq!(faint_glyphs(&mut core), 6, "empty again shows it");
+}

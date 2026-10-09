@@ -1175,6 +1175,7 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
                 f(&mut h, tree.pos[i].x + pad.l);
                 f(&mut h, tree.pos[i].y + pad.t);
                 src.edit.text(edit_key).hash(&mut h);
+                src.edit.placeholder(edit_key).hash(&mut h);
                 src.edit.caret_and_selection(edit_key).hash(&mut h);
                 src.edit.selection_cursors(edit_key).hash(&mut h);
                 // `runs` is the editor's shaped layout, which the text and
@@ -1298,6 +1299,11 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             let pad = spec.layout.padding;
             let origin = Vec2::new(tree.pos[i].x + pad.l, tree.pos[i].y + pad.t);
             node.value = src.edit.text(edit_key);
+            // A placeholder is what the field is for, said where the field
+            // says nothing of its own (backlog F149).
+            if node.description.is_none() {
+                node.description = src.edit.placeholder(edit_key).map(str::to_string);
+            }
             node.runs = src.edit.runs(edit_key, key, origin, src.scale);
             clip_runs(&mut node.runs, edit_run_clip(tree, src, i, edit_key));
             if let Some((caret, selection)) = src.edit.caret_and_selection(edit_key) {

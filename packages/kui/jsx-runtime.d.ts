@@ -738,6 +738,9 @@ export interface EditProps extends TextProps, GeneratedSpecProps, CustomSpecProp
    *  list built from fields indents on Tab. A `multiline` editor keeps Tab
    *  either way. */
   keepTab?: boolean;
+  /** What the editor shows, faint, while it is empty: never part of its
+   *  text, and its accessible description when it declares none. */
+  placeholder?: string;
 }
 
 type Component<P> = (props: P) => KuiNode;

@@ -878,6 +878,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_button",
             "kui_button_with",
             "kui_text_edit",
+            "kui_text_edit_placeholder",
             "kui_text_input",
             "kui_select",
             "kui_checkbox",

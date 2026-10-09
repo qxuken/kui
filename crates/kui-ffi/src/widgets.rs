@@ -399,6 +399,40 @@ pub extern "C" fn kui_text_edit(
     flags: u32,
     spec: *const KuiSpec,
 ) -> u64 {
+    let none = KuiStr {
+        ptr: std::ptr::null(),
+        len: 0,
+    };
+    text_edit(ptr, label, initial, style, flags, none, spec)
+}
+
+/// [`kui_text_edit`] with a `placeholder`: what the editor shows, in the
+/// theme's `faint`, while it is empty — never part of its text, and read
+/// as its accessible description when `spec` gives none (backlog F149).
+/// An empty `placeholder` is none, and the call is `kui_text_edit`. A new
+/// function, so no ABI bump.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_text_edit_placeholder(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    initial: KuiStr,
+    style: *const KuiTextStyle,
+    flags: u32,
+    placeholder: KuiStr,
+    spec: *const KuiSpec,
+) -> u64 {
+    text_edit(ptr, label, initial, style, flags, placeholder, spec)
+}
+
+fn text_edit(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    initial: KuiStr,
+    style: *const KuiTextStyle,
+    flags: u32,
+    placeholder: KuiStr,
+    spec: *const KuiSpec,
+) -> u64 {
     guard(0, || {
         let (Some(c), Some(sp)) = (unsafe { ctx(ptr) }, unsafe { spec.as_ref() }) else {
             return 0;
@@ -411,6 +445,7 @@ pub extern "C" fn kui_text_edit(
             autofocus: flags & KUI_EDIT_AUTOFOCUS != 0,
             wrap: flags & KUI_EDIT_WRAP != 0,
             keep_tab: flags & KUI_EDIT_KEEP_TAB != 0,
+            placeholder: opt_str(placeholder).map(|p| p.into_owned()),
             ..Default::default()
         };
         let spec = leaf_spec_of(sp, NONE, NONE, NONE, NONE);

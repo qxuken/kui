@@ -1100,6 +1100,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let label = r.req_str()?;
             let initial = r.str_ref()?.unwrap_or("");
             let flags = r.u()?;
+            let placeholder = r.str_ref()?;
             // A leaf: its `tooltip` floats beside it (backlog RG113).
             let p = lower_props(r, ui)?.for_leaf();
             // Bit 4: the stock field (`<input label initial>`), the same
@@ -1114,6 +1115,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 autofocus: flags & 2 != 0,
                 // Bit 8: `keepTab`, a field's Tab the app's (backlog F146).
                 keep_tab: flags & 8 != 0,
+                placeholder: placeholder.map(str::to_string),
                 wrap: p.wrap,
                 ..Default::default()
             };

@@ -327,6 +327,7 @@ CUSTOM_RULES :: []Custom_Rule {
 SKIP :: [][2]string {
 	{"kui_button", "kui.button lowers to kui_button_with, which with an empty spec is kui_button"},
 	{"kui_run", "kui.run lowers to kui_run_with, which with no context and no config is kui_run"},
+	{"kui_text_edit_placeholder", "kui.text_edit lowers to it when its placeholder is set"},
 }
 
 // A parameter's default, which makes it and everything after it optional:

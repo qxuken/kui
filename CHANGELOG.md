@@ -84,6 +84,13 @@ with a selection changes.
   instead of walking the focus ring, so a list or an outline built from
   fields indents on Tab. A document keeps Tab either way. A new flag
   bit, no ABI change.
+- **A placeholder on an editor** — `EditOptions::placeholder`,
+  `placeholder` in JSX and Lua, `kui_text_edit_placeholder` in C (a new
+  function, no ABI bump), `placeholder` on Odin's `kui.text_edit`
+  (backlog F149): what an empty editor shows where its text would be, in
+  the theme's `faint`. Never part of the value, gone with the first
+  character typed or composed, and the field's accessible description
+  when it declares none.
 
 ### Fixed
 
@@ -98,6 +105,8 @@ with a selection changes.
   kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
 - Routing an app's shortcuts through a declared menu bar, or a field's
   own key handling, so they work while a field has focus.
+- A faint text floated over an empty field and positioned by hand to
+  match the editor's insets, standing in for a placeholder.
 - Collapsing an editor's selection when it loses focus, to keep a page
   of fields from showing several highlights.
 - Comparing an editor's text before and after an arrow or Backspace to

@@ -2289,6 +2289,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
                 autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
                 keep_tab: t.get::<Option<bool>>("keep_tab")?.unwrap_or(false),
+                placeholder: t.get::<Option<String>>("placeholder")?,
                 wrap: p.wrap,
                 ..Default::default()
             };

@@ -180,13 +180,17 @@ text_input :: proc(ui: ^Ui, label: string, initial := "") -> u64 {
 	return c.text_input(ui, label, initial)
 }
 
-// The editor: one line or many (flags), styled, laid out by spec.
-text_edit :: proc(ui: ^Ui, label: string, initial := "", flags: Edit_Flags = {}, style: Text_Style = {}, spec: Spec = {}) -> u64 {
+// The editor: one line or many (flags), styled, laid out by spec. The
+// placeholder is what it shows, faint, while it is empty.
+text_edit :: proc(ui: ^Ui, label: string, initial := "", flags: Edit_Flags = {}, style: Text_Style = {}, spec: Spec = {}, placeholder := "") -> u64 {
 	st := text_style_to_c(style)
 	cs: c.Spec
 	scratch: Scratch
 	defer scratch_free(&scratch)
 	spec_to_c(spec, &cs, &scratch)
+	if placeholder != "" {
+		return c.text_edit_placeholder(ui, label, initial, &st, transmute(u32)flags, placeholder, &cs)
+	}
 	return c.text_edit(ui, label, initial, &st, transmute(u32)flags, &cs)
 }
 

@@ -421,6 +421,7 @@ impl Core {
                 selected: self.edit.focused() == Some(key)
                     || ((self.menu.is_some() || self.menu_bar_open.is_some())
                         && self.menu_editor == Some(key)),
+                faint: self.theme.faint,
                 pad: self.tree.specs[i].layout.padding,
             },
             NodeContent::Image(id, opts) => Leaf::Image(id, opts),
@@ -1603,6 +1604,7 @@ impl Core {
                     key,
                     focused: false,
                     selected: false,
+                    faint: self.theme.faint,
                     pad: node.spec.layout.padding,
                 },
                 GhostContent::Image(id, opts) => Leaf::Image(id, opts),
@@ -2371,6 +2373,8 @@ enum Leaf<'a> {
         /// Whether its selection is drawn: an editor that lost the
         /// keyboard keeps its range and stops showing it.
         selected: bool,
+        /// The theme's `faint`, which a placeholder is drawn in.
+        faint: Color,
         /// The box's padding: the text starts inside it.
         pad: crate::geom::Edges,
     },
@@ -2660,6 +2664,7 @@ impl Painter<'_> {
                 key,
                 focused,
                 selected,
+                faint,
                 pad,
             } => {
                 let origin = Vec2::new(
@@ -2695,6 +2700,7 @@ impl Painter<'_> {
                     origin,
                     focused,
                     selected,
+                    faint,
                     edit_clip,
                     edit_clip_id,
                     &mut sess.fonts,

@@ -183,6 +183,12 @@ static void surface_view(void *user, KuiCtx *ui) {
         k->editor = kui_text_edit(ui, KUI_STR("notes"), KUI_STR("line one"), &mono,
                                   KUI_EDIT_MULTILINE, &editor);
         if (k->claim_focus) kui_set_key_focus(ui, k->editor);
+        /* A field with a placeholder, shown while it is empty. */
+        KuiSpec find = {
+            .width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 24}, .label = KUI_STR("find"),
+        };
+        kui_text_edit_placeholder(ui, KUI_STR("find"), KUI_STR(""), NULL, 0,
+                                  KUI_STR("Search"), &find);
 
         /* An image node, a tooltip gated on hover, and the latency panels. */
         KuiSpec pic = {

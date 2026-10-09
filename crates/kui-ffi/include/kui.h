@@ -3876,6 +3876,13 @@ uint64_t kui_slider(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
  * "changed"/"submit" events arrive via kui_poll_event with that key. */
 uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
                        const KuiTextStyle *style, uint32_t flags, const KuiSpec *spec);
+/* kui_text_edit with a placeholder: what the editor shows, in the theme's
+ * faint, while it is empty - never part of its text, and read as its
+ * accessible description when spec gives none. An empty placeholder is
+ * none. A new function, so no ABI bump. */
+uint64_t kui_text_edit_placeholder(KuiCtx *ctx, KuiStr label, KuiStr initial,
+                                   const KuiTextStyle *style, uint32_t flags,
+                                   KuiStr placeholder, const KuiSpec *spec);
 /* Borrowed view of an editor's text; valid until the next kui_edit_text call. */
 bool kui_edit_text(KuiCtx *ctx, uint64_t key, KuiStr *out);
 /* Replaces an editor's text, caret left at the end. Reaches an editor that

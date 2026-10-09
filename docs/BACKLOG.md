@@ -1566,20 +1566,8 @@ band, F153 asks only the horizontal half), two meet a condition an ADR
 wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
 entries, F144–F153, and W23, filed open; F148, F144–F146 as ADR 0011's
-decision 10, and F147 **built 2026-10-09**, the day they were filed, and
-in the archive.
-
-### `.` F149 — `edit` has no placeholder
-
-**Found.** No placeholder in `edit.rs`, `EditOptions` or the schema;
-the theme's `faint` token is already described as "a placeholder"
-(`theme.rs:77`). Noticon's search and title draw "Search" and
-"Untitled" as a faint text floated over the field while it is empty,
-offset by hand to match the editor's insets.
-
-**Do.** `EditOptions::placeholder` — drawn in `faint` where the text
-would be while the value is empty, read as the field's accessible
-description, never part of `value`; the schema row and the bindings.
+decision 10, F147 and F149 **built 2026-10-09**, the day they were
+filed, and in the archive.
 
 ### `.` F150 — `TextStyle` has no weight: a plain text or an editor cannot be bold
 
@@ -3128,8 +3116,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round (F149–F153, W23; F144–F148
-built): F149 and F150 at the editor; F151
+**Build next.** Noticon's polish round (F150–F153, W23; F144–F149
+built): F150 at the text style; F151
 and F152 as ADR 0018's; W23 needs a Mac before anything is built.
 Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
@@ -4553,3 +4541,5 @@ move.
 - `.` **F146** — [Tab in a single-line editor always walks the focus ring](backlog/closed-2026-09.md#-f146--tab-in-a-single-line-editor-always-walks-the-focus-ring--done-2026-10-09) — done (2026-10-09) — `EditOptions::keep_tab` / `keepTab` / `keep_tab` / `KUI_EDIT_KEEP_TAB`: a field's Tab goes to the sink above it
 
 - `.` **F147** — [An editor that lost the keyboard keeps painting its selection](backlog/closed-2026-09.md#-f147--an-editor-that-lost-the-keyboard-keeps-painting-its-selection--done-2026-10-09) — done (2026-10-09) — an editor that lost the keyboard keeps its range and draws none of it, but while a menu opened over it is up
+
+- `.` **F149** — [`edit` has no placeholder](backlog/closed-2026-09.md#-f149--edit-has-no-placeholder--done-2026-10-09) — done (2026-10-09) — `EditOptions::placeholder` / `placeholder` / `kui_text_edit_placeholder`: drawn in `faint` while the editor is empty, never the value, the description when none is declared

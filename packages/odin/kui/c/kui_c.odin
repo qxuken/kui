@@ -1305,6 +1305,7 @@ foreign lib {
 	radio_group_open :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	slider :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	text_edit :: proc(ctx: ^Ctx, label: string, initial: string, style: ^TextStyle, flags: u32, spec: ^Spec) -> u64 ---
+	text_edit_placeholder :: proc(ctx: ^Ctx, label: string, initial: string, style: ^TextStyle, flags: u32, placeholder: string, spec: ^Spec) -> u64 ---
 	edit_text :: proc(ctx: ^Ctx, key: u64, out: ^string) -> bool ---
 	edit_set_text :: proc(ctx: ^Ctx, key: u64, text: string) ---
 	edit_set_text_label :: proc(ctx: ^Ctx, label: string, text: string) ---
