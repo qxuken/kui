@@ -192,7 +192,8 @@ filed, and F143 beside it, the Lua binding's walk from its tables to
 the tree made cheaper, the same day after the alpha.48 tag.
 F144–F153 and W23, from Noticon's macOS polish round of the same day —
 chords and edges out of an editor, a declared row that replays its
-chord, the pointer over a taller titlebar — are open, in their section.
+chord, the pointer over a taller titlebar — were built the day they were
+filed, W23 closed as not reproduced, and are in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -207,7 +208,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.48".
+Ordered by area, not by priority. What to do next is under "After alpha.49".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -473,7 +474,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.48" below.
+not cover is in "After alpha.49" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2223,7 +2224,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.48*).
+*Distribution* under *After alpha.49*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2832,10 +2833,19 @@ offsets, `iterations`, the Rust struct literals and the new warning
 code. One entry, RG155, is what the pass left, **built 2026-10-09** the
 same day after the tag, and in the archive.
 
-## After alpha.48
+## After alpha.49
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.45" until later on 2026-10-09, when the round between the alpha.46
+alpha.48" until later on 2026-10-09, when the round between the alpha.49
+and alpha.50 tags — F144–F153 and W23 from Noticon's macOS polish round
+— had landed, and the heading moved with the tag; "After alpha.47"
+until later on 2026-10-09, when the round between the alpha.48 and
+alpha.49 tags — F143, the Lua binding's walk — had landed, and the
+heading moved with the tag; "After alpha.46" until later on 2026-10-09,
+when the round between the alpha.47 and alpha.48 tags — F142 from the
+kawoosh profile, W22, V6's mipmap half and F139–F141 from berainder's
+alpha.47 upgrade — had landed, and the heading moved with the tag;
+"After alpha.45" until later on 2026-10-09, when the round between the alpha.46
 and alpha.47 tags — RG155, what alpha.46's pre-tag pass left, and
 alpha.47's pre-tag pass over it — had landed, and the heading moved with
 the tag; "After

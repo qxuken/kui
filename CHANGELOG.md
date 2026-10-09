@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.50 (unreleased)
+## 0.1.0-alpha.50 (2026-10-09)
 
 **What breaks.**
 
@@ -160,6 +160,29 @@ the ABI did, twice. Zeroed fields are what a text and a row were.
 - Comparing an editor's text before and after an arrow or Backspace to
   tell whether it reached the edge, or a separate key sink over a field
   to hear ↑ and ↓.
+
+### Native verification
+
+The by-hand round on 2026-10-09, over Noticon's macOS polish round —
+F144–F153, W23 and the Odin binding checked against the generator — on
+the Mac: the mechanical round as CI runs it, the Odin binding with an
+Odin built locally against LLVM 21 rather than CI's pinned one in its
+image, and the bench guard. The windowed round, the accessibility audit
+and the other checks that need someone at the screen were not run this
+time.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **2054 tests over 154 suites**, 0 failed, 4 ignored.
+The C round passes (5 checks), and so do the **58 scenes** through
+Rust, Lua, C, Odin and Node; Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1`, **228 of 228**; `npm run gen` with no
+diff, the examples' typecheck, the headless round (8.0 s), the book's
+examples current. `nu scripts/odin.nu gen --check` says the binding is
+current, `odin.nu check` vets both packages and every example, and
+`odin.nu test` runs its four. The bench guard against the alpha.49 tag:
+**green**, the eight guarded rows within tolerance. Not run: the
+windowed round over every example and the four hosts, and the AX audit.
+No Windows or Linux machine ran this round.
 
 ## 0.1.0-alpha.49 (2026-10-09)
 
