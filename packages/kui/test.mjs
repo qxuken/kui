@@ -1696,6 +1696,25 @@ test('requestFrameAt sets a deadline and owes nothing until it', () => {
   assert.equal(ctx.nextFrameAt(), null, 'the frame at the time spends it');
 });
 
+// A lookup by accessible name (backlog F137): the `label` prop or a
+// button's text, where keyOf reads the key label.
+test('keyNamed finds a node by the name a reader hears', () => {
+  const ctx = new Ctx();
+  const view = (deletes) => box({ dir: 'row' }, [
+    box({ width: 40, height: 40, onClick: { kind: 'like' }, label: 'Like' }, [], 'like'),
+    ...Array.from({ length: deletes }, (_, i) =>
+      box({ onClick: { kind: 'delete' } }, [text('Delete', { size: 14 })], `delete-${i}`)),
+  ]);
+  ctx.frame(400, 300, 1, view(1));
+  assert.equal(ctx.keyNamed('Like'), ctx.keyOf('like'));
+  assert.equal(ctx.keyNamed('like'), null, 'the key label is not the name');
+  assert.equal(ctx.keyNamed('Delete'), ctx.keyOf('delete-0'), 'a button by its text');
+  ctx.warnings();
+  ctx.frame(400, 300, 1, view(2));
+  assert.equal(ctx.keyNamed('Delete'), ctx.keyOf('delete-0'), 'the first of two');
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['ambiguous-name']);
+});
+
 // The exit named at the removal (backlog F136): a card thrown right, over
 // the fade it declared, removed in the same handler that aims it.
 test('exitWith aims the exit a node leaves by in the frame that drops it', () => {

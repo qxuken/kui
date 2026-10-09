@@ -3409,6 +3409,18 @@ macro_rules! core_methods {
                 self.$core().key_of(&label).map(key_str)
             }
 
+            /// The hex key of the first node in the last finished frame
+            /// whose accessible name is `name` (backlog F137) — its
+            /// `label` prop, else its own text, else a control's derived
+            /// name — so a test clicks "the button named Like" as a reader
+            /// would: `ctx.click(ctx.keyNamed('Like'))`. Not `keyOf`'s key
+            /// label, which a reader never hears. Null when no node has the
+            /// name; two raise `ambiguous-name`.
+            #[napi]
+            pub fn key_named(&mut self, name: String) -> Option<String> {
+                self.$core().key_named(&name).map(key_str)
+            }
+
             #[napi]
             pub fn blur(&mut self) {
                 self.$core().set_focus(None);

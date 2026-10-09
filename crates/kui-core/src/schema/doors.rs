@@ -407,7 +407,15 @@ pub const DOORS: &[Door] = &[
         odin: Is("key_of"),
         node: Is("keyOf"),
         lua: As("every query and verb takes the label itself (`key_query`)"),
-        doc: "The key a label names this frame.",
+        doc: "The key a key label names this frame: the name the view opened the node under, not the one a reader hears.",
+    },
+    Door {
+        rust: "Core::key_named",
+        c: Is("kui_key_named"),
+        odin: Is("key_named"),
+        node: Is("keyNamed"),
+        lua: No(GUEST),
+        doc: "The key of the first node a reader hears named so in the last frame: a test presses the button named Like.",
     },
     Door {
         rust: "Core::label_of",

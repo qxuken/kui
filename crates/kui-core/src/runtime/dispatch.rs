@@ -1116,6 +1116,31 @@ impl Core {
             .filter(|t| *t != Value::Null)
     }
 
+    /// The key of the first node in tree order, in the last finished
+    /// frame, whose accessible name is `name` — what a screen reader reads
+    /// it as: its `label` row, else its own text, else a control's derived
+    /// name (a button's text inside it). Not the key label `key_of` reads,
+    /// which is the name the view opened the node under and a reader never
+    /// hears. The window itself is not matched. More than one node with
+    /// the name raises `ambiguous-name`; None when none has it.
+    pub fn key_named(&mut self, name: &str) -> Option<Key> {
+        let (first, count) = {
+            let mut hits = self
+                .access_tree()
+                .nodes
+                .iter()
+                .skip(1)
+                .filter(|n| n.name.as_deref() == Some(name));
+            let first = hits.next()?.key;
+            (first, 1 + hits.count())
+        };
+        if count > 1 {
+            self.diag
+                .raise(crate::diag::ambiguous_name(name, first, count));
+        }
+        Some(first)
+    }
+
     /// The access tree of the last finished frame (see [`crate::access`]):
     /// derived on the first call after a frame, then reused. A driver that
     /// never asks pays nothing.

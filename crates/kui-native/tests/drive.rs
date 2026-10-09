@@ -80,6 +80,20 @@ fn an_owned_drive_clicks_types_drags_and_reads_back() {
     assert!(d.log().iter().any(|l| l.contains("add")), "{:?}", d.log());
 }
 
+/// A button looked up by the name a reader hears (backlog F137): the text
+/// inside it, where `key_of` reads the key label the view gave it.
+#[test]
+fn a_drive_finds_a_button_by_its_accessible_name() {
+    let mut app = Pad::default();
+    let mut d = Drive::new(Core::new(), 400.0, 300.0).framing();
+    d.frame(&mut app);
+    let add = d.key_named("clicked 0").expect("the button, by its text");
+    assert_eq!(Some(add), d.key_of("add"));
+    assert_eq!(d.key_named("add"), None, "the key label is not its name");
+    d.click_key(&mut app, add);
+    assert_eq!(d.texts_under("add"), ["clicked 1"]);
+}
+
 #[test]
 fn a_borrowing_drive_frames_only_when_asked() {
     let mut app = Pad::default();

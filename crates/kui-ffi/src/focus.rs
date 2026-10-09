@@ -43,6 +43,18 @@ pub extern "C" fn kui_key_of(ptr: *mut KuiCtx, label: KuiStr) -> u64 {
     })
 }
 
+/// The key of the first node in the last finished frame whose accessible
+/// name is `name` (backlog F137) — its `label` row, else its own text, else
+/// a control's derived name — so a test presses "the button named Like" as
+/// a reader would. Not `kui_key_of`'s key label. 0 when no node has the
+/// name; two raise `ambiguous-name` (`kui_take_warnings`).
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_key_named(ptr: *mut KuiCtx, name: KuiStr) -> u64 {
+    guard(0, || {
+        unsafe { ctx(ptr) }.map_or(0, |c| c.core().key_named(&kstr(name)).map_or(0, |k| k.0))
+    })
+}
+
 /// What Tab (`forward`) / Shift-Tab does: focus the next / previous
 /// focusable node in tree order, wrapping. A key sink that binds Tab
 /// itself calls this to hand the keyboard on.

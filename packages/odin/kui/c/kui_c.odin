@@ -1141,6 +1141,7 @@ foreign lib {
 	set_key_focus :: proc(ctx: ^Ctx, key: u64) ---
 	focus :: proc(ctx: ^Ctx, key: u64) ---
 	key_of :: proc(ctx: ^Ctx, label: string) -> u64 ---
+	key_named :: proc(ctx: ^Ctx, name: string) -> u64 ---
 	focus_next :: proc(ctx: ^Ctx, forward: bool) ---
 	focused :: proc(ctx: ^Ctx) -> u64 ---
 	focus_visible :: proc(ctx: ^Ctx) -> bool ---

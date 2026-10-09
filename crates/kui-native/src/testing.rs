@@ -146,9 +146,21 @@ impl<C: BorrowMut<Core>> Drive<C> {
         self.frame
     }
 
-    /// The key a node was opened under `label`, from the last frame.
+    /// The key of the node opened under the key label `label` — the
+    /// name the view gave it (`with_keyed("see-date", ..)`, a `key`
+    /// prop) — from the last frame. Not the accessible name a reader
+    /// hears, which is [`Self::key_named`]'s.
     pub fn key_of(&mut self, label: &str) -> Option<Key> {
         self.core().key_of(label)
+    }
+
+    /// The key of the first node in the last frame whose accessible name
+    /// is `name` — its `label` row, else its own text, else a control's
+    /// derived name (a button's text) — so a test presses "the button
+    /// named Like" as a reader would. Two with the name raise
+    /// `ambiguous-name` ([`Self::warnings`]); see `Core::key_named`.
+    pub fn key_named(&mut self, name: &str) -> Option<Key> {
+        self.core().key_named(name)
     }
 
     /// Where the last frame put the node `key` names, in logical px:
@@ -166,8 +178,10 @@ impl<C: BorrowMut<Core>> Drive<C> {
         hit.or_else(|| core.nodes().iter().find(|n| n.key == key).map(|n| n.rect))
     }
 
-    /// The text of every text node under the first node labelled `label`
-    /// in the last frame, in tree order; empty when none is labelled so.
+    /// The text of every text node under the first node opened under the
+    /// key label `label` in the last frame, in tree order; empty when none
+    /// was. The key label, as [`Self::key_of`] reads it, not the `label`
+    /// row a reader hears.
     pub fn texts_under(&self, label: &str) -> Vec<String> {
         let nodes = Borrow::<Core>::borrow(&self.core).nodes();
         let Some(at) = nodes.iter().position(|n| n.label.as_deref() == Some(label)) else {

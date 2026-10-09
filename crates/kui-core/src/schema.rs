@@ -1273,7 +1273,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_LABEL,
         kind: Kind::Str,
         apply: Apply::SpecStr(|s, v| s.label(v)),
-        doc: "The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`).",
+        doc: "The accessible name. Without one a button, link, tab or heading is named by the text inside it; an image, an icon-only button and a `modal` dialog have none, and the core warns (`image-without-label`, `control-without-name`, `modal-without-name`). Not the key label a `key` prop or `with_keyed` declares, which `key_of` looks up and a reader never hears; `key_named` looks a node up by this name.",
     },
     PropDef {
         name: "description",

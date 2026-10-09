@@ -451,8 +451,10 @@ impl Core {
             .or_else(|| self.key_labels_last.label_of(key))
     }
 
-    /// The key of the node opened under `label` (`open_keyed`; a `key`
-    /// prop in JSX or a Lua table) in the last finished frame — or, while
+    /// The key of the node opened under the key label `label`
+    /// (`open_keyed`; a `key` prop in JSX or a Lua table — not the `label`
+    /// row, the accessible name, which [`Self::key_named`] reads) in the
+    /// last finished frame — or, while
     /// a frame is being built, in it so far and then in the last one. The
     /// door for a caller that holds only strings: keys are hashes of the
     /// path from the root, and that path runs through auto-keyed

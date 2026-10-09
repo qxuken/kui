@@ -174,12 +174,12 @@ accelerator unbounded in a window narrower than it, a `Calc` ceiling,
 the bar's pending switch, the backdrop's first frame, Wayland's shared
 queue, three test gaps — built the same day after the alpha.44 tag;
 the alpha.45 pre-tag pass over it filed nothing.
-F137–F138, from the berainder review of 2026-10-08 — a lookup by
-accessible name, the runner's decoder — are open, filed the day the app
-said what it had worked round; F131, a turn and a scale on any node, was
-built the same day (ADR 0043), and F132 and F133, position stops and a
-count on a cycle, and F134–F136 — the frame clock read, a frame asked at
-a time, the exit named at the removal — the day after, and are in the
+F138, from the berainder review of 2026-10-08 — the runner's decoder —
+are open, filed the day the app said what it had worked round; F131, a
+turn and a scale on any node, was built the same day (ADR 0043), and
+F132 and F133, position stops and a count on a cycle, and F134–F137 —
+the frame clock read, a frame asked at a time, the exit named at the
+removal, a lookup by accessible name — the day after, and are in the
 archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
@@ -1532,26 +1532,8 @@ accessible name; and the runner decodes no JPEG, so the app links the
 Two of them the user had already named — a turn and keyframes — and
 they are the first two below. F131, the turn, was **built 2026-10-08**, the
 day it was filed, as ADR 0043, and F132 and F133, position stops and a
-count on a cycle, **built 2026-10-09**, as F134–F136 were the same day;
-they are in the archive, and F137–F138 are open.
-
-### `.` F137 — `key_of(label)` reads the key label and `texts_under(label)` the accessible name, and the docs call both "label"
-
-- **The ask.** "`key_of` looks up the key label, not the accessibility
-  label, which confused me once." On one `Drive`, `key_of(label)` is
-  the name a node was opened under (`with_keyed("see-date", ..)`) and
-  `texts_under(label)` is the `label` row — the accessible name
-  (`testing.rs`). `props.md` names the row `label` and the verb's
-  argument "the label itself"; the core's doc says "opened under
-  `label`". Both are right and a reader has to know which.
-- **Wants.** Words first: "key label" and "name" (the accessible one)
-  told apart in `props.md`'s `label` row, `Ui::key_of`, `Drive::key_of`
-  and `texts_under`'s docs. Then the lookup the confusion wanted:
-  `Drive::key_named(name)` — the first node in tree order whose
-  accessible name (the `label` row, or a control's derived name) is
-  `name` — so a test clicks "the button named Like" as a reader would,
-  with the same `ambiguous-key`-style warning when two have it. Node
-  and C test surfaces alike (`keyNamed`, `kui_key_named`).
+count on a cycle, **built 2026-10-09**, as F134–F137 were the same day;
+they are in the archive, and F138 is open.
 
 ### `.` F138 — The runner decodes a wallpaper but not an app's photo, so an app that ships a JPEG links a second decoder
 
@@ -2956,8 +2938,8 @@ Nothing of the kawoosh wish list of 2026-10-07 is open (F125 **built
 2026-10-07**, the day it was filed).
 Nothing of the Noticon wish list is open (F126–F130 **built 2026-10-08**,
 the day they were filed, but for a look at F126 on KDE and GNOME).
-Open from the berainder review of 2026-10-08: F137–F138; F131 (**built
-2026-10-08**, ADR 0043), F132, F133 and F134–F136 (**built 2026-10-09**)
+Open from the berainder review of 2026-10-08: F138; F131 (**built
+2026-10-08**, ADR 0043), F132, F133 and F134–F137 (**built 2026-10-09**)
 are done.
 Nothing of the kawoosh Cyrillic-terminal report is open (F120 and F121
 **built 2026-10-05**, the day they were filed).
@@ -4251,7 +4233,7 @@ move.
 
 - `.` **RG150** — [What the alpha.43 pre-tag pass left](backlog/closed-2026-09.md#-rg150--what-the-alpha43-pre-tag-pass-left--done-2026-10-08) — done (2026-10-08)
 
-**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132, F133 and F134–F136 the day after; F137–F138 open
+**From the berainder review (2026-10-08)** — F131, filed and built the same day; F132, F133 and F134–F137 the day after; F138 open
 
 - `~` **F131** — [No node but a `path` can turn or scale: a dragged card cannot tilt](backlog/closed-2026-09.md#-f131--no-node-but-a-path-can-turn-or-scale-a-dragged-card-cannot-tilt--done-2026-10-08) — done (2026-10-08) — `rotate`, `scale`, `pivotX` / `pivotY` on any node (ADR 0043): paint-only, the turn and the inner clip on the clip entry, hit where drawn, the access rect the bounding box, one tweening slot an entrance, an exit and a keyframe stop name; ABI 27
 
@@ -4264,6 +4246,8 @@ move.
 - `.` **F135** — [An app cannot ask for a frame at a time: a toast's expiry is a thread that sleeps](backlog/closed-2026-09.md#-f135--an-app-cannot-ask-for-a-frame-at-a-time-a-toasts-expiry-is-a-thread-that-sleeps--done-2026-10-09) — done (2026-10-09) — `request_frame_at` / `next_frame_at` in four bindings and `Waker::wake_at`: the runner sleeps to the time, nothing owed until then
 
 - `.` **F136** — [The `exit` a node leaves by is the one it declared the frame before it went, so a fling by button takes two frames](backlog/closed-2026-09.md#-f136--the-exit-a-node-leaves-by-is-the-one-it-declared-the-frame-before-it-went-so-a-fling-by-button-takes-two-frames--done-2026-10-09) — done (2026-10-09) — Ui::exit_with / Core::set_exit read by depart over the kept exit for the frame the node goes in, four bindings
+
+- `.` **F137** — [`key_of(label)` reads the key label and `texts_under(label)` the accessible name, and the docs call both "label"](backlog/closed-2026-09.md#-f137--key_oflabel-reads-the-key-label-and-texts_underlabel-the-accessible-name-and-the-docs-call-both-label--done-2026-10-09) — done (2026-10-09) — Core::key_named / Drive::key_named over the access tree, ambiguous-name, "key label" in the docs; texts_under reads the key label too
 
 **From berainder (2026-10-08)** — RG151 and RG152, filed and built the same day
 

@@ -121,6 +121,12 @@ warnings! {
     /// a label nothing else declares, or pass the hex key an event carried.
     /// Two nodes with the *same* key are `duplicate-key`.
     pub const AMBIGUOUS_KEY: &str = "ambiguous-key";
+    /// A lookup by accessible name (`Core::key_named`, `ctx.keyNamed`,
+    /// `kui_key_named`) found more than one node with that name in the
+    /// last frame — two buttons both read as "Delete" — and used the first
+    /// in tree order. A reader hears the same name twice too: give each a
+    /// `label` that says which, or look the one meant up by its key label.
+    pub const AMBIGUOUS_NAME: &str = "ambiguous-name";
     /// A `focusRegion(name)` (`Core::focus_region`, `env.focus_region`,
     /// `kui_focus_region`) named a node the frame after it did not declare
     /// as a `focusRegion` — no node under the label, or a node without the
@@ -781,6 +787,21 @@ pub fn ambiguous_key(label: &str, first: Key, count: usize) -> Warning {
             "{count} nodes are keyed {label:?} under different parents; the first in tree order \
              ({:016x}) was used — give the one meant a label nothing else declares, or pass its \
              hex key",
+            first.0
+        ),
+    }
+}
+
+/// The [`AMBIGUOUS_NAME`] warning for one accessible name `Core::key_named`
+/// found on `count` nodes. Keyed by the node it resolved to.
+pub fn ambiguous_name(name: &str, first: Key, count: usize) -> Warning {
+    Warning {
+        code: AMBIGUOUS_NAME,
+        key: first,
+        message: format!(
+            "{count} nodes are named {name:?} to a reader; the first in tree order ({:016x}) \
+             was used — give the one meant a `label` that says which, or look it up by its key \
+             label",
             first.0
         ),
     }

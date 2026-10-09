@@ -117,6 +117,14 @@ was the first bare bump to break an app in five releases).
   last frame declared, so the handler that removes a card says which way
   it goes. It lapses when that frame finishes; it aims a node that
   declares an `exit`, with that node's `transition`.
+- **A lookup by accessible name** (backlog F137). `Core::key_named` /
+  `Drive::key_named` in Rust, `kui_key_named` in C, `key_named` in Odin,
+  `ctx.keyNamed` in Node: the first node in the last frame whose
+  accessible name — its `label`, else a control's text — is the one
+  asked for, so a test presses "the button named Like" as a reader would.
+  Two with one name raise the new `ambiguous-name` warning. The docs now
+  say "key label" for what `key_of` and `texts_under` read, the name the
+  view opened a node under, and "accessible name" for the `label` row.
 
 **What you can delete.**
 

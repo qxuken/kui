@@ -1802,6 +1802,21 @@ time and draws; a host driving its own window reads
 
 [`now` in the env](props.md#env)
 
+### How do I press "the button named Like" in a test?
+
+Look it up by the name a reader hears: `Drive::key_named("Like")` in
+Rust (`Core::key_named` under it, `ctx.keyNamed` in Node, `kui_key_named`
+in C), then `click_key` it. The name is the node's `label` row, else the
+text inside a control, so a test that finds a button this way also checks
+that a screen reader can. `key_of` asks a different question: the *key
+label*, the name the view opened the node under (`with_keyed("like",
+..)`, a `key` prop), which a reader never hears and `texts_under` reads
+too. Two nodes with one name resolve to the first in tree order and raise
+`ambiguous-name` — the same two a reader cannot tell apart.
+
+[`label` row](props.md#container-props) ·
+[`ambiguous-name`](props.md#warnings)
+
 ### How do I test the real window, not a headless core?
 
 `win.quads()` hands back the frame the shipping driver actually painted

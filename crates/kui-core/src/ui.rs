@@ -1134,10 +1134,13 @@ impl<'a> Ui<'a> {
         self.core.focus_visible()
     }
 
-    /// The key of the node opened under `label` — in this frame so far,
-    /// then in the last finished one. For a caller that holds only the
-    /// label and cannot spell the path (`child_key` is the same question
-    /// asked from the parent); see `Core::key_of`.
+    /// The key of the node opened under the key label `label` — in this
+    /// frame so far, then in the last finished one. The key label is the
+    /// name the view opened the node under (`with_keyed`, a `key` prop),
+    /// not the accessible name its `label` row gives a reader, which
+    /// `Core::key_named` looks up. For a caller that holds only the label
+    /// and cannot spell the path (`child_key` is the same question asked
+    /// from the parent); see `Core::key_of`.
     pub fn key_of(&mut self, label: &str) -> Option<Key> {
         self.core.key_of(label)
     }

@@ -2620,10 +2620,18 @@ focus :: proc(ui: ^Ui, key: u64) {
 	c.focus(ui, key)
 }
 
-// The key a label names this frame.
+// The key a key label names this frame: the name the view opened the node
+// under, not the one a reader hears.
 // Rust: Ui::key_of.
 key_of :: proc(ui: ^Ui, label: string) -> u64 {
 	return c.key_of(ui, label)
+}
+
+// The key of the first node a reader hears named so in the last frame: a test
+// presses the button named Like.
+// Rust: Core::key_named.
+key_named :: proc(ui: ^Ui, name: string) -> u64 {
+	return c.key_named(ui, name)
 }
 
 // Steps the Tab ring forward (ADR 0002).

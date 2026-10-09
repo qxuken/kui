@@ -392,6 +392,8 @@ surface :: proc() -> bool {
 
 	// Text queries against the frame that finished: a point becomes a byte
 	// offset across the row's three runs, and a byte becomes a caret rect.
+	check(kui.key_named(ui, "key sink") == kui.key_of(ui, "sink"), "key_named finds the sink by its name")
+	check(kui.key_named(ui, "sink") == 0, "and not by its key label")
 	hitline := kui.key_of(ui, "hitline")
 	start, start_ok := kui.caret_rect(ui, hitline, 0)
 	check(hitline != 0 && start_ok && start.h > 0 && start.w == 0, "caret_rect at the start")

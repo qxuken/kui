@@ -805,6 +805,12 @@ export type WarningCode =
    *  declares, or pass the hex key an event carried. Two nodes with the *same*
    *  key are `duplicate-key`. */
   | 'ambiguous-key'
+  /** A lookup by accessible name (`Core::key_named`, `ctx.keyNamed`,
+   *  `kui_key_named`) found more than one node with that name in the last frame
+   *  — two buttons both read as "Delete" — and used the first in tree order. A
+   *  reader hears the same name twice too: give each a `label` that says which,
+   *  or look the one meant up by its key label. */
+  | 'ambiguous-name'
   /** A `focusRegion(name)` (`Core::focus_region`, `env.focus_region`,
    *  `kui_focus_region`) named a node the frame after it did not declare as a
    *  `focusRegion` — no node under the label, or a node without the row — so
@@ -3125,6 +3131,16 @@ export declare class Ctx {
    * plugin filling a slot is answered from its own nodes only.
    */
   keyOf(label: string): string | null
+  /**
+   * The hex key of the first node in the last finished frame
+   * whose accessible name is `name` (backlog F137) — its
+   * `label` prop, else its own text, else a control's derived
+   * name — so a test clicks "the button named Like" as a reader
+   * would: `ctx.click(ctx.keyNamed('Like'))`. Not `keyOf`'s key
+   * label, which a reader never hears. Null when no node has the
+   * name; two raise `ambiguous-name`.
+   */
+  keyNamed(name: string): string | null
   blur(): void
   /**
    * What Tab does, as a call — for an `onKey` sink that binds Tab
@@ -4353,6 +4369,16 @@ export declare class KuiWindow {
    * plugin filling a slot is answered from its own nodes only.
    */
   keyOf(label: string): string | null
+  /**
+   * The hex key of the first node in the last finished frame
+   * whose accessible name is `name` (backlog F137) — its
+   * `label` prop, else its own text, else a control's derived
+   * name — so a test clicks "the button named Like" as a reader
+   * would: `ctx.click(ctx.keyNamed('Like'))`. Not `keyOf`'s key
+   * label, which a reader never hears. Null when no node has the
+   * name; two raise `ambiguous-name`.
+   */
+  keyNamed(name: string): string | null
   blur(): void
   /**
    * What Tab does, as a call — for an `onKey` sink that binds Tab

@@ -2956,6 +2956,12 @@ void kui_focus(KuiCtx *ctx, uint64_t key);
  * its fill is answered from the nodes it opened and no one else's; the host
  * from its own first, and everyone's when it opened none. */
 uint64_t kui_key_of(KuiCtx *ctx, KuiStr label);
+/* The key of the first node in the last finished frame whose accessible
+ * name is `name` — its `label` row, else its own text, else a control's
+ * derived name — so a test presses "the button named Like" as a reader
+ * would. Not kui_key_of's key label, which a reader never hears. 0 when no
+ * node has it; two raise an "ambiguous-name" warning. */
+uint64_t kui_key_named(KuiCtx *ctx, KuiStr name);
 /* What Tab (forward) / Shift-Tab does: the next / previous focusable node,
  * wrapping. */
 void kui_focus_next(KuiCtx *ctx, bool forward);

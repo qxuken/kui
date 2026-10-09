@@ -384,6 +384,9 @@ static int surface(void) {
 
     /* Text queries against the frame that finished: a point becomes a byte
      * offset across the row's three runs, and a byte becomes a caret rect. */
+    check(k.sink && kui_key_named(ui, KUI_STR("key sink")) == k.sink,
+          "kui_key_named finds the sink by the name a reader hears");
+    check(!kui_key_named(ui, KUI_STR("sink")), "and not by its key label");
     uint64_t hitline = kui_key_of(ui, KUI_STR("hitline"));
     KuiTextHit th = KUI_TEXT_HIT_INIT;
     KuiCaretRect start = KUI_CARET_RECT_INIT, end = KUI_CARET_RECT_INIT;
