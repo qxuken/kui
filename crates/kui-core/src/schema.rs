@@ -180,6 +180,7 @@ pub const P_SCALE: u32 = 128;
 pub const P_PIVOT_X: u32 = 129;
 pub const P_PIVOT_Y: u32 = 130;
 pub const P_ITERATIONS: u32 = 131;
+pub const P_BOLD: u32 = 132;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1255,6 +1256,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "A line through the text, where the face puts its strikeout. Paint only; on a `<span>` the span alone, per line.",
     },
     PropDef {
+        name: "bold",
+        id: P_BOLD,
+        kind: Kind::Flag,
+        apply: Apply::StyleFlag(|t| t.bold()),
+        doc: "The family's bold, on a whole text or an editor (backlog F150) — a heading, a table's header, a title field: its bold face, or its regular drawn bold where the family has none, as a `<span bold>` is. A span inside a bold text is bold too.",
+    },
+    PropDef {
         name: "features",
         id: P_FEATURES,
         kind: Kind::Str,
@@ -1738,6 +1746,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
         "`KuiTextStyle.decoration` (`KUI_DECO_STRIKETHROUGH`); `KuiSpan.flags` (`KUI_SPAN_STRIKETHROUGH`)",
     ),
     (
+        "bold",
+        "`KuiTextStyle.bold`; `KuiSpan.flags` (`KUI_SPAN_BOLD`)",
+    ),
+    (
         "underlineColor",
         "`KuiTextStyle.underline_color`; `KuiSpan.underline_color`",
     ),
@@ -1833,6 +1845,7 @@ pub const TEXT_ROWS_JSX: &[&str] = &[
     "underlineColor",
     "underlineStyle",
     "strikethrough",
+    "bold",
     "features",
 ];
 pub const TEXT_ROWS_LUA: &[&str] = &[
@@ -1848,6 +1861,7 @@ pub const TEXT_ROWS_LUA: &[&str] = &[
     "underline_color",
     "underline_style",
     "strikethrough",
+    "bold",
     "features",
 ];
 

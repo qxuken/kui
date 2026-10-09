@@ -1382,6 +1382,10 @@ pub struct KuiTextStyle {
     /// `KUI_UNDERLINE_SOLID` / `_WAVY` / `_DOTTED`; a non-solid style
     /// implies `KUI_DECO_UNDERLINE`. ABI 17.
     pub underline_style: u32,
+    /// Non-zero: the family's bold, as `KUI_SPAN_BOLD` is on a span
+    /// (backlog F150). Into the tail padding, so the 64-bit size stays 72.
+    /// ABI 29.
+    pub bold: u32,
 }
 
 /// One styled run of a rich-text paragraph (`kui_rich_text`,

@@ -1104,6 +1104,10 @@ Text_Style :: struct {
 	underline_style: Underline_Style,
 	// A line through the text, where the face puts its strikeout.
 	strikethrough: bool,
+	// The family's bold, on a whole text or an editor (backlog F150) — a
+	// heading, a table's header, a title field: its bold face, or its regular
+	// drawn bold where the family has none, as a `<span bold>` is.
+	bold: bool,
 	// OpenType features for the shaper, as `tag=value` pairs separated by spaces
 	// or commas — a bare `tag` is 1, `-tag` is 0: `"liga=0 calt=0"` keeps a
 	// coding font from joining `->` and `!=` (what a terminal built on runs needs
@@ -1125,6 +1129,7 @@ text_style_to_c :: proc(s: Text_Style) -> (out: c.TextStyle) {
 	out.underline_color = s.underline_color
 	out.underline_style = u32(s.underline_style)
 	if s.strikethrough do out.decoration |= c.DECO_STRIKETHROUGH
+	out.bold = 1 if s.bold else 0
 	out.features = s.features
 	return
 }

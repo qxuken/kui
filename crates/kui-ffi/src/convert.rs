@@ -565,6 +565,9 @@ pub(crate) fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     if s.underline_style != 0 {
         style = style.underline_style(kui_core::UnderlineStyle::from_index(s.underline_style));
     }
+    if s.bold != 0 {
+        style = style.bold();
+    }
     style
 }
 

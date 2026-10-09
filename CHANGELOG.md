@@ -31,6 +31,8 @@ was the first bare bump to break an app in five releases).
 - An arrow, Backspace or Delete at the edge of an editor's text emits a
   `boundary` event, where it emitted nothing.
 - An editor that lost the keyboard no longer draws its selection.
+- `KUI_ABI_VERSION` is 29: `KuiTextStyle` gains `bold`. Recompile a C or
+  Odin host.
 
 `UiEvent::message` read the payload first and the `tag` second, and a
 core event's payload is `{kind: "key", …}`, `{kind: "open", …}`, `{kind:
@@ -71,6 +73,10 @@ over it is up, since the menu's rows took focus to be chosen and the
 selection is what Copy will copy. A screenshot test of a blurred field
 with a selection changes.
 
+`KuiTextStyle` appends `bold` into its tail padding — the 64-bit size stays
+72 — for F150 below; the layout moved, so the ABI did. A zeroed field is
+the weight a text had.
+
 ### Added
 
 - **Chords out of a focused editor** (backlog F144, ADR 0011 decision
@@ -84,6 +90,12 @@ with a selection changes.
   instead of walking the focus ring, so a list or an outline built from
   fields indents on Tab. A document keeps Tab either way. A new flag
   bit, no ABI change.
+- **`bold` on a whole text or an editor** — `TextStyle::bold`, `bold` in
+  JSX and Lua, `KuiTextStyle.bold` in C (ABI 29), `bold` on Odin's
+  `Text_Style` (backlog F150): the family's bold — its bold face, or its
+  regular drawn bold where it has none, as a span's `bold` is — so a
+  heading or a title field is bolder, not only bigger. A span inside a
+  bold text is bold too.
 - **A placeholder on an editor** — `EditOptions::placeholder`,
   `placeholder` in JSX and Lua, `kui_text_edit_placeholder` in C (a new
   function, no ABI bump), `placeholder` on Odin's `kui.text_edit`
@@ -105,6 +117,8 @@ with a selection changes.
   kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
 - Routing an app's shortcuts through a declared menu bar, or a field's
   own key handling, so they work while a field has focus.
+- A one-span `rich_text` or a registered bold face standing in for a bold
+  heading, and a bold title that could not be an editor.
 - A faint text floated over an empty field and positioned by hand to
   match the editor's insets, standing in for a placeholder.
 - Collapsing an editor's selection when it loses focus, to keep a page

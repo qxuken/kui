@@ -473,6 +473,8 @@ export interface GeneratedSpecProps {
 }
 
 export interface GeneratedStyleProps {
+  /** The family's bold, on a whole text or an editor (backlog F150) — a heading, a table's header, a title field: its bold face, or its regular drawn bold where the family has none, as a `<span bold>` is. A span inside a bold text is bold too. */
+  bold?: boolean;
   /** Text color; default foreground when omitted. */
   color?: ColorProp;
   /** End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise. */

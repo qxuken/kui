@@ -339,8 +339,12 @@ extern "C" {
  * ABI 28 appends titlebar to KuiRunConfig, a KUI_TITLEBAR_*: how tall
  * the macOS titlebar is under KUI_CHROME_CUSTOM, and so where the traffic
  * lights sit (backlog W22). Recompile; zeroed, the window is what it was.
+ *
+ * ABI 29 appends bold to KuiTextStyle, into its tail padding (the 64-bit
+ * size stays 72): the family's bold on a whole text or an editor (backlog
+ * F150). Recompile; zeroed, the text is the weight it was.
  */
-#define KUI_ABI_VERSION 28u
+#define KUI_ABI_VERSION 29u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1783,6 +1787,7 @@ typedef struct KuiTextStyle {
     uint32_t underline_color; /* 0xRRGGBBAA, the underline's own; 0 = the text's. Non-zero implies
                                  KUI_DECO_UNDERLINE. ABI 17. */
     uint32_t underline_style; /* KUI_UNDERLINE_* ; non-solid implies KUI_DECO_UNDERLINE. ABI 17. */
+    uint32_t bold; /* non-zero: the family's bold, as KUI_SPAN_BOLD on a span. ABI 29. */
 } KuiTextStyle;
 
 /* [in] One run of a rich-text paragraph. */

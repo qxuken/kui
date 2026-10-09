@@ -326,6 +326,7 @@ package kui_c
 #assert(offset_of(TextStyle, decoration) == 56)
 #assert(offset_of(TextStyle, underline_color) == 60)
 #assert(offset_of(TextStyle, underline_style) == 64)
+#assert(offset_of(TextStyle, bold) == 68)
 #assert(size_of(Span) == 56)
 #assert(align_of(Span) == 8)
 #assert(offset_of(Span, text) == 0)

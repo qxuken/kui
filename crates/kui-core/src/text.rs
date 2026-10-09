@@ -1740,6 +1740,8 @@ impl TextSystem {
         // Paint only, but a decorated text is a different entry: the
         // decoration rects are built beside the glyph templates — and
         // their shape and colour with them (backlog K4).
+        // Bold is a different face, so a different shape.
+        mix(&[style.bold as u8]);
         mix(&[
             style.underline as u8,
             style.strikethrough as u8,
@@ -1779,16 +1781,16 @@ impl TextSystem {
         let scale = self.scale;
         if !self.entries.contains_key(&key) {
             let mut buffer = new_buffer(fs, style, scale);
-            // At the family's regular, as a span or a cell is: a family
-            // with no 400 face asked at 400 falls back to another family
-            // (F100).
+            // At the family's regular (or its bold, F150), as a span or a
+            // cell is: a family with no 400 face asked at 400 falls back
+            // to another family (F100).
             buffer.set_text(
                 content,
                 &res.weights_of(style.family).apply(
                     Attrs::new()
                         .family(res.family_of(style.family))
                         .font_features(cosmic_features(&style.features)),
-                    false,
+                    style.bold,
                 ),
                 Shaping::Advanced,
                 None,
@@ -2548,6 +2550,11 @@ impl TextSystem {
                         .attrs(family, weights)
                         .font_features(features.clone())
                         .metadata(i);
+                    // A bold paragraph's spans are bold: a span cannot be
+                    // lighter than its text (backlog F150).
+                    if base.bold && !s.bold {
+                        attrs = weights.apply(attrs, true);
+                    }
                     if sized {
                         attrs = attrs.metrics(metrics_of(s.size));
                     }
@@ -2556,7 +2563,7 @@ impl TextSystem {
                 &{
                     let attrs = weights.apply(
                         Attrs::new().family(family).font_features(features.clone()),
-                        false,
+                        base.bold,
                     );
                     if sized {
                         attrs.metrics(metrics_of(None))

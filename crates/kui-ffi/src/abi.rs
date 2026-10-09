@@ -156,7 +156,9 @@
 ///   52.
 /// - ABI 28: `titlebar` on `KuiRunConfig`, a `KUI_TITLEBAR_*` (backlog
 ///   W22): how tall the macOS titlebar is under `KUI_CHROME_CUSTOM`.
-pub const KUI_ABI_VERSION: u32 = 28;
+/// - ABI 29: `bold` on `KuiTextStyle`, into its tail padding (backlog
+///   F150): the family's bold on a whole text or an editor.
+pub const KUI_ABI_VERSION: u32 = 29;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

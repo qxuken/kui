@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 28
+ABI_VERSION :: 29
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -820,6 +820,7 @@ TextStyle :: struct {
 	decoration: u32,
 	underline_color: u32,
 	underline_style: u32,
+	bold: u32,
 }
 
 Span :: struct {

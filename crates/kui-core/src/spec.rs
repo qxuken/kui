@@ -2922,6 +2922,10 @@ pub struct TextStyle {
     pub underline_style: UnderlineStyle,
     /// A line through every glyph, where the face puts its strikeout.
     pub strikethrough: bool,
+    /// The family's bold, as a span's `bold` is (backlog F150): its bold
+    /// face, or its regular drawn bold where it has none (backlog F100).
+    /// A span inside is bold too; it cannot be lighter than its text.
+    pub bold: bool,
 }
 
 /// The shape of an underline: the face's line, a wave under a diagnostic,
@@ -2978,6 +2982,7 @@ impl TextStyle {
             underline_color: None,
             underline_style: UnderlineStyle::Solid,
             strikethrough: false,
+            bold: false,
         }
     }
 
@@ -3006,6 +3011,12 @@ impl TextStyle {
     /// A line through the text.
     pub fn strikethrough(mut self) -> Self {
         self.strikethrough = true;
+        self
+    }
+
+    /// The family's bold (backlog F150).
+    pub fn bold(mut self) -> Self {
+        self.bold = true;
         self
     }
 

@@ -368,6 +368,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "strikethrough" => t.decoration |= 2,
             "underlineColor" => t.underline_color = C,
             "underlineStyle" => t.underline_style = 1,
+            "bold" => t.bold = 1,
             other => panic!(
                 "schema prop {other:?} has no C counterpart: add a KuiSpec/KuiTextStyle \
                      field (append-only — the struct is ABI), mirror it in include/kui.h, \

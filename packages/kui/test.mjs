@@ -709,6 +709,21 @@ test('a chord and a keepTab field\'s Tab reach the sink above the editor', () =>
   assert.deepEqual(keys, [['tab', 'shell'], ['n', 'shell']], 'typing stays in the field');
 });
 
+// `bold` on a whole text and on an editor is a style row like
+// `strikethrough` (backlog F150): read, not warned about, and wider.
+test('bold is a style row on a text and an editor', () => {
+  const view = (bold) =>
+    box({ dir: 'row' }, [
+      el('text', { bold }, ['Heading one'], 't'),
+      el('edit', { initial: 'Title', label: 'Title', bold }, [], 'e'),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(400, 100, 1, view(false));
+  assert.deepEqual(ctx.warnings(), []);
+  ctx.frame(400, 100, 1, view(true));
+  assert.deepEqual(ctx.warnings(), [], 'no unknown-prop for bold');
+});
+
 // Where a key is and what the locks hold ride on every key payload, and
 // the modifier keys themselves reach only a sink that asks (backlog F108).
 test('a key says where it is, the locks, and the modifier keys when asked', () => {

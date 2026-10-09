@@ -1566,20 +1566,8 @@ band, F153 asks only the horizontal half), two meet a condition an ADR
 wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
 entries, F144–F153, and W23, filed open; F148, F144–F146 as ADR 0011's
-decision 10, F147 and F149 **built 2026-10-09**, the day they were
-filed, and in the archive.
-
-### `.` F150 — `TextStyle` has no weight: a plain text or an editor cannot be bold
-
-**Found.** `TextStyle` (`spec.rs:2900`) has family, size, colour and
-line height; weight exists only as a rich-text `Span::bold`
-(`text.rs:366`) and a cell flag, matched through `weights::Weights`.
-An `edit` takes a `TextStyle`, so a heading field or a bold title
-cannot be bold; a plain heading can only be bigger, or a `rich_text`
-of one span, or a named face the app registered.
-
-**Do.** `TextStyle::weight` (or `bold`, as the span has it), matched by
-the same `Weights` the span uses; the schema rows in every binding.
+decision 10, F147, F149 and F150 **built 2026-10-09**, the day they
+were filed, and in the archive.
 
 ### `~` F151 — A declared row's shortcut takes the key from every field: no row replays its chord the way the standard Edit rows do
 
@@ -3116,8 +3104,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round (F150–F153, W23; F144–F149
-built): F150 at the text style; F151
+**Build next.** Noticon's polish round (F151–F153, W23; F144–F150
+built): F151
 and F152 as ADR 0018's; W23 needs a Mac before anything is built.
 Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
@@ -4543,3 +4531,5 @@ move.
 - `.` **F147** — [An editor that lost the keyboard keeps painting its selection](backlog/closed-2026-09.md#-f147--an-editor-that-lost-the-keyboard-keeps-painting-its-selection--done-2026-10-09) — done (2026-10-09) — an editor that lost the keyboard keeps its range and draws none of it, but while a menu opened over it is up
 
 - `.` **F149** — [`edit` has no placeholder](backlog/closed-2026-09.md#-f149--edit-has-no-placeholder--done-2026-10-09) — done (2026-10-09) — `EditOptions::placeholder` / `placeholder` / `kui_text_edit_placeholder`: drawn in `faint` while the editor is empty, never the value, the description when none is declared
+
+- `.` **F150** — [`TextStyle` has no weight: a plain text or an editor cannot be bold](backlog/closed-2026-09.md#-f150--textstyle-has-no-weight-a-plain-text-or-an-editor-cannot-be-bold--done-2026-10-09) — done (2026-10-09) — `TextStyle::bold` / the `bold` row / `KuiTextStyle.bold` (ABI 29): the family's bold on a whole text or an editor, spans inside it bold too

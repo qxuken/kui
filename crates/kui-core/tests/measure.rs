@@ -150,3 +150,47 @@ fn spaces_measure_at_the_advance_unwrapped() {
     let ab = core.measure_text("ab", &prop, None).width;
     assert!((core.measure_text("ab  ", &prop, None).width - (ab + 2.0 * space)).abs() < 0.01);
 }
+
+/// A bold style is the family's bold over the whole text, the same face a
+/// bold span gets (backlog F150): it measures as the text all in one bold
+/// span does, a span inside it stays bold, and an editor styled bold lays
+/// out to the same width.
+#[test]
+fn a_bold_style_is_a_bold_span_over_the_whole_text() {
+    let mut core = Core::new();
+    let plain = TextStyle::new(14.0);
+    let bold = TextStyle::new(14.0).bold();
+    let as_style = core.measure_text("Heading one", &bold, None);
+    let as_span = core.measure_rich_text(&[Span::new("Heading one").bold()], &plain, None);
+    assert_eq!(as_style, as_span);
+    let regular = core.measure_text("Heading one", &plain, None);
+    assert_ne!(
+        as_style, regular,
+        "the stock sans has a bold face, wider than its regular"
+    );
+    // A plain span inside a bold text is bold too.
+    let inside = core.measure_rich_text(&[Span::new("Heading "), Span::new("one")], &bold, None);
+    assert_eq!(inside, as_style);
+
+    // An editor shapes its text in the style's weight.
+    let width = |core: &mut Core, style: &TextStyle| {
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::row().fill());
+        let k = ui.text_edit(
+            if style.bold { "b" } else { "r" },
+            "Heading one",
+            &kui_core::EditOptions {
+                style: *style,
+                ..Default::default()
+            },
+            NodeSpec::row().width(kui_core::Sizing::Fit).on_layout("w"),
+        );
+        ui.finish();
+        core.layout_of(k).map(|r| r.w)
+    };
+    width(&mut core, &plain);
+    let r = width(&mut core, &plain);
+    width(&mut core, &bold);
+    let b = width(&mut core, &bold);
+    assert!(b > r, "the bold editor is wider: {b:?} vs {r:?}");
+}
