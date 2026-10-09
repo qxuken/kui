@@ -222,6 +222,22 @@ does. An app that has to write the menu twice has not been given a menu.
   own answer for what the *drawn* bar does with each. An app spells ⌘Q
   today with an item and a close in its handler.
 
+  *Built 2026-10-09 (backlog F152).* A declared bar replaces the
+  application menu winit made, so an app that declared one lost Hide,
+  Hide Others, Show All and Quit, and Noticon sent `hide:` to
+  `NSApplication` itself. The answer for the drawn bar is the one Look Up
+  already had: `MenuRole::About`, `Hide`, `HideOthers`, `ShowAll` and
+  `Quit`, appended to `ALL` (`KUI_MENU_ABOUT` … `KUI_MENU_QUIT`, no ABI
+  bump). Where macOS draws the bar each is the platform's own row, sent
+  up the responder chain to `NSApplication` (`orderFrontStandardAboutPanel:`,
+  `hide:`, `hideOtherApplications:`, `unhideAllApplications:`,
+  `terminate:`), worded with the process's name where the Mac words it so
+  and given the Mac's ⌘H, ⌥⌘H and ⌘Q, posting nothing. Where kui draws
+  the menu, Hide, Hide Others and Show All are not offered (there is no
+  application to hide), and About and Quit are drawn and post their
+  `menu` event like the app's own rows — the app's about box, the app's
+  close. `services` stays declined.
+
 - **A row in `env.system`.** Decision 4.
 
 ## Consequences

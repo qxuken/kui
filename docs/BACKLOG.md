@@ -1566,30 +1566,8 @@ band, F153 asks only the horizontal half), two meet a condition an ADR
 wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
 entries, F144–F153, and W23, filed open; F148, F144–F146 as ADR 0011's
-decision 10, F147 and F149–F151 **built 2026-10-09**, the day they
+decision 10, F147 and F149–F152 **built 2026-10-09**, the day they
 were filed, and in the archive.
-
-### `.` F152 — A declared bar has no Hide, Hide Others, Show All or Quit
-
-**Found.** `MacMenuBar::apply` (`macos_menu.rs:801–859`) replaces the
-whole bar, winit's application menu included, so a declared bar's first
-menu has only what the app wrote. `MenuRole` is Custom, Separator, Cut,
-Copy, Paste, SelectAll and LookUp (`menu.rs:72`). Noticon sends `hide:`,
-`hideOtherApplications:` and `unhideAllApplications:` to
-`NSApplication` through `objc_msgSend` itself, and quits by closing
-its window. ADR 0018 declined application-menu roles because they
-change what an item *is* — one the platform performs — and need an
-answer for the drawn bar; ADR 0030 kept that decline for Minimize,
-Zoom, Full Screen and Quit.
-
-**Do.** Either the roles — `Hide`, `HideOthers`, `ShowAll`, `Quit`
-(`terminate:`), `About` (`orderFrontStandardAboutPanel:`) — with the
-drawn bar's answer being "not offered", as `LookUp`'s already is with
-no host to perform it; or the runner keeping winit's application menu
-whole and placing the declared first menu's rows into it, the way a
-menu titled `Window` already gets AppKit's rows (ADR 0030 decision 2).
-The second needs no role and no ABI change. Either way an app stops
-reaching past kui to `NSApplication`. The ADR amendment decides which.
 
 ### `.` F153 — A sink's `drag` names a line for a press in the margin beside it, and says nothing of where the press was
 
@@ -3077,9 +3055,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round (F152, F153, W23; F144–F151
-built): F152 as ADR 0018's second amendment, F153 at the sink's drag;
-W23 needs a Mac before anything is built.
+**Build next.** Noticon's polish round (F153, W23; F144–F152 built):
+F153 at the sink's drag; W23 needs a Mac before anything is built.
 Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
 (`#[derive(Message)]`), was **built 2026-09-25**; C47 was
@@ -4508,3 +4485,5 @@ move.
 - `.` **F150** — [`TextStyle` has no weight: a plain text or an editor cannot be bold](backlog/closed-2026-09.md#-f150--textstyle-has-no-weight-a-plain-text-or-an-editor-cannot-be-bold--done-2026-10-09) — done (2026-10-09) — `TextStyle::bold` / the `bold` row / `KuiTextStyle.bold` (ABI 29): the family's bold on a whole text or an editor, spans inside it bold too
 
 - `~` **F151** — [A declared row's shortcut takes the key from every field: no row replays its chord the way the standard Edit rows do](backlog/closed-2026-09.md#-f151--a-declared-rows-shortcut-takes-the-key-from-every-field-no-row-replays-its-chord-the-way-the-standard-edit-rows-do--done-2026-10-09) — done (2026-10-09) — `MenuItem::replay` / `replay` / `KuiMenuItem.replay` (ABI 30): chosen, the row plays its `accel` where the keyboard is (`Shell::replay_key`, `Core::replay_chord`) and posts nothing
+
+- `.` **F152** — [A declared bar has no Hide, Hide Others, Show All or Quit](backlog/closed-2026-09.md#-f152--a-declared-bar-has-no-hide-hide-others-show-all-or-quit--done-2026-10-09) — done (2026-10-09) — `MenuRole::About` / `Hide` / `HideOthers` / `ShowAll` / `Quit` (`KUI_MENU_*`, no ABI bump): AppKit's own rows on a Mac bar, About and Quit posted in a drawn menu, the other three not offered

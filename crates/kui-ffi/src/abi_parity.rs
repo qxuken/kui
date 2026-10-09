@@ -361,7 +361,8 @@ fn asserts() -> (String, Vec<&'static str>) {
     ]);
     abi_enum!(o, kui_core::MenuRole::ALL, 0 => [
         "KUI_MENU_CUSTOM", "KUI_MENU_SEPARATOR", "KUI_MENU_CUT", "KUI_MENU_COPY",
-        "KUI_MENU_PASTE", "KUI_MENU_SELECT_ALL", "KUI_MENU_LOOK_UP",
+        "KUI_MENU_PASTE", "KUI_MENU_SELECT_ALL", "KUI_MENU_LOOK_UP", "KUI_MENU_ABOUT",
+        "KUI_MENU_HIDE", "KUI_MENU_HIDE_OTHERS", "KUI_MENU_SHOW_ALL", "KUI_MENU_QUIT",
     ]);
     // The action bits are positions in `AccessAction::ALL` as powers of
     // two: `KuiAccessNode.actions` and `kui_input_access` both read them.

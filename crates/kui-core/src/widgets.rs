@@ -1465,6 +1465,11 @@ fn menu_level(
     let root_key = ui.with_keyed(label, spec, |ui| {
         let mut first = path.is_empty();
         for (i, item) in items.iter().enumerate() {
+            // Hide and its two neighbours are a Mac's application's to
+            // perform: a menu kui draws does not offer them (backlog F152).
+            if !item.role.drawn() {
+                continue;
+            }
             if item.role == MenuRole::Separator {
                 ui.leaf_indexed(
                     i as u64,

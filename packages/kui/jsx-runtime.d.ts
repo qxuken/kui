@@ -209,7 +209,8 @@ export interface FloatProp {
  *  the standard rows the core performs itself. The same spelling a
  *  `menu` message reports back. */
 export type MenuItemRole =
-  | 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp';
+  | 'custom' | 'separator' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'lookUp'
+  | 'about' | 'hide' | 'hideOthers' | 'showAll' | 'quit';
 // -- end generated --
 
 /** One row to put in a context menu (`Ctx.openMenu`). Everything but

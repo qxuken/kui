@@ -2437,6 +2437,11 @@ pub const KUI_MENU_COPY: u32 = 3;
 pub const KUI_MENU_PASTE: u32 = 4;
 pub const KUI_MENU_SELECT_ALL: u32 = 5;
 pub const KUI_MENU_LOOK_UP: u32 = 6;
+pub const KUI_MENU_ABOUT: u32 = 7;
+pub const KUI_MENU_HIDE: u32 = 8;
+pub const KUI_MENU_HIDE_OTHERS: u32 = 9;
+pub const KUI_MENU_SHOW_ALL: u32 = 10;
+pub const KUI_MENU_QUIT: u32 = 11;
 
 /// `KUI_MENU_ITEM_*`: the flags `kui_menu_bar_item` and `kui_menu_item`
 /// report on a row.

@@ -192,6 +192,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     # The display link's run loop and mode (`mod pacer`).
     "NSRunLoop",
     "NSObjCRuntime",
+    # The application menu's rows take the process's name (backlog F152).
+    "NSProcessInfo",
 ] }
 
 # Every example in the repo lives under examples/ at the root, one directory

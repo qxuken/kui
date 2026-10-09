@@ -556,6 +556,14 @@ impl Core {
                 }
             }
             MenuRole::Custom => {}
+            // A Mac's application performs these where it draws the menu;
+            // anywhere else the event the row posts is the app's to act on
+            // (backlog F152).
+            MenuRole::About
+            | MenuRole::Hide
+            | MenuRole::HideOthers
+            | MenuRole::ShowAll
+            | MenuRole::Quit => {}
         }
     }
 }

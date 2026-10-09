@@ -84,13 +84,28 @@ pub enum MenuRole {
     /// The core cannot draw one: with no host to answer it, the item is
     /// not offered.
     LookUp,
+    /// The application menu's rows a Mac performs itself (backlog F152):
+    /// the standard About panel, hiding the app, hiding the others,
+    /// showing them all, and quitting. On a menu bar macOS draws they are
+    /// the platform's own items, sent to `NSApplication`
+    /// (`orderFrontStandardAboutPanel:`, `hide:`,
+    /// `hideOtherApplications:`, `unhideAllApplications:`, `terminate:`),
+    /// and post nothing. In a menu the core draws, Hide, Hide Others and
+    /// Show All mean nothing and are not offered; About and Quit are drawn
+    /// and post their `menu` event like the app's own rows, for the app to
+    /// show its about box and close.
+    About,
+    Hide,
+    HideOthers,
+    ShowAll,
+    Quit,
 }
 
 impl MenuRole {
     /// Every role, in wire order: the index a binding that spells roles as
     /// numbers sends (C's `KUI_MENU_*`), pinned there by name. Append-only,
     /// like every list a C enum restates.
-    pub const ALL: [MenuRole; 7] = [
+    pub const ALL: [MenuRole; 12] = [
         MenuRole::Custom,
         MenuRole::Separator,
         MenuRole::Cut,
@@ -98,6 +113,11 @@ impl MenuRole {
         MenuRole::Paste,
         MenuRole::SelectAll,
         MenuRole::LookUp,
+        MenuRole::About,
+        MenuRole::Hide,
+        MenuRole::HideOthers,
+        MenuRole::ShowAll,
+        MenuRole::Quit,
     ];
 
     /// The role a wire name spells, for the bindings that take roles as
@@ -118,6 +138,11 @@ impl MenuRole {
             MenuRole::Paste => "paste",
             MenuRole::SelectAll => "selectAll",
             MenuRole::LookUp => "lookUp",
+            MenuRole::About => "about",
+            MenuRole::Hide => "hide",
+            MenuRole::HideOthers => "hideOthers",
+            MenuRole::ShowAll => "showAll",
+            MenuRole::Quit => "quit",
         }
     }
 
@@ -132,6 +157,11 @@ impl MenuRole {
             MenuRole::Paste => "Paste",
             MenuRole::SelectAll => "Select All",
             MenuRole::LookUp => "Look Up",
+            MenuRole::About => "About",
+            MenuRole::Hide => "Hide",
+            MenuRole::HideOthers => "Hide Others",
+            MenuRole::ShowAll => "Show All",
+            MenuRole::Quit => "Quit",
         }
     }
 
@@ -156,12 +186,44 @@ impl MenuRole {
             MenuRole::Copy if mac => "⌘C",
             MenuRole::Paste if mac => "⌘V",
             MenuRole::SelectAll if mac => "⌘A",
+            MenuRole::Hide if mac => "⌘H",
+            MenuRole::HideOthers if mac => "⌥⌘H",
+            MenuRole::Quit if mac => "⌘Q",
             MenuRole::Cut => "Ctrl+X",
             MenuRole::Copy => "Ctrl+C",
             MenuRole::Paste => "Ctrl+V",
             MenuRole::SelectAll => "Ctrl+A",
-            MenuRole::Custom | MenuRole::Separator | MenuRole::LookUp => "",
+            MenuRole::Custom
+            | MenuRole::Separator
+            | MenuRole::LookUp
+            | MenuRole::About
+            | MenuRole::Hide
+            | MenuRole::HideOthers
+            | MenuRole::ShowAll
+            | MenuRole::Quit => "",
         }
+    }
+
+    /// Whether only a platform's application can perform this: the
+    /// application menu's rows (backlog F152).
+    pub fn is_app(self) -> bool {
+        matches!(
+            self,
+            MenuRole::About
+                | MenuRole::Hide
+                | MenuRole::HideOthers
+                | MenuRole::ShowAll
+                | MenuRole::Quit
+        )
+    }
+
+    /// Whether a menu the core draws offers the row: not the three that
+    /// mean nothing without a Mac's application to hide.
+    pub fn drawn(self) -> bool {
+        !matches!(
+            self,
+            MenuRole::Hide | MenuRole::HideOthers | MenuRole::ShowAll
+        )
     }
 
     /// Whether the core performs this itself, or with one hand from the
@@ -297,8 +359,7 @@ impl MenuItem {
             for (k, v) in fields.iter() {
                 // An option is chosen and posts: it opens nothing and plays
                 // no chord.
-                if !Self::KEYS.contains(&k.as_str())
-                    || (options && (k == "items" || k == "replay"))
+                if !Self::KEYS.contains(&k.as_str()) || (options && (k == "items" || k == "replay"))
                 {
                     out.push(k.clone());
                 } else if k == "items" {
@@ -1030,7 +1091,12 @@ mod tests {
                 | MenuRole::Copy
                 | MenuRole::Paste
                 | MenuRole::SelectAll
-                | MenuRole::LookUp => seen += 1,
+                | MenuRole::LookUp
+                | MenuRole::About
+                | MenuRole::Hide
+                | MenuRole::HideOthers
+                | MenuRole::ShowAll
+                | MenuRole::Quit => seen += 1,
             }
             assert_eq!(MenuRole::from_name(role.name()), Some(role));
             assert_eq!(

@@ -34,6 +34,8 @@ was the first bare bump to break an app in five releases).
 - `KUI_ABI_VERSION` is 30: `KuiTextStyle` gains `bold` (29) and
   `KuiMenuItem` `replay` (30). Recompile a C or Odin host.
 - `MenuItem` has a `replay` field: a struct literal of it needs one.
+- `MenuRole` has five more variants (`About`, `Hide`, `HideOthers`,
+  `ShowAll`, `Quit`): an exhaustive `match` on it needs them.
 
 `UiEvent::message` read the payload first and the `tag` second, and a
 core event's payload is `{kind: "key", …}`, `{kind: "open", …}`, `{kind:
@@ -92,6 +94,15 @@ the ABI did, twice. Zeroed fields are what a text and a row were.
   instead of walking the focus ring, so a list or an outline built from
   fields indents on Tab. A document keeps Tab either way. A new flag
   bit, no ABI change.
+- **The application menu's rows** — `MenuRole::About`, `Hide`,
+  `HideOthers`, `ShowAll`, `Quit`; `"about"`, `"hide"`, `"hideOthers"`,
+  `"showAll"`, `"quit"` as a row's `role`; `KUI_MENU_ABOUT` …
+  `KUI_MENU_QUIT` in C (appended values, no ABI bump) (backlog F152, ADR
+  0018 amended): on a menu bar macOS draws, AppKit's own rows — the About
+  panel, `hide:`, `hideOtherApplications:`, `unhideAllApplications:`,
+  `terminate:` — worded with the app's name, with ⌘H, ⌥⌘H and ⌘Q, posting
+  nothing. In a menu kui draws, Hide, Hide Others and Show All are not
+  offered, and About and Quit post their `menu` event for the app.
 - **A menu row that is its chord** — `MenuItem::replay`, `replay` on a
   plain-data row (JSX, Lua), `KuiMenuItem.replay` and
   `KUI_MENU_ITEM_REPLAY` in C, `replay` on Odin's `Menu_Item` (backlog
@@ -127,6 +138,9 @@ the ABI did, twice. Zeroed fields are what a text and a row were.
   kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
 - Routing an app's shortcuts through a declared menu bar, or a field's
   own key handling, so they work while a field has focus.
+- Sending `hide:`, `hideOtherApplications:` or `unhideAllApplications:`
+  to `NSApplication` by hand, and quitting from a declared bar by closing
+  the window.
 - Rebuilding a declared menu bar as focus moves, unbinding rows a field
   needs its key for, and replaying a chosen row's accelerator by hand.
 - A one-span `rich_text` or a registered bold face standing in for a bold

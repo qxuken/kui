@@ -328,7 +328,7 @@ fn menu_row(
         .as_ref()
         .and_then(|a| a.key_equivalent())
         .unwrap_or_default();
-    let title = NSString::from_str(item.text());
+    let title = NSString::from_str(&app_title(item));
     let equiv = NSString::from_str(&key);
     let row = unsafe {
         NSMenuItem::initWithTitle_action_keyEquivalent(
@@ -367,8 +367,40 @@ fn menu_row(
             }
             row.setKeyEquivalentModifierMask(flags);
         }
+        // The application menu's rows are AppKit's own: sent up the
+        // responder chain to `NSApplication`, which hides, quits and
+        // shows its About panel itself, and posts nothing to the app
+        // (backlog F152).
+        if let Some(action) = app_action(item.role) {
+            row.setAction(Some(action));
+            row.setTarget(None);
+        }
     }
     row
+}
+
+/// The `NSApplication` action an application-menu role is (backlog F152).
+fn app_action(role: MenuRole) -> Option<Sel> {
+    Some(match role {
+        MenuRole::About => sel!(orderFrontStandardAboutPanel:),
+        MenuRole::Hide => sel!(hide:),
+        MenuRole::HideOthers => sel!(hideOtherApplications:),
+        MenuRole::ShowAll => sel!(unhideAllApplications:),
+        MenuRole::Quit => sel!(terminate:),
+        _ => return None,
+    })
+}
+
+/// A row's title, with the app's name where a Mac words the row with it
+/// and the row declared no label of its own: "About Noticon", "Hide
+/// Noticon", "Quit Noticon".
+fn app_title(item: &MenuItem) -> String {
+    let named = matches!(item.role, MenuRole::About | MenuRole::Hide | MenuRole::Quit);
+    if !named || !item.label.is_empty() {
+        return item.text().to_string();
+    }
+    let name = objc2_foundation::NSProcessInfo::processInfo().processName();
+    format!("{} {name}", item.role.default_label())
 }
 
 /// Shows the platform's definition panel for `text`, anchored at `at` —
@@ -1059,6 +1091,29 @@ impl MacMenuBar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The application menu's roles are AppKit's own actions, worded with
+    /// the process's name where a Mac words them so (backlog F152).
+    #[test]
+    fn the_application_roles_are_appkits_own_rows() {
+        assert_eq!(app_action(MenuRole::Quit), Some(sel!(terminate:)));
+        assert_eq!(app_action(MenuRole::Hide), Some(sel!(hide:)));
+        assert_eq!(app_action(MenuRole::Copy), None);
+        let name = objc2_foundation::NSProcessInfo::processInfo()
+            .processName()
+            .to_string();
+        assert_eq!(
+            app_title(&MenuItem::role(MenuRole::Quit)),
+            format!("Quit {name}")
+        );
+        assert_eq!(app_title(&MenuItem::role(MenuRole::ShowAll)), "Show All");
+        // A label the app declared stands.
+        let own = MenuItem {
+            label: "Exit".into(),
+            ..MenuItem::role(MenuRole::Quit)
+        };
+        assert_eq!(app_title(&own), "Exit");
+    }
 
     #[test]
     fn a_hint_is_what_binds_nothing() {

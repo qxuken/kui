@@ -1557,7 +1557,12 @@ enum { KUI_CELL_CURSOR_BLOCK = 1, KUI_CELL_CURSOR_BAR = 2, KUI_CELL_CURSOR_UNDER
 /* KuiMenuItem.role. A standard role means the core does what it can with
  * the row: KUI_MENU_SELECT_ALL it performs, the clipboard three it turns
  * into a KuiMenuAction, and a KUI_MENU_LOOK_UP is the host's panel to show.
- * KUI_MENU_CUSTOM is an item only the host can carry out. */
+ * KUI_MENU_CUSTOM is an item only the host can carry out. The application
+ * menu's five (ABOUT through QUIT) are a Mac's own items where macOS draws
+ * the bar - the About panel, hide:, hideOtherApplications:,
+ * unhideAllApplications:, terminate: - and post nothing; in a menu the core
+ * draws, HIDE, HIDE_OTHERS and SHOW_ALL are not offered and ABOUT and QUIT
+ * post their event for the host. Appended values, so no ABI bump. */
 enum {
     KUI_MENU_CUSTOM = 0,
     KUI_MENU_SEPARATOR = 1,
@@ -1566,6 +1571,11 @@ enum {
     KUI_MENU_PASTE = 4,
     KUI_MENU_SELECT_ALL = 5,
     KUI_MENU_LOOK_UP = 6,
+    KUI_MENU_ABOUT = 7,
+    KUI_MENU_HIDE = 8,
+    KUI_MENU_HIDE_OTHERS = 9,
+    KUI_MENU_SHOW_ALL = 10,
+    KUI_MENU_QUIT = 11,
 };
 
 /* [in] One row of a menu. `label` may be empty for a standard role, which

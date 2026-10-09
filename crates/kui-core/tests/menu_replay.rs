@@ -143,3 +143,42 @@ fn a_row_reads_replay_from_plain_data_and_plays_the_keyboards_press() {
     );
     let _ = KeyMods::default();
 }
+
+/// The application menu's roles in a menu the core draws (backlog F152):
+/// Hide and its two neighbours are not offered — there is no Mac
+/// application to hide — and About and Quit are, posting their event for
+/// the app.
+#[test]
+fn a_drawn_menu_offers_about_and_quit_and_not_hide() {
+    use kui_core::MenuRole;
+    let (mut core, _, field) = rig();
+    core.open_menu(Menu::new(
+        field,
+        Vec2::new(20.0, 60.0),
+        vec![
+            MenuItem::role(MenuRole::About),
+            MenuItem::role(MenuRole::Hide),
+            MenuItem::role(MenuRole::HideOthers),
+            MenuItem::role(MenuRole::ShowAll),
+            MenuItem::role(MenuRole::Quit),
+        ],
+    ));
+    frame(&mut core);
+    let names: Vec<_> = core
+        .access_tree()
+        .nodes
+        .iter()
+        .filter(|n| n.role == kui_core::Role::MenuItem)
+        .filter_map(|n| n.name.clone())
+        .collect();
+    assert_eq!(names, ["About", "Quit"]);
+    let at = row_center(&mut core, "Quit");
+    let evs = click(&mut core, at);
+    let menu = menu_events(&evs);
+    assert_eq!(menu.len(), 1);
+    assert_eq!(menu[0].payload.get_str("role"), Some("quit"));
+    assert_eq!(
+        MenuRole::from_name("hideOthers"),
+        Some(MenuRole::HideOthers)
+    );
+}

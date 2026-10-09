@@ -127,7 +127,9 @@ date: 2026-09-14
   under another name would have no way to say so. Naming a menu `Window`
   costs one word.
 
-- **`MenuRole::Minimize` / `Zoom` / `FullScreen` / `Quit`.** ADR 0018's
+- **`MenuRole::Minimize` / `Zoom` / `FullScreen` / `Quit`.** (*`Quit`
+  built 2026-10-09 with the application menu's other rows, backlog F152;
+  see ADR 0018.*) ADR 0018's
   decline, unchanged: each needs a drawn-bar answer, an ABI bump and four
   bindings, for rows the platform performs on its own responder chain.
   The condition that would build them is an app that wants to compose a

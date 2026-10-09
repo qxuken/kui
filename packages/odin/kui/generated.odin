@@ -442,6 +442,11 @@ Menu_Role :: enum u32 {
 	Paste = 4, // KUI_MENU_PASTE
 	Select_All = 5, // KUI_MENU_SELECT_ALL
 	Look_Up = 6, // KUI_MENU_LOOK_UP
+	About = 7, // KUI_MENU_ABOUT
+	Hide = 8, // KUI_MENU_HIDE
+	Hide_Others = 9, // KUI_MENU_HIDE_OTHERS
+	Show_All = 10, // KUI_MENU_SHOW_ALL
+	Quit = 11, // KUI_MENU_QUIT
 }
 
 Menu_Item_Flag :: enum u32 {
