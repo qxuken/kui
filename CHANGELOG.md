@@ -21,6 +21,41 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.52 (unreleased)
+
+**What breaks.**
+
+- A label looked up from inside a slot fill — `key_of`, `set_scroll`,
+  `reveal`, `scroll_offset`, `layout_of` and every door that takes a
+  label — is answered from that fill's own nodes alone, where any node
+  its extension opened in any of its slots answered, in tree order.
+
+An extension that fills many slots — a Lua host drawing every pane as a
+slot of its one origin, a plugin filling `"*"` — had its panes share
+their labels: a pane's `set_scroll("list")` found every pane's "list",
+took the first in tree order and warned `ambiguous-key` (backlog F157,
+from kawoosh, whose themes pane beside a launcher scrolled the
+launcher's "body"). Each fill is a view of its own, and as unable to
+know what its sibling fills called their nodes as a guest is the
+host's, so the lookup made inside a fill reads that fill's nodes alone —
+this frame's, then the last frame's. A view asking for its node before
+declaring it, on its first frame, gets nothing, where it got a sibling
+pane's. `set_scroll_label` and `reveal_label`, resolved at the frame's
+end, resolve as the fill that asked, so they find the node it declared
+later in the same frame. A lookup from outside any fill, the host's, is
+unchanged. An extension that reached into one of its slots from another
+by label now finds nothing there; pass the hex key an event carried.
+
+### Fixed
+
+- **One extension's panes no longer share their labels** (backlog F157):
+  see *What breaks*.
+
+**What you can delete.**
+
+- A pane's name or id folded into every label a multi-slot extension
+  looks up, to keep two of its panes' `list` apart.
+
 ## 0.1.0-alpha.51 (2026-10-09)
 
 **What breaks.**

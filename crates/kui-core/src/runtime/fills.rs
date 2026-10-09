@@ -28,8 +28,8 @@ impl Core {
             return None;
         }
         let key = self.parent_key().str(name);
-        self.slot_labels.push(key, name, self.origin);
-        self.key_labels.push(key, name, self.origin);
+        self.slot_labels.push(key, name, self.origin, self.ns_key);
+        self.key_labels.push(key, name, self.origin, self.ns_key);
         Some(key)
     }
 
