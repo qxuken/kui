@@ -958,9 +958,10 @@ impl Core {
     }
 
     /// What the platform's caption height is for this window: `h` for a
-    /// strip the driver opened taller than the platform's (the runner's
-    /// `Launcher::titlebar` under custom chrome off macOS, backlog W22),
-    /// `None` for the platform's own. The `titlebar_h` metric follows it
+    /// strip the driver knows is another height (backlog W22) — the
+    /// runner's `Launcher::titlebar` under custom chrome off macOS, the
+    /// titlebar it measured under macOS custom chrome — `None` for the
+    /// platform's own. The `titlebar_h` metric follows it
     /// while it is at the stock number, now and through every later
     /// [`Core::set_metrics`]; an app that set a number of its own keeps
     /// it. A driver's call, made before the first frame.

@@ -1592,14 +1592,15 @@ export interface Metrics {
   menuWidth: number;
   /** The drawn menu bar's height. */
   menuBarH: number;
-  /** The titlebar's height where the strip is the app's alone: the platform's
-   *  caption height, 32 on Windows and 34 elsewhere, or 40 and 52 in a window
-   *  whose launcher asked for a `medium` or `tall` titlebar under custom
-   *  chrome (backlog W22) — the stock number stands for that window's height,
-   *  so a set of the app's keeps it unless it names a number of its own.
-   *  Under macOS custom chrome the strip is the OS's own titlebar, as tall as
-   *  `window.native_controls` measures it (32 on macOS 27, 28 before), and
-   *  this row is not read (`widgets::titlebar_height`). */
+  /** The titlebar strip's height: the platform's caption height, 32 on
+   *  Windows and 34 elsewhere, or the window's own where the runner knows it
+   *  (backlog W22) — 40 and 52 off macOS for a launcher's `medium` or `tall`
+   *  titlebar under custom chrome, and under macOS custom chrome the OS's own
+   *  titlebar as `window.native_controls` measures it (32, 40 or 52 on macOS
+   *  27). The stock number stands for that window's height, so a set of the
+   *  app's keeps it unless it names a number of its own. Under macOS custom
+   *  chrome the strip is drawn at the measured height whatever this row says
+   *  (`widgets::titlebar_height`). */
   titlebarH: number;
   // -- end generated --
 }
@@ -1875,11 +1876,12 @@ export interface WindowOptions {
    *  `'medium'` or `'tall'`. On macOS it is AppKit's own titlebar, made
    *  with an empty toolbar, and so where the traffic lights sit: 32 px
    *  with them at 9,9 on macOS 27, 40 at 12,13, or 52 about them at
-   *  19,19; what the window got is `env().window.nativeControls`. On
-   *  Windows and Linux the strip is the app's: `'medium'` and `'tall'`
-   *  make the window's `titlebarH` metric 40 and 52 in place of the
-   *  caption's 32 or 34, and a `setMetrics` keeps it unless it names a
-   *  `titlebarH` of its own. `titlebar` lays out against either. */
+   *  19,19; what the window got is `env().window.nativeControls`, and
+   *  the window's `titlebarH` metric is that height. On Windows and Linux
+   *  the strip is the app's: `'medium'` and `'tall'` make the window's
+   *  `titlebarH` metric 40 and 52 in place of the caption's 32 or 34.
+   *  Either way a `setMetrics` keeps it unless it names a `titlebarH` of
+   *  its own, and `titlebar` lays out against it. */
   titlebar?: 'standard' | 'medium' | 'tall';
   /** What shows through the window where a frame paints nothing or paints
    *  with alpha (the launcher's `backdrop`), by effect: `'opaque'` (the

@@ -89,8 +89,9 @@ impl App for Chrome {
                         TextStyle::new(13.0).color(t.muted),
                     );
                     let facts = format!(
-                        "titlebar {:?} · custom_chrome {} · maximized {} · fullscreen {} · always_on_top {} · native controls {}",
+                        "titlebar {:?} (metric {}) · custom_chrome {} · maximized {} · fullscreen {} · always_on_top {} · native controls {}",
                         self.titlebar,
+                        ui.metrics().titlebar_h,
                         win.custom_chrome,
                         win.maximized,
                         win.fullscreen,

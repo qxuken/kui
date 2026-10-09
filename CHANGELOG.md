@@ -28,6 +28,10 @@ was the first bare bump to break an app in five releases).
 - C ABI 28 (under Added, W22): `KuiRunConfig` appends `titlebar`, a
   `KUI_TITLEBAR_*` (64-bit size 48). Recompile; zeroed, the window is
   what it was. A hand-written mirror (ctypes, Zig) appends one `u32`.
+- `ui.metrics().titlebar_h` under macOS custom chrome (under Added,
+  W22) reads the measured titlebar, 32 on macOS 27, where it read the
+  stock 34; the strip itself was already drawn at 32. A view that laid
+  something out against the metric beside the strip moves up 2 px.
 
 ### Added
 
@@ -44,7 +48,10 @@ was the first bare bump to break an app in five releases).
   and the toolbar takes no clicks: tabs in the strip press and the empty
   strip drags as before. `titlebar: 'standard' | 'medium' | 'tall'` in
   Node's window options, `KuiRunConfig.titlebar` in C,
-  `Run_Config.titlebar` in Odin. On Windows and Linux, where the strip
+  `Run_Config.titlebar` in Odin. Under macOS custom chrome the
+  window's `titlebar_h` metric is now the strip AppKit drew, as
+  measured — 32, 40 or 52 on macOS 27 — so `$titlebar_h` says the
+  strip's height. On Windows and Linux, where the strip
   is the app's, the same ask makes the window's `titlebar_h` metric 40
   or 52 in place of the caption's 32 or 34, so one setting draws one
   strip on all three: `ui.metrics().titlebar_h` and `$titlebar_h` read

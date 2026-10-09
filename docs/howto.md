@@ -715,7 +715,10 @@ and focus. The runner measures where they landed into
 and inset from it, so a strip of tabs or a search field centres on the
 lights with nothing else to change. The toolbar takes no clicks: a
 button in the strip is pressed as before, and the empty strip still
-drags. On Windows and Linux the same ask draws the same strip: there it
+drags. The window's `titlebar_h` metric is the measured height, so
+`ui.metrics().titlebar_h` and `$titlebar_h` say how tall the strip is
+(32 for `Standard` on macOS 27, where the stock number is 34). On
+Windows and Linux the same ask draws the same strip: there it
 is the app's, as tall as the `titlebar_h` metric, and `Medium` and
 `Tall` make that window's metric 40 and 52 in place of the caption's 32
 or 34 — `ui.metrics().titlebar_h` and `$titlebar_h` read it, and the

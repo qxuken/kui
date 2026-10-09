@@ -377,7 +377,8 @@ impl DynShell<'_> {
         // custom chrome is the app's alone: its height is the
         // `titlebar_h` metric, and the launcher's ask is that window's
         // platform height (backlog W22). On macOS it is AppKit's
-        // titlebar instead, set on the window below.
+        // titlebar instead, set on the window below, and the metric is
+        // what the runner measures of it.
         #[cfg(not(target_os = "macos"))]
         if chrome == Chrome::Custom && config.kind != WindowKind::Popup {
             core.set_platform_titlebar_h(self.titlebar.strip_h());
@@ -431,6 +432,13 @@ impl DynShell<'_> {
             (chrome == Chrome::Custom).then(|| macos_chrome::native_controls(&window));
         #[cfg(not(target_os = "macos"))]
         let native_controls = None;
+        // And the `titlebar_h` metric is the strip AppKit drew, so
+        // `$titlebar_h` and `ui.metrics()` say the height the strip has
+        // (backlog W22) rather than the 34 of a strip that is the app's.
+        #[cfg(target_os = "macos")]
+        if let Some(r) = native_controls {
+            core.set_platform_titlebar_h(Some(r.h));
+        }
         let pacer = crate::pacer::Pacer::new(&window, !self.pumped);
         self.panes.push(Pane {
             id,

@@ -327,8 +327,9 @@ pub enum Chrome {
 /// | `Tall` | 52 | (19, 19) |
 ///
 /// The numbers are the OS's, and moved between releases before; what the
-/// window got is `env.window.native_controls`, measured, and
-/// `widgets::titlebar` lays out against it.
+/// window got is `env.window.native_controls`, measured,
+/// `widgets::titlebar` lays out against it, and the window's
+/// `titlebar_h` metric is the measured height too, `Standard` included.
 ///
 /// On Windows and Linux the strip under custom chrome is the app's, as
 /// tall as the `titlebar_h` metric: `Medium` and `Tall` make that

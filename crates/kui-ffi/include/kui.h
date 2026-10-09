@@ -2397,8 +2397,10 @@ typedef struct KuiMetrics {
     float menu_pad_y;
     float menu_width;     /* a menu panel's width */
     float menu_bar_h;     /* the drawn menu bar's height */
-    float titlebar_h;     /* the strip where it is the app's alone: 32 on Windows, 34 elsewhere;
-                             under macOS custom chrome the strip is window.controls_h tall */
+    float titlebar_h;     /* the titlebar strip: 32 on Windows, 34 elsewhere, or the window's
+                             own where the runner knows it (KuiRunConfig.titlebar; under macOS
+                             custom chrome the measured window.controls_h, which the strip is
+                             drawn at whatever this says) */
 } KuiMetrics;
 #define KUI_METRICS_INIT ((KuiMetrics){ .size = sizeof(KuiMetrics) })
 
@@ -3982,10 +3984,10 @@ enum { KUI_DIAG_DEFAULT = 0, KUI_DIAG_ON = 1, KUI_DIAG_OFF = 2 };
  * lights sit: the standard one (32 pt with them at 9,9 on macOS 27), a
  * compact toolbar's (40, at 12,13), a full toolbar's (52 about them, at
  * 19,19); the runner measures what the window got into the env's controls
- * rect. On Windows and Linux MEDIUM and TALL make the window's titlebar_h
- * metric 40 and 52 in place of the caption's 32 or 34, kept through a
- * kui_metrics_set whose titlebar_h is the stock number. kui_titlebar lays
- * out against either. */
+ * rect and the window's titlebar_h metric. On Windows and Linux MEDIUM and
+ * TALL make the window's titlebar_h metric 40 and 52 in place of the
+ * caption's 32 or 34. Either is kept through a kui_metrics_set whose
+ * titlebar_h is the stock number, and kui_titlebar lays out against it. */
 enum { KUI_TITLEBAR_STANDARD = 0, KUI_TITLEBAR_MEDIUM = 1, KUI_TITLEBAR_TALL = 2 };
 
 /* [in] How kui_run_with opens its window: the options a Rust host's
