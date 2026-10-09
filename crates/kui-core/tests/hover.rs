@@ -276,3 +276,36 @@ fn hover_props_alone_make_a_node_hover_tracked() {
     assert!(core.is_hovered(badge));
     assert!(core.is_group_hovered(NodeSpec::hover_group_id("g")));
 }
+
+/// A window-drag strip hears hover like any node (backlog W23): a chrome
+/// node's press becomes a window command, its hover does not, so a
+/// toolbar that comes back when the pointer reaches the titlebar can be
+/// built on the strip itself.
+#[test]
+fn a_window_drag_strip_hears_hover() {
+    let mut core = kui_core::Core::new();
+    let frame = |core: &mut kui_core::Core| {
+        let mut ui = core.frame(kui_core::Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(kui_core::NodeSpec::column().fill());
+        ui.leaf_keyed(
+            "strip",
+            kui_core::NodeSpec::row()
+                .grow_width()
+                .height(52.0)
+                .window_drag()
+                .on_hover("strip"),
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    frame(&mut core);
+    let evs = core.handle_input(kui_core::InputEvent::CursorMoved(kui_core::Vec2::new(
+        100.0, 20.0,
+    )));
+    let hover = evs
+        .iter()
+        .find(|e| e.kind() == Some("hover"))
+        .expect("the strip heard the pointer arrive");
+    assert_eq!(hover.payload.get_str("phase"), Some("enter"));
+    assert_eq!(hover.payload.get_str("tag"), Some("strip"));
+}

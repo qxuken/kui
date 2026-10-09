@@ -1567,42 +1567,8 @@ wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
 look like one cause on the Mac that a repro has to settle (W23). Ten
 entries, F144–F153, and W23, filed open; F148, F144–F146 as ADR 0011's
 decision 10, F147 and F149–F153 **built 2026-10-09**, the day they
-were filed, and in the archive. W23 is open.
-
-### `!` W23 — Over a `Titlebar::Tall` strip the window hears no pointer: hover never fires, `cursor()` reads nothing, no frame comes
-
-**Found, unverified on a Mac.** Noticon's toolbar sits in the 52 pt
-strip `Titlebar::Tall` makes (W22). Three things failed there, and
-each was worked round rather than understood:
-
-- `on_hover` on a `window_drag` node never fired. The core path looks
-  right: `hover_tracked` counts a window role (`spec.rs:1660`),
-  `push_hit` copies `on_hover` (`emit.rs:203`), and `refresh_hover`
-  excludes nothing (`input.rs:2207`).
-- `Core::cursor()` read `None` while the pointer was over the strip
-  after typing (Noticon's log, at every flow change). Noticon reads
-  the pointer from CoreGraphics (`CGEventGetLocation`) instead.
-- A move over the strip drew no frame; the toolbar came back only
-  because the caret's blink kept frames coming. kui-native requests a
-  redraw on every dispatched `CursorMoved` (`lib.rs:2854` →
-  `dispatch` :2178–2181), so the move most likely never arrived.
-
-One cause would explain all three: the empty `NSToolbar` W22 installs
-(`macos_chrome.rs:62–66`) puts a titlebar view above winit's content
-view over the strip, which takes `mouseMoved:` there and sends winit's
-view a `mouseExited:` (winit's `CursorLeft`, clearing the cursor).
-Under `Titlebar::Plain` the lights' strip may do the same at 28 pt.
-On Windows a drag node is answered `HTCAPTION`
-(`windows_nc.rs:207`), so no client move arrives over it either, by
-design and without a diagnostic.
-
-**Do.** Repro first, on a Mac: the titlebar example under `Tall`,
-logging `CursorMoved`/`CursorLeft` across the strip. If it is the
-toolbar's view, forward its moves (a tracking area on the titlebar
-container answering into winit's view, or `acceptsMouseMovedEvents` on
-the toolbar's view) so the strip is the window's for hover and the
-pointer's place. If a drag region is to stay deaf by design, `diag`
-warns at the `on_hover` that will never fire.
+were filed, and in the archive; W23 closed the same day, not reproduced
+on a Mac, with a regression test kept.
 
 ### Theirs, not ours
 
@@ -3042,9 +3008,8 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Noticon's polish round: W23 alone is open (F144–F153
-built), and needs a Mac before anything is built.
-Nothing from the second bake-off: C51, the file
+**Build next.** Nothing of Noticon's polish round is open (F144–F153
+built, W23 not reproduced). Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
 (`#[derive(Message)]`), was **built 2026-09-25**; C47 was
 **built 2026-09-25** (two queued frames by default), C46, the
@@ -4476,3 +4441,5 @@ move.
 - `.` **F152** — [A declared bar has no Hide, Hide Others, Show All or Quit](backlog/closed-2026-09.md#-f152--a-declared-bar-has-no-hide-hide-others-show-all-or-quit--done-2026-10-09) — done (2026-10-09) — `MenuRole::About` / `Hide` / `HideOthers` / `ShowAll` / `Quit` (`KUI_MENU_*`, no ABI bump): AppKit's own rows on a Mac bar, About and Quit posted in a drawn menu, the other three not offered
 
 - `.` **F153** — [A sink's `drag` names a line for a press in the margin beside it, and says nothing of where the press was](backlog/closed-2026-09.md#-f153--a-sinks-drag-names-a-line-for-a-press-in-the-margin-beside-it-and-says-nothing-of-where-the-press-was--done-2026-10-09) — done (2026-10-09) — `inside` beside `line` and `byte`: whether the point is within the line's own box, false in the margin, above and below
+
+- `!` **W23** — [Over a `Titlebar::Tall` strip the window hears no pointer: hover never fires, `cursor()` reads nothing, no frame comes](backlog/closed-2026-09.md#-w23--over-a-titlebartall-strip-the-window-hears-no-pointer-hover-never-fires-cursor-reads-nothing-no-frame-comes--done-2026-10-09) — done (2026-10-09) — not reproduced: the strip hears every move under `Titlebar::Tall`, and a drag node's hover fires; a regression test kept
