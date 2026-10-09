@@ -64,7 +64,11 @@ pub struct Metrics {
     pub menu_bar_h: f32,
     /// The titlebar's height where the strip is the app's alone: the
     /// platform's caption height (32 on Windows, 34 elsewhere), which
-    /// [`Metrics::compact`] leaves alone. Where the OS keeps controls of
+    /// [`Metrics::compact`] leaves alone. A driver that opened the strip
+    /// taller (the runner's `Launcher::titlebar` off macOS, backlog W22)
+    /// makes that window's platform height its own, and the stock number
+    /// stands for it in [`Core::set_metrics`](crate::runtime::Core::set_metrics).
+    /// Where the OS keeps controls of
     /// its own over the strip — the macOS traffic lights under custom
     /// chrome — the strip is as tall as the OS's titlebar, which the
     /// driver measures into `env.window.native_controls`, and this row

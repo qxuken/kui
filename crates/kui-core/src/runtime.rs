@@ -209,6 +209,10 @@ pub struct Core {
     /// palette's other axis, set by the app or
     /// [`Metrics::default`](crate::metrics::Metrics::default).
     metrics: crate::metrics::Metrics,
+    /// The titlebar height the driver opened this window's strip at, over
+    /// the platform's caption height ([`Core::set_platform_titlebar_h`]);
+    /// `None` is the platform's.
+    platform_titlebar_h: Option<f32>,
     /// The named colours and lengths each origin declared: the
     /// host's under `OriginId::HOST`, an extension's under its own, so a
     /// guest's declaration never replaces the host's palette. Read through
@@ -938,8 +942,41 @@ impl Core {
     /// on is built from it, and `ui.metrics()` reads it back. Logical px,
     /// before `env.scale`; a density is the app's to choose
     /// (`Metrics::compact`, `Metrics::scaled`).
+    ///
+    /// `titlebar_h` is the platform's row: left at the stock number (the
+    /// platform's caption height, which every stock set carries), it is
+    /// the height the driver opened this window's strip at
+    /// ([`Core::set_platform_titlebar_h`]), so an app that sets a density
+    /// keeps the titlebar its launcher asked for. Any other number is the
+    /// app's and stands.
     pub fn set_metrics(&mut self, metrics: crate::metrics::Metrics) {
+        let mut metrics = metrics;
+        if metrics.titlebar_h == crate::metrics::Metrics::comfortable().titlebar_h {
+            metrics.titlebar_h = self.platform_titlebar_h();
+        }
         self.metrics = metrics;
+    }
+
+    /// What the platform's caption height is for this window: `h` for a
+    /// strip the driver opened taller than the platform's (the runner's
+    /// `Launcher::titlebar` under custom chrome off macOS, backlog W22),
+    /// `None` for the platform's own. The `titlebar_h` metric follows it
+    /// while it is at the stock number, now and through every later
+    /// [`Core::set_metrics`]; an app that set a number of its own keeps
+    /// it. A driver's call, made before the first frame.
+    pub fn set_platform_titlebar_h(&mut self, h: Option<f32>) {
+        let stock = self.metrics.titlebar_h == self.platform_titlebar_h();
+        self.platform_titlebar_h = h.filter(|h| h.is_finite() && *h > 0.0);
+        if stock {
+            self.metrics.titlebar_h = self.platform_titlebar_h();
+        }
+    }
+
+    /// The titlebar height that stands for "the platform's" in this
+    /// window: the driver's, or the stock caption height.
+    fn platform_titlebar_h(&self) -> f32 {
+        self.platform_titlebar_h
+            .unwrap_or(crate::metrics::Metrics::comfortable().titlebar_h)
     }
 
     /// A core with a session of its own — one window, nothing shared.
@@ -975,6 +1012,7 @@ impl Core {
             theme: Theme::default(),
             tokens: Default::default(),
             metrics: crate::metrics::Metrics::default(),
+            platform_titlebar_h: None,
             window_title: None,
             always_on_top: false,
             secure_input: false,

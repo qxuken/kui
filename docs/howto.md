@@ -715,8 +715,13 @@ and focus. The runner measures where they landed into
 and inset from it, so a strip of tabs or a search field centres on the
 lights with nothing else to change. The toolbar takes no clicks: a
 button in the strip is pressed as before, and the empty strip still
-drags. Nothing on Windows and Linux, where the strip under custom chrome
-is the app's and `Metrics::titlebar_h` is its height.
+drags. On Windows and Linux the same ask draws the same strip: there it
+is the app's, as tall as the `titlebar_h` metric, and `Medium` and
+`Tall` make that window's metric 40 and 52 in place of the caption's 32
+or 34 — `ui.metrics().titlebar_h` and `$titlebar_h` read it, and the
+drawn buttons grow to it. An app that sets its own metrics keeps it as
+long as their `titlebar_h` is the stock number (`Metrics::compact()`,
+Node's `base`); a number of its own wins.
 
 [`titlebar.rs`](../examples/rust/widgets/titlebar.rs) (`-- --titlebar tall`) ·
 [`window.native_controls` row](props.md#env)

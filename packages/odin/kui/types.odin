@@ -240,9 +240,10 @@ Run_Config :: struct {
 	// What shows through the window's transparent pixels (backlog F126);
 	// .Opaque, the zero, is none. What it got is ctx_backdrop, in the view.
 	backdrop:      Backdrop,
-	// How tall the macOS titlebar is under .Custom chrome, and so where the
-	// traffic lights sit (backlog W22); .Standard, the zero, is the OS's
-	// plain one. Nothing elsewhere.
+	// How tall the titlebar strip is under .Custom chrome (backlog W22): on
+	// macOS AppKit's titlebar, and so where the traffic lights sit,
+	// elsewhere the titlebar_h metric; .Standard, the zero, is the
+	// platform's own.
 	titlebar:      Titlebar,
 }
 

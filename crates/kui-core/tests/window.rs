@@ -322,6 +322,89 @@ fn titlebar_is_as_tall_as_the_os_s_where_the_os_keeps_controls_over_it() {
     );
 }
 
+/// Backlog W22, off macOS: a launcher's `medium` or `tall` titlebar is the
+/// window's platform height, which the `titlebar_h` metric is while it is
+/// the stock number — so the strip, the buttons, `ui.metrics()` and
+/// `$titlebar_h` read it, and an app's density set (which carries the
+/// caption's number) keeps it. A number of the app's own wins, and the
+/// app can go back to the stock one.
+#[test]
+fn a_platform_titlebar_is_the_stock_metric_and_an_app_s_own_number_wins() {
+    use kui_core::{Key, Metrics, WindowEnv, widgets};
+    let stock = Metrics::default().titlebar_h;
+    let strip_and_buttons = |core: &mut Core| {
+        core.set_inspect(true);
+        core.env.window = WindowEnv {
+            custom_chrome: true,
+            ..Default::default()
+        };
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let token = ui
+            .token_length("titlebar_h")
+            .expect("a metrics role is a length token");
+        assert_eq!(
+            token,
+            ui.metrics().titlebar_h,
+            "`$titlebar_h` is the metric"
+        );
+        widgets::titlebar(&mut ui, "app");
+        ui.finish();
+        let strip = Key::ROOT.str("kui:titlebar");
+        let strip_h = core
+            .nodes()
+            .iter()
+            .find(|n| n.key == strip)
+            .expect("the strip is laid out under its own key")
+            .rect
+            .h;
+        // The drawn buttons are 46 wide; close is the rightmost.
+        let close_h = core
+            .nodes()
+            .iter()
+            .filter(|n| n.rect.w == 46.0)
+            .max_by(|a, b| a.rect.x.total_cmp(&b.rect.x))
+            .expect("custom chrome with no OS controls draws its buttons")
+            .rect
+            .h;
+        (strip_h, close_h)
+    };
+
+    let mut core = Core::new();
+    core.set_platform_titlebar_h(Some(52.0));
+    assert_eq!(core.metrics().titlebar_h, 52.0);
+    assert_eq!(strip_and_buttons(&mut core), (52.0, 52.0));
+    // A density set carries the caption's number, which stands for the
+    // window's.
+    core.set_metrics(Metrics::compact());
+    assert_eq!(core.metrics().titlebar_h, 52.0);
+    assert_eq!(core.metrics().control_text, Metrics::compact().control_text);
+    core.set_metrics(Metrics::default().scaled(1.5));
+    assert_eq!(core.metrics().titlebar_h, 52.0);
+    // A number of the app's own is the app's.
+    core.set_metrics(Metrics {
+        titlebar_h: 44.0,
+        ..Metrics::default()
+    });
+    assert_eq!(strip_and_buttons(&mut core), (44.0, 44.0));
+    // Back to the stock set: the window's height again.
+    core.set_metrics(Metrics::default());
+    assert_eq!(core.metrics().titlebar_h, 52.0);
+
+    // An app that chose its own before the driver spoke keeps it; a
+    // driver that names none leaves the caption's number.
+    let mut own = Core::new();
+    own.set_metrics(Metrics {
+        titlebar_h: 44.0,
+        ..Metrics::default()
+    });
+    own.set_platform_titlebar_h(Some(52.0));
+    assert_eq!(own.metrics().titlebar_h, 44.0);
+    let mut plain = Core::new();
+    plain.set_platform_titlebar_h(None);
+    assert_eq!(strip_and_buttons(&mut plain), (stock, stock));
+}
+
 /// ADR 0004's step 2: every event a core hands out says which window it came
 /// from, and the answer is the id the driver put on `env.window` — the same
 /// place `maximized` and the rest of the window facts arrive.

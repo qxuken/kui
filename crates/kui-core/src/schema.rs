@@ -3076,7 +3076,7 @@ pub const METRIC_ROLES: &[MetricRole] = &[
     metric_role!(
         titlebar_h,
         "titlebarH",
-        "The titlebar's height where the strip is the app's alone: the platform's caption height, 32 on Windows and 34 elsewhere. Under macOS custom chrome the strip is the OS's own titlebar, as tall as `window.native_controls` measures it (32 on macOS 27, 28 before), and this row is not read (`widgets::titlebar_height`).",
+        "The titlebar's height where the strip is the app's alone: the platform's caption height, 32 on Windows and 34 elsewhere, or 40 and 52 in a window whose launcher asked for a `medium` or `tall` titlebar under custom chrome (backlog W22) — the stock number stands for that window's height, so a set of the app's keeps it unless it names a number of its own. Under macOS custom chrome the strip is the OS's own titlebar, as tall as `window.native_controls` measures it (32 on macOS 27, 28 before), and this row is not read (`widgets::titlebar_height`).",
         windows crate::metrics::TITLEBAR_H_WINDOWS,
         elsewhere crate::metrics::TITLEBAR_H_ELSEWHERE
     ),

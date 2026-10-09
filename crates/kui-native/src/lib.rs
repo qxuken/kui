@@ -310,25 +310,37 @@ pub enum Chrome {
     Borderless,
 }
 
-/// How tall the OS's titlebar is under [`Chrome::Custom`] on macOS, and
-/// so where the traffic lights sit in it (backlog W22). The lights are
-/// AppKit's to place: a taller titlebar is AppKit's own taller one, made
-/// by giving the window an empty toolbar, and the lights are centred in
-/// it by AppKit through resizing, fullscreen and focus. Measured on macOS
-/// 27, the strip and the close button's top-left corner:
+/// How tall the titlebar strip is under [`Chrome::Custom`] (backlog
+/// W22): on macOS where the traffic lights sit in it, and everywhere the
+/// height `widgets::titlebar` draws at.
+///
+/// On macOS the lights are AppKit's to place: a taller titlebar is
+/// AppKit's own taller one, made by giving the window an empty toolbar,
+/// and AppKit keeps the lights in it through resizing, fullscreen and
+/// focus. Measured on macOS 27, the strip about the lights and the close
+/// button's top-left corner:
 ///
 /// | | strip | lights at |
 /// |---|---|---|
 /// | `Standard` | 32 | (9, 9) |
 /// | `Medium` | 40 | (12, 13) |
-/// | `Tall` | 66 | (19, 19) |
+/// | `Tall` | 52 | (19, 19) |
 ///
 /// The numbers are the OS's, and moved between releases before; what the
 /// window got is `env.window.native_controls`, measured, and
-/// `widgets::titlebar` lays out against it. Nothing under
-/// [`Chrome::Native`] or [`Chrome::Borderless`], nor on other platforms,
-/// where the strip under custom chrome is the app's and
-/// `Metrics::titlebar_h` is its height.
+/// `widgets::titlebar` lays out against it.
+///
+/// On Windows and Linux the strip under custom chrome is the app's, as
+/// tall as the `titlebar_h` metric: `Medium` and `Tall` make that
+/// window's platform height 40 and 52 ([`Titlebar::strip_h`]) in place
+/// of the caption's 32 or 34, so `ui.metrics().titlebar_h`, `$titlebar_h`
+/// and the drawn buttons, which grow to the strip, all read it. An app's
+/// own metrics keep it while their `titlebar_h` is the stock number
+/// (`Metrics::compact()`, Node's `base`); a number of the app's own wins
+/// (`Core::set_platform_titlebar_h`).
+///
+/// Nothing under [`Chrome::Native`] or [`Chrome::Borderless`], on a
+/// popup or on the devtools' window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Titlebar {
     /// The titlebar a window without a toolbar has (the default).
@@ -341,6 +353,18 @@ pub enum Titlebar {
 }
 
 impl Titlebar {
+    /// The strip's height off macOS, where the strip under custom chrome
+    /// is the app's: the height the macOS titlebar of the same name has
+    /// on macOS 27, so one ask draws one strip on all three. `None` for
+    /// `Standard`, which is the platform's own caption height.
+    pub const fn strip_h(self) -> Option<f32> {
+        match self {
+            Titlebar::Standard => None,
+            Titlebar::Medium => Some(40.0),
+            Titlebar::Tall => Some(52.0),
+        }
+    }
+
     /// Every name [`Titlebar::from_name`] reads, in order.
     pub const NAMES: [&'static str; 3] = ["standard", "medium", "tall"];
 
@@ -703,10 +727,11 @@ impl Launcher {
         self
     }
 
-    /// How tall the OS's titlebar is under [`Chrome::Custom`] on macOS,
-    /// and so where the traffic lights sit; see [`Titlebar`]. Applies to
-    /// the main window and every window the app's frames declare, as
-    /// [`Launcher::chrome`] does; nothing elsewhere.
+    /// How tall the titlebar strip is under [`Chrome::Custom`] — on macOS
+    /// AppKit's titlebar and so where the traffic lights sit, elsewhere
+    /// the `titlebar_h` metric; see [`Titlebar`]. Applies to the main
+    /// window and every window the app's frames declare, as
+    /// [`Launcher::chrome`] does.
     ///
     /// ```rust,no_run
     /// # use kui_native::{App, Titlebar, Ui};
@@ -1721,9 +1746,8 @@ struct Shell<A: App + ?Sized> {
     /// What the app asked to show through its windows
     /// (`Launcher::backdrop`); what each window got is its pane's.
     backdrop: Backdrop,
-    /// The macOS titlebar's height under custom chrome
-    /// (`Launcher::titlebar`), for every window opened with it.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// The titlebar's height under custom chrome (`Launcher::titlebar`),
+    /// for every window opened with it.
     titlebar: Titlebar,
     /// What every core is created with; see `Launcher::diagnostics`.
     diagnostics: bool,

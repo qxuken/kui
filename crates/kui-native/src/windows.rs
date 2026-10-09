@@ -373,6 +373,15 @@ impl DynShell<'_> {
         // it is the one where the Look Up row is offered and a force click
         // asks for one (ADR 0017, decision 6).
         core.set_lookup_available(cfg!(target_os = "macos"));
+        // The titlebar the launcher asked for, where the strip under
+        // custom chrome is the app's alone: its height is the
+        // `titlebar_h` metric, and the launcher's ask is that window's
+        // platform height (backlog W22). On macOS it is AppKit's
+        // titlebar instead, set on the window below.
+        #[cfg(not(target_os = "macos"))]
+        if chrome == Chrome::Custom && config.kind != WindowKind::Popup {
+            core.set_platform_titlebar_h(self.titlebar.strip_h());
+        }
         let access = self
             .proxy
             .clone()

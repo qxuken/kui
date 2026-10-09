@@ -1646,10 +1646,10 @@ pub struct KuiRunConfig {
     /// pixels where the platform can (`Launcher::backdrop`); 0 is opaque.
     /// What the window got is `kui_ctx_backdrop`. ABI 26.
     pub backdrop: u32,
-    /// `KUI_TITLEBAR_*`: how tall the OS's titlebar is under
-    /// `KUI_CHROME_CUSTOM` on macOS, and so where the traffic lights sit
-    /// (`Launcher::titlebar`, backlog W22); 0 is the standard one. Nothing
-    /// elsewhere. ABI 28.
+    /// `KUI_TITLEBAR_*`: how tall the titlebar strip is under
+    /// `KUI_CHROME_CUSTOM` — on macOS AppKit's titlebar, and so where the
+    /// traffic lights sit, elsewhere the `titlebar_h` metric
+    /// (`Launcher::titlebar`, backlog W22); 0 is the standard one. ABI 28.
     pub titlebar: u32,
 }
 

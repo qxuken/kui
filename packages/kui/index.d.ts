@@ -1593,8 +1593,11 @@ export interface Metrics {
   /** The drawn menu bar's height. */
   menuBarH: number;
   /** The titlebar's height where the strip is the app's alone: the platform's
-   *  caption height, 32 on Windows and 34 elsewhere. Under macOS custom
-   *  chrome the strip is the OS's own titlebar, as tall as
+   *  caption height, 32 on Windows and 34 elsewhere, or 40 and 52 in a window
+   *  whose launcher asked for a `medium` or `tall` titlebar under custom
+   *  chrome (backlog W22) — the stock number stands for that window's height,
+   *  so a set of the app's keeps it unless it names a number of its own.
+   *  Under macOS custom chrome the strip is the OS's own titlebar, as tall as
    *  `window.native_controls` measures it (32 on macOS 27, 28 before), and
    *  this row is not read (`widgets::titlebar_height`). */
   titlebarH: number;
@@ -1867,15 +1870,16 @@ export interface WindowOptions {
   maxWidth?: number;
   maxHeight?: number;
   chrome?: 'native' | 'custom' | 'borderless';
-  /** How tall the OS's titlebar is under `chrome: 'custom'` on macOS, and
-   *  so where the traffic lights sit (the launcher's `titlebar`, backlog
-   *  W22): `'standard'` (the default; 32 px with the lights at 9,9 on
-   *  macOS 27), `'medium'` (a compact toolbar's, 40 at 12,13) or `'tall'`
-   *  (a full toolbar's, 52 about the lights at 19,19). AppKit's own,
-   *  made with an empty toolbar, so the lights stay where AppKit puts
-   *  them through resizing and fullscreen; what the window got is
-   *  `env().window.nativeControls`, and `titlebar` lays out against it.
-   *  Nothing elsewhere. */
+  /** How tall the titlebar strip is under `chrome: 'custom'` (the
+   *  launcher's `titlebar`, backlog W22): `'standard'` (the default),
+   *  `'medium'` or `'tall'`. On macOS it is AppKit's own titlebar, made
+   *  with an empty toolbar, and so where the traffic lights sit: 32 px
+   *  with them at 9,9 on macOS 27, 40 at 12,13, or 52 about them at
+   *  19,19; what the window got is `env().window.nativeControls`. On
+   *  Windows and Linux the strip is the app's: `'medium'` and `'tall'`
+   *  make the window's `titlebarH` metric 40 and 52 in place of the
+   *  caption's 32 or 34, and a `setMetrics` keeps it unless it names a
+   *  `titlebarH` of its own. `titlebar` lays out against either. */
   titlebar?: 'standard' | 'medium' | 'tall';
   /** What shows through the window where a frame paints nothing or paints
    *  with alpha (the launcher's `backdrop`), by effect: `'opaque'` (the

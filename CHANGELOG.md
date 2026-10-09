@@ -44,8 +44,14 @@ was the first bare bump to break an app in five releases).
   and the toolbar takes no clicks: tabs in the strip press and the empty
   strip drags as before. `titlebar: 'standard' | 'medium' | 'tall'` in
   Node's window options, `KuiRunConfig.titlebar` in C,
-  `Run_Config.titlebar` in Odin; nothing on Windows and Linux. The
-  `titlebar` example takes `--titlebar tall`.
+  `Run_Config.titlebar` in Odin. On Windows and Linux, where the strip
+  is the app's, the same ask makes the window's `titlebar_h` metric 40
+  or 52 in place of the caption's 32 or 34, so one setting draws one
+  strip on all three: `ui.metrics().titlebar_h` and `$titlebar_h` read
+  it, the drawn buttons grow to it, and an app's own metrics keep it
+  while their `titlebar_h` is the stock number
+  (`Core::set_platform_titlebar_h`). The `titlebar` example takes
+  `--titlebar tall`.
 
 - **An image drawn smaller is drawn from a level the core halves**
   (backlog V6, ADR 0044). An `image` drawn at less than half its
