@@ -60,6 +60,43 @@ was the first bare bump to break an app in five releases).
   (`Core::set_platform_titlebar_h`). The `titlebar` example takes
   `--titlebar tall`.
 
+||||||| parent of 2ba22215 (A slot replayed by its host: the extension spared when the host says nothing it feeds it changed, and the core checks everything else (backlog F142, ADR 0045 amending ADR 0016; F143 filed))
+- **A slot replayed by its host** (backlog F142, ADR 0045, amending ADR
+  0016). `Ui::slot_kept` fills a slot as `slot_with` does and keeps what
+  the fill built — every node as its door saw it, before hover, accent
+  and easing touched the spec; the labels, indices and hints beside
+  them; the slots it declared inside; and every fact of the frame it
+  read while it ran. `Ui::slot_replay` is the host's claim that nothing
+  *it* feeds the extension has changed; the core checks everything it
+  can see — the params, each fact read against its value now, that the
+  slot is where it was — and pushes the kept nodes again through the
+  same doors without asking the extension (`SlotFill::Replayed`), or
+  runs it as `slot_kept` would and says why (`NotKept`, `Params`,
+  `Reads`, `NotReplayable`, `Moved`); `Core::slot_fill(name)` reads the
+  answer back. A nested slot is declared again and filled fresh, so an
+  editor's field blinks inside a pane that is not rebuilt. A fill that
+  declared something of the frame (a title, a window, a frame it wants,
+  a devtools tab, audio, a loaded extension), drew a `cells` grid, or
+  failed is kept as not replayable, and so is one that pushed a node
+  through a door the journal does not know — by count, so a door added
+  later is a fresh fill and never a wrong one. Nothing of the frame is
+  cached: layout and emission run as always; what is skipped is the
+  extension's `view` and, for a Lua or C fill, the binding's walk from
+  its tables to the tree, which is where such a fill spends most of its
+  time (about 2 µs a node, sixty times the push). C: `kui_slot_kept`,
+  `kui_slot_replay`, `kui_slot_fill` and the `KUI_SLOT_*` codes (new
+  symbols; the ABI version stays). Lua: `fill { keep = true }`, `fill {
+  replay = true }`, `env.slot_fill(name)`. Node: `<slot keep>`, `<slot
+  replay>`, `ctx.slotFill(name)` (stream v23: `slot` carries a flags
+  word). A reading handed out whole (Lua's `env`) cannot say whether a
+  script used its clock or caret phase, so those two are left out of
+  the comparison and a view that draws from them is one its host must
+  not replay; the explicit doors still note the read. Tests:
+  `tests/slot_replay.rs` (nine), kui-lua's `slots.rs`, the C slots
+  host's `--headless`, Node's `test.mjs` with the C plugin; the bench
+  `slot_1500_nodes_fresh` against `slot_1500_nodes_replayed` (287 against
+  214 µs a frame for a Rust fill, the gap its own pushes; a Lua fill's
+  gap is its whole walk).
 - **An image drawn smaller is drawn from a level the core halves**
   (backlog V6, ADR 0044). An `image` drawn at less than half its
   texels a pixel — a photo on a card, a thumbnail — samples a level
@@ -104,6 +141,10 @@ was the first bare bump to break an app in five releases).
 
 **What you can delete.**
 
+- Throttling or skipping a plugin pane's frames on the host's side —
+  drawing it every other frame, or only on its own events — to keep a
+  Lua or C extension's `view` off the frames it draws nothing new in:
+  `slot_replay` with what the pane reads from the host as the condition.
 - Stamping deadlines in `view` because a handler's `now()` was stale:
   `core.now()` read in `on_event_with` is the time of the event.
 - Resampling a photo to the size it is shown at before `add_image`:

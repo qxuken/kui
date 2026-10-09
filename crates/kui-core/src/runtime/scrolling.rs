@@ -100,7 +100,9 @@ impl Core {
     /// says. Zero for a node that never scrolled, and for one that is not
     /// a container at all — the store keeps offsets, not membership.
     pub fn scroll_offset(&self, key: Key) -> Vec2 {
-        self.scroll.offset(key)
+        let v = self.scroll.offset(key);
+        self.note_read(|| replay::Read::Scroll(key, v));
+        v
     }
 
     /// Everything the last layout resolved for the container `key`: its own
@@ -125,11 +127,13 @@ impl Core {
     /// enclosing container scrolls the whole list past.
     pub fn scroll_geometry(&self, key: Key) -> Option<crate::scroll::ScrollGeometry> {
         let shift = self.dt_shift();
-        self.scroll.geometry(key).map(|mut g| {
+        let g = self.scroll.geometry(key).map(|mut g| {
             g.rect.x -= shift.x;
             g.rect.y -= shift.y;
             g
-        })
+        });
+        self.note_read(|| replay::Read::ScrollGeom(key, g));
+        g
     }
 
     /// The rect the last frame laid `key` out at, in logical viewport px —
@@ -140,6 +144,12 @@ impl Core {
     /// that did not declare `on_layout` last frame; read during a build it
     /// describes the previous frame, like [`Self::scroll_geometry`].
     pub fn layout_of(&self, key: Key) -> Option<Rect> {
+        let r = self.layout_of_raw(key);
+        self.note_read(|| replay::Read::Layout(key, r));
+        r
+    }
+
+    pub(crate) fn layout_of_raw(&self, key: Key) -> Option<Rect> {
         let shift = self.dt_shift();
         // "Last frame" is the one before this build while a build is on,
         // and the one just finished between two — `frame_no` has already

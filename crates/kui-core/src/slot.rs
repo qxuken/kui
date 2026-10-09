@@ -389,6 +389,7 @@ impl Extensions {
         let origin = OriginId(i as u16 + 1);
         ui.fill_within(origin, &slot, self, |ui| {
             if let Err(err) = ext.view(&slot, ui) {
+                ui.core().taint_kept("its view failed");
                 ui.core().warn(crate::diag::extension_view_error(
                     &ext_name,
                     &slot.full_name(),

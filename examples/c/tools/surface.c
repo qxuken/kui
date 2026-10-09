@@ -452,6 +452,17 @@ static int surface(void) {
      * opened under: kui_key_of walks the path from the root for it. */
     check(kui_key_of(ui, KUI_STR("sink")) == k.sink, "kui_key_of resolves a declared label");
     check(kui_key_of(ui, KUI_STR("no such node")) == 0, "kui_key_of is 0 for an undeclared one");
+    /* A slot with nothing loaded under its namespace is a placed, empty
+     * node; kept, replayed and read back the same (ADR 0045): nothing
+     * filled it, so nothing was kept, and the replay says so. */
+    check(kui_slot(ui, KUI_STR("nobody/slot"), NULL), "kui_slot declares a slot nobody fills");
+    check(kui_slot_kept(ui, KUI_STR("nobody/kept"), NULL), "kui_slot_kept declares one too");
+    check(kui_slot_replay(ui, KUI_STR("nobody/replay"), NULL) == KUI_SLOT_NOT_KEPT,
+          "kui_slot_replay with nothing kept fills fresh and says not-kept");
+    check(kui_slot_fill(ui, KUI_STR("nobody/replay")) == KUI_SLOT_NOT_KEPT,
+          "kui_slot_fill reads the answer back");
+    check(kui_slot_fill(ui, KUI_STR("nobody/slot")) == KUI_SLOT_UNDECLARED,
+          "and nothing for a slot never replayed");
     kui_focus(ui, kui_key_of(ui, KUI_STR("sink")));
     check(kui_is_focused(ui, k.sink), "kui_is_focused");
     KuiStr no_text = {0};

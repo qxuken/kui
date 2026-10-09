@@ -696,12 +696,15 @@ impl Core {
 
     /// Whether `key` holds keyboard focus — any node (see `focus`).
     pub fn is_focused(&self, key: Key) -> bool {
-        self.focus == Some(key)
+        let v = self.focus == Some(key);
+        self.note_read(|| replay::Read::Focused(key, v));
+        v
     }
 
     /// The node holding keyboard focus: an editor, an `on_key` sink, or
     /// a control Tab (or assistive technology, or `set_focus`) put it on.
     pub fn focus(&self) -> Option<Key> {
+        self.note_read(|| replay::Read::Focus(self.focus));
         self.focus
     }
 
@@ -709,6 +712,7 @@ impl Core {
     /// rather than a click — when it shows (the default ring, or the
     /// node's `focus_bg`).
     pub fn focus_visible(&self) -> bool {
+        self.note_read(|| replay::Read::FocusVisible(self.focus_visible));
         self.focus_visible
     }
 
@@ -851,6 +855,9 @@ impl Core {
             self.move_focus(None);
             return;
         };
+        if self.keeping() {
+            self.keep_op(replay::Op::KeyFocus(k));
+        }
         if !self.declared_focus.contains(&k) {
             self.declared_focus.push(k);
         }

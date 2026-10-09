@@ -3153,6 +3153,14 @@ export declare class Ctx {
    */
   keyOf(label: string): string | null
   /**
+   * What a `<slot replay>` of `name` got this frame, or the
+   * frame before while this one is being built (ADR 0045):
+   * `'replayed'`, or why it was filled fresh — `'not-kept'`,
+   * `'params'`, `'reads'`, `'not-replayable'`, `'moved'` — or
+   * null when nothing asked.
+   */
+  slotFill(name: string): string | null
+  /**
    * The hex key of the first node in the last finished frame
    * whose accessible name is `name` (backlog F137) — its
    * `label` prop, else its own text, else a control's derived
@@ -4452,6 +4460,14 @@ export declare class KuiWindow {
    * plugin filling a slot is answered from its own nodes only.
    */
   keyOf(label: string): string | null
+  /**
+   * What a `<slot replay>` of `name` got this frame, or the
+   * frame before while this one is being built (ADR 0045):
+   * `'replayed'`, or why it was filled fresh — `'not-kept'`,
+   * `'params'`, `'reads'`, `'not-replayable'`, `'moved'` — or
+   * null when nothing asked.
+   */
+  slotFill(name: string): string | null
   /**
    * The hex key of the first node in the last finished frame
    * whose accessible name is `name` (backlog F137) — its

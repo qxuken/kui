@@ -1596,6 +1596,7 @@ impl Core {
     /// either clears the other
     /// — so this asks in that order rather than merging them.
     pub fn copy_selection(&self) -> Option<String> {
+        self.note_read(|| replay::Read::Opaque);
         if self.selection.is_some() {
             return self.selection_text();
         }
@@ -1642,7 +1643,9 @@ impl Core {
 
     /// Current text of an editor by key.
     pub fn edit_text(&self, key: Key) -> Option<String> {
-        self.edit.text(key)
+        let t = self.edit.text(key);
+        self.note_read(|| replay::Read::EditText(key, t.clone()));
+        t
     }
 
     /// Replaces an editor's text, leaving the caret at the end.

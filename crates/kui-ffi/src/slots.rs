@@ -43,15 +43,72 @@ pub extern "C" fn kui_slot(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiVal
         // own, which carries its extension list and which `borrowing_in`
         // kept a pointer to; otherwise one made here around the context's
         // core and *its* list. The core is behind a raw pointer on the
-        // context so that both can be borrowed at once.
-        let mut local;
-        let ui: &mut kui_core::Ui<'_> = if c.host_ui.is_null() {
-            local = kui_core::Ui::with_filler(unsafe { &mut *c.core }, &mut c.extensions);
-            &mut local
-        } else {
-            unsafe { &mut *c.host_ui.cast() }
+        // context so that both can be borrowed at once (`with_host_ui`).
+        with_host_ui(c, |ui| ui.slot_with(&name, params))
+    })
+}
+
+/// The `Ui` a host's slot call goes through: under `kui_run_with` the
+/// runner's own, which carries its extension list; otherwise one made
+/// around the context's core and *its* list. See [`kui_slot`].
+fn with_host_ui<T>(c: &mut KuiCtx, f: impl FnOnce(&mut kui_core::Ui<'_>) -> T) -> T {
+    if c.host_ui.is_null() {
+        let mut local = kui_core::Ui::with_filler(unsafe { &mut *c.core }, &mut c.extensions);
+        f(&mut local)
+    } else {
+        f(unsafe { &mut *c.host_ui.cast() })
+    }
+}
+
+/// [`kui_slot`], and what the fill built is kept for [`kui_slot_replay`]
+/// to push again next frame (ADR 0045): every node as its door saw it,
+/// the slots declared inside, every fact of the frame the fill read.
+/// Returns what `kui_slot` returns.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_slot_kept(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiValue) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
         };
-        ui.slot_with(&name, params)
+        let name = kstr(name);
+        let params = unsafe { params.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
+        with_host_ui(c, |ui| ui.slot_kept(&name, params))
+    })
+}
+
+/// The host's claim that nothing it feeds the extension filling `name`
+/// has changed since the fill was kept (ADR 0045). The core checks what
+/// it can see — the params, every fact of the frame the kept fill read,
+/// that the slot is declared where it was — and pushes the kept nodes
+/// again without asking the extension (`KUI_SLOT_REPLAYED`), or fills
+/// and keeps it as `kui_slot_kept` would and says why (the other
+/// `KUI_SLOT_*` codes). `KUI_SLOT_UNDECLARED` when the slot was not
+/// declared: a duplicate, or outside a frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_slot_replay(ptr: *mut KuiCtx, name: KuiStr, params: *const KuiValue) -> i32 {
+    guard(-1, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return -1;
+        };
+        let name = kstr(name);
+        let params = unsafe { params.as_ref() }.map_or(&kui_core::Value::Null, |v| &v.0);
+        with_host_ui(c, |ui| ui.slot_replay(&name, params)).map_or(-1, |f| f.code())
+    })
+}
+
+/// What the last `kui_slot_replay` of `name` answered this frame (or the
+/// frame before, while this one is being built), as its `KUI_SLOT_*`
+/// code; `KUI_SLOT_UNDECLARED` when it was not asked.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_slot_fill(ptr: *mut KuiCtx, name: KuiStr) -> i32 {
+    guard(-1, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return -1;
+        };
+        let name = kstr(name);
+        unsafe { &*c.core }
+            .slot_fill(&name)
+            .map_or(-1, |f| f.code())
     })
 }
 

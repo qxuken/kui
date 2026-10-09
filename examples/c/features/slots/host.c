@@ -71,6 +71,7 @@ typedef struct {
     long long toggles; /* replies from the panel */
     uint16_t reply_from;
     uint64_t reply_slot; /* which slot's fill the reply is about */
+    int frames;          /* frames built: the first keeps the panel's fill, the rest replay it */
 } Host;
 
 static KuiValue *msg(const char *kind) {
@@ -127,7 +128,16 @@ static void view(void *user, KuiCtx *ui) {
     KuiValue *params = kui_value_map();
     kui_value_map_set(params, KUI_STR("title"), kui_value_str(KUI_STR("todos, from C")));
     kui_value_map_set(params, KUI_STR("on_toggle"), msg("toggled"));
-    kui_slot(ui, KUI_STR(PANEL_SLOT), params);
+    /* Kept the first frame, replayed after (ADR 0045): nothing this host
+     * feeds the panel changes between frames, so the core pushes the
+     * panel's nodes again without asking it - unless something it read
+     * of the frame moved (the pointer onto a row it hover-tracks), when
+     * it runs the panel and says so in kui_slot_fill. */
+    if (h->frames == 0)
+        kui_slot_kept(ui, KUI_STR(PANEL_SLOT), params);
+    else
+        kui_slot_replay(ui, KUI_STR(PANEL_SLOT), params);
+    h->frames++;
     kui_value_free(params);
 }
 
@@ -210,6 +220,15 @@ static int headless(const char *plugin) {
     printf("loaded %u extension(s)\n", kui_ctx_extension_count(ctx));
 
     frame(ctx, &host);
+    /* A second frame with nothing moved: the kept fill is replayed, and
+     * the row is still there to find (ADR 0045). */
+    frame(ctx, &host);
+    if (kui_slot_fill(ctx, KUI_STR(PANEL_SLOT)) != KUI_SLOT_REPLAYED) {
+        fprintf(stderr, "FAIL: the second frame did not replay the panel (%d)\n",
+                kui_slot_fill(ctx, KUI_STR(PANEL_SLOT)));
+        kui_ctx_free(ctx);
+        return 1;
+    }
 
     float x = 0, y = 0;
     if (!find_row(ctx, 1, &x, &y)) {

@@ -54,6 +54,7 @@ use crate::window::{WindowConfig, WindowId};
 // what it holds). Children of this module, so the fields stay private.
 mod builder;
 pub use builder::Content;
+pub use replay::SlotFill;
 pub mod cause;
 mod composites;
 pub mod devtools;
@@ -65,6 +66,8 @@ pub mod follow;
 mod gesture;
 pub mod inspect;
 mod menu_api;
+/// A slot replayed by its host (ADR 0045).
+pub(crate) mod replay;
 pub(crate) use menu_api::MenuSurface;
 mod menubar_api;
 mod resources_api;
@@ -271,6 +274,14 @@ pub struct Core {
     /// frame; never compared to the last one, since a slot is a position
     /// and not a declaration the core diffs.
     slot_labels: LabelIndex,
+    /// A slot replayed by its host (ADR 0045, `runtime::replay`): the
+    /// fill being kept, the ask for the next one to keep, what each slot
+    /// kept between frames, and what `slot_replay` answered this frame.
+    recording: Option<replay::Recording>,
+    keep_next: Option<(String, Key, Value)>,
+    kept: rustc_hash::FxHashMap<String, replay::Kept>,
+    slot_fills: Vec<(String, replay::SlotFill, Option<String>)>,
+    slot_fills_last: Vec<(String, replay::SlotFill, Option<String>)>,
     /// The key namespace of the fill in progress:
     /// while the node stack is exactly `ns_depth` deep, a child's key is
     /// derived from `ns_key` instead of from the node it is opened under,
@@ -765,6 +776,13 @@ impl Core {
     /// the frame's own facts — viewport, scale, focus — that ride in the
     /// same reading.
     pub fn env_facts(&self) -> crate::schema::EnvFacts {
+        let facts = self.env_facts_raw();
+        // A fill being kept read the frame's facts (ADR 0045).
+        self.note_read(|| replay::Read::Env(facts));
+        facts
+    }
+
+    pub(crate) fn env_facts_raw(&self) -> crate::schema::EnvFacts {
         crate::schema::EnvFacts {
             env: self.env,
             // The frame's viewport, as its `ENV_FIELDS` row says: what the
@@ -776,8 +794,12 @@ impl Core {
             focus: self.focus(),
             focus_visible: self.focus_visible(),
             region: self.region(),
-            caret_visible: self.caret_visible(),
-            now: self.now(),
+            // Read raw, not through the noting doors: the reading carries
+            // both for a binding to hand out, and a kept fill compares the
+            // reading less these two (`replay::env_same`); a view that
+            // wants them counted reads `Ui::caret_visible` / `Ui::now`.
+            caret_visible: self.edit.blink_visible(),
+            now: self.anim.time().unwrap_or(0.0),
         }
     }
 
@@ -1027,6 +1049,11 @@ impl Core {
             key_labels: LabelIndex::default(),
             key_labels_last: LabelIndex::default(),
             slot_labels: LabelIndex::default(),
+            recording: None,
+            keep_next: None,
+            kept: Default::default(),
+            slot_fills: Vec::new(),
+            slot_fills_last: Vec::new(),
             ns_depth: usize::MAX,
             ns_key: Key::ROOT,
             dt_app: None,
@@ -1158,6 +1185,7 @@ impl Core {
         style: &TextStyle,
         max_w: Option<f32>,
     ) -> TextMetrics {
+        self.note_read(|| replay::Read::Measure(self.text_rev()));
         let sess = &mut *self.session.state();
         self.text
             .measure(content, style, &sess.resources, &mut sess.fonts, max_w)
@@ -1191,6 +1219,12 @@ impl Core {
     /// node being declared has no layout yet. A wrapped node answers in
     /// the width it was drawn at.
     pub fn text_hit(&self, key: Key, point: Vec2) -> Option<TextHit> {
+        let hit = self.text_hit_raw(key, point);
+        self.note_read(|| replay::Read::TextHit(key, point, hit));
+        hit
+    }
+
+    pub(crate) fn text_hit_raw(&self, key: Key, point: Vec2) -> Option<TextHit> {
         // The host's point is its own viewport's; the turns, like the
         // text, are the window's, so the shift comes first.
         self.text.hit_at(
@@ -1426,6 +1460,7 @@ impl Core {
     /// (backlog F139), so a deadline set in a click handler after the
     /// window sat idle counts from the click.
     pub fn now(&self) -> f64 {
+        self.note_read(|| replay::Read::Clock);
         self.anim.time().unwrap_or(0.0)
     }
 
@@ -1486,6 +1521,7 @@ impl Core {
     /// caller.
     #[track_caller]
     pub fn request_frame(&mut self) {
+        self.taint_kept("it asked for a frame");
         self.frame_requested = true;
         self.trace_request();
     }
@@ -1500,6 +1536,7 @@ impl Core {
     /// past, or with no clock, is a frame now, as `request_frame` is. A
     /// time that is not a number is ignored.
     pub fn request_frame_at(&mut self, at: f64) {
+        self.taint_kept("it asked for a frame at a time");
         // NaN asks for nothing, and so does a time that never comes.
         if at.is_nan() || at == f64::INFINITY {
             return;
@@ -1703,6 +1740,7 @@ impl Core {
         self.refresh_theme();
         self.framed = true;
         self.frame_no += 1;
+        self.replay_begin_frame();
         // The layout rects a node reported, swept on the one cadence
         // every by-last-use store sweeps on (`retain::sweep_cutoff`, AR45).
         if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {

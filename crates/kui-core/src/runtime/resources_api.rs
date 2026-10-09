@@ -449,6 +449,7 @@ impl Core {
     }
 
     fn declare_audio(&mut self, key: Key, spec: crate::audio::AudioSpec) {
+        self.taint_kept("it declared audio");
         let origin = self.origin;
         let window = self.env.window.id;
         let sess = &mut *self.session.state();

@@ -2881,6 +2881,37 @@ void kui_row_count(KuiCtx *ctx, uint64_t rows);
  * it draws: that warns (`recursive-slot`) and draws nothing. */
 bool kui_slot(KuiCtx *ctx, KuiStr name, const KuiValue *params);
 
+/* A slot replayed by its host (docs/adr/0045-a-slot-replayed-by-its-host.md).
+ * kui_slot_kept is kui_slot, and what the fill built is *kept* for
+ * kui_slot_replay to push again next frame: every node as its door saw it
+ * (before hover, accent and easing touched it), the slots declared inside,
+ * and every fact of the frame the fill read while it ran. kui_slot_replay
+ * is the host's claim that nothing *it* feeds the extension has changed;
+ * the core checks what it can see - the params, every fact the kept fill
+ * read (a hover, a focus, a scroll offset, the theme), that the slot is
+ * declared where it was - and either pushes the kept nodes again without
+ * asking the extension (KUI_SLOT_REPLAYED) or fills and keeps it as
+ * kui_slot_kept would and says why. A kept fill's nested slots are
+ * declared again and filled fresh either way. A slot not declared for a
+ * frame, or filled with plain kui_slot, forgets what it kept. A fill that
+ * declared something of the frame beyond its nodes (a title, a window, a
+ * frame asked for, a devtools tab, a cells grid), or whose view failed,
+ * is kept as not replayable. What the host vouches for is its own side
+ * only: a view that reads the clock off a reading handed out whole is one
+ * its host must not replay. kui_slot_fill reads back what the last
+ * kui_slot_replay of the name answered this frame. New symbols, so
+ * KUI_ABI_VERSION stays. */
+#define KUI_SLOT_UNDECLARED (-1)    /* not declared: a duplicate, or outside a frame */
+#define KUI_SLOT_REPLAYED 0         /* last frame's nodes, pushed again; the extension not asked */
+#define KUI_SLOT_NOT_KEPT 1         /* nothing kept: its first frame, or a frame skipped it */
+#define KUI_SLOT_PARAMS 2           /* the params differ from the kept fill's */
+#define KUI_SLOT_READS 3            /* a fact of the frame the fill read has moved */
+#define KUI_SLOT_NOT_REPLAYABLE 4   /* it declared of the frame, drew what the journal does not know, or failed */
+#define KUI_SLOT_MOVED 5            /* declared under another parent than the kept fill's */
+bool kui_slot_kept(KuiCtx *ctx, KuiStr name, const KuiValue *params);
+int32_t kui_slot_replay(KuiCtx *ctx, KuiStr name, const KuiValue *params);
+int32_t kui_slot_fill(KuiCtx *ctx, KuiStr name);
+
 /* -- Extensions: loading one from C --------------------------- */
 
 /* Load the shared library at `path` as an extension of this context, under

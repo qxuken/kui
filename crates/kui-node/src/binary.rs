@@ -108,7 +108,9 @@ use crate::{Result, err, value_of};
 /// strref for `family` (a stock name or an installed family's; absent
 /// for the paragraph's), a strref for `font` (a handle, which wins;
 /// absent for none) and `size` (0 for the paragraph's).
-pub const VERSION: u32 = 22;
+/// v23: `slot` carries a flags word after its params: 1 keeps the fill,
+/// 2 replays it (ADR 0045). A slot in the middle of an op again.
+pub const VERSION: u32 = 23;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -1192,7 +1194,20 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 Some(s) => payload(s)?,
                 None => kui_core::Value::Null,
             };
-            ui.slot_with(name, &params);
+            // `keep` keeps what the fill builds, `replay` asks for last
+            // frame's back when the view's own side is unchanged (ADR
+            // 0045); `ctx.slotFill(name)` says which it got.
+            match r.u()? {
+                1 => {
+                    ui.slot_kept(name, &params);
+                }
+                2 => {
+                    ui.slot_replay(name, &params);
+                }
+                _ => {
+                    ui.slot_with(name, &params);
+                }
+            }
             Ok(())
         }
         // `d` as a strref or the flat op form, the stroke width slot,

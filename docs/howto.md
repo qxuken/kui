@@ -1772,6 +1772,37 @@ extension stamping its payloads.
 [alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08) ·
 [alpha.13](../CHANGELOG.md#010-alpha13-2026-09-15)
 
+### My plugin's pane costs every frame, even when nothing in it moved — how do I stop asking it?
+
+Declare the slot with `ui.slot_kept("fs/panel", &params)` the frame you
+first show it, and `ui.slot_replay("fs/panel", &params)` after, for as
+long as nothing *you* feed the plugin has changed — the buffers, the
+settings, whatever it reads from you outside kui. That is all you vouch
+for. The core checks the rest itself before it replays: the params are
+the same, every fact of the frame the kept fill read is the same (which
+node was hovered, where its scroller stood, the theme, the focus), and
+the slot is where it was. When all of that holds it pushes last frame's
+nodes again through the doors they came in by, resolving hover and a
+transition's easing for this frame, and never calls the plugin's `view`;
+when any of it does not, it runs the plugin as `slot_kept` would and tells
+you why in the answer (`SlotFill::Params`, `Reads`, `Moved`, `NotKept`,
+`NotReplayable`) and in `core.slot_fill(name)` after. A slot inside the
+plugin's tree — an editor's field, a legend — is declared again and
+filled fresh on a replay, so a caret still blinks inside a pane that is
+not rebuilt. A fill that declares something of the frame beyond its
+nodes (a title, a window, a frame it wants next, a devtools tab), draws
+a `cells` grid, or fails, is kept as not replayable and runs every frame
+as before. In Lua, `fill { name =, params =, keep = true }` then
+`replay = true` and `env.slot_fill(name)`; in C, `kui_slot_kept`,
+`kui_slot_replay` and `kui_slot_fill`; in Node, `<slot keep>` then
+`<slot replay>` and `ctx.slotFill(name)`. A view that reads the clock or
+the caret phase off `env` as a plain field is one you must not replay —
+a reading handed out whole cannot say which fields were used — and the
+explicit doors (`ui.now()`, `env.caret_visible()` as a call) still count.
+
+[ADR 0045](adr/0045-a-slot-replayed-by-its-host.md) ·
+`crates/kui-core/tests/slot_replay.rs`
+
 ### How do I redraw when a thread has new data?
 
 Take the `Waker` the loop hands `App::setup` and clone it into the thread —

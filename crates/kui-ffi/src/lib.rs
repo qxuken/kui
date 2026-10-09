@@ -158,6 +158,7 @@
 //! - Accessibility: [`kui_access_tree`], [`KuiAccessNode`],
 //!   [`kui_input_access`].
 //! - Extensions: [`CExtension`], [`kui_ctx_add_extension`], [`kui_slot`],
+//!   [`kui_slot_kept`], [`kui_slot_replay`], [`kui_slot_fill`],
 //!   [`kui_reply`].
 //! - Diagnostics: [`kui_set_diagnostics`], [`kui_take_warnings`],
 //!   [`kui_set_devtools`].

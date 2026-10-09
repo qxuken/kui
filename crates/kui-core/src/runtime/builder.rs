@@ -270,7 +270,7 @@ impl Core {
         self.tree.keys.first().copied().unwrap_or(Key(0))
     }
 
-    fn current(&self) -> u32 {
+    pub(crate) fn current(&self) -> u32 {
         self.stack.last().copied().unwrap_or(0)
     }
 
@@ -318,12 +318,16 @@ impl Core {
     }
 
     pub fn is_hovered(&self, key: Key) -> bool {
-        self.interaction.is_hovered(key)
+        let v = self.interaction.is_hovered(key);
+        self.note_read(|| replay::Read::Hover(key, v));
+        v
     }
 
     /// Whether files dragged in from the OS are over `key`.
     pub fn is_drop_target(&self, key: Key) -> bool {
-        self.interaction.is_drop_target(key)
+        let v = self.interaction.is_drop_target(key);
+        self.note_read(|| replay::Read::Drop(key, v));
+        v
     }
 
     /// The zone the dragged files are over, if any — what a driver
@@ -333,19 +337,25 @@ impl Core {
     }
 
     pub fn is_pressed(&self, key: Key) -> bool {
-        self.interaction.is_pressed(key)
+        let v = self.interaction.is_pressed(key);
+        self.note_read(|| replay::Read::Pressed(key, v));
+        v
     }
 
     /// Whether any member of hover group `group` (see
     /// `NodeSpec::hover_group`) is hovered.
     pub fn is_group_hovered(&self, group: u64) -> bool {
-        self.interaction.is_group_hovered(group)
+        let v = self.interaction.is_group_hovered(group);
+        self.note_read(|| replay::Read::GroupHover(group, v));
+        v
     }
 
     /// Whether hover group `group` is pressed (press started on a member,
     /// pointer still over one).
     pub fn is_group_pressed(&self, group: u64) -> bool {
-        self.interaction.is_group_pressed(group)
+        let v = self.interaction.is_group_pressed(group);
+        self.note_read(|| replay::Read::GroupPressed(group, v));
+        v
     }
 
     /// Events raised outside `handle_input`: the `resize` a changed
@@ -426,7 +436,9 @@ impl Core {
 
     /// Physical modifier state as of the last `InputEvent::Modifiers`.
     pub fn modifiers(&self) -> crate::input::KeyMods {
-        self.interaction.modifiers()
+        let m = self.interaction.modifiers();
+        self.note_read(|| replay::Read::Mods(m));
+        m
     }
 
     /// Where the pointer is, in this window's logical viewport
@@ -436,7 +448,9 @@ impl Core {
     /// to *react* to the pointer declares `hoverable` or `on_hover` and
     /// lets the core do the hit test.
     pub fn cursor(&self) -> Option<Vec2> {
-        self.interaction.cursor().map(|p| p.minus(self.dt_shift()))
+        let p = self.interaction.cursor().map(|p| p.minus(self.dt_shift()));
+        self.note_read(|| replay::Read::Cursor(p));
+        p
     }
 
     // The open chain is inlined end to end (`Ui::open` → here →
@@ -460,7 +474,7 @@ impl Core {
             return key;
         }
         self.open_with_key(key, spec);
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
         key
     }
 
@@ -532,6 +546,9 @@ impl Core {
         // *data* when the row itself is not built (ADR 0017, tier 3).
         if self.tree.len() as u32 > at {
             self.tree.indexed.push((at, i));
+            if self.keeping() {
+                self.keep_op(replay::Op::Indexed(i));
+            }
         }
         key
     }
@@ -548,6 +565,9 @@ impl Core {
         }
         let at = self.current();
         self.tree.row_counts.push((at, n));
+        if self.keeping() {
+            self.keep_op(replay::Op::RowCountOpen(n));
+        }
     }
 
     /// Opens a node under a key the caller built; see `Ui::open_key`.
@@ -559,6 +579,14 @@ impl Core {
 
     #[inline]
     pub(crate) fn open_with_key(&mut self, key: Key, spec: NodeSpec) {
+        // The spec as declared, before hover, accent and easing touch
+        // it (ADR 0045): a replay resolves those for its own frame.
+        if self.keeping() {
+            self.keep_op(replay::Op::Open {
+                key,
+                spec: Box::new(spec.clone()),
+            });
+        }
         self.open_content(key, spec, NodeContent::Container);
     }
 
@@ -570,7 +598,7 @@ impl Core {
             return;
         }
         self.open_with_key(key, spec);
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
     }
 
     /// `open_with_key` for a node that is a box in every way but what it
@@ -649,7 +677,9 @@ impl Core {
         else {
             return;
         };
+        self.pause_keeping();
         crate::widgets::leaf_hint(&mut Ui::wrap(self), key, &tip);
+        self.resume_keeping();
     }
 
     /// What every node's spec goes through between the door and the tree,
@@ -718,10 +748,16 @@ impl Core {
         {
             let (_, key, hint) = self.hints.pop().unwrap();
             if self.is_hovered(key) {
+                // The core's own nodes, not the fill's (ADR 0045).
+                self.pause_keeping();
                 crate::widgets::hover_hint(&mut Ui::wrap(self), &hint);
+                self.resume_keeping();
             }
         }
         if self.stack.len() > 1 {
+            if self.keeping() {
+                self.keep_op(replay::Op::Close);
+            }
             self.stack.pop();
             self.counters.pop();
         }
@@ -732,7 +768,26 @@ impl Core {
     /// hovered. The one place that decides *when* a tooltip shows, so a
     /// binding that parsed the string cannot show it some other way.
     pub fn hint(&mut self, key: Key, text: impl Into<String>) {
-        self.hints.push((self.stack.len(), key, text.into()));
+        let text = text.into();
+        if self.keeping() {
+            self.keep_op(replay::Op::Hint {
+                key,
+                text: text.as_str().into(),
+            });
+        }
+        self.hints.push((self.stack.len(), key, text));
+    }
+
+    /// Names the node under `key` `label` for `key_of`: what every keyed
+    /// door does after its push, and what a kept fill journals.
+    pub(crate) fn note_label(&mut self, key: Key, label: &str) {
+        self.key_labels.push(key, label, self.origin);
+        if self.keeping() {
+            self.keep_op(replay::Op::Label {
+                key,
+                label: label.into(),
+            });
+        }
     }
 
     /// Opens a node the way a parsed prop list says — under the data
@@ -790,12 +845,20 @@ impl Core {
         // a virtual row is ordered by when the row is not built (ADR 0017).
         if self.tree.len() as u32 > at {
             match identity {
-                Identity::Label(l) => self.key_labels.push(key, l, self.origin),
-                Identity::Index(i) => self.tree.indexed.push((at, i)),
+                Identity::Label(l) => self.note_label(key, l),
+                Identity::Index(i) => {
+                    self.tree.indexed.push((at, i));
+                    if self.keeping() {
+                        self.keep_op(replay::Op::Indexed(i));
+                    }
+                }
                 Identity::Auto => {}
             }
             if let Some(n) = row_count {
                 self.tree.row_counts.push((at, n));
+                if self.keeping() {
+                    self.keep_op(replay::Op::RowCount(n));
+                }
             }
         }
         if key_focus {
@@ -845,6 +908,22 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
+        let key = self.auto_key();
+        if self.keeping() {
+            self.keep_op(replay::Op::Text {
+                key,
+                content: content.into(),
+                style,
+            });
+        }
+        self.text_with_key(key, content, style);
+    }
+
+    /// [`Self::text_node`] under a key the caller derived.
+    pub(crate) fn text_with_key(&mut self, key: Key, content: &str, style: TextStyle) {
+        if self.tree.is_empty() {
+            return;
+        }
         // A style that named no colour takes the theme's foreground here,
         // at the one door text comes through, so the shaping cache, the
         // display list and every binding downstream see a real colour
@@ -855,7 +934,6 @@ impl Core {
             self.text
                 .add(content, &style, &sess.resources, &mut sess.fonts)
         };
-        let key = self.auto_key();
         let parent = self.current();
         self.tree.push(
             parent,
@@ -884,7 +962,7 @@ impl Core {
         self.cells_at(key, grid, spec);
         // Like every other keyed door: the label after the node, so a
         // frame with no root records no name (AR16).
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
     }
 
     /// [`Self::cells`] under a data index; see [`Self::open_indexed`].
@@ -901,6 +979,8 @@ impl Core {
         // and its `transition` tweens the bg, the opacity, the size. The
         // cells inside it are a picture the app redraws, and nothing here
         // touches them (AR5).
+        // A grid is a picture the app redraws, not a spec to journal.
+        self.taint_kept("it drew a cells grid");
         self.prepare_spec(key, &mut spec);
         let cid = self.cells.add(key, grid);
         self.push_leaf(key, spec, NodeContent::Cells(cid));
@@ -920,6 +1000,14 @@ impl Core {
             return Key::ROOT;
         }
         let key = self.child_key(label);
+        if self.keeping() {
+            self.keep_op(replay::Op::Edit {
+                label: label.into(),
+                initial: initial.into(),
+                opts: Box::new(opts.clone()),
+                spec: Box::new(spec.clone()),
+            });
+        }
         self.prepare_spec(key, &mut spec);
         // The same stamp the two text funnels make: an editor that named
         // no text colour and no selection tint takes the theme's, so a
@@ -959,7 +1047,8 @@ impl Core {
         }
         self.push_leaf(key, spec, NodeContent::Edit(key));
         // A leaf keyed by its label, like `open_keyed`: `key_of` must find
-        // the editor an app wants to focus by name.
+        // the editor an app wants to focus by name. Not journaled: the
+        // `Edit` op names its label, and a replay comes back through here.
         self.key_labels.push(key, label, self.origin);
         key
     }
@@ -981,12 +1070,34 @@ impl Core {
         &mut self,
         id: crate::resources::ImageId,
         opts: crate::resources::ImageOpts,
-        mut spec: NodeSpec,
+        spec: NodeSpec,
     ) {
         if self.tree.is_empty() {
             return;
         }
         let key = self.auto_key();
+        if self.keeping() {
+            self.keep_op(replay::Op::Image {
+                key,
+                id,
+                opts,
+                spec: Box::new(spec.clone()),
+            });
+        }
+        self.image_with_key(key, id, opts, spec);
+    }
+
+    /// [`Self::image_node_with`] under a key the caller derived.
+    pub(crate) fn image_with_key(
+        &mut self,
+        key: Key,
+        id: crate::resources::ImageId,
+        opts: crate::resources::ImageOpts,
+        mut spec: NodeSpec,
+    ) {
+        if self.tree.is_empty() {
+            return;
+        }
         self.prepare_spec(key, &mut spec);
         self.push_leaf(key, spec, NodeContent::Image(id, opts));
     }
@@ -1066,7 +1177,7 @@ impl Core {
         }
         let key = self.child_key(label);
         self.fragment_with_key(key, frag.into(), params, spec);
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
         key
     }
 
@@ -1086,13 +1197,21 @@ impl Core {
         key
     }
 
-    fn fragment_with_key(
+    pub(crate) fn fragment_with_key(
         &mut self,
         key: Key,
         frag: crate::fragment::FragmentRef,
         params: &[f32],
         spec: NodeSpec,
     ) {
+        if self.keeping() {
+            self.keep_op(replay::Op::Fragment {
+                key,
+                frag,
+                params: params.to_vec(),
+                spec: Box::new(spec.clone()),
+            });
+        }
         let (params, dropped) = crate::fragment::params_of(params);
         if dropped > 0 {
             self.diag.raise(Warning {
@@ -1157,7 +1276,7 @@ impl Core {
         let key = self.child_key(label);
         self.line_with_key(key, points, &stroke, spec);
         // Like every other keyed door: the label `key_of` resolves through.
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
     }
 
     /// [`Self::line_node`] under a data index; see [`Self::open_indexed`].
@@ -1172,10 +1291,25 @@ impl Core {
     /// The stroke is lent from here down: at 44 bytes with its dash it
     /// is passed in memory, and a copy at each call of the chain was
     /// most of what a solid line cost over alpha.36's (backlog C52).
-    fn line_with_key(&mut self, key: Key, points: &[Vec2], stroke: &Stroke, mut spec: NodeSpec) {
+    pub(crate) fn line_with_key(
+        &mut self,
+        key: Key,
+        points: &[Vec2],
+        stroke: &Stroke,
+        mut spec: NodeSpec,
+    ) {
+        let declared = self.keeping().then(|| spec.clone());
         let Some((id, rect)) = self.lines.push(points, stroke) else {
             return;
         };
+        if let Some(spec) = declared {
+            self.keep_op(replay::Op::Line {
+                key,
+                points: points.to_vec(),
+                stroke: *stroke,
+                spec: Box::new(spec),
+            });
+        }
         // The stroke colour rides in the slot backgrounds tween through, so
         // `transition`, `enter` and `exit` reach it with no slot of its own;
         // nothing else of the box vocabulary applies to a stroke.
@@ -1227,7 +1361,7 @@ impl Core {
         }
         let key = self.child_key(label);
         self.polygon_with_key(key, points, spec);
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
     }
 
     /// [`Self::polygon_node`] under a data index; see [`Self::open_indexed`].
@@ -1250,9 +1384,16 @@ impl Core {
         id
     }
 
-    fn polygon_with_key(&mut self, key: Key, points: &[Vec2], mut spec: NodeSpec) {
+    pub(crate) fn polygon_with_key(&mut self, key: Key, points: &[Vec2], mut spec: NodeSpec) {
         if points.len() < 3 {
             return;
+        }
+        if self.keeping() {
+            self.keep_op(replay::Op::Polygon {
+                key,
+                points: points.to_vec(),
+                spec: Box::new(spec.clone()),
+            });
         }
         if points.len() > crate::fragment::POLYGON_MAX_POINTS {
             self.diag.raise(Warning {
@@ -1358,7 +1499,7 @@ impl Core {
             path.turn(),
             spec,
         );
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
     }
 
     /// [`Self::path_node`] under a data index; see [`Self::open_indexed`].
@@ -1417,7 +1558,7 @@ impl Core {
         }
         let key = self.child_key(label);
         self.path_node_d(key, d, rule, stroke, turn, spec);
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
     }
 
     /// [`Self::path_d_node`] under a key the caller derived.
@@ -1500,7 +1641,7 @@ impl Core {
         }
         let key = self.child_key(label);
         self.path_node_flat(key, floats, rule, stroke, turn, spec);
-        self.key_labels.push(key, label, self.origin);
+        self.note_label(key, label);
     }
 
     /// [`Self::path_flat_node`] under a key the caller derived.
@@ -1526,7 +1667,7 @@ impl Core {
         }
     }
 
-    fn path_with_key(
+    pub(crate) fn path_with_key(
         &mut self,
         key: Key,
         ops: &[crate::path::PathOp],
@@ -1535,6 +1676,7 @@ impl Core {
         turn: Option<crate::path::Turn>,
         mut spec: NodeSpec,
     ) {
+        let declared = self.keeping().then(|| spec.clone());
         // A number that is not one - `1e99` in `d` is an infinity, a
         // chart's 0/0 a NaN - has no outline to draw: the bounds would
         // drop it and the rasterizer would not.
@@ -1558,6 +1700,16 @@ impl Core {
         let Some((id, rect)) = self.paths.push(ops, rule, stroke_w, dash, turn) else {
             return;
         };
+        if let Some(spec) = declared {
+            self.keep_op(replay::Op::Path {
+                key,
+                ops: ops.to_vec(),
+                rule,
+                stroke,
+                turn,
+                spec: Box::new(spec),
+            });
+        }
         // The mask is the box at the frame's scale; past what a texture
         // can hold it draws nothing, and says so once per key. A box
         // that is not finite - a coordinate past what an f32 holds, a NaN
@@ -1631,6 +1783,25 @@ impl Core {
         if self.tree.is_empty() {
             return;
         }
+        let key = self.auto_key();
+        if self.keeping() {
+            self.keep_op(replay::Op::Rich {
+                key,
+                spans: spans
+                    .iter()
+                    .map(|s| (s.text.into(), Span { text: "", ..*s }))
+                    .collect(),
+                base,
+            });
+        }
+        self.rich_text_with_key(key, spans, base);
+    }
+
+    /// [`Self::rich_text_node`] under a key the caller derived.
+    pub(crate) fn rich_text_with_key(&mut self, key: Key, spans: &[Span<'_>], base: TextStyle) {
+        if self.tree.is_empty() {
+            return;
+        }
         // The paragraph's own colour, which each span falls back to.
         let base = base.or_fg(self.theme.fg);
         let tid = {
@@ -1638,7 +1809,6 @@ impl Core {
             self.text
                 .add_rich(spans, &base, &sess.resources, &mut sess.fonts)
         };
-        let key = self.auto_key();
         let parent = self.current();
         self.tree.push(
             parent,

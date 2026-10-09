@@ -1311,3 +1311,74 @@ fn list_100k_rows_variable_learning(bencher: divan::Bencher) {
 fn main() {
     divan::main();
 }
+
+// -- A slot replayed by its host (ADR 0045) --------------------------------
+// An extension filling a slot with 500 rows — a box with a text and a
+// hover-tracking box each, 1,500 nodes — built fresh every frame against
+// the same frame replayed from what the first fill kept. The gap is what
+// the host of a plugin pane saves when nothing the pane reads has moved:
+// the extension's `view` and, for a binding, the walk from its tables
+// to the tree, which is where a Lua or C fill spends most of its time
+// and which this Rust stand-in pays nothing for.
+
+struct Rows;
+
+impl kui_core::Extension for Rows {
+    fn name(&self) -> &str {
+        "rows"
+    }
+    fn slots(&self) -> &[String] {
+        &[]
+    }
+    fn view(&mut self, _slot: &kui_core::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        ui.with_keyed("list", NodeSpec::column().gap(1.0), |ui| {
+            for i in 0..500u64 {
+                ui.with_indexed(
+                    i,
+                    NodeSpec::row()
+                        .size(300.0, 14.0)
+                        .hover_bg(Color::hex(0x3355ffff)),
+                    |ui| {
+                        ui.text("a row of the list", TextStyle::new(11.0));
+                        ui.leaf(NodeSpec::row().size(10.0, 10.0).bg(Color::hex(0x101018ff)));
+                    },
+                );
+            }
+        });
+        Ok(())
+    }
+    fn on_event(&mut self, _ev: &kui_core::UiEvent) -> Vec<Value> {
+        Vec::new()
+    }
+}
+
+fn run_slot_frame(core: &mut Core, exts: &mut kui_core::Extensions, replay: bool) -> usize {
+    let mut ui = core.frame_with(Size::new(1920.0, 1080.0), 2.0, exts);
+    ui.configure_root(NodeSpec::column().fill());
+    if replay {
+        ui.slot_replay("rows/root", &Value::Null);
+    } else {
+        ui.slot_kept("rows/root", &Value::Null);
+    }
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+#[divan::bench]
+fn slot_1500_nodes_fresh(bencher: divan::Bencher) {
+    let mut exts = kui_core::Extensions::new();
+    exts.push_as("rows", Box::new(Rows)).unwrap();
+    let mut core = Core::new();
+    run_slot_frame(&mut core, &mut exts, false);
+    bencher.bench_local(|| run_slot_frame(&mut core, &mut exts, false));
+}
+
+#[divan::bench]
+fn slot_1500_nodes_replayed(bencher: divan::Bencher) {
+    let mut exts = kui_core::Extensions::new();
+    exts.push_as("rows", Box::new(Rows)).unwrap();
+    let mut core = Core::new();
+    run_slot_frame(&mut core, &mut exts, false);
+    bencher.bench_local(|| run_slot_frame(&mut core, &mut exts, true));
+}

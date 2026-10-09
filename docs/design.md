@@ -33,7 +33,11 @@ recorded under [adr/](adr); this page is their consequences for an app.
   borrowed frame, so Lua and C are two implementations of it rather than
   two mechanisms; where it draws is a slot the host declares, under a
   namespace the host decides, with parameters in and replies out
-  ([ADR 0014](adr/0014-slots-an-extension-fills-in-place.md)).
+  ([ADR 0014](adr/0014-slots-an-extension-fills-in-place.md)); a host that
+  can say nothing it feeds an extension changed may have the slot replayed
+  from what its fill built last frame, the core checking the params and
+  every fact of the frame the fill read before it spares the extension
+  ([ADR 0045](adr/0045-a-slot-replayed-by-its-host.md)).
   Full keyboard input is data too: a node declaring `on_key` becomes a
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
   click) every press arrives as `{kind="key", phase="down", code, mods,

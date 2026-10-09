@@ -860,6 +860,7 @@ impl Core {
     /// `Ui::devtools_tab` / `devtools_tab_with`, for a binding that
     /// opens the content itself.
     pub fn devtools_tab_declare(&mut self, name: &str, label: &str, slot: Option<&str>) -> bool {
+        self.taint_kept("it declared a devtools tab");
         if !cfg!(feature = "devtools") || self.tree.is_empty() {
             return false;
         }

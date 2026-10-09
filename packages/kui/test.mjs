@@ -8635,7 +8635,7 @@ test('a slot places its node with nothing loaded, and rejects what it is not', (
   );
   assert.throws(
     () => enc.encode(box({}, [el('slot', { name: 'todos/panel', bg: '#fff' })])),
-    /takes name and params/,
+    /takes name, params, keep and replay/,
   );
 });
 
@@ -8712,6 +8712,65 @@ test('a C extension fills the slot the view declares, and its reply comes back',
   assert.ok(
     !events.some((e) => e.payload?.kind === 'toggle'),
     'the plugin’s own event stayed with the plugin',
+  );
+});
+
+// A slot replayed by its host (ADR 0045), through the same C plugin.
+test('a replayed slot spares the plugin, and says why when it cannot (ADR 0045)', (t) => {
+  const name = process.platform === 'win32' ? 'panel.dll' : 'panel.so';
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const plugin = ['debug', 'release']
+    .map((p) => join(root, 'target', p, name))
+    .find(existsSync);
+  if (!plugin) {
+    t.skip(`build examples/c first (no target/*/${name})`);
+    return;
+  }
+  const ctx = new Ctx();
+  ctx.addExtension('todos', plugin);
+  const enc = createEncoder(protocol());
+  const draw = (title, how) => {
+    const tree = box({ width: 'grow', height: 'grow', pad: 0 }, [
+      el('slot', { name: 'todos/panel', params: { title }, ...how }),
+    ]);
+    const { stream, strings } = enc.encode(tree);
+    ctx.frameBinary(900, 600, 1, stream, strings);
+  };
+  const row = () =>
+    ctx
+      .accessTree()
+      .nodes.find((n) => n.origin === 1 && typeof n.name === 'string' && n.name.startsWith('[ '));
+
+  draw('todos', { keep: true });
+  assert.ok(row(), 'the plugin drew its rows');
+  assert.equal(ctx.slotFill('todos/panel'), null, 'nothing asked yet');
+  draw('todos', { replay: true });
+  assert.equal(ctx.slotFill('todos/panel'), 'replayed');
+  assert.ok(row(), 'the rows are there, replayed');
+  draw('todos', { replay: true });
+  assert.equal(ctx.slotFill('todos/panel'), 'replayed');
+
+  // Other params: the plugin runs.
+  draw('chores', { replay: true });
+  assert.equal(ctx.slotFill('todos/panel'), 'params');
+  draw('chores', { replay: true });
+  assert.equal(ctx.slotFill('todos/panel'), 'replayed');
+
+  // A plain frame forgets what was kept.
+  draw('chores', {});
+  draw('chores', { replay: true });
+  assert.equal(ctx.slotFill('todos/panel'), 'not-kept');
+
+  // The pointer onto a row the plugin hover-tracks: a replay still, since
+  // the row's hover is declared, not read — and the row paints hovered.
+  const r = row();
+  ctx.cursor(r.rect.x + r.rect.w / 2, r.rect.y + r.rect.h / 2);
+  draw('chores', { replay: true });
+  assert.ok(['replayed', 'reads'].includes(ctx.slotFill('todos/panel')));
+
+  assert.throws(
+    () => enc.encode(box({}, [el('slot', { name: 'todos/panel', keep: true, replay: true })])),
+    /keep or replay, not both/,
   );
 });
 

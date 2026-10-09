@@ -457,6 +457,7 @@ impl Core {
     /// what for, in a trace.
     #[track_caller]
     pub(crate) fn owe_frame(&mut self, why: &'static str) {
+        self.taint_kept("a widget in it owes a frame");
         self.frame_requested = true;
         if self.trace.on {
             self.trace.ask(why, Location::caller());

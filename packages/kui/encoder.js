@@ -875,14 +875,22 @@ export function createEncoder(P) {
           throw new Error(`bad slot name ${JSON.stringify(p.name)} (a full "namespace/slot")`);
         }
         for (const k of Object.keys(p)) {
-          if (k !== 'name' && k !== 'params' && k !== 'children') {
-            throw new Error(`<slot> takes name and params, not ${JSON.stringify(k)} — it is a position, not a box`);
+          if (k !== 'name' && k !== 'params' && k !== 'keep' && k !== 'replay' && k !== 'children') {
+            throw new Error(`<slot> takes name, params, keep and replay, not ${JSON.stringify(k)} — it is a position, not a box`);
           }
         }
-        reserve(6);
+        // A slot replayed by its host (ADR 0045): `keep` keeps what the
+        // fill builds, `replay` asks for last frame's back when the view's
+        // own side of it is unchanged; `ctx.slotFill(name)` says which it
+        // got. One or the other.
+        if (p.keep && p.replay) {
+          throw new Error('<slot> takes keep or replay, not both');
+        }
+        reserve(7);
         f[fi++] = OP.slot;
         strRef(p.name);
         strRef(p.params != null ? JSON.stringify(p.params) : null);
+        f[fi++] = p.replay ? 2 : p.keep ? 1 : 0;
         return;
       }
       case 'devtoolsTab': {

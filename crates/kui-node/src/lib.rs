@@ -3516,6 +3516,16 @@ macro_rules! core_methods {
                 self.$core().key_of(&label).map(key_str)
             }
 
+            /// What a `<slot replay>` of `name` got this frame, or the
+            /// frame before while this one is being built (ADR 0045):
+            /// `'replayed'`, or why it was filled fresh — `'not-kept'`,
+            /// `'params'`, `'reads'`, `'not-replayable'`, `'moved'` — or
+            /// null when nothing asked.
+            #[napi]
+            pub fn slot_fill(&mut self, name: String) -> Option<String> {
+                self.$core().slot_fill(&name).map(|f| f.name().to_owned())
+            }
+
             /// The hex key of the first node in the last finished frame
             /// whose accessible name is `name` (backlog F137) — its
             /// `label` prop, else its own text, else a control's derived

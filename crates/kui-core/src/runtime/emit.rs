@@ -594,6 +594,7 @@ impl Core {
         self.layout_frame();
         self.emit_frame();
         self.building = false;
+        self.replay_finish_frame();
         self.submenu_frame_end();
         // An exit named for a removal is for this frame's departures,
         // which `emit_frame` has collected (backlog F136).
@@ -2273,7 +2274,9 @@ impl Core {
     /// keyboard, where the driver parks it hidden, shows neither.
     /// Headless it stays `true`.
     pub fn caret_visible(&self) -> bool {
-        self.edit.blink_visible()
+        let v = self.edit.blink_visible();
+        self.note_read(|| replay::Read::Caret(v));
+        v
     }
 
     /// Sets the blink phase; the driver's, on its clock. A frame is the

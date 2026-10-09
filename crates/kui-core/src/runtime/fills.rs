@@ -78,6 +78,8 @@ impl Core {
         self.ns_depth = depth;
         self.ns_key = slot.key;
         let first = self.tree.len() as u32;
+        // The fill the host asked to keep begins here (ADR 0045).
+        self.begin_keeping(slot, origin);
 
         match filler {
             Some(filler) => f(&mut Ui::with_filler(self, filler)),
@@ -98,6 +100,7 @@ impl Core {
             self.stack.truncate(depth);
             self.counters.truncate(depth);
         }
+        self.end_keeping(slot);
         if let Some(c) = self.counters.last_mut() {
             *c = saved_counter;
         }

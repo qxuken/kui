@@ -147,7 +147,10 @@
 //!   with them. `splitter(env, { key =, dir =, on_drag = })` is a draggable
 //!   divider.
 //! - Hosting: `fill { name = "ns/slot", params = }` is the position a C
-//!   plugin this script loaded draws in; `devtools_tab { name =, label =,
+//!   plugin this script loaded draws in — `keep = true` keeps what it
+//!   built, `replay = true` asks for last frame's back while nothing the
+//!   script feeds it changed, `env.slot_fill(name)` says which it got
+//!   (ADR 0045); `devtools_tab { name =, label =,
 //!   slot = | view = }` adds a tab to the core's devtools panel.
 //!
 //! ## The `env` table
@@ -954,6 +957,16 @@ fn env_table<'scope, 'env: 'scope>(
             Ok(())
         })?,
     )?;
+    // What a `fill { replay = true }` of `name` got this frame (ADR
+    // 0045): `"replayed"`, or why it was filled fresh — `"not-kept"`,
+    // `"params"`, `"reads"`, `"not-replayable"`, `"moved"` — or nil
+    // when nothing asked.
+    t.set(
+        "slot_fill",
+        scope.create_function(move |_, name: String| {
+            Ok(ui.borrow_mut().core().slot_fill(&name).map(|f| f.name()))
+        })?,
+    )?;
     // The exit a node leaves by if it leaves this frame (backlog F136),
     // over the one it declared: `env.exit_with("card", { dx = 400,
     // opacity = 0 })` aims a throw before the view drops the card.
@@ -1708,9 +1721,9 @@ fn build_fill(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         let (k, _) = pair?;
         let mlua::Value::String(k) = k else { continue };
         let k = k.to_str()?;
-        if !matches!(k.as_ref(), "type" | "name" | "params") {
+        if !matches!(k.as_ref(), "type" | "name" | "params" | "keep" | "replay") {
             return Err(bad(format!(
-                "fill takes name and params, not {:?} — it is a position, not a box",
+                "fill takes name, params, keep and replay, not {:?} — it is a position, not a box",
                 k.as_ref()
             )));
         }
@@ -1719,7 +1732,22 @@ fn build_fill(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
         mlua::Value::Nil => Value::Null,
         v => lua_to_value(&v)?,
     };
-    ui.slot_with(&name, &params);
+    // A slot replayed by its host (ADR 0045): `keep = true` keeps what
+    // the fill builds, `replay = true` asks for last frame's back when
+    // the script's own side of it is unchanged; `env.slot_fill(name)`
+    // says which it got.
+    let keep: bool = t.get::<Option<bool>>("keep")?.unwrap_or(false);
+    let replay: bool = t.get::<Option<bool>>("replay")?.unwrap_or(false);
+    if keep && replay {
+        return Err(bad("fill takes keep or replay, not both"));
+    }
+    if replay {
+        ui.slot_replay(&name, &params);
+    } else if keep {
+        ui.slot_kept(&name, &params);
+    } else {
+        ui.slot_with(&name, &params);
+    }
     Ok(())
 }
 

@@ -48,7 +48,7 @@ use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::line::Stroke;
-use crate::runtime::Core;
+use crate::runtime::{Core, SlotFill};
 use crate::slot::{Fill, Slot};
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
@@ -116,10 +116,107 @@ impl<'a> Ui<'a> {
         let Some(key) = self.core.begin_slot(name) else {
             return false;
         };
+        self.fill_slot(name, key, params);
+        true
+    }
+
+    /// Fills the slot declared at `key`, plainly. Inside a fill being
+    /// kept, the slot is journaled as a slot — to be declared again and
+    /// filled fresh on a replay — and what fills it now is not the kept
+    /// fill's own (ADR 0045).
+    fn fill_slot(&mut self, name: &str, key: Key, params: &Value) {
+        let keeping = self.core.keeping();
+        if keeping {
+            self.core.keep_op(crate::runtime::replay::Op::Slot {
+                name: name.into(),
+                params: params.clone(),
+            });
+            self.core.pause_keeping();
+        }
         if let Some(filler) = self.filler.as_deref_mut() {
             filler.fill(name, key, params, &mut Ui::new(self.core));
         }
+        if keeping {
+            self.core.resume_keeping();
+        }
+    }
+
+    /// [`Self::slot_with`], and what the fill built is *kept* for
+    /// [`Self::slot_replay`] to push again next frame (ADR 0045): every
+    /// node as its door saw it, the slots declared inside, and every fact
+    /// of the frame the fill read. Whether the slot was declared, as
+    /// `slot_with` answers. Inside a fill that is itself being kept this
+    /// is `slot_with`: a kept fill's nested slots are filled fresh on a
+    /// replay, and so are not kept of their own.
+    pub fn slot_kept(&mut self, name: &str, params: &Value) -> bool {
+        let Some(key) = self.core.begin_slot(name) else {
+            return false;
+        };
+        if self.core.keeping() {
+            self.fill_slot(name, key, params);
+        } else {
+            self.fill_and_keep(name, key, params);
+        }
         true
+    }
+
+    /// The host's claim that nothing it feeds the extension filling
+    /// `name` has changed since the fill was kept (ADR 0045). The core
+    /// checks what it can see — the params, every fact of the frame the
+    /// kept fill read, that the slot is declared where it was — and
+    /// pushes the kept nodes again without asking the extension
+    /// (`SlotFill::Replayed`), or fills and keeps it as `slot_kept`
+    /// would and says why (the other answers). `None` when the slot was
+    /// not declared (a duplicate, or outside a frame). The kept fill's
+    /// nested slots are declared again and filled fresh either way.
+    ///
+    /// What the host vouches for is its own side only: the state the
+    /// extension reads from the host outside kui. A view that reads the
+    /// env's clock or caret phase off a reading handed out whole (Lua's
+    /// `env.now`) is one the host must not replay, since a reading does
+    /// not say which of its fields were used.
+    pub fn slot_replay(&mut self, name: &str, params: &Value) -> Option<SlotFill> {
+        let key = self.core.begin_slot(name)?;
+        if self.core.keeping() {
+            // Nested in a fill being kept: plain, as `slot_kept` is.
+            self.fill_slot(name, key, params);
+            return Some(SlotFill::NotKept);
+        }
+        let (fill, why) = match self.core.take_replayable(name, key, params) {
+            Ok(kept) => {
+                let (namespace, short) = crate::slot::split_name(name);
+                let slot = Slot {
+                    name: short,
+                    namespace,
+                    params,
+                    key,
+                };
+                // Matched out so the filler is a coercion site: the
+                // borrow's object lifetime shortens to the call's.
+                match self.filler.as_deref_mut() {
+                    Some(f) => self.core.replay(name, &slot, kept, Some(f)),
+                    None => self.core.replay(name, &slot, kept, None),
+                }
+                (SlotFill::Replayed, None)
+            }
+            Err((fill, why)) => {
+                self.fill_and_keep(name, key, params);
+                (fill, why)
+            }
+        };
+        self.core.note_slot_fill(name, fill, why);
+        Some(fill)
+    }
+
+    /// Fills the slot declared at `key` and keeps what the fill built —
+    /// unless a fill is already being kept, when it is a plain fill.
+    fn fill_and_keep(&mut self, name: &str, key: Key, params: &Value) {
+        self.core.keep_next_fill(name, key, params);
+        if let Some(filler) = self.filler.as_deref_mut() {
+            filler.fill(name, key, params, &mut Ui::new(self.core));
+        }
+        // Nothing filled it: the ask lapses.
+        self.core.forget_next_fill();
     }
 
     /// Whether the full name `name` was declared this frame so far.
@@ -241,6 +338,8 @@ impl<'a> Ui<'a> {
         namespace: &str,
         ext: Box<dyn crate::runtime::Extension>,
     ) -> Result<OriginId, String> {
+        // A fill that loads an extension wants its next frame.
+        self.core.taint_kept("it loaded an extension");
         match self.filler.as_deref_mut() {
             Some(filler) => filler.add(namespace, ext),
             None => Err(format!(

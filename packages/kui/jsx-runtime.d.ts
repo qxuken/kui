@@ -838,8 +838,16 @@ export declare namespace JSX {
      *
      *  A position, not a box: it takes no other props, and with nothing
      *  loaded under that namespace it places an empty node so a view can
-     *  declare its layout before it has a plugin to put in it. */
-    slot: { name: string; params?: unknown };
+     *  declare its layout before it has a plugin to put in it.
+     *
+     *  `keep` keeps what the fill builds, and `replay` is the view's claim
+     *  that nothing it feeds the plugin has changed since: the core checks
+     *  what it can see — the params, every fact of the frame the kept fill
+     *  read, that the slot is where it was — and pushes last frame's nodes
+     *  again without asking the plugin, or fills and keeps it and says why
+     *  in `ctx.slotFill(name)` (docs/adr/0045-a-slot-replayed-by-its-host.md).
+     *  One or the other. */
+    slot: { name: string; params?: unknown; keep?: boolean; replay?: boolean };
     /** A tab in the core's devtools panel, beside facts, events and tree
      *  (docs/adr/0032-a-devtools-tab-mounts-a-slot.md). `name` is the tab's
      *  identity, `label` what the strip shows (the name when left out).

@@ -5,6 +5,23 @@ date: 2026-09-09
 
 # Caching against the last frame: the access tree yes, the frame no
 
+> **Amended 2026-10-09 by [ADR 0045](0045-a-slot-replayed-by-its-host.md).**
+> Decision 2 below refuses a `memo` element in the form that asks the
+> *view* to declare its own dependencies, and it stands as written. ADR
+> 0045 admits a different form: the *host* declares an extension's slot
+> unchanged (`Ui::slot_replay`), vouching only for what the extension
+> reads from the host itself, and the core checks everything it can see
+> — the params, every fact of the frame the kept fill read, with the
+> value read compared against the value now — before pushing the kept
+> fill's nodes again through the doors they came in by. Nothing of the
+> frame is cached: layout and emission run as they always did, and
+> decision 1 is untouched. What moved the line is a measurement that
+> this document did not have: a Lua extension's fill costs about 2 µs a
+> node in the binding's walk from its tables to the tree, sixty times the
+> push, on frames where the pane did nothing — the half of the bill
+> option C alone addressed, which is why "it will keep being proposed"
+> was written here and why its proposal now has a document.
+
 > **Accepted (2026-09-09), and its one yes is built.** Out of the
 > performance round that shipped the quad shrink and closed C24. It asks
 > one question — may a frame reuse work from the frame before it, and

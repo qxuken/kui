@@ -515,3 +515,135 @@ fn a_script_loads_a_c_plugin_and_places_it() {
         "and the host hears the script, not the plugin it placed"
     );
 }
+
+// -- a slot replayed by its host (ADR 0045) ----------------------------------
+
+/// A plugin that counts its views: a stand-in for the panel a script
+/// hosts, read back through the shared cell since the boxed extension
+/// is the runner's once loaded.
+struct Counted {
+    slots: Vec<String>,
+    views: std::rc::Rc<std::cell::Cell<usize>>,
+}
+
+impl Extension for Counted {
+    fn name(&self) -> &str {
+        "counted"
+    }
+    fn slots(&self) -> &[String] {
+        &self.slots
+    }
+    fn view(&mut self, slot: &Slot<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
+        self.views.set(self.views.get() + 1);
+        let title = slot
+            .params
+            .get_str("title")
+            .unwrap_or("untitled")
+            .to_owned();
+        ui.text_in_keyed(
+            "row",
+            NodeSpec::column()
+                .width(kui_core::Sizing::Fixed(40.0))
+                .height(kui_core::Sizing::Fixed(20.0))
+                .focusable(),
+            &title,
+            kui_core::TextStyle::new(12.0),
+        );
+        Ok(())
+    }
+    fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+        Vec::new()
+    }
+}
+
+/// A script that places a plugin with `replay = true` and reports what
+/// it got through a global the test reads back.
+const REPLAYING: &str = r#"
+    slots = { "panel" }
+    title = "first"
+    last_fill = "?"
+    function view(env, slot)
+      last_fill = tostring(env.slot_fill("todos/panel"))
+      return column { key = "outer", width = "grow", height = "grow",
+        text("the script"),
+        fill { name = "todos/panel", params = { title = title }, replay = true },
+      }
+    end
+"#;
+
+#[test]
+fn a_script_replays_a_plugins_fill_and_reads_what_it_got() {
+    let views = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut exts = Extensions::new();
+    let script = LuaExtension::from_source("host.lua", REPLAYING).unwrap();
+    let lua = script.lua().clone();
+    exts.push_as("ui", Box::new(script)).unwrap();
+    exts.push_as(
+        "todos",
+        Box::new(Counted {
+            slots: vec!["panel".into()],
+            views: views.clone(),
+        }),
+    )
+    .unwrap();
+    let mut core = Core::new();
+    let fill = |lua: &mlua::Lua| lua.globals().get::<String>("last_fill").unwrap();
+
+    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
+    assert_eq!(views.get(), 1);
+    assert_eq!(fill(&lua), "nil", "nothing asked before the first view");
+    assert_eq!(
+        core.slot_fill("todos/panel").map(|f| f.name()),
+        Some("not-kept")
+    );
+
+    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
+    assert_eq!(views.get(), 1, "the plugin was not asked");
+    assert_eq!(
+        core.slot_fill("todos/panel").map(|f| f.name()),
+        Some("replayed")
+    );
+    // The script's next view reads the frame before's answer.
+    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
+    assert_eq!(fill(&lua), "replayed");
+    assert_eq!(views.get(), 1);
+    let row = core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("first"))
+        .expect("the plugin's row, replayed");
+    assert_eq!(row.origin, kui_core::OriginId(2));
+
+    // Other params: the plugin runs, and draws the new title.
+    lua.globals().set("title", "second").unwrap();
+    host_frame(&mut core, &mut exts, "ui/panel", &Value::Null);
+    assert_eq!(views.get(), 2);
+    assert_eq!(
+        core.slot_fill("todos/panel").map(|f| f.name()),
+        Some("params")
+    );
+    assert!(
+        core.access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("second"))
+    );
+
+    // `keep` and `replay` together is refused where the fill is read.
+    let err = LuaExtension::from_source(
+        "both.lua",
+        r#"function view(env, slot) return column { fill { name = "a/b", keep = true, replay = true } } end"#,
+    )
+    .unwrap();
+    let mut exts = Extensions::new();
+    exts.push_as("both", Box::new(err)).unwrap();
+    let mut core = Core::new();
+    host_frame(&mut core, &mut exts, "both/root", &Value::Null);
+    let w = core.warnings_raised();
+    assert!(
+        w.iter()
+            .any(|w| w.message.contains("keep or replay, not both")),
+        "{w:?}"
+    );
+}

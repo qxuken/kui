@@ -32,6 +32,7 @@ impl Core {
     /// [`crate::diag::WINDOW_DECLARED_WHILE_CLOSED`] until it does.
     /// `"main"` names the window the launcher opened and is always live.
     pub fn declare_window(&mut self, name: &str, mut config: WindowConfig) {
+        self.taint_kept("it declared a window");
         // A popup's anchor is declared in the host's coordinates and
         // resolved by the driver against the window's (ADR 0024): the
         // dock's offset goes back on here.
@@ -275,6 +276,7 @@ impl Core {
     /// the driver diffs against what's applied and only then touches the
     /// window. Undeclared frames leave the title alone; last writer wins.
     pub fn set_window_title(&mut self, title: &str) {
+        self.taint_kept("it declared the window's title");
         self.window_title = Some(title.to_string());
     }
 
@@ -297,6 +299,7 @@ impl Core {
     /// manager) is not reported. A popup's level is its own whatever its
     /// owner declares.
     pub fn set_always_on_top(&mut self, on_top: bool) {
+        self.taint_kept("it declared always-on-top");
         self.always_on_top = on_top;
     }
 
@@ -323,6 +326,7 @@ impl Core {
     /// runner holds at most one count however many windows ask. Nothing
     /// happens on other platforms, which have no such switch.
     pub fn set_secure_input(&mut self, on: bool) {
+        self.taint_kept("it declared secure input");
         self.secure_input = on;
     }
 
@@ -348,6 +352,7 @@ impl Core {
     /// popup's keys are read under. Nothing happens on other platforms,
     /// whose Alt composes nothing.
     pub fn set_option_as_alt(&mut self, option_as_alt: crate::OptionAsAlt) {
+        self.taint_kept("it declared option-as-alt");
         self.option_as_alt = option_as_alt;
     }
 
@@ -383,6 +388,7 @@ impl Core {
     /// compose), winit composes them whatever the IME says, and they
     /// still compose.
     pub fn set_ime_off(&mut self, off: bool) {
+        self.taint_kept("it declared the input method off");
         self.ime_off = off;
     }
 
