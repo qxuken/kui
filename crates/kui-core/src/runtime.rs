@@ -756,7 +756,14 @@ impl Core {
     /// runs. A host that writes `env.system` *directly* and wants the new
     /// answer before its next frame calls [`Core::refresh_theme`]; every
     /// env setter a binding exposes already does.
+    ///
+    /// Read inside a fill being kept (ADR 0045), the palette is one of
+    /// the facts the replay is checked against: a fill that drew from it
+    /// runs again when it changes (backlog F155).
     pub fn theme(&self) -> &Theme {
+        self.note_read_once(replay::ONCE_THEME, || {
+            replay::Read::Theme(Box::new(self.theme))
+        });
         &self.theme
     }
 
@@ -818,6 +825,13 @@ impl Core {
     /// theme widened *where* the accent comes from without widening
     /// *whether* there is one.
     pub fn has_accent(&self) -> bool {
+        let chosen = self.has_accent_raw();
+        self.note_read_once(replay::ONCE_ACCENT, || replay::Read::Accent(chosen));
+        chosen
+    }
+
+    /// [`Self::has_accent`], not noted for a kept fill.
+    pub(crate) fn has_accent_raw(&self) -> bool {
         match self.theme_source {
             ThemeSource::Derived => self.env.system.accent.is_some(),
             ThemeSource::DerivedWithAccent(_) | ThemeSource::Pinned(_) => true,
@@ -859,8 +873,12 @@ impl Core {
 
     /// The sizes the stock widgets are built from — the palette's other
     /// axis ([`crate::metrics`]). [`Metrics::default`](crate::metrics::Metrics::default) until
-    /// the app sets one; nothing in the OS is followed.
+    /// the app sets one; nothing in the OS is followed. Noted for a fill
+    /// being kept, as [`Self::theme`] is.
     pub fn metrics(&self) -> &crate::metrics::Metrics {
+        self.note_read_once(replay::ONCE_METRICS, || {
+            replay::Read::Metrics(Box::new(self.metrics))
+        });
         &self.metrics
     }
 
@@ -915,7 +933,17 @@ impl Core {
     /// What a `$name` in a prop resolves to this frame: the running
     /// origin's table over the host's, the theme's and metrics' roles in
     /// front of both. What every binding lowers a reference through.
+    ///
+    /// A lookup can answer a theme or metrics role, and a binding bakes
+    /// what it answers into the spec, so a fill being kept that looks a
+    /// name up has read both (ADR 0045, backlog F155).
     pub fn token_lookup(&self) -> crate::tokens::TokenLookup<'_> {
+        self.note_read_once(replay::ONCE_THEME, || {
+            replay::Read::Theme(Box::new(self.theme))
+        });
+        self.note_read_once(replay::ONCE_METRICS, || {
+            replay::Read::Metrics(Box::new(self.metrics))
+        });
         let own = self.tokens.get(&self.origin);
         let host = if self.origin == OriginId::HOST {
             None

@@ -109,7 +109,9 @@ count of the nodes it pushed against the nodes it journaled.
    a press, a focus, the caret phase, a scroll offset or geometry, a
    layout rect, a text hit, an editor's text, the modifiers, the pointer,
    the fonts' revision behind a measurement, the env reading less its
-   clock and caret phase — and that the slot's key is the kept one. The
+   clock and caret phase, the palette and the metrics (read whole, or a
+   role by name; compared by value, once a fill — backlog F155) — and
+   that the slot's key is the kept one. The
    clock is never the same twice, and the selection's text is not
    compared: a fill that read either runs every frame. The read is noted
    where the door is, in `Core`, so a stock widget's `is_hovered` inside

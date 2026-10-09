@@ -27,6 +27,9 @@ was the first bare bump to break an app in five releases).
 
 - ↑ and ↓ on an editor's first or last visual line emit `boundary`
   wherever the caret is on it, not only from the line's end.
+- A slot fill kept with `slot_kept` that read the theme or the metrics
+  is run again by `slot_replay` when either changes (`SlotFill::Reads`),
+  where it was replayed in the old colours.
 
 F145's `boundary` reported ↑ and ↓ only when the key left the caret
 exactly where it was, but on a field's one line ↓ walks the caret to the
@@ -35,6 +38,18 @@ of its title stayed in the title (backlog F154). ↑ on the first visual
 line and ↓ on the last now report on the first press, wherever along the
 line the caret was; the editor still moves its caret as it always did.
 ←, →, Backspace and Delete are unchanged.
+
+`slot_replay` checks every fact of the frame a kept fill read before it
+replays it, and its docs named the theme among them, but no theme read
+was noted: a fill that drew from `Ui::theme`, C's `kui_theme`, Lua's
+`env.theme`, Node's theme reader, or a `$role` token a binding lowered
+into a colour, was replayed in last frame's palette after the theme
+changed (backlog F155, from kawoosh's native-view replay, which put its
+palette's hash in its own claim to cover it). The metrics had the same
+hole. Both are now reads of the kept fill, noted once a fill and
+compared by value, so a palette set again to what it was is no change;
+a host that replays a pane across a theme change sees `Reads`, and the
+pane drawn in the new palette, where it saw `Replayed`.
 
 ### Added
 
@@ -48,11 +63,15 @@ line the caret was; the editor still moves its caret as it always did.
 
 - **↓ from the middle of a field is its edge at once** (backlog F154):
   see *What breaks*.
+- **A replayed pane follows a theme change** (backlog F155): see *What
+  breaks*.
 
 **What you can delete.**
 
 - Pressing ↓ twice, or watching `changed` and the caret, to leave a field
   from the middle of its line.
+- The palette's hash, or a theme revision of the host's own, in the claim
+  a host makes before `slot_replay`.
 
 ## 0.1.0-alpha.50 (2026-10-09)
 

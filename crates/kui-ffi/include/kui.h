@@ -2390,7 +2390,9 @@ typedef struct KuiTheme {
 #define KUI_THEME_INIT ((KuiTheme){ .size = sizeof(KuiTheme) })
 
 /* This window's palette as of the current or last frame. False for a bad
- * context, a NULL out, or a reservation below the ABI-1 layout. */
+ * context, a NULL out, or a reservation below the ABI-1 layout. Read in a
+ * fill kept with kui_slot_kept, the palette is checked before a replay: a
+ * fill that drew from it runs again when it changes. */
 bool kui_theme(KuiCtx *ctx, KuiTheme *out);
 /* Keep following the OS's light/dark, but paint this accent instead of the
  * OS's - a host with a brand colour. 0xRRGGBBAA; zero goes back to
@@ -2440,7 +2442,8 @@ typedef struct KuiMetrics {
 #define KUI_METRICS_INIT ((KuiMetrics){ .size = sizeof(KuiMetrics) })
 
 /* The metrics in effect. False for a bad context, a NULL out, or a
- * reservation below the ABI-1 layout. */
+ * reservation below the ABI-1 layout. Checked before a replay as
+ * kui_theme's palette is. */
 bool kui_metrics(KuiCtx *ctx, KuiMetrics *out);
 /* Make these the frame's: every stock widget from the next node on is
  * built from them. NULL restores the stock set. Read one with kui_metrics

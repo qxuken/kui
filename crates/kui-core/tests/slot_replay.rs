@@ -25,6 +25,12 @@ struct Ext {
     read_hover: bool,
     /// Read the frame clock while drawing.
     read_clock: bool,
+    /// Draw the theme's accent, read through `Ui::theme`.
+    read_theme: bool,
+    /// Draw the metrics' radius, read through `Ui::metrics`.
+    read_metrics: bool,
+    /// Draw the `accent` role, read by name through `Ui::token_color`.
+    read_token: bool,
     /// Declare `inner/panel` between the rows.
     nest: bool,
     /// Ask for a frame while drawing.
@@ -71,6 +77,21 @@ impl Extension for Ext {
             if self.read_clock {
                 let now = ui.now();
                 ui.text(&format!("{now:.1}"), TextStyle::new(12.0));
+            }
+            if self.read_theme {
+                let accent = ui.theme().accent.to_hex();
+                ui.text(&format!("{accent:08x}"), TextStyle::new(12.0));
+            }
+            if self.read_metrics {
+                let radius = ui.metrics().radius;
+                ui.text(&format!("radius {radius}"), TextStyle::new(12.0));
+            }
+            if self.read_token {
+                let accent = ui.token_color("accent").map(|c| c.to_hex());
+                ui.text(
+                    &format!("{:08x}", accent.unwrap_or(0)),
+                    TextStyle::new(12.0),
+                );
             }
             if self.ask_frame {
                 ui.request_frame();
@@ -554,4 +575,79 @@ fn a_slot_kept_inside_a_kept_fill_is_a_plain_slot() {
     }
     assert_eq!(inner_fill.get(), Some(SlotFill::NotKept));
     assert_eq!(inner_views.get(), 3, "the inner ran every frame");
+}
+
+/// What a theme change does to a kept fill: one that read the palette
+/// (through `Ui::theme` or a role by name) or the metrics is run again,
+/// says the theme or metrics moved, and draws the new one; one that read
+/// neither is replayed; and a palette set again to what it was is no
+/// change (backlog F155).
+#[test]
+fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
+    let pink = kui_core::Theme::light().with_accent(Color::hex(0xff00ffff));
+    let theme = |core: &mut Core| core.set_theme(pink);
+    let metrics = |core: &mut Core| {
+        let mut m = *core.metrics();
+        m.radius = 13.0;
+        core.set_metrics(m);
+    };
+    type Change<'a> = &'a dyn Fn(&mut Core);
+    let cases: [(Ext, Change<'_>, &str, &str); 3] = [
+        (
+            Ext {
+                rows: 1,
+                read_theme: true,
+                ..Default::default()
+            },
+            &theme,
+            "Theme",
+            "ff00ffff",
+        ),
+        (
+            Ext {
+                rows: 1,
+                read_token: true,
+                ..Default::default()
+            },
+            &theme,
+            "Theme",
+            "ff00ffff",
+        ),
+        (
+            Ext {
+                rows: 1,
+                read_metrics: true,
+                ..Default::default()
+            },
+            &metrics,
+            "Metrics",
+            "radius 13",
+        ),
+    ];
+    for (ext, change, why, drawn) in cases {
+        let mut r = rig(ext);
+        r.frame(true);
+        assert_eq!(r.frame(false), Some(SlotFill::Replayed), "{why}");
+        change(&mut r.core);
+        assert_eq!(r.frame(false), Some(SlotFill::Reads), "{why}");
+        assert_eq!(r.core.slot_fill_why("outer/root"), Some(why));
+        assert_eq!(r.views.get(), 2);
+        assert!(r.texts().iter().any(|t| t == drawn), "{:?}", r.texts());
+        assert_eq!(r.frame(false), Some(SlotFill::Replayed), "{why}");
+        // Set again, the same: nothing moved.
+        change(&mut r.core);
+        assert_eq!(r.frame(false), Some(SlotFill::Replayed), "{why}");
+        assert_eq!(r.views.get(), 2);
+    }
+
+    // A fill that read neither is replayed across both.
+    let mut r = rig(Ext {
+        rows: 2,
+        ..Default::default()
+    });
+    r.frame(true);
+    theme(&mut r.core);
+    metrics(&mut r.core);
+    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.views.get(), 1);
 }

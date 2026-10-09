@@ -7,7 +7,8 @@
 //! before hover, accent or a transition's easing touched the spec; the
 //! labels and data indices beside them; the slots it declared inside
 //! itself, with their params; and every fact of the frame it read while
-//! it ran (which node was hovered, where a scroller stood, the theme).
+//! it ran (which node was hovered, where a scroller stood, the theme and
+//! the metrics, a role read by name).
 //! `Ui::slot_replay` is the host's claim that nothing *it* feeds the
 //! extension has changed. The core checks everything it can see itself
 //! — the slot's params, the facts the fill read, where the slot sits —
@@ -60,7 +61,7 @@ pub enum SlotFill {
     /// The params differ from the kept fill's.
     Params,
     /// A fact of the frame the fill read has moved since: a hover, a
-    /// focus, a scroll offset, the theme, the clock.
+    /// focus, a scroll offset, the theme or the metrics, the clock.
     Reads,
     /// The kept fill cannot be replayed: it declared something of the
     /// frame beyond its nodes, pushed through a door the journal does
@@ -219,10 +220,28 @@ pub(crate) enum Read {
     Env(EnvFacts),
     /// Text was measured: the same while the fonts are.
     Measure(u64),
+    /// The palette, read whole (`Core::theme`, and so `Ui::theme`, C's
+    /// `kui_theme`, the bindings' theme tables) or a role by name through
+    /// a token lookup: a colour drawn from it is baked into the spec the
+    /// journal keeps, so a palette that differs runs the fill again. Noted
+    /// once a fill, compared by value — a palette set again to what it
+    /// was is no change. Boxed, so the other reads stay small.
+    Theme(Box<crate::theme::Theme>),
+    /// The sizes, read as the palette is (`Core::metrics`, `kui_metrics`,
+    /// a length role by name).
+    Metrics(Box<crate::metrics::Metrics>),
+    /// Whether anyone chose the accent (`Core::has_accent`).
+    Accent(bool),
     /// Something the core does not compare (the selection's text): a
     /// fill that read it is run every frame.
     Opaque,
 }
+
+/// [`Core::note_read_once`]'s bits: the palette, the sizes, the accent's
+/// being chosen.
+pub(crate) const ONCE_THEME: u8 = 1;
+pub(crate) const ONCE_METRICS: u8 = 2;
+pub(crate) const ONCE_ACCENT: u8 = 4;
 
 /// The fill being kept, while it runs.
 pub(crate) struct Recording {
@@ -233,6 +252,10 @@ pub(crate) struct Recording {
     ops: Vec<Op>,
     /// Through `&self` doors (`is_hovered`), so a cell.
     reads: RefCell<Vec<Read>>,
+    /// The reads noted once a fill, as [`ONCE_THEME`] bits: the palette
+    /// and the sizes are read by every stock widget, and one note of each
+    /// is all a comparison needs.
+    once: std::cell::Cell<u8>,
     taint: Option<&'static str>,
     /// The tree's length when the fill began.
     first: u32,
@@ -341,6 +364,20 @@ impl Core {
         }
     }
 
+    /// [`Self::note_read`] for a fact read whole and often — the palette,
+    /// the sizes — noted the first time the fill reads it and not again:
+    /// `bit` says which, one of the `ONCE_*` bits.
+    #[inline]
+    pub(crate) fn note_read_once(&self, bit: u8, read: impl FnOnce() -> Read) {
+        if let Some(r) = self.recording.as_ref()
+            && r.paused == 0
+            && r.once.get() & bit == 0
+        {
+            r.once.set(r.once.get() | bit);
+            r.reads.borrow_mut().push(read());
+        }
+    }
+
     /// Marks the fill being kept as one that cannot be replayed, with
     /// why: it declared something of the frame beyond its nodes, or
     /// pushed through a door the journal does not know.
@@ -407,6 +444,7 @@ impl Core {
             params,
             ops: Vec::new(),
             reads: RefCell::new(Vec::new()),
+            once: std::cell::Cell::new(0),
             taint: None,
             first: self.tree.len() as u32,
             nodes: 0,
@@ -449,10 +487,12 @@ impl Core {
     /// The first fact the kept fill read that reads otherwise now, as
     /// words for a ledger; `None` while every one holds.
     fn first_moved(&self, reads: &[Read]) -> Option<String> {
-        reads
-            .iter()
-            .find(|r| !self.read_holds(r))
-            .map(|r| format!("{r:?}"))
+        reads.iter().find(|r| !self.read_holds(r)).map(|r| match r {
+            // A palette's every field is no ledger line.
+            Read::Theme(_) => "Theme".to_owned(),
+            Read::Metrics(_) => "Metrics".to_owned(),
+            r => format!("{r:?}"),
+        })
     }
 
     /// Whether one fact the kept fill read still reads the same.
@@ -477,6 +517,9 @@ impl Core {
             Read::EditText(k, s) => self.edit.text(*k) == *s,
             Read::Env(f) => env_same(f, &self.env_facts_raw()),
             Read::Measure(rev) => self.text_rev() == *rev,
+            Read::Theme(t) => **t == self.theme,
+            Read::Metrics(m) => **m == self.metrics,
+            Read::Accent(a) => self.has_accent_raw() == *a,
             Read::Opaque => false,
         }
     }

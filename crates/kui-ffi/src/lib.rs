@@ -414,6 +414,10 @@ pub extern "C" fn kui_env_set_audio(ptr: *mut KuiCtx, device: u32, live: u32) {
 /// `KuiTheme t = KUI_THEME_INIT; kui_theme(ctx, &t);` then
 /// `spec.bg = t.surface`.
 ///
+/// Read inside a fill kept with [`kui_slot_kept`], the palette is one of
+/// the facts [`kui_slot_replay`] checks: a fill that drew from it runs
+/// again when it changes (ADR 0045, backlog F155).
+///
 /// False for a bad context, a NULL `out`, or a `size` below the first
 /// ABI's layout.
 #[unsafe(no_mangle)]

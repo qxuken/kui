@@ -647,3 +647,49 @@ fn a_script_replays_a_plugins_fill_and_reads_what_it_got() {
         "{w:?}"
     );
 }
+
+/// A script that draws from `env.theme`: replayed by its host while the
+/// palette holds, run again when it changes (backlog F155).
+const THEMED: &str = r#"
+    slots = { "panel" }
+    views = 0
+    function view(env, slot)
+      views = views + 1
+      return column { key = "box", width = 40, height = 20, bg = "$accent",
+        text(string.format("%08x", env.theme.accent)),
+      }
+    end
+"#;
+
+#[test]
+fn a_script_that_read_the_theme_is_not_replayed_across_a_theme_change() {
+    let script = LuaExtension::from_source("themed.lua", THEMED).unwrap();
+    let lua = script.lua().clone();
+    let mut exts = Extensions::new();
+    exts.push_as("themed", Box::new(script)).unwrap();
+    let mut core = Core::new();
+    let frame = |core: &mut Core, exts: &mut Extensions| {
+        let mut ui = core.frame_with(Size::new(400.0, 100.0), 1.0, exts);
+        let fill = ui.slot_replay("themed/panel", &Value::Null);
+        ui.finish();
+        fill.map(|f| f.name())
+    };
+    let views = |lua: &mlua::Lua| lua.globals().get::<i64>("views").unwrap();
+    assert_eq!(frame(&mut core, &mut exts), Some("not-kept"));
+    assert_eq!(frame(&mut core, &mut exts), Some("replayed"));
+    assert_eq!(views(&lua), 1);
+
+    let pink = kui_core::Color::hex(0xff00ffff);
+    core.set_theme(kui_core::Theme::light().with_accent(pink));
+    assert_eq!(frame(&mut core, &mut exts), Some("reads"));
+    assert_eq!(views(&lua), 2);
+    assert!(
+        core.access_tree()
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("ff00ffff")),
+        "drawn in the new accent"
+    );
+    assert_eq!(frame(&mut core, &mut exts), Some("replayed"));
+    assert_eq!(views(&lua), 2);
+}

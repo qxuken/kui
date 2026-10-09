@@ -1780,7 +1780,8 @@ long as nothing *you* feed the plugin has changed — the buffers, the
 settings, whatever it reads from you outside kui. That is all you vouch
 for. The core checks the rest itself before it replays: the params are
 the same, every fact of the frame the kept fill read is the same (which
-node was hovered, where its scroller stood, the theme, the focus), and
+node was hovered, where its scroller stood, the theme and the metrics,
+the focus), and
 the slot is where it was. When all of that holds it pushes last frame's
 nodes again through the doors they came in by, resolving hover and a
 transition's easing for this frame, and never calls the plugin's `view`;

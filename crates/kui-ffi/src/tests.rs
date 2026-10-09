@@ -3656,3 +3656,100 @@ mod borrows {
         kui_ctx_free(ctx);
     }
 }
+
+#[cfg(test)]
+mod replay_headless {
+    use super::*;
+    use kui_core::{Extension, Extensions, Slot, SlotFill, Ui, UiEvent, Value};
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    /// A plugin that paints its box from `kui_theme` and sizes it from
+    /// `kui_metrics`, through the context a C plugin's view is handed.
+    struct Painted {
+        views: Rc<Cell<usize>>,
+        bg: Rc<Cell<u32>>,
+    }
+
+    impl Extension for Painted {
+        fn name(&self) -> &str {
+            "painted"
+        }
+        fn slots(&self) -> &[String] {
+            &[]
+        }
+        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+            self.views.set(self.views.get() + 1);
+            let mut ctx = KuiCtx::borrowing_in(ui);
+            let mut t = KuiTheme::default();
+            assert!(kui_theme(&mut ctx, &mut t));
+            let mut m = KuiMetrics::default();
+            assert!(kui_metrics(&mut ctx, &mut m));
+            self.bg.set(t.accent);
+            let mut spec: KuiSpec = unsafe { std::mem::zeroed() };
+            spec.width = KuiSizing {
+                tag: 2,
+                value: 40.0 + m.radius,
+            };
+            spec.height = KuiSizing {
+                tag: 2,
+                value: 20.0,
+            };
+            spec.bg = t.accent;
+            kui_open_keyed(&mut ctx, ks("pane"), &spec, std::ptr::null_mut());
+            kui_close(&mut ctx);
+            Ok(())
+        }
+        fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+            Vec::new()
+        }
+    }
+
+    /// A kept fill that read the palette through `kui_theme`, or the
+    /// sizes through `kui_metrics`, is run again when either changes,
+    /// rather than replayed in last frame's colours (backlog F155).
+    #[test]
+    fn a_fill_that_read_kui_theme_is_not_replayed_across_a_theme_change() {
+        let views = Rc::new(Cell::new(0));
+        let bg = Rc::new(Cell::new(0));
+        let mut exts = Extensions::new();
+        exts.push_as(
+            "painted",
+            Box::new(Painted {
+                views: views.clone(),
+                bg: bg.clone(),
+            }),
+        )
+        .unwrap();
+        let mut core = kui_core::Core::new();
+        let mut frame = |core: &mut kui_core::Core, keep: bool| {
+            let mut ui = core.frame_with(kui_core::Size::new(200.0, 100.0), 1.0, &mut exts);
+            let fill = if keep {
+                ui.slot_kept("painted/root", &Value::Null);
+                None
+            } else {
+                ui.slot_replay("painted/root", &Value::Null)
+            };
+            ui.finish();
+            fill
+        };
+        frame(&mut core, true);
+        assert_eq!(frame(&mut core, false), Some(SlotFill::Replayed));
+        assert_eq!(views.get(), 1);
+
+        let pink = kui_core::Color::hex(0xff00ffff);
+        core.set_theme(kui_core::Theme::light().with_accent(pink));
+        assert_eq!(frame(&mut core, false), Some(SlotFill::Reads));
+        assert_eq!(core.slot_fill_why("painted/root"), Some("Theme"));
+        assert_eq!((views.get(), bg.get()), (2, 0xff00ffff));
+        assert_eq!(frame(&mut core, false), Some(SlotFill::Replayed));
+
+        let mut m = *core.metrics();
+        m.radius += 3.0;
+        core.set_metrics(m);
+        assert_eq!(frame(&mut core, false), Some(SlotFill::Reads));
+        assert_eq!(core.slot_fill_why("painted/root"), Some("Metrics"));
+        assert_eq!(frame(&mut core, false), Some(SlotFill::Replayed));
+        assert_eq!(views.get(), 3);
+    }
+}

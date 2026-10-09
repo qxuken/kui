@@ -55,7 +55,7 @@ impl Core {
     /// whatever it sits on rather than a fill, which is why the theme's
     /// are two translucent colours and not one with an alpha applied.
     fn thumb_color(&self, bar: &crate::spec::Scrollbar, active: bool) -> Color {
-        let t = self.theme();
+        let t = self.theme;
         if active {
             bar.active_color.unwrap_or(t.scrollbar_active)
         } else {
@@ -808,7 +808,7 @@ impl Core {
             return None;
         }
         let range = ends.range_in(ord, self.text.content_len(tid))?;
-        Some((range, self.theme().selection))
+        Some((range, self.theme.selection))
     }
 
     /// The innermost selection scope node `i` is inside, if any. Empty on
@@ -2131,7 +2131,7 @@ impl Core {
         if visible.w <= 0.0 || visible.h <= 0.0 {
             return;
         }
-        let mut ring = self.theme().focus_ring;
+        let mut ring = self.theme.focus_ring;
         ring.a *= self.opacity.get(i).copied().unwrap_or(1.0);
         self.display.quads.push(Quad {
             rect: rect.scaled(scale),

@@ -695,7 +695,7 @@ impl Core {
     /// ones.
     #[inline]
     fn prepare_spec(&mut self, key: Key, spec: &mut NodeSpec) {
-        if spec.accent && self.has_accent() {
+        if spec.accent && self.has_accent_raw() {
             spec.style.bg = self.theme.accent;
         }
         self.resolve_hover_style(key, spec);
