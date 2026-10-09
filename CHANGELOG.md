@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.46 (unreleased)
+## 0.1.0-alpha.46 (2026-10-09)
 
 **What breaks.**
 
@@ -176,6 +176,33 @@ was the first bare bump to break an app in five releases).
 - The `image` dependency an app added to decode its photos, its version
   pin and the `[profile.dev.package."*"]` line that made it fast, and a
   GIF crate beside it (F138): `decode_image` and `decode_animation`.
+
+### Native verification
+
+The by-hand round alpha.6 introduced (backlog R4), on 2026-10-09, over
+F131–F138 from the berainder review, with alpha.46's pre-tag pass over
+it on the Mac: the mechanical round as CI runs it, the windowed round,
+the accessibility audit and the bench guard, then three read-only
+reviewers of the diff since alpha.45 — the core and the renderer, the
+bindings, the docs — each claim probed. What they found was corrected
+before the tag (the backlog's alpha.46 pre-tag section lists it), and
+one entry, RG155 — the caret inside a turned node — is open.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **1997 tests over 149 suites**, 0 failed. The C round
+passes (5 checks), and so do the **58 scenes** through Rust, Lua, C and
+Node; Node's tests under `KUI_CONFORMANCE_REQUIRED=1`, **224 of 224**;
+`npm run gen` with no diff, the examples' typecheck, the headless round,
+the book, and `cargo audit` over the lockfile the decoder grew. The
+windowed round with Node's: **55 examples on both bases**, clean on a
+first run, twice. The accessibility audit: **106 of 106**. The bench
+guard against the alpha.45 tag: **green**, the eight guarded rows −0.9%
+to +0.9%; the unguarded exit rows read +2% to +4%, the 16 bytes an
+entrance and an exit grew by. The Odin steps did not run: this
+machine's Odin links an LLVM that is gone, so the hand-written Odin
+layer this round needed is checked by CI's `odin.nu` steps on the tag,
+and its layout was compared by script against the C side's asserts. No
+Windows or Linux machine ran this round.
 
 ## 0.1.0-alpha.45 (2026-10-08)
 

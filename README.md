@@ -29,7 +29,7 @@ which writes the one line a project needs:
 
 ```toml
 [dependencies]
-kui-native = "0.1.0-alpha.45"
+kui-native = "0.1.0-alpha.46"
 ```
 
 Every release so far is an alpha. A requirement like `"0.1.0-alpha.34"`
