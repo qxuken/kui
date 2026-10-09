@@ -56,7 +56,7 @@ impl Core {
     #[track_caller]
     pub fn reveal_label(&mut self, label: &str) {
         self.pending_reveal_labels
-            .push((label.to_string(), self.origin));
+            .push((label.to_string(), self.origin, self.ns_key));
         self.owe_frame("reveal_label");
     }
 
@@ -66,25 +66,33 @@ impl Core {
     #[track_caller]
     pub fn set_scroll_label(&mut self, label: &str, offset: Vec2) {
         self.pending_scroll_labels
-            .push((label.to_string(), self.origin, offset));
+            .push((label.to_string(), self.origin, self.ns_key, offset));
         if !self.building {
             self.owe_frame("set_scroll_label");
         }
     }
 
-    /// A deferred label, found as the origin that asked would find it
-    /// (`find_label` answers per origin), in this frame alone.
-    fn find_label_as(&mut self, label: &str, origin: crate::tree::OriginId) -> Option<Key> {
+    /// A deferred label, found as the fill that asked would find it
+    /// (`find_label` answers per origin, and within it per fill), in this
+    /// frame alone.
+    fn find_label_as(
+        &mut self,
+        label: &str,
+        origin: crate::tree::OriginId,
+        fill: Key,
+    ) -> Option<Key> {
         let at = std::mem::replace(&mut self.origin, origin);
+        let ns = std::mem::replace(&mut self.ns_key, fill);
         let key = self.find_label(label, false);
         self.origin = at;
+        self.ns_key = ns;
         key
     }
 
     /// Before layout: the `set_scroll_label` asks, as `set_scroll`s.
     pub(crate) fn resolve_scroll_labels(&mut self) {
-        for (label, origin, offset) in std::mem::take(&mut self.pending_scroll_labels) {
-            match self.find_label_as(&label, origin) {
+        for (label, origin, fill, offset) in std::mem::take(&mut self.pending_scroll_labels) {
+            match self.find_label_as(&label, origin, fill) {
                 Some(key) => self.scroll.set_smooth(key, offset),
                 None => self
                     .diag
@@ -245,8 +253,8 @@ impl Core {
     /// declares it. Like the caret, the positions pass re-runs, so this
     /// frame already draws the node in view.
     pub(crate) fn apply_pending_reveal(&mut self) {
-        for (label, origin) in std::mem::take(&mut self.pending_reveal_labels) {
-            match self.find_label_as(&label, origin) {
+        for (label, origin, fill) in std::mem::take(&mut self.pending_reveal_labels) {
+            match self.find_label_as(&label, origin, fill) {
                 Some(key) => self.pending_reveal.push(key),
                 None => self
                     .diag

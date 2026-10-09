@@ -1613,6 +1613,16 @@ checked against the tree at `b19e0993` before they were filed. Two
 entries, F155 and F156, **built 2026-10-09**, the day they were filed,
 and in the archive.
 
+## From kawoosh's pane labels (2026-10-10)
+
+kawoosh's smoke run of the alpha.51 pin raised `ambiguous-key` for
+"body": its themes pane, beside a new tab's launcher, scrolled by a
+label the launcher declares too. Both are panes of kawoosh's one Lua
+extension, and six of them keyed their scroller "list". kawoosh named
+its labels after their views (its `tests/pane_labels.rs`); the lookup
+that made a pane's own label ambiguous is kui's. One entry, F157,
+**built 2026-10-10**, the day it was filed, and in the archive.
+
 ## From the traffic-lights question (2026-10-09)
 
 The user asked whether kui can shift the macOS traffic lights. It could
@@ -4485,3 +4495,7 @@ move.
 - `~` **F155** — [A kept fill that drew from the theme is replayed across a theme change](backlog/closed-2026-09.md#-f155--a-kept-fill-that-drew-from-the-theme-is-replayed-across-a-theme-change--done-2026-10-09) — done (2026-10-09) — a kept fill's theme, metrics and accent reads noted once a fill at `Core::theme` / `metrics` / `token_lookup` / `has_accent` and compared by value before a replay; every binding's reader caught there
 
 - `.` **F156** — [`slot_fill` after a frame that kept its slot answers the frame before's replay](backlog/closed-2026-09.md#-f156--slot_fill-after-a-frame-that-kept-its-slot-answers-the-frame-befores-replay--done-2026-10-09) — done (2026-10-09) — `None` after a frame that asked `slot_replay` nothing of the slot — kept, filled plainly or skipped; the frame before's answers read only while a frame is built
+
+**From kawoosh's pane labels (2026-10-10)** — F157, filed and built the same day
+
+- `~` **F157** — [A label asked for inside a fill is answered from any fill of its origin: one extension's panes share their labels](backlog/closed-2026-09.md#-f157--a-label-asked-for-inside-a-fill-is-answered-from-any-fill-of-its-origin-one-extensions-panes-share-their-labels--done-2026-10-10) — done (2026-10-10) — a lookup inside a fill reads that fill's labels alone, this frame then the last; `set_scroll_label` and `reveal_label` resolve as the fill that asked

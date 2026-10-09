@@ -500,12 +500,13 @@ impl Core {
     /// I just declared" is this and not `child_key`. None when no node
     /// declared the label. Labels are unique among siblings, not across a
     /// tree, so two nodes may share one under different parents. A guest
-    /// asking from inside its fill is answered from the nodes
-    /// it opened and no one else's — it cannot know what the host or
-    /// another guest called theirs, and its env is a reading of its own
-    /// view; the host, whose frame it is, from its own first and from
-    /// everyone's when it opened none. Within that, the first in tree
-    /// order wins and an `ambiguous-key` warning says so.
+    /// asking from inside a fill is answered from the nodes that fill
+    /// opened and no one else's — it cannot know what the host, another
+    /// guest or its own other slots called theirs, and its env is a
+    /// reading of its own view (F157); before its first fill has declared
+    /// the label, nothing answers. The host, whose frame it is, from its
+    /// own first and from everyone's when it opened none. Within that, the
+    /// first in tree order wins and an `ambiguous-key` warning says so.
     pub fn key_of(&mut self, label: &str) -> Option<Key> {
         self.find_label(label, true)
     }
@@ -516,11 +517,27 @@ impl Core {
     /// one has not declared it yet; an `ambiguous-key` warning when more
     /// than one did. `key_of` falls back; `resolve_regions` runs at the
     /// frame's end, when this frame's labels are the whole story.
+    ///
+    /// Asked from inside a fill, only the nodes that fill opened answer
+    /// (backlog F157): one extension may fill many slots, each a view of
+    /// its own, and a view that asks for its node before declaring it —
+    /// at the top of its view, on its first frame — must get nothing, not
+    /// the node a sibling fill of its origin declared under the same name.
+    /// The host, outside any fill, asks as it always did.
     pub(crate) fn find_label(&mut self, label: &str, fall_back: bool) -> Option<Key> {
+        let last_too = fall_back && self.building;
+        let guest = self.origin != crate::tree::OriginId::HOST;
+        let ask = |labels: &crate::key::LabelIndex| {
+            if guest {
+                labels.find_in_fill(label, self.origin, self.ns_key)
+            } else {
+                labels.find_for(label, self.origin)
+            }
+        };
         let (first, count) = {
-            let mut hits = self.key_labels.find_for(label, self.origin);
-            if hits.0.is_none() && fall_back && self.building {
-                hits = self.key_labels_last.find_for(label, self.origin);
+            let mut hits = ask(&self.key_labels);
+            if hits.0.is_none() && last_too {
+                hits = ask(&self.key_labels_last);
             }
             (hits.0?, hits.1)
         };
@@ -781,7 +798,7 @@ impl Core {
     /// Names the node under `key` `label` for `key_of`: what every keyed
     /// door does after its push, and what a kept fill journals.
     pub(crate) fn note_label(&mut self, key: Key, label: &str) {
-        self.key_labels.push(key, label, self.origin);
+        self.key_labels.push(key, label, self.origin, self.ns_key);
         if self.keeping() {
             self.keep_op(replay::Op::Label {
                 key,
@@ -1049,7 +1066,7 @@ impl Core {
         // A leaf keyed by its label, like `open_keyed`: `key_of` must find
         // the editor an app wants to focus by name. Not journaled: the
         // `Edit` op names its label, and a replay comes back through here.
-        self.key_labels.push(key, label, self.origin);
+        self.key_labels.push(key, label, self.origin, self.ns_key);
         key
     }
 

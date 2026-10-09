@@ -3035,8 +3035,9 @@ void kui_focus(KuiCtx *ctx, uint64_t key);
  * Labels are unique among siblings, not across the tree: two nodes on one
  * label under different parents resolve to the first in tree order, with an
  * "ambiguous-key" warning (kui_take_warnings). A plugin asking from inside
- * its fill is answered from the nodes it opened and no one else's; the host
- * from its own first, and everyone's when it opened none. */
+ * a fill is answered from the nodes that fill opened and no one else's -
+ * not even its own other slots'; the host from its own first, and
+ * everyone's when it opened none. */
 uint64_t kui_key_of(KuiCtx *ctx, KuiStr label);
 /* The key of the first node in the last finished frame whose accessible
  * name is `name` — its `label` row, else its own text, else a control's

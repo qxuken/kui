@@ -15,7 +15,7 @@ use kui_core::diag::{
 use kui_core::testing::codes;
 use kui_core::{
     ANY_SLOT, Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Slot, Ui, UiEvent, Value,
-    split_name,
+    Vec2, split_name,
 };
 
 /// A stand-in extension: opens one keyed, focusable cell (so it is in the
@@ -805,5 +805,119 @@ fn a_label_asked_for_by_a_guest_is_the_guests_own_node() {
         codes(&core.take_warnings()),
         Vec::<&str>::new(),
         "and no ambiguity"
+    );
+}
+
+/// One extension filling many slots — a Lua host draws every pane of
+/// its as a slot of its one origin — asks by label from inside each fill
+/// and gets that fill's node (backlog F157, from kawoosh, where the
+/// themes pane beside a launcher scrolled the launcher's "body" and six
+/// panes keyed their scroller "list"). Each fill is a view of its own
+/// and cannot know what the others called their nodes, so a lookup from
+/// inside a fill reads that fill's labels alone, in this frame and the
+/// last, for `key_of` and for the deferred `set_scroll_label` — and a
+/// view that asks before it has declared its node (its first frame)
+/// gets nothing rather than a sibling pane's node of the same name.
+#[test]
+fn a_label_asked_for_inside_a_fill_is_that_fills_own_node() {
+    /// Per fill, per frame: (its slot, what `key_of` answered before it
+    /// declared the label, the key it declared, what `b` got asking for
+    /// a label only `a` declares).
+    type Asked = (String, Option<Key>, Key, Option<Key>);
+    struct Panes {
+        seen: Rc<RefCell<Vec<Asked>>>,
+        slots: Vec<String>,
+    }
+    impl Extension for Panes {
+        fn name(&self) -> &str {
+            "panes"
+        }
+        fn slots(&self) -> &[String] {
+            &self.slots
+        }
+        fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+            let asked = ui.key_of("list");
+            // Each pane scrolls its own list to a place of its own.
+            let y = if slot.name == "a" { 30.0 } else { 70.0 };
+            ui.set_scroll_label("list", Vec2::new(0.0, y));
+            // And one label only pane `a` declares, asked by `b`: a
+            // sibling's, so not `b`'s to find.
+            let other = if slot.name == "b" {
+                ui.key_of("only-a")
+            } else {
+                None
+            };
+            if slot.name == "a" {
+                ui.leaf_keyed("only-a", cell());
+            }
+            let mine = ui.with_keyed(
+                "list",
+                NodeSpec::column().size(100.0, 50.0).scroll_y(),
+                |ui| {
+                    for _ in 0..20 {
+                        ui.leaf(cell());
+                    }
+                },
+            );
+            self.seen
+                .borrow_mut()
+                .push((slot.name.to_string(), asked, mine, other));
+            Ok(())
+        }
+        fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+            vec![]
+        }
+    }
+    let seen = Rc::new(RefCell::new(vec![]));
+    let mut exts = load(vec![Box::new(Panes {
+        seen: seen.clone(),
+        slots: vec![ANY_SLOT.into()],
+    })]);
+    let mut core = Core::new();
+    core.set_diagnostics(true);
+    for _ in 0..3 {
+        let mut ui = core.frame_with(Size::new(600.0, 200.0), 1.0, &mut exts);
+        ui.configure_root(NodeSpec::row().fill());
+        ui.slot_with("panes/a", &Value::Null);
+        ui.slot_with("panes/b", &Value::Null);
+        ui.finish();
+    }
+    let seen = seen.borrow();
+    let (a, b): (Vec<_>, Vec<_>) = seen.iter().partition(|(s, ..)| s == "a");
+    assert_eq!((a.len(), b.len()), (3, 3));
+    assert_ne!(a[0].2, b[0].2, "two lists, one label, two fills");
+    // The first frame: neither has declared its own yet, and `b`, drawn
+    // after `a`, does not get `a`'s.
+    assert_eq!(a[0].1, None, "nothing declared before the first frame");
+    assert_eq!(b[0].1, None, "nor a sibling pane's node for b");
+    assert!(
+        b.iter().all(|f| f.3.is_none()),
+        "a label only a declares is not b's"
+    );
+    // From then on each fill finds its own, from the frame before — not
+    // the sibling fill this frame has already declared.
+    for pane in [&a, &b] {
+        for f in 1..3 {
+            assert_eq!(
+                pane[f].1,
+                Some(pane[f - 1].2),
+                "its own, from the frame before"
+            );
+        }
+    }
+    assert_eq!(
+        core.scroll_offset(a[2].2).y,
+        30.0,
+        "a's set_scroll_label is a's"
+    );
+    assert_eq!(
+        core.scroll_offset(b[2].2).y,
+        70.0,
+        "b's set_scroll_label is b's"
+    );
+    assert_eq!(
+        codes(&core.take_warnings()),
+        Vec::<&str>::new(),
+        "and no ambiguity, nor a label without its node"
     );
 }

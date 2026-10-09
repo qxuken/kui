@@ -619,16 +619,16 @@ pub struct Core {
     /// ancestor to show it, then clears them. Within one container the
     /// last ask wins; asks aimed at different containers all land.
     pending_reveal: Vec<Key>,
-    /// `reveal_label` and `set_scroll_label` asks, with the origin that
-    /// asked: resolved when the frame finishes, where a label named before
+    /// `reveal_label` and `set_scroll_label` asks, with the origin and the
+    /// fill that asked: resolved when the frame finishes, where a label named before
     /// its node is declared — later in the same build, or by the next
     /// frame — has a node to find.
-    pending_reveal_labels: Vec<(String, crate::tree::OriginId)>,
+    pending_reveal_labels: Vec<(String, crate::tree::OriginId, Key)>,
     /// The `on_focus` nodes the focus was last reported inside, outermost
     /// first, with each one's origin and tag — what `report_focus` diffs
     /// the focus against.
     focus_reported: Vec<(Key, crate::tree::OriginId, Value)>,
-    pending_scroll_labels: Vec<(String, crate::tree::OriginId, Vec2)>,
+    pending_scroll_labels: Vec<(String, crate::tree::OriginId, Key, Vec2)>,
     /// Type-ahead inside a composite: the
     /// characters typed so far, and the frame clock reading of the last
     /// keystroke. The buffer is cleared at the start of the first frame,

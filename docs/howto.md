@@ -1519,7 +1519,10 @@ and picks the first in tree order: labels are unique among siblings, not
 across a tree. The lookup is the asker's: a plugin filling a slot (a Lua
 script, a C extension) is answered from the nodes it opened and no one
 else's, so its `filter` and the host's never meet; the host sees its own
-first, and everyone's when it declared none.
+first, and everyone's when it declared none. A plugin that fills many
+slots — one pane a slot — is answered from the slot asking alone, so two
+of its panes can both call their scroller `list`; to reach a node in
+another of its slots, pass the hex key.
 
 [`key` row](props.md#composite-props-hand-written-per-binding) ·
 [`ambiguous-key`](props.md#warnings) ·

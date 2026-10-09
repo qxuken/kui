@@ -110,10 +110,12 @@ impl Key {
 /// rows allocates nothing after its first.
 #[derive(Default)]
 pub(crate) struct LabelIndex {
-    /// The key, the label's span in `text`, and the origin the node was
-    /// opened under — so a lookup can prefer the asker's own nodes (a
-    /// guest's `key_of` is asked from inside its fill; see `find_label`).
-    entries: Vec<(Key, u32, u32, crate::tree::OriginId)>,
+    /// The key, the label's span in `text`, the origin the node was
+    /// opened under and the fill it was opened in (the slot's key, or
+    /// `Key::ROOT` outside any) — so a lookup can prefer the asker's own
+    /// nodes, and among those its own fill's (a guest's `key_of` is asked
+    /// from inside its fill; see `find_label`).
+    entries: Vec<(Key, u32, u32, crate::tree::OriginId, Key)>,
     text: String,
 }
 
@@ -123,10 +125,11 @@ impl LabelIndex {
         self.text.clear();
     }
 
-    pub(crate) fn push(&mut self, key: Key, label: &str, origin: crate::tree::OriginId) {
+    pub(crate) fn push(&mut self, key: Key, label: &str, origin: crate::tree::OriginId, fill: Key) {
         let start = self.text.len() as u32;
         self.text.push_str(label);
-        self.entries.push((key, start, label.len() as u32, origin));
+        self.entries
+            .push((key, start, label.len() as u32, origin, fill));
     }
 
     /// The label `key` was opened under, if it was opened by label.
@@ -134,7 +137,7 @@ impl LabelIndex {
         self.entries
             .iter()
             .find(|(k, ..)| *k == key)
-            .map(|(_, start, len, _)| &self.text[*start as usize..(*start + *len) as usize])
+            .map(|(_, start, len, ..)| &self.text[*start as usize..(*start + *len) as usize])
     }
 
     /// Every `(key, label)`, in tree order: what a trace indexes once
@@ -142,7 +145,7 @@ impl LabelIndex {
     pub(crate) fn iter(&self) -> impl Iterator<Item = (Key, &str)> + '_ {
         self.entries
             .iter()
-            .map(|(k, start, len, _)| (*k, &self.text[*start as usize..(*start + *len) as usize]))
+            .map(|(k, start, len, ..)| (*k, &self.text[*start as usize..(*start + *len) as usize]))
     }
 
     /// The keys opened under `label` and the origin each was opened
@@ -151,13 +154,42 @@ impl LabelIndex {
         &'a self,
         label: &'a str,
     ) -> impl Iterator<Item = (Key, crate::tree::OriginId)> + 'a {
+        self.find_in(label).map(|(k, o, _)| (k, o))
+    }
+
+    /// The keys opened under `label` by `origin` inside the fill `fill`:
+    /// the first in tree order and how many — what a guest asking from
+    /// inside a fill sees. One extension may fill many slots (a Lua host
+    /// fills every pane it draws), and each fill is a view of its own, as
+    /// unable to know what the others called their nodes as a guest is
+    /// the host's (backlog F157).
+    pub(crate) fn find_in_fill(
+        &self,
+        label: &str,
+        origin: crate::tree::OriginId,
+        fill: Key,
+    ) -> (Option<Key>, usize) {
+        let mut own = self
+            .find_in(label)
+            .filter(|(_, o, f)| *o == origin && *f == fill);
+        match own.next() {
+            Some((k, ..)) => (Some(k), 1 + own.count()),
+            None => (None, 0),
+        }
+    }
+
+    /// `find`, with the fill each was opened in.
+    fn find_in<'a>(
+        &'a self,
+        label: &'a str,
+    ) -> impl Iterator<Item = (Key, crate::tree::OriginId, Key)> + 'a {
         self.entries
             .iter()
-            .filter(move |(_, start, len, _)| {
+            .filter(move |(_, start, len, ..)| {
                 *len as usize == label.len()
                     && &self.text[*start as usize..(*start + *len) as usize] == label
             })
-            .map(|(k, _, _, o)| (*k, *o))
+            .map(|(k, _, _, o, f)| (*k, *o, *f))
     }
 
     /// `find`, narrowed to the asker. A guest sees the keys it opened
@@ -166,7 +198,9 @@ impl LabelIndex {
     /// another guest called its nodes (a script's env is a reading of its
     /// own view). The host, whose frame it is, sees its
     /// own first and everyone's when it opened none. Only a clash within
-    /// what the asker sees is an ambiguity.
+    /// what the asker sees is an ambiguity. (A guest asking from inside a
+    /// fill is narrowed further, to that fill: `find_label` asks it
+    /// [`Self::find_in_fill`] instead.)
     /// Answers the first key in tree order and how many there were, so
     /// the caller can warn of a clash — without allocating, since `key_of`
     /// is asked from view code every frame.
@@ -232,9 +266,9 @@ mod tests {
     fn label_index_finds_in_tree_order_and_clears() {
         use crate::tree::OriginId;
         let mut idx = LabelIndex::default();
-        idx.push(Key::ROOT.str("a"), "a", OriginId::HOST);
-        idx.push(Key::ROOT.str("ab"), "ab", OriginId::HOST);
-        idx.push(Key::ROOT.index(0).str("a"), "a", OriginId(1));
+        idx.push(Key::ROOT.str("a"), "a", OriginId::HOST, Key::ROOT);
+        idx.push(Key::ROOT.str("ab"), "ab", OriginId::HOST, Key::ROOT);
+        idx.push(Key::ROOT.index(0).str("a"), "a", OriginId(1), Key::ROOT);
         let a: Vec<Key> = idx.find("a").map(|(k, _)| k).collect();
         assert_eq!(a, [Key::ROOT.str("a"), Key::ROOT.index(0).str("a")]);
         // The asker's own; a guest sees no one else's, the host sees
@@ -253,12 +287,28 @@ mod tests {
             idx.find_for("ab", OriginId::HOST),
             (Some(Key::ROOT.str("ab")), 1)
         );
-        idx.push(Key::ROOT.str("g"), "g", OriginId(1));
-        idx.push(Key::ROOT.index(1).str("g"), "g", OriginId(2));
+        idx.push(Key::ROOT.str("g"), "g", OriginId(1), Key::ROOT);
+        idx.push(Key::ROOT.index(1).str("g"), "g", OriginId(2), Key::ROOT);
         assert_eq!(
             idx.find_for("g", OriginId::HOST),
             (Some(Key::ROOT.str("g")), 2),
             "the host sees both guests' and hears of the clash"
+        );
+        // One origin, two fills, one label each (F157): the asking fill's
+        // is its own, and a fill that opened none has none.
+        let (fa, fb) = (Key::ROOT.str("pane/a"), Key::ROOT.str("pane/b"));
+        idx.push(fa.str("list"), "list", OriginId(3), fa);
+        idx.push(fb.str("list"), "list", OriginId(3), fb);
+        assert_eq!(
+            idx.find_in_fill("list", OriginId(3), fb),
+            (Some(fb.str("list")), 1)
+        );
+        assert_eq!(idx.find_in_fill("list", OriginId(3), Key::ROOT), (None, 0));
+        assert_eq!(idx.find_in_fill("list", OriginId(4), fa), (None, 0));
+        assert_eq!(
+            idx.find_for("list", OriginId(3)),
+            (Some(fa.str("list")), 2),
+            "across the origin's fills, both, and the clash"
         );
         assert_eq!(idx.find("ab").count(), 1, "a prefix is not a match");
         assert_eq!(idx.find("b").count(), 0);

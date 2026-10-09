@@ -115,10 +115,11 @@ warnings! {
     /// in Lua, `kui_key_of` in C) is declared by more than one node in the
     /// frame, under different parents, so they have distinct keys and the name
     /// picked the first in tree order. Labels are unique among siblings, not
-    /// across a tree. An extension asking from inside its fill is answered
-    /// from the nodes it opened and no one else's, and the host from its own
-    /// first — so this is a clash among the asker's own. Give the node meant
-    /// a label nothing else declares, or pass the hex key an event carried.
+    /// across a tree. An extension asking from inside a fill is answered
+    /// from the nodes that fill opened and no one else's — not even its own
+    /// other slots' — and the host from its own first; so this is a clash
+    /// among the asker's own. Give the node meant a label nothing else
+    /// declares, or pass the hex key an event carried.
     /// Two nodes with the *same* key are `duplicate-key`.
     pub const AMBIGUOUS_KEY: &str = "ambiguous-key";
     /// A lookup by accessible name (`Core::key_named`, `ctx.keyNamed`,
