@@ -1499,13 +1499,18 @@ impl EditStore {
     // -- Emission
 
     /// Draws selection, glyphs, and caret. `origin` is the content box origin
-    /// in physical px; everything emitted is clipped by `clip`.
+    /// in physical px; everything emitted is clipped by `clip`. `selected`
+    /// is whether the selection is drawn: an editor that lost the keyboard
+    /// keeps its range for when focus comes back, and shows none of it
+    /// meanwhile (backlog F147) — a page of fields would otherwise show a
+    /// highlight in each, none of which ⌘C copies.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn emit(
         &mut self,
         key: Key,
         origin: Vec2,
         focused: bool,
+        selected: bool,
         clip: Clip,
         clip_id: ClipId,
         fs: &mut FontSystem,
@@ -1522,7 +1527,7 @@ impl EditStore {
         let color = s.style.color_or_default();
         let accent = s.accent;
         let scale = s.scale;
-        let selection = s.editor.selection_bounds();
+        let selection = s.editor.selection_bounds().filter(|_| selected);
         // The composition range, marked like a selection but drawn as a
         // tint plus underline; the caret stays solid while composing so
         // the IME's offset inside the text is never hidden by a blink.

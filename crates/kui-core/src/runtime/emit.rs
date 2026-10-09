@@ -414,6 +414,13 @@ impl Core {
             NodeContent::Edit(key) => Leaf::Edit {
                 key,
                 focused: self.edit.focused() == Some(key),
+                // Its selection is shown while it has the keyboard, and
+                // while a menu opened over it is up — the menu's rows
+                // took focus, and the user is choosing Copy for what they
+                // can still see (backlog F147).
+                selected: self.edit.focused() == Some(key)
+                    || ((self.menu.is_some() || self.menu_bar_open.is_some())
+                        && self.menu_editor == Some(key)),
                 pad: self.tree.specs[i].layout.padding,
             },
             NodeContent::Image(id, opts) => Leaf::Image(id, opts),
@@ -1595,6 +1602,7 @@ impl Core {
                 GhostContent::Edit(key) => Leaf::Edit {
                     key,
                     focused: false,
+                    selected: false,
                     pad: node.spec.layout.padding,
                 },
                 GhostContent::Image(id, opts) => Leaf::Image(id, opts),
@@ -2360,6 +2368,9 @@ enum Leaf<'a> {
     Edit {
         key: Key,
         focused: bool,
+        /// Whether its selection is drawn: an editor that lost the
+        /// keyboard keeps its range and stops showing it.
+        selected: bool,
         /// The box's padding: the text starts inside it.
         pad: crate::geom::Edges,
     },
@@ -2645,7 +2656,12 @@ impl Painter<'_> {
                     sel.map(|s| (s, tint)),
                 );
             }
-            Leaf::Edit { key, focused, pad } => {
+            Leaf::Edit {
+                key,
+                focused,
+                selected,
+                pad,
+            } => {
                 let origin = Vec2::new(
                     crate::geom::snap_px((rect.x + pad.l) * scale),
                     crate::geom::snap_px((rect.y + pad.t) * scale),
@@ -2678,6 +2694,7 @@ impl Painter<'_> {
                     key,
                     origin,
                     focused,
+                    selected,
                     edit_clip,
                     edit_clip_id,
                     &mut sess.fonts,

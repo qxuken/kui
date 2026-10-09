@@ -511,3 +511,46 @@ fn selection_highlight_stays_on_its_lines() {
         "highlight leaked to other lines (quad tops span {min_y}..{max_y})"
     );
 }
+
+/// An editor that lost the keyboard keeps its selection and stops drawing
+/// it, and draws it again when focus comes back (backlog F147): a page of
+/// fields shows one highlight, the one ⌘C would copy.
+#[test]
+fn an_unfocused_editor_keeps_its_selection_and_hides_it() {
+    let highlighted = |rig: &mut Rig| {
+        rig.frame();
+        let (dl, _) = rig.core.output();
+        // In the field's band at the top of the window, not a menu's row.
+        dl.quads.iter().any(|q| {
+            q.kind == kui_core::QuadKind::Solid
+                && q.rect.w > 10.0
+                && q.rect.y < 60.0
+                && q.color.a < 0.9
+                && q.color.a > 0.1
+        })
+    };
+    let mut rig = Rig::new("select me", false);
+    rig.press(EditKey::SelectAll, Mods::default());
+    assert!(highlighted(&mut rig), "focused: the selection shows");
+    rig.core.set_focus(None);
+    assert!(!highlighted(&mut rig), "blurred: no highlight");
+    assert!(rig.core.edit.has_selection(rig.key), "the range is kept");
+    rig.core.set_focus(Some(rig.key));
+    assert!(highlighted(&mut rig), "focus back: the selection with it");
+    // A menu opened over the field takes focus for its rows, and the
+    // selection it would copy stays in sight while it is up.
+    rig.core.open_menu(kui_core::Menu::new(
+        rig.key,
+        Vec2::new(20.0, 150.0),
+        vec![kui_core::MenuItem::role(kui_core::MenuRole::Copy)],
+    ));
+    rig.frame();
+    rig.core
+        .handle_input(InputEvent::Key(EditKey::Down, Mods::default()));
+    assert_ne!(
+        rig.core.edit.focused(),
+        Some(rig.key),
+        "the menu's row has focus"
+    );
+    assert!(highlighted(&mut rig), "the menu's selection stays drawn");
+}

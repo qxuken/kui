@@ -30,6 +30,7 @@ was the first bare bump to break an app in five releases).
   above it, where it went nowhere.
 - An arrow, Backspace or Delete at the edge of an editor's text emits a
   `boundary` event, where it emitted nothing.
+- An editor that lost the keyboard no longer draws its selection.
 
 `UiEvent::message` read the payload first and the `tag` second, and a
 core event's payload is `{kind: "key", …}`, `{kind: "open", …}`, `{kind:
@@ -62,6 +63,14 @@ word, doc}` on the editor (backlog F145). A handler that counted an
 editor's events, or matched every event on an editor's key as a change,
 sees one more.
 
+An editor that lost the keyboard kept drawing its selection, so a page of
+fields showed a highlight in each and only one of them was what ⌘C
+copied (backlog F147). It now keeps the range and draws none of it until
+focus comes back — and while a context menu or the drawn menu bar opened
+over it is up, since the menu's rows took focus to be chosen and the
+selection is what Copy will copy. A screenshot test of a blurred field
+with a selection changes.
+
 ### Added
 
 - **Chords out of a focused editor** (backlog F144, ADR 0011 decision
@@ -80,6 +89,8 @@ sees one more.
 
 - **A message variant named like a core event no longer catches it**
   (backlog F148): see *What breaks*.
+- **One selection on screen among several editors** (backlog F147): see
+  *What breaks*.
 
 **What you can delete.**
 
@@ -87,6 +98,8 @@ sees one more.
   kind (`Key`, `Open`, `Menu`, `Changed`) so `message` reads the tag.
 - Routing an app's shortcuts through a declared menu bar, or a field's
   own key handling, so they work while a field has focus.
+- Collapsing an editor's selection when it loses focus, to keep a page
+  of fields from showing several highlights.
 - Comparing an editor's text before and after an arrow or Backspace to
   tell whether it reached the edge, or a separate key sink over a field
   to hear ↑ and ↓.
