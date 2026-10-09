@@ -190,6 +190,9 @@ F142, from the kawoosh non-editor-pane profile of the same day — a slot
 replayed by its host (ADR 0045, amending ADR 0016) — the day it was
 filed, and F143 beside it, the Lua binding's walk from its tables to
 the tree made cheaper, the same day after the alpha.48 tag.
+F144–F153 and W23, from Noticon's macOS polish round of the same day —
+chords and edges out of an editor, a declared row that replays its
+chord, the pointer over a taller titlebar — are open, in their section.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1544,6 +1547,255 @@ launch before any window exists, with nothing in the arguments — and
 winit's delegate answers only that the app finished launching and is
 terminating. One entry, F124, **built 2026-10-06**, the day it was
 filed, and in the archive.
+
+## From the Noticon polish round (2026-10-09)
+
+Noticon moved from alpha.42 to alpha.48 for a macOS polish round: a
+toolbar that fades while the user types and comes back when they reach
+for the pointer, a 52 pt strip under `Titlebar::Tall`, zen mode, a
+Deleted folder, a declared menu bar with every command, and a note
+title the arrows walk into from the page. Since its keyboard round the
+note body is an app-owned editor — one `on_key`/`on_drag` sink over
+`role(Line)` rows — and kui carries that well; what it met was at the
+two `edit` fields it still has (the title and the search), at the
+declared bar, and over the taller titlebar. It wrote thirteen notes
+(its `VISION.md`, §7) while building. Each was checked against the tree
+at `e47bc24a` (alpha.49) before it was filed: none was filed already,
+one was already true of the code (a drag's `line` is documented by
+band, F153 asks only the horizontal half), two meet a condition an ADR
+wrote for reopening them (F144, ADR 0011; F152, ADR 0018), and two
+look like one cause on the Mac that a repro has to settle (W23). Ten
+entries, F144–F153, and W23, filed open.
+
+### `~` F144 — A chord never leaves a focused editor: ⌘N in a search field reaches nothing
+
+**Found.** `route_key` returns before any sink is asked while an editor
+holds focus (`runtime/dispatch.rs:1218`, `if self.edit.focused().is_some()
+{ return false; }`), and `focused_control` skips editors (:1514), so
+`key_target`'s bubbling (ADR 0011 decision 2) never starts from one.
+Noticon's root sink binds ⌘N, ⌘F, ⌘\ and ⌘. — new note, find, the
+sidebar, zen — and each does nothing while the title or the search has
+the keyboard; the app routes them through its declared menu bar
+instead, which works only on macOS (F151). ADR 0011 deferred this on
+purpose and named the case that would change it: "an app that wants ⌘K
+from inside its search box". This is that app.
+
+**Do.** What the ADR wrote: a claim function for editors beside
+decision 2's — an editor claims the printable keyboard, the editing
+keys and the chords it performs (⌘C/X/V/A, ⌘Z/⇧⌘Z, the word and line
+motions), and a chord it does not claim bubbles to the nearest sink —
+with the runner's clipboard table (`Shell::edit_chord`,
+`kui-native/src/keys.rs:894`) moved into the core so both sides agree
+on what an editor claims. Whether it is opt-in (`EditOptions::bubble`)
+or the default is the ADR amendment's call; a default breaks no
+consumer that binds no chord at a sink above an editor.
+
+### `~` F145 — An editor says nothing of a key it could not act on: ↓ on its last line, ↑ on its first, ⌫ at its start
+
+**Found.** `EditState::apply_key` (`edit.rs:997`) returns `(changed,
+submit)`, and `push_edit_event` (`dispatch.rs:1583`) emits only those
+two. ↑ and ↓ run `Motion::Up`/`Down` and swallow the key even in a
+single-line field, where there is no line to move to, and there is no
+public query for the caret's offset. A block editor needs exactly these
+three to join blocks and move between them; Noticon's note body
+avoided it by owning the page, but its title is a kui field, and ↓ from
+the title into the note below cannot be built (↑ from the note into the
+title can, since the note is the app's).
+
+**Do.** One event, `boundary { key, edge }` — an edit key the editor
+held but could not act on: ↑/Home at the start, ↓/End at the end, ⌫ at
+offset 0, ⌦ at the end, ← / → at either end — emitted in place of
+nothing, so an app that listens joins or moves, and one that does not
+sees no change. `apply_key` reports "nothing moved, nothing deleted";
+the EditKey arm (`dispatch.rs:470–500`) turns that into the event.
+
+### `.` F146 — Tab in a single-line editor always walks the focus ring
+
+**Found.** `dispatch.rs:476–483`: `traverse = ek == Tab &&
+!is_multiline(k)`. Right for a form and for table cells; wrong for a
+list item, an outline row or a code cell built from single-line
+editors, which indent on Tab. The only way to keep Tab is `multiline`,
+which changes Enter too.
+
+**Do.** `EditOptions::tab` — `traverse` (today's single-line answer) or
+`keep` (the editor hears Tab as an edit key, inserting `\t` or emitting
+F145's `boundary` when told not to insert) — with the multiline default
+unchanged.
+
+### `.` F147 — An editor that lost the keyboard keeps painting its selection
+
+**Found.** `EditState::emit(…, focused, …)` (`edit.rs:1432`) uses
+`focused` for the caret and the preedit only (:1457, :1462); the
+selection quads (:1484–1520) are drawn whatever it is, and `set_focus`
+(:494) keeps the range. A page of several editors shows several
+highlights at once, none of which a ⌘C would copy. Noticon collapses
+the selection of the editor that lost focus itself. Nothing documents
+the persistence as intended.
+
+**Do.** Draw an unfocused editor's selection in an inactive tint (the
+platform's own convention: grey, not accent) or not at all, keeping the
+range so focus coming back restores it; a theme token for the inactive
+tint if it is drawn.
+
+### `!` F148 — `UiEvent::message` takes the payload's `kind` before the sink's tag
+
+**Found.** `message.rs:186–192`: `M::try_from(&self.payload).ok()
+.or_else(|| payload.get("tag")…)`. A core event's payload is
+`{kind: "key", …}`, `{kind: "open", …}`, `{kind: "changed", …}`,
+`{kind: "menu", …}`, and `derive(Message)` matches a unit variant by
+name — so an app's `Msg::Key` catches every key event from *every*
+sink, its own tag never consulted. Noticon named its root sink's tag
+`Key` and the page's keys went to the root. Nothing warns.
+
+**Do.** Read the tag first when the payload has one (a sink event,
+whose tag is the app's own word for it), the payload otherwise; or keep
+the order and have `derive(Message)` refuse a unit variant that shadows
+a core event kind. The first is the fix; the second is what makes the
+old order safe.
+
+### `.` F149 — `edit` has no placeholder
+
+**Found.** No placeholder in `edit.rs`, `EditOptions` or the schema;
+the theme's `faint` token is already described as "a placeholder"
+(`theme.rs:77`). Noticon's search and title draw "Search" and
+"Untitled" as a faint text floated over the field while it is empty,
+offset by hand to match the editor's insets.
+
+**Do.** `EditOptions::placeholder` — drawn in `faint` where the text
+would be while the value is empty, read as the field's accessible
+description, never part of `value`; the schema row and the bindings.
+
+### `.` F150 — `TextStyle` has no weight: a plain text or an editor cannot be bold
+
+**Found.** `TextStyle` (`spec.rs:2900`) has family, size, colour and
+line height; weight exists only as a rich-text `Span::bold`
+(`text.rs:366`) and a cell flag, matched through `weights::Weights`.
+An `edit` takes a `TextStyle`, so a heading field or a bold title
+cannot be bold; a plain heading can only be bigger, or a `rich_text`
+of one span, or a named face the app registered.
+
+**Do.** `TextStyle::weight` (or `bold`, as the span has it), matched by
+the same `Weights` the span uses; the schema rows in every binding.
+
+### `~` F151 — A declared row's shortcut takes the key from every field: no row replays its chord the way the standard Edit rows do
+
+**Found.** ADR 0018 decision 7: a parseable accelerator becomes an
+`NSMenuItem` key equivalent, and AppKit consumes the key before the
+window sees it. ADR 0030 decision 3 solved this for the *standard* Edit
+menu — its rows replay their chord to the key-focused sink and the
+runner's `edit_chord`, so an editor copies through the code its key
+takes — but a declared bar's rows cannot ask for the same. So every row
+with a shortcut has to be bound only where it means what the key would
+have meant. Noticon rebuilds its bar on every focus change: a row that
+acts on the page is unbound while a field has the keyboard (so ⌥↑ in
+the title stays the title's), its clipboard rows switch between
+`MenuRole`s and its own replays, Undo and Redo are dropped from the
+menu while a field is focused so the field keeps ⌘Z, and every bound
+row's handler parses its own accelerator back into a `KeyPress` and
+plays it to whichever sink has focus. Every app with a declared bar and
+an editor will write that.
+
+**Do.** A row that *is* its chord: `MenuItem::chord(spec)` (or a
+`replay` flag beside `accel`) — the runner binds the key equivalent and,
+when chosen by mouse or key, replays the press through the path ADR
+0030 decision 3 built (key-focused sink, then `edit_chord`, then F144's
+bubbling), posting no `menu` event. With it, Undo, Redo and the
+clipboard rows of a declared Edit menu are the field's while a field
+has focus and the app's sink's otherwise, with no rebuild. On the drawn
+bar the same row dispatches the chord as a key press. ADR 0018 amended.
+
+### `.` F152 — A declared bar has no Hide, Hide Others, Show All or Quit
+
+**Found.** `MacMenuBar::apply` (`macos_menu.rs:801–859`) replaces the
+whole bar, winit's application menu included, so a declared bar's first
+menu has only what the app wrote. `MenuRole` is Custom, Separator, Cut,
+Copy, Paste, SelectAll and LookUp (`menu.rs:72`). Noticon sends `hide:`,
+`hideOtherApplications:` and `unhideAllApplications:` to
+`NSApplication` through `objc_msgSend` itself, and quits by closing
+its window. ADR 0018 declined application-menu roles because they
+change what an item *is* — one the platform performs — and need an
+answer for the drawn bar; ADR 0030 kept that decline for Minimize,
+Zoom, Full Screen and Quit.
+
+**Do.** Either the roles — `Hide`, `HideOthers`, `ShowAll`, `Quit`
+(`terminate:`), `About` (`orderFrontStandardAboutPanel:`) — with the
+drawn bar's answer being "not offered", as `LookUp`'s already is with
+no host to perform it; or the runner keeping winit's application menu
+whole and placing the declared first menu's rows into it, the way a
+menu titled `Window` already gets AppKit's rows (ADR 0030 decision 2).
+The second needs no role and no ABI change. Either way an app stops
+reaching past kui to `NSApplication`. The ADR amendment decides which.
+
+### `.` F153 — A sink's `drag` names a line for a press in the margin beside it, and says nothing of where the press was
+
+**Found.** The nearest line is chosen by vertical gap alone
+(`dispatch.rs:165–182`). `props.md:199` and the comment at
+`dispatch.rs:111–115` cover above and below the text and a
+`role="none"` gutter, but not a press to the left or right of a row's
+text, which reads "line 3, byte 0" exactly as a press on its first
+character does. Noticon tells a margin drag (block selection) from a
+text drag by comparing `x` against the row's rect.
+
+**Do.** `inside: bool` on the drag payload (the press was within a
+line's text box), and a sentence in the events table.
+
+### `!` W23 — Over a `Titlebar::Tall` strip the window hears no pointer: hover never fires, `cursor()` reads nothing, no frame comes
+
+**Found, unverified on a Mac.** Noticon's toolbar sits in the 52 pt
+strip `Titlebar::Tall` makes (W22). Three things failed there, and
+each was worked round rather than understood:
+
+- `on_hover` on a `window_drag` node never fired. The core path looks
+  right: `hover_tracked` counts a window role (`spec.rs:1660`),
+  `push_hit` copies `on_hover` (`emit.rs:203`), and `refresh_hover`
+  excludes nothing (`input.rs:2207`).
+- `Core::cursor()` read `None` while the pointer was over the strip
+  after typing (Noticon's log, at every flow change). Noticon reads
+  the pointer from CoreGraphics (`CGEventGetLocation`) instead.
+- A move over the strip drew no frame; the toolbar came back only
+  because the caret's blink kept frames coming. kui-native requests a
+  redraw on every dispatched `CursorMoved` (`lib.rs:2854` →
+  `dispatch` :2178–2181), so the move most likely never arrived.
+
+One cause would explain all three: the empty `NSToolbar` W22 installs
+(`macos_chrome.rs:62–66`) puts a titlebar view above winit's content
+view over the strip, which takes `mouseMoved:` there and sends winit's
+view a `mouseExited:` (winit's `CursorLeft`, clearing the cursor).
+Under `Titlebar::Plain` the lights' strip may do the same at 28 pt.
+On Windows a drag node is answered `HTCAPTION`
+(`windows_nc.rs:207`), so no client move arrives over it either, by
+design and without a diagnostic.
+
+**Do.** Repro first, on a Mac: the titlebar example under `Tall`,
+logging `CursorMoved`/`CursorLeft` across the strip. If it is the
+toolbar's view, forward its moves (a tracking area on the titlebar
+container answering into winit's view, or `acceptsMouseMovedEvents` on
+the toolbar's view) so the strip is the window's for hover and the
+pointer's place. If a drag region is to stay deaf by design, `diag`
+warns at the `on_hover` that will never fire.
+
+### Theirs, not ours
+
+- **A menu titled `Window` is the platform's Window menu** (ADR 0030
+  decision 2): AppKit adds Minimize, Zoom, the tiling rows and Enter
+  Full Screen to it. Noticon's own Minimize (⌘M) and Zoom rows in its
+  `Window` menu duplicate AppKit's, and can be dropped.
+- **Text glyphs make poor icons** — a "+" lands where the font's
+  metrics put it. Noticon draws its icons from `line` and `polyline`
+  now, which centre exactly. Advice for the book, not a change.
+
+### Wishes, not entries
+
+- **Selection across editors** (ADR 0017: each `edit` its own scope).
+  A press on an editor never reaches an `on_drag` declared on it
+  (`emit.rs:255–275` hard-codes `drag: None` for an editor's hit),
+  `is_pressed` turns false once the pointer leaves it (`input.rs:2724`),
+  and no event reports the primary button's release (`Buttons`
+  `Primary` is never set, `input.rs:375`), so a drag that starts in one
+  editor's text cannot turn into a block selection when it crosses into
+  the next. Noticon no longer needs it — its page is one sink — and no
+  second app has asked; an `edit`-level "the drag left my box" event is
+  the smallest thing that would build it, if one does.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -2960,7 +3212,11 @@ profiled and the passes that could be skipped are, and what is still above
 the 2026-08-31 baseline is the struct's size in the app's own builder chain,
 which the archived entry measures and leaves.
 
-**Build next.** Nothing from the second bake-off: C51, the file
+**Build next.** Noticon's polish round (F144–F153, W23): F148 first,
+a defect with a one-line fix; then F144, F145 and F146 together as
+ADR 0011's amendment, since all three are what an editor claims; F151
+and F152 as ADR 0018's; W23 needs a Mac before anything is built.
+Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
 (`#[derive(Message)]`), was **built 2026-09-25**; C47 was
 **built 2026-09-25** (two queued frames by default), C46, the
