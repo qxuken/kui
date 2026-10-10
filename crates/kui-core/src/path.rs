@@ -1350,6 +1350,10 @@ fn drawable(ops: &[PathOp], scale: f32, off: Vec2, w: u32, h: u32, paint: MaskPa
     {
         return false;
     }
+    // SPIKE ONLY: tiny-skia's own guards alone, for the fuzz comparison.
+    if std::env::var_os("KUI_SPIKE_NO_GUARD").is_some() {
+        return true;
+    }
     let mut pts = Vec::new();
     flatten(ops, &mut pts);
     let Some(b) = bounds(&pts) else {
