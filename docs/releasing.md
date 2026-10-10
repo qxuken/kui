@@ -225,6 +225,17 @@ rebuilds `kui_ffi.dll` as kui-lua's runner-less dependency over the one the
 hosts were linked against, and they then fail to start with
 `STATUS_ENTRYPOINT_NOT_FOUND` (backlog W16).
 
+The fuzz targets ([fuzz/](../fuzz/README.md)) are on no release path
+either, and nothing runs them unasked: the `fuzz` workflow
+([fuzz.yml](../.forgejo/workflows/fuzz.yml)) is started by hand, and
+`nu scripts/fuzz.nu all` is the same run on a workstation. What they
+once found is replayed by `check` on every commit (`fuzz/regressions/`,
+under `cargo test --workspace`). Before a tag that touched a parser,
+the image decoder, the Node wire, paths or the input and edit paths,
+an hour of it is worth having: the first round found seven defects the
+headless suite passed through, six of them a crash or an allocation a
+host could not stop (backlog FZ1–FZ7).
+
 Pushing the tag does not check the commit twice. The push to main and the push
 of the tag that names it share a concurrency group keyed by the commit, and
 only the tag run may cancel — so it takes over a `check` already running for

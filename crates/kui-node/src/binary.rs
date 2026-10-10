@@ -351,6 +351,22 @@ impl<'a> Reader<'a> {
         Ok(self.f()? as u32)
     }
 
+    /// How many items follow, each one slot or more: a count the rest of
+    /// the stream cannot hold is refused before anything is sized by it.
+    /// A count is what a run's `Vec` is reserved for, and a stale or
+    /// overwritten one near 2^32 asked for hundreds of GB — an allocation
+    /// refused aborts Node, where an error is a frame refused (backlog
+    /// FZ4).
+    fn count(&mut self) -> Result<usize> {
+        let n = self.u()? as usize;
+        if n > self.s.len().saturating_sub(self.i) {
+            return Err(err(format!(
+                "a count of {n} runs past the end of the frame"
+            )));
+        }
+        Ok(n)
+    }
+
     /// A `(offset, len)` string ref; offset -1 = absent.
     fn str_ref(&mut self) -> Result<Option<&'a str>> {
         let off = self.f()?;
@@ -359,9 +375,12 @@ impl<'a> Reader<'a> {
             return Ok(None);
         }
         let off = off as usize;
-        let bytes = self
-            .strings
-            .get(off..off + len)
+        // Both ends come off the wire: a length near `usize::MAX` (an
+        // `as` of 1e300) past a nonzero offset overflowed the sum, a
+        // panic in a debug addon (backlog FZ4).
+        let bytes = off
+            .checked_add(len)
+            .and_then(|end| self.strings.get(off..end))
             .ok_or_else(|| err("string ref out of bounds"))?;
         std::str::from_utf8(bytes)
             .map(Some)
@@ -379,7 +398,7 @@ impl<'a> Reader<'a> {
         let n = self.u()? as usize;
         let run = self
             .s
-            .get(self.i..self.i + n)
+            .get(self.i..self.i.saturating_add(n))
             .ok_or_else(|| err("binary frame truncated"))?;
         self.i += n;
         Ok(run)
@@ -908,7 +927,7 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
 /// token index, 1024 the underline is wavy, 2048 dotted) with the three
 /// colours (v13), then the background's radius (v17).
 fn read_spans<'a>(r: &mut Reader<'a>, refs: &mut Refs<'_>) -> Result<Vec<Span<'a>>> {
-    let nspans = r.u()? as usize;
+    let nspans = r.count()?;
     let mut spans = Vec::with_capacity(nspans);
     for _ in 0..nspans {
         let text = r.req_str()?;
@@ -1146,7 +1165,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         // n, then n (x, y) pairs, then the prop list — `bg` is the fill,
         // and the core decides the box (ADR 0025, decision 6).
         OP_POLYGON => {
-            let n = r.u()? as usize;
+            let n = r.count()?;
             let mut points = Vec::with_capacity(n);
             for _ in 0..n {
                 let x = r.f()? as f32;
@@ -1222,7 +1241,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         // (docs/adr/0040-a-path-is-a-mask-in-the-atlas.md).
         OP_PATH => {
             let d = r.str_ref()?;
-            let n = r.u()? as usize;
+            let n = r.count()?;
             let mut floats = Vec::with_capacity(n);
             for _ in 0..n {
                 floats.push(r.f()? as f32);
@@ -1271,7 +1290,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         // list — `color` lands in the style, `key` in `p.key`, and the
         // core decides the box (docs/adr/0010-a-segment-primitive.md).
         OP_LINE => {
-            let n = r.u()? as usize;
+            let n = r.count()?;
             let mut points = Vec::with_capacity(n);
             for _ in 0..n {
                 let x = r.f()? as f32;
@@ -1304,7 +1323,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         OP_FRAGMENT => {
             let (hi, lo) = (r.f()? as u64, r.f()? as u64);
             let (ihi, ilo) = (r.f()? as u64, r.f()? as u64);
-            let n = r.u()? as usize;
+            let n = r.count()?;
             let mut params = Vec::with_capacity(n);
             for _ in 0..n {
                 params.push(r.f()? as f32);
@@ -1332,7 +1351,7 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let cshape_slot = r.u()? as usize;
             let ccolor_slot = r.f()?;
             let origin_line = r.f()?.max(0.0) as u64;
-            let n = r.u()? as usize;
+            let n = r.count()?;
             if n != rows * cols {
                 return Err(err(format!("<cells> carries {n} cells for {rows}×{cols}")));
             }
@@ -1898,6 +1917,60 @@ mod tests {
         assert!(float(1.0).fit && !float(1.0).clip);
         assert!(!float(2.0).fit && float(2.0).clipped_by_parent());
         assert!(float(3.0).fit && float(3.0).clip);
+    }
+
+    /// A string ref or a count no encoder wrote is a frame refused (backlog
+    /// FZ4, from the first fuzz round, `fuzz_binary`): a length of 1e300
+    /// past a nonzero offset overflowed the sum, a panic in a debug addon,
+    /// and a count near 2^32 reserved hundreds of GB for its run — an
+    /// allocation refused, which aborts Node.
+    #[test]
+    fn a_ref_or_a_count_past_the_stream_is_an_error() {
+        let mut core = kui_core::Core::new();
+        core.begin_frame(Size::new(200.0, 100.0), 1.0);
+        let (v, root, end) = (VERSION as f64, OP_ROOT as f64, OP_END as f64);
+        let big = u32::MAX as f64;
+        let streams: [Vec<f64>; 6] = [
+            vec![v, root, 0.0, OP_TEXT as f64, 1.0, 1e300, 0.0, end],
+            vec![v, root, 0.0, OP_POLYGON as f64, big, end],
+            vec![v, root, 0.0, OP_LINE as f64, big, end],
+            vec![v, root, 0.0, OP_PATH as f64, -1.0, 0.0, big, end],
+            vec![
+                v,
+                root,
+                0.0,
+                OP_FRAGMENT as f64,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                big,
+                end,
+            ],
+            // 65535 × 65535 cells, which the count matches.
+            vec![
+                v,
+                root,
+                0.0,
+                OP_CELLS as f64,
+                65535.0,
+                65535.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                4_294_836_225.0,
+                end,
+            ],
+        ];
+        for s in &streams {
+            assert!(
+                lower_binary(&mut kui_core::Ui::wrap(&mut core), s, b"hi").is_err(),
+                "{s:?}"
+            );
+        }
     }
 
     /// A whole frame lowers headlessly, and the version/root guards hold.

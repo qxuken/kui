@@ -21,6 +21,100 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.54 (unreleased)
+
+**What breaks.**
+
+- `Accel::parse` reads a letter in lower case whichever case it is
+  written in: `"⇧⌘S"` is `KeyCode::Char('s')` with Shift, where it was
+  `Char('S')`; `Accel::display` uppercases ASCII letters alone; and a
+  modifier as the key (`"⌘⌘"`, `"ctrl+shift"`) parses to nothing, as a
+  lock key did.
+- `path::rasterize` and `path::rasterize_at` leave blank an outline
+  that is not finite, lies farther than `path::RASTER_REACH` from the
+  mask or spans more than `path::RASTER_SPAN` with its stroke, or a
+  mask over `MAX_MASK_SIDE`; and a path's stroke, dash and fill bleed,
+  and every arc, are drawn from kui's own flattening rather than zeno's
+  curves, which moves a curve's edge pixels by under a tenth of a
+  pixel.
+- `decode_animation` is an error for a frame over 512 MiB or an
+  animation whose frames pass `MAX_ANIMATION_BYTES` (1 GiB), and
+  `decode_image` for an image whose RGBA is over 512 MiB, where only its
+  decoder's RGB buffer was held to that.
+- A glyph past 1024 px whose outline is wider or taller than an atlas
+  page (4096 px) is not drawn; it was refused once drawn.
+- U+001C–U+001E, NEL and U+2029 are shaped as characters that end no
+  bidi paragraph; an editor takes U+2029 as a newline, in its seed,
+  `set_edit_text` and typing, and a seed's other four as that
+  character.
+- The Node addon refuses a binary frame whose string ref or count runs
+  past the stream, where a debug addon panicked and any addon could
+  abort on the allocation.
+- A stock editor's IME composition drops what typing drops — every
+  control but a tab and, in a multiline editor, the newline — and the
+  IME's caret offsets move with what stays.
+
+kui is fuzzed now (`fuzz/`, `scripts/fuzz.nu`, and a `fuzz` workflow
+run by hand): five cargo-fuzz targets over the string parsers, the
+parsers that read a prop as data, paths, the conformance scenes and an
+editor under every input a driver sends, and the image decoder, and
+the Node addon's binary decoder fuzzed in its own tests. The first
+round found seven defects, all but one a crash or an allocation a host
+could not stop — backlog FZ1–FZ7 — and each is fixed below, pinned by a
+test beside its fix and by its minimized input under
+`fuzz/regressions/`, which `cargo test --workspace` replays on stable.
+What changes for an app is in the list above: a parsed accelerator's
+letter is lower case; the path rasterizer refuses numbers its
+rasterizer cannot hold, and strokes from a polyline fine enough not to
+show; an animation is held to a budget; a glyph larger than any atlas
+page is skipped before it is drawn; and the characters that end a bidi
+paragraph in the middle of a line are shaped as ones that do not; and an
+IME's composition holds what typing would.
+
+### Added
+
+- **Fuzzing** (backlog FZ1–FZ7): `fuzz/` (the `kui-fuzz` crate, never
+  published) holds five cargo-fuzz targets — `parsers`, `values`,
+  `path`, `scenes`, `decode` — whose bodies are a library, so
+  `tests/regressions.rs` replays every seed and every kept crash on
+  stable. `nu scripts/fuzz.nu run <target>`, `all` and `keep` run them
+  on a workstation (nightly and cargo-fuzz; Linux, WSL or macOS), and
+  `.forgejo/workflows/fuzz.yml` runs them on the runner, by hand only,
+  carrying each corpus from run to run. `crates/kui-node/src/fuzz_binary.rs`
+  fuzzes the binary decoder inside the addon's own tests.
+- `kui_native::MAX_ANIMATION_BYTES`, and `kui_core::path::RASTER_SPAN`
+  and `RASTER_REACH`: what the decoder and the rasterizer are held to.
+
+### Fixed
+
+- **An accelerator's letter is one chord in either case** (backlog FZ1).
+- **The path rasterizer hands zeno only what it can draw** (backlog
+  FZ2): a far point, a long line, a near-zero radius, an arc rotated
+  past 1e38 degrees or a curve that doubles back under a stroke
+  overflowed zeno's fixed point — a panic in a debug build, and for a
+  non-finite or far point undefined behaviour in a release one.
+- **`decode_animation` holds to a budget** (backlog FZ3): a 15-byte GIF
+  asked for 3.6 GB.
+- **The Node addon's binary decoder checks its refs and counts**
+  (backlog FZ4).
+- **Text at a size past any screen draws what fits** (backlog FZ5): at
+  10^6 px the glyph rasterizer overflowed.
+- **A bidi paragraph end inside a line no longer panics the shaper**
+  (backlog FZ6): `abc\u{1e}אב` in a text node did.
+- **A carriage return in an IME composition no longer panics the
+  editor** (backlog FZ7): the key that ended the composition split the
+  buffer off a character boundary.
+- `kui-native` builds without its `audio` feature with no unused-import
+  warning.
+
+**What you can delete.**
+
+- A filter of U+2029 and the information separators applied to text
+  before it reaches a kui text node or editor.
+- A size cap applied to text only so a huge size does not crash the
+  glyph rasterizer.
+- A check of an image's header dimensions before `decode_animation`.
+
 ## 0.1.0-alpha.53 (2026-10-10)
 
 **What breaks.**

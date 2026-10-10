@@ -76,6 +76,16 @@ fn format_of(bytes: &[u8]) -> Result<ImageFormat, String> {
 /// that the bytes are none of the four.
 pub fn decode_image(bytes: &[u8]) -> Result<Pixels, String> {
     let format = format_of(bytes)?;
+    // The `image` crate's own ceiling holds its decode, which for a WebP
+    // or a JPEG is RGB: the RGBA it is turned into is a third again, past
+    // it (backlog FZ3: 176 bytes of WebP made 576 MiB). The header says
+    // what the RGBA will be, and that is held to the frame's ceiling.
+    let (w, h) = image::ImageReader::with_format(Cursor::new(bytes), format)
+        .into_dimensions()
+        .map_err(|e| format!("decoding a {format:?}: {e}"))?;
+    if frame_bytes(w, h) > MAX_FRAME_BYTES {
+        return Err(too_big(format, w, h));
+    }
     let img = image::load_from_memory_with_format(bytes, format)
         .map_err(|e| format!("decoding a {format:?}: {e}"))?
         .into_rgba8();
@@ -90,25 +100,36 @@ pub fn decode_image(bytes: &[u8]) -> Result<Pixels, String> {
 /// whole canvas with its delay; a still image — a JPEG, a PNG with one
 /// frame — is one frame that shows for ever. A GIF frame that asks for
 /// 10 ms or less shows for 100 ms, as browsers show it.
+///
+/// Every frame is kept decoded, so the whole is held to
+/// [`MAX_ANIMATION_BYTES`], and any one buffer to the `image` crate's
+/// own ceiling (512 MiB) — what [`decode_image`] is held to: past either
+/// it is an error, never an allocation of what a file's header claims
+/// (backlog FZ3: a 130-byte GIF asked for 11 GB).
 pub fn decode_animation(bytes: &[u8]) -> Result<Animation, String> {
     let format = format_of(bytes)?;
     let err = |e: image::ImageError| format!("decoding a {format:?}: {e}");
     let (width, height, loops, frames) = match format {
         ImageFormat::Gif => {
-            let d = image::codecs::gif::GifDecoder::new(Cursor::new(bytes)).map_err(err)?;
+            let mut d = image::codecs::gif::GifDecoder::new(Cursor::new(bytes)).map_err(err)?;
+            d.set_limits(image::Limits::default()).map_err(err)?;
             let (w, h) = d.dimensions();
             let loops = loops_of(d.loop_count());
-            (w, h, loops, d.into_frames().collect_frames().map_err(err)?)
+            (w, h, loops, d.into_frames())
         }
         ImageFormat::Png => {
-            let d = image::codecs::png::PngDecoder::new(Cursor::new(bytes)).map_err(err)?;
+            let d = image::codecs::png::PngDecoder::with_limits(
+                Cursor::new(bytes),
+                image::Limits::default(),
+            )
+            .map_err(err)?;
             if !d.is_apng().map_err(err)? {
                 return still(bytes);
             }
             let (w, h) = d.dimensions();
             let a = d.apng().map_err(err)?;
             let loops = loops_of(a.loop_count());
-            (w, h, loops, a.into_frames().collect_frames().map_err(err)?)
+            (w, h, loops, a.into_frames())
         }
         ImageFormat::WebP => {
             let d = image::codecs::webp::WebPDecoder::new(Cursor::new(bytes)).map_err(err)?;
@@ -116,14 +137,28 @@ pub fn decode_animation(bytes: &[u8]) -> Result<Animation, String> {
                 return still(bytes);
             }
             let (w, h) = d.dimensions();
+            // The WebP decoder takes no limits: its canvas is held here.
+            if frame_bytes(w, h) > MAX_FRAME_BYTES {
+                return Err(too_big(format, w, h));
+            }
             let loops = loops_of(d.loop_count());
-            (w, h, loops, d.into_frames().collect_frames().map_err(err)?)
+            (w, h, loops, d.into_frames())
         }
         _ => return still(bytes),
     };
+    if frame_bytes(width, height) > MAX_FRAME_BYTES {
+        return Err(too_big(format, width, height));
+    }
     let gif = format == ImageFormat::Gif;
-    let mut out: Vec<AnimationFrame> = Vec::with_capacity(frames.len());
+    let mut out: Vec<AnimationFrame> = Vec::new();
     for f in frames {
+        let f = f.map_err(err)?;
+        if (out.len() as u64 + 1) * frame_bytes(width, height) > MAX_ANIMATION_BYTES {
+            return Err(format!(
+                "a {format:?} of {width}x{height} with more frames than {} MiB holds",
+                MAX_ANIMATION_BYTES >> 20
+            ));
+        }
         let (num, den) = f.delay().numer_denom_ms();
         let mut delay = f64::from(num) / f64::from(den.max(1)) / 1000.0;
         if gif && delay < GIF_FLOOR {
@@ -154,6 +189,26 @@ pub fn decode_animation(bytes: &[u8]) -> Result<Animation, String> {
         frames: out,
         loops,
     })
+}
+
+/// The most every frame of one [`decode_animation`] may hold together:
+/// 1 GiB, some 125 frames at 1080p, or a minute of a 640x480 GIF at 15
+/// fps.
+pub const MAX_ANIMATION_BYTES: u64 = 1 << 30;
+
+/// The most one frame's buffer may hold: the `image` crate's own default
+/// ceiling for an allocation, the one `decode_image` is held to.
+const MAX_FRAME_BYTES: u64 = 512 << 20;
+
+fn frame_bytes(w: u32, h: u32) -> u64 {
+    u64::from(w) * u64::from(h) * 4
+}
+
+fn too_big(format: ImageFormat, w: u32, h: u32) -> String {
+    format!(
+        "a {format:?} of {w}x{h} is more than one frame may hold ({} MiB)",
+        MAX_FRAME_BYTES >> 20
+    )
 }
 
 fn still(bytes: &[u8]) -> Result<Animation, String> {
@@ -272,6 +327,18 @@ mod tests {
         let mut out = Cursor::new(Vec::new());
         img.write_to(&mut out, ImageFormat::Png).unwrap();
         out.into_inner()
+    }
+
+    /// A header's canvas is not an allocation (backlog FZ3, from the first
+    /// fuzz round): fifteen bytes of GIF claiming 52428 by 17356 asked
+    /// `decode_animation` for 3.6 GB, which no limit stood between.
+    #[test]
+    fn a_canvas_past_the_ceiling_is_refused() {
+        let gif = b"GIF89a\xcc\xcc\xcc\x43\x3c\x00\x3c\x00\x3c";
+        assert!(decode_animation(gif).is_err());
+        assert!(decode_image(gif).is_err());
+        assert_eq!(frame_bytes(52428, 17356), 3_639_761_472);
+        assert!(frame_bytes(52428, 17356) > MAX_FRAME_BYTES);
     }
 
     #[test]

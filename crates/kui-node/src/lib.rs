@@ -50,6 +50,8 @@ use napi_derive::napi;
 use serde_json::{Map as JsonMap, Value as Json};
 
 mod binary;
+#[cfg(test)]
+mod fuzz_binary;
 mod rows;
 mod schema;
 

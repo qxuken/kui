@@ -11,6 +11,9 @@ members = [
     # The examples' devtools (docs/adr/0021): a dev-dependency of the crates
     # whose examples run inside it, never published.
     "examples/devtools",
+    # The fuzz targets (cargo-fuzz) and the stable replay of what they
+    # found; see fuzz/Cargo.toml and scripts/fuzz.nu. Never published.
+    "fuzz",
 ]
 
 [workspace.package]

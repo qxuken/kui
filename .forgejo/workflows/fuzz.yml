@@ -1,0 +1,186 @@
+# The fuzz targets in fuzz/ (cargo-fuzz, libFuzzer under AddressSanitizer),
+# run by hand: Actions → fuzz → Run workflow. Never on a push, a pull
+# request or a schedule.
+#
+# Why by hand: a fuzz run has no natural end and no pass to wait for. It is
+# minutes of CPU per target that find something or nothing, and a finding
+# is a backlog item to read, minimize and fix - not a red commit. What a
+# run once found is kept under fuzz/regressions/ and replayed on stable by
+# `cargo test --workspace`, so ci.yml's `check` holds every fixed crash
+# fixed without a fuzzer in it (fuzz/Cargo.toml, scripts/fuzz.nu). Run this
+# after work on a parser, a decoder, the Node wire or the input and edit
+# paths, and before a release when there is an hour to spare.
+#
+# A run is `nu scripts/fuzz.nu` with the inputs below, the same script a
+# workstation runs (WSL on Windows; libFuzzer on Windows MSVC is not one to
+# trust). Each target's corpus - what the runs grew - is carried from run to
+# run in the cache, keyed by run and restored from the newest, so a run
+# starts where the last one stopped.
+#
+# A crash fails the job. Its inputs are in fuzz/artifacts/, uploaded as
+# the run's artifact, and printed in the log as base64 as well - the log
+# is what is left when the upload is not - so a crash reproduces anywhere:
+#
+#   base64 -d > crash <<< '<the line>'
+#   nu scripts/fuzz.nu keep <target> crash <backlog-id>
+#
+# `keep` minimizes it into fuzz/regressions/<target>/, where the fix's
+# commit checks it in.
+#
+# The `kui-node` binary decoder is fuzzed in its own crate's tests
+# (crates/kui-node/src/fuzz_binary.rs): a cdylib that cargo-fuzz cannot
+# link. `check` runs its 1500 cases; the step below runs more.
+name: fuzz
+
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds per target
+        default: "600"
+      targets:
+        description: Targets, space-separated (parsers values path scenes decode); empty for all
+        default: ""
+      jobs:
+        description: libFuzzer workers per target (each a process of up to ~1 GB)
+        default: "1"
+      node_cases:
+        description: Streams for the kui-node decoder's own fuzz test; 0 skips it
+        default: "200000"
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_HOME: /usr/local/cargo
+  RUSTUP_HOME: /usr/local/rustup
+  NU_VERSION: "0.116.0"
+  # cargo-fuzz builds with flags only a nightly takes (`-Zsanitizer`).
+  # Pinned, like every other tool here, to the nightly the first round ran
+  # on: a run is reproducible from the commit that started it.
+  NIGHTLY: nightly-2026-10-09
+  CARGO_FUZZ_VERSION: 0.13.2
+
+jobs:
+  fuzz:
+    runs-on: docker
+    container:
+      image: node:24-bookworm
+    # Five targets at the default ten minutes is under an hour with the
+    # build; the cap is for the inputs someone raises.
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
+
+      # A font, because `scenes` shapes and draws real text; zstd for
+      # actions/cache (see ci.yml). The image already has the C++ compiler
+      # libfuzzer-sys builds libFuzzer with. The ALSA headers are for the
+      # kui-node step alone: the addon builds kui-native with its audio
+      # feature, which the fuzz crate leaves out.
+      - name: Install system deps and rust
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl \
+            pkg-config libasound2-dev zstd
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
+            --default-toolchain stable
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
+          "${CARGO_HOME}/bin/rustup" toolchain install "${NIGHTLY}" --profile minimal
+          "${CARGO_HOME}/bin/cargo" "+${NIGHTLY}" --version
+          # fuzz.nu builds with `cargo +$KUI_FUZZ_TOOLCHAIN`, `nightly`
+          # when unset: the pinned one here.
+          echo "KUI_FUZZ_TOOLCHAIN=${NIGHTLY}" >> "$GITHUB_ENV"
+
+      - name: Cache cargo-fuzz
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/cargo/bin/cargo-fuzz
+          key: cargo-fuzz-${{ runner.os }}-${{ env.CARGO_FUZZ_VERSION }}
+
+      - name: Install cargo-fuzz
+        run: |
+          set -eu
+          if command -v cargo-fuzz >/dev/null; then
+            cargo fuzz --version
+            exit 0
+          fi
+          cargo install --locked "cargo-fuzz@${CARGO_FUZZ_VERSION}"
+
+      - name: Restore the corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+
+      # The inputs reach the shell as variables, never spliced into it.
+      - name: Fuzz
+        env:
+          FUZZ_TARGETS: ${{ inputs.targets }}
+          FUZZ_SECONDS: ${{ inputs.seconds }}
+          FUZZ_JOBS: ${{ inputs.jobs }}
+        run: |
+          set -eu
+          if [ -z "$FUZZ_TARGETS" ]; then
+            nu scripts/fuzz.nu all --time "$FUZZ_SECONDS" --jobs "$FUZZ_JOBS"
+          else
+            failed=
+            for t in $FUZZ_TARGETS; do
+              nu scripts/fuzz.nu run "$t" --time "$FUZZ_SECONDS" --jobs "$FUZZ_JOBS" \
+                || failed="$failed $t"
+            done
+            if [ -n "$failed" ]; then
+              echo "crashed:$failed"
+              exit 1
+            fi
+          fi
+
+      - name: The kui-node decoder's own fuzz test
+        if: ${{ !cancelled() && inputs.node_cases != '0' }}
+        env:
+          KUI_NODE_FUZZ_CASES: ${{ inputs.node_cases }}
+          KUI_NODE_FUZZ_SEED: ${{ github.run_id }}
+          KUI_NODE_FUZZ_LOG: /tmp/kui-node-fuzz-case.txt
+        run: |
+          set -eu
+          if ! cargo test -p kui-node --lib fuzz_binary; then
+            echo "the case it was on (an abort prints nothing else):"
+            cat "$KUI_NODE_FUZZ_LOG" || true
+            exit 1
+          fi
+
+      - name: Crash inputs, as base64
+        if: failure()
+        run: |
+          set -eu
+          for f in fuzz/artifacts/*/*; do
+            [ -f "$f" ] || continue
+            echo "== $f ($(stat -c %s "$f") bytes)"
+            base64 -w0 "$f"
+            echo
+          done
+
+      - name: Upload the crash inputs
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ github.run_id }}
+          path: fuzz/artifacts
+
+      # Saved whatever happened: a run that crashed one target still grew
+      # the others' corpora.
+      - name: Save the corpus
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}

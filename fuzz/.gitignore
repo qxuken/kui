@@ -1,0 +1,7 @@
+# cargo-fuzz's working state: the corpus a run grows (seeds/ and
+# regressions/ are what is kept), crash artifacts until `fuzz.nu keep`
+# moves one into regressions/, coverage reports.
+/corpus
+/artifacts
+/coverage
+/target

@@ -152,7 +152,9 @@ mod axis_lock;
 mod backdrop;
 mod clipboard;
 mod decode;
-pub use decode::{Animation, AnimationFrame, Pixels, Showing, decode_animation, decode_image};
+pub use decode::{
+    Animation, AnimationFrame, MAX_ANIMATION_BYTES, Pixels, Showing, decode_animation, decode_image,
+};
 mod dialogs;
 /// The wallpaper a `Tinted` backdrop draws where the OS has no material.
 mod ground;

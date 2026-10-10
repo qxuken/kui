@@ -119,6 +119,34 @@ impl PathOp {
         }
     }
 
+    /// The op in a mask's physical px: every point at `scale` from
+    /// `off`, the radii at `scale`.
+    fn placed(&self, scale: f32, off: Vec2) -> PathOp {
+        let s = |p: Vec2| Vec2::new(p.x * scale + off.x, p.y * scale + off.y);
+        match *self {
+            PathOp::MoveTo(p) => PathOp::MoveTo(s(p)),
+            PathOp::LineTo(p) => PathOp::LineTo(s(p)),
+            PathOp::QuadTo(c, p) => PathOp::QuadTo(s(c), s(p)),
+            PathOp::CubicTo(a, b, p) => PathOp::CubicTo(s(a), s(b), s(p)),
+            PathOp::ArcTo {
+                rx,
+                ry,
+                rotation,
+                large,
+                sweep,
+                to,
+            } => PathOp::ArcTo {
+                rx: rx * scale,
+                ry: ry * scale,
+                rotation,
+                large,
+                sweep,
+                to: s(to),
+            },
+            PathOp::Close => PathOp::Close,
+        }
+    }
+
     /// The op with every point moved by `d`.
     fn shifted(&self, d: Vec2) -> PathOp {
         let s = |p: Vec2| Vec2::new(p.x + d.x, p.y + d.y);
@@ -705,12 +733,33 @@ pub const FLATTEN_TOLERANCE: f32 = 0.2;
 /// The most pieces one curve or arc is cut into.
 const MAX_PIECES: usize = 128;
 
+/// How finely a flattening cuts: how far a chord may stray from the
+/// curve, and the most pieces one curve or arc becomes.
+#[derive(Clone, Copy)]
+struct Fineness {
+    tolerance: f32,
+    pieces: usize,
+}
+
+/// The hit outline's, in logical px.
+const HIT: Fineness = Fineness {
+    tolerance: FLATTEN_TOLERANCE,
+    pieces: MAX_PIECES,
+};
+
+/// A stroke's, in physical px, as the rasterizer is handed it (see
+/// [`rasterize_at`]): a tenth of a pixel, under what antialiasing shows.
+const RASTER: Fineness = Fineness {
+    tolerance: 0.1,
+    pieces: 4096,
+};
+
 /// Flattens `ops` into closed contours in `out`, each contour's points
 /// followed by [`CONTOUR_BREAK`]. Every subpath is closed for the
 /// purpose of a fill, as SVG closes it. A move with nothing after it
 /// adds nothing.
 pub fn flatten(ops: &[PathOp], out: &mut Vec<Vec2>) {
-    flatten_as(ops, out, false);
+    flatten_as(ops, out, false, HIT, None);
 }
 
 /// Flattens `ops` into the polylines a stroke draws, each followed by
@@ -718,19 +767,30 @@ pub fn flatten(ops: &[PathOp], out: &mut Vec<Vec2>) {
 /// open one ends where it was left, so a stroke's hit pieces are the
 /// pieces it paints and no chord across an open curve is among them.
 pub fn flatten_stroke(ops: &[PathOp], out: &mut Vec<Vec2>) {
-    flatten_as(ops, out, true);
+    flatten_as(ops, out, true, HIT, None);
 }
 
-fn flatten_as(ops: &[PathOp], out: &mut Vec<Vec2>, stroke: bool) {
+/// With `closes`, a stroke's flattening says for each contour, in order,
+/// whether its `Z` closed it — and leaves the start off its end, for the
+/// rasterizer to close it as one outline, the way a stroke joins there.
+fn flatten_as(
+    ops: &[PathOp],
+    out: &mut Vec<Vec2>,
+    stroke: bool,
+    fine: Fineness,
+    mut closes: Option<&mut Vec<bool>>,
+) {
     let mut cur = Vec2::ZERO;
     let mut open = false;
     let mut contour_start = out.len();
-    let close = |out: &mut Vec<Vec2>, open: &mut bool, contour_start: usize, closed: bool| {
+    let mut close = |out: &mut Vec<Vec2>, open: &mut bool, contour_start: usize, closed: bool| {
         if *open {
             // A contour of one point is nothing.
             if out.len() - contour_start >= 2 {
-                if stroke && closed {
-                    out.push(out[contour_start]);
+                match closes.as_deref_mut() {
+                    Some(closes) => closes.push(closed),
+                    None if stroke && closed => out.push(out[contour_start]),
+                    None => {}
                 }
                 out.push(CONTOUR_BREAK);
             } else {
@@ -768,11 +828,11 @@ fn flatten_as(ops: &[PathOp], out: &mut Vec<Vec2>, stroke: bool) {
                         cur = p;
                     }
                     PathOp::QuadTo(c, p) => {
-                        flatten_quad(cur, c, p, out);
+                        flatten_quad(cur, c, p, out, fine);
                         cur = p;
                     }
                     PathOp::CubicTo(a, b, p) => {
-                        flatten_cubic(cur, a, b, p, out);
+                        flatten_cubic(cur, a, b, p, out, fine);
                         cur = p;
                     }
                     PathOp::ArcTo {
@@ -783,7 +843,7 @@ fn flatten_as(ops: &[PathOp], out: &mut Vec<Vec2>, stroke: bool) {
                         sweep,
                         to,
                     } => {
-                        flatten_arc(cur, rx, ry, rotation, large, sweep, to, out);
+                        flatten_arc(cur, rx, ry, rotation, large, sweep, to, out, fine);
                         cur = to;
                     }
                     PathOp::MoveTo(_) | PathOp::Close => unreachable!(),
@@ -794,13 +854,13 @@ fn flatten_as(ops: &[PathOp], out: &mut Vec<Vec2>, stroke: bool) {
     close(out, &mut open, contour_start, false);
 }
 
-fn pieces(dd: f32, k: f32) -> usize {
-    ((dd * k / FLATTEN_TOLERANCE).sqrt().ceil() as usize).clamp(1, MAX_PIECES)
+fn pieces(dd: f32, k: f32, fine: Fineness) -> usize {
+    ((dd * k / fine.tolerance).sqrt().ceil() as usize).clamp(1, fine.pieces)
 }
 
-fn flatten_quad(p0: Vec2, c: Vec2, p1: Vec2, out: &mut Vec<Vec2>) {
+fn flatten_quad(p0: Vec2, c: Vec2, p1: Vec2, out: &mut Vec<Vec2>, fine: Fineness) {
     let dd = Vec2::new(p0.x - 2.0 * c.x + p1.x, p0.y - 2.0 * c.y + p1.y);
-    let n = pieces((dd.x * dd.x + dd.y * dd.y).sqrt(), 0.25);
+    let n = pieces((dd.x * dd.x + dd.y * dd.y).sqrt(), 0.25, fine);
     for i in 1..=n {
         let t = i as f32 / n as f32;
         let u = 1.0 - t;
@@ -811,13 +871,13 @@ fn flatten_quad(p0: Vec2, c: Vec2, p1: Vec2, out: &mut Vec<Vec2>) {
     }
 }
 
-fn flatten_cubic(p0: Vec2, a: Vec2, b: Vec2, p1: Vec2, out: &mut Vec<Vec2>) {
+fn flatten_cubic(p0: Vec2, a: Vec2, b: Vec2, p1: Vec2, out: &mut Vec<Vec2>, fine: Fineness) {
     let d1 = Vec2::new(p0.x - 2.0 * a.x + b.x, p0.y - 2.0 * a.y + b.y);
     let d2 = Vec2::new(a.x - 2.0 * b.x + p1.x, a.y - 2.0 * b.y + p1.y);
     let dd = (d1.x * d1.x + d1.y * d1.y)
         .max(d2.x * d2.x + d2.y * d2.y)
         .sqrt();
-    let n = pieces(dd, 0.75);
+    let n = pieces(dd, 0.75, fine);
     for i in 1..=n {
         let t = i as f32 / n as f32;
         let u = 1.0 - t;
@@ -829,10 +889,21 @@ fn flatten_cubic(p0: Vec2, a: Vec2, b: Vec2, p1: Vec2, out: &mut Vec<Vec2>) {
     }
 }
 
+/// An arc's rotation in degrees within one turn, exactly for any finite
+/// number: a rotation past 1e38 was a NaN in every point of zeno's arc
+/// (backlog FZ2), and the sine of one is noise even where it is a number.
+fn turn_of(degrees: f32) -> f32 {
+    degrees.rem_euclid(360.0)
+}
+
 /// An SVG arc in centre form: the centre, the radii as scaled up when the
 /// endpoints are too far apart, the start angle and the sweep in radians.
 /// `None` for an arc whose endpoints coincide or whose radii are zero,
 /// which SVG draws as a line (or nothing).
+///
+/// Worked in f64: the products of four radii it takes overflow an f32
+/// past a radius of 1e19, and a radius of 1e25 made its centre the
+/// chord's middle and its ellipse a small one (backlog FZ2).
 #[allow(clippy::too_many_arguments)]
 fn arc_center(
     from: Vec2,
@@ -846,14 +917,20 @@ fn arc_center(
     if (from.x - to.x).abs() < 1e-6 && (from.y - to.y).abs() < 1e-6 {
         return None;
     }
-    let (mut rx, mut ry) = (rx.abs(), ry.abs());
+    let (mut rx, mut ry) = (f64::from(rx.abs()), f64::from(ry.abs()));
     if rx < 1e-6 || ry < 1e-6 {
         return None;
     }
-    let phi = rotation.to_radians();
+    let phi = f64::from(turn_of(rotation)).to_radians();
     let (sin_phi, cos_phi) = phi.sin_cos();
-    let dx = (from.x - to.x) * 0.5;
-    let dy = (from.y - to.y) * 0.5;
+    let (fx, fy, tx, ty) = (
+        f64::from(from.x),
+        f64::from(from.y),
+        f64::from(to.x),
+        f64::from(to.y),
+    );
+    let dx = (fx - tx) * 0.5;
+    let dy = (fy - ty) * 0.5;
     let x1 = cos_phi * dx + sin_phi * dy;
     let y1 = -sin_phi * dx + cos_phi * dy;
     let lambda = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
@@ -870,13 +947,13 @@ fn arc_center(
     }
     let cx1 = coef * rx * y1 / ry;
     let cy1 = -coef * ry * x1 / rx;
-    let cx = cos_phi * cx1 - sin_phi * cy1 + (from.x + to.x) * 0.5;
-    let cy = sin_phi * cx1 + cos_phi * cy1 + (from.y + to.y) * 0.5;
+    let cx = cos_phi * cx1 - sin_phi * cy1 + (fx + tx) * 0.5;
+    let cy = sin_phi * cx1 + cos_phi * cy1 + (fy + ty) * 0.5;
     let ux = (x1 - cx1) / rx;
     let uy = (y1 - cy1) / ry;
     let vx = (-x1 - cx1) / rx;
     let vy = (-y1 - cy1) / ry;
-    let angle = |ax: f32, ay: f32, bx: f32, by: f32| -> f32 {
+    let angle = |ax: f64, ay: f64, bx: f64, by: f64| -> f64 {
         let dot = ax * bx + ay * by;
         let len = ((ax * ax + ay * ay) * (bx * bx + by * by)).sqrt();
         let mut a = (dot / len).clamp(-1.0, 1.0).acos();
@@ -887,13 +964,20 @@ fn arc_center(
     };
     let theta = angle(1.0, 0.0, ux, uy);
     let mut delta = angle(ux, uy, vx, vy);
-    let tau = std::f32::consts::TAU;
+    let tau = std::f64::consts::TAU;
     if !sweep && delta > 0.0 {
         delta -= tau;
     } else if sweep && delta < 0.0 {
         delta += tau;
     }
-    Some((Vec2::new(cx, cy), rx, ry, phi, theta, delta))
+    Some((
+        Vec2::new(cx as f32, cy as f32),
+        rx as f32,
+        ry as f32,
+        phi as f32,
+        theta as f32,
+        delta as f32,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -906,6 +990,7 @@ fn flatten_arc(
     sweep: bool,
     to: Vec2,
     out: &mut Vec<Vec2>,
+    fine: Fineness,
 ) {
     let Some((c, rx, ry, phi, theta, delta)) = arc_center(from, rx, ry, rotation, large, sweep, to)
     else {
@@ -914,9 +999,18 @@ fn flatten_arc(
     };
     let r = rx.max(ry);
     // The chord of one piece strays `r (1 - cos(step / 2))` from the arc.
-    let step = 2.0 * (1.0 - FLATTEN_TOLERANCE / r).clamp(-1.0, 1.0).acos();
+    // For a radius a tolerance is next to nothing against, `1 - tol / r`
+    // is 1 in an f32 and the step 0, which made a large arc one piece -
+    // a line - where it goes round an ellipse 1e17 px across (backlog
+    // FZ2): `acos(1 - x)` is `sqrt(2x)` there.
+    let x = fine.tolerance / r;
+    let step = if x < 1e-4 {
+        2.0 * (2.0 * x).sqrt()
+    } else {
+        2.0 * (1.0 - x).clamp(-1.0, 1.0).acos()
+    };
     let n = if step > 0.0 {
-        ((delta.abs() / step).ceil() as usize).clamp(1, MAX_PIECES)
+        ((delta.abs() / step).ceil() as usize).clamp(1, fine.pieces)
     } else {
         1
     };
@@ -1026,6 +1120,13 @@ pub type DashCut = crate::line::Cut;
 /// `w × h` alpha mask at `scale`, the node's box shifted by `bin`
 /// quarter-pixels so a node at a fractional position lands on the pixel
 /// grid as it would be drawn. `w * h` bytes, row after row.
+///
+/// An outline the rasterizer cannot draw is left blank (backlog FZ2): a
+/// number that is not finite, an outline more than [`RASTER_SPAN`] px
+/// wide and tall together at this scale (stroke included), one farther
+/// than [`RASTER_REACH`] from the mask's origin, or a mask wider or taller
+/// than [`MAX_MASK_SIDE`]. A path node never asks for one — its mask is
+/// its outline's box, and at most `MAX_MASK_SIDE` a side.
 pub fn rasterize(
     ops: &[PathOp],
     scale: f32,
@@ -1052,10 +1153,23 @@ pub fn rasterize_at(
     use swash::zeno::{Cap, Command, Fill, Join, Mask, PathBuilder, Point, Stroke};
     let len = (w as usize) * (h as usize);
     let mut buf = vec![0u8; len];
-    if len == 0 || ops.is_empty() {
+    if len == 0 || ops.is_empty() || !drawable(ops, scale, off, w, h, paint) {
         return buf;
     }
-    let at = |p: Vec2| Point::new(p.x * scale + off.x, p.y * scale + off.y);
+    // On zeno's own grid, a 256th of a pixel: two points are then one
+    // point or a step apart. Its stroker turns a curve's tangent into a
+    // normal by its length, and a control point 1e-41 px from the curve's
+    // end made that normal - and the outline offset along it - vast
+    // (backlog FZ2): an overflow in a debug build, a number past what its
+    // conversion takes in a release one. Nothing drawn moves by more than
+    // the 512th of a pixel the rasterizer resolves anyway.
+    let snap = |v: f32| (v * 256.0).round() / 256.0;
+    let place = |p: Vec2| Vec2::new(p.x * scale + off.x, p.y * scale + off.y);
+    let at = |p: Vec2| {
+        let q = place(p);
+        Point::new(snap(q.x), snap(q.y))
+    };
+    let mut arc = Vec::new();
     let mut cmds: Vec<Command> = Vec::with_capacity(ops.len() + 1);
     let mut cur = Vec2::ZERO;
     let mut start = Vec2::ZERO;
@@ -1104,23 +1218,28 @@ pub fn rasterize_at(
                         sweep,
                         to,
                     } => {
-                        use swash::zeno::{Angle, ArcSize, ArcSweep};
-                        cmds.arc_to(
+                        // kui's own arc, cut at [`RASTER`]'s fineness, not
+                        // zeno's: its arc is f32 throughout, and it scaled a
+                        // radius of 1e-9 up to an ellipse, drew a radius of
+                        // 1e25 round one `drawable` had not measured, and
+                        // took a rotation past 1e38 to a NaN (backlog FZ2).
+                        // This is the arc the hit outline and `drawable`
+                        // are cut from, finer.
+                        arc.clear();
+                        flatten_arc(
+                            place(cur),
                             rx * scale,
                             ry * scale,
-                            Angle::from_degrees(rotation),
-                            if large {
-                                ArcSize::Large
-                            } else {
-                                ArcSize::Small
-                            },
-                            if sweep {
-                                ArcSweep::Positive
-                            } else {
-                                ArcSweep::Negative
-                            },
-                            at(to),
+                            rotation,
+                            large,
+                            sweep,
+                            place(to),
+                            &mut arc,
+                            RASTER,
                         );
+                        for p in &arc {
+                            cmds.line_to(Point::new(snap(p.x), snap(p.y)));
+                        }
                         cur = to;
                     }
                     PathOp::MoveTo(_) | PathOp::Close => unreachable!(),
@@ -1128,6 +1247,66 @@ pub fn rasterize_at(
             }
         }
     }
+    // What a stroke is drawn from: the outline flattened here, in physical
+    // px at [`RASTER`]'s fineness, not zeno's curves. Its stroker offsets
+    // a curve along its normals, and a curve that doubles back on itself
+    // - a quad whose control point lies on the line past its end, `Q50 0
+    // 8 0` from the origin - offset to control points past what its fixed
+    // point holds (backlog FZ2). A polyline stroked with round joins and
+    // caps is the same stroke, and a dash measures the same length along
+    // it. The fill keeps the curves: zeno fills them without offsetting.
+    let lines = {
+        let mut physical: Vec<PathOp> = Vec::with_capacity(ops.len() + 1);
+        // A path that draws before it moves starts at its origin, which
+        // is `off` in the mask - not the mask's own origin, where
+        // flattening starts one: an arc whose ends were 1e-41 apart was
+        // flattened from a point a quarter-pixel off and went round an
+        // ellipse 1e25 px tall (backlog FZ2).
+        if !matches!(ops.first(), Some(PathOp::MoveTo(_))) {
+            physical.push(PathOp::MoveTo(off));
+        }
+        physical.extend(ops.iter().map(|op| op.placed(scale, off)));
+        let (mut pts, mut closes) = (Vec::new(), Vec::new());
+        flatten_as(&physical, &mut pts, true, RASTER, Some(&mut closes));
+        let mut lines: Vec<Command> = Vec::with_capacity(pts.len() + closes.len());
+        let mut closes = closes.into_iter();
+        let mut kept: Vec<Point> = Vec::new();
+        for contour in pts.split(|p| p.x.is_nan()).filter(|c| !c.is_empty()) {
+            let closed = closes.next() == Some(true);
+            // A piece of no length is no piece: the stroker would join at
+            // a direction it has to make up, and a contour that is one
+            // point once they are gone - an arc whose ends are 1e-41 apart -
+            // it normalizes to a NaN (backlog FZ2). Such a contour draws
+            // nothing.
+            kept.clear();
+            for p in contour {
+                let q = Point::new(snap(p.x), snap(p.y));
+                if kept.last() != Some(&q) {
+                    kept.push(q);
+                }
+            }
+            if closed && kept.len() > 1 && kept.first() == kept.last() {
+                kept.pop();
+            }
+            let Some((&first, rest)) = kept.split_first() else {
+                continue;
+            };
+            if rest.is_empty() {
+                continue;
+            }
+            lines.move_to(first);
+            for &q in rest {
+                lines.line_to(q);
+            }
+            // Closed as zeno closes it, one outline joined at the start:
+            // two ends meeting there are two antialiased edges, and their
+            // coverage adds.
+            if closed {
+                lines.close();
+            }
+        }
+        lines
+    };
     match paint {
         MaskPaint::Fill(rule) => {
             let fill = match rule {
@@ -1149,7 +1328,7 @@ pub fn rasterize_at(
             let mut edge = vec![0u8; len];
             let mut stroke = Stroke::new(1.0);
             stroke.join(Join::Round).cap(Cap::Round);
-            Mask::new(&cmds[..])
+            Mask::new(&lines[..])
                 .style(stroke)
                 .size(w, h)
                 .render_into(&mut edge, None);
@@ -1160,7 +1339,7 @@ pub fn rasterize_at(
         MaskPaint::Stroke(width) => {
             let mut stroke = Stroke::new(width.max(0.0));
             stroke.join(Join::Round).cap(Cap::Round);
-            Mask::new(&cmds[..])
+            Mask::new(&lines[..])
                 .style(stroke)
                 .size(w, h)
                 .render_into(&mut buf, None);
@@ -1173,13 +1352,66 @@ pub fn rasterize_at(
             if !cut.finer_than(1.0) {
                 stroke.dash(&cut.lens, cut.offset);
             }
-            Mask::new(&cmds[..])
+            Mask::new(&lines[..])
                 .style(stroke)
                 .size(w, h)
                 .render_into(&mut buf, None);
         }
     }
     buf
+}
+
+/// The most an outline may span, wide plus tall, in physical px with its
+/// stroke, for the rasterizer to draw it (backlog FZ2). zeno walks a line
+/// in 24.8 fixed point and sums its run and rise, each times a pixel's
+/// 256, in an `i32`: past some 16 416 px together that overflows — a
+/// panic in a debug build, a wrong mask in a release one. A mask of
+/// [`MAX_MASK_SIDE`] on both sides is exactly this, and every line zeno
+/// cuts an outline into lies inside the outline's box.
+pub const RASTER_SPAN: f32 = 16384.0;
+
+/// How far from the mask's origin, in physical px, an outline may lie
+/// for the rasterizer to draw it (backlog FZ2). zeno converts a
+/// coordinate to fixed point with an unchecked cast, undefined behaviour
+/// past ±2^23 px, and sums eight of a curve's where it splits one, which
+/// overflows past ±2^20; a curve's control points can lie a few times its
+/// span outside its box, so the box is held well inside both.
+pub const RASTER_REACH: f32 = 262_144.0;
+
+/// Whether zeno can draw `ops` at `scale` from `off` into a `w × h`
+/// mask with `paint`: every number finite, and the outline within
+/// [`RASTER_SPAN`] and [`RASTER_REACH`]. What the box is taken from is
+/// the hit outline's flattening, the same points a path node's mask is
+/// sized by.
+fn drawable(ops: &[PathOp], scale: f32, off: Vec2, w: u32, h: u32, paint: MaskPaint) -> bool {
+    let width = match paint {
+        // The fill's bleed is a one-pixel stroke.
+        MaskPaint::Fill(_) => 1.0,
+        MaskPaint::Stroke(w) => w,
+        MaskPaint::Dashed(w, cut) => {
+            if !cut.offset.is_finite() || !cut.lens.iter().all(|l| l.is_finite()) {
+                return false;
+            }
+            w
+        }
+    };
+    if !(scale.is_finite() && off.x.is_finite() && off.y.is_finite() && width.is_finite())
+        || w > MAX_MASK_SIDE
+        || h > MAX_MASK_SIDE
+        || !ops.iter().all(PathOp::is_finite)
+    {
+        return false;
+    }
+    let mut pts = Vec::new();
+    flatten(ops, &mut pts);
+    let Some(b) = bounds(&pts) else {
+        // A move alone: nothing to draw, and nothing zeno trips on.
+        return true;
+    };
+    let (x0, y0) = (b.x * scale + off.x, b.y * scale + off.y);
+    let (x1, y1) = (x0 + b.w * scale, y0 + b.h * scale);
+    let reach = [x0, y0, x1, y1].iter().all(|v| v.abs() <= RASTER_REACH);
+    reach && (x1 - x0).abs() + (y1 - y0).abs() + 2.0 * width.abs() <= RASTER_SPAN
 }
 
 /// The texels a mask may take of the atlas before it goes to a texture
@@ -1513,6 +1745,166 @@ mod tests {
         let mut out = Vec::new();
         flatten(ops, &mut out);
         out
+    }
+
+    /// What zeno cannot draw is left blank, not handed to it (backlog
+    /// FZ2, from the first fuzz round): a line wider than its fixed point
+    /// spans overflowed it, a control point at 1.4e18 overflowed its curve
+    /// split, and a NaN or a point past ±2^23 px is undefined behaviour in
+    /// its conversion. An outline it can draw still draws, and one the
+    /// size of the largest mask a node makes is one it can.
+    #[test]
+    fn an_outline_past_the_rasterizer_is_left_blank() {
+        let blank = |ops: &[PathOp], paint| {
+            rasterize(ops, 1.0, (0, 0), 48, 32, paint)
+                .iter()
+                .all(|&a| a == 0)
+        };
+        let fill = MaskPaint::Fill(FillRule::NonZero);
+        let long = Path::parse("M60 60 L60610 0 Z").unwrap();
+        assert!(blank(long.ops(), fill));
+        let far = [
+            PathOp::MoveTo(Vec2::new(10.0, 0.0)),
+            PathOp::CubicTo(
+                Vec2::new(50.0, 0.0),
+                Vec2::new(1.0, 0.0),
+                Vec2::new(20.0, 1.44e18),
+            ),
+        ];
+        assert!(blank(&far, fill));
+        let away = Path::parse("M1e7 1e7 l10 0 l0 10 z").unwrap();
+        assert!(blank(away.ops(), MaskPaint::Stroke(2.0)));
+        let nan = [
+            PathOp::MoveTo(Vec2::new(2.0, 2.0)),
+            PathOp::LineTo(Vec2::new(f32::NAN, 20.0)),
+            PathOp::LineTo(Vec2::new(30.0, 20.0)),
+        ];
+        assert!(blank(&nan, fill));
+        // A stroke as wide as the span is past it too.
+        let tri = Path::parse("M2 2 L40 2 L20 30 Z").unwrap();
+        assert!(blank(tri.ops(), MaskPaint::Stroke(RASTER_SPAN)));
+        assert!(!blank(tri.ops(), fill));
+        assert!(!blank(tri.ops(), MaskPaint::Stroke(2.0)));
+        // The largest mask a node makes, corner to corner, still draws.
+        let side = (MAX_MASK_SIDE - 2) as f32;
+        let diag = [
+            PathOp::MoveTo(Vec2::new(1.0, 1.0)),
+            PathOp::LineTo(Vec2::new(side, side)),
+            PathOp::LineTo(Vec2::new(1.0, side)),
+            PathOp::Close,
+        ];
+        assert!(drawable(
+            &diag,
+            1.0,
+            Vec2::ZERO,
+            MAX_MASK_SIDE,
+            MAX_MASK_SIDE,
+            fill
+        ));
+    }
+
+    /// An arc's rotation is taken within one turn before it is drawn
+    /// (backlog FZ2): one of -1.7e38 degrees became an infinite angle in
+    /// zeno and a NaN in every point after. It draws what the same
+    /// rotation within a turn draws; and a closed contour's stroke is one
+    /// outline, so its start is no darker than the rest of its edge.
+    #[test]
+    fn an_arc_turned_past_any_turn_draws_as_within_one() {
+        let arc = |rotation: f32| {
+            let ops = [
+                PathOp::MoveTo(Vec2::new(4.0, 20.0)),
+                PathOp::ArcTo {
+                    rx: 20.0,
+                    ry: 8.0,
+                    rotation,
+                    large: true,
+                    sweep: true,
+                    to: Vec2::new(40.0, 24.0),
+                },
+                PathOp::Close,
+            ];
+            let fill = rasterize(
+                &ops,
+                1.0,
+                (0, 0),
+                64,
+                48,
+                MaskPaint::Fill(FillRule::NonZero),
+            );
+            let stroke = rasterize(&ops, 1.0, (0, 0), 64, 48, MaskPaint::Stroke(1.5));
+            (fill, stroke)
+        };
+        let far = -1.7e38f32;
+        assert_eq!(arc(far), arc(far.rem_euclid(360.0)));
+        assert!(arc(far).0.iter().any(|&a| a > 0));
+        // A large arc round an ellipse 1e17 px across is flattened round
+        // it, not to the one piece an f32's `1 - tol / r` made it - so it
+        // is too wide to draw, and is left blank rather than handed over.
+        let huge = [
+            PathOp::MoveTo(Vec2::new(20.0, 80.0)),
+            PathOp::ArcTo {
+                rx: 3.6e17,
+                ry: 5.0,
+                rotation: 30.0,
+                large: true,
+                sweep: false,
+                to: Vec2::new(20.0, 20.0),
+            },
+        ];
+        let mut pts = Vec::new();
+        flatten(&huge, &mut pts);
+        assert!(pts.len() > 64, "{} points", pts.len());
+        let m = rasterize(
+            &huge,
+            1.0,
+            (0, 0),
+            64,
+            96,
+            MaskPaint::Fill(FillRule::NonZero),
+        );
+        assert!(m.iter().all(|&a| a == 0));
+        // The closed square's corner at its start is the corner opposite
+        // it, to the coverage.
+        let square = Path::parse("M10 10 L30 10 L30 30 L10 30 Z").unwrap();
+        let m = rasterize(square.ops(), 1.0, (0, 0), 40, 40, MaskPaint::Stroke(2.0));
+        // The pixels just inside each corner, and the ones just outside,
+        // to a rasterizer's rounding: two ends meeting there added up to
+        // half again.
+        let near = |a: u8, b: u8| a.abs_diff(b) <= 4;
+        assert!(near(m[10 * 40 + 10], m[29 * 40 + 29]));
+        assert!(
+            near(m[9 * 40 + 9], m[30 * 40 + 30]),
+            "{} {}",
+            m[9 * 40 + 9],
+            m[30 * 40 + 30]
+        );
+    }
+
+    /// A path that draws before it moves starts at its origin, in the
+    /// stroke's flattening as in the fill's (backlog FZ2): the stroke's
+    /// started at the mask's own origin, a quarter-pixel off at this bin,
+    /// and an arc whose ends were 1e-41 apart went round an ellipse 1e25
+    /// px tall from there.
+    #[test]
+    fn a_path_that_draws_before_it_moves_starts_at_its_origin() {
+        let stroke = |d: &str| {
+            let p = Path::parse(d).unwrap();
+            rasterize(p.ops(), 1.0, (1, 3), 40, 40, MaskPaint::Stroke(2.0))
+        };
+        assert_eq!(stroke("L20 10 L30 30"), stroke("M0 0 L20 10 L30 30"));
+        let arc = [
+            PathOp::ArcTo {
+                rx: 16.0,
+                ry: 1.0e25,
+                rotation: 0.0,
+                large: true,
+                sweep: true,
+                to: Vec2::new(5.7e-41, 0.0),
+            },
+            PathOp::Close,
+        ];
+        let m = rasterize(&arc, 1.0, (1, 3), 48, 32, MaskPaint::Stroke(1.5));
+        assert!(m.iter().all(|&a| a == 0));
     }
 
     #[test]

@@ -166,3 +166,50 @@ fn a_stock_editor_takes_the_commit_itself() {
     assert_eq!(kinds(&events), ["changed"]);
     assert_eq!(core.edit_text(key).as_deref(), Some("日本語"));
 }
+
+/// A stock editor's composition is typed text in waiting (backlog FZ7,
+/// from the first fuzz round): a `\r` in it went into the buffer as it
+/// came, cosmic-text broke the line there, and the composition's end -
+/// counted by `\n` alone - lay past the line, so the key that ended it
+/// split the buffer off a character boundary, a panic in cosmic-text. What
+/// typing drops is dropped from a composition, and the IME's offsets move
+/// with what stays.
+#[test]
+fn a_composition_holds_what_typing_would() {
+    use kui_core::{EditKey, EditOptions, Mods};
+    let frame = |core: &mut Core, multiline: bool| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        let opts = EditOptions {
+            style: mono(),
+            multiline,
+            autofocus: true,
+            ..Default::default()
+        };
+        let k = ui.text_edit("e", "ab", &opts, NodeSpec::column().width(300.0));
+        ui.finish();
+        k
+    };
+    for multiline in [false, true] {
+        // A core of its own: the Escape below lets go of the field.
+        let mut core = Core::new();
+        let k = frame(&mut core, multiline);
+        // The caret after `x\r` reported at byte 2, which the `\r` going
+        // moves to 1; the commit is typed text, without it.
+        core.handle_input(InputEvent::Preedit("x\ry".into(), Some((2, 2))));
+        frame(&mut core, multiline);
+        assert_eq!(core.edit_text(k).as_deref(), Some("ab"), "{multiline}");
+        core.handle_input(InputEvent::Commit("x\ry".into()));
+        frame(&mut core, multiline);
+        // A field opens with its caret after its text, a multiline editor
+        // at its start.
+        let want = if multiline { "xyab" } else { "abxy" };
+        assert_eq!(core.edit_text(k).as_deref(), Some(want), "{multiline}");
+        // Every key that ends a composition ends this one cleanly.
+        for key in [EditKey::Escape, EditKey::Left, EditKey::Backspace] {
+            core.handle_input(InputEvent::Preedit("\r\u{1e}z\r".into(), None));
+            frame(&mut core, multiline);
+            core.handle_input(InputEvent::Key(key, Mods::NONE));
+            frame(&mut core, multiline);
+        }
+    }
+}
