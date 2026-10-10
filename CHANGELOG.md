@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.53 (unreleased)
+## 0.1.0-alpha.53 (2026-10-10)
 
 **What breaks.**
 
@@ -59,6 +59,33 @@ drawn as it was, one quad a glyph.
 
 - `liga=0 calt=0` set on a text only so a caret, a selection or a
   syntax colour over one character of a ligature shows in it.
+
+### Native verification
+
+The by-hand round on 2026-10-10, over the round since alpha.52 — F162
+from kawoosh's markdown caret — on the Mac: the mechanical round as CI
+runs it, the Odin binding with an Odin built locally rather than CI's
+pinned one in its image, the bench guard, the windowed round and the
+accessibility audit. The round found nothing to fix.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean (rustc 1.99.0);
+`nu scripts/test.nu`: **2070 tests over 156 suites**, 0 failed, 4
+ignored. The C round passes (5 checks), and so do the **58 scenes**
+through Rust, Lua, C, Odin and Node; Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1`, **228 of 228**; `npm run gen` with no
+diff, the examples' typecheck, the headless round (39 of 39, 6.9 s),
+the book built and its examples current, `cargo audit --deny warnings`
+clean. `nu scripts/odin.nu gen --check` says the binding is current,
+`odin.nu check` vets both packages and every example, `odin.nu test`
+runs its four, and `odin.nu slots` its four host and panel pairs. The
+bench guard against the alpha.52 tag: **green**, the eight guarded rows
+within tolerance (the widest spread 3.8%), `slot_1500_nodes_fresh` and
+`slot_1500_nodes_replayed` at 281 and 208 µs. The windowed round:
+**all 55 examples**, Node's included, drew 120 frames on each base and
+exited cleanly, and the C hosts (`counter`, `host`) and the `c_panel`
+and `lua_panel` hosts drew 120 frames each. The AX audit:
+**106/106**. No Windows or Linux machine ran this round; F162 is
+platform-independent paint, covered by the headless suite.
 
 ## 0.1.0-alpha.52 (2026-10-10)
 
