@@ -160,6 +160,11 @@ Changed_Event :: struct {}
 
 Submit_Event :: struct {}
 
+// Escape let go of a focused editor (backlog F160): a draft abandoned, where
+// `Submit_Event` is one confirmed and a plain blur is neither. On the
+// editor's key.
+Cancel_Event :: struct {}
+
 // An editing key that met the edge of an editor's text and did nothing
 // (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on the
 // last, → or Delete at the end. On the editor's key.
