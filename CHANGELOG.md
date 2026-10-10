@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.52 (unreleased)
+## 0.1.0-alpha.52 (2026-10-10)
 
 **What breaks.**
 
@@ -102,6 +102,35 @@ could not move. Ctrl+← Ctrl+→ move by words off a Mac; Alt still does.
   looks up, to keep two of its panes' `list` apart.
 - A key sink's own ⌘⌫ / Ctrl+Backspace over a field, and the guess that
   a field's blur followed an Escape.
+
+### Native verification
+
+The by-hand round on 2026-10-10, over the round since alpha.51 — F157
+from kawoosh's pane labels, and F158–F161 from Carnet's toolbar and
+folder rounds — on the Mac: the mechanical round as CI runs it, the
+Odin binding with an Odin built locally rather than CI's pinned one in
+its image, the bench guard, and this time the windowed round and the
+accessibility audit as well. The round found one regression of its own
+making — `odin.nu gen` refused F160's `cancel` row with no Odin
+`Cancel_Event` for it — fixed before the tag.
+
+**macOS**, the pre-tag pass. fmt and clippy are clean; `nu
+scripts/test.nu`: **2067 tests over 155 suites**, 0 failed, 4 ignored.
+The C round passes (5 checks), and so do the **58 scenes** through
+Rust, Lua, C, Odin and Node; Node's tests under `KUI_CONFORMANCE_REQUIRED=1`,
+**228 of 228**; `npm run gen` with no diff, the examples' typecheck,
+the headless round (39 of 39, 3.6 s), the book built and its examples
+current, `cargo audit --deny warnings` clean. `nu scripts/odin.nu gen
+--check` says the binding is current, `odin.nu check` vets both packages
+and every example, `odin.nu test` runs its four, and `odin.nu slots`
+its four host and panel pairs. The bench guard against the alpha.51
+tag: **green**, the eight guarded rows within tolerance (the widest
+spread 2.3%), `slot_1500_nodes_fresh` and `slot_1500_nodes_replayed`
+at 277 and 207 µs. The windowed round: **all 55 examples**, Node's
+included, drew 120 frames on each base and exited cleanly. The AX
+audit: **106/106**. No Windows or Linux machine ran this round; F161's
+Windows and Linux arms and F158's Windows half are built for the
+Windows target and not run there.
 
 ## 0.1.0-alpha.51 (2026-10-09)
 
