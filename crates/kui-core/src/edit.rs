@@ -1093,6 +1093,8 @@ impl EditStore {
         let row = |e: &Editor<'static>| e.cursor_position().map(|(_, y)| y);
         let row_before = row(&s.editor);
         let composing = changed;
+        // ↑ and ↓ by paragraphs: an edge only where they could not move.
+        let mut by_paragraph = false;
         match ek {
             EditKey::Left
             | EditKey::Right
@@ -1102,19 +1104,29 @@ impl EditStore {
             | EditKey::End
             | EditKey::PageUp
             | EditKey::PageDown => {
-                let motion = match (ek, mods.word, mods.doc) {
-                    (EditKey::Left, true, _) => Motion::LeftWord,
-                    (EditKey::Right, true, _) => Motion::RightWord,
-                    (EditKey::Left, _, true) => Motion::Home,
-                    (EditKey::Right, _, true) => Motion::End,
-                    (EditKey::Up, _, true) => Motion::BufferStart,
-                    (EditKey::Down, _, true) => Motion::BufferEnd,
+                // What the modifiers mean is each platform's fields'. On
+                // a Mac ⌥ moves by words, and ⌥↑ ⌥↓ by paragraphs; ⌘ to
+                // the line's ends, and ⌘↑ ⌘↓ to the text's. Elsewhere Ctrl
+                // moves by words, and Ctrl+↑ Ctrl+↓ by paragraphs; Alt
+                // stays a word, as it was here before.
+                let mac = cfg!(target_os = "macos");
+                let word = mods.word || (!mac && mods.doc);
+                let line = mac && mods.doc;
+                let motion = match (ek, line, word) {
+                    (EditKey::Left, true, _) => Motion::Home,
+                    (EditKey::Right, true, _) => Motion::End,
+                    (EditKey::Up, true, _) => Motion::BufferStart,
+                    (EditKey::Down, true, _) => Motion::BufferEnd,
+                    (EditKey::Left, _, true) => Motion::LeftWord,
+                    (EditKey::Right, _, true) => Motion::RightWord,
+                    (EditKey::Up, _, true) => Motion::ParagraphStart,
+                    (EditKey::Down, _, true) => Motion::ParagraphEnd,
                     (EditKey::Left, ..) => Motion::Left,
                     (EditKey::Right, ..) => Motion::Right,
                     (EditKey::Up, ..) => Motion::Up,
                     (EditKey::Down, ..) => Motion::Down,
-                    (EditKey::Home, _, true) => Motion::BufferStart,
-                    (EditKey::End, _, true) => Motion::BufferEnd,
+                    (EditKey::Home, ..) if mods.doc => Motion::BufferStart,
+                    (EditKey::End, ..) if mods.doc => Motion::BufferEnd,
                     (EditKey::Home, ..) => Motion::Home,
                     (EditKey::End, ..) => Motion::End,
                     (EditKey::PageUp, ..) => Motion::PageUp,
@@ -1127,6 +1139,21 @@ impl EditStore {
                     }
                 } else {
                     s.editor.set_selection(Selection::None);
+                }
+                // A paragraph's start or end the caret is already at: the
+                // one before or after, as a Mac's ⌥↑ ⌥↓ go on.
+                by_paragraph = matches!(motion, Motion::ParagraphStart | Motion::ParagraphEnd);
+                if by_paragraph {
+                    let c = s.editor.cursor();
+                    let len = s
+                        .editor
+                        .with_buffer(|b| b.lines.get(c.line).map_or(0, |l| l.text().len()));
+                    let last = s.editor.with_buffer(|b| b.lines.len().saturating_sub(1));
+                    if motion == Motion::ParagraphStart && c.index == 0 && c.line > 0 {
+                        s.editor.action(fs, Action::Motion(Motion::Previous));
+                    } else if motion == Motion::ParagraphEnd && c.index >= len && c.line < last {
+                        s.editor.action(fs, Action::Motion(Motion::Next));
+                    }
                 }
                 s.editor.action(fs, Action::Motion(motion));
                 s.break_coalesce();
@@ -1200,6 +1227,9 @@ impl EditStore {
         // walked to the end first and an edge on the second press.
         let same_row = plain && row_before.is_some() && row(&s.editor) == row_before;
         let boundary = match ek {
+            EditKey::Up if by_paragraph && still => Some(Edge::Start),
+            EditKey::Down if by_paragraph && still => Some(Edge::End),
+            EditKey::Up | EditKey::Down if by_paragraph => None,
             EditKey::Up if same_row => Some(Edge::Start),
             EditKey::Down if same_row => Some(Edge::End),
             EditKey::Left | EditKey::Backspace if still => Some(Edge::Start),

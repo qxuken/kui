@@ -1636,9 +1636,11 @@ in the archive.
 
 Carnet's new-folder field, tested by hand and then headless: ⌘⌫ deleted
 one character, and Escape could not be told from a click elsewhere, so a
-field that makes its folder when let go of could not drop it on Escape.
-Two entries, F159 and F160, **built 2026-10-10**, the day they were
-filed, and in the archive.
+field that makes its folder when let go of could not drop it on Escape;
+and asked that a field take a Mac's ⌥ and ⌘ moves, of which ⌥↑ and ⌥↓
+were missing, and off a Mac Ctrl was read as a Mac's ⌘. Three entries,
+F159–F161, **built 2026-10-10**, the day they were filed, and in the
+archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4521,8 +4523,10 @@ move.
 
 - `~` **F158** — [On a Mac a double click on a button in the titlebar strip zooms the window](backlog/closed-2026-09.md#-f158--on-a-mac-a-double-click-on-a-button-in-the-titlebar-strip-zooms-the-window--done-2026-10-10) — done (2026-10-10) — winit's view says a press cannot move the window, so AppKit's titlebar takes none; a drag region's double click is AppKit's count and System Settings' action
 
-**From Carnet's folder round (2026-10-10)** — F159 and F160, filed and built the same day
+**From Carnet's folder round (2026-10-10)** — F159–F161, filed and built the same day
 
 - `~` **F159** — [⌘⌫ in a field deletes one character](backlog/closed-2026-09.md#-f159--in-a-field-deletes-one-character--done-2026-10-10) — done (2026-10-10) — Backspace and Delete under the primary modifier take the line on a Mac and a word elsewhere
 
 - `~` **F160** — [Escape lets go of an editor and says nothing](backlog/closed-2026-09.md#-f160--escape-lets-go-of-an-editor-and-says-nothing--done-2026-10-10) — done (2026-10-10) — `cancel` on the editor, then the blur
+
+- `~` **F161** — [An editor's arrows read the modifiers the same on every platform](backlog/closed-2026-09.md#-f161--an-editors-arrows-read-the-modifiers-the-same-on-every-platform--done-2026-10-10) — done (2026-10-10) — ⌥↑ ⌥↓ by paragraphs on a Mac; Ctrl moves by words and paragraphs off one

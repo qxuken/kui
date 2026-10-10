@@ -34,6 +34,11 @@ was the first bare bump to break an app in five releases).
   (Ctrl+Backspace, Ctrl+Delete), where they deleted one character.
 - Escape in a focused editor emits `cancel` on it before letting go,
   where it emitted nothing.
+- An editor's arrows read the modifiers as the platform's fields do: on
+  a Mac ⌥↑ ⌥↓ go to a paragraph's start and end, where they moved a
+  line; on Windows and Linux Ctrl+← Ctrl+→ move by words and Ctrl+↑
+  Ctrl+↓ by paragraphs, where they went to the line's and the text's
+  ends (Ctrl+Home and Ctrl+End still do the latter).
 
 An extension that fills many slots — a Lua host drawing every pane as a
 slot of its one origin, a plugin filling `"*"` — had its panes share
@@ -63,6 +68,15 @@ that makes what it names when let go of — Carnet's new folder — could
 not drop it on Escape (backlog F160). The editor now emits `cancel` and
 then lets go; a handler that ignores kinds it does not know is
 unaffected.
+
+An editor read Option (Alt) as words and ⌘ (Ctrl) as the line's and the
+text's ends on every platform (backlog F161, from Carnet asking that a
+field take a Mac's ⌥ and ⌘ moves): a Mac's ⌥↑ and ⌥↓ moved a line as a
+plain arrow does, and on Windows and Linux Ctrl+← went to the line's
+start where every native field moves a word. ⌥↑ ⌥↓ — Ctrl+↑ Ctrl+↓
+elsewhere — now go to the paragraph's start and end, and on to the
+one before or after from there; an edge (`boundary`) only where they
+could not move. Ctrl+← Ctrl+→ move by words off a Mac; Alt still does.
 
 ### Added
 
