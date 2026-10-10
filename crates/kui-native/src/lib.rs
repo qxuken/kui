@@ -1563,6 +1563,7 @@ fn clamp_size(size: (f64, f64), min: Option<(f64, f64)>, max: Option<(f64, f64)>
 /// Width of the invisible resize band synthesized on undecorated windows.
 const RESIZE_BAND: f32 = 6.0;
 /// A second titlebar press within this window toggles maximize.
+#[cfg(not(target_os = "macos"))]
 const DOUBLE_CLICK_MS: u128 = 350;
 /// Presses within this window (and `MULTI_CLICK_SLOP` px) count up the
 /// multi-click sent with `InputEvent::MouseDown` (double = word select).

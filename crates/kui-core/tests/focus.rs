@@ -731,7 +731,13 @@ fn escape_asks_the_modal_to_go_away_and_does_nothing_else() {
     // the dialog, Escape means what ADR 0002 gave it again.
     let m = modal_frame(&mut core, false);
     core.set_focus(Some(m.note));
-    assert!(payloads(&key(&mut core, EditKey::Escape)).is_empty());
+    let out = key(&mut core, EditKey::Escape);
+    let kinds: Vec<_> = out.iter().map(|e| e.kind()).collect();
+    assert_eq!(
+        kinds,
+        [Some("cancel")],
+        "an editor let go by Escape says so"
+    );
     assert_eq!(core.focus(), None);
 }
 

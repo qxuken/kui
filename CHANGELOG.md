@@ -29,6 +29,16 @@ was the first bare bump to break an app in five releases).
   `reveal`, `scroll_offset`, `layout_of` and every door that takes a
   label — is answered from that fill's own nodes alone, where any node
   its extension opened in any of its slots answered, in tree order.
+- A field's Backspace and Delete under the primary modifier delete to
+  the line's start and end on a Mac (⌘⌫, ⌘⌦) and a word elsewhere
+  (Ctrl+Backspace, Ctrl+Delete), where they deleted one character.
+- Escape in a focused editor emits `cancel` on it before letting go,
+  where it emitted nothing.
+- An editor's arrows read the modifiers as the platform's fields do: on
+  a Mac ⌥↑ ⌥↓ go to a paragraph's start and end, where they moved a
+  line; on Windows and Linux Ctrl+← Ctrl+→ move by words and Ctrl+↑
+  Ctrl+↓ by paragraphs, where they went to the line's and the text's
+  ends (Ctrl+Home and Ctrl+End still do the latter).
 
 An extension that fills many slots — a Lua host drawing every pane as a
 slot of its one origin, a plugin filling `"*"` — had its panes share
@@ -46,15 +56,52 @@ later in the same frame. A lookup from outside any fill, the host's, is
 unchanged. An extension that reached into one of its slots from another
 by label now finds nothing there; pass the hex key an event carried.
 
+A field read ⌘ and Ctrl only as `doc`, which its motions use and its
+deletions ignored: ⌘⌫ in Carnet's folder name deleted one character
+where every Mac field deletes back to the line's start (backlog F159).
+Backspace and Delete now read it as the platform's fields do — the line
+on a Mac, a word on Windows and Linux, where Ctrl is that modifier.
+
+Escape let go of an editor and said nothing, so a blur from Escape and
+a blur from a click elsewhere were the same to the app, and a field
+that makes what it names when let go of — Carnet's new folder — could
+not drop it on Escape (backlog F160). The editor now emits `cancel` and
+then lets go; a handler that ignores kinds it does not know is
+unaffected.
+
+An editor read Option (Alt) as words and ⌘ (Ctrl) as the line's and the
+text's ends on every platform (backlog F161, from Carnet asking that a
+field take a Mac's ⌥ and ⌘ moves): a Mac's ⌥↑ and ⌥↓ moved a line as a
+plain arrow does, and on Windows and Linux Ctrl+← went to the line's
+start where every native field moves a word. ⌥↑ ⌥↓ — Ctrl+↑ Ctrl+↓
+elsewhere — now go to the paragraph's start and end, and on to the
+one before or after from there; an edge (`boundary`) only where they
+could not move. Ctrl+← Ctrl+→ move by words off a Mac; Alt still does.
+
+### Added
+
+- **`cancel` on an editor** (backlog F160): Escape let go of it — see
+  *What breaks*.
+
 ### Fixed
 
 - **One extension's panes no longer share their labels** (backlog F157):
   see *What breaks*.
+- **On a Mac a double click on a button in the titlebar strip no longer
+  zooms the window** (backlog F158). Under `Chrome::Custom` AppKit took
+  every press on the content under its hidden titlebar as the
+  titlebar's, a toolbar's buttons included. Now none is: a
+  `window_drag` region's double click is the only one that acts, counted
+  by AppKit and doing what System Settings says a titlebar's does —
+  zoom, minimize or nothing — where the runner zoomed on its own 350 ms
+  clock.
 
 **What you can delete.**
 
 - A pane's name or id folded into every label a multi-slot extension
   looks up, to keep two of its panes' `list` apart.
+- A key sink's own ⌘⌫ / Ctrl+Backspace over a field, and the guess that
+  a field's blur followed an Escape.
 
 ## 0.1.0-alpha.51 (2026-10-09)
 

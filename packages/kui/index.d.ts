@@ -466,9 +466,11 @@ export type ModifiersMsg = {
   super: boolean;
 };
 
-/** An editor's text changed / Enter in a single-line editor; the editor's
- *  key is on the event, so `editText(ev.key)` reads it back. */
-export type EditMsg = { kind: 'changed' } | { kind: 'submit' };
+/** An editor's text changed / Enter in a single-line editor / Escape let
+ *  go of it (backlog F160: a draft abandoned, where a plain blur is
+ *  neither); the editor's key is on the event, so `editText(ev.key)` reads
+ *  it back. */
+export type EditMsg = { kind: 'changed' } | { kind: 'submit' } | { kind: 'cancel' };
 
 /** An editing key that met the edge of an editor's text and did nothing
  *  (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on

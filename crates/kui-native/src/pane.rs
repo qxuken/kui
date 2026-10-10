@@ -377,7 +377,9 @@ pub(crate) struct Pane {
     /// with an Option already held. Mirrored to a popup
     /// borrowing the keyboard as `modifiers` is.
     pub(crate) alt_held: (bool, bool),
-    /// Time of the last titlebar press, for double-click maximize.
+    /// Time of the last titlebar press, for double-click maximize. Not on
+    /// a Mac, where the press's own click count says.
+    #[cfg(not(target_os = "macos"))]
     pub(crate) last_titlebar_press: Option<std::time::Instant>,
     /// Last cursor position (logical px), for multi-click distance checks.
     pub(crate) cursor: Vec2,

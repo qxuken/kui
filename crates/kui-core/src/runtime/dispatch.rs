@@ -521,6 +521,7 @@ impl Core {
                         ));
                     }
                     if ek == EditKey::Escape {
+                        self.push_edit_event(key, "cancel", &mut out);
                         self.move_focus(None);
                     }
                 } else if let Some(i) = self.focused_control()
