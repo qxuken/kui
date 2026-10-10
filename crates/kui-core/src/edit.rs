@@ -491,12 +491,70 @@ impl Default for EditStore {
 /// What an editor's buffer may hold: a field is one line, so a newline that
 /// arrived in a seed or a `set_text` is dropped rather than drawn below a
 /// box measured for one line. The same rule `apply_text` applies to
-/// typing and pasting, so the two doors agree.
+/// typing and pasting, so the two doors agree. The paragraph separator
+/// (U+2029) is the break it names, a newline (backlog FZ6: the shaper
+/// panicked on one between text running two ways), and the other
+/// characters that end a bidi paragraph go through
+/// [`one_paragraph`](crate::text::one_paragraph).
 fn admitted(text: &str, multiline: bool) -> std::borrow::Cow<'_, str> {
-    if multiline || !text.contains(['\n', '\r']) {
-        return std::borrow::Cow::Borrowed(text);
+    let text: std::borrow::Cow<'_, str> = if text.contains('\u{2029}') {
+        text.replace('\u{2029}', "\n").into()
+    } else {
+        text.into()
+    };
+    let text = if multiline || !text.contains(['\n', '\r']) {
+        text
+    } else {
+        text.chars()
+            .filter(|c| *c != '\n' && *c != '\r')
+            .collect::<String>()
+            .into()
+    };
+    match crate::text::one_paragraph(&text) {
+        std::borrow::Cow::Borrowed(_) => text,
+        std::borrow::Cow::Owned(s) => s.into(),
     }
-    std::borrow::Cow::Owned(text.chars().filter(|c| *c != '\n' && *c != '\r').collect())
+}
+
+/// What typing `c` puts in an editor: the character; the newline the
+/// paragraph separator (U+2029) names, as in `admitted` (backlog FZ6);
+/// or nothing, for a control a field does not take — every one but a tab
+/// and, in a multiline editor, the newline. The other bidi paragraph ends
+/// are controls, and go with them.
+fn typed(c: char, multiline: bool) -> Option<char> {
+    let c = if c == '\u{2029}' { '\n' } else { c };
+    (!c.is_control() || (c == '\n' && multiline) || c == '\t').then_some(c)
+}
+
+/// An IME's composition as the editor holds it: typed text in waiting,
+/// so what typing drops goes (backlog FZ7). A `\r` went in as it came,
+/// cosmic-text broke the line at it, and `end_cursor` - which counts
+/// `\n` alone - put the composition's end past the line it was on: the
+/// next key that ended the composition split the buffer off a character
+/// boundary, a panic in cosmic-text. The IME's byte offsets move with
+/// what stays.
+fn composed(
+    text: &str,
+    cursor: Option<(usize, usize)>,
+    multiline: bool,
+) -> (String, Option<(usize, usize)>) {
+    let mut out = String::with_capacity(text.len());
+    // Where each character of `text` starts, there and in `out`.
+    let mut starts = Vec::with_capacity(text.len());
+    for (at, c) in text.char_indices() {
+        starts.push((at, out.len()));
+        if let Some(c) = typed(c, multiline) {
+            out.push(c);
+        }
+    }
+    let moved = |o: usize| {
+        starts
+            .iter()
+            .find(|(at, _)| *at >= o)
+            .map_or(out.len(), |(_, kept)| *kept)
+    };
+    let cursor = cursor.map(|(a, b)| (moved(a), moved(b)));
+    (out, cursor)
 }
 
 /// At the family's regular weight, or its bold for a bold style, as
@@ -760,7 +818,12 @@ impl EditStore {
                     let metrics = state.editor.with_buffer(|b| b.metrics());
                     let mut b = Buffer::new(fs, metrics);
                     b.set_size(None, None);
-                    b.set_text(p, &attrs_for(&opts.style, res), Shaping::Advanced, None);
+                    b.set_text(
+                        &crate::text::one_paragraph(p),
+                        &attrs_for(&opts.style, res),
+                        Shaping::Advanced,
+                        None,
+                    );
                     b.shape_until_scroll(fs, false);
                     state.placeholder = Some((p.to_string(), rev, b));
                 }
@@ -1053,10 +1116,7 @@ impl EditStore {
         // A commit ends the composition (winit also clears preedit first);
         // the committed text goes in where the composition began.
         s.abandon_preedit();
-        let filtered: String = text
-            .chars()
-            .filter(|c| !c.is_control() || (*c == '\n' && s.multiline) || *c == '\t')
-            .collect();
+        let filtered: String = text.chars().filter_map(|c| typed(c, s.multiline)).collect();
         if filtered.is_empty() {
             return false;
         }
@@ -1320,6 +1380,8 @@ impl EditStore {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };
+        let (text, cursor) = composed(text, cursor, s.multiline);
+        let text = &*text;
         if text.is_empty() {
             if !s.abandon_preedit() {
                 return false;

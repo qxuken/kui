@@ -870,9 +870,14 @@ impl Accel {
                 // A key as `display` writes it reads back as that key, so
                 // the menu that normalized `"mod+backspace"` into `⌘⌫`
                 // binds Backspace and not a `⌫` no keyboard types.
+                // A letter is the key, whichever case it is written in:
+                // `"⇧⌘S"` and `"cmd+shift+s"` are one chord, and what
+                // `spelling` and `display` write reads back to it
+                // (backlog FZ1). Shift is a modifier of its own.
                 _ => {
                     code = Some(if part.chars().count() == 1 {
-                        key_from_label(part).unwrap_or(KeyCode::Char(part.chars().next().unwrap()))
+                        let c = part.chars().next().unwrap();
+                        key_from_label(part).unwrap_or(KeyCode::Char(c.to_ascii_lowercase()))
                     } else {
                         KeyCode::from_name(&lower).or_else(|| key_from_label(part))?
                     });
@@ -881,12 +886,11 @@ impl Accel {
         }
         let code = code?;
         // A lock key turns a state rather than being a key a shortcut is
-        // held against: no menu bar takes `ctrl+capslock`.
-        let lock = matches!(
-            code,
-            KeyCode::CapsLock | KeyCode::NumLock | KeyCode::ScrollLock
-        );
-        (code != KeyCode::Unknown && !lock).then_some(Accel { code, mods })
+        // held against: no menu bar takes `ctrl+capslock`. Nor is a
+        // modifier a shortcut's key: `⌘⌘` read as Super held with Super,
+        // whose spelling `super+super` reads back as no chord at all
+        // (backlog FZ1).
+        (code != KeyCode::Unknown && !code.is_modifier()).then_some(Accel { code, mods })
     }
 
     /// How the platform writes it: the macOS glyph run (`⇧⌘S`, in AppKit's
@@ -1001,7 +1005,10 @@ fn key_from_label(label: &str) -> Option<crate::input::KeyCode> {
 fn key_label_on(code: crate::input::KeyCode, mac: bool) -> String {
     use crate::input::KeyCode;
     match code {
-        KeyCode::Char(c) => return c.to_uppercase().to_string(),
+        // ASCII alone: `ß` uppercases to `SS`, two characters that read
+        // back as no key, and a layout's own letters never reach a
+        // shortcut's code (`KeyCode::Char`).
+        KeyCode::Char(c) => return c.to_ascii_uppercase().to_string(),
         KeyCode::F(n) => return format!("F{n}"),
         _ => {}
     }
@@ -1122,10 +1129,32 @@ mod tests {
         assert_eq!(
             a,
             Accel {
-                code: KeyCode::Char('S'),
+                code: KeyCode::Char('s'),
                 mods: KeyMods::NONE.with_shift().with_super(),
             }
         );
+    }
+
+    /// A letter's case names no other key (backlog FZ1, from the first
+    /// fuzz round): `⇧⌘S` was `Char('S')` and its own spelling
+    /// `super+shift+s` read back as `Char('s')`, two chords for one.
+    #[test]
+    fn a_letter_is_one_key_in_either_case() {
+        let glyphs = Accel::parse("\u{21e7}\u{2318}S").unwrap();
+        assert_eq!(Accel::parse("cmd+shift+s"), Some(glyphs));
+        assert_eq!(Accel::parse("Cmd+Shift+S"), Some(glyphs));
+        for a in [glyphs, Accel::parse("ctrl+A").unwrap()] {
+            assert_eq!(Accel::parse(&a.spelling()), Some(a));
+            assert_eq!(Accel::parse(&a.display()), Some(a));
+        }
+        // Beyond ASCII a character is kept as written, and still reads
+        // back: `ß` would uppercase to two letters.
+        let sz = Accel::parse("ctrl+\u{df}").unwrap();
+        assert_eq!(Accel::parse(&sz.display()), Some(sz));
+        // A modifier is no shortcut's key, however it is written.
+        assert!(Accel::parse("\u{2318}\u{2318}").is_none());
+        assert!(Accel::parse("ctrl+shift").is_none());
+        assert!(Accel::parse("alt+\u{21e7}").is_none());
     }
 
     #[test]

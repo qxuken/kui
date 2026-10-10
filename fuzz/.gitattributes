@@ -1,0 +1,4 @@
+# Inputs are bytes, whatever they look like: no line-ending conversion on a
+# checkout (core.autocrlf), no diff as text.
+seeds/** binary
+regressions/** binary

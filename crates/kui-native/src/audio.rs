@@ -19,7 +19,7 @@
 //! [`blip`] and [`wav_pcm16`] synthesize a short WAV for examples and tests
 //! that want a sound without shipping one.
 
-use kui_core::{AudioCommand, AudioDevice, AudioEnv, PlaybackId, SharedResources};
+use kui_core::{AudioCommand, AudioEnv, PlaybackId, SharedResources};
 
 pub use backend::Audio;
 
@@ -93,7 +93,7 @@ mod backend {
     use kira::sound::PlaybackState;
     use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
     use kira::{AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Tween};
-    use kui_core::SoundId;
+    use kui_core::{AudioDevice, SoundId};
 
     use super::*;
 

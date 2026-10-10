@@ -204,7 +204,12 @@ rounds — a toolbar button's double click, a field's ⌘⌫, Escape's
 `cancel`, the arrows' modifiers — were built the day they were filed,
 after the alpha.51 tag, and are in the archive; and F162, from
 kawoosh's markdown caret — a ligature across two colours — was built
-the day it was filed, after the alpha.52 tag, and is in the archive.
+the day it was filed, after the alpha.52 tag, and is in the archive;
+and FZ1–FZ7, from the first fuzz round — an accelerator's letter case,
+the path rasterizer's reach, an animation's allocation, the Node wire's
+counts, a glyph past any page, a bidi paragraph end inside a line, a
+carriage return in a composition — were built the day they were filed,
+after the alpha.53 tag, and are in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -2898,6 +2903,31 @@ offsets, `iterations`, the Rust struct literals and the new warning
 code. One entry, RG155, is what the pass left, **built 2026-10-09** the
 same day after the tag, and in the archive.
 
+## From the first fuzz round (2026-10-10)
+
+The round that added fuzzing (`fuzz/`, `scripts/fuzz.nu`, the manual
+`fuzz` workflow): five cargo-fuzz targets under AddressSanitizer — the
+string parsers, the parsers that read a prop as data, paths, the corpus
+scenes and an editor driven by every input a driver can send, and the
+runner's image decoder — run in six rounds of ten to twenty minutes a
+target under WSL, and the Node addon's binary decoder, which a fuzzer
+cannot link, fuzzed in its own crate's tests (`fuzz_binary`, 200 000
+streams). Each finding was fixed the same day, minimized into
+`fuzz/regressions/`, and pinned by a test beside its fix; the replay
+runs under `cargo test --workspace`. Seven entries, FZ1–FZ7, **built
+2026-10-10**, the day they were filed, and in the archive: an
+accelerator whose letter's case made two chords of one; the path
+rasterizer handed numbers zeno's fixed point cannot hold — a far point,
+a long line, a thin arc, a curve that doubles back under a stroke — some
+undefined behaviour in a release build; `decode_animation` allocating
+what a GIF's header claimed; the Node wire's string refs and counts; a
+glyph at a size past any atlas page; and a bidi paragraph end inside a
+line, which panicked cosmic-text's shaper from a plain text node; and
+a carriage return in an IME's composition, which put the editor's
+caret off a character boundary. Two
+of them are upstream's to fix as well — zeno's unchecked conversion and
+stroker, cosmic-text's assertion — and kui now keeps out of their way.
+
 ## After alpha.52
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -4559,3 +4589,19 @@ move.
 **From kawoosh's markdown caret (2026-10-10)** — F162, filed and built the same day
 
 - `!` **F162** — [A ligature across two colours is painted in one](backlog/closed-2026-09.md#-f162--a-ligature-across-two-colours-is-painted-in-one--done-2026-10-10) — done (2026-10-10) — a glyph's ink painted by the places it lies over, its own and those of the glyphs shaped with it, cut at whole pixel columns where their colours differ; a ligature's advance shared among its graphemes as the caret does, its backgrounds and lines with it
+
+**From the first fuzz round (2026-10-10)** — FZ1–FZ7, filed and built the same day
+
+- `!` **FZ1** — [An accelerator's letter is another chord in upper case](backlog/closed-2026-09.md#-fz1--an-accelerators-letter-is-another-chord-in-upper-case--done-2026-10-10) — done (2026-10-10) — a letter parses to its lower case, as every matcher reads it; `display` uppercases ASCII alone; a modifier is no shortcut's key
+
+- `!` **FZ2** — [The path rasterizer is handed numbers zeno cannot hold](backlog/closed-2026-09.md#-fz2--the-path-rasterizer-is-handed-numbers-zeno-cannot-hold--done-2026-10-10) — done (2026-10-10) — an outline past `RASTER_SPAN` or `RASTER_REACH`, or not finite, is left blank; a degenerate arc is a line, a rotation is taken within a turn; a stroke is drawn from kui's own flattening
+
+- `!` **FZ3** — [`decode_animation` allocates what a header claims](backlog/closed-2026-09.md#-fz3--decode_animation-allocates-what-a-header-claims--done-2026-10-10) — done (2026-10-10) — the `image` crate's limits on the GIF and PNG decoders, a frame held to 512 MiB and an animation to `MAX_ANIMATION_BYTES`
+
+- `!` **FZ4** — [The Node wire's string refs and counts are taken on trust](backlog/closed-2026-09.md#-fz4--the-node-wires-string-refs-and-counts-are-taken-on-trust--done-2026-10-10) — done (2026-10-10) — a ref's end checked, a count past the rest of the stream refused before anything is sized by it
+
+- `!` **FZ5** — [A glyph past any atlas page is rasterized whole](backlog/closed-2026-09.md#-fz5--a-glyph-past-any-atlas-page-is-rasterized-whole--done-2026-10-10) — done (2026-10-10) — past 1024 px a glyph's outline is measured first, and one wider or taller than a page is not drawn
+
+- `!` **FZ6** — [A bidi paragraph end inside a line panics the shaper](backlog/closed-2026-09.md#-fz6--a-bidi-paragraph-end-inside-a-line-panics-the-shaper--done-2026-10-10) — done (2026-10-10) — U+001C–U+001E, NEL and U+2029 shaped as characters of the same length that end nothing; an editor takes U+2029 as a newline
+
+- `!` **FZ7** — [An IME composition with a carriage return panics the editor](backlog/closed-2026-09.md#-fz7--an-ime-composition-with-a-carriage-return-panics-the-editor--done-2026-10-10) — done (2026-10-10) — a composition is filtered as typing is, the IME's offsets moved with what stays

@@ -104,6 +104,27 @@ impl Raster {
             );
         }
         let mut scaler = scaler.build();
+        // A glyph wider or taller than an atlas page is refused there
+        // (`GlyphAtlas::get_or_insert`), but only once it is drawn, and a
+        // size is a plain number every binding passes through: at 10^6 px
+        // zeno sizes the mask as `w * h * 4` in a `u32`, which overflows,
+        // and the image it would draw is terabytes (backlog FZ5). Past
+        // the size at which any face's glyph still fits a page, its
+        // outline's box is read first; a glyph with no outline (a bitmap
+        // strike) goes by the size.
+        if size > LARGE_GLYPH {
+            let page = crate::atlas::MAX_ATLAS_SIZE as f32;
+            let fits = match scaler.scale_outline(key.glyph_id) {
+                Some(outline) => {
+                    let b = outline.bounds();
+                    b.width() <= page && b.height() <= page
+                }
+                None => size <= page,
+            };
+            if !fits {
+                return None;
+            }
+        }
         let offset = if key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
             Vector::new(key.x_bin.as_float().round(), key.y_bin.as_float().round())
         } else {
@@ -129,6 +150,11 @@ impl Raster {
         .render(&mut scaler, key.glyph_id)
     }
 }
+
+/// The size, in physical px, past which a glyph's outline is measured
+/// before it is drawn (backlog FZ5): below it even a glyph three em wide
+/// fits an atlas page.
+const LARGE_GLYPH: f32 = 1024.0;
 
 /// Rasterizes one glyph into the atlas (shared by static text and editors).
 pub(crate) fn raster_glyph(
@@ -1811,7 +1837,7 @@ impl TextSystem {
             // cell is: a family with no 400 face asked at 400 falls back
             // to another family (F100).
             buffer.set_text(
-                content,
+                &one_paragraph(content),
                 &res.weights_of(style.family).apply(
                     Attrs::new()
                         .family(res.family_of(style.family))
@@ -2554,6 +2580,7 @@ impl TextSystem {
             // glyph that names its own, so a line holding only a smaller
             // span would otherwise come out shorter than the paragraph's.
             let sized = spans.iter().any(|s| s.size.is_some());
+            let texts: Vec<_> = spans.iter().map(|s| one_paragraph(s.text)).collect();
             let metrics_of = |size: Option<f32>| {
                 let size = size.unwrap_or(base.size);
                 let ratio = if base.size > 0.0 {
@@ -2584,7 +2611,7 @@ impl TextSystem {
                     if sized {
                         attrs = attrs.metrics(metrics_of(s.size));
                     }
-                    (s.text, attrs)
+                    (&*texts[i], attrs)
                 }),
                 &{
                     let attrs = weights.apply(
@@ -5030,6 +5057,36 @@ fn widest_unbreakable(buffer: &Buffer, anywhere: bool) -> f32 {
 pub(crate) fn shaper_metrics(size: f32, line_height: f32) -> Metrics {
     let px = |v: f32| if v.is_finite() { v.max(1.0) } else { 1.0 };
     Metrics::new(px(size), px(line_height))
+}
+
+/// `s` as the shaper can take it: one bidi paragraph a line (backlog
+/// FZ6). cosmic-text breaks lines at `\n` and `\r` alone, but Unicode's
+/// bidi algorithm ends a paragraph at every character of class B — the
+/// information separators U+001C–U+001E, NEL (U+0085) and the paragraph
+/// separator (U+2029) too — and cosmic-text asserts that each paragraph
+/// it is handed in one line runs the way the first does: `a\u{1e}א`
+/// panicked the shaper. Each is swapped for a character of the same
+/// length in UTF-8 that ends nothing, so every byte offset into the text
+/// — a caret's, a selection's, a span's — still lands where it did: the
+/// unit separator (U+001F) for the other three, a C1 control (U+0080) for
+/// NEL, the line separator (U+2028) for the paragraph one. They draw as
+/// what they are, nothing. Borrowed when there is none, which is always
+/// but for text that carries them.
+pub(crate) fn one_paragraph(s: &str) -> std::borrow::Cow<'_, str> {
+    let ends = |c: char| matches!(c, '\u{1c}'..='\u{1e}' | '\u{85}' | '\u{2029}');
+    if !s.contains(ends) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    std::borrow::Cow::Owned(
+        s.chars()
+            .map(|c| match c {
+                '\u{1c}'..='\u{1e}' => '\u{1f}',
+                '\u{85}' => '\u{80}',
+                '\u{2029}' => '\u{2028}',
+                c => c,
+            })
+            .collect(),
+    )
 }
 
 /// A buffer set up for the style's line breaking: cosmic-text's wrap mode,

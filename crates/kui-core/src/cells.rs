@@ -864,7 +864,12 @@ fn shape_one(
     if flags & flags::ITALIC != 0 {
         attrs = attrs.style(FontStyle::Italic);
     }
-    buffer.set_text(text, &attrs, Shaping::Advanced, None);
+    buffer.set_text(
+        &crate::text::one_paragraph(text),
+        &attrs,
+        Shaping::Advanced,
+        None,
+    );
     buffer.shape_until_scroll(fs, false);
     let run = buffer.layout_runs().next()?;
     let glyph = run.glyphs.first()?;

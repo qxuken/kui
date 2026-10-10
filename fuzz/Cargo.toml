@@ -1,0 +1,75 @@
+[package]
+name = "kui-fuzz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Fuzz targets over the kui crates (cargo-fuzz), and the stable replay of what they found"
+
+# What `cargo fuzz` looks for to call this directory its own.
+[package.metadata]
+cargo-fuzz = true
+
+# A workspace member, so the replay in tests/regressions.rs runs under the
+# workspace's `cargo test` on stable, with no nightly and no libFuzzer:
+# every input a fuzzer ever crashed on is kept under regressions/ and goes
+# through the same function the fuzz target calls. The fuzz targets
+# themselves need libFuzzer, which only `cargo fuzz` (nightly, sanitizers)
+# builds - they are behind the `libfuzzer` feature, which nothing but
+# scripts/fuzz.nu turns on, so a workspace build never compiles libFuzzer's
+# C++ or links a binary without a `main`.
+[dependencies]
+kui-core = { workspace = true, features = ["conformance"] }
+# The image decoder (`kui_native::decode_image`); the rest of the runner is
+# compiled but never called. No audio, dialogs or AccessKit: nothing here
+# opens a device.
+kui-native = { workspace = true, default-features = false }
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = { version = "0.4", optional = true }
+
+[features]
+libfuzzer = ["dep:libfuzzer-sys"]
+
+[lib]
+test = false
+doctest = false
+
+[[bin]]
+name = "parsers"
+path = "fuzz_targets/parsers.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]
+
+[[bin]]
+name = "values"
+path = "fuzz_targets/values.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]
+
+[[bin]]
+name = "path"
+path = "fuzz_targets/path.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]
+
+[[bin]]
+name = "scenes"
+path = "fuzz_targets/scenes.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]

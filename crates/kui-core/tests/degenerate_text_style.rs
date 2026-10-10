@@ -71,3 +71,36 @@ fn a_size_or_line_height_of_nothing_lays_out_and_draws() {
         );
     }
 }
+
+/// A size far past any screen is a size every binding passes through
+/// (backlog FZ5, from the first fuzz round): at 10^6 px each glyph went
+/// to the rasterizer whole, whose mask size `w * h * 4` overflows a
+/// `u32` there — a panic in a debug build — for a glyph the atlas would
+/// have refused anyway. It lays out, and draws no glyph it cannot hold.
+#[test]
+fn a_size_past_any_screen_lays_out_and_draws_no_glyph_it_cannot_hold() {
+    let mut core = Core::new();
+    for size in [3000.0, 1.0e6, 1.0e9] {
+        let style = TextStyle::new(size);
+        let mut ui = core.frame(Size::new(400.0, 300.0), 2.0);
+        ui.text("Wg", style);
+        ui.text_edit(
+            "e",
+            "x",
+            &EditOptions {
+                style,
+                autofocus: true,
+                ..Default::default()
+            },
+            NodeSpec::column(),
+        );
+        ui.finish();
+        let page = kui_core::atlas::MAX_ATLAS_SIZE as f32;
+        let (dl, _) = core.output();
+        for q in &dl.quads {
+            if q.kind != kui_core::QuadKind::Solid {
+                assert!(q.rect.w <= page && q.rect.h <= page, "{size}: {q:?}");
+            }
+        }
+    }
+}
