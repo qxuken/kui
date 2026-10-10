@@ -35,17 +35,26 @@ impl DynShell<'_> {
                 WindowCommand::StartDrag(id) => {
                     let Some(i) = self.pane_of(id) else { continue };
                     let pane = &mut self.panes[i];
-                    let now = std::time::Instant::now();
-                    let double = pane
-                        .last_titlebar_press
-                        .take()
-                        .is_some_and(|t| now.duration_since(t).as_millis() < DOUBLE_CLICK_MS);
-                    if double {
-                        pane.window.set_maximized(!pane.window.is_maximized());
-                    } else {
-                        pane.last_titlebar_press = Some(now);
-                        let _ = pane.window.drag_window();
+                    // On a Mac the press is AppKit's to count, and a double
+                    // click does what System Settings says a titlebar's does.
+                    #[cfg(target_os = "macos")]
+                    if macos_chrome::titlebar_double_click(&pane.window) {
+                        continue;
                     }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        let now = std::time::Instant::now();
+                        let double = pane
+                            .last_titlebar_press
+                            .take()
+                            .is_some_and(|t| now.duration_since(t).as_millis() < DOUBLE_CLICK_MS);
+                        if double {
+                            pane.window.set_maximized(!pane.window.is_maximized());
+                            continue;
+                        }
+                        pane.last_titlebar_press = Some(now);
+                    }
+                    let _ = pane.window.drag_window();
                 }
                 WindowCommand::Close(id) if id == WindowId::MAIN => self.exit_requested = true,
                 // The chrome close button: the user closed it, as far as
@@ -410,6 +419,7 @@ impl DynShell<'_> {
         #[cfg(target_os = "macos")]
         if chrome == Chrome::Custom {
             macos_chrome::set_titlebar(&window, self.titlebar);
+            macos_chrome::keep_titlebar_clicks(&window);
         }
         window.set_visible(true);
         window.set_ime_allowed(true);
@@ -476,6 +486,7 @@ impl DynShell<'_> {
             modifiers: ModifiersState::empty(),
             modifier_keys_down: Vec::new(),
             alt_held: (false, false),
+            #[cfg(not(target_os = "macos"))]
             last_titlebar_press: None,
             cursor: Vec2::ZERO,
             last_click: None,

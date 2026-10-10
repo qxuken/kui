@@ -19,7 +19,9 @@
 
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSToolbar, NSView, NSWindow, NSWindowButton, NSWindowToolbarStyle};
+use objc2_app_kit::{
+    NSApplication, NSEventType, NSToolbar, NSView, NSWindow, NSWindowButton, NSWindowToolbarStyle,
+};
 use winit::window::Window;
 
 use crate::{Rect, Titlebar};
@@ -115,4 +117,136 @@ fn measure(window: &Window) -> Option<Rect> {
         return None;
     }
     Some(Rect::new(0.0, 0.0, (trailing + leading) as f32, h as f32))
+}
+
+/// Under custom chrome, no press on the window's content is AppKit's
+/// titlebar's. The content view runs under AppKit's hidden titlebar, and
+/// AppKit takes a press there on a view that says it can move the window
+/// (`mouseDownCanMoveWindow`) as one on the titlebar: a double click zooms
+/// it — on a button drawn in the strip as much as between them. winit's
+/// view is not opaque, so NSView's default says it can. The override says
+/// it cannot, and a drag region does the titlebar's part itself: the
+/// runner's drag is `performWindowDragWithEvent:`, which asks the view
+/// nothing, and its double click is [`titlebar_double_click`].
+///
+/// Added to winit's view class, once per process (`class_addMethod` adds
+/// nothing to a class that already has one: a winit that grew it, or an
+/// app's own). Every window's view is of that class; for one with the OS's
+/// chrome the answer changes nothing, its titlebar being its own.
+pub fn keep_titlebar_clicks(window: &Window) {
+    use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
+    use objc2::{ffi, msg_send, sel};
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    unsafe extern "C-unwind" fn cannot(_this: &AnyObject, _sel: Sel) -> Bool {
+        Bool::NO
+    }
+    type CannotFn = unsafe extern "C-unwind" fn(&AnyObject, Sel) -> Bool;
+
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::AppKit(h) = handle.as_raw() else {
+        return;
+    };
+    // SAFETY: a live winit content view, on the event loop's thread;
+    // `class` on any object.
+    let view = unsafe { &*h.ns_view.as_ptr().cast::<AnyObject>() };
+    let cls: &AnyClass = unsafe { msg_send![view, class] };
+    // SAFETY: the type string matches the override's signature — BOOL,
+    // self, _cmd — and the class is alive for the process. A function
+    // pointer cast to `Imp`, which the runtime calls with that signature.
+    unsafe {
+        ffi::class_addMethod(
+            cls as *const AnyClass as *mut AnyClass,
+            sel!(mouseDownCanMoveWindow),
+            std::mem::transmute::<CannotFn, Imp>(cannot),
+            c"B@:".as_ptr(),
+        );
+    }
+}
+
+/// What a double click on a titlebar does: System Settings → Desktop &
+/// Dock → "Double-click a window's title bar to".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DoubleClick {
+    Zoom,
+    Minimize,
+    Nothing,
+}
+
+/// The setting from its two keys: `AppleActionOnDoubleClick` ("Maximize",
+/// "Fill", "Minimize" or "None"; absent until the user changes it), and
+/// before it the older `AppleMiniaturizeOnDoubleClick`. Zoom when neither
+/// says otherwise, as AppKit does; "Fill" is zoom too, which is what a
+/// window with no standard frame of its own fills the screen by.
+fn double_click_of(action: Option<&str>, miniaturize: bool) -> DoubleClick {
+    match action {
+        Some("Minimize") => DoubleClick::Minimize,
+        Some("None") => DoubleClick::Nothing,
+        Some(_) => DoubleClick::Zoom,
+        None if miniaturize => DoubleClick::Minimize,
+        None => DoubleClick::Zoom,
+    }
+}
+
+fn double_click_setting() -> DoubleClick {
+    use objc2::runtime::{AnyObject, Bool};
+    use objc2::{class, msg_send};
+    use objc2_foundation::NSString;
+    // SAFETY: `standardUserDefaults`, `stringForKey:` and `boolForKey:`,
+    // NSUserDefaults' own, with NSString keys.
+    let defaults: Retained<AnyObject> =
+        unsafe { msg_send![class!(NSUserDefaults), standardUserDefaults] };
+    let key = NSString::from_str("AppleActionOnDoubleClick");
+    let action: Option<Retained<NSString>> = unsafe { msg_send![&*defaults, stringForKey: &*key] };
+    let key = NSString::from_str("AppleMiniaturizeOnDoubleClick");
+    let miniaturize: Bool = unsafe { msg_send![&*defaults, boolForKey: &*key] };
+    double_click_of(
+        action.map(|a| a.to_string()).as_deref(),
+        miniaturize.as_bool(),
+    )
+}
+
+/// A press on a drag region that AppKit counts as a double click's second
+/// does what the titlebar's would ([`DoubleClick`]) and answers true: it
+/// starts no drag. Any other press — the first, or a third — answers
+/// false, and drags.
+pub fn titlebar_double_click(window: &Window) -> bool {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return false;
+    };
+    let Some(event) = NSApplication::sharedApplication(mtm).currentEvent() else {
+        return false;
+    };
+    if event.r#type() != NSEventType::LeftMouseDown || event.clickCount() != 2 {
+        return false;
+    }
+    let Some(ns_window) = ns_window(window) else {
+        return false;
+    };
+    match double_click_setting() {
+        DoubleClick::Zoom => ns_window.zoom(None),
+        DoubleClick::Minimize => ns_window.miniaturize(None),
+        DoubleClick::Nothing => {}
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_titlebar_double_click_follows_the_setting_and_zooms_unset() {
+        assert_eq!(double_click_of(None, false), DoubleClick::Zoom);
+        assert_eq!(double_click_of(None, true), DoubleClick::Minimize);
+        assert_eq!(double_click_of(Some("Maximize"), true), DoubleClick::Zoom);
+        assert_eq!(double_click_of(Some("Fill"), false), DoubleClick::Zoom);
+        assert_eq!(
+            double_click_of(Some("Minimize"), false),
+            DoubleClick::Minimize
+        );
+        assert_eq!(double_click_of(Some("None"), true), DoubleClick::Nothing);
+    }
 }

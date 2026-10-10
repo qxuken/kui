@@ -50,6 +50,14 @@ by label now finds nothing there; pass the hex key an event carried.
 
 - **One extension's panes no longer share their labels** (backlog F157):
   see *What breaks*.
+- **On a Mac a double click on a button in the titlebar strip no longer
+  zooms the window** (backlog F158). Under `Chrome::Custom` AppKit took
+  every press on the content under its hidden titlebar as the
+  titlebar's, a toolbar's buttons included. Now none is: a
+  `window_drag` region's double click is the only one that acts, counted
+  by AppKit and doing what System Settings says a titlebar's does —
+  zoom, minimize or nothing — where the runner zoomed on its own 350 ms
+  clock.
 
 **What you can delete.**
 

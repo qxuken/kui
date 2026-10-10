@@ -1623,6 +1623,15 @@ its labels after their views (its `tests/pane_labels.rs`); the lookup
 that made a pane's own label ambiguous is kui's. One entry, F157,
 **built 2026-10-10**, the day it was filed, and in the archive.
 
+## From Carnet's titlebar double click (2026-10-10)
+
+Carnet's toolbar is the strip under the hidden macOS titlebar. A double
+click on one of its buttons — Bold twice — zoomed the window, and one
+between them did too; only the second should. AppKit took every press on
+winit's view there as the titlebar's, since the view says it can move the
+window. One entry, F158, **built 2026-10-10**, the day it was filed, and
+in the archive.
+
 ## From the traffic-lights question (2026-10-09)
 
 The user asked whether kui can shift the macOS traffic lights. It could
@@ -4499,3 +4508,7 @@ move.
 **From kawoosh's pane labels (2026-10-10)** — F157, filed and built the same day
 
 - `~` **F157** — [A label asked for inside a fill is answered from any fill of its origin: one extension's panes share their labels](backlog/closed-2026-09.md#-f157--a-label-asked-for-inside-a-fill-is-answered-from-any-fill-of-its-origin-one-extensions-panes-share-their-labels--done-2026-10-10) — done (2026-10-10) — a lookup inside a fill reads that fill's labels alone, this frame then the last; `set_scroll_label` and `reveal_label` resolve as the fill that asked
+
+**From Carnet's titlebar double click (2026-10-10)** — F158, filed and built the same day
+
+- `~` **F158** — [On a Mac a double click on a button in the titlebar strip zooms the window](backlog/closed-2026-09.md#-f158--on-a-mac-a-double-click-on-a-button-in-the-titlebar-strip-zooms-the-window--done-2026-10-10) — done (2026-10-10) — winit's view says a press cannot move the window, so AppKit's titlebar takes none; a drag region's double click is AppKit's count and System Settings' action
