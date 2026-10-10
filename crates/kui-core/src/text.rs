@@ -278,6 +278,7 @@ pub(crate) struct CachedText {
     min_content: Option<f32>,
 }
 
+#[derive(Clone, Copy)]
 struct GlyphTemplate {
     x: f32,
     y: f32,
@@ -286,9 +287,13 @@ struct GlyphTemplate {
     uv: [u32; 4],
     kind: QuadKind,
     /// Per-span color override (rich text); falls back to the node color.
+    /// A glyph whose ink lies over the places of spans painted apart is
+    /// several templates, a slice of its columns each
+    /// ([`Places::push_painted`]).
     color: Option<Color>,
     /// The byte the glyph starts at in the entry's content: what puts it
-    /// on a row when a wrapped long line's chunk is drawn.
+    /// on a row when a wrapped long line's chunk is drawn. Every slice of
+    /// a glyph carries the glyph's, so they go to its row together.
     byte: u32,
 }
 
@@ -327,9 +332,15 @@ pub(crate) struct JoinBg {
     pub own: Option<(f32, f32)>,
 }
 
-/// The decorations one span (or a plain text's whole content) asked for.
+/// What one span (or a plain text's whole content) asked for past its
+/// shaping: where it starts, its colour, and its decorations.
 #[derive(Clone, Copy, Default)]
 struct SpanDeco {
+    /// The byte it starts at in the entry's content.
+    start: u32,
+    /// Its colour as its glyphs carry it ([`shaped_color`]); `None` is
+    /// the text's own.
+    color: Option<Color>,
     underline: bool,
     underline_color: Option<Color>,
     underline_style: UnderlineStyle,
@@ -343,6 +354,8 @@ struct SpanDeco {
 impl SpanDeco {
     fn of_style(style: &TextStyle) -> Self {
         Self {
+            start: 0,
+            color: None,
             underline: style.underline,
             underline_color: style.underline_color,
             underline_style: style.underline_style,
@@ -522,15 +535,28 @@ impl<'a> Span<'a> {
             attrs = attrs.style(FontStyle::Italic);
         }
         if let Some(c) = self.color {
-            attrs = attrs.color(cosmic_text::Color::rgba(
-                (c.r * 255.0) as u8,
-                (c.g * 255.0) as u8,
-                (c.b * 255.0) as u8,
-                (c.a * 255.0) as u8,
-            ));
+            attrs = attrs.color(shaper_color(c));
         }
         attrs
     }
+}
+
+/// A colour as the shaper is handed it, eight bits a channel.
+fn shaper_color(c: Color) -> cosmic_text::Color {
+    cosmic_text::Color::rgba(
+        (c.r * 255.0) as u8,
+        (c.g * 255.0) as u8,
+        (c.b * 255.0) as u8,
+        (c.a * 255.0) as u8,
+    )
+}
+
+/// A colour as a span's glyphs come back carrying it ([`shaper_color`]
+/// and back), so a colour read off a span and one read off its glyphs
+/// compare equal.
+fn shaped_color(c: Color) -> Color {
+    let c = shaper_color(c);
+    Color::rgba8(c.r(), c.g(), c.b(), c.a())
 }
 
 /// A [`Span`]'s attributes without its text, owned: what a long rich
@@ -2575,9 +2601,16 @@ impl TextSystem {
                 None,
             );
             let content = spans.iter().map(|s| s.text).collect::<String>();
+            let mut start = 0u32;
             let decos = spans
                 .iter()
                 .map(|s| SpanDeco {
+                    start: {
+                        let at = start;
+                        start += s.text.len() as u32;
+                        at
+                    },
+                    color: s.color.map(shaped_color),
                     underline: s.underline || base.underline,
                     // The span's own where it says, else the paragraph's.
                     underline_color: s.underline_color.or(base.underline_color),
@@ -3269,16 +3302,29 @@ fn build_templates(
             entry.deco.clear();
             let lines = line_cap(entry.max_lines);
             let decorated = entry.span_deco.iter().any(SpanDeco::any);
+            // Spans painted apart: a glyph's ink may lie over another's
+            // place (backlog F162). One colour throughout costs nothing.
+            let painted = entry.span_deco.windows(2).any(|w| w[0].color != w[1].color);
+            let starts = if (decorated || painted) && entry.span_deco.len() > 1 {
+                line_starts(&entry.buffer, &entry.content)
+            } else {
+                Vec::new()
+            };
+            let mut places = Places::default();
             for run in entry.buffer.layout_runs().take(lines) {
-                if decorated {
-                    build_decorations(&run, &entry.span_deco, fs, &mut entry.deco);
+                if decorated || painted {
+                    let base = starts.get(run.line_i).copied().unwrap_or(0);
+                    places.of_line(&run, base, &entry.span_deco, painted);
                 }
-                for glyph in run.glyphs.iter() {
+                if decorated {
+                    build_decorations(&run, &places.parts, &entry.span_deco, fs, &mut entry.deco);
+                }
+                for (i, glyph) in run.glyphs.iter().enumerate() {
                     let physical = glyph.physical((0.0, 0.0), 1.0);
                     let Some(slot) = raster_glyph(physical.cache_key, fs, raster, atlas) else {
                         continue;
                     };
-                    entry.glyphs.push(GlyphTemplate {
+                    let template = GlyphTemplate {
                         x: physical.x as f32 + slot.left as f32,
                         y: run.line_y.round() + physical.y as f32 - slot.top as f32,
                         w: slot.w as f32,
@@ -3289,7 +3335,19 @@ fn build_templates(
                             .color_opt
                             .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
                         byte: glyph.start as u32,
-                    });
+                    };
+                    // A colour bitmap (an emoji) paints its own colours.
+                    if painted && template.kind != QuadKind::GlyphColor {
+                        places.push_painted(
+                            template,
+                            i,
+                            run.glyphs,
+                            &entry.span_deco,
+                            &mut entry.glyphs,
+                        );
+                    } else {
+                        entry.glyphs.push(template);
+                    }
                 }
             }
             // Rasterizing may have extended the page mid-build, which
@@ -3448,8 +3506,230 @@ fn has_rtl(content: &str) -> bool {
         })
 }
 
-/// The decoration rects for one laid-out line: consecutive glyphs of one
-/// span (its index is their metadata) become one background rect, one
+/// One span's place on a laid-out line, physical px: a glyph's advance,
+/// or the share of it one span's graphemes take when the glyph is a
+/// ligature of characters from more than one span.
+#[derive(Clone, Copy, Debug)]
+struct Part {
+    x0: f32,
+    x1: f32,
+    /// The span's index into the entry's `span_deco`.
+    span: usize,
+    /// The glyph's index into the run.
+    glyph: usize,
+}
+
+/// The places of one laid-out line and what painting by them needs,
+/// kept across the lines of a build so their buffers are allocated once.
+#[derive(Default)]
+struct Places {
+    /// In glyph order, a glyph's own contiguous.
+    parts: Vec<Part>,
+    /// Indices into `parts` by `x0`, those with a width alone: what a
+    /// point of the line is looked up in. Filled for a painted entry.
+    by_x: Vec<u32>,
+    /// A glyph's cut columns, reused.
+    cuts: Vec<u32>,
+}
+
+impl Places {
+    /// The places `run` gives its spans, in glyph order: a glyph's advance
+    /// is its span's, and a glyph whose bytes run over more than one span
+    /// — a ligature of two characters painted apart — shares its advance
+    /// among its graphemes evenly, as a caret inside it is placed
+    /// (cosmic-text's `cursor_glyph`), each share its own span's, right
+    /// to left in a right-to-left glyph. `base` is the byte the run's
+    /// paragraph starts at in the content, where the spans' starts are.
+    fn of_line(
+        &mut self,
+        run: &cosmic_text::LayoutRun<'_>,
+        base: usize,
+        spans: &[SpanDeco],
+        painted: bool,
+    ) {
+        use unicode_segmentation::UnicodeSegmentation;
+        self.parts.clear();
+        let last = spans.len().saturating_sub(1);
+        for (gi, g) in run.glyphs.iter().enumerate() {
+            // A glyph's metadata is the span its first byte is in.
+            let span = g.metadata.min(last);
+            let crosses = spans
+                .get(span + 1)
+                .is_some_and(|next| (next.start as usize) < base + g.end);
+            let cluster = run.text.get(g.start..g.end).filter(|_| crosses);
+            let Some(cluster) = cluster else {
+                self.parts.push(Part {
+                    x0: g.x,
+                    x1: g.x + g.w,
+                    span,
+                    glyph: gi,
+                });
+                continue;
+            };
+            let share = g.w / cluster.graphemes(true).count().max(1) as f32;
+            for (k, (i, _)) in cluster.grapheme_indices(true).enumerate() {
+                let byte = base + g.start + i;
+                let span = spans
+                    .partition_point(|s| s.start as usize <= byte)
+                    .saturating_sub(1);
+                let (x0, x1) = if g.level.is_rtl() {
+                    let x1 = g.x + g.w - k as f32 * share;
+                    (x1 - share, x1)
+                } else {
+                    let x0 = g.x + k as f32 * share;
+                    (x0, x0 + share)
+                };
+                match self.parts.last_mut() {
+                    Some(p) if p.glyph == gi && p.span == span => {
+                        p.x0 = p.x0.min(x0);
+                        p.x1 = p.x1.max(x1);
+                    }
+                    _ => self.parts.push(Part {
+                        x0,
+                        x1,
+                        span,
+                        glyph: gi,
+                    }),
+                }
+            }
+        }
+        self.by_x.clear();
+        if painted {
+            let parts = &self.parts;
+            self.by_x.extend(
+                (0..parts.len() as u32).filter(|&k| parts[k as usize].x1 > parts[k as usize].x0),
+            );
+            // A left-to-right line is in order already.
+            if !self
+                .by_x
+                .is_sorted_by(|&a, &b| parts[a as usize].x0 <= parts[b as usize].x0)
+            {
+                self.by_x
+                    .sort_by(|&a, &b| parts[a as usize].x0.total_cmp(&parts[b as usize].x0));
+            }
+        }
+    }
+
+    /// Pushes glyph `gi`'s template painted by the places its ink lies
+    /// over (backlog F162). A colour belongs to the places of the
+    /// characters that carry it — a span's background is drawn over
+    /// exactly those — and a glyph's ink is not always over its own: a
+    /// coding font's ligature is often one glyph drawing two characters
+    /// beside an empty one (`->` in Fira Code, `##` in Berkeley Mono), or
+    /// one glyph for both whose advance is shared. So the colour of each
+    /// column of the glyph's ink is the colour of the place under it —
+    /// its own, or a neighbour's shaped with it in one face, weight, size
+    /// and style (a run cosmic-text could have joined into a ligature;
+    /// an italic's lean into the upright text after it keeps its own) —
+    /// and where those differ the template is cut into slices at whole
+    /// pixel columns, each the same quad with its rect and its uv
+    /// narrowed alike. A glyph over one colour stays one template.
+    fn push_painted(
+        &mut self,
+        t: GlyphTemplate,
+        gi: usize,
+        glyphs: &[cosmic_text::LayoutGlyph],
+        spans: &[SpanDeco],
+        out: &mut Vec<GlyphTemplate>,
+    ) {
+        let parts = &self.parts;
+        let own = {
+            let lo = parts.partition_point(|p| p.glyph < gi);
+            let hi = parts.partition_point(|p| p.glyph <= gi);
+            &parts[lo..hi]
+        };
+        if own.is_empty() || t.w < 2.0 {
+            out.push(t);
+            return;
+        }
+        let g = &glyphs[gi];
+        let kin = |p: &Part| {
+            let n = &glyphs[p.glyph];
+            p.glyph == gi
+                || n.font_id == g.font_id
+                    && n.font_weight == g.font_weight
+                    && n.font_size == g.font_size
+                    && n.cache_key_flags == g.cache_key_flags
+        };
+        let color_of = |p: &Part| spans.get(p.span).and_then(|s| s.color);
+        // The colour at `x`: the place under it when that is the glyph's
+        // own or a kin's, else the glyph's own place nearest it.
+        let at = |x: f32| {
+            let k = self
+                .by_x
+                .partition_point(|&k| parts[k as usize].x0 <= x)
+                .checked_sub(1)
+                .map(|k| &parts[self.by_x[k] as usize]);
+            match k {
+                Some(p) if x < p.x1 && kin(p) => color_of(p),
+                _ => {
+                    let near = own
+                        .iter()
+                        .min_by(|a, b| {
+                            let d = |p: &Part| (p.x0 - x).max(x - p.x1).max(0.0);
+                            d(a).total_cmp(&d(b))
+                        })
+                        .expect("not empty");
+                    color_of(near)
+                }
+            }
+        };
+        let (x0, x1) = (t.x, t.x + t.w);
+        let w = t.w as u32;
+        self.cuts.clear();
+        let from = self
+            .by_x
+            .partition_point(|&k| parts[k as usize].x0 < x0)
+            .saturating_sub(1);
+        for &k in &self.by_x[from..] {
+            let p = &parts[k as usize];
+            if p.x0 >= x1 {
+                break;
+            }
+            for edge in [p.x0, p.x1] {
+                let c = (edge - x0).round();
+                if c >= 1.0 && c < t.w {
+                    self.cuts.push(c as u32);
+                }
+            }
+        }
+        if self.cuts.is_empty() {
+            out.push(GlyphTemplate {
+                color: at(x0 + t.w / 2.0),
+                ..t
+            });
+            return;
+        }
+        self.cuts.sort_unstable();
+        self.cuts.dedup();
+        self.cuts.push(w);
+        let first = out.len();
+        let mut a = 0u32;
+        for &b in &self.cuts {
+            let color = at(x0 + (a + b) as f32 / 2.0);
+            let sliced = out.len() > first;
+            match out.last_mut() {
+                // The slice before is the same colour: it grows.
+                Some(prev) if sliced && prev.color == color => {
+                    prev.w += (b - a) as f32;
+                    prev.uv[2] += b - a;
+                }
+                _ => out.push(GlyphTemplate {
+                    x: x0 + a as f32,
+                    w: (b - a) as f32,
+                    uv: [t.uv[0] + a, t.uv[1], b - a, t.uv[3]],
+                    color,
+                    ..t
+                }),
+            }
+            a = b;
+        }
+    }
+}
+
+/// The decoration rects for one laid-out line: consecutive places of one
+/// span ([`Places::of_line`]: a glyph's advance, or its graphemes' share
+/// of a ligature's) become one background rect, one
 /// underline and one strikethrough, as the span asked. Where the lines go
 /// is the face's own recommendation — swash's `underline_offset`,
 /// `strikeout_offset` and `stroke_size`, scaled to the glyph's size — read
@@ -3460,6 +3740,7 @@ fn has_rtl(content: &str) -> bool {
 /// fell inside a pixel.
 fn build_decorations(
     run: &cosmic_text::LayoutRun<'_>,
+    parts: &[Part],
     spans: &[SpanDeco],
     fs: &mut FontSystem,
     out: &mut Vec<DecoTemplate>,
@@ -3468,20 +3749,18 @@ fn build_decorations(
     // same colour starting where it ends extends.
     let mut last_bg: Option<usize> = None;
     let mut i = 0;
-    while i < run.glyphs.len() {
-        let span_no = run.glyphs[i].metadata;
+    while i < parts.len() {
+        let span_no = parts[i].span;
         let mut j = i + 1;
-        while j < run.glyphs.len() && run.glyphs[j].metadata == span_no {
+        while j < parts.len() && parts[j].span == span_no {
             j += 1;
         }
         let deco = spans.get(span_no).copied().unwrap_or_default();
         if deco.any() {
-            let group = &run.glyphs[i..j];
-            let x0 = group.iter().map(|g| g.x).fold(f32::INFINITY, f32::min);
-            let x1 = group
-                .iter()
-                .map(|g| g.x + g.w)
-                .fold(f32::NEG_INFINITY, f32::max);
+            let group = &parts[i..j];
+            let x0 = group.iter().map(|p| p.x0).fold(f32::INFINITY, f32::min);
+            let x1 = group.iter().map(|p| p.x1).fold(f32::NEG_INFINITY, f32::max);
+            let head = &run.glyphs[group[0].glyph];
             let w = (x1 - x0).max(0.0);
             match (deco.bg, last_bg.map(|k| &mut out[k])) {
                 (Some(bg), Some(prev))
@@ -3495,9 +3774,9 @@ fn build_decorations(
                     // A span shorter than its line (`Span::size`, a line
                     // a larger span made taller) has a background its own
                     // height, around its glyphs, not the line's.
-                    let (y, h) = match group[0].line_height_opt {
+                    let (y, h) = match head.line_height_opt {
                         Some(lh) if lh < run.line_height - 0.01 => {
-                            let g = &group[0];
+                            let g = head;
                             let (asc, desc) = fs
                                 .get_font(g.font_id, g.font_weight)
                                 .map(|font| {
@@ -3525,7 +3804,7 @@ fn build_decorations(
                 (None, _) => last_bg = None,
             }
             if deco.underline || deco.strikethrough {
-                let first = &group[0];
+                let first = head;
                 let metrics = fs
                     .get_font(first.font_id, first.font_weight)
                     .map(|font| font.as_swash().metrics(&[]).scale(first.font_size));
@@ -3547,11 +3826,7 @@ fn build_decorations(
                         y: (baseline - under_off).round(),
                         w,
                         h: stroke,
-                        color: deco.underline_color.or_else(|| {
-                            first
-                                .color_opt
-                                .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a()))
-                        }),
+                        color: deco.underline_color.or(deco.color),
                         under: false,
                         style: deco.underline_style,
                         radius: 0.0,
@@ -3563,9 +3838,7 @@ fn build_decorations(
                         y: (baseline - strike_off).round(),
                         w,
                         h: stroke,
-                        color: first
-                            .color_opt
-                            .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
+                        color: deco.color,
                         under: false,
                         style: UnderlineStyle::Solid,
                         radius: 0.0,

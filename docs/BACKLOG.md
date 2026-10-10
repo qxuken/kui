@@ -1646,6 +1646,17 @@ were missing, and off a Mac Ctrl was read as a Mac's ⌘. Three entries,
 F159–F161, **built 2026-10-10**, the day they were filed, and in the
 archive.
 
+## From kawoosh's markdown caret (2026-10-10)
+
+kawoosh's block caret is a span — the accent behind one character, the
+page's colour on it. On a `## What` heading in Berkeley Mono it looked a
+cell off: on the first `#` the `#` under it was drawn in the heading's
+colour, the accent, on the accent; on the second the first `#` was drawn
+in the caret's, the page's, on the page. The background was right, the
+glyphs were not: the font draws `##` as an empty glyph and one whose
+ink covers both cells, and kui painted a glyph in one colour. One entry,
+F162, **built 2026-10-10**, the day it was filed, and in the archive.
+
 ## From the traffic-lights question (2026-10-09)
 
 The user asked whether kui can shift the macOS traffic lights. It could
@@ -4539,3 +4550,7 @@ move.
 - `~` **F160** — [Escape lets go of an editor and says nothing](backlog/closed-2026-09.md#-f160--escape-lets-go-of-an-editor-and-says-nothing--done-2026-10-10) — done (2026-10-10) — `cancel` on the editor, then the blur
 
 - `~` **F161** — [An editor's arrows read the modifiers the same on every platform](backlog/closed-2026-09.md#-f161--an-editors-arrows-read-the-modifiers-the-same-on-every-platform--done-2026-10-10) — done (2026-10-10) — ⌥↑ ⌥↓ by paragraphs on a Mac; Ctrl moves by words and paragraphs off one
+
+**From kawoosh's markdown caret (2026-10-10)** — F162, filed and built the same day
+
+- `!` **F162** — [A ligature across two colours is painted in one](backlog/closed-2026-09.md#-f162--a-ligature-across-two-colours-is-painted-in-one--done-2026-10-10) — done (2026-10-10) — a glyph's ink painted by the places it lies over, its own and those of the glyphs shaped with it, cut at whole pixel columns where their colours differ; a ligature's advance shared among its graphemes as the caret does, its backgrounds and lines with it

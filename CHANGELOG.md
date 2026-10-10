@@ -21,6 +21,45 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.53 (unreleased)
+
+**What breaks.**
+
+- A glyph whose ink lies over the place of a character of another
+  colour, shaped with it in one face, is painted in that colour there:
+  a ligature across two spans of different colours is drawn in each
+  one's over its own cells, where it was drawn wholly in one span's.
+- A glyph that is a ligature of characters from more than one span
+  shares its advance among them for their backgrounds, underlines and
+  strikethroughs, where the first span's took the whole of it.
+
+cosmic-text shapes spans that differ only in colour as one run, so a
+coding font's ligature holds across them — `##`, `->`, `**` — and kui
+painted each glyph in its first byte's span's colour (backlog F162,
+from kawoosh, whose block caret on a `## What` heading in Berkeley Mono
+showed the `#` under it in the heading's colour on the caret's
+background). A glyph's ink is now painted by the places under it, as a
+selection is: each character's colour over its own advance, a ligature
+glyph's advance shared among its characters where a caret inside it
+goes. Where those colours differ the glyph is cut at whole pixel
+columns into slices of one quad, so a slice's edge is the edge of the
+span's background. Ink over a place of another face — an italic's lean
+into the upright text after it — keeps its own colour. One thing a
+reader may see besides a ligature: the edge column of a glyph that
+reaches half a pixel into a neighbour of another colour takes that
+neighbour's colour, as a terminal's cell does. A text of one colour is
+drawn as it was, one quad a glyph.
+
+### Fixed
+
+- **A ligature across two colours is drawn in both** (backlog F162):
+  see *What breaks*.
+
+**What you can delete.**
+
+- `liga=0 calt=0` set on a text only so a caret, a selection or a
+  syntax colour over one character of a ligature shows in it.
+
 ## 0.1.0-alpha.52 (2026-10-10)
 
 **What breaks.**
