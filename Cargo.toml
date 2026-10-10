@@ -48,6 +48,9 @@ rustc-hash = "2"
 cosmic-text = { version = "0.19", features = ["shape-run-cache"] }
 # Same major cosmic-text builds on: `Font::as_swash()` hands us its FontRef.
 swash = "0.2"
+# The path mask's rasterizer (backlog FZ2's follow-up): Skia's, ported -
+# the version winit's Wayland decorations already build. No PNG.
+tiny-skia = { version = "0.11.4", default-features = false, features = ["std", "simd"] }
 wgpu = "30"
 # WGSL validation for `fragment` sources at registration (ADR 0015); the
 # same naga wgpu pins, so a windowed app links one copy.

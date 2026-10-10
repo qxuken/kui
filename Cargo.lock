@@ -1561,6 +1561,7 @@ dependencies = [
  "serde_json",
  "slotmap",
  "swash",
+ "tiny-skia",
  "unicode-linebreak",
  "unicode-script",
  "unicode-segmentation",

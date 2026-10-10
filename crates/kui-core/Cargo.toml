@@ -16,6 +16,7 @@ slotmap.workspace = true
 rustc-hash.workspace = true
 cosmic-text.workspace = true
 swash.workspace = true
+tiny-skia.workspace = true
 naga.workspace = true
 # Word boundaries for the access tree's text runs (already in the tree via cosmic-text).
 unicode-segmentation = "1"
