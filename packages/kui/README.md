@@ -316,7 +316,7 @@ pointing into the other three.
   `tick.msg` speak it too (a `tick.msg` written inline needs the union named
   — `runWindowed<Model, Msg>(...)`, or a `msg` annotated where it is
   written — since its return is what would be inferred from). `CoreMsg` is what the core sends on its own
-  (`DragMsg`, `KeyMsg`, `HoverMsg`, `ModifiersMsg`, `changed` / `submit`),
+  (`DragMsg`, `KeyMsg`, `HoverMsg`, `ModifiersMsg`, `changed` / `submit` / `cancel`),
   each with the payload fields spelled out; `pollEvents<KeyMsg<Tag>>()`
   types a raw poll the same way. To have the *payload props* checked at the
   node as well, register the app's own union once:
