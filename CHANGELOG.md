@@ -35,7 +35,7 @@ was the first bare bump to break an app in five releases).
   mask or spans more than `path::RASTER_SPAN` with its stroke, or a
   mask over `MAX_MASK_SIDE`; and a path's stroke, dash and fill bleed,
   and every arc, are drawn from kui's own flattening rather than zeno's
-  curves, which moves a curve's edge pixels by under a twentieth of a
+  curves, which moves a curve's edge pixels by under a tenth of a
   pixel.
 - `decode_animation` is an error for a frame over 512 MiB or an
   animation whose frames pass `MAX_ANIMATION_BYTES` (1 GiB), and

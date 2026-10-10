@@ -748,10 +748,9 @@ const HIT: Fineness = Fineness {
 };
 
 /// A stroke's, in physical px, as the rasterizer is handed it (see
-/// [`rasterize_at`]): a twentieth of a pixel, under what antialiasing
-/// shows.
+/// [`rasterize_at`]): a tenth of a pixel, under what antialiasing shows.
 const RASTER: Fineness = Fineness {
-    tolerance: 0.05,
+    tolerance: 0.1,
     pieces: 4096,
 };
 
