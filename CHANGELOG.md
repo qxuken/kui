@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.54 (unreleased)
+## 0.1.0-alpha.54 (2026-10-10)
 
 **What breaks.**
 
@@ -114,6 +114,42 @@ IME's composition holds what typing would.
 - A size cap applied to text only so a huge size does not crash the
   glyph rasterizer.
 - A check of an image's header dimensions before `decode_animation`.
+
+### Native verification
+
+The pre-tag pass on 2026-10-10, over the round since alpha.53 — the
+fuzzing and FZ1–FZ7 — on the Windows machine and under WSL. The pass
+found one thing to change: the bench guard read the cold wedge raster
+62% slower with arcs and strokes flattened at a twentieth of a pixel,
+and the fineness went to a tenth (FZ2's outcome records the numbers).
+
+**Windows**, rustc 1.99.0. fmt and clippy are clean; `cargo test
+--workspace`: **2081 tests over 159 suites**, 0 failed. The C round
+passes (6 checks), and so do the **58 scenes** through C; Node's tests
+under `KUI_CONFORMANCE_REQUIRED=1`, **227 of 228** with the one skip
+Windows has had before; `npm run gen` with line-ending changes only,
+the examples' typecheck, the headless round, the book's examples
+current. The windowed round: **all 55 examples**, Node's included,
+drew 120 frames on each base and exited cleanly. The bench guard
+against the alpha.53 tag: **green over two runs** — each guarded row
+read clean in one of them and none regressed, this desktop's noise
+leaving one row unreadable in the first and two in the second;
+`frame_1k_paths_fresh` +1.6%, `raster_pie_wedge_220px` 7.60 → 10.9 µs
+(unguarded), the price of FZ2.
+
+**Linux** (WSL, Ubuntu 24.04). fmt and clippy are clean; `cargo test
+--workspace`: **158 suites**, 0 failed; `cargo audit --deny warnings`
+clean over 451 crates (the lockfile gained `arbitrary` and
+`libfuzzer-sys`). The C round (5 checks) and the **58 scenes** through
+C; `odin.nu gen --check`, `check`, `test` and `slots`; Node **228 of
+228** with the corpus required; gen with no diff, the typecheck, the
+headless round, the book's examples current. The fuzz targets' eighth
+round, twenty minutes a target on the commit before the fineness
+changed, was clean on all five (26M, 24M, 762k,
+77k and 390k runs), and the Node decoder's own fuzz test clean over
+500 000 streams. No Mac ran this round: nothing in it is
+platform-specific but the decoder, the text and the paths, all of
+which the headless suites cover on both.
 
 ## 0.1.0-alpha.53 (2026-10-10)
 
