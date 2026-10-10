@@ -3908,7 +3908,8 @@ uint64_t kui_radio_group_open(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
  * phase, tag}; declare the value back as value_now. Its key. */
 uint64_t kui_slider(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
 /* Editable text node (state retained by key). Returns the node key;
- * "changed"/"submit" events arrive via kui_poll_event with that key. */
+ * "changed"/"submit"/"cancel" events arrive via kui_poll_event with that
+ * key ("cancel": Escape let go of it). */
 uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
                        const KuiTextStyle *style, uint32_t flags, const KuiSpec *spec);
 /* kui_text_edit with a placeholder: what the editor shows, in the theme's

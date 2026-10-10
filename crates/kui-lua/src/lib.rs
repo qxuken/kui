@@ -237,7 +237,8 @@
 //! { kind = "toggle", index = i }`) plus `node_key` (the emitting node's
 //! integer key), `window` (the window it came from) and `slot` (the full
 //! name of the slot the node was filled into). Edit widgets emit `{ kind =
-//! "changed" | "submit" }`; read the text back with `env.edit_text`. What
+//! "changed" | "submit" | "cancel" }` (`cancel`: Escape let go of it);
+//! read the text back with `env.edit_text`. What
 //! `on_event` returns is the script's replies to the host: nothing, one
 //! table, or a sequence of tables.
 //!
@@ -545,7 +546,7 @@ impl Extension for LuaExtension {
         };
         let payload = value_to_lua(&self.lua, &ev.payload).and_then(|p| {
             // Map payloads learn which node emitted them; edit widgets emit
-            // {kind="changed"|"submit"} and scripts read the text back with
+            // {kind="changed"|"submit"|"cancel"} and scripts read the text back with
             // env.edit_text(ev.node_key).
             if let mlua::Value::Table(t) = &p
                 && !t.contains_key("node_key")?
