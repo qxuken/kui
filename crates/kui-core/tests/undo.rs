@@ -223,3 +223,38 @@ fn multiline_edits_round_trip() {
     rig.undo();
     assert_eq!(rig.text(), "alpha\nbeta\ngamma");
 }
+
+#[test]
+fn the_primary_modifier_deletes_to_the_line_edge_on_a_mac_and_a_word_elsewhere() {
+    let mut rig = Rig::new("one two three", false);
+    rig.press(EditKey::Left, Mods::NONE.with_word());
+    rig.press(EditKey::Backspace, Mods::NONE.with_doc());
+    if cfg!(target_os = "macos") {
+        // ⌘⌫: back to the line's start; ⌘⌦: on to its end.
+        assert_eq!(rig.text(), "three");
+        rig.undo();
+        assert_eq!(rig.text(), "one two three");
+        rig.press(EditKey::Home, Mods::default());
+        rig.press(EditKey::Right, Mods::NONE.with_word());
+        rig.press(EditKey::Delete, Mods::NONE.with_doc());
+        assert_eq!(rig.text(), "one");
+    } else {
+        // Ctrl+Backspace: the word before; Ctrl+Delete: the word after.
+        assert_eq!(rig.text(), "one three");
+        rig.press(EditKey::Delete, Mods::NONE.with_doc());
+        assert_eq!(rig.text(), "one ");
+    }
+}
+
+#[test]
+fn escape_lets_go_of_a_field_and_says_so() {
+    let mut rig = Rig::new("draft", false);
+    let events = rig
+        .core
+        .handle_input(InputEvent::Key(EditKey::Escape, Mods::default()));
+    let kinds: Vec<_> = events.iter().map(|e| e.kind()).collect();
+    assert_eq!(kinds, [Some("cancel")]);
+    assert_eq!(events[0].key, rig.key);
+    assert_eq!(rig.core.focus(), None, "the keyboard left it");
+    assert_eq!(rig.text(), "draft", "the draft is the app's to drop");
+}

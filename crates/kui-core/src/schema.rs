@@ -2409,6 +2409,11 @@ pub const EVENTS: &[EventDef] = &[
         doc: "Enter in a single-line editor.",
     },
     EventDef {
+        kind: "cancel",
+        payload: "`{ kind: \"cancel\" }`, with the editor's key on the event",
+        doc: "Escape let go of a focused editor: the keyboard leaves it, as it does for a click elsewhere, and this says it was Escape — a draft abandoned, where `submit` is one confirmed and a plain blur is neither. A field that commits on blur cancels here instead.",
+    },
+    EventDef {
         kind: "boundary",
         payload: "`{ kind: \"boundary\", key: \"up\" | \"down\" | \"left\" | \"right\" | \"backspace\" | \"delete\", edge: \"start\" | \"end\", word, doc }`, with the editor's key on the event",
         doc: "An editing key that met the edge of an editor's text and did nothing: ↑ on the first line, ← or Backspace at the start (`edge: \"start\"`), ↓ on the last line, → or Delete at the end (`\"end\"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried (Option or Ctrl, ⌘ or Ctrl — `docs/adr/0002`).",

@@ -1131,29 +1131,32 @@ impl EditStore {
                 s.editor.action(fs, Action::Motion(motion));
                 s.break_coalesce();
             }
-            EditKey::Backspace => {
-                changed |= s.delete_selection_recorded()
-                    || s.delete_motion_recorded(
-                        if mods.word {
-                            Motion::LeftWord
-                        } else {
-                            Motion::Left
-                        },
-                        Coalesce::Backspace,
-                        fs,
-                    );
-            }
-            EditKey::Delete => {
-                changed |= s.delete_selection_recorded()
-                    || s.delete_motion_recorded(
-                        if mods.word {
-                            Motion::RightWord
-                        } else {
-                            Motion::Right
-                        },
-                        Coalesce::Delete,
-                        fs,
-                    );
+            EditKey::Backspace | EditKey::Delete => {
+                // ⌘⌫ on a Mac takes the line back to its start and ⌘⌦ on
+                // to its end, as AppKit's fields do; elsewhere the primary
+                // modifier is Ctrl, and Ctrl+Backspace takes a word, as
+                // Windows' and GTK's fields do.
+                let (line, word) = if cfg!(target_os = "macos") {
+                    (mods.doc, mods.word)
+                } else {
+                    (false, mods.word || mods.doc)
+                };
+                let back = ek == EditKey::Backspace;
+                let motion = match (back, line, word) {
+                    (true, true, _) => Motion::Home,
+                    (true, _, true) => Motion::LeftWord,
+                    (true, ..) => Motion::Left,
+                    (false, true, _) => Motion::End,
+                    (false, _, true) => Motion::RightWord,
+                    (false, ..) => Motion::Right,
+                };
+                let kind = if back {
+                    Coalesce::Backspace
+                } else {
+                    Coalesce::Delete
+                };
+                changed |=
+                    s.delete_selection_recorded() || s.delete_motion_recorded(motion, kind, fs);
             }
             EditKey::Enter => {
                 if s.multiline {
