@@ -353,8 +353,12 @@ extern "C" {
  * the node and its subtree paint after their siblings, over any they
  * overlap (docs/adr/0046-a-node-over-its-siblings-paints-after-them.md).
  * Recompile; zeroed, a node paints in its tree order as it did.
+ *
+ * ABI 32 appends initial_letter to KuiTextStyle, which grows to 80 on
+ * 64-bit: the first letter as a drop cap that many lines tall (backlog
+ * F164). Recompile; zeroed, the text has none.
  */
-#define KUI_ABI_VERSION 31u
+#define KUI_ABI_VERSION 32u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1823,6 +1827,8 @@ typedef struct KuiTextStyle {
                                  KUI_DECO_UNDERLINE. ABI 17. */
     uint32_t underline_style; /* KUI_UNDERLINE_* ; non-solid implies KUI_DECO_UNDERLINE. ABI 17. */
     uint32_t bold; /* non-zero: the family's bold, as KUI_SPAN_BOLD on a span. ABI 29. */
+    uint32_t initial_letter; /* the first letter as a drop cap this many lines tall; 0 or 1 =
+                                none, as with max_lines or ellipsis. ABI 31. */
 } KuiTextStyle;
 
 /* [in] One run of a rich-text paragraph. */

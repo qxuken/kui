@@ -1831,6 +1831,9 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			}
 			kui.text(ui, "a long line that is cut short", cut)
 		}
+		if kui.box(ui, {width = kui.px(60)}) {
+			kui.text(ui, "Drop cap", {size = 12, initial_letter = 2})
+		}
 		line := kui.Spec {
 			key              = "line",
 			dir              = .Row,

@@ -998,6 +998,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               column {{ width = 60, over_siblings = true,
                         text("a long line that is cut short", {{ size = 12, max_lines = 1, ellipsis = true,
                               underline = true, strikethrough = true, features = "liga=0" }}) }},
+              column {{ width = 60, text("Drop cap", {{ size = 12, initial_letter = 2 }}) }},
               row {{ key = "line", height = 16, role = "line", caret = 2, selection_anchor = 0,
                      caret_solid = true, text("sel", {{ size = 12 }}) }},
             }}

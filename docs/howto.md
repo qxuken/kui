@@ -394,6 +394,21 @@ not the line's.
 [`text` element](props.md#elements) ·
 [`text.rs`](../examples/rust/widgets/text.rs)
 
+### How do I open a paragraph with a drop cap?
+
+Set `initialLetter` on the text to the lines the letter drops through:
+`<text initialLetter={3}>`, `TextStyle::new(17.0).initial_letter(3)` in
+Rust, `initial_letter = 3` in Lua, `.initial_letter = 3` on a C
+`KuiTextStyle`. The first letter, with an opening quote before it, is
+sized so its top meets the first line's capitals and its foot the third
+line's baseline; the lines beside it move in past it and the rest are at
+full width. Give the letter's span a `family` and a `color` for the
+usual serif in an accent; kui sets its size. It is still one text, so
+`caretRect`, `textHit`, a selection and a screen reader read every byte
+where it is drawn, and the caret before the letter is as tall as it.
+
+[`initialLetter` row](props.md#text-props)
+
 ### How do I list the installed fonts, the monospaced ones first?
 
 `ctx.systemFonts()` (Rust `Core::system_fonts()`, C `kui_system_fonts`)

@@ -14,6 +14,7 @@ use crate::atlas::GlyphAtlas;
 use crate::color::Color;
 use crate::display::{Clip, ClipId, Quad, QuadKind};
 use crate::geom::{Rect, Size, Vec2};
+use crate::initial::Initial;
 use crate::key::Key;
 use crate::resources::Resources;
 use crate::retain::Kept;
@@ -302,6 +303,11 @@ pub(crate) struct CachedText {
     /// min-content — measured the first time a shrink asks and kept for
     /// the entry's life, since no width changes it.
     min_content: Option<f32>,
+    /// The first letter as an initial, while the text has one
+    /// (`TextStyle::initial_letter`, backlog F164): the buffer's first
+    /// line, and where it and every other line's runs are drawn. Boxed:
+    /// it holds a paragraph line, and few texts have one.
+    initial: Option<Box<Initial>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1781,6 +1787,7 @@ impl TextSystem {
         mix(&scale.to_bits().to_le_bytes());
         mix(&[style.wrap as u8, style.ellipsis as u8]);
         mix(&style.max_lines.to_le_bytes());
+        mix(&style.initial_letter.to_le_bytes());
         let (tag, font) = match style.family {
             FontFamily::Sans => (0u8, 0u64),
             FontFamily::Serif => (1, 0),
@@ -1892,7 +1899,7 @@ impl TextSystem {
         };
         let line = match self.entries.get(&ft.cache_key) {
             Some(Entry::Run(e)) => {
-                crate::access::runs_of_buffer(&e.buffer, src, run_no, out);
+                crate::access::runs_of_buffer(&e.buffer, src, run_no, out, |i| e.shift(i));
                 return;
             }
             Some(Entry::Long(line)) => line,
@@ -2474,7 +2481,7 @@ impl TextSystem {
         };
         let entry = self.run_mut(key).expect("just interned");
         wrap_entry(entry, fs, target);
-        let (mut m, lines) = measure_buffer(&entry.buffer, entry.max_lines);
+        let (mut m, lines) = entry.measure();
         if entry.clamp_w
             && let Some(t) = target
         {
@@ -3343,6 +3350,10 @@ fn build_templates(
             };
             let mut places = Places::default();
             for run in entry.buffer.layout_runs().take(lines) {
+                // Where this run's templates start: moved together once
+                // built, when the run is drawn away from where the buffer
+                // lays it (an initial's, F164).
+                let (g0, d0) = (entry.glyphs.len(), entry.deco.len());
                 if decorated || painted {
                     let base = starts.get(run.line_i).copied().unwrap_or(0);
                     places.of_line(&run, base, &entry.span_deco, painted);
@@ -3380,6 +3391,29 @@ fn build_templates(
                         entry.glyphs.push(template);
                     }
                 }
+                let (dx, dy) = entry.shift(run.line_i);
+                if dx != 0.0 || dy != 0.0 {
+                    for g in &mut entry.glyphs[g0..] {
+                        (g.x, g.y) = (g.x + dx, g.y + dy);
+                    }
+                    for d in &mut entry.deco[d0..] {
+                        (d.x, d.y) = (d.x + dx, d.y + dy);
+                    }
+                }
+                // An initial's background is as tall as the lines it
+                // drops through, as its caret and selection are, and
+                // meets theirs.
+                if let Some(i) = entry.initial.as_ref().filter(|_| run.line_i == 0) {
+                    for d in entry.deco[d0..].iter_mut().filter(|d| d.under) {
+                        (d.y, d.h) = (i.rect.y, i.rect.h);
+                    }
+                }
+            }
+            // Emission stops at the first glyph below the clip, so the
+            // templates go top to bottom: an initial's run comes first and
+            // reaches down beside the rows after it.
+            if entry.initial.is_some() {
+                entry.glyphs.sort_by(|a, b| a.y.total_cmp(&b.y));
             }
             // Rasterizing may have extended the page mid-build, which
             // keeps every slot where it was but moves the stamp: keep the
@@ -3509,6 +3543,7 @@ fn could_be_long(len: usize, style: &TextStyle) -> bool {
     (len >= LONG_LINE_BYTES || len > 0 && style.wrap == TextWrap::BreakSpaces)
         && style.max_lines == 0
         && !style.ellipsis
+        && style.initial_letter < 2
 }
 
 /// Whether the content breaks lines of its own — a byte scan, since the
@@ -4033,7 +4068,13 @@ impl TextSystem {
     fn row_tops(&self, place: &TextPlace, entry: &Entry) -> Vec<f32> {
         let (_, oy) = self.physical_origin(place);
         match entry {
-            Entry::Run(e) => e.buffer.layout_runs().map(|r| oy + r.line_top).collect(),
+            // An initial is beside the rows, not one of them.
+            Entry::Run(e) => e
+                .buffer
+                .layout_runs()
+                .skip(e.initial.is_some() as usize)
+                .map(|r| oy + r.line_top + e.shift(r.line_i).1)
+                .collect(),
             Entry::Long(l) => (0..l.rows()).map(|r| oy + r as f32 * l.line_h).collect(),
         }
     }
@@ -4045,9 +4086,7 @@ impl TextSystem {
             Entry::Long(l) => Some(self.long_hit(run.place, l, point)?.byte),
             Entry::Run(e) => {
                 let (ox, oy) = self.physical_origin(run.place);
-                let cursor = e
-                    .buffer
-                    .hit(point.x * self.scale - ox, point.y * self.scale - oy)?;
+                let cursor = e.hit(point.x * self.scale - ox, point.y * self.scale - oy)?;
                 Some(e.byte_of(cursor))
             }
         }
@@ -4205,7 +4244,8 @@ impl TextSystem {
                 continue;
             }
             if let Some((x, _)) = run.highlight(a, b).next() {
-                return Some((x, run.line_y));
+                let (dx, dy) = entry.shift(run.line_i);
+                return Some((x + dx, run.line_y + dy));
             }
         }
         None
@@ -4515,17 +4555,22 @@ impl TextSystem {
                 continue;
             }
             // The run's own height: a line holding a larger span is taller
-            // than the paragraph's metric.
-            let h = run.line_height;
+            // than the paragraph's metric. An initial's is the lines it
+            // drops through.
+            let (dx, dy) = entry.shift(run.line_i);
+            let (top, h) = match &entry.initial {
+                Some(i) if run.line_i == 0 => (i.rect.y, i.rect.h),
+                _ => (run.line_top + dy, run.line_height),
+            };
             let mut any = false;
             for (x, w) in run.highlight(a, b) {
                 any = true;
-                out.push(Rect::new(x, run.line_top, w.max(2.0), h));
+                out.push(Rect::new(x + dx, top, w.max(2.0), h));
             }
             // A selected newline on an empty line keeps the highlight
             // continuous, the way the editor's does.
             if !any && run.glyphs.is_empty() && b.line > run.line_i {
-                out.push(Rect::new(0.0, run.line_top, 2.0, h));
+                out.push(Rect::new(dx, top, 2.0, h));
             }
         }
         out
@@ -4543,7 +4588,7 @@ impl TextSystem {
     /// A run's laid-out box, physical px in viewport space.
     fn physical_box(&self, place: &TextPlace, entry: &CachedText) -> Rect {
         let (ox, oy) = self.physical_origin(place);
-        let (size, _) = measure_buffer(&entry.buffer, entry.max_lines);
+        let (size, _) = entry.measure();
         Rect::new(ox, oy, size.w, size.h)
     }
 
@@ -4587,14 +4632,16 @@ impl TextSystem {
                 // hits the nearest row at that x.
                 let bx = self.physical_box(place, entry);
                 let py = py.clamp(bx.y, (bx.y + bx.h - 0.01).max(bx.y));
-                let cursor = entry.buffer.hit(px - ox, py - oy)?;
+                let cursor = entry.hit(px - ox, py - oy)?;
                 let row =
                     visual_line(&entry.buffer, cursor.line, cursor.index).map_or(0, |(l, _)| l);
-                let top = entry
-                    .buffer
-                    .layout_runs()
-                    .nth(row)
-                    .map_or(0.0, |r| r.line_top);
+                // An initial is on the first row.
+                let top = entry.buffer.layout_runs().nth(row).map_or(0.0, |r| {
+                    match entry.initial.is_some() && r.line_i == 0 {
+                        true => 0.0,
+                        false => r.line_top + entry.shift(r.line_i).1,
+                    }
+                });
                 (entry.byte_of(cursor), oy + top)
             }
         };
@@ -4636,13 +4683,19 @@ impl TextSystem {
         let cursor = entry.cursor_of(byte);
         let (_, run_no) = visual_line(&entry.buffer, cursor.line, cursor.index)?;
         let run = entry.buffer.layout_runs().nth(run_no)?;
-        let x = caret_x(&run, cursor.index);
+        let (dx, dy) = entry.shift(run.line_i);
+        let x = caret_x(&run, cursor.index) + dx;
+        // Beside an initial the caret is as tall as the letter.
+        let (top, h) = match &entry.initial {
+            Some(i) if run.line_i == 0 => (i.rect.y, i.rect.h),
+            _ => (run.line_top + dy, run.line_height),
+        };
         let scale = self.scale;
         Some(Rect::new(
             (ox + x) / scale,
-            (oy + run.line_top) / scale,
+            (oy + top) / scale,
             0.0,
-            run.line_height / scale,
+            h / scale,
         ))
     }
 }
@@ -4712,7 +4765,8 @@ fn html_of_run(entry: &CachedText, lo: usize, hi: usize, out: &mut String) {
     for (li, line) in entry.buffer.lines.iter().enumerate() {
         let base = starts.get(li).copied().unwrap_or(0);
         let text = line.text();
-        if li > 0 {
+        // A line an initial cut from its paragraph goes on unbroken.
+        if li > 0 && !crate::initial::joined(&entry.buffer, li - 1) {
             // A newline inside one node's text is a line break in the
             // copy, the same way it is on screen.
             if base > lo && base <= hi {
@@ -4919,9 +4973,15 @@ pub(crate) fn wrap_differs(current: Option<f32>, target: Option<f32>) -> bool {
 
 fn wrap_entry(entry: &mut CachedText, fs: &mut FontSystem, target: Option<f32>) {
     if wrap_differs(entry.wrap, target) {
+        if let Some(i) = &mut entry.initial {
+            i.uncut(&mut entry.buffer);
+        }
         entry.buffer.set_size(target, None);
         entry.buffer.shape_until_scroll(fs, false);
         entry.wrap = target;
+        if let Some(i) = &mut entry.initial {
+            i.place(&mut entry.buffer, fs);
+        }
     }
 }
 
@@ -4954,6 +5014,32 @@ impl CachedText {
         cosmic_text::Cursor::new(li, (byte - start).min(len))
     }
 
+    /// How far the runs of buffer line `line_i` are drawn from where the
+    /// buffer lays them, physical px: nothing, but for a text with an
+    /// initial ([`Initial::shift`]).
+    fn shift(&self, line_i: usize) -> (f32, f32) {
+        self.initial
+            .as_ref()
+            .map_or((0.0, 0.0), |i| i.shift(line_i))
+    }
+
+    /// The buffer's hit test at a point drawn where `shift` draws its
+    /// runs, physical px from the text's origin.
+    fn hit(&self, x: f32, y: f32) -> Option<cosmic_text::Cursor> {
+        match &self.initial {
+            Some(i) => {
+                let (x, y) = i.to_buffer(x, y);
+                self.buffer.hit(x, y)
+            }
+            None => self.buffer.hit(x, y),
+        }
+    }
+
+    /// The text's size and rows as laid out: [`measure_run`].
+    fn measure(&self) -> (Size, u32) {
+        measure_run(&self.buffer, self.max_lines, self.initial.as_deref())
+    }
+
     fn new(
         mut buffer: Buffer,
         content: String,
@@ -4964,7 +5050,15 @@ impl CachedText {
     ) -> Self {
         buffer.shape_until_scroll(fs, false);
         let max_lines = line_budget(style);
-        let (intrinsic, _) = measure_buffer(&buffer, max_lines);
+        // A drop cap where the text asks for one and can have it: not
+        // under a line budget, which counts the lines it moves, and not
+        // right to left.
+        let gap = buffer.metrics().font_size * INITIAL_GAP;
+        let initial = (style.initial_letter >= 2 && max_lines == 0 && !has_rtl(&content))
+            .then(|| Initial::cut(&mut buffer, fs, style.initial_letter, gap))
+            .flatten()
+            .map(Box::new);
+        let (intrinsic, _) = measure_run(&buffer, max_lines, initial.as_deref());
         let glyphs: usize = buffer.layout_runs().map(|r| r.glyphs.len()).sum();
         Self {
             buffer,
@@ -4983,6 +5077,7 @@ impl CachedText {
             claimed_wrap: None,
             breaks_anywhere: style.wrap == TextWrap::Glyph,
             min_content: None,
+            initial,
         }
     }
 
@@ -5007,6 +5102,7 @@ impl CachedText {
             claimed_wrap: None,
             breaks_anywhere: self.breaks_anywhere,
             min_content: self.min_content,
+            initial: self.initial.clone(),
         }
     }
 
@@ -5027,7 +5123,9 @@ impl CachedText {
         let w = if self.clamp_w {
             self.intrinsic.w
         } else {
+            // Beside an initial a row is narrower by its indent.
             widest_unbreakable(&self.buffer, self.breaks_anywhere)
+                + self.initial.as_ref().map_or(0.0, |i| i.indent)
         };
         self.min_content = Some(w);
         w
@@ -5149,6 +5247,27 @@ fn line_cap(max_lines: usize) -> usize {
     }
 }
 
+/// The room after an initial letter, in ems of the text's size.
+const INITIAL_GAP: f32 = 0.25;
+
+/// [`measure_buffer`] for a text node's run: with an initial, its rows
+/// where they are drawn and the letter's box, which is as tall as the
+/// lines it drops through however few rows are beside it. The letter is
+/// not a row of its own.
+fn measure_run(buffer: &Buffer, max_lines: usize, initial: Option<&Initial>) -> (Size, u32) {
+    let Some(i) = initial else {
+        return measure_buffer(buffer, max_lines);
+    };
+    let (mut w, mut h, mut rows) = (i.rect.w, i.rect.h, 0u32);
+    for run in buffer.layout_runs().skip(1) {
+        let (dx, dy) = i.shift(run.line_i);
+        w = w.max(dx + run.line_w);
+        h = h.max(run.line_top + dy + run.line_height);
+        rows += 1;
+    }
+    (Size::new(w, h), rows.max(i.lines))
+}
+
 /// Physical size of the laid-out buffer plus its line count (both capped
 /// by the line budget).
 /// The widest laid-out line and the line count of `buffer`, up to
@@ -5213,7 +5332,7 @@ impl TextSystem {
         }
         self.ensure_wrap(id, max_w, fs);
         let e = self.entry_mut(id);
-        let (mut m, _) = measure_buffer(&e.buffer, e.max_lines);
+        let (mut m, _) = e.measure();
         if e.clamp_w {
             // The line may run past the box; the box, not the line, is
             // the node's width (emission clips to it).
@@ -5234,11 +5353,14 @@ impl TextSystem {
             return self.long_baseline(line) / scale;
         }
         let e = self.entry_mut(id);
+        // Past an initial, the first row's: the letter's foot is lines down.
         let b = e
             .buffer
             .layout_runs()
-            .next()
-            .map_or(e.buffer.metrics().line_height * 0.8, |r| r.line_y.round());
+            .find(|r| e.initial.is_none() || r.line_i > 0)
+            .map_or(e.buffer.metrics().line_height * 0.8, |r| {
+                r.line_y.round() + e.shift(r.line_i).1
+            });
         b / scale
     }
 }

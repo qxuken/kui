@@ -998,6 +998,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         underline_color: u32 => "uint32_t",
         underline_style: u32 => "uint32_t",
         bold: u32 => "uint32_t",
+        initial_letter: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiSpan {
@@ -1537,8 +1538,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `dy` on a stop (backlog F132).
         ("KuiKeyframe", 52, 27),
         ("KuiEnter", 48, 27),
-        // ABI 29: `bold` into the tail padding (backlog F150).
-        ("KuiTextStyle", 72, 29),
+        // ABI 29: `bold` into the tail padding (backlog F150). ABI 31:
+        // `initial_letter` past it (backlog F164).
+        ("KuiTextStyle", 80, 31),
         // ABI 20: `bg_radius` appended into what was the tail padding, so
         // the 64-bit size stayed at 40 while the layout moved.
         // ABI 26: `family`, `size` and `font` (a span's own face).

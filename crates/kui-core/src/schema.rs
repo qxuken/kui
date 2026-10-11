@@ -182,6 +182,7 @@ pub const P_PIVOT_Y: u32 = 130;
 pub const P_ITERATIONS: u32 = 131;
 pub const P_BOLD: u32 = 132;
 pub const P_OVER_SIBLINGS: u32 = 133;
+pub const P_INITIAL_LETTER: u32 = 134;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1236,6 +1237,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise.",
     },
     PropDef {
+        name: "initialLetter",
+        id: P_INITIAL_LETTER,
+        kind: Kind::F32,
+        apply: Apply::StyleF32(|t, v| t.initial_letter(v.max(0.0) as u32)),
+        doc: "The first letter as an initial — a drop cap — this many lines tall (backlog F164), as CSS's `initial-letter`: its top level with the first line's capitals, its foot on the last one's baseline, the lines beside it moved in past it and the ones below at full width again. The letter is the text's first, with any opening quote or bracket before it; it keeps its span's face and colour and is sized to the drop. Still one text: a caret, a hit, a selection and the access tree read it where it is drawn, and the text is at least as tall as the lines it drops through. 0 and 1 are none (the default); a text with `maxLines` or `ellipsis`, a right-to-left one and an `edit` have none.",
+    },
+    PropDef {
         name: "underline",
         id: P_UNDERLINE,
         kind: Kind::Flag,
@@ -1740,6 +1748,7 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     ("lineHeight", "`KuiTextStyle.line_height`"),
     ("wrap", "`KuiTextStyle.wrap` (`KUI_WRAP_*`)"),
     ("maxLines", "`KuiTextStyle.max_lines`"),
+    ("initialLetter", "`KuiTextStyle.initial_letter`"),
     ("ellipsis", "`KuiTextStyle.ellipsis`"),
     (
         "features",
@@ -1849,6 +1858,7 @@ pub const TEXT_ROWS_JSX: &[&str] = &[
     "wrap",
     "maxLines",
     "ellipsis",
+    "initialLetter",
     "underline",
     "underlineColor",
     "underlineStyle",
@@ -1865,6 +1875,7 @@ pub const TEXT_ROWS_LUA: &[&str] = &[
     "wrap",
     "max_lines",
     "ellipsis",
+    "initial_letter",
     "underline",
     "underline_color",
     "underline_style",
@@ -1996,7 +2007,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua: "`text(\"s\", {…})`, `text({ \"a\", { \"b\", bold = true, underline = true, bg = 0x.., bg_radius = 4 }, { \"code\", family = \"mono\", size = 13 } })`",
         c: "`kui_text`, `kui_rich_text`",
         odin: "`kui.text`, `kui.rich_text`",
-        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. A text is content plus a style and no box of its own, so the rows it reads are the style rows (`size`, `lineHeight`, `color`, `family`, `font`, `wrap`, `maxLines`, `ellipsis`, `underline`, `strikethrough`, `features`) and nothing else: a container row, an access row (`label`, `role`, `live`), `key` or `onClick` on a text is dropped with an `unknown-prop` warning naming the rows it does take — put them on the box around it. `wrap`, `maxLines` and `ellipsis` control line breaking. A span's `bg` is a background behind its glyphs alone, one rect per line it spans, so it follows the span across a wrap the way a box around a run cannot. With `bgRadius` (`bg_radius` in Lua, `KuiSpan.bg_radius` in C, `Span::bg_radius` in Rust; logical px) the background is rounded and joined into one shape with every rounded background of the same colour and radius it meets: a piece whose edge touches it exactly on the line above or below and overlaps it sideways, or that meets it end to end on its own line, in this text or another. Its corners are then convex where a line reaches past its neighbour, a fillet where it falls short, and round where nothing meets it — a selection over many rows, or over the wrapped lines of a paragraph, is one rounded outline, joined after every text of the frame is laid out and painted, so it is never a frame behind. Nothing names the shape: two that touch are one; `underline` and `strikethrough` on a span or on the whole text are lines where the face puts them. A span takes a face and a size of its own: `family` (a stock name or an installed family's, as the text's) or `font` (a handle, which wins) — inline code in `mono` inside a sans paragraph — and `size` in logical px, its line height scaled at the paragraph's ratio (`Span::family` / `Span::mono` / `Span::size` in Rust, `KuiSpan.family` with `KUI_SPAN_FAMILY`, `.font` and `.size` in C). Its glyphs are shaped in that face, so a caret, a hit, a selection and the measurement read the same glyphs and byte positions stay exact across the change; a line is as tall as its tallest span, and a span's background is its own height around its glyphs. A paragraph with a sized span is shaped whole, never in chunks. A text with no line breaks that is 4096 bytes or longer (and no `maxLines` or `ellipsis`), plain or spans alike, is shaped in ~1 KB chunks as they come on screen, so a minified bundle or a log line with a blob in it costs the screenful it shows and a keystroke into it — or a span moving along it, an editor's caret — costs the chunk it lands in; wrapped, the rows are broken from the chunks' positions, so a 100k-character paragraph costs the rows it shows. Its size is estimated from the first chunk until the rest shape (exact under monospace), and the access tree carries its value without its runs.",
+        doc: "Plain or rich text; spans shape as one paragraph, so wrapping crosses style boundaries. A text is content plus a style and no box of its own, so the rows it reads are the style rows (`size`, `lineHeight`, `color`, `family`, `font`, `wrap`, `maxLines`, `ellipsis`, `initialLetter`, `underline`, `strikethrough`, `features`) and nothing else: a container row, an access row (`label`, `role`, `live`), `key` or `onClick` on a text is dropped with an `unknown-prop` warning naming the rows it does take — put them on the box around it. `wrap`, `maxLines` and `ellipsis` control line breaking. A span's `bg` is a background behind its glyphs alone, one rect per line it spans, so it follows the span across a wrap the way a box around a run cannot. With `bgRadius` (`bg_radius` in Lua, `KuiSpan.bg_radius` in C, `Span::bg_radius` in Rust; logical px) the background is rounded and joined into one shape with every rounded background of the same colour and radius it meets: a piece whose edge touches it exactly on the line above or below and overlaps it sideways, or that meets it end to end on its own line, in this text or another. Its corners are then convex where a line reaches past its neighbour, a fillet where it falls short, and round where nothing meets it — a selection over many rows, or over the wrapped lines of a paragraph, is one rounded outline, joined after every text of the frame is laid out and painted, so it is never a frame behind. Nothing names the shape: two that touch are one; `underline` and `strikethrough` on a span or on the whole text are lines where the face puts them. A span takes a face and a size of its own: `family` (a stock name or an installed family's, as the text's) or `font` (a handle, which wins) — inline code in `mono` inside a sans paragraph — and `size` in logical px, its line height scaled at the paragraph's ratio (`Span::family` / `Span::mono` / `Span::size` in Rust, `KuiSpan.family` with `KUI_SPAN_FAMILY`, `.font` and `.size` in C). Its glyphs are shaped in that face, so a caret, a hit, a selection and the measurement read the same glyphs and byte positions stay exact across the change; a line is as tall as its tallest span, and a span's background is its own height around its glyphs. A paragraph with a sized span is shaped whole, never in chunks. A text with no line breaks that is 4096 bytes or longer (and no `maxLines` or `ellipsis`), plain or spans alike, is shaped in ~1 KB chunks as they come on screen, so a minified bundle or a log line with a blob in it costs the screenful it shows and a keystroke into it — or a span moving along it, an editor's caret — costs the chunk it lands in; wrapped, the rows are broken from the chunks' positions, so a 100k-character paragraph costs the rows it shows. Its size is estimated from the first chunk until the rest shape (exact under monospace), and the access tree carries its value without its runs.",
     },
     ElementDef {
         name: "button",

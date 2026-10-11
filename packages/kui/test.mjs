@@ -724,6 +724,21 @@ test('bold is a style row on a text and an editor', () => {
   assert.deepEqual(ctx.warnings(), [], 'no unknown-prop for bold');
 });
 
+// `initialLetter` on a text is a style row like `maxLines` (backlog F164):
+// read, not warned about, and an editor takes the row as well.
+test('initialLetter is a style row on a text and an editor', () => {
+  const view = (lines) =>
+    box({ dir: 'row' }, [
+      el('text', { initialLetter: lines }, ['Once upon a time'], 't'),
+      el('edit', { initial: 'Title', label: 'Title', initialLetter: lines }, [], 'e'),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(400, 100, 1, view(0));
+  assert.deepEqual(ctx.warnings(), []);
+  ctx.frame(400, 100, 1, view(3));
+  assert.deepEqual(ctx.warnings(), [], 'no unknown-prop for initialLetter');
+});
+
 // Where a key is and what the locks hold ride on every key payload, and
 // the modifier keys themselves reach only a sink that asks (backlog F108).
 test('a key says where it is, the locks, and the modifier keys when asked', () => {
@@ -5228,6 +5243,7 @@ SCENE_TREES.sampler = (fx) =>
       box({ width: 60, overSiblings: true }, [
         text('a long line that is cut short', { size: 12, maxLines: 1, ellipsis: true, underline: true, strikethrough: true, features: 'liga=0' }),
       ]),
+      box({ width: 60 }, [text('Drop cap', { size: 12, initialLetter: 2 })]),
       box({ dir: 'row', height: 16, role: 'line', caret: 2, selectionAnchor: 0, caretSolid: true }, [text('sel', { size: 12 })], 'line'),
     ]),
   ]);

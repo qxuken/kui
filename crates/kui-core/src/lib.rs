@@ -122,6 +122,7 @@ pub mod event;
 pub mod fragment;
 pub mod geom;
 pub mod gradient;
+pub(crate) mod initial;
 pub mod input;
 pub(crate) mod join;
 pub mod key;

@@ -2942,6 +2942,17 @@ pub struct TextStyle {
     /// face, or its regular drawn bold where it has none (backlog F100).
     /// A span inside is bold too; it cannot be lighter than its text.
     pub bold: bool,
+    /// The first letter as an initial — a drop cap — this many lines
+    /// tall (backlog F164): its top level with the first line's capitals,
+    /// its foot on the last one's baseline, the lines beside it moved in
+    /// past it and the ones below at full width again, as CSS's
+    /// `initial-letter`. The letter is the text's first, with any opening
+    /// punctuation before it; it keeps its span's face and colour and is
+    /// sized to the drop. Still one text: a caret, a hit, a selection and
+    /// the access tree read it where it is drawn. 0 and 1 are none; a text
+    /// with a `max_lines` or an `ellipsis`, a right-to-left one and an
+    /// editor have none.
+    pub initial_letter: u32,
 }
 
 /// The shape of an underline: the face's line, a wave under a diagnostic,
@@ -2999,6 +3010,7 @@ impl TextStyle {
             underline_style: UnderlineStyle::Solid,
             strikethrough: false,
             bold: false,
+            initial_letter: 0,
         }
     }
 
@@ -3033,6 +3045,13 @@ impl TextStyle {
     /// The family's bold (backlog F150).
     pub fn bold(mut self) -> Self {
         self.bold = true;
+        self
+    }
+
+    /// The first letter dropped through `lines` lines, an initial
+    /// (backlog F164): see the field of that name.
+    pub fn initial_letter(mut self, lines: u32) -> Self {
+        self.initial_letter = lines;
         self
     }
 

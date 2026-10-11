@@ -571,6 +571,9 @@ pub(crate) fn text_style_of(s: &KuiTextStyle) -> TextStyle {
     if s.bold != 0 {
         style = style.bold();
     }
+    if s.initial_letter > 0 {
+        style = style.initial_letter(s.initial_letter);
+    }
     style
 }
 
