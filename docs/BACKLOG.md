@@ -235,7 +235,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.54".
+Ordered by area, not by priority. What to do next is under "After alpha.55".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -501,7 +501,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.54" below.
+not cover is in "After alpha.55" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2377,7 +2377,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.54*).
+*Distribution* under *After alpha.55*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -3025,10 +3025,13 @@ and CI's C round is the first to see them together. One entry, FZ8, is
 what the fuzzing found — a drop cap's size handed to the font hinter —
 **built 2026-10-11**, the day it was filed, and in the archive.
 
-## After alpha.54
+## After alpha.55
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
-alpha.53" until 2026-10-11, when the round between the alpha.54 and
+alpha.54" until later on 2026-10-11, when the round between the alpha.55
+and alpha.56 tags — F165 from Carnet's sync settings, and F166 and F167
+from Carnet's review — had landed, and the heading moved with the tag;
+"After alpha.53" until 2026-10-11, when the round between the alpha.54 and
 alpha.55 tags — F163 from kawoosh's tab strip, F164 from Carnet's first
 letter, and FZ8 from the pre-tag pass — had landed, and the heading
 moved with the tag; "After

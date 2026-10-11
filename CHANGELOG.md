@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.56 (unreleased)
+## 0.1.0-alpha.56 (2026-10-11)
 
 **What breaks.**
 
@@ -117,6 +117,39 @@ history — is the bullets or nothing.
   hits, the selection and the clipboard mapped between the two; and a
   root `secureInput` / `imeOff` declared while that field has the focus.
   A show-password toggle is the `secure` row following the eye.
+
+### Native verification
+
+The pre-tag pass on 2026-10-11, over the round since alpha.55 — F165's
+access tree, F166's collapsed space and F167's secure editor — on the
+Windows machine and under WSL. It found nothing to change. The fuzz
+target's editor scene was given `secure` for it, from bits of its size
+byte no input read before, so the kept regressions replay as they did.
+
+**Windows**, rustc 1.99.0. fmt and clippy are clean; `cargo test
+--workspace`: **2334 tests over 163 suites**, 0 failed. The C round
+passes (6 checks), and so do the **58 scenes** through C; Odin's `gen
+--check` (the merge's note left it to this machine; line-ending changes
+only), `check`, `test` and `slots` on CI's pinned dev-2026-09; Node's
+tests under `KUI_CONFORMANCE_REQUIRED=1`, **229 of 230** with the one
+skip Windows has had before; `npm run gen` with line-ending changes
+only, the examples' typecheck, the headless round, the book's examples
+current. The windowed round: **all 55 examples**, Node's included, drew
+120 frames on each base and exited cleanly. The bench guard against the
+alpha.55 tag: seven guarded rows clean on the first run, and
+`frame_10k_rects_with_access_tree` — the row F165 touches — too noisy
+there to judge; on a run of its own it read **−0.1%** (±0.5%).
+
+**Linux** (WSL, Ubuntu 24.04), on the release's code. fmt and clippy
+are clean; `cargo test --workspace`: **163 suites**, 0 failed; `cargo
+audit --deny warnings` clean over 451 crates. The C round and the **58
+scenes** through C; Odin's four steps; Node **230 of 230** with the
+corpus required; gen with no diff, the typecheck, the headless round,
+the book's examples current. The `scenes` fuzz target with a secure
+editor ran seven minutes — the kept corpus's 8 326 inputs replayed with
+the new bit read, and some 600 new ones after — with no crash. No Mac
+ran this round: macOS's Secure Keyboard Entry under a secure editor is
+the runner's, and nothing ran it.
 
 ## 0.1.0-alpha.55 (2026-10-11)
 

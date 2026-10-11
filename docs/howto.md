@@ -1341,7 +1341,7 @@ field's to ask: macOS can only leave a whole window out of capture
 (backlog F168).
 
 [`edit` element](props.md#elements) ·
-[alpha.56](../CHANGELOG.md#010-alpha56-unreleased)
+[alpha.56](../CHANGELOG.md#010-alpha56-2026-10-11)
 
 ### How do I protect a password as it is typed?
 
