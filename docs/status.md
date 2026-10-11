@@ -49,7 +49,8 @@ power of two steps in sharpness there. A raster the app made — a frame of vide
 page — is an `image` whose pixels it replaces; there is no drawing-command
 canvas and no callback over the GPU. Opacity is a per-quad
 alpha multiply rather than an offscreen composite, so overlapping pieces of one
-faded subtree show their seams. There is no z-index: floats stack in tree order.
+faded subtree show their seams. There is no z-index: floats stack in the order they open, siblings in tree
+order, and `overSiblings` puts one sibling over the rest.
 A fragment is one draw call of its own, so a hundred of them is about 0.7% of
 a 120 Hz frame and ten thousand is the wrong tool; it cannot read what is
 behind it (a `backdropBlur` box drawn over it can blur it), sample anything

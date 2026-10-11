@@ -995,7 +995,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                      main_align = "center", cross_align = "end", backdrop_blur = 6,
                      row {{ key = "stop", width = 20, height = 20, bg = 0x2a2d3aff,
                             focusable = true, role = "button", label = "Stop" }} }},
-              column {{ width = 60,
+              column {{ width = 60, over_siblings = true,
                         text("a long line that is cut short", {{ size = 12, max_lines = 1, ellipsis = true,
                               underline = true, strikethrough = true, features = "liga=0" }}) }},
               row {{ key = "line", height = 16, role = "line", caret = 2, selection_anchor = 0,

@@ -2162,7 +2162,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open_keyed(ui, KUI_STR("stop"), &stop, NULL);
     kui_close(ui);
     kui_close(ui);
-    KuiSpec narrow = {.width = {KUI_FIXED, 60}};
+    KuiSpec narrow = {.width = {KUI_FIXED, 60}, .over_siblings = 1};
     kui_open(ui, &narrow, NULL);
     KuiTextStyle cut = {.size = 12, .max_lines = 1, .ellipsis = 1,
                         .features = KUI_STR("liga=0"),

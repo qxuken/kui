@@ -602,18 +602,31 @@ so where two `slide` tabs cross, the one in the later place is drawn on top.
 Moved right, the tab you moved lands later and slides over the one making
 room. Moved left, it lands earlier and passes under it, covered first from
 one side and then the other: it looks like a block shrinking to its middle
-and growing back from the next place's middle. There is no z-index. To keep
-the moved tab on top, make each tab a slot in the row that its block fills,
-and while the glide runs give the moved block `float={{ anchor: "parent",
-clip: true }}`. A float is a layer of its own, above the row's in-flow
-content. It sizes `grow` against the slot as a child would, and the strip's
-clip still cuts it. The block keeps its key, so its hover, press and a drag
-in hand carry on. Float it only while it moves: a float is over every float
-opened before it, so a tooltip from a bar above the row would sit under it.
+and growing back from the next place's middle.
 
-[`float` row](props.md#composite-props-hand-written-per-binding) ·
+Declare `overSiblings` on the tab that should stay on top. It paints after
+its siblings, so it passes over the neighbour whichever way it moved, and it
+takes the press where the two overlap:
+
+```jsx
+{tabs.map((t) => (
+  <box key={t.id} transition={160} slide overSiblings={t.id === selected}>
+    <text>{t.title}</text>
+  </box>
+))}
+```
+
+The tab you move is usually the selected one, so tie `overSiblings` to the
+selection and leave it on: when no tab overlaps another it changes nothing,
+and there is no glide to track. It reorders siblings only. The strip still
+paints under the tab, whatever follows the strip still paints over it, the
+strip's clip still cuts it, and a tooltip or a menu still opens above it.
+There is no number to outbid. Two siblings that both declare it paint in
+tree order between themselves.
+
+[`overSiblings` row](props.md#container-props) ·
 [`slide` row](props.md#container-props) ·
-[ADR 0023](adr/0023-layers-stack-in-the-order-they-open.md)
+[ADR 0046](adr/0046-a-node-over-its-siblings-paints-after-them.md)
 
 ### How do I follow the OS's dark mode, accent or reduce-motion setting?
 

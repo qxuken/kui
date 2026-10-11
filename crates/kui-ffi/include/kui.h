@@ -348,8 +348,13 @@ extern "C" {
  * 64-bit stride stays 72): a row that plays its accel where the keyboard
  * is, with KUI_MENU_ITEM_REPLAY (backlog F151). Recompile; zeroed, a row
  * posts its menu event as it did.
+ *
+ * ABI 31 appends over_siblings to KuiSpec (its 64-bit size goes from 744 to 752):
+ * the node and its subtree paint after their siblings, over any they
+ * overlap (docs/adr/0046-a-node-over-its-siblings-paints-after-them.md).
+ * Recompile; zeroed, a node paints in its tree order as it did.
  */
-#define KUI_ABI_VERSION 30u
+#define KUI_ABI_VERSION 31u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1256,6 +1261,13 @@ typedef struct KuiSpec {
      * iteration ended and then owes no frame. A fraction ends partway
      * through one. 0 (the zeroed spec): for ever. ABI 27. */
     float iterations;
+    /* Non-zero: paint this node and its subtree after its siblings, over
+     * any of them it overlaps, and take the press there (overSiblings) - a tab
+     * gliding past its neighbour under slide stays on top whichever way
+     * it moved. Only the sibling order changes: the parent paints under
+     * it, what follows the parent over it, and a float still opens above
+     * it. Two such siblings paint in tree order among themselves. ABI 31. */
+    uint32_t over_siblings;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

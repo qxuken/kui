@@ -1820,7 +1820,7 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			}
 			if kui.box(ui, stop) {}
 		}
-		if kui.box(ui, {width = kui.px(60)}) {
+		if kui.box(ui, {width = kui.px(60), over_siblings = true}) {
 			cut := kui.Text_Style {
 				size          = 12,
 				max_lines     = 1,
