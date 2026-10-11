@@ -458,7 +458,7 @@ export interface GeneratedSpecProps {
   shadowX?: LengthProp;
   /** Drop-shadow vertical offset (logical px); positive casts downward. */
   shadowY?: LengthProp;
-  /** With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. */
+  /** With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. Siblings that cross on their way paint in tree order, the one in the later place on top; to keep one over the others, float it in its slot while it moves (`docs/howto.md`). */
   slide?: boolean;
   /** Animate sizing/colors/radius changes over this many ms — and, on a scroll container, the offset a reveal or a set_scroll moves it to (needs a stable key). */
   transition?: LengthProp;
