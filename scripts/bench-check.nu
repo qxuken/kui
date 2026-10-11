@@ -11,7 +11,23 @@
 #
 # or `scripts/bench-check.nu ...` on macOS and Linux, through the shebang.
 # A leading `--` stands for the default base, so `-- frame_1k` filters
-# without naming one; `--help` prints this usage.
+# without naming one, and one after a named base is dropped as well
+# (`v0.1.0-alpha.54 -- frame_1k`); `--help` prints this usage.
+#
+# Both sides are built with one codegen unit
+# (CARGO_PROFILE_BENCH_CODEGEN_UNITS=1; set it to something else to
+# override). With the default 16 a release build splits each crate where
+# its symbol hashes fall, and what rustc inlines follows the split - and
+# the crate's version is in those hashes. The alpha.55 release commit
+# changed nothing but version strings, and on the Windows machine it read
+# `deep_nesting_64_levels` 25% slower (88.3-89.2 us against 110.7-111.6,
+# three interleaved rounds), `list_10k_rows_virtual` 15% and
+# `frame_1k_typical` 6%; built with one unit, the two commits agreed
+# within 1% on every row. The guard had read green before the bump and
+# would have failed the tag after it. A side that is one build's luck is
+# no side to judge by, so neither side gets any. One unit compiles slower,
+# and its medians are not the ones a 16-unit app build gets - they are
+# the ones two refs can be compared by.
 #
 # It is Nushell, where it was bash with a Node script inside, so that the
 # same file runs on macOS, Linux and Windows with nothing but `nu`, git and
@@ -97,7 +113,9 @@ const USAGE = "usage: nu scripts/bench-check.nu [base-ref] [divan filter...]
 
 Benches HEAD against base-ref (default: the latest v* tag before HEAD) and
 fails when a guarded row is more than KUI_BENCH_TOLERANCE percent (default
-10) slower. Exit 0 ok, 1 regressed, 2 cannot say. See the file's header."
+10) slower. Both sides build with one codegen unit unless
+CARGO_PROFILE_BENCH_CODEGEN_UNITS says otherwise. Exit 0 ok, 1 regressed,
+2 cannot say. See the file's header."
 
 # Runs an external command, and when it fails ends the script with that
 # command's exit code - what the bash version got from `set -e`. It also
@@ -266,6 +284,11 @@ def --wrapped main [...args: string] {
         say-err $"KUI_BENCH_TOLERANCE is not a number: ($tolerance_text)"
         exit 2
     })
+    # One codegen unit on both sides, unless the caller says otherwise (see
+    # the header). Set here, so every cargo call below inherits it.
+    let cgu = ($env.CARGO_PROFILE_BENCH_CODEGEN_UNITS? | default "" | str trim | if ($in | is-empty) { "1" } else { $in })
+    $env.CARGO_PROFILE_BENCH_CODEGEN_UNITS = $cgu
+    let cgu_text = if $cgu == "1" { "one codegen unit" } else { $"($cgu) codegen units" }
     let bench = ($env.KUI_BENCH? | default "" | if ($in | is-empty) { "frame" } else { $in })
     let bench_file = $"crates/kui-core/benches/($bench).rs"
     let base_dir = "target/bench-base"
@@ -282,6 +305,9 @@ def --wrapped main [...args: string] {
     if ($filters | is-not-empty) and ($filters.0 != "--") {
         $base = $filters.0
         $filters = ($filters | skip 1)
+        # `<base> -- <filters>`: the `--` handed on would reach divan, which
+        # then listed the rows' names and timed none of them.
+        if ($filters.0? | default "") == "--" { $filters = ($filters | skip 1) }
     } else {
         if ($filters | is-not-empty) { $filters = ($filters | skip 1) } # drop the leading "--"
         let latest = (git-out describe --tags --match 'v*' --abbrev=0 HEAD)
@@ -315,7 +341,7 @@ def --wrapped main [...args: string] {
         say-err "note: crates/kui-core has uncommitted changes; HEAD's side benches the working tree"
     }
 
-    print $"bench-check: ($bench): HEAD ($head_sha | str substring 0..6) against ($base) \(($base_sha | str substring 0..6)\), tolerance ($tolerance_text)% on the guarded rows"
+    print $"bench-check: ($bench): HEAD ($head_sha | str substring 0..6) against ($base) \(($base_sha | str substring 0..6)\), tolerance ($tolerance_text)% on the guarded rows, ($cgu_text)"
 
     # Said before the benching rather than after it, because a loaded machine
     # will spend the benching minutes earning nothing. This sums the CPU of
@@ -386,7 +412,7 @@ def --wrapped main [...args: string] {
         _ => $"($un.kernel-name) ($un.kernel-release)"
     }
     let rustc = (^rustc -V | str trim | split row ' ' | first 2 | str join ' ')
-    let machine_line = $"measured (date now | format date '%F') on ($un.machine), ($os), ($rustc), release, steady-state warm caches"
+    let machine_line = $"measured (date now | format date '%F') on ($un.machine), ($os), ($rustc), release with ($cgu_text), steady-state warm caches"
 
     let guarded = ($GUARDED_BY_BENCH | get -o $bench | default [])
     let base1 = (parse-divan ($logs | path join base-1.txt))
