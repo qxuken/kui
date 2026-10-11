@@ -287,7 +287,7 @@ HELPER_WRITES :: [][2]string {
 MAYBE_ROWS :: []string{"opacity", "valueNow", "valueMin", "valueMax", "valueStep", "caret", "selectionAnchor", "radiusTL", "radiusTR", "radiusBR", "radiusBL", "pivotX", "pivotY"}
 
 // Rows whose C side is an integer though the schema's kind is a number.
-INT_ROWS :: []string{"maxLines", "caret", "selectionAnchor"}
+INT_ROWS :: []string{"maxLines", "initialLetter", "caret", "selectionAnchor"}
 
 // The CUSTOM rows, which every binding spells by hand. A row here is a
 // field of Spec or Text_Style (Odin declaration, lowering), or a verb

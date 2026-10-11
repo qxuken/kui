@@ -21,6 +21,46 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.55 (unreleased)
+
+**What breaks.**
+
+- `TextStyle` has a field more, `initial_letter`: a struct literal
+  without `..` stops compiling.
+- `KuiTextStyle` appends `initial_letter` and grows to 80 bytes on
+  64-bit — ABI 31, `KUI_ABI_VERSION` 31. Recompile; zeroed, a text has
+  no initial.
+
+A drop cap — the first letter as tall as a few lines, the lines beside
+it moved in past it and the ones below at full width again — needed the
+text to lay some of its lines out narrower than others, which a
+cosmic-text paragraph cannot (backlog F163, from Carnet, whose "First
+letter: Large" could only make the letter large on its own line, which
+stood that line apart from the next). `TextStyle::initial_letter(n)` —
+`initialLetter` in JSX, `initial_letter` in Lua, `KuiTextStyle.initial_letter`
+in C, `Text_Style.initial_letter` in Odin — sets the text's first letter,
+with any opening quote or bracket before it, `n` lines tall, as CSS's
+`initial-letter`: its top level with the first line's capitals, its foot
+on the n-th line's baseline, in its span's face and colour. Inside, the
+letter is the buffer's first line of its own and the paragraph is cut
+again where the lines beside it end, each part laid out at its width,
+with no line ending at either cut, so the text is still one: a caret, a
+hit, a selection's rects and backgrounds, a copy and the access tree's
+runs read every byte where it is drawn, the letter's caret and its
+background as tall as the lines it drops through. A text with
+`maxLines` or `ellipsis`, a right-to-left one and an `edit` have none,
+and a text that has one is never shaped in a long line's chunks.
+
+### Added
+
+- **An initial letter, a drop cap** (backlog F163): see *What breaks*.
+
+**What you can delete.**
+
+- A first letter drawn as a text node of its own over a hole in the
+  paragraph, with the caret, the hits and the selection mapped across
+  the two by hand.
+
 ## 0.1.0-alpha.54 (2026-10-10)
 
 **What breaks.**

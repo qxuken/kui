@@ -1097,6 +1097,11 @@ Text_Style :: struct {
 	// End the last line with an ellipsis when the text is cut off: a single line
 	// unless `maxLines` says otherwise.
 	ellipsis: bool,
+	// The first letter as an initial — a drop cap — this many lines tall
+	// (backlog F163), as CSS's `initial-letter`: its top level with the first
+	// line's capitals, its foot on the last one's baseline, the lines beside it
+	// moved in past it and the ones below at full width again.
+	initial_letter: int,
 	// A line under the text, where the face puts its underline and as thick as it
 	// says, in the text colour.
 	underline: bool,
@@ -1131,6 +1136,7 @@ text_style_to_c :: proc(s: Text_Style) -> (out: c.TextStyle) {
 	out.wrap = u32(s.wrap)
 	out.max_lines = u32(s.max_lines)
 	out.ellipsis = 1 if s.ellipsis else 0
+	out.initial_letter = u32(s.initial_letter)
 	if s.underline do out.decoration |= c.DECO_UNDERLINE
 	out.underline_color = s.underline_color
 	out.underline_style = u32(s.underline_style)

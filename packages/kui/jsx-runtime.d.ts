@@ -493,6 +493,8 @@ export interface GeneratedStyleProps {
   features?: string;
   /** A registered font handle (addFont / addSystemFont); overrides `family`. */
   font?: string;
+  /** The first letter as an initial — a drop cap — this many lines tall (backlog F163), as CSS's `initial-letter`: its top level with the first line's capitals, its foot on the last one's baseline, the lines beside it moved in past it and the ones below at full width again. The letter is the text's first, with any opening quote or bracket before it; it keeps its span's face and colour and is sized to the drop. Still one text: a caret, a hit, a selection and the access tree read it where it is drawn, and the text is at least as tall as the lines it drops through. 0 and 1 are none (the default); a text with `maxLines` or `ellipsis`, a right-to-left one and an `edit` have none. */
+  initialLetter?: LengthProp;
   /** Line height (logical px); default size * 1.35. */
   lineHeight?: LengthProp;
   /** Lay out at most this many lines (0 = unlimited); with `ellipsis`, a line clamp. */

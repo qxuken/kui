@@ -1386,6 +1386,10 @@ pub struct KuiTextStyle {
     /// (backlog F150). Into the tail padding, so the 64-bit size stays 72.
     /// ABI 29.
     pub bold: u32,
+    /// The first letter as a drop cap this many lines tall (backlog
+    /// F163); 0 or 1 is none, and so is any under `max_lines` or
+    /// `ellipsis`. The 64-bit size grows to 80. ABI 31.
+    pub initial_letter: u32,
 }
 
 /// One styled run of a rich-text paragraph (`kui_rich_text`,

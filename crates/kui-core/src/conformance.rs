@@ -3629,7 +3629,9 @@ pub const SCENES: &[Scene] = &[
               window-drag strip; a focus region aligned both ways with one \
               stop; a text with \
               `max_lines`, `ellipsis`, both decorations and a feature \
-              string; and a `line` with a caret and a selection anchor. \
+              string; a text whose first letter drops two lines \
+              (`initial_letter`); and a `line` with a caret and a \
+              selection anchor. \
               The card is a lone `tab`, so the one warning is \
               `item-outside-container`. \
               The pointer enters the card (its hover tag and sound) and \
@@ -3664,6 +3666,7 @@ pub const SCENES: &[Scene] = &[
                 "1 titleBar ||",
                 "1 button Stop||",
                 "1 staticText a long line that is cut short||",
+                "1 staticText Drop cap||",
                 "1 staticText sel||",
             ],
             // The layout tag from the first frame, the hover tag as the
@@ -6865,6 +6868,11 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 .underline()
                 .strikethrough()
                 .features(crate::spec::FontFeatures::parse("liga=0")),
+        );
+        ui.text_in(
+            NodeSpec::column().width(60.0),
+            "Drop cap",
+            TextStyle::new(12.0).initial_letter(2),
         );
         ui.text_in_keyed(
             "line",

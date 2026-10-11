@@ -1015,6 +1015,7 @@ impl EditStore {
                 },
                 &mut n,
                 &mut out,
+                |_| (0.0, 0.0),
             )
         });
         out

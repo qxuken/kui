@@ -209,7 +209,9 @@ and FZ1–FZ7, from the first fuzz round — an accelerator's letter case,
 the path rasterizer's reach, an animation's allocation, the Node wire's
 counts, a glyph past any page, a bidi paragraph end inside a line, a
 carriage return in a composition — were built the day they were filed,
-after the alpha.53 tag, and are in the archive.
+after the alpha.53 tag, and are in the archive;
+and F163, from Carnet's first letter — a drop cap — was built the day
+it was filed, after the alpha.54 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1663,6 +1665,16 @@ in the caret's, the page's, on the page. The background was right, the
 glyphs were not: the font draws `##` as an empty glyph and one whose
 ink covers both cells, and kui painted a glyph in one colour. One entry,
 F162, **built 2026-10-10**, the day it was filed, and in the archive.
+
+## From Carnet's first letter (2026-10-11)
+
+Carnet's Settings → First letter could only make a note's first letter
+large on its own line, which stood that line apart from the next: a
+drop cap — the letter two or three lines tall, the first lines beside
+it and the rest at full width — needs a paragraph some of whose lines
+are narrower than others, which a cosmic-text paragraph cannot be. One
+entry, F163, **built 2026-10-11**, the day it was filed, and in the
+archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4610,3 +4622,7 @@ move.
 - `!` **FZ6** — [A bidi paragraph end inside a line panics the shaper](backlog/closed-2026-09.md#-fz6--a-bidi-paragraph-end-inside-a-line-panics-the-shaper--done-2026-10-10) — done (2026-10-10) — U+001C–U+001E, NEL and U+2029 shaped as characters of the same length that end nothing; an editor takes U+2029 as a newline
 
 - `!` **FZ7** — [An IME composition with a carriage return panics the editor](backlog/closed-2026-09.md#-fz7--an-ime-composition-with-a-carriage-return-panics-the-editor--done-2026-10-10) — done (2026-10-10) — a composition is filtered as typing is, the IME's offsets moved with what stays
+
+**From Carnet's first letter (2026-10-11)** — F163, filed and built the same day
+
+- `~` **F163** — [A text cannot drop its first letter: no line of a paragraph can be narrower than the others](backlog/closed-2026-09.md#-f163--a-text-cannot-drop-its-first-letter-no-line-of-a-paragraph-can-be-narrower-than-the-others--done-2026-10-11) — done (2026-10-11) — `TextStyle::initial_letter`, CSS's `initial-letter`: the letter its own line of the buffer, the paragraph cut where the lines beside it end, every run read where it is drawn; ABI 31

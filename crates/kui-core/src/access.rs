@@ -1608,27 +1608,49 @@ fn empty_run(key: Key, n: usize, line: usize, rect: Rect, newline: bool) -> Acce
 /// [`RUN_CHARS`] characters), appended to `out`. Only laid-out lines
 /// produce runs: a long document's off-screen lines are in the value
 /// but not walked.
+///
+/// `shift` is where a buffer line's runs are drawn from where the buffer
+/// lays them, physical px. A line that goes on into the next without a
+/// line ending — a paragraph a text's initial cut (backlog F163) — is
+/// one source line with it: its rows end in no newline, and the next
+/// line's bytes count on from where it ends.
 pub(crate) fn runs_of_buffer(
     buffer: &Buffer,
     src: RunSource,
     run_no: &mut usize,
     out: &mut Vec<AccessRun>,
+    shift: impl Fn(usize) -> (f32, f32),
 ) {
     let line_count = buffer.lines.len();
+    // Each buffer line's source line and where in it the line starts.
+    let mut at = Vec::with_capacity(line_count);
+    let (mut line, mut base) = (0usize, 0usize);
+    for (i, l) in buffer.lines.iter().enumerate() {
+        at.push((line, base));
+        if crate::initial::joined(buffer, i) {
+            base += l.text().len();
+        } else {
+            (line, base) = (line + 1, 0);
+        }
+    }
     let runs: Vec<_> = buffer.layout_runs().collect();
     for (r, run) in runs.iter().enumerate() {
         let last_of_line = runs.get(r + 1).is_none_or(|next| next.line_i != run.line_i);
-        let newline = last_of_line && (run.line_i + 1 < line_count || src.newline_after_last);
+        let newline = last_of_line
+            && !crate::initial::joined(buffer, run.line_i)
+            && (run.line_i + 1 < line_count || src.newline_after_last);
+        let (dx, dy) = shift(run.line_i);
+        let (line, base) = at[run.line_i];
         push_row_runs(
             &RowGlyphs {
                 glyphs: run.glyphs,
                 text: run.text,
-                line: run.line_i,
-                top: run.line_top,
+                line,
+                top: run.line_top + dy,
                 height: run.line_height,
                 rtl: run.rtl,
-                dx: 0.0,
-                base: 0,
+                dx,
+                base,
                 newline,
             },
             &src,

@@ -348,8 +348,12 @@ extern "C" {
  * 64-bit stride stays 72): a row that plays its accel where the keyboard
  * is, with KUI_MENU_ITEM_REPLAY (backlog F151). Recompile; zeroed, a row
  * posts its menu event as it did.
+ *
+ * ABI 31 appends initial_letter to KuiTextStyle, which grows to 80 on
+ * 64-bit: the first letter as a drop cap that many lines tall (backlog
+ * F163). Recompile; zeroed, the text has none.
  */
-#define KUI_ABI_VERSION 30u
+#define KUI_ABI_VERSION 31u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1811,6 +1815,8 @@ typedef struct KuiTextStyle {
                                  KUI_DECO_UNDERLINE. ABI 17. */
     uint32_t underline_style; /* KUI_UNDERLINE_* ; non-solid implies KUI_DECO_UNDERLINE. ABI 17. */
     uint32_t bold; /* non-zero: the family's bold, as KUI_SPAN_BOLD on a span. ABI 29. */
+    uint32_t initial_letter; /* the first letter as a drop cap this many lines tall; 0 or 1 =
+                                none, as with max_lines or ellipsis. ABI 31. */
 } KuiTextStyle;
 
 /* [in] One run of a rich-text paragraph. */
