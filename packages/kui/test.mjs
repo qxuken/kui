@@ -5225,7 +5225,7 @@ SCENE_TREES.sampler = (fx) =>
       box({ dir: 'row', focusRegion: true, gap: 4, height: 30, mainAlign: 'center', crossAlign: 'end', backdropBlur: 6 }, [
         box({ dir: 'row', width: 20, height: 20, bg: '#2a2d3a', focusable: true, role: 'button', label: 'Stop' }, [], 'stop'),
       ], 'dock'),
-      box({ width: 60 }, [
+      box({ width: 60, overSiblings: true }, [
         text('a long line that is cut short', { size: 12, maxLines: 1, ellipsis: true, underline: true, strikethrough: true, features: 'liga=0' }),
       ]),
       box({ dir: 'row', height: 16, role: 'line', caret: 2, selectionAnchor: 0, caretSolid: true }, [text('sel', { size: 12 })], 'line'),

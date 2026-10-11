@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 30
+ABI_VERSION :: 31
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -654,6 +654,7 @@ Spec :: struct {
 	pivot_x: f32,
 	pivot_y: f32,
 	iterations: f32,
+	over_siblings: u32,
 }
 
 Announcement :: struct {

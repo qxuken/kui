@@ -817,6 +817,11 @@ pub struct KuiSpec {
     /// the first frame the node is declared with it and rests where its
     /// last iteration ended. ABI 27.
     pub iterations: f32,
+    /// Non-zero: paint the node and its subtree after its siblings, over
+    /// any it overlaps, and take the press there (`overSiblings`) — a tab that
+    /// glides past its neighbour stays on top whichever way it moved.
+    /// ABI 31.
+    pub over_siblings: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

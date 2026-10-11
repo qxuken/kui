@@ -181,6 +181,7 @@ pub const P_PIVOT_X: u32 = 129;
 pub const P_PIVOT_Y: u32 = 130;
 pub const P_ITERATIONS: u32 = 131;
 pub const P_BOLD: u32 = 132;
+pub const P_OVER_SIBLINGS: u32 = 133;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1115,7 +1116,14 @@ pub const PROPS: &[PropDef] = &[
         id: P_SLIDE,
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.slide()),
-        doc: "With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. Siblings that cross on their way paint in tree order, the one in the later place on top; to keep one over the others, float it in its slot while it moves (`docs/howto.md`).",
+        doc: "With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. Siblings that cross on their way paint in tree order, the one in the later place on top; `overSiblings` keeps one over the others.",
+    },
+    PropDef {
+        name: "overSiblings",
+        id: P_OVER_SIBLINGS,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.over_siblings()),
+        doc: "Paint this node and its subtree after its siblings, over any it overlaps: a tab that glides past its neighbour under `slide` passes over it whichever way it moved, so the selected tab declared `overSiblings` stays on top without the view tracking when it moves. Siblings otherwise paint in tree order, a later place over an earlier. Only the sibling order changes: the parent still paints under it, what follows the parent over it, it keeps the parent's clip, and a float still opens above it. The hit test reads the same order, so where it overlaps a sibling it takes the press. Two siblings that both declare it paint in tree order between themselves. Not a z-index: there is no number to outbid (`docs/adr/0046-a-node-over-its-siblings-paints-after-them.md`).",
     },
     PropDef {
         name: "keyframes",

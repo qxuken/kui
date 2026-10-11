@@ -545,7 +545,11 @@ popover over a scroller's bar takes the press there. A scroller's bars and
 the focus ring are the chrome of the layer that owns them, above its content
 and under the layers over it; there is no `zIndex`, and re-keying a float
 reopens it on top
-(`docs/adr/0023-layers-stack-in-the-order-they-open.md`).
+(`docs/adr/0023-layers-stack-in-the-order-they-open.md`). Inside a layer,
+siblings paint in tree order, a later one over an earlier; one that declares
+`overSiblings` paints after its siblings and still under whatever follows its
+parent — a tab gliding past its neighbour stays on top whichever way it
+moved (`docs/adr/0046-a-node-over-its-siblings-paints-after-them.md`).
 `FloatConfig::below()`/`above()` give tooltip placement in one call
 (`widgets::tooltip` wraps it); `FloatConfig::viewport().at(End, End)` pins a
 HUD to a corner.

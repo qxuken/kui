@@ -390,6 +390,7 @@ impl Core {
                 let ancestry = self.text_ancestors(i);
                 self.text.place(
                     self.tree.keys[i],
+                    i,
                     &ancestry,
                     tid,
                     self.tree.pos[i],
@@ -1006,7 +1007,28 @@ impl Core {
         // ninety-six bytes live across every iteration of a walk that
         // never clips (`deep_nesting_64_levels` +3% when it did).
         let mut clipped_by: (u32, u32) = (NIL, NIL);
+        // `over_siblings` subtrees, each painted where its parent's subtree ends
+        // rather than at its place: over its siblings and under whatever
+        // follows the parent. The walk skips one (`over_until`) and its
+        // entry waits here; everything else of the walk — clips, opacity,
+        // layers — still runs for its nodes in order, so the late paint
+        // reads what pass 2 reads. Behind the frame's own flag.
+        let any_over_siblings = self.tree.any_over_siblings;
+        let mut waiting: Vec<Deferred> = Vec::new();
+        let mut over_until = 0usize;
+        let places_from = self.text.places_len();
         for i in 0..self.tree.len() {
+            if any_over_siblings && waiting.last().is_some_and(|r| r.end as usize == i) {
+                let mut w = Walk {
+                    hits: &mut hits,
+                    scroll_regions: &mut scroll_regions,
+                    replay: &mut replay,
+                    any_ghost,
+                    no_clip,
+                    scale,
+                };
+                self.flush_over_siblings(i, &mut waiting, NIL, &mut w);
+            }
             let parent = self.tree.parent[i];
             let floats_here = any_float && self.tree.opens_layer(i);
             if any_float {
@@ -1145,6 +1167,9 @@ impl Core {
             if any_float && self.float_root[i] != NIL {
                 continue; // deferred to its layer, in the float pass
             }
+            if any_over_siblings && i < over_until {
+                continue; // inside a deferred subtree: painted with it
+            }
             // A departing subtree painted just under this node last time
             // goes first, so it stays under it.
             if any_ghost && replay.may_precede(self.tree.keys[i]) {
@@ -1152,6 +1177,15 @@ impl Core {
                 replay.paint(At::UnderInFlow(key), |g, play| {
                     self.emit_ghost(g, play, scale)
                 });
+            }
+            if any_over_siblings && parent != NIL && self.tree.specs[i].over_siblings {
+                waiting.push(Deferred {
+                    end: self.tree.subtree_end(parent as usize) as u32,
+                    parent,
+                    node: i as u32,
+                });
+                over_until = self.tree.subtree_end(i);
+                continue;
             }
             // Entirely clipped away: skip drawing and hit-testing.
             // Rect, not rounded: a node that survives only in a corner's
@@ -1175,6 +1209,7 @@ impl Core {
                     let ancestry = self.text_ancestors(i);
                     self.text.place(
                         self.tree.keys[i],
+                        i,
                         &ancestry,
                         tid,
                         self.tree.pos[i],
@@ -1191,6 +1226,20 @@ impl Core {
                 opacity,
             };
             self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
+        }
+        if any_over_siblings {
+            // What is still waiting ends with the tree: its parent's
+            // subtree is the root's, or runs to the end.
+            let mut w = Walk {
+                hits: &mut hits,
+                scroll_regions: &mut scroll_regions,
+                replay: &mut replay,
+                any_ghost,
+                no_clip,
+                scale,
+            };
+            self.flush_over_siblings(self.tree.len(), &mut waiting, NIL, &mut w);
+            self.text.order_places(places_from);
         }
 
         if any_ghost {
@@ -1228,7 +1277,26 @@ impl Core {
                         self.emit_ghost(g, play, scale)
                     });
                 }
-                let end = self.tree.subtree_end(root);
+                if any_over_siblings {
+                    // The same walk with the `over_siblings` rule, kept out of
+                    // the float pass a frame of a thousand floats runs.
+                    let from = self.text.places_len();
+                    let mut w = Walk {
+                        hits: &mut hits,
+                        scroll_regions: &mut scroll_regions,
+                        replay: &mut replay,
+                        any_ghost,
+                        no_clip,
+                        scale,
+                    };
+                    self.emit_subtree(root, r, true, &mut w);
+                    self.text.order_places(from);
+                }
+                let end = if any_over_siblings {
+                    root // painted above
+                } else {
+                    self.tree.subtree_end(root)
+                };
                 for i in root..end {
                     if self.float_root[i] != r {
                         continue; // a nested float: its own layer, later
@@ -1338,6 +1406,130 @@ impl Core {
         if self.text.take_owed() {
             self.owe_frame("long line rows");
         }
+    }
+
+    /// Paints the `over_siblings` subtrees whose parent's subtree ends at `at`,
+    /// taking them off the top of `stack`. An entry waits until the walk
+    /// leaves its parent, so the entries ending at one index are the
+    /// stack's top — their parents one chain of last children — and the
+    /// deepest parent's go first: one inside a sibling is under one
+    /// beside that sibling. Siblings keep tree order.
+    #[inline(never)]
+    fn flush_over_siblings(
+        &mut self,
+        at: usize,
+        stack: &mut Vec<Deferred>,
+        layer: u32,
+        w: &mut Walk<'_>,
+    ) {
+        let from = stack
+            .iter()
+            .rposition(|r| r.end as usize != at)
+            .map_or(0, |p| p + 1);
+        if from == stack.len() {
+            return;
+        }
+        let mut due: Vec<Deferred> = stack.drain(from..).collect();
+        due.sort_by_key(|r| std::cmp::Reverse(r.parent));
+        for r in due {
+            self.emit_subtree(r.node as usize, layer, false, w);
+        }
+    }
+
+    /// Paints the subtree rooted at `root` in `layer` (`NIL` in flow) from
+    /// what the walk stored for its nodes, an `over_siblings` child after the rest
+    /// of its parent's subtree, as pass 1 does. A departing subtree that was
+    /// under the root paints first only with `ghost_root`: a deferred root's
+    /// was painted at its place, under its later siblings.
+    fn emit_subtree(&mut self, root: usize, layer: u32, ghost_root: bool, w: &mut Walk<'_>) {
+        let end = self.tree.subtree_end(root);
+        let any_float = self.tree.any_float;
+        let mut inner: Vec<Deferred> = Vec::new();
+        let mut skip = 0usize;
+        for j in root..end {
+            if inner.last().is_some_and(|r| r.end as usize == j) {
+                self.flush_over_siblings(j, &mut inner, layer, w);
+            }
+            if j < skip {
+                continue;
+            }
+            if any_float && self.float_root[j] != layer {
+                continue; // a nested float: its own layer
+            }
+            let key = self.tree.keys[j];
+            if w.any_ghost && (j != root || ghost_root) && w.replay.may_precede(key) {
+                let at = if layer == NIL {
+                    At::UnderInFlow(key)
+                } else {
+                    At::UnderInLayer(key)
+                };
+                let scale = w.scale;
+                w.replay
+                    .paint(at, |g, play| self.emit_ghost(g, play, scale));
+            }
+            if j != root && self.tree.specs[j].over_siblings {
+                let parent = self.tree.parent[j];
+                inner.push(Deferred {
+                    end: self.tree.subtree_end(parent as usize) as u32,
+                    parent,
+                    node: j as u32,
+                });
+                skip = self.tree.subtree_end(j);
+                continue;
+            }
+            self.emit_stored(j, layer, w);
+        }
+        self.flush_over_siblings(end, &mut inner, layer, w);
+    }
+
+    /// One node of [`Self::emit_subtree`]: its clip, cull and opacity from
+    /// what the walk stored (pass 2's reading), a scoped run culled in flow
+    /// keeping its place as pass 1's does.
+    fn emit_stored(&mut self, i: usize, layer: u32, w: &mut Walk<'_>) {
+        let any_transform = self.tree.any_transform;
+        let any_clip = self.tree.any_clip || any_transform;
+        let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+        let (clip_rect, cull_rect) = match self.clips.get(i) {
+            Some(c) if any_clip => (c.rect, if any_transform { c.visible() } else { c.rect }),
+            _ => (crate::display::NO_CLIP, crate::display::NO_CLIP),
+        };
+        let clip_id = if any_clip {
+            self.clip_ids[i]
+        } else {
+            w.no_clip
+        };
+        let opacity = if self.tree.any_opacity {
+            self.opacity[i]
+        } else {
+            1.0
+        };
+        let visible = rect.intersect(&cull_rect);
+        if visible.w <= 0.0 || visible.h <= 0.0 {
+            if layer == NIL
+                && self.tree.any_selectable
+                && let Some(scope) = self.scope_of(i)
+                && let NodeContent::Text(tid) = self.tree.content[i]
+            {
+                let ancestry = self.text_ancestors(i);
+                self.text.place(
+                    self.tree.keys[i],
+                    i,
+                    &ancestry,
+                    tid,
+                    self.tree.pos[i],
+                    Some(scope),
+                    false,
+                );
+            }
+            return;
+        }
+        let paint = Paint {
+            clip_rect,
+            clip_id,
+            scale: w.scale,
+            opacity,
+        };
+        self.emit_node(i, rect, paint, w.hits, w.scroll_regions);
     }
 
     /// The exit diff: every key the previous frame declared an `exit` on
@@ -3000,6 +3192,25 @@ struct MaskAt {
     bin: (u8, u8),
     off: Vec2,
     angle: f32,
+}
+
+/// An `over_siblings` subtree waiting for the walk to leave its parent
+/// (`Core::flush_over_siblings`).
+struct Deferred {
+    /// Where the parent's subtree ends: the index the subtree paints at.
+    end: u32,
+    parent: u32,
+    node: u32,
+}
+
+/// What a late paint writes into, borrowed from `emit_frame`'s locals.
+struct Walk<'a> {
+    hits: &'a mut Vec<HitRegion>,
+    scroll_regions: &'a mut Vec<ScrollRegion>,
+    replay: &'a mut Replay,
+    any_ghost: bool,
+    no_clip: ClipId,
+    scale: f32,
 }
 
 #[derive(Clone, Copy)]

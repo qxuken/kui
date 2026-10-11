@@ -1042,6 +1042,10 @@ pub(crate) struct Ancestry {
 /// answers nothing, which is also true of a point nobody can click.
 pub(crate) struct TextPlace {
     pub(crate) key: Key,
+    /// The node's index in the frame's tree: what puts an `over_siblings`
+    /// subtree's runs back in tree order after it painted late
+    /// (`TextSystem::order_places`).
+    node: u32,
     /// The keys above it, nearest first, as many as `depth` says.
     ancestors: [Key; PLACE_ANCESTORS],
     depth: u8,
@@ -3884,9 +3888,11 @@ impl TextSystem {
     /// with the keys above it so a query by a `line` row or a wrapper
     /// finds the runs inside. Called beside [`Self::emit`] for the frame's
     /// own nodes and not for ghosts, which take no input.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn place(
         &mut self,
         key: Key,
+        node: usize,
         ancestry: &Ancestry,
         id: TextId,
         origin: Vec2,
@@ -3896,6 +3902,7 @@ impl TextSystem {
         let cache_key = self.frame[id.0 as usize].cache_key;
         self.places.push(TextPlace {
             key,
+            node: node as u32,
             ancestors: ancestry.keys,
             depth: ancestry.depth.min(PLACE_ANCESTORS) as u8,
             none_at: ancestry.none_at.map_or(u8::MAX, |n| n as u8),
@@ -3904,6 +3911,21 @@ impl TextSystem {
             scope,
             drawn,
         });
+    }
+
+    /// How many runs this frame has placed so far.
+    pub(crate) fn places_len(&self) -> usize {
+        self.places.len()
+    }
+
+    /// Puts the runs placed since `from` back in tree order. Emission
+    /// places them as it paints, and an `over_siblings` subtree paints after its
+    /// siblings; a selection reads them in reading order, which is the
+    /// tree's (`scope_runs`). Stable, so one node's runs keep theirs.
+    pub(crate) fn order_places(&mut self, from: usize) {
+        if let Some(tail) = self.places.get_mut(from..) {
+            tail.sort_by_key(|p| p.node);
+        }
     }
 
     /// The runs `key` names, in tree order, each with its entry and the

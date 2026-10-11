@@ -1664,6 +1664,16 @@ glyphs were not: the font draws `##` as an empty glyph and one whose
 ink covers both cells, and kui painted a glyph in one colour. One entry,
 F162, **built 2026-10-10**, the day it was filed, and in the archive.
 
+## From kawoosh's tab strip (2026-10-11)
+
+kawoosh's tabs carry `slide`. A tab moved right glided over the neighbour
+making room for it, and a tab moved left glided under it, covered from
+one side and then the other. Siblings paint in tree order, and the tab
+landing in the later place is on top. The first answer was a howto
+recipe: float the moved tab in its slot while it glides. That was
+replaced the same day by a row. One entry, F163, **built 2026-10-11**,
+the day it was filed, and in the archive.
+
 ## From the traffic-lights question (2026-10-09)
 
 The user asked whether kui can shift the macOS traffic lights. It could
@@ -4610,3 +4620,7 @@ move.
 - `!` **FZ6** — [A bidi paragraph end inside a line panics the shaper](backlog/closed-2026-09.md#-fz6--a-bidi-paragraph-end-inside-a-line-panics-the-shaper--done-2026-10-10) — done (2026-10-10) — U+001C–U+001E, NEL and U+2029 shaped as characters of the same length that end nothing; an editor takes U+2029 as a newline
 
 - `!` **FZ7** — [An IME composition with a carriage return panics the editor](backlog/closed-2026-09.md#-fz7--an-ime-composition-with-a-carriage-return-panics-the-editor--done-2026-10-10) — done (2026-10-10) — a composition is filtered as typing is, the IME's offsets moved with what stays
+
+**From kawoosh's tab strip (2026-10-11)** — F163, filed and built the same day
+
+- `~` **F163** — [A tab moved left glides under its neighbour](backlog/closed-2026-09.md#-f163--a-tab-moved-left-glides-under-its-neighbour--done-2026-10-11) — done (2026-10-11) — `overSiblings` (ADR 0046): the node paints after its siblings and takes the press there, under what follows its parent; text runs put back in tree order for a selection; `KuiSpec.over_siblings`, ABI 31

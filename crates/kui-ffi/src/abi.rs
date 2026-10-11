@@ -161,7 +161,9 @@
 /// - ABI 30: `replay` on `KuiMenuItem`, into the padding before `submenu`
 ///   (backlog F151): a row that plays its chord, with
 ///   `KUI_MENU_ITEM_REPLAY`.
-pub const KUI_ABI_VERSION: u32 = 30;
+/// - ABI 31: `over_siblings` appended to `KuiSpec` (752 bytes on 64-bit, from
+///   744): the node paints after its siblings.
+pub const KUI_ABI_VERSION: u32 = 31;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header
