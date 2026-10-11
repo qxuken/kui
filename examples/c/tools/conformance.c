@@ -2169,7 +2169,8 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
                         .decoration = KUI_DECO_UNDERLINE | KUI_DECO_STRIKETHROUGH};
     kui_text(ui, KUI_STR("a long line that is cut short"), &cut);
     kui_close(ui);
-    kui_open(ui, &narrow, NULL);
+    KuiSpec drop_col = {.width = {KUI_FIXED, 60}};
+    kui_open(ui, &drop_col, NULL);
     KuiTextStyle drop = {.size = 12, .initial_letter = 2};
     kui_text(ui, KUI_STR("Drop cap"), &drop);
     kui_close(ui);
