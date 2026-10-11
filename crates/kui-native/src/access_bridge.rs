@@ -227,6 +227,7 @@ mod imp {
             Role::StaticText => AkRole::Label,
             Role::TextInput => AkRole::TextInput,
             Role::MultilineTextInput => AkRole::MultilineTextInput,
+            Role::PasswordInput => AkRole::PasswordInput,
             Role::ScrollView => AkRole::ScrollView,
         }
     }

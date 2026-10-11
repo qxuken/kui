@@ -330,10 +330,21 @@ impl Core {
         self.secure_input = on;
     }
 
-    /// Whether this frame asked for secure keyboard entry (for the frame
-    /// driver); false for a frame that never said.
+    /// Whether this window wants secure keyboard entry (for the frame
+    /// driver): this frame asked, or a `secure` editor
+    /// ([`EditOptions::secure`](crate::EditOptions::secure)) has the
+    /// focus, as a Mac's password field turns it on while it is the
+    /// first responder (backlog F167). False for a frame that never said
+    /// and has none.
     pub fn secure_input(&self) -> bool {
-        self.secure_input
+        self.secure_input || self.secure_editor_focused()
+    }
+
+    /// Whether the focused editor is a `secure` one: what turns secure
+    /// keyboard entry on and the input method off while it has the
+    /// keyboard (backlog F167).
+    pub fn secure_editor_focused(&self) -> bool {
+        self.edit.focused().is_some_and(|k| self.edit.is_secure(k))
     }
 
     /// Declares which Option keys act as Alt in this window on macOS:
@@ -392,9 +403,11 @@ impl Core {
         self.ime_off = off;
     }
 
-    /// Whether this frame asked for the input method off (for the frame
-    /// driver); false for a frame that never said.
+    /// Whether this window wants the input method off (for the frame
+    /// driver): this frame asked, or a `secure` editor has the focus —
+    /// a password field takes keys, not compositions (backlog F167).
+    /// False for a frame that never said and has none.
     pub fn ime_off(&self) -> bool {
-        self.ime_off
+        self.ime_off || self.secure_editor_focused()
     }
 }

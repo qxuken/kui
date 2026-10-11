@@ -216,7 +216,11 @@ alpha.55 pre-tag pass — a drop cap's size handed to the hinter — were
 built the day they were filed, after the alpha.54 tag, and are in the
 archive; and F165, from Carnet's sync settings — a key two nodes share
 listed twice to AccessKit — was built the day it was filed, after the
-alpha.55 tag, and is in the archive.
+alpha.55 tag, and is in the archive; and F166 and F167, from Carnet's
+review — the space after a one-letter initial, a password field — were
+built the day they were filed, after the alpha.55 tag, and are in the
+archive, while F168, filed with them — a window kept out of screen
+capture — is open below.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1702,6 +1706,46 @@ Sync open. Its sync card opened the first row of each of its lists with
 passed both on to AccessKit. Carnet keys its lists apart now; kui no
 longer hands the platform a key twice. One entry, F165, **built
 2026-10-11**, the day it was filed, and in the archive.
+
+## From Carnet's review (2026-10-11)
+
+Two things Carnet's review of its own screens asked of kui. Its drop
+cap, on a note opening "A calm notes app…", drew the first row beside
+the letter a space further in than the rows below it: the space after a
+one-letter word stayed at the start of that row. And its sign-in and
+vault screens masked their password fields themselves — the text in the
+model, bullets drawn in its place, the caret and the selection mapped
+across — with nothing keeping the keys from another process or the
+field from a reader. Two entries, F166 and F167, **built 2026-10-11**,
+the day they were filed, and in the archive. A third, F168, is what
+F167's research left: a field cannot be kept out of a screenshot, only
+a whole window can, and that switch is not offered yet.
+
+### `.` F168 — A window cannot keep itself out of a screenshot or a screen recording
+
+**Found.** Building F167, the password field: `NSSecureTextField` keeps
+the keys from other processes (secure event input) and its text from a
+reader, but nothing keeps the field out of a screen capture, and no
+view can be — macOS leaves out a whole window or nothing, by
+`NSWindow.sharingType = .none` (`NSWindowSharingNone`), which
+ScreenCaptureKit, `CGWindowListCreateImage` and the screenshot tools
+honour. Windows has the same switch, per window:
+`SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)` (Windows 10
+2004 on; `WDA_MONITOR` before, which blacks the window out instead).
+Wayland and X11 have none.
+
+**Do.** When an app asks for it — a vault screen, a recovery phrase on
+display — a window's frame state in `secureInput`'s shape:
+`Ui::protect_from_capture(bool)` / a root `protectFromCapture` / Lua
+`protect_from_capture = true` / C `kui_set_protect_from_capture` and
+`kui_protect_from_capture_get` (new functions, no struct moves, so no
+ABI bump), cleared at `begin_frame`, applied by the runner on change and
+never per frame. Opt-in and per window, not per field: hiding a window
+from capture also hides it from screen sharing and from the user's own
+screenshots, which is the app's to decide while a secret is up, and a
+field's `secure` must not decide it. Not built with F167: the door
+reaches all five bindings, the conformance corpus and both runners'
+platform calls — not small — and no app has asked for it yet.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -3190,9 +3234,11 @@ and F156 built), its pane labels (F157 built), its markdown caret (F162
 built) or Carnet's toolbar and folder rounds (F158–F161 built), nor of
 the first fuzz round (FZ1–FZ7 built; the zeno, cosmic-text and image
 bugs behind four of them are upstream's to report), kawoosh's tab strip
-(F163 built), Carnet's first letter (F164 built) or the alpha.55
+(F163 built), Carnet's first letter (F164 built), the alpha.55
 pre-tag pass (FZ8 built; skrifa's overflow is upstream's to report
-too). Nothing from the second bake-off: C51, the file
+too), Carnet's sync settings (F165 built) or Carnet's review (F166 and
+F167 built; F168, a window kept out of screen capture, waits for an app
+to ask). Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
 (`#[derive(Message)]`), was **built 2026-09-25**; C47 was
 **built 2026-09-25** (two queued frames by default), C46, the
@@ -4686,3 +4732,9 @@ move.
 **From Carnet's sync settings (2026-10-11)** — F165, filed and built the same day
 
 - `!` **F165** — [A key two nodes share is listed twice to AccessKit](backlog/closed-2026-09.md#-f165--a-key-two-nodes-share-is-listed-twice-to-accesskit--done-2026-10-11) — done (2026-10-11) — the access tree keeps the first node under a key and leaves the second out as plain structure; the `duplicate-key` warning as before
+
+**From Carnet's review (2026-10-11)** — F166 and F167, filed and built the same day; F168 open above
+
+- `~` **F166** — [The space after a one-letter initial moves the first row beside it in](backlog/closed-2026-09.md#-f166--the-space-after-a-one-letter-initial-moves-the-first-row-beside-it-in--done-2026-10-11) — done (2026-10-11) — the spaces and tabs after the initial shaped at no width, as CSS collapses them; their bytes kept
+
+- `~` **F167** — [A password field is the app's to mask](backlog/closed-2026-09.md#-f167--a-password-field-is-the-apps-to-mask--done-2026-10-11) — done (2026-10-11) — `EditOptions::secure`: bullets per grapheme, no copy or cut, no composition, no history, `Role::PasswordInput`, secure input and the IME off while focused

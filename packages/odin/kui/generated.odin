@@ -128,6 +128,7 @@ Role :: enum u32 {
 	Menu = 24, // KUI_ROLE_MENU
 	Menu_Item = 25, // KUI_ROLE_MENU_ITEM
 	Terminal = 26, // KUI_ROLE_TERMINAL
+	Password_Input = 27, // KUI_ROLE_PASSWORD_INPUT
 }
 
 Cursor :: enum u32 {
@@ -248,6 +249,7 @@ Edit_Flag :: enum u32 {
 	Autofocus = 1, // KUI_EDIT_AUTOFOCUS
 	Wrap = 2, // KUI_EDIT_WRAP
 	Keep_Tab = 3, // KUI_EDIT_KEEP_TAB
+	Secure = 4, // KUI_EDIT_SECURE
 }
 Edit_Flags :: bit_set[Edit_Flag;u32]
 

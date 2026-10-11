@@ -2401,6 +2401,9 @@ pub const KUI_EDIT_WRAP: u32 = 1 << 2;
 /// A field whose Tab is the app's: the press goes to the sink above it
 /// instead of walking the focus ring (backlog F146).
 pub const KUI_EDIT_KEEP_TAB: u32 = 1 << 3;
+/// A password field: masked, never copied, no composition, no history
+/// (backlog F167).
+pub const KUI_EDIT_SECURE: u32 = 1 << 4;
 
 /// `KUI_MOD_*`: the editing modifiers `kui_input_key` takes — extend the
 /// selection, move by word, move by document.
