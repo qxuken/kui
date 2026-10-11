@@ -214,7 +214,9 @@ and F163, from kawoosh's tab strip — a tab gliding under its neighbour —
 and F164, from Carnet's first letter — a drop cap — and FZ8, from the
 alpha.55 pre-tag pass — a drop cap's size handed to the hinter — were
 built the day they were filed, after the alpha.54 tag, and are in the
-archive.
+archive; and F165, from Carnet's sync settings — a key two nodes share
+listed twice to AccessKit — was built the day it was filed, after the
+alpha.55 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1688,6 +1690,18 @@ it and the rest at full width — needs a paragraph some of whose lines
 are narrower than others, which a cosmic-text paragraph cannot be. One
 entry, F164, **built 2026-10-11**, the day it was filed, and in the
 archive.
+
+## From Carnet's sync settings (2026-10-11)
+
+Carnet, a release build on alpha.55, closed with a panic in
+`accesskit_consumer` — `TreeUpdate includes duplicate child` — as a
+device removed from its account came back in by an invite, Settings →
+Sync open. Its sync card opened the first row of each of its lists with
+`with_indexed(0)`, so two rows, and the names in them, shared keys; the
+`duplicate-key` warning said so in a debug build, and the access tree
+passed both on to AccessKit. Carnet keys its lists apart now; kui no
+longer hands the platform a key twice. One entry, F165, **built
+2026-10-11**, the day it was filed, and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4668,3 +4682,7 @@ move.
 **From the alpha.55 pre-tag pass (2026-10-11)** — FZ8, filed and built the same day
 
 - `!` **FZ8** — [A drop cap from a large text overflows the hinter](backlog/closed-2026-09.md#-fz8--a-drop-cap-from-a-large-text-overflows-the-hinter--done-2026-10-11) — done (2026-10-11) — past `LARGE_GLYPH` a glyph is drawn unhinted; the `scenes` target's paragraph takes a drop cap
+
+**From Carnet's sync settings (2026-10-11)** — F165, filed and built the same day
+
+- `!` **F165** — [A key two nodes share is listed twice to AccessKit](backlog/closed-2026-09.md#-f165--a-key-two-nodes-share-is-listed-twice-to-accesskit--done-2026-10-11) — done (2026-10-11) — the access tree keeps the first node under a key and leaves the second out as plain structure; the `duplicate-key` warning as before
