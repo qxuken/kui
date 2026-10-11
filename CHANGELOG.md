@@ -21,6 +21,38 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.56 (unreleased)
+
+**What breaks.**
+
+- Of two nodes a frame gives one key, the access tree keeps the first
+  and leaves the second out as it does plain structure, its descendants
+  under its nearest semantic ancestor (backlog F165).
+
+A key is a node's id to the platform, and the access tree took every
+semantic node under its key, so two nodes sharing one were two nodes of
+one id, a child listed twice in AccessKit's update; its consumer panics
+on that (`TreeUpdate includes duplicate child`). Carnet's Settings →
+Sync opened the first row of each of its lists with `with_indexed(0)` in
+one card, so its devices and its passkeys each had a first row under
+the same key, their names two static texts under one id: with
+assistive technology on — VoiceOver, or any app that reads the
+accessibility tree — the app closed. The
+`duplicate-key` warning names the key as before, on the frames the
+checks run; the access tree no longer passes the clash on. The second
+node's descendants that have keys of their own are still read; a
+presentational one goes with what it holds, as its name is made of it.
+
+### Fixed
+
+- **A key two nodes share no longer crashes AccessKit** (backlog F165):
+  see *What breaks*.
+
+**What you can delete.**
+
+- Nothing an app wrote for this: it is a crash, not a workaround. The
+  `duplicate-key` warning is still the one to fix.
+
 ## 0.1.0-alpha.55 (2026-10-11)
 
 **What breaks.**

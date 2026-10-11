@@ -712,7 +712,8 @@ impl AccessNode {
 }
 
 /// The semantic nodes of a finished frame, in tree order (a parent always
-/// precedes its descendants; the root comes first).
+/// precedes its descendants; the root comes first), each key once: of two
+/// nodes a frame gave one key, the first.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AccessTree {
     pub nodes: Vec<AccessNode>,
@@ -1221,6 +1222,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
     // Per tree node: the key of the nearest semantic ancestor (for elided
     // nodes, inherited from the parent).
     let mut parents: Vec<Option<Key>> = vec![None; tree.len()];
+    let mut emitted: rustc_hash::FxHashSet<Key> = rustc_hash::FxHashSet::default();
     let mut skip_until = 0usize;
     let mut i = 0usize;
     while i < tree.len() {
@@ -1245,6 +1247,20 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             continue;
         }
         let key = tree.keys[i];
+        // A key is the node's id to the platform, so the tree holds one
+        // node under it: the first in tree order. A second (two siblings
+        // given one label, an index key that is also an unkeyed
+        // sibling's — the `duplicate-key` warning) is left out the way
+        // plain structure is, its descendants under its nearest semantic
+        // ancestor; AccessKit panics on a child listed twice (F165).
+        if !emitted.insert(key) {
+            parents[i] = inherited;
+            if sem.presentational {
+                skip_until = tree.subtree_end(i);
+            }
+            i += 1;
+            continue;
+        }
         parents[i] = Some(key);
         let spec: &NodeSpec = &tree.specs[i];
         let rect = node_rect(tree, src, i);
