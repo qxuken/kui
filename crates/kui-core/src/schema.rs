@@ -1115,7 +1115,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_SLIDE,
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.slide()),
-        doc: "With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing.",
+        doc: "With transition: also ease the node's position (reordered siblings slide). While it eases, the node is drawn between where it was and where this frame put it — not at the declared `dx`/`dy`, or its slot in the row — so anything else positioned from those numbers drifts for the transition's length: a canvas of floats eases everything or nothing. Siblings that cross on their way paint in tree order, the one in the later place on top; to keep one over the others, float it in its slot while it moves (`docs/howto.md`).",
     },
     PropDef {
         name: "keyframes",

@@ -595,6 +595,26 @@ alpha.7.
 [`slide` row](props.md#container-props) ·
 [alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
 
+### Why does a tab moved left glide under its neighbour, and right over it?
+
+Siblings paint in tree order, and a row's tree order is its places' order,
+so where two `slide` tabs cross, the one in the later place is drawn on top.
+Moved right, the tab you moved lands later and slides over the one making
+room. Moved left, it lands earlier and passes under it, covered first from
+one side and then the other: it looks like a block shrinking to its middle
+and growing back from the next place's middle. There is no z-index. To keep
+the moved tab on top, make each tab a slot in the row that its block fills,
+and while the glide runs give the moved block `float={{ anchor: "parent",
+clip: true }}`. A float is a layer of its own, above the row's in-flow
+content. It sizes `grow` against the slot as a child would, and the strip's
+clip still cuts it. The block keeps its key, so its hover, press and a drag
+in hand carry on. Float it only while it moves: a float is over every float
+opened before it, so a tooltip from a bar above the row would sit under it.
+
+[`float` row](props.md#composite-props-hand-written-per-binding) ·
+[`slide` row](props.md#container-props) ·
+[ADR 0023](adr/0023-layers-stack-in-the-order-they-open.md)
+
 ### How do I follow the OS's dark mode, accent or reduce-motion setting?
 
 Read `env.system`: `appearance` (`"light"` / `"dark"` / `"unknown"`),
