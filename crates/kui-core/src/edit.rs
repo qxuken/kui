@@ -86,6 +86,56 @@ pub struct EditOptions {
     /// selection over a label and one over a field are the same tint on
     /// both bases.
     pub accent: Option<Color>,
+    /// A password field (backlog F167): the text is drawn as a bullet
+    /// (•) per grapheme, and measured, hit and selected as the bullets;
+    /// a copy or a cut of it is refused, a paste is taken; no input method
+    /// composes into it; it keeps no undo history, which would hold what
+    /// was typed; the access tree reads it as a password field whose value
+    /// is the bullets; and while it has the keyboard the window asks for
+    /// secure keyboard entry and the input method off, as
+    /// [`Core::secure_input`](crate::Core::secure_input) and
+    /// [`Core::ime_off`](crate::Core::ime_off) read back. The app still
+    /// reads the text with `edit_text`. Declared off on a later frame —
+    /// a "show password" toggle — the same editor draws the text again,
+    /// the caret where it was; on again, it masks it. A secure editor is
+    /// a field: `multiline` is ignored, and ⌥← ⌥→ (Ctrl elsewhere) and a
+    /// double click take the whole text, there being no words to show.
+    pub secure: bool,
+}
+
+/// What a secure editor draws for each grapheme of its text.
+pub const SECURE_BULLET: char = '\u{2022}';
+/// [`SECURE_BULLET`]'s length in a secure editor's buffer.
+const BULLET_LEN: usize = SECURE_BULLET.len_utf8();
+
+/// `n` bullets, the buffer of a secure editor whose text has `n`
+/// graphemes.
+fn bullets(n: usize) -> String {
+    std::iter::repeat_n(SECURE_BULLET, n).collect()
+}
+
+/// How many graphemes `text` has: the bullets a secure editor draws for it.
+fn graphemes(text: &str) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    text.graphemes(true).count()
+}
+
+/// The byte where grapheme `n` of `text` starts; its length for `n` past
+/// the last.
+fn grapheme_start(text: &str, n: usize) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    text.grapheme_indices(true)
+        .nth(n)
+        .map_or(text.len(), |(at, _)| at)
+}
+
+/// How many graphemes of `text` start before `byte`: the bullet a byte
+/// offset into a secure editor's text is drawn at.
+fn graphemes_before(text: &str, byte: usize) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    text.grapheme_indices(true)
+        .take_while(|(at, _)| *at < byte)
+        .count()
 }
 
 /// What an editing key did to an editor: whether the text changed,
@@ -123,6 +173,10 @@ pub(crate) struct EditState {
     pub(crate) multiline: bool,
     /// `EditOptions::keep_tab`, as last declared.
     keep_tab: bool,
+    /// A secure editor's text (`EditOptions::secure`), whose buffer holds
+    /// a [`SECURE_BULLET`] per grapheme of it. `None` for any other: the
+    /// buffer is the text.
+    secret: Option<String>,
     /// `EditOptions::placeholder`, shaped in a buffer of its own at the
     /// editor's metrics, beside the `metrics_rev` it was shaped at.
     placeholder: Option<(String, u32, Buffer)>,
@@ -253,6 +307,10 @@ impl EditState {
     /// declared coalesce kind matches and the edits are adjacent.
     fn record(&mut self, op: EditOp, kind: Option<Coalesce>) {
         self.redo.clear();
+        // A secure editor keeps no history: it would hold what was typed.
+        if self.secret.is_some() {
+            return;
+        }
         if let (Some(k), Some(last)) = (kind, self.undo.back_mut())
             && self.coalesce == Some(k)
             && last.deleted.len() + last.inserted.len() + op.deleted.len() + op.inserted.len()
@@ -314,6 +372,10 @@ impl EditState {
 
     /// Replaces the selection (if any) with `text`, as one recorded op.
     fn insert_recorded(&mut self, text: &str) {
+        if self.secret.is_some() {
+            self.secure_replace(text);
+            return;
+        }
         let cursor_before = self.editor.cursor();
         let deleted = self.editor.copy_selection().unwrap_or_default();
         self.editor.delete_selection();
@@ -334,6 +396,12 @@ impl EditState {
 
     /// Deletes the selection as one recorded op; false when there is none.
     fn delete_selection_recorded(&mut self) -> bool {
+        if self.secret.is_some() {
+            return self.selected().is_some() && {
+                self.secure_replace("");
+                true
+            };
+        }
         let cursor_before = self.editor.cursor();
         let Some(deleted) = self.editor.copy_selection() else {
             return false;
@@ -371,6 +439,10 @@ impl EditState {
             self.editor.set_selection(Selection::None);
             return false;
         }
+        if self.secret.is_some() {
+            self.secure_replace("");
+            return true;
+        }
         self.editor.delete_selection();
         let at = self.editor.cursor();
         self.record(
@@ -384,6 +456,91 @@ impl EditState {
             Some(kind),
         );
         true
+    }
+
+    /// The selection's ends in the buffer, when it is not empty.
+    fn selected(&self) -> Option<(Cursor, Cursor)> {
+        self.editor
+            .selection_bounds()
+            .filter(|(a, z)| !same_pos(*a, *z))
+    }
+
+    /// A secure editor's edit: `text` over the selection, or at the caret,
+    /// in its text, and the buffer as many bullets as the text has
+    /// graphemes, the caret after what went in. Every bullet is alike, so
+    /// the buffer moves by its end alone. Unrecorded: a secure editor
+    /// keeps no history.
+    fn secure_replace(&mut self, text: &str) {
+        let Some(secret) = self.secret.as_mut() else {
+            return;
+        };
+        // A field's: one line, whichever door the text came by.
+        let text = admitted(text, false);
+        let caret = self.editor.cursor();
+        let (a, z) = self.editor.selection_bounds().unwrap_or((caret, caret));
+        let (a, z) = (
+            grapheme_start(secret, a.index / BULLET_LEN),
+            grapheme_start(secret, z.index / BULLET_LEN),
+        );
+        secret.replace_range(a..z, &text);
+        let at = graphemes_before(secret, a + text.len());
+        let n = graphemes(secret);
+        self.set_bullets(n);
+        self.editor
+            .set_cursor(Cursor::new(0, at.min(n) * BULLET_LEN));
+    }
+
+    /// Makes a secure editor's buffer `n` bullets, with no selection.
+    fn set_bullets(&mut self, n: usize) {
+        let had = self
+            .editor
+            .with_buffer(|b| b.lines.first().map_or(0, |l| l.text().len()))
+            / BULLET_LEN;
+        self.editor.set_selection(Selection::None);
+        if n > had {
+            self.editor.set_cursor(Cursor::new(0, had * BULLET_LEN));
+            self.editor.insert_string(&bullets(n - had), None);
+        } else if n < had {
+            self.editor
+                .set_selection(Selection::Normal(Cursor::new(0, n * BULLET_LEN)));
+            self.editor.set_cursor(Cursor::new(0, had * BULLET_LEN));
+            self.editor.delete_selection();
+        }
+    }
+
+    /// Masks the text (`on`) or shows it again, the caret on the grapheme
+    /// it was on and no selection. The history goes either way: masked,
+    /// it would hold the text; shown, it holds edits to the bullets.
+    fn set_secure(&mut self, on: bool, attrs: &Attrs<'_>) {
+        self.abandon_preedit();
+        let caret = self.editor.cursor();
+        let (shown, at) = if on {
+            // The text as a field holds it, and how many of its graphemes
+            // are before the caret.
+            let (text, before) = self.editor.with_buffer(|b| {
+                let text = buffer_text(b);
+                let at = abs_offset(b, caret).min(text.len());
+                let before = text.get(..at).map_or(0, |t| graphemes(&admitted(t, false)));
+                (admitted(&text, false).into_owned(), before)
+            });
+            let shown = bullets(graphemes(&text));
+            self.secret = Some(text);
+            (shown, before * BULLET_LEN)
+        } else {
+            let text = self.secret.take().unwrap_or_default();
+            let at = grapheme_start(&text, caret.index / BULLET_LEN);
+            (text, at)
+        };
+        self.editor
+            .with_buffer_mut(|b| b.set_text(&shown, attrs, Shaping::Advanced, None));
+        self.editor.set_selection(Selection::None);
+        self.editor.set_cursor(Cursor::new(0, at));
+        self.undo.clear();
+        self.redo.clear();
+        self.coalesce = None;
+        self.version += 1;
+        self.wrap = None;
+        self.invalidate_measurements();
     }
 
     /// Removes an in-progress composition from the buffer (cancel, blur,
@@ -710,6 +867,8 @@ impl EditStore {
         };
         let seeded = seed.is_some();
         let initial = seed.as_deref().unwrap_or(initial);
+        // A secure editor is a field (`EditOptions::secure`).
+        let multiline = opts.multiline && !opts.secure;
         let state = self.states.entry(key).or_insert_with(|| {
             let metrics = crate::text::shaper_metrics(
                 opts.style.size * scale,
@@ -717,8 +876,14 @@ impl EditStore {
             );
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(None, None);
+            let text = admitted(initial, multiline);
+            let secret = opts.secure.then(|| text.to_string());
+            let shown = match &secret {
+                Some(s) => bullets(graphemes(s)).into(),
+                None => text,
+            };
             buffer.set_text(
-                &admitted(initial, opts.multiline),
+                &shown,
                 &attrs_for(&opts.style, res),
                 Shaping::Advanced,
                 None,
@@ -735,7 +900,7 @@ impl EditStore {
             // A held `set_text` is not `initial`: it is that call arriving
             // where it can land, so it leaves the caret where the call
             // does — at the end, document or not.
-            if seeded || !opts.multiline {
+            if seeded || !multiline {
                 let end = editor.with_buffer(|b| {
                     let line = b.lines.len().saturating_sub(1);
                     Cursor::new(line, b.lines.get(line).map_or(0, |l| l.text().len()))
@@ -746,8 +911,9 @@ impl EditStore {
                 editor,
                 style: opts.style,
                 accent: opts.accent.unwrap_or(crate::select::TINT),
-                multiline: opts.multiline,
+                multiline,
                 keep_tab: opts.keep_tab,
+                secret,
                 placeholder: None,
                 folds: false,
                 origin,
@@ -769,16 +935,21 @@ impl EditStore {
         state.last_declared = frame_no;
         state.autofocus = opts.autofocus;
         state.origin = origin;
-        state.multiline = opts.multiline;
+        state.multiline = multiline;
         state.keep_tab = opts.keep_tab;
+        // Masked or shown again: a "show password" toggle on the same
+        // editor, the caret on the same grapheme.
+        if opts.secure != state.secret.is_some() {
+            state.set_secure(opts.secure, &attrs_for(&opts.style, res));
+        }
         state.accent = opts.accent.unwrap_or(crate::select::TINT);
         // A document wraps between words whatever its style says, as it
         // always has; a field folds only when asked, and then by the mode
         // the `wrap` row picked — so a rename field breaks where the label
         // it renames breaks. `wrap="none"` on a field is the
         // field: one line, scrolled.
-        let folds = opts.multiline || (opts.wrap && opts.style.wrap != TextWrap::None);
-        let mode = match (opts.multiline, opts.style.wrap) {
+        let folds = multiline || (opts.wrap && opts.style.wrap != TextWrap::None);
+        let mode = match (multiline, opts.style.wrap) {
             (false, TextWrap::Glyph) => Wrap::Glyph,
             _ => Wrap::WordOrGlyph,
         };
@@ -833,6 +1004,22 @@ impl EditStore {
         edge
     }
 
+    /// What the editor shows of its text, which is what the access tree
+    /// reads: the text, but for a secure editor, whose bullets are all it
+    /// gives away.
+    pub(crate) fn shown_text(&self, key: Key) -> Option<String> {
+        let s = self.states.get(&key)?;
+        if s.secret.is_some() {
+            return Some(s.editor.with_buffer(buffer_text));
+        }
+        self.text(key)
+    }
+
+    /// Whether `key` is a secure editor (`EditOptions::secure`).
+    pub fn is_secure(&self, key: Key) -> bool {
+        self.states.get(&key).is_some_and(|s| s.secret.is_some())
+    }
+
     /// The placeholder `key` was declared with, if any.
     pub fn placeholder(&self, key: Key) -> Option<&str> {
         let s = self.states.get(&key)?;
@@ -848,8 +1035,12 @@ impl EditStore {
     }
 
     /// The committed text: an in-progress composition is not part of it.
+    /// A secure editor's is its text, not the bullets it draws.
     pub fn text(&self, key: Key) -> Option<String> {
         let s = self.states.get(&key)?;
+        if let Some(secret) = &s.secret {
+            return Some(secret.clone());
+        }
         Some(s.editor.with_buffer(|b| {
             let mut text = buffer_text(b);
             if let Some(pre) = &s.preedit {
@@ -879,6 +1070,13 @@ impl EditStore {
         s.preedit = None;
         let a = attrs_for(&s.style, res);
         let text = admitted(text, s.multiline);
+        let text = match &mut s.secret {
+            Some(secret) => {
+                *secret = text.into_owned();
+                bullets(graphemes(secret)).into()
+            }
+            None => text,
+        };
         s.editor
             .with_buffer_mut(|b| b.set_text(&text, &a, Shaping::Advanced, None));
         s.editor.set_selection(Selection::None);
@@ -1070,8 +1268,21 @@ impl EditStore {
         true
     }
 
+    /// The selected text, for a copy or a cut. `None` from a secure
+    /// editor: its text does not leave it by the clipboard.
     pub fn copy_selection(&self, key: Key) -> Option<String> {
-        self.states.get(&key)?.editor.copy_selection()
+        let s = self.states.get(&key)?;
+        if s.secret.is_some() {
+            return None;
+        }
+        s.editor.copy_selection()
+    }
+
+    /// Whether a copy or a cut from editor `key` has anything to take: a
+    /// selection, in an editor that is not secure. What an Edit menu
+    /// lights Cut and Copy by.
+    pub fn can_copy(&self, key: Key) -> bool {
+        self.has_selection(key) && !self.is_secure(key)
     }
 
     /// Whether the editor `key` has a non-empty selection — what
@@ -1172,7 +1383,13 @@ impl EditStore {
                 // stays a word, as it was here before.
                 let mac = cfg!(target_os = "macos");
                 let word = mods.word || (!mac && mods.doc);
-                let line = mac && mods.doc;
+                // A secure editor has no words to show: a word's move is
+                // the line's, as a Mac's password field's is.
+                let (word, line) = if s.secret.is_some() {
+                    (false, (mac && mods.doc) || word)
+                } else {
+                    (word, mac && mods.doc)
+                };
                 let motion = match (ek, line, word) {
                     (EditKey::Left, true, _) => Motion::Home,
                     (EditKey::Right, true, _) => Motion::End,
@@ -1228,6 +1445,12 @@ impl EditStore {
                     (mods.doc, mods.word)
                 } else {
                     (false, mods.word || mods.doc)
+                };
+                // A secure editor's word is its line (see the arrows).
+                let (line, word) = if s.secret.is_some() {
+                    (line || word, false)
+                } else {
+                    (line, word)
                 };
                 let back = ek == EditKey::Backspace;
                 let motion = match (back, line, word) {
@@ -1334,7 +1557,8 @@ impl EditStore {
             let action = match (extend, clicks) {
                 (true, _) => Action::Drag { x, y },
                 (false, 0 | 1) => Action::Click { x, y },
-                (false, 2) => Action::DoubleClick { x, y },
+                // A secure editor's word is its text (see the arrows).
+                (false, 2) if s.secret.is_none() => Action::DoubleClick { x, y },
                 (false, _) => Action::TripleClick { x, y },
             };
             s.editor.action(fs, action);
@@ -1381,6 +1605,12 @@ impl EditStore {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };
+        // No input method composes into a secure editor: the window has
+        // it off while one has the keyboard, and a host that sends a
+        // composition anyway is not drawn one.
+        if s.secret.is_some() {
+            return false;
+        }
         let (text, cursor) = composed(text, cursor, s.multiline);
         let text = &*text;
         if text.is_empty() {

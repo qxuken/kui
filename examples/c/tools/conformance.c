@@ -98,7 +98,7 @@ static const char *role_name(uint32_t role) {
         "tabList", "link", "heading", "list", "listItem", "image", "dialog",
         "group", "window", "titleBar", "staticText", "textInput",
         "multilineTextInput", "scrollView", "line",
-        "radioGroup", "menu", "menuItem", "terminal",
+        "radioGroup", "menu", "menuItem", "terminal", "passwordInput",
     };
     return role < sizeof names / sizeof *names ? names[role] : "?";
 }

@@ -3,7 +3,9 @@
 //! resolves assistive-technology requests the way pointer input would, and
 //! reports missing names as warnings.
 
-use kui_core::diag::{CONTROL_WITHOUT_NAME, IMAGE_WITHOUT_LABEL, SLIDER_VALUE_OUT_OF_RANGE};
+use kui_core::diag::{
+    CONTROL_WITHOUT_NAME, DUPLICATE_KEY, IMAGE_WITHOUT_LABEL, SLIDER_VALUE_OUT_OF_RANGE,
+};
 use kui_core::testing::codes;
 use kui_core::{
     AccessAction, AccessRequest, AccessTree, Core, EditOptions, InputEvent, Key, NodeSpec, Role,
@@ -1040,4 +1042,63 @@ fn a_hovered_control_keeps_its_name_and_its_hint_is_the_description() {
             "pointer over {key}: the hint is no text of its own"
         );
     }
+}
+
+/// Two nodes under one key — two lists' first rows opened with
+/// `with_indexed(0)` in one card, as Carnet's Settings did (F165) — are one
+/// node to the access tree: AccessKit panics on a child listed twice. The
+/// first in tree order is kept; the second is left out the way plain
+/// structure is, what it holds under its nearest semantic ancestor, and a
+/// presentational one with what it holds. The `duplicate-key` warning still
+/// says so.
+#[test]
+fn a_key_two_nodes_share_is_one_access_node() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.with_keyed(
+        "card",
+        NodeSpec::column().role(Role::Group).label("Sync"),
+        |ui| {
+            for (list, name) in [("devices", "Desk"), ("passkeys", "Passkey from Safari")] {
+                ui.with_indexed(0, NodeSpec::column(), |ui| {
+                    ui.text(name, TextStyle::new(12.0));
+                    ui.text_in_keyed(
+                        &format!("remove-{list}"),
+                        NodeSpec::row().on_click(list),
+                        "Remove",
+                        TextStyle::new(12.0),
+                    );
+                });
+            }
+            // A button's words are its name, not nodes of their own.
+            for word in ["Show", "Hide"] {
+                ui.with_indexed(1, NodeSpec::row().on_click(word), |ui| {
+                    ui.text(word, TextStyle::new(12.0));
+                });
+            }
+        },
+    );
+    ui.finish();
+    let ws = core.take_warnings();
+    assert!(codes(&ws).contains(&DUPLICATE_KEY), "{ws:?}");
+
+    let tree = core.access_tree();
+    let mut keys: Vec<u64> = tree.nodes.iter().map(|n| n.key.0).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    assert_eq!(keys.len(), tree.nodes.len(), "each key once");
+    let under: Vec<(Role, Option<&str>)> = tree
+        .children(Key::ROOT.str("card"))
+        .map(|n| (n.role, n.name.as_deref()))
+        .collect();
+    assert_eq!(
+        under,
+        [
+            (Role::StaticText, Some("Desk")),
+            (Role::Button, Some("Remove")),
+            (Role::Button, Some("Remove")),
+            (Role::Button, Some("Show")),
+        ],
+        "the second name left out and its button kept; the second button gone with its words"
+    );
 }

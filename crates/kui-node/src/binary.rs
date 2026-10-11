@@ -1134,6 +1134,8 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                 autofocus: flags & 2 != 0,
                 // Bit 8: `keepTab`, a field's Tab the app's (backlog F146).
                 keep_tab: flags & 8 != 0,
+                // Bit 16: `secure`, a password field (backlog F167).
+                secure: flags & 16 != 0,
                 placeholder: placeholder.map(str::to_string),
                 wrap: p.wrap,
                 ..Default::default()

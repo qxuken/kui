@@ -387,7 +387,7 @@ pub extern "C" fn kui_slider(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSp
 /// An editable text node keyed by `label`, seeded with `initial` the
 /// first time it is seen; the core keeps its buffer, caret and undo
 /// history across frames. `flags` are `KUI_EDIT_MULTILINE`,
-/// `KUI_EDIT_AUTOFOCUS`, `KUI_EDIT_WRAP` and `KUI_EDIT_KEEP_TAB`; `spec` (required) is the
+/// `KUI_EDIT_AUTOFOCUS`, `KUI_EDIT_WRAP`, `KUI_EDIT_KEEP_TAB` and `KUI_EDIT_SECURE`; `spec` (required) is the
 /// box around it. Read the text with [`kui_edit_text`]; `changed` and
 /// `submit` events carry the key. Returns the key, or 0 on failure.
 #[unsafe(no_mangle)]
@@ -445,6 +445,7 @@ fn text_edit(
             autofocus: flags & KUI_EDIT_AUTOFOCUS != 0,
             wrap: flags & KUI_EDIT_WRAP != 0,
             keep_tab: flags & KUI_EDIT_KEEP_TAB != 0,
+            secure: flags & KUI_EDIT_SECURE != 0,
             placeholder: opt_str(placeholder).map(|p| p.into_owned()),
             ..Default::default()
         };

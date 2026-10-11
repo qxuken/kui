@@ -113,6 +113,12 @@ pub enum Role {
     /// A cell grid (`crate::cells`): the screen of a terminal, its rows
     /// joined as the value. Derived from the node.
     Terminal,
+    /// A password field: an editor declared `secure`
+    /// (`EditOptions::secure`, backlog F167), its value the bullets it
+    /// draws and never its text. Derived from the node; a custom editor
+    /// that masks its own text can declare it in Rust, as
+    /// [`Role::TextInput`].
+    PasswordInput,
 }
 
 impl Role {
@@ -138,6 +144,7 @@ impl Role {
             Role::Menu => "menu",
             Role::MenuItem => "menuItem",
             Role::Terminal => "terminal",
+            Role::PasswordInput => "passwordInput",
             Role::Window => "window",
             Role::TitleBar => "titleBar",
             Role::StaticText => "staticText",
@@ -152,7 +159,7 @@ impl Role {
         Role::ALL.iter().copied().find(|r| r.name() == name)
     }
 
-    pub const ALL: [Role; 26] = [
+    pub const ALL: [Role; 27] = [
         Role::None,
         Role::Button,
         Role::Checkbox,
@@ -179,6 +186,7 @@ impl Role {
         Role::Menu,
         Role::MenuItem,
         Role::Terminal,
+        Role::PasswordInput,
     ];
 
     /// A control needs a name; one without is reported as a warning.
@@ -195,12 +203,16 @@ impl Role {
                 | Role::Link
                 | Role::TextInput
                 | Role::MultilineTextInput
+                | Role::PasswordInput
         )
     }
 
     /// An editor role: carries text runs, a caret and a selection.
     pub fn is_editor(self) -> bool {
-        matches!(self, Role::TextInput | Role::MultilineTextInput)
+        matches!(
+            self,
+            Role::TextInput | Role::MultilineTextInput | Role::PasswordInput
+        )
     }
 
     /// Roles whose name, absent a `label`, is the text inside them (ARIA's
@@ -712,7 +724,8 @@ impl AccessNode {
 }
 
 /// The semantic nodes of a finished frame, in tree order (a parent always
-/// precedes its descendants; the root comes first).
+/// precedes its descendants; the root comes first), each key once: of two
+/// nodes a frame gave one key, the first.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AccessTree {
     pub nodes: Vec<AccessNode>,
@@ -863,9 +876,12 @@ pub(crate) fn semantic(
     let spec = &tree.specs[i];
     if role == Role::TextInput
         && let NodeContent::Edit(key) = tree.content[i]
-        && edit.is_multiline(key)
     {
-        role = Role::MultilineTextInput;
+        if edit.is_secure(key) {
+            role = Role::PasswordInput;
+        } else if edit.is_multiline(key) {
+            role = Role::MultilineTextInput;
+        }
     }
     // Window buttons read as one control; the drag strip keeps its
     // children (the buttons sit inside it). A custom editor's lines are
@@ -1174,7 +1190,7 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
                 let pad = spec.layout.padding;
                 f(&mut h, tree.pos[i].x + pad.l);
                 f(&mut h, tree.pos[i].y + pad.t);
-                src.edit.text(edit_key).hash(&mut h);
+                src.edit.shown_text(edit_key).hash(&mut h);
                 src.edit.placeholder(edit_key).hash(&mut h);
                 src.edit.caret_and_selection(edit_key).hash(&mut h);
                 src.edit.selection_cursors(edit_key).hash(&mut h);
@@ -1221,6 +1237,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
     // Per tree node: the key of the nearest semantic ancestor (for elided
     // nodes, inherited from the parent).
     let mut parents: Vec<Option<Key>> = vec![None; tree.len()];
+    let mut emitted: rustc_hash::FxHashSet<Key> = rustc_hash::FxHashSet::default();
     let mut skip_until = 0usize;
     let mut i = 0usize;
     while i < tree.len() {
@@ -1245,6 +1262,20 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             continue;
         }
         let key = tree.keys[i];
+        // A key is the node's id to the platform, so the tree holds one
+        // node under it: the first in tree order. A second (two siblings
+        // given one label, an index key that is also an unkeyed
+        // sibling's — the `duplicate-key` warning) is left out the way
+        // plain structure is, its descendants under its nearest semantic
+        // ancestor; AccessKit panics on a child listed twice (F165).
+        if !emitted.insert(key) {
+            parents[i] = inherited;
+            if sem.presentational {
+                skip_until = tree.subtree_end(i);
+            }
+            i += 1;
+            continue;
+        }
         parents[i] = Some(key);
         let spec: &NodeSpec = &tree.specs[i];
         let rect = node_rect(tree, src, i);
@@ -1298,7 +1329,8 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
         if let NodeContent::Edit(edit_key) = tree.content[i] {
             let pad = spec.layout.padding;
             let origin = Vec2::new(tree.pos[i].x + pad.l, tree.pos[i].y + pad.t);
-            node.value = src.edit.text(edit_key);
+            // A secure editor's is the bullets it draws (backlog F167).
+            node.value = src.edit.shown_text(edit_key);
             // A placeholder is what the field is for, said where the field
             // says nothing of its own (backlog F149).
             if node.description.is_none() {

@@ -1314,12 +1314,42 @@ answers a paste with `paste(text, {concealed, transient})`.
 [`text` events](props.md#events) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
+### How do I make a password field?
+
+Declare `secure` on the editor (`<edit secure>`, Lua `secure = true`,
+C `KUI_EDIT_SECURE`, Odin `.Secure`, Rust `EditOptions { secure: true,
+.. }`). The field draws a bullet (•) for each character, refuses a copy
+and a cut (a paste goes in), lets no input method compose into it,
+keeps no undo history, and reads to a screen reader as a password field
+whose value is the bullets. While it has the keyboard the window turns
+on macOS's Secure Keyboard Entry and the input method off, as
+`secureInput` and `imeOff` would — nothing to declare on the root, and
+nothing to undo when focus leaves it. Read the password with
+`editText(key)` as from any editor; never mirror it into your model
+except where you need it.
+
+A "show password" eye is the same editor declared with `secure` off
+while the eye is open: the text is drawn again, the caret where it was,
+and declared on again it is masked, its history gone with it. The
+editor keeps its key and its draft across the toggle, so there is no
+second field to keep in step.
+
+Keeping the field out of a screenshot or a screen recording is not a
+field's to ask: macOS can only leave a whole window out of capture
+(`NSWindow.sharingType`), and Windows the same
+(`SetWindowDisplayAffinity`). kui does not offer that switch yet
+(backlog F168).
+
+[`edit` element](props.md#elements) ·
+[alpha.56](../CHANGELOG.md#010-alpha56-unreleased)
+
 ### How do I protect a password as it is typed?
 
 Declare `secureInput` on the root (Rust `ui.secure_input(true)`, Lua
 `secure_input = true` on the root table, C `kui_set_secure_input`) on
 every frame the prompt is up — a terminal whose pty turned echo off, a
-password field of your own. The runner turns on macOS's Secure Keyboard
+password field drawn by your own code (a `secure` editor asks for it by
+itself while it has the keyboard). The runner turns on macOS's Secure Keyboard
 Entry while that window has the keyboard, so no other process can read
 the keys, and turns it off when the window loses the keyboard, closes,
 or the frame stops declaring it; you never call the platform and never

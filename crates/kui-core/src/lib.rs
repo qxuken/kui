@@ -176,7 +176,7 @@ pub use dialog::{FileDialog, FileDialogMode, FileFilter};
 pub use display::{
     Clip, ClipId, DisplayList, FragmentDraw, FragmentImage, NO_CLIP, NO_CLIP_ID, Quad, QuadKind,
 };
-pub use edit::{EditOptions, MAX_UNDECLARED_EDITS};
+pub use edit::{EditOptions, MAX_UNDECLARED_EDITS, SECURE_BULLET};
 pub use enter::Enter;
 pub use env::{Appearance, Assistive, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
 pub use event::{

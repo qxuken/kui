@@ -329,3 +329,164 @@ fn the_access_tree_reads_one_line_where_it_is_drawn() {
     let line = node.runs[1].rect;
     assert_eq!(line.y, 0.0, "beside the letter, on the first row");
 }
+
+/// A one-letter word as the initial — "A calm …", "I think …" — and the
+/// space after it.
+const WORD: &str = "A calm notes app that keeps what you write, syncs it to \
+                    every device you own and reads it back to you as you \
+                    wrote it, line after line after line.";
+
+/// The space after an initial that is a word of its own is collapsed, as
+/// CSS Inline Layout collapses the white space after a dropped initial
+/// (§ 7.8.1): the first row beside the letter starts its word where the
+/// rows below it start theirs, not a space further in. The space keeps
+/// its byte — its caret is at the row's start, where the caret after it
+/// is — and a copy still reads it (backlog F166, from Carnet's review).
+#[test]
+fn the_space_after_a_one_letter_initial_is_collapsed() {
+    let mut core = Core::new();
+    let key = frame(&mut core, WORD, style(3), WIDTH);
+    let o = core.caret_rect(key, 0).expect("drawn");
+    let before = core.caret_rect(key, 1).expect("drawn");
+    let after = core.caret_rect(key, 2).expect("drawn");
+    let rows = rows(&mut core, key, WORD);
+    assert!(rows.len() >= 5, "{rows:?}");
+    let indent = rows[1].1;
+    assert!(indent > 10.0, "the second row is moved in: {rows:?}");
+    // "calm" starts where "that" and the rest of the rows beside start.
+    assert!(
+        (after.x - o.x - indent).abs() < 0.5,
+        "the first word at {} where the rows below start at {indent}: {rows:?}",
+        after.x - o.x
+    );
+    assert!(
+        (rows[2].1 - indent).abs() < 0.5,
+        "every row beside at one x: {rows:?}"
+    );
+    // The space is in the buffer, at no width: its caret, on the first
+    // row, is where the caret after it is.
+    assert_eq!(before.y, after.y, "both on the first row");
+    assert_eq!(before.h, LH, "beside the letter, not in it");
+    assert!((after.x - before.x).abs() < 0.5, "{before:?} {after:?}");
+    // Without the space the first row starts at the same x: the space
+    // takes nothing.
+    let glued = WORD.replacen(' ', "", 1);
+    let key = frame(&mut core, &glued, style(3), WIDTH);
+    let g = core.caret_rect(key, 1).expect("drawn");
+    let go = core.caret_rect(key, 0).expect("drawn");
+    assert!(
+        (g.x - go.x - (after.x - o.x)).abs() < 0.5,
+        "{g:?} {after:?}"
+    );
+    // A tab, or a run of spaces, collapses as one space does; a no-break
+    // space is kept, as CSS keeps it.
+    for (lead, collapses) in [("\t", true), ("   ", true), ("\u{a0}", false)] {
+        let text = WORD.replacen(' ', lead, 1);
+        let key = frame(&mut core, &text, style(3), WIDTH);
+        let o = core.caret_rect(key, 0).expect("drawn");
+        let word = core.caret_rect(key, 1 + lead.len()).expect("drawn");
+        let at = word.x - o.x;
+        assert_eq!(
+            (at - indent).abs() < 0.5,
+            collapses,
+            "{lead:?}: the first word at {at}, the rows beside at {indent}"
+        );
+    }
+}
+
+/// Over the collapsed space a hit, a selection and a background read
+/// its byte where it is drawn: at the start of the first row, with no
+/// width. A point in the gap after the letter is the caret after the
+/// letter; a point on the first word's left half is that word's start.
+#[test]
+fn a_hit_a_selection_and_a_background_over_the_collapsed_space() {
+    let mut core = Core::new();
+    let key = frame(&mut core, WORD, style(3), WIDTH);
+    let o = core.caret_rect(key, 0).expect("drawn");
+    let after = core.caret_rect(key, 2).expect("drawn");
+    let y = o.y + LH / 2.0;
+    // The gap's right half, before the first word: the letter's end.
+    let hit = core.text_hit(key, Vec2::new(after.x - 1.0, y));
+    assert_eq!(hit.map(|h| h.byte), Some(1), "{after:?}");
+    // The first word's first letter, its left half: the word's start.
+    let hit = core.text_hit(key, Vec2::new(after.x + 1.0, y));
+    assert_eq!(hit.map(|h| h.byte), Some(2), "{after:?}");
+
+    // A selection over "A c" copies the space, and paints nothing in the
+    // gap between the letter and the word.
+    let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    ui.leaf(NodeSpec::column().height(10.0));
+    let mut para = None;
+    let scope = ui.with_keyed("scope", NodeSpec::column().selectable(), |ui| {
+        para = Some(ui.text_in_keyed(
+            "para",
+            NodeSpec::row().width(Sizing::Fixed(WIDTH)),
+            WORD,
+            style(3),
+        ));
+    });
+    ui.finish();
+    let para = para.expect("built").index(0);
+    core.set_selection(kui_core::Selection::new(
+        scope,
+        kui_core::Endpoint::new(para, 0),
+        kui_core::Endpoint::new(para, 3),
+    ));
+    assert_eq!(core.selection_text().as_deref(), Some("A c"));
+    let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    ui.leaf(NodeSpec::column().height(10.0));
+    ui.with_keyed("scope", NodeSpec::column().selectable(), |ui| {
+        ui.text_in_keyed(
+            "para",
+            NodeSpec::row().width(Sizing::Fixed(WIDTH)),
+            WORD,
+            style(3),
+        );
+    });
+    ui.finish();
+    let o = core.caret_rect(para, 0).expect("drawn");
+    let after = core.caret_rect(para, 2).expect("drawn");
+    let tint = core.theme().selection;
+    let (dl, _) = core.output();
+    let picked: Vec<Rect> = dl
+        .quads
+        .iter()
+        .filter(|q| q.color == tint && q.kind == QuadKind::Solid)
+        .map(|q| q.rect)
+        .collect();
+    assert!(!picked.is_empty(), "the selection is painted");
+    for r in &picked {
+        let letter = r.x < o.x + 0.5 && r.h > LH;
+        let beside = r.x >= after.x - 0.5 && r.y == o.y;
+        assert!(
+            letter || beside || r.w < 0.5,
+            "a selection rect in the gap: {r:?}, the letter at {o:?}, the word at {after:?}: {picked:?}"
+        );
+    }
+
+    // A background on the space alone is no wider than it is.
+    let wash = Color::hex(0xffe08aff);
+    let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("rich", NodeSpec::row().width(Sizing::Fixed(WIDTH)), |ui| {
+        ui.rich_text(
+            &[
+                Span::new("A"),
+                Span::new(" ").bg(wash),
+                Span::new(&WORD[2..]),
+            ],
+            style(3),
+        );
+    });
+    ui.finish();
+    let (dl, _) = core.output();
+    let washes: Vec<Rect> = dl
+        .quads
+        .iter()
+        .filter(|q| q.color == wash && q.kind == QuadKind::Solid)
+        .map(|q| q.rect)
+        .collect();
+    assert!(washes.iter().all(|w| w.w < 0.5), "{washes:?}");
+}

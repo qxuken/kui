@@ -1380,6 +1380,46 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// `KUI_EDIT_SECURE` is a password field (backlog F167): the text
+    /// read back whole, the access node a password input whose value is
+    /// the bullets, no selection text to copy, and secure input and the
+    /// IME off asked while it is focused.
+    #[test]
+    fn a_secure_editor_crosses_as_a_password_field() {
+        let ctx = kui_ctx_new();
+        let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+        spec.label = ks("Password");
+        kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+        let key = kui_text_edit(
+            ctx,
+            ks("pw"),
+            ks("hunter2"),
+            std::ptr::null(),
+            KUI_EDIT_AUTOFOCUS | KUI_EDIT_SECURE,
+            &spec,
+        );
+        kui_frame_finish(ctx);
+        let mut text = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(kui_edit_text(ctx, key, &mut text));
+        assert_eq!(kstr(text).as_ref(), "hunter2");
+        let mut nodes = [unsafe { std::mem::zeroed::<KuiAccessNode>() }; 4];
+        assert_eq!(kui_access_tree(ctx, nodes.as_mut_ptr(), nodes.len()), 2);
+        let ed = nodes[1];
+        assert_eq!(ed.role, role_code(kui_core::Role::PasswordInput));
+        assert_eq!(kstr(ed.value).as_ref(), "\u{2022}".repeat(7));
+        assert!(kui_secure_input_get(ctx) && kui_ime_off_get(ctx));
+        kui_input_key(ctx, 12, 0); // KUI_KEY_SELECT_ALL
+        let mut sel = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(!kui_selection_text(ctx, &mut sel), "nothing to copy");
+        kui_ctx_free(ctx);
+    }
+
     /// An editor's runs cross as rows with borrowed arrays, and a text
     /// request addresses them: select "world" by run positions, type
     /// over it, read the text back.

@@ -13,7 +13,9 @@
 //! where they were (`text::paragraph_starts` finds every line by its
 //! length), and the buffer stays the one a caret, a hit, a selection, a
 //! copy and the access tree read: each reads a run where
-//! [`Initial::shift`] moves it.
+//! [`Initial::shift`] moves it. The spaces after an initial that is a
+//! word of its own are collapsed, as CSS collapses them (backlog F166),
+//! so the first row beside the letter starts where the others do.
 
 use cosmic_text::{AttrsList, Buffer, BufferLine, FontSystem, LineEnding};
 
@@ -107,6 +109,43 @@ fn cap_ratio(
     (m.cap_height > 0.0 && m.units_per_em > 0).then(|| m.cap_height / m.units_per_em as f32)
 }
 
+/// The size the spaces and tabs straight after an initial are shaped
+/// at, px: small enough that they take no room a pixel can show, as CSS
+/// collapses them.
+const COLLAPSED: f32 = 1.0 / 1024.0;
+
+/// Collapses the spaces and tabs `line` — the text after an initial —
+/// opens with: shapes them at [`COLLAPSED`], so they are drawn with no
+/// width and the first row beside the letter starts where the rows below
+/// it do. CSS Inline Layout's initial letters collapse the collapsible
+/// white space between the initial and what follows it (§ 7.8.1), as
+/// print lets the drop's gap stand for the word space: an "A" or an "I"
+/// that is a word of its own otherwise moves its first row in by a space
+/// more than the others. The bytes stay where they are, so a caret, a
+/// hit, a selection and a copy still read them — at the row's start,
+/// before the next letter. A no-break space is kept, as CSS keeps it.
+/// They keep the text's line height, `line_height`: a row is as tall as
+/// the tallest of the line heights its glyphs were given, and the
+/// buffer's own only where none was.
+fn collapse_lead(line: &mut BufferLine, line_height: f32) {
+    let n = line
+        .text()
+        .bytes()
+        .take_while(|b| matches!(b, b' ' | b'\t'))
+        .count();
+    if n == 0 {
+        return;
+    }
+    let m = cosmic_text::Metrics::new(COLLAPSED, line_height);
+    let mut list = line.attrs_list().clone();
+    for i in 0..n {
+        let attrs = list.get_span(i).metrics(m);
+        let attrs = cosmic_text::AttrsOwned::new(&attrs);
+        list.add_span(i..i + 1, &attrs.as_attrs());
+    }
+    line.set_attrs_list(list);
+}
+
 /// Lays line `i` of `buffer` out again at `width`, as the buffer would
 /// at its own: the rows it makes.
 fn lay(buffer: &mut Buffer, fs: &mut FontSystem, i: usize, width: Option<f32>) -> usize {
@@ -147,7 +186,8 @@ impl Initial {
         let size = (cap / own).max(1.0);
         let first = &mut buffer.lines[0];
         if k < first.text().len() {
-            let rest = first.split_off(k);
+            let mut rest = first.split_off(k);
+            collapse_lead(&mut rest, metrics.line_height);
             buffer.lines.insert(1, rest);
         }
         // The letter at its size, its line as tall as whole pixels.

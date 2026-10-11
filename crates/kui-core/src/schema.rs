@@ -329,6 +329,7 @@ pub const DERIVED_ONLY: &[(&str, &str)] = &[
     ("titleBar", "a `windowDrag` node"),
     ("staticText", "a text node"),
     ("scrollView", "a `scrollX` / `scrollY` node"),
+    ("passwordInput", "an `edit` declared `secure`"),
 ];
 
 /// The role at wire index `i` — `ROLES`' order is the protocol, so this
@@ -1583,7 +1584,7 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`secure_input = true` (root table)",
         c: "`kui_set_secure_input`",
         odin: "`kui.set_secure_input`",
-        doc: "Declares that this frame wants the keyboard to this window kept from every other process while the window has it — macOS's Secure Keyboard Entry, what a terminal turns on at a password prompt (backlog F85). Frame state the way `alwaysOnTop` is, default false: declare it on every frame the prompt is up, and the frame that stops is what turns it off, so nothing has to remember to undo it. The runner owns the platform call and its balance: `EnableSecureEventInput` is process-wide and counted, and the runner holds one count while a window whose frame asked has the keyboard, giving it back when that window loses the keyboard, closes or stops asking, and at exit — Apple's rule, since while it is on no other process can read the keyboard at all (a launcher's hotkey, a text expander, an accessibility tool). Nothing on Windows or Linux, which have no such switch. A C host with its own loop reads the ask with `kui_secure_input_get` and makes the call itself.",
+        doc: "Declares that this frame wants the keyboard to this window kept from every other process while the window has it — macOS's Secure Keyboard Entry, what a terminal turns on at a password prompt (backlog F85). Frame state the way `alwaysOnTop` is, default false: declare it on every frame the prompt is up, and the frame that stops is what turns it off, so nothing has to remember to undo it. The runner owns the platform call and its balance: `EnableSecureEventInput` is process-wide and counted, and the runner holds one count while a window whose frame asked has the keyboard, giving it back when that window loses the keyboard, closes or stops asking, and at exit — Apple's rule, since while it is on no other process can read the keyboard at all (a launcher's hotkey, a text expander, an accessibility tool). Nothing on Windows or Linux, which have no such switch. A focused `secure` editor asks for it too, on any frame it has the keyboard (backlog F167), and the read-back says so. A C host with its own loop reads the ask with `kui_secure_input_get` and makes the call itself.",
     },
     CustomProp {
         name: "optionAsAlt",
@@ -1605,7 +1606,7 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`ime_off = true` (root table)",
         c: "`kui_set_ime_off`",
         odin: "`kui.set_ime_off`",
-        doc: "Declares that this window takes the keyboard as keys, with the platform's input method off (backlog F125): no composition and no candidate window, and on a Mac no dead key waiting for the next and no press-and-hold — an input method too, so a held letter repeats instead of opening the accent picker, whatever the user's `ApplePressAndHoldEnabled` says. A `key` event's `text` is still the layout's character; what goes is everything the OS would have composed from it. What a modal editor's normal mode wants — `jjjj` is how one moves, and an IME left on eats the keymap — while its insert mode stops declaring it and gets accents, dead keys and the IME back. Frame state the way `alwaysOnTop` is, default false: declare it on every frame the mode wants it, and the frame that stops gives the input method back; the runner applies it to the window on change, never per frame, and a composition in progress when it turns off ends without a commit, as an empty `preedit`. The window's, not a node's: a stock editor focused under it composes nothing either. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. On Windows and Linux the window's IME is disabled the same way, and only that: their dead keys are the layout's, and still compose. A C host with its own loop reads the ask with `kui_ime_off_get` and applies it itself.",
+        doc: "Declares that this window takes the keyboard as keys, with the platform's input method off (backlog F125): no composition and no candidate window, and on a Mac no dead key waiting for the next and no press-and-hold — an input method too, so a held letter repeats instead of opening the accent picker, whatever the user's `ApplePressAndHoldEnabled` says. A `key` event's `text` is still the layout's character; what goes is everything the OS would have composed from it. What a modal editor's normal mode wants — `jjjj` is how one moves, and an IME left on eats the keymap — while its insert mode stops declaring it and gets accents, dead keys and the IME back. Frame state the way `alwaysOnTop` is, default false: declare it on every frame the mode wants it, and the frame that stops gives the input method back; the runner applies it to the window on change, never per frame, and a composition in progress when it turns off ends without a commit, as an empty `preedit`. The window's, not a node's: a stock editor focused under it composes nothing either. A popup's keys arrive through its owner, so the owner's declaration is the one they are read under. On Windows and Linux the window's IME is disabled the same way, and only that: their dead keys are the layout's, and still compose. A focused `secure` editor asks for it too, as a password field takes keys and not compositions (backlog F167), and the read-back says so. A C host with its own loop reads the ask with `kui_ime_off_get` and applies it itself.",
     },
     CustomProp {
         name: "windows",
@@ -2030,6 +2031,7 @@ pub const ELEMENTS: &[ElementDef] = &[
             "autofocus",
             "keepTab",
             "placeholder",
+            "secure",
         ],
         lua_own: &[
             "initial",
@@ -2037,14 +2039,15 @@ pub const ELEMENTS: &[ElementDef] = &[
             "autofocus",
             "keep_tab",
             "placeholder",
+            "secure",
         ],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<edit key initial multiline autofocus keepTab placeholder>`, `<input label initial>`",
-        lua: "`edit { key=, initial=, keep_tab=, placeholder=, … }`, `input { label=, initial= }`",
+        jsx: "`<edit key initial multiline autofocus keepTab placeholder secure>`, `<input label initial>`",
+        lua: "`edit { key=, initial=, keep_tab=, placeholder=, secure=, … }`, `input { label=, initial= }`",
         c: "`kui_text_edit`, `kui_text_edit_placeholder`, `kui_text_input`",
         odin: "`kui.text_edit`, `kui.text_input`",
-        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. The one exception is a field with `wrap` declared (`wrap=\"word\"` or `\"glyph\"`): it folds to its width the way a document does and keeps a field\'s keyboard — Enter still submits, a newline is still never admitted, the caret still opens at the end — so a rename field breaks where the label it renames breaks, and with `width=\"fit\"` plus `maxWidth` it sizes to its wrapped draft on the keystroke frame. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time. A focused editor keeps the keys it acts on — the editing keys, what it types, the clipboard and undo chords — and a chord it does not (⌘N, Ctrl+K) goes to the nearest `onKey` sink above it, as a chord bubbles from a control (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, amended 2026-10-09). `keepTab` makes a field's Tab the app's: Tab and Shift-Tab do not walk the focus ring from it, and the press goes to the sink above it the same way, so a list or an outline built from fields indents on Tab; a `multiline` editor keeps Tab for indentation either way. An arrow, Backspace or Delete that meets the edge of the text emits `boundary` (see the events). `placeholder` is what an empty editor shows where its text would be, in the theme's `faint` — never part of the value, gone with the first character typed or composed, and read as the field's accessible description when it declares none.",
+        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. The one exception is a field with `wrap` declared (`wrap=\"word\"` or `\"glyph\"`): it folds to its width the way a document does and keeps a field\'s keyboard — Enter still submits, a newline is still never admitted, the caret still opens at the end — so a rename field breaks where the label it renames breaks, and with `width=\"fit\"` plus `maxWidth` it sizes to its wrapped draft on the keystroke frame. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time. A focused editor keeps the keys it acts on — the editing keys, what it types, the clipboard and undo chords — and a chord it does not (⌘N, Ctrl+K) goes to the nearest `onKey` sink above it, as a chord bubbles from a control (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, amended 2026-10-09). `keepTab` makes a field's Tab the app's: Tab and Shift-Tab do not walk the focus ring from it, and the press goes to the sink above it the same way, so a list or an outline built from fields indents on Tab; a `multiline` editor keeps Tab for indentation either way. An arrow, Backspace or Delete that meets the edge of the text emits `boundary` (see the events). `placeholder` is what an empty editor shows where its text would be, in the theme's `faint` — never part of the value, gone with the first character typed or composed, and read as the field's accessible description when it declares none. `secure` makes it a password field (backlog F167): the text is drawn as a bullet (•) per grapheme and measured, hit and selected as the bullets; a copy or a cut from it is refused and a paste taken; no input method composes into it, and it keeps no undo history; the access tree reads it as a `passwordInput` whose value is the bullets; and while it has the keyboard the window asks for secure keyboard entry and the input method off, as `secureInput` and `imeOff` would. `editText` still reads the text. Declare it off on a later frame — an app's show-password toggle — and the same editor draws its text again, the caret where it was; on again, it masks it. A secure editor is a field: `multiline` is ignored, and the word keys and a double click take the whole text, as there are no words to show. In C it is `KUI_EDIT_SECURE`, in Odin `.Secure`.",
     },
     ElementDef {
         name: "select",
@@ -4264,7 +4267,8 @@ mod tests {
 
     /// One frame that derives each of `DERIVED_ONLY`'s roles: the root is
     /// the window, a `window_drag` row the title bar, a scrolling box the
-    /// scroll view, and the text inside it static text.
+    /// scroll view, the text inside it static text, and a `secure` editor
+    /// a password input.
     fn roles_one_frame_derives() -> Vec<Role> {
         let mut core = crate::Core::new();
         let mut ui = core.frame(crate::Size::new(200.0, 200.0), 1.0);
@@ -4276,6 +4280,15 @@ mod tests {
             NodeSpec::column().height(40.0).scroll_y(),
             "hello",
             TextStyle::new(12.0),
+        );
+        ui.text_edit(
+            "password",
+            "",
+            &crate::EditOptions {
+                secure: true,
+                ..Default::default()
+            },
+            NodeSpec::row().width(100.0).label("Password"),
         );
         ui.finish();
         core.access_tree().nodes.iter().map(|n| n.role).collect()

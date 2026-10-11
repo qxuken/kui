@@ -2290,6 +2290,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
                 autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
                 keep_tab: t.get::<Option<bool>>("keep_tab")?.unwrap_or(false),
+                secure: t.get::<Option<bool>>("secure")?.unwrap_or(false),
                 placeholder: t.get::<Option<String>>("placeholder")?,
                 wrap: p.wrap,
                 ..Default::default()
@@ -4864,6 +4865,40 @@ mod tests {
         assert_eq!(events[0].payload.get_str("tag"), Some("shell"));
         core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
         assert_eq!(core.focus(), focused, "focus stays in the field");
+    }
+
+    /// `secure` lowers: a password field, its text read back whole and
+    /// its access node a password input of bullets (backlog F167).
+    #[test]
+    fn secure_makes_an_edit_a_password_field() {
+        let mut ext = LuaExtension::from_source(
+            "secure",
+            r#"
+                function view(env)
+                  return column {
+                    edit { key = "pw", initial = "hunter2", autofocus = true, secure = true,
+                           label = "Password", width = 200 },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let warnings = core.take_warnings();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let node = core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some("Password"))
+            .expect("the field")
+            .clone();
+        assert_eq!(node.role, kui_core::Role::PasswordInput);
+        assert_eq!(node.value.as_deref(), Some("\u{2022}".repeat(7).as_str()));
+        assert_eq!(core.edit_text(node.key).as_deref(), Some("hunter2"));
+        assert!(core.secure_input() && core.ime_off());
     }
 
     /// Editors: autofocus, typing produces a "changed" event carrying the

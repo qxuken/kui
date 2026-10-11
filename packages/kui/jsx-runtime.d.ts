@@ -755,6 +755,15 @@ export interface EditProps extends TextProps, GeneratedSpecProps, CustomSpecProp
   /** What the editor shows, faint, while it is empty: never part of its
    *  text, and its accessible description when it declares none. */
   placeholder?: string;
+  /** A password field: the text is drawn as a bullet per grapheme, a copy
+   *  or a cut is refused (a paste is taken), no input method composes into
+   *  it and it keeps no undo history; assistive technology reads a password
+   *  field whose value is the bullets; while it has the keyboard the window
+   *  has secure keyboard entry on and the input method off. `editText`
+   *  still reads the text. Declared off on a later frame — a show-password
+   *  toggle — the same editor shows its text again. Always a field:
+   *  `multiline` is ignored. */
+  secure?: boolean;
 }
 
 type Component<P> = (props: P) => KuiNode;

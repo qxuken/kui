@@ -21,6 +21,103 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.56 (unreleased)
+
+**What breaks.**
+
+- Of two nodes a frame gives one key, the access tree keeps the first
+  and leaves the second out as it does plain structure, its descendants
+  under its nearest semantic ancestor (backlog F165).
+- A text whose initial letter is a word of its own ("A calm…", "I
+  think…") draws its first row beside the letter a space further left:
+  the spaces and tabs straight after the initial are collapsed (backlog
+  F166).
+- `EditOptions` has a field more, `secure`: a struct literal without
+  `..` stops compiling.
+- `Role` has a variant more, `Role::PasswordInput`, appended (`Role::ALL`
+  is 27 long): a `match` on `Role` without a wildcard stops compiling.
+  C's `KUI_ROLE_PASSWORD_INPUT` (27) and `KUI_EDIT_SECURE` are new
+  constants; no struct moved, and the ABI stays 32.
+
+A key is a node's id to the platform, and the access tree took every
+semantic node under its key, so two nodes sharing one were two nodes of
+one id, a child listed twice in AccessKit's update; its consumer panics
+on that (`TreeUpdate includes duplicate child`). Carnet's Settings →
+Sync opened the first row of each of its lists with `with_indexed(0)` in
+one card, so its devices and its passkeys each had a first row under
+the same key, their names two static texts under one id: with
+assistive technology on — VoiceOver, or any app that reads the
+accessibility tree — the app closed. The
+`duplicate-key` warning names the key as before, on the frames the
+checks run; the access tree no longer passes the clash on. The second
+node's descendants that have keys of their own are still read; a
+presentational one goes with what it holds, as its name is made of it.
+
+A drop cap whose letter is a word — "A calm notes app…", "I think…" —
+kept the space after the letter at the start of the first row beside
+it, so that row began a space further in than the rows below it, which
+start at the indent (backlog F166, from Carnet's review). CSS Inline
+Layout collapses the collapsible white space between an initial letter
+and what follows it (§ 7.8.1), for the alignment of the lines beside
+it, and print does the same: the drop's gap stands for the word space.
+The spaces and tabs straight after the initial are shaped at no width
+now; their bytes stay where they were, so a caret, a hit, a selection,
+a copy and the access tree still read them, at the start of that row
+with the caret after them. A no-break space is kept, as CSS keeps it.
+
+A password field was the app's to mask, keeping the text in its model
+and drawing bullets in its place, with the caret, the hits and the
+selection mapped across the two (backlog F167, from Carnet's review).
+An editor declared `secure` is one: see *Added*. Its text is the app's
+through `edit_text` as any editor's; what leaves it otherwise — the
+drawing, the access tree, the clipboard, the input method, the undo
+history — is the bullets or nothing.
+
+### Added
+
+- **A secure editor, a password field** (backlog F167):
+  `EditOptions::secure`, `<edit secure>` in JSX, `secure = true` in Lua,
+  `KUI_EDIT_SECURE` in C, `.Secure` in Odin's `Edit_Flags`. The text is
+  drawn as a bullet (•, `SECURE_BULLET`) per grapheme and measured, hit
+  and selected as the bullets; a copy or a cut of it is refused
+  (`copy_selection` answers `None`, the Edit menu's Cut and Copy stay
+  dim, `EditStore::can_copy` says so) and a paste is taken; no input
+  method composes into it and it keeps no undo history; the access tree
+  reads it as `Role::PasswordInput` (`passwordInput`, AccessKit's
+  `PasswordInput`: macOS's secure text field, UIA's `IsPassword`,
+  AT-SPI's password text) whose value and runs are the bullets. While it
+  has the focus, `Core::secure_input` and `Core::ime_off` answer true —
+  `Ctx.secureInput()` / `imeOff()`, `kui_secure_input_get` /
+  `kui_ime_off_get` — so the runner turns on macOS's Secure Keyboard
+  Entry (`EnableSecureEventInput`, as `NSSecureTextField` does while it
+  is first responder) and the input method off, and gives both back when
+  the focus leaves it, with nothing declared on the root. Declared
+  without `secure` on a later frame — a "show password" eye — the same
+  editor draws its text again, the caret on the same grapheme; declared
+  with it again, it masks it and drops the history. A secure editor is a
+  field: `multiline` is ignored, and the word keys and a double click
+  take the whole text, as there are no words to show.
+
+### Fixed
+
+- **A key two nodes share no longer crashes AccessKit** (backlog F165):
+  see *What breaks*.
+- **The space after a one-letter initial no longer moves its row in**
+  (backlog F166): see *What breaks*.
+
+**What you can delete.**
+
+- Nothing an app wrote for F165: it is a crash, not a workaround. The
+  `duplicate-key` warning is still the one to fix.
+- A first word of one letter set apart from the drop cap by hand — the
+  space after it taken out of the text, or swapped for one the app
+  sized — so its row would start where the rows below it do.
+- A password field masked by the app: the bullets drawn in the text's
+  place, the text kept beside them in the model, and the caret, the
+  hits, the selection and the clipboard mapped between the two; and a
+  root `secureInput` / `imeOff` declared while that field has the focus.
+  A show-password toggle is the `secure` row following the eye.
+
 ## 0.1.0-alpha.55 (2026-10-11)
 
 **What breaks.**

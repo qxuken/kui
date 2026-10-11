@@ -356,7 +356,9 @@ extern "C" {
  *
  * ABI 32 appends initial_letter to KuiTextStyle, which grows to 80 on
  * 64-bit: the first letter as a drop cap that many lines tall (backlog
- * F164). Recompile; zeroed, the text has none.
+ * F164). Recompile; zeroed, the text has none. Still 32 with
+ * KUI_EDIT_SECURE and KUI_ROLE_PASSWORD_INPUT, new constants (backlog
+ * F167): no struct moved.
  */
 #define KUI_ABI_VERSION 32u
 uint32_t kui_abi_version(void);
@@ -598,12 +600,20 @@ enum {
  * keyboard - Enter submits, no newline is admitted, the caret opens at
  * the end. A MULTILINE editor wraps either way. KEEP_TAB makes a field's
  * Tab the app's: the press goes to the on_key sink above it instead of
- * walking the focus ring (a MULTILINE editor keeps Tab either way). */
+ * walking the focus ring (a MULTILINE editor keeps Tab either way).
+ * SECURE is a password field: drawn as a bullet per grapheme, no copy or
+ * cut, no composition, no undo history, read as KUI_ROLE_PASSWORD_INPUT
+ * with the bullets as its value, and kui_secure_input_get and
+ * kui_ime_off_get answer true while it has focus. kui_edit_text still
+ * reads the text. Declared without SECURE on a later frame, the same
+ * editor shows its text again (a "show password" toggle); MULTILINE is
+ * ignored with it. */
 enum {
     KUI_EDIT_MULTILINE = 1u << 0,
     KUI_EDIT_AUTOFOCUS = 1u << 1,
     KUI_EDIT_WRAP = 1u << 2,
-    KUI_EDIT_KEEP_TAB = 1u << 3
+    KUI_EDIT_KEEP_TAB = 1u << 3,
+    KUI_EDIT_SECURE = 1u << 4
 };
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */
@@ -1384,6 +1394,8 @@ enum {
     KUI_ROLE_LINE,
     KUI_ROLE_RADIO_GROUP, KUI_ROLE_MENU, KUI_ROLE_MENU_ITEM,
     KUI_ROLE_TERMINAL, /* derived from kui_cells; its rows are the value */
+    KUI_ROLE_PASSWORD_INPUT, /* derived from a KUI_EDIT_SECURE editor; its
+                                value is the bullets it draws */
 };
 
 /* How a composite container arranges its items

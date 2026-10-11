@@ -1982,7 +1982,7 @@ ROLE_NAMES := [?]string {
 	"tabList", "link", "heading", "list", "listItem", "image", "dialog",
 	"group", "window", "titleBar", "staticText", "textInput",
 	"multilineTextInput", "scrollView", "line",
-	"radioGroup", "menu", "menuItem", "terminal",
+	"radioGroup", "menu", "menuItem", "terminal", "passwordInput",
 }
 
 role_name :: proc(role: kui.Role) -> string {

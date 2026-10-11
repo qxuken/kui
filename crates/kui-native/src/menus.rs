@@ -290,7 +290,8 @@ fn edit_state(core: &Core) -> macos_menu::EditState {
     let sink = core.chord_sink().is_some();
     let scope = core.selection().is_some() || core.cell_selection().is_some();
     let (undo, redo) = editor.map_or((false, false), |k| core.edit.history(k));
-    let selected = editor.is_some_and(|k| core.edit.has_selection(k));
+    // A secure editor's selection is not copied or cut (backlog F167).
+    let selected = editor.is_some_and(|k| core.edit.can_copy(k));
     macos_menu::EditState {
         undo: undo || sink,
         redo: redo || sink,

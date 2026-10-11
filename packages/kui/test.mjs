@@ -709,6 +709,33 @@ test('a chord and a keepTab field\'s Tab reach the sink above the editor', () =>
   assert.deepEqual(keys, [['tab', 'shell'], ['n', 'shell']], 'typing stays in the field');
 });
 
+// `secure` makes an editor a password field (backlog F167): read, drawn as
+// bullets, a password input to assistive technology, never copied, and
+// asking for secure input and the IME off while it is focused.
+test('secure makes an edit a password field', () => {
+  const view = (secure) =>
+    box({ pad: 8 }, [el('edit', { initial: 'hunter2', autofocus: true, secure, label: 'Password', width: 200 }, [], 'pw')]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view(true));
+  ctx.frame(320, 240, 1, view(true));
+  assert.deepEqual(ctx.warnings(), []);
+  assert.equal(ctx.editText('pw'), 'hunter2');
+  const field = ctx.accessTree().nodes.find((n) => n.name === 'Password');
+  assert.equal(field.role, 'passwordInput');
+  assert.equal(field.value, '\u2022'.repeat(7));
+  assert.equal(ctx.secureInput(), true, 'focused, it asks for secure input');
+  assert.equal(ctx.imeOff(), true, 'and the input method off');
+  ctx.key('selectall');
+  assert.equal(ctx.selectionText(), null, 'selected, and still nothing to copy');
+  // Shown: the same editor, its text.
+  ctx.frame(320, 240, 1, view(false));
+  ctx.frame(320, 240, 1, view(false));
+  const shown = ctx.accessTree().nodes.find((n) => n.name === 'Password');
+  assert.equal(shown.role, 'textInput');
+  assert.equal(shown.value, 'hunter2');
+  assert.equal(ctx.secureInput(), false);
+});
+
 // `bold` on a whole text and on an editor is a style row like
 // `strikethrough` (backlog F150): read, not warned about, and wider.
 test('bold is a style row on a text and an editor', () => {
