@@ -2957,9 +2957,9 @@ stroker, cosmic-text's assertion — and kui now keeps out of their way.
 
 The pass over the round since alpha.54 — F163's `overSiblings` and
 F164's drop cap — on the Windows machine and under WSL: CI's `check` in
-order on both, the windowed round on Windows, the bench guard, and
-twenty minutes of the `scenes` fuzz target with its editor scene's
-paragraph given a drop cap. Corrected before the tag: the C adapter's
+order on both, the windowed round on Windows, the bench guard, and two
+runs of the `scenes` fuzz target, sixteen minutes and fifteen, with its
+editor scene's paragraph given a drop cap. Corrected before the tag: the C adapter's
 `sampler` scene opened the drop cap's column with the spec `overSiblings`
 had just been given, so the scene painted differently from C than from
 the other four bindings — the two branches had each been checked alone,

@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.55 (unreleased)
+## 0.1.0-alpha.55 (2026-10-11)
 
 **What breaks.**
 
@@ -100,6 +100,45 @@ size is under a thousandth of the glyph.
 - A first letter drawn as a text node of its own over a hole in the
   paragraph, with the caret, the hits and the selection mapped across
   the two by hand.
+
+### Native verification
+
+The pre-tag pass on 2026-10-11, over the round since alpha.54 — F163's
+`overSiblings` and F164's drop cap — on the Windows machine and under
+WSL. The pass found two things to change. The C adapter's `sampler`
+scene opened the drop cap's column with the spec `overSiblings` had
+just been given, so C painted the scene differently from the other
+bindings: the two branches had each been checked alone, and the C
+round was the first to see them together. And fuzzing the drop cap
+found FZ8, its size handed to the font hinter.
+
+**Windows**, rustc 1.99.0. fmt and clippy are clean; `cargo test
+--workspace`: **2324 tests over 162 suites**, 0 failed. The C round
+passes (6 checks), and so do the **58 scenes** through C once the
+`sampler` scene's column was its own; Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1`, **228 of 229** with the one skip Windows
+has had before; `npm run gen` with line-ending changes only, the
+examples' typecheck, the headless round, the book's examples current.
+The windowed round: **all 55 examples**, Node's included, drew 120
+frames on each base and exited cleanly. The bench guard against the
+alpha.54 tag: **green on the first run**, the guarded rows −2.7% to
++3.8% (`frame_10k_rects_with_access_tree` the +3.8%); the unguarded
+`slot_1500_nodes_fresh` read +6.2% there and −7.4% on a run of its
+own, this desktop's noise.
+
+**Linux** (WSL, Ubuntu 24.04), on the release's code. fmt and clippy
+are clean; `cargo test --workspace`: **160 suites**, 0 failed; `cargo
+audit --deny warnings` clean over 451 crates. The C round (5 checks)
+and the **58 scenes** through C; `odin.nu gen --check` (the merge's
+note left it to this machine), `check`, `test` and `slots`; Node **229
+of 229** with the corpus required; gen with no diff, the typecheck, the
+headless round, the book's examples current. The `scenes` fuzz target,
+its editor scene's paragraph given a drop cap, crashed twice within
+sixteen minutes on FZ8; with the fix, fifteen minutes and 82 000 runs
+were clean. A timeout it reported takes 0.26 s outside the fuzzer's
+instrumentation, on the target before the drop cap as on this one. No
+Mac ran this round: nothing in it is platform-specific but the text,
+which the headless suites cover on both.
 
 ## 0.1.0-alpha.54 (2026-10-10)
 
