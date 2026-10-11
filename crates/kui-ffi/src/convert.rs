@@ -325,6 +325,9 @@ pub(crate) fn spec_of(
     if s.slide != 0 {
         spec = spec.slide();
     }
+    if s.over_siblings != 0 {
+        spec = spec.over_siblings();
+    }
     if s.hover_bg != 0 {
         spec = spec.hover_bg(color_of(s.hover_bg));
     }

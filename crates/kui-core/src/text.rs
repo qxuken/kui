@@ -304,7 +304,7 @@ pub(crate) struct CachedText {
     /// the entry's life, since no width changes it.
     min_content: Option<f32>,
     /// The first letter as an initial, while the text has one
-    /// (`TextStyle::initial_letter`, backlog F163): the buffer's first
+    /// (`TextStyle::initial_letter`, backlog F164): the buffer's first
     /// line, and where it and every other line's runs are drawn. Boxed:
     /// it holds a paragraph line, and few texts have one.
     initial: Option<Box<Initial>>,
@@ -1048,6 +1048,10 @@ pub(crate) struct Ancestry {
 /// answers nothing, which is also true of a point nobody can click.
 pub(crate) struct TextPlace {
     pub(crate) key: Key,
+    /// The node's index in the frame's tree: what puts an `over_siblings`
+    /// subtree's runs back in tree order after it painted late
+    /// (`TextSystem::order_places`).
+    node: u32,
     /// The keys above it, nearest first, as many as `depth` says.
     ancestors: [Key; PLACE_ANCESTORS],
     depth: u8,
@@ -3348,7 +3352,7 @@ fn build_templates(
             for run in entry.buffer.layout_runs().take(lines) {
                 // Where this run's templates start: moved together once
                 // built, when the run is drawn away from where the buffer
-                // lays it (an initial's, F163).
+                // lays it (an initial's, F164).
                 let (g0, d0) = (entry.glyphs.len(), entry.deco.len());
                 if decorated || painted {
                     let base = starts.get(run.line_i).copied().unwrap_or(0);
@@ -3919,9 +3923,11 @@ impl TextSystem {
     /// with the keys above it so a query by a `line` row or a wrapper
     /// finds the runs inside. Called beside [`Self::emit`] for the frame's
     /// own nodes and not for ghosts, which take no input.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn place(
         &mut self,
         key: Key,
+        node: usize,
         ancestry: &Ancestry,
         id: TextId,
         origin: Vec2,
@@ -3931,6 +3937,7 @@ impl TextSystem {
         let cache_key = self.frame[id.0 as usize].cache_key;
         self.places.push(TextPlace {
             key,
+            node: node as u32,
             ancestors: ancestry.keys,
             depth: ancestry.depth.min(PLACE_ANCESTORS) as u8,
             none_at: ancestry.none_at.map_or(u8::MAX, |n| n as u8),
@@ -3939,6 +3946,21 @@ impl TextSystem {
             scope,
             drawn,
         });
+    }
+
+    /// How many runs this frame has placed so far.
+    pub(crate) fn places_len(&self) -> usize {
+        self.places.len()
+    }
+
+    /// Puts the runs placed since `from` back in tree order. Emission
+    /// places them as it paints, and an `over_siblings` subtree paints after its
+    /// siblings; a selection reads them in reading order, which is the
+    /// tree's (`scope_runs`). Stable, so one node's runs keep theirs.
+    pub(crate) fn order_places(&mut self, from: usize) {
+        if let Some(tail) = self.places.get_mut(from..) {
+            tail.sort_by_key(|p| p.node);
+        }
     }
 
     /// The runs `key` names, in tree order, each with its entry and the

@@ -867,6 +867,11 @@ Spec :: struct {
 	bounce: f32,
 	// With transition: also ease the node's position (reordered siblings slide).
 	slide: bool,
+	// Paint this node and its subtree after its siblings, over any it overlaps: a
+	// tab that glides past its neighbour under `slide` passes over it whichever
+	// way it moved, so the selected tab declared `overSiblings` stays on top
+	// without the view tracking when it moves.
+	over_siblings: bool,
 	// CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?,
 	// rotate?, scale? }, …]`: the slots they name cycle through them over
 	// `transition` ms, for ever unless `iterations` says how many times, without
@@ -1039,6 +1044,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.easing = u32(s.easing)
 	out.bounce = s.bounce
 	out.slide = 1 if s.slide else 0
+	out.over_siblings = 1 if s.over_siblings else 0
 	out.keyframes, out.keyframes_len = ([^]c.Keyframe)(raw_data(s.keyframes)), uint(len(s.keyframes))
 	out.enter = transmute(c.Enter)s.enter
 	out.exit = transmute(c.Enter)s.exit
@@ -1098,7 +1104,7 @@ Text_Style :: struct {
 	// unless `maxLines` says otherwise.
 	ellipsis: bool,
 	// The first letter as an initial — a drop cap — this many lines tall
-	// (backlog F163), as CSS's `initial-letter`: its top level with the first
+	// (backlog F164), as CSS's `initial-letter`: its top level with the first
 	// line's capitals, its foot on the last one's baseline, the lines beside it
 	// moved in past it and the ones below at full width again.
 	initial_letter: int,

@@ -232,6 +232,9 @@ pub struct Tree {
     /// Whether any node eases its position (`slide`, or an `enter` with
     /// an offset) under a transition.
     pub any_slide: bool,
+    /// Whether any node declares `over_siblings`, so the in-flow walk keeps no
+    /// deferred subtrees on a frame that raises nothing.
+    pub any_over_siblings: bool,
     /// Whether any node declares `on_layout`, so the rect report can skip
     /// the walk.
     pub any_layout: bool,
@@ -359,6 +362,7 @@ impl Tree {
         self.any_modal = false;
         self.any_region = false;
         self.any_slide = false;
+        self.any_over_siblings = false;
         self.any_layout = false;
         self.any_context_menu = false;
         self.any_scroll_handler = false;
@@ -426,6 +430,7 @@ impl Tree {
         }
         self.any_opacity |= spec.style.opacity < 1.0;
         self.any_animate |= spec.animate;
+        self.any_over_siblings |= spec.over_siblings;
         if let Some(events) = spec.events.as_deref() {
             self.any_modal |= events.modal.is_some();
             self.any_layout |= events.on_layout.is_some();

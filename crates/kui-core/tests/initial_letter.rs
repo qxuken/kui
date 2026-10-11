@@ -1,4 +1,4 @@
-//! `TextStyle::initial_letter` (backlog F163, from Carnet's "First
+//! `TextStyle::initial_letter` (backlog F164, from Carnet's "First
 //! letter" setting): the first letter as a drop cap, as tall as a few
 //! lines, the lines beside it moved in past it and the ones below at full
 //! width again — one text still, so a caret, a hit, a selection's rects

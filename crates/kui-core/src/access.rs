@@ -1611,7 +1611,7 @@ fn empty_run(key: Key, n: usize, line: usize, rect: Rect, newline: bool) -> Acce
 ///
 /// `shift` is where a buffer line's runs are drawn from where the buffer
 /// lays them, physical px. A line that goes on into the next without a
-/// line ending — a paragraph a text's initial cut (backlog F163) — is
+/// line ending — a paragraph a text's initial cut (backlog F164) — is
 /// one source line with it: its rows end in no newline, and the next
 /// line's bytes count on from where it ends.
 pub(crate) fn runs_of_buffer(

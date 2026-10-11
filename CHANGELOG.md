@@ -25,16 +25,25 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.**
 
+- C ABI 31: `KuiSpec` appends `uint32_t over_siblings` after
+  `iterations`, and its 64-bit size goes from 744 to 752. Recompile
+  against the new `kui.h`. A zeroed field paints in tree order, as before.
 - `TextStyle` has a field more, `initial_letter`: a struct literal
   without `..` stops compiling.
 - `KuiTextStyle` appends `initial_letter` and grows to 80 bytes on
-  64-bit — ABI 31, `KUI_ABI_VERSION` 31. Recompile; zeroed, a text has
+  64-bit — ABI 32, `KUI_ABI_VERSION` 32. Recompile; zeroed, a text has
   no initial.
+
+Siblings that cross while they `slide` paint in tree order, so a tab moved
+left glided under the neighbour making room for it and a tab moved right
+glided over it (backlog F163, from kawoosh's tab strip). The new
+`overSiblings` row puts one sibling over the rest. Its place in `KuiSpec`
+is past the end of the old struct, which is the whole break.
 
 A drop cap — the first letter as tall as a few lines, the lines beside
 it moved in past it and the ones below at full width again — needed the
 text to lay some of its lines out narrower than others, which a
-cosmic-text paragraph cannot (backlog F163, from Carnet, whose "First
+cosmic-text paragraph cannot (backlog F164, from Carnet, whose "First
 letter: Large" could only make the letter large on its own line, which
 stood that line apart from the next). `TextStyle::initial_letter(n)` —
 `initialLetter` in JSX, `initial_letter` in Lua, `KuiTextStyle.initial_letter`
@@ -53,10 +62,23 @@ and a text that has one is never shaped in a long line's chunks.
 
 ### Added
 
-- **An initial letter, a drop cap** (backlog F163): see *What breaks*.
+- **`overSiblings`** — `NodeSpec::over_siblings`, `overSiblings` in JSX,
+  `over_siblings` in Lua, `KuiSpec.over_siblings` in C (ABI 31),
+  `over_siblings` on Odin's `Spec` (backlog F163, ADR 0046): the node
+  and its subtree paint after their siblings, over any they overlap,
+  and take the press there. Only the sibling order changes. The parent
+  still paints under the node, whatever follows the parent still paints
+  over it, it keeps the parent's clip, and a float still opens above it.
+  A selection still reads its text in tree order. `overSiblings={t.id
+  === selected}` on a strip of `slide` tabs keeps the moved tab on top
+  whichever way it goes, and needs no state for when it glides.
+- **An initial letter, a drop cap** (backlog F164): see *What breaks*.
 
 **What you can delete.**
 
+- A tab floated in its slot (`float={{ anchor: "parent", clip: true }}`)
+  only while it glides, along with the state that tracks when the glide
+  starts and ends: declare `overSiblings` on it instead.
 - A first letter drawn as a text node of its own over a hole in the
   paragraph, with the caret, the hits and the selection mapped across
   the two by hand.

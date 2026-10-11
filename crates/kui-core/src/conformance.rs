@@ -6859,8 +6859,10 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 );
             },
         );
+        // Over its siblings: painted after the `line` row beside it, its run still
+        // read before that row's.
         ui.text_in(
-            NodeSpec::column().width(60.0),
+            NodeSpec::column().width(60.0).over_siblings(),
             "a long line that is cut short",
             TextStyle::new(12.0)
                 .max_lines(1)

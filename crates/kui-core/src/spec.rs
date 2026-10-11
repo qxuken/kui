@@ -880,6 +880,16 @@ pub struct NodeSpec {
     /// Opt-in because a node whose position follows an already-easing
     /// sibling (a split's second half) would lag twice.
     pub slide: bool,
+    /// Paint this node and its subtree after its siblings, over any of
+    /// them it overlaps: a tab that glides past its neighbour (`slide`)
+    /// passes over it whichever way it moved, the active tab of a strip
+    /// whose tabs overlap stays on top. Its parent still paints under
+    /// it and whatever follows the parent still paints over it — the
+    /// sibling order is all it changes, and the hit test reads the same
+    /// order, so where it overlaps a sibling it takes the press. Two
+    /// such siblings paint in tree order among themselves. Not a layer:
+    /// a float still opens above it, and it keeps its parent's clip.
+    pub over_siblings: bool,
     /// Reachable by Tab, and focused by a click or an assistive-technology
     /// request, without a click payload or a control role — a list row
     /// that opens on Enter, a card. Controls (editors, key sinks,
@@ -2617,6 +2627,12 @@ impl NodeSpec {
         self
     }
 
+    /// Paint after the siblings (see the `over_siblings` field).
+    pub fn over_siblings(mut self) -> Self {
+        self.over_siblings = true;
+        self
+    }
+
     /// Easing for the node's transition (sets a default 200ms one if none
     /// was declared yet).
     pub fn easing(mut self, easing: Easing) -> Self {
@@ -2927,7 +2943,7 @@ pub struct TextStyle {
     /// A span inside is bold too; it cannot be lighter than its text.
     pub bold: bool,
     /// The first letter as an initial — a drop cap — this many lines
-    /// tall (backlog F163): its top level with the first line's capitals,
+    /// tall (backlog F164): its top level with the first line's capitals,
     /// its foot on the last one's baseline, the lines beside it moved in
     /// past it and the ones below at full width again, as CSS's
     /// `initial-letter`. The letter is the text's first, with any opening
@@ -3033,7 +3049,7 @@ impl TextStyle {
     }
 
     /// The first letter dropped through `lines` lines, an initial
-    /// (backlog F163): see the field of that name.
+    /// (backlog F164): see the field of that name.
     pub fn initial_letter(mut self, lines: u32) -> Self {
         self.initial_letter = lines;
         self
@@ -3128,6 +3144,7 @@ impl PartialEq for NodeSpec {
             && self.window == other.window
             && self.transition == other.transition
             && self.slide == other.slide
+            && self.over_siblings == other.over_siblings
             && self.focusable == other.focusable
             && self.initial_focus == other.initial_focus
             && self.disabled == other.disabled

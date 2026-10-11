@@ -161,9 +161,11 @@
 /// - ABI 30: `replay` on `KuiMenuItem`, into the padding before `submenu`
 ///   (backlog F151): a row that plays its chord, with
 ///   `KUI_MENU_ITEM_REPLAY`.
-/// - ABI 31: `initial_letter` on `KuiTextStyle` (backlog F163), which
+/// - ABI 31: `over_siblings` appended to `KuiSpec` (752 bytes on 64-bit, from
+///   744): the node paints after its siblings.
+/// - ABI 32: `initial_letter` on `KuiTextStyle` (backlog F164), which
 ///   grows to 80 on 64-bit: the first letter as a drop cap.
-pub const KUI_ABI_VERSION: u32 = 31;
+pub const KUI_ABI_VERSION: u32 = 32;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

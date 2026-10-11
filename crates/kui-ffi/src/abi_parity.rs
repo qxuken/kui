@@ -827,6 +827,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         pivot_x: f32 => "float",
         pivot_y: f32 => "float",
         iterations: f32 => "float",
+        over_siblings: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1527,8 +1528,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // `backdrop_blur` (backlog F129), into what was the tail padding,
         // so the 64-bit size stayed at 704 while the layout moved. ABI
         // 27: `rotate`, `scale`, `pivot_set`, `pivot_x` and `pivot_y`
-        // (ADR 0043).
-        ("KuiSpec", 744, 27),
+        // (ADR 0043). ABI 31: `over_siblings`, past the end, so 744 + 4 rounds
+        // up to the struct's 8-byte alignment.
+        ("KuiSpec", 752, 31),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),
@@ -1537,7 +1539,7 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiKeyframe", 52, 27),
         ("KuiEnter", 48, 27),
         // ABI 29: `bold` into the tail padding (backlog F150). ABI 31:
-        // `initial_letter` past it (backlog F163).
+        // `initial_letter` past it (backlog F164).
         ("KuiTextStyle", 80, 31),
         // ABI 20: `bg_radius` appended into what was the tail padding, so
         // the 64-bit size stayed at 40 while the layout moved.

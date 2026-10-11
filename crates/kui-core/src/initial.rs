@@ -1,5 +1,5 @@
 //! An initial letter — a drop cap — laid out inside one text
-//! (`TextStyle::initial_letter`, backlog F163): the first letter set as
+//! (`TextStyle::initial_letter`, backlog F164): the first letter set as
 //! tall as a few lines, its top level with the first line's capitals and
 //! its foot on the last one's baseline, the lines beside it moved in past
 //! it and the ones below at full width again.

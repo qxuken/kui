@@ -724,7 +724,7 @@ test('bold is a style row on a text and an editor', () => {
   assert.deepEqual(ctx.warnings(), [], 'no unknown-prop for bold');
 });
 
-// `initialLetter` on a text is a style row like `maxLines` (backlog F163):
+// `initialLetter` on a text is a style row like `maxLines` (backlog F164):
 // read, not warned about, and an editor takes the row as well.
 test('initialLetter is a style row on a text and an editor', () => {
   const view = (lines) =>
@@ -5240,7 +5240,7 @@ SCENE_TREES.sampler = (fx) =>
       box({ dir: 'row', focusRegion: true, gap: 4, height: 30, mainAlign: 'center', crossAlign: 'end', backdropBlur: 6 }, [
         box({ dir: 'row', width: 20, height: 20, bg: '#2a2d3a', focusable: true, role: 'button', label: 'Stop' }, [], 'stop'),
       ], 'dock'),
-      box({ width: 60 }, [
+      box({ width: 60, overSiblings: true }, [
         text('a long line that is cut short', { size: 12, maxLines: 1, ellipsis: true, underline: true, strikethrough: true, features: 'liga=0' }),
       ]),
       box({ width: 60 }, [text('Drop cap', { size: 12, initialLetter: 2 })]),
