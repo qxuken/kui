@@ -29,6 +29,19 @@ The grid benches all go through the same builder at 1920×1080 and differ only
 in which props are switched on, so the difference between two of them is what
 that prop costs.
 
+Every median below came from a default release build: 16 codegen units,
+where how a crate is split, and so what rustc inlines, follows its symbol
+hashes, and the crate's version is in those hashes. A version bump alone
+moves the cheap rows by luck. On the Windows machine the alpha.55 release
+commit, nothing but version strings, read `deep_nesting_64_levels` 25%
+slower and `list_10k_rows_virtual` 15% slower than the commit before it,
+and built with one codegen unit the two agreed within 1%. So read a row
+against another row of the same run, not against a row of a table taken
+at another version. `bench-check.nu` has built both its sides with one
+unit since 2026-10-11, after the alpha.55 tag, and the table it prints is
+in one-unit medians, which on the Windows machine read a few percent
+under a lucky 16-unit build's: one unit inlines more.
+
 | bench | what it holds | median |
 |---|---|---|
 | `frame_1k_typical` | 32×32 grid, every 8th cell a label, every 4th clickable — a "typical app" frame | ~123 µs |
@@ -195,7 +208,9 @@ rather than a release audit to wait for. A fat struct is not the only way to
 lose a frame, though, so there is a second guard for the case that test cannot
 see: `nu scripts/bench-check.nu` benches HEAD against the previous `v*` tag in a
 worktree and fails if one of eight frame benches is more than 10% slower
-(`KUI_BENCH=stream` reads another bench file's rows, unjudged). It is
+(`KUI_BENCH=stream` reads another bench file's rows, unjudged). Both sides are
+built with one codegen unit, so the comparison is between the two refs' code
+and not between two builds' luck (above). It is
 run before tagging rather than in CI — the docker runner is too weak to
 measure a frame and would false-fail — and it prints the table above with the
 run's own medians, so re-measuring these numbers is that same command.
