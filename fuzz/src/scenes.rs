@@ -393,10 +393,14 @@ fn editor(ui: &mut Ui<'_>, e: &Editor, phase: u32) -> Key {
     // (backlog FZ8) — none for every input kept before they were read.
     let drop = u32::from(e.size / SIZES.len() as u8 % 6);
     ui.text(&e.initial, TextStyle::new(size).initial_letter(drop));
+    // A password field, drawn as bullets, from the bits above those
+    // (backlog F167): a size byte under 48 reads as it always did.
+    let secure = e.size / (SIZES.len() as u8 * 6) % 2 == 1;
     let opts = EditOptions {
         style: TextStyle::new(size),
         multiline: e.multiline,
         wrap: e.wrap,
+        secure,
         autofocus: true,
         ..Default::default()
     };
