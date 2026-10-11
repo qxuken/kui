@@ -92,11 +92,14 @@ impl Raster {
                 (Some(axis), Some(at)) => at <= axis.coordinate(face_weight),
                 _ => true,
             };
-        let mut scaler = self
-            .ctx
-            .builder(swash_font)
-            .size(size)
-            .hint(!key.flags.contains(CacheKeyFlags::DISABLE_HINTING));
+        // Hinting fits an outline to the pixel grid, which past
+        // `LARGE_GLYPH` moves nothing by a visible fraction of the glyph,
+        // and a face's hinting program runs in 26.6 fixed point: at a drop
+        // cap's tens of thousands of px skrifa's interpreter overflows it,
+        // a panic in a debug build and wrapped points in a release one
+        // (backlog FZ8). Past it, the outline as drawn.
+        let hint = !key.flags.contains(CacheKeyFlags::DISABLE_HINTING) && size <= LARGE_GLYPH;
+        let mut scaler = self.ctx.builder(swash_font).size(size).hint(hint);
         if let Some(at) = at {
             scaler = scaler.normalized_coords(
                 swash_font
@@ -154,7 +157,7 @@ impl Raster {
 
 /// The size, in physical px, past which a glyph's outline is measured
 /// before it is drawn (backlog FZ5): below it even a glyph three em wide
-/// fits an atlas page.
+/// fits an atlas page. Past it, too, a glyph is drawn unhinted (FZ8).
 const LARGE_GLYPH: f32 = 1024.0;
 
 /// Rasterizes one glyph into the atlas (shared by static text and editors).

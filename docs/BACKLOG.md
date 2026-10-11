@@ -211,8 +211,10 @@ counts, a glyph past any page, a bidi paragraph end inside a line, a
 carriage return in a composition — were built the day they were filed,
 after the alpha.53 tag, and are in the archive;
 and F163, from kawoosh's tab strip — a tab gliding under its neighbour —
-and F164, from Carnet's first letter — a drop cap — were built the day
-they were filed, after the alpha.54 tag, and are in the archive.
+and F164, from Carnet's first letter — a drop cap — and FZ8, from the
+alpha.55 pre-tag pass — a drop cap's size handed to the hinter — were
+built the day they were filed, after the alpha.54 tag, and are in the
+archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -227,7 +229,7 @@ architecture review (forty-four entries under ten decisions, every one
 built on 2026-09-14), the standard-menus round, and the pre-tag round's
 own two finds. C26 was the last split entry, and it closed on 2026-09-11.
 
-Ordered by area, not by priority. What to do next is under "After alpha.53".
+Ordered by area, not by priority. What to do next is under "After alpha.54".
 
 **Legend** — `!` a defect that ships today · `~` a gap with no workaround ·
 `.` cost without correctness risk.
@@ -493,7 +495,7 @@ moved whole to
 before the alpha.10 tag, W7 last — the one that wanted a decision rather
 than a patch, settled as: a displacement moves a subtree by whole physical
 pixels, scrolling included. Nothing from the round is open; what it did
-not cover is in "After alpha.53" below.
+not cover is in "After alpha.54" below.
 
 ## From two alpha.9 field reports and a bake-off (2026-09-08)
 
@@ -2317,7 +2319,7 @@ Beside the report, reading the tree for this round turned up one gap of
 kui's own: the variable-height list is Rust-only (C46). Two further
 entries came from the comparison's table: typed messages (C50) and file
 dialogs (C51). The distribution recommendation is unchanged (see
-*Distribution* under *After alpha.53*).
+*Distribution* under *After alpha.54*).
 
 ## From the DX sweep (2026-09-27)
 
@@ -2951,9 +2953,27 @@ caret off a character boundary. Two
 of them are upstream's to fix as well — zeno's unchecked conversion and
 stroker, cosmic-text's assertion — and kui now keeps out of their way.
 
-## After alpha.53
+## From the alpha.55 pre-tag pass (2026-10-11)
+
+The pass over the round since alpha.54 — F163's `overSiblings` and
+F164's drop cap — on the Windows machine and under WSL: CI's `check` in
+order on both, the windowed round on Windows, the bench guard, and
+twenty minutes of the `scenes` fuzz target with its editor scene's
+paragraph given a drop cap. Corrected before the tag: the C adapter's
+`sampler` scene opened the drop cap's column with the spec `overSiblings`
+had just been given, so the scene painted differently from C than from
+the other four bindings — the two branches had each been checked alone,
+and CI's C round is the first to see them together. One entry, FZ8, is
+what the fuzzing found — a drop cap's size handed to the font hinter —
+**built 2026-10-11**, the day it was filed, and in the archive.
+
+## After alpha.54
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
+alpha.53" until 2026-10-11, when the round between the alpha.54 and
+alpha.55 tags — F163 from kawoosh's tab strip, F164 from Carnet's first
+letter, and FZ8 from the pre-tag pass — had landed, and the heading
+moved with the tag; "After
 alpha.52" until later on 2026-10-10, when the round between the alpha.53
 and alpha.54 tags — the first fuzz round, FZ1–FZ7 — had landed, and the
 heading moved with the tag; "After
@@ -3155,7 +3175,10 @@ built, W23 not reproduced), nor of kawoosh's native-replay round (F155
 and F156 built), its pane labels (F157 built), its markdown caret (F162
 built) or Carnet's toolbar and folder rounds (F158–F161 built), nor of
 the first fuzz round (FZ1–FZ7 built; the zeno, cosmic-text and image
-bugs behind four of them are upstream's to report). Nothing from the second bake-off: C51, the file
+bugs behind four of them are upstream's to report), kawoosh's tab strip
+(F163 built), Carnet's first letter (F164 built) or the alpha.55
+pre-tag pass (FZ8 built; skrifa's overflow is upstream's to report
+too). Nothing from the second bake-off: C51, the file
 dialogs, was **built 2026-09-26**; C50, typed Rust messages
 (`#[derive(Message)]`), was **built 2026-09-25**; C47 was
 **built 2026-09-25** (two queued frames by default), C46, the
@@ -4641,3 +4664,7 @@ move.
 **From Carnet's first letter (2026-10-11)** — F164, filed and built the same day
 
 - `~` **F164** — [A text cannot drop its first letter: no line of a paragraph can be narrower than the others](backlog/closed-2026-09.md#-f164--a-text-cannot-drop-its-first-letter-no-line-of-a-paragraph-can-be-narrower-than-the-others--done-2026-10-11) — done (2026-10-11) — `TextStyle::initial_letter`, CSS's `initial-letter`: the letter its own line of the buffer, the paragraph cut where the lines beside it end, every run read where it is drawn; ABI 32
+
+**From the alpha.55 pre-tag pass (2026-10-11)** — FZ8, filed and built the same day
+
+- `!` **FZ8** — [A drop cap from a large text overflows the hinter](backlog/closed-2026-09.md#-fz8--a-drop-cap-from-a-large-text-overflows-the-hinter--done-2026-10-11) — done (2026-10-11) — past `LARGE_GLYPH` a glyph is drawn unhinted; the `scenes` target's paragraph takes a drop cap

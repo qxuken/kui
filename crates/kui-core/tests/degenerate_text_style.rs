@@ -104,3 +104,27 @@ fn a_size_past_any_screen_lays_out_and_draws_no_glyph_it_cannot_hold() {
         }
     }
 }
+
+/// A drop cap is shaped at the size its lines ask, which from a large
+/// text is tens of thousands of px (backlog FZ8, from the second fuzz
+/// round): DejaVu Sans's hinting program, run there, overflowed skrifa's
+/// 26.6 fixed point — a panic in a debug build. Past `LARGE_GLYPH` a
+/// glyph is drawn unhinted; this panics without that on a machine whose
+/// sans-serif is DejaVu, as CI's Linux one is.
+#[test]
+fn a_drop_cap_from_a_large_text_is_drawn_without_hinting_overflow() {
+    let mut core = Core::new();
+    for scale in [1.0, 2.0] {
+        for size in [200.0, 3000.0] {
+            for lines in 2..=5 {
+                let mut ui = core.frame(Size::new(400.0, 300.0), scale);
+                ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
+                for text in ["Ɣ\\", "Wg", "Éire"] {
+                    ui.text(text, TextStyle::new(size).initial_letter(lines));
+                }
+                ui.finish();
+                let _ = core.output();
+            }
+        }
+    }
+}

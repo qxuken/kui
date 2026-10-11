@@ -388,8 +388,11 @@ fn editor(ui: &mut Ui<'_>, e: &Editor, phase: u32) -> Key {
     ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
     let size = SIZES[e.size as usize % SIZES.len()];
     // The same string as a paragraph: shaped, wrapped and selectable
-    // without an editor's caret in the way.
-    ui.text(&e.initial, TextStyle::new(size));
+    // without an editor's caret in the way, its first letter dropped
+    // through up to five lines by the size byte's bits [`SIZES`] leaves
+    // (backlog FZ8) — none for every input kept before they were read.
+    let drop = u32::from(e.size / SIZES.len() as u8 % 6);
+    ui.text(&e.initial, TextStyle::new(size).initial_letter(drop));
     let opts = EditOptions {
         style: TextStyle::new(size),
         multiline: e.multiline,

@@ -33,6 +33,8 @@ was the first bare bump to break an app in five releases).
 - `KuiTextStyle` appends `initial_letter` and grows to 80 bytes on
   64-bit — ABI 32, `KUI_ABI_VERSION` 32. Recompile; zeroed, a text has
   no initial.
+- A glyph past 1024 physical px is drawn unhinted, which moves its
+  outline by under a pixel (backlog FZ8).
 
 Siblings that cross while they `slide` paint in tree order, so a tab moved
 left glided under the neighbour making room for it and a tab moved right
@@ -60,6 +62,15 @@ background as tall as the lines it drops through. A text with
 `maxLines` or `ellipsis`, a right-to-left one and an `edit` have none,
 and a text that has one is never shaped in a long line's chunks.
 
+A drop cap is shaped at the size its lines ask, which from a large text
+is tens of thousands of px, and there a face's hinting program
+overflows skrifa's fixed point: a five-line drop from 3000 px text
+panicked a debug build on Linux (backlog FZ8, found fuzzing the drop
+cap before the tag). Past 1024 px, the size past which alpha.54 began
+measuring a glyph's outline before drawing it, a glyph is no longer
+hinted. Grid-fitting moves an outline by under a pixel, which at that
+size is under a thousandth of the glyph.
+
 ### Added
 
 - **`overSiblings`** — `NodeSpec::over_siblings`, `overSiblings` in JSX,
@@ -73,6 +84,13 @@ and a text that has one is never shaped in a long line's chunks.
   === selected}` on a strip of `slide` tabs keeps the moved tab on top
   whichever way it goes, and needs no state for when it glides.
 - **An initial letter, a drop cap** (backlog F164): see *What breaks*.
+- The `scenes` fuzz target's editor scene drops its paragraph's first
+  letter, through up to five lines.
+
+### Fixed
+
+- **A glyph past 1024 px no longer overflows the font hinter** (backlog
+  FZ8): a drop cap from large text panicked a debug build in skrifa.
 
 **What you can delete.**
 
