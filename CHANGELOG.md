@@ -21,6 +21,81 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.57 (unreleased)
+
+**What breaks.**
+
+- A window that cannot be seen — minimized, or covered where the
+  platform says so — runs its `view` on a `Waker::wake`, a
+  `Waker::wake_at` and a time it asked for with `request_frame_at`, and
+  draws nothing (backlog F169). A view that took running for being on
+  screen runs where it did not: on Windows while minimized, and on macOS
+  once the platform stops delivering a hidden window's redraws.
+- A click in an editor leaves a caret and no selection, and a press
+  that stays inside the click slop (3 px) moves no caret (backlog F170):
+  the first Backspace, ←, →, ↑ or ↓ after a click acts, and one at the
+  text's edge reports its `boundary`.
+
+On Windows a minimized window is delivered no redraw, and the runner
+asked it for none, so an app whose work runs in its view — a sync
+engine's or a folder watcher's thread handing over what came, waking
+the loop for it — heard nothing until the window was restored, and a
+time the view asked for came and went. Carnet's notes from another
+device waited on the taskbar. Now a wake or a due time reaching a
+window that cannot draw builds its frame at the end of the loop's turn
+and does not draw it: the view runs at the size the window last drew
+at (a minimized window on Windows is no size at all, and would have
+been a `resize`), the events it made reach the app, what it declared —
+the title, windows, sounds, the access tree — is applied, and the
+frame that brings the window back draws as before. At most four a
+second, however often a thread wakes. A hook of its own (an
+`App::woken`) was the other way; a wake already means "run `view`" in
+every binding, and an app whose work is in its view keeps it there.
+On macOS and X11, where the platform says a window is covered
+(`Occluded`) and still delivers its redraws for the surface to skip, a
+wake asks for one as before and the view runs there at the pace it
+did; the unseen frame is the floor under it, built when no frame came
+within a quarter second — macOS stops delivering them some while after
+a minimize. On Wayland nothing changes: winit delivers the redraw a
+wake asks for whether or not the window is seen.
+
+A press in an editor armed a caret drag, and the release placed its
+live end once more where the pointer was — as did every frame while
+the button was held and every move under it. cosmic-text's drag seeds
+a selection at the caret when there is none, so a click left the field
+holding a selection from the caret to itself: no edge to report, and
+Backspace took the selection, which was nothing. The first key after a
+click did nothing and the second worked (backlog F170, from Carnet's
+title field). A caret drag now starts once the pointer has left the
+click slop of the press, as an `onDrag` node's does, and a drag that
+ends on its anchor, or a Shift-click on the caret, holds no selection.
+A drag selects as before; a second click takes the word, a third the
+line, and a Shift-click extends from the caret.
+
+### Added
+
+- **`Drive::hide`, `show`, `wake`, `due` and `drawn`** (backlog F169):
+  the headless driver's window minimized or covered, its frames built
+  and not drawn — laid out at the size it last drew at — as the runner
+  builds them for a wake (`wake`) or a time the view asked for (`due`,
+  when `advance` has reached it); `show` is the frame that brings it
+  back, and `drawn` counts the frames that drew.
+
+### Fixed
+
+- **A minimized window's app runs on a wake and at a time it asked
+  for** (backlog F169): see *What breaks*.
+- **The first key after a click in an editor acts** (backlog F170):
+  see *What breaks*.
+
+**What you can delete.**
+
+- A view's work moved out of it, or a timer thread of the app's own, so
+  that a minimized window still took in what a thread brought or ran
+  what was due.
+- A caret set again by hand after a click — the anchor put back on the
+  caret once the button is up — so the first Backspace or arrow acts.
+
 ## 0.1.0-alpha.56 (2026-10-11)
 
 **What breaks.**

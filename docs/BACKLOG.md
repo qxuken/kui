@@ -220,7 +220,10 @@ alpha.55 tag, and is in the archive; and F166 and F167, from Carnet's
 review — the space after a one-letter initial, a password field — were
 built the day they were filed, after the alpha.55 tag, and are in the
 archive, while F168, filed with them — a window kept out of screen
-capture — is open below.
+capture — is open below; and F169 and F170, from Carnet's minimized
+window and its title field — an app that heard no wake while minimized,
+the first key after a click — were built the day they were filed, after
+the alpha.56 tag, and are in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1746,6 +1749,17 @@ screenshots, which is the app's to decide while a secret is up, and a
 field's `secure` must not decide it. Not built with F167: the door
 reaches all five bindings, the conformance corpus and both runners'
 platform calls — not small — and no app has asked for it yet.
+
+## From Carnet's minimized window and its title field (2026-10-14)
+
+Two things Carnet found on kui alpha.56. Its sync and its folder
+watcher run in its view, woken from their threads, and on Windows a
+minimized window is delivered no frame, so notes from another device
+waited until the window was restored. And a click in its note's title
+left the field an empty selection, so the first Backspace or arrow
+after the click did nothing; Carnet set the caret again by hand once
+the button was up. Two entries, F169 and F170, **built 2026-10-14**,
+the day they were filed, and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4755,3 +4769,9 @@ move.
 - `~` **F166** — [The space after a one-letter initial moves the first row beside it in](backlog/closed-2026-09.md#-f166--the-space-after-a-one-letter-initial-moves-the-first-row-beside-it-in--done-2026-10-11) — done (2026-10-11) — the spaces and tabs after the initial shaped at no width, as CSS collapses them; their bytes kept
 
 - `~` **F167** — [A password field is the app's to mask](backlog/closed-2026-09.md#-f167--a-password-field-is-the-apps-to-mask--done-2026-10-11) — done (2026-10-11) — `EditOptions::secure`: bullets per grapheme, no copy or cut, no composition, no history, `Role::PasswordInput`, secure input and the IME off while focused
+
+**From Carnet's minimized window and its title field (2026-10-14)** — F169 and F170, filed and built the same day
+
+- `!` **F169** — [A minimized window's app hears no wake and no time it asked for](backlog/closed-2026-09.md#-f169--a-minimized-windows-app-hears-no-wake-and-no-time-it-asked-for--done-2026-10-14) — done (2026-10-14) — a wake or a due time to a window that cannot draw builds its frame unseen at the turn's end, at the size it last drew at, at most four a second (`mod unseen`); `Drive::hide`, `show`, `wake`, `due`, `drawn`
+
+- `~` **F170** — [A click in an editor leaves an empty selection](backlog/closed-2026-09.md#-f170--a-click-in-an-editor-leaves-an-empty-selection--done-2026-10-14) — done (2026-10-14) — a caret drag starts past the click slop, and a drag ending on its anchor holds no selection

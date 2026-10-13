@@ -192,6 +192,7 @@ mod retry;
 mod scroll_gesture;
 mod secure_input;
 pub mod testing;
+mod unseen;
 mod windows;
 
 use pane::{
@@ -276,6 +277,11 @@ impl Waker {
     /// Asks every window for a frame: the loop wakes, `view` runs and the
     /// frame is drawn. Safe from any thread and at any rate, since wakes
     /// coalesce into the loop's next turn rather than queueing frames.
+    ///
+    /// A window that cannot be seen — minimized, or covered where the
+    /// platform says so — runs its `view` all the same and draws nothing
+    /// until it is back: where the platform delivers it no redraw, in a
+    /// frame built and not drawn, at most four a second (backlog F169).
     pub fn wake(&self) {
         let _ = self.0.send_event(access_bridge::UserEvent::Wake);
     }
@@ -2320,6 +2326,15 @@ impl DynShell<'_> {
 
     /// Builds and draws one window's frame.
     fn redraw(&mut self, i: usize) {
+        self.frame(i, true);
+    }
+
+    /// Builds one window's frame and, `seen`, draws it. Unseen, it is the
+    /// frame of a window that cannot draw (`mod unseen`): laid out at the
+    /// size it last drew at, and everything the frame declared applied —
+    /// its title, its level, its windows (by the caller) — but nothing
+    /// rendered, presented or counted as drawn.
+    fn frame(&mut self, i: usize, seen: bool) {
         let Shell {
             app,
             extensions,
@@ -2350,8 +2365,19 @@ impl DynShell<'_> {
         sync_env(pane, system, *pinned_system, audio.env());
         let window = &pane.window;
         // The core turns a changed viewport into a `resize` event, routed
-        // with the rest of the pending events after this frame.
-        let (viewport, scale) = pane.size();
+        // with the rest of the pending events after this frame. Unseen,
+        // the size the window last drew at: a minimized window is no size
+        // at all on Windows, and the app would hear it as a resize.
+        let (viewport, scale) = if seen {
+            let (viewport, scale) = pane.size();
+            pane.unseen.drew(viewport, scale);
+            (viewport, scale)
+        } else {
+            pane.unseen.size(pane.size())
+        };
+        // The view runs in this frame, drawn or not: what an unseen one
+        // was owed for is answered.
+        pane.unseen.answered();
         let size = window.inner_size();
         let t_view = std::time::Instant::now();
         pane.core.set_time(epoch.elapsed().as_secs_f64());
@@ -2473,6 +2499,12 @@ impl DynShell<'_> {
         #[cfg(target_os = "macos")]
         macos_text_input::stamp(window, &pane.core);
 
+        // Unseen: built, and nothing to draw it to. What it left for a
+        // backend — an atlas page, a texture dropped — rides on to the
+        // next frame that is drawn (`Core::output`).
+        if !seen {
+            return;
+        }
         let t_render = std::time::Instant::now();
         // KUI_LOSE_DEVICE=SECS marks the device lost that long after
         // launch, once, to see the reopening below happen without a
@@ -2594,6 +2626,91 @@ impl DynShell<'_> {
         if reopen {
             self.reopen_device();
         }
+    }
+
+    /// What follows a frame of window `here`, drawn or unseen: what it
+    /// declared applied and the events it made routed.
+    fn after_frame(&mut self, event_loop: &ActiveEventLoop, here: WindowId) {
+        let Some(i) = self.pane_of(here) else { return };
+        self.panes[i].publish_access();
+        // Views can declare windows and window commands too
+        // (ui.window, ui.window_command); apply them the same frame
+        // they were declared. Likewise the sounds a frame started
+        // (audio nodes, ui.play), and the clipboard work a view
+        // queued (ui.set_clipboard, ui.request_paste — backlog
+        // C33), which until now only an input's drain reached.
+        self.apply_menu_actions(event_loop, i);
+        self.apply_window_commands(event_loop);
+        self.apply_audio();
+        // The frame may have closed this very pane.
+        let Some(i) = self.pane_of(here) else { return };
+        // A new frame can put something else under a still cursor.
+        self.panes[i].apply_cursor();
+        // A frame can resize the viewport, and can change what sits
+        // under a still cursor; route the resulting resize / hover
+        // events now rather than with the next input, and run the view
+        // again for what they change — unseen, in a window that cannot
+        // draw (`Pane::run_for`).
+        let pending = self.panes[i].core.take_pending_events();
+        if !pending.is_empty() {
+            self.route_events(pending);
+            if let Some(p) = self.panes.get_mut(i) {
+                p.run_for(FrameCause::AFTER_FRAME);
+            }
+        }
+        // Windows moves and resizes a window inside its own modal
+        // loop, where `about_to_wait` — the pacing that asks for
+        // the next frame of an animation — does not run, so a
+        // transition froze for as long as the title bar was held
+        // (backlog W3). The pane's own timer is what answers that,
+        // and this is where it learns whether there is anything to
+        // animate; `mod windows_anim` is why it is a timer and not
+        // a redraw asked for from right here. Not while the window
+        // waits for a device: `about_to_wait` asks it for no
+        // animation frames then (RG29), and the timer asked for 64
+        // a second, each a view built for no renderer (RG40). The
+        // reopen's own `request_redraw` arms it again. Nor while
+        // it is minimized (RG45); the restore's `Resized` does.
+        #[cfg(target_os = "windows")]
+        if let Some(p) = self.panes.get_mut(i) {
+            let animating = p.animates_now();
+            if let Some(t) = &mut p.anim_timer {
+                t.set(animating);
+            }
+        }
+    }
+
+    /// The frames owed to windows that cannot draw (`mod unseen`, backlog
+    /// F169), built now — each at most one a `unseen::GAP` — and the
+    /// earliest time the loop must wake for one held to its gap.
+    fn unseen_frames(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        now: std::time::Instant,
+    ) -> Option<std::time::Instant> {
+        let mut wake: Option<std::time::Instant> = None;
+        let mut due = Vec::new();
+        for pane in &mut self.panes {
+            // Back where it draws since it was asked: the drawn frame
+            // answers it.
+            if pane.can_draw() {
+                pane.unseen.answered();
+                continue;
+            }
+            match pane.unseen.poll(now, pane.unseen_grace()) {
+                (true, _) => due.push(pane.id),
+                (false, Some(at)) => wake = Some(wake.map_or(at, |w| w.min(at))),
+                (false, None) => {}
+            }
+        }
+        // By id: a frame may close a window, and with it move the rest.
+        for id in due {
+            if let Some(i) = self.pane_of(id) {
+                self.frame(i, false);
+                self.after_frame(event_loop, id);
+            }
+        }
+        wake
     }
 
     /// The device is gone — a driver update or a GPU reset took it, and
@@ -3254,51 +3371,8 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                         self.panes[i].redraw_for(FrameCause::SMOKE);
                     }
                 }
-                self.panes[i].publish_access();
-                // Views can declare windows and window commands too
-                // (ui.window, ui.window_command); apply them the same frame
-                // they were declared. Likewise the sounds a frame started
-                // (audio nodes, ui.play), and the clipboard work a view
-                // queued (ui.set_clipboard, ui.request_paste — backlog
-                // C33), which until now only an input's drain reached.
-                self.apply_menu_actions(event_loop, i);
-                self.apply_window_commands(event_loop);
-                self.apply_audio();
-                // The frame may have closed this very pane.
-                let Some(i) = self.pane_index(id) else { return };
-                // A new frame can put something else under a still cursor.
-                self.panes[i].apply_cursor();
-                // A frame can resize the viewport, and can change what sits
-                // under a still cursor; route the resulting resize / hover
-                // events now rather than with the next input, and redraw for
-                // what they change.
-                let pending = self.panes[i].core.take_pending_events();
-                if !pending.is_empty() {
-                    self.route_events(pending);
-                    if let Some(p) = self.panes.get(i) {
-                        p.redraw_for(FrameCause::AFTER_FRAME);
-                    }
-                }
-                // Windows moves and resizes a window inside its own modal
-                // loop, where `about_to_wait` — the pacing that asks for
-                // the next frame of an animation — does not run, so a
-                // transition froze for as long as the title bar was held
-                // (backlog W3). The pane's own timer is what answers that,
-                // and this is where it learns whether there is anything to
-                // animate; `mod windows_anim` is why it is a timer and not
-                // a redraw asked for from right here. Not while the window
-                // waits for a device: `about_to_wait` asks it for no
-                // animation frames then (RG29), and the timer asked for 64
-                // a second, each a view built for no renderer (RG40). The
-                // reopen's own `request_redraw` arms it again. Nor while
-                // it is minimized (RG45); the restore's `Resized` does.
-                #[cfg(target_os = "windows")]
-                if let Some(p) = self.panes.get_mut(i) {
-                    let animating = p.animates_now();
-                    if let Some(t) = &mut p.anim_timer {
-                        t.set(animating);
-                    }
-                }
+                let here = self.panes[i].id;
+                self.after_frame(event_loop, here);
             }
             _ => {}
         }
@@ -3329,8 +3403,10 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         }
         self.saw_event = true;
         if matches!(event, access_bridge::UserEvent::Wake) {
-            for pane in &self.panes {
-                pane.redraw_for(FrameCause::WAKE);
+            // Where a window cannot draw, its view runs all the same, at
+            // the turn's end and drawn when it is back (`mod unseen`).
+            for pane in &mut self.panes {
+                pane.run_for(FrameCause::WAKE);
             }
             return;
         }
@@ -3418,25 +3494,41 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         // every window, by a view for its own (`Core::next_frame_at`, on
         // the frame clock, whose origin is `epoch`). Drawn once it is due,
         // and slept to until then.
+        // Both reach a window that cannot draw as a frame built and not
+        // drawn, as a wake does (`mod unseen`): a time asked for comes
+        // round while the window is minimized too.
         if let Some(at) = self.wake_at {
             if at <= now {
                 self.wake_at = None;
-                for pane in &self.panes {
-                    pane.redraw_for(FrameCause::WAKE);
+                for pane in &mut self.panes {
+                    pane.run_for(FrameCause::WAKE);
                 }
             } else {
                 deadline = Some(deadline.map_or(at, |d| d.min(at)));
             }
         }
-        for pane in &self.panes {
+        for pane in &mut self.panes {
             let Some(secs) = pane.core.next_frame_at().filter(|s| s.is_finite()) else {
                 continue;
             };
             let at = self.epoch + std::time::Duration::from_secs_f64(secs.max(0.0));
             if at <= now {
-                pane.redraw_for(FrameCause::WAKE);
+                pane.run_for(FrameCause::WAKE);
             } else {
                 deadline = Some(deadline.map_or(at, |d| d.min(at)));
+            }
+        }
+        // The frames those asked of windows that cannot draw, built now;
+        // the times their views ask for next are read after them.
+        if let Some(at) = self.unseen_frames(event_loop, now) {
+            deadline = Some(deadline.map_or(at, |d| d.min(at)));
+        }
+        for pane in &self.panes {
+            if let Some(secs) = pane.core.next_frame_at().filter(|s| s.is_finite()) {
+                let at = self.epoch + std::time::Duration::from_secs_f64(secs.max(0.0));
+                if at > now {
+                    deadline = Some(deadline.map_or(at, |d| d.min(at)));
+                }
             }
         }
         // A new device owed (`reopen_owed`): made now if its second is
