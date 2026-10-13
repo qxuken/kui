@@ -507,6 +507,7 @@ impl DynShell<'_> {
             deferred_frame: false,
             cause: crate::pane::Causes::new(FrameCause::FIRST),
             pacer,
+            unseen: Default::default(),
             access,
             #[cfg(target_os = "windows")]
             anim_timer,

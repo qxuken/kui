@@ -427,6 +427,9 @@ pub(crate) struct Pane {
     pub(crate) cause: Causes,
     /// Whether a redraw draws now or waits for the display (`mod pacer`).
     pub(crate) pacer: crate::pacer::Pacer,
+    /// The frames built for this window while it cannot draw, and not
+    /// drawn (`mod unseen`).
+    pub(crate) unseen: crate::unseen::Unseen,
     /// The platform accessibility bridge.
     pub(crate) access: Option<access_bridge::Bridge>,
     /// Windows: the timer that keeps an animation running while the modal
@@ -502,10 +505,54 @@ impl Pane {
         self.window.request_redraw();
     }
 
+    /// Whether a frame asked of this window now would be drawn: it is not
+    /// minimized on Windows, where no redraw comes (RG45), nor dark where
+    /// the platform says so (`Occluded`).
+    pub(crate) fn can_draw(&self) -> bool {
+        !self.minimized() && !self.cause.is_dark()
+    }
+
+    /// Asks for the frame the app's own work runs in (`unseen::ASKS`: a
+    /// wake, a time the view asked for, the answer to the last frame's
+    /// events): drawn where the window can draw, and where it cannot,
+    /// built at a turn's end and not drawn (`mod unseen`, backlog F169) —
+    /// at once when minimized on Windows, where no redraw comes, and
+    /// elsewhere only if the redraw asked for here does not come within
+    /// `unseen::GAP`.
+    pub(crate) fn run_for(&mut self, why: FrameCause) {
+        debug_assert!(
+            crate::unseen::ASKS.contains(why),
+            "not an unseen frame's reason"
+        );
+        if self.can_draw() {
+            self.redraw_for(why);
+            return;
+        }
+        if self.minimized() {
+            self.cause.note(why);
+        } else {
+            self.redraw_for(why);
+        }
+        self.unseen.ask(std::time::Instant::now());
+    }
+
+    /// How long an unseen frame waits for a redraw the platform may yet
+    /// deliver (`Unseen::poll`): not at all for a window minimized on
+    /// Windows, which is delivered none.
+    pub(crate) fn unseen_grace(&self) -> std::time::Duration {
+        if self.minimized() {
+            std::time::Duration::ZERO
+        } else {
+            crate::unseen::GAP
+        }
+    }
+
     /// The window is back where it draws, from where it was dark
-    /// ([`Causes::came_back`]): asks for the frame that says `why`.
-    pub(crate) fn came_back(&self, why: FrameCause) {
+    /// ([`Causes::came_back`]): asks for the frame that says `why`, which
+    /// answers what an unseen frame was still held for.
+    pub(crate) fn came_back(&mut self, why: FrameCause) {
         self.cause.came_back(why);
+        self.unseen.answered();
         self.window.request_redraw();
     }
 

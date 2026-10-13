@@ -60,12 +60,17 @@
 //! Events reach the app as the windowed runner sends them: an extension's
 //! to the extension, the rest to `on_event`, each one logged
 //! ([`Drive::log`]).
+//!
+//! A window nobody can see is [`Drive::hide`]: its frames are built and
+//! not drawn, as the runner builds them for a wake or a time the view
+//! asked for ([`Drive::wake`], [`Drive::due`]) while the window is
+//! minimized, and [`Drive::show`] is the frame that brings it back.
 
 use std::borrow::{Borrow, BorrowMut};
 
 use crate::{
-    AccessAction, AccessRequest, App, Core, Extension, Extensions, InputEvent, Key, KeyCode,
-    KeyMods, KeyPress, MouseButton, Rect, Size, UiEvent, Vec2,
+    AccessAction, AccessRequest, App, Core, Extension, Extensions, FrameCause, InputEvent, Key,
+    KeyCode, KeyMods, KeyPress, MouseButton, Rect, Size, UiEvent, Vec2,
 };
 
 /// The headless driver; see the [module docs](self) for an example.
@@ -86,6 +91,13 @@ pub struct Drive<C: BorrowMut<Core> = Core> {
     frame: u64,
     now: f64,
     log: Vec<String>,
+    /// The window cannot be seen ([`Self::hide`]).
+    hidden: bool,
+    /// The frames drawn: every frame but those built while hidden.
+    drawn: u64,
+    /// The size frames were last drawn at, which a hidden one lays out
+    /// at, as the runner's does (`mod unseen`).
+    unseen: crate::unseen::Unseen,
 }
 
 impl<C: BorrowMut<Core>> Drive<C> {
@@ -103,6 +115,9 @@ impl<C: BorrowMut<Core>> Drive<C> {
             frame: 0,
             now: 0.0,
             log: Vec::new(),
+            hidden: false,
+            drawn: 0,
+            unseen: Default::default(),
         }
     }
 
@@ -124,16 +139,80 @@ impl<C: BorrowMut<Core>> Drive<C> {
 
     /// Builds one frame from `app.view`, then hands `app` whatever the
     /// frame produced on its own (a `resize`, a `layout`, a window event).
+    /// Drawn — its output read, as a renderer reads it — unless the
+    /// window is hidden ([`Self::hide`]); a hidden one is laid out at the
+    /// size the last drawn frame was, whatever [`Self::viewport`] says
+    /// meanwhile, as the runner lays out a minimized window's.
     pub fn frame(&mut self, app: &mut impl App) {
         self.frame += 1;
-        let (viewport, scale, now) = (self.viewport, self.scale, self.now);
+        let (viewport, scale) = if self.hidden {
+            self.unseen.size((self.viewport, self.scale))
+        } else {
+            self.unseen.drew(self.viewport, self.scale);
+            (self.viewport, self.scale)
+        };
+        let now = self.now;
         let core = self.core.borrow_mut();
         core.set_time(now);
         let mut ui = core.frame_with(viewport, scale, &mut self.exts);
         app.view(&mut ui);
         ui.finish();
+        if !self.hidden {
+            let _ = self.core().output();
+            self.drawn += 1;
+        }
         let pending = self.core().take_pending_events();
         self.deliver(app, pending);
+    }
+
+    /// The window minimized, or covered where the platform says so: the
+    /// frames built from here on are not drawn ([`Self::drawn`] stands
+    /// still), and the app's view still runs on a [`Self::wake`] and at a
+    /// time it asked for ([`Self::due`]), as the windowed runner runs it
+    /// (backlog F169). [`Self::show`] brings it back.
+    pub fn hide(&mut self) {
+        self.hidden = true;
+    }
+
+    /// The window back where it can be seen, and the frame that brings it
+    /// back, drawn — the platform's restore or uncovering
+    /// (`FrameCause::OCCLUSION`).
+    pub fn show(&mut self, app: &mut impl App) {
+        self.hidden = false;
+        self.core().note_frame_cause(FrameCause::OCCLUSION);
+        self.frame(app);
+    }
+
+    /// Whether the window is hidden ([`Self::hide`]).
+    pub fn hidden(&self) -> bool {
+        self.hidden
+    }
+
+    /// What a [`crate::Waker::wake`] does: a frame, said to be for the
+    /// wake (`FrameCause::WAKE`) — built and not drawn while the window
+    /// is hidden. The runner builds a hidden window's at most four a
+    /// second; a test wakes when it says.
+    pub fn wake(&mut self, app: &mut impl App) {
+        self.core().note_frame_cause(FrameCause::WAKE);
+        self.frame(app);
+    }
+
+    /// The frame a view asked for at a time (`Ui::request_frame_at`),
+    /// if the clock ([`Self::advance`]) has come to it: built as a
+    /// [`Self::wake`]'s is, hidden or not. Returns whether it was.
+    pub fn due(&mut self, app: &mut impl App) -> bool {
+        let now = self.now;
+        if !self.core().next_frame_at().is_some_and(|at| at <= now) {
+            return false;
+        }
+        self.wake(app);
+        true
+    }
+
+    /// The frames drawn so far: [`Self::frames`] less those built while
+    /// the window was hidden.
+    pub fn drawn(&self) -> u64 {
+        self.drawn
     }
 
     /// Moves the frame clock `secs` forward; the next `frame` sees it.

@@ -1893,7 +1893,19 @@ will show has changed; the loop draws, and nothing else ever wakes it. A
 host that owns the loop blocks on the same three things with
 `pump_until(deadline)`: an OS event, a wake, or the deadline.
 
-[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
+A window nobody can see — minimized, or covered where the platform says
+so — still runs its view on a wake, and at a time the view asked for
+with `request_frame_at`: the frame is built at the size the window last
+drew at, its events reach the app, and nothing is drawn until the window
+is back. Where the platform delivers such a window no frame at all — a
+minimized one on Windows — at most four a second, however often the
+thread wakes. So the work a view does with what a thread brought — taking in a
+sync's notes, a watcher's changes — goes on while the app sits on the
+taskbar. A test says the same with `Drive::hide`, `wake`, `due` and
+`show`.
+
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08) ·
+`crates/kui-native/tests/unseen.rs`
 
 ### How do I save something as the window goes?
 
