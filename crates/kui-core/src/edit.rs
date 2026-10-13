@@ -268,6 +268,19 @@ fn end_cursor(at: Cursor, s: &str) -> Cursor {
     }
 }
 
+/// A drag's selection from the caret to itself is no selection: cosmic-
+/// text's `Drag` seeds one at the caret before it moves, so a drag that
+/// ended where it began — or a Shift-click on the caret — held an empty
+/// one, which reports no edge and is what Backspace took (backlog F170).
+/// Only a character selection: a word's or a line's is never empty.
+fn no_empty_selection(editor: &mut Editor<'static>) {
+    if let Selection::Normal(a) = editor.selection()
+        && same_pos(a, editor.cursor())
+    {
+        editor.set_selection(Selection::None);
+    }
+}
+
 /// Position equality, ignoring affinity (which editor cursors carry but
 /// computed ones don't).
 fn same_pos(a: Cursor, b: Cursor) -> bool {
@@ -615,6 +628,11 @@ pub struct EditStore {
     pub(crate) focused: Option<Key>,
     /// Edit node being drag-selected (with its content origin, logical).
     pub(crate) dragging: Option<(Key, Vec2)>,
+    /// Where the press that began `dragging` landed (viewport, logical),
+    /// for as long as the pointer has stayed inside the click slop of it:
+    /// until it leaves, the press is a click and moves no caret, as an
+    /// `on_drag` node's press reports no `move` (backlog F170).
+    pub(crate) press: Option<Vec2>,
     /// Edit whose caret moved since the last frame; `finish_frame` scrolls
     /// the nearest scrollable ancestor to keep the caret visible, then clears.
     pub(crate) caret_moved: Option<Key>,
@@ -637,6 +655,7 @@ impl Default for EditStore {
             pending_labels: FxHashMap::default(),
             focused: None,
             dragging: None,
+            press: None,
             caret_moved: None,
             caret_stamp: 0,
             blink_visible: true,
@@ -1562,10 +1581,29 @@ impl EditStore {
                 (false, _) => Action::TripleClick { x, y },
             };
             s.editor.action(fs, action);
+            if extend {
+                no_empty_selection(&mut s.editor);
+            }
             s.editor.shape_as_needed(fs, false);
             s.break_coalesce();
             self.caret_stamp += 1;
         }
+    }
+
+    /// Whether a caret drag held at `p` has left the click slop of its
+    /// press, and so moves the caret: once it has, it has for the rest of
+    /// the press — a drag that wanders back is still a drag. A press that
+    /// never leaves it is a click, and the release, the frames while it
+    /// is held and the pointer's shake under it place nothing.
+    pub(crate) fn left_slop(&mut self, p: Vec2) -> bool {
+        let Some(at) = self.press else {
+            return true;
+        };
+        if (p.x - at.x).abs() + (p.y - at.y).abs() <= crate::input::DRAG_SLOP {
+            return false;
+        }
+        self.press = None;
+        true
     }
 
     /// Mouse motion with the button held: moves the caret to the point
@@ -1581,6 +1619,7 @@ impl EditStore {
             let (x, y) = ((local.x * s.scale) as i32, (local.y * s.scale) as i32);
             let before = s.editor.cursor();
             s.editor.action(fs, Action::Drag { x, y });
+            no_empty_selection(&mut s.editor);
             if s.editor.cursor() != before {
                 self.touch_caret(key);
             } else {

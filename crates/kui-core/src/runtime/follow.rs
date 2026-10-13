@@ -188,7 +188,11 @@ impl Core {
     /// drag, the selection's focus for a drag-select, in whichever
     /// geometry its scope has.
     pub(crate) fn rehit(&mut self, p: Vec2) {
-        if let Some((key, _)) = self.edit.dragging {
+        // Not inside the click slop: a press there is a click, and its
+        // caret stays where the press put it (backlog F170).
+        if let Some((key, _)) = self.edit.dragging
+            && self.edit.left_slop(p)
+        {
             self.edit_drag_to(key, p);
         }
         if let Some(drag) = self.select_dragging {

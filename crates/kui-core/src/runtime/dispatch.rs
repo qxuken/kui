@@ -761,6 +761,7 @@ impl Core {
                                     edit.click(key, local, clicks, extend, fs)
                                 });
                                 self.edit.dragging = Some((key, origin));
+                                self.edit.press = Some(p);
                                 self.arm_follow(key, p);
                             }
                             // The press acts (its click is resolved on the

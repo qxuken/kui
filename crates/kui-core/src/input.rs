@@ -1952,7 +1952,7 @@ struct DragState {
 /// stops counting as a click and the drag starts reporting `move`s.
 /// Measured from the press, not per event, so a slow pointer that never
 /// covers 3 px between two events still gets there.
-const DRAG_SLOP: f32 = 3.0;
+pub(crate) const DRAG_SLOP: f32 = 3.0;
 
 impl DragState {
     /// The displacement `p` is from the press point.
