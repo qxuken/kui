@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.57 (unreleased)
+## 0.1.0-alpha.57 (2026-10-14)
 
 **What breaks.**
 
@@ -95,6 +95,33 @@ line, and a Shift-click extends from the caret.
   what was due.
 - A caret set again by hand after a click — the anchor put back on the
   caret once the button is up — so the first Backspace or arrow acts.
+
+### Native verification
+
+The pre-tag pass on 2026-10-14, over the round since alpha.56 — F169's
+unseen frames and F170's click — on the Windows machine and under WSL.
+It found nothing to change.
+
+**Windows**, rustc 1.99.0. fmt and clippy are clean; `cargo test
+--workspace`: **2121 tests over 164 suites**, 0 failed. The C round
+passes, and so do the scenes through C; Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1`, **229 of 230** with the one skip Windows
+has had before; the examples' typecheck and the headless round. The
+windowed round: **all 55 examples**, Node's included, drew 120 frames
+on each base and exited cleanly.
+
+**Linux** (WSL, Ubuntu 24.04), on the release's code. fmt and clippy
+are clean; `cargo test --workspace`: **163 suites**, 0 failed; `cargo
+audit --deny warnings` clean over 451 crates. The C round and the
+scenes through C; Odin's four steps; Node **230 of 230** with the
+corpus required; gen with no diff, the typecheck, the headless round,
+the book's examples current. A short fuzz round on eight cores, nine
+minutes a target from the kept corpus — `scenes` on four workers, which
+spent most of it replaying its 6 518 inputs on the new code, and
+`parsers`, `values`, `path` and `decode` on one each (9.9 million, 12.5
+million, 181 000 and 179 000 inputs) — found no crash, timeout or
+out-of-memory. No Mac ran this round, and nothing minimized a window by
+hand: F169 is pinned by the headless driver's `hide`, `wake` and `due`.
 
 ## 0.1.0-alpha.56 (2026-10-11)
 
