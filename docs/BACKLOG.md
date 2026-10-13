@@ -3025,6 +3025,20 @@ and CI's C round is the first to see them together. One entry, FZ8, is
 what the fuzzing found — a drop cap's size handed to the font hinter —
 **built 2026-10-11**, the day it was filed, and in the archive.
 
+## From the alpha.56 fuzz round (2026-10-13)
+
+An hour of every target on alpha.56 under WSL, on eight cores — the
+`scenes` target on four workers, its editor a password field now and
+then (F167), the other four on one each — starting from the corpus the
+earlier rounds grew. Nothing crashed, timed out or ran out of memory:
+209 000 scenes, 85 million values, 46 million parser inputs, a million
+paths and 2.5 million images. `scenes` was still finding new edges when
+the hour ended; `parsers`, `values` and `path` had all but stopped.
+Two `decode` inputs ran slowly under AddressSanitizer, 6 and 9 seconds:
+animated WebPs whose canvas, 3 819 079 by 34, sits just under the
+512 MiB a frame may take — half a second in a release build, a
+legitimate image and not a defect. No entries.
+
 ## After alpha.55
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
