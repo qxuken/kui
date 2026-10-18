@@ -610,6 +610,22 @@ pub const DOORS: &[Door] = &[
         doc: "The same for spans, shaped as one paragraph.",
     },
     Door {
+        rust: "Ui::caret_in_text",
+        c: Is("kui_caret_in_text"),
+        odin: Is("caret_in_text"),
+        node: Is("caretInText"),
+        lua: Is("caret_in_text"),
+        doc: "Where a byte lands in a text wrapped at a width, before any node drew it: a caret on the frame its text is new (backlog F171).",
+    },
+    Door {
+        rust: "Ui::caret_in_rich_text",
+        c: Is("kui_caret_in_rich_text"),
+        odin: Is("caret_in_rich_text"),
+        node: As("`caretInText` takes spans too"),
+        lua: As("`caret_in_text` takes spans too"),
+        doc: "The same for spans, shaped as one paragraph.",
+    },
+    Door {
         rust: "Ui::edit_text",
         c: Is("kui_edit_text"),
         odin: Is("edit_text"),

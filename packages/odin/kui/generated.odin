@@ -3205,6 +3205,27 @@ measure_rich_text :: proc(ui: ^Ui, spans: []Span, base: Text_Style, max_w: f32) 
 	return
 }
 
+// Where a byte lands in a text wrapped at a width, before any node drew it: a
+// caret on the frame its text is new (backlog F171).
+// Rust: Ui::caret_in_text.
+caret_in_text :: proc(ui: ^Ui, text: string, style: Text_Style, max_w: f32, byte: int) -> (out: Caret_Rect, ok: bool) #optional_ok {
+	style_c := text_style_to_c(style)
+	c_out := c.CaretRect{size = size_of(c.CaretRect)}
+	ok = c.caret_in_text(ui, text, &style_c, max_w, uint(byte), &c_out)
+	out = caret_rect_from_c(c_out)
+	return
+}
+
+// The same for spans, shaped as one paragraph.
+// Rust: Ui::caret_in_rich_text.
+caret_in_rich_text :: proc(ui: ^Ui, spans: []Span, base: Text_Style, max_w: f32, byte: int) -> (out: Caret_Rect, ok: bool) #optional_ok {
+	base_c := text_style_to_c(base)
+	c_out := c.CaretRect{size = size_of(c.CaretRect)}
+	ok = c.caret_in_rich_text(ui, ([^]c.Span)(raw_data(spans)), uint(len(spans)), &base_c, max_w, uint(byte), &c_out)
+	out = caret_rect_from_c(c_out)
+	return
+}
+
 // The byte and line under a point in a node's text (backlog C18).
 // Rust: Ui::text_hit.
 text_hit :: proc(ui: ^Ui, key: u64, x: f32, y: f32) -> (out: Text_Hit, ok: bool) #optional_ok {

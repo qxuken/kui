@@ -185,6 +185,7 @@
 //!   `is_focused(key)`, `is_hovered(key)`, `is_pressed(key)`,
 //!   `is_drop_target(key)`, `drop_target()`, `layout_of(key)`,
 //!   `measure_text(s, opts, max_w)` (what layout gives the same `text`),
+//!   `caret_in_text(s, opts, max_w, byte)` (where a byte of it lands),
 //!   `extension_namespaces()`.
 //! - Focus: `set_focus(key)`, `blur()`, `focus_next()`, `focus_prev()`,
 //!   `focus_region(key)`, `announce(text, politeness)`.
@@ -739,7 +740,8 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// `key_query`; the verbs take the same two and refuse an undeclared name,
 /// see `key_arg`), the editor verb `set_edit_text(key_or_label, text)` (whose
 /// label spelling reaches an editor this view is about to declare),
-/// `measure_text(s, opts, max_w)` (see `measure_from_lua`), the
+/// `measure_text(s, opts, max_w)` (see `measure_from_lua`),
+/// `caret_in_text(s, opts, max_w, byte)` (see `caret_in_from_lua`), the
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`,
 /// `request_frame_at(at)` (a frame at a time on the frame clock, `now`),
 /// `exit_with(key, exit)` (the exit a node leaves by this frame)
@@ -1464,6 +1466,18 @@ fn env_table<'scope, 'env: 'scope>(
             },
         )?,
     )?;
+    t.set(
+        "caret_in_text",
+        scope.create_function(
+            move |lua, (s, opts, max_w, byte): (mlua::Value, Option<Table>, Option<f32>, usize)| {
+                let mut guard = ui.borrow_mut();
+                match caret_in_from_lua(&mut guard, &s, opts.as_ref(), max_w, byte)? {
+                    Some(r) => value_to_lua(lua, &r.to_value()),
+                    None => Ok(mlua::Value::Nil),
+                }
+            },
+        )?,
+    )?;
     // `env.add_extension(namespace, path)` → true, or nil and a message:
     // the script hosting an extension of its own (ADR 0014, and
     // `kui_core::slot`). The mechanism is C shared libraries and only
@@ -1562,33 +1576,76 @@ fn measure_from_lua(
     opts: Option<&Table>,
     max_w: Option<f32>,
 ) -> mlua::Result<kui_core::TextMetrics> {
+    text_from_lua(
+        ui,
+        s,
+        opts,
+        "measure_text",
+        |ui, content, style| ui.measure_text(content, style, max_w),
+        |ui, spans, style| ui.measure_rich_text(spans, style, max_w),
+    )
+}
+
+/// `env.caret_in_text(s, opts, max_w, byte)` → `{ x, y, w, h }` (logical
+/// px from the text's own top-left), or nil: where byte `byte` of the text
+/// `measure_text` would measure lands once laid out at `max_w` — the rect
+/// `caret_rect` gives when a node draws that text at that width, for a
+/// caret on the frame its text is new (backlog F171).
+fn caret_in_from_lua(
+    ui: &mut Ui<'_>,
+    s: &mlua::Value,
+    opts: Option<&Table>,
+    max_w: Option<f32>,
+    byte: usize,
+) -> mlua::Result<Option<kui_core::Rect>> {
+    text_from_lua(
+        ui,
+        s,
+        opts,
+        "caret_in_text",
+        |ui, content, style| ui.caret_in_text(content, style, max_w, byte),
+        |ui, spans, style| ui.caret_in_rich_text(spans, style, max_w, byte),
+    )
+}
+
+/// The text a query names — a string, a span list or a whole `text(...)`
+/// node table, whose own props are then the style — handed to `plain` or
+/// `rich` in its style.
+fn text_from_lua<R>(
+    ui: &mut Ui<'_>,
+    s: &mlua::Value,
+    opts: Option<&Table>,
+    name: &str,
+    plain: impl Fn(&mut Ui<'_>, &str, &kui_core::TextStyle) -> R,
+    rich: impl Fn(&mut Ui<'_>, &[Span<'_>], &kui_core::TextStyle) -> R,
+) -> mlua::Result<R> {
     let style = match opts {
         Some(t) => with_refs(ui, |refs| parse_props(t, false, refs))?.style,
         None => kui_core::TextStyle::default(),
     };
-    let measure_spans = |ui: &mut Ui<'_>, spans: &Table, style: &kui_core::TextStyle| {
+    let of_spans = |ui: &mut Ui<'_>, spans: &Table, style: &kui_core::TextStyle| {
         let parts = with_refs(ui, |refs| collect_spans(spans, refs))?;
         let spans: Vec<Span<'_>> = parts.iter().map(span_of).collect();
-        Ok(ui.measure_rich_text(&spans, style, max_w))
+        Ok(rich(ui, &spans, style))
     };
     match s {
-        mlua::Value::String(s) => Ok(ui.measure_text(&s.to_str()?, &style, max_w)),
+        mlua::Value::String(s) => Ok(plain(ui, &s.to_str()?, &style)),
         mlua::Value::Table(t) => {
             if t.get::<Option<String>>("type")?.as_deref() == Some("text") {
                 let style = with_refs(ui, |refs| parse_props(t, false, refs))?.style;
                 match t.get::<Option<Table>>("spans")? {
-                    Some(spans) => measure_spans(ui, &spans, &style),
+                    Some(spans) => of_spans(ui, &spans, &style),
                     None => {
                         let value: String = t.get("value")?;
-                        Ok(ui.measure_text(&value, &style, max_w))
+                        Ok(plain(ui, &value, &style))
                     }
                 }
             } else {
-                measure_spans(ui, t, &style)
+                of_spans(ui, t, &style)
             }
         }
         other => Err(bad(format!(
-            "measure_text: expected a string, a span list or a text node, got {}",
+            "{name}: expected a string, a span list or a text node, got {}",
             other.type_name()
         ))),
     }
@@ -5743,6 +5800,53 @@ mod tests {
             core.take_audio_commands().as_slice(),
             [AudioCommand::Stop { .. }]
         ));
+    }
+
+    /// `env.caret_in_text` asked before any node drew the text answers the
+    /// rect `env.caret_rect` gives once one lays it out at that width, on
+    /// every visual line (backlog F171).
+    #[test]
+    fn caret_in_text_answers_where_layout_puts_each_byte() {
+        let mut ext = LuaExtension::from_source(
+            "caret_in",
+            r#"
+                asked, laid = nil, nil
+                local style = { size = 14, family = "mono", line_height = 20, wrap = "word" }
+                local spans = { "the quick ", { "brown", bold = true }, " fox jumps over the lazy dog" }
+                local len = #"the quick brown fox jumps over the lazy dog"
+                function view(env)
+                  if not asked then
+                    asked = {}
+                    for b = 0, len do asked[b + 1] = env.caret_in_text(spans, style, 120, b) end
+                    local node = env.caret_in_text(text(spans, style), nil, 120, len)
+                    assert(node.x == asked[len + 1].x and node.y == asked[len + 1].y)
+                    local plain = env.caret_in_text("one line", style, nil, 99)
+                    assert(plain.y == 0 and plain.h == 20)
+                    assert(plain.x == env.measure_text("one line", style).width)
+                  else
+                    laid = {}
+                    for b = 0, len do laid[b + 1] = env.caret_rect("para", b) end
+                  end
+                  return column { column { key = "para", width = 120, text(spans, style) } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let asked: Table = ext.lua.globals().get("asked").unwrap();
+        let laid: Table = ext.lua.globals().get("laid").unwrap();
+        let rect = |t: &Table, i: i64| {
+            let r: Table = t.get(i).unwrap();
+            ["x", "y", "w", "h"].map(|f| r.get::<f64>(f).unwrap())
+        };
+        let mut rows = std::collections::BTreeSet::new();
+        for i in 1..=laid.raw_len() as i64 {
+            assert_eq!(rect(&asked, i), rect(&laid, i), "byte {}", i - 1);
+            rows.insert(rect(&laid, i)[1] as i64);
+        }
+        assert!(rows.len() >= 3, "wraps: {rows:?}");
     }
 
     /// `env.measure_text` answers what layout gives the same text, in every

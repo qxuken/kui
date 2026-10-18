@@ -2838,6 +2838,15 @@ export declare class Ctx {
    */
   measureTextBinary(stream: Float64Array, strings: Uint8Array, maxWidth?: number | undefined | null): TextMetrics
   /**
+   * `caretInText`'s door (index.js adds `caretInText` itself):
+   * one `<text>` element as `measureTextBinary` takes it, and
+   * the answer is where byte `byte` of that text lands once laid
+   * out at `maxWidth` (unwrapped without one) — the rect
+   * `caretRect` gives when a node draws the text at that width,
+   * from the text's own top-left rather than the viewport's.
+   */
+  caretInTextBinary(stream: Float64Array, strings: Uint8Array, maxWidth: number | undefined | null, byte: number): Rect | null
+  /**
    * Drains the warnings the core raised since the last call
    * (see `Warning`), each distinct (code, node) pair once.
    * `createApp` collects them on `app.warnings` for you, and
@@ -4146,6 +4155,15 @@ export declare class KuiWindow {
    */
   measureTextBinary(stream: Float64Array, strings: Uint8Array, maxWidth?: number | undefined | null): TextMetrics
   /**
+   * `caretInText`'s door (index.js adds `caretInText` itself):
+   * one `<text>` element as `measureTextBinary` takes it, and
+   * the answer is where byte `byte` of that text lands once laid
+   * out at `maxWidth` (unwrapped without one) — the rect
+   * `caretRect` gives when a node draws the text at that width,
+   * from the text's own top-left rather than the viewport's.
+   */
+  caretInTextBinary(stream: Float64Array, strings: Uint8Array, maxWidth: number | undefined | null, byte: number): Rect | null
+  /**
    * Drains the warnings the core raised since the last call
    * (see `Warning`), each distinct (code, node) pair once.
    * `createApp` collects them on `app.warnings` for you, and
@@ -4955,6 +4973,14 @@ export interface Ctx {
    *  the same runs. A headless context answers at scale 1 before its first
    *  frame; a window at its own scale once a frame has run. */
   measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
+  /** Where byte `byte` of `content` under `style` lands once laid out at
+   *  `maxWidth` (unwrapped without one), with no node drawing it: the rect
+   *  `caretRect` gives when a `<text>` with that content is laid out at
+   *  that width, but from the text's own top-left rather than the
+   *  viewport's — zero wide, one line tall. A byte past the text is the
+   *  end. For a caret on the frame its text is new, while `caretRect`
+   *  still answers for the text the node drew last frame (backlog F171). */
+  caretInText(content: KuiNode, style: TextProps | undefined, maxWidth: number | undefined, byte: number): Rect | null;
 }
 
 export interface KuiWindow {
@@ -4965,6 +4991,8 @@ export interface KuiWindow {
   setView(tree: KuiNode, window?: string): void;
   /** See `Ctx.measureText`. */
   measureText(content: KuiNode, style?: TextProps, maxWidth?: number): TextMetrics;
+  /** See `Ctx.caretInText`. */
+  caretInText(content: KuiNode, style: TextProps | undefined, maxWidth: number | undefined, byte: number): Rect | null;
   /** See `Ctx.setTokens`. */
   setTokens(tokens: TokenDeclaration): void;
 }

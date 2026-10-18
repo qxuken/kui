@@ -1740,6 +1740,36 @@ scene_drop :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// conformance::build_caret_in_text (backlog F171): two wrapped texts, each
+// with a bar padded in by where a byte of it lands.
+caret_bar :: proc(ui: ^kui.Ui, at: kui.Caret_Rect) {
+	if kui.box(ui, {pad = {l = at.x, t = at.y}}) {
+		if kui.box(ui, {width = kui.px(2), height = kui.px(at.h), bg = 0x3b5bd4ff}) {}
+	}
+}
+
+scene_caret_in_text :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	mono := kui.Text_Style {
+		size        = 14,
+		family      = .Mono,
+		line_height = 20,
+	}
+	spans := []kui.Span{{text = "the quick "}, {text = "brown", flags = {.Bold}}, {text = " fox jumps over the lazy dog"}}
+	plain := "a plain line that wraps twice over"
+	rich_at := kui.caret_in_rich_text(ui, spans, mono, 120, 35)
+	plain_at := kui.caret_in_text(ui, plain, mono, 120, len(plain))
+	if kui.box(ui, {pad = kui.pad(10)}) {
+		if kui.box(ui, {width = kui.px(120)}) {
+			kui.rich_text(ui, spans, mono)
+		}
+		caret_bar(ui, rich_at)
+		if kui.box(ui, {width = kui.px(120)}) {
+			kui.text(ui, plain, mono)
+		}
+		caret_bar(ui, plain_at)
+	}
+}
+
 // conformance::build_sampler (backlog AR47): the generic rows no other scene
 // declares, on four nodes.
 scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
@@ -1956,6 +1986,7 @@ SCENES := [?]Scene {
 	{"scrollbar", scene_scrollbar},
 	{"tokens", scene_tokens},
 	{"sampler", scene_sampler},
+	{"caret-in-text", scene_caret_in_text},
 }
 
 // -- Driving one scene ----------------------------------------------------------

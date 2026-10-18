@@ -558,6 +558,8 @@ its generator (`nu scripts/odin.nu gen --check`).
 | `Core::ime_rect` | `kui_ime_rect` | `ime_rect` | `imeRect` | *none: a script is a guest in the host's frame (ADR 0014): its env is the view's reading, and registering, driving, pacing and reading back are the host's* | Where the OS candidate window goes, which the host hands to the platform (backlog C17). |
 | `Ui::measure_text` | `kui_measure_text` | `measure_text` | `measureText` | `measure_text` | Shapes text in a style at a width and answers its size and line count. |
 | `Ui::measure_rich_text` | `kui_measure_rich_text` | `measure_rich_text` | `measureText` takes spans too | `measure_text` takes spans too | The same for spans, shaped as one paragraph. |
+| `Ui::caret_in_text` | `kui_caret_in_text` | `caret_in_text` | `caretInText` | `caret_in_text` | Where a byte lands in a text wrapped at a width, before any node drew it: a caret on the frame its text is new (backlog F171). |
+| `Ui::caret_in_rich_text` | `kui_caret_in_rich_text` | `caret_in_rich_text` | `caretInText` takes spans too | `caret_in_text` takes spans too | The same for spans, shaped as one paragraph. |
 | `Ui::edit_text` | `kui_edit_text` | `edit_text` | `editText` | `edit_text` | An editor's text, by key or by label. |
 | `Ui::set_edit_text` | `kui_edit_set_text` | `edit_set_text` | `setEditText` | `set_edit_text` | Replaces an editor's text, caret at the end. |
 | `Ui::set_edit_text_by_label` | `kui_edit_set_text_label` | `edit_set_text_label` | `setEditText` takes the label too | `set_edit_text` takes the label too | The same by the label an editor's `key` declares, which reaches one the frame is about to declare (backlog AR26). |

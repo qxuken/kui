@@ -1741,7 +1741,8 @@ typedef struct KuiTextHit {
 #define KUI_TEXT_HIT_INIT ((KuiTextHit){ .size = sizeof(KuiTextHit) })
 
 /* [out] A caret rect (kui_caret_rect): logical px in viewport coordinates,
- * zero wide, one line tall. */
+ * zero wide, one line tall; from the text's own top-left for
+ * kui_caret_in_text and kui_caret_in_rich_text. */
 typedef struct KuiCaretRect {
     uint32_t size; /* = sizeof(KuiCaretRect) in, bytes filled out */
     float x, y, w, h;
@@ -3472,6 +3473,18 @@ bool kui_measure_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style,
                       float max_w, KuiTextMetrics *out);
 bool kui_measure_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
                            const KuiTextStyle *base, float max_w, KuiTextMetrics *out);
+/* Where byte `byte` of that text lands once wrapped to max_w (unwrapped with
+ * max_w <= 0), without a node: the rect kui_caret_rect gives once a text
+ * node with the same text and style is laid out at that width, from the
+ * text's own top-left rather than the viewport's. A byte past the text is
+ * the end. Place a caret on the frame its text is new with it, before any
+ * node drew that text - kui_caret_rect still answers for the old one. False
+ * for a bad context, a NULL `out`, or no spans. */
+bool kui_caret_in_text(KuiCtx *ctx, KuiStr text, const KuiTextStyle *style, float max_w,
+                       size_t byte, KuiCaretRect *out);
+bool kui_caret_in_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count,
+                            const KuiTextStyle *base, float max_w, size_t byte,
+                            KuiCaretRect *out);
 /* Where a point (logical viewport px, as a click or drag event carries it)
  * lands in the text the node `key` drew: a byte offset into that text and
  * the visual line, so a custom editor turns the event into a caret position

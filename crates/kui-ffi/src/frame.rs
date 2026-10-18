@@ -916,16 +916,7 @@ pub extern "C" fn kui_caret_rect(
         let Some(r) = c.core().caret_rect(Key(key), byte) else {
             return false;
         };
-        write_out(
-            out,
-            KuiCaretRect {
-                x: r.x,
-                y: r.y,
-                w: r.w,
-                h: r.h,
-                ..Default::default()
-            },
-        )
+        write_out(out, caret_of(r))
     })
 }
 
@@ -1075,6 +1066,76 @@ pub extern "C" fn kui_measure_rich_text(
         });
         write_out(out, m.map(metrics_of).unwrap_or_default())
     })
+}
+
+/// Where byte `byte` of `text` in `style` lands once wrapped to `max_w`
+/// logical px (unwrapped with `max_w <= 0`), without a node: the rect
+/// [`kui_caret_rect`] gives once a text node with that text and style is
+/// laid out at that width, from the text's own top-left rather than the
+/// viewport's — zero wide, one line tall. A byte past the text is the end.
+/// For a caret on the frame its text is new, before any node drew it.
+/// Returns false only for a bad context or NULL `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_caret_in_text(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    style: *const KuiTextStyle,
+    max_w: f32,
+    byte: usize,
+    out: *mut KuiCaretRect,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let style = unsafe { style.as_ref() }
+            .map(text_style_of)
+            .unwrap_or_default();
+        let max_w = (max_w > 0.0).then_some(max_w);
+        let Some(r) = c.core().caret_in_text(&kstr(text), &style, max_w, byte) else {
+            return false;
+        };
+        write_out(out, caret_of(r))
+    })
+}
+
+/// [`kui_caret_in_text`] for a rich-text paragraph; false for no spans too.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_caret_in_rich_text(
+    ptr: *mut KuiCtx,
+    spans: *const KuiSpan,
+    span_count: usize,
+    base: *const KuiTextStyle,
+    max_w: f32,
+    byte: usize,
+    out: *mut KuiCaretRect,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let base = unsafe { base.as_ref() }
+            .map(text_style_of)
+            .unwrap_or_default();
+        let max_w = (max_w > 0.0).then_some(max_w);
+        let r = with_spans(spans, span_count, |spans| {
+            c.core().caret_in_rich_text(spans, &base, max_w, byte)
+        });
+        let Some(r) = r.flatten() else {
+            return false;
+        };
+        write_out(out, caret_of(r))
+    })
+}
+
+fn caret_of(r: Rect) -> KuiCaretRect {
+    KuiCaretRect {
+        x: r.x,
+        y: r.y,
+        w: r.w,
+        h: r.h,
+        ..Default::default()
+    }
 }
 
 /// The key a child labeled `label` of the currently open container would get.
