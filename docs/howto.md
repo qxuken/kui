@@ -2290,7 +2290,7 @@ as `org.example.Notes.desktop`. The same id is both halves of the X11
 `kui_set_app_id(KUI_STR("org.example.Notes"))` before `kui_run`.
 
 [alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-2026-09-25),
-[alpha.59 `### Added`](../CHANGELOG.md#010-alpha59-unreleased)
+[alpha.59 `### Added`](../CHANGELOG.md#010-alpha59-2026-10-19)
 
 ### How do I stop the console window on Windows?
 

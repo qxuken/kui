@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.59 (unreleased)
+## 0.1.0-alpha.59 (2026-10-19)
 
 **What breaks.** Nothing: one launcher option added in every binding
 that has a launcher.
@@ -52,6 +52,28 @@ what the file said.
   installed `.desktop` file; and on X11 a `StartupWMClass` kept equal to
   whatever the executable happened to be named, or a `RESOURCE_NAME`
   exported for it.
+
+### Native verification
+
+The pre-tag pass on 2026-10-19, over the round since alpha.58 — F172's
+app id — on the Windows machine and under WSL. It found one thing, of
+the release's own making: howto's link to this section, re-anchored to
+the dated heading before the heading was dated, failed the docs test
+on both; it passes with the date.
+
+**Windows**, fmt and clippy are clean; `nu scripts/test.nu --node`:
+**2358 tests over 166 Rust suites and Node's**, the one failure the
+anchor above. `odin.nu gen --check` current, `odin.nu check` over every
+Odin example.
+
+**Linux** (WSL, Ubuntu 24.04). fmt and clippy are clean; `cargo test
+--workspace`: **2126 tests over 164 suites**, the same one failure.
+Under WSLg a kawoosh built against this tree sends
+`xdg_toplevel.set_app_id("kawoosh")`, and on X11 its window's
+`WM_CLASS` is `"kawoosh", "kawoosh"`, from a binary renamed
+`notkawoosh` too. No windowed round over the examples, no `cargo
+audit`, no fuzz round and no Mac ran this round: F172 is one window
+attribute.
 
 ## 0.1.0-alpha.58 (2026-10-18)
 
