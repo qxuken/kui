@@ -49,10 +49,23 @@ wants the version it tested writes that version exactly (`"@qxuken/kui":
 "0.1.0-alpha.8"`) and commits its lockfile; the lockfile is what holds either
 way, and without one a range reinstalls as whatever is newest.
 
-To cut a release: `nu scripts/set-version.nu 0.1.0-alpha.2` (workspace version,
-the `kui-*` dependency requirements, package.json and the changelog's open
-`(unreleased)` heading move together — registries refuse a version that already
-exists), commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
+To cut a release: `nu scripts/release-prep.nu 0.1.0-alpha.2`, on any of the
+machines. It refuses a dirty tree, checks that the last finished Forgejo
+`check` on main or a tag passed, reruns every generator a CI step diffs
+(`cargo fmt`, the book's Examples part, `npm run gen` for the two `.d.ts`
+files and `docs/props.md`, `odin.nu gen`) and stops, with the regenerated
+files left in the tree to commit, if any of them changes anything.
+alpha.59 is why: a `schema::DOORS` row went out without its
+`docs/props.md` line, Forgejo's `check` on the tag failed on the diff,
+and its `publish` never ran while GitHub's had already put the version
+on crates.io. `--skip ci,odin` leaves steps out by name (a machine with
+no Odin, a main whose run has not finished), and the summary says so;
+without a version it runs the checks alone. Then it runs
+`scripts/set-version.nu` (workspace version, the `kui-*` dependency
+requirements, package.json and the changelog's open `(unreleased)`
+heading move together — registries refuse a version that already
+exists), which it requires to read `## <version> (unreleased)` first,
+and prints what is left. Then commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
 in one go: `git push --atomic origin main v0.1.0-alpha.2`. `origin` is
 Forgejo, and its push mirror carries both refs to GitHub — but do not
 count on the mirror to start GitHub's pipeline. Push the tag there by

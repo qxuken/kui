@@ -21,6 +21,28 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.60 (unreleased)
+
+**What breaks.** Nothing.
+
+### Fixed
+
+- `docs/props.md` lists `Launcher::app_id`'s doors. alpha.59 added the
+  `schema::DOORS` row without regenerating the page, which is what
+  failed the tag's Forgejo `check`, so that release reached crates.io
+  and npmjs but not the drydock9 cargo registry; this one carries the
+  drydock9 copy again.
+
+### Changed
+
+- **`scripts/release-prep.nu <version>`** is a release's first step, on
+  any machine: a clean tree, the last Forgejo `check` on main or a tag
+  green, every generator CI diffs rerun with nothing coming back
+  changed (`cargo fmt`, the book's Examples part, `npm run gen`,
+  `odin.nu gen`), then `set-version.nu`. Each step can be left out by
+  name (`--skip odin,ci`), and every one runs before it reports, so one
+  run lists all that is wrong. `docs/releasing.md` has it.
+
 ## 0.1.0-alpha.59 (2026-10-19)
 
 **What breaks.** Nothing: one launcher option added in every binding
