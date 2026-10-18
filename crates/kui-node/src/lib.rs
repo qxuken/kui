@@ -1920,7 +1920,7 @@ pub struct KuiWindow {
 impl KuiWindow {
     /// Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
     /// chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-    /// | "subpixel", frameLatency, system, icon, backdrop, titlebar:
+    /// | "subpixel", frameLatency, system, icon, appId, backdrop, titlebar:
     /// "standard" | "medium" | "tall"}`. The min/max pairs bound what the user can
     /// resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
     /// says, for the life of the window — `{motion: 'reduced'}` is what a
@@ -2111,6 +2111,18 @@ impl KuiWindow {
             Some(other) => {
                 return Err(err(format!(
                     "window options: icon must be {{rgba, width, height}} and/or {{resource}}, not {other}"
+                )));
+            }
+        }
+        // `appId: 'org.example.Notes'` — the launcher's `app_id`, the name
+        // the Linux desktop matches to the app's `.desktop` file (backlog
+        // F172).
+        match o.get("appId") {
+            None | Some(Json::Null) => {}
+            Some(Json::String(id)) => launcher = launcher.app_id(id.as_str()),
+            Some(other) => {
+                return Err(err(format!(
+                    "window options: appId must be a string, not {other}"
                 )));
             }
         }

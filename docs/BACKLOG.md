@@ -226,7 +226,9 @@ the first key after a click — were built the day they were filed, after
 the alpha.56 tag, and are in the archive; and F171, from kawoosh's
 wrapped caret — where a byte lands in a text no node drew yet — was
 built the day it was filed, after the alpha.57 tag, and is in the
-archive.
+archive; and F172, from kawoosh's Linux install — a window's Wayland
+`app_id` — was built the day it was filed, after the alpha.58 tag, and
+is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1775,6 +1777,16 @@ used on the first line, ran past the pane on the others. kawoosh's
 wrap.md had named the sound model twice: a kui call answering where a
 byte lands in a text wrapped at a width, without a node. One entry,
 F171, **built 2026-10-18**, the day it was filed, and in the archive.
+
+## From kawoosh's Linux install (2026-10-19)
+
+kawoosh's Linux install lays a `kawoosh.desktop` with `Icon=kawoosh`
+under `~/.local`. The launcher showed the icon; the running window, on
+Wayland, kept the compositor's generic one, since a compositor finds a
+window's `.desktop` file by its `app_id` and a kui window had none.
+winit 0.30 sets an `app_id` only from `with_name`, which kui never
+called. One entry, F172, **built 2026-10-19**, the day it was filed,
+and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4799,3 +4811,7 @@ move.
 **From kawoosh's wrapped caret (2026-10-18)** — F171, filed and built the same day
 
 - `~` **F171** — [A caret on a text no node drew yet has no place to stand](backlog/closed-2026-09.md#-f171--a-caret-on-a-text-no-node-drew-yet-has-no-place-to-stand--done-2026-10-18) — done (2026-10-18) — `Ui::caret_in_text` / `caret_in_rich_text`, `kui_caret_in_text` / `kui_caret_in_rich_text`, `ctx.caretInText`, `env.caret_in_text`: where a byte lands once wrapped at a width, without a node, as `caret_rect` answers once one draws it
+
+**From kawoosh's Linux install (2026-10-19)** — F172, filed and built the same day
+
+- `~` **F172** — [A Wayland window has no app id, so no desktop file finds it](backlog/closed-2026-09.md#-f172--a-wayland-window-has-no-app-id-so-no-desktop-file-finds-it--done-2026-10-19) — done (2026-10-19) — `Launcher::app_id`, `kui_set_app_id`, Odin's `set_app_id`, `appId` in `WindowOptions`: winit's `with_name` on every window, the Wayland `app_id` and both halves of `WM_CLASS`

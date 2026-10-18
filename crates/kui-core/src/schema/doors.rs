@@ -1622,6 +1622,14 @@ pub const DOORS: &[Door] = &[
         doc: "The icon every window of the app is created with — RGBA pixels and their size — shown by Windows in the title bar, Alt-Tab and the taskbar and by X11's window manager; macOS (the bundle's `.icns`) and Wayland (the `.desktop` file's) have no window icon (backlog F86). `Launcher::icon_resource` is the Windows executable's own icon resource, which wins there — C's `resource` argument, Node's `icon.resource`. C's is a free function called before `kui_run`, for `kui_on_teardown`'s reason.",
     },
     Door {
+        rust: "Launcher::app_id",
+        c: Is("kui_set_app_id"),
+        odin: Is("set_app_id"),
+        node: As("`appId` in `WindowOptions`"),
+        lua: No(GUEST),
+        doc: "The name the Linux desktop knows every window of the app by — the Wayland `app_id` and both halves of the X11 `WM_CLASS` — matched to the app's `.desktop` file, whose `Icon=` is then the window's (backlog F172). Nothing on Windows or macOS. C's is a free function called before `kui_run`, as `kui_set_icon` is.",
+    },
+    Door {
         rust: "Launcher::icon_bytes",
         c: As("`kui_decode_image`, then `kui_set_icon`"),
         odin: As("`decode_image`, then `set_icon`"),

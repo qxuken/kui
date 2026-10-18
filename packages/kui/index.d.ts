@@ -1949,6 +1949,13 @@ export interface WindowOptions {
    *  Pixels that are not the size are refused, as the constructor
    *  refuses every other option. */
   icon?: { rgba: Uint8Array; width: number; height: number; resource?: number } | { resource: number };
+  /** The name the Linux desktop knows the app's windows by (the launcher's
+   *  `app_id`, backlog F172): the Wayland `app_id` and both halves of the
+   *  X11 `WM_CLASS`. A compositor matches it to `<appId>.desktop` — an X11
+   *  window manager to the file whose `StartupWMClass` it is — and shows
+   *  the window with that file's `Icon=`; without it a Wayland window has
+   *  no `app_id` and the generic icon. Nothing on Windows or macOS. */
+  appId?: string;
   /** `false` stops the loop printing the core's warnings (see `Warning`);
    *  `win.warnings()` still drains them. */
   warnings?: boolean;
@@ -3695,7 +3702,7 @@ export declare class KuiWindow {
   /**
    * Options: `{width, height, minWidth, minHeight, maxWidth, maxHeight,
    * chrome: "native" | "custom" | "borderless", textAa: "auto" | "gray"
-   * | "subpixel", frameLatency, system, icon, backdrop, titlebar:
+   * | "subpixel", frameLatency, system, icon, appId, backdrop, titlebar:
    * "standard" | "medium" | "tall"}`. The min/max pairs bound what the user can
    * resize the window to; either half may stand alone. `system` pins part of `env.system` over what the OS
    * says, for the life of the window — `{motion: 'reduced'}` is what a

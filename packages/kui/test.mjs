@@ -8469,6 +8469,14 @@ test("a window's icon reaches the constructor, and pixels that are not the size 
   assert.throws(() => new KuiWindow('t', { icon: 'kawoosh.png' }), /icon must be \{rgba, width, height\}/);
 });
 
+test("a window's app id reaches the constructor, and one that is not a string is refused (F172)", () => {
+  // The Linux desktop's name for the app's windows: Wayland's app_id, X11's
+  // WM_CLASS. Checked headless, as the icon is: the refusal comes first.
+  assert.equal(windowOptions({ title: 'x', appId: 'org.example.Notes' }).appId, 'org.example.Notes');
+  assert.equal(windowOptions({}).appId, undefined);
+  assert.throws(() => new KuiWindow('t', { appId: 7 }), /appId must be a string/);
+});
+
 test("runWindowed's `system` reaches the KuiWindow constructor (F47)", () => {
   // A window has no `setEnv` — its runner writes the real `env.system`
   // before every frame — so the pomodoro's reduced-motion branch was

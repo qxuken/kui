@@ -21,6 +21,38 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.59 (unreleased)
+
+**What breaks.** Nothing: one launcher option added in every binding
+that has a launcher.
+
+kawoosh installs on Linux with a `kawoosh.desktop` whose `Icon=kawoosh`
+the launcher showed, while the running window kept the compositor's
+generic icon: a Wayland compositor matches a window to its `.desktop`
+file by the window's `app_id`, and a kui window had none — winit sets
+one only from a name kui never gave it (backlog F172, from kawoosh's
+Linux install). X11 matched by `WM_CLASS`, which winit fills with the
+executable's name, so it worked there only while the binary was called
+what the file said.
+
+### Added
+
+- **`Launcher::app_id`** (backlog F172; C `kui_set_app_id`, Odin's
+  `set_app_id`, Node `appId` in `WindowOptions`): the name the Linux
+  desktop knows every window of the app by — the Wayland `app_id`, and
+  both halves of the X11 `WM_CLASS`. A compositor shows the window
+  with the `Icon=` of `<id>.desktop`, a window manager of the file whose
+  `StartupWMClass` is the id, and both group the window under it.
+  Nothing on Windows or macOS.
+
+**What you can delete.**
+
+- A Linux window shown with the generic icon, or ungrouped from its
+  launcher in the dock, because Wayland had no `app_id` to match to the
+  installed `.desktop` file; and on X11 a `StartupWMClass` kept equal to
+  whatever the executable happened to be named, or a `RESOURCE_NAME`
+  exported for it.
+
 ## 0.1.0-alpha.58 (2026-10-18)
 
 **What breaks.** Nothing: two calls added in every binding.

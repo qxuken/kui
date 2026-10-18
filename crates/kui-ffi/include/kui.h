@@ -4067,6 +4067,17 @@ void kui_on_teardown(KuiTeardownFn teardown);
  * reason: kui_run takes no config (ABI still 18). */
 bool kui_set_icon(const uint8_t *rgba, uint32_t width, uint32_t height, uint32_t resource);
 
+/* The name the Linux desktop knows every window of the next kui_run /
+ * kui_run_with by (backlog F172): the Wayland app_id and both halves of
+ * the X11 WM_CLASS. A compositor matches it to `<id>.desktop` and shows
+ * the window with that file's Icon=, which is the only icon a Wayland
+ * window has; an X11 window manager matches the file whose StartupWMClass
+ * it is. Without it a Wayland window has no app_id and the generic icon.
+ * The string is copied; an empty one clears it. Nothing on Windows or
+ * macOS. The last call before the run wins, and the run takes it. A free
+ * function for kui_set_icon's reason (a new symbol, ABI unchanged). */
+void kui_set_app_id(KuiStr id);
+
 /* The runner's image decoder (backlog F138), the one its wallpaper uses:
  * PNG, JPEG, WebP or GIF bytes (an animated file's first frame) to
  * straight RGBA, *width x *height pixels, four bytes each, row by row from

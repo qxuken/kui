@@ -11,13 +11,23 @@
 //! `_NET_WM_ICON`. Wayland finds an app's icon through its `.desktop`
 //! file and macOS through the bundle's `.icns` (the Dock's — a macOS
 //! window has none of its own), and winit ignores a window icon on both.
+//!
+//! Which `.desktop` file is the app's is the launcher's
+//! [`app_id`](crate::Launcher::app_id) (backlog F172): the Wayland
+//! `app_id` and the X11 `WM_CLASS` every window is created with, which a
+//! compositor or a window manager matches to the file's name or its
+//! `StartupWMClass`. Without one a Wayland window has no `app_id` at all
+//! and is drawn with the compositor's generic icon.
 
 use winit::window::{Icon, WindowAttributes};
 
 /// What every window of the app is created with; empty unless the
-/// launcher was given an icon.
+/// launcher was given an icon or an app id.
 #[derive(Clone, Default)]
 pub(crate) struct AppIcon {
+    /// The Wayland `app_id` and X11 `WM_CLASS`, both halves
+    /// ([`Launcher::app_id`](crate::Launcher::app_id)); nothing elsewhere.
+    app_id: Option<String>,
     /// The title bar's — Windows' `ICON_SMALL` — and X11's one picture.
     window: Option<Icon>,
     /// Windows' `ICON_BIG`: Alt-Tab and the taskbar.
@@ -69,6 +79,7 @@ impl AppIcon {
             match from_resource(id) {
                 Ok(icons) => {
                     return AppIcon {
+                        app_id: None,
                         window: None,
                         taskbar: None,
                         resource: Some(icons),
@@ -87,12 +98,20 @@ impl AppIcon {
         #[cfg(not(target_os = "windows"))]
         let _ = resource;
         AppIcon {
+            app_id: None,
             #[cfg(target_os = "windows")]
             taskbar: rgba.clone(),
             #[cfg(target_os = "windows")]
             resource: None,
             window: rgba,
         }
+    }
+
+    /// These icons under the app id `id`, for every window; `None` is
+    /// none.
+    pub(crate) fn with_app_id(mut self, id: Option<String>) -> Self {
+        self.app_id = id;
+        self
     }
 
     /// Gives `window` the executable's icons, on Windows, when the
@@ -123,7 +142,8 @@ impl AppIcon {
         let _ = window;
     }
 
-    /// `attrs` with the icons set, for `Shell::window_attrs`.
+    /// `attrs` with the icons and the app id set, for
+    /// `Shell::window_attrs`.
     pub(crate) fn apply(&self, attrs: WindowAttributes) -> WindowAttributes {
         #[allow(unused_mut)]
         let mut attrs = attrs.with_window_icon(self.window.clone());
@@ -132,6 +152,15 @@ impl AppIcon {
             use winit::platform::windows::WindowAttributesExtWindows;
             attrs = attrs.with_taskbar_icon(self.taskbar.clone());
         }
+        // One name in winit for both backends: Wayland's `app_id` is its
+        // `general` half and X11's `WM_CLASS` both, instance then class.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        if let Some(id) = &self.app_id {
+            use winit::platform::x11::WindowAttributesExtX11;
+            attrs = attrs.with_name(id.as_str(), id.as_str());
+        }
+        #[cfg(not(all(unix, not(target_os = "macos"))))]
+        let _ = &self.app_id;
         attrs
     }
 }
@@ -225,5 +254,26 @@ mod tests {
                 .expect("no resource in a test binary");
             assert!(why.raw_os_error().is_some(), "{why}");
         }
+    }
+
+    /// The app id reaches every window's attributes as winit's name, both
+    /// halves, and no id leaves winit's default (backlog F172). winit keeps
+    /// the name crate-private, so its `Debug` is what the test can read.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn every_window_is_created_under_the_app_id() {
+        let attrs = || winit::window::Window::default_attributes();
+        let named = AppIcon::default().with_app_id(Some("kawoosh".into()));
+        for _ in 0..2 {
+            let dbg = format!("{:?}", named.apply(attrs()));
+            assert!(
+                dbg.contains(
+                    r#"name: Some(ApplicationName { general: "kawoosh", instance: "kawoosh" })"#
+                ),
+                "{dbg}"
+            );
+        }
+        let dbg = format!("{:?}", AppIcon::default().apply(attrs()));
+        assert!(dbg.contains("name: None"), "{dbg}");
     }
 }

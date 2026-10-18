@@ -3860,6 +3860,14 @@ set_icon :: proc(rgba: []u8, width: u32, height: u32, resource: u32) -> bool {
 	return c.set_icon(raw_data(rgba), width, height, resource)
 }
 
+// The name the Linux desktop knows every window of the app by — the Wayland
+// `app_id` and both halves of the X11 `WM_CLASS` — matched to the app's
+// `.desktop` file, whose `Icon=` is then the window's (backlog F172).
+// Rust: Launcher::app_id.
+set_app_id :: proc(id: string) {
+	c.set_app_id(id)
+}
+
 // kui_slot_name (kui.h).
 slot_name :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
 	ok = c.slot_name(ui, &out)

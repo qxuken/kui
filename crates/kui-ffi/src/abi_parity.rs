@@ -1328,12 +1328,13 @@ fn every_entry_point_is_pinned() {
             }
         }
     }
-    // The runner's eight are pinned only in a build that has them.
+    // The runner's nine are pinned only in a build that has them.
     let runner = [
         "kui_run",
         "kui_run_with",
         "kui_on_teardown",
         "kui_set_icon",
+        "kui_set_app_id",
         "kui_decode_image",
         "kui_decode_animation",
         "kui_animation_at",
