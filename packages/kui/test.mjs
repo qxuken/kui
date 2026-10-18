@@ -1415,6 +1415,25 @@ test('measureText of a rich tree is the width the same tree draws at', () => {
   assert.ok(ctx.warnings().some((w) => w.code === 'unknown-prop'), 'unknown style prop reported');
 });
 
+// Where a byte lands in a text no node drew yet (backlog F171): asked
+// before the frame, the rect is the one `caretRect` gives once a node lays
+// the same text out at that width, on every visual line.
+test('caretInText answers where layout puts each byte', () => {
+  const ctx = new Ctx();
+  const style = { size: 14, family: 'mono', lineHeight: 20, wrap: 'word' };
+  const content = ['the quick ', el('span', { bold: true }, ['brown']), ' fox jumps over the lazy dog'];
+  const len = 'the quick brown fox jumps over the lazy dog'.length;
+  const asked = [];
+  for (let b = 0; b <= len; b++) asked.push(ctx.caretInText(content, style, 120, b));
+  ctx.frame(320, 240, 1, box({}, [box({ width: 120 }, [el('text', style, content)], 'para')]));
+  const laid = [];
+  for (let b = 0; b <= len; b++) laid.push(ctx.caretRect('para', b));
+  assert.ok(new Set(laid.map((r) => r.y)).size >= 3, 'wraps');
+  assert.deepEqual(asked, laid);
+  const plain = ctx.caretInText('one line', style, undefined, 99);
+  assert.deepEqual(plain, { x: ctx.measureText('one line', style).width, y: 0, w: 0, h: 20 });
+});
+
 // A terminal's screen as one node (backlog C20): four entries a cell in a
 // Uint32Array, a click that names its cell, and the screen as the access
 // tree's value.
@@ -5207,6 +5226,21 @@ SCENE_TREES.drop = (_fx, phase) => {
 // (ADR 0017). One row on the container is the whole declaration — the
 // labels inside say nothing about selection.
 const SELECTION_LINES = ['one', 'two', 'three'];
+// `conformance::build_caret_in_text` (backlog F171): two wrapped texts,
+// each with a bar padded in by where `ctx.caretInText` says a byte of it
+// lands — asked while the frame is built, before any node drew the text.
+SCENE_TREES['caret-in-text'] = (_fx, _phase, ctx) => {
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  const content = ['the quick ', el('span', { bold: true }, ['brown']), ' fox jumps over the lazy dog'];
+  const plain = 'a plain line that wraps twice over';
+  const bar = (at) => box({ padL: at.x, padT: at.y }, [box({ width: 2, height: at.h, bg: '#3b5bd4' })]);
+  return root({}, [box({ pad: 10 }, [
+    box({ width: 120 }, [el('text', mono, content)]),
+    bar(ctx.caretInText(content, mono, 120, 35)),
+    box({ width: 120 }, [text(plain, mono)]),
+    bar(ctx.caretInText(plain, mono, 120, plain.length)),
+  ])]);
+};
 // `conformance::build_sampler` (backlog AR47): the generic rows no other
 // scene declares. Every prop below is spelled by its schema name, which is
 // what the coverage test after the corpus reads.
@@ -8128,7 +8162,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
   const plumbing = new Set([
     // The wire: the binary frame and its readers, the raw tokens, the
     // encoder's warnings, and the tree's other readers beside `quads`.
-    'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'setTokensRaw',
+    'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'caretInTextBinary', 'setTokensRaw',
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
     'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',

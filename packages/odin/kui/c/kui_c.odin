@@ -1230,6 +1230,8 @@ foreign lib {
 	drop_target :: proc(ctx: ^Ctx) -> u64 ---
 	measure_text :: proc(ctx: ^Ctx, text: string, style: ^TextStyle, max_w: f32, out: ^TextMetrics) -> bool ---
 	measure_rich_text :: proc(ctx: ^Ctx, spans: [^]Span, span_count: uint, base: ^TextStyle, max_w: f32, out: ^TextMetrics) -> bool ---
+	caret_in_text :: proc(ctx: ^Ctx, text: string, style: ^TextStyle, max_w: f32, byte: uint, out: ^CaretRect) -> bool ---
+	caret_in_rich_text :: proc(ctx: ^Ctx, spans: [^]Span, span_count: uint, base: ^TextStyle, max_w: f32, byte: uint, out: ^CaretRect) -> bool ---
 	text_hit :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, out: ^TextHit) -> bool ---
 	open_menu :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, items: [^]MenuItem, count: uint) -> bool ---
 	close_menu :: proc(ctx: ^Ctx) -> bool ---

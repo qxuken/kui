@@ -1402,6 +1402,25 @@ space is. A text with its own line breaks, a `maxLines` or an
 [`wrap` row](props.md#text-props) ·
 [alpha.22](../CHANGELOG.md#010-alpha22-2026-09-28)
 
+### How do I place my caret on the frame its text changes?
+
+Ask `caretInText(content, style, maxWidth, byte)` (Rust
+`ui.caret_in_text` / `ui.caret_in_rich_text`, Lua `env.caret_in_text`, C
+`kui_caret_in_text` / `kui_caret_in_rich_text`) with the text you are
+about to draw and the width its box has, and add where the text node
+sits. `caretRect(key, byte)` reads the layout the node was given, which
+during a build is last frame's: on the frame a letter is typed, or a
+line turns to its source as the caret comes, that layout is the old
+text's, and a caret placed by it is a letter behind — on a wrapped
+line's later rows, in a place no measure of the prefix can find. The
+query shapes and wraps the text as layout will (the same text cache, so
+asking and then drawing shapes once), each span in its own face, and
+answers from the text's own top-left. A line past 4 KiB answers as its
+layout does, by the mean advance in a chunk not shaped yet, until a
+frame has drawn it.
+
+[alpha.58 `### Added`](../CHANGELOG.md#010-alpha58-unreleased)
+
 ### How do I make the caret I draw blink?
 
 Read `caretVisible()` (Rust `ui.caret_visible()`, Lua `env.caret_visible`,

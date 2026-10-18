@@ -223,7 +223,10 @@ archive, while F168, filed with them — a window kept out of screen
 capture — is open below; and F169 and F170, from Carnet's minimized
 window and its title field — an app that heard no wake while minimized,
 the first key after a click — were built the day they were filed, after
-the alpha.56 tag, and are in the archive.
+the alpha.56 tag, and are in the archive; and F171, from kawoosh's
+wrapped caret — where a byte lands in a text no node drew yet — was
+built the day it was filed, after the alpha.57 tag, and is in the
+archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1760,6 +1763,18 @@ left the field an empty selection, so the first Backspace or arrow
 after the click did nothing; Carnet set the caret again by hand once
 the button was up. Two entries, F169 and F170, **built 2026-10-14**,
 the day they were filed, and in the archive.
+
+## From kawoosh's wrapped caret (2026-10-18)
+
+kawoosh places a wrapped row's bar caret where kui laid the byte out
+(`caret_rect`). On the frame a letter is typed the row's text is new to
+kui, and the layout under the row's key is the old text's: the bar
+stood a letter behind on the row's later visual lines for that frame,
+and the measure of the text before the byte, unwrapped, which kawoosh
+used on the first line, ran past the pane on the others. kawoosh's
+wrap.md had named the sound model twice: a kui call answering where a
+byte lands in a text wrapped at a width, without a node. One entry,
+F171, **built 2026-10-18**, the day it was filed, and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4778,3 +4793,7 @@ move.
 - `!` **F169** — [A minimized window's app hears no wake and no time it asked for](backlog/closed-2026-09.md#-f169--a-minimized-windows-app-hears-no-wake-and-no-time-it-asked-for--done-2026-10-14) — done (2026-10-14) — a wake or a due time to a window that cannot draw builds its frame unseen at the turn's end, at the size it last drew at, at most four a second (`mod unseen`); `Drive::hide`, `show`, `wake`, `due`, `drawn`
 
 - `~` **F170** — [A click in an editor leaves an empty selection](backlog/closed-2026-09.md#-f170--a-click-in-an-editor-leaves-an-empty-selection--done-2026-10-14) — done (2026-10-14) — a caret drag starts past the click slop, and a drag ending on its anchor holds no selection
+
+**From kawoosh's wrapped caret (2026-10-18)** — F171, filed and built the same day
+
+- `~` **F171** — [A caret on a text no node drew yet has no place to stand](backlog/closed-2026-09.md#-f171--a-caret-on-a-text-no-node-drew-yet-has-no-place-to-stand--done-2026-10-18) — done (2026-10-18) — `Ui::caret_in_text` / `caret_in_rich_text`, `kui_caret_in_text` / `kui_caret_in_rich_text`, `ctx.caretInText`, `env.caret_in_text`: where a byte lands once wrapped at a width, without a node, as `caret_rect` answers once one draws it

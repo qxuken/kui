@@ -2469,21 +2469,8 @@ impl TextSystem {
 
     fn measure_key(&mut self, key: u64, fs: &mut FontSystem, max_w: Option<f32>) -> TextMetrics {
         let scale = self.scale;
+        let (key, target) = self.laid_at(key, fs, max_w);
         let entry = self.run_mut(key).expect("just interned");
-        let target = wrap_target(entry, max_w, scale);
-        // A run a node has drawn keeps the rows it was drawn at: its
-        // `text_hit` and `caret_rect` read them until the next frame, which
-        // would only wrap them back. A measure at another width lays out a
-        // copy at that width instead, kept for the next measure there —
-        // between frames as well as within one, where RG72's claim is
-        // (backlog RG76).
-        let key = if entry.claimed != u64::MAX && wrap_differs(entry.wrap, target) {
-            self.wrap_copy(key, target, fs)
-        } else {
-            key
-        };
-        let entry = self.run_mut(key).expect("just interned");
-        wrap_entry(entry, fs, target);
         let (mut m, lines) = entry.measure();
         if entry.clamp_w
             && let Some(t) = target
@@ -2495,6 +2482,91 @@ impl TextSystem {
             height: m.h / scale,
             lines,
         }
+    }
+
+    /// Run `key` laid out at `max_w` (logical px) as layout would lay a
+    /// node drawing it out, and the key of the entry that holds that
+    /// layout, with its physical wrap width. A run a node has drawn keeps
+    /// the rows it was drawn at: its `text_hit` and `caret_rect` read them
+    /// until the next frame, which would only wrap them back. A query at
+    /// another width lays out a copy at that width instead, kept for the
+    /// next query there — between frames as well as within one, where
+    /// RG72's claim is (backlog RG76).
+    fn laid_at(&mut self, key: u64, fs: &mut FontSystem, max_w: Option<f32>) -> (u64, Option<f32>) {
+        let scale = self.scale;
+        let entry = self.run_mut(key).expect("just interned");
+        let target = wrap_target(entry, max_w, scale);
+        let key = if entry.claimed != u64::MAX && wrap_differs(entry.wrap, target) {
+            self.wrap_copy(key, target, fs)
+        } else {
+            key
+        };
+        wrap_entry(self.run_mut(key).expect("just interned"), fs, target);
+        (key, target)
+    }
+
+    /// Where byte `byte` of `content` in `style` lands once laid out at
+    /// `max_w` (logical px; unwrapped without one), with no node drawing
+    /// it: the caret rect `caret_at` would answer for a text node with
+    /// that content and style wrapped at that width, from the text's own
+    /// origin rather than the viewport's — zero wide, one line tall,
+    /// logical px. Shaped through the text cache, as `measure` is.
+    #[allow(clippy::too_many_arguments)]
+    pub fn caret_in(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+        max_w: Option<f32>,
+        byte: usize,
+    ) -> Option<Rect> {
+        let key = self.intern_any(content, style, res, fs);
+        self.caret_in_any(key, fs, max_w, byte)
+    }
+
+    /// `caret_in` for a rich-text paragraph.
+    #[allow(clippy::too_many_arguments)]
+    pub fn caret_in_rich(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        res: &Resources,
+        fs: &mut FontSystem,
+        max_w: Option<f32>,
+        byte: usize,
+    ) -> Option<Rect> {
+        let key = self.intern_rich_any(spans, base, res, fs);
+        self.caret_in_any(key, fs, max_w, byte)
+    }
+
+    /// `caret_in` for the entry under `key`, a long line or a run.
+    fn caret_in_any(
+        &mut self,
+        key: u64,
+        fs: &mut FontSystem,
+        max_w: Option<f32>,
+        byte: usize,
+    ) -> Option<Rect> {
+        let scale = self.scale;
+        if self.long(key).is_some() {
+            // Broken at the width and read, then the rows put back for
+            // the node that drew the line, which queries read — as
+            // `measure_any` does.
+            let held = self.long(key).expect("checked").wrap_w;
+            self.long_size(key, max_w.map(|m| m * scale));
+            let line = self.long(key).expect("checked");
+            let line_h = line.line_h;
+            let at = self.long_caret_local(line, byte);
+            if wrap_differs(held, self.long(key).expect("checked").wrap_w) {
+                self.relayout_long(key, held);
+            }
+            let (x, y) = at?;
+            return Some(Rect::new(x / scale, y / scale, 0.0, line_h / scale));
+        }
+        let (key, _) = self.laid_at(key, fs, max_w);
+        let (x, top, h) = self.run(key)?.caret_local(byte)?;
+        Some(Rect::new(x / scale, top / scale, 0.0, h / scale))
     }
 
     /// Registers a rich-text paragraph for this frame. Spans shape as one
@@ -4683,16 +4755,7 @@ impl TextSystem {
             Entry::Run(entry) => entry,
         };
         let (ox, oy) = self.physical_origin(place);
-        let cursor = entry.cursor_of(byte);
-        let (_, run_no) = visual_line(&entry.buffer, cursor.line, cursor.index)?;
-        let run = entry.buffer.layout_runs().nth(run_no)?;
-        let (dx, dy) = entry.shift(run.line_i);
-        let x = caret_x(&run, cursor.index) + dx;
-        // Beside an initial the caret is as tall as the letter.
-        let (top, h) = match &entry.initial {
-            Some(i) if run.line_i == 0 => (i.rect.y, i.rect.h),
-            _ => (run.line_top + dy, run.line_height),
-        };
+        let (x, top, h) = entry.caret_local(byte)?;
         let scale = self.scale;
         Some(Rect::new(
             (ox + x) / scale,
@@ -5015,6 +5078,24 @@ impl CachedText {
         }
         let len = self.buffer.lines.get(li).map_or(0, |l| l.text().len());
         cosmic_text::Cursor::new(li, (byte - start).min(len))
+    }
+
+    /// The caret for byte `byte` of the run as it is laid out, physical px
+    /// from the text's origin: its x, its row's top and the row's height.
+    /// What `caret_at` places in the viewport and `caret_in` answers for a
+    /// text no node drew.
+    fn caret_local(&self, byte: usize) -> Option<(f32, f32, f32)> {
+        let cursor = self.cursor_of(byte);
+        let (_, run_no) = visual_line(&self.buffer, cursor.line, cursor.index)?;
+        let run = self.buffer.layout_runs().nth(run_no)?;
+        let (dx, dy) = self.shift(run.line_i);
+        let x = caret_x(&run, cursor.index) + dx;
+        // Beside an initial the caret is as tall as the letter.
+        let (top, h) = match &self.initial {
+            Some(i) if run.line_i == 0 => (i.rect.y, i.rect.h),
+            _ => (run.line_top + dy, run.line_height),
+        };
+        Some((x, top, h))
     }
 
     /// How far the runs of buffer line `line_i` are drawn from where the

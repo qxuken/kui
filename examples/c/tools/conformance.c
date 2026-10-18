@@ -2099,6 +2099,45 @@ static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_caret_in_text (backlog F171): two wrapped texts, each
+ * with a 2 px bar padded in by where kui_caret_in_rich_text /
+ * kui_caret_in_text say a byte of it lands, asked while the frame builds. */
+static void conf_caret_bar(KuiCtx *ui, KuiCaretRect at) {
+    KuiSpec pad = {.pad_l = at.x, .pad_t = at.y};
+    kui_open(ui, &pad, NULL);
+    KuiSpec bar = {.width = {KUI_FIXED, 2}, .height = {KUI_FIXED, at.h}, .bg = 0x3b5bd4ff};
+    kui_open(ui, &bar, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
+static void conf_caret_in_text(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiTextStyle mono = {.size = 14, .family = KUI_FONT_MONO, .line_height = 20};
+    KuiSpan spans[] = {
+        {.text = KUI_STR("the quick ")},
+        {.text = KUI_STR("brown"), .flags = KUI_SPAN_BOLD},
+        {.text = KUI_STR(" fox jumps over the lazy dog")},
+    };
+    const char *plain = "a plain line that wraps twice over";
+    KuiCaretRect rich_at = KUI_CARET_RECT_INIT, plain_at = KUI_CARET_RECT_INIT;
+    kui_caret_in_rich_text(ui, spans, 3, &mono, 120, 35, &rich_at);
+    kui_caret_in_text(ui, KUI_STR(plain), &mono, 120, strlen(plain), &plain_at);
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10};
+    kui_open(ui, &outer, NULL);
+    KuiSpec column = {.width = {KUI_FIXED, 120}};
+    kui_open(ui, &column, NULL);
+    kui_rich_text(ui, spans, 3, &mono);
+    kui_close(ui);
+    conf_caret_bar(ui, rich_at);
+    kui_open(ui, &column, NULL);
+    kui_text(ui, KUI_STR(plain), &mono);
+    kui_close(ui);
+    conf_caret_bar(ui, plain_at);
+    kui_close(ui);
+}
+
 /* conformance::build_sampler (backlog AR47): the generic rows no other
  * scene declares, on four nodes. `center` is both alignments at
  * KUI_CENTER here, as the Rust builder's center() is; the per-corner
@@ -2309,6 +2348,7 @@ static const ConfScene CONF_SCENES[] = {
     {"scrollbar", conf_scrollbar},
     {"tokens", conf_tokens},
     {"sampler", conf_sampler},
+    {"caret-in-text", conf_caret_in_text},
 };
 
 /* -- driving one scene --------------------------------------------------- */

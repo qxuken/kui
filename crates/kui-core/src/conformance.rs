@@ -3686,6 +3686,47 @@ pub const SCENES: &[Scene] = &[
             ime_off: false,
         },
     },
+    Scene {
+        name: "caret-in-text",
+        doc: "Where a byte lands in a text no node drew (backlog F171): a \
+              rich paragraph with a bold span and a plain one, each wrapped \
+              in a column 120 px wide, and under each a 2 px bar padded in \
+              by the rect `caret_in_rich_text` / `caret_in_text` answered \
+              while the frame was built — byte 35 of the first, on a later \
+              visual line, and the end of the second. A binding that asks \
+              unwrapped, or answers from the viewport's origin, pads the \
+              bars elsewhere.",
+        custom: &[],
+        elements: &["box", "text"],
+        build: build_caret_in_text,
+        env: NATIVE_CHROME,
+        steps: &[],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 40,
+            access: &[
+                "0 window ||",
+                "1 staticText the quick brown fox jumps over the lazy dog||",
+                "1 staticText a plain line that wraps twice over||",
+            ],
+            events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
 ];
 
 /// The rows a virtual list builds, at the data indices it builds them at.
@@ -5247,6 +5288,46 @@ fn build_break_spaces(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 mono,
             )
         });
+    });
+}
+
+fn build_caret_in_text(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let mono = TextStyle::new(14.0).mono().line_height(20.0);
+    let spans = [
+        Span::new("the quick "),
+        Span::new("brown").bold(),
+        Span::new(" fox jumps over the lazy dog"),
+    ];
+    let plain = "a plain line that wraps twice over";
+    let rich_at = ui
+        .caret_in_rich_text(&spans, &mono, Some(120.0), 35)
+        .unwrap_or_default();
+    let plain_at = ui
+        .caret_in_text(plain, &mono, Some(120.0), plain.len())
+        .unwrap_or_default();
+    // A 2 px bar as tall as the caret, padded in by where it landed.
+    let bar = |ui: &mut Ui<'_>, at: Rect| {
+        let pad = Edges {
+            l: at.x,
+            r: 0.0,
+            t: at.y,
+            b: 0.0,
+        };
+        ui.with(NodeSpec::column().padding(pad), |ui| {
+            ui.leaf(
+                NodeSpec::column()
+                    .size(2.0, at.h)
+                    .bg(Color::hex(0x3b5bd4ff)),
+            );
+        });
+    };
+    ui.with(NodeSpec::column().pad(10.0), |ui| {
+        ui.with(NodeSpec::column().width(120.0), |ui| {
+            ui.rich_text(&spans, mono)
+        });
+        bar(ui, rich_at);
+        ui.with(NodeSpec::column().width(120.0), |ui| ui.text(plain, mono));
+        bar(ui, plain_at);
     });
 }
 

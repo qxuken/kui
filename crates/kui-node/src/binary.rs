@@ -1017,6 +1017,48 @@ pub fn measure_binary(
     strings: &[u8],
     max_width: Option<f64>,
 ) -> Result<kui_core::TextMetrics> {
+    with_text_binary(
+        core,
+        stream,
+        strings,
+        max_width,
+        "measureText",
+        |core, content, style, max_w| core.measure_text(content, style, max_w),
+        |core, spans, style, max_w| core.measure_rich_text(spans, style, max_w),
+    )
+}
+
+/// `caretInText`'s door: the same one text element as `measureText`'s,
+/// and the answer is where byte `byte` of it lands laid out at the width.
+pub fn caret_in_binary(
+    core: &mut kui_core::Core,
+    stream: &[f64],
+    strings: &[u8],
+    max_width: Option<f64>,
+    byte: usize,
+) -> Result<Option<kui_core::Rect>> {
+    with_text_binary(
+        core,
+        stream,
+        strings,
+        max_width,
+        "caretInText",
+        |core, content, style, max_w| core.caret_in_text(content, style, max_w, byte),
+        |core, spans, style, max_w| core.caret_in_rich_text(spans, style, max_w, byte),
+    )
+}
+
+/// Reads the one text element a query sends and hands it to `plain` or
+/// `rich`, with the width a positive finite `max_width` gives.
+fn with_text_binary<R>(
+    core: &mut kui_core::Core,
+    stream: &[f64],
+    strings: &[u8],
+    max_width: Option<f64>,
+    door: &str,
+    plain: impl FnOnce(&mut kui_core::Core, &str, &kui_core::TextStyle, Option<f32>) -> R,
+    rich: impl FnOnce(&mut kui_core::Core, &[Span<'_>], &kui_core::TextStyle, Option<f32>) -> R,
+) -> Result<R> {
     let mut r = Reader {
         s: stream,
         i: 0,
@@ -1039,7 +1081,7 @@ pub fn measure_binary(
                 (read_props(&mut r, &mut refs), refs.take())
             };
             warn_missed(core, missed);
-            Ok(core.measure_text(content, &p?.style, max_w))
+            Ok(plain(core, content, &p?.style, max_w))
         }
         OP_RICH_TEXT => {
             let (p, spans, missed) = {
@@ -1049,11 +1091,9 @@ pub fn measure_binary(
                 (p, spans, refs.take())
             };
             warn_missed(core, missed);
-            Ok(core.measure_rich_text(&spans?, &p?.style, max_w))
+            Ok(rich(core, &spans?, &p?.style, max_w))
         }
-        op => Err(err(format!(
-            "measureText expects one text element, got op {op}"
-        ))),
+        op => Err(err(format!("{door} expects one text element, got op {op}"))),
     }
 }
 

@@ -1236,6 +1236,50 @@ impl Core {
             .measure_rich(spans, base, &sess.resources, &mut sess.fonts, max_w)
     }
 
+    /// Where byte `byte` of `content` in `style` lands, wrapped at `max_w`
+    /// (logical px; unwrapped without one), without a node: the rect
+    /// [`Self::caret_rect`] would answer for a text node with that content
+    /// and style laid out at that width — zero wide, one line tall — but
+    /// from the text's own top-left rather than the viewport's. A caret
+    /// placed on the frame its text is new, before any node has drawn it,
+    /// lands on the visual line layout will put the byte on, not on the
+    /// old text's rows. `byte` past the content is the end. Shapes through
+    /// the text cache, as `measure_text` does, so asking and then drawing
+    /// the same text shapes once.
+    pub fn caret_in_text(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        max_w: Option<f32>,
+        byte: usize,
+    ) -> Option<Rect> {
+        self.note_read(|| replay::Read::Measure(self.text_rev()));
+        let sess = &mut *self.session.state();
+        self.text.caret_in(
+            content,
+            style,
+            &sess.resources,
+            &mut sess.fonts,
+            max_w,
+            byte,
+        )
+    }
+
+    /// `caret_in_text` for a rich-text paragraph: each span in its own
+    /// face, the flow wrapped across them as `rich_text` wraps it.
+    pub fn caret_in_rich_text(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        max_w: Option<f32>,
+        byte: usize,
+    ) -> Option<Rect> {
+        self.note_read(|| replay::Read::Measure(self.text_rev()));
+        let sess = &mut *self.session.state();
+        self.text
+            .caret_in_rich(spans, base, &sess.resources, &mut sess.fonts, max_w, byte)
+    }
+
     /// Where a point lands in the text node `key` drew: a byte offset into
     /// its content and the visual row within that node — counted across
     /// every run the key covers by where the rows sit, so a `line` row of

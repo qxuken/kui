@@ -21,6 +21,40 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.58 (unreleased)
+
+**What breaks.** Nothing: two calls added in every binding.
+
+kawoosh places its bar caret over a wrapped row where kui laid the
+byte out. On the frame a letter is typed the row's text is new to kui,
+and `caret_rect` answers from the layout of the text the row drew last
+frame: on the row's first visual line kawoosh measured the text before
+the byte instead, and on every later one it stood a letter behind for
+that frame (backlog F171, from kawoosh's wrapped caret). Nothing in kui
+could say where a byte of a text no node has drawn lands once wrapped
+at a width. Now it can.
+
+### Added
+
+- **`Ui::caret_in_text` and `Ui::caret_in_rich_text`** (backlog F171;
+  C `kui_caret_in_text` / `kui_caret_in_rich_text`, Odin's
+  `caret_in_text` / `caret_in_rich_text`, Node `ctx.caretInText`, Lua
+  `env.caret_in_text`, the last two taking spans too): where byte `byte`
+  of a text lands once laid out at `max_w`, without a node — the rect
+  `caret_rect` gives when a text node with that content and style is
+  laid out at that width, from the text's own top-left. Shaped and
+  wrapped through the text cache, as `measure_text` is, so asking and
+  then drawing shapes once, and a run a node drew keeps its rows.
+
+**What you can delete.**
+
+- A caret on the frame its text is new placed by the layout of the text
+  the node drew the frame before — a letter behind on a wrapped text's
+  later lines — or by the width of the text before the byte measured
+  unwrapped, which is right on the first line and past the box on every
+  other; and a guess at the fold (`x / width` rows down) where no layout
+  existed yet.
+
 ## 0.1.0-alpha.57 (2026-10-14)
 
 **What breaks.**

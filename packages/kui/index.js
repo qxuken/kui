@@ -221,6 +221,18 @@ function measureText(content, style, maxWidth) {
 Ctx.prototype.measureText = measureText;
 KuiWindow.prototype.measureText = measureText;
 
+// `caretInText(content, style, maxWidth, byte)`: where byte `byte` of the
+// same text lands laid out at `maxWidth`, crossing as `measureText`'s does
+// — for a caret on the frame its text is new, before any node drew it.
+function caretInText(content, style, maxWidth, byte) {
+  const { stream, strings, unknown, unknownTokens } = measurer.encodeText(content, style, this[TOKENS]);
+  const r = this.caretInTextBinary(stream, strings, maxWidth, byte);
+  reportUnknown(this, unknown, unknownTokens);
+  return r;
+}
+Ctx.prototype.caretInText = caretInText;
+KuiWindow.prototype.caretInText = caretInText;
+
 // ---------------------------------------------------------------------------
 // One loop, two surfaces.
 //

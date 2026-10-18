@@ -2305,7 +2305,8 @@ unsafe impl OutParam for KuiLayoutRect {
 }
 
 /// A caret rect (`kui_caret_rect`): logical px in viewport coordinates,
-/// zero wide, one line tall.
+/// zero wide, one line tall; from the text's own top-left for
+/// `kui_caret_in_text` and `kui_caret_in_rich_text`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct KuiCaretRect {

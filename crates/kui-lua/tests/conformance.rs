@@ -967,6 +967,25 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // is over it in phase 0; the popover closes in phase 1 and reopens
         // in phase 2, which puts it over the toast. The rows overflow so
         // the page has a bar for the popover to cover.
+        // Backlog F171: two wrapped texts, each with a bar padded in by
+        // where `env.caret_in_text` says a byte of it lands.
+        "caret-in-text" => r#"
+            local mono = { size = 14, family = "mono", line_height = 20 }
+            local spans = { "the quick ", { "brown", bold = true }, " fox jumps over the lazy dog" }
+            local plain = "a plain line that wraps twice over"
+            local function bar(at)
+              return column { pad = { l = at.x, t = at.y },
+                column { width = 2, height = at.h, bg = 0x3b5bd4ff },
+              }
+            end
+            return column { pad = 10,
+              column { width = 120, text(spans, mono) },
+              bar(env.caret_in_text(spans, mono, 120, 35)),
+              column { width = 120, text(plain, mono) },
+              bar(env.caret_in_text(plain, mono, 120, #plain)),
+            }
+        "#
+        .to_string(),
         // `conformance::build_sampler` (backlog AR47): the generic rows no
         // other scene declares, every one by its snake_case schema name —
         // `direction` for `repeat`, which is a Lua keyword.

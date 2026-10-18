@@ -764,6 +764,32 @@ impl<'a> Ui<'a> {
         self.core.measure_rich_text(spans, base, max_w)
     }
 
+    /// Where a byte of a text lands once wrapped at a width, without a
+    /// node; see `Core::caret_in_text`. The rect is from the text's own
+    /// top-left: add where the text node sits to place a caret over it on
+    /// the frame its text is new, when [`Self::caret_rect`] still answers
+    /// for the text it drew last frame.
+    pub fn caret_in_text(
+        &mut self,
+        content: &str,
+        style: &TextStyle,
+        max_w: Option<f32>,
+        byte: usize,
+    ) -> Option<Rect> {
+        self.core.caret_in_text(content, style, max_w, byte)
+    }
+
+    /// `caret_in_text` for a rich-text paragraph.
+    pub fn caret_in_rich_text(
+        &mut self,
+        spans: &[Span<'_>],
+        base: &TextStyle,
+        max_w: Option<f32>,
+        byte: usize,
+    ) -> Option<Rect> {
+        self.core.caret_in_rich_text(spans, base, max_w, byte)
+    }
+
     /// Opens a node under the next auto key; its children follow until
     /// [`Self::close`]. [`Self::with`] is the scoped form, and the one to
     /// prefer: an `open` without its `close` is a `node-left-open`

@@ -2999,6 +2999,25 @@ macro_rules! core_methods {
                 Ok(text_metrics_json(m))
             }
 
+            /// `caretInText`'s door (index.js adds `caretInText` itself):
+            /// one `<text>` element as `measureTextBinary` takes it, and
+            /// the answer is where byte `byte` of that text lands once laid
+            /// out at `maxWidth` (unwrapped without one) — the rect
+            /// `caretRect` gives when a node draws the text at that width,
+            /// from the text's own top-left rather than the viewport's.
+            #[napi(ts_return_type = "Rect | null")]
+            pub fn caret_in_text_binary(
+                &mut self,
+                stream: Float64Array,
+                strings: Uint8Array,
+                max_width: Option<f64>,
+                byte: f64,
+            ) -> Result<Option<Json>> {
+                let byte = if byte.is_finite() { byte.max(0.0) as usize } else { usize::MAX };
+                let r = binary::caret_in_binary(self.$core(), &stream, &strings, max_width, byte)?;
+                Ok(r.map(rect_json))
+            }
+
             /// Drains the warnings the core raised since the last call
             /// (see `Warning`), each distinct (code, node) pair once.
             /// `createApp` collects them on `app.warnings` for you, and
