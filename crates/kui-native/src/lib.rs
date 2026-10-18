@@ -433,6 +433,7 @@ pub fn app(title: &str) -> Launcher {
         system: SystemEnv::default(),
         icon: None,
         icon_resource: None,
+        app_id: None,
         frame_latency: kui_wgpu::DEFAULT_FRAME_LATENCY,
         backdrop: Backdrop::Opaque,
         titlebar: Titlebar::Standard,
@@ -477,6 +478,9 @@ pub struct Launcher {
     /// The executable's icon resource on Windows
     /// ([`Launcher::icon_resource`]).
     icon_resource: Option<u16>,
+    /// The name the Linux desktop knows the app's windows by
+    /// ([`Launcher::app_id`]).
+    app_id: Option<String>,
     /// Frames queued ahead of the one on screen
     /// ([`Launcher::frame_latency`]).
     frame_latency: u32,
@@ -658,6 +662,30 @@ impl Launcher {
     /// and each OS takes its own.
     pub fn icon_resource(mut self, id: u16) -> Self {
         self.icon_resource = Some(id);
+        self
+    }
+
+    /// The name the Linux desktop knows every window of the app by: the
+    /// Wayland `app_id`, and on X11 both halves of `WM_CLASS` (backlog
+    /// F172). A compositor finds a Wayland window's icon, and groups it
+    /// in the dock or the task switcher, by the `.desktop` file named
+    /// `<id>.desktop`; an X11 window manager by the file whose
+    /// `StartupWMClass` is `id`. The file's `Icon=` is then the icon the
+    /// window is shown with — Wayland has no other.
+    ///
+    /// ```rust,no_run
+    /// // Installed as ~/.local/share/applications/org.example.Notes.desktop
+    /// kui_native::app("Notes").app_id("org.example.Notes");
+    /// ```
+    ///
+    /// Without it a Wayland window has no `app_id` and the compositor
+    /// draws its generic icon; an X11 window's `WM_CLASS` is the
+    /// executable's name (`RESOURCE_NAME` overriding the instance half).
+    /// An empty id is none. Nothing on Windows or macOS, which find the
+    /// app by its executable and its bundle.
+    pub fn app_id(mut self, id: impl Into<String>) -> Self {
+        let id = id.into();
+        self.app_id = (!id.is_empty()).then_some(id);
         self
     }
 
@@ -847,7 +875,7 @@ impl Launcher {
         let (diagnostics, session, core) = self.main_core();
         Box::new(Shell {
             title: self.title,
-            icon: icon::AppIcon::new(self.icon, self.icon_resource),
+            icon: icon::AppIcon::new(self.icon, self.icon_resource).with_app_id(self.app_id),
             chrome: self.chrome,
             size: clamp_size(self.size, self.min_size, self.max_size),
             min_size: self.min_size,
@@ -3946,6 +3974,16 @@ mod tests {
         assert!(l.icon.is_some());
         let e = app("t").try_icon_bytes(b"not a png").err().unwrap();
         assert!(e.starts_with("an icon: not an image"), "{e}");
+    }
+
+    /// The app id is kept as given, the last call wins, and an empty one
+    /// is none (backlog F172).
+    #[test]
+    fn launcher_keeps_the_app_id_and_an_empty_one_is_none() {
+        assert_eq!(app("t").app_id, None);
+        let l = app("t").app_id("org.example.Notes");
+        assert_eq!(l.app_id.as_deref(), Some("org.example.Notes"));
+        assert_eq!(l.app_id("").app_id, None);
     }
 
     #[test]

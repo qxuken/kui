@@ -152,6 +152,25 @@ pub extern "C" fn kui_set_icon(rgba: *const u8, width: u32, height: u32, resourc
     })
 }
 
+/// The app id `kui_set_app_id` set, for the next `kui_run` /
+/// `kui_run_with` to take — a process setting, as `ICON` is.
+static APP_ID: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Sets the name the Linux desktop knows every window of the next
+/// `kui_run` / `kui_run_with` by: the Wayland `app_id` and both halves of
+/// the X11 `WM_CLASS` (backlog F172), which a compositor matches to
+/// `<id>.desktop` and a window manager to the file whose `StartupWMClass`
+/// it is. An empty string clears it. Nothing on Windows or macOS. The last
+/// call before the run wins; a run takes it.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_app_id(id: KuiStr) {
+    guard((), || {
+        let id = kstr(id);
+        *APP_ID.lock().unwrap_or_else(|e| e.into_inner()) =
+            (!id.is_empty()).then(|| id.into_owned());
+    })
+}
+
 /// Opens a window titled `title` and runs it to the end: `view(user, ctx)`
 /// is called once per frame with a context to build into, and
 /// `on_event(user, ev)` once per event, on this thread. Blocks until the
@@ -224,6 +243,9 @@ pub extern "C" fn kui_run_with(
             if let Some(id) = icon.resource {
                 launcher = launcher.icon_resource(id);
             }
+        }
+        if let Some(id) = APP_ID.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            launcher = launcher.app_id(id);
         }
         if let Some(c) = unsafe { ctx(ptr) } {
             launcher = launcher

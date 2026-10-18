@@ -267,6 +267,10 @@ main :: proc() {
 	}
 	state: State
 	if !set_icon() do os.exit(1)
+	// The Linux desktop's name for the window (backlog F172): Wayland's
+	// app_id, X11's WM_CLASS, matched to a kui-odin-counter.desktop if one
+	// is installed.
+	kui.set_app_id("kui-odin-counter")
 	ok := kui.run("kui — Odin counter", &state, view, on_event, teardown = teardown)
 	os.exit(0 if ok else 1)
 }

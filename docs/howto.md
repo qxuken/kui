@@ -2280,7 +2280,17 @@ resource)` before `kui_run`. Pixels that are not the size are refused
 with the reason (`Launcher::try_icon` for pixels from outside the
 program).
 
-[alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-2026-09-25)
+On Linux the icon a desktop shows for a running window is the `Icon=` of
+the app's `.desktop` file, and Wayland has no other: the compositor
+finds the file by the window's `app_id`, which a window has only when the
+launcher names one — `.app_id("org.example.Notes")` for an app installed
+as `org.example.Notes.desktop`. The same id is both halves of the X11
+`WM_CLASS`, which a window manager matches to the file's
+`StartupWMClass`. Node: `appId` in the window's options. C:
+`kui_set_app_id(KUI_STR("org.example.Notes"))` before `kui_run`.
+
+[alpha.18 `### Added`](../CHANGELOG.md#010-alpha18-2026-09-25),
+[alpha.59 `### Added`](../CHANGELOG.md#010-alpha59-unreleased)
 
 ### How do I stop the console window on Windows?
 

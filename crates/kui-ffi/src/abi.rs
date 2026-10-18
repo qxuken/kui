@@ -166,7 +166,8 @@
 /// - ABI 32: `initial_letter` on `KuiTextStyle` (backlog F164), which
 ///   grows to 80 on 64-bit: the first letter as a drop cap. Still 32 with
 ///   `KUI_EDIT_SECURE` and `KUI_ROLE_PASSWORD_INPUT`, new constants
-///   (backlog F167): no struct moved.
+///   (backlog F167): no struct moved. And with `kui_set_app_id`
+///   (backlog F172), a new function.
 pub const KUI_ABI_VERSION: u32 = 32;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

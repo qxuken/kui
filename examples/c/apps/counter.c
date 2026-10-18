@@ -363,5 +363,9 @@ int main(int argc, char **argv) {
     /* And the count is printed as the window goes, whichever way it goes. */
     kui_on_teardown(teardown);
     if (!set_icon()) return 1;
+    /* The Linux desktop's name for the window (backlog F172): Wayland's
+     * app_id, X11's WM_CLASS, matched to a kui-c-counter.desktop if one is
+     * installed. */
+    kui_set_app_id(KUI_STR("kui-c-counter"));
     return kui_run(KUI_STR("kui — C counter"), view, on_event, &state) ? 0 : 1;
 }

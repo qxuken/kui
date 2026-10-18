@@ -1059,8 +1059,8 @@ runWindowed[PACE] = pacer;
  * is opened as a user who asked for less motion would see it.
  */
 export function windowOptions(opts = {}) {
-  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, backdrop, titlebar } = opts;
-  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, backdrop, titlebar };
+  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar } = opts;
+  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar };
 }
 
 /**
