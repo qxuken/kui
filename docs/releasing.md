@@ -11,7 +11,7 @@ for development). A Rust project needs nothing but the dependency:
 
 ```toml
 # Cargo.toml
-kui-native = "0.1.0-alpha.57"  # `use kui_native::…`; `cargo add kui-native` writes it
+kui-native = "0.1.0-alpha.58"  # `use kui_native::…`; `cargo add kui-native` writes it
 ```
 
 crates.io has had them since 0.1.0-alpha.33; every earlier version is on
@@ -289,9 +289,13 @@ commit-triggered check would only find it the next time someone happened to
 push. `--deny warnings` means an unmaintained or unsound crate fails the same
 as a vulnerability; the only way to accept one is an entry in
 [.cargo/audit.toml](../.cargo/audit.toml) with a comment saying what pulls it in
-and what would let the line be deleted. One entry stands today: `ttf-parser`
+and what would let the line be deleted. Two decisions stand today:
+`ttf-parser`
 ([RUSTSEC-2026-0192](https://rustsec.org/advisories/RUSTSEC-2026-0192)),
-unmaintained, reached through cosmic-text's `fontdb`.
+unmaintained, reached through cosmic-text's `fontdb`; and `zvariant`,
+`zvariant_derive` and `zbus_names` (RUSTSEC-2026-0370 to 0372),
+unmaintained since zbus 6 folded them in, reached on Linux only through
+AccessKit's AT-SPI bridge, which still requires zbus 5.
 
 The job also passes `--no-yanked`. Checking for yanked crates costs one
 sparse-index request per crate — 440 of them — and this runner's egress is

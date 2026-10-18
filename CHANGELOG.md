@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.58 (unreleased)
+## 0.1.0-alpha.58 (2026-10-18)
 
 **What breaks.** Nothing: two calls added in every binding.
 
@@ -54,6 +54,32 @@ at a width. Now it can.
   unwrapped, which is right on the first line and past the box on every
   other; and a guess at the fold (`x / width` rows down) where no layout
   existed yet.
+
+### Native verification
+
+The pre-tag pass on 2026-10-18, over the round since alpha.57 — F171's
+caret without a node — on the Windows machine and under WSL. It found
+one thing to change: Odin's generated layer, written by hand for F171 on
+a machine with no Odin compiler, had `Caret_Rect` where the generator
+does not put it, so `odin.nu gen --check` failed; regenerated, the same
+declarations in the generator's order.
+
+**Windows**, rustc 1.99.1. fmt and clippy are clean; `cargo test
+--workspace`: **2129 tests over 165 suites**, 0 failed. The C round
+passes, and so do the scenes through C (59); Node's tests under
+`KUI_CONFORMANCE_REQUIRED=1`, **230 of 231** with the one skip Windows
+has had before; the examples' typecheck and the headless round. The
+windowed round: **all 55 examples**, Node's included, drew 120 frames
+on each base and exited cleanly.
+
+**Linux** (WSL, Ubuntu 24.04), on the release's code. fmt and clippy
+are clean; `cargo test --workspace`: **2124 tests over 164 suites**, 0
+failed; `cargo audit --deny warnings` clean over 451 crates. The C
+round and the scenes through C; Odin's four steps, after the
+regeneration above; Node **231 of 231** with the corpus required; gen
+with no diff, the typecheck, the headless round, the book's examples
+current. No fuzz round ran — F171 is a query beside the text cache and
+no fuzz target calls it — and no Mac ran this round.
 
 ## 0.1.0-alpha.57 (2026-10-14)
 

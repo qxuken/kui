@@ -1656,6 +1656,32 @@ text_metrics_from_c :: proc(v: c.TextMetrics) -> (out: Text_Metrics) {
 	return
 }
 
+// kui.h's KuiCaretRect.
+Caret_Rect :: struct {
+	x: f32,
+	y: f32,
+	w: f32,
+	h: f32,
+}
+
+caret_rect_to_c :: proc(v: Caret_Rect, scratch: ^Scratch) -> (out: c.CaretRect) {
+	out.size = size_of(c.CaretRect)
+	out.x = v.x
+	out.y = v.y
+	out.w = v.w
+	out.h = v.h
+	_ = scratch
+	return
+}
+
+caret_rect_from_c :: proc(v: c.CaretRect) -> (out: Caret_Rect) {
+	out.x = v.x
+	out.y = v.y
+	out.w = v.w
+	out.h = v.h
+	return
+}
+
 // kui.h's KuiTextHit.
 Text_Hit :: struct {
 	line: u32,
@@ -1807,32 +1833,6 @@ file_filter_to_c :: proc(v: File_Filter, scratch: ^Scratch) -> (out: c.FileFilte
 file_filter_from_c :: proc(v: c.FileFilter) -> (out: File_Filter) {
 	out.name = v.name
 	out.extensions = ([^]string)(v.extensions)[:v.extension_count]
-	return
-}
-
-// kui.h's KuiCaretRect.
-Caret_Rect :: struct {
-	x: f32,
-	y: f32,
-	w: f32,
-	h: f32,
-}
-
-caret_rect_to_c :: proc(v: Caret_Rect, scratch: ^Scratch) -> (out: c.CaretRect) {
-	out.size = size_of(c.CaretRect)
-	out.x = v.x
-	out.y = v.y
-	out.w = v.w
-	out.h = v.h
-	_ = scratch
-	return
-}
-
-caret_rect_from_c :: proc(v: c.CaretRect) -> (out: Caret_Rect) {
-	out.x = v.x
-	out.y = v.y
-	out.w = v.w
-	out.h = v.h
 	return
 }
 

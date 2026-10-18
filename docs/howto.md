@@ -1419,7 +1419,7 @@ answers from the text's own top-left. A line past 4 KiB answers as its
 layout does, by the mean advance in a chunk not shaped yet, until a
 frame has drawn it.
 
-[alpha.58 `### Added`](../CHANGELOG.md#010-alpha58-unreleased)
+[alpha.58 `### Added`](../CHANGELOG.md#010-alpha58-2026-10-18)
 
 ### How do I make the caret I draw blink?
 
