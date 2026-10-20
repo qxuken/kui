@@ -53,7 +53,10 @@ const hint = <box hoverable>{true && <tooltip value="a hint" />}<tooltip><text>l
 // @ts-expect-error — `<input>` is the stock field: `label` and `initial`, nothing else
 const styledField = <input label="search" radius={4} />;
 void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wrongRole; void wrongArity; void wrongVerb; void liveText;
-void field; void hint; void styledField;
+// A scrolling terminal stamps where its screen sits, so a selection keeps
+// its ends across a scroll (ADR 0017).
+const term = <cells rows={1} cols={2} cells={new Uint32Array(8)} originLine={900} selectable />;
+void field; void hint; void styledField; void term;
 
 type Model = { count: number; note: string };
 type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };

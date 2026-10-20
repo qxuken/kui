@@ -1102,6 +1102,11 @@ export declare namespace JSX {
         cursorAt?: [number, number];
         cursorShape?: 'block' | 'bar' | 'underline';
         cursorColor?: ColorProp;
+        /** The absolute line row 0 is: a grid is one screenful of the
+         *  app's history, so stamping where the screen sits lets a
+         *  selection keep its ends across a scroll (ADR 0017). Re-declare
+         *  it as `onScroll`'s `lines` arrive. Unset, 0. */
+        originLine?: number;
       };
   }
 }

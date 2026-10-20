@@ -32,6 +32,10 @@ was the first bare bump to break an app in five releases).
   failed the tag's Forgejo `check`, so that release reached crates.io
   and npmjs but not the drydock9 cargo registry; this one carries the
   drydock9 copy again.
+- `<cells originLine>` type-checks in JSX. The encoder has sent it
+  since protocol v6, but the element's type left it out, so a
+  TypeScript app could not declare where its screen sits without a
+  cast.
 
 ### Changed
 
