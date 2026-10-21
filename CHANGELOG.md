@@ -45,12 +45,16 @@ was the first bare bump to break an app in five releases).
   (`menu: {role, item}`); the stock right-click menu posts nothing; the
   menu bar's is a root event. The stock select and text input declare a
   `Null` message by default and keep reporting.
-- A click's `cell`, `line`, `byte`, `inside` and `clicks` moved under
-  `click`; a bare-string click on a grid or a line row is `{tag, click}`.
+- Every node event's payload is a map. A message that is not one — a
+  bare `on_click("save")` — arrives as `{tag: "save"}`, with or without
+  the event's data, and a `Null` one with no data as `{}`, where both
+  arrived bare. `ev.message::<String>()` reads a string message back.
+  A click's `cell`, `line`, `byte`, `inside` and `clicks` moved under
+  `click`.
 - Node: `CoreMsg` is `RootMsg` (the root events alone), the `*Msg`
   types name a message carrying an event (`DragMsg<T> = T & WithDrag`).
-- Lua: `on_event` always gets a table — a non-table message arrives as
-  `{tag = msg}` — and `ev.event` names the event.
+- Lua: `ev.event` names the event; `on_event` gets a table always, as
+  every payload is a map.
 - C: ABI 33 — `KuiSpec` gains `on_submit`, `on_cancel`, `on_boundary`,
   `on_menu`, `on_selection_range`; `KuiEvent` gains `event` and `root`.
   Odin: the `*_Event` structs lose `tag`; `Changed_Event`,
@@ -138,6 +142,10 @@ a menu bar's `menu`, a popup window's `dismiss` — keep the core's
 
 - A reader's increment or decrement nudges only a `slider` role; it
   reached any enabled node.
+- A reader's `setValue` on an editor is a recorded edit: it undoes in one
+  step as typing does, keeps the history before it, and an app's
+  correction to it joins that step (it cleared undo, as `setEditText`
+  does).
 - An editor's caret, as `caret_and_selection` and the access tree report
   it, is a place in its committed text while a composition is under way;
   it counted the composition, so one character composed into an empty

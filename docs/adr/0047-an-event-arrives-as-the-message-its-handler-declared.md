@@ -476,9 +476,11 @@ devtools inspector was its only reader.
   a value was built from.
 - **A slider nudge checks the role.** Increment and decrement reach only a
   `slider` role; before, a reader's increment reached any enabled node.
-- **An assistive `setValue` on an `<edit>` replaces the text,** clearing
-  undo as `setEditText` does, so a filter's correction after it is an undo
-  step of its own (decision 8's joining covers the user's own edits).
+- **An assistive `setValue` on an `<edit>` is a recorded edit**
+  (`EditStore::replace_all`): the whole text replaced as select-all and
+  typing would, so it undoes in one step, the history before it survives,
+  and a filter's correction joins its step as after typing. It went
+  through `setEditText` at first, which clears undo; changed the same day.
 - **The corpus prints the envelope.** Each event row is `event message`:
   the envelope's kind, then the message by its `kind` (or the string it
   was kept under `tag` as), else the data's `phase` or `reason`, then each
@@ -505,10 +507,15 @@ devtools inspector was its only reader.
   bar's `MenuBarMsg` narrow together. The examples renamed theirs
   (`openMenu`, `browse`); the envelope's `event` tells them apart at run
   time. Node's own clock ticks arrive with `event: 'tick'`.
-- **A data-less event with a `Null` message has a `null` payload** — the
-  stock `<input>`'s Escape with no `onCancel` is `cancel` with `null` —
-  and Lua makes every message a table (`{tag = msg}` for one that is not,
-  `{}` for none), so its `on_event` always has somewhere to put `event`.
+- **Every node payload is a map.** `UiEvent::declared` makes one always:
+  `{}` for a `Null` message with no data (the stock `<input>`'s Escape
+  with no `onCancel` is `cancel` with `{}`), and `{tag: msg}` for a
+  non-map message whether or not the event has data — so decision 3's
+  wrapping holds for a plain click too, and a bare `on_click("save")`
+  arrives as `{tag: "save"}`, which `ev.message::<String>()` reads back.
+  At first a data-less event passed a non-map message through bare and a
+  `Null` one as `null`, and Lua made its own tables of them; the rule
+  moved into the core the same day, and Lua's special case went.
 - **Binding spellings:** C `KUI_EDIT_VALUE = 1 << 5`,
   `kui_text_input_with`; Odin `Edit_Flag.Value`, `text_input_with`,
   `event_data`; Node bit 32 of the edit op's flags for `value` and bit 64
