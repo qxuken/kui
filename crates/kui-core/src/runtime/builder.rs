@@ -367,6 +367,7 @@ impl Core {
     pub fn take_pending_events(&mut self) -> Vec<UiEvent> {
         let mut out = std::mem::take(&mut self.pending);
         out.append(&mut self.interaction.take_pending());
+        self.resolve_window_facts(&mut out);
         self.devtools_consume(&mut out);
         self.devtools_translate(&mut out);
         self.stamp(&mut out);
@@ -829,6 +830,7 @@ impl Core {
             row_count,
             key_focus,
             tooltip,
+            window_events,
             ..
         } = props;
         let identity = match (index, &label) {
@@ -841,6 +843,9 @@ impl Core {
             Identity::Label(l) => self.child_key(l),
             Identity::Index(i) => self.child_key_indexed(i),
         };
+        if window_events.is_some() {
+            self.warn(crate::diag::window_events_off_root(key));
+        }
         let at = self.tree.len() as u32;
         match content {
             Content::Box => self.open_with_key(key, spec),
@@ -893,9 +898,9 @@ impl Core {
 
     /// The root the way a parsed prop list says: its title, whether it
     /// wants the window on top, its keyboard secure, its Option keys as
-    /// Alt or its input method off, the windows it declares, its spec, and
-    /// keyboard focus on it when asked — what a binding's root op does,
-    /// once.
+    /// Alt or its input method off, the windows it declares, the messages
+    /// its window's events arrive as, its spec, and keyboard focus on it
+    /// when asked — what a binding's root op does, once.
     pub fn configure_root_from(&mut self, props: PropsOut) {
         if let Some(title) = &props.title {
             self.set_window_title(title);
@@ -912,8 +917,11 @@ impl Core {
         if props.ime_off {
             self.set_ime_off(true);
         }
-        for (name, cfg) in &props.windows {
-            self.declare_window(name, *cfg);
+        for (name, cfg, lifecycle) in props.windows {
+            self.declare_window_with(&name, cfg, lifecycle);
+        }
+        if let Some(events) = props.window_events {
+            self.set_window_events(events);
         }
         self.configure_root(props.spec);
         if props.key_focus {

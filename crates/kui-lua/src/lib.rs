@@ -141,7 +141,7 @@
 //!   outline, SVG path data), `cells { }` (a terminal screen as one
 //!   node), `audio { src = }`.
 //! - Window chrome: `titlebar { title = }`, `window_buttons()`, `menu_bar
-//!   { menu = }`, `latency_graph()`, `latency_hud { }`.
+//!   { menu =, on_menu = }`, `latency_graph()`, `latency_hud { }`.
 //! - Lists: `uniform_list(env, opts, row)` for rows of one height,
 //!   `list(env, opts, measure, row)` for rows of different heights, sliced
 //!   by a `row_heights(rows, estimate)` the script keeps between frames;
@@ -210,7 +210,12 @@
 //!
 //! The root table may also carry host state beside its children:
 //! `window_title`, `always_on_top`, `secure_input`, `option_as_alt`,
-//! `ime_off` and a `windows` list of `name | { name, kind, width, height, activates, anchor }`.
+//! `ime_off`, a `windows` list of `name | { name, kind, width, height,
+//! activates, anchor, on_window, on_dismiss }`, and `window_events = {
+//! on_resize, on_focus, on_system_settings_change, on_fonts, on_modifiers,
+//! on_open }`, the messages the window's own events arrive as (ADR 0048).
+//! `window_events` on any other table is ignored, with a
+//! `window-events-off-root` warning.
 //!
 //! ## The two focus names
 //!
@@ -243,8 +248,9 @@
 //! phase, x, y, dx, dy, parent } }`, a plain click exactly as declared.
 //! Beside the message the envelope says what happened and where: `event`
 //! (the event kind: `"click"`, `"drag"`, `"change"`, …), `node_key` (the
-//! emitting node's integer key), `window` (the window it came from) and
-//! `slot` (the full name of the slot the node was filled into). A message
+//! emitting node's integer key), `window` (the window it came from; a
+//! `window` event's own data is under that name, and it is the one kept)
+//! and `slot` (the full name of the slot the node was filled into). A message
 //! that is not a table arrives as `{ tag = message }`, and none as `{}`,
 //! so the envelope always has somewhere to go; a message's own field
 //! under one of the envelope's names is the message's.
@@ -256,10 +262,15 @@
 //! `value =` is the text the view declares every frame — the editor is
 //! brought to it where they differ — so a script that stores
 //! `ev.change.text` and declares it back owns the field's text; `initial`
-//! only seeds a new one. A root event (a resize, a modifier change, the
-//! menu bar's choice) has no message and keeps the core's own `{ kind,
-//! … }`. What `on_event` returns is the script's replies to the host:
-//! nothing, one table, or a sequence of tables.
+//! only seeds a new one. The window's own events arrive the same way, as
+//! the messages the root table declared for them (ADR 0048): a resize as
+//! `window_events.on_resize` with `resize = { width, height, scale }`, a
+//! window opening or closing as its `windows` entry's `on_window` with
+//! `window = { phase, id }`, the menu bar's choice as its `on_menu` with
+//! `menu = { role, item }`. What nobody declared does not arrive, and the
+//! core never writes a `kind`: it is the script's own. What `on_event`
+//! returns is the script's replies to the host: nothing, one table, or a
+//! sequence of tables.
 //!
 //! ## Props
 //!
@@ -306,7 +317,7 @@
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
     Align, Color, Content, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Slot,
-    Span, Ui, UiEvent, Value, WindowConfig, widgets,
+    Span, Ui, UiEvent, Value, WindowConfig, WindowLifecycle, widgets,
 };
 use mlua::{Lua, Table};
 
@@ -556,7 +567,20 @@ impl Extension for LuaExtension {
             ui.ime_off(true);
         }
         declare_windows(ui, &root).map_err(|e| format!("windows: {e}"))?;
-        build_node(ui, &root).map_err(|e| format!("view table: {e}"))
+        // The messages the window's own events arrive as (ADR 0048),
+        // declared here like the title. The walk under `build_node` reads
+        // the key on every table, so a nested one reaches the core and is
+        // `window-events-off-root`; `VIEW_ROOT` tells it this one is not.
+        let events = root
+            .get::<mlua::Value>("window_events")
+            .map_err(|e| format!("window_events: {e}"))?;
+        if !events.is_nil() {
+            ui.window_events(window_events_of(&events).map_err(|e| format!("window_events: {e}"))?);
+        }
+        let outer = VIEW_ROOT.replace(root.to_pointer());
+        let built = build_node(ui, &root).map_err(|e| format!("view table: {e}"));
+        VIEW_ROOT.set(outer);
+        built
     }
 
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
@@ -579,8 +603,12 @@ impl Extension for LuaExtension {
                 // And which window it came from — the number `env.window.id`
                 // reads in that window's view, as Node's `ev.window` and
                 // C's `KuiEvent.window` carry (AR26: a panel drawn into
-                // two windows could not tell which one clicked).
-                t.set("window", ev.window.0)?;
+                // two windows could not tell which one clicked). A
+                // `window` event's data is under the same name (ADR
+                // 0048), and the data is the message's, so it wins.
+                if !t.contains_key("window")? {
+                    t.set("window", ev.window.0)?;
+                }
                 // And the slot the node was filled into, by its full name
                 // — what the script declared with `fill { name = … }` —
                 // so a script filling one slot per pane routes by pane
@@ -1751,7 +1779,20 @@ fn element_of(ty: &str) -> &str {
     }
 }
 
+/// `menu_bar { menu = { … }, on_menu = msg }`: the bar the core reads
+/// from plain data, and the message a choice from it arrives as, with
+/// `menu = { role, item }` in it (ADR 0048). A bar with no `on_menu`
+/// posts nothing.
 fn menu_bar_of(t: &Table) -> mlua::Result<(kui_core::MenuBar, Vec<String>)> {
+    let (mut bar, stray) = menus_of(t)?;
+    let on_menu = t.get::<mlua::Value>("on_menu")?;
+    if !on_menu.is_nil() {
+        bar = bar.on_menu(lua_to_value(&on_menu)?);
+    }
+    Ok((bar, stray))
+}
+
+fn menus_of(t: &Table) -> mlua::Result<(kui_core::MenuBar, Vec<String>)> {
     let Some(list) = t.get::<Option<Table>>("menu")? else {
         return Ok((kui_core::MenuBar::default(), Vec::new()));
     };
@@ -1782,14 +1823,23 @@ fn declare_windows(ui: &mut Ui<'_>, root: &Table) -> mlua::Result<()> {
         return Ok(());
     };
     // Plain data with a fixed shape, read by the core (`WindowConfig::
-    // from_value`): a name, or `{name, kind?, width?, height?, activates?,
-    // anchor?}`.
+    // from_value`, `WindowLifecycle::from_entry`): a name, or `{name,
+    // kind?, width?, height?, activates?, anchor?, on_window?,
+    // on_dismiss?}`, the last two the messages its opening and closing
+    // and a popup's dismissal arrive as (ADR 0048).
     for entry in list.sequence_values::<mlua::Value>() {
         let v = lua_to_value(&entry?)?;
         let (name, cfg) = WindowConfig::from_value(&v).map_err(mlua::Error::runtime)?;
-        ui.window(&name, cfg);
+        ui.window_with(&name, cfg, WindowLifecycle::from_entry(&v, true));
     }
     Ok(())
+}
+
+/// `window_events = { on_resize = …, … }`: the messages the window's own
+/// events arrive as (ADR 0048), read by the core's one reader in Lua's
+/// spelling, so a key the group does not have is an error naming the six.
+fn window_events_of(v: &mlua::Value) -> mlua::Result<kui_core::WindowEvents> {
+    kui_core::WindowEvents::from_value(&lua_to_value(v)?, true).map_err(bad)
 }
 
 /// Warns about every key in the node table that no table claims — the
@@ -1942,6 +1992,11 @@ thread_local! {
     /// path as an argument.
     static VIEW_PATH: std::cell::RefCell<Vec<*const std::ffi::c_void>> =
         const { std::cell::RefCell::new(Vec::new()) };
+    /// The table `view` returned, while it is built: the one table whose
+    /// `window_events` the view declared itself, which [`node_props`]
+    /// therefore drops rather than handing the core as one off the root.
+    static VIEW_ROOT: std::cell::Cell<*const std::ffi::c_void> =
+        const { std::cell::Cell::new(std::ptr::null()) };
 }
 
 fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
@@ -3233,6 +3288,7 @@ enum Item {
     Index,
     RowCount,
     Tooltip,
+    WindowEvents,
     Row(&'static schema::PropDef),
 }
 
@@ -3285,6 +3341,7 @@ fn parse_node(
             b"index" => Item::Index,
             b"row_count" => Item::RowCount,
             b"tooltip" => Item::Tooltip,
+            b"window_events" => Item::WindowEvents,
             name => {
                 // `repeat` is a Lua keyword, so that row also answers to
                 // CSS's own name for it (`schema::LUA_ALIASES`, which the
@@ -3375,6 +3432,13 @@ fn parse_node(
                 };
                 out.apply_tooltip(s.to_str()?.as_ref());
             }
+            // The root's (ADR 0048), read on every table: the core
+            // applies a root's and warns about any other's.
+            Item::WindowEvents => {
+                let events =
+                    window_events_of(&v).map_err(|e| bad(format!("window_events: {e}")))?;
+                out.window_events = Some(events);
+            }
             Item::Row(def) => {
                 if let Some(parsed) = parse_value(&def.kind, &v, refs)
                     .map_err(|e| bad(format!("{}: {e}", schema::snake_case(def.name))))?
@@ -3412,7 +3476,12 @@ fn node_props(
     } else {
         Check::Unclaimed
     };
-    let (out, walked) = with_refs(ui, |refs| parse_node(t, is_row, refs, check))?;
+    let (mut out, walked) = with_refs(ui, |refs| parse_node(t, is_row, refs, check))?;
+    // The view's own table declared its group already (`view`); any
+    // other table's goes on to `open_from`, which says it is off the root.
+    if out.window_events.is_some() && VIEW_ROOT.get() == t.to_pointer() {
+        out.window_events = None;
+    }
     for k in &walked.unknown {
         let name = k.name();
         if !schema::known_prop(element, &name, schema::Spelling::Snake) {
@@ -8236,40 +8305,302 @@ mod tests {
         assert_eq!(heard, "/tmp/notes.md|export");
     }
 
-    /// The documents the OS asked the app to open (backlog F124) are the
-    /// host's — on the root, with no ask — and a host that hands the event
-    /// on gives a script `{kind="open", paths={...}}`, a list of strings.
+    /// The root table's `window_events` (ADR 0048): each key reaches the
+    /// core in Lua's spelling, and each event the core drives arrives as
+    /// the message declared for it, the data under the event's name — the
+    /// documents the OS asked the app to open (backlog F124) as `open = {
+    /// paths }`, a list of strings. Fonts are declared and not driven: no
+    /// headless step changes the installed set.
     #[test]
-    fn a_host_hands_a_script_the_documents_the_os_opened() {
+    fn the_root_table_declares_the_window_s_events() {
         let mut ext = LuaExtension::from_source(
-            "open",
+            "window-events",
             r#"
-                heard = nil
-                function view(env) return column {} end
+                heard = {}
+                function view(env)
+                  return column {
+                    window_events = { on_resize = { kind = "resized" }, on_focus = "focus",
+                                      on_system_settings_change = { kind = "settings" },
+                                      on_fonts = { kind = "fonts" }, on_modifiers = { kind = "mods" },
+                                      on_open = { kind = "docs" } },
+                    text("main"),
+                  }
+                end
                 function on_event(ev)
-                  if ev.kind == "open" then heard = #ev.paths .. "|" .. ev.paths[2] end
+                  local data = ev[ev.event]
+                  local said = ""
+                  if ev.event == "resize" then said = string.format("%gx%g", data.width, data.height)
+                  elseif ev.event == "window" then said = data.phase
+                  elseif ev.event == "system" then said = data.appearance
+                  elseif ev.event == "modifiers" then said = tostring(data.shift)
+                  elseif ev.event == "open" then said = #data.paths .. "|" .. data.paths[2]
+                  end
+                  heard[#heard + 1] = ev.event .. " " .. (ev.kind or ev.tag) .. " " .. said
                 end
             "#,
         )
         .unwrap();
         let mut core = Core::new();
-        variable_frame(&mut core, &mut ext, 0.0);
-        let evs = core.handle_input(InputEvent::Open(vec![
+        let sized = |core: &mut Core, ext: &mut LuaExtension, w: f32| {
+            let mut ui = core.frame(Size::new(w, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+            for e in core.take_pending_events() {
+                ext.on_event(&e);
+            }
+        };
+        sized(&mut core, &mut ext, 400.0);
+        let msg = |k: &str| Value::map([("kind", Value::str(k))]);
+        assert_eq!(
+            core.window_events(),
+            Some(
+                &kui_core::WindowEvents::default()
+                    .on_resize(msg("resized"))
+                    .on_focus("focus")
+                    .on_system_settings_change(msg("settings"))
+                    .on_fonts(msg("fonts"))
+                    .on_modifiers(msg("mods"))
+                    .on_open(msg("docs"))
+            )
+        );
+        sized(&mut core, &mut ext, 300.0);
+        core.set_focused(false);
+        for e in core.take_pending_events() {
+            ext.on_event(&e);
+        }
+        core.set_system(kui_core::SystemEnv {
+            appearance: kui_core::Appearance::Dark,
+            ..Default::default()
+        });
+        sized(&mut core, &mut ext, 300.0);
+        let mut feed = |ev| {
+            for e in core.handle_input(ev) {
+                ext.on_event(&e);
+            }
+        };
+        feed(InputEvent::Modifiers(kui_core::KeyMods::from_bits(
+            kui_core::KeyMods::SHIFT,
+        )));
+        feed(InputEvent::Open(vec![
             "/tmp/a.txt".into(),
             "/tmp/b.md".into(),
         ]));
-        assert_eq!(evs.len(), 1);
-        assert_eq!(evs[0].origin, OriginId::HOST, "nobody asked: the host's");
-        assert_eq!(evs[0].key, kui_core::Key::ROOT);
-        for e in &evs {
-            ext.on_event(e);
-        }
-        let heard: String = ext.lua.globals().get("heard").unwrap();
-        assert_eq!(heard, "2|/tmp/b.md");
+        let heard: Vec<String> = ext
+            .lua
+            .globals()
+            .get::<Table>("heard")
+            .unwrap()
+            .sequence_values()
+            .collect::<mlua::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            heard,
+            [
+                "resize resized 300x200",
+                "window focus blurred",
+                "system settings dark",
+                "modifiers mods true",
+                "open docs 2|/tmp/b.md",
+            ]
+        );
         assert!(
             core.handle_input(InputEvent::Open(Vec::new())).is_empty(),
             "no documents is no event"
         );
+        assert!(core.take_warnings().is_empty());
+        // A key the group does not have is the script's mistake, said
+        // where it is written.
+        let mut bad = LuaExtension::from_source(
+            "bad",
+            r#"function view(env) return column { window_events = { on_resize = 1, on_blur = 2 } } end"#,
+        )
+        .unwrap();
+        let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+        let err = bad.view(&Slot::root(), &mut ui).unwrap_err();
+        assert!(err.contains("on_blur"), "{err}");
+        assert!(err.contains("on_system_settings_change"), "{err}");
+        ui.finish();
+    }
+
+    /// No handler, no event (ADR 0048): a root that declares no
+    /// `window_events` hears none of the window's own events, and there
+    /// is no root event left to fall back on.
+    #[test]
+    fn a_root_that_declares_no_window_events_hears_none() {
+        let mut ext = LuaExtension::from_source(
+            "quiet",
+            r#"
+                heard = 0
+                function view(env) return column { text("main") } end
+                function on_event(ev) heard = heard + 1 end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        variable_frame(&mut core, &mut ext, 0.0);
+        assert!(core.window_events().is_none());
+        core.set_focused(false);
+        assert!(core.take_pending_events().is_empty());
+        let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        assert!(core.take_pending_events().is_empty(), "no resize");
+        assert!(
+            core.handle_input(InputEvent::Open(vec!["/tmp/a".into()]))
+                .is_empty()
+        );
+        assert!(
+            core.handle_input(InputEvent::Modifiers(kui_core::KeyMods::from_bits(
+                kui_core::KeyMods::SHIFT
+            )))
+            .is_empty()
+        );
+    }
+
+    /// `window_events` is the window's, read on the view's own table:
+    /// on any table under it the core is still handed it, and says it is
+    /// ignored (`window-events-off-root`) rather than the key passing as
+    /// one the box reads. The root's own declares and does not warn.
+    #[test]
+    fn window_events_off_the_root_table_warns() {
+        let mut ext = LuaExtension::from_source(
+            "off-root",
+            r#"
+                function view(env)
+                  return column { window_events = { on_resize = { kind = "root" } },
+                    column { key = "inner", window_events = { on_resize = { kind = "inner" } } },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let warned = core.take_warnings();
+        let codes: Vec<_> = warned.iter().map(|w| w.code).collect();
+        assert_eq!(
+            codes,
+            [kui_core::diag::WINDOW_EVENTS_OFF_ROOT],
+            "{warned:?}"
+        );
+        assert_eq!(Some(warned[0].key), core.key_of("inner"));
+        assert_eq!(
+            core.window_events().and_then(|w| w.on_resize.as_ref()),
+            Some(&Value::map([("kind", Value::str("root"))])),
+            "the root's is the one in force"
+        );
+    }
+
+    /// A `windows` entry's `on_window` and `on_dismiss` (ADR 0048): the
+    /// opening and closing arrive as `on_window` with `window = { phase,
+    /// id }`, a popup's dismissal as `on_dismiss` with `dismiss = {
+    /// reason, id }`, and neither carries the name any more — the
+    /// message was declared on the entry, so it names the window.
+    #[test]
+    fn a_windows_entry_declares_its_lifecycle_messages() {
+        use kui_core::DismissReason;
+        let mut ext = LuaExtension::from_source(
+            "lifecycle",
+            r#"
+                open = true
+                heard = {}
+                function view(env)
+                  local declared = nil
+                  if open then
+                    declared = { { name = "menu", kind = "popup", width = 100, height = 80,
+                                   on_window = { kind = "menu" }, on_dismiss = "menu-away" } }
+                  end
+                  return column { windows = declared, text("main") }
+                end
+                function on_event(ev)
+                  local data = ev[ev.event]
+                  heard[#heard + 1] = ev.event .. " " .. (ev.kind or ev.tag) .. " "
+                    .. (data.phase or data.reason) .. " " .. tostring(data.id)
+                    .. " " .. tostring(data.name)
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let drain = |core: &mut Core, ext: &mut LuaExtension| {
+            frame(core, ext);
+            for e in core.take_pending_events() {
+                ext.on_event(&e);
+            }
+        };
+        drain(&mut core, &mut ext);
+        let id = match core.take_window_commands().as_slice() {
+            [kui_core::WindowCommand::Open { id, .. }] => *id,
+            other => panic!("{other:?}"),
+        };
+        core.dismiss_window(id, DismissReason::Escape);
+        for e in core.take_pending_events() {
+            ext.on_event(&e);
+        }
+        ext.lua.globals().set("open", false).unwrap();
+        drain(&mut core, &mut ext);
+        drain(&mut core, &mut ext);
+        let heard: Vec<String> = ext
+            .lua
+            .globals()
+            .get::<Table>("heard")
+            .unwrap()
+            .sequence_values()
+            .collect::<mlua::Result<_>>()
+            .unwrap();
+        let n = id.0;
+        assert_eq!(
+            heard,
+            [
+                format!("window menu opened {n} nil"),
+                format!("dismiss menu-away escape {n} nil"),
+                format!("window menu closed {n} nil"),
+            ]
+        );
+    }
+
+    /// `menu_bar { on_menu = msg }` (ADR 0048): a choice from the bar,
+    /// drawn or the platform's, arrives as the bar's own message with
+    /// `menu = { role, item }` in it; a bar that declares none posts
+    /// nothing.
+    #[test]
+    fn the_menu_bar_s_choice_arrives_as_its_on_menu() {
+        let mut ext = LuaExtension::from_source(
+            "bar",
+            r#"
+                with_message = true
+                heard = nil
+                function view(env)
+                  return column {
+                    menu_bar { menu = { { label = "File", items = {
+                                 { label = "New", id = "file.new" } } } },
+                               on_menu = with_message and { kind = "chose" } or nil },
+                    text("body"),
+                  }
+                end
+                function on_event(ev)
+                  heard = ev.event .. " " .. ev.kind .. " " .. ev.menu.item .. " " .. ev.menu.role
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let evs = core.activate_menu_bar_item(0, 0);
+        assert_eq!(evs.len(), 1, "{evs:?}");
+        for e in &evs {
+            ext.on_event(e);
+        }
+        let heard: String = ext.lua.globals().get("heard").unwrap();
+        assert_eq!(heard, "menu chose file.new custom");
+        ext.lua.globals().set("with_message", false).unwrap();
+        frame(&mut core, &mut ext);
+        assert!(
+            core.activate_menu_bar_item(0, 0).is_empty(),
+            "no on_menu, no event"
+        );
+        assert!(core.take_warnings().is_empty());
     }
 
     /// The script is told what it got wrong, not handed a Lua error from

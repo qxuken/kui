@@ -60,26 +60,24 @@ static inline bool has(KuiStr s, const char *needle) {
 }
 
 /* Reading an event (ADR 0047). KuiEvent.event says what happened; the
- * payload is the message the node's handler declared, with the event's
- * data in the one field named for the event - {kind:"pan", drag:{...}} -
- * and a root event's payload is {kind:"resize", ...} as it always was. */
+ * payload is the message its handler declared, with the event's data in
+ * the one field named for the event - {kind:"pan", drag:{...}}. The
+ * events no node has arrive the same way, as the messages the window's
+ * root, its declaration or the menu bar declared (ADR 0048). */
 static inline bool ev_is(const KuiEvent *ev, const char *kind) {
     return kui_str_eq(ev->event, kind);
 }
 
-/* The event's data: a root event's payload itself, a node event's field
- * named for the event - NULL for one that carries none (a plain click, a
- * submit). KuiEvent.root is the core's word for which it is. */
+/* The event's data: the payload's field named for the event - NULL for
+ * one that carries none (a plain click, a submit, a fonts change). */
 static inline const KuiValue *ev_data(const KuiEvent *ev) {
-    if (ev->root) return ev->payload;
     return ev->payload ? kui_value_get(ev->payload, ev->event) : NULL;
 }
 
 /* The message's name: a bare string message, else its `kind`, else the
- * `tag` a non-map message is kept under. False when it names none, and
- * for a root event, which no message declared. */
+ * `tag` a non-map message is kept under. False when it names none. */
 static inline bool ev_message(const KuiEvent *ev, KuiStr *out) {
-    if (!ev->payload || ev->root) return false;
+    if (!ev->payload) return false;
     if (kui_value_as_str(ev->payload, out)) return true;
     const KuiValue *k = kui_value_get(ev->payload, KUI_STR("kind"));
     if (k && kui_value_as_str(k, out)) return true;

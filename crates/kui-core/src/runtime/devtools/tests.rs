@@ -1542,6 +1542,7 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     // A view with a centred viewport float, a context-menu box and a
     // layout report, to read the coordinates back through.
     let view = |ui: &mut Ui<'_>| {
+        ui.window_events(crate::WindowEvents::default().on_resize("resized"));
         ui.with(NodeSpec::column().fill(), |ui| {
             ui.leaf_keyed(
                 "target",
@@ -1579,7 +1580,7 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
         .find(|e| e.event.name() == "resize")
         .expect("the dock is a resize");
     assert_eq!(
-        resize.payload.get_float("width"),
+        resize.data().and_then(|d| d.get_float("width")),
         Some((VIEWPORT.w - DOCK_SIDE_W) as f64)
     );
     assert_eq!(
@@ -1596,7 +1597,8 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     let evs = frame(&mut core);
     assert!(evs.iter().any(|e| {
         e.event.name() == "resize"
-            && e.payload.get_float("height") == Some((VIEWPORT.h - DOCK_BOTTOM_H) as f64)
+            && e.data().and_then(|d| d.get_float("height"))
+                == Some((VIEWPORT.h - DOCK_BOTTOM_H) as f64)
     }));
     // A left dock: the app's origin is the pane's edge, and every
     // coordinate it is handed is relative to it.

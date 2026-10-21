@@ -789,27 +789,31 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         ),
         // The declaration comes and goes with the phase, on the root table
         // beside `window_title`; twice in phase 0, disagreeing on the size.
+        // Both edges arrive as the entry's `on_window` (ADR 0048).
         "windows" => r#"
             local declared = nil
+            local palette = { kind = "palette" }
             if phase == 0 then
-              declared = { { name = "palette", width = 400, height = 300 },
-                           { name = "palette", width = 500, height = 500 } }
+              declared = { { name = "palette", width = 400, height = 300, on_window = palette },
+                           { name = "palette", width = 500, height = 500, on_window = palette } }
             elseif phase == 2 then
-              declared = { { name = "palette", width = 400, height = 300 } }
+              declared = { { name = "palette", width = 400, height = 300, on_window = palette } }
             end
             return column { windows = declared, pad = 8, bg = 0x14161eff,
               text((phase == 0 or phase == 2) and "open" or "closed", { size = 12 }),
             }
         "#
         .to_string(),
-        // A popup, declared with the kind and the anchor a menu carries.
+        // A popup, declared with the kind and the anchor a menu carries,
+        // and one message for its lifecycle and its dismissal (ADR 0048).
         "popup" => format!(
             r#"
             local declared = nil
             if phase == 0 then
               declared = {{ {{ name = "menu", kind = "popup",
                                width = {w}, height = {h},
-                               anchor = {{ x = {x}, y = {y}, w = {aw}, h = {ah} }} }} }}
+                               anchor = {{ x = {x}, y = {y}, w = {aw}, h = {ah} }},
+                               on_window = {{ kind = "popup" }}, on_dismiss = {{ kind = "popup" }} }} }}
             end
             return column {{ windows = declared, pad = 8, bg = 0x14161eff,
               text(phase == 0 and "menu" or "closed", {{ size = 12 }}),
@@ -1088,11 +1092,13 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         ),
         // ADR 0031: two zones, a button inside the first, and across the
         // phases a hoverable float over the first zone that is no zone
-        // (phase 1) and a modal over it (phase 2).
+        // (phase 1) and a modal over it (phase 2). The OS's documents are
+        // the root's `window_events.on_open` (ADR 0048).
         "drop" => r#"
             local over = { anchor = "viewport", at = { "start", "start" },
                            self_at = { "start", "start" }, dx = 20, dy = 20 }
             local t = { width = { grow = 1 }, height = { grow = 1 },
+              window_events = { on_open = { kind = "docs" } },
               column { key = "files", width = 200, height = { grow = 1 }, pad = 10,
                        bg = 0x22242cff, drop_bg = 0x2b3350ff, on_drop = { kind = "files" },
                        row { key = "pick", width = 60, height = 40, bg = 0x3b5bd4ff,
@@ -1145,6 +1151,20 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 k3 = keys[3],
             )
         }
+        // ADR 0048: every key of the root's group, each its own `kind`,
+        // and a drawn menu bar declaring `on_menu`.
+        "window-events" => r#"
+            return column { gap = 6, width = "grow",
+              window_events = { on_resize = { kind = "resized" }, on_focus = { kind = "focus" },
+                                on_system_settings_change = { kind = "settings" },
+                                on_fonts = { kind = "fonts" }, on_modifiers = { kind = "mods" },
+                                on_open = { kind = "docs" } },
+              menu_bar { menu = { { label = "File", items = { { label = "New", id = "file.new" } } } },
+                         on_menu = { kind = "chose" } },
+              text("body", { size = 12 }),
+            }
+        "#
+        .to_string(),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     let prelude = match scene.name {

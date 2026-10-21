@@ -155,10 +155,11 @@ pub extern "C" fn kui_input_drag_cancel(ptr: *mut KuiCtx) {
 }
 
 /// The OS asked the app to open these `count` documents (backlog F124):
-/// the host hears `{kind:"open", paths}` on the root, asked for or not;
-/// none emits nothing. A host driving its own window on macOS sends it
-/// from its app delegate's `application:openURLs:`; under `kui_run` the
-/// runner does.
+/// they arrive as the main window's `on_open` message (`kui_root_with`,
+/// ADR 0048) with `open: {paths}` in it, and as nothing when its root
+/// declares none; none emits nothing. A host driving its own window on
+/// macOS sends it from its app delegate's `application:openURLs:`; under
+/// `kui_run` the runner does.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_open(ptr: *mut KuiCtx, paths: *const KuiStr, count: usize) {
     guard((), || {
@@ -171,9 +172,10 @@ fn edit_key_of(key: u32) -> Option<EditKey> {
     KUI_EDIT_KEYS.get(key as usize).map(|(_, k)| *k)
 }
 
-/// Physical modifier state changed (KUI_KMOD_* bits). The host polls a
-/// `{kind="modifiers", shift, ctrl, alt, super}` event when it differs from
-/// the last report.
+/// Physical modifier state changed (KUI_KMOD_* bits). When it differs
+/// from the last report, the root's `on_modifiers` message
+/// (`kui_root_with`) arrives with `modifiers: {shift, ctrl, alt, super}`
+/// in it; a root that declares none hears nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_modifiers(ptr: *mut KuiCtx, mods: u32) {
     push_input(
@@ -396,7 +398,6 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
             return false;
         }
         let ev = c.events.remove(0);
-        let root = ev.is_root();
         let payload = Box::new(KuiValue(ev.payload));
         let payload_ptr: *const KuiValue = &*payload;
         c.last_payload = Some(payload);
@@ -409,7 +410,6 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
                 window: ev.window.0,
                 slot: ev.slot.map_or(0, |k| k.0),
                 event: KuiStr::from_static(ev.event.name()),
-                root: root.into(),
                 ..Default::default()
             },
         )

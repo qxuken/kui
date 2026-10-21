@@ -1115,11 +1115,10 @@ impl KeyMods {
         }
     }
 
-    /// The payload form of a modifier change:
-    /// `{kind="modifiers", shift=, ctrl=, alt=, super=}`.
+    /// A modifier change's data, `{shift, ctrl, alt, super}`: the
+    /// `modifiers` field of the root's `onModifiers` message (ADR 0048).
     pub fn to_value(self) -> Value {
         Value::map([
-            ("kind", Value::str("modifiers")),
             ("shift", Value::Bool(self.shift)),
             ("ctrl", Value::Bool(self.ctrl)),
             ("alt", Value::Bool(self.alt)),
@@ -1593,11 +1592,10 @@ pub struct UiEvent {
     pub key: Key,
     /// Which event it was. The payload does not say: see [`EventKind`].
     pub event: EventKind,
-    /// What the event carries. For an event on a node, a playback or a
-    /// file dialog it is the message that declared it, with the event's
-    /// data in one field named for the event ([`UiEvent::declared`]); for
-    /// a root event it is `{kind, ...}` as the core spells it
-    /// ([`UiEvent::root`]).
+    /// What the event carries: the message that declared it — a node's
+    /// handler row, a window's `windowEvents` key or `windows` entry, a
+    /// playback's tag, a file dialog's — with the event's data in one
+    /// field named for the event ([`UiEvent::declared`]).
     pub payload: Value,
     /// The slot whose fill drew the node — its key, the one `begin_slot`
     /// returned and `key_of(full_name)` answers — or `None` for a node the
@@ -1611,10 +1609,13 @@ pub struct UiEvent {
     /// event's data replaced it: what the core raises
     /// `message-field-taken` for on the way out (ADR 0047, decision 4).
     pub(crate) taken: bool,
-    /// Built by [`UiEvent::root`]: no message declared it. Kept apart from
-    /// the payload's shape, which cannot tell a root `{kind: "submit"}`
-    /// from an app's `Msg::Submit` arriving as declared.
-    pub(crate) root: bool,
+    /// A fact about the window ([`UiEvent::fact`]) whose message is not
+    /// known where it was noticed: a resize, a modifier change, the OS's
+    /// documents. Its payload is the bare data until the core resolves it
+    /// against the root's `windowEvents` on the way out
+    /// (`Core::resolve_window_facts`), and none leaves the core unresolved
+    /// (ADR 0048).
+    pub(crate) fact: bool,
 }
 
 impl UiEvent {
@@ -1664,38 +1665,30 @@ impl UiEvent {
             payload,
             slot: None,
             taken,
-            root: false,
+            fact: false,
         }
     }
 
-    /// A root event: one with no node to declare a handler on — a resize,
-    /// a modifier change, a menu bar's choice. It keeps the core's own
-    /// spelling, `{kind, ...fields}`, where `fields` is `data`'s map
-    /// less any `kind` of its own (decision 6).
-    pub fn root(event: EventKind, origin: OriginId, key: Key, data: Value) -> Self {
-        let mut entries = vec![("kind".to_string(), Value::str(event.name()))];
-        if let Value::Map(fields) = data {
-            entries.extend(fields.into_iter().filter(|(k, _)| k != "kind"));
-        }
+    /// A fact about the window, noticed where the message it arrives as
+    /// is not known — the input router's modifier change, the frame's
+    /// resize. The core reads its message from the root's `windowEvents`
+    /// on the way out, and drops it when the root declared none (ADR 0048).
+    pub(crate) fn fact(event: EventKind, data: Value) -> Self {
         Self {
-            origin,
+            origin: OriginId::HOST,
             window: WindowId::MAIN,
-            key,
+            key: Key::ROOT,
             event,
-            payload: Value::Map(entries),
+            payload: data,
             slot: None,
             taken: false,
-            root: true,
+            fact: true,
         }
     }
 
-    /// The event's own data: its field in the message for an event a
-    /// message declared, the payload itself for a root event, and `None`
-    /// for an event that carries none (a plain click, a submit).
+    /// The event's own data: its field in the message, and `None` for an
+    /// event that carries none (a plain click, a submit).
     pub fn data(&self) -> Option<&Value> {
-        if self.root {
-            return Some(&self.payload);
-        }
         self.payload.get(self.event.name())
     }
 
@@ -1745,12 +1738,6 @@ impl UiEvent {
             Value::Map(data) => data,
             _ => unreachable!("made a map above"),
         }
-    }
-
-    /// Whether this is a root event ([`Self::root`]): one no message
-    /// declared, spelled with the core's own `kind`.
-    pub fn is_root(&self) -> bool {
-        self.root
     }
 
     /// Whether this is the event `kind`.
@@ -2804,12 +2791,7 @@ impl Interaction {
             InputEvent::Modifiers(m) => {
                 if m != self.modifiers {
                     self.modifiers = m;
-                    out.push(UiEvent::root(
-                        EventKind::Modifiers,
-                        OriginId::HOST,
-                        Key::ROOT,
-                        m.to_value(),
-                    ));
+                    out.push(UiEvent::fact(EventKind::Modifiers, m.to_value()));
                 }
             }
             // Routed by the core (they need the retained stores).

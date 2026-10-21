@@ -1649,9 +1649,13 @@ impl Core {
         if dock == Dock::Window {
             let saved = self.origin;
             self.origin = OriginId::DEVTOOLS;
-            self.declare_window(
+            // The panel hears its own window close by its own message,
+            // which `devtools_consume` takes back: never the app's.
+            self.declare_window_with(
                 DEVTOOLS_WINDOW,
                 WindowConfig::sized(WINDOW_SIZE.w, WINDOW_SIZE.h),
+                crate::window::WindowLifecycle::default()
+                    .on_window(Value::map([("dt", Value::str("own-window"))])),
             );
             self.origin = saved;
         }
@@ -1902,6 +1906,9 @@ impl Core {
                             actions.push(format!("tree-key:{code}"));
                         }
                     }
+                    Some("own-window") => {
+                        closed |= data.and_then(|d| d.get_str("phase")) == Some("closed");
+                    }
                     Some("resize") => {
                         let f = |k: &str| data.and_then(|d| d.get(k)).and_then(Value::as_float);
                         if let (Some(x), Some(y)) = (f("x"), f("y")) {
@@ -1913,10 +1920,6 @@ impl Core {
                 }
                 // An edit's `change` and the like: the build reads the
                 // field's text; nothing to do here.
-                return false;
-            }
-            if ev.is(EventKind::Window) && ev.payload.get_str("name") == Some(DEVTOOLS_WINDOW) {
-                closed |= ev.payload.get_str("phase") == Some("closed");
                 return false;
             }
             !self.dt_window

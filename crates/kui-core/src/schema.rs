@@ -188,6 +188,7 @@ pub const P_ON_CANCEL: u32 = 136;
 pub const P_ON_BOUNDARY: u32 = 137;
 pub const P_ON_MENU: u32 = 138;
 pub const P_ON_SELECTION_RANGE: u32 = 139;
+pub const P_WINDOW_EVENTS: u32 = 140;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1654,11 +1655,22 @@ pub const CUSTOM: &[CustomProp] = &[
         id: P_WINDOWS,
         jsx_names: &["windows"],
         lua_names: &["windows"],
-        jsx: "`windows={[{ name, kind?, anchor?, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
-        lua: "`windows = { { name=, kind=, anchor=, width=, height=, activates= } }` (root table)",
-        c: "`kui_window_declare`",
-        odin: "`kui.window_declare`",
-        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape raises `{kind:\"dismiss\", reason, name, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.",
+        jsx: "`windows={[{ name, kind?, anchor?, width?, height?, activates?, onWindow?, onDismiss? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
+        lua: "`windows = { { name=, kind=, anchor=, width=, height=, activates=, on_window=, on_dismiss= } }` (root table)",
+        c: "`kui_window_declare`, `kui_window_declare_with`",
+        odin: "`kui.window_declare`, `kui.window_declare_with`",
+        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the entry's `onWindow` message hears both edges as `window: {phase: \"opened\" | \"closed\", id}` (ADR 0048) — read on every declaration, unlike the config, and for a window that closed the last one declared. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape arrives as the entry's `onDismiss` message with `dismiss: {reason, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.",
+    },
+    CustomProp {
+        name: "windowEvents",
+        id: P_WINDOW_EVENTS,
+        jsx_names: &["windowEvents"],
+        lua_names: &["window_events"],
+        jsx: "`windowEvents={{ onResize?, onFocus?, onSystemSettingsChange?, onFonts?, onModifiers?, onOpen? }}` (root box only)",
+        lua: "`window_events = { on_resize=, on_focus=, on_system_settings_change=, on_fonts=, on_modifiers=, on_open= }` (root table)",
+        c: "`kui_root_with` (`KuiWindowEvents`)",
+        odin: "`kui.root_with` (`Window_Events`)",
+        doc: "The messages the window's own events arrive as (ADR 0048), one boxed group on the root rather than six rows on every node: `onResize` hears `resize: {width, height, scale}`, `onFocus` this window gaining or losing the keyboard as `window: {phase: \"focused\" | \"blurred\"}`, `onSystemSettingsChange` `system: {appearance, accent, motion, locale, assistive}`, `onFonts` the system's fonts changing (the message as declared), `onModifiers` `modifiers: {shift, ctrl, alt, super}`, and `onOpen` the OS's documents as `open: {paths}` — read on the main window's root alone, since the OS opens documents to the app. Each arrives as its message with the data in the field named for the event, as a node's handler does. A root that declares no group, or a group that leaves a key out, hears none of those events; `env` reads every fact they report either way. Read from the last frame the window finished, so a resize the next frame begins with arrives as the message the frame before declared. A window's opening and closing are its `windows` entry's (`onWindow`), and the menu bar's choice is the `menuBar` element's (`onMenu`). Declared on any node but the root it is ignored, and `window-events-off-root` says so.",
     },
     CustomProp {
         name: "tooltip",
@@ -2285,15 +2297,15 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "menuBar",
-        jsx_own: &["menu"],
-        lua_own: &["menu"],
+        jsx_own: &["menu", "onMenu"],
+        lua_own: &["menu", "on_menu"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<menuBar menu={[{ label, items: [{ label, id?, role?, accel?, enabled?, checked?, items? }] }]}/>`",
-        lua: "`menu_bar { menu = { { label=, items= { { label=, id=, role=, accel=, enabled=, checked=, items= } } } } }`",
-        c: "`kui_menu_bar`",
-        odin: "`kui.menu_bar`",
-        doc: "The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `menu` is what it *is*, and where this element sits is where its titles go when they have to be drawn in the window. One call and not two, because declaring the menu and placing the strip are one decision. It draws **nothing** where the platform owns the bar — macOS, where the driver hands the same declaration to the OS — so the frame has still said what the app's menu is and the strip simply is not there; that is the contract `windowButtons` has under native decorations, and it is what makes one view portable. Its rows are the rows a context menu has: the same `role`s the core performs itself (`copy`, `paste`, `selectAll`, `cut`, `lookUp`), the same `id` payload, the same `accel` text, plus `checked` for a setting — and choosing one posts the same `role` and `item` — as a root event, `{kind: \"menu\", role, item}`, since the bar has no node to declare a handler on, where a context menu's arrive as the target's `onMenu` message with `menu: {role, item}` in it (ADR 0047). Declared every frame and diffed: an unchanged menu costs a comparison, and an empty list takes it away. An accelerator kui can parse is rewritten into the platform's spelling, so `\"mod+s\"` reads as `⌘S` on macOS and `Ctrl+S` elsewhere and binds that key in the platform's own bar. On macOS the first menu is the application menu, which the OS titles with the app's own name whatever the label says. While a menu is open the bar is the frame's modal scope, so hovering across the titles moves the open menu, a press on the open title closes it, and Escape or a press in the app below closes it and reaches nothing else.",
+        jsx: "`<menuBar menu={[{ label, items: [{ label, id?, role?, accel?, enabled?, checked?, items? }] }]} onMenu={msg}/>`",
+        lua: "`menu_bar { menu = { { label=, items= { { label=, id=, role=, accel=, enabled=, checked=, items= } } } }, on_menu = msg }`",
+        c: "`kui_menu_bar`, `kui_menu_bar_with`",
+        odin: "`kui.menu_bar`, `kui.menu_bar_with`",
+        doc: "The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `menu` is what it *is*, and where this element sits is where its titles go when they have to be drawn in the window. One call and not two, because declaring the menu and placing the strip are one decision. It draws **nothing** where the platform owns the bar — macOS, where the driver hands the same declaration to the OS — so the frame has still said what the app's menu is and the strip simply is not there; that is the contract `windowButtons` has under native decorations, and it is what makes one view portable. Its rows are the rows a context menu has: the same `role`s the core performs itself (`copy`, `paste`, `selectAll`, `cut`, `lookUp`), the same `id` payload, the same `accel` text, plus `checked` for a setting — and choosing one arrives as the bar's own `onMenu` message with `menu: {role, item}` in it (ADR 0048), the field a context menu's choice carries on its target's `onMenu`; a bar that declares no `onMenu` posts nothing. Declared every frame and diffed: an unchanged menu costs a comparison, and an empty list takes it away. An accelerator kui can parse is rewritten into the platform's spelling, so `\"mod+s\"` reads as `⌘S` on macOS and `Ctrl+S` elsewhere and binds that key in the platform's own bar. On macOS the first menu is the application menu, which the OS titles with the app's own name whatever the label says. While a menu is open the bar is the frame's modal scope, so hovering across the titles moves the open menu, a press on the open title closes it, and Escape or a press in the app below closes it and reaches nothing else.",
     },
     ElementDef {
         name: "windowButtons",
@@ -2351,11 +2363,11 @@ pub const ELEMENTS: &[ElementDef] = &[
 pub struct EventDef {
     pub kind: &'static str,
     /// What declares the message the event arrives as: a handler row
-    /// (`onDrag`), a door (`requestFiles`), or `root` for a root event,
-    /// which no message declared.
+    /// (`onDrag`), a key of the root's `windowEvents` group or a `windows`
+    /// entry (ADR 0048), or a door (`requestFiles`).
     pub handler: &'static str,
     /// The field of that message the event's data rides under — its kind
-    /// — or `None` for a root event, which keeps the core's `kind`.
+    /// — or `None` for an event that carries no data.
     pub field: Option<&'static str>,
     pub payload: &'static str,
     pub doc: &'static str,
@@ -2420,10 +2432,10 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "menu",
-        handler: "onMenu; the root for the menu bar",
+        handler: "onMenu",
         field: Some("menu"),
-        payload: "`menu: { role, item }` in the `onMenu` message; `{ kind: \"menu\", role, item }` on the root for the menu bar",
-        doc: "A row of the core's own menu was chosen, on the node the menu was about: a `select`'s, or the target `openMenu` / `open_menu` / `kui_open_menu` named, as its `onMenu` message (ADR 0047). `item` is the row's `id`, or its label when it declared none; `role` is the row's standard role or `custom`. Every chosen row posts, the standard ones included: a `cut` or `paste` role is carried out by the core (its clipboard work queued for the host) *and* reported, so an app can hear its editor being cut from and is free to ignore it (`docs/adr/0017-selection-as-a-scope.md`, decision 5). The stock right-click menu, opened for a node that declared no `onMenu`, sends nothing; a choice from the application menu bar is a root event, since the bar has no node to declare one on.",
+        payload: "`menu: { role, item }` in the `onMenu` message of the node, or of the `menuBar`",
+        doc: "A row of the core's own menu was chosen, on the node the menu was about: a `select`'s, or the target `openMenu` / `open_menu` / `kui_open_menu` named, as its `onMenu` message (ADR 0047). `item` is the row's `id`, or its label when it declared none; `role` is the row's standard role or `custom`. Every chosen row posts, the standard ones included: a `cut` or `paste` role is carried out by the core (its clipboard work queued for the host) *and* reported, so an app can hear its editor being cut from and is free to ignore it (`docs/adr/0017-selection-as-a-scope.md`, decision 5). The stock right-click menu, opened for a node that declared no `onMenu`, sends nothing; a choice from the application menu bar arrives as the `menuBar` element's own `onMenu` message (ADR 0048).",
     },
     EventDef {
         kind: "forceclick",
@@ -2476,10 +2488,10 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "open",
-        handler: "root",
-        field: None,
-        payload: "`{ kind: \"open\", paths: string[] }` on the root",
-        doc: "The OS asked the app to open documents (backlog F124): the Finder's Open With, a file dropped on the Dock icon, `open -a App file`, a double-click on a document of a type the app's `Info.plist` declares under `CFBundleDocumentTypes`. Delivered to the host on the root whether or not anything asked — unlike `files`, which answers an ask. `paths` are file-system paths as strings; a URL of a scheme the app registers is not one, and is not carried (room is left for a `urls` beside `paths`). The macOS runner sends it at launch — held until the main window has opened, since AppKit hands the documents over before it exists and puts none in the arguments — and while the app runs; a host driving its own window sends it as input (`openDocuments`, `kui_input_open`, `InputEvent::Open`). Windows and Linux pass documents in the process's arguments instead, and nothing sends it there.",
+        handler: "windowEvents.onOpen",
+        field: Some("open"),
+        payload: "`open: { paths: string[] }` in the main window's `windowEvents.onOpen` message",
+        doc: "The OS asked the app to open documents (backlog F124): the Finder's Open With, a file dropped on the Dock icon, `open -a App file`, a double-click on a document of a type the app's `Info.plist` declares under `CFBundleDocumentTypes`. It arrives as the main window's `windowEvents.onOpen` message (ADR 0048) whether or not anything asked — unlike `files`, which answers an ask — and not at all from a main window that declares none. `paths` are file-system paths as strings; a URL of a scheme the app registers is not one, and is not carried (room is left for a `urls` beside `paths`). The macOS runner sends it at launch — held until the main window has opened, since AppKit hands the documents over before it exists and puts none in the arguments — and while the app runs; a host driving its own window sends it as input (`openDocuments`, `kui_input_open`, `InputEvent::Open`). Windows and Linux pass documents in the process's arguments instead, and nothing sends it there.",
     },
     EventDef {
         kind: "layout",
@@ -2490,38 +2502,38 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "resize",
-        handler: "root",
-        field: None,
-        payload: "`{ kind: \"resize\", width, height, scale }`",
-        doc: "The viewport changed size or DPI (logical px, delivered to the host on the root): the window less the devtools' dock while the panel is docked (`docs/adr/0024`), so a dock coming, going or being dragged is a resize too. `KuiWindow.size()` queries the same numbers, before the first frame as well (backlog F43). The first frame establishes the viewport rather than reporting it, so a dock present at launch posts none.",
+        handler: "windowEvents.onResize",
+        field: Some("resize"),
+        payload: "`resize: { width, height, scale }` in the `windowEvents.onResize` message",
+        doc: "The viewport changed size or DPI (logical px), as the root's `windowEvents.onResize` message (ADR 0048): the window less the devtools' dock while the panel is docked (`docs/adr/0024`), so a dock coming, going or being dragged is a resize too. `KuiWindow.size()` queries the same numbers, before the first frame as well (backlog F43). The first frame establishes the viewport rather than reporting it, so a dock present at launch posts none.",
     },
     EventDef {
         kind: "window",
-        handler: "root",
-        field: None,
-        payload: "`{ kind: \"window\", phase: \"opened\" | \"closed\" | \"focused\" | \"blurred\", name, id }`",
-        doc: "A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring `name`, then declare it again to reopen. `id` is what its events carry; the event itself is on the root of whichever window's frame noticed. `focused` and `blurred` are this window gaining and losing the keyboard (backlog DX18) — `env.focused` changing, as the driver reports it — so an app that saves on blur or re-reads the clipboard on return hears it once instead of diffing `env.focused` every frame.",
+        handler: "a `windows` entry's `onWindow`; `windowEvents.onFocus`",
+        field: Some("window"),
+        payload: "`window: { phase: \"opened\" | \"closed\", id }` in the entry's `onWindow` message; `window: { phase: \"focused\" | \"blurred\" }` in the `windowEvents.onFocus` message",
+        doc: "A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring it, then declare it again to reopen. It arrives as the `onWindow` message of the window's `windows` entry (ADR 0048) — the last one declared, for a window that closed — and `id` is what the window's events carry; the event itself comes from whichever window's frame noticed. `focused` and `blurred` are this window gaining and losing the keyboard, as its root's `windowEvents.onFocus` message (backlog DX18) — `env.focused` changing, as the driver reports it — so an app that saves on blur or re-reads the clipboard on return hears it once instead of diffing `env.focused` every frame.",
     },
     EventDef {
         kind: "system",
-        handler: "root",
-        field: None,
-        payload: "`{ kind: \"system\", appearance, accent, motion, locale, assistive }`",
-        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (delivered to the host on the root, one per window that noticed). The payload is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so this is how a palette follows the OS.",
+        handler: "windowEvents.onSystemSettingsChange",
+        field: Some("system"),
+        payload: "`system: { appearance, accent, motion, locale, assistive }` in the `windowEvents.onSystemSettingsChange` message",
+        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (as the root's `windowEvents.onSystemSettingsChange` message, ADR 0048: one per window that noticed and declared it). The field is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so declaring this is how a palette follows the OS.",
     },
     EventDef {
         kind: "fonts",
-        handler: "root",
+        handler: "windowEvents.onFonts",
         field: None,
-        payload: "`{ kind: \"fonts\" }`",
-        doc: "The system's installed fonts changed: a rescan found a face installed or removed since the last one (delivered to the host on the root, one per window that noticed). The winit runner rescans itself when macOS or Windows says the set changed; elsewhere it is the app calling `reloadSystemFonts`. Re-read `systemFonts()` / `systemFontFamilies()` here if the model holds them; a view naming a family by `family` needs nothing, it resolves on the same frame. A font the app loads itself raises none, and the first frame establishes the set rather than reporting it.",
+        payload: "none: the `windowEvents.onFonts` message as declared",
+        doc: "The system's installed fonts changed: a rescan found a face installed or removed since the last one (as the root's `windowEvents.onFonts` message, ADR 0048: one per window that noticed and declared it). The winit runner rescans itself when macOS or Windows says the set changed; elsewhere it is the app calling `reloadSystemFonts`. Re-read `systemFonts()` / `systemFontFamilies()` here if the model holds them; a view naming a family by `family` needs nothing, it resolves on the same frame. A font the app loads itself raises none, and the first frame establishes the set rather than reporting it.",
     },
     EventDef {
         kind: "modifiers",
-        handler: "root",
-        field: None,
-        payload: "`{ kind: \"modifiers\", shift, ctrl, alt, super }`",
-        doc: "The physical modifier state changed (delivered to the host on the root).",
+        handler: "windowEvents.onModifiers",
+        field: Some("modifiers"),
+        payload: "`modifiers: { shift, ctrl, alt, super }` in the `windowEvents.onModifiers` message",
+        doc: "The physical modifier state changed (as the root's `windowEvents.onModifiers` message, ADR 0048).",
     },
     EventDef {
         kind: "change",
@@ -2560,10 +2572,10 @@ pub const EVENTS: &[EventDef] = &[
     },
     EventDef {
         kind: "dismiss",
-        handler: "modal; the root for a popup window",
+        handler: "modal; a popup's `windows` entry `onDismiss`",
         field: Some("dismiss"),
-        payload: "`dismiss: { reason: \"escape\" | \"outside\" }` in the `modal` message on a node; `{ kind: \"dismiss\", reason, name, id }` on the root for a popup window",
-        doc: "The user asked for a surface to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the surface (or asks first). A `modal` node gets one on the node, as its `modal` message, and only the modal in effect does; a `kind: \"popup\"` window gets one on the root, carrying the window's `name` and `id`, reported by the driver because a press outside a window and a key sent to a non-activating one are both facts only the OS has. The two are the same event, so a dropdown that graduates from a modal float to a popup window changes its declaration and not its handler.",
+        payload: "`dismiss: { reason: \"escape\" | \"outside\" }` in the `modal` message on a node; `dismiss: { reason, id }` in a popup's `onDismiss` message",
+        doc: "The user asked for a surface to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the surface (or asks first). A `modal` node gets one on the node, as its `modal` message, and only the modal in effect does; a `kind: \"popup\"` window gets one as its `windows` entry's `onDismiss` message (ADR 0048), carrying the window's `id`, reported by the driver because a press outside a window and a key sent to a non-activating one are both facts only the OS has. The two are the same event, so a dropdown that graduates from a modal float to a popup window changes its declaration and not its handler.",
     },
     EventDef {
         kind: "reply",
@@ -3460,8 +3472,13 @@ pub struct PropsOut {
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
     /// node while it is hovered (the parser also marks the spec hoverable).
     pub tooltip: Option<String>,
-    /// The windows the root declared (`Core::declare_window`, in order).
-    pub windows: Vec<(String, WindowConfig)>,
+    /// The windows the root declared, with each entry's lifecycle
+    /// messages (`Core::declare_window_with`, in order).
+    pub windows: Vec<(String, WindowConfig, crate::window::WindowLifecycle)>,
+    /// `windowEvents`: the messages the root declared for the window's own
+    /// events (`Core::set_window_events`, ADR 0048). Off the root it is
+    /// ignored and `window-events-off-root` says so.
+    pub window_events: Option<crate::window::WindowEvents>,
     /// Whether the `wrap` row was declared: the mode is in `style.wrap`,
     /// whose default is `Word`, so the style alone cannot say. A
     /// single-line editor folds to its width when it was
@@ -3504,6 +3521,7 @@ impl PropsOut {
             key_focus: false,
             tooltip: None,
             windows: Vec::new(),
+            window_events: None,
             wrap: false,
         }
     }
@@ -3760,8 +3778,17 @@ mod tests {
                 "{}'s field is its kind",
                 e.kind
             );
-            if e.handler == "root" {
-                assert!(e.field.is_none(), "{} is a root event", e.kind);
+            // No event is a root one any more (ADR 0048): a window's own
+            // are keys of its `windowEvents` group.
+            assert_ne!(e.handler, "root", "{} is a root event", e.kind);
+            if let Some(key) = e.handler.strip_prefix("windowEvents.") {
+                assert!(
+                    crate::window::WindowEvents::KEYS
+                        .iter()
+                        .any(|(jsx, _)| *jsx == key),
+                    "{} names windowEvents.{key}, which the group has no key for",
+                    e.kind
+                );
             }
             assert!(
                 !e.payload.contains("tag }"),

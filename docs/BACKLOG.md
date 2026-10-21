@@ -4846,3 +4846,7 @@ move.
 
 - `.` **F174** — [An event arrives as the message its handler declared](backlog/closed-2026-09.md#-f174--an-event-arrives-as-the-message-its-handler-declared--done-2026-10-21) — done (2026-10-21) — ADR 0047: a node event's payload is its handler's message with the event's data in one field, the kind on the envelope; editor `onChange`/`onSubmit`/`onCancel`/`onBoundary` and `value`; `onMenu`, `onSelectionRange`; `access` gone; `kui::Event`, the derive's twin, `With…` helper types and `labelOf` in every binding
 - `.` **FZ9** — [A composition puts the editor's caret past its committed text](backlog/closed-2026-09.md#-fz9--a-composition-puts-the-editors-caret-past-its-committed-text--done-2026-10-21) — done (2026-10-21) — `caret_and_selection` maps a place inside a composition to its start and one past it back by its length; found by the new `events` fuzz target
+
+**From ADR 0047's follow-ups (2026-10-21)** — F175, filed with its ADR and built the next day
+
+- `.` **F175** — [A window declares the messages its events arrive as](backlog/closed-2026-09.md#-f175--a-window-declares-the-messages-its-events-arrive-as--done-2026-10-22) — done (2026-10-22) — ADR 0048: no root events; the root's boxed `windowEvents` group, `onWindow`/`onDismiss` on a `windows` entry, the menu bar's `onMenu`, in every binding

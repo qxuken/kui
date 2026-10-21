@@ -7,7 +7,7 @@
 use kui_native::event::{ChangePhase, DragPhase, EditChange, SliderChange};
 use kui_native::{
     Core, EditKey, EditOptions, EventKind, InputEvent, Key, Message, MessageError, MessageField,
-    Mods, NodeSpec, OriginId, Size, Sizing, UiEvent, Value, Vec2, widgets,
+    Mods, NodeSpec, OriginId, Size, Sizing, UiEvent, Value, Vec2, WindowEvents, widgets,
 };
 
 #[derive(Message, Clone, Copy, Debug, PartialEq)]
@@ -242,11 +242,6 @@ fn a_variant_named_like_a_core_event_is_the_apps() {
     );
     assert_eq!(bare.payload.get_str("tag"), Some("v"));
     assert_eq!(bare.message::<Dir>(), Some(Dir::V));
-
-    // A root event carries no message, whatever its payload's `kind`.
-    let root = UiEvent::root(EventKind::Open, OriginId::HOST, Key::ROOT, Value::map([]));
-    assert_eq!(root.payload.get_str("kind"), Some("open"));
-    assert_eq!(root.message::<Msg>(), None);
 }
 
 /// The view declares `Edit`; `update` reads `EditIn`, whose marked
@@ -421,4 +416,53 @@ fn incoming_renames_the_twin() {
     };
     assert_eq!(drag.phase, DragPhase::Start);
     core.handle_input(InputEvent::mouse_up());
+}
+
+/// A window's own events arrive as the messages its root declared (ADR
+/// 0048), so a twin marks them as it marks a node's.
+#[derive(Message, Clone, Debug, PartialEq)]
+enum Win {
+    #[message(on = resize)]
+    Fit,
+    #[message(on = modifiers)]
+    Held,
+    #[message(on = window)]
+    Keyboard,
+}
+
+#[test]
+fn the_twin_reads_a_window_s_own_events() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core, w: f32| {
+        let mut ui = core.frame(Size::new(w, 200.0), 1.0);
+        ui.window_events(
+            WindowEvents::default()
+                .on_resize(Win::Fit)
+                .on_modifiers(Win::Held)
+                .on_focus(Win::Keyboard),
+        );
+        ui.finish();
+        core.take_pending_events()
+    };
+    frame(&mut core, 300.0);
+    let evs = frame(&mut core, 280.0);
+    let Some(WinIn::Fit { resize }) = evs.iter().find_map(|e| e.message::<WinIn>()) else {
+        panic!("{evs:?}");
+    };
+    assert_eq!(resize.size.w, 280.0);
+    let evs = core.handle_input(InputEvent::Modifiers(kui_native::KeyMods {
+        ctrl: true,
+        ..Default::default()
+    }));
+    let Some(WinIn::Held { modifiers }) = evs.iter().find_map(|e| e.message::<WinIn>()) else {
+        panic!("{evs:?}");
+    };
+    assert!(modifiers.ctrl);
+    core.set_focused(false);
+    let evs = core.take_pending_events();
+    let Some(WinIn::Keyboard { window }) = evs.iter().find_map(|e| e.message::<WinIn>()) else {
+        panic!("{evs:?}");
+    };
+    assert_eq!(window.phase, kui_native::event::WindowPhase::Blurred);
+    assert_eq!(window.id, None, "the window's own keyboard names no other");
 }

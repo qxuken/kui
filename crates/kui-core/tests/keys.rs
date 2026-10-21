@@ -5,7 +5,7 @@
 use kui_core::testing::{click_at, drive, key_press as press, key_release as release};
 use kui_core::{
     Align, Core, EditKey, EditOptions, EventKind, FloatConfig, InputEvent, Key, KeyCode, KeyMods,
-    KeyPress, LayoutScript, Mods, NodeSpec, Size, UiEvent, Value, Vec2,
+    KeyPress, LayoutScript, Mods, NodeSpec, Size, UiEvent, Value, Vec2, WindowEvents,
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
@@ -134,15 +134,29 @@ fn null_tag_omitted_from_payload() {
     assert_eq!(evs[0].payload.get("tag"), None);
 }
 
+/// A modifier change arrives as the root's `windowEvents` `on_modifiers`
+/// message, with the held set under `modifiers` (ADR 0048), and
+/// `core.modifiers()` answers it whether or not the root declared one.
 #[test]
 fn modifier_changes_reach_the_host_as_data_and_are_queryable() {
     let mut core = Core::new();
     frame(&mut core, true);
+    // The root declares no message for it: nothing arrives, and the state
+    // is still there to query.
+    let shift = KeyMods::NONE.with_shift();
+    assert!(core.handle_input(InputEvent::Modifiers(shift)).is_empty());
+    assert_eq!(core.modifiers(), shift);
+
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.window_events(
+        WindowEvents::default().on_modifiers(Value::map([("kind", Value::str("mods"))])),
+    );
+    ui.finish();
     let cmd = KeyMods::NONE.with_super();
     let evs = core.handle_input(InputEvent::Modifiers(cmd));
     assert_eq!(evs.len(), 1);
-    let p = &evs[0].payload;
-    assert_eq!(p.get_str("kind"), Some("modifiers"));
+    assert_eq!(evs[0].payload.get_str("kind"), Some("mods"));
+    let p = data(&evs[0]);
     assert_eq!(p.get_bool("super"), Some(true));
     assert_eq!(p.get_bool("shift"), Some(false));
     assert_eq!(evs[0].key, Key::ROOT);
@@ -152,7 +166,7 @@ fn modifier_changes_reach_the_host_as_data_and_are_queryable() {
     // Release reports again.
     let evs = core.handle_input(InputEvent::Modifiers(KeyMods::default()));
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.get_bool("super"), Some(false));
+    assert_eq!(data(&evs[0]).get_bool("super"), Some(false));
 }
 
 // -- Press and release ---------------------------------------------------

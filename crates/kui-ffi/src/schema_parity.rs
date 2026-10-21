@@ -889,6 +889,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
         // The elements, one constructor (and its `_with` / keyed forms) each.
         const ELEMENTS: &[&str] = &[
             "kui_root",
+            "kui_root_with",
             "kui_open",
             "kui_open_with",
             "kui_open_keyed",
@@ -927,6 +928,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_titlebar_with",
             "kui_window_buttons",
             "kui_menu_bar",
+            "kui_menu_bar_with",
             "kui_latency_graph",
             "kui_latency_hud",
             "kui_tooltip",

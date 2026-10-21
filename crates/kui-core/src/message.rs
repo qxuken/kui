@@ -201,8 +201,7 @@ impl crate::input::UiEvent {
     /// of it (ADR 0047) — a field `M` does not name is not read, so a
     /// message decodes whichever event brought it. A message that was not
     /// a map is read from under `tag`, where the core kept it beside the
-    /// field. `None` for a root event, which carries no message, and for
-    /// a message that is not an `M`.
+    /// field. `None` for a message that is not an `M`.
     ///
     /// The event's own data is read beside the message: [`Self::drag`]
     /// and the other views, or [`Self::data`].
@@ -210,9 +209,6 @@ impl crate::input::UiEvent {
     where
         M: for<'a> TryFrom<&'a Value>,
     {
-        if self.is_root() {
-            return None;
-        }
         M::try_from(&self.payload)
             .ok()
             .or_else(|| self.payload.get("tag").and_then(|t| M::try_from(t).ok()))

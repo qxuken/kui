@@ -41,8 +41,8 @@ import c "c"
 //     lists, map[string]T a map, a pointer what it points at.
 //
 // Reading back, a kind matches a type or enum name with case and
-// underscores ignored, and a type's _Event suffix too, so a root event's
-// "resize" is Resize_Event (events.odin). A field missing from the payload
+// underscores ignored, and a type's _Event suffix too, so "resize" is
+// Resize_Event (events.odin). A field missing from the payload
 // is left zero. Strings read from a payload are borrowed: valid until the next
 // poll, or for the callback a run hands the event to; clone one to keep it.
 
@@ -76,12 +76,10 @@ message_one :: proc(ev: Event, $T: typeid) -> (out: T, ok: bool) where !intrinsi
 	return
 }
 
-// An event's data (ADR 0047): a node event's field named for ev.event - a
-// drag's {phase, x, y, ...} under `drag`, nil for one that carries none (a
-// plain click, a submit) - or, for a root event (ev.root), whose payload is
-// {kind = "resize", ...}, the payload itself.
+// An event's data (ADR 0047): the payload's field named for ev.event - a
+// drag's {phase, x, y, ...} under `drag`, a resize's under `resize` - nil
+// for one that carries none (a plain click, a submit, a fonts change).
 event_data :: proc(ev: Event) -> Value {
-	if ev.root do return ev.payload
 	return get(ev.payload, ev.event)
 }
 

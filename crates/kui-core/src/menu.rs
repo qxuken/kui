@@ -739,11 +739,24 @@ impl BarMenu {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MenuBar {
     pub menus: Vec<BarMenu>,
+    /// The message a choice from the bar arrives as, with `menu: {role,
+    /// item}` in it (ADR 0048), the field a context menu's choice carries.
+    /// A bar that declares none posts nothing.
+    pub on_menu: Option<Value>,
 }
 
 impl MenuBar {
     pub fn new(menus: Vec<BarMenu>) -> Self {
-        Self { menus }
+        Self {
+            menus,
+            on_menu: None,
+        }
+    }
+
+    /// Declares the message a choice from the bar arrives as.
+    pub fn on_menu(mut self, message: impl Into<Value>) -> Self {
+        self.on_menu = Some(message.into());
+        self
     }
 
     /// A bar from plain data: a list of `{ label, items, enabled? }`,

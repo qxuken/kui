@@ -73,6 +73,34 @@ pub extern "C" fn kui_root(ptr: *mut KuiCtx, spec: *const KuiSpec) {
     });
 }
 
+/// [`kui_root`], and the messages the events about this window arrive as
+/// (ADR 0048): the root's `windowEvents` group, read from `events`
+/// (borrowed, NULL for none). A message left NULL is an event the window
+/// does not hear: no handler, no event. The group in force is the one the
+/// last finished frame declared, so a frame that declares none (a plain
+/// `kui_root`) stops hearing them. `on_open` is read on the main window
+/// alone. A NULL `spec` leaves the root as the frame began it and
+/// declares the group alone, for a host that never configures its root.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_root_with(
+    ptr: *mut KuiCtx,
+    spec: *const KuiSpec,
+    events: *const KuiWindowEvents,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if let Some(s) = unsafe { spec.as_ref() } {
+            c.core().configure_root(spec_of(s, NONE, NONE, NONE, NONE));
+        }
+        let events = unsafe { events.as_ref() }
+            .copied()
+            .map(KuiWindowEvents::to_core);
+        c.core().set_window_events(events.unwrap_or_default());
+    });
+}
+
 /// Opens a box node built from `spec`; everything until the matching
 /// [`kui_close`] is its child. Returns the node's key, or 0 for a bad
 /// context or a NULL `spec`.

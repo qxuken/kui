@@ -4,10 +4,31 @@
 //! union, the lowest-id rule and the cascade are *for*.
 
 use kui_core::{
-    Core, DismissReason, Rect, Session, Size, UiEvent, Value, WindowCommand, WindowConfig, WindowId,
+    Core, DismissReason, Rect, Session, Size, UiEvent, Value, WindowCommand, WindowConfig,
+    WindowId, WindowLifecycle,
 };
 
+/// A frame declaring each window with the messages its lifecycle arrives
+/// as (ADR 0048): `{win: name}` for both, so an event says which window by
+/// the message its entry declared.
 fn frame(core: &mut Core, declare: &[(&str, WindowConfig)]) -> (Vec<WindowCommand>, Vec<UiEvent>) {
+    let mut ui = core.frame(Size::new(320.0, 240.0), 1.0);
+    for (name, cfg) in declare {
+        let msg = Value::map([("win", Value::str(*name))]);
+        let lifecycle = WindowLifecycle::default()
+            .on_window(msg.clone())
+            .on_dismiss(msg);
+        ui.window_with(name, *cfg, lifecycle);
+    }
+    ui.finish();
+    (core.take_window_commands(), core.take_pending_events())
+}
+
+/// [`frame`], declaring each window with no lifecycle messages.
+fn frame_plain(
+    core: &mut Core,
+    declare: &[(&str, WindowConfig)],
+) -> (Vec<WindowCommand>, Vec<UiEvent>) {
     let mut ui = core.frame(Size::new(320.0, 240.0), 1.0);
     for (name, cfg) in declare {
         ui.window(name, *cfg);
@@ -36,14 +57,19 @@ fn owners(cmds: &[WindowCommand]) -> Vec<(u32, u32)> {
         .collect()
 }
 
-fn row(ev: &UiEvent) -> (Option<String>, Option<String>) {
+/// `(event, reason or phase)` of a lifecycle event, the second read from
+/// its field.
+fn row(ev: &UiEvent) -> (String, Option<String>) {
     let get = |k: &str| {
-        ev.payload
-            .get(k)
+        ev.data()
+            .and_then(|d| d.get(k))
             .and_then(Value::as_str)
             .map(str::to_string)
     };
-    (get("kind"), get("reason").or_else(|| get("phase")))
+    (
+        ev.event.name().to_string(),
+        get("reason").or_else(|| get("phase")),
+    )
 }
 
 fn closed(cmds: &[WindowCommand]) -> Vec<u32> {
@@ -72,13 +98,8 @@ fn the_set_is_the_union_of_every_window_and_a_window_takes_its_children_with_it(
     // Main declares a palette; it opens as window 1.
     let (cmds, events) = frame(&mut main, &[("palette", cfg)]);
     assert_eq!(opened(&cmds), vec![(1, cfg)]);
-    assert_eq!(
-        events[0]
-            .payload
-            .get("phase")
-            .and_then(kui_core::Value::as_str),
-        Some("opened")
-    );
+    assert_eq!(row(&events[0]), ("window".into(), Some("opened".into())));
+    assert_eq!(events[0].payload.get_str("win"), Some("palette"));
     assert_eq!(main.windows().len(), 2);
 
     // The palette's own frame declares a submenu: the union has it, so it
@@ -104,6 +125,8 @@ fn the_set_is_the_union_of_every_window_and_a_window_takes_its_children_with_it(
     let (cmds, events) = frame(&mut main, &[]);
     assert_eq!(closed(&cmds), vec![1, 2]);
     assert_eq!(events.len(), 2, "one `closed` event each: {events:?}");
+    let wins: Vec<_> = events.iter().map(|e| e.payload.get_str("win")).collect();
+    assert_eq!(wins, [Some("palette"), Some("submenu")]);
     assert_eq!(main.windows().len(), 1);
 }
 
@@ -238,14 +261,14 @@ fn a_dismissed_popup_closes_nothing_until_the_app_stops_declaring_it() {
     assert_eq!(
         events.iter().map(row).collect::<Vec<_>>(),
         vec![
-            (Some("dismiss".into()), Some("outside".into())),
-            (Some("dismiss".into()), Some("escape".into())),
+            ("dismiss".into(), Some("outside".into())),
+            ("dismiss".into(), Some("escape".into())),
         ]
     );
     assert_eq!(
-        events[0].payload.get_str("name"),
+        events[0].payload.get_str("win"),
         Some("menu"),
-        "the event says which window, since it is on the root of whichever core noticed"
+        "the event says which window by the message its entry declared"
     );
     assert!(
         main.take_window_commands().is_empty(),
@@ -264,5 +287,13 @@ fn a_dismissed_popup_closes_nothing_until_the_app_stops_declaring_it() {
     // stale id gets silence rather than an event about a closed window.
     main.dismiss_window(WindowId(1), DismissReason::Outside);
     main.dismiss_window(WindowId(7), DismissReason::Escape);
+    assert!(main.take_pending_events().is_empty());
+
+    // A popup declared with no `on_dismiss` (nor `on_window`) opens and is
+    // dismissed all the same, and the app hears neither.
+    let (cmds, events) = frame_plain(&mut main, &[("menu", menu)]);
+    assert_eq!(opened(&cmds), vec![(2, menu)]);
+    assert!(events.is_empty(), "no `on_window`, no `opened`: {events:?}");
+    main.dismiss_window(WindowId(2), DismissReason::Outside);
     assert!(main.take_pending_events().is_empty());
 }

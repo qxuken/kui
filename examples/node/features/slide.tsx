@@ -13,7 +13,7 @@
 //   npm run slide                              a real window to drag by hand
 //   node dist/features/slide.mjs --headless    the same gesture, no window
 //   node dist/features/slide.mjs --trace       print every event the loop gets
-import type { App, DragMsg, KuiWindow, RootMsg, UiEvent } from '@qxuken/kui';
+import type { App, DragMsg, KuiWindow, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Card = { id: string; x: number; y: number; label: string };
@@ -26,7 +26,7 @@ type Model = {
 
 // The canvas's drag arrives as its `pan` message with the drag in it.
 type AppMsg = DragMsg<{ kind: 'pan' }> | { kind: 'card'; id: string };
-type Msg = AppMsg | RootMsg;
+type Msg = AppMsg;
 
 const CARDS: Card[] = [
   { id: 'a', x: 60, y: 60, label: 'root' },

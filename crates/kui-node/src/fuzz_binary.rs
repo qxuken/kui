@@ -188,6 +188,7 @@ fn no_stream_panics_the_decoder() {
         schema::P_KEY_FOCUS,
         schema::P_TOOLTIP,
         schema::P_WINDOWS,
+        schema::P_WINDOW_EVENTS,
         schema::P_INDEX,
         schema::P_ROW_COUNT,
     ]);

@@ -367,6 +367,11 @@ warnings! {
     /// core's in a message that event arrives as.
     pub const MESSAGE_FIELD_TAKEN: &str = "message-field-taken";
 
+    /// A node other than the root declares `windowEvents`. The group is the
+    /// window's, read on its root alone, so this one is ignored and its
+    /// events arrive as nothing (ADR 0048): move it to the root.
+    pub const WINDOW_EVENTS_OFF_ROOT: &str = "window-events-off-root";
+
     /// An editor declares both `initial` and `value`. The value wins, and
     /// the seed is never read (ADR 0047, decision 8). Raised by the
     /// bindings whose editor takes the two as separate props.
@@ -711,6 +716,17 @@ pub(crate) fn message_field_taken(key: Key, field: &str) -> Warning {
             "this node's message has a field `{field}`, and the `{field}` event it arrives as \
              wrote its data there: the message's own `{field}` never reaches the app; rename it"
         ),
+    }
+}
+
+/// The [`WINDOW_EVENTS_OFF_ROOT`] warning for the node that declared it.
+pub(crate) fn window_events_off_root(key: Key) -> Warning {
+    Warning {
+        code: WINDOW_EVENTS_OFF_ROOT,
+        key,
+        message: "`windowEvents` is the window's, read on its root alone; this node's is \
+                  ignored and its events arrive as nothing: declare it on the root"
+            .into(),
     }
 }
 

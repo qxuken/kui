@@ -1,10 +1,14 @@
 //! A changed viewport is data: `begin_frame` turns a new size or DPI into a
-//! `resize` event on the root, drained with the frame's other pending events.
+//! `resize` event, drained with the frame's other pending events, that
+//! arrives as the root's `windowEvents` `on_resize` message (ADR 0048).
 
-use kui_core::{Core, InputEvent, Key, NodeSpec, Size, UiEvent, Value};
+use kui_core::{Core, InputEvent, Key, NodeSpec, Size, UiEvent, Value, WindowEvents};
 
+/// A frame whose root declares the resize message, as every frame here
+/// does but the one that says what happens without it.
 fn frame(core: &mut Core, w: f32, h: f32, scale: f32) {
     let mut ui = core.frame(Size::new(w, h), scale);
+    ui.window_events(WindowEvents::default().on_resize("resized"));
     ui.leaf(NodeSpec::column());
     ui.finish();
 }
@@ -14,7 +18,9 @@ fn resizes(evs: &[UiEvent]) -> Vec<(f64, f64, f64)> {
     evs.iter()
         .filter(|ev| ev.event.name() == "resize")
         .map(|ev| {
-            let f = |k| ev.payload.get(k).and_then(Value::as_float).unwrap();
+            assert_eq!(ev.payload.get_str("tag"), Some("resized"));
+            let data = ev.data().expect("a `resize` field");
+            let f = |k| data.get(k).and_then(Value::as_float).unwrap();
             (f("width"), f("height"), f("scale"))
         })
         .collect()
@@ -28,7 +34,7 @@ fn the_first_frame_establishes_the_viewport_instead_of_resizing_it() {
 }
 
 #[test]
-fn a_changed_viewport_emits_one_resize_on_the_root() {
+fn a_changed_viewport_emits_one_resize_as_the_roots_message() {
     let mut core = Core::new();
     frame(&mut core, 400.0, 300.0, 1.0);
     core.take_pending_events();
@@ -43,6 +49,12 @@ fn a_changed_viewport_emits_one_resize_on_the_root() {
     // Same size again: nothing.
     frame(&mut core, 800.0, 600.0, 1.0);
     assert!(resizes(&core.take_pending_events()).is_empty());
+
+    // A root that declares no message for it hears none, and the viewport
+    // still reads the new size.
+    core.frame(Size::new(640.0, 480.0), 1.0).finish();
+    assert!(resizes(&core.take_pending_events()).is_empty());
+    assert_eq!(core.viewport(), Size::new(640.0, 480.0));
 }
 
 #[test]

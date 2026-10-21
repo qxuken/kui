@@ -98,6 +98,13 @@ const WITH = {
   boundary: 'WithBoundary',
   sound: 'WithSound',
   dismiss: 'WithDismiss',
+  // A window's own events (ADR 0048): the root's `windowEvents` keys and a
+  // `windows` entry's `onWindow`, typed in index.d.ts beside the rest.
+  resize: 'WithResize',
+  window: 'WithWindow',
+  system: 'WithSystem',
+  modifiers: 'WithModifiers',
+  open: 'WithOpen',
 };
 // The `onKey` sink's four, under the name the ADR gives the union.
 const KEY_SINK = ['WithKey', 'WithText', 'WithPreedit', 'WithSelect'];
@@ -107,7 +114,7 @@ for (const e of events) {
   }
 }
 // A row's events: those whose `handler` column names it (the column may
-// go on to say where else the event arrives — `onMenu; the root for …`).
+// go on to say where else the event arrives — `modal; a popup's …`).
 const handlerOf = (e) => /^[A-Za-z]+/.exec(e.handler)?.[0];
 function handlerType(name) {
   const fields = events.filter((e) => e.field && handlerOf(e) === name).map((e) => e.field);
@@ -302,14 +309,25 @@ An event arrives as the message its handler declared
 the payload is the handler's message as declared, with the event's data in
 one field of it named for the event — \`onDrag={{kind: "pan"}}\` hears
 \`{kind: "pan", drag: {phase, x, y, dx, dy, parent}}\`. A node that declares
-no handler for an event hears none of it. Every payload a node sends is a
+no handler for an event hears none of it. Every payload is a
 map: a \`null\` message arrives as the field alone (\`{}\` for an event with
 no data), and one that is not a map — a string, a number, a boolean, a
 list — is kept under \`tag\`, beside the field or alone: \`onClick: "save"\`
-is heard as \`{tag: "save"}\`. A root event, which no handler declared,
-keeps the core's \`{kind, …}\`.
+is heard as \`{tag: "save"}\`.
 
-${tableOf(['event', 'handler', 'field', 'payload', 'when'], events.map((e) => [e.kind, e.handler !== 'root' && /^[A-Za-z]+$/.test(e.handler) ? `\`${e.handler}\`` : e.handler, e.field ? `\`${e.field}\`` : '—', e.payload, e.doc]))}
+There are no root events
+([ADR 0048](adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)):
+what has no node of its own is declared where the app declares the
+window. A window's own events — its size, its keyboard, the OS's
+settings, the installed fonts, the modifiers, the documents the OS opens
+— arrive as the messages of the root's \`windowEvents\` group
+(\`onResize\`, \`onFocus\`, \`onSystemSettingsChange\`, \`onFonts\`,
+\`onModifiers\`, \`onOpen\`); a declared window's opening, closing and a
+popup's dismissal as its \`windows\` entry's \`onWindow\` and
+\`onDismiss\`; a choice from the application menu bar as the \`menuBar\`
+element's \`onMenu\`. A key nobody declared is an event nobody hears.
+
+${tableOf(['event', 'handler', 'field', 'payload', 'when'], events.map((e) => [e.kind, /^[A-Za-z.]+$/.test(e.handler) ? `\`${e.handler}\`` : e.handler, e.field ? `\`${e.field}\`` : '—', e.payload, e.doc]))}
 
 ## Resources
 

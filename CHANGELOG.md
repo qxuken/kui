@@ -32,8 +32,8 @@ was the first bare bump to break an app in five releases).
   kind is on the envelope: `ev.event` in every binding, `UiEvent::event`
   in Rust, `KuiEvent.event` in C.
 - `UiEvent::on`, `UiEvent::kind`, `UiEvent::tag` and `UiEvent::tagged`
-  are gone: `UiEvent::declared` / `UiEvent::root` build an event, and
-  `ev.event`, `ev.data()`, `ev.message()` and the views read one.
+  are gone: `UiEvent::declared` builds every event, and `ev.event`,
+  `ev.data()`, `ev.message()` and the views read one.
 - An editor reports only what it declares: `onChange` (`change: {text}`),
   `onSubmit`, `onCancel`, `onBoundary`. The `changed`, `submit` and
   `cancel` kinds are gone; an `edit` that declares none hears nothing.
@@ -43,7 +43,7 @@ was the first bare bump to break an app in five releases).
   `text` and setTextSelection a `select` on its `onKey` sink.
 - A menu's choice reaches only a node that declares `onMenu`
   (`menu: {role, item}`); the stock right-click menu posts nothing; the
-  menu bar's is a root event. The stock select and text input declare a
+  menu bar's arrives as the `menuBar` element's own `onMenu`. The stock select and text input declare a
   `Null` message by default and keep reporting.
 - Every node event's payload is a map. A message that is not one — a
   bare `on_click("save")` — arrives as `{tag: "save"}`, with or without
@@ -51,15 +51,33 @@ was the first bare bump to break an app in five releases).
   arrived bare. `ev.message::<String>()` reads a string message back.
   A click's `cell`, `line`, `byte`, `inside` and `clicks` moved under
   `click`.
-- Node: `CoreMsg` is `RootMsg` (the root events alone), the `*Msg`
-  types name a message carrying an event (`DragMsg<T> = T & WithDrag`).
+- Node: `CoreMsg` is gone, and so is the `RootMsg` that briefly took
+  its place: `update` takes the app's own messages. The `*Msg` types
+  name a message carrying an event (`DragMsg<T> = T & WithDrag`).
 - Lua: `ev.event` names the event; `on_event` gets a table always, as
   every payload is a map.
 - C: ABI 33 — `KuiSpec` gains `on_submit`, `on_cancel`, `on_boundary`,
-  `on_menu`, `on_selection_range`; `KuiEvent` gains `event` and `root`.
+  `on_menu`, `on_selection_range`; `KuiEvent` gains `event`.
   Odin: the `*_Event` structs lose `tag`; `Changed_Event`,
   `Access_Event`, `Submit_Event`, `Cancel_Event` and `Change_Event` are
   gone. The frame protocol is v24.
+- There are no root events (ADR 0048, backlog F175). A window's own
+  events — `resize`, its keyboard focus (`window` `focused` /
+  `blurred`), `system`, `fonts`, `modifiers` and the OS's `open` —
+  arrive only as the messages its root declares in a `windowEvents`
+  group, with the data in the field named for the event; a declared
+  window's `opened` / `closed` only as its `windows` entry's `onWindow`
+  (`window: {phase, id}`), a popup's dismissal as its `onDismiss`
+  (`dismiss: {reason, id}`), and a menu bar's choice as its `onMenu`.
+  Nothing that declares none hears it. `name` is gone from the `window`
+  and `dismiss` data. `UiEvent::root` and `UiEvent::is_root` are gone.
+- Node: `activateMenuBarItem` / `activateMenuBarPath` answer `false`
+  for a bar that declares no `onMenu`, since nothing is posted; the
+  row's standard role is still performed.
+- Rust `kui::Event`: `WindowEvent` drops `name` and its `id` is an
+  `Option` (`None` for a focus change); `Dismiss.window` is the id
+  alone; `Event::System` holds a `SystemEnv`. `KeyMods::to_value` no
+  longer writes `kind`.
 - `schema::Kind::Tag` is `Kind::Handler`.
 - Rust: `EventSpec`'s eighteen handler fields are rows of a sorted list,
   read with an accessor of the same name (`spec.events().on_click()`,
@@ -80,9 +98,12 @@ event's name — one field per event, so each field has one type. A
 message that is not a map is kept under `tag` beside the field; a
 `Null` one is the field alone; a field the message already had is the
 core's (`message-field-taken`). The events with no node to declare a
-handler on — `resize`, `window`, `system`, `fonts`, `modifiers`, `open`,
-a menu bar's `menu`, a popup window's `dismiss` — keep the core's
-`{kind, …}`, and so do they alone.
+handler on went the same way (ADR 0048): a window declares the messages
+its own events arrive as on its root, in one boxed `windowEvents` group
+rather than six rows on every node; its lifecycle on the `windows` entry
+that made it exist, where a closed window's message outlives its root;
+the menu bar on its element. `kind` is the app's alone, and Node's
+`update` no longer takes a union of core messages beside the app's.
 
 ### Added
 
@@ -124,6 +145,31 @@ a menu bar's `menu`, a popup window's `dismiss` — keep the core's
   under, the reverse of `keyOf`.
 - **`reply`**, the kind an extension's message to whoever placed its
   slot arrives as.
+- **A window's `windowEvents`** (ADR 0048): `onResize`, `onFocus`,
+  `onSystemSettingsChange`, `onFonts`, `onModifiers` and `onOpen`, the
+  messages the window's own events arrive as, declared on its root —
+  Rust `ui.window_events(WindowEvents::default().on_resize(Msg::Fit))`,
+  JSX `windowEvents={{…}}` on the root box, Lua `window_events = {…}`
+  on the root table, C `kui_root_with` with a `KuiWindowEvents`, Odin
+  `root_with`. Read from the last finished frame; what arrives before
+  the first (a launch's documents) is held for it. On any other node
+  the group is ignored and `window-events-off-root` says so.
+- **A window's lifecycle messages**: `onWindow` and `onDismiss` on a
+  `windows` entry — Rust `ui.window_with(name, config,
+  WindowLifecycle::default().on_window(..).on_dismiss(..))`
+  (`Core::declare_window_with`), C `kui_window_declare_with`, Odin
+  `window_declare_with`. Read on every declaration, where the config is
+  read on the opening edge alone, and a closed window's are the last
+  ones declared. The event's origin is the declaring frontend's, so an
+  extension hears the window it declared.
+- **The menu bar's `onMenu`**: `MenuBar::on_menu`, `<menuBar onMenu>`,
+  Lua `menu_bar { on_menu = }`, C `kui_menu_bar_with`, Odin
+  `menu_bar_with`.
+- The derive's twin takes `on = resize`, `window`, `system`, `modifiers`
+  and `open`, with `event::Open` and `SystemEnv::to_value` /
+  `from_value` beside them.
+- The scene corpus's `window-events` scene, with two steps,
+  `viewport W H` and `focused 0|1`, in every adapter.
 - `GLOSSARY.md`, the words the API is described in.
 
 ### Fixed

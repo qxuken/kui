@@ -13,7 +13,11 @@ date: 2026-10-21
 > field of it, named for the event, rather than wrapping the message as a
 > `tag` inside a core message. The editor then takes a declared `value`,
 > as the slider took `valueNow` (ADR 0034), and `labelOf` gets a door in
-> every binding. This amends ADR 0034's `change` shape.
+> every binding. This amends ADR 0034's `change` shape. Decision 6, the
+> root events, is superseded by [ADR
+> 0048](0048-a-window-declares-the-messages-its-events-arrive-as.md):
+> they became declared messages too, and the building notes below about
+> `is_root`, `KuiEvent.root` and `RootMsg` record what that ADR removed.
 
 ## Context
 

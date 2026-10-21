@@ -4,9 +4,10 @@
 // event's field — `DragMsg<{ kind: 'pan' }>` is `{ kind: 'pan', drag }` —
 // and the handler prop (`onDrag`) takes the registered messages with that
 // field, as declared without it. A message registered without the field
-// fits no handler but `onClick`. Register only the messages you wrote; the
-// root events join them where `update` needs them
-// (`type Msg = CounterMsg | RootMsg` in each example).
+// fits no handler but `onClick`. A window's own events are declared the
+// same way (ADR 0048) — `windowEvents={{ onResize: { kind: 'resize' } }}`
+// takes a registered `ResizeMsg<{ kind: 'resize' }>` — so `update` sees
+// these and nothing else.
 import type {} from '@qxuken/kui/jsx-runtime';
 import type {
   ContextMenuMsg,
@@ -19,20 +20,25 @@ import type {
   KeyMsg,
   KeySinkMsg,
   MenuMsg,
+  ResizeMsg,
   SelectionRangeMsg,
   SliderChangeMsg,
+  SystemMsg,
 } from '@qxuken/kui';
 
 type AppMessages =
-  // The devtools' own (devtools.tsx): its dock buttons and its root sink.
-  | { kind: '@harness'; what: string }
+  // The harness's own (devtools.tsx): an OS setting changing, declared on
+  // the root it wraps every example in so the view re-runs for it.
+  | SystemMsg<{ kind: '@harness'; what: 'system' }>
   // apps/counter.tsx and features/window.tsx.
   | { kind: 'add'; by: number }
   | { kind: 'reset' }
   | { kind: 'hum' }
+  // features/window.tsx: the window's size, its root's `onResize`.
+  | ResizeMsg<{ kind: 'resize' }>
   // The counter's right-click, which `onContextMenu` sends back, and the
   // menu's dismissal, which its `modal` does: one message per event.
-  | ContextMenuMsg<{ kind: 'openMenu' }>
+  | ContextMenuMsg<{ kind: 'menu' }>
   | DismissMsg<{ kind: 'closeMenu' }>
   // tools/types.tsx: the key sink's message, the editor's and the
   // slider's; a bare-string click, registered as declared (it arrives as
@@ -58,7 +64,7 @@ type AppMessages =
   // Open dialog's answer.
   | DropMsg<{ kind: 'zone' }>
   | { kind: 'clear' }
-  | { kind: 'browse' }
+  | { kind: 'open' }
   | FilesMsg<{ kind: 'added' }>
   // features/devtools_tab.tsx: a source token and an Inspector row, each
   // a hover message and a click message, the picker the tab raises, and

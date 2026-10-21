@@ -45,9 +45,12 @@ export type { ColorToken, LengthToken } from './jsx-runtime.js';
 // `DragMsg<{ tag: 'pan' }>` — and the prop takes `'pan'` back
 // (`Declared<M>`).
 //
-// What has no node to declare a handler on — a resize, a window opening,
-// a modifier change — is a root event, and keeps the core's `{ kind, … }`:
-// `RootMsg`.
+// What has no node of its own — a resize, the window's keyboard, a
+// modifier change, the OS's documents — is declared where the window is
+// (ADR 0048): the root box's `windowEvents` group (`WindowEvents`), a
+// `windows` entry's `onWindow` / `onDismiss` (`WindowDecl`), and
+// `<menuBar onMenu>`. They arrive as the app's own messages too, so
+// `update` takes the registered messages and nothing else.
 
 /** The registered messages that carry the event field `W`, as a node
  *  declares them: without the field, which the core writes in. Every
@@ -248,14 +251,14 @@ export interface ContextMenuEvent {
   y: number;
 }
 
-/** A menu row was chosen, from a menu opened for an `onMenu` node: a
- *  `<select>`'s, or one `Ctx.openMenu` named it the target of. `item` is
- *  the row's `id`, or its label when it declared none. `role` says
- *  whether the core already carried the row out: a standard role is
- *  performed (and its clipboard work queued for the host) *and* posted.
- *  The stock right-click menu, whose roles the core performs itself,
- *  sends nothing; the application menu bar's choice is a root
- *  `MenuBarMsg`. */
+/** A menu row was chosen, from a menu opened for an `onMenu` node — a
+ *  `<select>`'s, or one `Ctx.openMenu` named it the target of — or from
+ *  the application menu bar (`docs/adr/0018-a-menu-bar-the-app-declares.md`),
+ *  as `<menuBar onMenu>`'s message. `item` is the row's `id`, or its label
+ *  when it declared none. `role` says whether the core already carried
+ *  the row out: a standard role is performed (and its clipboard work
+ *  queued for the host) *and* posted. The stock right-click menu, whose
+ *  roles the core performs itself, sends nothing. */
 export interface MenuEvent {
   role: MenuItemRole;
   item: Msg;
@@ -427,12 +430,63 @@ export interface SoundEvent {
   playback: number;
 }
 
-/** The frame's `modal` surface was asked to go away: Escape, or a press
- *  that landed outside it. The core closes nothing — stop declaring the
- *  surface (or ask first). Only the modal in effect hears it. A popup
- *  window's dismissal is a root `PopupDismissMsg`. */
+/** A surface was asked to go away: Escape, or a press that landed
+ *  outside it. The core closes nothing — stop declaring the surface (or
+ *  ask first). On a `modal` node only the modal in effect hears it; a
+ *  `kind: 'popup'` window hears it as its `windows` entry's `onDismiss`,
+ *  with the window's `id` — the driver reports it, because a press outside
+ *  a window and a key sent to a non-activating one are facts only the OS
+ *  has. */
 export interface DismissEvent {
   reason: 'escape' | 'outside';
+  /** A popup window's: the id its own events carry in `window`. */
+  id?: number;
+}
+
+/** The viewport changed size or DPI (logical px), as the root's
+ *  `windowEvents.onResize`: the window's, or what the devtools' dock
+ *  leaves of it while the panel is docked, so a dock coming, moving or
+ *  being dragged is one too; `win.size()` queries the same numbers. */
+export interface ResizeEvent {
+  width: number;
+  height: number;
+  scale: number;
+}
+
+/** A window's lifecycle or its keyboard. `opened` / `closed` arrive as a
+ *  `windows` entry's `onWindow`, with the window's `id` — on whichever
+ *  window's frame noticed; a closed window's is the last `onWindow` its
+ *  entry declared. A window the user closed stays closed while it is
+ *  still declared (a declaration reopens a window only when it *starts*):
+ *  stop declaring it, then declare it again. `focused` / `blurred` arrive
+ *  as the root's `windowEvents.onFocus`: this window gained or lost the
+ *  keyboard (backlog DX18), and carry no id. */
+export interface WindowEvent {
+  phase: 'opened' | 'closed' | 'focused' | 'blurred';
+  /** `opened` / `closed` only: what that window's events carry in
+   *  `window`. */
+  id?: number;
+}
+
+/** The physical modifier state changed, as the root's
+ *  `windowEvents.onModifiers`. */
+export interface ModifiersEvent {
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  super: boolean;
+}
+
+/** The OS asked the app to open these documents (backlog F124), as the
+ *  main window's `windowEvents.onOpen`: the Finder's Open With, a file
+ *  dropped on the Dock icon, `open -a`, a double-click on a document type
+ *  the app's Info.plist declares (`CFBundleDocumentTypes`) — whether or
+ *  not the app asked, at launch once the window is open, and while it
+ *  runs. `paths` are file-system paths. macOS only: Windows and Linux
+ *  hand documents over in `process.argv`. `ctx.openDocuments(paths)` is
+ *  the headless drive. */
+export interface OpenEvent {
+  paths: string[];
 }
 
 /** The `click` field: a click on a node that can say more than "it was
@@ -524,9 +578,40 @@ export interface WithBoundary {
 export interface WithSound {
   sound: SoundEvent;
 }
-/** The `dismiss` field, on a `modal` message. */
+/** The `dismiss` field, on a `modal` message or a popup's `onDismiss`. */
 export interface WithDismiss {
   dismiss: DismissEvent;
+}
+/** The `resize` field, on `windowEvents.onResize`. */
+export interface WithResize {
+  resize: ResizeEvent;
+}
+/** The `window` field, on a `windows` entry's `onWindow` or
+ *  `windowEvents.onFocus`. */
+export interface WithWindow {
+  window: WindowEvent;
+}
+/** The `system` field, on `windowEvents.onSystemSettingsChange`: an OS
+ *  setting changed while the app was open — the appearance, the accent
+ *  colour, reduced motion or the UI language — or assistive technology
+ *  started listening (one per window that noticed). It is `env().system`
+ *  as it now reads.
+ *
+ *  A window's view runs when a message changes the model, so without it a
+ *  palette picked from `env().system.appearance` is the one the first
+ *  frame read and stays it: the driver's redraw re-lowers the tree it was
+ *  handed, it does not re-run `view`. The first frame establishes the
+ *  reading rather than reporting it, the way a resize does. */
+export interface WithSystem {
+  system: SystemEnv;
+}
+/** The `modifiers` field, on `windowEvents.onModifiers`. */
+export interface WithModifiers {
+  modifiers: ModifiersEvent;
+}
+/** The `open` field, on `windowEvents.onOpen`. */
+export interface WithOpen {
+  open: OpenEvent;
 }
 
 /** The app's message `T` as a click with data arrives (`WithClick`). */
@@ -574,8 +659,20 @@ export type SliderChangeMsg<T = {}> = T & WithSliderChange;
 export type BoundaryMsg<T = {}> = T & WithBoundary;
 /** The app's message `T` (a playback's `tag`) as its end arrives. */
 export type SoundMsg<T = {}> = T & WithSound;
-/** The app's message `T` (a `modal`) as its dismissal arrives. */
+/** The app's message `T` (a `modal`, a popup's `onDismiss`) as its
+ *  dismissal arrives. */
 export type DismissMsg<T = {}> = T & WithDismiss;
+/** The app's message `T` as `windowEvents.onResize` arrives. */
+export type ResizeMsg<T = {}> = T & WithResize;
+/** The app's message `T` as a `windows` entry's `onWindow` or
+ *  `windowEvents.onFocus` arrives. */
+export type WindowMsg<T = {}> = T & WithWindow;
+/** The app's message `T` as `windowEvents.onSystemSettingsChange` arrives. */
+export type SystemMsg<T = {}> = T & WithSystem;
+/** The app's message `T` as `windowEvents.onModifiers` arrives. */
+export type ModifiersMsg<T = {}> = T & WithModifiers;
+/** The app's message `T` as `windowEvents.onOpen` arrives. */
+export type OpenMsg<T = {}> = T & WithOpen;
 
 /** A file dialog to ask for with `requestFiles`, and what
  *  `takeFileRequests` hands a host that shows it itself. Every field is
@@ -597,122 +694,33 @@ export interface FileDialogOptions {
   tag?: HandlerMsg<WithFiles>;
 }
 
-// -- root events -------------------------------------------------------------
+// -- a window's own events (ADR 0048) ---------------------------------------
 
-/** The viewport changed size or DPI (logical px, delivered on the root) —
- *  the window's, or what the devtools' dock leaves of it while the panel
- *  is docked, so a dock coming, moving or being dragged is one too;
- *  `win.size()` queries the same numbers. */
-export type ResizeMsg = {
-  kind: 'resize';
-  width: number;
-  height: number;
-  scale: number;
-};
-
-/** An OS setting changed while the app was open — the appearance, the
- *  accent colour, reduced motion or the UI language — or assistive
- *  technology started listening (delivered on the root, one per window
- *  that noticed). The payload is `env().system` as it now reads, so a
- *  handler keeps the whole reading or takes the one field it branches on.
- *
- *  A window's view runs when a message changes the model, so without this
- *  a palette picked from `env().system.appearance` is the one the first
- *  frame read and stays it: the driver's redraw re-lowers the tree it was
- *  handed, it does not re-run `view`. The first frame establishes the
- *  reading rather than reporting it, the way `ResizeMsg` does. */
-export type SystemMsg = {
-  kind: 'system';
-  appearance: 'unknown' | 'light' | 'dark';
-  /** `0xRRGGBBAA`, or null where the host cannot tell. */
-  accent: number | null;
-  motion: 'unknown' | 'full' | 'reduced';
-  /** A BCP-47 tag, or null where the host cannot tell. */
-  locale: string | null;
-  assistive: 'unknown' | 'none' | 'listening';
-};
-
-/** The system's installed fonts changed: a rescan found a face installed
- *  or removed (delivered on the root, one per window that noticed). A
- *  window rescans itself when macOS or Windows says the set changed;
- *  elsewhere it follows `reloadSystemFonts()`. Re-read `systemFonts()` here
- *  if the model holds the list; a `family` named in the view needs nothing.
- *  A font the app loads itself raises none. */
-export type FontsMsg = { kind: 'fonts' };
-
-/** The OS asked the app to open these documents (backlog F124): the
- *  Finder's Open With, a file dropped on the Dock icon, `open -a`, a
- *  double-click on a document type the app's Info.plist declares
- *  (`CFBundleDocumentTypes`). Delivered on the root whether or not the app
- *  asked — at launch, once the window is open, and while it runs. `paths`
- *  are file-system paths. macOS only: Windows and Linux hand documents over
- *  in `process.argv`. `ctx.openDocuments(paths)` is the headless drive. */
-export type OpenMsg = {
-  kind: 'open';
-  paths: string[];
-};
-
-/** A declared window opened, or closed — because nothing declares it any
- *  more, or because the user closed it. A window the user closed stays
- *  closed while it is still declared (a declaration reopens a window only
- *  when it *starts*): stop declaring `name`, then declare it again. `id` is
- *  what that window's events carry in `window`; the message itself arrives
- *  on the root of whichever window's frame noticed. */
-export type WindowMsg = {
-  kind: 'window';
-  /** `focused` / `blurred`: this window gained or lost the keyboard
-   *  (backlog DX18). */
-  phase: 'opened' | 'closed' | 'focused' | 'blurred';
-  name: string;
-  id: number;
-};
-
-/** The physical modifier state changed (delivered on the root). */
-export type ModifiersMsg = {
-  kind: 'modifiers';
-  shift: boolean;
-  ctrl: boolean;
-  alt: boolean;
-  super: boolean;
-};
-
-/** A row of the application menu bar was chosen
- *  (`docs/adr/0018-a-menu-bar-the-app-declares.md`), on the root: `item` is
- *  the row's `id`, or its label when it declared none, and `role` says
- *  whether the core already carried the row out (a standard role is
- *  performed *and* posted). */
-export type MenuBarMsg = {
-  kind: 'menu';
-  role: MenuItemRole;
-  item: Msg;
-};
-
-/** A `kind: 'popup'` window was asked to go away — a press outside it or
- *  Escape — on the root, carrying that window's `name` and `id`. The driver
- *  reports it, because a press outside a window and a key sent to a
- *  non-activating one are facts only the OS has; nothing closes until the
- *  view stops declaring it. A `modal` node's dismissal is its own message
- *  with `dismiss` in it (`DismissMsg`). */
-export type PopupDismissMsg = {
-  kind: 'dismiss';
-  reason: 'escape' | 'outside';
-  name: string;
-  id: number;
-};
-
-/** Everything that arrives with no handler behind it — the root events,
- *  each with the core's own `kind`. Put it in `update`'s union beside the
- *  registered messages — `type Msg = MyMsg | RootMsg` — and register only
- *  your own (`KuiMsg`). */
-export type RootMsg =
-  | ResizeMsg
-  | WindowMsg
-  | SystemMsg
-  | FontsMsg
-  | ModifiersMsg
-  | OpenMsg
-  | MenuBarMsg
-  | PopupDismissMsg;
+/** The root box's `windowEvents` group: the messages the window's own
+ *  events arrive as, each with its data in the field named for the event
+ *  (`onResize: { kind: 'resized' }` is heard as `{ kind: 'resized',
+ *  resize: { width, height, scale } }`). A key left out is an event the
+ *  window does not hear; `env()` reads every fact they report either way.
+ *  Root only — on any other node it is ignored and warned about
+ *  (`window-events-off-root`). `onOpen` is read on the main window alone,
+ *  since the OS opens documents to the app; `onFonts` carries no data, so
+ *  it takes any message `A` and arrives as declared. A host that retains
+ *  its tree re-runs the view only for a message, so a view that follows
+ *  the OS's appearance declares `onSystemSettingsChange`. */
+export interface WindowEvents<A = AppMsg> {
+  onResize?: HandlerMsg<WithResize> | null;
+  /** This window's keyboard, `window: { phase: 'focused' | 'blurred' }`;
+   *  not the node row `onFocus`. */
+  onFocus?: HandlerMsg<WithWindow> | null;
+  onSystemSettingsChange?: HandlerMsg<WithSystem> | null;
+  /** The system's installed fonts changed (a rescan found a face
+   *  installed or removed). Re-read `systemFonts()` here if the model
+   *  holds the list; a `family` named in the view needs nothing. A font
+   *  the app loads itself raises none. */
+  onFonts?: A | null;
+  onModifiers?: HandlerMsg<WithModifiers> | null;
+  onOpen?: HandlerMsg<WithOpen> | null;
+}
 
 /** One entry of `windows(model)` (or of the root box's `windows` prop): a
  *  window that should exist, by stable name. `width`/`height` are the
@@ -727,8 +735,8 @@ export type RootMsg =
  *  in screen coordinates against `anchor` — the `{x, y, w, h}` a
  *  `LayoutEvent` already reports for the field or button the menu belongs to
  *  — and non-activating, so the field keeps its focus ring while the arrows
- *  walk the list. A press outside it or Escape arrives as a `PopupDismissMsg`
- *  and closes nothing: stop declaring the window, the way you stop
+ *  walk the list. A press outside it or Escape arrives as its `onDismiss`
+ *  message (a `DismissMsg`) and closes nothing: stop declaring the window, the way you stop
  *  declaring a `modal` node. Reach for one only where an in-window float
  *  cannot go — a list taller than the window, a menu with nowhere in-window
  *  to sit, a panel beside the app; everything else is cheaper as a `float`
@@ -744,6 +752,12 @@ export type WindowDecl =
       /** `kind: 'popup'` only: what to place it against, in the declaring
        *  window's own logical coordinates — a `LayoutEvent`'s rect. */
       anchor?: { x?: number; y?: number; w?: number; h?: number };
+      /** The message its opening and closing arrive as, with `window:
+       *  { phase: 'opened' | 'closed', id }` in it (ADR 0048). */
+      onWindow?: HandlerMsg<WithWindow> | null;
+      /** A popup's: the message a press outside it or Escape arrives as,
+       *  with `dismiss: { reason, id }` in it. */
+      onDismiss?: HandlerMsg<WithDismiss> | null;
     };
 
 /** What `Ctx.windowCommands()` drains: what chrome nodes asked for
@@ -1265,6 +1279,10 @@ export type WarningCode =
    *  decision 4). Rename the field: the event's name is the core's in a message
    *  that event arrives as. */
   | 'message-field-taken'
+  /** A node other than the root declares `windowEvents`. The group is the
+   *  window's, read on its root alone, so this one is ignored and its events
+   *  arrive as nothing (ADR 0048): move it to the root. */
+  | 'window-events-off-root'
   /** An editor declares both `initial` and `value`. The value wins, and the
    *  seed is never read (ADR 0047, decision 8). Raised by the bindings whose
    *  editor takes the two as separate props. */
@@ -1419,8 +1437,8 @@ export interface Announcement {
 // --------------------------------------------------------------------------
 
 /** One event out of the loop. `A` is the app's message union; it defaults to
- *  the registered `AppMsg` plus the root events (`RootMsg`). */
-export interface UiEvent<A = AppMsg | RootMsg> {
+ *  the registered `AppMsg`. */
+export interface UiEvent<A = AppMsg> {
   /** Which frontend drew the node: 0 is your app, 1+ an extension. Not the
    *  window — an extension draws into every one of them. */
   origin: number;
@@ -1436,9 +1454,9 @@ export interface UiEvent<A = AppMsg | RootMsg> {
    *  arrive as that map. `'tick'` is the loop's own clock (`tick` in the
    *  loop config), which no node declared. */
   event: EventName | 'tick';
-  /** The message as it arrives: always a map from a node — a bare
-   *  declared message under `tag` (`Arrived<A>`) — or a root event's
-   *  `{ kind, … }`. */
+  /** The message as it arrives: always a map — a bare declared message
+   *  under `tag` (`Arrived<A>`). A window's own events are messages its
+   *  root, its `windows` entry or its `<menuBar>` declared (ADR 0048). */
   payload: Arrived<A>;
   /** The slot whose fill drew the node, as its key (`keyOf` of the slot's
    *  full name answers the same), or null for a node your app drew. One
@@ -2517,8 +2535,9 @@ export declare class Ctx {
   /**
    * The OS asked the app to open these documents (backlog F124) — the
    * Finder's Open With, a file dropped on the Dock icon, `open -a`: the
-   * app hears `{kind:"open", paths}` on the root whether or not it
-   * asked; none is nothing. A `KuiWindow` on macOS hears it from the
+   * app hears its root's `windowEvents.onOpen` message with `open:
+   * {paths}` in it, whether or not it asked (ADR 0048); none is nothing,
+   * and so is a root that declares no `onOpen`. A `KuiWindow` on macOS hears it from the
    * runner; this is the headless drive.
    */
   openDocuments(paths: Array<string>): void
@@ -2651,9 +2670,10 @@ export declare class Ctx {
    */
   release(code: string, mods?: KeySinkMods, physical?: string): void
   /**
-   * Physical modifier state changed: `{shift, ctrl, alt, super}`. The
-   * host receives `{kind:"modifiers", ...}` when it differs from the
-   * last report.
+   * Physical modifier state changed: `{shift, ctrl, alt, super}`. When
+   * it differs from the last report, the root's
+   * `windowEvents.onModifiers` message arrives with `modifiers: {…}` in
+   * it (ADR 0048).
    */
   modifiers(mods?: KeySinkMods): void
   /**
@@ -2699,16 +2719,17 @@ export declare class Ctx {
   /**
    * A custom driver reports that the OS closed window `id`: it stays
    * closed while still declared, whatever only it declared closes with
-   * it, and `{kind:"window", phase:"closed", name, id}` lands in
-   * `pollEvents`. Nothing happens for the main window (0) or for a
+   * it, and its `windows` entry's `onWindow` message lands in
+   * `pollEvents` with `window: {phase: "closed", id}` in it (ADR 0048). Nothing happens for the main window (0) or for a
    * window the diff already closed.
    */
   windowClosed(id: number): void
   /**
    * A custom driver reports that window `id` was asked to go away: a
    * press landed outside it (`"outside"`) or Escape reached it
-   * (`"escape"`). `{kind:"dismiss", reason, name, id}` lands in
-   * `pollEvents` and **nothing closes** — the app stops declaring the
+   * (`"escape"`). Its `windows` entry's `onDismiss` message lands in
+   * `pollEvents` with `dismiss: {reason, id}` in it (ADR 0048), and
+   * **nothing closes** — the app stops declaring the
    * window on the frame it decides to, exactly as it answers a `modal`
    * node's dismissal. Nothing happens for a window that is not open.
    */
@@ -2880,14 +2901,16 @@ export declare class Ctx {
    * Events since the last poll: `[{origin, window, key, event,
    * payload, slot}]`, payloads as plain data — the message the
    * node's handler declared, with the event's data in the field
-   * `event` names (`drag`, `change`, …), or a root event's
-   * `{kind, …}` (ADR 0047). A node's payload is always a map: a
-   * message that is not one (`onClick: 'save'`) arrives under
+   * `event` names (`drag`, `change`, …); a window's own events
+   * as its root's `windowEvents` messages and its lifecycle as
+   * its `windows` entry's (ADR 0047, ADR 0048). A payload is
+   * always a map: a message that is not one (`onClick: 'save'`)
+   * arrives under
    * `tag` (`{tag: 'save'}`), a `null` one as the field alone or
    * `{}` (`Arrived<A>`). `A` types them — the app's own union,
    * or one message type when only that is being watched.
    */
-  pollEvents<A = AppMsg | RootMsg>(): UiEvent<A>[]
+  pollEvents<A = AppMsg>(): UiEvent<A>[]
   /**
    * True when the last frame left a transition mid-flight. A window
    * schedules its own redraws for that; this is for tests and
@@ -3696,7 +3719,8 @@ export declare class Ctx {
   /**
    * Reports that the platform's menu bar chose row `item` of
    * menu `menu` — the same path a press on the drawn bar's row
-   * takes. False for a row that is not there.
+   * takes. False when the app hears nothing: a row that is not
+   * there, or a `<menuBar>` that declares no `onMenu` (ADR 0048).
    */
   activateMenuBarItem(menu: number, item: number): boolean
   /**
@@ -4068,8 +4092,8 @@ export declare class KuiWindow {
    * the devtools' dock while the panel is docked.
    * Readable before the first frame (in `setup` and `init`, where
    * `env().viewport` is still 0×0), and re-reported as a
-   * `{kind:"resize", width, height, scale}` event through `pollEvents`
-   * — a `ResizeMsg` — whenever the window changes size, moves to a
+   * `resize: {width, height, scale}` in the root's
+   * `windowEvents.onResize` message (a `ResizeMsg<T>`) whenever the window changes size, moves to a
    * display with another DPI, or the dock comes, goes or is dragged.
    * It used to be the window's inner size, so an app that seeded
    * its tiers from it under `KUI_DEVTOOLS=1` drew for the whole window.
@@ -4218,14 +4242,16 @@ export declare class KuiWindow {
    * Events since the last poll: `[{origin, window, key, event,
    * payload, slot}]`, payloads as plain data — the message the
    * node's handler declared, with the event's data in the field
-   * `event` names (`drag`, `change`, …), or a root event's
-   * `{kind, …}` (ADR 0047). A node's payload is always a map: a
-   * message that is not one (`onClick: 'save'`) arrives under
+   * `event` names (`drag`, `change`, …); a window's own events
+   * as its root's `windowEvents` messages and its lifecycle as
+   * its `windows` entry's (ADR 0047, ADR 0048). A payload is
+   * always a map: a message that is not one (`onClick: 'save'`)
+   * arrives under
    * `tag` (`{tag: 'save'}`), a `null` one as the field alone or
    * `{}` (`Arrived<A>`). `A` types them — the app's own union,
    * or one message type when only that is being watched.
    */
-  pollEvents<A = AppMsg | RootMsg>(): UiEvent<A>[]
+  pollEvents<A = AppMsg>(): UiEvent<A>[]
   /**
    * True when the last frame left a transition mid-flight. A window
    * schedules its own redraws for that; this is for tests and
@@ -5034,7 +5060,8 @@ export declare class KuiWindow {
   /**
    * Reports that the platform's menu bar chose row `item` of
    * menu `menu` — the same path a press on the drawn bar's row
-   * takes. False for a row that is not there.
+   * takes. False when the app hears nothing: a row that is not
+   * there, or a `<menuBar>` that declares no `onMenu` (ADR 0048).
    */
   activateMenuBarItem(menu: number, item: number): boolean
   /**
@@ -5411,11 +5438,11 @@ export interface LoopConfig<M, A, S, E = never> {
 }
 
 /** `runWindowed`'s config: `update` also gets the window. */
-export type WindowedConfig<M, A = AppMsg | RootMsg, E = never> = LoopConfig<M, A, KuiWindow, E>;
+export type WindowedConfig<M, A = AppMsg, E = never> = LoopConfig<M, A, KuiWindow, E>;
 
 /** Opens the main window and runs the Elm loop; resolves with the final
  *  model when that window closes. `config.windows` opens more. */
-export declare function runWindowed<M, A = AppMsg | RootMsg, E = never>(
+export declare function runWindowed<M, A = AppMsg, E = never>(
   config: WindowedConfig<M, A, E>,
   opts?: WindowOptions & {
     title?: string;
@@ -5671,10 +5698,9 @@ export declare function decodeQuads(buffer: Buffer): Quad[];
 export declare function decodeClips(buffer: Buffer): Clip[];
 
 /** `M` is the model, `A` every message `update` can see. Annotate `update`
- *  with the app's own union (`type Msg = MyMsg | RootMsg`) and `A` is
- *  inferred from it; leave it and `A` is the registered `AppMsg` plus the
- *  root events. */
-export type AppConfig<M, A = AppMsg | RootMsg, E = never> = LoopConfig<M, A, Ctx, E>;
+ *  with the app's own union (`type Msg = MyMsg`) and `A` is inferred from
+ *  it; leave it and `A` is the registered `AppMsg`. */
+export type AppConfig<M, A = AppMsg, E = never> = LoopConfig<M, A, Ctx, E>;
 
 /** The loop both drivers run, over the surface it was handed. Everything
  *  here is written once and works against either — which is what lets the
@@ -5743,7 +5769,7 @@ export interface Loop<M, A, S, E = never> {
   access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 
-export interface App<M, A = AppMsg | RootMsg, E = never> extends Loop<M, A, Ctx, E> {
+export interface App<M, A = AppMsg, E = never> extends Loop<M, A, Ctx, E> {
   /** The surface, under the name headless tests reach for. */
   ctx: Ctx;
   /** Moves the loop's own clock `ms` forward: every tick inside the span
@@ -5766,7 +5792,7 @@ export interface App<M, A = AppMsg | RootMsg, E = never> extends Loop<M, A, Ctx,
  *  and no `runOut`: a window runs on the wall clock and ticks itself, so
  *  nothing here can move time — what it has instead is the two waits below,
  *  answered from inside the driver's pump. */
-export interface WindowLoop<M, A = AppMsg | RootMsg, E = never> extends Loop<M, A, KuiWindow, E> {
+export interface WindowLoop<M, A = AppMsg, E = never> extends Loop<M, A, KuiWindow, E> {
   /** Resolves the first time a pump — `win.pump()` and the `step()` after
    *  it — leaves `animating()` false and no effect unflushed, with the
    *  wall-clock milliseconds it waited. Stops at `maxMs` (default 10 000)
@@ -5800,7 +5826,7 @@ export interface WindowLoop<M, A = AppMsg | RootMsg, E = never> extends Loop<M, 
   frame(): Promise<void>;
 }
 
-export declare function createApp<M, A = AppMsg | RootMsg, E = never>(
+export declare function createApp<M, A = AppMsg, E = never>(
   config: AppConfig<M, A, E>,
   opts?: {
     width?: number;

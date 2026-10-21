@@ -134,6 +134,7 @@ c_type! {
     KuiLengthToken => "KuiLengthToken", KuiColorOp => "KuiColorOp",
     KuiDerivedToken => "KuiDerivedToken", KuiEnter => "KuiEnter",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
+    KuiWindowEvents => "KuiWindowEvents",
     KuiRunConfig => "KuiRunConfig",
     KuiFileFilter => "KuiFileFilter", KuiFileDialog => "KuiFileDialog",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
@@ -1051,7 +1052,6 @@ fn asserts() -> (String, Vec<&'static str>) {
         reply_sink: *mut KuiReplySink => "KuiReplySink *",
         slot: u64 => "uint64_t",
         event: KuiStr => "KuiStr",
-        root: u32 => "uint32_t",
     });
     abi_out_struct!(o, KuiEvent);
 
@@ -1064,6 +1064,15 @@ fn asserts() -> (String, Vec<&'static str>) {
         anchor_y: f32 => "float",
         anchor_w: f32 => "float",
         anchor_h: f32 => "float",
+    });
+
+    abi_struct!(o, KuiWindowEvents {
+        on_resize: *const KuiValue => "const KuiValue *",
+        on_focus: *const KuiValue => "const KuiValue *",
+        on_system_settings_change: *const KuiValue => "const KuiValue *",
+        on_fonts: *const KuiValue => "const KuiValue *",
+        on_modifiers: *const KuiValue => "const KuiValue *",
+        on_open: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiFileFilter {
@@ -1566,6 +1575,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiPlay", 12, 16),
         ("KuiAudio", 24, 16),
         ("KuiWindowConfig", 32, 16),
+        // ABI 33: the root's `windowEvents` group (ADR 0048), six borrowed
+        // messages.
+        ("KuiWindowEvents", 48, 33),
         // ABI 26: `backdrop` (backlog F126); ABI 28: `titlebar` (W22).
         ("KuiRunConfig", 48, 28),
         // ABI 19: the file dialogs.

@@ -17,14 +17,14 @@
 //
 //   npm run drop                              a real window
 //   node dist/features/drop.mjs --headless    every path, no window
-import type { App, Ctx, DropMsg, FilesMsg, KuiWindow, RootMsg, UiEvent } from '@qxuken/kui';
+import type { App, Ctx, DropMsg, FilesMsg, KuiWindow, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Model = { landed: string[]; hovering: string[]; at: [number, number] | null; events: number; cleared: number };
 // The zone's files arrive as its `zone` message with the `drop` in it, the
 // dialog's answer as the `added` message it was asked with, `files` in it.
-type AppMsg = DropMsg<{ kind: 'zone' }> | { kind: 'clear' } | { kind: 'browse' } | FilesMsg<{ kind: 'added' }>;
-type Msg = AppMsg | RootMsg;
+type AppMsg = DropMsg<{ kind: 'zone' }> | { kind: 'clear' } | { kind: 'open' } | FilesMsg<{ kind: 'added' }>;
+type Msg = AppMsg;
 
 const init: Model = { landed: [], hovering: [], at: null, events: 0, cleared: 0 };
 
@@ -32,7 +32,7 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Mode
   switch (msg.kind) {
     case 'clear':
       return { ...model, landed: [], cleared: model.cleared + 1 };
-    case 'browse':
+    case 'open':
       // One dialog at a time: a click while it is up asks for nothing more.
       win.requestFiles({ mode: 'open', multiple: true, title: 'Add files', tag: { kind: 'added' } });
       return undefined;
@@ -74,7 +74,7 @@ function view(model: Model, win: Surface) {
         <box key="clear" label="Clear" padX={12} padY={6} radius={6} bg={t.raised} hoverBg={t.hover} onClick={{ kind: 'clear' }}>
           <text size={12} color={t.fg}>Clear the list</text>
         </box>
-        <box key="open" label="Open…" padX={12} padY={6} radius={6} bg={t.raised} hoverBg={t.hover} onClick={{ kind: 'browse' }}>
+        <box key="open" label="Open…" padX={12} padY={6} radius={6} bg={t.raised} hoverBg={t.hover} onClick={{ kind: 'open' }}>
           <text size={12} color={t.fg}>Open…</text>
         </box>
         {/* What an app shows in answer to `enter`: a banner floated over the

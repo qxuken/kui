@@ -6,9 +6,10 @@
 //! in its model.
 //!
 //! Checked on every event: the core can read it back whole
-//! (`UiEvent::read` is never `Unread`); a node's event is no root event and
-//! a root event names no message; the payload keeps every field of the
-//! map its handler declared but the one the event writes, a string or a
+//! (`UiEvent::read` is never `Unread`); the payload keeps every field of
+//! the map its handler declared — a node's row, or the root's
+//! `windowEvents` for a resize, a modifier change and the window's other
+//! own events (ADR 0048) — but the one the event writes, a string or a
 //! number under `tag`, and nothing for a `Null`. A `change` from the
 //! editor carries its text. After every frame: the editor holds the value
 //! the app declared unless a composition is under way, and its caret and
@@ -22,7 +23,7 @@ use kui_core::access::{AccessAction, AccessRequest};
 use kui_core::input::{EditKey, Mods};
 use kui_core::{
     Core, EditOptions, Event, EventKind, InputEvent, Key, MenuItem, NodeSpec, Role, Size,
-    TextStyle, UiEvent, Value, Vec2, widgets,
+    TextStyle, UiEvent, Value, Vec2, WindowEvents, widgets,
 };
 
 use crate::reuse::{self, Kept};
@@ -57,9 +58,11 @@ enum Row {
     ContextMenu,
     Layout,
     Select,
+    /// Every key of the root's `windowEvents` group.
+    Window,
 }
 
-const ROWS: usize = 15;
+const ROWS: usize = 16;
 
 /// A message as an app might declare one.
 #[derive(Arbitrary, Debug, Clone)]
@@ -106,6 +109,11 @@ const WORDS: &[&str] = &[
     "contextmenu",
     "layout",
     "button",
+    "resize",
+    "window",
+    "system",
+    "modifiers",
+    "open",
 ];
 
 impl<'a> Arbitrary<'a> for Word {
@@ -205,6 +213,13 @@ enum Action {
     Access(u8, u8, Option<String>),
     /// A row of the open menu chosen.
     Choose(u8),
+    /// The window's own events (ADR 0048): the held modifiers as bits,
+    /// the window gaining or losing the keyboard, `n` documents from the
+    /// OS, and the frames from here on this much smaller than 400 x 320.
+    Modifiers(u8),
+    WindowFocus(bool),
+    Open(u8),
+    Resize(u8, u8),
     Frame,
 }
 
@@ -241,6 +256,7 @@ fn drive(data: &[u8], trace: Option<&mut Vec<String>>) {
             model: String::new(),
             keys: Vec::new(),
             cursor: Vec2::new(10.0, 10.0),
+            size: Size::new(400.0, 320.0),
             dirty: false,
             trace,
         };
@@ -268,6 +284,8 @@ struct Driver<'a> {
     /// The key each row was declared on in the last frame, by [`Row`].
     keys: Vec<(Row, Key)>,
     cursor: Vec2,
+    /// The window's viewport: what every frame is built at.
+    size: Size,
     /// A window opened or a sound was queued: the session is not handed
     /// back (see [`crate::reuse`]).
     dirty: bool,
@@ -289,8 +307,17 @@ impl Driver<'_> {
         let messages = self.messages.clone();
         let msg = |row: Row| messages[row as usize].clone();
         let (value, multiline, model) = (self.value, self.multiline, self.model.clone());
-        let mut ui = self.core.frame(Size::new(400.0, 320.0), 1.0);
+        let mut ui = self.core.frame(self.size, 1.0);
         ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
+        let window = msg(Row::Window);
+        ui.window_events(WindowEvents {
+            on_resize: Some(window.clone()),
+            on_focus: Some(window.clone()),
+            on_system_settings_change: Some(window.clone()),
+            on_fonts: Some(window.clone()),
+            on_modifiers: Some(window.clone()),
+            on_open: Some(window),
+        });
         let mut keys = Vec::new();
         let opts = EditOptions {
             style: TextStyle::new(14.0),
@@ -466,7 +493,10 @@ impl Driver<'_> {
                 !matches!(read, Event::Unread(_)),
                 "the core could not read its own event: {ev:?}"
             );
-            let root_kind = matches!(
+            // The window's own: the root's `windowEvents` message, which
+            // every key of the group shares here (no declared windows, so
+            // no `window` is a lifecycle one).
+            let window_kind = matches!(
                 ev.event,
                 EventKind::Resize
                     | EventKind::Window
@@ -475,15 +505,8 @@ impl Driver<'_> {
                     | EventKind::Modifiers
                     | EventKind::Open
             );
-            if root_kind {
-                assert!(ev.is_root(), "a root event marked a node's: {ev:?}");
-            }
-            if ev.is_root() {
-                assert_eq!(
-                    ev.payload.get_str("kind"),
-                    Some(ev.event.name()),
-                    "a root event keeps the core's kind"
-                );
+            if window_kind {
+                check_payload(ev, &self.message(Row::Window));
                 continue;
             }
             // A node's event: is it one of this view's rows, the payload
@@ -583,6 +606,20 @@ impl Driver<'_> {
                     doc: m & 4 != 0,
                 },
             )),
+            Action::Modifiers(bits) => self.input(InputEvent::Modifiers(
+                kui_core::KeyMods::from_bits(u32::from(*bits)),
+            )),
+            Action::WindowFocus(on) => {
+                self.core.set_focused(*on);
+                self.core.take_pending_events()
+            }
+            Action::Open(n) => self.input(InputEvent::Open(
+                (0..n % 4).map(|i| format!("/doc/{i}.txt")).collect(),
+            )),
+            Action::Resize(dw, dh) => {
+                self.size = Size::new(400.0 - f32::from(*dw), 320.0 - f32::from(*dh));
+                Vec::new()
+            }
             Action::Focus(i) => {
                 let key = self.node_key(*i);
                 self.core.set_focus(key);

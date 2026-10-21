@@ -1545,12 +1545,15 @@ pub struct KuiReplySink {
 /// `on_event` receives it.
 ///
 /// `key` is the node that emitted it and `event` what happened (ADR
-/// 0047). `payload` is the message the node's handler declared, with the
+/// 0047). `payload` is the message its handler declared, with the
 /// event's data in the one field named for `event` (`{kind:"pan", drag:
-/// {phase, x, y, dx, dy, parent}}`), or for a root event (`root`) the
-/// core's `{kind: <event>, ...}`. `origin` is 0 for the host's own nodes
-/// and an extension's index otherwise, `window` which window it came from. An
-/// `[out]` struct: start from `KUI_EVENT_INIT` so `size` is set.
+/// {phase, x, y, dx, dy, parent}}`): a node's row, or for the events no
+/// node has, the window's own group (`kui_root_with`), its `windows`
+/// entry (`kui_window_declare_with`) or the menu bar
+/// (`kui_menu_bar_with`), ADR 0048. `origin` is 0 for the host's own
+/// nodes and an extension's index otherwise, `window` which window it
+/// came from. An `[out]` struct: start from `KUI_EVENT_INIT` so `size` is
+/// set.
 #[repr(C)]
 pub struct KuiEvent {
     /// Set to `sizeof(KuiEvent)` before the call (`KUI_EVENT_INIT` does);
@@ -1576,20 +1579,11 @@ pub struct KuiEvent {
     pub slot: u64,
     /// What happened, the envelope's event kind (ADR 0047): `"click"`,
     /// `"drag"`, `"change"`, `"resize"`, … — `schema::EVENTS`' `kind`.
-    /// The payload no longer says it: a node event's payload is the
-    /// message its handler declared, with the event's data in one field
-    /// named for this kind. Static: valid for the life of the library.
-    /// Appended in ABI 33.
+    /// The payload no longer says it: every payload is the message its
+    /// handler declared, with the event's data in one field named for
+    /// this kind (ADR 0048: there are no root events). Static: valid for
+    /// the life of the library. Appended in ABI 33.
     pub event: KuiStr,
-    /// Non-zero for a root event (ADR 0047, decision 6): one no node
-    /// declared — `resize`, `window`, `system`, `fonts`, `modifiers`,
-    /// `open`, the menu bar's `menu`, a popup window's `dismiss` — whose
-    /// payload is the core's `{kind: <event>, ...}` and is the data
-    /// itself; zero for a node event, whose payload is the declared
-    /// message and whose data, if any, is its field named `event`. The
-    /// core's own flag, so a host never guesses from the payload's shape.
-    /// Appended in ABI 33.
-    pub root: u32,
 }
 
 impl Default for KuiEvent {
@@ -1606,7 +1600,6 @@ impl Default for KuiEvent {
                 ptr: std::ptr::null(),
                 len: 0,
             },
-            root: 0,
         }
     }
 }
@@ -1647,6 +1640,47 @@ pub struct KuiWindowConfig {
     pub anchor_y: f32,
     pub anchor_w: f32,
     pub anchor_h: f32,
+}
+
+/// The messages the events about a window arrive as (`kui_root_with`,
+/// ADR 0048): the root's `windowEvents` group, one borrowed message per
+/// event, NULL for one the window does not hear. `[in]`, read while the
+/// call runs and never retained, like a `KuiSpec`'s messages; a zeroed
+/// one declares nothing. ABI 33.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiWindowEvents {
+    /// `resize: {width, height, scale}`: the viewport or the scale moved.
+    pub on_resize: *const KuiValue,
+    /// `window: {phase: "focused" | "blurred"}`: this window gained or
+    /// lost the keyboard.
+    pub on_focus: *const KuiValue,
+    /// `system: {appearance, accent, motion, locale, assistive}`: a
+    /// setting the user changed in the OS.
+    pub on_system_settings_change: *const KuiValue,
+    /// The system's fonts changed: the message as declared, no data.
+    pub on_fonts: *const KuiValue,
+    /// `modifiers: {shift, ctrl, alt, super}`: the held modifiers changed.
+    pub on_modifiers: *const KuiValue,
+    /// `open: {paths}`: the OS asked the app to open documents. Read on
+    /// the main window's root alone.
+    pub on_open: *const KuiValue,
+}
+
+impl KuiWindowEvents {
+    /// The group as the core takes it: each message cloned out of its
+    /// borrow.
+    pub(crate) fn to_core(self) -> kui_core::WindowEvents {
+        let msg = |p: *const KuiValue| unsafe { p.as_ref() }.map(|v| v.0.clone());
+        kui_core::WindowEvents {
+            on_resize: msg(self.on_resize),
+            on_focus: msg(self.on_focus),
+            on_system_settings_change: msg(self.on_system_settings_change),
+            on_fonts: msg(self.on_fonts),
+            on_modifiers: msg(self.on_modifiers),
+            on_open: msg(self.on_open),
+        }
+    }
 }
 
 /// `KUI_WINDOW_KIND_NORMAL`: a regular top-level window.

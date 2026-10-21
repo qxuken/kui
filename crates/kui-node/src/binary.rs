@@ -25,15 +25,16 @@
 
 use kui_core::{
     Align, Color, Content, EditOptions, FloatConfig, ImageId, Key, NodeSpec, PadShorthand, Sizing,
-    Span, TextStyle, TokenKind, TokenLookup, Warning, WindowConfig, widgets,
+    Span, TextStyle, TokenKind, TokenLookup, Warning, WindowConfig, WindowEvents, WindowLifecycle,
+    widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
     self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_IME_OFF, P_INDEX, P_KEY, P_KEY_FOCUS,
     P_OPTION_AS_ALT, P_OVERFLOW, P_PAD, P_ROW_COUNT, P_SECURE_INPUT, P_SIZE, P_TITLE, P_TOOLTIP,
-    P_WINDOWS, Parsed, PropsOut, SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx, color_num, min_num,
-    sizing_num,
+    P_WINDOW_EVENTS, P_WINDOWS, Parsed, PropsOut, SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx,
+    color_num, min_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -118,6 +119,11 @@ use crate::{Result, err, value_of};
 /// nothing else; `select` carries its `onMenu` message (a strref, absent
 /// for none) after the current index; and the handler rows `onSubmit`,
 /// `onCancel`, `onBoundary`, `onMenu` and `onSelectionRange` are new.
+/// And a window declares the messages its own events arrive as (ADR 0048,
+/// the same unreleased version): the root's `windowEvents` group rides as
+/// one JSON blob (`P_WINDOW_EVENTS`), a `windows` entry carries its
+/// `onWindow` / `onDismiss`, and `menuBar` carries its `onMenu` message
+/// (a strref, absent for none) after the menu.
 pub const VERSION: u32 = 24;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
@@ -802,11 +808,24 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     return Err(err("windows: a list of names or entries"));
                 };
                 for entry in entries {
-                    out.windows.push(
-                        WindowConfig::from_value(entry)
-                            .map_err(|e| err(format!("windows: {e}")))?,
-                    );
+                    let (name, config) = WindowConfig::from_value(entry)
+                        .map_err(|e| err(format!("windows: {e}")))?;
+                    // The entry's `onWindow` / `onDismiss` messages (ADR
+                    // 0048), by the reader Lua's entries go through too.
+                    let lifecycle = WindowLifecycle::from_entry(entry, false);
+                    out.windows.push((name, config, lifecycle));
                 }
+            }
+            // The root's `windowEvents` group (ADR 0048): one JSON blob,
+            // read by `WindowEvents::from_value`, the reader Lua's table
+            // goes through. Sent from any node, so the core can say
+            // `window-events-off-root` about one that is not the root.
+            P_WINDOW_EVENTS => {
+                let group = payload(r.req_str()?)?;
+                out.window_events = Some(
+                    WindowEvents::from_value(&group, false)
+                        .map_err(|e| err(format!("windowEvents: {e}")))?,
+                );
             }
             P_TOOLTIP => out.apply_tooltip(r.req_str()?),
             _ if is_ref
@@ -1608,7 +1627,12 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             // One JSON blob, read by the same parser `openMenu`'s items go
             // through: a menu nests, and two readers of one shape are two
             // things to keep in step.
-            let (bar, stray) = crate::menu_bar_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
+            let (mut bar, stray) =
+                crate::menu_bar_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
+            // Then the `onMenu` message a choice from the bar arrives as
+            // (ADR 0048), a strref as `select`'s is; absent, the bar posts
+            // nothing.
+            bar.on_menu = r.str_ref()?.map(payload).transpose()?;
             crate::warn_stray_menu_keys(ui.core(), stray);
             widgets::menu_bar(ui, bar);
             Ok(())
@@ -1887,7 +1911,8 @@ mod tests {
                     // anchored to a 60x20 rect at (10, 20) — read by
                     // `WindowConfig::from_value`, the same reader Lua's
                     // list goes through.
-                    const LIST: &[u8] = br#"[{"name":"abc","kind":"popup","width":400,"height":300,"activates":false,"anchor":{"x":10,"y":20,"w":60,"h":20}}]"#;
+                    // Its `onDismiss` is the entry's lifecycle (ADR 0048).
+                    const LIST: &[u8] = br#"[{"name":"abc","kind":"popup","width":400,"height":300,"activates":false,"anchor":{"x":10,"y":20,"w":60,"h":20},"onDismiss":{"kind":"x"}}]"#;
                     s.extend([0.0, LIST.len() as f64]);
                     strings = LIST;
                     expected.windows.push((
@@ -1898,7 +1923,23 @@ mod tests {
                             activates: false,
                             anchor: kui_core::Rect::new(10.0, 20.0, 60.0, 20.0),
                         },
+                        WindowLifecycle::default().on_dismiss(kui_core::Value::map([(
+                            "kind",
+                            kui_core::Value::str("x"),
+                        )])),
                     ));
+                }
+                "windowEvents" => {
+                    // One JSON blob (ADR 0048), read by
+                    // `WindowEvents::from_value`, as Lua's table is.
+                    const GROUP: &[u8] = br#"{"onResize":{"kind":"r"},"onFonts":"f"}"#;
+                    s.extend([0.0, GROUP.len() as f64]);
+                    strings = GROUP;
+                    expected.window_events = Some(
+                        WindowEvents::default()
+                            .on_resize(kui_core::Value::map([("kind", kui_core::Value::str("r"))]))
+                            .on_fonts(kui_core::Value::str("f")),
+                    );
                 }
                 other => panic!(
                     "custom prop {other:?} has no binary decoder arm: add one in read_props, \

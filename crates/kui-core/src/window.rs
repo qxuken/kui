@@ -38,6 +38,7 @@
 
 use crate::geom::{Rect, Size};
 use crate::tree::OriginId;
+use crate::value::Value;
 
 /// Which OS window something belongs to: an opaque integer the core
 /// assigns when it opens a window, not a handle an app builds.
@@ -285,6 +286,198 @@ impl Default for WindowConfig {
             size: Self::DEFAULT_SIZE,
             activates: true,
             anchor: Rect::new(0.0, 0.0, 0.0, 0.0),
+        }
+    }
+}
+
+/// The messages a window's own events arrive as (ADR 0048): the
+/// `windowEvents` group on a window's root, declared each frame the way
+/// its title is. Each key is one event's message, and the event arrives as
+/// that message with its data in the field named for the event; a key left
+/// out is an event the window does not hear. `env` reads every fact these
+/// report whether or not one is declared.
+///
+/// Read from the last frame the window finished: a resize the next frame
+/// begins with arrives as the message the frame before it declared.
+///
+/// ```rust
+/// use kui_core::{Value, WindowEvents};
+///
+/// let events = WindowEvents::default()
+///     .on_resize(Value::map([("kind", Value::str("resized"))]))
+///     .on_fonts("fonts");
+/// assert!(events.on_resize.is_some() && events.on_modifiers.is_none());
+/// ```
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WindowEvents {
+    /// `resize: {width, height, scale}`: the window's viewport or scale
+    /// changed.
+    pub on_resize: Option<Value>,
+    /// `window: {phase: "focused" | "blurred"}`: this window gained or lost
+    /// the keyboard. Its opening and closing are its `windows` entry's
+    /// ([`WindowLifecycle::on_window`]).
+    pub on_focus: Option<Value>,
+    /// `system: {appearance, accent, motion, locale, assistive}`: a setting
+    /// the user changed in the OS, `env.system` as it now reads.
+    pub on_system_settings_change: Option<Value>,
+    /// The fonts installed on the system changed; the message as declared.
+    pub on_fonts: Option<Value>,
+    /// `modifiers: {shift, ctrl, alt, super}`: the held modifiers changed.
+    pub on_modifiers: Option<Value>,
+    /// `open: {paths}`: the OS asked the app to open documents. Read on the
+    /// main window's root alone, since the OS opens documents to the app
+    /// and not to one of its windows.
+    pub on_open: Option<Value>,
+}
+
+impl WindowEvents {
+    /// Declares the `resize` message.
+    pub fn on_resize(mut self, message: impl Into<Value>) -> Self {
+        self.on_resize = Some(message.into());
+        self
+    }
+
+    /// Declares the message this window's keyboard focus arrives as.
+    pub fn on_focus(mut self, message: impl Into<Value>) -> Self {
+        self.on_focus = Some(message.into());
+        self
+    }
+
+    /// Declares the `system` message.
+    pub fn on_system_settings_change(mut self, message: impl Into<Value>) -> Self {
+        self.on_system_settings_change = Some(message.into());
+        self
+    }
+
+    /// Declares the `fonts` message.
+    pub fn on_fonts(mut self, message: impl Into<Value>) -> Self {
+        self.on_fonts = Some(message.into());
+        self
+    }
+
+    /// Declares the `modifiers` message.
+    pub fn on_modifiers(mut self, message: impl Into<Value>) -> Self {
+        self.on_modifiers = Some(message.into());
+        self
+    }
+
+    /// Declares the `open` message (read on the main window only).
+    pub fn on_open(mut self, message: impl Into<Value>) -> Self {
+        self.on_open = Some(message.into());
+        self
+    }
+
+    /// The message an event of `kind` arrives as, if this group declares
+    /// one; `None` for a kind the group has no key for.
+    pub fn get(&self, kind: crate::input::EventKind) -> Option<&Value> {
+        use crate::input::EventKind as K;
+        match kind {
+            K::Resize => self.on_resize.as_ref(),
+            K::Window => self.on_focus.as_ref(),
+            K::System => self.on_system_settings_change.as_ref(),
+            K::Fonts => self.on_fonts.as_ref(),
+            K::Modifiers => self.on_modifiers.as_ref(),
+            K::Open => self.on_open.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Whether the group declares nothing.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The group's keys as JSX and Lua spell them, in field order.
+    pub const KEYS: [(&'static str, &'static str); 6] = [
+        ("onResize", "on_resize"),
+        ("onFocus", "on_focus"),
+        ("onSystemSettingsChange", "on_system_settings_change"),
+        ("onFonts", "on_fonts"),
+        ("onModifiers", "on_modifiers"),
+        ("onOpen", "on_open"),
+    ];
+
+    /// The group from plain data: a map of [`Self::KEYS`] in JSX's
+    /// spelling, or Lua's when `lua`, to the messages. A key the group does
+    /// not have is an error rather than an event nobody hears, so a typo
+    /// says so.
+    pub fn from_value(v: &Value, lua: bool) -> Result<Self, String> {
+        let Value::Map(entries) = v else {
+            return Err(format!(
+                "windowEvents is a table of messages, not {}",
+                v.type_name()
+            ));
+        };
+        let mut out = Self::default();
+        for (k, msg) in entries {
+            let i = Self::KEYS
+                .iter()
+                .position(|(jsx, l)| k == if lua { l } else { jsx })
+                .ok_or_else(|| {
+                    let keys: Vec<_> = Self::KEYS
+                        .iter()
+                        .map(|(jsx, l)| if lua { *l } else { *jsx })
+                        .collect();
+                    format!(
+                        "windowEvents has no `{k}`; its keys are {}",
+                        keys.join(", ")
+                    )
+                })?;
+            let slot = match i {
+                0 => &mut out.on_resize,
+                1 => &mut out.on_focus,
+                2 => &mut out.on_system_settings_change,
+                3 => &mut out.on_fonts,
+                4 => &mut out.on_modifiers,
+                _ => &mut out.on_open,
+            };
+            *slot = Some(msg.clone());
+        }
+        Ok(out)
+    }
+}
+
+/// The messages a declared window's lifecycle arrives as (ADR 0048): the
+/// `onWindow` and `onDismiss` keys of its `windows` entry. They live where
+/// the app decided the window should exist, so they are there for a window
+/// that has closed and has no root left to declare anything. Read on every
+/// declaration, unlike the [`WindowConfig`] beside them, which is read on
+/// the opening edge alone; a closed window's are the last ones declared.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WindowLifecycle {
+    /// `window: {phase: "opened" | "closed", id}`, on whichever window's
+    /// frame noticed.
+    pub on_window: Option<Value>,
+    /// `dismiss: {reason, id}`: a popup was asked to go away. It closes
+    /// nothing; the app stops declaring it.
+    pub on_dismiss: Option<Value>,
+}
+
+impl WindowLifecycle {
+    /// Declares the message the window's opening and closing arrive as.
+    pub fn on_window(mut self, message: impl Into<Value>) -> Self {
+        self.on_window = Some(message.into());
+        self
+    }
+
+    /// Declares the message a popup's dismissal arrives as.
+    pub fn on_dismiss(mut self, message: impl Into<Value>) -> Self {
+        self.on_dismiss = Some(message.into());
+        self
+    }
+    /// The two keys of a `windows` entry ([`WindowConfig::from_value`]'s
+    /// map), `onWindow` and `onDismiss` in JSX's spelling or `on_window`
+    /// and `on_dismiss` in Lua's: what the entry declared, nothing for a
+    /// bare name.
+    pub fn from_entry(v: &Value, lua: bool) -> Self {
+        let (w, d) = if lua {
+            ("on_window", "on_dismiss")
+        } else {
+            ("onWindow", "onDismiss")
+        };
+        Self {
+            on_window: v.get(w).cloned(),
+            on_dismiss: v.get(d).cloned(),
         }
     }
 }

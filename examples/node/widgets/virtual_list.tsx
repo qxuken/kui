@@ -24,13 +24,13 @@
 //   npm run virtual_list -- --variable            rows of no fixed height
 //   node dist/widgets/virtual_list.mjs --headless the same slicing, no window
 import { RowHeights, createApp, list, uniformList } from '@qxuken/kui';
-import type { App, Ctx, KuiWindow, RootMsg, UiEvent } from '@qxuken/kui';
+import type { App, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 const ROWS = 10_000;
 const ROW_H = 28;
 
-type Msg = { kind: 'pick'; row: number } | RootMsg;
+type Msg = { kind: 'pick'; row: number };
 type Model = { selected: number };
 
 const init: Model = { selected: 0 };

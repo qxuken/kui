@@ -697,6 +697,10 @@ impl Core {
         // The declared window set, diffed against the session's: a frame
         // that declared a new name queues its `Open` here.
         self.sync_windows();
+        // What the window's own events are read against until the next
+        // frame finishes (ADR 0048).
+        self.window_events_seen = self.window_events.take();
+        self.finished_any = true;
         // The frame's modal scope, and the focus it moves: emission reads
         // it (everything outside is inert) and so does the Tab ring.
         self.modal = if self.tree.any_modal {

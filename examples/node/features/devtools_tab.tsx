@@ -21,7 +21,7 @@
 //
 //   npm run devtools_tab                              a real window
 //   node dist/features/devtools_tab.mjs --headless    the same, no window
-import type { App, HoverMsg, KuiWindow, RootMsg, Theme, UiEvent } from '@qxuken/kui';
+import type { App, HoverMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 /** One node of the syntax tree: its kind, the highlight group a token
@@ -136,7 +136,7 @@ type AppMsg =
   | { kind: 'rowClick'; id: number }
   | { kind: 'inspect-pick' }
   | { kind: 'show-tab' };
-type Msg = AppMsg | RootMsg;
+type Msg = AppMsg;
 
 const init: Model = { hoverRow: null, hoverTok: null };
 

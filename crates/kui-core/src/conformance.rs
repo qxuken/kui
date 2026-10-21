@@ -40,7 +40,10 @@ use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::widgets;
-use crate::window::{DismissReason, WindowCommand, WindowConfig, WindowEnv, WindowId, WindowRole};
+use crate::window::{
+    DismissReason, WindowCommand, WindowConfig, WindowEnv, WindowEvents, WindowId, WindowLifecycle,
+    WindowRole,
+};
 
 /// Every scene is built at this viewport and scale. A binding that drives
 /// its own frames has to use the same numbers or nothing lines up.
@@ -394,6 +397,13 @@ pub enum Step {
     /// backlog F124), spelled as [`Step::DragFiles`]'s files are
     /// ([`drop_paths`]). Zero is an empty list, which emits nothing.
     Open(u32),
+    /// Not an input: the window resized, so every frame from here on is
+    /// `w` x `h` logical px (the scene's first frame is [`VIEWPORT`]). The
+    /// next frame begins with a `resize` (ADR 0048).
+    Viewport(u32, u32),
+    /// Not an input: the driver reporting that the window gained (1) or
+    /// lost (0) the keyboard (`Core::set_focused`).
+    Focused(u32),
 }
 
 /// The paths a [`Step::DragFiles`] / [`Step::DropFiles`] / [`Step::Open`]
@@ -481,6 +491,12 @@ impl Step {
             Step::Open(n) => {
                 let _ = writeln!(out, "step open {n}");
             }
+            Step::Viewport(w, h) => {
+                let _ = writeln!(out, "step viewport {w} {h}");
+            }
+            Step::Focused(on) => {
+                let _ = writeln!(out, "step focused {on}");
+            }
         }
     }
 
@@ -494,6 +510,8 @@ impl Step {
             | Step::WindowClosed(_)
             | Step::WindowDismissed(..)
             | Step::Appearance(_)
+            | Step::Viewport(..)
+            | Step::Focused(_)
             | Step::Copy => {
                 return None;
             }
@@ -1038,7 +1056,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText tokensx||"],
             // The OS setting moving under the app is itself an event.
-            events: &["system -"],
+            events: &[],
             announcements: &[],
             warnings: &["reserved-token", "unknown-token", "unknown-token"],
             commands: &[],
@@ -2380,7 +2398,12 @@ pub const SCENES: &[Scene] = &[
                 "1 button Open||",
                 "1 button Note||",
             ],
-            events: &["dismiss dlg", "click ok", "click cancel", "dismiss dlg"],
+            events: &[
+                "dismiss dlg outside",
+                "click ok",
+                "click cancel",
+                "dismiss dlg escape",
+            ],
             announcements: &[],
             warnings: &[],
             // The titlebar press: chrome stays live under a modal, and a
@@ -2585,8 +2608,10 @@ pub const SCENES: &[Scene] = &[
               which is what lets phase 2's declaration *start*: a second \
               `Open`, with a new id, because a closed window's identity did \
               not survive its lapse. Phase 3 stops again and the diff \
-              closes it. Four `window` events, three commands, two \
-              warnings, and the report keeps the frame with nothing open.",
+              closes it. Four `window` events, each the entry's `onWindow` \
+              message (ADR 0048) — the last close the one declared before \
+              the declaration lapsed — three commands, two warnings, and \
+              the report keeps the frame with nothing open.",
         custom: &["windows", "size"],
         elements: &["box", "text"],
         build: build_windows,
@@ -2613,10 +2638,10 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
-                "window opened",
-                "window closed",
-                "window opened",
-                "window closed",
+                "window palette opened",
+                "window palette closed",
+                "window palette opened",
+                "window palette closed",
             ],
             announcements: &[],
             warnings: &["duplicate-window-config", "window-declared-while-closed"],
@@ -2643,7 +2668,8 @@ pub const SCENES: &[Scene] = &[
               four numbers and a kind: the `open` line carries kind 1, \
               `activates` 0, the owner that declared it (main, 0) and the \
               anchor rect an `onLayout` node reported for the field the menu \
-              belongs to. Then the driver reports the two dismissals, and \
+              belongs to. Then the driver reports the two dismissals, as \
+              the entry's `onDismiss` message (ADR 0048), and \
               **neither closes anything**: the window is still open, still \
               declared, and no command follows — the app stops declaring it \
               on the frame it chooses, which is phase 1, and only that \
@@ -2675,10 +2701,10 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
-                "window opened",
-                "dismiss outside",
-                "dismiss escape",
-                "window closed",
+                "window popup opened",
+                "dismiss popup outside",
+                "dismiss popup escape",
+                "window popup closed",
             ],
             // A popup says nothing to a screen reader by opening: it is a
             // window, and a window announcing itself is what the access
@@ -2935,10 +2961,10 @@ pub const SCENES: &[Scene] = &[
                 "1 staticText two||",
                 "1 staticText three||",
             ],
-            // The modifier going down and up is itself an event on the
-            // root — the one an app keeps in its model for a held-key
-            // overlay — so the two steps leave two rows.
-            events: &["modifiers -", "modifiers -"],
+            // The modifier going down and up is an event only for a root
+            // that declares `onModifiers` (ADR 0048), which this one does
+            // not: what the Shift does is the selection's.
+            events: &[],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -3065,12 +3091,7 @@ pub const SCENES: &[Scene] = &[
                 "2 scrollView ||",
                 "3 scrollView ||",
             ],
-            events: &[
-                "scroll term -",
-                "modifiers -",
-                "scroll zoom -",
-                "modifiers -",
-            ],
+            events: &["scroll term -", "scroll zoom -"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -3381,9 +3402,10 @@ pub const SCENES: &[Scene] = &[
               built once, so a zone the view stops declaring still gets \
               it, and the paths cannot change within one OS drag. Then \
               the OS asks the app to open two documents (backlog F124), \
-              which the host hears on the root with no zone and no ask, \
-              and an empty list, which is nothing.",
-        custom: &["float", "key"],
+              which the root hears as its `windowEvents.onOpen` message \
+              (ADR 0048) with no zone and no ask, and an empty list, \
+              which is nothing.",
+        custom: &["float", "key", "windowEvents"],
         elements: &["box"],
         build: build_drop,
         env: NATIVE_CHROME,
@@ -3426,7 +3448,7 @@ pub const SCENES: &[Scene] = &[
                 "drop files leave 1",
                 "drop other enter 1",
                 "drop other drop 1",
-                "open - 2",
+                "open docs 2",
             ],
             announcements: &[],
             warnings: &[],
@@ -3859,6 +3881,77 @@ pub const SCENES: &[Scene] = &[
                 "1 staticText a plain line that wraps twice over||",
             ],
             events: &[],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
+        name: "window-events",
+        doc: "A window's own events, each as the message its root declared \
+              (ADR 0048): the root declares every key of its \
+              `windowEvents` group and a `menuBar` its `onMenu`, and the \
+              steps drive each one. The window shrinks (`resize`), loses \
+              and regains the keyboard (`window`, `blurred` then \
+              `focused`), the OS goes dark (`system`), Shift goes down \
+              and up (`modifiers`, twice), the OS hands over one \
+              document (`open`), and a row of the drawn bar's File menu \
+              is chosen (`menu`). Every one arrives under the app's own \
+              `kind`; none is a root event. `fonts` is declared and not \
+              driven: a rescan that finds what was there says nothing, so \
+              no headless step can make one.",
+        custom: &["windowEvents", "key", "pad", "size"],
+        elements: &["menuBar", "box", "text"],
+        build: build_window_events,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Viewport(300, 200),
+            Step::Focused(0),
+            Step::Focused(1),
+            Step::Appearance(2),
+            Step::Modifiers(KeyMods::SHIFT),
+            Step::Modifiers(0),
+            Step::Open(1),
+            // Open the File menu, then choose its first row.
+            Step::Cursor(20, 13),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(40, 45),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            // The bar; the menu the choice closed is gone.
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 6,
+            access: &[
+                "0 window ||",
+                "1 menu Menu bar||",
+                "2 menuItem File||",
+                "1 staticText body||",
+            ],
+            events: &[
+                "resize resized",
+                "window focus blurred",
+                "window focus focused",
+                "system settings",
+                "modifiers mods",
+                "modifiers mods",
+                "open docs 1",
+                "menu chose file.new",
+            ],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -4918,6 +5011,30 @@ fn build_ime(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// The edit-rows scene: one stock editor held to the value `AB`, with a
 /// message per handler row so the report says which row each event came
 /// in on.
+/// Every key of the root's `windowEvents` group, each its own `kind`, and
+/// a drawn menu bar declaring `onMenu` (ADR 0048).
+fn build_window_events(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let msg = |kind: &str| Value::map([("kind", Value::str(kind))]);
+    ui.window_events(
+        WindowEvents::default()
+            .on_resize(msg("resized"))
+            .on_focus(msg("focus"))
+            .on_system_settings_change(msg("settings"))
+            .on_fonts(msg("fonts"))
+            .on_modifiers(msg("mods"))
+            .on_open(msg("docs")),
+    );
+    let bar = MenuBar::new(vec![BarMenu::new(
+        "File",
+        vec![MenuItem::new("New").id(Value::str("file.new"))],
+    )])
+    .on_menu(msg("chose"));
+    ui.with(NodeSpec::column().gap(6.0).grow_width(), |ui| {
+        widgets::menu_bar(ui, bar);
+        ui.text("body", TextStyle::new(12.0));
+    });
+}
+
 fn build_edit_rows(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let msg = |k: &str| Value::map([("kind", Value::str(k))]);
     ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
@@ -5228,6 +5345,8 @@ fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// is. The curve's chords are 44.7, 50 and 82.5, which
 /// `line::flatten_curve` cuts into 8, 9 and 14 pieces at `CURVE_STEP` 6.
 fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    // The OS's documents are the window's, declared on its root (ADR 0048).
+    ui.window_events(WindowEvents::default().on_open(Value::map([("kind", Value::str("docs"))])));
     ui.with(NodeSpec::row().fill(), |ui| {
         ui.with_keyed(
             "files",
@@ -5931,7 +6050,14 @@ fn build_popup(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     // A list 320 tall under a 240-tall viewport: the case `FloatConfig::fit`
     // cannot place, which is the whole reason for the kind.
     if phase == 0 {
-        ui.window("menu", WindowConfig::popup(POPUP_ANCHOR, 160.0, 320.0));
+        let popup = Value::map([("kind", Value::str("popup"))]);
+        ui.window_with(
+            "menu",
+            WindowConfig::popup(POPUP_ANCHOR, 160.0, 320.0),
+            WindowLifecycle::default()
+                .on_window(popup.clone())
+                .on_dismiss(popup),
+        );
     }
     ui.text_in(
         NodeSpec::column().pad(8.0).bg(Color::hex(0x14161eff)),
@@ -5986,13 +6112,17 @@ fn build_live(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 }
 
 fn build_windows(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    // Both edges arrive as the entry's one message (ADR 0048); the
+    // phase-3 close as the one declared before the declaration lapsed.
+    let palette =
+        || WindowLifecycle::default().on_window(Value::map([("kind", Value::str("palette"))]));
     if phase == 0 || phase == 2 {
-        ui.window("palette", WindowConfig::sized(400.0, 300.0));
+        ui.window_with("palette", WindowConfig::sized(400.0, 300.0), palette());
     }
     if phase == 0 {
         // The same name again with another config: the first declaration
         // wins, and the disagreement is reported on the frame it opens.
-        ui.window("palette", WindowConfig::sized(500.0, 500.0));
+        ui.window_with("palette", WindowConfig::sized(500.0, 500.0), palette());
     }
     ui.with(
         NodeSpec::column().pad(8.0).bg(Color::hex(0x14161eff)),
@@ -6129,6 +6259,11 @@ fn observe(core: &Core, cov: &mut Coverage) {
     // only trace of one.
     if !core.declared_windows().is_empty() {
         cov.custom.insert("windows");
+    }
+    // Nor is the root's `windowEvents` group: the frame just finished is
+    // the one whose group is in force.
+    if core.window_events().is_some() {
+        cov.custom.insert("windowEvents");
     }
     // The `menuBar` element declares a menu and may draw nothing at all, so
     // neither its rows nor its nodes are a reliable trace of it; the
@@ -6533,26 +6668,31 @@ fn event_row(ev: &UiEvent) -> (String, String) {
     let payload = &ev.payload;
     let empty = Value::Null;
     let data = ev.data().unwrap_or(&empty);
-    // The second column is the event's message. A root event has none —
-    // it is on the window and not on a node — and nor does a sink that
-    // declared a `Null` one, and without a fallback two `window` lines or
-    // two `dismiss` lines are the same line, which is exactly the
-    // difference those scenes are about. So an event with no message
-    // name shows the field that tells it from its siblings: `phase` for a
-    // `window` or a `key`, `reason` for a `dismiss`.
-    let named = if ev.is_root() {
-        None
-    } else {
-        payload
-            .as_str()
-            .or_else(|| payload.get_str("kind"))
-            .or_else(|| payload.get_str("tag"))
-    };
+    // The second column is the event's message. A handler that declared
+    // a `Null` one has no name for it, and without a fallback two
+    // `window` lines or two `dismiss` lines are the same line, which is
+    // exactly the difference those scenes are about. So an event with no
+    // message name shows the field that tells it from its siblings:
+    // `phase` for a `window` or a `key`, `reason` for a `dismiss`.
+    let named = payload
+        .as_str()
+        .or_else(|| payload.get_str("kind"))
+        .or_else(|| payload.get_str("tag"));
     let mut tag = named
         .or_else(|| data.get_str("phase"))
         .or_else(|| data.get_str("reason"))
         .unwrap_or("-")
         .to_string();
+    // A window's lifecycle and a dismissal arrive as one declared message
+    // each edge (ADR 0048), so a named one carries the field that tells
+    // the edges apart after its name: `window palette opened`.
+    if named.is_some() && (kind == "window" || kind == "dismiss") {
+        let edge = data
+            .get_str("phase")
+            .or_else(|| data.get_str("reason"))
+            .unwrap_or("-");
+        let _ = write!(tag, " {edge}");
+    }
     // A drag's phase and deltas ride in the tag column (`split move 8 0`),
     // because the deltas are the contract: `dx`/`dy` are measured from the
     // press point in every phase, and a binding that summed
@@ -6635,7 +6775,7 @@ fn event_row(ev: &UiEvent) -> (String, String) {
         let _ = write!(tag, " {phase} {n}");
     }
     // The documents the OS handed over ride the same way, as a count
-    // (`open - 2`, backlog F124).
+    // (`open docs 2`, backlog F124).
     if kind == "open" {
         let n = data
             .get("paths")
@@ -6703,13 +6843,15 @@ pub fn drive(
     let mut audio = Vec::new();
     let mut coverage = Coverage::default();
     let mut phase = 0u32;
+    let mut viewport = VIEWPORT;
     let mut frame = |core: &mut Core,
                      phase: u32,
+                     viewport: Size,
                      events: &mut Vec<(String, String)>,
                      commands: &mut Vec<WindowCommand>,
                      audio: &mut Vec<AudioCommand>,
                      coverage: &mut Coverage| {
-        let mut ui = core.frame(VIEWPORT, SCALE);
+        let mut ui = core.frame(viewport, SCALE);
         build(&mut ui, phase);
         ui.finish();
         observe(core, coverage);
@@ -6720,6 +6862,7 @@ pub fn drive(
     frame(
         core,
         phase,
+        viewport,
         &mut events,
         &mut commands,
         &mut audio,
@@ -6729,6 +6872,11 @@ pub fn drive(
         match *step {
             Step::Phase(n) => phase = n,
             Step::Time(ms) => core.set_time(ms as f64 / 1000.0),
+            Step::Viewport(w, h) => viewport = Size::new(w as f32, h as f32),
+            Step::Focused(on) => {
+                core.set_focused(on != 0);
+                events.extend(core.take_pending_events().iter().map(event_row));
+            }
             Step::WindowClosed(id) => {
                 core.window_closed(WindowId(id));
                 events.extend(core.take_pending_events().iter().map(event_row));
@@ -6760,6 +6908,7 @@ pub fn drive(
         frame(
             core,
             phase,
+            viewport,
             &mut events,
             &mut commands,
             &mut audio,

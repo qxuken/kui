@@ -9,10 +9,12 @@ package kui
 // two halves here:
 //
 //   - X_Event, the data: what rides under the field (Drag_Event is
-//     {phase, x, y, dx, dy, parent, ...}). A root event - resize, window,
-//     system, fonts, modifiers, open, the menu bar's menu, a popup
-//     window's dismiss - has no message of the app's and still arrives as
-//     {kind = "resize", ...}, so its X_Event decodes it whole, by kind.
+//     {phase, x, y, dx, dy, parent, ...}). The events no node has arrive
+//     the same way (ADR 0048), as the messages the window declared: its
+//     root's Window_Events (root_with) for a resize, its keyboard focus,
+//     the OS's settings, the fonts, the modifiers and the documents; its
+//     entry in the window set (window_declare_with) for its opening,
+//     closing and dismissal; the menu bar (menu_bar_with) for its choice.
 //   - With_X, the field alone: With_Drag :: struct {drag: Drag_Event}. An
 //     app's message embeds it, and kui.decode fills it:
 //
@@ -112,8 +114,8 @@ Context_Menu_Event :: struct {
 	x, y: f32,
 }
 
-// A menu row chosen: under `menu` in the on_menu message, or whole on the
-// root, {kind = "menu", role, item}, for the menu bar.
+// A menu row chosen: under `menu` in the on_menu message, a node's or the
+// menu bar's (menu_bar_with).
 Menu_Event :: struct {
 	role: string,
 	item: Value,
@@ -199,13 +201,12 @@ Sound_Event :: struct {
 
 Dismiss_Event :: struct {
 	reason: string, // "escape" | "outside"
-	// On the root, for a popup window.
-	name:   string,
-	id:     u32,
+	id:     u32, // a popup window's, in its on_dismiss; 0 on a modal node
 }
 
-// -- The root events: whole payloads, decoded by kind --------------------------
+// -- The window's own events (ADR 0048) -----------------------------------------
 
+// The documents the OS asked the app to open, in the main window's on_open.
 Open_Event :: struct {
 	paths: []string,
 }
@@ -214,10 +215,11 @@ Resize_Event :: struct {
 	width, height, scale: f32,
 }
 
+// A declared window's opening and closing, in its on_window; this
+// window's keyboard, in its root's on_focus. The message names the window.
 Window_Event :: struct {
 	phase: string, // "opened" | "closed" | "focused" | "blurred"
-	name:  string,
-	id:    u32,
+	id:    u32, // 0 for focused and blurred
 }
 
 System_Event :: struct {
@@ -322,4 +324,24 @@ With_Sound :: struct {
 
 With_Dismiss :: struct {
 	dismiss: Dismiss_Event,
+}
+
+With_Resize :: struct {
+	resize: Resize_Event,
+}
+
+With_Window :: struct {
+	window: Window_Event,
+}
+
+With_System :: struct {
+	system: System_Event,
+}
+
+With_Modifiers :: struct {
+	modifiers: Modifiers_Event,
+}
+
+With_Open :: struct {
+	open: Open_Event,
 }

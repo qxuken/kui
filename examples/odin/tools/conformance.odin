@@ -1423,18 +1423,19 @@ scene_composite :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 
 // conformance::build_windows: the declaration comes and goes with the
 // phase. Phase 0 declares `palette` twice, disagreeing about the size, so the
-// first wins and the second warns.
+// first wins and the second warns. Each names the message its opening and
+// closing arrive as (ADR 0048).
 scene_windows :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	cfg := kui.Window_Config {
 		kind   = .Normal,
 		width  = 400,
 		height = 300,
 	}
-	if phase == 0 || phase == 2 do kui.window_declare(ui, "palette", cfg)
+	if phase == 0 || phase == 2 do kui.window_declare_with(ui, "palette", cfg, msg("palette"))
 	if phase == 0 {
 		cfg.width = 500
 		cfg.height = 500
-		kui.window_declare(ui, "palette", cfg)
+		kui.window_declare_with(ui, "palette", cfg, msg("palette"))
 	}
 	if kui.box(ui, {pad = kui.pad(8), bg = 0x14161eff}) {
 		kui.text(ui, "open" if phase == 0 || phase == 2 else "closed", {size = 12})
@@ -1442,7 +1443,8 @@ scene_windows :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 }
 
 // conformance::build_popup: one declaration, with the kind and the anchor a
-// menu carries (ADR 0004 decision 9).
+// menu carries (ADR 0004 decision 9), and one message for its opening,
+// closing and dismissal alike (ADR 0048).
 scene_popup :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	if phase == 0 {
 		cfg := kui.Window_Config {
@@ -1455,7 +1457,7 @@ scene_popup :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			anchor_w  = 160,
 			anchor_h  = 24,
 		}
-		kui.window_declare(ui, "menu", cfg)
+		kui.window_declare_with(ui, "menu", cfg, msg("popup"), msg("popup"))
 	}
 	if kui.box(ui, {pad = kui.pad(8), bg = 0x14161eff}) {
 		kui.text(ui, "menu" if phase == 0 else "closed", {size = 12})
@@ -1729,6 +1731,9 @@ scene_layers :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 // and across the phases a hoverable float over the first zone that is no
 // zone (phase 1) and a modal over it (phase 2).
 scene_drop :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	// The OS's documents are the window's, declared on its root (ADR 0048);
+	// a nil spec leaves the root as the frame began it.
+	kui.root_with(ui, nil, {on_open = msg("docs")})
 	if kui.row(ui, {width = kui.GROW, height = kui.GROW}) {
 		zone := kui.Spec {
 			key     = "files",
@@ -1958,6 +1963,29 @@ scene_menu_bar :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// conformance::build_window_events (ADR 0048): the root declares every key
+// of its window's group, each as {kind = <k>}, and the menu bar the message
+// its choice arrives as.
+scene_window_events :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	kui.root_with(
+		ui,
+		nil,
+		{
+			on_resize = msg("resized"),
+			on_focus = msg("focus"),
+			on_system_settings_change = msg("settings"),
+			on_fonts = msg("fonts"),
+			on_modifiers = msg("mods"),
+			on_open = msg("docs"),
+		},
+	)
+	file := []kui.Menu_Item{{label = "New", role = .Custom, id = "file.new"}}
+	if kui.box(ui, {gap = 6, width = kui.GROW}) {
+		kui.menu_bar_with(ui, {{label = "File", items = file}}, msg("chose"))
+		kui.text(ui, "body", {size = 12})
+	}
+}
+
 Build :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int)
 
 Scene :: struct {
@@ -2035,6 +2063,7 @@ SCENES := [?]Scene {
 	{"tokens", scene_tokens},
 	{"sampler", scene_sampler},
 	{"caret-in-text", scene_caret_in_text},
+	{"window-events", scene_window_events},
 }
 
 // -- Driving one scene ----------------------------------------------------------
@@ -2268,10 +2297,10 @@ apply :: proc(ui: ^kui.Ui, s: Step) {
 // Drains the event queue; payloads are borrowed until the next poll, so each
 // is formatted before the next. The row is conformance::event_row's (ADR
 // 0047): the envelope's event, then the message's name - a bare string
-// message, its `kind`, else the `tag` a non-map one is kept under; none for
-// a root event (ev.root, the core's flag) - falling back to the data's
-// `phase` or `reason`, then the extras some events carry, read from the
-// event's data.
+// message, its `kind`, else the `tag` a non-map one is kept under -
+// falling back to the data's `phase` or `reason`, then the extras some
+// events carry, read from the event's data. A named window or dismiss event
+// adds the edge it is, one message carrying every edge (ADR 0048).
 drain_events :: proc(ui: ^kui.Ui, out: ^strings.Builder) {
 	for ev in kui.poll_event(ui) {
 		p := ev.payload
@@ -2279,7 +2308,7 @@ drain_events :: proc(ui: ^kui.Ui, out: ^strings.Builder) {
 		kind := ev.event if ev.event != "" else "-"
 		tag := "-"
 		named := false
-		if p != nil && !ev.root {
+		if p != nil {
 			for v in ([]kui.Value{p, kui.get(p, "kind"), kui.get(p, "tag")}) {
 				if s, ok := kui.as_string(v); ok {
 					tag, named = s, true
@@ -2287,15 +2316,16 @@ drain_events :: proc(ui: ^kui.Ui, out: ^strings.Builder) {
 				}
 			}
 		}
-		if !named {
-			for key in ([]string{"phase", "reason"}) {
-				if s, ok := kui.as_string(kui.get(data, key)); ok {
-					tag = s
-					break
-				}
+		which := "-"
+		for key in ([]string{"phase", "reason"}) {
+			if s, ok := kui.as_string(kui.get(data, key)); ok {
+				which = s
+				break
 			}
 		}
+		if !named do tag = which
 		fmt.sbprintf(out, "event %s %s", kind, tag)
+		if named && (ev.event == "window" || ev.event == "dismiss") do fmt.sbprintf(out, " %s", which)
 		phase := "-"
 		if s, ok := kui.as_string(kui.get(data, "phase")); ok do phase = s
 		switch kind {
@@ -2419,14 +2449,26 @@ run_scene :: proc(scene: Scene, env: Env, steps: []Step, out: ^strings.Builder) 
 	cmds := strings.builder_make(context.temp_allocator)
 	audio := strings.builder_make(context.temp_allocator)
 	phase := 0
+	vw, vh: f32 = 320, 240
 	for i in 0 ..= len(steps) {
 		if i > 0 {
-			// Four steps are not input: the clock, the view changing its
-			// mind, and the OS closing a window or dismissing a popup.
+			// Some steps are not input: the clock, the view changing its
+			// mind, the window's size from here on, and the OS closing a
+			// window, dismissing a popup, moving the keyboard or changing
+			// its appearance.
 			s := steps[i - 1]
 			switch s.kind {
 			case "phase":
 				phase = s.a
+			case "viewport":
+				// Every frame from here is built at this size, so the next
+				// one begins with a resize.
+				vw, vh = f32(s.a), f32(s.b)
+			case "focused":
+				// The window lost or gained the keyboard: env_set's
+				// `focused`, the refresh rate left unknown.
+				kui.env_set(ui, 0, s.a != 0)
+				drain_events(ui, &events)
 			case "time":
 				kui.set_time(ui, f64(s.a) / 1000.0)
 			case "windowclosed":
@@ -2449,7 +2491,7 @@ run_scene :: proc(scene: Scene, env: Env, steps: []Step, out: ^strings.Builder) 
 				drain_audio(ui, &audio)
 			}
 		}
-		kui.frame_begin(ui, 320, 240, 1)
+		kui.frame_begin(ui, vw, vh, 1)
 		scene.build(ui, &f, phase)
 		kui.frame_finish(ui)
 		drain_events(ui, &events)

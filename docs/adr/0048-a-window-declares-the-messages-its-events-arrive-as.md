@@ -1,11 +1,11 @@
 ---
-status: proposed
-date: 2026-10-21
+status: accepted
+date: 2026-10-22
 ---
 
 # A window declares the messages its events arrive as
 
-> **Proposed (2026-10-21); backlog F175.** This amends [ADR
+> **Accepted and built (2026-10-22); backlog F175.** This amends [ADR
 > 0047](0047-an-event-arrives-as-the-message-its-handler-declared.md),
 > decision 6. ADR 0047 made every node event arrive as the message its
 > handler declared, and left the events with no node to declare a handler
@@ -175,3 +175,73 @@ declares each frame.
 - **ADR 0047 decision 6 is superseded.** Its building notes about
   `is_root`, `KuiEvent.root` and the TypeScript collision record what this
   ADR removes.
+
+## What the building changed
+
+- **`WindowConfig` stays `Copy`, and the lifecycle messages sit beside
+  it** (decision 7). The config is the driver's half — it rides
+  `WindowCommand::Open` to every runner — and is read on the opening
+  edge alone, where the messages are read on every declaration. So Rust
+  has `WindowLifecycle { on_window, on_dismiss }` and
+  `Core::declare_window_with(name, config, lifecycle)` / `Ui::window_with`;
+  `declare_window` is the one with no messages. The registry keeps each
+  open window's last messages and its declaring origin, refreshed by
+  every diff, so a `closed` arrives as what was last declared and an
+  extension that declared a window hears it.
+- **The declaration in force is the last finished frame's.** A window's
+  own events are noticed where the message is not known — the router's
+  modifier change, the resize a frame begins with — so the core keeps
+  them as facts and reads the root's group on the way out, at the two
+  exits every event leaves through. A fact noticed before any frame has
+  finished is held for the first drain after one has, so the documents a
+  launcher hands over before the first frame reach a root that declares
+  `onOpen` on it.
+- **`open` on another window is dropped**, not routed to the main one:
+  the drivers already send it to the main window's core.
+- **The devtools hear their own window by their own message.** The
+  panel's window declares an `onWindow` the panel takes back, so it
+  needs no name match and no app declaration (the first consequence).
+- **`kui::Event` follows the data.** `WindowEvent` drops `name` and its
+  `id` is `None` for a focus change; `Dismiss.window` is the id alone;
+  `Event::System` holds a `SystemEnv`, read by the new
+  `SystemEnv::from_value`. The derive's twin takes `on = resize`,
+  `window`, `system`, `modifiers` and `open` (`event::Open` is new), and
+  refuses `fonts` with the other data-less events. `KeyMods::to_value`
+  stopped writing a `kind`.
+- **`window-events-off-root` is raised by `Core::open_from`**, the door
+  every binding lowers a prop list through; `WindowEvents::from_value`
+  and `WindowLifecycle::from_entry` read the group and an entry's keys in
+  JSX's spelling or Lua's, so the two parsers cannot disagree, and an
+  unknown key in the group is an error.
+- **The corpus** gained the steps `viewport W H` and `focused 0|1` and
+  the `window-events` scene, which declares every key and the bar's
+  `onMenu` and drives each but `fonts`: a rescan that finds what was
+  there says nothing, so no headless step makes one (a core test bumps
+  the session's revision instead). A named `window` or `dismiss` row
+  carries its `phase` or `reason` after the name. The scenes whose
+  `modifiers` or `system` rows were incidental lost them.
+- **Lua's `ev.window` is the data on a `window` event.** Lua merges the
+  envelope into the event's table, and the envelope's window id is named
+  `window` — the name of the `window` event's field. The message's field
+  wins: on a `window` event `ev.window` is `{phase, id?}` — the `id` of
+  the window that opened or closed, none for a focus change, which is
+  the receiving window's own — and on every other event it is the
+  number it was.
+- **C's `kui_root_with` takes a NULL `spec`**, which declares the group
+  and leaves the root as the frame began it, since a zeroed `KuiSpec` is
+  not the core's default root and a host that never configured its root
+  should not have to start. `KuiWindowEvents` is an `[in]` struct of six
+  borrowed messages with no `size` field, zeroed for none; Odin's
+  `root_with` takes a `Maybe(Spec)` and a hand-written `Window_Events`,
+  which the generator cannot lower.
+- **Node's encoder sends `windowEvents` from any node**, unlike `title`,
+  which it drops off the root, so the core sees a misplaced group and
+  warns. The `menuBar` op carries `onMenu` as a string reference after
+  its menu, as `select`'s does, a slot inside protocol v24 rather than a
+  bump. `activateMenuBarItem` still answers whether anything was posted,
+  so a bar with no `onMenu` answers `false` for a real row, whose
+  standard role is still performed.
+- **The Node examples' harness declares `onSystemSettingsChange`** on
+  the root it wraps every example in, and swallows the message, so a
+  retained tree keeps following the OS's light and dark without every
+  example declaring it; an example that declares the key hears its own.

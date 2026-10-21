@@ -404,41 +404,63 @@ pub struct KuiMenu {
 ///
 /// Sticky and diffed, like `kui_window_title`: a frame that does not call
 /// this leaves the last declaration in force, the same declaration again
-/// changes nothing, and `count == 0` takes the menu away. Choosing an item
-/// posts a root `{kind:"menu", role, item}` — the bar is declared on no
-/// node, so no message of the app's carries it, as `on_menu` carries the
-/// context menu's. Returns false, declaring and drawing nothing, for an item with a
-/// role this build does not know. Call between `kui_frame_begin` and
-/// `kui_frame_finish`.
+/// changes nothing, and `count == 0` takes the menu away. This bar
+/// declares no message, so a choice from it posts nothing:
+/// `kui_menu_bar_with` declares the one it arrives as. Returns false,
+/// declaring and drawing nothing, for an item with a role this build does
+/// not know. Call between `kui_frame_begin` and `kui_frame_finish`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_menu_bar(ptr: *mut KuiCtx, menus: *const KuiMenu, count: usize) -> bool {
-    guard(false, || {
-        let Some(c) = (unsafe { ctx(ptr) }) else {
-            return false;
-        };
-        let mut out = Vec::with_capacity(count);
-        if !menus.is_null() {
-            for menu in unsafe { std::slice::from_raw_parts(menus, count) } {
-                let mut items = Vec::with_capacity(menu.count);
-                if !menu.items.is_null() {
-                    for row in unsafe { std::slice::from_raw_parts(menu.items, menu.count) } {
-                        match row.to_core() {
-                            Some(item) => items.push(item),
-                            None => return false,
-                        }
+    guard(false, || menu_bar(ptr, menus, count, None))
+}
+
+/// [`kui_menu_bar`] whose choices arrive as `on_menu` (ADR 0048), the
+/// `menuBar` element's `onMenu`, with `menu: {role, item}` in it — the
+/// field a context menu's choice carries — whether the bar is drawn in the
+/// frame or by the platform (`kui_activate_menu_bar_item`). Part of the
+/// declaration, so sticky with it. Consumes `on_menu` (NULL for none, a
+/// bar whose choices post nothing), also when the call is refused, as
+/// `kui_select_with` does.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_with(
+    ptr: *mut KuiCtx,
+    menus: *const KuiMenu,
+    count: usize,
+    on_menu: *mut KuiValue,
+) -> bool {
+    // Taken before anything can refuse, so a refused call frees it too.
+    let on_menu = take_msg(on_menu);
+    guard(false, || menu_bar(ptr, menus, count, on_menu))
+}
+
+fn menu_bar(ptr: *mut KuiCtx, menus: *const KuiMenu, count: usize, on_menu: Option<Value>) -> bool {
+    let Some(c) = (unsafe { ctx(ptr) }) else {
+        return false;
+    };
+    let mut out = Vec::with_capacity(count);
+    if !menus.is_null() {
+        for menu in unsafe { std::slice::from_raw_parts(menus, count) } {
+            let mut items = Vec::with_capacity(menu.count);
+            if !menu.items.is_null() {
+                for row in unsafe { std::slice::from_raw_parts(menu.items, menu.count) } {
+                    match row.to_core() {
+                        Some(item) => items.push(item),
+                        None => return false,
                     }
                 }
-                out.push(kui_core::BarMenu {
-                    label: kstr(menu.label).into_owned(),
-                    items,
-                    enabled: menu.enabled != 0,
-                });
             }
+            out.push(kui_core::BarMenu {
+                label: kstr(menu.label).into_owned(),
+                items,
+                enabled: menu.enabled != 0,
+            });
         }
-        let mut ui = kui_core::Ui::wrap(c.core());
-        kui_core::widgets::menu_bar(&mut ui, kui_core::MenuBar::new(out));
-        true
-    })
+    }
+    let mut ui = kui_core::Ui::wrap(c.core());
+    let mut bar = kui_core::MenuBar::new(out);
+    bar.on_menu = on_menu;
+    kui_core::widgets::menu_bar(&mut ui, bar);
+    true
 }
 
 /// Tells the core that the platform owns the menu bar, so `kui_menu_bar`

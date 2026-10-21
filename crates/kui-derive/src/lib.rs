@@ -136,18 +136,20 @@
 //! - `on = <event>` is the event's wire name: `click`, `drag`, `key`,
 //!   `text`, `preedit`, `select`, `selectionrange`, `contextmenu`, `menu`,
 //!   `forceclick`, `button`, `scroll`, `focus`, `hover`, `drop`, `files`,
-//!   `layout`, `boundary`, `sound`, `dismiss`. The field is that name and
-//!   its type `event::Click`, `Drag`, `KeyEvent`, `Text`, `Preedit`,
-//!   `Select`, `SelectionRange`, `ContextMenu`, `MenuChoice`,
+//!   `layout`, `boundary`, `sound`, `dismiss`, and a window's own (ADR
+//!   0048) `open`, `resize`, `window`, `system`, `modifiers`. The field is
+//!   that name and its type `event::Click`, `Drag`, `KeyEvent`, `Text`,
+//!   `Preedit`, `Select`, `SelectionRange`, `ContextMenu`, `MenuChoice`,
 //!   `ForceClick`, `ButtonEvent`, `Scroll`, `Focus`, `Hover`, `FileDrop`,
-//!   `Files`, `Layout`, `Boundary`, `Sound`, `Dismiss`.
+//!   `Files`, `Layout`, `Boundary`, `Sound`, `Dismiss`, `Open`, `Resize`,
+//!   `WindowEvent`, `SystemEnv`, `KeyMods`.
 //! - `change` is the field two events share. `on = change` (or
 //!   `edit_change`) is an editor's, `change: EditChange` (`{text}`);
 //!   `on = slider_change` a slider's, `change: SliderChange` (`{value,
 //!   phase}`). The twin's field is `change` either way, as the payload's.
-//! - A `submit`, a `cancel` and a `reply` carry no data, and a variant
-//!   declared on them needs no `on`; a root event (`resize`, `window`, …)
-//!   carries no message. Both are refused, as is a name that is no event.
+//! - A `submit`, a `cancel`, a `fonts` and a `reply` carry no data, and a
+//!   variant declared on them needs no `on`: it is refused, as is a name
+//!   that is no event.
 //! - `click` is for a node that can say more than that it was clicked (a
 //!   `cells` grid, a sink's `line` rows): a plain button's click carries
 //!   no `click` field, and its message needs no `on`.
@@ -288,6 +290,11 @@ const EVENTS: &[(&str, &str, &str)] = &[
     ("boundary", "boundary", "Boundary"),
     ("sound", "sound", "Sound"),
     ("dismiss", "dismiss", "Dismiss"),
+    ("open", "open", "Open"),
+    ("resize", "resize", "Resize"),
+    ("window", "window", "WindowEvent"),
+    ("system", "system", "SystemEnv"),
+    ("modifiers", "modifiers", "KeyMods"),
 ];
 
 /// The field and the data type `on = <name>` names, or why it names none.
@@ -297,13 +304,10 @@ fn event_of(on: &Ident) -> syn::Result<(&'static str, &'static str)> {
         return Ok((field, ty));
     }
     let why = match name.as_str() {
-        "submit" | "cancel" | "reply" => format!(
+        "submit" | "cancel" | "reply" | "fonts" => format!(
             "a `{name}` carries no data: its message arrives as declared, so the variant \
              needs no `on`"
         ),
-        "resize" | "window" | "system" | "fonts" | "modifiers" | "open" => {
-            format!("a `{name}` is a root event: it carries no message to arrive as")
-        }
         _ => {
             let names: Vec<&str> = EVENTS.iter().map(|(n, _, _)| *n).collect();
             format!(
@@ -753,10 +757,10 @@ mod tests {
             enum Msg { #[message(on = submit)] Save }
         });
         assert!(submit.contains("arrives as declared"), "{submit}");
-        let root = refusal(syn::parse_quote! {
-            enum Msg { #[message(on = resize)] Fit }
+        let fonts = refusal(syn::parse_quote! {
+            enum Msg { #[message(on = fonts)] Fonts }
         });
-        assert!(root.contains("root event"), "{root}");
+        assert!(fonts.contains("arrives as declared"), "{fonts}");
     }
 
     #[test]

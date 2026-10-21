@@ -4,7 +4,8 @@
 
 use kui_core::testing::{hover, key_down, key_up, press, release};
 use kui_core::{
-    Core, DragPhase, HoverPhase, InputEvent, KeyCode, KeyMods, KeyPhase, NodeSpec, Rect, Size, Vec2,
+    Core, DragPhase, HoverPhase, InputEvent, KeyCode, KeyMods, KeyPhase, NodeSpec, Rect, Size,
+    Vec2, WindowEvents,
 };
 
 const VIEW: Size = Size { w: 300.0, h: 200.0 };
@@ -110,10 +111,17 @@ fn a_wheel_a_hover_and_a_layout_read_as_theirs() {
     );
 }
 
+/// The modifiers arrive as the root's `windowEvents` message (ADR 0048),
+/// and the view reads them from its field all the same.
 #[test]
 fn modifiers_and_text_read_as_theirs() {
     let mut core = Core::new();
-    frame(&mut core, NodeSpec::row().on_key("keys"));
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.window_events(WindowEvents::default().on_modifiers("mods"));
+    ui.with(NodeSpec::row().pad(20.0), |ui| {
+        ui.leaf_keyed("n", NodeSpec::row().on_key("keys").size(200.0, 100.0));
+    });
+    ui.finish();
     let sink = core.key_of("n").unwrap();
     core.set_key_focus(Some(sink));
     let m = core.handle_input(InputEvent::Modifiers(KeyMods::NONE.with_alt()));

@@ -367,14 +367,19 @@ extern "C" {
  * parent}} for on_drag = {kind:"pan"} - and no longer {kind:"drag", ...,
  * tag}; a message that is not a map arrives as {tag: msg, drag: ...}, a
  * NULL one as {drag: ...}. So KuiEvent appends `event`, the envelope's
- * event kind, which the payload no longer says, and `root`, whether the
- * event is a root one (whose payload keeps {kind: <event>, ...}). KuiSpec appends on_submit,
+ * event kind, which the payload no longer says. KuiSpec appends on_submit,
  * on_cancel, on_boundary, on_menu and on_selection_range (its 64-bit size
  * goes from 752 to 792): an editor reports only in the messages it
  * declares, and a menu choice reaches only a node that declares on_menu.
  * KUI_EDIT_VALUE, a new flag, makes kui_text_edit's `initial` the
- * editor's value; kui_text_input_with and kui_select_with are new. The "changed" and "access"
- * events are gone. Recompile, and move each handler from the payload's
+ * editor's value; kui_text_input_with and kui_select_with are new. The
+ * "changed" and "access" events are gone. And there are no root events
+ * (docs/adr/0048-a-window-declares-the-messages-its-events-arrive-as.md):
+ * the events no node declares arrive as messages the app declared where it
+ * declares the window - its root's KuiWindowEvents (kui_root_with), its
+ * entry in the window set (kui_window_declare_with) and the menu bar
+ * (kui_menu_bar_with), three new functions - and as nothing where it
+ * declared none. Recompile, and move each handler from the payload's
  * kind to KuiEvent.event and the message's own fields.
  */
 #define KUI_ABI_VERSION 33u
@@ -393,7 +398,7 @@ uint32_t kui_abi_version(void);
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
  *          KuiDerivedToken, KuiFileFilter, KuiFileDialog, KuiGradientStop,
- *          KuiGradient.
+ *          KuiGradient, KuiWindowEvents.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -1704,9 +1709,9 @@ typedef struct KuiMenuItem {
  * and the KuiMenuItems above, and the declaration is sticky and diffed the
  * way kui_window_title is. Where the platform owns a menu bar the host
  * hands it over; everywhere else kui_menu_bar draws it into the frame.
- * Either way a chosen row posts a "menu" event on the root,
- * {kind:"menu", role, item} - the bar is declared on no node, so there is
- * no message of yours to carry it, as there is for the context menu. */
+ * Either way a chosen row arrives as the message kui_menu_bar_with
+ * declared, with menu:{role, item} in it - the field a context menu's
+ * choice carries - and as nothing from a bar that declared none. */
 
 /* [in] One menu of the bar. `items` is `count` rows; `enabled` zero dims
  * the whole menu and opens nothing. On macOS the first menu is the
@@ -1971,6 +1976,41 @@ typedef struct KuiWindowConfig {
 #define KUI_WINDOW_POPUP_INIT \
     ((KuiWindowConfig){ .kind = KUI_WINDOW_KIND_POPUP, .activates = 0 })
 
+/* [in] The messages the events about a window arrive as (kui_root_with,
+ * ADR 0048): its root's windowEvents group. Each is borrowed while the
+ * call runs, like a KuiSpec's messages, and NULL - the zeroed struct - is
+ * an event the window does not hear: no handler, no event. Each arrives
+ * with the event's data under the field named for it, as a node's do.
+ * env still reads every fact they report, declared or not. ABI 33.
+ *
+ *     KuiValue *resized = kui_value_map();
+ *     kui_value_map_set(resized, KUI_STR("kind"), kui_value_str(KUI_STR("resized")));
+ *     KuiWindowEvents events = { .on_resize = resized };
+ *     kui_root_with(ctx, &root, &events);
+ *     kui_value_free(resized);
+ */
+typedef struct KuiWindowEvents {
+    /* resize:{width, height, scale}: the viewport or the scale moved. */
+    const KuiValue *on_resize;
+    /* window:{phase:"focused"|"blurred"}: this window gained or lost the
+     * keyboard. Its opening and closing are its declaration's
+     * (kui_window_declare_with). */
+    const KuiValue *on_focus;
+    /* system:{appearance, accent, motion, locale, assistive}: a setting
+     * the user changed in the OS, env's system facts as they now read. A
+     * host that retains its view and follows the OS's dark mode declares
+     * this, since nothing else re-runs it. */
+    const KuiValue *on_system_settings_change;
+    /* The system's fonts changed: the message as declared, no data. */
+    const KuiValue *on_fonts;
+    /* modifiers:{shift, ctrl, alt, super}: the held modifiers changed. */
+    const KuiValue *on_modifiers;
+    /* open:{paths}: the OS asked the app to open documents
+     * (kui_input_open). Read on the main window's root alone: the OS
+     * opens documents to the app, not to one of its windows. */
+    const KuiValue *on_open;
+} KuiWindowEvents;
+
 /* [out] One window command (kui_take_window_command): what a chrome node
  * asked for, or what the declared window set decided. Plain data - an open
  * carries no title; the window's first frame declares one through
@@ -2014,19 +2054,15 @@ typedef struct KuiEvent {
     uint64_t slot;
     /* What happened (ABI 33): the event's kind - "click", "drag", "key",
      * "change", "submit", "resize", ... (docs/props.md lists them). The
-     * payload no longer says it: a node event's payload is the message its
-     * handler declared, the event's data in the one field named for this
-     * kind (`drag` on a drag); a root event's (resize, window, system,
-     * fonts, modifiers, open, the menu bar's menu, a popup's dismiss) is
-     * {kind: <this>, ...} as before. Static: valid for the library's life,
-     * never freed. Empty on a host reserving an older layout. */
+     * payload no longer says it: every payload is the message its handler
+     * declared, the event's data in the one field named for this kind
+     * (`drag` on a drag, `resize` on a resize). A node's handlers are its
+     * KuiSpec's; the window's own events' are its root's KuiWindowEvents
+     * (kui_root_with), a declared window's opening, closing and dismissal
+     * its kui_window_declare_with's, and the menu bar's choice its
+     * kui_menu_bar_with's. Static: valid for the library's life, never
+     * freed. Empty on a host reserving an older layout. */
     KuiStr event;
-    /* Non-zero for a root event (ABI 33): one no node declared, whose
-     * payload is the core's {kind: <event>, ...} and is its data; zero for
-     * a node event, whose payload is the declared message and whose data,
-     * when it has any, is the field named `event`. The core's own flag:
-     * read it rather than guessing from the payload's shape. */
-    uint32_t root;
 } KuiEvent;
 #define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 
@@ -2276,8 +2312,11 @@ void kui_input_drop_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
 void kui_input_drag_cancel(KuiCtx *ctx);
 /* The OS asked the app to open `count` documents (`paths`, file-system
  * paths): the Finder's Open With, a file dropped on the Dock icon,
- * `open -a`. The host hears {kind:"open", paths} on the root whether or
- * not anything asked; none emits nothing. Under kui_run the macOS runner
+ * `open -a`. They arrive as the main window's on_open message
+ * (KuiWindowEvents, kui_root_with) with open:{paths} in it, and as
+ * nothing where its root declares none; none emits nothing. A document
+ * that arrives before any frame finished (at launch) waits for the first
+ * one, so the group it declares hears it. Under kui_run the macOS runner
  * sends it, at launch and while running; a host driving its own window
  * sends it from its app delegate's application:openURLs:. Windows and
  * Linux hand documents over in argv instead. */
@@ -2310,8 +2349,10 @@ void kui_input_release(KuiCtx *ctx, KuiStr code, KuiStr physical,
  * app switch would never arrive, and reporting the loss is what lets go.
  * This is the same release for a host with a reason of its own. */
 void kui_release_held_keys(KuiCtx *ctx);
-/* Physical modifier state changed (KUI_KMOD_* bits); the host polls a
- * {kind="modifiers", shift, ctrl, alt, super} event when it differs. */
+/* Physical modifier state changed (KUI_KMOD_* bits). When it differs from
+ * the last report, the root's on_modifiers message (KuiWindowEvents)
+ * arrives with modifiers:{shift, ctrl, alt, super} in it; a root that
+ * declares none hears nothing. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 
@@ -2781,9 +2822,9 @@ bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
  * frame declares it - cfg is read then and never again (NULL means
  * KUI_WINDOW_CONFIG_INIT), because the user owns a window's geometry once
  * it exists - and closes on the first frame none does. The KUI_CMD_OPEN /
- * KUI_CMD_CLOSE arrive through kui_take_window_command, and the app sees
- * {kind:"window", phase:"opened"|"closed", name, id} through
- * kui_poll_event. A window the user closed (kui_window_closed) stays closed
+ * KUI_CMD_CLOSE arrive through kui_take_window_command; the app hears
+ * of them through kui_poll_event only as the on_window message
+ * kui_window_declare_with declares. A window the user closed (kui_window_closed) stays closed
  * while it is still declared - stop declaring it, then declare it again -
  * and says so with the "window-declared-while-closed" warning. Two
  * declarations of one name that disagree on the frame it opens warn
@@ -2800,6 +2841,18 @@ bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
  * Escape with kui_window_dismissed; you close it when the app stops
  * declaring it, and the core closes it for you when its owner closes. */
 void kui_window_declare(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg);
+/* kui_window_declare, with the messages the window's lifecycle arrives as
+ * (ADR 0048): the onWindow and onDismiss of its entry in the window set.
+ * Its opening and closing arrive as `on_window` with window:{phase:
+ * "opened"|"closed", id} in it, on whichever window's frame noticed, and a
+ * popup's dismissal (kui_window_dismissed) as `on_dismiss` with
+ * dismiss:{reason, id}. The message is what names the window, so the data
+ * does not. Unlike cfg they are read on every declaration, and a closed
+ * window's are the last ones declared - it has no frame left to declare
+ * anything. Consumes both (NULL for one you do not hear), also when the
+ * call is refused, as kui_select_with does. A new function of ABI 33. */
+void kui_window_declare_with(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg,
+                             KuiValue *on_window, KuiValue *on_dismiss);
 /* Asks the driver to resize a window to w x h logical px, or to give it
  * keyboard focus. Requests, not declarations: kui_window_declare's config is
  * read on the opening edge only, because the user owns a window's size once
@@ -2815,8 +2868,9 @@ void kui_set_window_size(KuiCtx *ctx, uint32_t window, float w, float h);
 void kui_focus_window(KuiCtx *ctx, uint32_t window);
 /* Reports that window `id` was asked to go away: a press landed outside it
  * (KUI_DISMISS_OUTSIDE) or Escape reached it (KUI_DISMISS_ESCAPE). The app
- * sees {kind:"dismiss", reason, name, id} through kui_poll_event, and
- * nothing closes - the same contract a modal node's dismissal has, one
+ * gets the window's on_dismiss message (kui_window_declare_with) with
+ * dismiss:{reason, id} in it through kui_poll_event, or nothing where it
+ * declared none, and nothing closes - the same contract a modal node's dismissal has, one
  * level up: only the app can stop declaring the window, on the frame it
  * decides to. You report it because neither fact is the frame's: a press
  * outside a window lands in another surface, and a non-activating popup is
@@ -2832,8 +2886,10 @@ uint32_t kui_ctx_window(KuiCtx *ctx);
 bool kui_ctx_window_name(KuiCtx *ctx, KuiStr *out);
 /* You report that the OS closed window `id` (its close button, the window
  * manager). It stays closed while still declared, whatever only it declared
- * closes with it, and the app gets {kind:"window", phase:"closed"}. Nothing
- * happens for KUI_WINDOW_MAIN or for a window already closed by the diff. */
+ * closes with it, and the app gets its last-declared on_window message
+ * (kui_window_declare_with) with window:{phase:"closed", id} in it.
+ * Nothing happens for KUI_WINDOW_MAIN or for a window already closed by
+ * the diff. */
 void kui_window_closed(KuiCtx *ctx, uint32_t id);
 /* The pointer shape for where the pointer is now (KUI_CURSOR_*, 0 only on a
  * bad context): the `cursor` the topmost node under it declared, the
@@ -2971,10 +3027,19 @@ bool kui_spec_float_preset(KuiSpec *spec, KuiStr name);
 
 /* -- Frame building ------------------------------------------------------ */
 /* w/h are logical pixels. A frame begun at a different size or scale than
- * the last one posts a {kind="resize", width, height, scale} event on the
- * root, polled after kui_frame_finish like any other. */
+ * the last one posts the root's on_resize message (KuiWindowEvents) with
+ * resize:{width, height, scale} in it, polled after kui_frame_finish like
+ * any other; a root that declares none hears nothing. */
 void kui_frame_begin(KuiCtx *ctx, float w, float h, float scale);
 void kui_root(KuiCtx *ctx, const KuiSpec *spec);
+/* kui_root, and the messages the events about this window arrive as
+ * (KuiWindowEvents, borrowed while the call runs; NULL for none). The
+ * group is declared each frame like the rest of the root: the one in force
+ * is what the last finished frame declared, so a frame that calls plain
+ * kui_root stops hearing them. A NULL spec leaves the root as the frame
+ * began it and declares the group alone, for a host that never configures
+ * its root. A new function of ABI 33; KuiSpec does not grow. */
+void kui_root_with(KuiCtx *ctx, const KuiSpec *spec, const KuiWindowEvents *events);
 /* on_click may be NULL; consumed when given. Returns the node key. */
 uint64_t kui_open(KuiCtx *ctx, const KuiSpec *spec, KuiValue *on_click);
 uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue *on_click);
@@ -3597,8 +3662,17 @@ bool kui_close_menu(KuiCtx *ctx);
  * a frame that does not call it leaves the last declaration in force, the
  * same one again changes nothing, and `count` of 0 takes the menu away.
  * False - declaring and drawing nothing - for a row whose role this build
- * does not know. Between kui_frame_begin and kui_frame_finish. */
+ * does not know. Between kui_frame_begin and kui_frame_finish. It declares
+ * no message, so a choice from it posts nothing: */
 bool kui_menu_bar(KuiCtx *ctx, const KuiMenu *menus, size_t count);
+/* kui_menu_bar whose choices arrive as `on_menu` (the menuBar element's
+ * onMenu, ADR 0048) with menu:{role, item} in it, whether the row was
+ * chosen in the frame's strip or from the platform's bar
+ * (kui_activate_menu_bar_item). Part of the declaration, so sticky with
+ * it. Consumes on_menu (NULL for a bar whose choices post nothing), also
+ * when the call is refused, as kui_select_with does. A new function of
+ * ABI 33. */
+bool kui_menu_bar_with(KuiCtx *ctx, const KuiMenu *menus, size_t count, KuiValue *on_menu);
 /* Tells the core the platform owns the menu bar, so kui_menu_bar draws
  * nothing and you are the one handing the declaration over (read it back
  * with the two calls below) and reporting what was chosen. Off by

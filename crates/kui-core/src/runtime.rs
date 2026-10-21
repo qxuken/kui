@@ -39,6 +39,7 @@ use crate::resources::{FontId, Resources};
 use crate::scroll::ScrollStore;
 use crate::session::{
     MAIN_WINDOW_NAME, Session, SharedAudio, SharedResources, WindowChange, WindowDecl,
+    WindowMessages,
 };
 use crate::spec::{NodeSpec, Sizing, TextStyle};
 use crate::stats::FrameStats;
@@ -48,7 +49,7 @@ use crate::theme::{Theme, ThemeSource};
 use crate::tree::{NIL, NodeContent, OriginId, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
-use crate::window::{WindowConfig, WindowId};
+use crate::window::{WindowConfig, WindowEvents, WindowId, WindowLifecycle};
 
 // `impl Core` continues in these, one concern per file (each opens with
 // what it holds). Children of this module, so the fields stay private.
@@ -225,6 +226,18 @@ pub struct Core {
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
+    /// The `windowEvents` group this frame's root declared (ADR 0048),
+    /// cleared each `begin_frame`, and the last finished frame's, which
+    /// is what the window's own events are read against
+    /// (`resolve_window_facts`): a resize the next frame begins with
+    /// arrives as the message the frame before it declared.
+    window_events: Option<Box<crate::window::WindowEvents>>,
+    window_events_seen: Option<Box<crate::window::WindowEvents>>,
+    /// Whether any frame has finished: before one has, no root has
+    /// declared anything, and a window fact is held rather than dropped —
+    /// the documents a launcher hands over before the first frame
+    /// (`resolve_window_facts`).
+    finished_any: bool,
     /// Whether this frame asked for the window to stay above every other
     /// app's. The title's shape — cleared each `begin_frame`,
     /// the driver diffs and applies on change — but a bool with a default
@@ -1075,6 +1088,9 @@ impl Core {
             metrics: crate::metrics::Metrics::default(),
             platform_titlebar_h: None,
             window_title: None,
+            window_events: None,
+            window_events_seen: None,
+            finished_any: false,
             always_on_top: false,
             secure_input: false,
             option_as_alt: crate::input::OptionAsAlt::None,
@@ -1752,10 +1768,8 @@ impl Core {
         if self.framed
             && (area.w != self.dt_area.w || area.h != self.dt_area.h || scale != self.scale)
         {
-            self.pending.push(UiEvent::root(
+            self.pending.push(UiEvent::fact(
                 EventKind::Resize,
-                OriginId::HOST,
-                Key::ROOT,
                 Value::map([
                     ("width", Value::Float(area.w as f64)),
                     ("height", Value::Float(area.h as f64)),
@@ -1775,26 +1789,8 @@ impl Core {
         // first frame establishes the reading rather than reporting it,
         // the way the viewport does.
         if self.framed && self.env.system != self.system_seen {
-            let sys = self.env.system;
-            self.pending.push(UiEvent::root(
-                EventKind::System,
-                OriginId::HOST,
-                Key::ROOT,
-                Value::map([
-                    ("appearance", Value::str(sys.appearance.name())),
-                    (
-                        "accent",
-                        sys.accent
-                            .map_or(Value::Null, |c| Value::Int(c.to_hex() as i64)),
-                    ),
-                    ("motion", Value::str(sys.motion.name())),
-                    (
-                        "locale",
-                        sys.locale.map_or(Value::Null, |l| Value::str(l.as_str())),
-                    ),
-                    ("assistive", Value::str(sys.assistive.name())),
-                ]),
-            ));
+            self.pending
+                .push(UiEvent::fact(EventKind::System, self.env.system.to_value()));
         }
         self.system_seen = self.env.system;
         // And the installed fonts, rescanned since the last frame and found
@@ -1804,12 +1800,8 @@ impl Core {
         // re-read it on. The first frame establishes it, as above.
         let fonts_rev = self.session.state().system_fonts_rev;
         if self.framed && fonts_rev != self.system_fonts_seen {
-            self.pending.push(UiEvent::root(
-                EventKind::Fonts,
-                OriginId::HOST,
-                Key::ROOT,
-                Value::Null,
-            ));
+            self.pending
+                .push(UiEvent::fact(EventKind::Fonts, Value::Null));
         }
         self.system_fonts_seen = fonts_rev;
         // The palette is a function of what the OS said and what the app
@@ -1828,6 +1820,7 @@ impl Core {
         self.viewport = viewport;
         self.scale = scale;
         self.window_title = None;
+        self.window_events = None;
         self.always_on_top = false;
         self.secure_input = false;
         self.option_as_alt = crate::input::OptionAsAlt::None;

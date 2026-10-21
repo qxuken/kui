@@ -453,8 +453,9 @@ On macOS and Windows a window app does nothing: the runner hears the OS
 say the installed fonts changed, scans them again, and draws, and a view
 that names the new family (`family="…"`) or lists `systemFonts()` sees
 it on that frame. An app that holds the list in its model — a font
-picker's rows — re-reads it on the `fonts` message (`FontsMsg`, one per
-window, on the root), which every rescan that found a change raises. Elsewhere — Linux, where fontconfig sends no such
+picker's rows — re-reads it on the message its root declares as
+`windowEvents.onFonts` (one per window that declares it, ADR 0048),
+which every rescan that found a change raises. Elsewhere — Linux, where fontconfig sends no such
 signal, or a host with its own windowing — call `ctx.reloadSystemFonts()`
 (Rust `Core::reload_system_fonts()`, C `kui_font_reload_system`). kui
 scans the system's fonts once a process and every session starts from
@@ -701,22 +702,27 @@ can carry `accent` too, which substitutes its `bg` and nothing else;
 is not a role.
 
 The reading is there before your first view — a window fills it in as it
-opens, not on its first frame — and a change to it arrives as a `system`
-message on the root, carrying the whole of `env.system` as it now reads:
+opens, not on its first frame — and a change to it arrives as the message
+the root declares for it in its `windowEvents` group (ADR 0048), carrying
+the whole of `env.system` as it now reads under `system`:
 
-```ts
+```tsx
+<box windowEvents={{ onSystemSettingsChange: { kind: 'settings' } }}>…</box>
+
 update(m, msg) {
-  if (msg.kind === 'system') return { ...m, dark: msg.appearance === 'dark' };
+  if (msg.kind === 'settings') return { ...m, dark: msg.system.appearance === 'dark' };
   ...
 }
 ```
 
-Take the message rather than only reading `env`, because a driver's redraw
+Declare it rather than only reading `env`, because a driver's redraw
 re-lowers the tree it was handed and does not re-run your `view`: an app
 that paints only on input would otherwise hold the palette its first frame
-picked for as long as the user leaves it alone. A Rust `App`, whose `view`
-*is* what the runner calls every frame, can read `env` and ignore the
-message.
+picked for as long as the user leaves it alone, and nothing arrives that
+the root did not ask for. A Rust `App`, whose `view` *is* what the runner
+calls every frame, can read `env` and declare nothing. Lua spells it
+`window_events = { on_system_settings_change = … }` on the root table, C
+`kui_root_with` with a `KuiWindowEvents`.
 
 [`system.*` rows](props.md#env) ·
 [Theme table](props.md#theme) ·
@@ -812,8 +818,9 @@ Escape or an outside press arrives as the `modal` message with `dismiss:
 {reason}` in it, which the app answers by not declaring it. Reach for a `kind: "popup"` window only for
 the placements a float cannot make — a list taller than the window, a panel
 beside the app — because a popup is an OS surface where a `fit` float plus a
-`modal` costs one tree; it reports the same `dismiss` event, on the root
-as `{kind:"dismiss", reason, name, id}`.
+`modal` costs one tree; it reports the same `dismiss` event, as its
+`windows` entry's `onDismiss` message with `dismiss: {reason, id}` in it
+(ADR 0048), so the handler stays when the declaration changes.
 
 [`modal` row](props.md#container-props) ·
 [`windows` row](props.md#composite-props-hand-written-per-binding) ·
@@ -924,7 +931,7 @@ fn on_event(&mut self, ev: UiEvent) {
         Some(Msg::Focus { pane }) => self.focused = pane,
         Some(Msg::Split { path, dir }) => self.drag_divider(&ev, path, dir),
         Some(Msg::TabNew) => self.new_tab(),
-        None => {} // no message of ours: a root event such as a resize
+        None => {} // no message of ours
     }
 }
 ```
@@ -997,8 +1004,8 @@ clicked, or Enter or the Right arrow is pressed; Left or Escape closes
 it, and Escape again closes the menu. It nests, in a context menu and in
 a menu bar, drawn or the platform's. A row inside is chosen like any
 row: one `menu: {role, item}` with its own `id`, in the `onMenu` message
-of the node the menu is about (`{kind:"menu", role, item}` on the root,
-from the bar). Give the rows inside an `id`: a row without one posts its
+of the node the menu is about, or of the `menuBar` element for a row of
+the bar (ADR 0048). Give the rows inside an `id`: a row without one posts its
 label, and "Name" under "Sort by ▸" and "Name" under "Group by ▸" would
 post the same `item`. A host that shows menus itself reports one with
 `Core::activate_menu_path(&[1, 0])` (Node `activateMenuPath`, C
@@ -1041,14 +1048,18 @@ drive, and `dropTarget()` is what a driver answers the OS with.
 
 ### How do I hear the documents the OS opens: Finder's Open With, the Dock icon?
 
-Handle `{kind:"open", paths}` in `update` (Rust `on_event`, C's event
-callback): it arrives on the root, asked for or not, with the file-system
-paths of the documents the Finder's Open With, a file dropped on the Dock
+Declare the message they arrive as on the main window's root —
+`windowEvents={{ onOpen: { kind: 'open' } }}` (Rust
+`ui.window_events(WindowEvents::default().on_open(Msg::Open))`, Lua
+`window_events = { on_open = … }`, C `kui_root_with`) — and handle it in
+`update` (Rust `on_event`, C's event callback) with `open: {paths}` in
+it: the file-system paths of the documents the Finder's Open With, a file dropped on the Dock
 icon, `open -a YourApp file.rs` or a double-click handed the app. The
 macOS runner hears them from the application delegate's
 `application:openURLs:` — at launch, where AppKit sends them before the
 window exists and puts none in the arguments, the paths wait for the main
-window and arrive on its first turn; while the app runs, at once. One
+window, and are held until its first frame has declared the message;
+while the app runs, at once. One
 `open` per request, several paths when the user opened several.
 
 The app's bundle has to say it opens documents, or the Finder will not
@@ -1066,7 +1077,8 @@ Headless, `ctx.openDocuments(paths)` (C `kui_input_open`, Rust
 `InputEvent::Open`) is the drive.
 
 [`open` payload](props.md#events) ·
-[alpha.40 `### Added`](../CHANGELOG.md#010-alpha40-2026-10-07)
+[alpha.40 `### Added`](../CHANGELOG.md#010-alpha40-2026-10-07) ·
+[ADR 0048](adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)
 
 ### How do I have global shortcuts and a Tab ring at once?
 
@@ -2229,8 +2241,8 @@ hands `kui_run_with`. The partial is the one `Ctx.setEnv` takes, so the
 branch you assert headless and the window you then look at read one
 spelling — and every field you leave out, `'unknown'` or null is *not
 pinned*: the appearance, accent and locale stay the OS's, a change to one
-of them still arrives as the `system` message, and that message carries
-your pin with it, since it is the whole reading. The examples' harnesses
+of them still arrives as the root's `onSystemSettingsChange` message, and
+that message carries your pin with it, since it is the whole reading. The examples' harnesses
 take `--motion reduced` for the same look at any example.
 
 It is an option and not an environment variable on purpose, for the reason

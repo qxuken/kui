@@ -31,6 +31,51 @@ root :: proc(ui: ^Ui, spec: Spec = {}) {
 	c.root(ui, &cs)
 }
 
+// The root of the frame, and the messages the events about this window
+// arrive as (ADR 0048): a resize, its keyboard focus, the OS's settings,
+// the fonts, the held modifiers and, on the main window, the documents the
+// OS opens. A message left nil is an event the window does not hear, and
+// the group is declared each frame like the rest of the root: a frame that
+// calls plain root stops hearing them.
+//
+//     Resized :: struct {using _: kui.With_Resize}
+//     kui.root_with(ui, {width = kui.GROW, height = kui.GROW}, {on_resize = Resized{}})
+//
+// A nil spec leaves the root as the frame began it and declares the group
+// alone.
+root_with :: proc(ui: ^Ui, spec: Maybe(Spec), events: Window_Events) {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	cs: c.Spec
+	cs_ptr: ^c.Spec
+	if s, ok := spec.?; ok {
+		spec_to_c(s, &cs, &scratch)
+		cs_ptr = &cs
+	}
+	ce := c.WindowEvents {
+		on_resize                 = borrow(&scratch, events.on_resize),
+		on_focus                  = borrow(&scratch, events.on_focus),
+		on_system_settings_change = borrow(&scratch, events.on_system_settings_change),
+		on_fonts                  = borrow(&scratch, events.on_fonts),
+		on_modifiers              = borrow(&scratch, events.on_modifiers),
+		on_open                   = borrow(&scratch, events.on_open),
+	}
+	c.root_with(ui, cs_ptr, &ce)
+}
+
+// The messages the events about a window arrive as (root_with), kui.h's
+// KuiWindowEvents: any message each, with the event's data in the field
+// named for it, which the With_X beside each decodes; nil for an event the
+// window does not hear.
+Window_Events :: struct {
+	on_resize:                 any, // resize = {width, height, scale}: With_Resize
+	on_focus:                  any, // window = {phase = "focused" | "blurred"}: With_Window
+	on_system_settings_change: any, // system = {appearance, accent, ...}: With_System
+	on_fonts:                  any, // no data: the message as declared
+	on_modifiers:              any, // modifiers = {shift, ctrl, alt, super}: With_Modifiers
+	on_open:                   any, // open = {paths}, the main window's only: With_Open
+}
+
 // A container: a box laid out by spec, holding what the block declares.
 // Returns true, for the `if` that scopes it.
 @(deferred_in = close)

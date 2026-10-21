@@ -973,6 +973,14 @@ pub const DOORS: &[Door] = &[
         doc: "Declares that a named window exists this frame (ADR 0003 step 3).",
     },
     Door {
+        rust: "Ui::window_with",
+        c: Is("kui_window_declare_with"),
+        odin: Is("window_declare_with"),
+        node: As("a `windows` entry's `onWindow` / `onDismiss`"),
+        lua: As("a `windows` entry's `on_window` / `on_dismiss`"),
+        doc: "Declares a window with the messages its opening, closing and a popup's dismissal arrive as (ADR 0048).",
+    },
+    Door {
         rust: "Core::windows",
         c: As("the ids arrive on `KUI_CMD_OPEN`; a host keeps the list it opened"),
         odin: As(

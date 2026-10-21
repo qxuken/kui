@@ -27,8 +27,14 @@ import type {
   WithBoundary,
   WithSound,
   WithDismiss,
+  WithResize,
+  WithWindow,
+  WithSystem,
+  WithModifiers,
+  WithOpen,
 } from './index.js';
 // -- end generated --
+import type { WindowDecl, WindowEvents } from './index.js';
 
 /** Event message payloads: plain data, both directions (the Elm shape).
  *  This is the wire type — anything JSON-shaped crosses; an app narrows it
@@ -55,9 +61,11 @@ export type Msg = null | boolean | number | string | Msg[] | { [key: string]: Ms
  *  `change`. A handler prop takes the registered messages that carry its
  *  field, as declared without it (`HandlerMsg<WithDrag>`), so
  *  `onDrag={{ kind: 'pan' }}` fits and `onDrag={{ kind: 'add', by: 1 }}`
- *  does not. Register your own messages only; `update`'s union adds the
- *  root events (`type Msg = CounterMsg | RootMsg`), and the loop types
- *  infer it from there.
+ *  does not. The window's own events are declared the same way (ADR
+ *  0048): `windowEvents={{ onResize: { kind: 'resized' } }}` on the root
+ *  takes a registered `ResizeMsg<{ kind: 'resized' }>`. `update` sees the
+ *  registered messages and nothing else, and the loop types infer it from
+ *  there.
  *
  *  A handler prop also takes `null`: `<box onKey={null} keyFocus>` is a key
  *  sink whose events arrive as their field alone (`{ key: { … } }`), so a
@@ -646,10 +654,18 @@ export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
    *  keys and accents back. */
   imeOff?: boolean;
   /** Root box only: which windows exist besides the main one (see
-   *  `WindowDecl` in `@qxuken/kui`). `runWindowed` / `createApp` write it
-   *  from the loop config's `windows(model)`; a view driving a `Ctx` by
-   *  hand declares it here. */
-  windows?: (string | { name: string; width?: number; height?: number; activates?: boolean })[];
+   *  `WindowDecl` in `@qxuken/kui`), each entry with the `onWindow` /
+   *  `onDismiss` messages its lifecycle arrives as. `runWindowed` /
+   *  `createApp` write it from the loop config's `windows(model)`; a view
+   *  driving a `Ctx` by hand declares it here. */
+  windows?: WindowDecl[];
+  /** Root box only: the messages this window's own events arrive as
+   *  (ADR 0048) — `onResize`, `onFocus` (the window's keyboard),
+   *  `onSystemSettingsChange`, `onFonts`, `onModifiers` and, on the main
+   *  window, `onOpen`. A key left out is an event the window does not
+   *  hear. On any other node it is ignored and warned about
+   *  (`window-events-off-root`). See `WindowEvents` in `@qxuken/kui`. */
+  windowEvents?: WindowEvents;
   children?: KuiNode;
 }
 
@@ -1136,8 +1152,10 @@ export declare namespace JSX {
      *  titles go when they have to be drawn in the window. Draws nothing
      *  where the platform owns the bar (macOS, where the driver hands the
      *  same declaration to the OS), so one view is portable. `[]` takes
-     *  the menu away. */
-    menuBar: Keyed & { menu?: MenuBarInput };
+     *  the menu away. `onMenu` is the message a choice arrives as, drawn
+     *  bar or the platform's, with `menu: { role, item }` in it (ADR
+     *  0048); a bar without one posts nothing. */
+    menuBar: Keyed & { menu?: MenuBarInput; onMenu?: HandlerMsg<WithMenu> | null };
     /** Per-phase frame-latency bars (input/view/layout/render) vs the
      *  display budget. Reads the runner's frame stats — renders empty
      *  when headless. */

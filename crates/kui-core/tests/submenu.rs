@@ -33,8 +33,8 @@ fn frame(core: &mut Core) -> Key {
     frame_with(core, None)
 }
 
-/// The row a menu event chose: its `menu` field's `item` on a node, the
-/// root payload's from the bar.
+/// The row a menu event chose: its `menu` field's `item`, on a node's
+/// message and on the bar's `on_menu` message alike.
 fn item(ev: &kui_core::UiEvent) -> Option<&str> {
     ev.data()?.get_str("item")
 }
@@ -399,6 +399,7 @@ fn the_drawn_bar_opens_submenus_too() {
                 ),
             ],
         )])
+        .on_menu("chose")
     };
     let mut core = Core::new();
     frame_with(&mut core, Some(bar()));
@@ -443,7 +444,8 @@ fn a_host_cannot_choose_a_row_the_menu_would_not_reach() {
     let bar = MenuBar::new(vec![
         BarMenu::new("View", rows()),
         BarMenu::new("Dead", vec![MenuItem::new("Go").id("go")]).enabled(false),
-    ]);
+    ])
+    .on_menu("chose");
     let mut core = Core::new();
     frame_with(&mut core, Some(bar));
     assert!(

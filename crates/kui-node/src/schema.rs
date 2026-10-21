@@ -158,8 +158,8 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     ("kind", |e: &EventDef| e.kind),
                     ("handler", |e| e.handler),
                     // The field the event's data rides under in the
-                    // handler's message; empty for a root event, which
-                    // keeps the core's `kind` (ADR 0047, decision 2).
+                    // handler's message; empty for an event with no data
+                    // (`fonts`, `reply`), whose message arrives as declared.
                     ("field", |e| e.field.unwrap_or("")),
                     ("payload", |e| e.payload),
                     ("doc", |e| e.doc),

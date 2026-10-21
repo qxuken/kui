@@ -726,9 +726,13 @@ surface :: proc() -> bool {
 
 	// Declared windows (ADR 0004): a frame that names one gets an Open back
 	// from the same drain the chrome commands use, carrying its id and the
-	// config it was declared with; the app hears about it as data.
-	// Reporting the OS close keeps it closed while it is still declared.
+	// config it was declared with; the app hears about it as the on_window
+	// message its declaration gave (ADR 0048). Reporting the OS close keeps
+	// it closed while it is still declared.
 	{
+		Palette :: struct {
+			using _: kui.With_Window,
+		}
 		check(kui.ctx_window(ui) == kui.WINDOW_MAIN, "this context draws the main window")
 		name, name_ok := kui.ctx_window_name(ui)
 		check(name_ok && name == "main", "and is named for it")
@@ -739,7 +743,7 @@ surface :: proc() -> bool {
 			height = 300,
 		}
 		kui.frame_begin(ui, 320, 240, 1)
-		kui.window_declare(ui, "palette", cfg)
+		kui.window_declare_with(ui, "palette", cfg, on_window = Palette{})
 		kui.frame_finish(ui)
 		// (surface.c's short command reservation is the handshake again.)
 		cmd, ok := kui.take_window_command(ui)
@@ -752,21 +756,20 @@ surface :: proc() -> bool {
 		opened, closed := 0, 0
 		for wev in kui.poll_event(ui) {
 			if wev.event != "window" do continue
-			phase, phase_ok := kui.as_string(kui.get(wev.payload, "phase"))
-			if !phase_ok do continue
-			if phase == "opened" do opened += 1
-			if phase == "closed" do closed += 1
+			m, is := kui.message(wev, Palette)
+			if !is do continue
+			if m.window.phase == "opened" && m.window.id == 1 do opened += 1
+			if m.window.phase == "closed" do closed += 1
 		}
-		check(opened == 1 && closed == 0, "the app hears the window open")
+		check(opened == 1 && closed == 0, "the app hears the window open, as its own message")
 		kui.window_closed(ui, 1)
 		kui.frame_begin(ui, 320, 240, 1)
-		kui.window_declare(ui, "palette", cfg)
+		kui.window_declare_with(ui, "palette", cfg, on_window = Palette{})
 		kui.frame_finish(ui)
 		_, ok = kui.take_window_command(ui)
 		check(!ok, "a closed window still declared does not reopen")
 		for wev in kui.poll_event(ui) {
-			phase, phase_ok := kui.as_string(kui.get(wev.payload, "phase"))
-			if phase_ok && phase == "closed" do closed += 1
+			if m, is := kui.message(wev, Palette); is && m.window.phase == "closed" do closed += 1
 		}
 		check(closed == 1, "and hears it close")
 		trapped := 0
@@ -804,6 +807,14 @@ surface :: proc() -> bool {
 		kui.frame_begin(ui, 320, 240, 1)
 		check(kui.menu_bar(ui, menus), "menu_bar declares and draws")
 		kui.frame_finish(ui)
+		check(!kui.activate_menu_bar_item(ui, 0, 0), "a bar declared with no message posts nothing")
+		// The same bar with the message its choices arrive as (ADR 0048).
+		Chose :: struct {
+			using _: kui.With_Menu,
+		}
+		kui.frame_begin(ui, 320, 240, 1)
+		check(kui.menu_bar_with(ui, menus, Chose{}), "menu_bar_with declares and draws")
+		kui.frame_finish(ui)
 
 		count, rev := kui.menu_bar_menu_count(ui)
 		check(count == 1 && rev > 0, "one menu, at a revision")
@@ -826,10 +837,16 @@ surface :: proc() -> bool {
 		// drawn bar's row produces.
 		check(kui.activate_menu_bar_item(ui, 0, 0), "activate_menu_bar_item")
 		check(kui.activate_menu_bar_path(ui, 0, {3, 0}), "activate_menu_bar_path")
-		menus_heard := 0
-		// The bar's choice is a root event: {kind = "menu", role, item}.
-		for mev in kui.poll_event(ui) do if mev.event == "menu" do menus_heard += 1
-		check(menus_heard == 2, "and the app hears a menu event for each")
+		menus_heard, names_heard := 0, 0
+		// The bar's choice is its on_menu, with menu = {role, item}.
+		for mev in kui.poll_event(ui) {
+			m, is := kui.message(mev, Chose)
+			if mev.event != "menu" || !is do continue
+			menus_heard += 1
+			if item, item_ok := kui.as_string(m.menu.item); item_ok && item == "Name" do names_heard += 1
+		}
+		check(menus_heard == 2, "and the app hears its message for each")
+		check(names_heard == 1, "the one inside the submenu posting its own row")
 	}
 
 	// -- The rest of the header, so that the walk is what it says it is.
@@ -1013,13 +1030,27 @@ surface :: proc() -> bool {
 	}
 
 	// Documents the OS asked the app to open (backlog F124): nobody asked,
-	// and the host hears them on the root; none is nothing.
+	// and they arrive as the main window's on_open (ADR 0048), declared with
+	// root_with; none is nothing, and so is a root that declares none.
 	{
+		Docs :: struct {
+			using _: kui.With_Open,
+		}
+		kui.frame_begin(ui, 320, 240, 1)
+		kui.root_with(ui, {}, {})
+		kui.frame_finish(ui)
+		for _ in kui.poll_event(ui) {}
+		kui.input_open(ui, {"/tmp/a.txt", "/tmp/b.md"})
+		_, heard := kui.poll_event(ui)
+		check(!heard, "root_with: no on_open, no event")
+		kui.frame_begin(ui, 320, 240, 1)
+		kui.root_with(ui, nil, {on_open = Docs{}})
+		kui.frame_finish(ui)
 		kui.input_open(ui, {"/tmp/a.txt", "/tmp/b.md"})
 		opened := 0
 		for oev in kui.poll_event(ui) {
-			got, ok := kui.message(oev, kui.Open_Event)
-			if ok && len(got.paths) == 2 && got.paths[1] == "/tmp/b.md" do opened += 1
+			got, ok := kui.message(oev, Docs)
+			if ok && oev.event == "open" && len(got.open.paths) == 2 && got.open.paths[1] == "/tmp/b.md" do opened += 1
 		}
 		check(opened == 1, "input_open is one open event with both paths")
 		kui.input_open(ui, nil)
@@ -1278,8 +1309,13 @@ Rest :: struct {
 	slot:     [2]bool,
 }
 
+// The OS's settings moving, in the message rest_view's root declares.
+Settings :: struct {
+	using _: kui.With_System,
+}
+
 rest_view :: proc(r: ^Rest, ui: ^kui.Ui) {
-	kui.root(ui, {width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true})
+	kui.root_with(ui, {width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true}, {on_system_settings_change = Settings{}})
 	kui.line(ui, 10, 10, 90, 70, 2, 0x7f9cf5ff)
 	kui.polyline(ui, "elbow", {{0, 0}, {40, 20}, {80, 0}}, 3, 0xd8863bff, false, dash = [5]f32{6, 3, 6, 3, 0})
 	kui.polygon(ui, "tri", {{0, 30}, {15, 0}, {30, 30}}, {width = kui.px(30), height = kui.px(30), bg = 0x3b82f6ff})
@@ -1382,8 +1418,12 @@ rest :: proc() {
 	for wr in kui.take_warnings(ui) do if wr.code == "duplicate-slot" do duplicate = true
 	check(duplicate, "the second is a duplicate-slot diagnostic")
 
-	// A popup the host dismisses: the app hears it on the root, by name.
+	// A popup the host dismisses: the app hears it as the on_dismiss its
+	// declaration gave, which names it, with why and its id.
 	{
+		Menu_Gone :: struct {
+			using _: kui.With_Dismiss,
+		}
 		popup := kui.Window_Config {
 			kind     = .Popup,
 			width    = 120,
@@ -1392,7 +1432,7 @@ rest :: proc() {
 			anchor_y = 10,
 		}
 		kui.frame_begin(ui, 320, 240, 1)
-		kui.window_declare(ui, "menu", popup)
+		kui.window_declare_with(ui, "menu", popup, on_dismiss = Menu_Gone{})
 		kui.frame_finish(ui)
 		cmd, ok := kui.take_window_command(ui)
 		check(ok && cmd.kind == .Open && cmd.config.kind == .Popup, "the popup opens")
@@ -1402,8 +1442,8 @@ rest :: proc() {
 		kui.window_dismissed(ui, cmd.window, .Escape)
 		heard := false
 		for ev in kui.poll_event(ui) {
-			if d, is := kui.message(ev, kui.Dismiss_Event); is {
-				heard = d.reason == "escape" && d.name == "menu" && d.id == cmd.window
+			if d, is := kui.message(ev, Menu_Gone); is && ev.event == "dismiss" {
+				heard = d.dismiss.reason == "escape" && d.dismiss.id == cmd.window
 			}
 		}
 		check(heard, "window_dismissed: the app hears whose and why")
@@ -1419,8 +1459,10 @@ rest :: proc() {
 		light := kui.theme(ui)
 		check(dark.appearance == .Dark && light.appearance == .Light && dark.bg != light.bg, "env_set_system: the palette follows the appearance")
 		systems := 0
-		for ev in kui.poll_event(ui) do if _, is := kui.message(ev, kui.System_Event); is do systems += 1
-		check(systems > 0, "and the app hears the system change")
+		for ev in kui.poll_event(ui) {
+			if m, is := kui.message(ev, Settings); is && ev.event == "system" && m.system.locale != "" do systems += 1
+		}
+		check(systems > 0, "and the app hears the system change, as the root's on_system_settings_change")
 	}
 
 	// Extensions, from the refusing side: there is no plugin at this path.

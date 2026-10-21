@@ -8,7 +8,7 @@
 //
 //   npm run table                          a window to click in by hand
 //   node dist/widgets/table.mjs --headless the same table, no window
-import type { App, KuiNode, RootMsg, UiEvent } from '@qxuken/kui';
+import type { App, KuiNode, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type File = { name: string; bytes: number; kind: string };
@@ -22,7 +22,7 @@ const FILES: File[] = [
 ];
 
 type Sort = 'name' | 'size' | 'kind';
-type Msg = { kind: 'select'; row: number } | { kind: 'sort'; by: Sort } | RootMsg;
+type Msg = { kind: 'select'; row: number } | { kind: 'sort'; by: Sort };
 type Model = { sort: Sort; selected: number | undefined };
 
 const init: Model = { sort: 'name', selected: undefined };

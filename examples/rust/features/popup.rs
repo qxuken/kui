@@ -38,7 +38,7 @@
 use kui_devtools::Example;
 use kui_native::{
     App, Color, CursorShape, DragPhase, Event, NodeSpec, Rect, TextStyle, Ui, UiEvent, Value,
-    WindowConfig,
+    WindowConfig, WindowLifecycle,
 };
 
 /// The list is twelve rows of 24 plus the panel's padding — deliberately
@@ -89,8 +89,15 @@ impl App for Combo {
         // kind, size and anchor — is read on the frame it opens and never
         // again, so a popup that must follow a moving anchor stops being
         // declared and starts again.
+        // Its dismissal arrives as the entry's `on_dismiss` message (ADR
+        // 0048), the way a `modal` float's arrives as its `modal` one.
         if self.open {
-            ui.window("menu", WindowConfig::popup(self.field, MENU_W, MENU_H));
+            ui.window_with(
+                "menu",
+                WindowConfig::popup(self.field, MENU_W, MENU_H),
+                WindowLifecycle::default()
+                    .on_dismiss(Value::map([("kind", Value::str("dismiss"))])),
+            );
         }
 
         let t = ui.theme();

@@ -172,7 +172,7 @@ TYPED :: [][2]string {
 }
 
 // uint32_t fields that are a yes or no.
-BOOL_FIELDS :: []string{"looped", "paused", "finish", "checked", "replay", "multiple", "monospaced", "italic", "rtl", "root"}
+BOOL_FIELDS :: []string{"looped", "paused", "finish", "checked", "replay", "multiple", "monospaced", "italic", "rtl"}
 
 // A yes-or-no whose C zero is the unusual case: an Odin literal leaves a
 // field it does not name at zero, so the field is turned around, and a menu
@@ -324,6 +324,7 @@ CUSTOM_RULES :: []Custom_Rule {
 	{"optionAsAlt", "verb", "", "", "kui_set_option_as_alt"},
 	{"imeOff", "verb", "", "", "kui_set_ime_off"},
 	{"windows", "verb", "", "", "kui_window_declare"},
+	{"windowEvents", "verb", "", "", "kui_root_with"},
 }
 
 // -- Doors --------------------------------------------------------------------
@@ -349,7 +350,7 @@ DEFAULTS :: [][2]string {
 
 // A struct parameter kui.h says may be NULL, and what NULL means there: a
 // Maybe, nil by default.
-NULLABLE :: []string{"kui_theme_set.theme", "kui_metrics_set.metrics", "kui_window_declare.cfg", "kui_play.opts"}
+NULLABLE :: []string{"kui_theme_set.theme", "kui_metrics_set.metrics", "kui_window_declare.cfg", "kui_window_declare_with.cfg", "kui_play.opts"}
 
 // A field whose C zero is not the default its INIT macro gives: a Maybe in
 // the mirror, the INIT value when it is nil. A window activates by

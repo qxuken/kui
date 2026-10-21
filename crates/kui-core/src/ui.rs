@@ -54,7 +54,7 @@ use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
 use crate::value::Value;
-use crate::window::{WindowCommand, WindowConfig, WindowId};
+use crate::window::{WindowCommand, WindowConfig, WindowEvents, WindowId, WindowLifecycle};
 
 pub struct Ui<'a> {
     core: &'a mut Core,
@@ -510,6 +510,20 @@ impl<'a> Ui<'a> {
     /// which window is being drawn.
     pub fn window(&mut self, name: &str, config: WindowConfig) {
         self.core.declare_window(name, config);
+    }
+
+    /// [`Ui::window`], with the messages its opening, closing and a
+    /// popup's dismissal arrive as; see `Core::declare_window_with`.
+    pub fn window_with(&mut self, name: &str, config: WindowConfig, lifecycle: WindowLifecycle) {
+        self.core.declare_window_with(name, config, lifecycle);
+    }
+
+    /// Declares the messages this window's own events arrive as — a
+    /// resize, its keyboard focus, a system setting, the fonts, the
+    /// modifiers, the OS's documents; see `Core::set_window_events` (ADR
+    /// 0048). Declare it every frame: a frame that does not hears none.
+    pub fn window_events(&mut self, events: WindowEvents) {
+        self.core.set_window_events(events);
     }
 
     /// The name of the window this frame is drawing: `"main"` for the one

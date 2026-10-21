@@ -55,9 +55,11 @@ message when clicked. You give it the message and forget about it.
 ```
 
 `ev.message::<Msg>()` is `Some` when the event carries one of your
-messages, and `None` when it is something else the frame produced — a
-resize, a window losing focus. Match exhaustively and the compiler
-tells you when you add a variant and forget to handle it.
+messages, and `None` when it carries something else. Every event
+arrives as a message somebody declared: even a resize or the window
+losing focus arrives only if the root asks for it, with a message of
+yours (`ui.window_events`). Match exhaustively and the compiler tells
+you when you add a variant and forget to handle it.
 
 `on_event` runs after the frame, once per event, in order. It never
 runs during `view`. So the model changes between frames, never in the

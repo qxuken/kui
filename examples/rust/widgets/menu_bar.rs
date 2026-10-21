@@ -11,8 +11,8 @@
 //! View ▸ Clear is `enabled` only when there is something to clear, Edit
 //! ▸ Select All and Copy are the same ones the core performs itself (the
 //! card is a selection scope, so they have something to act on), and
-//! every choice — standard or the app's own — arrives as the same one
-//! `menu` event. The menu titled `Window` is the platform's by name
+//! every choice — standard or the app's own — arrives as the bar's one
+//! `on_menu` message. The menu titled `Window` is the platform's by name
 //! (`docs/adr/0030-the-standard-menus-the-runner-keeps.md`): on macOS
 //! its row is joined by Fill, Center, the tiling submenus and Enter Full
 //! Screen, and their shortcuts work; elsewhere it is one more drawn menu.
@@ -93,6 +93,9 @@ impl Demo {
                 ],
             ),
         ])
+        // The message every choice arrives as, with the row's `menu: {role,
+        // item}` in it (ADR 0048): the bar's own, since it has no node.
+        .on_menu(Value::map([("kind", Value::str("menu"))]))
     }
 }
 
@@ -180,9 +183,10 @@ impl App for Demo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        // The menu bar's choices are root events: no node declared them.
-        // Every chosen row, standard or not, arrives here with the role it
-        // played; a custom row hands back whatever its `id` carried.
+        // The menu bar's choices arrive as its own `on_menu` message, with
+        // the row in `menu`. Every chosen row, standard or not, arrives
+        // with the role it played; a custom row hands back whatever its
+        // `id` carried.
         let Event::Menu(choice) = ev.read() else {
             return;
         };

@@ -407,6 +407,7 @@ export function createEncoder(P) {
   // pad family, border, overflow bits, float) and the constructor-ordering
   // specials (dir, size) have hand-written stanzas, mirroring binary.rs.
   // `key` rides along as P_KEY; `isRoot` admits `title`, `alwaysOnTop`, `secureInput`, `optionAsAlt`, `imeOff` and `windows` (and drops `key`);
+  // `windowEvents` is written anywhere, for the core to refuse off the root;
   // `admit`, when given, is the only names written (a closed composite's
   // rows — the rest were already reported by checkProps).
   function props(p, key, isRoot, admit) {
@@ -574,6 +575,17 @@ export function createEncoder(P) {
             strRef(JSON.stringify(v));
             n++;
           }
+          break;
+        case 'windowEvents':
+          // The root's group of window-event messages (ADR 0048), one JSON
+          // blob the addon hands to `WindowEvents::from_value`, the reader
+          // Lua's table goes through. Unlike `title` it is written off the
+          // root too: the core ignores it there and says so
+          // (`window-events-off-root`), which a dropped prop could not. A
+          // value that is not a map of those keys is the reader's to refuse.
+          f[fi++] = PR.windowEvents.id;
+          strRef(JSON.stringify(v));
+          n++;
           break;
         case 'tooltip':
           f[fi++] = PR.tooltip.id;
@@ -1314,6 +1326,9 @@ export function createEncoder(P) {
         // second hand-written stanza that could disagree with it.
         f[fi++] = OP.menuBar;
         strRef(JSON.stringify(p.menu ?? []));
+        // The message a choice from the bar arrives as, `menu: {role,
+        // item}` in it (ADR 0048); none (or null) and the bar posts nothing.
+        strRef(p.onMenu == null ? null : JSON.stringify(p.onMenu));
         return;
       case 'latencyGraph':
         f[fi++] = OP.latencyGraph;

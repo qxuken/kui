@@ -24,7 +24,7 @@
 //! the cursor exactly.
 //!
 //! Hold ⌘ (Ctrl elsewhere) and drag a pane to move it: the modifier state
-//! arrives as a `{kind="modifiers"}` event, the model keeps it, and while it
+//! arrives as the root's `on_modifiers` message, the model keeps it, and while it
 //! is held the view floats five drop-zone overlays (edges + center) over
 //! every pane. They are the drag sources *and* the drop targets — no core
 //! knowledge of "pane moving" at all, and without ⌘ the overlays don't
@@ -37,7 +37,7 @@ use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
     Align, App, Color, Core, Drag, DragPhase, Easing, Event, FloatConfig, KeyCode, KeyMods,
-    Message, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, WindowCommand,
+    Message, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, WindowCommand, WindowEvents,
 };
 
 const TABBAR_H: f32 = 30.0;
@@ -111,6 +111,8 @@ enum Msg {
     Split { path: String, dir: SplitDir },
     /// A pane ⌘-dragged from one of its zones.
     PaneDrag { pane: u64, zone: Zone },
+    /// The held modifiers changed: the root's `on_modifiers` (ADR 0048).
+    Mods,
 }
 
 #[derive(Message, Clone, Copy, PartialEq, Debug)]
@@ -352,7 +354,8 @@ struct Splitmux {
     /// difference between two `dx`es, since each is the displacement from
     /// the press point and not a step.
     tab_drag: Option<(usize, f32, f32)>,
-    /// Physical modifiers, straight from `{kind="modifiers"}` events.
+    /// Physical modifiers, straight from the `modifiers` events the root
+    /// declares.
     mods: KeyMods,
     /// ⌘-drag of a pane in flight: (pane id, cursor x, cursor y).
     pane_drag: Option<(u64, f32, f32)>,
@@ -830,6 +833,8 @@ impl App for Splitmux {
         // repaints the mux without a message reaching the model.
         self.pal = ui.theme().into();
         let pal = self.pal;
+        // The held modifiers are the window's, declared on its root.
+        ui.window_events(WindowEvents::default().on_modifiers(Msg::Mods));
         ui.with(NodeSpec::column().fill().bg(pal.bg), |ui| {
             widgets::titlebar(
                 ui,

@@ -1193,7 +1193,6 @@ Event :: struct {
 	reply_sink: ^c.ReplySink,
 	slot: u64,
 	event: string,
-	root: bool,
 }
 
 event_to_c :: proc(v: Event, scratch: ^Scratch) -> (out: c.Event) {
@@ -1205,7 +1204,6 @@ event_to_c :: proc(v: Event, scratch: ^Scratch) -> (out: c.Event) {
 	out.reply_sink = v.reply_sink
 	out.slot = v.slot
 	out.event = v.event
-	out.root = 1 if v.root else 0
 	_ = scratch
 	return
 }
@@ -1218,7 +1216,6 @@ event_from_c :: proc(v: c.Event) -> (out: Event) {
 	out.reply_sink = v.reply_sink
 	out.slot = v.slot
 	out.event = v.event
-	out.root = v.root != 0
 	return
 }
 
@@ -2497,6 +2494,18 @@ window_declare :: proc(ui: ^Ui, name: string, cfg: Maybe(Window_Config) = nil) {
 	c.window_declare(ui, name, cfg_c)
 }
 
+// Declares a window with the messages its opening, closing and a popup's
+// dismissal arrive as (ADR 0048).
+// Rust: Ui::window_with.
+window_declare_with :: proc(ui: ^Ui, name: string, cfg: Maybe(Window_Config) = nil, on_window: any = nil, on_dismiss: any = nil) {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	cfg_tmp: c.WindowConfig
+	cfg_c: ^c.WindowConfig
+	if v, ok := cfg.?; ok { cfg_tmp = window_config_to_c(v, &scratch); cfg_c = &cfg_tmp }
+	c.window_declare_with(ui, name, cfg_c, to_value(on_window), to_value(on_dismiss))
+}
+
 // Asks the driver to resize a window.
 // Rust: Ui::set_window_size.
 set_window_size :: proc(ui: ^Ui, window: u32, w: f32, h: f32) {
@@ -3300,6 +3309,15 @@ menu_bar :: proc(ui: ^Ui, menus: []Bar_Menu) -> bool {
 	menus_c := make([]c.Menu, len(menus), context.temp_allocator)
 	for x, k in menus do menus_c[k] = bar_menu_to_c(x, &scratch)
 	return c.menu_bar(ui, raw_data(menus_c), uint(len(menus)))
+}
+
+// kui_menu_bar_with (kui.h).
+menu_bar_with :: proc(ui: ^Ui, menus: []Bar_Menu, on_menu: any = nil) -> bool {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	menus_c := make([]c.Menu, len(menus), context.temp_allocator)
+	for x, k in menus do menus_c[k] = bar_menu_to_c(x, &scratch)
+	return c.menu_bar_with(ui, raw_data(menus_c), uint(len(menus)), to_value(on_menu))
 }
 
 // Whether the host owns the bar; the core then draws no strip.

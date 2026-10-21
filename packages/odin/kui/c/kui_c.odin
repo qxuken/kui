@@ -864,6 +864,15 @@ WindowConfig :: struct {
 	anchor_h: f32,
 }
 
+WindowEvents :: struct {
+	on_resize: ^Value,
+	on_focus: ^Value,
+	on_system_settings_change: ^Value,
+	on_fonts: ^Value,
+	on_modifiers: ^Value,
+	on_open: ^Value,
+}
+
 WindowCommand :: struct {
 	size: u32,
 	kind: u32,
@@ -884,7 +893,6 @@ Event :: struct {
 	reply_sink: ^ReplySink,
 	slot: u64,
 	event: string,
-	root: u32,
 }
 
 Quad :: struct {
@@ -1130,6 +1138,7 @@ foreign lib {
 	env_set_window :: proc(ctx: ^Ctx, window: u32, custom_chrome: bool, maximized: bool, fullscreen: bool, controls_w: f32, controls_h: f32) ---
 	take_window_command :: proc(ctx: ^Ctx, out: ^WindowCommand) -> bool ---
 	window_declare :: proc(ctx: ^Ctx, name: string, cfg: ^WindowConfig) ---
+	window_declare_with :: proc(ctx: ^Ctx, name: string, cfg: ^WindowConfig, on_window: ^Value, on_dismiss: ^Value) ---
 	set_window_size :: proc(ctx: ^Ctx, window: u32, w: f32, h: f32) ---
 	focus_window :: proc(ctx: ^Ctx, window: u32) ---
 	window_dismissed :: proc(ctx: ^Ctx, id: u32, reason: u32) ---
@@ -1153,6 +1162,7 @@ foreign lib {
 	spec_float_preset :: proc(spec: ^Spec, name: string) -> bool ---
 	frame_begin :: proc(ctx: ^Ctx, w: f32, h: f32, scale: f32) ---
 	root :: proc(ctx: ^Ctx, spec: ^Spec) ---
+	root_with :: proc(ctx: ^Ctx, spec: ^Spec, events: ^WindowEvents) ---
 	open :: proc(ctx: ^Ctx, spec: ^Spec, on_click: ^Value) -> u64 ---
 	open_keyed :: proc(ctx: ^Ctx, label: string, spec: ^Spec, on_click: ^Value) -> u64 ---
 	open_indexed :: proc(ctx: ^Ctx, index: u64, spec: ^Spec, on_click: ^Value) -> u64 ---
@@ -1245,6 +1255,7 @@ foreign lib {
 	open_menu :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, items: [^]MenuItem, count: uint) -> bool ---
 	close_menu :: proc(ctx: ^Ctx) -> bool ---
 	menu_bar :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint) -> bool ---
+	menu_bar_with :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint, on_menu: ^Value) -> bool ---
 	set_native_menu_bar :: proc(ctx: ^Ctx, on: bool) ---
 	menu_bar_menu_count :: proc(ctx: ^Ctx, revision: ^u64) -> uint ---
 	menu_bar_menu :: proc(ctx: [^]Ctx, menu: uint, label: ^string, enabled: ^bool) -> uint ---

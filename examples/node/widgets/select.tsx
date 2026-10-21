@@ -10,7 +10,7 @@
 //
 //   npm run select                          a window to pick in by hand
 //   node dist/widgets/select.mjs --headless the same loop, no window
-import type { App, KuiNode, MenuMsg, RootMsg, UiEvent } from '@qxuken/kui';
+import type { App, KuiNode, MenuMsg, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 const LANGUAGES = ['English', 'Deutsch', 'Français', '日本語'];
@@ -18,7 +18,7 @@ const SIZES = [11, 13, 15, 18];
 
 // One message per field, so the choice says which field it came from.
 type AppMsg = MenuMsg<{ kind: 'language' }> | MenuMsg<{ kind: 'size' }>;
-type Msg = AppMsg | RootMsg;
+type Msg = AppMsg;
 type Model = { language: number; size: number; last: unknown };
 
 const init: Model = { language: 0, size: 1, last: undefined };

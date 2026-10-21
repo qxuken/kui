@@ -9,6 +9,8 @@ use kui_core::{
     TextStyle, Value, Vec2,
 };
 
+/// The bar every test declares; a choice from it arrives as its `on_menu`
+/// message, `"chose"`, with `menu: {role, item}` (ADR 0048).
 fn bar() -> MenuBar {
     MenuBar::new(vec![
         BarMenu::new(
@@ -32,6 +34,7 @@ fn bar() -> MenuBar {
         // does — both are in here so the tests below can say so.
         BarMenu::new("Empty", Vec::new()),
     ])
+    .on_menu("chose")
 }
 
 /// A frame that declares the bar and draws it above a card of text.
@@ -178,7 +181,12 @@ fn choosing_a_row_posts_the_items_payload_and_closes() {
     );
     let ev = &events[0];
     assert_eq!(ev.event.name(), "menu");
-    assert_eq!(ev.payload.get_str("item"), Some("file.close"));
+    assert_eq!(
+        ev.payload.get_str("tag"),
+        Some("chose"),
+        "the bar's message"
+    );
+    assert_eq!(ev.data().unwrap().get_str("item"), Some("file.close"));
     assert_eq!(core.menu_bar_open(), None, "choosing closes the menu");
 }
 
@@ -231,7 +239,7 @@ fn an_edit_menus_copy_acts_on_the_selection_the_press_did_not_clear() {
         }],
         "the standard role is performed exactly as the context menu's is"
     );
-    assert_eq!(events[0].payload.get_str("role"), Some("copy"));
+    assert_eq!(events[0].data().unwrap().get_str("role"), Some("copy"));
 }
 
 #[test]
@@ -245,7 +253,11 @@ fn the_platforms_bar_reports_a_choice_through_one_call() {
     );
     let events = core.activate_menu_bar_item(0, 2);
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].payload.get_str("item"), Some("file.close"));
+    assert_eq!(events[0].payload.get_str("tag"), Some("chose"));
+    assert_eq!(
+        events[0].data().unwrap().get_str("item"),
+        Some("file.close")
+    );
     assert_eq!(
         events[0].key,
         Key::ROOT,
@@ -255,6 +267,10 @@ fn the_platforms_bar_reports_a_choice_through_one_call() {
         core.activate_menu_bar_item(9, 9).is_empty(),
         "a row this build does not have does nothing"
     );
+
+    // A bar that declares no `on_menu` has no message to post a choice as.
+    core.declare_menu_bar(MenuBar::new(bar().menus));
+    assert!(core.activate_menu_bar_item(0, 2).is_empty());
 }
 
 /// The same bar with a field under it, for the test about the editor a menu

@@ -23,7 +23,7 @@
 //   npm run clipboard                              a real window
 //   node dist/features/clipboard.mjs --headless    every path, no window
 import { uniformList } from '@qxuken/kui';
-import type { App, Ctx, KeySinkMsg, KuiWindow, RootMsg, SelectionRangeMsg, UiEvent } from '@qxuken/kui';
+import type { App, Ctx, KeySinkMsg, KuiWindow, SelectionRangeMsg, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 const ROWS = 2000;
@@ -33,7 +33,7 @@ type Model = { lines: string[]; cursor: number; awaitingPaste: boolean; sent: st
 // What the register's sink hears — a key or committed text, told apart by
 // its field — and the log's question for rows it never built.
 type AppMsg = KeySinkMsg<{ kind: 'register' }> | SelectionRangeMsg<{ kind: 'log' }>;
-type Msg = AppMsg | RootMsg;
+type Msg = AppMsg;
 
 const init: Model = {
   lines: [

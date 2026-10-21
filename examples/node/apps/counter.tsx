@@ -10,7 +10,7 @@
 //
 //   npm run counter                    a window, with the devtools dock
 //   node dist/apps/counter.mjs --headless
-import type { App, ContextMenuMsg, DismissMsg, KuiWindow, RootMsg, Theme, UiEvent } from '@qxuken/kui';
+import type { App, ContextMenuMsg, DismissMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Model = {
@@ -21,15 +21,15 @@ type Model = {
 
 // The messages this app's own nodes declare, each as it arrives (ADR 0047):
 // a right-click is the `menu` message with its `contextmenu` field, the
-// menu's dismissal the `closeMenu` message with its `dismiss`. Plus the
-// root events the core sends with no node behind them: one flat union, so
-// `update` switches over `msg.kind` with no casts.
+// menu's dismissal the `closeMenu` message with its `dismiss`. Nothing
+// else arrives (ADR 0048): one flat union, so `update` switches over
+// `msg.kind` with no casts.
 export type CounterMsg =
   | { kind: 'add'; by: number }
   | { kind: 'reset' }
-  | ContextMenuMsg<{ kind: 'openMenu' }>
+  | ContextMenuMsg<{ kind: 'menu' }>
   | DismissMsg<{ kind: 'closeMenu' }>;
-type Msg = CounterMsg | RootMsg;
+type Msg = CounterMsg;
 
 const init: Model = { count: 0, menu: null };
 
@@ -41,7 +41,7 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, _win: KuiWindow): Mod
       return { ...model, count: model.count + msg.by, menu: null };
     case 'reset':
       return { ...model, count: 0, menu: null };
-    case 'openMenu':
+    case 'menu':
       // A right-click: the core opens nothing, the view declares the menu
       // where the press landed.
       return { ...model, menu: { x: msg.contextmenu.x, y: msg.contextmenu.y } };
@@ -73,7 +73,7 @@ function Menu({ at, t }: { at: { x: number; y: number }; t: Theme }) {
 const view = (model: Model, win: KuiWindow) => {
   const t = win.theme();
   return (
-    <box width="grow" height="grow" center gap={24} onContextMenu={{ kind: 'openMenu' }}>
+    <box width="grow" height="grow" center gap={24} onContextMenu={{ kind: 'menu' }}>
       <box pad={32} gap={20} bg={t.surface} radius={12} borderW={1} borderColor={t.border} crossAlign="center" width={320}>
         <text size={14} color={t.muted}>kui counter</text>
         <text size={56} color={t.fg}>{String(model.count)}</text>

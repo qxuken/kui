@@ -450,8 +450,8 @@ impl Core {
     /// it; the standard roles act on [`Core::menu_editor`], which each
     /// caller sets when its menu opens — an editor's selection lives with
     /// its focus, and a menu's rows take that focus. `bar` says the menu
-    /// is the application menu bar's, whose choice is a root event: it
-    /// has no node to declare a handler on (ADR 0047, decision 6).
+    /// is the application menu bar's, whose choice arrives as the bar's
+    /// own `on_menu` message (ADR 0048, decision 3).
     pub(crate) fn perform_menu_item(
         &mut self,
         item: &MenuItem,
@@ -470,21 +470,20 @@ impl Core {
         }
         self.perform_role(item.role, target, out);
         // Every chosen item posts, including the standard ones, to a node
-        // that declared `on_menu` and to the bar's root: an app that wants
+        // that declared `on_menu` and from a bar that declared one: an app that wants
         // to know its editor was cut from does not have to guess, and one
         // that does not simply ignores the event. A menu opened for a node
         // that declared none — the stock right-click menu, whose roles the
         // core has just performed — posts nothing (ADR 0047, decision 5).
         let picked = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
         let data = Value::map([("role", Value::str(item.role.name())), ("item", picked)]);
-        if bar {
-            out.push(UiEvent::root(EventKind::Menu, origin, target, data));
-            return;
-        }
-        let message = self
-            .tree
-            .index_of(target)
-            .and_then(|i| self.tree.specs[i].events().on_menu());
+        let message = if bar {
+            self.menu_bar.as_ref().and_then(|b| b.on_menu.as_ref())
+        } else {
+            self.tree
+                .index_of(target)
+                .and_then(|i| self.tree.specs[i].events().on_menu())
+        };
         if let Some(message) = message {
             out.push(UiEvent::declared(
                 EventKind::Menu,

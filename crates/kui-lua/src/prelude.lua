@@ -225,7 +225,9 @@ end
 -- application menu (docs/adr/0018-a-menu-bar-the-app-declares.md). `menu`
 -- is what it is; where this sits is where its titles go when they have to
 -- be drawn in the window. Nothing is drawn where the platform owns the bar
--- (macOS), so a view writes it once and is portable.
+-- (macOS), so a view writes it once and is portable. A choice from it
+-- arrives as `on_menu = msg`, with `menu = { role, item }` in it (ADR
+-- 0048); a bar with no `on_menu` posts nothing.
 function menu_bar(t)
   t = t or {}
   t.type = "menu_bar"

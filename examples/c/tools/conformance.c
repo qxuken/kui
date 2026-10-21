@@ -1768,17 +1768,20 @@ typedef struct ConfScene {
 
 /* conformance::build_windows: the declaration comes and goes with the
  * phase; the tree only says which. Phase 0 declares `palette` twice,
- * disagreeing about the size, so the first wins and the second warns. */
+ * disagreeing about the size, so the first wins and the second warns.
+ * Each declaration names the message its opening and closing arrive as
+ * (kui_window_declare_with, ADR 0048), consumed by the call. */
 static void conf_windows(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     KuiWindowConfig cfg = KUI_WINDOW_CONFIG_INIT;
     cfg.width = 400;
     cfg.height = 300;
-    if (phase == 0 || phase == 2) kui_window_declare(ui, KUI_STR("palette"), &cfg);
+    if (phase == 0 || phase == 2)
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg, conf_kind("palette"), NULL);
     if (phase == 0) {
         cfg.width = 500;
         cfg.height = 500;
-        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg, conf_kind("palette"), NULL);
     }
     KuiSpec box = {0};
     box.pad_l = box.pad_r = box.pad_t = box.pad_b = 8;
@@ -1791,7 +1794,8 @@ static void conf_windows(KuiCtx *ui, const Fixtures *f, int phase) {
 }
 
 /* conformance::build_popup: one declaration, with the kind and the anchor
- * a menu carries (ADR 0004 decision 9). The dismissals are steps, not
+ * a menu carries (ADR 0004 decision 9), and one message for its opening,
+ * closing and dismissal alike (ADR 0048). The dismissals are steps, not
  * anything the tree says. */
 static void conf_popup(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
@@ -1803,7 +1807,7 @@ static void conf_popup(KuiCtx *ui, const Fixtures *f, int phase) {
         cfg.anchor_y = 40;
         cfg.anchor_w = 160;
         cfg.anchor_h = 24;
-        kui_window_declare(ui, KUI_STR("menu"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("menu"), &cfg, conf_kind("popup"), conf_kind("popup"));
     }
     KuiSpec box = {0};
     box.pad_l = box.pad_r = box.pad_t = box.pad_b = 8;
@@ -2103,6 +2107,12 @@ static void conf_layers(KuiCtx *ui, const Fixtures *f, int phase) {
  * borrowed for the open call, like `modal`. */
 static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    /* The OS's documents are the window's, declared on its root (ADR
+     * 0048). A NULL spec leaves the root as the frame began it. */
+    KuiValue *docs = conf_kind("docs");
+    KuiWindowEvents events = {.on_open = docs};
+    kui_root_with(ui, NULL, &events);
+    kui_value_free(docs);
     KuiSpec outer = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
     kui_open(ui, &outer, NULL);
     KuiValue *files = kui_value_map();
@@ -2343,6 +2353,46 @@ static void conf_menu_bar(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_window_events (ADR 0048): the root declares every
+ * key of its window's group, each as {kind: <k>}, borrowed for the call,
+ * and the menu bar declares the message its choice arrives as. */
+static void conf_window_events(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiValue *resized = conf_kind("resized"), *focus = conf_kind("focus");
+    KuiValue *settings = conf_kind("settings"), *fonts = conf_kind("fonts");
+    KuiValue *mods = conf_kind("mods"), *docs = conf_kind("docs");
+    KuiWindowEvents events = {
+        .on_resize = resized,
+        .on_focus = focus,
+        .on_system_settings_change = settings,
+        .on_fonts = fonts,
+        .on_modifiers = mods,
+        .on_open = docs,
+    };
+    kui_root_with(ui, NULL, &events);
+    kui_value_free(resized);
+    kui_value_free(focus);
+    kui_value_free(settings);
+    kui_value_free(fonts);
+    kui_value_free(mods);
+    kui_value_free(docs);
+    KuiValue *new_id = kui_value_str(KUI_STR("file.new"));
+    KuiMenuItem file[] = {
+        {.label = KUI_STR("New"), .role = KUI_MENU_CUSTOM, .enabled = 1, .id = new_id},
+    };
+    KuiMenu menus[] = {
+        {.label = KUI_STR("File"), .items = file, .count = 1, .enabled = 1},
+    };
+    KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    kui_menu_bar_with(ui, menus, 1, conf_kind("chose"));
+    kui_value_free(new_id);
+    KuiTextStyle body = {.size = 12};
+    kui_text(ui, KUI_STR("body"), &body);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -2413,6 +2463,7 @@ static const ConfScene CONF_SCENES[] = {
     {"tokens", conf_tokens},
     {"sampler", conf_sampler},
     {"caret-in-text", conf_caret_in_text},
+    {"window-events", conf_window_events},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -2639,22 +2690,24 @@ static void conf_debug_str(Rep *r, KuiStr s) {
 /* Drains the queue into `events`; payloads are borrowed until the next
  * poll, so each is formatted before the next call. The row is
  * conformance::event_row's: the envelope's event, then the message's
- * name - a bare string message, its `kind`, else its `tag` (a root event
- * has none) - falling back to the data's `phase` or `reason`, then the
- * extras some events carry, all read from the event's data (ADR 0047). */
+ * name - a bare string message, its `kind`, else its `tag` - falling back
+ * to the data's `phase` or `reason`, then the extras some events carry,
+ * all read from the event's data (ADR 0047). A named window or dismiss
+ * event adds the edge it is, since one message carries every edge (ADR
+ * 0048). */
 static void conf_drain(KuiCtx *ctx, Rep *events) {
     KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ctx, &ev)) {
         KuiStr kind = ev.event.len ? ev.event : KUI_STR("-");
         const KuiValue *data = ev_data(&ev);
         KuiStr tag = KUI_STR("-");
-        /* A root event names no message (KuiEvent.root, the core's flag). */
         bool named = ev_message(&ev, &tag);
-        if (!named) {
-            tag = conf_str(data, "phase", KUI_STR("-"));
-            if (kui_str_eq(tag, "-")) tag = conf_str(data, "reason", KUI_STR("-"));
-        }
+        KuiStr edge = conf_str(data, "phase", KUI_STR("-"));
+        if (kui_str_eq(edge, "-")) edge = conf_str(data, "reason", KUI_STR("-"));
+        if (!named) tag = edge;
         repf(events, "event %.*s %.*s", (int)kind.len, kind.ptr, (int)tag.len, tag.ptr);
+        if (named && (ev_is(&ev, "window") || ev_is(&ev, "dismiss")))
+            repf(events, " %.*s", (int)edge.len, edge.ptr);
         /* A slider's change carries its phase and the value the core
          * worked out (docs/adr/0034); the corpus steps land on whole
          * values, which kui_value_as_int truncates to as the reference's
@@ -2778,16 +2831,29 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     rep_init(&cmds);
     rep_init(&audio);
     int phase = 0;
+    float vw = 320, vh = 240;
     for (int i = 0; i <= nsteps; i++) {
         if (i > 0) {
-            /* Four steps are not input: one moves the clock the
-             * transitions read, one is the view changing its mind, and two
-             * are the OS closing a window and asking a popup to go away. */
+            /* Some steps are not input: one moves the clock the
+             * transitions read, one is the view changing its mind, one the
+             * window's size from here on, and the rest are the OS closing
+             * a window, asking a popup to go away, moving the keyboard
+             * and changing its appearance. */
             const ConfStep *s = &steps[i - 1];
             if (strcmp(s->kind, "phase") == 0) {
                 phase = s->a;
             } else if (strcmp(s->kind, "time") == 0) {
                 kui_set_time(ctx, s->a / 1000.0);
+            } else if (strcmp(s->kind, "viewport") == 0) {
+                /* Every frame from here is built at this size, so the
+                 * next one begins with a resize. */
+                vw = (float)s->a;
+                vh = (float)s->b;
+            } else if (strcmp(s->kind, "focused") == 0) {
+                /* The window lost or gained the keyboard: kui_env_set's
+                 * `focused`, the refresh rate left unknown. */
+                kui_env_set(ctx, 0, s->a != 0);
+                conf_drain(ctx, &events);
             } else if (strcmp(s->kind, "windowclosed") == 0) {
                 kui_window_closed(ctx, (uint32_t)s->a);
                 conf_drain(ctx, &events);
@@ -2809,7 +2875,7 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
                 conf_drain_audio(ctx, &audio);
             }
         }
-        kui_frame_begin(ctx, 320, 240, 1);
+        kui_frame_begin(ctx, vw, vh, 1);
         scene->build(ctx, &f, phase);
         kui_frame_finish(ctx);
         conf_drain(ctx, &events);

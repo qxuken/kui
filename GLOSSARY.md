@@ -39,9 +39,10 @@ handler's message".
 _Avoid_: action, command, tag
 
 **Handler**:
-A node row that names the message a node event arrives as: `onClick`,
-`onDrag`, `onChange`, and the rest. A node that declares no handler
-for an event hears none of it.
+A row that names the message an event arrives as: on a node, `onClick`,
+`onDrag`, `onChange` and the rest; on a window, a key of its
+`windowEvents` group or of its `windows` entry; on the menu bar,
+`onMenu`. Nothing that declares no handler for an event hears it.
 _Avoid_: listener, callback, subscription
 
 **Payload**:
@@ -55,10 +56,14 @@ event's kind (`drag`, `change`, `hover`). It holds that event's data.
 Its type is spelled `With<Event>`: `WithDrag`, `WithEditChange`.
 _Avoid_: payload, event data, tag data
 
-**Root event**:
-An event with no node to declare a handler on, such as a resize or a
-modifier change. It arrives with the core's own kind.
-_Avoid_: global event, core message
+**Window event**:
+An event about a window rather than a node: a resize, its keyboard
+focus, a system setting, the fonts, the modifiers, the OS's documents.
+It arrives as the message the window's root declared in its
+`windowEvents` group. A window's opening, closing and a popup's
+dismissal arrive as the messages on its `windows` entry.
+_Avoid_: root event (there are none since ADR 0048), global event, core
+message
 
 ## Editors
 

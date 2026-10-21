@@ -3,11 +3,14 @@
 //! the envelope. A map message keeps its own fields beside that one; a
 //! `Null` message is the field alone; any other message is kept under
 //! `tag`; a plain click arrives exactly as declared; a field the message
-//! already had is the core's, and the core says so. A root event keeps
-//! the core's `kind`, and no message decodes from it.
+//! already had is the core's, and the core says so. A window's own events
+//! arrive as the messages its root declared in `windowEvents` (ADR 0048),
+//! and as nothing when it declared none.
 
 use kui_core::diag::MESSAGE_FIELD_TAKEN;
-use kui_core::{Core, Event, EventKind, InputEvent, NodeSpec, Size, UiEvent, Value, Vec2};
+use kui_core::{
+    Content, Core, Event, EventKind, InputEvent, NodeSpec, Size, UiEvent, Value, Vec2, WindowEvents,
+};
 
 /// One frame of a 100 px square at the origin declaring `spec`.
 fn frame(core: &mut Core, spec: NodeSpec) {
@@ -42,7 +45,6 @@ fn a_map_message_keeps_its_fields_beside_the_event_s() {
     let data = moved.payload.get("drag").expect("the data under `drag`");
     assert_eq!(data.get_str("phase"), Some("start"));
     assert_eq!(moved.data(), Some(data));
-    assert!(!moved.is_root());
     // The message decodes as the app declared it; the extra field is not
     // read by a reader that names none.
     let msg: Value = moved.message().expect("the message");
@@ -100,31 +102,72 @@ fn a_field_the_message_already_has_is_the_core_s_and_it_says_so() {
     );
 }
 
-#[test]
-fn a_root_event_keeps_the_core_s_kind_and_carries_no_message() {
-    let mut core = Core::new();
-    frame(&mut core, NodeSpec::column());
-    let evs = core.handle_input(InputEvent::Modifiers(kui_core::KeyMods {
-        shift: true,
+/// One frame of the same root declaring `events` as its `windowEvents`.
+fn frame_with(core: &mut Core, events: WindowEvents) {
+    let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.window_events(events);
+    ui.finish();
+}
+
+fn shift(core: &mut Core, held: bool) -> Vec<UiEvent> {
+    core.handle_input(InputEvent::Modifiers(kui_core::KeyMods {
+        shift: held,
         ..Default::default()
-    }));
+    }))
+}
+
+#[test]
+fn a_window_event_arrives_as_the_message_the_root_declared() {
+    let mut core = Core::new();
+    let mods = Value::map([("kind", Value::str("mods"))]);
+    frame_with(&mut core, WindowEvents::default().on_modifiers(mods));
+    let evs = shift(&mut core, true);
     let ev = evs
         .iter()
         .find(|e| e.is(EventKind::Modifiers))
         .expect("modifiers");
-    assert!(ev.is_root());
-    assert_eq!(ev.payload.get_str("kind"), Some("modifiers"));
-    assert_eq!(
-        ev.message::<Value>(),
-        None,
-        "no app message in a root event"
-    );
+    assert_eq!(ev.payload.get_str("kind"), Some("mods"), "the app's kind");
     let (msg, event) = ev.split::<Value>();
-    assert_eq!(msg, None);
-    let Event::Modifiers(mods) = event else {
+    assert_eq!(msg.as_ref().and_then(|m| m.get_str("kind")), Some("mods"));
+    let Event::Modifiers(m) = event else {
         panic!("modifiers, got {event:?}");
     };
-    assert!(mods.shift);
+    assert!(m.shift);
+}
+
+#[test]
+fn a_window_event_nobody_declared_is_not_an_event() {
+    let mut core = Core::new();
+    frame(&mut core, NodeSpec::column());
+    assert!(
+        shift(&mut core, true).is_empty(),
+        "no windowEvents, no event"
+    );
+    // A group that leaves the key out is the same.
+    let mut core = Core::new();
+    frame_with(&mut core, WindowEvents::default().on_resize("resized"));
+    assert!(shift(&mut core, true).is_empty());
+}
+
+#[test]
+fn off_the_root_the_group_is_ignored_and_said_so() {
+    let mut core = Core::new();
+    let mut props = kui_core::schema::PropsOut::new();
+    props.window_events = Some(WindowEvents::default().on_modifiers("mods"));
+    {
+        let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.core().open_from(props, Content::Box);
+        ui.core().close();
+        ui.finish();
+    }
+    let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(
+        codes.contains(&kui_core::diag::WINDOW_EVENTS_OFF_ROOT),
+        "{codes:?}"
+    );
+    assert!(shift(&mut core, true).is_empty(), "and nothing declared it");
 }
 
 #[test]
@@ -146,7 +189,7 @@ fn split_reads_the_message_and_the_event_for_one_match() {
 
 /// A message spelled like its event — `Msg::Click` on a click, `Msg::Submit`
 /// on a submit — is the app's: an event with no data arrives as the message
-/// exactly, and only an event the core built as a root one is root.
+/// exactly.
 #[test]
 fn a_message_named_like_its_event_is_still_the_app_s() {
     let mut core = Core::new();
@@ -159,7 +202,6 @@ fn a_message_named_like_its_event_is_still_the_app_s() {
         .iter()
         .find(|e| e.is(EventKind::Click))
         .expect("a click");
-    assert!(!ev.is_root(), "a declared message, not a root event");
     assert_eq!(ev.data(), None);
     assert_eq!(ev.message::<Value>(), Some(click));
 }

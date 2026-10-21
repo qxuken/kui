@@ -43,9 +43,14 @@
 //! message's arriving twin from (ADR 0047, decision 13).
 
 use crate::geom::{Rect, Vec2};
-use crate::input::{EventKind, KeyCode, KeyMods, KeyPhase, KeyPress, MouseButton, UiEvent};
+pub use crate::input::KeyMods;
+use crate::input::{EventKind, KeyCode, KeyPhase, KeyPress, MouseButton, UiEvent};
 use crate::message::{EventField, MessageField};
 use crate::value::Value;
+
+// The data types of a window's `modifiers` and `system` (ADR 0048), here
+// with the rest so a derived twin names every event's from this module.
+pub use crate::env::SystemEnv;
 
 /// Which part of a drag an event reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -517,10 +522,10 @@ fn read_dismiss(p: &Value) -> Option<Dismiss> {
             "outside" => crate::window::DismissReason::Outside,
             _ => return None,
         },
-        window: p.get_str("name").and_then(|name| {
-            let id = u32::try_from(p.get_int("id")?).ok()?;
-            Some((name.to_string(), crate::window::WindowId(id)))
-        }),
+        window: p
+            .get_int("id")
+            .and_then(|id| u32::try_from(id).ok())
+            .map(crate::window::WindowId),
     })
 }
 
@@ -644,13 +649,15 @@ pub enum WindowPhase {
     Blurred,
 }
 
-/// A `window`: a declared window opened, closed, or gained or lost the
-/// keyboard.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A `window`: a declared window opened or closed, as its `windows`
+/// entry's `onWindow` message, or this window gained or lost the keyboard,
+/// as its root's `windowEvents.onFocus` (ADR 0048). The window's name is
+/// the message's to say; `id` is the opened or closed window's, and `None`
+/// for a focus change, which is the receiving window's own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WindowEvent {
     pub phase: WindowPhase,
-    pub name: String,
-    pub id: crate::window::WindowId,
+    pub id: Option<crate::window::WindowId>,
 }
 
 /// Which part of a slider's move a `change` reports.
@@ -706,11 +713,12 @@ pub struct Sound {
 }
 
 /// A `dismiss`: the user asked a surface to go away. A popup window's
-/// carries its name and id; a `modal` node's carries neither.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// carries its id, and its name is its `onDismiss` message's to say; a
+/// `modal` node's carries neither.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dismiss {
     pub reason: crate::window::DismissReason,
-    pub window: Option<(String, crate::window::WindowId)>,
+    pub window: Option<crate::window::WindowId>,
 }
 
 /// What happened, read whole: one variant per [`EventKind`], each with
@@ -764,8 +772,8 @@ pub enum Event {
     Layout(Layout),
     Resize(Resize),
     Window(WindowEvent),
-    /// `env.system` as it now reads, as the payload spells it.
-    System(Value),
+    /// `env.system` as it now reads.
+    System(SystemEnv),
     Fonts,
     Modifiers(KeyMods),
     SliderChange(SliderChange),
@@ -849,22 +857,9 @@ impl UiEvent {
             EventKind::Files => Event::Files(paths(p)?),
             EventKind::Open => Event::Open(paths(p)?),
             EventKind::Layout => Event::Layout(self.layout()?),
-            EventKind::Resize => Event::Resize(Resize {
-                size: crate::geom::Size::new(p.get_f32("width")?, p.get_f32("height")?),
-                scale: p.get_f32("scale")?,
-            }),
-            EventKind::Window => Event::Window(WindowEvent {
-                phase: match p.get_str("phase")? {
-                    "opened" => WindowPhase::Opened,
-                    "closed" => WindowPhase::Closed,
-                    "focused" => WindowPhase::Focused,
-                    "blurred" => WindowPhase::Blurred,
-                    _ => return None,
-                },
-                name: p.get_str("name")?.to_string(),
-                id: crate::window::WindowId(u32::try_from(p.get_int("id")?).ok()?),
-            }),
-            EventKind::System => Event::System(p.clone()),
+            EventKind::Resize => Event::Resize(read_resize(p)?),
+            EventKind::Window => Event::Window(read_window(p)?),
+            EventKind::System => Event::System(SystemEnv::from_value(p)?),
             EventKind::Fonts => Event::Fonts,
             EventKind::Modifiers => Event::Modifiers(self.modifiers()?),
             EventKind::Change => match p.get("text") {
@@ -918,6 +913,14 @@ pub struct ContextMenu {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ForceClick {
     pub pos: Vec2,
+}
+
+/// An `open`'s data as a message field: the documents the OS asked the
+/// app to open, as the root's `windowEvents.onOpen` message carries them
+/// (ADR 0048). [`Event::Open`] holds the same paths bare.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Open {
+    pub paths: Vec<String>,
 }
 
 /// A `files`: the paths a file dialog answered with, empty when it was
@@ -1178,8 +1181,7 @@ fn write_sound(s: Sound) -> Value {
 
 fn write_dismiss(d: Dismiss) -> Value {
     let mut f = vec![("reason", Value::str(d.reason.as_str()))];
-    if let Some((name, id)) = d.window {
-        f.push(("name", Value::Str(name)));
+    if let Some(id) = d.window {
         f.push(("id", int(id.0)));
     }
     Value::map(f)
@@ -1223,6 +1225,80 @@ fn read_files(p: &Value) -> Option<Files> {
     Some(Files { paths: paths(p)? })
 }
 
+fn read_open(p: &Value) -> Option<Open> {
+    Some(Open { paths: paths(p)? })
+}
+
+fn write_open(o: Open) -> Value {
+    Value::map([(
+        "paths",
+        Value::List(o.paths.into_iter().map(Value::Str).collect()),
+    )])
+}
+
+fn read_resize(p: &Value) -> Option<Resize> {
+    Some(Resize {
+        size: crate::geom::Size::new(p.get_f32("width")?, p.get_f32("height")?),
+        scale: p.get_f32("scale")?,
+    })
+}
+
+fn write_resize(r: Resize) -> Value {
+    Value::map([
+        ("width", Value::float(r.size.w)),
+        ("height", Value::float(r.size.h)),
+        ("scale", Value::float(r.scale)),
+    ])
+}
+
+fn read_window(p: &Value) -> Option<WindowEvent> {
+    Some(WindowEvent {
+        phase: match p.get_str("phase")? {
+            "opened" => WindowPhase::Opened,
+            "closed" => WindowPhase::Closed,
+            "focused" => WindowPhase::Focused,
+            "blurred" => WindowPhase::Blurred,
+            _ => return None,
+        },
+        id: match p.get("id") {
+            Some(id) => Some(crate::window::WindowId(u32::try_from(id.as_int()?).ok()?)),
+            None => None,
+        },
+    })
+}
+
+fn write_window(w: WindowEvent) -> Value {
+    let phase = match w.phase {
+        WindowPhase::Opened => "opened",
+        WindowPhase::Closed => "closed",
+        WindowPhase::Focused => "focused",
+        WindowPhase::Blurred => "blurred",
+    };
+    let mut f = vec![("phase", Value::str(phase))];
+    if let Some(id) = w.id {
+        f.push(("id", int(id.0)));
+    }
+    Value::map(f)
+}
+
+fn read_system(p: &Value) -> Option<SystemEnv> {
+    SystemEnv::from_value(p)
+}
+
+fn write_system(s: SystemEnv) -> Value {
+    // By path: `s.to_value()` would pick the by-value `MessageField` one,
+    // which is this function.
+    SystemEnv::to_value(&s)
+}
+
+fn read_modifiers(p: &Value) -> Option<KeyMods> {
+    matches!(p, Value::Map(_)).then(|| mods(p))
+}
+
+fn write_modifiers(m: KeyMods) -> Value {
+    KeyMods::to_value(m)
+}
+
 event_fields! {
     Click => Click "click", read_click_field, write_click;
     Drag => Drag "drag", read_drag, write_drag;
@@ -1246,6 +1322,11 @@ event_fields! {
     Boundary => Boundary "boundary", read_boundary, write_boundary;
     Sound => Sound "sound", read_sound, write_sound;
     Dismiss => Dismiss "dismiss", read_dismiss, write_dismiss;
+    Open => Open "open", read_open, write_open;
+    Resize => Resize "resize", read_resize, write_resize;
+    WindowEvent => Window "window", read_window, write_window;
+    SystemEnv => System "system", read_system, write_system;
+    KeyMods => Modifiers "modifiers", read_modifiers, write_modifiers;
 }
 
 #[cfg(test)]
@@ -1416,13 +1497,47 @@ mod field_tests {
             playback: crate::audio::PlaybackId(9),
         };
         assert_eq!(round_trip(sound), Event::Sound(sound));
-        for window in [None, Some(("pop".to_string(), crate::window::WindowId(3)))] {
+        for window in [None, Some(crate::window::WindowId(3))] {
             let d = Dismiss {
                 reason: crate::window::DismissReason::Outside,
                 window,
             };
-            assert_eq!(round_trip(d.clone()), Event::Dismiss(d));
+            assert_eq!(round_trip(d), Event::Dismiss(d));
         }
+        // The window's own (ADR 0048).
+        let open = Open {
+            paths: vec!["/a.txt".into(), "/b c.md".into()],
+        };
+        assert_eq!(round_trip(open.clone()), Event::Open(open.paths));
+        let resize = Resize {
+            size: crate::geom::Size::new(300.0, 200.0),
+            scale: 2.0,
+        };
+        assert_eq!(round_trip(resize), Event::Resize(resize));
+        for w in [
+            WindowEvent {
+                phase: WindowPhase::Opened,
+                id: Some(crate::window::WindowId(4)),
+            },
+            WindowEvent {
+                phase: WindowPhase::Blurred,
+                id: None,
+            },
+        ] {
+            assert_eq!(round_trip(w), Event::Window(w));
+        }
+        let system = SystemEnv {
+            appearance: crate::env::Appearance::Dark,
+            accent: Some(crate::color::Color::hex(0x3b5bd4ff)),
+            locale: crate::env::Locale::new("de-CH"),
+            ..Default::default()
+        };
+        assert_eq!(round_trip(system), Event::System(system));
+        let shift = KeyMods {
+            shift: true,
+            ..Default::default()
+        };
+        assert_eq!(round_trip(shift), Event::Modifiers(shift));
     }
 
     /// A field the message lacks does not read as the event's data: what

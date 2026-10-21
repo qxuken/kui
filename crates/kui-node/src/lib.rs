@@ -772,8 +772,9 @@ impl Ctx {
 
     /// The OS asked the app to open these documents (backlog F124) — the
     /// Finder's Open With, a file dropped on the Dock icon, `open -a`: the
-    /// app hears `{kind:"open", paths}` on the root whether or not it
-    /// asked; none is nothing. A `KuiWindow` on macOS hears it from the
+    /// app hears its root's `windowEvents.onOpen` message with `open:
+    /// {paths}` in it, whether or not it asked (ADR 0048); none is nothing,
+    /// and so is a root that declares no `onOpen`. A `KuiWindow` on macOS hears it from the
     /// runner; this is the headless drive.
     #[napi]
     pub fn open_documents(&mut self, paths: Vec<String>) {
@@ -1086,9 +1087,10 @@ impl Ctx {
         })
     }
 
-    /// Physical modifier state changed: `{shift, ctrl, alt, super}`. The
-    /// host receives `{kind:"modifiers", ...}` when it differs from the
-    /// last report.
+    /// Physical modifier state changed: `{shift, ctrl, alt, super}`. When
+    /// it differs from the last report, the root's
+    /// `windowEvents.onModifiers` message arrives with `modifiers: {…}` in
+    /// it (ADR 0048).
     #[napi(ts_args_type = "mods?: KeySinkMods")]
     pub fn modifiers(&mut self, mods: Option<Json>) {
         let m = mods
@@ -1179,8 +1181,8 @@ impl Ctx {
 
     /// A custom driver reports that the OS closed window `id`: it stays
     /// closed while still declared, whatever only it declared closes with
-    /// it, and `{kind:"window", phase:"closed", name, id}` lands in
-    /// `pollEvents`. Nothing happens for the main window (0) or for a
+    /// it, and its `windows` entry's `onWindow` message lands in
+    /// `pollEvents` with `window: {phase: "closed", id}` in it (ADR 0048). Nothing happens for the main window (0) or for a
     /// window the diff already closed.
     #[napi]
     pub fn window_closed(&mut self, id: u32) {
@@ -1191,8 +1193,9 @@ impl Ctx {
 
     /// A custom driver reports that window `id` was asked to go away: a
     /// press landed outside it (`"outside"`) or Escape reached it
-    /// (`"escape"`). `{kind:"dismiss", reason, name, id}` lands in
-    /// `pollEvents` and **nothing closes** — the app stops declaring the
+    /// (`"escape"`). Its `windows` entry's `onDismiss` message lands in
+    /// `pollEvents` with `dismiss: {reason, id}` in it (ADR 0048), and
+    /// **nothing closes** — the app stops declaring the
     /// window on the frame it decides to, exactly as it answers a `modal`
     /// node's dismissal. Nothing happens for a window that is not open.
     #[napi]
@@ -2280,8 +2283,8 @@ impl KuiWindow {
     /// the devtools' dock while the panel is docked.
     /// Readable before the first frame (in `setup` and `init`, where
     /// `env().viewport` is still 0×0), and re-reported as a
-    /// `{kind:"resize", width, height, scale}` event through `pollEvents`
-    /// — a `ResizeMsg` — whenever the window changes size, moves to a
+    /// `resize: {width, height, scale}` in the root's
+    /// `windowEvents.onResize` message (a `ResizeMsg<T>`) whenever the window changes size, moves to a
     /// display with another DPI, or the dock comes, goes or is dragged.
     /// It used to be the window's inner size, so an app that seeded
     /// its tiers from it under `KUI_DEVTOOLS=1` drew for the whole window.
@@ -2643,14 +2646,16 @@ macro_rules! core_methods {
             /// Events since the last poll: `[{origin, window, key, event,
             /// payload, slot}]`, payloads as plain data — the message the
             /// node's handler declared, with the event's data in the field
-            /// `event` names (`drag`, `change`, …), or a root event's
-            /// `{kind, …}` (ADR 0047). A node's payload is always a map: a
-            /// message that is not one (`onClick: 'save'`) arrives under
+            /// `event` names (`drag`, `change`, …); a window's own events
+            /// as its root's `windowEvents` messages and its lifecycle as
+            /// its `windows` entry's (ADR 0047, ADR 0048). A payload is
+            /// always a map: a message that is not one (`onClick: 'save'`)
+            /// arrives under
             /// `tag` (`{tag: 'save'}`), a `null` one as the field alone or
             /// `{}` (`Arrived<A>`). `A` types them — the app's own union,
             /// or one message type when only that is being watched.
             #[napi(
-                ts_generic_types = "A = AppMsg | RootMsg",
+                ts_generic_types = "A = AppMsg",
                 ts_return_type = "UiEvent<A>[]"
             )]
             pub fn poll_events(&mut self) -> Json {
@@ -3997,7 +4002,8 @@ macro_rules! core_methods {
 
             /// Reports that the platform's menu bar chose row `item` of
             /// menu `menu` — the same path a press on the drawn bar's row
-            /// takes. False for a row that is not there.
+            /// takes. False when the app hears nothing: a row that is not
+            /// there, or a `<menuBar>` that declares no `onMenu` (ADR 0048).
             #[napi]
             pub fn activate_menu_bar_item(&mut self, menu: u32, item: u32) -> Result<bool> {
                 let events = self

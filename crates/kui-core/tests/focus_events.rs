@@ -5,7 +5,7 @@
 //! places to learn the window had come back.
 
 use kui_core::testing::{click, tab};
-use kui_core::{Core, InputEvent, NodeSpec, Size, UiEvent, Vec2};
+use kui_core::{Core, InputEvent, NodeSpec, Size, UiEvent, Vec2, WindowEvents};
 
 const VIEW: Size = Size { w: 300.0, h: 100.0 };
 
@@ -103,19 +103,38 @@ fn a_move_the_program_made_is_the_programs_when_an_input_comes_first() {
     );
 }
 
+/// The window's own keyboard arrives as the root's `windowEvents`
+/// `on_focus` message, with the phase under `window` (ADR 0048).
 #[test]
 fn the_window_says_when_it_gains_and_loses_the_keyboard() {
     let mut core = Core::new();
-    frame(&mut core, false);
+    let window_phases = |core: &mut Core| -> Vec<String> {
+        core.take_pending_events()
+            .iter()
+            .filter(|e| e.event.name() == "window")
+            .map(|e| {
+                assert_eq!(e.payload.get_str("tag"), Some("win"));
+                e.data().unwrap().get_str("phase").unwrap().to_string()
+            })
+            .collect()
+    };
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.window_events(WindowEvents::default().on_focus("win"));
+    ui.finish();
     core.take_pending_events();
     core.set_focused(false);
     core.set_focused(false);
     core.set_focused(true);
-    let phases: Vec<_> = core
-        .take_pending_events()
-        .iter()
-        .filter(|e| e.event.name() == "window")
-        .map(|e| e.payload.get_str("phase").unwrap().to_string())
-        .collect();
-    assert_eq!(phases, ["blurred", "focused"], "once per change");
+    assert_eq!(
+        window_phases(&mut core),
+        ["blurred", "focused"],
+        "once per change"
+    );
+
+    // A root that stops declaring it hears none.
+    frame(&mut core, false);
+    core.take_pending_events();
+    core.set_focused(false);
+    assert!(window_phases(&mut core).is_empty(), "no message, no event");
+    assert!(!core.env.focused, "env still reads it");
 }

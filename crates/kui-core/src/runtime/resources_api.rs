@@ -954,7 +954,9 @@ mod tests {
         let fresh = std::sync::Arc::new(SystemFonts::from_db(held.locale().into(), db));
 
         let framed = |core: &mut Core| {
-            core.frame(crate::Size::new(100.0, 100.0), 1.0).finish();
+            let mut ui = core.frame(crate::Size::new(100.0, 100.0), 1.0);
+            ui.window_events(crate::WindowEvents::default().on_fonts("fonts"));
+            ui.finish();
             let evs = core.take_pending_events();
             evs.iter()
                 .map(|e| e.event.name().to_owned())
@@ -995,7 +997,11 @@ mod tests {
                 "a face that stayed keeps its id"
             );
         }
-        assert_eq!(framed(&mut core), ["fonts"], "one event, on the root");
+        assert_eq!(
+            framed(&mut core),
+            ["fonts"],
+            "one event, as the root declared"
+        );
         assert_eq!(
             framed(&mut other),
             ["fonts"],

@@ -34,12 +34,13 @@ resulting library.
 ```tsx
 // tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 import { createApp, runWindowed } from '@qxuken/kui';
-import type { Ctx, KuiWindow, RootMsg, UiEvent } from '@qxuken/kui';
+import type { Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
 
 type Model = { count: number };
-// This app's own messages plus the root events the core sends with no node
-// behind them (a resize, a window opening).
-type Msg = { kind: 'add'; by: number } | { kind: 'reset' } | RootMsg;
+// This app's own messages, and nothing else: even a resize or a window
+// opening arrives as a message the view declared (`windowEvents` on the
+// root, `onWindow` on a `windows` entry).
+type Msg = { kind: 'add'; by: number } | { kind: 'reset' };
 
 // The fourth argument is the surface the loop drives — the headless `Ctx`
 // under `createApp`, the `KuiWindow` under `runWindowed` — for `editText`,
@@ -233,8 +234,9 @@ pointing into the other three.
   for which are monospaced, their weights and italics); then
   `<text font={id}>`. Register in `setup(win)` before the first frame.
   The installed ones are rescanned when macOS or Windows says a font was
-  installed or removed, and a `FontsMsg` follows for a model that keeps
-  the list; on Linux `win.reloadSystemFonts()` scans again.
+  installed or removed, and the root's `windowEvents.onFonts` message
+  follows for a model that keeps the list; on Linux
+  `win.reloadSystemFonts()` scans again.
 - **Window chrome**: open with `chrome: 'custom'`, put a `<titlebar>` (or
   your own strip with `window="drag"` plus `<windowButtons/>`) in the root;
   on macOS it insets past the traffic lights itself. The root box's
@@ -278,9 +280,11 @@ pointing into the other three.
   Headless, `ctx.size()` answers the same shape: the size
   `createApp` frames at (its `width` / `height` / `scale`) before the first
   frame, and the last frame's after. Changes
-  arrive as `{kind: 'resize', width, height, scale}` events — a dock coming,
-  going or being dragged among them — so a model that
-  tracks the size updates in `update` like anything else. Bound what the
+  arrive as the root's `windowEvents.onResize` message with `resize:
+  {width, height, scale}` in it — a dock coming, going or being dragged
+  among them — so a model that tracks the size declares
+  `windowEvents={{ onResize: { kind: 'resized' } }}` and updates in
+  `update` like anything else. Bound what the
   user can resize to with `minWidth` / `minHeight` / `maxWidth` / `maxHeight`
   next to `width` / `height` at open; either half of a pair may stand alone,
   and `width`/`height` are clamped into the bounds the OS will enforce.
@@ -328,6 +332,17 @@ pointing into the other three.
   `onBoundary`, and takes a `value` it is brought back to on every frame it
   differs, so `value={model.title} onChange={{ kind: 'title' }}` keeps the
   field and the model one text.
+- **The window's own events are declared too**
+  ([ADR 0048](docs/adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)),
+  where the window is: the root box's `windowEvents={{ onResize,
+  onFocus, onSystemSettingsChange, onFonts, onModifiers, onOpen }}` (each
+  a message, `onFocus` the window's keyboard, `onOpen` the documents the
+  OS opens, read on the main window), a `windows` entry's `onWindow`
+  (`window: { phase: 'opened' | 'closed', id }`) and `onDismiss` (a
+  popup's), and `<menuBar onMenu>` for a choice from the application
+  menu bar. A key left out is an event nobody hears; `env()` still reads
+  every fact. A view re-runs only for a message, so one that follows the
+  OS's dark mode declares `onSystemSettingsChange`.
 - **Messages are yours**: annotate `update` and the loop follows —
   `createApp` / `runWindowed` infer the union, so `ev`, `dispatch` and
   `tick.msg` speak it too (a `tick.msg` written inline needs the union named
@@ -336,9 +351,10 @@ pointing into the other three.
   that carries an event is spelled with its helper — `DragMsg<{ kind:
   'pan' }>` is `{ kind: 'pan' } & WithDrag`, and `EditChangeMsg`,
   `SliderChangeMsg`, `KeySinkMsg` (an `onKey` sink's four: `key`, `text`,
-  `preedit`, `select`) and the rest name the others — and `RootMsg` is
-  what arrives with no handler behind it (`ResizeMsg`, `WindowMsg`,
-  `ModifiersMsg`, …); `pollEvents<KeyMsg<{ pane: number }>>()` types a raw
+  `preedit`, `select`) and the rest name the others, the window's own
+  among them (`ResizeMsg`, `WindowMsg`, `SystemMsg`, `ModifiersMsg`,
+  `OpenMsg`, typed at the root by `WindowEvents`);
+  `pollEvents<KeyMsg<{ pane: number }>>()` types a raw
   poll the same way. To have the *message props* checked at the node as
   well, register the app's own union once:
 
@@ -353,10 +369,10 @@ pointing into the other three.
   that carry its field, as declared without it (`HandlerMsg<WithDrag>`):
   `onDrag={{ kind: 'pan' }}` fits, `onDrag={{ kind: 'save' }}` does not,
   and `<edit onChange>` takes only an editor's `change`. Register the
-  messages you wrote and keep `MyMsg | RootMsg` for `update`. A bare
+  messages you wrote, and `update` takes `MyMsg`. A bare
   message is registered as declared (`'save'`) and read as it arrives:
   `update`, `ev.payload`, `dispatch` and `tick.msg` are typed
-  `Arrived<MyMsg | RootMsg>`, where it is `{ tag: 'save' }`; one that
+  `Arrived<MyMsg>`, where it is `{ tag: 'save' }`; one that
   carries an event is registered as it arrives (`DragMsg<{ tag: 'pan' }>`)
   and the handler prop still takes `onDrag="pan"` (`Declared<M>`). It is a
   program-wide declaration (one app per tsconfig); left out, message props

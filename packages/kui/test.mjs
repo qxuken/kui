@@ -985,7 +985,9 @@ test('the window losing the keyboard releases the keys its sink held', () => {
   // the core lets go on the report itself (`Core::set_focused`) rather
   // than each driver remembering to. Before this a custom Node driver had
   // no door for it at all.
-  const build = () => box({ onKey: { pane: 0 }, keyUp: true, keyFocus: true, width: 100, height: 50 }, [], 'a');
+  // The root declares the window's keyboard as its message (ADR 0048).
+  const build = () =>
+    box({ onKey: { pane: 0 }, keyUp: true, keyFocus: true, width: 100, height: 50, windowEvents: { onFocus: { kind: 'focus' } } }, [], 'a');
   const { ctx } = run(build);
   ctx.keyDown('w');
   const [down] = ctx.pollEvents();
@@ -996,13 +998,13 @@ test('the window losing the keyboard releases the keys its sink held', () => {
     [[down.key, 'up', 'w']],
   );
   // And the app hears the window go, once (backlog DX18).
-  assert.deepEqual(evs.filter((e) => e.event === 'window').map((e) => e.payload.phase), ['blurred']);
+  assert.deepEqual(evs.filter((e) => e.event === 'window').map((e) => e.payload), [{ kind: 'focus', window: { phase: 'blurred' } }]);
   assert.equal(ctx.env().focused, false);
   // Saying it again changes nothing, and getting the keyboard back
   // releases nothing: there is nothing held — only the window's return.
   ctx.setEnv({ focused: false });
   ctx.setEnv({ focused: true });
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind + ' ' + e.payload.phase), ['window focused']);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind + ' ' + e.payload.window.phase), ['focus focused']);
   ctx.keyUp('w');
   assert.equal(ctx.pollEvents().length, 0, 'the physical release is not a second one');
 });
@@ -2137,6 +2139,26 @@ test('menu() reads a row the way menuBar() does', () => {
     nodes.map((n) => n.live).filter((l) => l !== 'off'),
     ['polite'],
   );
+});
+
+// ADR 0048: a choice from the application menu bar arrives as the
+// `<menuBar>` element's `onMenu` message, with `menu: {role, item}` in it,
+// whether the platform drew the bar or the core did; without `onMenu` the
+// bar posts nothing.
+test("a menu bar's choice arrives as its onMenu message", () => {
+  const ctx = new Ctx();
+  const menu = [{ label: 'File', items: [{ label: 'New', id: 'file.new' }] }];
+  ctx.frame(320, 240, 1, box({}, [el('menuBar', { menu, onMenu: { kind: 'chose' } })]));
+  ctx.pollEvents();
+  assert.equal(ctx.activateMenuBarItem(0, 0), true);
+  assert.deepEqual(ctx.pollEvents().map((e) => [e.event, e.payload]), [
+    ['menu', { kind: 'chose', menu: { role: 'custom', item: 'file.new' } }],
+  ]);
+  // A bar with no `onMenu`: the row is there, and nobody hears it.
+  ctx.frame(320, 240, 1, box({}, [el('menuBar', { menu })]));
+  assert.equal(ctx.activateMenuBarItem(0, 0), false);
+  assert.deepEqual(ctx.pollEvents(), []);
+  assert.deepEqual(ctx.warnings(), []);
 });
 
 // A row's `items` are its submenu (backlog F128): `menu()` reads them
@@ -4192,17 +4214,70 @@ test('<input> takes value, onChange, onSubmit and onCancel', () => {
 
 test('a changed viewport emits one resize event', () => {
   const ctx = new Ctx();
-  ctx.frame(320, 240, 1, box({}));
+  const view = () => box({ windowEvents: { onResize: { kind: 'resized' } } });
+  ctx.frame(320, 240, 1, view());
   // The first frame establishes the viewport rather than resizing it.
   assert.deepEqual(ctx.pollEvents(), []);
-  ctx.frame(640, 480, 2, box({}));
+  ctx.frame(640, 480, 2, view());
   assert.deepEqual(
-    ctx.pollEvents().map((e) => e.payload),
-    [{ kind: 'resize', width: 640, height: 480, scale: 2 }],
+    ctx.pollEvents().map((e) => [e.event, e.payload]),
+    [['resize', { kind: 'resized', resize: { width: 640, height: 480, scale: 2 } }]],
   );
   // Same viewport again: nothing.
-  ctx.frame(640, 480, 2, box({}));
+  ctx.frame(640, 480, 2, view());
   assert.deepEqual(ctx.pollEvents(), []);
+  // No handler, no event (ADR 0048): a root that stops declaring it hears
+  // nothing of the next one.
+  ctx.frame(640, 480, 2, box({}));
+  ctx.frame(320, 240, 1, box({}));
+  assert.deepEqual(ctx.pollEvents(), []);
+});
+
+// ADR 0048: the root's `windowEvents` group, each key the message its
+// event arrives as, with the event's data under the field named for it.
+test('each windowEvents key arrives as its own message', () => {
+  const ctx = new Ctx();
+  const view = () =>
+    box({
+      windowEvents: {
+        onResize: { kind: 'resized' },
+        onFocus: 'focus',
+        onSystemSettingsChange: { kind: 'settings' },
+        onFonts: { kind: 'fonts' },
+        onModifiers: null,
+        onOpen: { kind: 'docs' },
+      },
+    });
+  const step = (fn) => {
+    fn();
+    ctx.frame(300, 200, 1, view());
+    return ctx.pollEvents().map((e) => [e.event, e.payload]);
+  };
+  ctx.frame(320, 240, 1, view());
+  assert.deepEqual(ctx.pollEvents(), []);
+  assert.deepEqual(step(() => {}), [['resize', { kind: 'resized', resize: { width: 300, height: 200, scale: 1 } }]]);
+  // A bare message rides under `tag`, as a node's does.
+  assert.deepEqual(step(() => ctx.setEnv({ focused: false })), [['window', { tag: 'focus', window: { phase: 'blurred' } }]]);
+  const sys = step(() => ctx.setEnv({ system: { appearance: 'dark' } }));
+  assert.deepEqual(sys.map(([e, p]) => [e, p.kind, p.system.appearance]), [['system', 'settings', 'dark']]);
+  // A null message is the field alone.
+  assert.deepEqual(step(() => ctx.modifiers({ shift: true })), [
+    ['modifiers', { modifiers: { shift: true, ctrl: false, alt: false, super: false } }],
+  ]);
+  assert.deepEqual(step(() => ctx.openDocuments(['/a.txt'])), [['open', { kind: 'docs', open: { paths: ['/a.txt'] } }]]);
+  assert.deepEqual(ctx.warnings(), []);
+});
+
+test('windowEvents off the root is ignored, and says so', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const view = () => box({}, [box({ windowEvents: { onResize: { kind: 'resized' } } }, [], 'inner')]);
+  ctx.frame(320, 240, 1, view());
+  ctx.frame(300, 200, 1, view());
+  assert.deepEqual(ctx.pollEvents(), [], 'the inner node declares nothing');
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['window-events-off-root']);
+  // A key the group does not have is refused, as a typo should be.
+  assert.throws(() => ctx.frame(320, 240, 1, box({ windowEvents: { onResise: {} } })), /onResise/);
 });
 
 // Registered fonts: installed families by name, file bytes, and the `font`
@@ -5230,19 +5305,22 @@ SCENE_TREES['chrome-inset'] = SCENE_TREES.chrome;
 
 // `conformance::build_windows`: the declaration rides on the root box, the
 // way `title` does, and comes and goes with the phase — twice in phase 0,
-// disagreeing on the size.
-SCENE_TREES.windows = (_fx, phase) =>
-  root(
+// disagreeing on the size. Both edges arrive as the entry's `onWindow`
+// (ADR 0048).
+SCENE_TREES.windows = (_fx, phase) => {
+  const onWindow = { kind: 'palette' };
+  return root(
     {
       windows:
         phase === 0
-          ? [{ name: 'palette', width: 400, height: 300 }, { name: 'palette', width: 500, height: 500 }]
+          ? [{ name: 'palette', width: 400, height: 300, onWindow }, { name: 'palette', width: 500, height: 500, onWindow }]
           : phase === 2
-            ? [{ name: 'palette', width: 400, height: 300 }]
+            ? [{ name: 'palette', width: 400, height: 300, onWindow }]
             : undefined,
     },
     [box({ pad: 8, bg: '#14161e' }, [text(phase === 0 || phase === 2 ? 'open' : 'closed', { size: 12 })])],
   );
+};
 
 // `conformance::build_popup`: one declaration, with the kind and the anchor
 // a menu carries. The dismissals are steps, not anything the tree says.
@@ -5258,6 +5336,9 @@ SCENE_TREES.popup = (_fx, phase) =>
                 width: 160,
                 height: 320,
                 anchor: { x: 12, y: 40, w: 160, h: 24 },
+                // Its lifecycle and its dismissal, one message (ADR 0048).
+                onWindow: { kind: 'popup' },
+                onDismiss: { kind: 'popup' },
               },
             ]
           : undefined,
@@ -5378,10 +5459,11 @@ SCENE_TREES.layers = (_fx, phase) => {
 
 // `conformance::build_drop` (ADR 0031): two zones, a button inside the
 // first, and across the phases a hoverable float over the first zone that
-// is no zone (phase 1) and a modal over it (phase 2).
+// is no zone (phase 1) and a modal over it (phase 2). The OS's documents
+// are the root's `windowEvents.onOpen` (ADR 0048).
 SCENE_TREES.drop = (_fx, phase) => {
   const over = { anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'], dx: 20, dy: 20 };
-  return root({}, [box({ dir: 'row', width: 'grow', height: 'grow' }, [
+  return root({ windowEvents: { onOpen: { kind: 'docs' } } }, [box({ dir: 'row', width: 'grow', height: 'grow' }, [
     box(
       { width: 200, height: 'grow', pad: 10, bg: '#22242c', dropBg: '#2b3350', onDrop: { kind: 'files' } },
       [box({ dir: 'row', width: 60, height: 40, bg: '#3b5bd4', onClick: { kind: 'pick' }, label: 'Pick' }, [], 'pick')],
@@ -5413,6 +5495,32 @@ SCENE_TREES['caret-in-text'] = (_fx, _phase, ctx) => {
     bar(ctx.caretInText(plain, mono, 120, plain.length)),
   ])]);
 };
+
+// `conformance::build_window_events` (ADR 0048): every key of the root's
+// `windowEvents` group, each its own `kind`, and a drawn menu bar
+// declaring `onMenu`.
+SCENE_TREES['window-events'] = () =>
+  root(
+    {
+      windowEvents: {
+        onResize: { kind: 'resized' },
+        onFocus: { kind: 'focus' },
+        onSystemSettingsChange: { kind: 'settings' },
+        onFonts: { kind: 'fonts' },
+        onModifiers: { kind: 'mods' },
+        onOpen: { kind: 'docs' },
+      },
+    },
+    [
+      box({ gap: 6, width: 'grow' }, [
+        el('menuBar', {
+          menu: [{ label: 'File', items: [{ label: 'New', id: 'file.new' }] }],
+          onMenu: { kind: 'chose' },
+        }),
+        text('body', { size: 12 }),
+      ]),
+    ],
+  );
 // `conformance::build_sampler` (backlog AR47): the generic rows no other
 // scene declares. Every prop below is spelled by its schema name, which is
 // what the coverage test after the corpus reads.
@@ -5775,19 +5883,27 @@ function driveScene(env, steps, build) {
   // `ctx` is the third argument because one scene has an imperative half:
   // `live` announces through `ctx.announce`, which is where the other
   // three bindings call `ui.announce` / `env.announce` / `kui_announce`.
+  // `conformance::VIEWPORT`, until a `viewport` step resizes the window.
+  let viewport = [320, 240];
   const frame = () => {
-    ctx.frame(320, 240, 1, build(fx, phase, ctx));
+    ctx.frame(viewport[0], viewport[1], 1, build(fx, phase, ctx));
     events.push(...ctx.pollEvents());
     commands.push(...ctx.windowCommands());
     audio.push(...ctx.audioCommands());
   };
   frame();
   for (const step of steps) {
-    // None of the first four is input: the frame clock the transitions
-    // read, the view changing its mind, and the OS closing a window or
-    // asking a popup to go away.
+    // None of the first six is input: the frame clock the transitions
+    // read, the view changing its mind, the window resizing or losing and
+    // regaining the keyboard, and the OS closing a window or asking a
+    // popup to go away.
     if (step[0] === 'phase') phase = step[1];
     else if (step[0] === 'time') ctx.setTime(step[1] / 1000);
+    // Every frame from here on is built at the new size, so the next
+    // begins with a `resize` (ADR 0048).
+    else if (step[0] === 'viewport') viewport = [step[1], step[2]];
+    // The driver's report, `Core::set_focused`: the env door.
+    else if (step[0] === 'focused') ctx.setEnv({ focused: step[1] !== 0 });
     else if (step[0] === 'windowclosed') ctx.windowClosed(step[1]);
     // `conformance::DISMISS_REASONS` order: outside, escape.
     else if (step[0] === 'windowdismissed')
@@ -5966,24 +6082,20 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   for (const ev of events) {
     // `conformance::event_row`: the envelope's event, then the message's
     // name — a bare string, else its `kind`, else its `tag` — or, for a
-    // root event or a message with none, the field that tells one event
-    // from its siblings (`phase`, `reason`) of the event's data.
+    // message with none, the field that tells one event from its siblings
+    // (`phase`, `reason`) of the event's data.
     const kind = ev.event;
     const p = ev.payload;
-    // Whether no message declared it — read off the events table, not the
-    // payload's shape (a message may well be `{kind: "click"}`): a `root`
-    // handler always, and the two that have a root spelling beside their
-    // node one (the menu bar's `menu`, a popup's `dismiss`) when the
-    // payload carries no field of the event's name, which a node's always
-    // does.
-    const row = EVENT_ROWS.get(kind);
     const isMap = p !== null && typeof p === 'object' && !Array.isArray(p);
-    const root = row?.handler === 'root' || (/\broot\b/.test(row?.handler ?? '') && isMap && !(kind in p));
-    // The event's data: its field, or a root event's whole payload.
-    const d = (root ? p : isMap ? p[kind] : null) ?? {};
+    // The event's data: the field named for it (ADR 0047, 0048).
+    const d = (isMap ? p[kind] : null) ?? {};
     const str = (v) => (typeof v === 'string' ? v : undefined);
-    const named = root ? undefined : typeof p === 'string' ? p : str(p?.kind) ?? str(p?.tag);
+    const named = typeof p === 'string' ? p : str(p?.kind) ?? str(p?.tag);
     let tag = named ?? str(d.phase) ?? str(d.reason) ?? '-';
+    // A window's lifecycle and a dismissal arrive as one declared message
+    // each edge (ADR 0048), so a named one carries the edge after its name:
+    // `window palette opened`.
+    if (named !== undefined && (kind === 'window' || kind === 'dismiss')) tag += ` ${str(d.phase) ?? str(d.reason) ?? '-'}`;
     // An editor's change carries its whole text, Debug-quoted as Rust
     // prints it; a slider's its phase and the value the core worked out
     // (ADR 0034), the corpus steps landing on whole values.
@@ -6025,9 +6137,6 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   lines.push('end', '');
   return lines.join('\n');
 }
-
-/** The core's events table by kind, for the adapter's root test. */
-const EVENT_ROWS = new Map(protocol().events.map((e) => [e.kind, e]));
 
 /** A string as Rust's `{:?}` prints it: quoted, with `\\`, `"`, `\\t`, `\\r`,
  *  `\\n`, `\\0` escaped and any other control character as `\\u{…}`. */
@@ -6138,10 +6247,11 @@ test('the loop declares windows(model) and views each open window by name', () =
     {
       init: { palette: true },
       update: (model, msg) => {
-        if (msg.kind === 'window') seen.push(`${msg.phase} ${msg.name} ${msg.id}`);
+        if (msg.kind === 'palette') seen.push(`${msg.window.phase} ${msg.window.id}`);
         if (msg.kind === 'toggle') return { ...model, palette: !model.palette };
       },
-      windows: (model) => (model.palette ? [{ name: 'palette', width: 400, height: 300 }] : []),
+      // The entry's lifecycle is its own message (ADR 0048).
+      windows: (model) => (model.palette ? [{ name: 'palette', width: 400, height: 300, onWindow: { kind: 'palette' } }] : []),
       view: (model, window) => box({ width: 'grow', height: 'grow' }, [text(`${window}:${model.palette}`)]),
     },
     { warnings: false },
@@ -6150,24 +6260,25 @@ test('the loop declares windows(model) and views each open window by name', () =
   app.settle();
   // The command the driver would apply, and the message the app got.
   assert.deepEqual(app.ctx.windows(), ['main', 'palette']);
-  assert.deepEqual(seen, ['opened palette 1']);
+  assert.deepEqual(seen, ['opened 1']);
   assert.equal(app.ctx.windowName(), 'main');
   // Declared again: nothing new.
   app.render();
   app.settle();
-  assert.deepEqual(seen, ['opened palette 1']);
+  assert.deepEqual(seen, ['opened 1']);
   // Stop declaring it: closed, with the message.
   app.dispatch({ kind: 'toggle' });
   app.render();
   app.settle();
-  assert.deepEqual(seen, ['opened palette 1', 'closed palette 1']);
+  // The close arrives as the message declared before the entry lapsed.
+  assert.deepEqual(seen, ['opened 1', 'closed 1']);
   assert.deepEqual(app.ctx.windows(), ['main']);
   assert.deepEqual(app.warnings, []);
 });
 
 test('a window the user closed stays closed while declared, and says so', () => {
   const ctx = new Ctx();
-  const declare = () => ctx.frame(320, 240, 1, box({ windows: ['palette'] }, []));
+  const declare = () => ctx.frame(320, 240, 1, box({ windows: [{ name: 'palette', onWindow: 'palette' }] }, []));
   declare();
   assert.deepEqual(ctx.windowCommands(), [
     {
@@ -6184,9 +6295,9 @@ test('a window the user closed stays closed while declared, and says so', () => 
       },
     },
   ]);
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'window', phase: 'opened', name: 'palette', id: 1 }]);
+  assert.deepEqual(ctx.pollEvents().map((e) => [e.event, e.payload]), [['window', { tag: 'palette', window: { phase: 'opened', id: 1 } }]]);
   ctx.windowClosed(1);
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'window', phase: 'closed', name: 'palette', id: 1 }]);
+  assert.deepEqual(ctx.pollEvents().map((e) => [e.event, e.payload]), [['window', { tag: 'palette', window: { phase: 'closed', id: 1 } }]]);
   declare();
   assert.deepEqual(ctx.windowCommands(), [], 'still declared: nothing reopens');
   assert.deepEqual(ctx.warnings().map((w) => w.code), ['window-declared-while-closed']);
@@ -6196,6 +6307,11 @@ test('a window the user closed stays closed while declared, and says so', () => 
   assert.deepEqual(ctx.windowCommands().map((c) => [c.kind, c.window]), [['open', 2]]);
   // And the chrome commands say which window too.
   assert.deepEqual(ctx.windows(), ['main', 'palette']);
+  // A bare name declares no `onWindow`: its edges are heard by nobody.
+  const quiet = new Ctx();
+  quiet.frame(320, 240, 1, box({ windows: ['palette'] }, []));
+  quiet.windowClosed(1);
+  assert.deepEqual(quiet.pollEvents(), []);
 });
 
 test('a windows entry cannot name a kind kui does not have', () => {
@@ -6239,7 +6355,8 @@ test('a popup declaration carries its kind and anchor and does not activate', ()
 
 test('a dismissed popup closes nothing until the app stops declaring it', () => {
   const ctx = new Ctx();
-  const menu = { name: 'menu', kind: 'popup', width: 160, height: 320 };
+  // The dismissal is the entry's `onDismiss` message (ADR 0048).
+  const menu = { name: 'menu', kind: 'popup', width: 160, height: 320, onDismiss: { kind: 'closeMenu' } };
   const declare = () => ctx.frame(320, 240, 1, box({ windows: [menu] }, []));
   declare();
   ctx.windowCommands();
@@ -6247,9 +6364,9 @@ test('a dismissed popup closes nothing until the app stops declaring it', () => 
 
   ctx.windowDismissed(1, 'outside');
   ctx.windowDismissed(1, 'escape');
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
-    { kind: 'dismiss', reason: 'outside', name: 'menu', id: 1 },
-    { kind: 'dismiss', reason: 'escape', name: 'menu', id: 1 },
+  assert.deepEqual(ctx.pollEvents().map((e) => [e.event, e.payload]), [
+    ['dismiss', { kind: 'closeMenu', dismiss: { reason: 'outside', id: 1 } }],
+    ['dismiss', { kind: 'closeMenu', dismiss: { reason: 'escape', id: 1 } }],
   ]);
   assert.deepEqual(ctx.windowCommands(), [], 'the core closes nothing in answer');
   declare();
@@ -6355,11 +6472,10 @@ test("index.d.ts's Env and NodeInfo name exactly the keys the objects carry (AR4
 // two of them were a field behind the object (`physical` on a key,
 // `scale` on a layout) while two kinds the core spells (`menu`,
 // `forceclick`) had no row in the table at all (backlog F55). The pin is
-// static: every field a node event's shape names is a property of the
-// data type its `With…` field interface carries, and every property that
-// type declares is in the shape or named by the event's doc; a root
-// event's shape (the one spelling `kind`) is exactly its `RootMsg`
-// member's — the menu and dismiss payloads have one of each.
+// static: every field an event's shape names is a property of the data
+// type its `With…` field interface carries, and every property that type
+// declares is in the shape or named by the event's doc. There are no root
+// events (ADR 0048), so no shape spells the core's own `kind`.
 test("index.d.ts's message types name exactly the fields the event payloads carry (F55)", () => {
   // As LF: Git for Windows checks the file out with CRLF by default, and a
   // `\r` left on every line matched no block below (backlog RG39).
@@ -6415,15 +6531,7 @@ test("index.d.ts's message types name exactly the fields the event payloads carr
   }
   const fieldsOf = (body) =>
     body.map((l) => /^  ([A-Za-z_][A-Za-z0-9_]*)\??:/.exec(l)).filter(Boolean).map((x) => x[1]).sort();
-  // A root event's type: the block that spells its `kind` (ADR 0047: the
-  // root events keep the core's).
-  const rootType = (kind) => {
-    for (const { name, body } of blocks) {
-      if (body.includes(`  kind: '${kind}';`)) return { name, fields: fieldsOf(body) };
-    }
-    return dts.includes(`{ kind: '${kind}' }`) ? { name: `{ kind: '${kind}' }`, fields: ['kind'] } : null;
-  };
-  // A node event's: every `With…` interface whose one property is the
+  // An event's: every `With…` interface whose one property is the
   // event's field, and the data interfaces those name — two for `change`,
   // the editor's and the slider's.
   const fieldTypes = (field) => {
@@ -6439,20 +6547,11 @@ test("index.d.ts's message types name exactly the fields the event payloads carr
   };
   const untyped = [];
   for (const { kind, field, payload, doc } of events) {
-    const groups = shapes(payload);
-    // The root's spelling carries `kind`; the field's data does not.
-    const root = groups.filter((g) => g.includes('kind'));
-    const data = groups.filter((g) => !g.includes('kind'));
-    if (root.length) {
-      const type = rootType(kind);
-      if (!type) untyped.push(kind);
-      else {
-        const named = [...new Set(root.flat())].sort();
-        assert.deepEqual(type.fields, named, `${type.name} declares exactly what the root ${kind} payload carries`);
-      }
-    }
+    const data = shapes(payload);
+    assert.ok(!data.some((g) => g.includes('kind')), `the ${kind} payload spells no core \`kind\` (ADR 0048)`);
+    // `fonts`, `reply`: the message as declared, with no field.
     if (!field) {
-      assert.ok(root.length > 0 || kind === 'reply', `the root ${kind} payload names a shape`);
+      assert.equal(data.length, 0, `the ${kind} payload has no field, so it names no shape`);
       continue;
     }
     // Enter's `submit`, Escape's `cancel`: the message as declared, no data.
@@ -6475,19 +6574,7 @@ test("index.d.ts's message types name exactly the fields the event payloads carr
     }
   }
   assert.deepEqual(untyped, [], 'every event kind has a message type');
-  // And no type in the root union names a kind the table does not: a
-  // message type is a claim the payload table has to back.
-  const union = /export type RootMsg =\n((?:  \| \w+\n)+)/.exec(dts);
-  assert.ok(union, 'the RootMsg union');
-  const kinds = new Set(events.map((e) => e.kind));
-  for (const member of union[1].match(/\w+/g)) {
-    const block = blocks.find((b) => b.name === member);
-    const text = block ? block.body.join('\n') : (new RegExp(`export type ${member} = ((?:\\{ kind: '\\w+' \\}(?: \\| )?)+);`).exec(dts) ?? [])[1];
-    assert.ok(text, `${member} is declared`);
-    for (const k of text.match(/kind: '(\w+)'/g).map((x) => /'(\w+)'/.exec(x)[1])) {
-      assert.ok(kinds.has(k), `${member}'s kind '${k}' is a row of the event table`);
-    }
-  }
+  assert.ok(!/\bRootMsg\b/.test(dts), 'no RootMsg left (ADR 0048)');
 });
 
 test('every generic schema prop is declared by some corpus scene (AR47)', () => {
@@ -6852,18 +6939,35 @@ test('openDocuments reaches update unasked, and none is nothing', () => {
         seen.push(msg);
         return model;
       },
-      view: () => box_({ width: 'grow', height: 'grow' }, []),
+      // The main window's root declares the message (ADR 0048), so an
+      // app's own `{ kind: 'open' }` is free for a button.
+      view: () => box_({ width: 'grow', height: 'grow', windowEvents: { onOpen: { kind: 'docs' } } }, []),
     },
     { width: 200, height: 100, warnings: false },
   );
   app.render();
   app.ctx.openDocuments(['/tmp/a.txt', '/tmp/b.md']);
   app.step();
-  assert.deepEqual(seen.filter((m) => m?.kind === 'open'), [{ kind: 'open', paths: ['/tmp/a.txt', '/tmp/b.md'] }]);
+  assert.deepEqual(seen.filter((m) => m?.kind === 'docs'), [{ kind: 'docs', open: { paths: ['/tmp/a.txt', '/tmp/b.md'] } }]);
 
   const ctx = new Ctx();
+  ctx.frame(200, 100, 1, box({ windowEvents: { onOpen: { kind: 'docs' } } }));
   ctx.openDocuments([]);
-  assert.deepEqual(ctx.pollEvents().filter((e) => e.payload?.kind === 'open'), []);
+  assert.deepEqual(ctx.pollEvents(), [], 'none is nothing');
+  // And a root that declares no `onOpen` hears none of it.
+  ctx.frame(200, 100, 1, box({}));
+  ctx.openDocuments(['/tmp/a.txt']);
+  assert.deepEqual(ctx.pollEvents(), []);
+});
+
+test('documents handed over before the first frame arrive once it has declared onOpen', () => {
+  // Launch-time documents: AppKit hands them over before the window's
+  // first frame, so the core holds them until a frame has declared.
+  const ctx = new Ctx();
+  ctx.openDocuments(['/tmp/early.txt']);
+  assert.deepEqual(ctx.pollEvents(), []);
+  ctx.frame(200, 100, 1, box({ windowEvents: { onOpen: { kind: 'docs' } } }));
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'docs', open: { paths: ['/tmp/early.txt'] } }]);
 });
 
 /** A `uniformList` app that records the range each frame built. */
@@ -7813,18 +7917,21 @@ test('setEnv declares that assistive technology is listening, and the system eve
   ctx.frame(320, 240, 1, box({}, []));
   ctx.pollEvents();
 
+  // The root declares the message the change arrives as (ADR 0048).
+  const view = () => box({ windowEvents: { onSystemSettingsChange: { kind: 'settings' } } }, []);
   ctx.setEnv({ system: { assistive: 'listening' } });
   assert.equal(ctx.env().system.assistive, 'listening');
   assert.equal(ctx.env().system.motion, 'unknown', 'only what you pass moves');
-  ctx.frame(320, 240, 1, box({}, []));
-  const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'system');
-  assert.equal(evs.length, 1, 'one system event, on the root');
-  assert.equal(evs[0].payload.assistive, 'listening');
-  assert.equal(evs[0].payload.appearance, 'unknown', 'the whole reading rides along');
+  ctx.frame(320, 240, 1, view());
+  const evs = ctx.pollEvents().filter((e) => e.event === 'system');
+  assert.equal(evs.length, 1, "one system event, the root's message");
+  assert.equal(evs[0].payload.kind, 'settings');
+  assert.equal(evs[0].payload.system.assistive, 'listening');
+  assert.equal(evs[0].payload.system.appearance, 'unknown', 'the whole reading rides along');
 
   // Once: a reading that stops changing stops reporting.
-  ctx.frame(320, 240, 1, box({}, []));
-  assert.equal(ctx.pollEvents().filter((e) => e.payload.kind === 'system').length, 0);
+  ctx.frame(320, 240, 1, view());
+  assert.equal(ctx.pollEvents().filter((e) => e.event === 'system').length, 0);
 
   // Every reading is writable — a host on AT-SPI hears the client leave.
   ctx.setEnv({ system: { assistive: 'none' } });
@@ -7849,7 +7956,8 @@ test('setEnv carries the audio device state and the live count', () => {
 // answers 0 there and whatever window it happened in here.
 test('every event says which window it came from', () => {
   const ctx = new Ctx();
-  const build = () => box({}, [box({ onClick: { kind: 'hit' }, width: 100, height: 50 }, [], 'b')]);
+  const build = () =>
+    box({ windowEvents: { onResize: { kind: 'resized' } } }, [box({ onClick: { kind: 'hit' }, width: 100, height: 50 }, [], 'b')]);
   ctx.frame(320, 240, 1, build());
   ctx.cursor(50, 25);
   ctx.mouse(true, 1);
@@ -7870,7 +7978,7 @@ test('every event says which window it came from', () => {
   assert.ok(second.length > 1, 'the click and the resize');
   assert.deepEqual([...new Set(second.map((e) => e.window))], [7]);
   assert.ok(
-    second.some((e) => e.payload.kind === 'resize'),
+    second.some((e) => e.payload.kind === 'resized'),
     'including the ones raised outside handleInput',
   );
 });

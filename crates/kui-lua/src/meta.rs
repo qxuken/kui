@@ -429,8 +429,113 @@ const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
         "kui.DismissEvent",
         "dismiss",
         "kui.WithDismiss",
-        &[("reason", true, "\"escape\"|\"outside\"")],
+        &[
+            ("reason", true, "\"escape\"|\"outside\""),
+            ("id", false, "integer"),
+        ],
     ),
+    (
+        "kui.ResizeEvent",
+        "resize",
+        "kui.WithResize",
+        &[
+            ("width", true, "number"),
+            ("height", true, "number"),
+            ("scale", true, "number"),
+        ],
+    ),
+    (
+        "kui.WindowEvent",
+        "window",
+        "kui.WithWindow",
+        &[
+            (
+                "phase",
+                true,
+                "\"opened\"|\"closed\"|\"focused\"|\"blurred\"",
+            ),
+            ("id", false, "integer"),
+        ],
+    ),
+    (
+        "kui.SystemEvent",
+        "system",
+        "kui.WithSystem",
+        &[
+            ("appearance", true, "\"unknown\"|\"light\"|\"dark\""),
+            ("accent", false, "integer"),
+            ("motion", true, "\"unknown\"|\"full\"|\"reduced\""),
+            ("locale", false, "string"),
+            ("assistive", true, "\"unknown\"|\"none\"|\"listening\""),
+        ],
+    ),
+    (
+        "kui.ModifiersEvent",
+        "modifiers",
+        "kui.WithModifiers",
+        &[
+            ("shift", true, "boolean"),
+            ("ctrl", true, "boolean"),
+            ("alt", true, "boolean"),
+            ("super", true, "boolean"),
+        ],
+    ),
+    (
+        "kui.OpenEvent",
+        "open",
+        "kui.WithOpen",
+        &[("paths", true, "string[]")],
+    ),
+];
+
+/// The root table's `window_events` keys (ADR 0048), each with the
+/// `kui.With…` class of what its message arrives with: `on_fonts` carries
+/// no data, so it has none. In `WindowEvents::KEYS` order, which the tests
+/// hold it to.
+const WINDOW_EVENTS: &[(&str, &str, &str)] = &[
+    (
+        "on_resize",
+        "kui.WithResize",
+        "The window changed size or scale.",
+    ),
+    (
+        "on_focus",
+        "kui.WithWindow",
+        "The window gained or lost the keyboard: `phase` is `\"focused\"` or `\"blurred\"`.",
+    ),
+    (
+        "on_system_settings_change",
+        "kui.WithSystem",
+        "An OS setting changed: the appearance, the accent, reduced motion, the language, or assistive technology listening.",
+    ),
+    (
+        "on_fonts",
+        "",
+        "The system's installed fonts changed; the message arrives as declared.",
+    ),
+    (
+        "on_modifiers",
+        "kui.WithModifiers",
+        "The physical modifier state changed.",
+    ),
+    (
+        "on_open",
+        "kui.WithOpen",
+        "The OS asked the app to open documents; read on the main window's root alone.",
+    ),
+];
+
+/// A `windows` entry's keys as a table: what `WindowConfig::from_value`
+/// and `WindowLifecycle::from_entry` read, typed.
+const WINDOW_ENTRY: Fields = &[
+    ("name", true, "string"),
+    ("kind", false, "\"normal\"|\"popup\""),
+    ("width", false, "number"),
+    ("height", false, "number"),
+    ("activates", false, "boolean"),
+    ("anchor", false, "kui.Rect"),
+    ("on_window", false, "any"),
+    ("on_dismiss", false, "any"),
 ];
 
 /// The events one handler delivers several of, as the union of their
@@ -601,10 +706,10 @@ fn events_meta() -> String {
     );
     out.push_str(
         "---@field node_key integer The emitting node's key, what `env.edit_text` and the rest take.\n\
-         ---@field window integer The window it came from, as `env.window.id` reads.\n\
+         ---@field window integer|kui.WindowEvent The window it came from, as `env.window.id` reads; a `window` event's data, which has the name.\n\
          ---@field slot? string The full name of the slot the node was filled into.\n\
          ---@field from? string The namespace of the plugin a reply came from.\n\
-         ---@field kind? string The message's own `kind`, or a root event's (`\"resize\"`, …).\n\
+         ---@field kind? string The message's own `kind`: the core never writes one.\n\
          ---@field tag? any A message that is not a table, kept under `tag`.\n\
          ---@field [string] any\n\n",
     );
@@ -633,6 +738,30 @@ fn events_meta() -> String {
     for (name, doc, members) in WITH_UNIONS {
         let _ = writeln!(out, "---{doc}\n---@alias {name} {}\n", members.join("|"));
     }
+    // The root table's group, and a `windows` entry: where the window's
+    // own events are declared (ADR 0048).
+    out.push_str(
+        "---The messages the window's own events arrive as (ADR 0048): `window_events` on the root table.\n\
+         ---A key left out is an event the window does not hear.\n\
+         ---@class kui.WindowEvents\n",
+    );
+    for (key, with, doc) in WINDOW_EVENTS {
+        let carries = if with.is_empty() {
+            String::new()
+        } else {
+            format!(" It arrives with `{with}`.")
+        };
+        let _ = writeln!(out, "---@field {key}? any {doc}{carries}");
+    }
+    out.push_str(
+        "\n---A `windows` entry as a table: the window's name and config, and the messages its opening and\n\
+         ---closing (`kui.WithWindow`) and a popup's dismissal (`kui.WithDismiss`) arrive as (ADR 0048).\n\
+         ---@class kui.WindowEntry\n",
+    );
+    for (name, required, ty) in WINDOW_ENTRY {
+        shape_line(&mut out, name, *required, ty);
+    }
+    out.push('\n');
     out
 }
 
@@ -688,7 +817,8 @@ fn composite_type(name: &str) -> String {
         }
         "key" | "tooltip" | "window_title" => "string".into(),
         "index" | "row_count" => "number".into(),
-        "windows" => "table".into(),
+        "windows" => "(string|kui.WindowEntry)[]".into(),
+        "window_events" => "kui.WindowEvents".into(),
         "option_as_alt" => {
             let names: Vec<String> = kui_core::OptionAsAlt::ALL
                 .iter()
@@ -913,6 +1043,26 @@ mod tests {
             assert!(meta.contains(&k), "{k} is no `event`");
         }
         assert!(meta.contains("---@field event \"click\"|\"drag\"|"));
+        // The root's group is the core's six keys, in its order, each
+        // naming a class the file defines; an entry's kinds are the
+        // core's (ADR 0048).
+        let keys: Vec<&str> = kui_core::WindowEvents::KEYS.iter().map(|k| k.1).collect();
+        let ours: Vec<&str> = WINDOW_EVENTS.iter().map(|k| k.0).collect();
+        assert_eq!(ours, keys);
+        for (key, with, _) in WINDOW_EVENTS {
+            assert!(meta.contains(&format!("---@field {key}? any ")), "{key}");
+            assert!(
+                with.is_empty() || EVENT_DATA.iter().any(|d| d.2 == *with),
+                "{key}: {with}"
+            );
+        }
+        let kinds: Vec<String> = kui_core::WindowKind::ALL
+            .iter()
+            .map(|k| format!("\"{}\"", k.name()))
+            .collect();
+        let kind = WINDOW_ENTRY.iter().find(|f| f.0 == "kind").unwrap().2;
+        assert_eq!(kind, kinds.join("|"));
+        assert!(meta.contains("---@class kui.WindowEntry\n---@field name string\n"));
     }
 
     /// The data a script is handed is what its class says: real events,
@@ -927,6 +1077,10 @@ mod tests {
                 heard = {}
                 function view(env)
                   return column { pad = 10, gap = 6,
+                    window_events = { on_resize = { kind = "rs" }, on_focus = { kind = "fo" },
+                                      on_system_settings_change = { kind = "sy" },
+                                      on_modifiers = { kind = "mo" }, on_open = { kind = "op" } },
+                    windows = { { name = "pal", on_window = { kind = "pal" } } },
                     column { key = "pad", width = 100, height = 40, on_drag = { kind = "pan" },
                              on_hover = { kind = "hov" }, on_layout = { kind = "lay" } },
                     edit { key = "note", initial = "", width = 200, autofocus = true,
@@ -949,15 +1103,27 @@ mod tests {
         )
         .unwrap();
         let mut core = Core::new();
-        let frame = |core: &mut Core, ext: &mut crate::LuaExtension| {
-            let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        let sized = |core: &mut Core, ext: &mut crate::LuaExtension, w: f32| {
+            let mut ui = core.frame(Size::new(w, 200.0), 1.0);
             ext.view(&Slot::root(), &mut ui).unwrap();
             ui.finish();
             for e in core.take_pending_events() {
                 ext.on_event(&e);
             }
         };
+        let frame = |core: &mut Core, ext: &mut crate::LuaExtension| sized(core, ext, 400.0);
         frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        // The window's own events (ADR 0048), each as the root declared.
+        sized(&mut core, &mut ext, 380.0);
+        core.set_focused(false);
+        for e in core.take_pending_events() {
+            ext.on_event(&e);
+        }
+        core.set_system(kui_core::SystemEnv {
+            appearance: kui_core::Appearance::Dark,
+            ..Default::default()
+        });
         frame(&mut core, &mut ext);
         let feed = |core: &mut Core, ext: &mut crate::LuaExtension, ev| {
             for e in core.handle_input(ev) {
@@ -977,6 +1143,12 @@ mod tests {
             InputEvent::CursorMoved(Vec2::new(50.0, 30.0)),
         );
         feed(&mut core, &mut ext, InputEvent::mouse_up());
+        feed(
+            &mut core,
+            &mut ext,
+            InputEvent::Modifiers(kui_core::KeyMods::from_bits(kui_core::KeyMods::SHIFT)),
+        );
+        feed(&mut core, &mut ext, InputEvent::Open(vec!["/tmp/a".into()]));
         let heard: mlua::Table = ext.lua().globals().get("heard").unwrap();
         let mut events = Vec::new();
         for row in heard.sequence_values::<mlua::Table>() {
@@ -985,7 +1157,11 @@ mod tests {
             let kind: Option<String> = row.get("kind").unwrap();
             let fields: String = row.get("fields").unwrap();
             assert!(row.get::<i64>("node_key").is_ok(), "{event}: a node key");
-            assert_eq!(row.get::<i64>("window").unwrap(), 0, "{event}: the window");
+            // A `window` event's data is where the envelope's window
+            // would be, and wins (ADR 0048).
+            if event != "window" {
+                assert_eq!(row.get::<i64>("window").unwrap(), 0, "{event}: the window");
+            }
             let class = EVENT_DATA
                 .iter()
                 .filter(|d| d.1 == event)
@@ -1004,7 +1180,18 @@ mod tests {
             }
             events.push(format!("{event} {}", kind.unwrap_or_default()));
         }
-        for want in ["layout lay", "change note", "hover hov", "drag pan"] {
+        for want in [
+            "layout lay",
+            "change note",
+            "hover hov",
+            "drag pan",
+            "window pal",
+            "resize rs",
+            "window fo",
+            "system sy",
+            "modifiers mo",
+            "open op",
+        ] {
             assert!(events.iter().any(|e| e == want), "{want} in {events:?}");
         }
     }
@@ -1133,6 +1320,14 @@ mod tests {
                     let one = samples(&m[..m.len() - 2], &[]).into_iter().next().unwrap();
                     out.push(format!("{{ {one}, {one}, {one} }}"));
                 }
+                // The group, every key declared.
+                "kui.WindowEvents" => {
+                    let keys: Vec<String> = WINDOW_EVENTS
+                        .iter()
+                        .map(|(k, ..)| format!("{k} = {{ kind = \"{k}\" }}"))
+                        .collect();
+                    out.push(format!("{{ {} }}", keys.join(", ")));
+                }
                 m if m.starts_with("kui.") => {
                     let a = alias(m).unwrap_or_else(|| panic!("{m} is no alias"));
                     out.extend(samples(a.ty, a.strings));
@@ -1213,6 +1408,9 @@ mod tests {
             (m, Probe::Table(keys)) if m.starts_with('{') => shape(m)
                 .iter()
                 .all(|(name, required, _)| !required || keys.contains(name)),
+            ("kui.WindowEvents", Probe::Table(keys)) => keys
+                .iter()
+                .all(|k| WINDOW_EVENTS.iter().any(|(name, ..)| name == k)),
             (m, p) if m.starts_with("kui.") => alias(m).is_some_and(|a| admits(a.ty, p)),
             _ => false,
         })

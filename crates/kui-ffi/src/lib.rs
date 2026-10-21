@@ -141,7 +141,8 @@
 //! - Context: [`kui_ctx_new`], [`kui_ctx_free`], [`KuiCtx`].
 //! - Building a frame: [`kui_frame_begin`], [`kui_root`], [`kui_open`],
 //!   [`kui_open_keyed`], [`kui_text`], [`kui_close`], [`kui_frame_finish`];
-//!   [`KuiSpec`] and [`KuiTextStyle`] are what a node is built from.
+//!   [`KuiSpec`] and [`KuiTextStyle`] are what a node is built from, and
+//!   [`kui_root_with`]'s [`KuiWindowEvents`] what the window hears.
 //! - Input and events: [`kui_input_cursor`], [`kui_input_mouse`],
 //!   [`kui_input_press`], [`kui_input_text`], [`kui_poll_event`],
 //!   [`KuiEvent`].
@@ -153,7 +154,8 @@
 //!   [`kui_slider`], [`kui_select`].
 //! - Theme and metrics: [`kui_env_set_system`], [`kui_theme`],
 //!   [`KuiTheme`], [`kui_metrics`].
-//! - Windows: [`kui_window_declare`], [`kui_take_window_command`],
+//! - Windows: [`kui_window_declare`], [`kui_window_declare_with`],
+//!   [`kui_take_window_command`],
 //!   [`KuiWindowCommand`].
 //! - Accessibility: [`kui_access_tree`], [`KuiAccessNode`],
 //!   [`kui_input_access`].

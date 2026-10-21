@@ -83,6 +83,7 @@ impl Core {
     /// left is translated, stamped with its window and logged on its way
     /// out.
     pub(crate) fn outbound(&mut self, out: &mut Vec<UiEvent>) {
+        self.resolve_window_facts(out);
         self.devtools_consume(out);
         self.devtools_translate(out);
         self.stamp(out);
@@ -305,6 +306,47 @@ impl Core {
         }
     }
 
+    /// Gives each window fact in `out` the message the root declared for
+    /// it in `windowEvents` (ADR 0048), from the last finished frame, and
+    /// drops the ones it declared none for: no handler, no event. `open`
+    /// is the main window's alone, since the OS opens documents to the
+    /// app. Before any frame has finished nothing has been declared yet,
+    /// so a fact is held, pending, for the first drain after one has: the
+    /// documents a launcher hands over at launch reach a root that
+    /// declares `onOpen` on its first frame. The facts are rare, so a
+    /// batch with none pays one scan.
+    pub(crate) fn resolve_window_facts(&mut self, out: &mut Vec<UiEvent>) {
+        if !out.iter().any(|ev| ev.fact) {
+            return;
+        }
+        if !self.finished_any {
+            let (held, rest): (Vec<_>, Vec<_>) =
+                std::mem::take(out).into_iter().partition(|ev| ev.fact);
+            *out = rest;
+            self.pending.extend(held);
+            return;
+        }
+        let events = self.window_events_seen.as_deref();
+        let main = self.env.window.id == WindowId::MAIN;
+        out.retain_mut(|ev| {
+            if !ev.fact {
+                return true;
+            }
+            let message = events
+                .filter(|_| main || ev.event != EventKind::Open)
+                .and_then(|w| w.get(ev.event));
+            let Some(message) = message else {
+                return false;
+            };
+            let data = std::mem::take(&mut ev.payload);
+            let mut declared = UiEvent::declared(ev.event, ev.origin, ev.key, Some(message), data);
+            declared.window = ev.window;
+            declared.slot = ev.slot;
+            *ev = declared;
+            true
+        });
+    }
+
     /// Raises `message-field-taken` for each event whose data replaced a
     /// field its message already had (ADR 0047, decision 4): the app's
     /// own value under that name never reaches it.
@@ -394,10 +436,8 @@ impl Core {
             // so the host's, on the root, as `system` and `fonts` are.
             InputEvent::Open(paths) => {
                 if !paths.is_empty() {
-                    out.push(UiEvent::root(
+                    out.push(UiEvent::fact(
                         EventKind::Open,
-                        OriginId::HOST,
-                        Key::ROOT,
                         Value::map([(
                             "paths",
                             Value::List(paths.into_iter().map(Value::Str).collect()),
@@ -1414,8 +1454,11 @@ impl Core {
         self.env.focused = focused;
         // The app hears it as a window event rather than diffing
         // `env.focused` every frame (backlog DX18).
-        let (name, id) = (self.window_name(), self.env.window.id);
-        self.push_window_event(if focused { "focused" } else { "blurred" }, &name, id);
+        let phase = if focused { "focused" } else { "blurred" };
+        self.pending.push(UiEvent::fact(
+            EventKind::Window,
+            Value::map([("phase", Value::str(phase))]),
+        ));
         if !focused {
             self.release_held_keys();
             // The modifiers go with the keys: a Shift released in another

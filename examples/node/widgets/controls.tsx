@@ -8,7 +8,7 @@
 //
 //   npm run controls                           a window to use by hand
 //   node dist/widgets/controls.mjs --headless  the same loop, no window
-import type { App, RootMsg, SliderChangeMsg, UiEvent } from '@qxuken/kui';
+import type { App, SliderChangeMsg, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 const THEMES = ['Light', 'Dark', 'System'];
@@ -21,7 +21,7 @@ type AppMsg =
   | { kind: 'theme'; i: number }
   | SliderChangeMsg<{ kind: 'volume' }>
   | SliderChangeMsg<{ kind: 'gain' }>;
-type Msg = AppMsg | RootMsg;
+type Msg = AppMsg;
 type Model = { notify: boolean; channels: boolean[]; theme: number; volume: number; gain: number };
 
 const init: Model = { notify: true, channels: [true, false, true], theme: 2, volume: 40, gain: 0.5 };

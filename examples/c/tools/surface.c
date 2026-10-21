@@ -43,7 +43,12 @@ static void surface_view(void *user, KuiCtx *ui) {
     Keys *k = (Keys *)user;
 
     KuiSpec root = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}, .gap = 8};
-    kui_root(ui, &root);
+    /* The window's own events (ADR 0048): the held modifiers arrive as
+     * this message, borrowed for the call. */
+    KuiValue *mods = kui_value_str(KUI_STR("mods"));
+    KuiWindowEvents window_events = {.on_modifiers = mods};
+    kui_root_with(ui, &root, &window_events);
+    kui_value_free(mods);
     kui_window_title(ui, KUI_STR("surface"));
     kui_set_always_on_top(ui, true);
     kui_set_secure_input(ui, true);
@@ -701,7 +706,7 @@ static int surface(void) {
     KuiEvent ev = KUI_EVENT_INIT;
     int events = 0, layouts = 0, nudges = 0, downs = 0, ups = 0;
     int latin = 0, physical = 0, preedits = 0, commits = 0;
-    int drops = 0, drop_paths = 0;
+    int drops = 0, drop_paths = 0, held = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
         check(ev.size == sizeof ev, "a current host is filled all the way");
@@ -717,6 +722,10 @@ static int surface(void) {
         if (ev_is(&ev, "change") && kui_str_eq(msg, "volume")) nudges++;
         if (ev_is(&ev, "preedit")) preedits++;
         if (ev_is(&ev, "text")) commits++;
+        if (ev_is(&ev, "modifiers") && kui_str_eq(msg, "mods")) {
+            bool shift = false;
+            if (kui_value_as_bool(kui_value_get(data, KUI_STR("shift")), &shift) && shift) held++;
+        }
         if (ev_is(&ev, "drop")) {
             drops++;
             const KuiValue *paths = kui_value_get(data, KUI_STR("paths"));
@@ -757,6 +766,7 @@ static int surface(void) {
     /* enter, move, leave, enter, drop (no leave after it), enter, leave. */
     check(drops == 7, "every phase of the file drag landed as data");
     check(drop_paths == drops, "each carrying both paths");
+    check(held == 1, "kui_root_with: the modifiers arrived as the root's on_modifiers");
 
     /* Values round-trip, including the ones the counter never builds. */
     KuiValue *map = kui_value_map();
@@ -782,7 +792,8 @@ static int surface(void) {
     /* Declared windows (docs/adr/0004-multi-window.md): a frame that names
      * one gets a KUI_CMD_OPEN back from the same drain the chrome commands
      * use, carrying the id its events will say and the config it was
-     * declared with; the app hears about it as data. Reporting the OS
+     * declared with; the app hears about it as the on_window message
+     * kui_window_declare_with gave it (ADR 0048). Reporting the OS
      * close keeps it closed while it is still declared - a declaration
      * reopens a window only when it starts - and the drain's size
      * handshake refuses a reservation it cannot fill, leaving the command
@@ -796,7 +807,8 @@ static int surface(void) {
         cfg.width = 400;
         cfg.height = 300;
         kui_frame_begin(ui, 320, 240, 1);
-        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg,
+                                kui_value_str(KUI_STR("palette")), NULL);
         kui_frame_finish(ui);
         KuiWindowCommand shortcmd = KUI_WINDOW_COMMAND_INIT;
         shortcmd.size = 4;
@@ -812,9 +824,10 @@ static int surface(void) {
         int opened = 0, closed = 0;
         KuiEvent wev = KUI_EVENT_INIT;
         while (kui_poll_event(ui, &wev)) {
-            const KuiValue *phase = wev.payload ? kui_value_get(wev.payload, KUI_STR("phase")) : NULL;
-            KuiStr ps;
+            const KuiValue *phase = kui_value_get(ev_data(&wev), KUI_STR("phase"));
+            KuiStr ps, msg;
             if (!ev_is(&wev, "window")) continue;
+            if (!ev_message(&wev, &msg) || !kui_str_eq(msg, "palette")) continue;
             if (!phase || !kui_value_as_str(phase, &ps)) continue;
             if (ps.len == 6 && memcmp(ps.ptr, "opened", 6) == 0) opened++;
             if (ps.len == 6 && memcmp(ps.ptr, "closed", 6) == 0) closed++;
@@ -822,11 +835,12 @@ static int surface(void) {
         check(opened == 1 && closed == 0, "the app hears the window open");
         kui_window_closed(ui, 1);
         kui_frame_begin(ui, 320, 240, 1);
-        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg,
+                                kui_value_str(KUI_STR("palette")), NULL);
         kui_frame_finish(ui);
         check(!kui_take_window_command(ui, &cmd), "a closed window still declared does not reopen");
         while (kui_poll_event(ui, &wev)) {
-            const KuiValue *phase = wev.payload ? kui_value_get(wev.payload, KUI_STR("phase")) : NULL;
+            const KuiValue *phase = kui_value_get(ev_data(&wev), KUI_STR("phase"));
             KuiStr ps;
             if (phase && kui_value_as_str(phase, &ps) && ps.len == 6 && memcmp(ps.ptr, "closed", 6) == 0) closed++;
         }
@@ -880,6 +894,14 @@ static int surface(void) {
         kui_frame_begin(ui, 320, 240, 1);
         check(kui_menu_bar(ui, menus, 1), "kui_menu_bar declares and draws");
         kui_frame_finish(ui);
+        check(kui_activate_menu_bar_item(ui, 0, 0) == false,
+              "a bar declared without a message posts nothing for a choice");
+        /* The same bar with the message its choices arrive as (ADR 0048). */
+        KuiValue *chose = kui_value_map();
+        kui_value_map_set(chose, KUI_STR("kind"), kui_value_str(KUI_STR("chose")));
+        kui_frame_begin(ui, 320, 240, 1);
+        check(kui_menu_bar_with(ui, menus, 1, chose), "kui_menu_bar_with declares and draws");
+        kui_frame_finish(ui);
         kui_value_free(save);
 
         uint64_t rev = 0;
@@ -929,10 +951,11 @@ static int surface(void) {
         KuiEvent mev = KUI_EVENT_INIT;
         int menus_heard = 0, names_heard = 0;
         while (kui_poll_event(ui, &mev)) {
-            /* The bar's choice is a root event: {kind:"menu", role, item}. */
-            const KuiValue *item = kui_value_get(mev.payload, KUI_STR("item"));
-            KuiStr s = {0};
-            if (ev_is(&mev, "menu")) menus_heard++;
+            /* The bar's choice is its on_menu, with menu:{role, item}. */
+            const KuiValue *item = kui_value_get(ev_data(&mev), KUI_STR("item"));
+            KuiStr s = {0}, msg = {0};
+            if (ev_is(&mev, "menu") && ev_message(&mev, &msg) && kui_str_eq(msg, "chose"))
+                menus_heard++;
             if (item && kui_value_as_str(item, &s) && has(s, "Name")) names_heard++;
         }
         check(menus_heard == 2, "and the app hears a menu event for each");
@@ -1141,16 +1164,31 @@ static int surface(void) {
     }
 
     /* Documents the OS asked the app to open (backlog F124): nobody asked,
-     * and the host hears them on the root; none is nothing. */
+     * and they arrive as the main window's on_open (ADR 0048); none is
+     * nothing, and neither is a root that declares no on_open. */
     {
         KuiStr docs[] = { KUI_STR("/tmp/a.txt"), KUI_STR("/tmp/b.md") };
+        KuiEvent oev = KUI_EVENT_INIT;
+        KuiSpec plain = {0};
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_root_with(ui, &plain, NULL);
+        kui_frame_finish(ui);
+        while (kui_poll_event(ui, &oev)) {}
+        kui_input_open(ui, docs, 2);
+        check(!kui_poll_event(ui, &oev), "kui_root_with: no on_open, no event");
+        KuiValue *docs_msg = kui_value_map();
+        kui_value_map_set(docs_msg, KUI_STR("kind"), kui_value_str(KUI_STR("docs")));
+        KuiWindowEvents we = {.on_open = docs_msg};
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_root_with(ui, &plain, &we);
+        kui_frame_finish(ui);
+        kui_value_free(docs_msg);
         kui_input_open(ui, docs, 2);
         int opened = 0;
-        KuiEvent oev = KUI_EVENT_INIT;
         while (kui_poll_event(ui, &oev)) {
-            const KuiValue *paths = oev.payload ? kui_value_get(oev.payload, KUI_STR("paths")) : NULL;
-            KuiStr second;
-            if (ev_is(&oev, "open")
+            const KuiValue *paths = kui_value_get(ev_data(&oev), KUI_STR("paths"));
+            KuiStr second, msg;
+            if (ev_is(&oev, "open") && ev_message(&oev, &msg) && kui_str_eq(msg, "docs")
                 && paths && kui_value_len(paths) == 2
                 && kui_value_as_str(kui_value_at(paths, 1), &second) && second.len == 9
                 && memcmp(second.ptr, "/tmp/b.md", 9) == 0) {
