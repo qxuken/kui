@@ -641,8 +641,11 @@ impl App for A11y {
         }
         // Every other event carries data: a string message arrives as
         // `{tag, <event>: {...}}`, so the tag says which control and the
-        // event says what happened.
-        let tag = payload.get_str("tag").unwrap_or("");
+        // event says what happened. `payload` above is the tag already;
+        // read off it again, every tag was "" — each slider moved Volume,
+        // the code editor's selection was dropped and the menu's Escape
+        // closed the dialog instead (the alpha.60 pre-tag pass's AX audit).
+        let tag = payload.as_str().unwrap_or("");
         match ev.read() {
             // Escape, or a click outside the dialog: the core asks, the
             // app decides. A dialog holding unsaved work could ask again

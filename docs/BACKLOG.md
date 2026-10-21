@@ -3103,29 +3103,34 @@ filed, and in the archive.
 ## From the alpha.60 pre-tag pass (2026-10-22)
 
 Two passes over the round since alpha.59 — ADRs 0047 and 0048, F173 —
-one on each machine, the same day. The first, on the Windows machine
-and under WSL: CI's `check` in order on both,
-the windowed round on both, the bench guard (clean against alpha.59),
-and ten minutes of every fuzz target at once on eight cores. Corrected
-before the tag: Odin's surface walk passed `root_with` a bare spec
-literal, which does not compile against its `Maybe(Spec)`, so CI's Odin
-step failed on main. One entry, FZ10, is what the fuzzing found — an
-arc past an f32 at one scale measured as its chord and drawn round its
-ellipse, 29 seconds into the `path` target; the other five ran clean —
-**built 2026-10-22**, the day it was filed, and in the archive.
+one on each machine, the same day.
 
-The second, on the Mac, over the same round before the first's FZ10
-and Odin fix were merged: CI's `check` in order (2203 Rust tests in 170 suites; the
-62 scenes through every adapter; the C round; the Odin binding
-generated, vetted, driven and across languages, the local compiler
-working again; Node 241 of 241 with the corpus required; gen; the
-typecheck; the headless round), `cargo audit`, the bench guard against
-alpha.59 on every bench file, and three read-only reviewers — the core,
-the bindings, the docs — each claim checked by reading before it was
-acted on. Green as found; the guard green (the guarded rows −4.3% to
-+1.3%). One entry, RG156, is what the reviewers and the one bench the
-guard does not read found, **built 2026-10-22**, the day it was filed,
-and in the archive; RG157 is what the pass left.
+The first, on the Windows machine and under WSL: CI's `check` in order
+on both, the windowed round on both, the bench guard (clean against
+alpha.59), and ten minutes of every fuzz target at once on eight cores.
+Corrected before the tag: Odin's surface walk passed `root_with` a bare
+spec literal, which does not compile against its `Maybe(Spec)`, so CI's
+Odin step failed on main. One entry, FZ10, is what the fuzzing found —
+an arc past an f32 at one scale measured as its chord and drawn round
+its ellipse, 29 seconds into the `path` target; the other five ran
+clean — **built 2026-10-22**, the day it was filed, and in the archive.
+
+The second, on the Mac, over the same round before the first's fixes
+were merged: CI's `check` in order (2203 Rust tests in 170 suites; the
+62 scenes through every adapter; the C round; Node 241 of 241 with
+the corpus required; gen; the typecheck; the headless round; the Odin
+leg too, green — on the Mac's Odin, dev-2026-10, which takes the bare
+literal CI's pinned dev-2026-09 refuses, so a local Odin run newer than
+CI's proves nothing about CI's), `cargo audit`, the windowed smoke with
+Node's (55 examples on both bases), the accessibility audit, the bench
+guard against alpha.59 on every bench file, and three read-only
+reviewers — the core, the bindings, the docs — each claim checked by
+reading before it was acted on. Green as found but for the
+accessibility audit, 95 of 106 (the example's own tags, below); the
+guard green (the guarded rows −4.3% to +1.3%). One entry, RG156, is
+what the reviewers, the audit and the one bench the guard does not read
+found, **built 2026-10-22**, the day it was filed, and in the archive;
+RG157 is what the pass left.
 
 ### `.` RG157 — What the alpha.60 pre-tag pass left
 
@@ -4910,4 +4915,4 @@ move.
 
 **From the alpha.60 pre-tag pass (2026-10-22)** — RG156, filed and built the same day; RG157, what it left, open
 
-- `~` **RG156** — [A Lua slot's `window_events` took the host's, and a keystroke copied the document for nobody](backlog/closed-2026-09.md#-rg156--a-lua-slots-window_events-took-the-hosts-and-a-keystroke-copied-the-document-for-nobody--done-2026-10-22) — done (2026-10-22) — the group's origin kept with it, the editor's text copied only for a declared `on_change` (100k lines 4.3 → 1.4 ms), the platform bar's choice through `outbound`, a held value keeps its commit's claim, Node's `'dispatch'` envelope, the docs and the changelog
+- `~` **RG156** — [A Lua slot's `window_events` took the host's, and a keystroke copied the document for nobody](backlog/closed-2026-09.md#-rg156--a-lua-slots-window_events-took-the-hosts-and-a-keystroke-copied-the-document-for-nobody--done-2026-10-22) — done (2026-10-22) — the group's origin kept with it, the editor's text copied only for a declared `on_change` (100k lines 4.3 → 1.4 ms), the platform bar's choice through `outbound`, a held value keeps its commit's claim, Node's `'dispatch'` envelope, the accessibility example's tags (AX audit 95 → 106 of 106), the docs and the changelog
