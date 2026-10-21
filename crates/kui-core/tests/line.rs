@@ -8,7 +8,7 @@
 use kui_core::line::{CURVE_STEP, flatten_curve};
 use kui_core::{
     Color, Core, FloatAnchor, FloatConfig, InputEvent, MouseButton, NodeSpec, Quad, QuadKind, Size,
-    Stroke, Value, Vec2,
+    Stroke, Vec2,
 };
 
 const VIEW: Size = Size { w: 300.0, h: 200.0 };

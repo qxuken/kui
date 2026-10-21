@@ -13,6 +13,9 @@
 //! editor carries its text. After every frame: the editor holds the value
 //! the app declared unless a composition is under way, and its caret and
 //! selection sit on character boundaries of that text.
+//!
+//! Every input gets a new core, built in a session kept from the inputs
+//! before it (`crate::reuse`).
 
 use arbitrary::{Arbitrary, Result, Unstructured};
 use kui_core::access::{AccessAction, AccessRequest};
@@ -21,6 +24,8 @@ use kui_core::{
     Core, EditOptions, Event, EventKind, InputEvent, Key, MenuItem, NodeSpec, Role, Size,
     TextStyle, UiEvent, Value, Vec2, widgets,
 };
+
+use crate::reuse::{self, Kept};
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -204,30 +209,55 @@ enum Action {
 }
 
 pub fn run(data: &[u8]) {
+    drive(data, None);
+}
+
+/// What [`run`] saw of `data`, line by line — the events, the warnings,
+/// the commands and the editor after every step — for `tests/reuse.rs`
+/// to hold a kept session to a new one. Tracing only reads what `run`
+/// reads.
+pub fn trace(data: &[u8]) -> Vec<String> {
+    let mut lines = Vec::new();
+    drive(data, Some(&mut lines));
+    lines
+}
+
+thread_local! {
+    static KEPT: Kept<()> = const { Kept::new() };
+}
+
+fn drive(data: &[u8], trace: Option<&mut Vec<String>>) {
     let Ok(input) = Input::arbitrary_take_rest(Unstructured::new(data)) else {
         return;
     };
-    let mut d = Driver {
-        core: Core::new(),
-        messages: input.messages.iter().map(Msg::value).collect(),
-        value: input.value,
-        filter: input.filter,
-        multiline: input.multiline,
-        model: String::new(),
-        keys: Vec::new(),
-        cursor: Vec2::new(10.0, 10.0),
-    };
-    d.core.set_diagnostics(true);
-    d.core.set_inspect(true);
-    d.frame();
-    for action in input.actions.iter().take(64) {
-        let events = d.apply(action);
-        d.check_events(&events);
+    KEPT.with(|kept| {
+        let (core, ()) = kept.core(|_| ());
+        let mut d = Driver {
+            core,
+            messages: input.messages.iter().map(Msg::value).collect(),
+            value: input.value,
+            filter: input.filter,
+            multiline: input.multiline,
+            model: String::new(),
+            keys: Vec::new(),
+            cursor: Vec2::new(10.0, 10.0),
+            dirty: false,
+            trace,
+        };
+        d.core.set_diagnostics(true);
+        d.core.set_inspect(true);
         d.frame();
-    }
+        for action in input.actions.iter().take(64) {
+            let events = d.apply(action);
+            d.note(|| format!("{action:?} -> {events:?}"));
+            d.check_events(&events);
+            d.frame();
+        }
+        kept.done(d.core, (), d.dirty);
+    });
 }
 
-struct Driver {
+struct Driver<'a> {
     core: Core,
     messages: Vec<Value>,
     value: bool,
@@ -238,9 +268,19 @@ struct Driver {
     /// The key each row was declared on in the last frame, by [`Row`].
     keys: Vec<(Row, Key)>,
     cursor: Vec2,
+    /// A window opened or a sound was queued: the session is not handed
+    /// back (see [`crate::reuse`]).
+    dirty: bool,
+    trace: Option<&'a mut Vec<String>>,
 }
 
-impl Driver {
+impl Driver<'_> {
+    fn note(&mut self, line: impl FnOnce() -> String) {
+        if let Some(t) = self.trace.as_deref_mut() {
+            t.push(line());
+        }
+    }
+
     fn message(&self, row: Row) -> Value {
         self.messages[row as usize].clone()
     }
@@ -343,8 +383,25 @@ impl Driver {
         self.keys = keys;
         let pending = self.core.take_pending_events();
         self.check_events(&pending);
-        let _ = self.core.take_warnings();
-        let _ = self.core.access_tree();
+        let warnings = self.core.take_warnings();
+        let windows = self.core.take_window_commands();
+        let audio = self.core.take_audio_commands();
+        self.dirty |= reuse::opens(&windows) || !audio.is_empty();
+        if self.trace.is_some() {
+            let tree = format!("{:?}", self.core.access_tree());
+            let text = self.core.edit_text(field);
+            let caret = self.core.edit.caret_and_selection(field);
+            let focus = self.core.focus();
+            let model = self.model.clone();
+            self.note(|| {
+                format!(
+                    "frame: {pending:?}\n{warnings:?}\n{windows:?}\n{audio:?}\n\
+                     {text:?} {caret:?} focus {focus:?} model {model:?}\n{tree}"
+                )
+            });
+        } else {
+            let _ = self.core.access_tree();
+        }
         self.check_editor(field);
     }
 
@@ -555,12 +612,15 @@ impl Driver {
     }
 }
 
-/// The payload is the declared message with the event's data in it: a
-/// map's own fields kept but the one the event writes, a non-map's value
-/// under `tag`, and a `Null`'s nothing.
+/// The payload is a map: the declared message with the event's data in
+/// it — a map's own fields kept but the one the event writes, a non-map's
+/// value under `tag`, and nothing more for a `Null`.
 fn check_payload(ev: &UiEvent, message: &Value) {
     let field = ev.event.name();
     let data = ev.data();
+    let Value::Map(entries) = &ev.payload else {
+        panic!("a node's payload is a map: {ev:?}");
+    };
     match message {
         Value::Map(own) => {
             for (k, v) in own {
@@ -575,22 +635,18 @@ fn check_payload(ev: &UiEvent, message: &Value) {
             }
         }
         Value::Null => {
-            if data.is_none() {
-                assert_eq!(
-                    ev.payload,
-                    Value::Null,
-                    "a Null message with no data is nothing"
-                );
-            }
+            let extra = usize::from(data.is_some());
+            assert_eq!(
+                entries.len(),
+                extra,
+                "a Null message adds nothing but the data: {ev:?}"
+            );
         }
-        other => match data {
-            Some(_) => assert_eq!(
-                ev.payload.get("tag"),
-                Some(other),
-                "a non-map message under `tag`: {ev:?}"
-            ),
-            None => assert_eq!(&ev.payload, other, "a data-less event is the message"),
-        },
+        other => assert_eq!(
+            ev.payload.get("tag"),
+            Some(other),
+            "a non-map message under `tag`: {ev:?}"
+        ),
     }
     if let Some(d) = data {
         assert_eq!(

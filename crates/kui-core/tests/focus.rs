@@ -137,17 +137,19 @@ fn key(core: &mut Core, k: EditKey) -> Vec<UiEvent> {
 /// colon for a `dismiss`).
 fn payloads(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .map(|e| match e.payload.get_str("tag").filter(|_| e.data().is_none()) {
-            Some(s) => s.to_string(),
-            None => format!(
-                "{}:{}",
-                e.event.name(),
-                e.data()
-                    .and_then(|d| d.get_float("value"))
-                    .map(|v| v.to_string())
-                    .unwrap_or_default()
-            ),
-        })
+        .map(
+            |e| match e.payload.get_str("tag").filter(|_| e.data().is_none()) {
+                Some(s) => s.to_string(),
+                None => format!(
+                    "{}:{}",
+                    e.event.name(),
+                    e.data()
+                        .and_then(|d| d.get_float("value"))
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                ),
+            },
+        )
         .collect()
 }
 

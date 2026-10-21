@@ -54,7 +54,10 @@ fn drag_emits_start_move_end_with_geometry() {
     assert_eq!(parent.get_float("w"), Some(400.0));
     assert_eq!(parent.get_float("h"), Some(300.0));
     // The real drag suppressed the click.
-    assert!(!all.iter().any(|e| e.payload.get_str("tag") == Some("clicked")));
+    assert!(
+        !all.iter()
+            .any(|e| e.payload.get_str("tag") == Some("clicked"))
+    );
 }
 
 #[test]
@@ -74,7 +77,8 @@ fn undragged_press_still_clicks() {
         "sub-slop motion emits no move"
     );
     assert!(
-        all.iter().any(|e| e.payload.get_str("tag") == Some("clicked")),
+        all.iter()
+            .any(|e| e.payload.get_str("tag") == Some("clicked")),
         "a press that never left the slop is still a click"
     );
 }
@@ -229,7 +233,8 @@ fn hoverable_added_below_a_pressed_node_keeps_the_click() {
     frame(&mut core, true);
     let up = core.handle_input(InputEvent::mouse_up());
     assert!(
-        up.iter().any(|e| e.payload.get_str("tag") == Some("clicked")),
+        up.iter()
+            .any(|e| e.payload.get_str("tag") == Some("clicked")),
         "release on the same tab is still a click: {up:?}"
     );
     // And the column below it is what the cursor finds once it leaves.
@@ -357,7 +362,10 @@ fn drag_deltas_are_measured_from_the_press_point() {
     );
     assert_eq!(all[3].data().unwrap().get_float("x"), Some(113.0));
     // And a click it was not.
-    assert!(!all.iter().any(|e| e.payload.get_str("tag") == Some("clicked")));
+    assert!(
+        !all.iter()
+            .any(|e| e.payload.get_str("tag") == Some("clicked"))
+    );
 }
 
 /// A slow pointer never covers the slop between two events; measured from
@@ -381,7 +389,10 @@ fn a_slow_drag_still_leaves_the_slop() {
         .filter_map(|e| e.data()?.get_float("dx"))
         .collect();
     assert_eq!(dx, [0.0, 4.0, 5.0, 5.0]);
-    assert!(!all.iter().any(|e| e.payload.get_str("tag") == Some("clicked")));
+    assert!(
+        !all.iter()
+            .any(|e| e.payload.get_str("tag") == Some("clicked"))
+    );
 }
 
 /// A drag released with the cursor outside the window ends where the
@@ -443,7 +454,8 @@ fn losing_the_keyboard_mid_drag_ends_it_without_a_click() {
     core.set_focused(true);
     evs.extend(core.handle_input(InputEvent::mouse_up()));
     assert!(
-        !evs.iter().any(|e| e.payload.get_str("tag") == Some("clicked")),
+        !evs.iter()
+            .any(|e| e.payload.get_str("tag") == Some("clicked")),
         "{evs:?}"
     );
 }

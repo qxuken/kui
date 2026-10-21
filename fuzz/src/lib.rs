@@ -11,6 +11,7 @@ pub mod decode;
 pub mod events;
 pub mod parsers;
 pub mod path;
+pub mod reuse;
 pub mod scenes;
 pub mod values;
 

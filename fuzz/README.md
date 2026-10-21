@@ -51,6 +51,13 @@ fuzz target calls, under `cargo test --workspace` on stable, so a fixed
 crash stays fixed without a fuzzer. `corpus/` and `artifacts/` are a
 run's working state and are not checked in.
 
+`events` and `scenes` build each input's `Core` in a session kept from
+the inputs before it, because a new session's font caches were nine
+tenths of an input's time (`src/reuse.rs` says what a kept session
+holds and when it is dropped). `tests/reuse.rs` checks that an input runs
+the same on a kept session as on a new one; `KUI_FUZZ_CORPUS=1 cargo
+test -p kui-fuzz --test reuse` checks a run's whole corpus too.
+
 The target binaries need libFuzzer, so they sit behind the `libfuzzer`
 feature, which only `scripts/fuzz.nu` turns on: a workspace build never
 compiles them.
