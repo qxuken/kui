@@ -1466,6 +1466,39 @@ impl EditStore {
 
     /// Types `text` over the selection (or at the caret), as one undo
     /// step; true when the content changed.
+    /// Replaces the whole text with `text` as one recorded edit, as if the
+    /// user had selected all and typed it: what assistive technology's
+    /// `setValue` on an editor does, so a reader's edit undoes in one step
+    /// as typing does, and an app's correction in the `update` it reached
+    /// joins that step (ADR 0047, decision 8) — where `set_text`, the
+    /// app's own replacement, clears the history. False when the text is
+    /// already `text`. A secure editor replaces its secret and records
+    /// nothing, as for typing.
+    pub fn replace_all(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
+        let Some(s) = self.states.get_mut(&key) else {
+            return false;
+        };
+        s.abandon_preedit();
+        let text = admitted(text, s.multiline);
+        let now = match &s.secret {
+            Some(secret) => secret.clone(),
+            None => s.editor.with_buffer(buffer_text),
+        };
+        if now == *text {
+            return false;
+        }
+        s.coalesce = None;
+        s.editor.set_selection(Selection::Normal(Cursor::new(0, 0)));
+        s.editor.action(fs, Action::Motion(Motion::BufferEnd));
+        s.insert_recorded(&text);
+        s.coalesce = None;
+        s.editor.shape_as_needed(fs, false);
+        s.version += 1;
+        s.invalidate_measurements();
+        self.touch_caret(key);
+        true
+    }
+
     pub fn replace_selection(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;

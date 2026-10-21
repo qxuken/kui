@@ -412,3 +412,57 @@ fn the_change_event_s_text_declared_back_keeps_the_editor_in_sync() {
     assert_eq!(text(&core, key), "");
     assert!(undos <= 2, "typing undoes by the word, took {undos}");
 }
+
+/// A reader's `setValue` is an edit of the user's, recorded as typing is:
+/// the history typed before it survives, it undoes in one step, and the
+/// app's correction in the `update` it reached joins that step — where it
+/// went through `set_edit_text` and cleared the history, so a filter's
+/// correction was a step of its own and the typing before was gone.
+#[test]
+fn a_readers_set_value_undoes_like_typing() {
+    let mut core = Core::new();
+    let o = opts();
+    let declare = |core: &mut Core, model: &str| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let key = ui.text_edit_value(
+            "field",
+            model,
+            &o,
+            NodeSpec::column().on_change(kui_core::Value::Null),
+        );
+        ui.finish();
+        key
+    };
+    let mut model = String::new();
+    let key = declare(&mut core, &model);
+    // Typed first, and stored as the app stores it.
+    type_str(&mut core, "ab");
+    model = text(&core, key);
+    declare(&mut core, &model);
+    // A reader sets the value; the app upper-cases what it hears.
+    let mut req = kui_core::AccessRequest::new(key, kui_core::AccessAction::SetValue);
+    req.value = Some("hello".into());
+    let evs = core.handle_input(InputEvent::Access(req));
+    let change = evs
+        .iter()
+        .find(|e| e.is(kui_core::EventKind::Change))
+        .expect("the reader's edit is a change");
+    let kui_core::Event::EditChange(c) = change.read() else {
+        panic!("an editor's change");
+    };
+    assert_eq!(c.text, "hello");
+    model = c.text.to_uppercase();
+    declare(&mut core, &model);
+    assert_eq!(text(&core, key), "HELLO", "the correction applied");
+    // One undo takes back the reader's edit and the correction together,
+    // and the typing before it is still there to undo.
+    press(&mut core, EditKey::Undo);
+    assert_eq!(
+        text(&core, key),
+        "ab",
+        "the reader's edit undone in one step"
+    );
+    press(&mut core, EditKey::Undo);
+    assert_eq!(text(&core, key), "", "the typing before it survived");
+}

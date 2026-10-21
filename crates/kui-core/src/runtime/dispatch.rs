@@ -1018,9 +1018,11 @@ impl Core {
             }
             AccessAction::SetValue => {
                 if self.edit.contains(key) {
+                    // A reader's edit is the user's, recorded as typing is
+                    // (`replace_all`): it undoes in one step, and an app's
+                    // correction to it joins that step.
                     let value = req.value.unwrap_or_default();
-                    if self.edit.text(key).as_deref() != Some(value.as_str()) {
-                        self.set_edit_text(key, &value);
+                    if self.edit_with_fonts(|edit, fs| edit.replace_all(key, &value, fs)) {
                         self.push_edit_event(key, EventKind::Change, out);
                     }
                 } else if let Some(i) = idx
