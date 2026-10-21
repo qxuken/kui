@@ -219,16 +219,11 @@ impl Core {
         if r.handler {
             let p = self.interaction.cursor().unwrap_or(Vec2::ZERO);
             if let Some(mut ev) = self.scroll_event(r.key, p, delta) {
-                // Ahead of `tag`, which every payload ends on.
                 if r.mods != 0
-                    && let Value::Map(entries) = &mut ev.payload
+                    && let Some(scroll) = ev.data_fields_mut()
                 {
                     let held = crate::input::KeyMods::from_bits(self.scroll_latch.held);
-                    let at = entries
-                        .iter()
-                        .position(|(k, _)| k == "tag")
-                        .unwrap_or(entries.len());
-                    entries.insert(at, ("mods".to_string(), held.to_fields()));
+                    scroll.push(("mods".to_string(), held.to_fields()));
                 }
                 out.push(ev);
             }

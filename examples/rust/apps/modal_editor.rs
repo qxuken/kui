@@ -1,6 +1,6 @@
 //! A helix-flavored modal editor with the app — not kui — owning the
 //! document, the keymap, and the modes. The whole keyboard arrives through
-//! one `on_key` sink as `{kind="key"}` events, so the same modal dispatch
+//! one `on_key` sink as `key` events, so the same modal dispatch
 //! would work verbatim from Lua or C. kui's part is turning the state into
 //! rows of text runs: selection as background segments, the caret as an
 //! inline node, no text measurement anywhere.
@@ -10,8 +10,8 @@
 //! code stays.
 //!
 //! The mouse and the clipboard are the same shape as the keyboard: a press
-//! or drag inside the sink arrives as a `drag` event carrying `line`,
-//! `byte` and `clicks` (backlog C34), so click-to-caret, drag-select and
+//! or drag inside the sink arrives as a `drag` event whose data carries
+//! `line`, `byte` and `clicks` (backlog C34), so click-to-caret, drag-select and
 //! double-click-word are arithmetic in `on_event`; `y` and `p` go through
 //! `ui.set_clipboard` / `ui.request_paste` (backlog C33), and the paste
 //! comes back as a `text` event the way an IME's commit does.
@@ -23,7 +23,8 @@
 use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, NodeSpec, Role, TextStyle, Theme, Ui, UiEvent, Value, WindowCommand,
+    Align, App, Color, Core, Drag, DragPhase, Event, KeyPress, LinePos, NodeSpec, Role, TextStyle,
+    Theme, Ui, UiEvent, Value, WindowCommand,
 };
 
 const FONT: f32 = 13.5;
@@ -145,23 +146,22 @@ struct ModalEditor {
     quit: bool,
 }
 
-/// The key event, back out of `Value` form.
+/// The key press, as the keymap reads it.
 struct KeyEv {
     code: String,
     text: Option<String>,
 }
 
 impl KeyEv {
-    /// A press, from a `{kind="key"}` payload. Modal editing is a keymap,
-    /// not a held-key interaction: the releases the same sink delivers
-    /// (`phase="up"`) are not commands, so they stop here.
-    /// Every key event is a press: the sink never asked for releases
-    /// (`key_up`), so a keymap needs no phase check.
-    fn from_payload(p: &Value) -> Option<Self> {
-        Some(Self {
-            code: p.get("code")?.as_str()?.to_string(),
-            text: p.get_str("text").map(str::to_string),
-        })
+    /// A press, from a `key` event. Modal editing is a keymap, not a
+    /// held-key interaction: every key event is a press, since the sink
+    /// never asked for releases (`key_up`), so a keymap needs no phase
+    /// check.
+    fn from_press(p: KeyPress) -> Self {
+        Self {
+            code: p.code.name(),
+            text: p.text,
+        }
     }
 }
 
@@ -449,8 +449,11 @@ impl App for ModalEditor {
                     .on_drag(Value::Null)
                     // The app owns the text, so it says what the sink is; the
                     // lines it draws (`Role::Line` rows) are the editor's text
-                    // to a screen reader, and selection requests come back as
-                    // `{kind="access"}` events (see `on_access`).
+                    // to a screen reader. A reader's requests come back as the
+                    // events a user doing the same would cause: a selection
+                    // as `select` and a replacement as `text` on the sink,
+                    // and a new value as `change` here (see `on_select`).
+                    .on_change(Value::Null)
                     .role(Role::MultilineTextInput)
                     .label(doc.name.as_str()),
                 |ui| render_editor(ui, &pal, doc, view, mode, editor_h),
@@ -462,24 +465,29 @@ impl App for ModalEditor {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("key") => {
-                if let Some(k) = KeyEv::from_payload(&ev.payload) {
-                    self.on_key(k);
-                }
-            }
-            // The clipboard's answer, or an IME's commit: the paste `p`
-            // asked for, else typed text in insert mode.
-            Some("text") => {
-                let text = ev.payload.get_str("text").unwrap_or("");
+        // Every handler on the sink declared `Null`, so the event alone
+        // says what happened, read whole.
+        match ev.read() {
+            Event::Key(_, press) => self.on_key(KeyEv::from_press(press)),
+            // The clipboard's answer, an IME's commit, or a screen
+            // reader's replacement: the paste `p` asked for, else typed
+            // text in insert mode.
+            Event::Text(t) => {
                 if std::mem::take(&mut self.awaiting_paste) {
-                    paste(&mut self.doc, &mut self.view, text);
+                    paste(&mut self.doc, &mut self.view, &t.text);
                 } else if self.mode == Mode::Insert {
-                    insert_text(&mut self.doc, &mut self.view, text);
+                    insert_text(&mut self.doc, &mut self.view, &t.text);
                 }
             }
-            Some("drag") => self.on_drag(&ev.payload),
-            Some("access") => self.on_access(&ev.payload),
+            Event::Drag(d) => self.on_drag(&d),
+            Event::Select(sel) => self.on_select(sel.anchor, sel.focus),
+            // A screen reader setting the whole value.
+            Event::EditChange(c) => {
+                self.doc.lines = c.text.split('\n').map(String::from).collect();
+                self.doc.modified = true;
+                self.view.cur = Pos::default();
+                self.view.anchor = None;
+            }
             _ => {}
         }
     }
@@ -491,14 +499,14 @@ impl ModalEditor {
     /// document), `byte` is into the line's drawn text, `clicks` the
     /// press's count. One click places the caret, two take the word,
     /// three the line; the pointer moving extends from where it pressed.
-    fn on_drag(&mut self, p: &Value) {
-        let Some(pos) = self.drag_pos(p) else {
+    fn on_drag(&mut self, d: &Drag) {
+        let Some(pos) = self.drag_pos(d) else {
             return;
         };
-        let clicks = p.get_int("clicks").unwrap_or(1);
+        let clicks = d.clicks.unwrap_or(1);
         let (doc, view) = (&self.doc, &mut self.view);
-        match p.get_str("phase") {
-            Some("start") => {
+        match d.phase {
+            DragPhase::Start => {
                 self.drag_from = Some(pos);
                 match clicks {
                     1 => {
@@ -522,7 +530,7 @@ impl ModalEditor {
                     }
                 }
             }
-            Some("move") => {
+            DragPhase::Move => {
                 if let Some(from) = self.drag_from
                     && pos != from
                 {
@@ -530,21 +538,20 @@ impl ModalEditor {
                     view.cur = pos;
                 }
             }
-            _ => self.drag_from = None,
+            DragPhase::End => self.drag_from = None,
         }
         if self.mode == Mode::Command {
             self.mode = Mode::Normal;
         }
     }
 
-    /// The document position a pointer payload names. The drawn text is
-    /// the line as it is — a run's spaces measure at the face's advance
-    /// (backlog K3) — so the byte offset into it counts back to a column
-    /// directly.
-    fn drag_pos(&self, p: &Value) -> Option<Pos> {
-        let line = p.get("line")?.as_int()? as usize + self.view.top;
+    /// The document position a drag names. The drawn text is the line as
+    /// it is — a run's spaces measure at the face's advance (backlog K3) —
+    /// so the byte offset into it counts back to a column directly.
+    fn drag_pos(&self, d: &Drag) -> Option<Pos> {
+        let line = d.line? as usize + self.view.top;
         let line = line.min(self.doc.lines.len().saturating_sub(1));
-        let byte = p.get("byte")?.as_int()? as usize;
+        let byte = d.byte?;
         Some(Pos {
             line,
             col: col_at(&self.doc.lines[line], byte),
@@ -553,44 +560,22 @@ impl ModalEditor {
 }
 
 impl ModalEditor {
-    /// A screen reader's text requests, in the app's own terms: lines are
+    /// A screen reader's selection, in the app's own terms: lines are
     /// ordinals among the drawn lines (so `view.top` maps them back into
     /// the document), offsets are bytes.
-    fn on_access(&mut self, p: &Value) {
-        let text = p.get_str("text").unwrap_or("");
-        match p.get_str("action") {
-            Some("setTextSelection") => {
-                let (Some(anchor), Some(focus)) = (
-                    p.get("anchor").and_then(|v| self.access_pos(v)),
-                    p.get("focus").and_then(|v| self.access_pos(v)),
-                ) else {
-                    return;
-                };
-                self.view.cur = focus;
-                self.view.anchor = (anchor != focus).then_some(anchor);
-            }
-            Some("replaceSelectedText") => {
-                delete_sel(&mut self.doc, &mut self.view);
-                insert_text(&mut self.doc, &mut self.view, text);
-            }
-            Some("setValue") => {
-                self.doc.lines = text.split('\n').map(String::from).collect();
-                self.doc.modified = true;
-                self.view.cur = Pos::default();
-                self.view.anchor = None;
-            }
-            _ => {}
-        }
+    fn on_select(&mut self, anchor: LinePos, focus: LinePos) {
+        let (anchor, focus) = (self.access_pos(anchor), self.access_pos(focus));
+        self.view.cur = focus;
+        self.view.anchor = (anchor != focus).then_some(anchor);
     }
 
-    fn access_pos(&self, v: &Value) -> Option<Pos> {
-        let line = v.get("line")?.as_int()? as usize + self.view.top;
+    fn access_pos(&self, v: LinePos) -> Pos {
+        let line = v.line as usize + self.view.top;
         let line = line.min(self.doc.lines.len().saturating_sub(1));
-        let offset = v.get("offset")?.as_int()? as usize;
-        Some(Pos {
+        Pos {
             line,
-            col: col_at(&self.doc.lines[line], offset),
-        })
+            col: col_at(&self.doc.lines[line], v.offset),
+        }
     }
 }
 

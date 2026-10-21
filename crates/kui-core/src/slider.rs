@@ -173,14 +173,16 @@ impl SliderTrack {
     }
 }
 
-/// `{kind="change", value, phase, tag}` on the slider.
+/// `{change: {value, phase}}` in the slider's `onChange` message.
 pub fn change_event(origin: OriginId, key: Key, value: f64, phase: &str, tag: &Value) -> UiEvent {
-    let payload = Value::map([
-        ("kind", Value::str("change")),
-        ("value", Value::Float(value)),
-        ("phase", Value::str(phase)),
-    ]);
-    UiEvent::on(origin, key, payload).tagged(Some(tag))
+    let data = Value::map([("value", Value::Float(value)), ("phase", Value::str(phase))]);
+    UiEvent::declared(
+        crate::input::EventKind::Change,
+        origin,
+        key,
+        Some(tag),
+        data,
+    )
 }
 
 #[cfg(test)]

@@ -34,11 +34,12 @@ resulting library.
 ```tsx
 // tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 import { createApp, runWindowed } from '@qxuken/kui';
-import type { CoreMsg, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
+import type { Ctx, KuiWindow, RootMsg, UiEvent } from '@qxuken/kui';
 
 type Model = { count: number };
-// This app's own messages plus the ones the core sends by itself.
-type Msg = { kind: 'add'; by: number } | { kind: 'reset' } | CoreMsg;
+// This app's own messages plus the root events the core sends with no node
+// behind them (a resize, a window opening).
+type Msg = { kind: 'add'; by: number } | { kind: 'reset' } | RootMsg;
 
 // The fourth argument is the surface the loop drives — the headless `Ctx`
 // under `createApp`, the `KuiWindow` under `runWindowed` — for `editText`,
@@ -180,9 +181,9 @@ pointing into the other three.
 - **Hover and pressed colors** are props, not queries: `hoverBg`,
   `pressedBg`, and `hoverGroup="name"` to light connected pieces together.
   Add `transition={150}` and the swap eases. `<button>` is exactly that data.
-  For hover-dependent *layout* use `onHover={tag}` and react to
-  `{kind: 'hover', phase: 'enter' | 'leave'}` events; `win.isHovered(key)`
-  and `isPressed` answer for keys you got from events.
+  For hover-dependent *layout* use `onHover={msg}` and react to the
+  message arriving with `hover: {phase: 'enter' | 'leave', by}` in it;
+  `win.isHovered(key)` and `isPressed` answer for keys you got from events.
 - **The pointer shape is declared**, not derived: `cursor="pointer"` on a
   control, `cursor="grab"` on a handle (and `'grabbing'` while its drag
   runs), `cursor="ewResize"` on a splitter. A node that declares nothing is
@@ -221,8 +222,8 @@ pointing into the other three.
   rather than restarting it, so `{model.music && <audio … />}` is the whole
   on/off story. Or imperatively — `win.play(id, { volume, loop, fadeIn,
   tag })` returns a playback id for `stop` / `setVolume` / `pause` /
-  `resume`, and a `tag` comes back as a `SoundMsg`
-  (`{kind: 'sound', phase: 'ended', tag}`) when that playback finishes on
+  `resume`, and the `tag` message comes back with `sound: {phase:
+  'ended', playback}` in it (a `SoundMsg`) when that playback finishes on
   its own, which is how a chime chains into the next state. Volumes are
   linear amplitude. Headless (`createApp`) nothing plays: `ctx.audioCommands()`
   hands you what a window would have played, which is what to assert on.
@@ -241,8 +242,9 @@ pointing into the other three.
 - **Overlays**: `float="below" | "above"` or
   `float={{ anchor: 'viewport', at: ['end','end'], self: ['end','end'] }}`
   draws on top without shifting anything.
-- **Sliders and dividers**: `onDrag={tag}` gives `{ x, y, dx, dy, parent }`
-  — `parent` is the container rect, so a fraction needs no geometry query.
+- **Sliders and dividers**: `onDrag={msg}` gives the message back with
+  `drag: { phase, x, y, dx, dy, parent }` in it — `parent` is the container
+  rect, so a fraction needs no geometry query.
 - **Measuring text**: `win.measureText('1,234', { size: 48, font })` (and
   `ctx.measureText` headless) returns `{ width, height, lines }` — what
   layout gives a `<text>` with that content and those props, at the
@@ -252,8 +254,8 @@ pointing into the other three.
   are reachable where the sizing happens: `view(model, window, surface)`
   gets the surface third, and `init(surface)` gets it before the first
   model, so neither needs the surface parked in a module-level variable.
-- **Where did layout put it**: `onLayout={tag}` on a keyed box brings back
-  `{ kind: 'layout', x, y, w, h, parent, tag }` — on its first frame and
+- **Where did layout put it**: `onLayout={msg}` on a keyed box brings the
+  message back with `layout: { x, y, w, h, parent, scale }` in it — on its first frame and
   whenever the rect changes, never on a frame that left it alone, so
   keeping it in the model and re-rendering does not loop. A `slide` reports
   every frame it moves. It is the numbers layout already computed, handed
@@ -296,8 +298,9 @@ pointing into the other three.
   re-reads it after every `update`, and since the windowed driver never
   sleeps through a tick, a stopped countdown then costs a pump a second
   instead of pinning the idle backoff at 16 ms.
-- **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as
-  `{ kind: 'key', phase: 'down', code, ... }` with `code` a character or a
+- **Keys**: `onKey` on the root plus `keyFocus`; presses arrive as the
+  sink's message with `key: { phase: 'down', code, ... }` in it (and
+  `event: 'key'` on the envelope), with `code` a character or a
   name (`'space'`, `'enter'`, `'f5'`), and that is all a keymap needs — no
   `phase` check. A held-key interaction (WASD, press-and-hold) adds `keyUp`
   to the sink and hears releases too, as the same shape with
@@ -308,30 +311,44 @@ pointing into the other three.
   key's twins it was, `caps_lock` and `num_lock` what was locked, and a
   sink that adds `modifierKeys` hears the modifier keys themselves
   (`'shift'`, `'capslock'`, …).
-  `onKey={null}` is a sink whose events carry no `tag` (the same goes for
-  `onDrag`, `onHover` and `onLayout`), so a root sink needs no inert
-  message in the app's union.
+  `onKey={null}` is a sink whose events arrive as their field alone,
+  `{ key: { … } }` (the same goes for every handler), so a root sink needs
+  no inert message in the app's union.
+- **An event arrives as the message its handler declared**
+  ([ADR 0047](docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)):
+  `onDrag={{ kind: 'pan' }}` hears `{ kind: 'pan', drag: { phase, x, y, dx,
+  dy, parent } }` — your message plus one field named for the event — and
+  `ev.event` says which event it was. A node that declares no handler for
+  an event hears none of it: an `<edit>` reports through `onChange`
+  (`change: { text }`, the whole text), `onSubmit`, `onCancel` and
+  `onBoundary`, and takes a `value` it is brought back to on every frame it
+  differs, so `value={model.title} onChange={{ kind: 'title' }}` keeps the
+  field and the model one text.
 - **Messages are yours**: annotate `update` and the loop follows —
   `createApp` / `runWindowed` infer the union, so `ev`, `dispatch` and
   `tick.msg` speak it too (a `tick.msg` written inline needs the union named
   — `runWindowed<Model, Msg>(...)`, or a `msg` annotated where it is
-  written — since its return is what would be inferred from). `CoreMsg` is what the core sends on its own
-  (`DragMsg`, `KeyMsg`, `HoverMsg`, `ModifiersMsg`, `changed` / `submit` / `cancel`),
-  each with the payload fields spelled out; `pollEvents<KeyMsg<Tag>>()`
-  types a raw poll the same way. To have the *payload props* checked at the
-  node as well, register the app's own union once:
+  written — since its return is what would be inferred from). A message
+  that carries an event is spelled with its helper — `DragMsg<{ kind:
+  'pan' }>` is `{ kind: 'pan' } & WithDrag`, and `EditChangeMsg`,
+  `SliderChangeMsg`, `KeySinkMsg` (an `onKey` sink's four: `key`, `text`,
+  `preedit`, `select`) and the rest name the others — and `RootMsg` is
+  what arrives with no handler behind it (`ResizeMsg`, `WindowMsg`,
+  `ModifiersMsg`, …); `pollEvents<KeyMsg<{ pane: number }>>()` types a raw
+  poll the same way. To have the *message props* checked at the node as
+  well, register the app's own union once:
 
   ```ts
+  type MyMsg = { kind: 'save' } | DragMsg<{ kind: 'pan' }> | EditChangeMsg<{ kind: 'title' }>;
   declare module '@qxuken/kui/jsx-runtime' {
     interface KuiMsg { msg: MyMsg }
   }
   ```
 
-  `onClick` then takes exactly `MyMsg` (and `onDrag` / `onHover` / `onKey` /
-  `onLayout` take `MyMsg | null`) rather than any plain data, so a typo
-  fails where it is written. Register the messages you wrote, not
-  `MyMsg | CoreMsg`: `CoreMsg` is typed in terms of the registration (its
-  `tag` fields carry your messages), so naming it there makes the alias
-  circular — keep that union for `update`. It is a program-wide
-  declaration (one app per tsconfig); left out, payload props stay untyped
-  and nothing else changes.
+  `onClick` then takes exactly `MyMsg`, and each handler prop the messages
+  that carry its field, as declared without it (`HandlerMsg<WithDrag>`):
+  `onDrag={{ kind: 'pan' }}` fits, `onDrag={{ kind: 'save' }}` does not,
+  and `<edit onChange>` takes only an editor's `change`. Register the
+  messages you wrote and keep `MyMsg | RootMsg` for `update`. It is a
+  program-wide declaration (one app per tsconfig); left out, message props
+  stay untyped and nothing else changes.

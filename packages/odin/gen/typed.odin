@@ -374,7 +374,7 @@ prop_row :: proc(g: ^Gen, p: ^Prop) -> Row {
 		// A zero Size is Fit, which on a clamp is "the fit size": unset has
 		// to be its own value.
 		typ = "Maybe(Size)"
-	case "msg", "tag":
+	case "msg", "handler":
 		typ = "any"
 	case "str":
 		typ = "string"
@@ -405,7 +405,7 @@ prop_row :: proc(g: ^Gen, p: ^Prop) -> Row {
 	}
 	if lower == "" {
 		if c_field == nil {
-			if p.kind == "msg" || p.kind == "tag" {
+			if p.kind == "msg" || p.kind == "handler" {
 				// onClick, onDrag, onKey, onHover: open's arguments.
 				if !slice.contains([]string{"onClick", "onDrag", "onKey", "onHover"}, p.name) {
 					fail("prop %s: a message row with no KuiSpec field, and not one of open's arguments", p.name)
@@ -444,7 +444,7 @@ default_lowering :: proc(g: ^Gen, p: ^Prop, f, typ: string, cf: ^Field) -> strin
 		return fmt.tprintf("%s, out.keyframes_len = ([^]c.Keyframe)(raw_data(s.%s)), uint(len(s.%s))", dst, f, f)
 	case "gradient":
 		return fmt.tprintf("if gr, ok := s.%s.?; ok do %s = lower_gradient(gr)", f, dst)
-	case "msg", "tag":
+	case "msg", "handler":
 		return fmt.tprintf("%s = borrow(scratch, s.%s)", dst, f)
 	}
 	fail("prop %s: no default lowering for kind %s", p.name, p.kind)
@@ -1309,46 +1309,68 @@ check_doors_column :: proc(g: ^Gen, doors: []^Function) {
 	}
 }
 
-// Every event the core emits has a struct to decode it into, named for its
-// kind (with _Event), holding every field the schema says it carries.
+// Every event the core emits with data has a struct to decode the data into
+// (ADR 0047), named for its kind (with _Event) unless EVENT_STRUCTS names
+// several, holding every field the schema says it carries; and, when the
+// data rides under a field of the app's message, a With_ struct for each
+// whose one field is that field. An event with no data (a submit, a cancel,
+// an extension's reply) arrives as declared and needs neither.
 check_events :: proc(g: ^Gen) {
 	for ev in g.s.events {
-		if ev.kind == "click" do continue // the app's own payload
-		name := ""
-		for sname, _ in g.hand_structs {
-			if strings.has_suffix(sname, "_Event") && norm(strings.trim_suffix(sname, "_Event")) == norm(ev.kind) do name = sname
+		if !strings.contains(ev.payload, "{") do continue
+		names := []string{ev.kind}
+		for es in EVENT_STRUCTS do if es[0] == ev.kind {
+			names = strings.fields(es[1])
+			g.used[fmt.tprintf("event_structs.%s", es[0])] = true
 		}
-		if name == "" do fail("event %q has no %s_Event struct in the hand-written files", ev.kind, ada(ev.kind))
-		fields := g.hand_structs[name]
+		have: [dynamic]string
+		for n in names {
+			data := hand_struct_named(g, "", n, "_Event")
+			if data == "" do fail("event %q has no %s_Event struct in the hand-written files", ev.kind, ada(n))
+			for f in g.hand_structs[data] do append(&have, f)
+			if ev.field == "" do continue
+			with := hand_struct_named(g, "With_", n, "")
+			if with == "" do fail("event %q rides under `%s` but has no With_%s struct in the hand-written files", ev.kind, ev.field, ada(n))
+			fields := g.hand_structs[with]
+			if len(fields) != 1 || fields[0] != ev.field {
+				fail("%s must hold the one field %s (the schema's), not %v", with, ev.field, fields)
+			}
+		}
 		for want in payload_fields(ev.payload) {
 			found := false
-			for have in fields do if norm(have) == norm(want) do found = true
-			if !found do fail("%s has no field for the schema's %q (payload %s)", name, want, ev.payload)
+			for h in have do if norm(h) == norm(want) do found = true
+			if !found do fail("%v has no field for the schema's %q (payload %s)", names, want, ev.payload)
 		}
 	}
 }
 
-// The keys of a payload as the schema writes it: `{ kind: "drag", phase:
-// "start" | "move", x, y, parent: { x, y }, tag }` is phase, x, y, parent,
-// tag. Only the first {...} is read; a second shape after a `;` is the
-// same event elsewhere and is read the same way.
+// The hand-written struct prefix + name + suffix, case and underscores
+// aside ("" when there is none): Context_Menu_Event for "contextmenu".
+hand_struct_named :: proc(g: ^Gen, prefix, name, suffix: string) -> string {
+	for sname, _ in g.hand_structs {
+		if !strings.has_prefix(sname, prefix) || !strings.has_suffix(sname, suffix) do continue
+		if norm(sname[len(prefix):len(sname) - len(suffix)]) == norm(name) do return sname
+	}
+	return ""
+}
+
+// The keys of a payload as the schema writes it: `drag: { phase: "start" |
+// "move", x, y, parent: { x, y } } in the message` is phase, x, y, parent,
+// and `{ kind: "resize", width }` is width. Every top-level {...} is read,
+// a second shape after a `;` (the same event on the root) the same way.
 payload_fields :: proc(payload: string) -> (out: [dynamic]string) {
 	for part in strings.split(payload, ";") {
-		open := strings.index_byte(part, '{')
-		if open < 0 do continue
 		depth := 0
-		start := open + 1
-		for i := open; i < len(part); i += 1 {
+		start := 0
+		for i := 0; i < len(part); i += 1 {
 			ch := part[i]
 			switch ch {
 			case '{', '[':
 				depth += 1
+				if depth == 1 && ch == '{' do start = i + 1
 			case '}', ']':
+				if depth == 1 && ch == '}' do add_key(&out, part[start:i])
 				depth -= 1
-				if depth == 0 {
-					add_key(&out, part[start:i])
-					i = len(part)
-				}
 			case ',':
 				if depth == 1 {
 					add_key(&out, part[start:i])
@@ -1399,6 +1421,7 @@ check_stale :: proc(g: ^Gen) {
 	for t in BYTE_LENGTHS do if !g.used[fmt.tprintf("byte_lengths.%s", t[0])] do append(&stale, fmt.tprintf("BYTE_LENGTHS %s", t[0]))
 	for t in OPENERS do if !g.used[fmt.tprintf("opener.%s", t)] do append(&stale, fmt.tprintf("OPENERS %s", t))
 	for t in INVERTED do if !g.used[fmt.tprintf("inverted.%s", t[0])] do append(&stale, fmt.tprintf("INVERTED %s", t[0]))
+	for t in EVENT_STRUCTS do if !g.used[fmt.tprintf("event_structs.%s", t[0])] do append(&stale, fmt.tprintf("EVENT_STRUCTS %s", t[0]))
 	if len(stale) > 0 do fail("policy rows that matched nothing (stale, or a typo): %v", stale)
 }
 

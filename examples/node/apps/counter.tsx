@@ -10,7 +10,7 @@
 //
 //   npm run counter                    a window, with the devtools dock
 //   node dist/apps/counter.mjs --headless
-import type { App, CoreMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
+import type { App, ContextMenuMsg, DismissMsg, KuiWindow, RootMsg, Theme, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Model = {
@@ -19,11 +19,17 @@ type Model = {
   menu: { x: number; y: number } | null;
 };
 
-// The payloads this app's own nodes carry, plus the ones the core sends on
-// its own (`changed`, `contextmenu`, `dismiss`, ...): one flat union, so
+// The messages this app's own nodes declare, each as it arrives (ADR 0047):
+// a right-click is the `menu` message with its `contextmenu` field, the
+// menu's dismissal the `closeMenu` message with its `dismiss`. Plus the
+// root events the core sends with no node behind them: one flat union, so
 // `update` switches over `msg.kind` with no casts.
-type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
-type Msg = CounterMsg | CoreMsg;
+export type CounterMsg =
+  | { kind: 'add'; by: number }
+  | { kind: 'reset' }
+  | ContextMenuMsg<{ kind: 'openMenu' }>
+  | DismissMsg<{ kind: 'closeMenu' }>;
+type Msg = CounterMsg | RootMsg;
 
 const init: Model = { count: 0, menu: null };
 
@@ -35,11 +41,11 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, _win: KuiWindow): Mod
       return { ...model, count: model.count + msg.by, menu: null };
     case 'reset':
       return { ...model, count: 0, menu: null };
-    case 'contextmenu':
+    case 'openMenu':
       // A right-click: the core opens nothing, the view declares the menu
       // where the press landed.
-      return { ...model, menu: { x: msg.x, y: msg.y } };
-    case 'dismiss':
+      return { ...model, menu: { x: msg.contextmenu.x, y: msg.contextmenu.y } };
+    case 'closeMenu':
       // Escape, or a press outside the menu.
       return { ...model, menu: null };
   }
@@ -52,7 +58,7 @@ function Menu({ at, t }: { at: { x: number; y: number }; t: Theme }) {
     <box
       float={{ anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'],
                dx: at.x, dy: at.y, fit: true }}
-      modal={{ kind: 'menu' }}
+      modal={{ kind: 'closeMenu' }}
       label="Actions"
       pad={4} gap={4} width={120} bg={t.raised} radius={6} borderW={1} borderColor={t.borderStrong}
     >
@@ -67,7 +73,7 @@ function Menu({ at, t }: { at: { x: number; y: number }; t: Theme }) {
 const view = (model: Model, win: KuiWindow) => {
   const t = win.theme();
   return (
-    <box width="grow" height="grow" center gap={24} onContextMenu={{ kind: 'menu' }}>
+    <box width="grow" height="grow" center gap={24} onContextMenu={{ kind: 'openMenu' }}>
       <box pad={32} gap={20} bg={t.surface} radius={12} borderW={1} borderColor={t.border} crossAlign="center" width={320}>
         <text size={14} color={t.muted}>kui counter</text>
         <text size={56} color={t.fg}>{String(model.count)}</text>

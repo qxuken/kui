@@ -25,7 +25,9 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Color, Core, Key, NodeSpec, TextStyle, Theme, Ui, UiEvent, Value};
+use kui_native::{
+    Align, App, Color, Core, HoverPhase, Key, NodeSpec, TextStyle, Theme, Ui, UiEvent, Value,
+};
 
 /// One node of the syntax tree: its kind, the highlight group a token
 /// carries (`None` for an inner node), the line it starts on, its
@@ -256,7 +258,7 @@ impl App for Page {
                                 }
                                 first = false;
                                 let on = lit(i);
-                                let tag = Value::map([
+                                let msg = Value::map([
                                     ("kind", Value::str("tok")),
                                     ("id", Value::Int(i as i64)),
                                 ]);
@@ -265,8 +267,8 @@ impl App for Page {
                                         .radius(3.0)
                                         .bg(if on { t.accent_soft } else { Color::TRANSPARENT })
                                         .hover_bg(t.hover)
-                                        .on_hover(tag.clone())
-                                        .on_click(tag)
+                                        .on_hover(msg.clone())
+                                        .on_click(msg)
                                         .label(n.kind), text,
                                             TextStyle::new(14.0)
                                                 .mono()
@@ -362,7 +364,7 @@ impl App for Page {
                                 // selected or is picking it.
                                 let on_path = hover_tok.is_some_and(|k| under(k, i));
                                 let on = on_path || selected == Some(i) || picked == Some(i);
-                                let tag = Value::map([
+                                let msg = Value::map([
                                     ("kind", Value::str("row")),
                                     ("id", Value::Int(i as i64)),
                                 ]);
@@ -376,8 +378,8 @@ impl App for Page {
                                         .cross_align(Align::Center)
                                         .bg(if on { t.accent_soft } else { Color::TRANSPARENT })
                                         .hover_bg(t.hover)
-                                        .on_hover(tag.clone())
-                                        .on_click(tag)
+                                        .on_hover(msg.clone())
+                                        .on_click(msg)
                                         .label(n.kind),
                                     |ui| {
                                         ui.leaf(
@@ -412,19 +414,22 @@ impl App for Page {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let phase = ev.payload.get_str("phase");
-        // A hover carries its node's tag under `tag`; a click is the tag.
-        let tag = ev.payload.get("tag").unwrap_or(&ev.payload);
-        let id = tag.get_int("id").map(|i| i as usize);
-        match (tag.get_str("kind"), phase) {
-            (Some("tok"), Some("enter")) => self.hover_tok = id,
-            (Some("tok"), Some("leave")) => {
+        // A click arrives as the node's message; a hover as the same
+        // message with the hover's data beside it, under `hover`.
+        let Some(msg) = ev.message::<Value>() else {
+            return;
+        };
+        let phase = ev.hover().map(|h| h.phase);
+        let id = msg.get_int("id").map(|i| i as usize);
+        match (msg.get_str("kind"), phase) {
+            (Some("tok"), Some(HoverPhase::Enter)) => self.hover_tok = id,
+            (Some("tok"), Some(HoverPhase::Leave)) => {
                 if self.hover_tok == id {
                     self.hover_tok = None;
                 }
             }
-            (Some("row"), Some("enter")) => self.hover_row = id,
-            (Some("row"), Some("leave")) => {
+            (Some("row"), Some(HoverPhase::Enter)) => self.hover_row = id,
+            (Some("row"), Some(HoverPhase::Leave)) => {
                 if self.hover_row == id {
                     self.hover_row = None;
                 }

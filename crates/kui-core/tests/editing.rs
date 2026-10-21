@@ -1,7 +1,9 @@
 //! End-to-end text editing through a live `Core`: focus, typing, motion,
 //! selection, deletion, click-to-position, and event emission.
 
-use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Vec2};
+use kui_core::{
+    Core, EditKey, EditOptions, EventKind, InputEvent, Key, Mods, NodeSpec, Size, Value, Vec2,
+};
 
 const SHIFT: Mods = Mods {
     shift: true,
@@ -44,6 +46,8 @@ impl Rig {
     }
 }
 
+/// The rig's editor declares its change and submit rows: an editor with
+/// no row sends nothing (ADR 0047).
 fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(10.0));
@@ -55,7 +59,11 @@ fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().grow_width().pad(5.0),
+        NodeSpec::column()
+            .grow_width()
+            .pad(5.0)
+            .on_change(Value::Null)
+            .on_submit(Value::Null),
     );
     ui.finish();
     key
@@ -72,7 +80,7 @@ fn typing_inserts_at_cursor_end() {
     // (backlog F20): no `End` press first.
     let events = rig.type_str(" world");
     assert_eq!(rig.text(), "hello world");
-    assert_eq!(events, 1, "expected one changed event");
+    assert_eq!(events, 1, "expected one change event");
 }
 
 #[test]
@@ -367,14 +375,15 @@ fn copy_and_cut_selection() {
     assert!(rig.core.take_pending_events().is_empty());
     assert_eq!(rig.core.cut_selection().as_deref(), Some("hello"));
     assert_eq!(rig.text(), " world");
-    // AR15: the cut's `changed` is pending, for the driver to route the
+    // AR15: the cut's `change` is pending, for the driver to route the
     // way it routes a `resize` — it used to build one by hand, and only
     // for its own chord.
     let evs = rig.core.take_pending_events();
     assert_eq!(evs.len(), 1, "{evs:?}");
+    assert_eq!(evs[0].event, EventKind::Change);
     assert_eq!(
-        evs[0].payload.get("kind").and_then(kui_core::Value::as_str),
-        Some("changed")
+        evs[0].data().and_then(|d| d.get_str("text")),
+        Some(" world")
     );
     // Nothing selected: nothing cut, nothing posted.
     assert!(rig.core.cut_selection().is_none());
@@ -396,10 +405,7 @@ fn multiline_enter_splits_singleline_submits() {
         .handle_input(InputEvent::Key(EditKey::Enter, Mods::default()));
     assert_eq!(single.text(), "ab");
     assert_eq!(evs.len(), 1);
-    assert_eq!(
-        evs[0].payload.get("kind").and_then(kui_core::Value::as_str),
-        Some("submit")
-    );
+    assert_eq!(evs[0].event, EventKind::Submit);
 }
 
 #[test]

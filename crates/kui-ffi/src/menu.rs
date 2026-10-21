@@ -99,7 +99,9 @@ unsafe fn path_of<'a>(path: *const usize, depth: usize) -> Option<&'a [usize]> {
 /// Opens a context menu at `(x, y)` (logical viewport px) over `key`, with
 /// `count` items read from `items`. The next frame draws it.
 ///
-/// Choosing a row posts `{kind:"menu", role, item}` on `key` and closes
+/// Choosing a row posts a `menu` event on `key` — the node's `on_menu`
+/// message with `menu: {role, item}` in it, nothing to a node that
+/// declares none (ADR 0047) — and closes
 /// the menu; a press outside it or Escape closes it and posts nothing. The
 /// standard roles the core can carry out it carries out — the clipboard
 /// three come back through `kui_take_menu_actions` — and a `KUI_MENU_CUSTOM`
@@ -190,8 +192,8 @@ pub extern "C" fn kui_activate_menu_item(ptr: *mut KuiCtx, index: usize) -> bool
 ///
 /// `KUI_COPY_READY` writes the selection into `out` — borrowed until the
 /// next call on this context. `KUI_COPY_ASKED` means the selection reaches
-/// rows a virtual list never built: a `{kind:"selectionrange", from, to}`
-/// event is waiting in the queue, the rows behind that gap are the host's,
+/// rows a virtual list never built: a `selectionrange` event (the scope's
+/// `on_selection_range` with `selectionrange: {from, to}` in it) is waiting in the queue, the rows behind that gap are the host's,
 /// and the host answers with `kui_answer_selection_range`, whose text then
 /// arrives as a `KUI_MENU_ACTION_SET_CLIPBOARD`. `KUI_COPY_NOTHING` is
 /// nothing selected.
@@ -273,7 +275,7 @@ pub extern "C" fn kui_set_clipboard_secret(ptr: *mut KuiCtx, text: KuiStr) {
 /// pasteboard's `KUI_PASTE_*` markers) or [`kui_input_commit`]: a focused
 /// editor takes
 /// the text as typing, a focused `on_key` sink hears it as
-/// `{kind:"text", text, tag}` — so an app that owns its text inserts a
+/// a `text` event, `text: {text, pasted: true}` in its message — so an app that owns its text inserts a
 /// paste the way it inserts a committed IME string, and the clipboard is
 /// read on the host's side, where the permission lives. Under `kui_run`
 /// the runner does both halves.
@@ -309,7 +311,7 @@ pub extern "C" fn kui_close_menu(ptr: *mut KuiCtx) -> bool {
 /// the text to put there — the core worked out *what*, which is the half
 /// only it can do — and `KUI_MENU_ACTION_PASTE` asks for what is there,
 /// which a host delivers back with `kui_input_commit` (an editor takes it
-/// as typing; a sink hears it as `{kind:"text"}`).
+/// as typing; a sink hears it as a `text` event).
 ///
 /// Writes one action into `out` and returns true; false when the queue is
 /// empty, and false with the action left queued when `out` is NULL or its
@@ -403,9 +405,9 @@ pub struct KuiMenu {
 /// Sticky and diffed, like `kui_window_title`: a frame that does not call
 /// this leaves the last declaration in force, the same declaration again
 /// changes nothing, and `count == 0` takes the menu away. Choosing an item
-/// posts `{kind:"menu", role, item}` — the same event the context menu
-/// posts — on the bar's own node, or on the root where the platform drew
-/// it. Returns false, declaring and drawing nothing, for an item with a
+/// posts a root `{kind:"menu", role, item}` — the bar is declared on no
+/// node, so no message of the app's carries it, as `on_menu` carries the
+/// context menu's. Returns false, declaring and drawing nothing, for an item with a
 /// role this build does not know. Call between `kui_frame_begin` and
 /// `kui_frame_finish`.
 #[unsafe(no_mangle)]

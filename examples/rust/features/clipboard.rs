@@ -20,8 +20,9 @@
 //!     leaves the chords to it, and its handler binds `y` to
 //!     `Core::set_clipboard` and `p` to `Core::request_paste` on the core
 //!     `on_event_with` lends it (ADR 0036; backlog C33). The paste comes
-//!     back as the `{kind="text"}` event an IME's commit arrives on,
-//!     marked `pasted` (DX14), and the sink appends it as a line.
+//!     back as the `text` event an IME's commit arrives on, `text: {text}`
+//!     in the sink's message, marked `pasted` (DX14), and the sink appends
+//!     it as a line.
 //!
 //! And two things every selection does on the way to a copy (ADR 0029):
 //! a Shift-click extends it from its anchor instead of starting over, and
@@ -39,8 +40,8 @@
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Core, EditKey, EditOptions, MenuAction, Mods, NodeSpec, Role, Span, TextStyle,
-    Theme, Ui, UiEvent, Value,
+    Align, App, Core, EditKey, EditOptions, Event, MenuAction, Mods, NodeSpec, RangeEnd, Role,
+    Span, TextStyle, Theme, Ui, UiEvent,
 };
 
 const ROWS: usize = 2000;
@@ -75,17 +76,11 @@ impl Clipboard {
         format!("{i:>4}  log line {i}")
     }
 
-    /// The text of the rows an ask named: `from.index`..=`to.index`,
+    /// The text of the rows an ask named: `from.row`..=`to.row`,
     /// joined by newlines, cut to the bytes at each end.
-    fn range_text(p: &Value) -> Option<String> {
-        let end = |name: &str| {
-            let e = p.get(name)?;
-            Some((
-                e.get("index")?.as_int()? as usize,
-                e.get("byte")?.as_int()? as usize,
-            ))
-        };
-        let (from, to) = (end("from")?, end("to")?);
+    fn range_text(from: RangeEnd, to: RangeEnd) -> Option<String> {
+        let end = |e: RangeEnd| Some((usize::try_from(e.row?).ok()?, e.byte));
+        let (from, to) = (end(from)?, end(to)?);
         let mut text: String = (from.0..=to.0.min(ROWS - 1))
             .map(Self::row)
             .collect::<Vec<_>>()
@@ -280,8 +275,8 @@ impl App for Clipboard {
         }
         // The log's copy reached rows no frame built: the app knows its
         // own rows, and answers from them now.
-        if ev.kind() == Some("selectionrange")
-            && let Some(text) = Self::range_text(&ev.payload)
+        if let Event::SelectionRange(r) = ev.read()
+            && let Some(text) = Self::range_text(r.from, r.to)
         {
             self.sent = format!("the log's rows: {} bytes", text.len());
             core.answer_selection_range(&text);

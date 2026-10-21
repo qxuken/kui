@@ -4,7 +4,7 @@
 //! paragraphs, Ctrl+Home and Ctrl+End to the text's ends. Each case puts a
 //! `|` where the caret went.
 
-use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, UiEvent};
+use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, UiEvent, Value};
 
 const MAC: bool = cfg!(target_os = "macos");
 
@@ -20,7 +20,8 @@ fn rig(initial: &str, multiline: bool) -> (Core, Key) {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().grow_width(),
+        // The edge is heard only through a `boundary` row.
+        NodeSpec::column().grow_width().on_boundary(Value::Null),
     );
     ui.finish();
     (core, key)
@@ -126,7 +127,7 @@ fn a_document_moves_by_paragraphs_and_on_past_one_it_is_at_the_end_of() {
 fn by_paragraphs_the_edge_is_only_where_the_caret_could_not_move() {
     let kinds = |evs: Vec<UiEvent>| {
         evs.iter()
-            .filter_map(|e| e.kind().map(str::to_string))
+            .map(|e| e.event.name().to_string())
             .collect::<Vec<_>>()
     };
     let (mut core, _) = rig("one two", false);

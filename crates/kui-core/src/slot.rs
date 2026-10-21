@@ -346,14 +346,16 @@ impl Extensions {
             }
             let up = self.asked_by(to);
             for payload in replies {
-                let reply = UiEvent {
-                    origin: to,
-                    window: ev.window,
-                    key: ev.key,
-                    payload,
-                    // About the same node, so from the same slot.
-                    slot: ev.slot,
-                };
+                let mut reply = UiEvent::declared(
+                    crate::input::EventKind::Reply,
+                    to,
+                    ev.key,
+                    Some(&payload),
+                    Value::Null,
+                );
+                reply.window = ev.window;
+                // About the same node, so from the same slot.
+                reply.slot = ev.slot;
                 if up == OriginId::HOST || depth + 1 >= MAX_REPLY_HOPS {
                     to_host(reply);
                 } else {

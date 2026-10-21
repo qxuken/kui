@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 32
+ABI_VERSION :: 33
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -156,6 +156,7 @@ EDIT_AUTOFOCUS :: 2
 EDIT_WRAP :: 4
 EDIT_KEEP_TAB :: 8
 EDIT_SECURE :: 16
+EDIT_VALUE :: 32
 
 FLOAT_NONE :: 0
 FLOAT_PARENT :: 1
@@ -657,6 +658,11 @@ Spec :: struct {
 	pivot_y: f32,
 	iterations: f32,
 	over_siblings: u32,
+	on_submit: ^Value,
+	on_cancel: ^Value,
+	on_boundary: ^Value,
+	on_menu: ^Value,
+	on_selection_range: ^Value,
 }
 
 Announcement :: struct {
@@ -877,6 +883,8 @@ Event :: struct {
 	window: u32,
 	reply_sink: ^ReplySink,
 	slot: u64,
+	event: string,
+	root: u32,
 }
 
 Quad :: struct {
@@ -1162,6 +1170,7 @@ foreign lib {
 	set_key_focus :: proc(ctx: ^Ctx, key: u64) ---
 	focus :: proc(ctx: ^Ctx, key: u64) ---
 	key_of :: proc(ctx: ^Ctx, label: string) -> u64 ---
+	label_of :: proc(ctx: ^Ctx, key: u64, out: ^string) -> bool ---
 	key_named :: proc(ctx: ^Ctx, name: string) -> u64 ---
 	focus_next :: proc(ctx: ^Ctx, forward: bool) ---
 	focused :: proc(ctx: ^Ctx) -> u64 ---
@@ -1311,7 +1320,9 @@ foreign lib {
 	latency_graph :: proc(ctx: ^Ctx) ---
 	latency_hud :: proc(ctx: ^Ctx, x: u32, y: u32) ---
 	text_input :: proc(ctx: ^Ctx, label: string, initial: string) -> u64 ---
+	text_input_with :: proc(ctx: ^Ctx, label: string, text: string, flags: u32, on_change: ^Value, on_submit: ^Value, on_cancel: ^Value) -> u64 ---
 	select :: proc(ctx: ^Ctx, label: string, items: [^]MenuItem, count: uint, current: i64) -> u64 ---
+	select_with :: proc(ctx: ^Ctx, label: string, items: [^]MenuItem, count: uint, current: i64, on_menu: ^Value) -> u64 ---
 	checkbox :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) -> u64 ---
 	radio :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) -> u64 ---
 	@(link_name = "kui_switch")

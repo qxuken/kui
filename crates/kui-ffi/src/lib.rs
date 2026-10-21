@@ -262,6 +262,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             events: Vec::new(),
             last_payload: None,
             last_edit_text: None,
+            label_of: String::new(),
             fragment_source: String::new(),
             fragment_draws: Vec::new(),
             texture_draws: Vec::new(),

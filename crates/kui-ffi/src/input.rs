@@ -100,7 +100,8 @@ fn paths_of(paths: *const KuiStr, count: usize) -> Vec<String> {
 
 /// Files dragged in from the OS are over the window at (`x`, `y`),
 /// entering and moving alike: the drop zone under the point hears
-/// `{kind:"drop", phase:"enter"|"move"}`, a zone it left hears `leave`.
+/// `drop: {phase:"enter"|"move", ...}` in its `on_drop` message, a zone
+/// it left hears `leave`.
 /// `paths` are `count` OS paths. The host's answer to the OS (copy over a
 /// zone, not-allowed elsewhere) is [`kui_drop_target`].
 #[unsafe(no_mangle)]
@@ -124,7 +125,7 @@ pub extern "C" fn kui_input_drag_files(
 }
 
 /// The dragged files were released at (`x`, `y`): the zone there hears
-/// `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave` after;
+/// `drop: {phase:"drop", paths, x, y}` in its message and no `leave` after;
 /// with no zone there, nothing but the lit zone's `leave`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_drop_files(
@@ -246,8 +247,9 @@ fn key_press_of(
 /// with `KUI_KLOCK_*`, one `KUI_KLOC_*` and `KUI_KLAYOUT_NONLATIN` beside
 /// them; `text` is what the press inserts, or NULL to derive it from
 /// `code`; `repeat` marks an auto-repeat. The focused sink polls
-/// `{kind="key", phase="down", code, physical, ctrl, alt, shift, super,
-/// text, repeat, location, caps_lock, num_lock, tag}`. An unknown `code`
+/// its `on_key` message with `key: {phase="down", code, physical, ctrl,
+/// alt, shift, super, text, repeat, location, caps_lock, num_lock}` in
+/// it. An unknown `code`
 /// or `physical` is ignored.
 ///
 /// Passing both spellings makes a keymap portable: on a layout that
@@ -277,7 +279,7 @@ pub extern "C" fn kui_input_key_down(
 
 /// The release of a key pressed with `kui_input_key_down`, spelled the same
 /// way (`physical` included, NULL for "same as `code`"); the sink polls
-/// `{kind="key", phase="up", ...}` with a null `text`.
+/// `key: {phase="up", ...}` with a null `text`.
 /// A release whose press the sink never got resolves nothing, and moving
 /// focus while a key is held delivers the "up" first, so a held-key binding
 /// (WASD, press-and-hold) cannot be left stuck down.
@@ -394,6 +396,7 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
             return false;
         }
         let ev = c.events.remove(0);
+        let root = ev.is_root();
         let payload = Box::new(KuiValue(ev.payload));
         let payload_ptr: *const KuiValue = &*payload;
         c.last_payload = Some(payload);
@@ -405,6 +408,8 @@ pub extern "C" fn kui_poll_event(ptr: *mut KuiCtx, out: *mut KuiEvent) -> bool {
                 payload: payload_ptr,
                 window: ev.window.0,
                 slot: ev.slot.map_or(0, |k| k.0),
+                event: KuiStr::from_static(ev.event.name()),
+                root: root.into(),
                 ..Default::default()
             },
         )
@@ -433,7 +438,7 @@ pub extern "C" fn kui_cursor_shape(ptr: *mut KuiCtx) -> u32 {
 
 /// Text an IME committed at the end of a composition: a focused editor
 /// takes it as [`kui_input_text`] would; otherwise the focused `on_key`
-/// sink hears `{kind:"text", text, tag}`, the one committed text a `key`
+/// sink hears `text: {text}` in its message, the one committed text a `key`
 /// event never carries. Typing stays on `kui_input_text`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_commit(ptr: *mut KuiCtx, text: KuiStr) {
@@ -446,7 +451,7 @@ pub extern "C" fn kui_input_commit(ptr: *mut KuiCtx, text: KuiStr) {
 /// The clipboard's answer to a paste (`KUI_MENU_ACTION_PASTE`), with the
 /// pasteboard's markers as `KUI_PASTE_*` bits: routed as
 /// [`kui_input_commit`] is, and a focused `on_key` sink hears
-/// `{kind:"text", text, tag}` with `concealed: true` / `transient: true`
+/// `text: {text, pasted: true}` with `concealed: true` / `transient: true`
 /// for the bits that are set. A host that cannot read the markers
 /// answers with 0, or with `kui_input_commit`, which is the same answer.
 #[unsafe(no_mangle)]
@@ -460,7 +465,7 @@ pub extern "C" fn kui_input_paste(ptr: *mut KuiCtx, text: KuiStr, marks: u32) {
 
 /// In-progress IME composition, shown at the focused editor's caret, or
 /// with no editor focused delivered to the focused `onKey` sink as
-/// `{kind:"preedit", text, cursor, tag}`. Empty text clears it; the commit
+/// `preedit: {text, cursor}` in its message. Empty text clears it; the commit
 /// arrives via `kui_input_commit`. `cursor_start`/`cursor_end` are byte
 /// offsets into `text`, or `UINT32_MAX` for none.
 #[unsafe(no_mangle)]

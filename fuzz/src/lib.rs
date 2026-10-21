@@ -8,6 +8,7 @@
 //! property the code promises in its docs.
 
 pub mod decode;
+pub mod events;
 pub mod parsers;
 pub mod path;
 pub mod scenes;
@@ -24,4 +25,5 @@ pub const TARGETS: &[(&str, Run)] = &[
     ("path", path::run),
     ("scenes", scenes::run),
     ("decode", decode::run),
+    ("events", events::run),
 ];

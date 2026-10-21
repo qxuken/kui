@@ -587,8 +587,9 @@ impl Core {
     /// [`CopyRequest::Ready`] is the ordinary case: everything selected is
     /// text the core shaped, so it hands it over. [`CopyRequest::Asked`]
     /// is a selection that reaches rows a virtual list never built — the
-    /// core posts `{kind:"selectionrange", from:{index, byte}, to:{index,
-    /// byte}}` on the scope and waits for
+    /// core posts `selectionrange: {from: {index, byte}, to: {index,
+    /// byte}}` on the scope, in its `on_selection_range` message or as the
+    /// field alone, and waits for
     /// [`Self::answer_selection_range`], because the rows behind that gap
     /// are the app's and only the app has them.
     ///
@@ -620,24 +621,20 @@ impl Core {
             // about, and nothing to hand over.
             return CopyRequest::Nothing;
         };
-        self.pending.push(crate::input::UiEvent {
-            // The scope's own origin: an extension that declared the
-            // list is the one that can answer for its rows.
-            origin: self
-                .tree
-                .keys
-                .iter()
-                .position(|k| *k == sel.scope)
-                .map_or(crate::tree::OriginId::HOST, |i| self.tree.origins[i]),
-            window: crate::window::WindowId::MAIN,
-            key: sel.scope,
-            payload: Value::map([
-                ("kind", Value::str("selectionrange")),
-                ("from", from.to_value()),
-                ("to", to.to_value()),
-            ]),
-            slot: None,
-        });
+        // The scope's own origin: an extension that declared the list is
+        // the one that can answer for its rows. Its `on_selection_range`
+        // message, when it declares one; the app asked for the copy, so
+        // without one the question still arrives, as the field alone.
+        let i = self.tree.keys.iter().position(|k| *k == sel.scope);
+        let origin = i.map_or(crate::tree::OriginId::HOST, |i| self.tree.origins[i]);
+        let message = i.and_then(|i| self.tree.specs[i].events().on_selection_range.as_ref());
+        self.pending.push(crate::input::UiEvent::declared(
+            crate::input::EventKind::SelectionRange,
+            origin,
+            sel.scope,
+            message,
+            Value::map([("from", from.to_value()), ("to", to.to_value())]),
+        ));
         self.awaiting_selection = true;
         CopyRequest::Asked
     }
@@ -694,8 +691,8 @@ impl Core {
     /// `MenuAction::Paste` a menu's Paste produces. The host reads the
     /// clipboard and hands the text back as `InputEvent::Paste` (or a
     /// bare `InputEvent::Commit`), which reaches a focused editor as
-    /// typing and a focused sink as `{kind:"text", text, tag}`, with
-    /// `concealed: true` / `transient: true` beside the text
+    /// typing and a focused sink as `text: {text}` in its `on_key`
+    /// message, with `concealed: true` / `transient: true` beside the text
     /// when the pasteboard marked it so — so the app that asked
     /// inserts it the way it inserts a committed IME string, and never
     /// sees the clipboard any other way. The read stays on the driver's
@@ -719,8 +716,8 @@ impl Core {
 
     /// Asks the host for a file dialog: an Open, a Save or
     /// a folder picker, which the host shows as the platform's own. The
-    /// answer is an event, `{kind:"files", paths, tag}` — the `drop`
-    /// payload's shape, `paths` empty when the user cancelled — delivered
+    /// answer is an event, the ask's message with `files: {paths}` in it —
+    /// the `drop` field's `paths`, empty when the user cancelled — delivered
     /// to whoever asked: the host from its own view or between frames, the
     /// extension from inside its fill. A host drains the ask with
     /// [`Core::take_file_requests`] and answers with `InputEvent::Files`;

@@ -23,7 +23,99 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.60 (unreleased)
 
-**What breaks.** Nothing.
+**What breaks.**
+
+- Every node event's payload: it is the message the handler declared,
+  with the event's data in one field named for the event —
+  `{...msg, drag: {phase, x, y, dx, dy, parent}}` — where it was the
+  core's `{kind: "drag", …, tag}` (ADR 0047, backlog F174). The event's
+  kind is on the envelope: `ev.event` in every binding, `UiEvent::event`
+  in Rust, `KuiEvent.event` in C.
+- `UiEvent::on`, `UiEvent::kind`, `UiEvent::tag` and `UiEvent::tagged`
+  are gone: `UiEvent::declared` / `UiEvent::root` build an event, and
+  `ev.event`, `ev.data()`, `ev.message()` and the views read one.
+- An editor reports only what it declares: `onChange` (`change: {text}`),
+  `onSubmit`, `onCancel`, `onBoundary`. The `changed`, `submit` and
+  `cancel` kinds are gone; an `edit` that declares none hears nothing.
+- The `access` event is gone. A slider without `onChange` does not
+  move, from a key or a reader (`slider-without-handler`); a custom
+  editor's setValue is its `onChange` message, replaceSelectedText a
+  `text` and setTextSelection a `select` on its `onKey` sink.
+- A menu's choice reaches only a node that declares `onMenu`
+  (`menu: {role, item}`); the stock right-click menu posts nothing; the
+  menu bar's is a root event. The stock select and text input declare a
+  `Null` message by default and keep reporting.
+- A click's `cell`, `line`, `byte`, `inside` and `clicks` moved under
+  `click`; a bare-string click on a grid or a line row is `{tag, click}`.
+- Node: `CoreMsg` is `RootMsg` (the root events alone), the `*Msg`
+  types name a message carrying an event (`DragMsg<T> = T & WithDrag`).
+- Lua: `on_event` always gets a table — a non-table message arrives as
+  `{tag = msg}` — and `ev.event` names the event.
+- C: ABI 33 — `KuiSpec` gains `on_submit`, `on_cancel`, `on_boundary`,
+  `on_menu`, `on_selection_range`; `KuiEvent` gains `event` and `root`.
+  Odin: the `*_Event` structs lose `tag`; `Changed_Event`,
+  `Access_Event`, `Submit_Event`, `Cancel_Event` and `Change_Event` are
+  gone. The frame protocol is v24.
+- `schema::Kind::Tag` is `Kind::Handler`.
+
+Matching an editor's `changed` meant `ev.key === ctx.keyOf('title')`,
+and a list of editors could not be matched at all: key labels are unique
+among siblings, so `keyOf('name')` answered the first row and warned. The
+model reached an editor only through `initial` and `setEditText`, which
+clears undo. Every node event had the same shape problem: `update`
+matched the core's `kind`, then the `tag` inside it, the app registered
+messages that only ever arrived as tags, and an app's `Msg::Key` was the
+core's `{kind: "key"}` (backlog F148). Now a node declares the message
+its events arrive as, and the core writes its data into it under the
+event's name — one field per event, so each field has one type. A
+message that is not a map is kept under `tag` beside the field; a
+`Null` one is the field alone; a field the message already had is the
+core's (`message-field-taken`). The events with no node to declare a
+handler on — `resize`, `window`, `system`, `fonts`, `modifiers`, `open`,
+a menu bar's `menu`, a popup window's `dismiss` — keep the core's
+`{kind, …}`, and so do they alone.
+
+### Added
+
+- **An editor's `value`** (`EditOptions::value`, `Ui::text_edit_value`,
+  `widgets::text_input_value`; `<edit value>`, Lua `value =`, C
+  `KUI_EDIT_VALUE`, Odin `Edit_Flag.Value`): the text declared every
+  frame. Where it differs from the editor's, the editor is brought to it
+  as a splice — a caret before it stays, one after it moves, one inside
+  it goes to its end — and a correction made in the `update` the edit
+  reached joins that edit's undo step, so an uppercasing filter undoes
+  with the keystroke. It waits for a composition to commit. An equal
+  value costs a compare: 1.25 µs a frame for a field, the same as a
+  seed. `edit-value-without-handler` and `edit-value-and-initial` say
+  when it is half declared.
+- **`onSubmit`, `onCancel`, `onBoundary`, `onMenu` and
+  `onSelectionRange`**, and `onChange` on an editor.
+- **The stock input with messages** (`widgets::text_input_with`,
+  `InputMessages`; `<input value onChange onSubmit onCancel>`, Lua
+  `input { value=, on_change= }`, C `kui_text_input_with`, Odin
+  `text_input_with`).
+- **`kui::Event`** with `UiEvent::split::<Msg>()` and `UiEvent::read()`:
+  the message and the event, one variant per kind with its data, for one
+  `match` — `(Some(Msg::Pan), Event::Drag(d)) => …`.
+- **The derive's arriving twin**: `#[message(on = drag)]` on a variant
+  makes `#[derive(Message)]` emit `MsgIn` too, whose variant carries the
+  event's data (`MsgIn::Pan { drag }`), for `ev.message::<MsgIn>()` in a
+  flat `match`. `on = change` is an editor's change and `on =
+  slider_change` a slider's; `incoming = "Name"` and `incoming_derive(…)`
+  name and derive the twin. A message declared on the wrong handler
+  fails to decode.
+- **Helper types for a message carrying an event**: TypeScript's
+  `WithDrag`, `WithEditChange`, … (interfaces, so `extends` works),
+  `DragMsg<T>`, `EditChangeMsg<T>`, `KeySinkMsg<T>` and `HandlerMsg<W>`,
+  which types every handler prop — a message without the event's field
+  does not fit `onDrag`; Lua's `kui.With…` classes; Odin's `With_*`
+  structs, embedded with `using _:`.
+- **`labelOf(key)`** in every binding (`kui_label_of`, Odin `label_of`,
+  Node `labelOf`, Lua `env.label_of`): the key label a key was opened
+  under, the reverse of `keyOf`.
+- **`reply`**, the kind an extension's message to whoever placed its
+  slot arrives as.
+- `GLOSSARY.md`, the words the API is described in.
 
 ### Fixed
 
@@ -44,6 +136,15 @@ was the first bare bump to break an app in five releases).
   pointer leaves the click slop of the press, as a caret drag has since
   alpha.57 (backlog F173, from kawoosh's terminal).
 
+- A reader's increment or decrement nudges only a `slider` role; it
+  reached any enabled node.
+- An editor's caret, as `caret_and_selection` and the access tree report
+  it, is a place in its committed text while a composition is under way;
+  it counted the composition, so one character composed into an empty
+  field put the caret at 1 of "" (backlog FZ9, found by the new `events`
+  fuzz target, which drives every handler row with the fuzzer's own
+  messages and an editor whose `value` follows its `change`).
+
 ### Changed
 
 - **`scripts/release-prep.nu <version>`** is a release's first step, on
@@ -53,6 +154,20 @@ was the first bare bump to break an app in five releases).
   `odin.nu gen`), then `set-version.nu`. Each step can be left out by
   name (`--skip odin,ci`), and every one runs before it reports, so one
   run lists all that is wrong. `docs/releasing.md` has it.
+
+**What you can delete.**
+
+- `ev.key === ctx.keyOf('title')` and the table of hex keys a list of
+  fields needed to tell its rows apart: the message says which field.
+- `editText(ev.key)` after an edit: the `change` carries the text.
+- `setEditText` to clear or reformat a field the model holds: declare
+  the model's text as its `value`.
+- The second `switch` on `msg.tag` inside `case 'drag'`, and the
+  messages registered only so a JSX prop would type-check.
+- F148's tag-first read, and any guard against an app kind that matched
+  a core one.
+- An app-side `access` handler that turned a slider's nudge into a
+  value: the slider's `onChange` does the arithmetic.
 
 ## 0.1.0-alpha.59 (2026-10-19)
 

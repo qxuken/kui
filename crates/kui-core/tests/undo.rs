@@ -1,7 +1,7 @@
 //! Undo/redo of the edit widget's own history: coalesced typing bursts,
 //! delete runs, selection replaces, caret restore, and history limits.
 
-use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size};
+use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, Value};
 
 const SHIFT: Mods = Mods {
     shift: true,
@@ -44,6 +44,8 @@ impl Rig {
     }
 }
 
+/// The rig's editor declares its change, cancel and boundary rows: an
+/// editor with no row sends nothing (ADR 0047).
 fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
@@ -55,7 +57,11 @@ fn frame(core: &mut Core, initial: &str, multiline: bool) -> Key {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().grow_width(),
+        NodeSpec::column()
+            .grow_width()
+            .on_change(Value::Null)
+            .on_cancel(Value::Null)
+            .on_boundary(Value::Null),
     );
     ui.finish();
     key
@@ -68,7 +74,7 @@ fn typing_burst_undoes_as_one_unit() {
     assert_eq!(rig.text(), "hello");
     let events = rig.undo();
     assert_eq!(rig.text(), "", "one undo removes the whole burst");
-    assert_eq!(events, 1, "undo emits one changed event");
+    assert_eq!(events, 1, "undo emits one change event");
     rig.redo();
     assert_eq!(rig.text(), "hello");
 }
@@ -201,12 +207,8 @@ fn backspace_at_buffer_start_emits_nothing() {
         .core
         .handle_input(InputEvent::Key(EditKey::Backspace, Mods::default()));
     // What it says instead is that it met the start (backlog F145).
-    let kinds: Vec<_> = events.iter().map(|e| e.kind()).collect();
-    assert_eq!(
-        kinds,
-        [Some("boundary")],
-        "boundary backspace is not a change"
-    );
+    let kinds: Vec<_> = events.iter().map(|e| e.event.name()).collect();
+    assert_eq!(kinds, ["boundary"], "boundary backspace is not a change");
     assert_eq!(rig.text(), "x");
 }
 
@@ -252,8 +254,8 @@ fn escape_lets_go_of_a_field_and_says_so() {
     let events = rig
         .core
         .handle_input(InputEvent::Key(EditKey::Escape, Mods::default()));
-    let kinds: Vec<_> = events.iter().map(|e| e.kind()).collect();
-    assert_eq!(kinds, [Some("cancel")]);
+    let kinds: Vec<_> = events.iter().map(|e| e.event.name()).collect();
+    assert_eq!(kinds, ["cancel"]);
     assert_eq!(events[0].key, rig.key);
     assert_eq!(rig.core.focus(), None, "the keyboard left it");
     assert_eq!(rig.text(), "draft", "the draft is the app's to drop");

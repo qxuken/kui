@@ -1088,7 +1088,27 @@ scene_ime :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 				kui.text(ui, "ab", {size = 13, family = .Mono})
 			}
 		}
-		kui.text_edit(ui, "note", "", {}, {size = 13}, {width = kui.px(200), label = "Note"})
+		// The stock editor reports its edits in a message it declares (ADR
+		// 0047): {kind = "note", change = {text}}.
+		kui.text_edit(ui, "note", "", {}, {size = 13}, {width = kui.px(200), label = "Note", on_change = msg("note")})
+	}
+}
+
+// conformance::build_edit_rows: one stock editor held to the value "AB"
+// (.Value), a message per handler row (ADR 0047, decision 7), and on_menu
+// hearing the stock editing menu's choice.
+scene_edit_rows :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	if kui.box(ui, {pad = kui.pad(10), gap = 6}) {
+		title := kui.Spec {
+			width       = kui.px(200),
+			label       = "Title",
+			on_change   = msg("title"),
+			on_submit   = msg("save"),
+			on_cancel   = msg("revert"),
+			on_boundary = msg("edge"),
+			on_menu     = msg("edit"),
+		}
+		kui.text_edit(ui, "title", "AB", {.Value}, {size = 13}, title)
 	}
 }
 
@@ -1635,6 +1655,31 @@ scene_virtual :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// conformance::build_selection_range: the virtual scene's list, selectable,
+// a line of text in each built row, and the message the copy's ask arrives
+// as (ADR 0047's on_selection_range).
+scene_selection_range :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	list := kui.Spec {
+		key                = "list",
+		width              = kui.px(120),
+		height             = kui.px(60),
+		overflow           = {.Scroll_Y},
+		bg                 = 0x101018ff,
+		selectable         = true,
+		row_count          = 109,
+		on_selection_range = msg("rows"),
+	}
+	if kui.box(ui, list) {
+		if kui.box(ui, {key = "lead", width = kui.GROW, height = kui.px(20)}) {}
+		for i in u64(100) ..< 103 {
+			if kui.box(ui, {index = i, width = kui.GROW, height = kui.px(20)}) {
+				kui.text(ui, fmt.tprintf("row %d", i), {size = 13})
+			}
+		}
+		if kui.box(ui, {key = "tail", width = kui.GROW, height = kui.px(100)}) {}
+	}
+}
+
 // conformance::LAYERS_ROWS: enough rows to overflow the viewport.
 LAYERS_ROWS :: 16
 
@@ -1880,7 +1925,8 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 }
 
 // conformance::build_select: the stock select over four rows, the fourth
-// posting an id and disabled, the second in force.
+// posting an id and disabled, the second in force, the choice arriving as
+// its on_menu message (select_with, ADR 0047).
 scene_select :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	langs := []kui.Menu_Item {
 		{label = "English", role = .Custom},
@@ -1889,7 +1935,7 @@ scene_select :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		{label = "Latin", role = .Custom, disabled = true, id = "la"},
 	}
 	if kui.box(ui, {pad = kui.pad(10), gap = 6}) {
-		kui.select(ui, "language", langs, 1)
+		kui.select_with(ui, "language", langs, 1, msg("lang"))
 		kui.text(ui, "body", {size = 12})
 	}
 }
@@ -1949,6 +1995,7 @@ SCENES := [?]Scene {
 	{"ime", scene_ime},
 	// The paste scene's tree is the ime scene's (backlog F84).
 	{"paste", scene_ime},
+	{"edit-rows", scene_edit_rows},
 	{"cells", scene_cells},
 	{"underlines", scene_underlines},
 	{"joined-backgrounds", scene_joined_backgrounds},
@@ -1980,6 +2027,7 @@ SCENES := [?]Scene {
 	{"menu", scene_selection},
 	{"menubar", scene_menu_bar},
 	{"virtual", scene_virtual},
+	{"selection-range", scene_selection_range},
 	{"layers", scene_layers},
 	{"drop", scene_drop},
 	{"anchor", scene_anchor},
@@ -2159,6 +2207,13 @@ apply :: proc(ui: ^kui.Ui, s: Step) {
 		kui.input_modifiers(ui, transmute(kui.Mods)u32(s.a))
 	case "escape":
 		kui.input_key(ui, .Escape, {})
+	case "enter":
+		kui.input_key(ui, .Enter, {})
+	case "copy":
+		// The app asking for the selection as text, as Cmd/Ctrl-C does:
+		// past a virtual list's built rows the core asks back with
+		// selectionrange.
+		kui.request_copy(ui)
 	case "arrow":
 		// conformance::ARROWS order: left, right, up, down - Edit_Key's.
 		kui.input_key(ui, kui.Edit_Key(u32(kui.Edit_Key.Left) + u32(s.a)), {})
@@ -2211,49 +2266,66 @@ apply :: proc(ui: ^kui.Ui, s: Step) {
 }
 
 // Drains the event queue; payloads are borrowed until the next poll, so each
-// is formatted before the next.
+// is formatted before the next. The row is conformance::event_row's (ADR
+// 0047): the envelope's event, then the message's name - a bare string
+// message, its `kind`, else the `tag` a non-map one is kept under; none for
+// a root event (ev.root, the core's flag) - falling back to the data's
+// `phase` or `reason`, then the extras some events carry, read from the
+// event's data.
 drain_events :: proc(ui: ^kui.Ui, out: ^strings.Builder) {
 	for ev in kui.poll_event(ui) {
 		p := ev.payload
-		kind, tag := "-", "-"
-		if p != nil {
-			if s, ok := kui.as_string(kui.get(p, "kind")); ok do kind = s
-			t := kui.get(p, "tag")
-			tk: kui.Value
-			if t != nil do tk = kui.get(t, "kind")
-			// The tag column, or - for the window-level events, which have
-			// none - the field that tells one from its siblings.
-			if tk == nil do tk = kui.get(p, "phase")
-			if tk == nil do tk = kui.get(p, "reason")
-			if s, ok := kui.as_string(tk); ok do tag = s
+		data := kui.event_data(ev)
+		kind := ev.event if ev.event != "" else "-"
+		tag := "-"
+		named := false
+		if p != nil && !ev.root {
+			for v in ([]kui.Value{p, kui.get(p, "kind"), kui.get(p, "tag")}) {
+				if s, ok := kui.as_string(v); ok {
+					tag, named = s, true
+					break
+				}
+			}
+		}
+		if !named {
+			for key in ([]string{"phase", "reason"}) {
+				if s, ok := kui.as_string(kui.get(data, key)); ok {
+					tag = s
+					break
+				}
+			}
 		}
 		fmt.sbprintf(out, "event %s %s", kind, tag)
 		phase := "-"
-		if p != nil {
-			if s, ok := kui.as_string(kui.get(p, "phase")); ok do phase = s
-		}
+		if s, ok := kui.as_string(kui.get(data, "phase")); ok do phase = s
 		switch kind {
 		case "change":
-			// A slider's phase and the value the core worked out.
-			v, _ := kui.as_i64(kui.get(p, "value"))
-			fmt.sbprintf(out, " %s %d", phase, v)
+			if text, ok := kui.as_string(kui.get(data, "text")); ok {
+				// An editor's whole text, quoted as Rust's {:?} quotes it.
+				strings.write_byte(out, ' ')
+				debug_str(out, text)
+			} else {
+				// A slider's phase and the value the core worked out.
+				v, _ := kui.as_i64(kui.get(data, "value"))
+				fmt.sbprintf(out, " %s %d", phase, v)
+			}
 		case "drag":
 			// dx/dy from the press point in every phase.
-			dx, _ := kui.as_i64(kui.get(p, "dx"))
-			dy, _ := kui.as_i64(kui.get(p, "dy"))
+			dx, _ := kui.as_i64(kui.get(data, "dx"))
+			dy, _ := kui.as_i64(kui.get(data, "dy"))
 			fmt.sbprintf(out, " %s %d %d", phase, dx, dy)
 		case "key":
 			// A key from one of a key's twins says which (backlog F108).
 			loc := "standard"
-			if s, ok := kui.as_string(kui.get(p, "location")); ok do loc = s
+			if s, ok := kui.as_string(kui.get(data, "location")); ok do loc = s
 			if loc != "standard" {
 				code := "-"
-				if s, ok := kui.as_string(kui.get(p, "code")); ok do code = s
+				if s, ok := kui.as_string(kui.get(data, "code")); ok do code = s
 				fmt.sbprintf(out, " %s %s %s", phase, code, loc)
 			}
 		case "button":
 			// A held button's phase and which button (backlog F105).
-			b := kui.get(p, "button")
+			b := kui.get(data, "button")
 			if name, ok := kui.as_string(b); ok {
 				fmt.sbprintf(out, " %s %s", phase, name)
 			} else if code, is_int := kui.as_i64(b); is_int {
@@ -2263,25 +2335,65 @@ drain_events :: proc(ui: ^kui.Ui, out: ^strings.Builder) {
 			}
 		case "scroll":
 			// The whole lines a grid's notch covers, `-` off a grid.
-			if n, ok := kui.as_i64(kui.get(p, "lines")); ok {
+			if n, ok := kui.as_i64(kui.get(data, "lines")); ok {
 				fmt.sbprintf(out, " %d", n)
 			} else {
 				fmt.sbprintf(out, " -")
 			}
 		case "drop":
-			l := kui.get(p, "paths")
+			l := kui.get(data, "paths")
 			fmt.sbprintf(out, " %s %d", phase, kui.length(l) if l != nil else 0)
 		case "open":
-			l := kui.get(p, "paths")
+			l := kui.get(data, "paths")
 			fmt.sbprintf(out, " %d", kui.length(l) if l != nil else 0)
+		case "boundary":
+			// An editor's edge and the key that met it (ADR 0047, decision 7).
+			edge, key := "-", "-"
+			if s, ok := kui.as_string(kui.get(data, "edge")); ok do edge = s
+			if s, ok := kui.as_string(kui.get(data, "key")); ok do key = s
+			fmt.sbprintf(out, " %s %s", edge, key)
+		case "menu":
+			// A menu choice's item: an option's label or its id, `-` for an
+			// id that is not a string.
+			item := "-"
+			if s, ok := kui.as_string(kui.get(data, "item")); ok do item = s
+			fmt.sbprintf(out, " %s", item)
 		case "text":
 			// A paste's markers, each only when it is set (backlog F84).
 			for marker in ([]string{"concealed", "transient"}) {
-				if on, ok := kui.as_bool(kui.get(p, marker)); ok && on do fmt.sbprintf(out, " %s", marker)
+				if on, ok := kui.as_bool(kui.get(data, marker)); ok && on do fmt.sbprintf(out, " %s", marker)
 			}
 		}
 		strings.write_byte(out, '\n')
 	}
+}
+
+// `s` as Rust's {:?} prints a str: the corpus types ASCII, so the escapes
+// that matter are the quote, the backslash and the control characters.
+debug_str :: proc(out: ^strings.Builder, s: string) {
+	strings.write_byte(out, '"')
+	for i in 0 ..< len(s) {
+		ch := s[i]
+		switch ch {
+		case '"':
+			strings.write_string(out, `\"`)
+		case '\\':
+			strings.write_string(out, `\\`)
+		case '\n':
+			strings.write_string(out, `\n`)
+		case '\t':
+			strings.write_string(out, `\t`)
+		case '\r':
+			strings.write_string(out, `\r`)
+		case:
+			if ch < 0x20 {
+				fmt.sbprintf(out, "\\u{%x}", ch)
+			} else {
+				strings.write_byte(out, ch)
+			}
+		}
+	}
+	strings.write_byte(out, '"')
 }
 
 // The protocol conformance::drive documents: the window facts, then a frame,

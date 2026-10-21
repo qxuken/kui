@@ -250,7 +250,7 @@ fn the_line_is_the_visual_row_across_the_nodes_runs() {
 /// A `role="none"` subtree under a `line` — a gutter's number, a fold
 /// marker — is not the line's text (backlog AR30): the access tree skips
 /// it, and so does a hit or a caret asked by the line's key, so `byte`
-/// counts the same characters `offset` in an access event does.
+/// counts the same characters `offset` in a `select` event does.
 #[test]
 fn a_none_subtree_under_a_line_is_not_its_text() {
     use kui_core::Role;

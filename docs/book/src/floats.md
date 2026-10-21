@@ -34,9 +34,9 @@ Three props do the work:
 - **`.float(FloatConfig::viewport().inside(Center, Center))`** —
   anchored to the window, centred. `FloatConfig::parent()` anchors to
   the parent box instead, and `.offset(x, y)` nudges either.
-- **`.modal(tag)`** — while this float is declared, Tab stays inside
+- **`.modal(msg)`** — while this float is declared, Tab stays inside
   it, the pointer cannot reach what is behind it, and Escape or a press
-  outside becomes a `dismiss` event carrying the tag.
+  outside arrives as `msg`, a `dismiss` event with its reason inside.
 - **`.label("Delete?")`** — the dialog's name. A button is named by
   the text inside it, but a dialog is not: a screen reader announcing
   "dialog" with nothing after it tells the user nothing, and the
@@ -60,8 +60,9 @@ paint over it — and kui would warn, `modal-behind-content`.
 
 ## Try this
 
-- Right-click anywhere and open a menu there. `.on_context_menu(tag)`
-  on the root delivers a `contextmenu` event with `x` and `y`; declare
+- Right-click anywhere and open a menu there. `.on_context_menu(msg)`
+  on the root delivers `msg` as a `contextmenu` event, the point inside
+  it (`ev.split` reads it as `Event::ContextMenu(at)`); declare
   a modal float at `FloatConfig::viewport().inside(Start, Start)
   .offset(x, y).fit()`. The reference counter does exactly this.
 - Give the dialog `.initial_focus()` on the Cancel button, so Enter

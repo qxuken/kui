@@ -4,8 +4,8 @@
 
 use kui_core::testing::{click_at, drive, key_press as press, key_release as release};
 use kui_core::{
-    Align, Core, EditKey, EditOptions, FloatConfig, InputEvent, Key, KeyCode, KeyMods, KeyPress,
-    LayoutScript, Mods, NodeSpec, Size, UiEvent, Value, Vec2,
+    Align, Core, EditKey, EditOptions, EventKind, FloatConfig, InputEvent, Key, KeyCode, KeyMods,
+    KeyPress, LayoutScript, Mods, NodeSpec, Size, UiEvent, Value, Vec2,
 };
 
 /// Two side-by-side key sinks (think: two editor panes), left one focused.
@@ -31,13 +31,19 @@ fn frame(core: &mut Core, focus_left: bool) -> (Key, Key) {
     (left, right)
 }
 
+/// A key event's data: the `key` field of the sink's message
+/// (`{pane: 0, key: {phase, code, ...}}`, ADR 0047).
+fn data(e: &UiEvent) -> &Value {
+    e.data().expect("a key event carries its data")
+}
+
 /// The `(phase, code)` of every key event in a batch, in order.
 fn keys(evs: &[UiEvent]) -> Vec<(String, String)> {
     evs.iter()
-        .filter(|e| e.kind() == Some("key"))
+        .filter(|e| e.is(EventKind::Key))
         .map(|e| {
             let at = |k: &str| {
-                e.payload
+                data(e)
                     .get(k)
                     .and_then(Value::as_str)
                     .unwrap_or("")
@@ -55,17 +61,13 @@ fn focused_sink_receives_keys_as_data() {
     let evs = drive(&mut core, &[press(KeyCode::Char('i'))]);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, left);
-    let p = &evs[0].payload;
-    assert_eq!(p.get_str("kind"), Some("key"));
+    assert_eq!(evs[0].event, EventKind::Key);
+    let p = data(&evs[0]);
     assert_eq!(p.get_str("code"), Some("i"));
     assert_eq!(p.get_bool("ctrl"), Some(false));
-    // The sink's on_key payload rides along under "tag".
-    assert_eq!(
-        p.get("tag")
-            .and_then(|t| t.get("pane"))
-            .and_then(Value::as_int),
-        Some(0)
-    );
+    // The event arrives as the sink's on_key message, its own fields kept
+    // beside the `key` it carries.
+    assert_eq!(evs[0].payload.get("pane").and_then(Value::as_int), Some(0));
 }
 
 #[test]
@@ -74,13 +76,13 @@ fn modifiers_and_text_cross_as_data() {
     frame(&mut core, true);
     let kp = KeyPress::new(KeyCode::Char('w'), KeyMods::NONE.with_ctrl());
     let evs = drive(&mut core, &[InputEvent::KeyDown(kp)]);
-    let p = &evs[0].payload;
+    let p = data(&evs[0]);
     assert_eq!(p.get_bool("ctrl"), Some(true));
     assert_eq!(p.get("text"), Some(&Value::Null));
 
     let typed = KeyPress::new(KeyCode::Char('w'), KeyMods::default()).with_text("w");
     let evs = drive(&mut core, &[InputEvent::KeyDown(typed)]);
-    assert_eq!(evs[0].payload.get_str("text"), Some("w"));
+    assert_eq!(data(&evs[0]).get_str("text"), Some("w"));
 }
 
 #[test]
@@ -98,15 +100,11 @@ fn clicking_a_sink_moves_key_focus() {
             press(KeyCode::Escape),
         ],
     );
-    let key_evs: Vec<_> = evs.iter().filter(|e| e.kind() == Some("key")).collect();
+    let key_evs: Vec<_> = evs.iter().filter(|e| e.is(EventKind::Key)).collect();
     assert_eq!(key_evs.len(), 1);
     assert_eq!(key_evs[0].key, right);
     assert_eq!(
-        key_evs[0]
-            .payload
-            .get("tag")
-            .and_then(|t| t.get("pane"))
-            .and_then(Value::as_int),
+        key_evs[0].payload.get("pane").and_then(Value::as_int),
         Some(1)
     );
 }
@@ -131,7 +129,8 @@ fn null_tag_omitted_from_payload() {
     ui.finish();
     let evs = drive(&mut core, &[press(KeyCode::Enter)]);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.get_str("code"), Some("enter"));
+    assert_eq!(data(&evs[0]).get_str("code"), Some("enter"));
+    // A `Null` message is the `key` field alone: no tag beside it.
     assert_eq!(evs[0].payload.get("tag"), None);
 }
 
@@ -172,18 +171,12 @@ fn a_press_and_its_release_are_one_kind_with_a_phase() {
         keys(&evs),
         [("down".into(), "w".into()), ("up".into(), "w".into())]
     );
-    // Both halves carry the sink's tag; a release inserts nothing.
+    // Both halves arrive as the sink's message; a release inserts nothing.
     for e in &evs {
-        assert_eq!(
-            e.payload
-                .get("tag")
-                .and_then(|t| t.get("pane"))
-                .and_then(Value::as_int),
-            Some(0)
-        );
+        assert_eq!(e.payload.get("pane").and_then(Value::as_int), Some(0));
     }
-    assert_eq!(evs[1].payload.get("text"), Some(&Value::Null));
-    assert_eq!(evs[1].payload.get("repeat"), Some(&Value::Bool(false)));
+    assert_eq!(data(&evs[1]).get("text"), Some(&Value::Null));
+    assert_eq!(data(&evs[1]).get("repeat"), Some(&Value::Bool(false)));
 }
 
 /// The keymap case, which is the default: a sink that says only `on_key`
@@ -242,10 +235,10 @@ fn a_release_never_carries_text_or_repeat() {
             }),
         ],
     );
-    assert_eq!(evs[0].payload.get_str("text"), Some("w"));
-    assert_eq!(evs[0].payload.get("repeat"), Some(&Value::Bool(true)));
-    assert_eq!(evs[1].payload.get("text"), Some(&Value::Null));
-    assert_eq!(evs[1].payload.get("repeat"), Some(&Value::Bool(false)));
+    assert_eq!(data(&evs[0]).get_str("text"), Some("w"));
+    assert_eq!(data(&evs[0]).get("repeat"), Some(&Value::Bool(true)));
+    assert_eq!(data(&evs[1]).get("text"), Some(&Value::Null));
+    assert_eq!(data(&evs[1]).get("repeat"), Some(&Value::Bool(false)));
 }
 
 #[test]
@@ -328,16 +321,16 @@ fn focus_moving_releases_what_the_old_sink_held() {
             InputEvent::mouse_up(),
         ],
     );
-    let ups: Vec<_> = evs.iter().filter(|e| e.kind() == Some("key")).collect();
+    let ups: Vec<_> = evs.iter().filter(|e| e.is(EventKind::Key)).collect();
     assert_eq!(ups.len(), 2);
     assert!(ups.iter().all(|e| e.key == left));
     assert_eq!(
         ups.iter()
-            .map(|e| e.payload.get_str("code").unwrap())
+            .map(|e| data(e).get_str("code").unwrap())
             .collect::<Vec<_>>(),
         ["w", "a"]
     );
-    assert!(ups.iter().all(|e| e.payload.get_str("phase") == Some("up")));
+    assert!(ups.iter().all(|e| data(e).get_str("phase") == Some("up")));
     // The physical release lands after the move: the new sink never saw the
     // press, so it hears nothing.
     let evs = drive(&mut core, &[release(KeyCode::Char('w'))]);
@@ -538,7 +531,7 @@ fn sink_in_a_modal(core: &mut Core) -> (Key, Key) {
 
 /// The `kind` of every event in a batch, in order.
 fn kinds(evs: &[UiEvent]) -> Vec<&str> {
-    evs.iter().map(|e| e.kind().unwrap_or("")).collect()
+    evs.iter().map(|e| e.event.name()).collect()
 }
 
 #[test]
@@ -559,7 +552,10 @@ fn a_press_reaches_the_sink_and_the_core_both() {
     assert_eq!(kinds(&evs), ["key", "dismiss"]);
     assert_eq!(evs[0].key, sink);
     assert_eq!(evs[1].key, dialog);
-    assert_eq!(evs[1].payload.get_str("reason"), Some("escape"));
+    assert_eq!(
+        evs[1].data().and_then(|d| d.get_str("reason")),
+        Some("escape")
+    );
 
     // The release is one channel, because only one has a second half. This
     // sink never asked for `key_up`, so it hears nothing at all.
@@ -588,7 +584,8 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
             .value_now(3.0)
             .value_min(0.0)
             .value_max(10.0)
-            .on_drag("vol"),
+            .on_drag("vol")
+            .on_change("vol"),
     );
     ui.finish();
 
@@ -606,10 +603,13 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
     press(&mut core, KeyCode::Tab);
     assert_eq!(core.focus(), Some(vol), "tab moved on to the slider");
 
+    // One step up, proposed through the slider's `on_change`.
     let evs = press(&mut core, KeyCode::Right);
-    assert_eq!(kinds(&evs), ["access"]);
+    assert_eq!(kinds(&evs), ["change"]);
     assert_eq!(evs[0].key, vol);
-    assert_eq!(evs[0].payload.get_str("action"), Some("increment"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("vol"));
+    let value = evs[0].data().and_then(|d| d.get("value")?.as_float());
+    assert!(value.is_some_and(|v| v > 3.0), "{value:?}");
 }
 
 /// splitmux's shape: one sink wrapping the panes, each pane clickable so a
@@ -643,8 +643,9 @@ fn a_click_inside_a_sink_leaves_the_keyboard_on_the_sink() {
     // The click still reaches the pane as a click...
     let evs = click_at(&mut core, 200.0, 150.0);
     assert!(
-        evs.iter()
-            .any(|e| e.key == pane && e.kind() == Some("focus")),
+        evs.iter().any(|e| e.key == pane
+            && e.is(EventKind::Click)
+            && e.payload.get_str("kind") == Some("focus")),
         "the pane still hears its own click"
     );
     // ...but the keyboard stayed put, without the view asking again.
@@ -976,13 +977,13 @@ fn both_codes_cross_as_data() {
     let evs = drive(&mut core, &[InputEvent::KeyDown(ru.clone())]);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, left);
-    let p = &evs[0].payload;
+    let p = data(&evs[0]);
     assert_eq!(p.get_str("code"), Some("v"));
     assert_eq!(p.get_str("physical"), Some("v"));
     // `text` is the typing view and stays the layout's own character.
     assert_eq!(p.get_str("text"), Some("м"));
     let evs = drive(&mut core, &[InputEvent::KeyUp(ru.released())]);
-    let p = &evs[0].payload;
+    let p = data(&evs[0]);
     assert_eq!(p.get_str("code"), Some("v"));
     assert_eq!(p.get_str("physical"), Some("v"));
 }
@@ -1092,13 +1093,9 @@ fn a_focused_sink_outside_the_clip_still_hears_the_keyboard() {
     assert_eq!(evs.len(), 1, "the key was delivered");
     assert_eq!(evs[0].key, second);
     assert_eq!(
-        evs[0]
-            .payload
-            .get("tag")
-            .and_then(|t| t.get("pane"))
-            .and_then(Value::as_int),
+        evs[0].payload.get("pane").and_then(Value::as_int),
         Some(1),
-        "with the sink's own tag"
+        "as the sink's own message"
     );
     // A click out there still finds nothing: the pointer's rule is
     // unchanged, and only the keyboard's was wrong.
@@ -1172,7 +1169,7 @@ fn a_press_says_where_the_key_is_and_what_the_locks_hold() {
             num: true,
         });
     let evs = drive(&mut core, &[InputEvent::KeyDown(kp.clone())]);
-    let p = &evs[0].payload;
+    let p = data(&evs[0]);
     assert_eq!(p.get_str("code"), Some("1"), "the keypad's 1 is still a 1");
     assert_eq!(p.get_str("location"), Some("numpad"));
     assert_eq!(p.get_bool("caps_lock"), Some(true));
@@ -1181,7 +1178,7 @@ fn a_press_says_where_the_key_is_and_what_the_locks_hold() {
     assert_eq!(evs[0].key_press().map(|(_, k)| k), Some(kp));
     // A plain press: the standard key, no lock.
     let evs = drive(&mut core, &[press(KeyCode::Char('2'))]);
-    let p = &evs[0].payload;
+    let p = data(&evs[0]);
     assert_eq!(p.get_str("location"), Some("standard"));
     assert_eq!(p.get_bool("caps_lock"), Some(false));
 }
@@ -1197,10 +1194,10 @@ fn the_keypads_key_and_the_main_blocks_are_two_keys() {
     // The keypad's release lets go of the keypad's 1, not the main one.
     let evs = drive(&mut core, &[InputEvent::KeyUp(pad.released())]);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.get_str("location"), Some("numpad"));
+    assert_eq!(data(&evs[0]).get_str("location"), Some("numpad"));
     let evs = drive(&mut core, &[InputEvent::KeyUp(main.released())]);
     assert_eq!(evs.len(), 1, "the main block's 1 was still held");
-    assert_eq!(evs[0].payload.get_str("location"), Some("standard"));
+    assert_eq!(data(&evs[0]).get_str("location"), Some("standard"));
 }
 
 #[test]
@@ -1245,7 +1242,7 @@ fn the_modifier_keys_reach_only_a_sink_that_asks() {
             ("down".into(), "capslock".into()),
         ]
     );
-    assert_eq!(evs[0].payload.get_str("location"), Some("left"));
+    assert_eq!(data(&evs[0]).get_str("location"), Some("left"));
     // The right Shift is another key: its release does not let go of
     // the left one held.
     let right = shift.clone().with_location(KeyLocation::Right);
@@ -1271,8 +1268,8 @@ fn a_forced_release_of_a_modifier_key_says_the_state_after() {
     assert_eq!(keys(&evs), [("up".into(), "shift".into())]);
     let shift = |evs: &[UiEvent]| -> Vec<Option<bool>> {
         evs.iter()
-            .filter(|e| e.payload.get_str("kind") == Some("key"))
-            .map(|e| e.payload.get_bool("shift"))
+            .filter(|e| e.is(EventKind::Key))
+            .map(|e| data(e).get_bool("shift"))
             .collect()
     };
     assert_eq!(shift(&evs), [Some(false)]);

@@ -36,7 +36,10 @@
 //!
 //! A button carries a message. After the frame, each event it produced
 //! reaches [`App::on_event`], and [`UiEvent::message`] reads the message
-//! back as the app's own enum.
+//! back as the app's own enum. An event with data of its own — a drag, a
+//! slider's `change` — arrives as the message its handler declared, with
+//! the data inside under the event's name, and [`UiEvent::split`] reads
+//! the message and a typed [`Event`] in one `match`.
 //!
 //! ```rust,no_run
 //! use kui_native::widgets;
@@ -219,7 +222,9 @@ mod windows_theme;
 
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalPosition, LogicalSize};
-use winit::event::{ElementState, Ime, MouseButton as WinitButton, WindowEvent};
+use winit::event::{
+    ElementState, Ime, MouseButton as WinitButton, WindowEvent as WinitWindowEvent,
+};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 // `WindowId` is `kui_core`'s here (re-exported above); winit's own is the
@@ -1999,7 +2004,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for Handler<'_, '_> {
         &mut self,
         event_loop: &ActiveEventLoop,
         window: WinitWindowId,
-        event: WindowEvent,
+        event: WinitWindowEvent,
     ) {
         self.0.window_event(event_loop, window, event);
     }
@@ -2337,14 +2342,14 @@ impl DynShell<'_> {
     }
 
     /// Direct edits (cut) mutate the document outside `handle_input`, so
-    /// the `changed` the core queued for it is routed here, and the window
+    /// the `change` the core queued for it is routed here, and the window
     /// redrawn. The core posts the event (AR15: this used to build one by
     /// hand, and the menu's Cut posted none), so it is stamped and routed
     /// like the ones a keystroke makes.
     fn after_direct_edit(&mut self, i: usize) {
         let events = self.panes[i].core.take_pending_events();
         // A cut is input too: the frame that shows the text gone should
-        // show what the app made of `changed`.
+        // show what the app made of `change`.
         let reached_app = self.route_events(events);
         self.owe_for(reached_app);
         // The one caller is the runner's own ⌘X, which the core never
@@ -2928,13 +2933,13 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         &mut self,
         event_loop: &ActiveEventLoop,
         id: WinitWindowId,
-        event: WindowEvent,
+        event: WinitWindowEvent,
     ) {
         let Some(i) = self.pane_index(id) else { return };
         // Everything but the redraw itself: a redraw is the *answer* to an
         // event, so counting it would make a frame its own reason for the
         // next one and an animation would report activity for ever.
-        if !matches!(event, WindowEvent::RedrawRequested) {
+        if !matches!(event, WinitWindowEvent::RedrawRequested) {
             self.saw_event = true;
         }
         {
@@ -2944,7 +2949,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             }
         }
         match event {
-            WindowEvent::CloseRequested => {
+            WinitWindowEvent::CloseRequested => {
                 if self.panes[i].id == WindowId::MAIN {
                     self.exit_main(event_loop);
                 } else {
@@ -2955,7 +2960,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // On Windows minimizing and restoring are each a `WM_SIZE`:
             // the first is where the window went dark, the second the
             // frame that brings it back (backlog RG97).
-            WindowEvent::Resized(size) => {
+            WinitWindowEvent::Resized(size) => {
                 let pane = &mut self.panes[i];
                 if let Some(r) = pane.renderer.as_mut() {
                     r.resize(size.width, size.height);
@@ -2974,20 +2979,20 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     pane.redraw_for(FrameCause::RESIZE);
                 }
             }
-            WindowEvent::ScaleFactorChanged { .. } => {
+            WinitWindowEvent::ScaleFactorChanged { .. } => {
                 self.panes[i].redraw_for(FrameCause::SCALE);
             }
             // The wallpaper kui draws behind a window stays put on the
             // screen as the window moves over it (backlog F126); nothing
             // else here cares where the window is.
-            WindowEvent::Moved(_) => {
+            WinitWindowEvent::Moved(_) => {
                 let pane = &mut self.panes[i];
                 if let Some(g) = pane.ground.as_mut() {
                     g.moved();
                     pane.redraw_for(FrameCause::RESIZE);
                 }
             }
-            WindowEvent::CursorMoved { position, .. } => {
+            WinitWindowEvent::CursorMoved { position, .. } => {
                 let pane = &mut self.panes[i];
                 let scale = pane.window.scale_factor() as f32;
                 let p = Vec2::new(position.x as f32 / scale, position.y as f32 / scale);
@@ -3004,7 +3009,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 // joined, the same move again in that popup's coordinates.
                 self.retarget_move(event_loop, from, p);
             }
-            WindowEvent::CursorLeft { .. } => {
+            WinitWindowEvent::CursorLeft { .. } => {
                 self.dispatch(event_loop, i, InputEvent::CursorLeft);
             }
             // Files dragged in from the OS, as winit reports them: one
@@ -3014,14 +3019,14 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // are collected per batch and dispatched at its end, at the
             // pane's last reported cursor — the point at enter and at
             // release, since no platform here reports the drag moving.
-            WindowEvent::HoveredFile(path) => {
+            WinitWindowEvent::HoveredFile(path) => {
                 if !self.file_drag_is_overridden() {
                     let pane = &mut self.panes[i];
                     pane.file_drag.push(path.to_string_lossy().into_owned());
                     pane.file_drag_pending = Some(false);
                 }
             }
-            WindowEvent::DroppedFile(path) => {
+            WinitWindowEvent::DroppedFile(path) => {
                 if !self.file_drag_is_overridden() {
                     let pane = &mut self.panes[i];
                     // A hover batch still waiting in the same turn is the
@@ -3033,7 +3038,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     pane.file_drag_pending = Some(true);
                 }
             }
-            WindowEvent::HoveredFileCancelled => {
+            WinitWindowEvent::HoveredFileCancelled => {
                 if !self.file_drag_is_overridden() {
                     let pane = &mut self.panes[i];
                     pane.file_drag.clear();
@@ -3045,7 +3050,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // every window's copy at the end of the batch (`settle_focus`),
             // because focus *moving* is two events and neither alone is the
             // answer.
-            WindowEvent::Focused(focused) => {
+            WinitWindowEvent::Focused(focused) => {
                 self.panes[i].os_focused = focused;
                 // A modifier let go elsewhere never comes up here: what
                 // was down is forgotten with the keyboard (backlog F108).
@@ -3087,7 +3092,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // surface skips are not retried.
             // Covered is where a window goes dark, minimized on macOS
             // included, and uncovered where it comes back (RG97).
-            WindowEvent::Occluded(covered) => {
+            WinitWindowEvent::Occluded(covered) => {
                 self.panes[i]
                     .retry
                     .occluded(covered, std::time::Instant::now());
@@ -3101,7 +3106,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // arrives while the app is in front. The next frame reads the
             // appearance off the window anyway; the redraw is what makes
             // there *be* a next frame in an app that only draws on input.
-            WindowEvent::ThemeChanged(theme) => {
+            WinitWindowEvent::ThemeChanged(theme) => {
                 self.panes[i].appearance = theme_appearance(Some(theme));
                 self.system = system_env::query();
                 self.panes[i].redraw_for(FrameCause::APPEARANCE);
@@ -3110,7 +3115,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // pane unless it is lending its keyboard to a non-activating
             // popup. The modifier mirror follows them, or the popup would
             // read a stale Shift.
-            WindowEvent::ModifiersChanged(m) => {
+            WinitWindowEvent::ModifiersChanged(m) => {
                 // The keyboard's state is one fact for the pair: the OS
                 // delivers the edge to the owner, the target reads it for
                 // the keys it borrows, and the owner keeps reading it once
@@ -3133,7 +3138,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // press closed a window pressed again in the one beneath it
             // (backlog RG100). The releases it makes up as a window loses
             // focus are kept: they are what lets go of a key a sink held.
-            WindowEvent::KeyboardInput {
+            WinitWindowEvent::KeyboardInput {
                 event,
                 is_synthetic,
                 ..
@@ -3143,7 +3148,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     self.on_key(event_loop, i, t, event)
                 }
             }
-            WindowEvent::Ime(Ime::Commit(text)) => {
+            WinitWindowEvent::Ime(Ime::Commit(text)) => {
                 // Its own channel, not `Text`: a sink hears a commit as a
                 // `text` event and a keystroke as a `key` event, once each
                 // (backlog C17); a stock editor takes both the same way.
@@ -3151,7 +3156,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 let t = self.key_target(i);
                 self.dispatch(event_loop, t, InputEvent::Commit(text));
             }
-            WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+            WinitWindowEvent::Ime(Ime::Preedit(text, cursor)) => {
                 self.panes[i].preedit_open = !text.is_empty();
                 let t = self.key_target(i);
                 self.dispatch(event_loop, t, InputEvent::Preedit(text, cursor));
@@ -3161,7 +3166,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // that a pending preedit is cleared: a composition still open
             // ends without a commit, as an empty preedit, the way an IME
             // that cancels says it.
-            WindowEvent::Ime(Ime::Disabled) => {
+            WinitWindowEvent::Ime(Ime::Disabled) => {
                 if std::mem::take(&mut self.panes[i].preedit_open) {
                     let t = self.key_target(i);
                     self.dispatch(event_loop, t, InputEvent::Preedit(String::new(), None));
@@ -3173,7 +3178,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             // while the finger presses harder is the same click still
             // happening (ADR 0017, decision 6). macOS-only: no other
             // winit backend reports pressure at all.
-            WindowEvent::TouchpadPressure { stage, .. } => {
+            WinitWindowEvent::TouchpadPressure { stage, .. } => {
                 let pane = &mut self.panes[i];
                 let was = std::mem::replace(&mut pane.pressure_stage, stage);
                 if stage >= 2 && was < 2 {
@@ -3181,7 +3186,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     self.dispatch(event_loop, i, InputEvent::ForceClick(at));
                 }
             }
-            WindowEvent::MouseWheel { delta, phase, .. } => {
+            WinitWindowEvent::MouseWheel { delta, phase, .. } => {
                 let started = phase == winit::event::TouchPhase::Started;
                 let pane = &mut self.panes[i];
                 let scale = pane.window.scale_factor() as f32;
@@ -3221,7 +3226,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                     pane.scroll_gesture.note(kind, started, now);
                 }
             }
-            WindowEvent::MouseInput { state, button, .. } => {
+            WinitWindowEvent::MouseInput { state, button, .. } => {
                 let button = match button {
                     WinitButton::Left => MouseButton::Primary,
                     WinitButton::Right => MouseButton::Secondary,
@@ -3363,7 +3368,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 };
                 self.dispatch(event_loop, i, ev);
             }
-            WindowEvent::RedrawRequested
+            WinitWindowEvent::RedrawRequested
                 if frame_waits_for_host(self.owed.get(), self.panes[i].deferred_frame) =>
             {
                 // What would be painted predates an input the app has been
@@ -3376,8 +3381,8 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             }
             // A frame asked for while frames run back to back waits for
             // the display, which asks again at the vsync (`mod pacer`).
-            WindowEvent::RedrawRequested if !self.panes[i].admit_frame() => {}
-            WindowEvent::RedrawRequested => {
+            WinitWindowEvent::RedrawRequested if !self.panes[i].admit_frame() => {}
+            WinitWindowEvent::RedrawRequested => {
                 self.panes[i].deferred_frame = false;
                 self.redraw(i);
                 // KUI_SMOKE_FRAMES: count what the main window actually

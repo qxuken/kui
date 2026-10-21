@@ -313,7 +313,7 @@ impl Core {
     /// on a grid. The fraction left over is carried to the next delta on
     /// the same grid, whichever of the two made it (`line_carry`): a
     /// notch's half line and an edge step's add up. `None` when the node
-    /// is not in the finished frame or declared no tag.
+    /// is not in the finished frame or declared no `on_scroll`.
     pub(crate) fn scroll_event(&mut self, key: Key, p: Vec2, delta: Vec2) -> Option<UiEvent> {
         let i = self.tree.index_of(key)?;
         self.tree.specs[i].events().on_scroll.as_ref()?;
@@ -333,15 +333,14 @@ impl Core {
         };
         let origin = self.tree.origins[i];
         let tag = self.tree.specs[i].events().on_scroll.as_ref();
-        let payload = Value::map([
-            ("kind", Value::str("scroll")),
+        let data = Value::map([
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
             ("dx", Value::Float(delta.x as f64)),
             ("dy", Value::Float(delta.y as f64)),
             ("lines", lines),
         ]);
-        Some(UiEvent::on(origin, key, payload).tagged(tag))
+        Some(UiEvent::declared(EventKind::Scroll, origin, key, tag, data))
     }
 }
 

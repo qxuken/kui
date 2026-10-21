@@ -10,17 +10,23 @@ import c "c"
 // {kind, ...fields}, and kui writes and reads that map from ordinary Odin
 // types, so an app declares its messages as types and never builds a map:
 //
-//     Inc  :: struct {}                  // {kind = "inc"}
-//     Pick :: struct {id: int}           // {kind = "pick", id = 3}
-//     Msg  :: union {Inc, Pick, kui.Context_Menu_Event, kui.Dismiss_Event}
+//     Inc     :: struct {}               // {kind = "inc"}
+//     Pick    :: struct {id: int}        // {kind = "pick", id = 3}
+//     Menu_At :: struct {using _: kui.With_Context_Menu}
+//     Msg     :: union {Inc, Pick, Menu_At}
 //
 //     kui.button(ui, "+1", Inc{})        // any message where a handler goes
 //
 //     switch m in kui.message(ev, Msg) { // and back, as the union
-//     case Inc:              s.count += 1
-//     case Pick:             s.picked = m.id
-//     case kui.Context_Menu_Event: s.menu = {m.x, m.y}
+//     case Inc:     s.count += 1
+//     case Pick:    s.picked = m.id
+//     case Menu_At: s.menu = {m.contextmenu.x, m.contextmenu.y}
 //     }
+//
+// An event arrives as the message its handler declared, the event's data
+// in one field of it named for the event (ADR 0047): a With_X embedded
+// with `using _:` is that field (events.odin), read with the message and
+// never written into it.
 //
 // The rules are #[derive(Message)]'s, so a Rust, Lua or Node peer reads the
 // same thing:
@@ -35,18 +41,19 @@ import c "c"
 //     lists, map[string]T a map, a pointer what it points at.
 //
 // Reading back, a kind matches a type or enum name with case and
-// underscores ignored, and a type's _Event suffix too, so the core's own
-// "contextmenu" is Context_Menu_Event (events.odin). A field missing from the payload is left
-// zero. Strings read from a payload are borrowed: valid until the next
+// underscores ignored, and a type's _Event suffix too, so a root event's
+// "resize" is Resize_Event (events.odin). A field missing from the payload
+// is left zero. Strings read from a payload are borrowed: valid until the next
 // poll, or for the callback a run hands the event to; clone one to keep it.
 
 // A payload, borrowed from the event it came with. Read it with get / at /
 // as_* or decode it into a type; a field of type Value in a message is
-// handed the raw value (the `tag` on a core event, for one).
+// handed the raw value (a menu row's `item`, for one).
 Value :: distinct ^c.Value
 
-// Ask for a behaviour without a tag: modal = kui.NO_TAG is a modal surface
-// whose dismiss event carries no `tag`.
+// Ask for a behaviour without a message of your own: modal = kui.NO_TAG is
+// a modal surface whose dismiss event arrives as the field alone,
+// {dismiss = {reason}}, which kui.With_Dismiss decodes.
 No_Tag :: struct {}
 NO_TAG :: No_Tag{}
 
@@ -67,6 +74,15 @@ message_union :: proc(ev: Event, $T: typeid) -> (out: T) where intrinsics.type_i
 message_one :: proc(ev: Event, $T: typeid) -> (out: T, ok: bool) where !intrinsics.type_is_union(T) {
 	ok = decode(ev.payload, &out)
 	return
+}
+
+// An event's data (ADR 0047): a node event's field named for ev.event - a
+// drag's {phase, x, y, ...} under `drag`, nil for one that carries none (a
+// plain click, a submit) - or, for a root event (ev.root), whose payload is
+// {kind = "resize", ...}, the payload itself.
+event_data :: proc(ev: Event) -> Value {
+	if ev.root do return ev.payload
+	return get(ev.payload, ev.event)
 }
 
 // The payload's `kind`, "" when it has none.
@@ -177,14 +193,7 @@ decode_any :: proc(v: Value, dst: any) -> bool {
 			if k != "" && !same_name(named.name, k) do return false
 		}
 		if !is_map(v) do return false
-		for i in 0 ..< int(info.field_count) {
-			name := field_name(info, i)
-			if name == "_" do continue
-			field := any{rawptr(uintptr(dst.data) + info.offsets[i]), info.types[i].id}
-			fv := get(v, name)
-			if fv == nil || is_null(fv) do continue
-			decode_any(fv, field)
-		}
+		decode_fields(v, dst.data, info)
 		return true
 	case runtime.Type_Info_Union:
 		if is_null(v) {
@@ -219,6 +228,28 @@ decode_any :: proc(v: Value, dst: any) -> bool {
 		return true
 	}
 	return false
+}
+
+// A struct's fields from the map v. A `using _: kui.With_Drag` field is the
+// event's half of an app's message (events.odin): its fields are read from
+// the same map, beside the message's own, and its name and kind are not
+// the message's.
+@(private)
+decode_fields :: proc(v: Value, data: rawptr, info: runtime.Type_Info_Struct) {
+	for i in 0 ..< int(info.field_count) {
+		name := field_name(info, i)
+		at := rawptr(uintptr(data) + info.offsets[i])
+		if name == "_" {
+			if !info.usings[i] do continue
+			if inner, ok := runtime.type_info_base(info.types[i]).variant.(runtime.Type_Info_Struct); ok {
+				decode_fields(v, at, inner)
+			}
+			continue
+		}
+		fv := get(v, name)
+		if fv == nil || is_null(fv) do continue
+		decode_any(fv, any{at, info.types[i].id})
+	}
 }
 
 @(private)

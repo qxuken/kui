@@ -86,6 +86,7 @@ impl Core {
         self.devtools_consume(out);
         self.devtools_translate(out);
         self.stamp(out);
+        self.note_taken_fields(out);
         self.devtools_log(out);
         // An event the app was handed is "the user did something": what
         // separates a message repeated on purpose from a view announcing
@@ -107,7 +108,7 @@ impl Core {
     /// selection uses (`cell_row_col`), so the app never divides by a
     /// cell size it did not choose. Inside a key sink that
     /// draws `role="line"` rows, `line` — the ordinal among the sink's
-    /// lines, the numbering its `access` events use — `byte` — where the
+    /// lines, the numbering its `select` events use — `byte` — where the
     /// point falls in that line's text, what `text_hit` would answer —
     /// and `clicks` — the press's count, so a double click is a word
     /// without a timer the app keeps; a point above the
@@ -133,10 +134,8 @@ impl Core {
             let Some(i) = self.tree.index_of(ev.key) else {
                 continue;
             };
-            if let Some((row, col)) = self.cell_row_col(ev.key, point)
-                && let Value::Map(entries) = &mut ev.payload
-            {
-                entries.push((
+            if let Some((row, col)) = self.cell_row_col(ev.key, point) {
+                ev.data_fields_or_new().push((
                     "cell".to_string(),
                     Value::map([
                         ("row", Value::Int(row as i64)),
@@ -196,40 +195,28 @@ impl Core {
             };
             // A `button` event's press carries its own count and its move
             // and release none (backlog F105): `clicks` here is the last
-            // primary press's. The core's is told by its `phase` and
-            // `button` fields, not its kind alone, which an app's click
-            // payload may spell too (backlog RG75).
-            let own_count = ev.kind() == Some("button")
-                && ev.payload.get("phase").is_some()
-                && ev.payload.get("button").is_some();
-            if let Value::Map(entries) = &mut ev.payload {
-                entries.push(("line".to_string(), Value::Int(line as i64)));
-                entries.push(("byte".to_string(), Value::Int(byte as i64)));
-                entries.push(("inside".to_string(), Value::Bool(inside)));
-                if !own_count {
-                    entries.push(("clicks".to_string(), Value::Int(clicks as i64)));
-                }
+            // primary press's.
+            let own_count = ev.is(EventKind::Button);
+            let entries = ev.data_fields_or_new();
+            entries.push(("line".to_string(), Value::Int(line as i64)));
+            entries.push(("byte".to_string(), Value::Int(byte as i64)));
+            entries.push(("inside".to_string(), Value::Bool(inside)));
+            if !own_count {
+                entries.push(("clicks".to_string(), Value::Int(clicks as i64)));
             }
         }
     }
 
-    /// Where a pointer-made event happened: the `x` / `y` its payload
-    /// carries (a drag's), else the cursor (a click's), else nowhere —
-    /// and nowhere for a payload that is not a map, which can carry no
-    /// field anyway.
+    /// Where a pointer-made event happened: the `x` / `y` its data
+    /// carries (a drag's), else the cursor (a click's).
     fn pointer_point(&self, ev: &UiEvent) -> Option<Vec2> {
-        let Value::Map(entries) = &ev.payload else {
-            return None;
-        };
+        let data = ev.data();
         let field = |name: &str| {
-            entries
-                .iter()
-                .find(|(k, _)| k == name)
-                .and_then(|(_, v)| match v {
-                    Value::Float(f) => Some(*f as f32),
-                    Value::Int(n) => Some(*n as f32),
-                    _ => None,
-                })
+            data.and_then(|d| d.get(name)).and_then(|v| match v {
+                Value::Float(f) => Some(*f as f32),
+                Value::Int(n) => Some(*n as f32),
+                _ => None,
+            })
         };
         match (field("x"), field("y")) {
             (Some(x), Some(y)) => Some(Vec2::new(x, y)),
@@ -318,6 +305,16 @@ impl Core {
         }
     }
 
+    /// Raises `message-field-taken` for each event whose data replaced a
+    /// field its message already had (ADR 0047, decision 4): the app's
+    /// own value under that name never reaches it.
+    pub(crate) fn note_taken_fields(&mut self, out: &mut [UiEvent]) {
+        for ev in out.iter_mut().filter(|ev| ev.taken) {
+            ev.taken = false;
+            self.warn(crate::diag::message_field_taken(ev.key, ev.event.name()));
+        }
+    }
+
     pub(super) fn route_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
         let mut out = std::mem::take(&mut self.pending);
         // Chrome commands say which window they are about, and a hit
@@ -359,7 +356,7 @@ impl Core {
             InputEvent::Text(s) => {
                 if let Some(key) = self.edit.focused() {
                     if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
-                        self.push_edit_event(key, "changed", &mut out);
+                        self.push_edit_event(key, EventKind::Change, &mut out);
                     }
                 } else if let Some(i) = self.focused_control() {
                     // Inside a composite, printable characters search the
@@ -397,19 +394,15 @@ impl Core {
             // so the host's, on the root, as `system` and `fonts` are.
             InputEvent::Open(paths) => {
                 if !paths.is_empty() {
-                    out.push(UiEvent {
-                        origin: OriginId::HOST,
-                        window: WindowId::MAIN,
-                        key: Key::ROOT,
-                        payload: Value::map([
-                            ("kind", Value::str("open")),
-                            (
-                                "paths",
-                                Value::List(paths.into_iter().map(Value::Str).collect()),
-                            ),
-                        ]),
-                        slot: None,
-                    });
+                    out.push(UiEvent::root(
+                        EventKind::Open,
+                        OriginId::HOST,
+                        Key::ROOT,
+                        Value::map([(
+                            "paths",
+                            Value::List(paths.into_iter().map(Value::Str).collect()),
+                        )]),
+                    ));
                 }
             }
             InputEvent::Commit(s) => {
@@ -421,7 +414,7 @@ impl Core {
                 let pasted = std::mem::replace(&mut self.awaiting_paste, false) || paste;
                 if let Some(key) = self.edit.focused() {
                     if self.edit_with_fonts(|edit, fs| edit.apply_text(key, &s, fs)) {
-                        self.push_edit_event(key, "changed", &mut out);
+                        self.push_edit_event(key, EventKind::Change, &mut out);
                     }
                 } else {
                     // A custom editor: the composition's result as data,
@@ -431,7 +424,7 @@ impl Core {
                     // marker rides along only when it is set, so a sink
                     // that never heard of them sees the payload it always
                     // did.
-                    let mut fields = vec![("kind", Value::str("text")), ("text", Value::Str(s))];
+                    let mut fields = vec![("text", Value::Str(s))];
                     if pasted {
                         fields.push(("pasted", Value::Bool(true)));
                     }
@@ -441,7 +434,7 @@ impl Core {
                     if marks.transient {
                         fields.push(("transient", Value::Bool(true)));
                     }
-                    self.sink_event(Value::map(fields), &mut out);
+                    self.sink_event(EventKind::Text, Value::map(fields), &mut out);
                 }
             }
             InputEvent::Preedit(s, cursor) => {
@@ -455,11 +448,8 @@ impl Core {
                         None => Value::Null,
                     };
                     self.sink_event(
-                        Value::map([
-                            ("kind", Value::str("preedit")),
-                            ("text", Value::Str(s)),
-                            ("cursor", cursor),
-                        ]),
+                        EventKind::Preedit,
+                        Value::map([("text", Value::Str(s)), ("cursor", cursor)]),
                         &mut out,
                     );
                 }
@@ -499,29 +489,25 @@ impl Core {
                     let done = self.edit_with_fonts(|edit, fs| edit.apply_key(key, ek, mods, fs));
                     self.editor_took_selection(key);
                     if done.changed {
-                        self.push_edit_event(key, "changed", &mut out);
+                        self.push_edit_event(key, EventKind::Change, &mut out);
                     }
                     if done.submit {
-                        self.push_edit_event(key, "submit", &mut out);
+                        self.push_edit_event(key, EventKind::Submit, &mut out);
                     }
                     // The key met the edge of the text and did nothing:
                     // the app's to act on — join a block, move to the
                     // next field (backlog F145).
                     if let Some(edge) = done.boundary {
-                        out.push(UiEvent::on(
-                            self.edit.origin_of(key).unwrap_or(OriginId::HOST),
-                            key,
-                            Value::map([
-                                ("kind", Value::str("boundary")),
-                                ("key", Value::Str(boundary_code(ek).name())),
-                                ("edge", Value::str(edge.name())),
-                                ("word", Value::Bool(mods.word)),
-                                ("doc", Value::Bool(mods.doc)),
-                            ]),
-                        ));
+                        let data = Value::map([
+                            ("key", Value::Str(boundary_code(ek).name())),
+                            ("edge", Value::str(edge.name())),
+                            ("word", Value::Bool(mods.word)),
+                            ("doc", Value::Bool(mods.doc)),
+                        ]);
+                        self.push_editor_event(key, EventKind::Boundary, data, &mut out);
                     }
                     if ek == EditKey::Escape {
-                        self.push_edit_event(key, "cancel", &mut out);
+                        self.push_edit_event(key, EventKind::Cancel, &mut out);
                         self.move_focus(None);
                     }
                 } else if let Some(i) = self.focused_control()
@@ -827,7 +813,7 @@ impl Core {
                     && let Some(p) = self.interaction.cursor()
                 {
                     let claimed =
-                        claimed_button || out.iter().any(|e| e.kind() == Some("contextmenu"));
+                        claimed_button || out.iter().any(|e| e.is(EventKind::ContextMenu));
                     self.auto_menu(p, claimed);
                 }
             }
@@ -879,9 +865,9 @@ impl Core {
         out
     }
 
-    /// The node a non-primary press on region `key` goes to, with the tag
-    /// its event carries: see `enclosing_button`. Read off
-    /// the tree at the press, as a force click's tag is.
+    /// The node a non-primary press on region `key` goes to, with the
+    /// message its event arrives as: see `enclosing_button`. Read off
+    /// the tree at the press, as a force click's message is.
     fn button_owner(&self, key: Key, button: MouseButton) -> Option<crate::input::ButtonOwner> {
         let i = self.tree.index_of(key)?;
         let j = self.enclosing_button(i, button)?;
@@ -962,12 +948,17 @@ impl Core {
         }
         // Not text: the node's own event, if it asked for one.
         let Some(tag) = tag else { return };
-        let payload = Value::map([
-            ("kind", Value::str("forceclick")),
+        let data = Value::map([
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
         ]);
-        out.push(UiEvent::on(origin, key, payload).tagged(Some(&tag)));
+        out.push(UiEvent::declared(
+            EventKind::ForceClick,
+            origin,
+            key,
+            Some(&tag),
+            data,
+        ));
     }
 
     /// Resolves a request from assistive technology against the last
@@ -1030,21 +1021,24 @@ impl Core {
                     let value = req.value.unwrap_or_default();
                     if self.edit.text(key).as_deref() != Some(value.as_str()) {
                         self.set_edit_text(key, &value);
-                        self.push_edit_event(key, "changed", out);
+                        self.push_edit_event(key, EventKind::Change, out);
                     }
                 } else if let Some(i) = idx
                     && crate::access::is_custom_editor(&self.tree, i)
                 {
-                    // The app owns the text: hand the request over as data.
-                    let payload = Value::map([
-                        ("kind", Value::str("access")),
-                        ("action", Value::str(req.action.name())),
-                        ("text", Value::str(req.value.unwrap_or_default())),
-                    ]);
-                    out.push(
-                        UiEvent::on(self.tree.origins[i], key, payload)
-                            .tagged(self.access_tag(i).as_ref()),
-                    );
+                    // The app owns the text: the value arrives as the
+                    // change a user typing it would make, in the editor's
+                    // `on_change` message (ADR 0047, decision 5).
+                    if let Some(message) = self.tree.specs[i].events().on_change.as_ref() {
+                        let text = req.value.unwrap_or_default();
+                        out.push(UiEvent::declared(
+                            EventKind::Change,
+                            self.tree.origins[i],
+                            key,
+                            Some(message),
+                            Value::map([("text", Value::Str(text))]),
+                        ));
+                    }
                 } else if let Some(i) = idx {
                     self.set_slider(i, req.value.as_deref().unwrap_or_default(), out);
                 }
@@ -1084,46 +1078,46 @@ impl Core {
                             if self
                                 .edit_with_fonts(|edit, fs| edit.replace_selection(key, &text, fs))
                             {
-                                self.push_edit_event(key, "changed", out);
+                                self.push_edit_event(key, EventKind::Change, out);
                             }
                         }
                     }
                 } else if crate::access::is_custom_editor(&self.tree, i) {
-                    // The app owns the text: hand the request over as data.
-                    let mut entries = vec![
-                        ("kind".to_string(), Value::str("access")),
-                        ("action".to_string(), Value::str(req.action.name())),
-                    ];
-                    if let Some(text) = req.value {
-                        entries.push(("text".to_string(), Value::str(text)));
+                    // The app owns the text: each request reaches the sink
+                    // the editor types into as what a user doing the same
+                    // would send there (ADR 0047, decision 5). Replacing
+                    // the selection is inserting text over it, as a paste
+                    // is; setting it is a `select`.
+                    let sink = if self.tree.specs[i].events().on_key.is_some() {
+                        Some(i)
+                    } else {
+                        self.enclosing_sink(i)
+                    };
+                    let Some(sink) = sink else { return };
+                    let sink = self.tree.keys[sink];
+                    if req.action == AccessAction::ReplaceSelectedText {
+                        let text = req.value.unwrap_or_default();
+                        let data = Value::map([("text", Value::Str(text))]);
+                        self.deliver_to_sink(sink, EventKind::Text, data, out);
+                        return;
                     }
-                    if let (Some(anchor), Some(focus)) = (req.anchor, req.focus) {
-                        let tree = self.access_tree();
-                        let Some(node) = tree.get(key) else { return };
-                        let (Some(a), Some(f)) =
-                            (node.line_offset(anchor), node.line_offset(focus))
-                        else {
-                            return;
-                        };
-                        let pos = |(line, offset): (usize, usize)| {
-                            Value::map([
-                                ("line", Value::Int(line as i64)),
-                                ("offset", Value::Int(offset as i64)),
-                            ])
-                        };
-                        entries.push(("anchor".to_string(), pos(a)));
-                        entries.push(("focus".to_string(), pos(f)));
-                    }
-                    let ev = self.tree.specs[i].events();
-                    let tag = ev
-                        .on_click
-                        .clone()
-                        .or_else(|| ev.on_drag.clone())
-                        .or_else(|| ev.on_key.clone());
-                    out.push(
-                        UiEvent::on(self.tree.origins[i], key, Value::Map(entries))
-                            .tagged(tag.as_ref()),
-                    );
+                    let (Some(anchor), Some(focus)) = (req.anchor, req.focus) else {
+                        return;
+                    };
+                    let tree = self.access_tree();
+                    let Some(node) = tree.get(key) else { return };
+                    let (Some(a), Some(f)) = (node.line_offset(anchor), node.line_offset(focus))
+                    else {
+                        return;
+                    };
+                    let pos = |(line, offset): (usize, usize)| {
+                        Value::map([
+                            ("line", Value::Int(line as i64)),
+                            ("offset", Value::Int(offset as i64)),
+                        ])
+                    };
+                    let data = Value::map([("anchor", pos(a)), ("focus", pos(f))]);
+                    self.deliver_to_sink(sink, EventKind::Select, data, out);
                 }
             }
             AccessAction::ScrollIntoView => {
@@ -1146,17 +1140,6 @@ impl Core {
                 self.scroll.scroll_by(key, delta);
             }
         }
-    }
-
-    /// The `tag` an `access` event on node `i` carries: its click payload,
-    /// else its drag or key tag; None when there is none (or it is null).
-    pub(crate) fn access_tag(&self, i: usize) -> Option<Value> {
-        let ev = self.tree.specs[i].events();
-        ev.on_click
-            .clone()
-            .or_else(|| ev.on_drag.clone())
-            .or_else(|| ev.on_key.clone())
-            .filter(|t| *t != Value::Null)
     }
 
     /// The key of the first node in tree order, in the last finished
@@ -1239,8 +1222,9 @@ impl Core {
         &self.access
     }
 
-    /// Delivers one key event to the sink it resolves to, tagged with that
-    /// sink's `on_key` payload; returns whether anything took it. *Which*
+    /// Delivers one key event to the sink it resolves to, as that sink's
+    /// `on_key` message with the event's data in it; returns whether
+    /// anything took it. *Which*
     /// sink is [`Self::key_target`]'s answer: the focused one, or — when a
     /// control holds focus and does not claim this key — the nearest one
     /// above it.
@@ -1297,7 +1281,7 @@ impl Core {
         {
             return false;
         }
-        self.deliver_to_sink(target, kp.to_value(phase), out)
+        self.deliver_to_sink(target, EventKind::Key, kp.to_value(phase), out)
     }
 
     /// The node the sink `key` names, in the last frame's tree: one that
@@ -1321,26 +1305,36 @@ impl Core {
         (spec.events().on_key.is_some() && !spec.disabled && self.interactive(i)).then_some(i)
     }
 
-    /// Hands `payload` to the sink `target` names with the sink's tag
-    /// merged in — the one delivery both key channels end in. False when
-    /// the last frame declared no such sink.
-    fn deliver_to_sink(&self, target: Key, payload: Value, out: &mut Vec<UiEvent>) -> bool {
+    /// Hands `event` with `data` to the sink `target` names, as its
+    /// `on_key` message — the one delivery both key channels end in, and
+    /// a custom editor's text, composition and reader's selection too
+    /// (ADR 0047). False when the last frame declared no such sink.
+    fn deliver_to_sink(
+        &self,
+        target: Key,
+        event: EventKind,
+        data: Value,
+        out: &mut Vec<UiEvent>,
+    ) -> bool {
         let Some(i) = self.sink_node(target) else {
             return false;
         };
-        out.push(
-            UiEvent::on(self.tree.origins[i], self.tree.keys[i], payload)
-                .tagged(self.tree.specs[i].events().on_key.as_ref()),
-        );
+        out.push(UiEvent::declared(
+            event,
+            self.tree.origins[i],
+            self.tree.keys[i],
+            self.tree.specs[i].events().on_key.as_ref(),
+            data,
+        ));
         true
     }
 
-    /// Delivers `payload` to the sink the focused node reports to — the
-    /// focused sink itself, or the nearest one above a focused control —
-    /// with the sink's tag merged in, the way a `key` event is. A
+    /// Delivers `event` with `data` to the sink the focused node reports
+    /// to — the focused sink itself, or the nearest one above a focused
+    /// control — as its `on_key` message, the way a `key` event is. A
     /// composition is never a control's to claim, so unlike `route_key`
     /// nothing is asked about the key. False with no sink to hear it.
-    fn sink_event(&mut self, payload: Value, out: &mut Vec<UiEvent>) -> bool {
+    fn sink_event(&mut self, event: EventKind, data: Value, out: &mut Vec<UiEvent>) -> bool {
         let Some(i) = self.focus_index() else {
             // With nothing focused, the root sink that hears every
             // unclaimed key (`key_target`) hears this too — a paste a
@@ -1353,7 +1347,7 @@ impl Core {
             if root.events().on_key.is_none() || root.disabled {
                 return false;
             }
-            return self.deliver_to_sink(self.tree.keys[0], payload, out);
+            return self.deliver_to_sink(self.tree.keys[0], event, data, out);
         };
         let target = if self.tree.specs[i].events().on_key.is_some() {
             self.tree.keys[i]
@@ -1363,12 +1357,12 @@ impl Core {
                 None => return false,
             }
         };
-        self.deliver_to_sink(target, payload, out)
+        self.deliver_to_sink(target, event, data, out)
     }
 
     /// Lets go of every key the focused sink is holding, as if the user
-    /// had released them: each becomes a `{kind="key", phase="up"}` on the
-    /// sink that took the press. Called when focus moves — a keymap that
+    /// had released them: each becomes a `key: {phase="up"}` in the
+    /// message of the sink that took the press. Called when focus moves — a keymap that
     /// armed a mode on the way down has to hear the way up, and the node
     /// it moved to never saw the press — and by drivers when the window
     /// loses the keyboard (Cmd-Tab while a key is down otherwise leaves it
@@ -1623,13 +1617,13 @@ impl Core {
                 .interaction
                 .window_commands
                 .push(b.command(self.env.window.id)),
-            (None, Some(payload)) => out.push(UiEvent {
+            (None, Some(payload)) => out.push(UiEvent::declared(
+                EventKind::Click,
                 origin,
-                window: WindowId::MAIN,
                 key,
-                payload,
-                slot: None,
-            }),
+                Some(&payload),
+                Value::Null,
+            )),
             _ => {}
         }
         if takes_focus {
@@ -1638,31 +1632,62 @@ impl Core {
     }
 
     /// The modal `key` was asked to go away — Escape, or a press outside
-    /// it. Reaches the app as `{kind="dismiss", reason, tag}` on the modal
-    /// node; what happens next is the app's, since only it can stop
+    /// it. Reaches the app as the `modal` message with `dismiss: {reason}`
+    /// in it; what happens next is the app's, since only it can stop
     /// declaring the node.
     fn dismiss(&mut self, key: Key, reason: &str, out: &mut Vec<UiEvent>) {
         let Some(i) = self.tree.index_of(key) else {
             return;
         };
-        let payload = Value::map([
-            ("kind", Value::str("dismiss")),
-            ("reason", Value::str(reason)),
-        ]);
-        out.push(
-            UiEvent::on(self.tree.origins[i], key, payload)
-                .tagged(self.tree.specs[i].events().modal.as_ref()),
-        );
+        let data = Value::map([("reason", Value::str(reason))]);
+        out.push(UiEvent::declared(
+            EventKind::Dismiss,
+            self.tree.origins[i],
+            key,
+            self.tree.specs[i].events().modal.as_ref(),
+            data,
+        ));
     }
 
-    pub(crate) fn push_edit_event(&self, key: Key, kind: &str, out: &mut Vec<UiEvent>) {
-        out.push(UiEvent {
-            origin: self.edit.origin_of(key).unwrap_or(OriginId::HOST),
-            window: WindowId::MAIN,
+    /// The editor `key`'s `change`, `submit` or `cancel`, as the message
+    /// its `on_change`, `on_submit` or `on_cancel` row declares — nothing
+    /// when the editor declares no such row (ADR 0047, decision 7). A
+    /// change carries the whole text after it, `change: {text}`; the
+    /// other two carry no data.
+    pub(crate) fn push_edit_event(&self, key: Key, event: EventKind, out: &mut Vec<UiEvent>) {
+        let data = match event {
+            EventKind::Change => {
+                Value::map([("text", Value::Str(self.edit.text(key).unwrap_or_default()))])
+            }
+            _ => Value::Null,
+        };
+        self.push_editor_event(key, event, data, out);
+    }
+
+    /// An event on the editor `key` with `data`, as the message the row
+    /// for `event` declares on it; nothing without the row.
+    fn push_editor_event(&self, key: Key, event: EventKind, data: Value, out: &mut Vec<UiEvent>) {
+        let Some(i) = self.tree.index_of(key) else {
+            return;
+        };
+        let ev = self.tree.specs[i].events();
+        let message = match event {
+            EventKind::Change => ev.on_change.as_ref(),
+            EventKind::Submit => ev.on_submit.as_ref(),
+            EventKind::Cancel => ev.on_cancel.as_ref(),
+            EventKind::Boundary => ev.on_boundary.as_ref(),
+            _ => None,
+        };
+        let Some(message) = message else {
+            return;
+        };
+        out.push(UiEvent::declared(
+            event,
+            self.edit.origin_of(key).unwrap_or(OriginId::HOST),
             key,
-            payload: Value::map([("kind", kind.into())]),
-            slot: None,
-        });
+            Some(message),
+            data,
+        ));
     }
 
     /// The window's selected text, for clipboard integration: the
@@ -1695,20 +1720,20 @@ impl Core {
     }
 
     /// Cuts the focused editor's selection, returning the removed text.
-    /// A cut is an edit like any other, so the editor's `changed` is
+    /// A cut is an edit like any other, so the editor's `change` is
     /// pending for the caller to route — like a `resize`, since the
     /// caller is not answering an input event.
     pub fn cut_selection(&mut self) -> Option<String> {
         let key = self.edit.focused()?;
         let text = self.cut_editor(key)?;
         let mut out = Vec::new();
-        self.push_edit_event(key, "changed", &mut out);
+        self.push_edit_event(key, EventKind::Change, &mut out);
         self.pending.append(&mut out);
         Some(text)
     }
 
     /// Deletes editor `key`'s selection, returning what was there — the
-    /// one mutation both cuts share; the `changed` is the caller's to
+    /// one mutation both cuts share; the `change` is the caller's to
     /// post where its batch goes.
     pub(crate) fn cut_editor(&mut self, key: Key) -> Option<String> {
         let text = self.edit.copy_selection(key)?;

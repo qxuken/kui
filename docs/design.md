@@ -24,10 +24,13 @@ recorded under [adr/](adr); this page is their consequences for an app.
   `window_buttons`, `latency_hud`, ...), C through `kui_*`
   widget calls with body callbacks for the containers, and a `tooltip =
   "hint"` prop on any container is hover-gated in every binding.
-- **Events are data, not callbacks.** Nodes declare an `on_click` payload
-  (`Value`: null/bool/int/float/str/list/map). Input resolves against the
-  previous frame's layout and produces `UiEvent`s tagged with the origin that
-  declared them; the runner routes host events to `App::on_event` and
+- **Events are data, not callbacks.** Nodes declare a message on a handler
+  row such as `on_click` (`Value`: null/bool/int/float/str/list/map). Input
+  resolves against the previous frame's layout and produces `UiEvent`s whose
+  payload is that message, with the event's data in one field named for the
+  event, and which carry the origin that declared them
+  ([ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md));
+  the runner routes host events to `App::on_event` and
   extension events back into the script — or the shared library — that owns
   them. An extension is one trait (`name`/`slots`/`view`/`on_event`) over a
   borrowed frame, so Lua and C are two implementations of it rather than
@@ -40,8 +43,9 @@ recorded under [adr/](adr); this page is their consequences for an app.
   ([ADR 0045](adr/0045-a-slot-replayed-by-its-host.md)).
   Full keyboard input is data too: a node declaring `on_key` becomes a
   key sink, and while it holds key focus (`ui.take_key_focus`, or a
-  click) every press arrives as `{kind="key", phase="down", code, mods,
-  text, repeat}` — which is all a keymap needs. A sink that also declares
+  click) every press arrives as the sink's message with `key = {phase="down",
+  code, shift, ctrl, alt, super, text, repeat}` in it — which is all a keymap
+  needs. A sink that also declares
   `key_up` hears releases as the same shape with `phase="up"`, so a
   held-key interaction (WASD, press-and-hold to preview, a key that arms
   a mode) is a pair of events rather than a guess about timing; one
@@ -72,7 +76,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   character placed, so a reader walks text by character and word and
   hears the caret move. An app that owns its text (the modal editor
   example) gets the same treatment from `role="line"` rows and two byte
-  offsets, with selection requests coming back as events.
+  offsets, with selection requests coming back as a `select` field on
+  its key sink's message.
 - **Identity is content-addressed.** `Key` is a hash of the path from the
   root (labels/sibling indices), reproducible from any language, with no
   allocation event tying identity to a slot. Slotmap handles are used where
@@ -102,8 +107,9 @@ recorded under [adr/](adr); this page is their consequences for an app.
   buffer/cursor/selection live in the core keyed by widget identity (cosmic-
   text's `Editor` underneath, so motion, selection, and click-to-caret share
   the shaping truth). Input arrives as data (`InputEvent::Text` / `Key`) routed
-  to the focused editor; hosts get "changed"/"submit" events and read text
-  back by key — no `&mut String` captured in a view, which is what keeps
+  to the focused editor; hosts declare `on_change` / `on_submit` and get the
+  text in the message as `change: {text}`, or read it back by key — no
+  `&mut String` captured in a view, which is what keeps
   editing reachable from Lua and C. The runner maps winit keys, IME input
   (the composition lives inline in the buffer as a marked range, so text
   after it shifts and wraps while you compose, and the OS candidate window
@@ -116,7 +122,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   `on_click` boxes, the control roles, and any node declaring `focusable`;
   never a `disabled` node, decoration or window chrome. Enter and Space
   press the focused control (the event a click would emit), the arrows
-  nudge a focused slider (the access events a screen reader would send),
+  step a focused slider through its `on_change` (the change a screen
+  reader's increment sends),
   and keyboard focus draws a ring on top of the frame in every binding
   unless the node declares `focus_bg`. A click's focus draws nothing. A
   key sink keeps every key, Tab included — it is an app that owns its
@@ -153,8 +160,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   activation; only window chrome stays live, so a dialog never traps the
   window. The access tree marks it `aria-modal` (AccessKit's
   `set_modal`) and derives a `dialog` role. Escape and a press outside
-  emit `{kind: "dismiss", reason}` on the node: the core closes nothing —
-  the app stops declaring it, or asks first. The last modal declared in
+  arrive as the `modal` message with `dismiss: {reason}` in it: the core
+  closes nothing — the app stops declaring it, or asks first. The last modal declared in
   tree order is the one in effect, so a confirm inside a dialog stacks
   without a stack, and a modal that has to cover the app is a float (the
   core warns when it is not).
@@ -301,8 +308,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   ties nodes together (a two-piece elbow, a split button lights up as one).
   `widgets::button`, `<button>` and `kui_button` are all that same data
   (`widgets::button_spec()`). When hover must change *layout* — a close
-  button that appears — `on_hover` emits `{kind="hover", phase="enter"|
-  "leave", by, tag}` events like any other interaction, including when a new
+  button that appears — `on_hover`'s message arrives with `hover =
+  {phase="enter"|"leave", by}` in it like any other interaction, including when a new
   frame moves a node under a still cursor (`by: "content"` then, `"pointer"`
   when the pointer moved; `Core::take_pending_events`,
   routed by every driver after a frame). `is_hovered` / `is_pressed` stay
@@ -310,8 +317,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   Files dragged in from the OS are the same shape one row over
   ([ADR 0031](adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md)):
   `on_drop` (JSX `onDrop`, `KuiSpec.on_drop`) makes a node a drop zone
-  that hears `{kind="drop", phase="enter"|"move"|"leave"|"drop", paths,
-  x, y, tag}`, and `drop_bg` lights it while they hover. The zone is the
+  whose message arrives with `drop = {phase="enter"|"move"|"leave"|"drop",
+  paths, x, y}`, and `drop_bg` lights it while they hover. The zone is the
   topmost zone under the pointer — a button inside it is its, a banner
   the view floats over it on `enter` is looked past — and the driver
   reports the position (the macOS runner reads it from AppKit, which
@@ -319,8 +326,9 @@ recorded under [adr/](adr); this page is their consequences for an app.
   way: `request_files` (`ctx.requestFiles`, `env.request_files`,
   `kui_request_files`) asks for the platform's Open, Save or folder
   dialog, which the runner shows through rfd as a sheet on the window
-  (the default-on `dialogs` feature), and the answer is one `{kind="files",
-  paths, tag}` event — a drop's `paths`, none when the user cancelled.
+  (the default-on `dialogs` feature), and the answer is the message it was
+  given, on the root, with `files = {paths}` — a drop's `paths`, none when
+  the user cancelled.
   One dialog at a time; a headless host takes the ask with
   `take_file_requests` and answers it as input.
 - **Measurement and layout are data, in that order.** "Declare it, the
@@ -334,8 +342,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   to a width when asked, so a breakpoint table is arithmetic on the labels
   rather than constants found by screenshot, and it follows the font. After
   layout, a node that declares `on_layout` (`onLayout` in JSX, `on_layout`
-  in Lua, `KuiSpec.on_layout` in C) gets its rect back as
-  `{kind="layout", x, y, w, h, parent, tag}` on its first frame and
+  in Lua, `KuiSpec.on_layout` in C) gets its rect back in its message as
+  `layout = {x, y, w, h, parent, scale}` on its first frame and
   whenever it changes — never on a frame that left it alone, so storing it
   in the model and redrawing does not loop; a `slide` reports every frame
   it moves. Together they cover the case that has no declared prop yet:
@@ -469,10 +477,10 @@ recorded under [adr/](adr); this page is their consequences for an app.
   `volume` / `paused` apply live, a changed `src` restarts, like an HTML
   `<audio autoplay>`; and `play` / `stop` / `set_volume` / `pause` /
   `resume` / `set_master_volume` for hosts holding the core. A playback
-  started with a tag that finishes on its own comes back as
-  `{kind="sound", phase="ended", playback, tag}`. The runner plays through
-  kira/cpal behind the default-on `audio` feature, opening the device on
-  the first sound (no audio thread for silent apps; a missing device logs
+  started with a message in its `tag` that finishes on its own comes back
+  as that message with `sound = {phase="ended", playback}` in it. The
+  runner plays through kira/cpal behind the default-on `audio` feature,
+  opening the device on the first sound (no audio thread for silent apps; a missing device logs
   once and the UI runs on). Volumes are linear amplitude; `kui_native::audio::blip`
   / `wav_pcm16` synthesize test sounds without asset files.
 - **The C API is translation, not architecture.** Frame building is flat
@@ -619,7 +627,7 @@ so a pane whose every cell changes every frame costs what a still one does
 (~60 µs for 200 × 50, against ~2.2 ms as text nodes). `<cells>` in JSX takes
 the cells as a `Uint32Array` of four entries each, Lua's `cells {}` a string
 per row plus colour runs, C's `kui_cells` a `KuiCell` array; a click or drag
-on the grid carries `cell: {row, col}`, an `onKey` makes it the terminal's
+on the grid carries `cell: {row, col}` in its `click` or `drag` field, an `onKey` makes it the terminal's
 sink, and its access role is `terminal` with the screen as its value
 (backlog C20).
 
@@ -629,9 +637,9 @@ in C — keeps a coding font from joining `->`, and `"tnum"` lines figures up in
 a gutter; unset, the font's own defaults apply (backlog C23).
 
 An editor the app owns hears an IME the way the stock editor does: while
-a composition is under way the focused `onKey` sink gets `{kind:"preedit",
-text, cursor, tag}` to draw inline, the commit arrives as `{kind:"text",
-text, tag}` — the one committed text a `key` event never carries — and the
+a composition is under way the focused `onKey` sink's message arrives with
+`preedit: {text, cursor}` to draw inline, the commit with `text: {text}` —
+the one committed text a `key` event never carries — and the
 OS candidate window is anchored at the `line` carrying `caret` (backlog
 C17). `ctx.preedit` / `ctx.commit` drive it headless in Node,
 `kui_input_preedit` / `kui_input_commit` in C, and `kui_ime_rect` is where a
@@ -649,8 +657,8 @@ that owns the loop gets the same from `PumpRunner::waker()`, and
 instead of polling on a timer. The `waker` example is a thread feeding
 lines every 40 ms; nothing else touches the window, and it draws.
 
-Dragging: `.on_drag(tag)` makes any node a pointer-captured drag source —
-handlers get `{kind="drag", phase, x, y, dx, dy, parent, tag}` events.
+Dragging: `.on_drag(msg)` makes any node a pointer-captured drag source —
+`update` gets `msg` with `drag = {phase, x, y, dx, dy, parent}` in it.
 `dx`/`dy` are the displacement from the press point in every phase —
 `start` is zero, a `move` is how far the pointer is from where it pressed,
 `end` is the whole distance — so a handler sets `value = start + dx` rather
@@ -662,12 +670,12 @@ the press) suppresses the node's `on_click`.
 Pointer buttons: only the primary one presses, drags, places the caret and
 clicks. A node that declares `on_button` (JSX `onButton`) claims the others
 — the middle, the secondary and any further button, narrowed by `buttons` —
-and hears each claimed button as `{kind="button", phase="press"|"move"|
-"release", button, x, y, tag}`, captured by it from the press to the
+and hears each claimed button as its message with `button =
+{phase="press"|"move"|"release", button, x, y, clicks}`, captured by it from the press to the
 release wherever the pointer goes; a claimed secondary press is that
 instead of a context menu (backlog F105). Otherwise a secondary (right)
-press goes to `on_context_menu`, which emits
-`{kind="contextmenu", x, y, tag}` — logical viewport coordinates, i.e. where
+press goes to `on_context_menu`, whose message arrives with
+`contextmenu = {x, y}` — logical viewport coordinates, i.e. where
 the menu goes — and moves nothing else: no focus, no caret, no click, so
 right-clicking a selection keeps it. It is routed like a click, so the
 topmost node under the pointer answers. The menu is then an ordinary
@@ -688,8 +696,10 @@ an optional `id` the choice posts back, an accelerator to draw, `enabled`,
 `checked`, and a `role`: the standard roles (`copy`, `cut`, `paste`,
 `selectAll`, `lookUp`) the core performs itself, handing the clipboard half
 to the host as a `MenuAction`, and `custom` is the app's own. Either way
-choosing a row is one event, `{kind:"menu", role, item}`, so an app wires
-Save once and gets it in both places.
+choosing a row is one event carrying `role` and `item` — `{kind:"menu",
+role, item}` on the root from the bar, and from a context menu the
+`on_menu` message of the node it was opened on, with `menu: {role, item}`
+— so an app wires Save once and gets it in both places.
 
 Where they are drawn is the platform's business and not the app's. A host
 says what it owns — `set_native_menus` for the context menu (macOS's

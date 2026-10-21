@@ -441,6 +441,8 @@ impl Extension for CExtension {
             payload: &payload,
             window: ev.window.0,
             slot: ev.slot.map_or(0, |k| k.0),
+            event: KuiStr::from_static(ev.event.name()),
+            root: ev.is_root().into(),
             ..Default::default()
         };
         // Replies: the plugin calls `kui_reply(ev, value)` during the

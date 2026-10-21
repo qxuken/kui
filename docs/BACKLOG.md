@@ -3090,6 +3090,16 @@ animated WebPs whose canvas, 3 819 079 by 34, sits just under the
 512 MiB a frame may take — half a second in a release build, a
 legitimate image and not a defect. No entries.
 
+## From the edit widget review (2026-10-21)
+
+The review started from the `<edit>` API: routing a `changed` event
+needed `ev.key === ctx.keyOf('title')`, a list of fields could not be
+routed at all, and the model reached the editor only through `initial`
+and `setEditText`. It ended in one ADR covering every node event. Two
+entries, F174 and FZ9 — what the `events` fuzz target, written for the
+ADR, found in its first run — **built 2026-10-21**, the day they were
+filed, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -4831,3 +4841,8 @@ move.
 **From kawoosh's terminal click (2026-10-21)** — F173, filed and built the same day
 
 - `~` **F173** — [A click in a pane that slides into view selects what slid under the pointer](backlog/closed-2026-09.md#-f173--a-click-in-a-pane-that-slides-into-view-selects-what-slid-under-the-pointer--done-2026-10-21) — done (2026-10-21) — a drag-select places its live end once the pointer leaves the click slop, as a caret drag does
+
+**From the edit widget review (2026-10-21)** — F174 and FZ9, filed and built the same day
+
+- `.` **F174** — [An event arrives as the message its handler declared](backlog/closed-2026-09.md#-f174--an-event-arrives-as-the-message-its-handler-declared--done-2026-10-21) — done (2026-10-21) — ADR 0047: a node event's payload is its handler's message with the event's data in one field, the kind on the envelope; editor `onChange`/`onSubmit`/`onCancel`/`onBoundary` and `value`; `onMenu`, `onSelectionRange`; `access` gone; `kui::Event`, the derive's twin, `With…` helper types and `labelOf` in every binding
+- `.` **FZ9** — [A composition puts the editor's caret past its committed text](backlog/closed-2026-09.md#-fz9--a-composition-puts-the-editors-caret-past-its-committed-text--done-2026-10-21) — done (2026-10-21) — `caret_and_selection` maps a place inside a composition to its start and one past it back by its length; found by the new `events` fuzz target

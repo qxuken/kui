@@ -31,8 +31,8 @@ typedef struct AppState {
 /* -- view: rebuild the whole tree from state, every frame ---------------- */
 
 /* The menu the right-click asks for: a float at the press, modal so the
- * Tab ring is its own and Escape or a press outside emits {kind="dismiss"}
- * on it. Nothing here is special-cased in the core — it is a float plus
+ * Tab ring is its own and Escape or a press outside emits a dismiss event
+ * on it: the modal's message, {kind="menu", dismiss={reason}}. Nothing here is special-cased in the core — it is a float plus
  * the `modal` prop. */
 static void context_menu(KuiCtx *ui, const AppState *state) {
     KuiTheme t = KUI_THEME_INIT;
@@ -89,9 +89,10 @@ static void view(void *user, KuiCtx *ui) {
     };
     kui_root(ui, &root);
 
-    /* Right-clicking the card asks for a menu; the tag comes back under
-     * `tag` on the {kind="contextmenu", x, y} event. Borrowed: the spec
-     * clones it while the node opens, so it is freed below. */
+    /* Right-clicking the card asks for a menu; the message comes back as
+     * the payload of the contextmenu event, the point in it:
+     * {kind="card", contextmenu={x, y}}. Borrowed: the spec clones it
+     * while the node opens, so it is freed below. */
     KuiValue *menu_tag = kui_value_map();
     kui_value_map_set(menu_tag, KUI_STR("kind"), kui_value_str(KUI_STR("card")));
     KuiSpec card = {
@@ -140,29 +141,29 @@ static void view(void *user, KuiCtx *ui) {
 
 /* -- events: clicks arrive as data --------------------------------------- */
 
-/* Reads an integer field off a payload (x / y arrive as numbers). */
-static float payload_num(const KuiEvent *ev, const char *key) {
+/* Reads an integer field off the event's data (x / y arrive as numbers). */
+static float data_num(const KuiEvent *ev, const char *key) {
     const KuiValue *v =
-        kui_value_get(ev->payload, (KuiStr){(const uint8_t *)key, strlen(key)});
+        kui_value_get(ev_data(ev), (KuiStr){(const uint8_t *)key, strlen(key)});
     int64_t n = 0;
     return v && kui_value_as_int(v, &n) ? (float)n : 0.0f;
 }
 
+/* The message says which of the app's things it is, KuiEvent.event what
+ * happened to it (ADR 0047). */
 static void apply_event(AppState *state, const KuiEvent *ev) {
-    if (!ev->payload) return;
-    const KuiValue *kind = kui_value_get(ev->payload, KUI_STR("kind"));
     KuiStr s;
-    if (!kind || !kui_value_as_str(kind, &s)) return;
+    if (!ev_message(ev, &s)) return;
     if (kui_str_eq(s, "inc")) state->count++;
     if (kui_str_eq(s, "dec")) state->count--;
-    /* The secondary press: open the menu where it landed. */
-    if (kui_str_eq(s, "contextmenu")) {
+    /* The card's secondary press: open the menu where it landed. */
+    if (kui_str_eq(s, "card") && ev_is(ev, "contextmenu")) {
         state->menu_open = 1;
-        state->menu_x = payload_num(ev, "x");
-        state->menu_y = payload_num(ev, "y");
+        state->menu_x = data_num(ev, "x");
+        state->menu_y = data_num(ev, "y");
     }
     /* Escape, or a press outside the menu: stop declaring it. */
-    if (kui_str_eq(s, "dismiss")) state->menu_open = 0;
+    if (kui_str_eq(s, "menu") && ev_is(ev, "dismiss")) state->menu_open = 0;
     if (kui_str_eq(s, "add10")) { state->count += 10; state->menu_open = 0; }
     if (kui_str_eq(s, "reset")) { state->count = 0; state->menu_open = 0; }
 }

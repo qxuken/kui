@@ -16,8 +16,9 @@
 //! - The **field keeps its focus ring** while the list is up, and the arrow
 //!   keys walk the list. A popup does not take OS focus, so the owner still
 //!   believes it has the keyboard; the runner routes the keys on.
-//! - **Escape and a press outside** produce `{kind:"dismiss"}` — the same
-//!   event a `modal` node gets — and close nothing by themselves. This app
+//! - **Escape and a press outside** produce a root `{kind:"dismiss"}` —
+//!   the event a `modal` node gets as `dismiss` in its message — and close
+//!   nothing by themselves. This app
 //!   answers by clearing `open`, which is the whole of "closing" a popup.
 //! - The **list draws past the bottom edge** of the main window, which an
 //!   in-window float cannot do. Shrink the window and it still does.
@@ -36,7 +37,8 @@
 
 use kui_devtools::Example;
 use kui_native::{
-    App, Color, CursorShape, NodeSpec, Rect, TextStyle, Ui, UiEvent, Value, WindowConfig,
+    App, Color, CursorShape, DragPhase, Event, NodeSpec, Rect, TextStyle, Ui, UiEvent, Value,
+    WindowConfig,
 };
 
 /// The list is twelve rows of 24 plus the panel's padding — deliberately
@@ -151,24 +153,17 @@ impl App for Combo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let kind = ev.kind();
-        match kind {
+        let msg = ev.message::<Value>();
+        match ev.read() {
             // The field's rect, every time layout changes it. Stored, not
             // acted on: it is what the *next* declaration will carry.
-            Some("layout") => {
-                let n = |k: &str| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-                self.field = Rect::new(n("x"), n("y"), n("w"), n("h"));
-            }
+            Event::Layout(l) => self.field = l.rect,
             // Everything opens; only a dismissal or a choice closes. The
             // press (`drag`'s `start`) and the click that follows a
             // stationary release both land here, and assigning rather than
             // toggling is what lets them: neither has to know which press
             // it is answering.
-            Some("drag") if ev.payload.get_str("phase") == Some("start") => {
-                self.open = true;
-                self.cursor = self.chosen;
-            }
-            Some("open") => {
+            Event::Drag(d) if d.phase == DragPhase::Start => {
                 self.open = true;
                 self.cursor = self.chosen;
             }
@@ -176,22 +171,30 @@ impl App for Combo {
             // window instead of on a node — which is the whole of ADR 0004
             // decision 9's "changes its declaration and not its handler".
             // The core closed nothing; this line is what closes it.
-            Some("dismiss") => self.open = false,
-            Some("choose") => {
-                if let Some(i) = ev.payload.get_int("i") {
-                    self.chosen = i as usize;
-                }
-                self.open = false;
-            }
+            Event::Dismiss(_) => self.open = false,
             // The arrows arrive on the popup's core, because the runner
             // routes the owner's keyboard there while a non-activating
             // popup is up. The field keeps its ring throughout.
             // Presses only: the list's sink never asked for releases.
-            Some("key") => match ev.payload.get_str("code") {
-                Some("down") => self.cursor = (self.cursor + 1) % ITEMS.len(),
-                Some("up") => self.cursor = (self.cursor + ITEMS.len() - 1) % ITEMS.len(),
-                Some("enter") => {
+            Event::Key(_, k) => match k.code.name().as_str() {
+                "down" => self.cursor = (self.cursor + 1) % ITEMS.len(),
+                "up" => self.cursor = (self.cursor + ITEMS.len() - 1) % ITEMS.len(),
+                "enter" => {
                     self.chosen = self.cursor;
+                    self.open = false;
+                }
+                _ => {}
+            },
+            // The clicks, each the message its node declared.
+            Event::Click(_) => match msg.as_ref().and_then(|m| m.get_str("kind")) {
+                Some("open") => {
+                    self.open = true;
+                    self.cursor = self.chosen;
+                }
+                Some("choose") => {
+                    if let Some(i) = msg.as_ref().and_then(|m| m.get_int("i")) {
+                        self.chosen = i as usize;
+                    }
                     self.open = false;
                 }
                 _ => {}

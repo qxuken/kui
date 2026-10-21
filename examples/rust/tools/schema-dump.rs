@@ -37,7 +37,7 @@ fn props() -> Json {
             Kind::Min => ("min", None),
             Kind::Max => ("max", None),
             Kind::Msg => ("msg", None),
-            Kind::Tag => ("tag", None),
+            Kind::Handler => ("handler", None),
             Kind::Str => ("str", None),
             Kind::Family => ("family", Some(schema::FAMILIES)),
             Kind::Resource => ("resource", None),
@@ -76,9 +76,12 @@ fn main() {
     let elements = schema::ELEMENTS
         .iter()
         .map(|e| json!({ "name": e.name, "c": e.c, "odin": e.odin, "doc": e.doc }));
-    let events = schema::EVENTS
-        .iter()
-        .map(|e| json!({ "kind": e.kind, "payload": e.payload, "doc": e.doc }));
+    let events = schema::EVENTS.iter().map(|e| {
+        json!({
+            "kind": e.kind, "handler": e.handler, "field": e.field,
+            "payload": e.payload, "doc": e.doc,
+        })
+    });
     let doors = schema::DOORS.iter().map(|d| {
         json!({
             "rust": d.rust, "c": cell(d.c), "odin": cell(d.odin), "node": cell(d.node), "lua": cell(d.lua),

@@ -40,6 +40,7 @@ impl kui_native::App for CApp {
 
     fn on_event(&mut self, ev: kui_native::UiEvent) {
         let Some(cb) = self.on_event else { return };
+        let root = ev.is_root();
         let payload = KuiValue(ev.payload);
         // Library-allocated, so the full struct: `size` says how much of it
         // is meaningful, which is all of it.
@@ -49,6 +50,8 @@ impl kui_native::App for CApp {
             payload: &payload,
             window: ev.window.0,
             slot: ev.slot.map_or(0, |k| k.0),
+            event: KuiStr::from_static(ev.event.name()),
+            root: root.into(),
             ..Default::default()
         };
         cb(self.user, &out);

@@ -186,10 +186,12 @@ fn a_handlers_focus_move_is_reported_as_the_programs() {
     let evs = d.move_to(&mut app, 300.0, 200.0);
     let by: Vec<_> = evs
         .iter()
-        .filter(|e| e.kind() == Some("focus"))
+        .filter(|e| e.is(kui_native::EventKind::Focus))
         .map(|e| {
-            let phase = e.payload.get_str("phase").unwrap();
-            format!("{phase}:{}", e.payload.get_str("by").unwrap())
+            // `{tag: "pane", focus: {phase, by}}`: the data is the field.
+            let data = e.data().unwrap();
+            let phase = data.get_str("phase").unwrap();
+            format!("{phase}:{}", data.get_str("by").unwrap())
         })
         .collect();
     assert_eq!(by, ["in:program"]);

@@ -5,8 +5,8 @@
 //! still playing comes back as a `truncated-playback` warning on the node.
 
 use kui_core::{
-    AudioCommand, AudioSpec, Core, InputEvent, Key, NodeSpec, PlayOptions, Size, SoundId, Value,
-    Vec2,
+    AudioCommand, AudioSpec, Core, EventKind, InputEvent, Key, NodeSpec, PlayOptions, Size,
+    SoundId, Value, Vec2,
 };
 
 /// One frame: a button-sized node with `spec`, and optionally an `audio`
@@ -176,11 +176,12 @@ fn tagged_playback_reports_ended_as_a_pending_event() {
     core.audio_ended(playback);
     let evs = core.take_pending_events();
     assert_eq!(evs.len(), 1);
+    assert!(evs[0].is(EventKind::Sound));
     let p = &evs[0].payload;
-    assert_eq!(p.get_str("kind"), Some("sound"));
-    assert_eq!(p.get_str("phase"), Some("ended"));
     assert_eq!(p.get_str("tag"), Some("chime"));
-    assert_eq!(p.get_int("playback"), Some(playback.0 as i64));
+    let sound = evs[0].data().expect("a sound field");
+    assert_eq!(sound.get_str("phase"), Some("ended"));
+    assert_eq!(sound.get_int("playback"), Some(playback.0 as i64));
     // Untagged playbacks stay silent, stopped ones too.
     let quiet = core.play(s, PlayOptions::default());
     core.audio_ended(quiet);

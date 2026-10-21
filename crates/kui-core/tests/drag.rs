@@ -22,8 +22,13 @@ fn drag_frame(core: &mut Core) {
 
 fn phases(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .filter(|e| e.kind() == Some("drag"))
-        .map(|e| e.payload.get_str("phase").unwrap_or("?").to_string())
+        .filter(|e| e.event.name() == "drag")
+        .map(|e| {
+            e.data()
+                .and_then(|d| d.get_str("phase"))
+                .unwrap_or("?")
+                .to_string()
+        })
         .collect()
 }
 
@@ -40,10 +45,10 @@ fn drag_emits_start_move_end_with_geometry() {
     all.extend(core.handle_input(InputEvent::mouse_up()));
 
     assert_eq!(phases(&all), ["start", "move", "move", "end"]);
-    let mv = &all[1].payload;
+    let mv = all[1].data().unwrap();
     assert_eq!(mv.get_float("x"), Some(150.0));
     assert_eq!(mv.get_float("dx"), Some(45.0));
-    assert_eq!(mv.get_str("tag"), Some("split"));
+    assert_eq!(all[1].payload.get_str("tag"), Some("split"));
     // Parent rect: the root, i.e. the whole viewport.
     let parent = mv.get("parent").unwrap();
     assert_eq!(parent.get_float("w"), Some(400.0));
@@ -130,7 +135,7 @@ fn hover_keeps_tracking_other_nodes_during_a_drag() {
     );
     assert!(
         evs.iter()
-            .any(|e| e.key == a && e.payload.get_str("phase") == Some("move")),
+            .any(|e| e.key == a && e.data().and_then(|d| d.get_str("phase")) == Some("move")),
         "drag events keep landing on the pressed node"
     );
     core.handle_input(InputEvent::mouse_up());
@@ -329,8 +334,8 @@ fn drag_deltas_are_measured_from_the_press_point() {
     all.extend(core.handle_input(InputEvent::CursorMoved(Vec2::new(113.0, 50.0))));
     all.extend(core.handle_input(InputEvent::mouse_up()));
 
-    let dx = |e: &UiEvent| e.payload.get_float("dx").unwrap();
-    let dy = |e: &UiEvent| e.payload.get_float("dy").unwrap();
+    let dx = |e: &UiEvent| e.data().unwrap().get_float("dx").unwrap();
+    let dy = |e: &UiEvent| e.data().unwrap().get_float("dy").unwrap();
     // The slop is measured from the press: 2 px is inside it, 4 px is not,
     // and the move that leaves it reports the whole distance so far.
     assert_eq!(phases(&all), ["start", "move", "move", "end"]);
@@ -350,7 +355,7 @@ fn drag_deltas_are_measured_from_the_press_point() {
         8.0,
         "end is the total, so an app can commit from it"
     );
-    assert_eq!(all[3].payload.get_float("x"), Some(113.0));
+    assert_eq!(all[3].data().unwrap().get_float("x"), Some(113.0));
     // And a click it was not.
     assert!(!all.iter().any(|e| e.payload.as_str() == Some("clicked")));
 }
@@ -373,7 +378,7 @@ fn a_slow_drag_still_leaves_the_slop() {
     assert_eq!(phases(&all), ["start", "move", "move", "end"]);
     let dx: Vec<f64> = all
         .iter()
-        .filter_map(|e| e.payload.get_float("dx"))
+        .filter_map(|e| e.data()?.get_float("dx"))
         .collect();
     assert_eq!(dx, [0.0, 4.0, 5.0, 5.0]);
     assert!(!all.iter().any(|e| e.payload.as_str() == Some("clicked")));
@@ -394,7 +399,7 @@ fn a_drag_released_off_window_ends_at_the_last_seen_point() {
     all.extend(core.handle_input(InputEvent::mouse_up()));
 
     assert_eq!(phases(&all), ["start", "move", "end"]);
-    let end = &all[2].payload;
+    let end = all[2].data().unwrap();
     assert_eq!(end.get_float("x"), Some(125.0));
     assert_eq!(end.get_float("dx"), Some(20.0));
     assert_eq!(end.get_float("dy"), Some(10.0));
@@ -418,9 +423,10 @@ fn losing_the_keyboard_mid_drag_ends_it_without_a_click() {
     assert_eq!(phases(&blur), ["end"]);
     assert_eq!(
         blur.iter()
-            .find(|e| e.kind() == Some("drag"))
+            .find(|e| e.event.name() == "drag")
             .unwrap()
-            .payload
+            .data()
+            .unwrap()
             .get_float("x"),
         Some(150.0)
     );

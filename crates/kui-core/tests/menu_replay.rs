@@ -9,7 +9,9 @@ use kui_core::{
     Value, Vec2,
 };
 
-/// A shell sink around a field, the field focused.
+/// A shell sink around a field, the field focused and declaring
+/// `on_menu(Null)`, so a row that is not its chord posts on it as
+/// `{menu: {role, item}}`.
 fn frame(core: &mut Core) -> (Key, Key) {
     let mut ui = core.frame(Size::new(600.0, 400.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
@@ -22,7 +24,7 @@ fn frame(core: &mut Core) -> (Key, Key) {
                 autofocus: true,
                 ..Default::default()
             },
-            NodeSpec::column().size(200.0, 30.0),
+            NodeSpec::column().size(200.0, 30.0).on_menu(Value::Null),
         );
     });
     ui.finish();
@@ -61,7 +63,7 @@ fn choose(core: &mut Core, label: &str) -> Vec<UiEvent> {
 }
 
 fn menu_events(evs: &[UiEvent]) -> Vec<&UiEvent> {
-    evs.iter().filter(|e| e.kind() == Some("menu")).collect()
+    evs.iter().filter(|e| e.event.name() == "menu").collect()
 }
 
 fn rig() -> (Core, Key, Key) {
@@ -92,8 +94,9 @@ fn a_replayed_chord_the_field_does_not_take_reaches_the_shell() {
     let evs = choose(&mut core, "New Note");
     let keys: Vec<_> = evs
         .iter()
-        .filter(|e| e.kind() == Some("key") && e.key == shell)
-        .map(|e| (e.payload.get_str("phase"), e.payload.get_str("code")))
+        .filter(|e| e.event.name() == "key" && e.key == shell)
+        .filter_map(|e| e.data())
+        .map(|k| (k.get_str("phase"), k.get_str("code")))
         .collect();
     assert_eq!(keys, [(Some("down"), Some("n"))]);
     assert!(menu_events(&evs).is_empty());
@@ -114,7 +117,10 @@ fn a_row_that_is_not_its_chord_still_posts() {
     let evs = choose(&mut core, "Plain");
     let menu = menu_events(&evs);
     assert_eq!(menu.len(), 1);
-    assert_eq!(menu[0].payload.get("item"), Some(&Value::str("plain")));
+    assert_eq!(
+        menu[0].data().and_then(|d| d.get("item")),
+        Some(&Value::str("plain"))
+    );
     assert_eq!(core.edit_text(field).as_deref(), Some("abc"));
 }
 
@@ -176,7 +182,7 @@ fn a_drawn_menu_offers_about_and_quit_and_not_hide() {
     let evs = click(&mut core, at);
     let menu = menu_events(&evs);
     assert_eq!(menu.len(), 1);
-    assert_eq!(menu[0].payload.get_str("role"), Some("quit"));
+    assert_eq!(menu[0].data().and_then(|d| d.get_str("role")), Some("quit"));
     assert_eq!(
         MenuRole::from_name("hideOthers"),
         Some(MenuRole::HideOthers)

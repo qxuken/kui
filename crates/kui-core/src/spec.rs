@@ -938,14 +938,14 @@ pub struct EventSpec {
     /// Payload emitted as a `UiEvent` when this node is clicked.
     pub on_click: Option<Value>,
     /// Makes this node draggable: pressing it starts a pointer-captured
-    /// drag, and cursor motion until release emits `UiEvent`s of the form
-    /// `{kind="drag", phase="start"|"move"|"end", x, y, dx, dy, tag}` with
-    /// this payload merged in under `tag`. A drag past the click slop
+    /// drag, and cursor motion until release emits `UiEvent`s as this
+    /// message with `drag: {phase="start"|"move"|"end", x, y, dx, dy,
+    /// parent}` in it. A drag past the click slop
     /// suppresses the node's `on_click`, so both can coexist.
     pub on_drag: Option<Value>,
     /// Marks this node as a key sink: while it holds key focus, key
-    /// presses arrive as `UiEvent`s on it as `{kind="key", phase="down",
-    /// code, ...}`, with this payload merged in under `tag`. Clicking the
+    /// presses arrive as `UiEvent`s on it as this message with
+    /// `key: {phase="down", code, ...}` in it. Clicking the
     /// node takes key focus. Releases are not delivered unless the sink
     /// also declares [`key_up`](Self::key_up): a keymap is the common
     /// case, and a keymap that heard both halves would run every binding
@@ -970,22 +970,22 @@ pub struct EventSpec {
     /// game that binds a lone Shift.
     pub modifier_keys: bool,
     /// Asks for a context menu: a secondary-button press over this node
-    /// emits `{kind="contextmenu", x, y, tag}` on it with this payload
-    /// under `tag`, and does nothing else — the press moves no focus,
+    /// emits this message with `contextmenu: {x, y}` in it, on this node,
+    /// and does nothing else — the press moves no focus,
     /// places no caret and produces no click, so right-clicking a
     /// selection leaves it selected. `x`/`y` are the press in logical
     /// viewport coordinates, which is where the menu goes. Asked of the
     /// topmost node under the pointer; when that node offers no menu the
     /// press reaches the nearest enclosing node that does, the way an
     /// unclaimed key reaches the enclosing sink:
-    /// the event carries the owner's key and tag, a nested declaration
-    /// wins over its ancestor's, a disabled node's own is skipped, and
-    /// the walk stops at the modal boundary. Null = the behaviour without
-    /// a tag.
+    /// the event carries the owner's key and message, a nested
+    /// declaration wins over its ancestor's, a disabled node's own is
+    /// skipped, and the walk stops at the modal boundary. Null = the
+    /// behaviour with no message, the event arriving as the field alone.
     pub on_context_menu: Option<Value>,
     /// Force-click events: a press that deepened past the second stage of
-    /// a Force Touch trackpad over this node emits `{kind="forceclick",
-    /// x, y, tag}` with this payload under `tag`. Routed as a secondary
+    /// a Force Touch trackpad over this node emits this message with
+    /// `forceclick: {x, y}` in it. Routed as a secondary
     /// press is — no focus moved, no caret, no click — but asked of the
     /// topmost node only, with no walk to an enclosing declaration — and
     /// the ordinary click the press produces still follows,
@@ -999,8 +999,8 @@ pub struct EventSpec {
     pub on_force_click: Option<Value>,
     /// The non-primary buttons as events: a press of a
     /// button in [`buttons`](Self::buttons) over this node emits
-    /// `{kind="button", phase="press", button, x, y, clicks, tag}` on it
-    /// with this payload under `tag`, and the button is then captured by
+    /// this message with `button: {phase="press", button, x, y, clicks}`
+    /// in it, on this node, and the button is then captured by
     /// the node — every pointer move while it is held arrives as
     /// `phase="move"` and its release as `phase="release"`, on this node
     /// wherever the pointer is. `button` is `"secondary"`, `"middle"` or,
@@ -1018,15 +1018,16 @@ pub struct EventSpec {
     /// the nested declaration. Like every non-primary press it moves no
     /// focus, places no caret and touches no selection or scrollbar. What
     /// it is for: a terminal's middle-click paste, and the mouse reports a
-    /// program in it asked for. Null = the behaviour without a tag.
+    /// program in it asked for. Null = the behaviour with no message, the
+    /// event arriving as the field alone.
     pub on_button: Option<Value>,
     /// Which non-primary buttons [`on_button`](Self::on_button) claims:
     /// all three kinds unless the node says otherwise. A pane that wants
     /// the middle button and leaves the secondary one to its context menu
     /// says [`Buttons::MIDDLE`].
     pub buttons: Buttons,
-    /// Scroll events: the wheel over this node emits `{kind="scroll", x,
-    /// y, dx, dy, lines, tag}` with this payload under `tag` — the delta
+    /// Scroll events: the wheel over this node emits this message with
+    /// `scroll: {x, y, dx, dy, lines}` in it — the delta
     /// in logical px as the driver reported it (positive `dy` is the wheel
     /// rolling up, toward earlier content), the pointer's position, and
     /// on a `cells` grid the whole lines the delta covers (`null` on any
@@ -1071,13 +1072,13 @@ pub struct EventSpec {
     /// `on_scroll`.
     pub scroll_mods: crate::input::KeyMods,
     /// Hover events: the pointer entering or leaving this node emits
-    /// `{kind="hover", phase="enter"|"leave", tag}` with this payload under
-    /// `tag` — for hover-dependent *layout* (a close button that appears)
+    /// this message with `hover: {phase="enter"|"leave", by}` in it — for
+    /// hover-dependent *layout* (a close button that appears)
     /// where a color swap isn't enough. Implies hover tracking.
     pub on_hover: Option<Value>,
     /// Drop-zone events: files dragged in from the OS over this node emit
-    /// `{kind="drop", phase="enter"|"move"|"leave"|"drop", paths, x, y,
-    /// tag}` with this payload under `tag` — `paths` the OS paths as
+    /// this message with `drop: {phase="enter"|"move"|"leave"|"drop",
+    /// paths, x, y}` in it — `paths` the OS paths as
     /// strings, `x`/`y` the pointer in viewport coordinates (absent on
     /// `leave`). The zone under the files is the topmost *zone* by paint
     /// order: a node inside a zone resolves to it, and a node that is no
@@ -1086,30 +1087,53 @@ pub struct EventSpec {
     /// a `drop`. Implies hover tracking.
     pub on_drop: Option<Value>,
     /// Layout events: the rect layout gave this node arrives as
-    /// `{kind="layout", x, y, w, h, parent: {x, y, w, h}, tag}` (logical px,
+    /// this message with `layout: {x, y, w, h, parent: {x, y, w, h},
+    /// scale}` in it (logical px,
     /// viewport coordinates, after scrolling and position easing) — on the
     /// node's first frame and again whenever the rect changes, never on a
     /// frame that left it alone. The view reads the numbers layout already
     /// produced instead of re-deriving them; a transition that moves the
     /// node reports every frame it moves. Needs a stable key across frames.
     pub on_layout: Option<Value>,
-    /// Slider changes: on a node whose role is `Slider`, the core turns a
-    /// press into the value under the pointer, a drag into the value under
-    /// it, the arrows and assistive technology's Increment / Decrement
-    /// into one `value_step`, PageUp / PageDown into ten, Home / End into
-    /// the range's ends — clamped to `value_min..value_max`, snapped to the
-    /// step — and emits `{kind="change", value, phase="move"|"end", tag}`
-    /// with this payload under `tag`. The value is proposed, never
-    /// applied: nothing moves until the view declares it as `value_now`.
-    /// Without it a slider's keys reach the app as the `access` nudge.
-    /// Ignored on any other role.
+    /// Changes, as this message with `change` in it (ADR 0047). On a
+    /// node whose role is `Slider`, the core turns a press into the value
+    /// under the pointer, a drag into the value under it, the arrows and
+    /// assistive technology's Increment / Decrement into one
+    /// `value_step`, PageUp / PageDown into ten, Home / End into the
+    /// range's ends — clamped to `value_min..value_max`, snapped to the
+    /// step — and proposes it as `change: {value, phase: "move"|"end"}`.
+    /// Nothing moves until the view declares it as `value_now`; without
+    /// it a slider does not move. On an editor — a `text_edit`, or a node
+    /// with an editor role that draws its own text — every change to the
+    /// text arrives as `change: {text}`, the whole text after it: typing,
+    /// a paste, a composition's commit, assistive technology setting the
+    /// value. Ignored on any other role.
     pub on_change: Option<Value>,
+    /// An editor's Enter, on a single-line one: this message as declared.
+    pub on_submit: Option<Value>,
+    /// Escape letting go of a focused editor — a draft abandoned, where
+    /// `on_submit` is one confirmed and a plain blur is neither: this
+    /// message as declared.
+    pub on_cancel: Option<Value>,
+    /// An editing key that met the edge of an editor's text and did
+    /// nothing, as this message with `boundary: {key, edge, word, doc}`
+    /// in it (backlog F145).
+    pub on_boundary: Option<Value>,
+    /// A choice from a menu opened for this node — a `select`'s, or one
+    /// `open_menu` named it the target of — as this message with
+    /// `menu: {role, item}` in it.
+    pub on_menu: Option<Value>,
+    /// On a `selectable` scope: a copy reached rows a virtual list has
+    /// not built, as this message with `selectionrange` in it — what a
+    /// list answers by building them.
+    pub on_selection_range: Option<Value>,
     /// Modal: while this node is declared, the Tab ring is its subtree,
     /// everything outside it is inert to the pointer, the wheel and
-    /// assistive technology, and Escape or a press outside emits
-    /// `{kind="dismiss", reason, tag}` on it with this payload under
-    /// `tag`. The last node declaring it in tree order is the one in
-    /// effect (a confirm inside a dialog). Null = modal without a tag.
+    /// assistive technology, and Escape or a press outside emits this
+    /// message with `dismiss: {reason}` in it, on this node. The last node
+    /// declaring it in tree order is the one in effect (a confirm inside a
+    /// dialog). Null = modal with no message, the dismissal arriving as
+    /// the field alone.
     pub modal: Option<Value>,
     /// A press on this node, or anywhere inside it, leaves keyboard focus
     /// where it was (`keepFocus`): a toolbar button, a tab, a divider
@@ -1119,8 +1143,8 @@ pub struct EventSpec {
     /// is the pointer's press alone that stops moving focus.
     pub keep_focus: bool,
     /// Keyboard focus entering or leaving this node's subtree — the node
-    /// itself or anything focused inside it — emits `{kind="focus",
-    /// phase="in"|"out", by, tag}` with this payload under `tag`, where
+    /// itself or anything focused inside it — emits this message with
+    /// `focus: {phase="in"|"out", by}` in it, where
     /// `by` is `"pointer"`, `"keyboard"`, `"assistive"` or `"program"`:
     /// what moved it. Reported once the move has settled —
     /// after the input that made it, or at the end of the frame that
@@ -1149,6 +1173,11 @@ impl EventSpec {
         on_drop: None,
         on_layout: None,
         on_change: None,
+        on_submit: None,
+        on_cancel: None,
+        on_boundary: None,
+        on_menu: None,
+        on_selection_range: None,
         modal: None,
         keep_focus: false,
         on_focus: None,
@@ -2355,8 +2384,8 @@ impl NodeSpec {
     }
 
     /// Emits enter/leave events for this node (see the `on_hover` field).
-    /// Pass a tag the handler can match on; `Value::Null` if the node key
-    /// is identification enough.
+    /// Pass a message the handler can match on; `Value::Null` if the node
+    /// key is identification enough.
     pub fn on_hover(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_hover = Some(tag.into());
         self
@@ -2383,16 +2412,16 @@ impl NodeSpec {
         self
     }
 
-    /// Makes this node draggable (see the `on_drag` field). Pass a tag the
-    /// handler can match on; `Value::Null` if the node key is enough.
+    /// Makes this node draggable (see the `on_drag` field). Pass a message
+    /// the handler can match on; `Value::Null` if the node key is enough.
     pub fn on_drag(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_drag = Some(tag.into());
         self
     }
 
     /// Reports this node's laid-out rect as an event whenever it changes
-    /// (see the `on_layout` field). Pass a tag the handler can match on;
-    /// `Value::Null` if the node key is identification enough.
+    /// (see the `on_layout` field). Pass a message the handler can match
+    /// on; `Value::Null` if the node key is identification enough.
     pub fn on_layout(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_layout = Some(tag.into());
         self
@@ -2471,9 +2500,43 @@ impl NodeSpec {
         self
     }
 
-    /// Asks the core for a slider's changes (see the `on_change` field).
-    pub fn on_change(mut self, tag: impl Into<Value>) -> Self {
-        self.events_mut().on_change = Some(tag.into());
+    /// Asks the core for a slider's or an editor's changes (see the
+    /// `on_change` field).
+    pub fn on_change(mut self, message: impl Into<Value>) -> Self {
+        self.events_mut().on_change = Some(message.into());
+        self
+    }
+
+    /// An editor's Enter, as `message` (see the `on_submit` field).
+    pub fn on_submit(mut self, message: impl Into<Value>) -> Self {
+        self.events_mut().on_submit = Some(message.into());
+        self
+    }
+
+    /// An editor's Escape, as `message` (see the `on_cancel` field).
+    pub fn on_cancel(mut self, message: impl Into<Value>) -> Self {
+        self.events_mut().on_cancel = Some(message.into());
+        self
+    }
+
+    /// An editing key at the edge of the text, as `message` (see the
+    /// `on_boundary` field).
+    pub fn on_boundary(mut self, message: impl Into<Value>) -> Self {
+        self.events_mut().on_boundary = Some(message.into());
+        self
+    }
+
+    /// A menu choice for this node, as `message` (see the `on_menu`
+    /// field).
+    pub fn on_menu(mut self, message: impl Into<Value>) -> Self {
+        self.events_mut().on_menu = Some(message.into());
+        self
+    }
+
+    /// A copy past a virtual list's built rows, as `message` (see the
+    /// `on_selection_range` field).
+    pub fn on_selection_range(mut self, message: impl Into<Value>) -> Self {
+        self.events_mut().on_selection_range = Some(message.into());
         self
     }
 
@@ -2507,15 +2570,15 @@ impl NodeSpec {
     }
 
     /// Makes this node a key sink (see `NodeSpec::on_key` field). Pass a
-    /// tag the handler can match on; `Value::Null` if the node key is
+    /// message the handler can match on; `Value::Null` if the node key is
     /// identification enough.
     pub fn on_key(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_key = Some(tag.into());
         self
     }
 
-    /// A key sink with no tag — `on_key(Value::Null)`, for a handler that
-    /// knows the node by its key.
+    /// A key sink with no message — `on_key(Value::Null)`, for a handler
+    /// that knows the node by its key.
     #[inline]
     pub fn key_sink(self) -> Self {
         self.on_key(Value::Null)
@@ -2545,8 +2608,8 @@ impl NodeSpec {
 
     /// Asks for the non-primary buttons pressed over this node as events,
     /// each captured by it until its release (see the `on_button` field):
-    /// `{kind="button", phase, button, x, y, tag}`. Every such button
-    /// unless [`NodeSpec::buttons`] narrows it.
+    /// this message with `button: {phase, button, x, y}` in it. Every
+    /// such button unless [`NodeSpec::buttons`] narrows it.
     pub fn on_button(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_button = Some(tag.into());
         self
@@ -2561,7 +2624,7 @@ impl NodeSpec {
     }
 
     /// Asks for the wheel over this node as events (see the `on_scroll`
-    /// field): `{kind="scroll", x, y, dx, dy, lines, tag}`.
+    /// field): this message with `scroll: {x, y, dx, dy, lines}` in it.
     pub fn on_scroll(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_scroll = Some(tag.into());
         self
@@ -2585,8 +2648,8 @@ impl NodeSpec {
     }
 
     /// Asks for a context menu on this node (see the `on_context_menu`
-    /// field). Pass a tag the handler can match on; `Value::Null` if the
-    /// node key is identification enough.
+    /// field). Pass a message the handler can match on; `Value::Null` if
+    /// the node key is identification enough.
     pub fn on_context_menu(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().on_context_menu = Some(tag.into());
         self

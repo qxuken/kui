@@ -666,7 +666,8 @@ pub enum MenuAction {
     SetClipboardSecret { text: String },
     /// Read the clipboard and deliver it as `InputEvent::Paste`: a
     /// focused editor takes it as typing, the way it takes Cmd-V, and a
-    /// focused key sink hears it as `{kind:"text"}` — which is how an
+    /// focused key sink hears it as `text: {text}` in its `on_key`
+    /// message — which is how an
     /// app that owns its text gets a paste it asked for with
     /// `Core::request_paste`. The core cannot read a clipboard, so Paste
     /// is the one standard item it can only ask for. The answer carries

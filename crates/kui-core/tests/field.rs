@@ -6,8 +6,8 @@
 //! that wrapped) and F44 (the field that could not).
 
 use kui_core::{
-    Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, QuadKind, Size, Sizing, TextStyle,
-    TextWrap, Vec2,
+    Core, EditKey, EditOptions, EventKind, InputEvent, Key, Mods, NodeSpec, QuadKind, Size, Sizing,
+    TextStyle, TextWrap, Value, Vec2,
 };
 
 const PAD: f32 = 5.0;
@@ -285,7 +285,11 @@ fn a_field_with_wrap_folds_to_its_width_and_still_submits() {
 
     let mut core = Core::new();
     let opts = folding(16.0, TextWrap::Word);
-    let spec = NodeSpec::column().pad(PAD).width(LABEL_W);
+    // The submit row: an editor with no row sends nothing (ADR 0047).
+    let spec = NodeSpec::column()
+        .pad(PAD)
+        .width(LABEL_W)
+        .on_submit(Value::Null);
     let (key, rect) = frame_with(&mut core, LABEL, &opts, spec.clone());
     // How many lines the label folds onto is the sans-serif face's to
     // say (two on Windows, three on a fontconfig CI); folded is what the
@@ -328,10 +332,7 @@ fn a_field_with_wrap_folds_to_its_width_and_still_submits() {
 
     let evs = core.handle_input(InputEvent::Key(EditKey::Enter, Mods::default()));
     assert_eq!(evs.len(), 1, "Enter on a folded field is one event");
-    assert_eq!(
-        evs[0].payload.get("kind").and_then(kui_core::Value::as_str),
-        Some("submit")
-    );
+    assert_eq!(evs[0].event, EventKind::Submit);
     assert_eq!(
         core.edit_text(key).as_deref(),
         Some(LABEL),

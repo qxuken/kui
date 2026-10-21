@@ -29,9 +29,14 @@ fn frame(core: &mut Core, panel_w: f32, spacer: bool, tag: Value, slide: bool) -
 /// `(x, y, w, h)` of every layout event in `evs`.
 fn rects(evs: &[UiEvent]) -> Vec<(f64, f64, f64, f64)> {
     evs.iter()
-        .filter(|ev| ev.kind() == Some("layout"))
+        .filter(|ev| ev.event.name() == "layout")
         .map(|ev| {
-            let f = |k| ev.payload.get(k).and_then(Value::as_float).unwrap();
+            let f = |k| {
+                ev.data()
+                    .and_then(|d| d.get(k))
+                    .and_then(Value::as_float)
+                    .unwrap()
+            };
             (f("x"), f("y"), f("w"), f("h"))
         })
         .collect()
@@ -47,7 +52,10 @@ fn first_sight_reports_the_rect_then_silence() {
     assert_eq!(ev.key, panel);
     assert_eq!(ev.payload.get_str("tag"), Some("panel"));
     // The parent rect rides along, as it does on drag events.
-    let parent = ev.payload.get("parent").expect("parent rect");
+    let parent = ev
+        .data()
+        .and_then(|d| d.get("parent"))
+        .expect("parent rect");
     assert_eq!(parent.get_float("w"), Some(400.0));
     assert_eq!(parent.get_float("h"), Some(300.0));
 

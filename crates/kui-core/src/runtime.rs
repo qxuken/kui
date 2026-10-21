@@ -28,8 +28,8 @@ use crate::edit::{EditOptions, EditStore};
 use crate::env::{Env, SystemEnv};
 use crate::geom::{Rect, Size, Vec2};
 use crate::input::{
-    EditKey, HitRegion, InputEvent, Interaction, KeyCode, KeyMods, KeyPhase, KeyPress, MouseButton,
-    ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
+    EditKey, EventKind, HitRegion, InputEvent, Interaction, KeyCode, KeyMods, KeyPhase, KeyPress,
+    MouseButton, ScrollAxis, ScrollRegion, ScrollbarRegion, UiEvent,
 };
 use crate::key::{Key, LabelIndex};
 use crate::keyframes;
@@ -1752,18 +1752,16 @@ impl Core {
         if self.framed
             && (area.w != self.dt_area.w || area.h != self.dt_area.h || scale != self.scale)
         {
-            self.pending.push(UiEvent {
-                origin: OriginId::HOST,
-                window: WindowId::MAIN,
-                key: Key::ROOT,
-                payload: Value::map([
-                    ("kind", Value::str("resize")),
+            self.pending.push(UiEvent::root(
+                EventKind::Resize,
+                OriginId::HOST,
+                Key::ROOT,
+                Value::map([
                     ("width", Value::Float(area.w as f64)),
                     ("height", Value::Float(area.h as f64)),
                     ("scale", Value::Float(scale as f64)),
                 ]),
-                slot: None,
-            });
+            ));
         }
         self.dt_area = area;
         // And what the user set in the OS — and whether assistive
@@ -1778,12 +1776,11 @@ impl Core {
         // the way the viewport does.
         if self.framed && self.env.system != self.system_seen {
             let sys = self.env.system;
-            self.pending.push(UiEvent {
-                origin: OriginId::HOST,
-                window: WindowId::MAIN,
-                key: Key::ROOT,
-                payload: Value::map([
-                    ("kind", Value::str("system")),
+            self.pending.push(UiEvent::root(
+                EventKind::System,
+                OriginId::HOST,
+                Key::ROOT,
+                Value::map([
                     ("appearance", Value::str(sys.appearance.name())),
                     (
                         "accent",
@@ -1797,8 +1794,7 @@ impl Core {
                     ),
                     ("assistive", Value::str(sys.assistive.name())),
                 ]),
-                slot: None,
-            });
+            ));
         }
         self.system_seen = self.env.system;
         // And the installed fonts, rescanned since the last frame and found
@@ -1808,13 +1804,12 @@ impl Core {
         // re-read it on. The first frame establishes it, as above.
         let fonts_rev = self.session.state().system_fonts_rev;
         if self.framed && fonts_rev != self.system_fonts_seen {
-            self.pending.push(UiEvent {
-                origin: OriginId::HOST,
-                window: WindowId::MAIN,
-                key: Key::ROOT,
-                payload: Value::map([("kind", Value::str("fonts"))]),
-                slot: None,
-            });
+            self.pending.push(UiEvent::root(
+                EventKind::Fonts,
+                OriginId::HOST,
+                Key::ROOT,
+                Value::Null,
+            ));
         }
         self.system_fonts_seen = fonts_rev;
         // The palette is a function of what the OS said and what the app

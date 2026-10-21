@@ -22,7 +22,7 @@ fn the_documents_reach_the_host_on_the_root_with_no_ask() {
     assert_eq!(ev.origin, OriginId::HOST);
     assert_eq!(ev.key, Key::ROOT);
     assert_eq!(ev.window, WindowId::MAIN);
-    assert_eq!(ev.kind(), Some("open"));
+    assert_eq!(ev.event.name(), "open");
     let listed: Vec<&str> = ev
         .payload
         .get("paths")
@@ -56,7 +56,7 @@ fn a_modal_does_not_hold_the_documents_back() {
     core.handle_input(InputEvent::CursorMoved(Vec2::new(300.0, 250.0)));
     let evs = core.handle_input(InputEvent::Open(paths()));
     assert_eq!(
-        evs.iter().filter(|e| e.kind() == Some("open")).count(),
+        evs.iter().filter(|e| e.event.name() == "open").count(),
         1,
         "the OS's request is the app's, whatever is modal"
     );

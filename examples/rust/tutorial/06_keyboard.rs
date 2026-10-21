@@ -13,7 +13,8 @@ const SIDE: usize = 4;
 // ANCHOR: message
 #[derive(Message, Clone, Debug, PartialEq)]
 enum Msg {
-    /// The tag on the key sink: every key press arrives under it.
+    /// The key sink's message: every key press arrives as it, with the
+    /// key's data inside it under `key`.
     Key,
     Pick {
         cell: usize,
@@ -115,7 +116,7 @@ impl App for Grid {
         match ev.message::<Msg>() {
             Some(Msg::Key) => {
                 // The message says which sink; `key_press` reads the key
-                // event's own fields off the same payload, typed.
+                // event's data, under the message's `key` field, typed.
                 let Some((KeyPhase::Down, key)) = ev.key_press() else {
                     return;
                 };

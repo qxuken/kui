@@ -30,7 +30,7 @@
 # Exit codes: 0 no target crashed, 1 one did (its artifact is printed),
 # 2 a build or a tool failed.
 
-const TARGETS = [parsers values path scenes decode]
+const TARGETS = [parsers values path scenes decode events]
 
 # libFuzzer's flags for every run. RSS: a decoder may allocate what an
 # image's header asks for, and the image crate's own cap is 512 MB, so the
@@ -49,6 +49,7 @@ const LIBFUZZER = [-rss_limit_mb=2560 -print_final_stats=1]
 def len-flags [target: string] {
     match $target {
         "scenes" => [-max_len=512 -len_control=0 -timeout=10]
+        "events" => [-max_len=2048 -len_control=0 -timeout=10]
         "decode" => [-max_len=65536 -timeout=60]
         _ => [-max_len=65536 -timeout=10]
     }

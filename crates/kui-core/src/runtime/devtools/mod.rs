@@ -53,6 +53,7 @@ use rustc_hash::FxHashSet;
 use crate::color::Color;
 use crate::env::{Appearance, SystemEnv};
 use crate::geom::{Rect, Size, Vec2};
+use crate::input::EventKind;
 use crate::key::Key;
 use crate::menu::Accel;
 use crate::runtime::inspect::NodeInfo;
@@ -259,7 +260,9 @@ pub(crate) struct Entry {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EntryKind {
-    Event,
+    /// An event, by the kind its envelope said: the payload no longer
+    /// does (ADR 0047).
+    Event(EventKind),
     Warning,
     Note,
 }
@@ -1384,10 +1387,16 @@ impl Core {
                 continue;
             }
             if matches!(
-                ev.kind(),
-                Some("drag" | "layout" | "contextmenu" | "forceclick" | "button")
-            ) {
-                shift_xy(&mut ev.payload, shift);
+                ev.event,
+                EventKind::Drag
+                    | EventKind::Layout
+                    | EventKind::ContextMenu
+                    | EventKind::ForceClick
+                    | EventKind::Button
+            ) && let Value::Map(entries) = &mut ev.payload
+                && let Some((_, data)) = entries.iter_mut().find(|(k, _)| k == ev.event.name())
+            {
+                shift_xy(data, shift);
             }
         }
     }
@@ -1864,14 +1873,13 @@ impl Core {
         let mut resize: Option<Vec2> = None;
         out.retain(|ev| {
             if ev.origin == OriginId::DEVTOOLS {
-                // A click carries its payload flat; a drag's or a sink's
-                // rides in `tag`; a select's choice is the menu row's
-                // `item` (`widgets::select`).
+                // Every handler's message carries its `dt`; a select's
+                // choice is the menu row's `item` (`widgets::select`).
+                let data = ev.data();
                 let what = ev
                     .payload
                     .get("dt")
-                    .or_else(|| ev.payload.get("tag").and_then(|t| t.get("dt")))
-                    .or_else(|| ev.payload.get("item").and_then(|t| t.get("dt")))
+                    .or_else(|| data.and_then(|d| d.get("item")).and_then(|t| t.get("dt")))
                     .and_then(Value::as_str);
                 match what {
                     Some("picked") => picks += 1,
@@ -1879,13 +1887,15 @@ impl Core {
                         // The tree list's sink: a press (not a release, not
                         // a repeat of a chord) becomes an action naming
                         // the key, for the build to move the cursor by.
-                        let s = |k: &str| ev.payload.get(k).and_then(Value::as_str);
-                        // Both modifiers ride every key payload, so each
-                        // is asked on its own: a chord bubbles to the sink
+                        let field = |k: &str| data.and_then(|d| d.get(k));
+                        let s = |k: &str| field(k).and_then(Value::as_str);
+                        // Both modifiers ride every key event, so each is
+                        // asked on its own: a chord bubbles to the sink
                         // (ADR 0011) and must not move the cursor.
-                        let held = |k: &str| matches!(ev.payload.get(k), Some(Value::Bool(true)));
+                        let held = |k: &str| matches!(field(k), Some(Value::Bool(true)));
                         let plain = !held("ctrl") && !held("super");
-                        if s("phase") == Some("down")
+                        if ev.is(EventKind::Key)
+                            && s("phase") == Some("down")
                             && plain
                             && let Some(code) = s("code")
                         {
@@ -1893,7 +1903,7 @@ impl Core {
                         }
                     }
                     Some("resize") => {
-                        let f = |k: &str| ev.payload.get(k).and_then(Value::as_float);
+                        let f = |k: &str| data.and_then(|d| d.get(k)).and_then(Value::as_float);
                         if let (Some(x), Some(y)) = (f("x"), f("y")) {
                             resize = Some(Vec2::new(x as f32, y as f32));
                         }
@@ -1901,11 +1911,11 @@ impl Core {
                     Some(what) => actions.push(what.to_string()),
                     None => {}
                 }
-                // An edit's `changed` and the like: the build reads the
+                // An edit's `change` and the like: the build reads the
                 // field's text; nothing to do here.
                 return false;
             }
-            if ev.kind() == Some("window") && ev.payload.get_str("name") == Some(DEVTOOLS_WINDOW) {
+            if ev.is(EventKind::Window) && ev.payload.get_str("name") == Some(DEVTOOLS_WINDOW) {
                 closed |= ev.payload.get_str("phase") == Some("closed");
                 return false;
             }
@@ -1974,7 +1984,7 @@ impl Core {
                 .map(|ev| Entry {
                     seq: 0,
                     frame,
-                    kind: EntryKind::Event,
+                    kind: EntryKind::Event(ev.event),
                     window: ev.window,
                     key: ev.key,
                     label: if ev.key == Key::ROOT {
@@ -1983,7 +1993,7 @@ impl Core {
                         self.label_of(ev.key).map(str::to_string)
                     },
                     origin: ev.origin,
-                    payload: redact(&ev.payload),
+                    payload: redact(&ev.payload, self.edit.is_secure(ev.key)),
                     lines: 0,
                 })
                 .collect()
@@ -2310,20 +2320,36 @@ enum Place {
 }
 
 /// A payload as the stream keeps it: a paste the pasteboard marked
-/// concealed — a password from a password manager — keeps its
-/// markers and its length and loses its text, which the events tab would
-/// otherwise show in plain view and hold for the stream's lifetime.
-fn redact(payload: &Value) -> Value {
-    let concealed = payload.get_bool("concealed") == Some(true);
+/// concealed — a password from a password manager — keeps its markers
+/// and its length and loses its text, and so does a `secure` editor's
+/// `change` (`secure`), which the events tab would otherwise show in
+/// plain view and hold for the stream's lifetime. The text is in the
+/// event's field (ADR 0047), so the field is what is read and rewritten.
+fn redact(payload: &Value, secure: bool) -> Value {
+    fn hide(data: &Value, secure: bool) -> Value {
+        let concealed = secure || data.get_bool("concealed") == Some(true);
+        match data {
+            Value::Map(fields) if concealed => Value::Map(
+                fields
+                    .iter()
+                    .map(|(k, v)| match (k.as_str(), v) {
+                        ("text", Value::Str(t)) => (
+                            k.clone(),
+                            Value::str(format!("‹concealed, {} chars›", t.chars().count())),
+                        ),
+                        _ => (k.clone(), v.clone()),
+                    })
+                    .collect(),
+            ),
+            _ => data.clone(),
+        }
+    }
     match payload {
-        Value::Map(fields) if concealed => Value::Map(
+        Value::Map(fields) => Value::Map(
             fields
                 .iter()
-                .map(|(k, v)| match (k.as_str(), v) {
-                    ("text", Value::Str(t)) => (
-                        k.clone(),
-                        Value::str(format!("‹concealed, {} chars›", t.chars().count())),
-                    ),
+                .map(|(k, v)| match k.as_str() {
+                    "text" | "change" => (k.clone(), hide(v, secure)),
                     _ => (k.clone(), v.clone()),
                 })
                 .collect(),

@@ -3,7 +3,7 @@
 //! Grow containers rebuilt from a plain enum tree each frame; a pane is just
 //! its number here (the modal_editor example shows what real pane content
 //! looks like). The whole keyboard arrives through one `on_key` sink as
-//! `{kind="key"}` events, so the same chord dispatch would work verbatim
+//! `key` events, so the same chord dispatch would work verbatim
 //! from Lua or C.
 //!
 //! Run: cargo run -p kui-native --example splitmux
@@ -15,9 +15,9 @@
 //! it does not — so ⌥v is on the key printed V for a Dvorak or AZERTY user,
 //! and still works at all on a Cyrillic or Greek one. A keymap that wanted
 //! the *shape* rather than the label (WASD) would read `physical` instead;
-//! the payload carries both. Drag the strip between panes to resize a split; drag a tab
+//! the key event carries both. Drag the strip between panes to resize a split; drag a tab
 //! along the bar to reorder it (both are plain `on_drag` data — the drag
-//! payload's parent rect gives the divider its ratio, and hover during the
+//! data's parent rect gives the divider its ratio, and hover during the
 //! drag gives tabs their live reorder). Splits ease into place: the two
 //! halves carry a `transition`, so a new split slides open and a keyboard
 //! resize glides — except while a divider drags, when the ratio must track
@@ -36,8 +36,8 @@
 use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, Drag, DragPhase, Easing, FloatConfig, KeyCode, KeyMods, Message,
-    NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, WindowCommand,
+    Align, App, Color, Core, Drag, DragPhase, Easing, Event, FloatConfig, KeyCode, KeyMods,
+    Message, NodeSpec, Sizing, TextStyle, Theme, Ui, UiEvent, WindowCommand,
 };
 
 const TABBAR_H: f32 = 30.0;
@@ -92,10 +92,11 @@ impl From<Theme> for Pal {
 // ---------------------------------------------------------------- model
 
 /// What the view hangs on its nodes and `on_event` reads back (backlog
-/// C50): a click hands one over as its payload, a drag inside the core's
-/// `drag` event as its `tag`, and `ev.message::<Msg>()` reads either. The
-/// payloads are the same plain data as before — `{kind: "focus", pane}` —
-/// written and read by `#[derive(Message)]` instead of by string.
+/// C50): a click hands one over as its payload, a drag as its payload with
+/// the drag's data beside it under `drag`, and `ev.split::<Msg>()` reads
+/// the message and the event in one `match`. The messages are plain data
+/// — `{kind: "focus", pane}` — written and read by `#[derive(Message)]`
+/// instead of by string.
 #[derive(Message, Clone, Debug, PartialEq)]
 enum Msg {
     /// A pane clicked into focus.
@@ -867,41 +868,33 @@ impl App for Splitmux {
             self.mods = mods;
             return;
         }
-        match ev.kind() {
-            Some("drag") => {
-                let Some(d) = ev.drag() else { return };
-                match ev.message::<Msg>() {
-                    Some(Msg::TabDrag { tab }) => match d.phase {
-                        DragPhase::Start => self.tab_drag = Some((tab, 0.0, 0.0)),
-                        DragPhase::Move => {
-                            // `delta` is measured from the press point, so
-                            // the direction of this move is the change
-                            // since the last one.
-                            if let Some((_, sign, last)) = self.tab_drag.as_mut() {
-                                let step = d.delta.x - *last;
-                                if step != 0.0 {
-                                    *sign = step;
-                                }
-                                *last = d.delta.x;
-                            }
+        match ev.split::<Msg>() {
+            (Some(Msg::TabDrag { tab }), Event::Drag(d)) => match d.phase {
+                DragPhase::Start => self.tab_drag = Some((tab, 0.0, 0.0)),
+                DragPhase::Move => {
+                    // `delta` is measured from the press point, so the
+                    // direction of this move is the change since the
+                    // last one.
+                    if let Some((_, sign, last)) = self.tab_drag.as_mut() {
+                        let step = d.delta.x - *last;
+                        if step != 0.0 {
+                            *sign = step;
                         }
-                        DragPhase::End => self.tab_drag = None,
-                    },
-                    Some(Msg::Split { path, dir }) => self.split_drag(d, path, dir),
-                    Some(Msg::PaneDrag { pane, .. }) => self.pane_drag_event(d, pane),
-                    _ => {}
+                        *last = d.delta.x;
+                    }
                 }
-            }
-            // Everything else the app hung on a node arrives as its payload.
-            _ => match ev.message::<Msg>() {
-                Some(Msg::Focus { pane }) => self.focused = pane,
-                Some(Msg::Tab { tab }) => {
-                    self.tab = tab;
-                    self.refocus();
-                }
-                Some(Msg::TabNew) => self.new_tab(),
-                _ => {}
+                DragPhase::End => self.tab_drag = None,
             },
+            (Some(Msg::Split { path, dir }), Event::Drag(d)) => self.split_drag(d, path, dir),
+            (Some(Msg::PaneDrag { pane, .. }), Event::Drag(d)) => self.pane_drag_event(d, pane),
+            // Everything else the app hung on a node is a click's message.
+            (Some(Msg::Focus { pane }), _) => self.focused = pane,
+            (Some(Msg::Tab { tab }), _) => {
+                self.tab = tab;
+                self.refocus();
+            }
+            (Some(Msg::TabNew), _) => self.new_tab(),
+            _ => {}
         }
     }
 }
@@ -1010,7 +1003,7 @@ impl Example for Splitmux {
         d.frame(self);
         d.check(panes(self) == 4, "Alt-w closes the focused pane")?;
         // The typed messages (backlog C50), each through real input: a
-        // click's payload, a drag's tag.
+        // click's message, a drag's.
         d.click(self, 60.0, 400.0);
         d.frame(self);
         let left = self.focused;

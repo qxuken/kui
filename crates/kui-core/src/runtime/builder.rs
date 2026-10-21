@@ -370,6 +370,7 @@ impl Core {
         self.devtools_consume(&mut out);
         self.devtools_translate(&mut out);
         self.stamp(&mut out);
+        self.note_taken_fields(&mut out);
         self.devtools_log(&out);
         out
     }
@@ -1005,7 +1006,11 @@ impl Core {
 
     /// An editable text node. State (buffer, cursor, selection) is retained
     /// by key across frames; edits arrive via `handle_input` and come back to
-    /// the host as "changed"/"submit" events. Read with `edit_text`.
+    /// the host as the `change`/`submit`/`cancel`/`boundary` messages
+    /// `spec` declares rows for. Read with `edit_text`.
+    /// `initial` is the text a new editor starts from, its seed; with
+    /// [`EditOptions::value`] set it is the editor's value instead, which
+    /// the editor is brought to on every frame it differs.
     pub fn text_edit(
         &mut self,
         label: &str,
@@ -1024,6 +1029,11 @@ impl Core {
                 opts: Box::new(opts.clone()),
                 spec: Box::new(spec.clone()),
             });
+        }
+        // A value with nowhere to hear the edits it would follow reverts
+        // every keystroke (ADR 0047, decision 8).
+        if opts.value && spec.events().on_change.is_none() {
+            self.warn(crate::diag::edit_value_without_handler(key, label));
         }
         self.prepare_spec(key, &mut spec);
         // The same stamp the two text funnels make: an editor that named

@@ -19,7 +19,8 @@ enum Msg {
     Copy,
     Paste,
     Quit,
-    /// The root sink's tag: a paste's text arrives under it.
+    /// The root sink's message: a paste's text arrives inside it, under
+    /// `text`.
     Sink,
 }
 // ANCHOR_END: message
@@ -109,9 +110,9 @@ impl App for Effects {
             // The core cannot read the clipboard; the host can. Ask, and
             // the text comes back as an event on the focused sink.
             Some(Msg::Paste) => core.request_paste(),
-            Some(Msg::Sink) if ev.kind() == Some("text") => {
-                if let Some(text) = ev.payload.get_str("text") {
-                    self.pasted = text.to_string();
+            Some(Msg::Sink) => {
+                if let Some(t) = ev.text() {
+                    self.pasted = t.text.to_string();
                 }
             }
             Some(Msg::Quit) => self.quit = true,

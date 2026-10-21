@@ -169,6 +169,7 @@ on_event :: proc(p: ^Panel, ev: kui.Event) {
 		}
 		resize(&p.todos, kept)
 	}
-	// {kind = "changed"} from the filter field lands here too and needs
-	// nothing: view reads the field back every frame.
+	// The filter field's edits land here too, as {change = {text}} - the
+	// stock input names no message, so no kind, and Msg matches none of it -
+	// and need nothing: view reads the field back every frame.
 }

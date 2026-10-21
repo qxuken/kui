@@ -250,6 +250,7 @@ Edit_Flag :: enum u32 {
 	Wrap = 2, // KUI_EDIT_WRAP
 	Keep_Tab = 3, // KUI_EDIT_KEEP_TAB
 	Secure = 4, // KUI_EDIT_SECURE
+	Value = 5, // KUI_EDIT_VALUE
 }
 Edit_Flags :: bit_set[Edit_Flag;u32]
 
@@ -778,8 +779,9 @@ Spec :: struct {
 	focus_bg: Color,
 	// Modal surface: the Tab ring becomes this node's subtree, everything outside
 	// it is inert to the pointer, the wheel and assistive technology, and Escape
-	// or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag}
-	// on it — the app stops declaring the node.
+	// or a press outside arrives on it as this message with `dismiss: {reason:
+	// "escape" | "outside"}` in it (ADR 0047) — the app stops declaring the
+	// node.
 	modal: any,
 	// Where focus lands when the enclosing `modal` scope is entered: the first
 	// node in the modal's Tab ring declaring it, so a destructive confirm opens
@@ -788,27 +790,30 @@ Spec :: struct {
 	// Nodes sharing a group name show hoverBg/pressedBg together (a split button,
 	// a multi-piece shape).
 	hover_group: string,
-	// Hover tag: the pointer entering/leaving emits {kind:"hover",
-	// phase:"enter"|"leave", tag} events.
+	// Hover handler: the pointer entering or leaving arrives as this message with
+	// `hover: {phase: "enter" | "leave", by}` in it (ADR 0047).
 	on_hover: any,
-	// Drop-zone tag
+	// Drop-zone handler
 	// (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): files
-	// dragged in from the OS over this node emit {kind:"drop",
-	// phase:"enter"|"move"|"leave"|"drop", paths, x, y, tag} — `paths` the OS
-	// paths as strings, `x`/`y` the pointer in logical viewport coordinates
-	// (absent on `leave`).
+	// dragged in from the OS over this node arrive as this message with `drop:
+	// {phase: "enter" | "move" | "leave" | "drop", paths, x, y}` in it (ADR 0047)
+	// — `paths` the OS paths as strings, `x`/`y` the pointer in logical
+	// viewport coordinates (absent on `leave`).
 	on_drop: any,
-	// Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h,
-	// parent, tag} on its first frame and whenever it changes (needs a stable
-	// key).
+	// Layout handler: the node's laid-out rect arrives as this message with
+	// `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame
+	// and whenever it changes (needs a stable key).
 	on_layout: any,
 	// Message emitted when clicked (data, not a callback).
 	on_click: any,
-	// Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events,
-	// `dx`/`dy` measured from the press point in every phase.
+	// Drag handler: the drag arrives as this message with `drag: {phase, x, y,
+	// dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point
+	// in every phase.
 	on_drag: any,
-	// Key-sink tag: with key focus held, presses arrive as {kind:"key",
-	// phase:"down", code, ...} events.
+	// Key sink: with key focus held, presses arrive as this message with `key:
+	// {phase: "down", code, …}` in it, and a composition, a commit and a
+	// reader's selection as `preedit`, `text` and `select` the same way (ADR
+	// 0047).
 	on_key: any,
 	// With `onKey`: releases arrive too, as the same payload with phase:"up"
 	// (`text` null, `repeat` false) — for a held-key interaction (WASD,
@@ -819,32 +824,34 @@ Spec :: struct {
 	// "numlock", "scrolllock", which side in `location` ("left" / "right"),
 	// releases too with `keyUp`.
 	modifier_keys: bool,
-	// Context-menu tag: a secondary-button (right) press emits
-	// {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point
-	// to open the menu at.
+	// Context-menu handler: a secondary-button (right) press arrives on the node
+	// as this message with `contextmenu: {x, y}` in it (ADR 0047), at the logical
+	// viewport point to open the menu at.
 	on_context_menu: any,
-	// Force-click tag: a press that deepens past the second stage of a Force
-	// Touch trackpad emits {kind:"forceclick", x, y, tag} on the node, at the
-	// logical viewport point it happened at
+	// Force-click handler: a press that deepens past the second stage of a Force
+	// Touch trackpad arrives on the node as this message with `forceclick: {x,
+	// y}` in it (ADR 0047), at the logical viewport point it happened at
 	// (`docs/adr/0017-selection-as-a-scope.md`).
 	on_force_click: any,
-	// Button tag (backlog F105): a press of a non-primary button — middle,
-	// secondary, or one past those — emits {kind:"button", phase:"press",
-	// button, x, y, clicks, tag} on the node, and the button is then captured by
-	// it: every pointer move while it is held arrives as phase:"move" and its
-	// release as phase:"release", on this node wherever the pointer is.
+	// Button handler (backlog F105): a press of a non-primary button — middle,
+	// secondary, or one past those — arrives on the node as this message with
+	// `button: {phase: "press", button, x, y, clicks}` in it (ADR 0047), and the
+	// button is then captured by it: every pointer move while it is held arrives
+	// as phase:"move" and its release as phase:"release", on this node wherever
+	// the pointer is.
 	on_button: any,
 	// Which non-primary buttons `onButton` claims (backlog F105): `"secondary"`,
 	// `"middle"` and `"other"` (every button past those), separated by spaces or
 	// commas — `"middle"`, `"secondary middle"`.
 	buttons: Mouse_Buttons,
-	// Scroll tag: the wheel over this node emits {kind:"scroll", x, y, dx, dy,
-	// lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in
-	// logical px as the driver reported it (positive `dy` is the wheel rolling
-	// up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells`
-	// grid the whole lines the delta covers (positive = later history, the sign
-	// `originLine` grows in; the fraction is carried to the next notch so a
-	// trackpad's small steps add up) and null on any other node.
+	// Scroll handler: the wheel over this node arrives on it as this message with
+	// `scroll: {x, y, dx, dy, lines}` in it (ADR 0047) instead of scrolling
+	// anything — `dx`/`dy` the delta in logical px as the driver reported it
+	// (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y`
+	// the pointer, and `lines` on a `cells` grid the whole lines the delta covers
+	// (positive = later history, the sign `originLine` grows in; the fraction is
+	// carried to the next notch so a trackpad's small steps add up) and null on
+	// any other node.
 	on_scroll: any,
 	// Which axes `onScroll` takes (backlog F107): `both` (the default), `x` or
 	// `y`.
@@ -939,18 +946,33 @@ Spec :: struct {
 	// pointer sets snaps to (ADR 0034).
 	value_step: Maybe(f32),
 	// Keyboard focus entering or leaving this node's subtree — the node itself,
-	// or anything focused inside it — emits `{kind:"focus", phase:"in"|"out",
-	// by, tag}` (backlog DX18).
+	// or anything focused inside it — arrives as this message with `focus:
+	// {phase: "in" | "out", by}` in it (backlog DX18, ADR 0047).
 	on_focus: any,
-	// A `slider` role's changes (ADR 0034): the core turns a press on the node
-	// into the value under the pointer, a drag into the value under it, the
-	// arrows and assistive technology's increment / decrement into one
-	// `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends
-	// — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the
-	// step — and emits `{kind:"change", value, phase, tag}`: `phase` is
-	// `"move"` while the pointer holds the slider and `"end"` when it lets go or
-	// a key moved it.
+	// Changes, as this message with `change` in it (ADR 0047).
 	on_change: any,
+	// Enter in a single-line editor, as this message exactly as declared (ADR
+	// 0047).
+	on_submit: any,
+	// Escape letting go of a focused editor, as this message exactly as declared
+	// (ADR 0047): the keyboard leaves it, as it does for a click elsewhere, and
+	// this says it was Escape — a draft abandoned, where `onSubmit` is one
+	// confirmed and a plain blur is neither.
+	on_cancel: any,
+	// An editing key that met the edge of an editor's text and did nothing, as
+	// this message with `boundary: {key, edge, word, doc}` in it (ADR 0047,
+	// backlog F145): ↑ on the first line, ← or Backspace at the start (`edge:
+	// "start"`), ↓ on the last line, → or Delete at the end (`"end"`) —
+	// from a caret with no selection and without Shift.
+	on_boundary: any,
+	// A choice from a menu opened for this node — a `select`'s, or one
+	// `openMenu` named it the target of — as this message with `menu: {role,
+	// item}` in it (ADR 0047): `item` is the row's `id`, else its label.
+	on_menu: any,
+	// On a `selectable` scope: a copy reached rows a virtual list has not built,
+	// as this message with `selectionrange` in it (ADR 0047) — what a list
+	// answers by building them.
+	on_selection_range: any,
 	// On a `line` of a custom editor (a `textInput` / `multilineTextInput` role
 	// drawn by the app): the caret's byte offset into that line's text.
 	caret: Maybe(int),
@@ -1070,6 +1092,11 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	if v, ok := s.value_step.?; ok do out.value_set, out.value_step = out.value_set | c.VALUE_STEP, v
 	out.on_focus = borrow(scratch, s.on_focus)
 	out.on_change = borrow(scratch, s.on_change)
+	out.on_submit = borrow(scratch, s.on_submit)
+	out.on_cancel = borrow(scratch, s.on_cancel)
+	out.on_boundary = borrow(scratch, s.on_boundary)
+	out.on_menu = borrow(scratch, s.on_menu)
+	out.on_selection_range = borrow(scratch, s.on_selection_range)
 	if v, ok := s.caret.?; ok do out.value_set, out.caret = out.value_set | c.VALUE_CARET, u32(v)
 	if v, ok := s.selection_anchor.?; ok do out.value_set, out.selection_anchor = out.value_set | c.VALUE_ANCHOR, u32(v)
 	if s.caret_solid do out.value_set |= c.VALUE_CARET_SOLID
@@ -1164,6 +1191,8 @@ Event :: struct {
 	window: u32,
 	reply_sink: ^c.ReplySink,
 	slot: u64,
+	event: string,
+	root: bool,
 }
 
 event_to_c :: proc(v: Event, scratch: ^Scratch) -> (out: c.Event) {
@@ -1174,6 +1203,8 @@ event_to_c :: proc(v: Event, scratch: ^Scratch) -> (out: c.Event) {
 	out.window = v.window
 	out.reply_sink = v.reply_sink
 	out.slot = v.slot
+	out.event = v.event
+	out.root = 1 if v.root else 0
 	_ = scratch
 	return
 }
@@ -1185,6 +1216,8 @@ event_from_c :: proc(v: c.Event) -> (out: Event) {
 	out.window = v.window
 	out.reply_sink = v.reply_sink
 	out.slot = v.slot
+	out.event = v.event
+	out.root = v.root != 0
 	return
 }
 
@@ -2691,6 +2724,14 @@ key_of :: proc(ui: ^Ui, label: string) -> u64 {
 	return c.key_of(ui, label)
 }
 
+// The label a key was opened under, in the frame being built and then the
+// last one; none for an auto-keyed node.
+// Rust: Core::label_of.
+label_of :: proc(ui: ^Ui, key: u64) -> (out: string, ok: bool) #optional_ok {
+	ok = c.label_of(ui, key, &out)
+	return
+}
+
 // The key of the first node a reader hears named so in the last frame: a test
 // presses the button named Like.
 // Rust: Core::key_named.
@@ -3806,6 +3847,15 @@ select :: proc(ui: ^Ui, label: string, items: []Menu_Item, current: i64) -> u64 
 	items_c := make([]c.MenuItem, len(items), context.temp_allocator)
 	for x, k in items do items_c[k] = menu_item_to_c(x, &scratch)
 	return c.select(ui, label, raw_data(items_c), uint(len(items)), current)
+}
+
+// kui_select_with (kui.h).
+select_with :: proc(ui: ^Ui, label: string, items: []Menu_Item, current: i64, on_menu: any = nil) -> u64 {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	items_c := make([]c.MenuItem, len(items), context.temp_allocator)
+	for x, k in items do items_c[k] = menu_item_to_c(x, &scratch)
+	return c.select_with(ui, label, raw_data(items_c), uint(len(items)), current, to_value(on_menu))
 }
 
 // An editor's text, by key or by label.

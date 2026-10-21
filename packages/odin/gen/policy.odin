@@ -172,7 +172,7 @@ TYPED :: [][2]string {
 }
 
 // uint32_t fields that are a yes or no.
-BOOL_FIELDS :: []string{"looped", "paused", "finish", "checked", "replay", "multiple", "monospaced", "italic", "rtl"}
+BOOL_FIELDS :: []string{"looped", "paused", "finish", "checked", "replay", "multiple", "monospaced", "italic", "rtl", "root"}
 
 // A yes-or-no whose C zero is the unusual case: an Odin literal leaves a
 // field it does not name at zero, so the field is turned around, and a menu
@@ -230,6 +230,12 @@ CONVERTED :: [][2]string {
 // emits is `Menu_Event`, so the menu bar's menu is a Bar_Menu.
 STRUCT_NAMES :: [][2]string {
 	{"KuiMenu", "Bar_Menu"},
+}
+
+// An event whose data is one shape per role, each its own X_Event and
+// With_X (ADR 0047): a slider's change and an editor's.
+EVENT_STRUCTS :: [][2]string {
+	{"change", "slider_change edit_change"},
 }
 
 // -- The schema rows ----------------------------------------------------------

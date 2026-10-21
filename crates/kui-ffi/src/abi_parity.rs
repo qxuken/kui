@@ -437,6 +437,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_EDIT_WRAP,
             KUI_EDIT_KEEP_TAB,
             KUI_EDIT_SECURE,
+            KUI_EDIT_VALUE,
             KUI_MOD_SHIFT,
             KUI_MOD_WORD,
             KUI_MOD_DOC,
@@ -829,6 +830,11 @@ fn asserts() -> (String, Vec<&'static str>) {
         pivot_y: f32 => "float",
         iterations: f32 => "float",
         over_siblings: u32 => "uint32_t",
+        on_submit: *const KuiValue => "const KuiValue *",
+        on_cancel: *const KuiValue => "const KuiValue *",
+        on_boundary: *const KuiValue => "const KuiValue *",
+        on_menu: *const KuiValue => "const KuiValue *",
+        on_selection_range: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1044,6 +1050,8 @@ fn asserts() -> (String, Vec<&'static str>) {
         window: u32 => "uint32_t",
         reply_sink: *mut KuiReplySink => "KuiReplySink *",
         slot: u64 => "uint64_t",
+        event: KuiStr => "KuiStr",
+        root: u32 => "uint32_t",
     });
     abi_out_struct!(o, KuiEvent);
 
@@ -1531,8 +1539,10 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // so the 64-bit size stayed at 704 while the layout moved. ABI
         // 27: `rotate`, `scale`, `pivot_set`, `pivot_x` and `pivot_y`
         // (ADR 0043). ABI 31: `over_siblings`, past the end, so 744 + 4 rounds
-        // up to the struct's 8-byte alignment.
-        ("KuiSpec", 752, 31),
+        // up to the struct's 8-byte alignment. ABI 33: `on_submit`,
+        // `on_cancel`, `on_boundary`, `on_menu` and `on_selection_range`
+        // (ADR 0047), five pointers after that padding.
+        ("KuiSpec", 792, 33),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

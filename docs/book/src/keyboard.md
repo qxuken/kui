@@ -36,12 +36,12 @@ ring is useful.
 ## Keys are events on a sink
 
 A key press is data, like a click. It is delivered to a **key sink**: a
-box with `.on_key(tag)`. The press goes to the focused node and bubbles
+box with `.on_key(msg)`. The press goes to the focused node and bubbles
 up to the nearest sink above it. So a sink at the root hears every key,
 whatever is focused inside it.
 
-The tag is a message of yours, like a button's — except a sink sends it
-on every key rather than on a click. This app has one sink, so one
+The message is yours, like a button's — except a sink sends it on every
+key rather than on a click, with the key inside it under `key`. This app has one sink, so one
 variant with no fields is enough to say "a key arrived":
 
 ```rust,noplayground

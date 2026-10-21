@@ -8,7 +8,8 @@
 //!   * **A row of the list.** The row declares `on_context_menu`, so the
 //!     app's own menu wins: the standard items *and* two of the app's,
 //!     opened with `Ui::open_menu` on the next frame (an `on_event` has no
-//!     `Ui`). Whichever is chosen arrives as one `menu` event on the row.
+//!     `Ui`). Whichever is chosen arrives as one `menu` event on the row,
+//!     which declares `on_menu` to hear it.
 //!   * **The field.** An editor gets Cut / Copy / Paste / Select All
 //!     without asking for anything.
 //!   * **The footer.** A plain box: no menu, because a right-click on
@@ -24,8 +25,8 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    Align, App, Core, EditOptions, Key, Menu, MenuItem, MenuRole, NodeSpec, Span, TextStyle, Theme,
-    Ui, UiEvent, Value, Vec2,
+    Align, App, Core, EditOptions, Event, Key, Menu, MenuItem, MenuRole, NodeSpec, Span, TextStyle,
+    Theme, Ui, UiEvent, Value, Vec2,
 };
 
 const ROWS: [&str; 4] = ["alpha", "bravo", "charlie", "delta"];
@@ -75,17 +76,20 @@ impl App for Demo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            // Every chosen row, standard or not, arrives here — on the
-            // node the menu was about, with the role it played.
-            Some("menu") => {
-                let role = ev.payload.get_str("role").unwrap_or("");
-                let item = ev.payload.get("item").cloned().unwrap_or(Value::Null);
+        // Each row declares its name as a string message, so its events
+        // arrive as `{tag: "bravo", <event>: {...}}`.
+        let tag = ev.payload.get_str("tag").unwrap_or_default().to_string();
+        match ev.read() {
+            // Every chosen row of the app's menu, standard or not, arrives
+            // here — on the node the menu was about, which declared
+            // `on_menu`, with the role it played.
+            Event::Menu(choice) => {
+                let role = choice.role.name();
                 // A custom row says what it is *and* what it is about: the
                 // core hands back whatever the item carried, so a menu
                 // needs no lookup from the key to the thing.
-                let did = item.get_str("do");
-                let row = item.get_str("row").unwrap_or("");
+                let did = choice.item.get_str("do");
+                let row = choice.item.get_str("row").unwrap_or("");
                 if did == Some("archive") && !self.archived.iter().any(|a| a == row) {
                     self.archived.push(row.to_string());
                 }
@@ -96,11 +100,7 @@ impl App for Demo {
             }
             // A row asked to own its menu, so the app opens one: the
             // standard items it wants, plus its own two.
-            Some("contextmenu") => {
-                let at = Vec2::new(num(&ev, "x"), num(&ev, "y"));
-                let tag = ev.payload.get_str("tag").unwrap_or_default().to_string();
-                self.pending = Some((ev.key, at, tag));
-            }
+            Event::ContextMenu(at) => self.pending = Some((ev.key, at, tag)),
             _ => {}
         }
     }
@@ -141,8 +141,10 @@ impl Demo {
                         .radius(6.0)
                         .hover_bg(t.hover)
                         // The declaration that wins: the core stands back
-                        // and this reaches `on_event` instead.
-                        .on_context_menu(Value::str(name)),
+                        // and this reaches `on_event` instead. `on_menu` is
+                        // where the chosen row of the menu it opens lands.
+                        .on_context_menu(Value::str(name))
+                        .on_menu(Value::str(name)),
                     |ui| {
                         let style =
                             TextStyle::new(14.0).color(if archived { t.muted } else { t.fg });
@@ -230,13 +232,6 @@ fn card(t: &Theme) -> NodeSpec {
         .bg(t.surface)
         .radius(10.0)
         .border(1.0, t.border)
-}
-
-fn num(ev: &UiEvent, name: &str) -> f32 {
-    ev.payload
-        .get(name)
-        .and_then(Value::as_float)
-        .unwrap_or(0.0) as f32
 }
 
 impl Example for Demo {

@@ -51,10 +51,14 @@ fn value_takes_the_numbers_a_view_holds_and_reads_back_by_key() {
     assert_eq!(v.get_int("n"), Some(4));
     assert_eq!(v.get_bool("on"), Some(true));
     assert_eq!(v.get_str("x"), None, "the wrong type is None");
-    let ev = UiEvent::on(kui_core::OriginId::HOST, kui_core::Key::ROOT, v);
-    assert_eq!(ev.kind(), Some("drag"));
-    let plain = UiEvent::on(kui_core::OriginId::HOST, kui_core::Key::ROOT, "save".into());
-    assert_eq!(plain.kind(), None, "a tag that is not a map has no kind");
+    let ev = UiEvent::root(
+        kui_core::EventKind::Drag,
+        kui_core::OriginId::HOST,
+        kui_core::Key::ROOT,
+        v,
+    );
+    assert_eq!(ev.event.name(), "drag");
+    assert_eq!(ev.payload.get_str("kind"), Some("drag"));
 }
 
 #[test]

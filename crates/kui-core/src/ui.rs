@@ -1241,6 +1241,26 @@ impl<'a> Ui<'a> {
         self.core.text_edit(label, initial, opts, spec)
     }
 
+    /// An editable text node whose text is `value`, declared every frame:
+    /// [`Self::text_edit`] with [`EditOptions::value`] set, so where the
+    /// editor's text differs from `value` it is brought to it as a
+    /// splice. An app that stores the text its `on_change` message brings
+    /// (`change: {text}`) and declares it back never moves the
+    /// caret; one that declares something else (a filter, a reset) wins.
+    pub fn text_edit_value(
+        &mut self,
+        label: &str,
+        value: &str,
+        opts: &EditOptions,
+        spec: NodeSpec,
+    ) -> Key {
+        let opts = &EditOptions {
+            value: true,
+            ..opts.clone()
+        };
+        self.core.text_edit(label, value, opts, spec)
+    }
+
     /// Whether `key` holds keyboard focus — any node: an editor, a key
     /// sink, a button Tab landed on (see `Core::focus`).
     pub fn is_focused(&self, key: Key) -> bool {
@@ -1429,9 +1449,9 @@ impl<'a> Ui<'a> {
     /// Declares this node focused: it takes keyboard focus when the
     /// declaration *starts* (the first frame it is made), and a Tab press
     /// afterwards is not clobbered by the view repeating it. An `on_key`
-    /// sink then gets presses in `on_event` as `{kind="key", code, ctrl,
-    /// alt, shift, super, text, repeat, tag}`. To move focus at any time,
-    /// `focus(key)`.
+    /// sink then gets presses in `on_event` as its message with `key: {code,
+    /// ctrl, alt, shift, super, text, repeat}` in it. To move focus at any
+    /// time, `focus(key)`.
     pub fn take_key_focus(&mut self, key: Key) {
         self.core.set_key_focus(Some(key));
     }

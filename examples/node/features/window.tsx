@@ -15,12 +15,12 @@
 //   controls sit where `env().window.nativeControls` says.
 //
 //   npm run window
-import type { CoreMsg, KuiWindow, UiEvent, WindowSize } from '@qxuken/kui';
+import type { KuiWindow, RootMsg, UiEvent, WindowSize } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Model = { size: WindowSize; clicks: number; hum: boolean };
 type AppMsg = { kind: 'hum' } | { kind: 'add'; by: number };
-type Msg = AppMsg | CoreMsg;
+type Msg = AppMsg | RootMsg;
 
 // `init` is handed the window, and runs after setup(), so the first model
 // already knows the size the window actually opened at.

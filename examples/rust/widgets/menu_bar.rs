@@ -22,8 +22,8 @@
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, BarMenu, Core, MenuBar, MenuItem, MenuRole, NodeSpec, Span, TextStyle, TextWrap,
-    Ui, UiEvent, Value,
+    Align, App, BarMenu, Core, Event, MenuBar, MenuItem, MenuRole, NodeSpec, Span, TextStyle,
+    TextWrap, Ui, UiEvent, Value,
 };
 
 #[derive(Default)]
@@ -180,14 +180,14 @@ impl App for Demo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.kind() != Some("menu") {
-            return;
-        }
+        // The menu bar's choices are root events: no node declared them.
         // Every chosen row, standard or not, arrives here with the role it
         // played; a custom row hands back whatever its `id` carried.
-        let role = ev.payload.get_str("role").unwrap_or("");
-        let item = ev.payload.get("item").cloned().unwrap_or(Value::Null);
-        let did = item.get_str("do");
+        let Event::Menu(choice) = ev.read() else {
+            return;
+        };
+        let role = choice.role.name();
+        let did = choice.item.get_str("do");
         match did {
             Some("about") => self.abouts += 1,
             Some("note") => self.notes.push(format!("note {}", self.notes.len() + 1)),

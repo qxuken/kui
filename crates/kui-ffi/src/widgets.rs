@@ -71,8 +71,12 @@ pub extern "C" fn kui_latency_hud(ptr: *mut KuiCtx, x: u32, y: u32) {
     });
 }
 
-/// Single-line input with chrome (background, focus ring). Returns the node
-/// key; read it with `kui_edit_text`, "changed"/"submit" events carry it.
+/// Single-line input with chrome (background, focus ring), seeded with
+/// `initial`. Returns the node key. It reports on that key in `Null`
+/// messages (ADR 0047): an edit as `{change: {text}}`, Enter as a bare
+/// `submit` and Escape as a bare `cancel`, each an empty payload whose
+/// `KuiEvent.event` says which; [`kui_text_input_with`] names messages
+/// of the app's own.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiStr) -> u64 {
     guard(0, || {
@@ -88,12 +92,51 @@ pub extern "C" fn kui_text_input(ptr: *mut KuiCtx, label: KuiStr, initial: KuiSt
     })
 }
 
+/// [`kui_text_input`] with the messages it reports in and its value
+/// (ADR 0047): `on_change` arrives as `{...on_change, change: {text}}`,
+/// `on_submit` and `on_cancel` as declared; one left NULL is a `Null`
+/// message, the field alone. With `KUI_EDIT_VALUE` in `flags`, `text` is
+/// the field's value, brought back on every frame it differs from the
+/// field's text, as `kui_text_edit` takes it; without it, `text` is the
+/// seed. Other flags are ignored. Consumes the three messages, like
+/// `kui_button`'s payload. Returns the key, or 0 on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_text_input_with(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    text: KuiStr,
+    flags: u32,
+    on_change: *mut KuiValue,
+    on_submit: *mut KuiValue,
+    on_cancel: *mut KuiValue,
+) -> u64 {
+    // Taken before anything can refuse, so a refused call frees them too.
+    let messages = kui_core::widgets::InputMessages {
+        change: take_msg(on_change),
+        submit: take_msg(on_submit),
+        cancel: take_msg(on_cancel),
+    };
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        kui_core::widgets::text_input_with(
+            &mut kui_core::Ui::wrap(c.core()),
+            &kstr(label),
+            &kstr(text),
+            flags & KUI_EDIT_VALUE != 0,
+            &messages,
+        )
+        .0
+    })
+}
+
 /// The stock select: a field showing the choice in force that, clicked,
 /// opens the core's own menu
 /// of `count` options read from `items` — the same rows `kui_open_menu`
 /// takes — under it, the `current`th checked (`-1` for none). The host
-/// holds no open state: the choice arrives as the `{kind:"menu", role,
-/// item}` event a menu row posts, on the key this returns, and drawing
+/// holds no open state: the choice arrives as a `menu` event,
+/// `{menu: {role, item}}`, on the key this returns, and drawing
 /// the field again with the new `current` is the whole loop; a host that
 /// shows menus itself sees the menu in `kui_menu` as any other.
 ///
@@ -128,6 +171,50 @@ pub extern "C" fn kui_select(
         let current = usize::try_from(current).ok();
         kui_core::widgets::select_items(&mut kui_core::Ui::wrap(c.core()), &label, &parsed, current)
             .0
+    })
+}
+
+/// [`kui_select`] whose choice arrives as `on_menu`, with `menu: {role,
+/// item}` in it, on the key this returns (ADR 0047) — what tells a choice
+/// from one select apart from another's without matching keys. Consumes
+/// `on_menu`, also when the call is refused; NULL is a `Null` message,
+/// which is [`kui_select`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_select_with(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    items: *const KuiMenuItem,
+    count: usize,
+    current: i64,
+    on_menu: *mut KuiValue,
+) -> u64 {
+    // Taken before anything can refuse, so a refused call frees it too.
+    let on_menu = take_msg(on_menu);
+    guard(0, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return 0;
+        };
+        let label = kstr(label);
+        if label.is_empty() || items.is_null() || count == 0 {
+            return 0;
+        }
+        let rows = unsafe { std::slice::from_raw_parts(items, count) };
+        let mut parsed = Vec::with_capacity(count);
+        for row in rows {
+            let Some(item) = row.to_core() else {
+                return 0;
+            };
+            parsed.push(item);
+        }
+        let current = usize::try_from(current).ok();
+        kui_core::widgets::select_items_with(
+            &mut kui_core::Ui::wrap(c.core()),
+            &label,
+            &parsed,
+            current,
+            on_menu,
+        )
+        .0
     })
 }
 
@@ -322,8 +409,8 @@ pub extern "C" fn kui_radio_group_open(
 /// their `KUI_VALUE_*` bits, `value_text`), `on_change`, `width` /
 /// `min_w` / `max_w` where set, `label` (a name other than the key),
 /// `description`, `tooltip` and `disabled` off `spec`; every other field
-/// is its look's. With `on_change` the core proposes values as
-/// `{kind:"change", value, phase, tag}`. Its key.
+/// is its look's. With `on_change` the core proposes values as that
+/// message with `change: {value, phase}` in it. Its key.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_slider(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSpec) -> u64 {
     guard(0, || {
@@ -387,9 +474,15 @@ pub extern "C" fn kui_slider(ptr: *mut KuiCtx, label: KuiStr, spec: *const KuiSp
 /// An editable text node keyed by `label`, seeded with `initial` the
 /// first time it is seen; the core keeps its buffer, caret and undo
 /// history across frames. `flags` are `KUI_EDIT_MULTILINE`,
-/// `KUI_EDIT_AUTOFOCUS`, `KUI_EDIT_WRAP`, `KUI_EDIT_KEEP_TAB` and `KUI_EDIT_SECURE`; `spec` (required) is the
-/// box around it. Read the text with [`kui_edit_text`]; `changed` and
-/// `submit` events carry the key. Returns the key, or 0 on failure.
+/// `KUI_EDIT_AUTOFOCUS`, `KUI_EDIT_WRAP`, `KUI_EDIT_KEEP_TAB`,
+/// `KUI_EDIT_SECURE` and `KUI_EDIT_VALUE`, which makes `initial` the
+/// editor's value rather than its seed (ADR 0047); `spec` (required) is
+/// the box around it, and its `on_change`, `on_submit`, `on_cancel` and
+/// `on_boundary` are the messages the editor reports in — `{...on_change,
+/// change: {text}}`, the other two as declared, `{...on_boundary,
+/// boundary: {key, edge, word, doc}}`. An editor that declares none sends
+/// nothing. Read the text with [`kui_edit_text`] too. Returns the key, or
+/// 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_text_edit(
     ptr: *mut KuiCtx,
@@ -446,6 +539,7 @@ fn text_edit(
             wrap: flags & KUI_EDIT_WRAP != 0,
             keep_tab: flags & KUI_EDIT_KEEP_TAB != 0,
             secure: flags & KUI_EDIT_SECURE != 0,
+            value: flags & KUI_EDIT_VALUE != 0,
             placeholder: opt_str(placeholder).map(|p| p.into_owned()),
             ..Default::default()
         };

@@ -209,6 +209,14 @@ impl Value {
     }
 }
 
+/// A copy, so `ev.message::<Value>()` and `ev.split::<Value>()` read an
+/// event's message untyped.
+impl From<&Value> for Value {
+    fn from(v: &Value) -> Self {
+        v.clone()
+    }
+}
+
 impl From<&str> for Value {
     fn from(s: &str) -> Self {
         Value::Str(s.to_string())

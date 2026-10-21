@@ -320,7 +320,7 @@ fn assistive_technology_attaching_is_a_system_event() {
 }
 
 fn kinds(evs: &[kui_core::UiEvent]) -> Vec<&str> {
-    evs.iter().filter_map(|e| e.kind()).collect()
+    evs.iter().map(|e| e.event.name()).collect()
 }
 
 /// A launcher's pinned reading is a `SystemEnv` laid *over* the OS's, every

@@ -96,8 +96,9 @@ fn frame(core: &mut Core, buttons: Buttons, term_claims: bool) -> Keys {
     keys
 }
 
-fn tag_kind(ev: &UiEvent) -> Option<&str> {
-    ev.payload.get("tag").and_then(|t| t.get_str("kind"))
+/// The `kind` of the message the owner's `on_button` row declared.
+fn message_kind(ev: &UiEvent) -> Option<&str> {
+    ev.payload.get_str("kind")
 }
 
 /// The grid's rect, laid out: the pane's first child, 80 px tall.
@@ -117,10 +118,13 @@ fn middle_press_move_and_release_reach_the_grid_with_their_cells() {
     assert_eq!(kinds(&press), ["button"], "{press:?}");
     let b = press[0].button().expect("a button event");
     assert_eq!(press[0].key, k.term, "the grid's own claim wins");
-    assert_eq!(tag_kind(&press[0]), Some("term"));
+    assert_eq!(message_kind(&press[0]), Some("term"));
     assert_eq!(b.phase, ButtonPhase::Press);
     assert_eq!(b.button, MouseButton::Middle);
-    assert_eq!(press[0].payload.get_str("button"), Some("middle"));
+    assert_eq!(
+        press[0].data().and_then(|d| d.get_str("button")),
+        Some("middle")
+    );
     assert_eq!(b.clicks, Some(1));
     assert_eq!(b.cell, Some((0, 2)));
 
@@ -190,8 +194,12 @@ fn a_child_that_claims_nothing_is_its_ancestors() {
     let press = core.handle_input(down(MouseButton::Middle));
     assert_eq!(kinds(&press), ["button"]);
     assert_eq!(press[0].key, k.pane, "the owner's key and tag");
-    assert_eq!(tag_kind(&press[0]), Some("pane"));
-    assert_eq!(press[0].payload.get("cell"), None, "the pane is no grid");
+    assert_eq!(message_kind(&press[0]), Some("pane"));
+    assert_eq!(
+        press[0].data().and_then(|d| d.get("cell")),
+        None,
+        "the pane is no grid"
+    );
     let released = core.handle_input(up(MouseButton::Middle));
     assert_eq!(released[0].key, k.pane);
 
@@ -201,7 +209,10 @@ fn a_child_that_claims_nothing_is_its_ancestors() {
     let other = MouseButton::Other(0);
     let press = core.handle_input(down(other));
     assert_eq!(press[0].key, k.pane);
-    assert_eq!(press[0].payload.get("button"), Some(&Value::Int(3)));
+    assert_eq!(
+        press[0].data().and_then(|d| d.get("button")),
+        Some(&Value::Int(3))
+    );
     assert_eq!(press[0].button().unwrap().button, other);
     core.handle_input(up(other));
 }
@@ -255,7 +266,10 @@ fn a_claimed_secondary_press_is_the_button_event_and_no_menu() {
     let press = core.handle_input(down(MouseButton::Secondary));
     assert_eq!(kinds(&press), ["button"], "{press:?}");
     assert_eq!(press[0].key, k.pane);
-    assert_eq!(press[0].payload.get_str("button"), Some("secondary"));
+    assert_eq!(
+        press[0].data().and_then(|d| d.get_str("button")),
+        Some("secondary")
+    );
     assert!(core.menu().is_none(), "no stock menu");
     let released = core.handle_input(up(MouseButton::Secondary));
     assert_eq!(kinds(&released), ["button"]);
@@ -458,7 +472,7 @@ fn buttons_of(evs: &[UiEvent]) -> Vec<String> {
                 ButtonPhase::Move => "move",
                 ButtonPhase::Release => "release",
             };
-            Some(format!("{phase}:{}", e.tag()?.as_str()?))
+            Some(format!("{phase}:{}", e.payload.get("tag")?.as_str()?))
         })
         .collect()
 }

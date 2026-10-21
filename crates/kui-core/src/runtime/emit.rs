@@ -1962,8 +1962,8 @@ impl Core {
 
     /// After layout: every `on_layout` node whose rect differs from the one
     /// last reported for its key — or that was not seen last frame — posts
-    /// `{kind="layout", x, y, w, h, parent, scale, tag}`, pending like a
-    /// `resize`.
+    /// its message with `layout: {x, y, w, h, parent, scale}` in it,
+    /// pending like a `resize`.
     /// A frame that leaves a node where it was posts nothing, so a view
     /// that stores the rect in its model and redraws does not loop.
     fn emit_layout_events(&mut self) {
@@ -1997,8 +1997,7 @@ impl Core {
                     ("h", Value::Float(r.h as f64)),
                 ])
             };
-            let payload = Value::map([
-                ("kind", Value::str("layout")),
+            let data = Value::map([
                 ("x", Value::Float(rect.x as f64)),
                 ("y", Value::Float(rect.y as f64)),
                 ("w", Value::Float(rect.w as f64)),
@@ -2010,8 +2009,13 @@ impl Core {
                 // The frame's today; where a zoom would compose in.
                 ("scale", Value::Float(self.scale as f64)),
             ]);
-            self.pending
-                .push(UiEvent::on(self.tree.origins[i], key, payload).tagged(Some(tag)));
+            self.pending.push(UiEvent::declared(
+                EventKind::Layout,
+                self.tree.origins[i],
+                key,
+                Some(tag),
+                data,
+            ));
         }
     }
 

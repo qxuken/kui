@@ -191,7 +191,11 @@ impl App for Toasts {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
+        match ev
+            .message::<Value>()
+            .as_ref()
+            .and_then(|m| m.get_str("kind"))
+        {
             Some("notify") => {
                 self.sent += 1;
                 self.next_id += 1;

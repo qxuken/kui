@@ -161,9 +161,10 @@ close_radio_group :: proc(ui: ^Ui, _: string, _: Spec = {}) {
 	c.close(ui)
 }
 
-// A slider at value in [lo, hi]. The core proposes changes as a
-// Change_Event carrying msg as its tag; the app moves value, and the
-// slider follows on the next frame.
+// A slider at value in [lo, hi]. The core proposes changes as msg with
+// change = {value, phase} in it (a message embedding kui.With_Slider_Change);
+// the app moves value, and the slider follows on the next frame. Without
+// msg the slider cannot move.
 slider :: proc(ui: ^Ui, label: string, value, lo, hi: f32, msg: any = nil, spec: Spec = {}) -> u64 {
 	s := spec
 	s.value_now, s.value_min, s.value_max = value, lo, hi
@@ -175,13 +176,30 @@ slider :: proc(ui: ^Ui, label: string, value, lo, hi: f32, msg: any = nil, spec:
 	return c.slider(ui, label, &cs)
 }
 
-// A one-line text field, keyed by label; read it with edit_text.
+// A one-line text field, keyed by label; read it with edit_text. It
+// reports on its key with no message of the app's: an edit as {change =
+// {text}} (kui.With_Edit_Change), Enter and Escape as Ev.event "submit" and
+// "cancel" with an empty payload.
 text_input :: proc(ui: ^Ui, label: string, initial := "") -> u64 {
 	return c.text_input(ui, label, initial)
 }
 
+// text_input in messages of the app's own (ADR 0047): an edit arrives as
+// on_change with change = {text} in it (embed kui.With_Edit_Change), Enter
+// as on_submit and Escape as on_cancel, as declared; one left nil is the
+// field alone. With value, text is the field's value - brought back on
+// every frame it differs from the field's text - rather than its seed.
+text_input_with :: proc(ui: ^Ui, label: string, text := "", value := false, on_change: any = nil, on_submit: any = nil, on_cancel: any = nil) -> u64 {
+	flags: Edit_Flags = {.Value} if value else {}
+	return c.text_input_with(ui, label, text, transmute(u32)flags, to_value(on_change), to_value(on_submit), to_value(on_cancel))
+}
+
 // The editor: one line or many (flags), styled, laid out by spec. The
-// placeholder is what it shows, faint, while it is empty.
+// placeholder is what it shows, faint, while it is empty. With .Value in
+// flags, initial is the editor's value, not its seed: declare spec.on_change
+// with it, or the field reverts every keystroke. The editor reports in the
+// messages spec declares - on_change (change = {text}), on_submit,
+// on_cancel, on_boundary - and sends nothing without them.
 text_edit :: proc(ui: ^Ui, label: string, initial := "", flags: Edit_Flags = {}, style: Text_Style = {}, spec: Spec = {}, placeholder := "") -> u64 {
 	st := text_style_to_c(style)
 	cs: c.Spec

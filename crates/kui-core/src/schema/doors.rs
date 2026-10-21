@@ -420,13 +420,11 @@ pub const DOORS: &[Door] = &[
     },
     Door {
         rust: "Core::label_of",
-        c: No(
-            "the label is the app's own word for the node, and every door names a node by it or by the key an event carried; the one reader is the devtools' inspector, in the core",
-        ),
-        odin: No(ODIN_IS_C),
-        node: No("the same reason as C's"),
-        lua: No("the same reason as C's"),
-        doc: "The label a key was opened under.",
+        c: Is("kui_label_of"),
+        odin: Is("label_of"),
+        node: Is("labelOf"),
+        lua: Is("label_of"),
+        doc: "The label a key was opened under, in the frame being built and then the last one; none for an auto-keyed node. The reverse of `key_of`.",
     },
     Door {
         rust: "Ui::caret_visible",

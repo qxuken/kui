@@ -84,7 +84,8 @@ asserts on them. Node, Lua and C receive the same maps.
 - `#[derive(Message)]` and its attributes:
   [`kui_derive`](https://docs.rs/kui-derive) on docs.rs, and
   [`docs/howto.md`](https://github.com/qxuken/kui/blob/main/docs/howto.md).
-- The full click payload, and every other event's shape:
+- What a click adds to its message, and the field every other event
+  adds to the message its handler declared:
   [`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#events), events.
 - The reference counter, with a context menu:
   [`examples/rust/apps/counter.rs`](examples/apps/counter.md).

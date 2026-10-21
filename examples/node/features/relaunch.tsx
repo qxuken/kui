@@ -12,12 +12,12 @@
 // and the round passes only if the second one opened.
 //
 //   npm run relaunch
-import type { CoreMsg, KuiWindow, UiEvent } from '@qxuken/kui';
+import type { KuiWindow, RootMsg, UiEvent } from '@qxuken/kui';
 import { run, type Example } from '../devtools.js';
 
 type Model = { launch: number; chrome: 'native' | 'custom' };
 type AppMsg = { kind: 'reopen' };
-type Msg = AppMsg | CoreMsg;
+type Msg = AppMsg | RootMsg;
 
 function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
   if (msg.kind === 'reopen') {

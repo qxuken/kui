@@ -162,7 +162,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             // KUI_MIN_FIT sentinel.
             Kind::Min => Parsed::Bound(Bound::Fit),
             Kind::Max => Parsed::Bound(Bound::Px(F)),
-            Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(7)),
+            Kind::Msg | Kind::Handler => Parsed::Msg(Value::Int(7)),
             // `buttons` is a list of three names, and a string of none of
             // them claims nothing, which the C bits cannot say (zero is
             // all three): its sample is one of the names.
@@ -347,6 +347,11 @@ fn every_schema_prop_has_a_c_counterpart() {
             "mixed" => s.mixed = 1,
             "valueStep" => (s.value_set, s.value_step) = (KUI_VALUE_STEP, F),
             "onChange" => s.on_change = &layout_tag,
+            "onSubmit" => s.on_submit = &layout_tag,
+            "onCancel" => s.on_cancel = &layout_tag,
+            "onBoundary" => s.on_boundary = &layout_tag,
+            "onMenu" => s.on_menu = &layout_tag,
+            "onSelectionRange" => s.on_selection_range = &layout_tag,
             "selected" => s.selected = 1,
             "expanded" => s.expanded = KUI_EXPANDED_EXPANDED,
             "live" => s.live = KUI_LIVE_POLITE, // the parity index is 1; LIVE[1] = polite
@@ -428,6 +433,8 @@ fn fully_populated_spec_matches_the_rust_builder() {
     ];
     let modal_tag = KuiValue(Value::str("m"));
     let menu_tag = KuiValue(Value::str("cm"));
+    let submit_msg = KuiValue(Value::str("sub"));
+    let cancel_msg = KuiValue(Value::str("esc"));
     let s = KuiSpec {
         width: KuiSizing { tag: 1, value: 2.0 },
         height: KuiSizing {
@@ -543,6 +550,11 @@ fn fully_populated_spec_matches_the_rust_builder() {
         pivot_y: 0.75,
         iterations: 2.0,
         over_siblings: 1,
+        on_submit: &submit_msg,
+        on_cancel: &cancel_msg,
+        on_boundary: &menu_tag,
+        on_menu: &menu_tag,
+        on_selection_range: &menu_tag,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -646,6 +658,11 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .pivot(0.25, 0.75)
         .iterations(2.0)
         .over_siblings()
+        .on_submit("sub")
+        .on_cancel("esc")
+        .on_boundary("cm")
+        .on_menu("cm")
+        .on_selection_range("cm")
         .modifier_keys()
         .initial_focus()
         .disabled(true)
@@ -885,7 +902,9 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_text_edit",
             "kui_text_edit_placeholder",
             "kui_text_input",
+            "kui_text_input_with",
             "kui_select",
+            "kui_select_with",
             "kui_checkbox",
             "kui_radio",
             "kui_switch",

@@ -325,12 +325,14 @@ pub enum AccessAction {
     /// sink, a control, a `focusable` box); it shows, as after Tab.
     Focus,
     Blur,
-    /// Replace an editor's text (`AccessRequest::value`); a `changed` event
-    /// follows when it differs. On a custom editor it arrives as
-    /// `{kind="access", action="setValue", text, tag}`.
+    /// Replace an editor's text (`AccessRequest::value`); a `change` event
+    /// follows when it differs. On a custom editor it arrives on its
+    /// `on_change` as `change: {text}`; on a slider, as the value it
+    /// proposes through `on_change`.
     SetValue,
-    /// Nudge a slider. The core cannot know what a step means, so these
-    /// reach the app as `{kind="access", action, tag}` on the node.
+    /// Nudge a slider by one `value_step`, proposed through its
+    /// `on_change` as `change: {value, phase}`. Only a `slider` role takes
+    /// it, and without `on_change` the slider does not move.
     Increment,
     Decrement,
     /// Scroll the nearest scrolling ancestor so the node is visible.
@@ -341,13 +343,13 @@ pub enum AccessAction {
     ScrollLeft,
     ScrollRight,
     /// Move an editor's caret and selection (`AccessRequest::anchor` /
-    /// `focus`). On a custom editor it arrives as `{kind="access",
-    /// action="setTextSelection", anchor={line, offset}, focus={line,
-    /// offset}, tag}`.
+    /// `focus`). On a custom editor it arrives on the sink it types into
+    /// as `select: {anchor={line, offset}, focus={line, offset}}` in its
+    /// `on_key` message.
     SetTextSelection,
     /// Type over an editor's selection (`AccessRequest::value`). On a
-    /// custom editor: `{kind="access", action="replaceSelectedText",
-    /// text, tag}`.
+    /// custom editor: `text: {text}` in its sink's `on_key` message, as
+    /// a paste is.
     ReplaceSelectedText,
 }
 
@@ -1480,7 +1482,7 @@ fn set_positions(tree: &Tree, out: &mut AccessTree) {
 }
 
 /// The `role="line"` nodes under `i`, in tree order — the numbering a
-/// custom editor's `access` events use for `line`, and the one a press
+/// custom editor's `select` events use for `line`, and the one a press
 /// inside a key sink carries, so the two agree. Subtrees
 /// under `role="none"` (a gutter) do not count, and a line's own subtree
 /// is not searched for lines.

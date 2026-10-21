@@ -153,7 +153,7 @@ ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
 | Example | Shows | Headless | By hand |
 |---|---|---|---|
 | [`button.rs`](rust/widgets/button.rs) | The stock button in every state: rest, hover, pressed, the ring, `accent`, `disabled`; the access rows; a button in the app's own colour off `button_palette` | ✓ | |
-| [`edit.rs`](rust/widgets/edit.rs) | The `edit` element: a multiline document and the single-line `text_input`, `changed` and `submit`, the text read back | ✓ | |
+| [`edit.rs`](rust/widgets/edit.rs) | The `edit` element: a multiline document read through its `on_change`, and the single-line `text_input_with`, its `change` and `submit` messages | ✓ | |
 | [`text.rs`](rust/widgets/text.rs) | The `text` element: spans shaped as one paragraph, decorations, families, `nowrap`, `max_lines` + `ellipsis`, line height | | |
 | [`image.rs`](rust/widgets/image.rs) | The `image` element: Fit sizing, kept aspect, rounded corners; a stream replaced every frame at the size `layout.scale` says (`update_image`), `nearest` beside `linear`, `contain` / `cover` | ✓ | |
 | [`line.rs`](rust/widgets/line.rs) | The `line` element: a mind map whose links are curves between floats, brightening by transition; a planned card's link is dashed (`Stroke::dash`), and marches while it is lit | | |

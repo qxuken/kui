@@ -8,7 +8,7 @@
 //! waited on by a thread of its own, which posts the answer back through
 //! the event loop as `UserEvent::Files`. `user_event` hands it to the
 //! window's core as `InputEvent::Files`, and the core hands whoever asked
-//! `{kind:"files", paths, tag}`.
+//! a `files` event: the ask's message with `files: {paths}` inside.
 //!
 //! Without the `dialogs` feature every ask is answered at once with no
 //! paths — what a cancelled dialog answers — so an app that asks is never

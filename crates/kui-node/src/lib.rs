@@ -749,9 +749,9 @@ impl Ctx {
 
     /// Files dragged in from the OS are over the window at (`x`, `y`) —
     /// entering and moving alike: the `onDrop` zone under the
-    /// point hears `{kind:"drop", phase:"enter"|"move", paths, x, y,
-    /// tag}`, a zone it left hears `leave`, a repeat at the same point is
-    /// nothing. `dropTarget()` afterwards is what a driver answers the OS
+    /// point hears its message with `drop: {phase: "enter"|"move", paths,
+    /// x, y}` in it, a zone it left hears `leave`, a repeat at the same
+    /// point is nothing. `dropTarget()` afterwards is what a driver answers the OS
     /// with.
     #[napi]
     pub fn drag_files(&mut self, paths: Vec<String>, x: f64, y: f64) {
@@ -763,8 +763,8 @@ impl Ctx {
 
     /// A file dialog's answer, as a host that showed it reports it: the
     /// paths picked, none for a cancelled dialog. Whoever asked with
-    /// `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
-    /// asked it is dropped.
+    /// `requestFiles` hears the message it gave with `files: {paths}` in
+    /// it; with nothing asked it is dropped.
     #[napi]
     pub fn answer_files(&mut self, paths: Vec<String>) {
         self.input(InputEvent::Files(paths));
@@ -781,8 +781,8 @@ impl Ctx {
     }
 
     /// The dragged files released at (`x`, `y`): the zone there hears
-    /// `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
-    /// after it; with no zone there, nothing but the lit zone's `leave`.
+    /// its message with `drop: {phase: "drop", paths, x, y}` and no
+    /// `leave` after it; with no zone there, nothing but the lit zone's `leave`.
     #[napi]
     pub fn drop_files(&mut self, paths: Vec<String>, x: f64, y: f64) {
         self.input(InputEvent::DropFiles {
@@ -857,8 +857,8 @@ impl Ctx {
 
     /// Text an IME committed at the end of a composition: a focused
     /// `<edit>` takes it, otherwise the focused `onKey` sink hears it as
-    /// `{kind:"text", text, tag}` — the one committed text a `key` event
-    /// never carries. `type`/`press` stay the way to type.
+    /// its message with `text: {text}` in it — the one committed text a
+    /// `key` event never carries. `type`/`press` stay the way to type.
     #[napi]
     pub fn commit(&mut self, text: String) {
         self.input(InputEvent::Commit(text));
@@ -866,8 +866,9 @@ impl Ctx {
 
     /// The clipboard's answer to a paste (`requestPaste()`), with what
     /// the pasteboard marked it: routed as `commit` is, and
-    /// a focused `onKey` sink hears `{kind:"text", text, tag}` with
-    /// `concealed: true` / `transient: true` for the markers set. No
+    /// a focused `onKey` sink hears its message with `text: {text}` in
+    /// it, `concealed: true` / `transient: true` there for the markers
+    /// set. No
     /// marks is a paste nothing marked, the same answer `commit` gives.
     #[napi(
         ts_args_type = "text: string, marks?: { concealed?: boolean; transient?: boolean } | null"
@@ -890,8 +891,8 @@ impl Ctx {
     /// An in-progress IME composition: `text` is the uncommitted string
     /// (empty ends the composition without a commit), `cursor` the byte
     /// range inside it the IME's caret covers, or null. A focused `<edit>`
-    /// shows it inline; otherwise the focused `onKey` sink hears
-    /// `{kind:"preedit", text, cursor, tag}`.
+    /// shows it inline; otherwise the focused `onKey` sink hears its
+    /// message with `preedit: {text, cursor}` in it.
     #[napi(ts_args_type = "text: string, cursor?: [number, number] | null")]
     pub fn preedit(&mut self, text: String, cursor: Option<Vec<u32>>) {
         let cursor = cursor
@@ -922,7 +923,8 @@ impl Ctx {
     /// (layout-resolved, e.g. "W" or "$"), a name ("left", "enter", "escape",
     /// "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
     /// focused editors still go through `key()`. `repeat` marks a press the
-    /// OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
+    /// OS auto-repeated. The sink hears its message with `key: {phase:
+    /// "down", ...}` in it.
     ///
     /// `physical` is the US-QWERTY key at that *position*, spelled the same
     /// way; omit it and it is the position's US key: the lower-case letter
@@ -951,8 +953,8 @@ impl Ctx {
     }
 
     /// The release of a key, spelled the way `keyDown` spells it (`physical`
-    /// included): a sink that declared `keyUp` hears `{kind:"key",
-    /// phase:"up", ...}` with `text` null; one that did not hears nothing,
+    /// included): a sink that declared `keyUp` hears `key: {phase: "up",
+    /// ...}` with `text` null; one that did not hears nothing,
     /// since presses only is the keymap default. A release whose press the
     /// sink never got resolves nothing, and moving focus while a key is
     /// held delivers the `up` first.
@@ -2322,8 +2324,12 @@ impl KuiWindow {
 // ---------------------------------------------------------------------------
 // The shared surface
 
-/// Pending UI events as `[{origin, window, key, payload}]` — payloads plain
-/// JSON, so your Elm messages come back out as data.
+/// Pending UI events as `[{origin, window, key, event, payload, slot}]` —
+/// payloads plain JSON, so your Elm messages come back out as data.
+/// `event` is which event it was (`"drag"`, `"change"`, `"resize"`, …,
+/// ADR 0047): a node's payload is the message its handler declared with
+/// the event's data in one field named for it, so the payload no longer
+/// says what happened and the envelope does.
 ///
 /// `origin` and `window` are not two readings of the same thing: origin is
 /// which frontend drew the node (0 = your app, 1+ = an extension), window
@@ -2338,6 +2344,7 @@ fn events_json(events: Vec<UiEvent>) -> Json {
                 o.insert("origin".into(), Json::from(ev.origin.0));
                 o.insert("window".into(), Json::from(ev.window.0));
                 o.insert("key".into(), Json::String(key_str(ev.key)));
+                o.insert("event".into(), Json::String(ev.event.name().into()));
                 o.insert("payload".into(), json_of(&ev.payload));
                 // The slot the node was filled into, as its key (`keyOf` of
                 // the slot's full name answers the same), or null for a
@@ -2558,8 +2565,10 @@ macro_rules! core_methods {
             }
 
             /// Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
-            /// id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
-            /// back as a `SoundMsg` when the playback finishes on its own.
+            /// id for `stop` / `setVolume` / `pause` / `resume`. A `tag` is
+            /// the playback's message: it comes back with `sound: {phase,
+            /// playback}` in it (a `SoundMsg`) when the playback finishes on
+            /// its own.
             /// Says something once, with no node behind it: `announce("Saved")`,
             /// `announce("3 results", "assertive")`. `"off"` and an empty string
             /// are both no-ops. A region whose message is on screen is the `live`
@@ -2631,12 +2640,14 @@ macro_rules! core_methods {
 
             // -- Events ----------------------------------------------------
 
-            /// Events since the last poll: `[{origin, window, key, payload}]`,
-            /// payloads as plain data (your Elm messages come back out
-            /// here). `A` types them — the app's own union, or one core
-            /// message type when only that is being watched.
+            /// Events since the last poll: `[{origin, window, key, event,
+            /// payload, slot}]`, payloads as plain data — the message the
+            /// node's handler declared, with the event's data in the field
+            /// `event` names (`drag`, `change`, …), or a root event's
+            /// `{kind, …}` (ADR 0047). `A` types them — the app's own union,
+            /// or one message type when only that is being watched.
             #[napi(
-                ts_generic_types = "A = AppMsg | CoreMsg",
+                ts_generic_types = "A = AppMsg | RootMsg",
                 ts_return_type = "UiEvent<A>[]"
             )]
             pub fn poll_events(&mut self) -> Json {
@@ -3317,7 +3328,9 @@ macro_rules! core_methods {
 
             /// A request from assistive technology on a node: an `AccessAction`
             /// name the node advertises, with `value` the new text for
-            /// `setValue`. `key` is either spelling of the node — the hex key
+            /// `setValue`. It arrives as the event a user doing the same
+            /// would cause (ADR 0047): a click, a slider's or an editor's
+            /// `change`, an `onKey` sink's `text` or `select`. `key` is either spelling of the node — the hex key
             /// an event carried (16 digits), or the label its `key` prop
             /// declared, resolved through the last frame (see `focus`).
             /// Resolved like its pointer/keyboard equivalent, so the resulting
@@ -3554,6 +3567,19 @@ macro_rules! core_methods {
                 self.$core().key_of(&label).map(key_str)
             }
 
+            /// The reverse of `keyOf`: the label the node with this hex key
+            /// (as an event carries it) was opened under, in the frame
+            /// being built so far and then the last finished one — or null
+            /// for an auto-keyed node, a key no frame declared, or a string
+            /// that is not a key. What a key from `focused()`, an event or
+            /// a log turns back into; the label is the local one, so two
+            /// rows of a list under different parents answer the same.
+            #[napi]
+            pub fn label_of(&mut self, key: String) -> Option<String> {
+                let key = hex_key(&key)?;
+                self.$core().label_of(key).map(str::to_owned)
+            }
+
             /// What a `<slot replay>` of `name` got this frame, or the
             /// frame before while this one is being built (ADR 0045):
             /// `'replayed'`, or why it was filled fresh — `'not-kept'`,
@@ -3736,7 +3762,8 @@ macro_rules! core_methods {
             /// their own wording when `label` is empty, and the core
             /// performs the ones it can.
             ///
-            /// Choosing a row posts `{kind:"menu", role, item}` on `key`
+            /// Choosing a row posts `key`'s `onMenu` message with `menu:
+            /// {role, item}` in it, or nothing where `key` declares none,
             /// and closes the menu; a press outside it or Escape closes it
             /// with nothing posted. What an app answering its own
             /// `onContextMenu` calls — and what the core calls itself for
@@ -3764,7 +3791,7 @@ macro_rules! core_methods {
             /// where there is formatting to carry), `"paste"` asking for
             /// what is on the clipboard (deliver it back with `commit()`,
             /// which a focused editor takes as typing and a focused
-            /// `onKey` sink hears as `{kind:"text"}`),
+            /// `onKey` sink hears as a `text` event),
             /// or `"lookUp"` with the `text` to show a definition panel
             /// for at `x`, `y`.
             ///
@@ -3774,8 +3801,8 @@ macro_rules! core_methods {
             /// Asks for the platform's Open, Save or folder dialog:
             /// `{mode, multiple, title, filters: [{name, extensions}],
             /// directory, fileName, tag}`, every field optional. The answer
-            /// is a `{kind:"files", paths, tag}` event — `paths` empty when
-            /// the user cancelled. A window's runner shows the dialog; a
+            /// is a `files` event, the dialog's `tag` with `files: {paths}`
+            /// in it — `paths` empty when the user cancelled. A window's runner shows the dialog; a
             /// headless context queues it for `takeFileRequests`. False when
             /// one is already out: one dialog at a time.
             #[napi(ts_args_type = "dialog?: FileDialogOptions")]
@@ -3870,9 +3897,9 @@ macro_rules! core_methods {
             /// Asks for what is on the clipboard — the action a menu's
             /// Paste queues. A window reads the clipboard and hands the
             /// text back as a paste: a focused `<edit>` takes it as
-            /// typing, and a focused `onKey` sink hears it as
-            /// `{kind:"text", text, tag}` — with `concealed: true` /
-            /// `transient: true` where the pasteboard marked it so
+            /// typing, and a focused `onKey` sink hears it as its message
+            /// with `text: {text}` in it — with `concealed: true` /
+            /// `transient: true` there where the pasteboard marked it so
             /// — so an app that owns its text inserts a
             /// paste the way it inserts a committed IME string and never
             /// reads the clipboard itself. Headless, the request comes out
@@ -4046,9 +4073,10 @@ macro_rules! core_methods {
             ///
             /// `text` is the selection when the core has all of it. When
             /// the selection reaches rows a virtual list never built,
-            /// `asked` is true instead and a `{kind:"selectionrange",
-            /// from:{index, byte}, to:{index, byte}}` event is posted on
-            /// the scope — the rows behind that gap are the app's, so the
+            /// `asked` is true instead and a `selectionrange` event —
+            /// the scope's `onSelectionRange` message with `selectionrange:
+            /// {from: {index, byte}, to: {index, byte}}` in it — is posted
+            /// on the scope — the rows behind that gap are the app's, so the
             /// app answers with `answerSelectionRange`, and the answer is
             /// what reaches the clipboard.
             #[napi(ts_return_type = "{ text: string | null, asked: boolean }")]

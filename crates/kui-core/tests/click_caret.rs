@@ -12,7 +12,10 @@
 //! selection. A drag still selects, a second click the word, a third the
 //! line, and a Shift-click extends from the caret.
 
-use kui_core::{Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Size, UiEvent, Vec2};
+use kui_core::{
+    Core, EditKey, EditOptions, EventKind, InputEvent, Key, Mods, NodeSpec, Size, UiEvent, Value,
+    Vec2,
+};
 
 const NONE: Mods = Mods {
     shift: false,
@@ -21,7 +24,8 @@ const NONE: Mods = Mods {
 };
 
 /// One field, "hello world", 300 by 40 at (10, 10), or a document of
-/// two lines when `multiline`.
+/// two lines when `multiline`. It declares its change and boundary rows:
+/// an editor with no row sends nothing (ADR 0047).
 fn frame(core: &mut Core, multiline: bool) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(10.0));
@@ -36,7 +40,10 @@ fn frame(core: &mut Core, multiline: bool) -> Key {
             multiline,
             ..Default::default()
         },
-        NodeSpec::column().size(300.0, if multiline { 80.0 } else { 40.0 }),
+        NodeSpec::column()
+            .size(300.0, if multiline { 80.0 } else { 40.0 })
+            .on_change(Value::Null)
+            .on_boundary(Value::Null),
     );
     ui.finish();
     key
@@ -76,9 +83,10 @@ fn edit(core: &mut Core, ek: EditKey, mods: Mods) -> Vec<UiEvent> {
     core.handle_input(InputEvent::Key(ek, mods))
 }
 
+/// The edge of the boundary event, from its `boundary: {key, edge, ...}`.
 fn boundary(evs: &[UiEvent]) -> Option<String> {
-    let e = evs.iter().find(|e| e.kind() == Some("boundary"))?;
-    e.payload.get_str("edge").map(str::to_string)
+    let e = evs.iter().find(|e| e.is(EventKind::Boundary))?;
+    e.data()?.get_str("edge").map(str::to_string)
 }
 
 /// The anchor and the caret, as byte offsets into the first line.
@@ -97,7 +105,7 @@ fn the_first_backspace_after_a_click_deletes_one_character() {
         assert_eq!(ends(&core, key), (11, 11), "shake {shake}: a caret");
         assert!(!core.edit.has_selection(key));
         let evs = edit(&mut core, EditKey::Backspace, NONE);
-        assert!(evs.iter().any(|e| e.kind() == Some("changed")));
+        assert!(evs.iter().any(|e| e.is(EventKind::Change)));
         assert_eq!(
             core.edit_text(key).as_deref(),
             Some("hello worl"),

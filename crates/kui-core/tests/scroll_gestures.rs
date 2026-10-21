@@ -19,12 +19,10 @@ fn gesture(core: &mut Core, dx: f32, dy: f32, begins: bool) -> Vec<UiEvent> {
 
 fn scrolls(out: &[UiEvent], key: Key) -> Vec<(f64, f64)> {
     out.iter()
-        .filter(|e| e.key == key && e.kind() == Some("scroll"))
+        .filter(|e| e.key == key && e.event.name() == "scroll")
         .map(|e| {
-            (
-                e.payload.get_float("dx").unwrap(),
-                e.payload.get_float("dy").unwrap(),
-            )
+            let d = e.data().unwrap();
+            (d.get_float("dx").unwrap(), d.get_float("dy").unwrap())
         })
         .collect()
 }

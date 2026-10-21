@@ -42,9 +42,9 @@ impl App for Inbox {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.kind() == Some("resize") {
-            let at = |k: &str| ev.payload.get_float(k).unwrap_or(0.0);
-            self.resizes.push((at("width"), at("height")));
+        if let kui_native::Event::Resize(r) = ev.read() {
+            self.resizes
+                .push((f64::from(r.size.w), f64::from(r.size.h)));
         }
     }
 }

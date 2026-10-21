@@ -1,23 +1,74 @@
 package kui
 
-// What the core emits on its own behalf (kui_core::schema::EVENTS), one
-// struct per kind, ready to sit in an app's message union beside its own
-// types: X_Event decodes the kind "x". The generator checks every kind has
-// one here and every field the schema says the payload carries is a field
-// of it. `tag` is the message the handler was declared with: decode it with
-// kui.decode(m.tag, &msg). A click carries the app's own payload, so it
-// has none.
+// What the core's events carry (kui_core::schema::EVENTS), ADR 0047.
+//
+// An event arrives as the message its handler declared: a node that
+// declares on_drag = Pan{} hears a drag as {kind = "pan", drag = {phase, x,
+// y, dx, dy, parent}}, the app's own message with the event's data in one
+// field named for the event. Ev.event says which event it was. So there are
+// two halves here:
+//
+//   - X_Event, the data: what rides under the field (Drag_Event is
+//     {phase, x, y, dx, dy, parent, ...}). A root event - resize, window,
+//     system, fonts, modifiers, open, the menu bar's menu, a popup
+//     window's dismiss - has no message of the app's and still arrives as
+//     {kind = "resize", ...}, so its X_Event decodes it whole, by kind.
+//   - With_X, the field alone: With_Drag :: struct {drag: Drag_Event}. An
+//     app's message embeds it, and kui.decode fills it:
+//
+//         Pan    :: struct {using _: kui.With_Drag}       // {kind = "pan"}
+//         Rename :: struct {id: int, using _: kui.With_Edit_Change}
+//         Msg    :: union {Pan, Rename}
+//
+//         kui.open(ui, "canvas", {}, on_drag = Pan{})     // declared bare:
+//                                                         // the field is the core's
+//         switch m in kui.message(ev, Msg) {
+//         case Pan:    s.x = s.x0 + m.drag.dx
+//         case Rename: rename(s, m.id, m.change.text)
+//         }
+//
+//     A field named `_` is never written into a message, so the With_X a
+//     message embeds costs the declaration nothing.
+//
+// One on_key sink hears key, text, preedit and select events: its messages
+// embed the field each handles, and Ev.event tells them apart. A message
+// declared as kui.NO_TAG (no message at all) arrives as the field alone, which a With_X decodes directly: kui.message(ev, kui.With_Key). A
+// submit, a cancel and a plain click carry no data and arrive exactly as
+// declared. The generator checks every event has its X_Event, and its With_X
+// where it rides in a field, holding every field the schema says it carries.
 
 // A point in a rect's coordinates, as several payloads carry one.
 Box :: struct {
 	x, y, w, h: f32,
 }
 
+Cell_Position :: struct {
+	row, col: int,
+}
+
+Text_Position :: struct {
+	line, offset: int,
+}
+
+// A click that can say more (ADR 0047, decision 2): on a cells grid, or
+// inside an on_key sink that draws line rows. A plain click has none.
+Click_Event :: struct {
+	cell:   Maybe(Cell_Position), // on a cells grid
+	line:   Maybe(int),
+	byte:   Maybe(int),
+	inside: Maybe(bool), // on the line's own box, not the margin beside it
+	clicks: Maybe(int),
+}
+
 Drag_Event :: struct {
 	phase:        string, // "start" | "move" | "end"
 	x, y, dx, dy: f32, // dx, dy: from the press point, in every phase
 	parent:       Box,
-	tag:          Value,
+	cell:         Maybe(Cell_Position), // on a cells grid
+	line:         Maybe(int), // inside a sink that draws line rows
+	byte:         Maybe(int),
+	inside:       Maybe(bool),
+	clicks:       Maybe(int),
 }
 
 Key_Event :: struct {
@@ -29,7 +80,6 @@ Key_Event :: struct {
 	repeat:                  bool,
 	location:                string, // "standard" | "left" | "right" | "numpad"
 	caps_lock, num_lock:     bool,
-	tag:                     Value,
 }
 
 Text_Event :: struct {
@@ -37,13 +87,16 @@ Text_Event :: struct {
 	pasted:    bool,
 	concealed: bool,
 	transient: bool,
-	tag:       Value,
 }
 
 Preedit_Event :: struct {
 	text:   string,
 	cursor: Maybe([2]int), // the IME's caret, a byte range in text
-	tag:    Value,
+}
+
+// Assistive technology setting a custom editor's selection, on its on_key.
+Select_Event :: struct {
+	anchor, focus: Text_Position,
 }
 
 Selection_Point :: struct {
@@ -57,9 +110,10 @@ Selection_Range_Event :: struct {
 
 Context_Menu_Event :: struct {
 	x, y: f32,
-	tag:  Value,
 }
 
+// A menu row chosen: under `menu` in the on_menu message, or whole on the
+// root, {kind = "menu", role, item}, for the menu bar.
 Menu_Event :: struct {
 	role: string,
 	item: Value,
@@ -67,11 +121,6 @@ Menu_Event :: struct {
 
 Force_Click_Event :: struct {
 	x, y: f32,
-	tag:  Value,
-}
-
-Cell_Position :: struct {
-	row, col: int,
 }
 
 Button_Event :: struct {
@@ -83,7 +132,6 @@ Button_Event :: struct {
 	line:   Maybe(int),
 	byte:   Maybe(int),
 	inside: Maybe(bool), // on the line's own box, not the margin beside it
-	tag:    Value,
 }
 
 Held_Mods :: struct {
@@ -94,34 +142,26 @@ Scroll_Event :: struct {
 	x, y, dx, dy: f32,
 	lines:        Maybe(f64), // on a cells grid
 	mods:         Maybe(Held_Mods), // on a scrollMods node
-	tag:          Value,
 }
 
 Focus_Event :: struct {
 	phase: string, // "in" | "out"
 	by:    string, // "pointer" | "keyboard" | "assistive" | "program"
-	tag:   Value,
 }
 
 Hover_Event :: struct {
 	phase: string, // "enter" | "leave"
 	by:    string, // "pointer" | "content"
-	tag:   Value,
 }
 
 Drop_Event :: struct {
 	phase: string, // "enter" | "move" | "leave" | "drop"
 	paths: []string,
 	x, y:  f32,
-	tag:   Value,
 }
 
+// A file dialog's answer, in the message request_files was given.
 Files_Event :: struct {
-	paths: []string,
-	tag:   Value,
-}
-
-Open_Event :: struct {
 	paths: []string,
 }
 
@@ -129,7 +169,45 @@ Layout_Event :: struct {
 	x, y, w, h: f32,
 	parent:     Box,
 	scale:      f32,
-	tag:        Value,
+}
+
+// A slider's proposed value, under `change` in its on_change message.
+Slider_Change_Event :: struct {
+	value: f64,
+	phase: string, // "move" | "end"
+}
+
+// An editor's text after an edit, under `change` in its on_change message.
+// A secure editor's too.
+Edit_Change_Event :: struct {
+	text: string,
+}
+
+// An editing key that met the edge of an editor's text and did nothing
+// (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on the
+// last, → or Delete at the end.
+Boundary_Event :: struct {
+	key:       string, // "up" | "down" | "left" | "right" | "backspace" | "delete"
+	edge:      string, // "start" | "end"
+	word, doc: bool, // the editing modifiers the key carried
+}
+
+Sound_Event :: struct {
+	phase:    string, // "ended" | "refused"
+	playback: Playback,
+}
+
+Dismiss_Event :: struct {
+	reason: string, // "escape" | "outside"
+	// On the root, for a popup window.
+	name:   string,
+	id:     u32,
+}
+
+// -- The root events: whole payloads, decoded by kind --------------------------
+
+Open_Event :: struct {
+	paths: []string,
 }
 
 Resize_Event :: struct {
@@ -156,52 +234,92 @@ Modifiers_Event :: struct {
 	shift, ctrl, alt, super: bool,
 }
 
-Changed_Event :: struct {}
+// -- The fields: what an app's message embeds ----------------------------------
 
-Submit_Event :: struct {}
-
-// Escape let go of a focused editor (backlog F160): a draft abandoned, where
-// `Submit_Event` is one confirmed and a plain blur is neither. On the
-// editor's key.
-Cancel_Event :: struct {}
-
-// An editing key that met the edge of an editor's text and did nothing
-// (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on the
-// last, → or Delete at the end. On the editor's key.
-Boundary_Event :: struct {
-	key:       string, // "up" | "down" | "left" | "right" | "backspace" | "delete"
-	edge:      string, // "start" | "end"
-	word, doc: bool, // the editing modifiers the key carried
+With_Click :: struct {
+	click: Click_Event,
 }
 
-Sound_Event :: struct {
-	phase:    string, // "ended" | "refused"
-	playback: Playback,
-	tag:      Value,
+With_Drag :: struct {
+	drag: Drag_Event,
 }
 
-Dismiss_Event :: struct {
-	reason: string, // "escape" | "outside"
-	tag:    Value,
-	// On the root, for a popup window.
-	name:   string,
-	id:     u32,
+With_Key :: struct {
+	key: Key_Event,
 }
 
-Text_Position :: struct {
-	line, offset: int,
+With_Text :: struct {
+	text: Text_Event,
 }
 
-Access_Event :: struct {
-	action:         string,
-	tag:            Value,
-	text:           string,
-	value:          Value,
-	anchor, focus:  Maybe(Text_Position),
+With_Preedit :: struct {
+	preedit: Preedit_Event,
 }
 
-Change_Event :: struct {
-	value: f64,
-	phase: string, // "move" | "end"
-	tag:   Value,
+With_Select :: struct {
+	select: Select_Event,
+}
+
+With_Selection_Range :: struct {
+	selectionrange: Selection_Range_Event,
+}
+
+With_Context_Menu :: struct {
+	contextmenu: Context_Menu_Event,
+}
+
+With_Menu :: struct {
+	menu: Menu_Event,
+}
+
+With_Force_Click :: struct {
+	forceclick: Force_Click_Event,
+}
+
+With_Button :: struct {
+	button: Button_Event,
+}
+
+With_Scroll :: struct {
+	scroll: Scroll_Event,
+}
+
+With_Focus :: struct {
+	focus: Focus_Event,
+}
+
+With_Hover :: struct {
+	hover: Hover_Event,
+}
+
+With_Drop :: struct {
+	drop: Drop_Event,
+}
+
+With_Files :: struct {
+	files: Files_Event,
+}
+
+With_Layout :: struct {
+	layout: Layout_Event,
+}
+
+With_Slider_Change :: struct {
+	change: Slider_Change_Event,
+}
+
+With_Edit_Change :: struct {
+	change: Edit_Change_Event,
+}
+
+With_Boundary :: struct {
+	boundary: Boundary_Event,
+}
+
+With_Sound :: struct {
+	sound: Sound_Event,
+}
+
+With_Dismiss :: struct {
+	dismiss: Dismiss_Event,
 }

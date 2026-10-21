@@ -177,7 +177,7 @@ fn choosing_a_row_posts_the_items_payload_and_closes() {
         "one event, not a raw click too: {events:?}"
     );
     let ev = &events[0];
-    assert_eq!(ev.kind(), Some("menu"));
+    assert_eq!(ev.event.name(), "menu");
     assert_eq!(ev.payload.get_str("item"), Some("file.close"));
     assert_eq!(core.menu_bar_open(), None, "choosing closes the menu");
 }
@@ -195,7 +195,7 @@ fn escape_closes_the_open_menu_and_the_app_hears_nothing() {
     ));
     assert_eq!(core.menu_bar_open(), None);
     assert!(
-        events.iter().all(|e| e.kind() != Some("dismiss")),
+        events.iter().all(|e| e.event.name() != "dismiss"),
         "the bar's own dismissal is the bar's: {events:?}"
     );
 }

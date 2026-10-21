@@ -1125,7 +1125,10 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
     // plain arrow the bar has.
     let evs = hover(&mut core, Vec2::new(398.0, 45.0));
     assert_eq!(kinds(&evs), ["hover"], "the leave");
-    assert_eq!(evs[0].payload.get_str("phase"), Some("leave"));
+    assert_eq!(
+        evs[0].data().and_then(|d| d.get_str("phase")),
+        Some("leave")
+    );
     assert_eq!(
         hovered_row(&mut core),
         None,
@@ -1133,7 +1136,10 @@ fn hover_over_the_scrollbar_is_not_hover_over_the_row_beneath() {
     );
     // Back beside it: entered again.
     let evs = hover(&mut core, Vec2::new(200.0, 45.0));
-    assert_eq!(evs[0].payload.get_str("phase"), Some("enter"));
+    assert_eq!(
+        evs[0].data().and_then(|d| d.get_str("phase")),
+        Some("enter")
+    );
     assert_eq!(hovered_row(&mut core), core.key_of("row1"));
 }
 

@@ -76,9 +76,16 @@ fn drop_bg_lights_the_zone_while_files_hover_and_wins_over_hover() {
         at: Vec2::new(50.0, 50.0),
     });
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.get("phase").unwrap().as_str(), Some("enter"));
+    assert_eq!(evs[0].data().unwrap().get_str("phase"), Some("enter"));
     assert_eq!(
-        evs[0].payload.get("paths").unwrap().as_list().unwrap()[0].as_str(),
+        evs[0]
+            .data()
+            .unwrap()
+            .get("paths")
+            .unwrap()
+            .as_list()
+            .unwrap()[0]
+            .as_str(),
         Some("/drop/1.txt")
     );
     assert_eq!(core.drop_target(), Some(zone));
@@ -93,7 +100,7 @@ fn drop_bg_lights_the_zone_while_files_hover_and_wins_over_hover() {
         at: Vec2::new(50.0, 50.0),
     });
     assert_eq!(evs.len(), 1, "a drop and no leave after it");
-    assert_eq!(evs[0].payload.get("phase").unwrap().as_str(), Some("drop"));
+    assert_eq!(evs[0].data().unwrap().get_str("phase"), Some("drop"));
     assert_eq!(core.drop_target(), None);
     frame(&mut core, true);
     assert_eq!(zone_bg(&mut core), HOVER);
@@ -119,7 +126,7 @@ fn a_zone_the_view_stops_declaring_hears_its_prepared_leave() {
     });
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, zone);
-    assert_eq!(evs[0].payload.get("phase").unwrap().as_str(), Some("leave"));
+    assert_eq!(evs[0].data().unwrap().get_str("phase"), Some("leave"));
     assert_eq!(evs[0].payload.get("tag").unwrap().as_str(), Some("files"));
     assert_eq!(core.drop_target(), None);
     // And a cancel with nothing lit is nothing.

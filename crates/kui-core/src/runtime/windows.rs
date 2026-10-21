@@ -136,18 +136,16 @@ impl Core {
         let Some(name) = self.session.state().windows.name_of(id) else {
             return;
         };
-        self.pending.push(UiEvent {
-            origin: OriginId::HOST,
-            window: WindowId::MAIN,
-            key: Key::ROOT,
-            payload: Value::map([
-                ("kind", Value::str("dismiss")),
+        self.pending.push(UiEvent::root(
+            EventKind::Dismiss,
+            OriginId::HOST,
+            Key::ROOT,
+            Value::map([
                 ("reason", Value::str(reason.as_str())),
                 ("name", Value::str(&*name)),
                 ("id", Value::Int(id.0 as i64)),
             ]),
-            slot: None,
-        });
+        ));
     }
 
     /// Hands this frame's declarations to the session and takes back what
@@ -220,18 +218,16 @@ impl Core {
     /// in the payload because `UiEvent::window` says which core reported
     /// it, and the diff runs on whichever core finished its frame.
     pub(crate) fn push_window_event(&mut self, phase: &str, name: &str, id: WindowId) {
-        self.pending.push(UiEvent {
-            origin: OriginId::HOST,
-            window: WindowId::MAIN,
-            key: Key::ROOT,
-            payload: Value::map([
-                ("kind", Value::str("window")),
+        self.pending.push(UiEvent::root(
+            EventKind::Window,
+            OriginId::HOST,
+            Key::ROOT,
+            Value::map([
                 ("phase", Value::str(phase)),
                 ("name", Value::str(name)),
                 ("id", Value::Int(id.0 as i64)),
             ]),
-            slot: None,
-        });
+        ));
     }
 
     /// Queues a window command as if chrome had produced it, so apps can

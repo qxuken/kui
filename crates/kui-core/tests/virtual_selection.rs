@@ -182,10 +182,10 @@ fn a_copy_over_unbuilt_rows_asks_the_app_and_takes_its_answer() {
     let asked = core.take_pending_events();
     let ev = asked
         .iter()
-        .find(|e| e.kind() == Some("selectionrange"))
+        .find(|e| e.event.name() == "selectionrange")
         .expect("the app is asked, on the scope");
     let end = |name: &str| {
-        let e = ev.payload.get(name).expect("an end");
+        let e = ev.data().and_then(|d| d.get(name)).expect("an end");
         (e.get_int("index"), e.get_int("byte"))
     };
     assert_eq!(end("from"), (Some(0), Some(0)), "row 0, byte 0");
@@ -282,10 +282,10 @@ fn a_backwards_drag_asks_for_its_range_in_reading_order() {
         let ev = core
             .take_pending_events()
             .into_iter()
-            .find(|e| e.kind() == Some("selectionrange"))
+            .find(|e| e.event.name() == "selectionrange")
             .expect("a selectionrange ask");
         let end = |name: &str| {
-            let e = ev.payload.get(name).unwrap();
+            let e = ev.data().and_then(|d| d.get(name)).unwrap();
             (e.get_int("index").unwrap(), e.get_int("byte").unwrap())
         };
         let (from, to) = (end("from"), end("to"));
@@ -429,11 +429,11 @@ fn an_unbuilt_end_is_placed_against_its_own_lists_rows() {
     let ev = core
         .take_pending_events()
         .into_iter()
-        .find(|e| e.kind() == Some("selectionrange"))
+        .find(|e| e.event.name() == "selectionrange")
         .expect("a selectionrange ask");
     let index = |name: &str| {
-        ev.payload
-            .get(name)
+        ev.data()
+            .and_then(|d| d.get(name))
             .and_then(|e| e.get("index"))
             .and_then(Value::as_int)
     };
@@ -476,11 +476,11 @@ fn select_all_spans_the_declared_rows_not_the_built_ones() {
     let events = core.take_pending_events();
     let ask = events
         .iter()
-        .find(|e| e.payload.get("kind").and_then(|v| v.as_str()) == Some("selectionrange"))
+        .find(|e| e.event.name() == "selectionrange")
         .expect("the ask goes out on the scope");
     assert_eq!(ask.key, scope);
     let end = |name: &str| {
-        let e = ask.payload.get(name).unwrap();
+        let e = ask.data().and_then(|d| d.get(name)).unwrap();
         (
             e.get("index").and_then(|v| v.as_int()),
             e.get("byte").and_then(|v| v.as_int()),

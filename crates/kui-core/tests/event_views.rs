@@ -64,7 +64,10 @@ fn a_key_reads_back_as_the_press_that_made_it() {
         (k.code, k.physical, k.mods),
         (KeyCode::Char('Z'), KeyCode::Char('z'), mods)
     );
-    assert_eq!(down[0].tag().and_then(|t| t.as_str()), Some("keys"));
+    assert_eq!(
+        down[0].payload.get("tag").and_then(|t| t.as_str()),
+        Some("keys")
+    );
     let up = key_up(&mut core, KeyCode::Char('Z'), mods);
     let (phase, k) = up.iter().find_map(|e| e.key_press()).expect("a release");
     assert_eq!((phase, k.text), (KeyPhase::Up, None));

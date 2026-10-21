@@ -268,7 +268,7 @@ impl App for VirtualList {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        // A row's `on_click` payload arrives verbatim: the row it named.
+        // A row's `on_click` message arrives as declared: the row it named.
         if let Some(i) = ev.payload.get_int("row") {
             self.selected = i as usize;
         }

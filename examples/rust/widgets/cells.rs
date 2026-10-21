@@ -204,8 +204,8 @@ impl App for Cells {
         // `lines` is how many rows later (positive) or earlier the screen
         // should move — the whole lines the delta covered, the fraction
         // carried by the core to the next notch.
-        if ev.kind() == Some("scroll") {
-            let lines = ev.payload.get_int("lines").unwrap_or(0);
+        if let Some(scroll) = ev.scroll() {
+            let lines = scroll.lines.unwrap_or(0);
             self.top =
                 (self.top as i64 + lines).clamp(0, (SESSION.len() - TERM_ROWS) as i64) as usize;
         }

@@ -61,7 +61,7 @@ const SAMPLE = {
   min: 'fit',
   max: 12,
   msg: { kind: 'm', n: 1, list: [1, 'two', null] },
-  tag: { kind: 't' },
+  handler: { kind: 't' },
   str: 'group-a',
   family: 'mono',
   resource: '0000000000000007',
@@ -612,19 +612,50 @@ test('a malformed view is rejected, with the offending name in the message', () 
   );
 });
 
-// A null tag declares the behaviour (here: a key sink) and leaves `tag` off
-// the event, so a typed app needs no inert message for a sink that only
-// needs the node key.
-test('a null tag declares the behaviour without a tag on the event', () => {
+// A null handler declares the behaviour (here: a key sink) and names no
+// message, so the event arrives as its field alone (ADR 0047, decision 3)
+// and a typed app needs no inert message for a sink that only needs the
+// node key.
+test('a null handler declares the behaviour and its events arrive as the field alone', () => {
   const build = () => box({}, [box({ onKey: null, keyFocus: true, width: 100, height: 50 }, [], 'sink')]);
   const { ctx } = run(build);
   ctx.keyDown('a');
   const evs = ctx.pollEvents();
   assert.equal(evs.length, 1, 'the sink got the key');
+  assert.equal(evs[0].event, 'key', 'the envelope says which event');
   const p = evs[0].payload;
-  assert.equal(p.kind, 'key');
-  assert.equal(p.code, 'a');
-  assert.ok(!('tag' in p), 'no tag field');
+  assert.deepEqual(Object.keys(p), ['key'], 'the field and nothing else');
+  assert.equal(p.key.code, 'a');
+});
+
+// A handler's message is the payload: the declared map plus one field
+// named for the event (ADR 0047, decisions 1 and 3) — and a message that
+// is not a map is kept under `tag` beside the field.
+test('an event arrives as the message its handler declared, the data in its field', () => {
+  const build = () =>
+    box({}, [
+      box({ onDrag: { kind: 'pan', id: 7 }, width: 100, height: 50 }, [], 'map'),
+      box({ onDrag: 'card', width: 100, height: 50 }, [], 'card'),
+    ]);
+  const { ctx } = run(build);
+  ctx.cursor(10, 10);
+  ctx.mouse(true);
+  ctx.cursor(20, 14);
+  ctx.mouse(false);
+  const map = ctx.pollEvents();
+  assert.deepEqual(map.map((e) => e.event), ['drag', 'drag', 'drag']);
+  const end = map[2].payload;
+  assert.equal(end.kind, 'pan', 'kind is the app\'s');
+  assert.equal(end.id, 7);
+  assert.deepEqual(Object.keys(end).sort(), ['drag', 'id', 'kind']);
+  assert.deepEqual([end.drag.phase, end.drag.dx, end.drag.dy], ['end', 10, 4]);
+  ctx.cursor(10, 60);
+  ctx.mouse(true);
+  ctx.cursor(12, 60);
+  ctx.mouse(false);
+  const card = ctx.pollEvents().map((e) => e.payload);
+  assert.equal(card[0].tag, 'card', 'a string message rides under `tag`');
+  assert.equal(card[0].drag.phase, 'start');
 });
 
 // A keymap is the common sink, and it hears presses only: Space starts the
@@ -637,8 +668,8 @@ test('a sink without keyUp hears a press once, release and all', () => {
   let running = false;
   const keymap = { space: () => (running = !running) };
   const pump = () => {
-    for (const { payload: p } of ctx.pollEvents()) {
-      if (p.kind === 'key' && !p.repeat) keymap[p.code]?.();
+    for (const { event, payload: p } of ctx.pollEvents()) {
+      if (event === 'key' && !p.key.repeat) keymap[p.key.code]?.();
     }
   };
   ctx.keyDown('space');
@@ -674,9 +705,10 @@ test('a key sink that asks for releases hears both halves of a held key', () => 
   ctx.keyDown('w');
   ctx.keyDown('w', {}, true); // OS auto-repeat: still the same key down
   ctx.keyUp('w');
-  const evs = ctx.pollEvents().map((e) => e.payload);
+  const all = ctx.pollEvents();
+  const evs = all.map((e) => e.payload);
   assert.deepEqual(
-    evs.map((p) => [p.phase, p.code, p.text, p.repeat]),
+    evs.map((p) => [p.key.phase, p.key.code, p.key.text, p.key.repeat]),
     [
       ['down', 'w', 'w', false],
       ['down', 'w', 'w', true],
@@ -684,9 +716,9 @@ test('a key sink that asks for releases hears both halves of a held key', () => 
     ],
     'down, repeat, up',
   );
-  for (const p of evs) {
-    assert.equal(p.kind, 'key', 'one kind for both phases');
-    assert.deepEqual(p.tag, { pane: 0 }, "the sink's tag rides along");
+  for (const [i, p] of evs.entries()) {
+    assert.equal(all[i].event, 'key', 'one event for both phases');
+    assert.equal(p.pane, 0, "the sink's message is the payload");
   }
   // A release the sink never saw the press of resolves nothing.
   ctx.keyUp('w');
@@ -705,7 +737,7 @@ test('a chord and a keepTab field\'s Tab reach the sink above the editor', () =>
   ctx.keyDown('tab');
   ctx.keyDown('n', { ctrl: true });
   ctx.keyDown('q');
-  const keys = ctx.pollEvents().filter((e) => e.payload.kind === 'key').map((e) => [e.payload.code, e.payload.tag]);
+  const keys = ctx.pollEvents().filter((e) => e.event === 'key').map((e) => [e.payload.key.code, e.payload.tag]);
   assert.deepEqual(keys, [['tab', 'shell'], ['n', 'shell']], 'typing stays in the field');
 });
 
@@ -775,7 +807,7 @@ test('a key says where it is, the locks, and the modifier keys when asked', () =
   ctx.keyDown('1', { location: 'numpad', capsLock: true, numLock: true });
   ctx.keyDown('shift', { shift: true, location: 'left' });
   ctx.keyDown('f13');
-  let evs = ctx.pollEvents().map((e) => e.payload);
+  let evs = ctx.pollEvents().map((e) => e.payload.key);
   assert.deepEqual(
     evs.map((p) => [p.code, p.location, p.caps_lock, p.num_lock]),
     [
@@ -787,7 +819,7 @@ test('a key says where it is, the locks, and the modifier keys when asked', () =
   ({ ctx } = run(() => build(true)));
   ctx.keyDown('shift', { shift: true, location: 'right' });
   ctx.keyUp('shift', { location: 'right' });
-  evs = ctx.pollEvents().map((e) => e.payload);
+  evs = ctx.pollEvents().map((e) => e.payload.key);
   assert.deepEqual(
     evs.map((p) => [p.phase, p.code, p.location]),
     [
@@ -800,9 +832,9 @@ test('a key says where it is, the locks, and the modifier keys when asked', () =
   // is taken too (backlog RG86).
   ({ ctx } = run(() => build(false)));
   ctx.keyDown('1', { location: 'numpad', capsLock: true, numLock: true });
-  const heard = ctx.pollEvents()[0].payload;
+  const heard = ctx.pollEvents()[0].payload.key;
   ctx.keyDown(heard.code, heard);
-  const again = ctx.pollEvents()[0].payload;
+  const again = ctx.pollEvents()[0].payload.key;
   assert.deepEqual([again.caps_lock, again.num_lock, again.location], [true, true, 'numpad']);
 });
 
@@ -816,7 +848,7 @@ test('a keymap written in Latin survives the layout under it', () => {
   ctx.keyDown('ц', {}, false, 'w');
   // Dvorak: the key printed V sits where QWERTY prints ".".
   ctx.keyDown('v', {}, false, '.');
-  const evs = ctx.pollEvents().map((e) => e.payload);
+  const evs = ctx.pollEvents().map((e) => e.payload.key);
   assert.deepEqual(
     evs.map((p) => [p.code, p.physical]),
     [
@@ -831,7 +863,7 @@ test('a keymap written in Latin survives the layout under it', () => {
   );
   // The release is spelled the same way and resolves its press.
   ctx.keyUp('ц', {}, 'w');
-  const [up] = ctx.pollEvents().map((e) => e.payload);
+  const [up] = ctx.pollEvents().map((e) => e.payload.key);
   assert.deepEqual([up.phase, up.code, up.physical], ['up', 'w', 'w']);
   // The default folds a letter (F65): ⇧Z is spelled `Z` (F60), and a
   // window reports its position as `z` — its table never sees Shift — so
@@ -840,7 +872,7 @@ test('a keymap written in Latin survives the layout under it', () => {
   ctx.press('Z', { shift: true });
   ctx.release('Z', { shift: true });
   ctx.press('Z', { shift: true }, false, 'Z');
-  const shifted = ctx.pollEvents().map((e) => e.payload);
+  const shifted = ctx.pollEvents().map((e) => e.payload.key);
   assert.deepEqual(
     shifted.map((p) => [p.phase, p.code, p.physical, p.shift]),
     [
@@ -853,7 +885,7 @@ test('a keymap written in Latin survives the layout under it', () => {
   ctx.press('$', { shift: true });
   ctx.press('left');
   assert.deepEqual(
-    ctx.pollEvents().map((e) => [e.payload.code, e.payload.physical]),
+    ctx.pollEvents().map((e) => [e.payload.key.code, e.payload.key.physical]),
     [
       ['$', '$'],
       ['left', 'left'],
@@ -874,7 +906,7 @@ test('the stand-in is for the keymap: text is the layout key, and Alt keeps it u
   ctx.keyDown('Ô', { alt: true, shift: true }, false, 'j');
   ctx.keyDown('О', { alt: true }, false, 'j');
   assert.deepEqual(
-    ctx.pollEvents().map((e) => [e.payload.code, e.payload.physical, e.payload.text]),
+    ctx.pollEvents().map((e) => [e.payload.key.code, e.payload.key.physical, e.payload.key.text]),
     [
       [':', ';', 'Ж'],
       ['j', 'j', null],
@@ -904,7 +936,7 @@ test('a non-Latin layout reads every key as US-QWERTY', () => {
   ctx.keyDown(']', { layout: 'nonLatin' }, false, '`');
   ctx.keyDown('"', { shift: true, layout: 'nonLatin' }, false, '2');
   assert.deepEqual(
-    ctx.pollEvents().map((e) => [e.payload.code, e.payload.physical, e.payload.text]),
+    ctx.pollEvents().map((e) => [e.payload.key.code, e.payload.key.physical, e.payload.key.text]),
     [
       [']', '`', ']'],
       [']', '`', ']'],
@@ -922,7 +954,7 @@ test('focus moving releases the keys the old sink held', () => {
   ctx.keyDown('a');
   const downs = ctx.pollEvents();
   assert.deepEqual(
-    downs.map((e) => e.payload.phase),
+    downs.map((e) => e.payload.key.phase),
     ['down', 'down'],
   );
   const sink = downs[0].key;
@@ -932,7 +964,7 @@ test('focus moving releases the keys the old sink held', () => {
   ctx.blur();
   const ups = ctx.pollEvents();
   assert.deepEqual(
-    ups.map((e) => [e.payload.phase, e.payload.code, e.payload.text]),
+    ups.map((e) => [e.payload.key.phase, e.payload.key.code, e.payload.key.text]),
     [
       ['up', 'w', null],
       ['up', 'a', null],
@@ -940,7 +972,7 @@ test('focus moving releases the keys the old sink held', () => {
   );
   for (const e of ups) {
     assert.equal(e.key, sink, 'the sink that took the press hears the release');
-    assert.deepEqual(e.payload.tag, { pane: 0 });
+    assert.equal(e.payload.pane, 0, "the sink's message");
   }
   // And the physical release, arriving after the move, is not a second one.
   ctx.keyUp('w');
@@ -960,11 +992,11 @@ test('the window losing the keyboard releases the keys its sink held', () => {
   ctx.setEnv({ focused: false });
   const evs = ctx.pollEvents();
   assert.deepEqual(
-    evs.filter((e) => e.payload.kind === 'key').map((e) => [e.key, e.payload.phase, e.payload.code]),
+    evs.filter((e) => e.event === 'key').map((e) => [e.key, e.payload.key.phase, e.payload.key.code]),
     [[down.key, 'up', 'w']],
   );
   // And the app hears the window go, once (backlog DX18).
-  assert.deepEqual(evs.filter((e) => e.payload.kind === 'window').map((e) => e.payload.phase), ['blurred']);
+  assert.deepEqual(evs.filter((e) => e.event === 'window').map((e) => e.payload.phase), ['blurred']);
   assert.equal(ctx.env().focused, false);
   // Saying it again changes nothing, and getting the keyboard back
   // releases nothing: there is nothing held — only the window's return.
@@ -1181,20 +1213,13 @@ test('a modal contains focus and asks to be dismissed', () => {
   ctx.mouse(false, 1);
   const outside = ctx.pollEvents();
   assert.equal(outside.length, 1, 'the button behind is inert');
-  assert.deepEqual(outside[0].payload, {
-    kind: 'dismiss',
-    reason: 'outside',
-    tag: { kind: 'settings' },
-  });
+  assert.equal(outside[0].event, 'dismiss');
+  assert.deepEqual(outside[0].payload, { kind: 'settings', dismiss: { reason: 'outside' } });
 
   ctx.key('escape');
   const escaped = ctx.pollEvents();
   assert.equal(escaped.length, 1);
-  assert.deepEqual(escaped[0].payload, {
-    kind: 'dismiss',
-    reason: 'escape',
-    tag: { kind: 'settings' },
-  });
+  assert.deepEqual(escaped[0].payload, { kind: 'settings', dismiss: { reason: 'escape' } });
   assert.equal(escaped[0].key, dialog.key, 'on the modal node');
   assert.equal(ctx.focused(), ok.key, 'escape does not let go');
 });
@@ -1243,7 +1268,7 @@ test('press drives both channels: the sink hears the key and the core acts on it
   ctx.keyDown('escape');
   const half = ctx.pollEvents();
   assert.deepEqual(
-    half.map((e) => e.payload.kind),
+    half.map((e) => e.event),
     ['key'],
     'keyDown alone is the sink channel and nothing else',
   );
@@ -1253,17 +1278,13 @@ test('press drives both channels: the sink hears the key and the core acts on it
   ctx.press('escape');
   const whole = ctx.pollEvents();
   assert.deepEqual(
-    whole.map((e) => e.payload.kind),
+    whole.map((e) => e.event),
     ['key', 'dismiss'],
     'press reaches the sink and dismisses the modal',
   );
-  assert.equal(whole[0].payload.code, 'escape');
-  assert.deepEqual(whole[0].payload.tag, { pane: 'notes' });
-  assert.deepEqual(whole[1].payload, {
-    kind: 'dismiss',
-    reason: 'escape',
-    tag: { kind: 'editor' },
-  });
+  assert.equal(whole[0].payload.key.code, 'escape');
+  assert.equal(whole[0].payload.pane, 'notes');
+  assert.deepEqual(whole[1].payload, { kind: 'editor', dismiss: { reason: 'escape' } });
 
   // The release is the other end of the same key, and one channel: the
   // editing keys act on the way down. This sink never asked for `keyUp`,
@@ -1278,9 +1299,10 @@ test('press walks the focus ring, presses a control and nudges a slider', () => 
   const app = createApp(
     {
       init: { pressed: 0, nudged: null },
-      update: (m, msg) => {
+      update: (m, msg, ev) => {
         if (msg === 'go') return { ...m, pressed: m.pressed + 1 };
-        if (msg?.kind === 'access') return { ...m, nudged: msg.action };
+        // A key on a slider is proposed in its `onChange` (ADR 0047).
+        if (ev.event === 'change') return { ...m, nudged: msg.change.value };
       },
       view: () =>
         box({ pad: 4, gap: 4 }, [
@@ -1292,7 +1314,8 @@ test('press walks the focus ring, presses a control and nudges a slider', () => 
               valueNow: 3,
               valueMin: 0,
               valueMax: 10,
-              onDrag: 'vol',
+              valueStep: 1,
+              onChange: 'vol',
               width: 100,
               height: 10,
             },
@@ -1312,7 +1335,7 @@ test('press walks the focus ring, presses a control and nudges a slider', () => 
   app.press('tab');
   assert.ok(app.ctx.isFocused('vol'), 'tab moved on to the slider');
   app.press('right');
-  assert.equal(app.model.nudged, 'increment', 'right nudged the focused slider');
+  assert.equal(app.model.nudged, 4, 'right proposed a step up on the focused slider');
   assert.deepEqual(app.warnings, []);
 });
 
@@ -1466,8 +1489,8 @@ test('cells draws a screen from a Uint32Array and a click names its cell', () =>
   ctx.cursor(10 + 3.5 * Math.round(w), 10 + 25);
   ctx.mouse(true);
   ctx.mouse(false);
-  const hit = ctx.pollEvents().map((e) => e.payload).find((p) => p.kind === 'hit');
-  assert.deepEqual(hit, { kind: 'hit', cell: { row: 1, col: 3 } });
+  const hit = ctx.pollEvents().find((e) => e.event === 'click')?.payload;
+  assert.deepEqual(hit, { kind: 'hit', click: { cell: { row: 1, col: 3 } } }, 'the cell rides in the click field');
 });
 
 // A `selectable` grid selects in cells, and the click count picks the
@@ -1728,13 +1751,13 @@ test('a composition and its commit reach the focused sink, anchored at its caret
   ctx.commit('日本語');
   ctx.preedit('');
   assert.deepEqual(
-    ctx.pollEvents().map((e) => e.payload),
+    ctx.pollEvents().map((e) => [e.event, e.payload]),
     [
-      { kind: 'preedit', text: '日本', cursor: [0, 6], tag: { kind: 'ed' } },
-      { kind: 'text', text: '日本語', tag: { kind: 'ed' } },
-      { kind: 'preedit', text: '', cursor: null, tag: { kind: 'ed' } },
+      ['preedit', { kind: 'ed', preedit: { text: '日本', cursor: [0, 6] } }],
+      ['text', { kind: 'ed', text: { text: '日本語' } }],
+      ['preedit', { kind: 'ed', preedit: { text: '', cursor: null } }],
     ],
-    'the sink hears both halves, tagged',
+    'the sink hears both halves, in its own message',
   );
   // The candidate window sits at the caret: byte 6 of "let value" on line 1.
   const anchor = ctx.imeRect();
@@ -1744,10 +1767,10 @@ test('a composition and its commit reach the focused sink, anchored at its caret
   // Typing is one event, not two: the key carries its text, and the text
   // channel a driver sends beside the press stays away from sinks.
   ctx.press('a');
-  const typed = ctx.pollEvents().map((e) => e.payload);
+  const typed = ctx.pollEvents();
   assert.equal(typed.length, 1, JSON.stringify(typed));
-  assert.equal(typed[0].kind, 'key');
-  assert.equal(typed[0].text, 'a');
+  assert.equal(typed[0].event, 'key');
+  assert.equal(typed[0].payload.key.text, 'a');
   // Nothing focused, nothing to anchor.
   ctx.blur();
   ctx.frame(400, 100, 1, view(6));
@@ -1838,6 +1861,22 @@ test('keyNamed finds a node by the name a reader hears', () => {
   ctx.frame(400, 300, 1, view(2));
   assert.equal(ctx.keyNamed('Delete'), ctx.keyOf('delete-0'), 'the first of two');
   assert.deepEqual(ctx.warnings().map((w) => w.code), ['ambiguous-name']);
+});
+
+// The way back from a key (ADR 0047): the label it was opened under, and
+// keyOf of that label is the key again.
+test('labelOf turns a key back into the label the view opened it under', () => {
+  const ctx = new Ctx();
+  ctx.frame(400, 300, 1, box({ dir: 'row' }, [
+    box({ width: 40, height: 40, onClick: { kind: 'like' } }, [], 'like'),
+    box({ width: 40, height: 40 }),
+  ]));
+  const like = ctx.keyOf('like');
+  assert.equal(ctx.labelOf(like), 'like');
+  assert.equal(ctx.keyOf(ctx.labelOf(like)), like);
+  assert.equal(ctx.labelOf(`0x${like}`), 'like', 'the 0x spelling too');
+  assert.equal(ctx.labelOf('0000000000001234'), null, 'an unknown key');
+  assert.equal(ctx.labelOf('like'), null, 'a label is not a key');
 });
 
 // The exit named at the removal (backlog F136): a card thrown right, over
@@ -1943,13 +1982,13 @@ test('a press in a sink names the line, the byte and the click count, and the si
   ctx.cursor(10 + 30 + 3.3 * w, 10 + 20 + 5);
   ctx.mouse(true, 2);
   ctx.mouse(false);
-  const evs = ctx.pollEvents().map((e) => e.payload);
-  const start = evs.find((p) => p.kind === 'drag' && p.phase === 'start');
+  const evs = ctx.pollEvents();
+  const start = evs.find((e) => e.event === 'drag' && e.payload.drag.phase === 'start')?.payload.drag;
   assert.equal(start.line, 1, JSON.stringify(start));
   assert.equal(start.byte, 3);
   assert.equal(start.clicks, 2);
-  const hit = evs.find((p) => p.kind === 'hit');
-  assert.deepEqual(hit, { kind: 'hit', line: 1, byte: 3, inside: true, clicks: 2 });
+  const hit = evs.find((e) => e.event === 'click')?.payload;
+  assert.deepEqual(hit, { kind: 'hit', click: { line: 1, byte: 3, inside: true, clicks: 2 } }, 'the click\'s data in its field');
   // The clipboard: the two doors queue what a menu's Copy and Paste
   // would, and the host answers a paste with `commit`, which the sink
   // hears as `text`.
@@ -1966,7 +2005,7 @@ test('a press in a sink names the line, the byte and the click count, and the si
   assert.equal(ctx.awaitingPaste(), false, 'the commit is the answer');
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
     // `pasted`: the answer to the ask, not an IME's commit (backlog DX14).
-    { kind: 'text', text: 'from the clipboard', pasted: true, tag: { kind: 'ed' } },
+    { kind: 'ed', text: { text: 'from the clipboard', pasted: true } },
   ]);
   // A secret goes out as its own kind, for the window to write marked
   // concealed and transient; a paste the pasteboard marked comes back
@@ -1982,9 +2021,9 @@ test('a press in a sink names the line, the byte and the click count, and the si
   ctx.paste('brief', { transient: true });
   ctx.paste('plain');
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
-    { kind: 'text', text: 's3cret', pasted: true, concealed: true, transient: true, tag: { kind: 'ed' } },
-    { kind: 'text', text: 'brief', pasted: true, transient: true, tag: { kind: 'ed' } },
-    { kind: 'text', text: 'plain', pasted: true, tag: { kind: 'ed' } },
+    { kind: 'ed', text: { text: 's3cret', pasted: true, concealed: true, transient: true } },
+    { kind: 'ed', text: { text: 'brief', pasted: true, transient: true } },
+    { kind: 'ed', text: { text: 'plain', pasted: true } },
   ]);
 });
 
@@ -1993,7 +2032,8 @@ test('a press in a sink names the line, the byte and the click count, and the si
 // a call and hears what was chosen as an event on the node it named.
 test('openMenu draws a menu whose chosen row posts on the target', () => {
   const ctx = new Ctx();
-  const view = () => box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]);
+  // The choice arrives as the target's `onMenu` message (ADR 0047).
+  const view = () => box({}, [box({ selectable: true, onMenu: { kind: 'card' } }, [text('one', { size: 14 })], 'card')]);
   ctx.frame(320, 240, 1, view());
   assert.equal(ctx.selectionText(), null);
   assert.equal(
@@ -2015,11 +2055,17 @@ test('openMenu draws a menu whose chosen row posts on the target', () => {
   ctx.mouse(false);
   const events = ctx.pollEvents();
   assert.equal(events.length, 1, JSON.stringify(events));
-  const p = events[0].payload;
-  assert.equal(p.kind, 'menu');
-  assert.equal(p.role, 'custom');
-  assert.deepEqual(p.item, { do: 'inspect' });
+  assert.equal(events[0].event, 'menu');
+  assert.deepEqual(events[0].payload, { kind: 'card', menu: { role: 'custom', item: { do: 'inspect' } } });
   assert.equal(ctx.closeMenu(), false, 'choosing closed it already');
+  // A target that declares no `onMenu` hears nothing of the choice.
+  const bare = new Ctx();
+  const plain = () => box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]);
+  bare.frame(320, 240, 1, plain());
+  bare.openMenu('card', 40, 30, [{ label: 'Inspect', id: 'inspect' }]);
+  bare.frame(320, 240, 1, plain());
+  bare.activateMenuItem(0);
+  assert.deepEqual(bare.pollEvents(), [], 'no handler, no event');
 });
 
 // A row that is its chord plays it where the keyboard was and posts no
@@ -2036,9 +2082,9 @@ test('a replay row plays its chord to the sink instead of posting', () => {
   ctx.cursor(row.x + row.w / 2, row.y + row.h / 2);
   ctx.mouse(true, 1);
   ctx.mouse(false);
-  const events = ctx.pollEvents().map((e) => e.payload);
+  const events = ctx.pollEvents();
   assert.deepEqual(
-    events.map((p) => [p.kind, p.code, p.tag]),
+    events.map((e) => [e.event, e.payload.key?.code, e.payload.tag]),
     [['key', 'n', 'shell']],
     JSON.stringify(events),
   );
@@ -2097,7 +2143,7 @@ test('menu() reads a row the way menuBar() does', () => {
 // inside by its path — never the row that opens it.
 test('a row with items is a submenu, and activateMenuPath reaches inside it', () => {
   const ctx = new Ctx();
-  ctx.frame(320, 240, 1, box({}, [box({ selectable: true }, [text('one', { size: 14 })], 'card')]));
+  ctx.frame(320, 240, 1, box({}, [box({ selectable: true, onMenu: null }, [text('one', { size: 14 })], 'card')]));
   ctx.setNativeMenus(true);
   ctx.openMenu('card', 40, 30, [
     { label: 'Open', id: 'open' },
@@ -2112,7 +2158,7 @@ test('a row with items is a submenu, and activateMenuPath reaches inside it', ()
   assert.equal(ctx.activateMenuPath([1, 1]), true);
   const events = ctx.pollEvents();
   assert.equal(events.length, 1);
-  assert.equal(events[0].payload.item, 'archive');
+  assert.equal(events[0].payload.menu.item, 'archive');
   assert.equal(ctx.menu(), null);
 });
 
@@ -2247,8 +2293,8 @@ test('scrollMods makes onScroll the modified wheel\'s, ahead of a scroller insid
   ctx.pollEvents();
   ctx.scroll(0, 40);
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{
-    kind: 'scroll', x: 50, y: 20, dx: 0, dy: 40, lines: null,
-    mods: { shift: false, ctrl: true, alt: false, super: false }, tag: { kind: 'zoom' },
+    kind: 'zoom',
+    scroll: { x: 50, y: 20, dx: 0, dy: 40, lines: null, mods: { shift: false, ctrl: true, alt: false, super: false } },
   }]);
   ctx.frame(400, 200, 1, tree);
   assert.equal(ctx.scrollOffset('list').y, 40, 'the list stood still');
@@ -2271,7 +2317,7 @@ test('onScroll takes the wheel as a message, in lines on a cells grid', () => {
   ctx.cursor(50, 20);
   ctx.scroll(3, -12);
   let evs = ctx.pollEvents().map((e) => e.payload);
-  assert.deepEqual(evs, [{ kind: 'scroll', x: 50, y: 20, dx: 3, dy: -12, lines: null, tag: { kind: 'zoom' } }]);
+  assert.deepEqual(evs, [{ kind: 'zoom', scroll: { x: 50, y: 20, dx: 3, dy: -12, lines: null } }]);
   ctx.frame(400, 200, 1, tree);
   assert.equal(ctx.scrollOffset('outer').y, 0, 'the canvas took the notch from the scroller above it');
   // Two and a half rows down on the grid: two lines, a half carried; then
@@ -2280,12 +2326,12 @@ test('onScroll takes the wheel as a message, in lines on a cells grid', () => {
   ctx.scroll(0, -45);
   evs = ctx.pollEvents().map((e) => e.payload);
   assert.equal(evs.length, 1);
-  assert.equal(evs[0].lines, 2);
-  assert.deepEqual(evs[0].tag, { kind: 'term' });
+  assert.equal(evs[0].scroll.lines, 2);
+  assert.equal(evs[0].kind, 'term');
   ctx.scroll(0, -9);
-  assert.equal(ctx.pollEvents()[0].payload.lines, 1);
+  assert.equal(ctx.pollEvents()[0].payload.scroll.lines, 1);
   ctx.scroll(0, 36);
-  assert.equal(ctx.pollEvents()[0].payload.lines, -2, 'earlier history is negative');
+  assert.equal(ctx.pollEvents()[0].payload.scroll.lines, -2, 'earlier history is negative');
   // Below both: the scroller scrolls, nothing is heard.
   ctx.cursor(50, 150);
   ctx.scroll(0, -12);
@@ -2319,7 +2365,7 @@ test('scrollGesture latches: a swipe that moved the strip keeps it past a termin
   assert.equal(ctx.scrollOffset('strip').x, 120);
   // A new gesture over the terminal is the terminal's.
   ctx.scrollGesture(-30, 0, true);
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.tag), [{ kind: 'term' }]);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['term']);
 });
 
 // A point on the text a keyed node drew is a byte offset, and a byte
@@ -2355,23 +2401,24 @@ test('onLayout reports the rect once and again when it changes', () => {
       box({ width: w, height: 'grow', onLayout: { kind: 'panel' } }, [], 'panel'),
     ]);
   const { ctx } = run(() => tree(100));
-  const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'layout');
+  const evs = ctx.pollEvents().filter((e) => e.event === 'layout');
   assert.equal(evs.length, 1, 'one layout event');
   assert.deepEqual(evs[0].payload, {
-    kind: 'layout',
-    x: 0, y: 0, w: 100, h: 240,
-    parent: { x: 0, y: 0, w: 320, h: 240 },
-    // Physical px per logical px at the node: the frame's, until a zoom
-    // composes into it (ADR 0025, decision 5).
-    scale: 1,
-    tag: { kind: 'panel' },
+    kind: 'panel',
+    layout: {
+      x: 0, y: 0, w: 100, h: 240,
+      parent: { x: 0, y: 0, w: 320, h: 240 },
+      // Physical px per logical px at the node: the frame's, until a zoom
+      // composes into it (ADR 0025, decision 5).
+      scale: 1,
+    },
   });
   ctx.frame(320, 240, 1, tree(100));
   assert.equal(ctx.pollEvents().length, 0, 'same rect, silence');
   ctx.frame(320, 240, 1, tree(150));
   const again = ctx.pollEvents();
   assert.equal(again.length, 1);
-  assert.equal(again[0].payload.w, 150);
+  assert.equal(again[0].payload.layout.w, 150);
   // The query shape of the same numbers (backlog C26 step 2): the rect
   // the last frame laid the node out at, with no event; null for a node
   // that declared no onLayout.
@@ -3432,8 +3479,10 @@ test('the access tree derives roles and names, and requests drive the app', () =
       init: { n: 0, text: 'hi', nudged: null, tag: null },
       update: (m, msg, ev) => {
         if (msg === 'bump') return { ...m, n: m.n + 1 };
-        if (msg?.kind === 'changed') return { ...m, text: app.ctx.editText(ev.key) };
-        if (msg?.kind === 'access') return { ...m, nudged: msg.action, tag: msg.tag };
+        // An assistive request arrives as the event a user's would (ADR
+        // 0047): the editor's text and the slider's step in `change`.
+        if (msg?.kind === 'name') return { ...m, text: msg.change.text };
+        if (ev.event === 'change') return { ...m, nudged: msg.change.value, tag: msg.tag };
       },
       view: (m) =>
         box({ title: 'Demo', gap: 4, pad: 4 }, [
@@ -3442,14 +3491,14 @@ test('the access tree derives roles and names, and requests drive the app', () =
           // An icon button, named by its label.
           box({ onClick: 'save', label: 'Save', width: 20, height: 20, bg: '#333333' }, [], 'save'),
           box(
-            { role: 'slider', label: 'Volume', valueNow: 3, valueMin: 0, valueMax: 10, onDrag: 'vol', width: 100, height: 10 },
+            { role: 'slider', label: 'Volume', valueNow: 3, valueMin: 0, valueMax: 10, valueStep: 1, onChange: 'vol', width: 100, height: 10 },
             [],
             'vol',
           ),
           // Decoration: gone from the tree, subtree included.
           box({ role: 'none', onClick: 'hidden' }, [text('Hidden')]),
           // Plain structure: elided, its editor hangs off the window.
-          box({ pad: 8 }, [el('edit', { initial: 'hi', label: 'Name', width: 100 }, [], 'name')]),
+          box({ pad: 8 }, [el('edit', { initial: 'hi', label: 'Name', width: 100, onChange: { kind: 'name' } }, [], 'name')]),
         ]),
     },
     { warnings: false },
@@ -3481,7 +3530,7 @@ test('the access tree derives roles and names, and requests drive the app', () =
   assert.equal(app.model.n, 1);
   assert.equal(app.accessTree().nodes[1].name, 'count 1');
   app.access(vol.key, 'increment');
-  assert.deepEqual([app.model.nudged, app.model.tag], ['increment', 'vol']);
+  assert.deepEqual([app.model.nudged, app.model.tag], [4, 'vol']);
   app.access(name.key, 'setValue', 'world');
   assert.equal(app.model.text, 'world');
   app.access(name.key, 'focus');
@@ -3594,15 +3643,15 @@ test('editors expose runs and take selection requests; custom editors get them a
     {
       init: { text: 'hello world\nsecond', sel: null, replaced: null },
       update: (m, msg, ev) => {
-        if (msg?.kind === 'changed') return { ...m, text: app.ctx.editText(ev.key) };
-        if (msg?.kind === 'access' && msg.action === 'setTextSelection')
-          return { ...m, sel: [msg.anchor, msg.focus, msg.tag] };
-        if (msg?.kind === 'access' && msg.action === 'replaceSelectedText')
-          return { ...m, replaced: msg.text };
+        if (ev.event === 'change') return { ...m, text: msg.change.text };
+        // The custom editor's sink hears a selection set and a replacement
+        // as a typing sink would (ADR 0047): `select` and `text`.
+        if (ev.event === 'select') return { ...m, sel: [msg.select.anchor, msg.select.focus, msg.tag] };
+        if (ev.event === 'text') return { ...m, replaced: msg.text.text };
       },
       view: () =>
         box({ gap: 8, pad: 8 }, [
-          el('edit', { initial: 'hello world\nsecond', multiline: true, autofocus: true, label: 'Doc', width: 300 }, [], 'doc'),
+          el('edit', { initial: 'hello world\nsecond', multiline: true, autofocus: true, label: 'Doc', width: 300, onChange: null }, [], 'doc'),
           // An editor the app draws itself: two lines, the caret at the
           // end of the second, the anchor three bytes into the first.
           box({ role: 'multilineTextInput', label: 'Mine', onKey: 'k' }, [
@@ -3752,7 +3801,7 @@ test('onDrop hears every phase of an OS file drag, and dropBg lights the zone (A
   ctx.dragFiles(paths, 10, 10);
   let evs = ctx.pollEvents();
   assert.deepEqual(evs.map((e) => e.payload), [
-    { kind: 'drop', phase: 'enter', paths, x: 10, y: 10, tag: { kind: 'files', zone: 'a' } },
+    { kind: 'files', zone: 'a', drop: { phase: 'enter', paths, x: 10, y: 10 } },
   ]);
   const aKey = evs[0].key;
   assert.equal(ctx.dropTarget(), aKey);
@@ -3763,24 +3812,24 @@ test('onDrop hears every phase of an OS file drag, and dropBg lights the zone (A
   assert.ok(zone && Math.abs(zone.color[0] - 0x40 / 255) < 0.01, 'dropBg painted');
   // Over the overlay, at a new point: a move on the zone, not a leave.
   ctx.dragFiles(paths, 50, 50);
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.phase), ['move']);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.drop.phase), ['move']);
   // Into the other zone: leave (no point), then enter.
   ctx.dragFiles(paths, 150, 50);
   evs = ctx.pollEvents();
-  assert.deepEqual(evs.map((e) => `${e.payload.phase}:${e.payload.tag.zone}`), ['leave:a', 'enter:b']);
-  assert.equal(evs[0].payload.x, undefined);
+  assert.deepEqual(evs.map((e) => `${e.payload.drop.phase}:${e.payload.zone}`), ['leave:a', 'enter:b']);
+  assert.equal(evs[0].payload.drop.x, undefined);
   // Landed: the drop, no leave after it, nothing lit.
   ctx.dropFiles(paths, 150, 50);
   evs = ctx.pollEvents();
-  assert.deepEqual(evs.map((e) => `${e.payload.phase}:${e.payload.tag.zone}`), ['drop:b']);
+  assert.deepEqual(evs.map((e) => `${e.payload.drop.phase}:${e.payload.zone}`), ['drop:b']);
   assert.equal(ctx.dropTarget(), null);
   // Out of the window: the lit zone's leave.
   ctx.dragFiles(paths, 10, 10);
   ctx.dragCancel();
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.phase), ['enter', 'leave']);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.drop.phase), ['enter', 'leave']);
 });
 
-test('onHover emits enter and leave with the tag', () => {
+test('onHover emits enter and leave in its own message', () => {
   const ctx = new Ctx();
   const tree = box({ dir: 'row' }, [
     box({ width: 50, height: 50, onHover: { kind: 'hov', id: 'a' } }, [], 'a'),
@@ -3789,20 +3838,20 @@ test('onHover emits enter and leave with the tag', () => {
   ctx.frame(320, 240, 1, tree);
   ctx.cursor(10, 10);
   let evs = ctx.pollEvents();
-  assert.deepEqual(evs.map((e) => e.payload), [{ kind: 'hover', phase: 'enter', by: 'pointer', tag: { kind: 'hov', id: 'a' } }]);
+  assert.deepEqual(evs.map((e) => e.payload), [{ kind: 'hov', id: 'a', hover: { phase: 'enter', by: 'pointer' } }]);
   const aKey = evs[0].key;
   assert.ok(ctx.isHovered(aKey));
   ctx.cursor(60, 10);
   evs = ctx.pollEvents();
   assert.deepEqual(
-    evs.map((e) => e.payload.phase + ':' + e.payload.tag.id),
+    evs.map((e) => e.payload.hover.phase + ':' + e.payload.id),
     ['leave:a', 'enter:b'],
   );
   // A frame that removes the hovered node under a still cursor reports the
   // leave right after the frame, without further input.
   ctx.frame(320, 240, 1, box({}));
   evs = ctx.pollEvents();
-  assert.deepEqual(evs.map((e) => e.payload.phase + ':' + e.payload.tag.id), ['leave:b']);
+  assert.deepEqual(evs.map((e) => e.payload.hover.phase + ':' + e.payload.id), ['leave:b']);
   ctx.cursorLeft();
   assert.deepEqual(ctx.pollEvents(), []);
 });
@@ -3906,7 +3955,7 @@ test('onContextMenu answers the secondary button and nothing else', () => {
   let evs = ctx.pollEvents();
   assert.deepEqual(
     evs.map((e) => e.payload),
-    [{ kind: 'contextmenu', x: 20, y: 30, tag: { kind: 'menu', on: 'row' } }],
+    [{ kind: 'menu', on: 'row', contextmenu: { x: 20, y: 30 } }],
   );
   const rowKey = evs[0].key;
   ctx.mouse(false, 1, 'secondary');
@@ -3924,7 +3973,7 @@ test('onContextMenu answers the secondary button and nothing else', () => {
   ctx.cursor(200, 100);
   ctx.mouse(true, 1, 'secondary');
   evs = ctx.pollEvents();
-  assert.deepEqual(evs.map((e) => e.payload.tag.on), ['panel']);
+  assert.deepEqual(evs.map((e) => e.payload.on), ['panel']);
   assert.notEqual(evs[0].key, rowKey);
   ctx.mouse(false, 1, 'secondary');
 
@@ -3953,9 +4002,9 @@ test('onButton hears the middle button from press to release, wherever it goes',
   assert.deepEqual(
     evs.map((e) => e.payload),
     [
-      { kind: 'button', phase: 'press', button: 'middle', x: 20, y: 30, clicks: 1, tag: { kind: 'pane' } },
-      { kind: 'button', phase: 'move', button: 'middle', x: 200, y: 100, tag: { kind: 'pane' } },
-      { kind: 'button', phase: 'release', button: 'middle', x: 200, y: 100, tag: { kind: 'pane' } },
+      { kind: 'pane', button: { phase: 'press', button: 'middle', x: 20, y: 30, clicks: 1 } },
+      { kind: 'pane', button: { phase: 'move', button: 'middle', x: 200, y: 100 } },
+      { kind: 'pane', button: { phase: 'release', button: 'middle', x: 200, y: 100 } },
     ],
   );
   assert.ok(evs.every((e) => e.key === evs[0].key), 'the release is the pane\'s, off it');
@@ -3963,7 +4012,7 @@ test('onButton hears the middle button from press to release, wherever it goes',
   // `buttons: 'middle'` leaves the secondary button to the menu around it.
   ctx.cursor(20, 30);
   ctx.mouse(true, 1, 'secondary');
-  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['contextmenu']);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.event), ['contextmenu']);
   ctx.mouse(false, 1, 'secondary');
   ctx.pollEvents();
 
@@ -3975,7 +4024,7 @@ test('onButton hears the middle button from press to release, wherever it goes',
   ctx.pollEvents();
   ctx.mouse(true, 1, 'secondary');
   assert.deepEqual(
-    ctx.pollEvents().map((e) => [e.payload.kind, e.payload.phase, e.payload.button]),
+    ctx.pollEvents().map((e) => [e.event, e.payload.button.phase, e.payload.button.button]),
     [['button', 'press', 'secondary']],
   );
   ctx.mouse(false, 1, 'secondary');
@@ -3986,7 +4035,7 @@ test('onButton hears the middle button from press to release, wherever it goes',
   ctx.mouse(true, 1, 3);
   ctx.mouse(false, 1, 3);
   assert.deepEqual(
-    ctx.pollEvents().map((e) => [e.payload.phase, e.payload.button]),
+    ctx.pollEvents().map((e) => [e.payload.button.phase, e.payload.button.button]),
     [['press', 3], ['release', 3]],
   );
 });
@@ -4001,12 +4050,13 @@ test('a right-click leaves keyboard focus where it was', () => {
   const noteKey = ctx.accessTree().nodes.find((n) => n.name === 'Note').key;
   assert.equal(ctx.focused(), noteKey);
 
-  // A null tag declares the behaviour without a payload, as onKey does.
+  // A null handler declares the behaviour, the event its field alone, as
+  // onKey's does.
   ctx.cursor(20, 60);
   ctx.mouse(true, 1, 'secondary');
   assert.deepEqual(
-    ctx.pollEvents().map((e) => e.payload),
-    [{ kind: 'contextmenu', x: 20, y: 60 }],
+    ctx.pollEvents().map((e) => [e.event, e.payload]),
+    [['contextmenu', { contextmenu: { x: 20, y: 60 } }]],
   );
   ctx.mouse(false, 1, 'secondary');
   assert.equal(ctx.focused(), noteKey, 'the editor is still focused');
@@ -4024,7 +4074,7 @@ test('an edit with wrap folds to its width, submits on Enter, and warns nothing'
   const ctx = new Ctx();
   const seed = 'a considerably longer label than the box is wide';
   const view = (initial) =>
-    box({}, [el('edit', { initial, size: 16, width: 209, wrap: 'word', label: 'Note', autofocus: true }, [], 'note')]);
+    box({}, [el('edit', { initial, size: 16, width: 209, wrap: 'word', label: 'Note', autofocus: true, onSubmit: { kind: 'save' } }, [], 'note')]);
   ctx.frame(320, 240, 1, view(seed));
   const note = () => ctx.accessTree().nodes.find((n) => n.name === 'Note');
   assert.equal(note().runs.length, 2, 'the draft folds onto two lines');
@@ -4034,13 +4084,106 @@ test('an edit with wrap folds to its width, submits on Enter, and warns nothing'
   ctx.key('enter');
   const evs = ctx.pollEvents();
   assert.equal(evs.length, 1);
-  assert.equal(evs[0].payload.kind, 'submit', 'Enter on a folded field submits');
+  assert.equal(evs[0].event, 'submit', 'Enter on a folded field submits');
+  assert.deepEqual(evs[0].payload, { kind: 'save' }, 'as the onSubmit message, exactly as declared');
   assert.equal(ctx.editText('note'), seed, 'and no newline went in');
 
   // Without the row the same field is one line, scrolled (F41).
   const plain = new Ctx();
   plain.frame(320, 240, 1, box({}, [el('edit', { initial: seed, size: 16, width: 209, label: 'Note' }, [], 'note')]));
   assert.equal(plain.accessTree().nodes.find((n) => n.name === 'Note').runs.length, 1);
+});
+
+// ADR 0047, decisions 7 and 8: an editor reports in the messages its rows
+// declare — `change` with the whole text, Enter and Escape as declared, an
+// edge with `boundary` — and none without them; a declared `value` is the
+// editor's text, brought back to on every frame it differs.
+test('an editor reports in its handler rows, and a declared value is its text', () => {
+  const app = createApp(
+    {
+      init: { title: 'hi', log: [] },
+      update: (m, msg, ev) => {
+        const log = [...m.log, `${ev.event}:${msg.kind}`];
+        // Store the text upper-cased, and declare it back as the value.
+        if (msg.kind === 'title') return { ...m, log, title: msg.change.text.toUpperCase() };
+        if (msg.kind === 'done') return { ...m, log, title: '' };
+        return { ...m, log };
+      },
+      view: (m) =>
+        box({ pad: 8, gap: 8 }, [
+          el('edit', {
+            value: m.title, label: 'Title', width: 200, autofocus: true,
+            onChange: { kind: 'title' }, onSubmit: { kind: 'done' }, onCancel: { kind: 'drop' }, onBoundary: { kind: 'edge' },
+          }, [], 'title'),
+          el('edit', { initial: 'quiet', label: 'Quiet', width: 200 }, [], 'quiet'),
+        ]),
+    },
+    { warnings: false },
+  );
+  app.render();
+  app.ctx.focus('title');
+  app.key('end');
+  app.type('x');
+  app.render();
+  assert.equal(app.model.title, 'HIX', 'the change carried the whole text');
+  assert.equal(app.ctx.editText('title'), 'HIX', 'and the value brought the editor to the model');
+  app.key('right');
+  app.key('enter');
+  app.render();
+  assert.equal(app.ctx.editText('title'), '', 'a model cleared on submit clears the field');
+  assert.deepEqual(app.model.log, ['change:title', 'boundary:edge', 'submit:done']);
+  app.press('escape');
+  assert.equal(app.model.log.at(-1), 'cancel:drop');
+  // An editor that declares no row hears its typing and says nothing.
+  app.ctx.focus('quiet');
+  const before = app.model.log.length;
+  app.type('!');
+  assert.equal(app.model.log.length, before, 'no handler, no event');
+  assert.equal(app.ctx.editText('quiet'), 'quiet!');
+  assert.deepEqual(app.warnings, []);
+});
+
+// `initial` beside `value` is a binding's to see — the core is handed one
+// text — so the encoder flags it and the addon raises the warning; `value`
+// without `onChange` is the frozen field the core warns about.
+test('an editor warns when value comes with initial or without onChange', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  ctx.frame(320, 240, 1, box({}, [
+    el('edit', { initial: 'seed', value: 'v', label: 'Both', width: 100, onChange: null }, [], 'both'),
+    el('edit', { value: 'frozen', label: 'Frozen', width: 100 }, [], 'frozen'),
+  ]));
+  assert.equal(ctx.editText('both'), 'v', 'the value wins');
+  const codes = ctx.warnings().map((w) => [w.code, w.key]).sort();
+  assert.deepEqual(codes, [
+    ['edit-value-and-initial', ctx.keyOf('both')],
+    ['edit-value-without-handler', ctx.keyOf('frozen')],
+  ].sort());
+});
+
+// The stock field takes a value and the three messages it reports in
+// (ADR 0047, `widgets::text_input_with`); one left out is a `Null`
+// message, so it reports as the field alone — or, for Escape, which has
+// no data, as `null`.
+test('<input> takes value, onChange, onSubmit and onCancel', () => {
+  const ctx = new Ctx();
+  const view = (value) => box({ pad: 8 }, [el('input', { label: 'Search', value, onChange: { kind: 'q' }, onSubmit: { kind: 'go' } })]);
+  ctx.frame(320, 240, 1, view('ab'));
+  assert.equal(ctx.editText('Search'), 'ab');
+  ctx.focus('Search');
+  ctx.key('end');
+  ctx.text('c');
+  ctx.key('enter');
+  ctx.press('escape');
+  assert.deepEqual(ctx.pollEvents().map((e) => [e.event, e.payload]), [
+    ['change', { kind: 'q', change: { text: 'abc' } }],
+    ['submit', { kind: 'go' }],
+    // No `onCancel`: a `Null` message, and Escape carries no data.
+    ['cancel', null],
+  ]);
+  ctx.frame(320, 240, 1, view('reset'));
+  assert.equal(ctx.editText('Search'), 'reset', 'a new value reaches the field');
+  assert.deepEqual(ctx.warnings(), []);
 });
 
 test('a changed viewport emits one resize event', () => {
@@ -4229,7 +4372,7 @@ test('sounds: click/hover props, the audio element, tagged playbacks', () => {
   );
   ctx.audioEnded(p);
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
-    { kind: 'sound', phase: 'ended', playback: p, tag: { kind: 'chime' } },
+    { kind: 'chime', sound: { phase: 'ended', playback: p } },
   ]);
   ctx.removeSound(snd);
   assert.deepEqual(ctx.audioCommands(), [{ kind: 'unload', sound: snd }]);
@@ -4261,7 +4404,7 @@ test('an <audio finish> node releases its playback when the view drops it', () =
   // waits on instead of a guessed duration.
   ctx.audioEnded(chime);
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
-    { kind: 'sound', phase: 'ended', playback: chime, tag: { kind: 'chime' } },
+    { kind: 'chime', sound: { phase: 'ended', playback: chime } },
   ]);
 });
 
@@ -4301,7 +4444,7 @@ test('a custom audio driver reports a truncation and a refusal through the same 
   const [again] = ctx.audioCommands();
   ctx.audioRefused(again.playback);
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [
-    { kind: 'sound', phase: 'refused', playback: again.playback, tag: { kind: 'jingle' } },
+    { kind: 'jingle', sound: { phase: 'refused', playback: again.playback } },
   ]);
   assert.deepEqual(codes(), [['playback-refused', jingle]], 'the same node, redeclared under its label');
 });
@@ -4772,12 +4915,36 @@ const SCENE_TREES = {
         box({ width: 200, height: 24, bg: '#1b1d27', onKey: { kind: 'ed' }, role: 'multilineTextInput', label: 'Buffer' }, [
           box({ dir: 'row', height: 20, role: 'line', caret: 1 }, [text('ab', { size: 13, family: 'mono' })], 'l0'),
         ], 'buffer'),
-        el('edit', { initial: '', width: 200, size: 13, label: 'Note' }, [], 'note'),
+        el('edit', { initial: '', width: 200, size: 13, label: 'Note', onChange: { kind: 'note' } }, [], 'note'),
       ]),
     ]),
   // The ime scene's two editors, answered with pastes the pasteboard
   // marked (backlog F84).
   paste: () => SCENE_TREES.ime(),
+  // `conformance::build_edit_rows`: one stock editor held to `value`, a
+  // message per handler row (ADR 0047, decision 7), `onMenu` hearing the
+  // stock editing menu's choice.
+  'edit-rows': () =>
+    root({}, [
+      box({ pad: 10, gap: 6 }, [
+        el(
+          'edit',
+          {
+            value: 'AB',
+            width: 200,
+            size: 13,
+            label: 'Title',
+            onChange: { kind: 'title' },
+            onSubmit: { kind: 'save' },
+            onCancel: { kind: 'revert' },
+            onBoundary: { kind: 'edge' },
+            onMenu: { kind: 'edit' },
+          },
+          [],
+          'title',
+        ),
+      ]),
+    ]),
   cells: () => {
     const screen = new Uint32Array(11 * 4);
     'hello world'.split('').forEach((ch, i) => {
@@ -5096,7 +5263,7 @@ SCENE_TREES.popup = (_fx, phase) =>
 
 // `conformance::build_select`: the stock select over four options, the
 // fourth a menu-item object posting an `id` and disabled, the second in
-// force. The steps open its menu, choose a row and open it again; the
+// force, the choice arriving as its `onMenu` message (ADR 0047). The steps open its menu, choose a row and open it again; the
 // report keeps the field and the menu.
 SCENE_TREES.select = () =>
   root({}, [
@@ -5105,6 +5272,7 @@ SCENE_TREES.select = () =>
         label: 'language',
         options: ['English', 'Deutsch', 'Français', { label: 'Latin', id: 'la', enabled: false }],
         current: 1,
+        onMenu: { kind: 'lang' },
       }),
       text('body', { size: 12 }),
     ]),
@@ -5315,6 +5483,31 @@ SCENE_TREES.selection = () =>
       { width: 200, pad: 8, gap: 4, bg: '#14161e', selectable: true },
       SELECTION_LINES.map((line) => text(line, { size: 13 })),
       'card',
+    ),
+  ]);
+
+// `conformance::build_selection_range`: the `virtual` scene's list,
+// `selectable`, a line of text in each built row, and the message the
+// copy's ask arrives as (ADR 0047's `onSelectionRange`).
+SCENE_TREES['selection-range'] = () =>
+  root({}, [
+    box(
+      {
+        width: 120,
+        height: 60,
+        gap: 0,
+        scrollY: true,
+        bg: '#101018',
+        selectable: true,
+        rowCount: 109,
+        onSelectionRange: { kind: 'rows' },
+      },
+      [
+        box({ width: 'grow', height: 20 }, [], 'lead'),
+        ...VIRTUAL_ROWS.map((i) => box({ index: i, width: 'grow', height: 20 }, [text(`row ${i}`, { size: 13 })])),
+        box({ width: 'grow', height: 100 }, [], 'tail'),
+      ],
+      'list',
     ),
   ]);
 
@@ -5616,6 +5809,10 @@ function driveScene(env, steps, build) {
       ctx.modifiers({ shift: !!(m & 1), ctrl: !!(m & 2), alt: !!(m & 4), super: !!(m & 8) });
     }
     else if (step[0] === 'escape') ctx.key('escape');
+    else if (step[0] === 'enter') ctx.key('enter');
+    // The app asking for the selection as text, as Cmd/Ctrl-C does: past a
+    // virtual list's built rows the core asks back with `selectionrange`.
+    else if (step[0] === 'copy') ctx.requestCopy();
     // `conformance::ARROWS` order: left, right, up, down.
     else if (step[0] === 'arrow') ctx.key(['left', 'right', 'up', 'down'][step[1]]);
     else if (step[0] === 'home') ctx.key('home');
@@ -5763,34 +5960,59 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
     );
   }
   for (const ev of events) {
-    // The tag column, or — for the two window-level events, which have none
-    // — the field that tells one from its siblings (`conformance::event_row`).
+    // `conformance::event_row`: the envelope's event, then the message's
+    // name — a bare string, else its `kind`, else its `tag` — or, for a
+    // root event or a message with none, the field that tells one event
+    // from its siblings (`phase`, `reason`) of the event's data.
+    const kind = ev.event;
     const p = ev.payload;
-    let tag = p?.tag?.kind ?? p?.phase ?? p?.reason ?? '-';
+    // Whether no message declared it — read off the events table, not the
+    // payload's shape (a message may well be `{kind: "click"}`): a `root`
+    // handler always, and the two that have a root spelling beside their
+    // node one (the menu bar's `menu`, a popup's `dismiss`) when the
+    // payload carries no field of the event's name, which a node's always
+    // does.
+    const row = EVENT_ROWS.get(kind);
+    const isMap = p !== null && typeof p === 'object' && !Array.isArray(p);
+    const root = row?.handler === 'root' || (/\broot\b/.test(row?.handler ?? '') && isMap && !(kind in p));
+    // The event's data: its field, or a root event's whole payload.
+    const d = (root ? p : isMap ? p[kind] : null) ?? {};
+    const str = (v) => (typeof v === 'string' ? v : undefined);
+    const named = root ? undefined : typeof p === 'string' ? p : str(p?.kind) ?? str(p?.tag);
+    let tag = named ?? str(d.phase) ?? str(d.reason) ?? '-';
+    // An editor's change carries its whole text, Debug-quoted as Rust
+    // prints it; a slider's its phase and the value the core worked out
+    // (ADR 0034), the corpus steps landing on whole values.
+    if (kind === 'change') {
+      if (typeof d.text === 'string') tag += ` ${rustDebug(d.text)}`;
+      else tag += ` ${d.phase ?? '-'} ${Math.trunc(d.value ?? 0)}`;
+    }
     // A drag's phase and deltas ride in the tag column: `dx`/`dy` are the
     // displacement from the press point in every phase, and the corpus
     // steps are integers, so the deltas print exactly.
-    if (p?.kind === 'drag') tag += ` ${p.phase} ${Math.trunc(p.dx)} ${Math.trunc(p.dy)}`;
-    // A slider's change carries its phase and the value the core worked
-    // out (ADR 0034); the corpus steps land on whole values.
-    if (p?.kind === 'change') tag += ` ${p.phase} ${Math.trunc(p.value)}`;
-    // A scroll's lines ride the same way — the whole lines a grid's notch
-    // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
-    if (p?.kind === 'scroll') tag += ` ${p.lines ?? '-'}`;
+    if (kind === 'drag') tag += ` ${d.phase ?? '-'} ${Math.trunc(d.dx ?? 0)} ${Math.trunc(d.dy ?? 0)}`;
     // A held button's phase and which button ride the same way (backlog
     // F105): a binding that lost the mask claims the secondary presses.
-    if (p?.kind === 'button') tag += ` ${p.phase} ${p.button ?? '-'}`;
+    if (kind === 'button') tag += ` ${d.phase ?? '-'} ${d.button ?? '-'}`;
     // A key from one of a key's twins says which, with its phase and code
     // (backlog F108); a standard key prints as it did.
-    if (p?.kind === 'key' && p.location && p.location !== 'standard')
-      tag += ` ${p.phase} ${p.code} ${p.location}`;
+    if (kind === 'key' && typeof d.location === 'string' && d.location !== 'standard')
+      tag += ` ${d.phase ?? '-'} ${d.code ?? '-'} ${d.location}`;
+    // A scroll's lines ride the same way — the whole lines a grid's notch
+    // covers, `-` off a grid — so a lost carry disagrees here (ADR 0029).
+    if (kind === 'scroll') tag += ` ${Number.isInteger(d.lines) ? d.lines : '-'}`;
     // A drop's phase and its path count ride the same way (ADR 0031).
-    if (p?.kind === 'drop') tag += ` ${p.phase} ${p.paths.length}`;
+    if (kind === 'drop') tag += ` ${d.phase ?? '-'} ${Array.isArray(d.paths) ? d.paths.length : 0}`;
     // The documents the OS handed over, as a count (backlog F124).
-    if (p?.kind === 'open') tag += ` ${p.paths.length}`;
+    if (kind === 'open') tag += ` ${Array.isArray(d.paths) ? d.paths.length : 0}`;
+    // An editor's edge and the key that met it (ADR 0047, decision 7).
+    if (kind === 'boundary') tag += ` ${str(d.edge) ?? '-'} ${str(d.key) ?? '-'}`;
+    // A menu choice's item: an option's label or its `id`, `-` for an id
+    // that is not a string.
+    if (kind === 'menu') tag += ` ${str(d.item) ?? '-'}`;
     // A paste's markers ride the same way, each only when set (backlog F84).
-    if (p?.kind === 'text') for (const m of ['concealed', 'transient']) if (p[m] === true) tag += ` ${m}`;
-    lines.push(`event ${p?.kind ?? '-'} ${tag}`);
+    if (kind === 'text') for (const m of ['concealed', 'transient']) if (d[m] === true) tag += ` ${m}`;
+    lines.push(`event ${kind} ${tag}`);
   }
   for (const c of commands) lines.push(commandLine(c));
   for (const c of audio) lines.push(audioLine(c));
@@ -5798,6 +6020,27 @@ function sceneReport(name, env, steps, { ctx, events, commands, audio }) {
   for (const w of ctx.warnings()) lines.push(`warn ${w.code}`);
   lines.push('end', '');
   return lines.join('\n');
+}
+
+/** The core's events table by kind, for the adapter's root test. */
+const EVENT_ROWS = new Map(protocol().events.map((e) => [e.kind, e]));
+
+/** A string as Rust's `{:?}` prints it: quoted, with `\\`, `"`, `\\t`, `\\r`,
+ *  `\\n`, `\\0` escaped and any other control character as `\\u{…}`. */
+function rustDebug(s) {
+  let out = '"';
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    if (ch === '\\') out += '\\\\';
+    else if (ch === '"') out += '\\"';
+    else if (ch === '\n') out += '\\n';
+    else if (ch === '\r') out += '\\r';
+    else if (ch === '\t') out += '\\t';
+    else if (c === 0) out += '\\0';
+    else if (c < 0x20 || (c >= 0x7f && c <= 0x9f)) out += `\\u{${c.toString(16)}}`;
+    else out += ch;
+  }
+  return out + '"';
 }
 
 /** Splits the reference dump into `{name, steps, block}` — mirrors
@@ -6103,15 +6346,16 @@ test("index.d.ts's Env and NodeInfo name exactly the keys the objects carry (AR4
   assert.deepEqual(declared('Metrics'), Object.keys(ctx.metrics()).sort());
 });
 
-// The message types — `KeyMsg`, `LayoutMsg` and the rest — are written by
+// The event types — `KeyEvent`, `LayoutEvent` and the rest — are written by
 // hand too, against the payload shapes `schema::EVENTS` documents, and
 // two of them were a field behind the object (`physical` on a key,
 // `scale` on a layout) while two kinds the core spells (`menu`,
 // `forceclick`) had no row in the table at all (backlog F55). The pin is
-// static: every field a payload shape names is a property of the type
-// whose `kind` literal it is, and every property that type declares is in
-// some shape of the payload — the dismiss payload has two, one per
-// surface, and the type's optional `name` / `id` are the second's.
+// static: every field a node event's shape names is a property of the
+// data type its `With…` field interface carries, and every property that
+// type declares is in the shape or named by the event's doc; a root
+// event's shape (the one spelling `kind`) is exactly its `RootMsg`
+// member's — the menu and dismiss payloads have one of each.
 test("index.d.ts's message types name exactly the fields the event payloads carry (F55)", () => {
   // As LF: Git for Windows checks the file out with CRLF by default, and a
   // `\r` left on every line matched no block below (backlog RG39).
@@ -6165,40 +6409,72 @@ test("index.d.ts's message types name exactly the fields the event payloads carr
     for (i++; i < lines.length && !/^\};?$/.test(lines[i]); i++) body.push(lines[i]);
     blocks.push({ name: m[1], body });
   }
-  const declared = (kind) => {
+  const fieldsOf = (body) =>
+    body.map((l) => /^  ([A-Za-z_][A-Za-z0-9_]*)\??:/.exec(l)).filter(Boolean).map((x) => x[1]).sort();
+  // A root event's type: the block that spells its `kind` (ADR 0047: the
+  // root events keep the core's).
+  const rootType = (kind) => {
     for (const { name, body } of blocks) {
-      if (!body.includes(`  kind: '${kind}';`)) continue;
-      const fields = body.map((l) => /^  ([A-Za-z_][A-Za-z0-9_]*)\??:/.exec(l)).filter(Boolean).map((x) => x[1]).sort();
-      return { name, fields };
+      if (body.includes(`  kind: '${kind}';`)) return { name, fields: fieldsOf(body) };
     }
     return dts.includes(`{ kind: '${kind}' }`) ? { name: `{ kind: '${kind}' }`, fields: ['kind'] } : null;
   };
+  // A node event's: every `With…` interface whose one property is the
+  // event's field, and the data interfaces those name — two for `change`,
+  // the editor's and the slider's.
+  const fieldTypes = (field) => {
+    const out = [];
+    for (const { name, body } of blocks) {
+      const m = /^With\w+$/.test(name) && body.length === 1 && /^  (\w+): (\w+);$/.exec(body[0]);
+      if (!m || m[1] !== field) continue;
+      const data = blocks.find((b) => b.name === m[2]);
+      assert.ok(data, `${name}'s data type ${m[2]} is declared`);
+      out.push({ name: m[2], fields: fieldsOf(data.body) });
+    }
+    return out;
+  };
   const untyped = [];
-  for (const { kind, payload } of events) {
+  for (const { kind, field, payload, doc } of events) {
     const groups = shapes(payload);
-    if (kind === 'click') {
-      assert.equal(groups.length, 0, 'the click payload is the app\'s own, and names no shape');
+    // The root's spelling carries `kind`; the field's data does not.
+    const root = groups.filter((g) => g.includes('kind'));
+    const data = groups.filter((g) => !g.includes('kind'));
+    if (root.length) {
+      const type = rootType(kind);
+      if (!type) untyped.push(kind);
+      else {
+        const named = [...new Set(root.flat())].sort();
+        assert.deepEqual(type.fields, named, `${type.name} declares exactly what the root ${kind} payload carries`);
+      }
+    }
+    if (!field) {
+      assert.ok(root.length > 0 || kind === 'reply', `the root ${kind} payload names a shape`);
       continue;
     }
-    assert.ok(groups.length > 0, `the ${kind} payload names a shape`);
-    const type = declared(kind);
-    if (!type) {
+    // Enter's `submit`, Escape's `cancel`: the message as declared, no data.
+    if (!data.length) continue;
+    const types = fieldTypes(field);
+    if (!types.length) {
       untyped.push(kind);
       continue;
     }
-    const named = [...new Set(groups.flat())].sort();
+    const named = [...new Set(data.flat())].sort();
+    const declaredFields = [...new Set(types.flatMap((t) => t.fields))].sort();
     for (const f of named) {
-      assert.ok(type.fields.includes(f), `${type.name} declares \`${f}\`, which the ${kind} payload carries`);
+      assert.ok(declaredFields.includes(f), `${types.map((t) => t.name).join(' | ')} declares \`${f}\`, which the ${kind} payload carries`);
     }
-    for (const f of type.fields) {
-      assert.ok(named.includes(f), `the ${kind} payload carries \`${f}\`, which ${type.name} declares`);
+    // A field the type declares that the payload's shape leaves out is one
+    // the event's doc names: `cell`, `line`, … on a drag over a grid or a
+    // sink's lines.
+    for (const f of declaredFields) {
+      assert.ok(named.includes(f) || new RegExp('`' + f + '[`:]').test(doc), `the ${kind} payload carries \`${f}\`, which ${types.map((t) => t.name).join(' | ')} declares`);
     }
   }
   assert.deepEqual(untyped, [], 'every event kind has a message type');
-  // And no type in the union names a kind the table does not: a message
-  // type is a claim the payload table has to back.
-  const union = /export type CoreMsg =\n((?:  \| \w+\n)+)/.exec(dts);
-  assert.ok(union, 'the CoreMsg union');
+  // And no type in the root union names a kind the table does not: a
+  // message type is a claim the payload table has to back.
+  const union = /export type RootMsg =\n((?:  \| \w+\n)+)/.exec(dts);
+  assert.ok(union, 'the RootMsg union');
   const kinds = new Set(events.map((e) => e.kind));
   for (const member of union[1].match(/\w+/g)) {
     const block = blocks.find((b) => b.name === member);
@@ -6503,8 +6779,8 @@ test('requestFiles asks once, a host takes it, and the answer reaches update', (
   const app = createApp(
     {
       init: { ask: false },
-      update: (model, msg, _ev, ctx) => {
-        seen.push(msg);
+      update: (model, msg, ev, ctx) => {
+        seen.push([ev.event, msg]);
         if (msg.kind === 'open') {
           // The ask is made where the surface is: update's fourth argument.
           const asked = ctx.requestFiles({
@@ -6541,21 +6817,23 @@ test('requestFiles asks once, a host takes it, and the answer reaches update', (
 
   app.ctx.answerFiles(['/tmp/a.png', '/tmp/b.jpg']);
   app.step();
-  const files = seen.find((m) => m.kind === 'files');
-  assert.deepEqual(files, { kind: 'files', paths: ['/tmp/a.png', '/tmp/b.jpg'], tag: 'add' });
+  // The dialog's `tag` is the message the answer arrives as: a string
+  // one under `tag`, the paths in its `files` field (ADR 0047).
+  const files = seen.find((m) => m[0] === 'files');
+  assert.deepEqual(files, ['files', { tag: 'add', files: { paths: ['/tmp/a.png', '/tmp/b.jpg'] } }]);
   assert.equal(app.ctx.awaitingFiles(), false);
 });
 
 test('a cancelled dialog answers with no paths, and a stray answer is dropped', () => {
   const ctx = new Ctx();
   ctx.answerFiles(['/tmp/nobody-asked']);
-  assert.deepEqual(ctx.pollEvents().filter((e) => e.payload?.kind === 'files'), []);
+  assert.deepEqual(ctx.pollEvents().filter((e) => e.event === 'files'), []);
   assert.equal(ctx.requestFiles({ mode: 'save', fileName: 'notes.md' }), true);
   const [ask] = ctx.takeFileRequests();
   assert.equal(ask.fileName, 'notes.md');
   ctx.answerFiles([]);
-  const evs = ctx.pollEvents().filter((e) => e.payload?.kind === 'files');
-  assert.deepEqual(evs.map((e) => e.payload.paths), [[]]);
+  const evs = ctx.pollEvents().filter((e) => e.event === 'files');
+  assert.deepEqual(evs.map((e) => e.payload), [{ files: { paths: [] } }], 'no tag: the field alone');
   assert.throws(() => ctx.requestFiles({ mode: 'sideways' }), /unknown dialog mode/);
 });
 
@@ -6751,7 +7029,7 @@ test('revealRow centres an unbuilt row, rowProps styles each row, and a splitter
   ctx.mouse(true);
   ctx.cursor(225, 50);
   ctx.mouse(false);
-  const end = ctx.pollEvents().map((e) => e.payload).filter((p) => p.kind === 'drag').pop();
+  const end = ctx.pollEvents().filter((e) => e.event === 'drag').pop().payload.drag;
   assert.equal((end.x - end.parent.x) / end.parent.w, 0.75);
 
   // A row past the end, or no stride, scrolls nothing (backlog RG75).
@@ -7297,7 +7575,7 @@ test('the devtools inspect chord is the app\'s to respell (setDevtoolsKey)', () 
   ctx.keyDown('i', { ctrl: true, shift: true });
   const evs = ctx.pollEvents();
   assert.equal(evs.length, 1, 'Ctrl+Shift+I is the app\'s now');
-  assert.equal(evs[0].payload.code, 'i');
+  assert.equal(evs[0].payload.key.code, 'i');
   ctx.frame(1040, 720, 1, view());
   assert.equal(ctx.region(), null, 'and the panel did nothing with it');
   ctx.keyDown('f12');
@@ -8304,11 +8582,11 @@ test('<slider> proposes values from the keys, snapped to its step, and needs a l
   assert.ok(Math.abs(gain.valueStep - 0.1) < 1e-6);
   ctx.focus(gain.key);
   ctx.key('right');
-  const evs = ctx.pollEvents().filter((e) => e.payload.kind === 'change');
+  const evs = ctx.pollEvents().filter((e) => e.event === 'change');
   assert.equal(evs.length, 1);
-  assert.equal(evs[0].payload.value, 0.3, 'the decimal the step names, not 0.30000001');
-  assert.equal(evs[0].payload.phase, 'end');
-  assert.equal(evs[0].payload.tag.kind, 'gain');
+  assert.equal(evs[0].payload.change.value, 0.3, 'the decimal the step names, not 0.30000001');
+  assert.equal(evs[0].payload.change.phase, 'end');
+  assert.equal(evs[0].payload.kind, 'gain', 'in the onChange message');
   assert.throws(() => ctx.frame(320, 240, 1, box({}, [el('slider', { valueNow: 1 })])), /needs a label/);
 });
 
@@ -8337,17 +8615,27 @@ test('<select> is the stock select: the click opens the menu under it, a row is 
   ctx.frame(320, 240, 1, view(0));
   assert.equal(field().expanded, true, 'and the field reads as expanded');
   // A row chosen — the way a host's own menu answers — is one `menu`
-  // message on the field, naming the option: the label, or the item's id.
+  // event on the field, naming the option: the label, or the item's id.
+  // With no `onMenu` the field declares a `Null` one, so it arrives as the
+  // field alone (ADR 0047).
   assert.equal(ctx.activateMenuItem(2), true);
   const evs = ctx.pollEvents();
   assert.equal(evs.length, 1);
-  assert.equal(evs[0].payload.kind, 'menu');
-  assert.equal(evs[0].payload.item, 'la');
+  assert.equal(evs[0].event, 'menu');
+  assert.deepEqual(evs[0].payload, { menu: { role: 'custom', item: 'la' } });
   assert.equal(ctx.menu(), null, 'chosen closes it');
   ctx.frame(320, 240, 1, view(2));
   assert.equal(field().description, 'Latin');
   assert.equal(field().expanded, false);
   assert.deepEqual(ctx.warnings(), []);
+  // `onMenu` names the message the choice arrives as.
+  const named = () => box({ pad: 10 }, [el('select', { label: 'language', options: ['English', 'Deutsch'], onMenu: { kind: 'lang' } })]);
+  ctx.frame(320, 240, 1, named());
+  ctx.access('language', 'click');
+  ctx.activateMenuItem(1);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload), [{ kind: 'lang', menu: { role: 'custom', item: 'Deutsch' } }]);
+  ctx.frame(320, 240, 1, named());
+  assert.deepEqual(ctx.warnings(), [], 'and is a row the field reads');
   // What the encoder refuses: no label, no options, a bad option, a bad
   // index; and a row the field does not read is dropped with the warning
   // that says it reads none.
@@ -8370,7 +8658,7 @@ test('a disabled option is refused by activateMenuItem, and a select\'s options 
   assert.deepEqual(ctx.pollEvents(), [], 'and posts nothing');
   assert.equal(ctx.menu().items.length, 2, 'the menu stays open');
   assert.equal(ctx.activateMenuItem(0), true);
-  assert.equal(ctx.pollEvents()[0].payload.item, 'English');
+  assert.equal(ctx.pollEvents()[0].payload.menu.item, 'English');
   assert.equal(ctx.menu(), null);
   assert.equal(ctx.activateMenuItem(0), false, 'no menu open');
   assert.deepEqual(ctx.warnings(), []);
@@ -8923,7 +9211,8 @@ test('an event names the slot its node was filled into, and null for the app’s
   ctx.mouse(false);
   const [ev] = ctx.pollEvents();
   assert.equal(ev.payload, 'hit');
-  assert.deepEqual(Object.keys(ev).sort(), ['key', 'origin', 'payload', 'slot', 'window']);
+  assert.deepEqual(Object.keys(ev).sort(), ['event', 'key', 'origin', 'payload', 'slot', 'window']);
+  assert.equal(ev.event, 'click');
   assert.equal(ev.slot, null);
 });
 

@@ -214,8 +214,16 @@ fn hover_group_id_is_stable_and_named() {
 
 fn hover_phases(evs: &[kui_core::UiEvent]) -> Vec<(Key, String)> {
     evs.iter()
-        .filter(|e| e.kind() == Some("hover"))
-        .map(|e| (e.key, e.payload.get_str("phase").unwrap_or("?").to_string()))
+        .filter(|e| e.event.name() == "hover")
+        .map(|e| {
+            (
+                e.key,
+                e.data()
+                    .and_then(|d| d.get_str("phase"))
+                    .unwrap_or("?")
+                    .to_string(),
+            )
+        })
         .collect()
 }
 
@@ -304,8 +312,8 @@ fn a_window_drag_strip_hears_hover() {
     )));
     let hover = evs
         .iter()
-        .find(|e| e.kind() == Some("hover"))
+        .find(|e| e.event.name() == "hover")
         .expect("the strip heard the pointer arrive");
-    assert_eq!(hover.payload.get_str("phase"), Some("enter"));
+    assert_eq!(hover.data().and_then(|d| d.get_str("phase")), Some("enter"));
     assert_eq!(hover.payload.get_str("tag"), Some("strip"));
 }

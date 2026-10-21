@@ -27,7 +27,10 @@
 //! The derive is built from [`MessageField`], the conversion each field's
 //! type has, and [`MessageError`], what a payload that is not one of the
 //! enum's says. Both are plain enough to implement by hand for a type the
-//! derive does not cover.
+//! derive does not cover. [`EventField`] is what an event's data type adds
+//! to `MessageField`, the field it rides under, so a message can carry the
+//! data as a field: the derive's `#[message(on = drag)]` builds a
+//! message's arriving twin from it (ADR 0047, decision 13).
 
 use crate::value::Value;
 
@@ -39,6 +42,25 @@ pub trait MessageField: Sized {
     fn to_value(self) -> Value;
     /// `None` for a value of the wrong shape.
     fn from_value(v: &Value) -> Option<Self>;
+}
+
+/// An event's data as a message field: the type the core writes under
+/// one field of the handler's message (ADR 0047, decision 2) — a drag's
+/// [`Drag`](crate::event::Drag) under `drag`, an editor's
+/// [`EditChange`](crate::event::EditChange) under `change`. Its
+/// [`MessageField`] half reads and writes that field's value in the shape
+/// the core sends, so a message can carry it as any other field.
+///
+/// What `#[message(on = drag)]` builds a message's arriving twin from
+/// (decision 13): the twin's variant has a field of this type, read from
+/// [`Self::FIELD`] of the payload. A message declared on another handler
+/// has no such field, so it does not decode as the twin.
+pub trait EventField: MessageField {
+    /// The event this data arrives with.
+    const EVENT: crate::input::EventKind;
+    /// The field of the message it rides under: [`Self::EVENT`]'s
+    /// [`name`](crate::input::EventKind::name).
+    const FIELD: &'static str;
 }
 
 /// Why a payload is not the message it was read as.
@@ -174,37 +196,25 @@ impl<T: MessageField> MessageField for Box<T> {
 }
 
 impl crate::input::UiEvent {
-    /// The app's message this event carries, as `M`: the payload itself for
-    /// a click (what `on_click` was handed), and otherwise the `tag` inside
-    /// a core event — a drag, a change, a scroll, a drop, a layout — which
-    /// is what `on_drag` and the rest were handed. `None` when neither is
-    /// an `M`: a key press, a core event with no tag, another type's.
+    /// The app's message this event carries, as `M`: the payload, which is
+    /// the message the handler declared with the event's data in one field
+    /// of it (ADR 0047) — a field `M` does not name is not read, so a
+    /// message decodes whichever event brought it. A message that was not
+    /// a map is read from under `tag`, where the core kept it beside the
+    /// field. `None` for a root event, which carries no message, and for
+    /// a message that is not an `M`.
     ///
-    /// The event's own fields stay on `payload` — a drag's `phase` and
-    /// `x`/`y`, a change's `value` — so a handler matches on the message and
-    /// reads those beside it.
-    ///
-    /// A core event's tag is read before its payload: an app's `Msg::Key`
-    /// is `{kind: "key"}`, and so is every key event a sink hears, so
-    /// reading the payload first would hand the app its own variant for a
-    /// key meant for another sink's tag (backlog F148). A click's payload
-    /// is the app's own message, whatever its `kind`, and reads as itself.
+    /// The event's own data is read beside the message: [`Self::drag`]
+    /// and the other views, or [`Self::data`].
     pub fn message<M>(&self) -> Option<M>
     where
         M: for<'a> TryFrom<&'a Value>,
     {
-        let tag = || self.payload.get("tag").and_then(|t| M::try_from(t).ok());
-        if self.kind().is_some_and(is_core_event)
-            && let Some(m) = tag()
-        {
-            return Some(m);
+        if self.is_root() {
+            return None;
         }
-        M::try_from(&self.payload).ok().or_else(tag)
+        M::try_from(&self.payload)
+            .ok()
+            .or_else(|| self.payload.get("tag").and_then(|t| M::try_from(t).ok()))
     }
-}
-
-/// A `kind` the core's own events carry, the app's message under their
-/// `tag`. `click` is not one: a click's payload is the app's message as-is.
-fn is_core_event(kind: &str) -> bool {
-    kind != "click" && crate::schema::EVENTS.iter().any(|e| e.kind == kind)
 }

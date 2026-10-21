@@ -33,13 +33,15 @@ fn frame(core: &mut Core, program: bool) {
     ui.finish();
 }
 
-/// `phase:tag:by` of every focus event, in order.
+/// `phase:tag:by` of every focus event, in order: the tag is the
+/// `on_focus` message (kept under `tag`), phase and mover its `focus`
+/// field.
 fn focus(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .filter(|e| e.kind() == Some("focus"))
+        .filter(|e| e.event.name() == "focus")
         .map(|e| {
-            let p = &e.payload;
-            let tag = e.tag().and_then(|t| t.as_str()).unwrap_or("");
+            let p = e.data().expect("a focus field");
+            let tag = e.payload.get("tag").and_then(|t| t.as_str()).unwrap_or("");
             format!(
                 "{}:{tag}:{}",
                 p.get_str("phase").unwrap(),
@@ -112,7 +114,7 @@ fn the_window_says_when_it_gains_and_loses_the_keyboard() {
     let phases: Vec<_> = core
         .take_pending_events()
         .iter()
-        .filter(|e| e.kind() == Some("window"))
+        .filter(|e| e.event.name() == "window")
         .map(|e| e.payload.get_str("phase").unwrap().to_string())
         .collect();
     assert_eq!(phases, ["blurred", "focused"], "once per change");

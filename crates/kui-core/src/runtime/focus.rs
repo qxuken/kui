@@ -775,12 +775,8 @@ impl Core {
             })
             .collect();
         let event = |(key, origin, tag): &(Key, crate::tree::OriginId, Value), phase: &str| {
-            let payload = Value::map([
-                ("kind", Value::str("focus")),
-                ("phase", Value::str(phase)),
-                ("by", Value::str(by)),
-            ]);
-            UiEvent::on(*origin, *key, payload).tagged(Some(tag))
+            let data = Value::map([("phase", Value::str(phase)), ("by", Value::str(by))]);
+            UiEvent::declared(EventKind::Focus, *origin, *key, Some(tag), data)
         };
         for r in self.focus_reported.iter().rev() {
             if !now.iter().any(|n| n.0 == r.0) {

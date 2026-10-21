@@ -657,8 +657,8 @@ pub extern "C" fn kui_polyline(
 }
 
 /// [`kui_open_keyed`] for a draggable node: a press-drag emits
-/// `{kind="drag", phase, x, y, dx, dy, tag}` events with `on_drag` as the
-/// tag. `on_drag` and `on_click` (either NULL) are consumed. A drag past
+/// `drag` events, `on_drag` with `drag: {phase, x, y, dx, dy, parent}` in
+/// it (ADR 0047). `on_drag` and `on_click` (either NULL) are consumed. A drag past
 /// the click slop suppresses the click.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_draggable(
@@ -684,9 +684,10 @@ pub extern "C" fn kui_open_draggable(
 /// NULL meaning absent (so a NULL `on_drag` here does not make the node
 /// draggable, unlike [`kui_open_draggable`]). A non-NULL `on_key` makes
 /// the node a key sink: give it focus with [`kui_set_key_focus`] and
-/// presses arrive as `{kind="key", phase="down", code, ctrl, alt, shift,
-/// super, text, repeat, tag}`, releases too (`phase="up"`) when the spec
-/// sets `key_up`. `on_hover` tags pointer enter and leave. Returns the
+/// presses arrive as `on_key` with `key: {phase="down", code, ctrl, alt,
+/// shift, super, text, repeat}` in it, releases too (`phase="up"`) when
+/// the spec sets `key_up`. `on_hover` is the message pointer enter and
+/// leave arrive as, `hover: {phase, by}` in it. Returns the
 /// key, or 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_with(

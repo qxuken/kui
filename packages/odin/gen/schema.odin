@@ -9,7 +9,7 @@ import "core:os"
 Prop :: struct {
 	odin:        string, // its Odin spelling in docs/props.md, pinned by check_odin_spellings
 	name, snake: string,
-	kind:        string, // f32 color flag enum sizing min max msg tag str family resource keyframes enter gradient
+	kind:        string, // f32 color flag enum sizing min max msg handler str family resource keyframes enter gradient
 	values:      []string,
 	target:      string, // spec | style
 	c, doc:      string,
@@ -30,6 +30,8 @@ Door :: struct {
 
 Event_Def :: struct {
 	kind, payload, doc: string,
+	handler:            string, // the row (onDrag), a door, or "root"
+	field:              string, // the message's field the data rides under; "" for a root event
 }
 
 Named :: struct {
@@ -74,7 +76,8 @@ load_schema :: proc(path: string) -> (s: Schema) {
 	}
 	for v in o["events"].(json.Array) {
 		p := v.(json.Object)
-		append(&s.events, Event_Def{str(p, "kind"), str(p, "payload"), str(p, "doc")})
+		// A root event's field is null, which reads as "".
+		append(&s.events, Event_Def{kind = str(p, "kind"), payload = str(p, "payload"), doc = str(p, "doc"), handler = str(p, "handler"), field = str(p, "field")})
 	}
 	for v in o["doors"].(json.Array) {
 		p := v.(json.Object)

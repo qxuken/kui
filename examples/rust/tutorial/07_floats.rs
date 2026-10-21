@@ -14,8 +14,8 @@ enum Msg {
     Ask,
     Confirm,
     Cancel,
-    /// The modal's tag: a `dismiss` (Escape, or a press outside) arrives
-    /// under it.
+    /// The modal's message: a `dismiss` (Escape, or a press outside)
+    /// arrives as it, the reason inside under `dismiss`.
     Dialog,
 }
 // ANCHOR_END: message

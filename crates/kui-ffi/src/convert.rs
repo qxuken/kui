@@ -431,8 +431,25 @@ pub(crate) fn spec_of(
     if s.value_set & KUI_VALUE_STEP != 0 {
         spec = spec.value_step(s.value_step);
     }
-    if let Some(tag) = unsafe { s.on_change.as_ref() } {
-        spec = spec.on_change(tag.0.clone());
+    if let Some(msg) = unsafe { s.on_change.as_ref() } {
+        spec = spec.on_change(msg.0.clone());
+    }
+    // An editor's other handler rows, and the menu and selection-range
+    // ones (ADR 0047): borrowed, like `on_change`.
+    if let Some(msg) = unsafe { s.on_submit.as_ref() } {
+        spec = spec.on_submit(msg.0.clone());
+    }
+    if let Some(msg) = unsafe { s.on_cancel.as_ref() } {
+        spec = spec.on_cancel(msg.0.clone());
+    }
+    if let Some(msg) = unsafe { s.on_boundary.as_ref() } {
+        spec = spec.on_boundary(msg.0.clone());
+    }
+    if let Some(msg) = unsafe { s.on_menu.as_ref() } {
+        spec = spec.on_menu(msg.0.clone());
+    }
+    if let Some(msg) = unsafe { s.on_selection_range.as_ref() } {
+        spec = spec.on_selection_range(msg.0.clone());
     }
     if s.cursor != 0 {
         // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".

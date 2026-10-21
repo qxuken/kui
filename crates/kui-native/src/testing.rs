@@ -474,7 +474,8 @@ impl<C: BorrowMut<Core>> Drive<C> {
         }
     }
 
-    /// Everything delivered so far, one line each: `frame key payload`.
+    /// Everything delivered so far, one line each: `frame key event payload`, the
+    /// envelope's event beside the message it arrived as.
     pub fn log(&self) -> &[String] {
         &self.log
     }
@@ -482,9 +483,10 @@ impl<C: BorrowMut<Core>> Drive<C> {
     fn deliver(&mut self, app: &mut impl App, events: Vec<UiEvent>) {
         for ev in &events {
             self.log.push(format!(
-                "{:>4} {:08x} {}",
+                "{:>4} {:08x} {} {}",
                 self.frame,
                 ev.key.0 as u32,
+                ev.event.name(),
                 crate::devtools::fmt_value(&ev.payload)
             ));
         }

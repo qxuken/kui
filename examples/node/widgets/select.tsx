@@ -2,36 +2,39 @@
 // showing the choice in force that, clicked, opens the core's own menu of
 // the options under it — drawn in the frame, or the platform's where the
 // host shows menus itself — with the current one checked. The app holds no
-// open state; what reaches `update` is the `menu` message a menu row posts,
-// on the field's key, its `item` the option's label or the item's `id`.
+// open state; what reaches `update` is the field's `onMenu` message with
+// the choice in its `menu` field, its `item` the option's label or the
+// item's `id`.
 // Drawing the field again with the new `current` is the whole loop
 // (backlog F72, F73).
 //
 //   npm run select                          a window to pick in by hand
 //   node dist/widgets/select.mjs --headless the same loop, no window
-import type { App, CoreMsg, KuiNode, MenuMsg, UiEvent } from '@qxuken/kui';
+import type { App, KuiNode, MenuMsg, RootMsg, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 const LANGUAGES = ['English', 'Deutsch', 'Français', '日本語'];
 const SIZES = [11, 13, 15, 18];
 
-type Msg = CoreMsg;
+// One message per field, so the choice says which field it came from.
+type AppMsg = MenuMsg<{ kind: 'language' }> | MenuMsg<{ kind: 'size' }>;
+type Msg = AppMsg | RootMsg;
 type Model = { language: number; size: number; last: unknown };
 
 const init: Model = { language: 0, size: 1, last: undefined };
 
 function update(model: Model, msg: Msg, _ev: UiEvent<Msg>): Model | undefined {
-  // `{kind: 'menu', role, item}` on the field's key: the language field's
-  // posts the label, the size field's the item's `id` — the size itself —
-  // so the item's type says which field it came from.
-  if (msg.kind !== 'menu') return undefined;
-  const item = (msg as MenuMsg<unknown>).item;
+  // The field's message with `menu: {role, item}` in it: the language
+  // field's choice is the label, the size field's the item's `id` — the
+  // size itself.
+  if (msg.kind !== 'language' && msg.kind !== 'size') return undefined;
+  const item = msg.menu.item;
   const next = { ...model, last: item };
-  if (typeof item === 'string') {
+  if (msg.kind === 'language' && typeof item === 'string') {
     const i = LANGUAGES.indexOf(item);
     if (i >= 0) next.language = i;
   }
-  if (typeof item === 'number') {
+  if (msg.kind === 'size' && typeof item === 'number') {
     const i = SIZES.indexOf(item);
     if (i >= 0) next.size = i;
   }
@@ -50,7 +53,7 @@ function view(model: Model) {
   return (
     <box width="grow" height="grow" pad={24} gap={14} crossAlign="start">
       <text size={12} color="$muted">{'<select>: the choice posts its label'}</text>
-      {row('language', <select label="language" options={LANGUAGES} current={model.language} />)}
+      {row('language', <select label="language" options={LANGUAGES} current={model.language} onMenu={{ kind: 'language' }} />)}
       <text size={12} color="$muted">{"options as menu items: the choice posts the item's `id` — the size itself"}</text>
       {row(
         'size',
@@ -58,6 +61,7 @@ function view(model: Model) {
           label="size"
           options={SIZES.map((s) => ({ label: `${s} pt`, id: s }))}
           current={model.size}
+          onMenu={{ kind: 'size' }}
         />,
       )}
       <box height={10} />
@@ -71,7 +75,7 @@ function view(model: Model) {
   );
 }
 
-await run<Model, never>({
+await run<Model, AppMsg>({
   name: 'select',
   init,
   update,

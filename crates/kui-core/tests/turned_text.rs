@@ -7,8 +7,8 @@
 
 use kui_core::testing::{edit_key, press, release};
 use kui_core::{
-    Core, DevtoolsDock, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, Role, Size,
-    TextStyle, Value, Vec2,
+    Core, DevtoolsDock, EditKey, EditOptions, EventKind, InputEvent, Key, Mods, NodeSpec, Role,
+    Size, TextStyle, Value, Vec2,
 };
 
 const VIEW: Size = Size { w: 400.0, h: 200.0 };
@@ -183,11 +183,11 @@ fn a_sinks_line_and_byte_read_through_a_turn_below_it() {
         let evs = press(&mut core, at);
         let d = evs
             .iter()
-            .find(|e| e.payload.get_str("kind") == Some("drag"))
+            .find(|e| e.is(EventKind::Drag))
             .expect("a drag event");
         (
-            d.payload.get("line").cloned(),
-            d.payload.get("byte").cloned(),
+            d.data().and_then(|p| p.get("line")).cloned(),
+            d.data().and_then(|p| p.get("byte")).cloned(),
         )
     };
     let upright = read(0.0, 0.0);

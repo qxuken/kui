@@ -54,6 +54,17 @@ export function createEncoder(P) {
   const TOGGLE_ROWS = new Set([...(ROWS.get('checkbox') ?? [])].filter((k) => k !== 'onClick' && k !== 'key'));
   const SLIDER_ROWS = new Set([...(ROWS.get('slider') ?? [])].filter((k) => k !== 'key'));
   const TOGGLE_KIND = { checkbox: 0, radio: 1, switch: 2 };
+  // The text an editor op carries: its `value` when it declares one,
+  // which wins (bit 32 says so, bit 64 that `initial` was declared
+  // beside it, for the core's `edit-value-and-initial`), else its seed.
+  function editText(p, tag) {
+    const text = p.value ?? p.initial ?? '';
+    if (typeof text !== 'string') {
+      throw new Error(`<${tag}> ${p.value != null ? 'value' : 'initial'} must be a string, got ${JSON.stringify(text)}`);
+    }
+    return text;
+  }
+  const valueFlags = (p) => (p.value != null ? 32 | (p.initial != null ? 64 : 0) : 0);
   // `<span>` is part of the text element (its props are read by collectSpans),
   // and the hud is the graph's other spelling.
   // `<input>` is the stock field around an `edit` (`widgets::text_input`),
@@ -440,11 +451,11 @@ export function createEncoder(P) {
       if (v === undefined) continue;
       if (admit !== undefined && !admit.has(k)) continue;
       if (v === null) {
-        // A null tag (onKey / onDrag / onHover / onLayout) still declares
-        // the behaviour, just with no `tag` on its events; every other
-        // null means absent.
+        // A null handler (onKey / onDrag / onHover / onLayout / …) still
+        // declares the behaviour, its events arriving as their field alone
+        // (`{drag: {…}}`, ADR 0047); every other null means absent.
         const def = PR[k];
-        if (def === undefined || def.kind !== 'tag') continue;
+        if (def === undefined || def.kind !== 'handler') continue;
       }
       switch (k) {
         case 'dir':
@@ -619,7 +630,7 @@ export function createEncoder(P) {
               max(v);
               break;
             case 'msg':
-            case 'tag':
+            case 'handler':
             case 'keyframes':
             case 'enter':
             case 'gradient':
@@ -1001,8 +1012,9 @@ export function createEncoder(P) {
         if (label == null) throw new Error('<edit> needs a key or id prop (state is retained by key)');
         f[fi++] = OP.edit;
         strRef(label);
-        strRef(p.initial ?? '');
-        f[fi++] = (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0) | (p.keepTab ? 8 : 0) | (p.secure ? 16 : 0);
+        strRef(editText(p, 'edit'));
+        f[fi++] =
+          (p.multiline ? 1 : 0) | (p.autofocus ? 2 : 0) | (p.keepTab ? 8 : 0) | (p.secure ? 16 : 0) | valueFlags(p);
         strRef(p.placeholder ?? null);
         props(p, null, false);
         return;
@@ -1010,17 +1022,19 @@ export function createEncoder(P) {
       case 'input': {
         // The stock single-line field with its chrome (`widgets::text_input`):
         // `label` is the key and the accessible name both, `initial` the
-        // seed, and nothing else is read — the same door Lua's
-        // `input { label = }` and C's `kui_text_input` are (backlog B1a).
-        // Flag bit 4 on the edit op says so; the prop list is empty.
+        // seed or `value` the value, and `onChange` / `onSubmit` /
+        // `onCancel` the messages it reports in — the same door Lua's
+        // `input { label = }` and C's `kui_text_input` are (backlog B1a,
+        // ADR 0047). Flag bit 4 on the edit op says so; the prop list
+        // carries the three handler rows and nothing else.
         const label = p.label ?? el.key;
         if (label == null) throw new Error('<input> needs a label (its key and accessible name)');
         f[fi++] = OP.edit;
         strRef(String(label));
-        strRef(p.initial ?? '');
-        f[fi++] = 4;
+        strRef(editText(p, 'input'));
+        f[fi++] = 4 | valueFlags(p);
         strRef(null);
-        props({}, null, false);
+        props({ onChange: p.onChange, onSubmit: p.onSubmit, onCancel: p.onCancel }, null, false);
         return;
       }
       case 'select': {
@@ -1048,6 +1062,9 @@ export function createEncoder(P) {
         strRef(String(label));
         strRef(JSON.stringify(p.options));
         f[fi++] = current == null ? 0 : current + 1;
+        // The message a choice arrives as, `menu: {role, item}` in it
+        // (ADR 0047); none (or null) is the field alone, `{menu: …}`.
+        strRef(p.onMenu == null ? null : JSON.stringify(p.onMenu));
         return;
       }
       case 'tooltip': {

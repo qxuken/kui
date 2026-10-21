@@ -76,13 +76,24 @@ pub fn drive(core: &mut Core, events: &[InputEvent]) -> Vec<UiEvent> {
     out
 }
 
-/// The `kind` of each event, in order: what a payload map's `kind` says,
-/// a bare string payload as itself, and `"?"` for anything else.
-pub fn kinds(evs: &[UiEvent]) -> Vec<&str> {
+/// Which event each was, in order: the envelope's [`UiEvent::event`] by
+/// its wire name (`"drag"`, `"click"`, `"change"`).
+pub fn kinds(evs: &[UiEvent]) -> Vec<&'static str> {
+    evs.iter().map(|e| e.event.name()).collect()
+}
+
+/// The app's message of each event, in order, by what it names: a bare
+/// string message as itself, a map's `kind`, the string it was kept
+/// under `tag` as, else `"?"` — the reading for "which message came
+/// back", where [`kinds`] is "what happened".
+pub fn messages(evs: &[UiEvent]) -> Vec<&str> {
     evs.iter()
-        .map(|e| match e.kind() {
-            Some(k) => k,
-            None => e.payload.as_str().unwrap_or("?"),
+        .map(|e| {
+            e.payload
+                .as_str()
+                .or_else(|| e.payload.get_str("kind"))
+                .or_else(|| e.payload.get_str("tag"))
+                .unwrap_or("?")
         })
         .collect()
 }

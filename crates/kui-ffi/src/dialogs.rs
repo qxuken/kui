@@ -95,9 +95,10 @@ fn dialog_of(d: &KuiFileDialog) -> Result<kui_core::FileDialog, String> {
 }
 
 /// Asks for the platform's Open, Save or folder dialog. The answer is a
-/// `{kind:"files", paths, tag}` event — `paths` empty when the user
-/// cancelled — to whoever asked. `dialog` NULL is an Open dialog for one
-/// file; `tag` may be NULL and is consumed. False when one is already out
+/// `files` event on the root, `tag` with `files: {paths}` in it (ADR
+/// 0047) — `paths` empty when the user cancelled — to whoever asked.
+/// `dialog` NULL is an Open dialog for one file; `tag`, the message, may
+/// be NULL and is consumed. False when one is already out
 /// (one dialog at a time) or the dialog is malformed.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_request_files(
@@ -216,7 +217,7 @@ pub extern "C" fn kui_file_request_filter(
 }
 
 /// A file dialog's answer: the `count` paths picked, none for a cancelled
-/// dialog. Whoever asked hears `{kind:"files", paths, tag}`; with nothing
+/// dialog. Whoever asked hears its message with `files: {paths}` in it; with nothing
 /// asked it is dropped.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_files(ptr: *mut KuiCtx, paths: *const KuiStr, count: usize) {

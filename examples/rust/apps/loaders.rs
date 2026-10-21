@@ -40,8 +40,8 @@ use std::time::Instant;
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, FloatConfig, Gradient, Message, NodeSpec, Path, QuadKind, Role, Side,
-    Stroke, TextStyle, Ui, UiEvent, Vec2,
+    Align, App, Color, Core, Event, FloatConfig, Gradient, Message, NodeSpec, Path, QuadKind, Role,
+    Side, Stroke, TextStyle, Ui, UiEvent, Vec2,
 };
 
 /// How long the job takes at speed 1, in seconds.
@@ -57,7 +57,8 @@ enum Msg {
     /// Start, pause, resume or run again: whichever the state offers.
     Toggle,
     Reset,
-    /// The speed slider's tag; the value rides on the `change` event.
+    /// The speed slider's message; the value rides beside it, under
+    /// `change`.
     Speed,
 }
 
@@ -416,8 +417,8 @@ impl App for Loaders {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.message::<Msg>() {
-            Some(Msg::Toggle) => {
+        match ev.split::<Msg>() {
+            (Some(Msg::Toggle), _) => {
                 self.state = match self.state {
                     State::Idle | State::Paused => State::Running,
                     State::Running => State::Paused,
@@ -427,19 +428,15 @@ impl App for Loaders {
                     }
                 }
             }
-            Some(Msg::Reset) => {
+            (Some(Msg::Reset), _) => {
                 self.state = State::Idle;
                 self.progress = 0.0;
                 self.phase = 0.0;
             }
             // A slider proposes; the app stores, and the next frame draws
             // the slider there.
-            Some(Msg::Speed) => {
-                if let Some(v) = ev.payload.get_float("value") {
-                    self.speed = v as f32;
-                }
-            }
-            None => {}
+            (Some(Msg::Speed), Event::SliderChange(c)) => self.speed = c.value as f32,
+            _ => {}
         }
     }
 }

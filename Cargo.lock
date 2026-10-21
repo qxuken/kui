@@ -1570,6 +1570,7 @@ dependencies = [
 name = "kui-derive"
 version = "0.1.0-alpha.59"
 dependencies = [
+ "kui-core",
  "proc-macro2",
  "quote",
  "syn 2.0.119",

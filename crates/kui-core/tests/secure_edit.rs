@@ -8,8 +8,8 @@
 //! without `secure`.
 
 use kui_core::{
-    ClipboardMarks, Core, EditKey, EditOptions, InputEvent, Key, Mods, NodeSpec, QuadKind, Role,
-    SECURE_BULLET, Size,
+    ClipboardMarks, Core, EditKey, EditOptions, EventKind, InputEvent, Key, Mods, NodeSpec,
+    QuadKind, Role, SECURE_BULLET, Size, Value,
 };
 
 const SHIFT: Mods = Mods {
@@ -28,6 +28,8 @@ fn frame(core: &mut Core, initial: &str, secure: bool) -> Key {
     frame_with(core, initial, secure, false)
 }
 
+/// [`frame`], `multiline` as asked. The field declares its submit row: an
+/// editor with no row sends nothing (ADR 0047).
 fn frame_with(core: &mut Core, initial: &str, secure: bool, multiline: bool) -> Key {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill().pad(10.0));
@@ -40,7 +42,11 @@ fn frame_with(core: &mut Core, initial: &str, secure: bool, multiline: bool) -> 
             multiline,
             ..Default::default()
         },
-        NodeSpec::column().width(300.0).pad(5.0).label("Password"),
+        NodeSpec::column()
+            .width(300.0)
+            .pad(5.0)
+            .label("Password")
+            .on_submit(Value::Null),
     );
     ui.finish();
     key
@@ -228,9 +234,7 @@ fn a_secure_editor_is_a_field() {
     let events = core.handle_input(InputEvent::Key(EditKey::Enter, Mods::default()));
     assert_eq!(core.edit_text(key).as_deref(), Some("ab"));
     assert!(
-        events
-            .iter()
-            .any(|e| e.payload.get_str("kind") == Some("submit")),
+        events.iter().any(|e| e.is(EventKind::Submit)),
         "Enter submits: {events:?}"
     );
     frame_with(&mut core, "", true, true);

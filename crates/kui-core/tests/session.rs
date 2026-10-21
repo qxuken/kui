@@ -425,7 +425,8 @@ fn a_tagged_playback_s_ended_event_names_the_window_that_declared_it() {
     let evs = a.take_pending_events();
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].window, WindowId(2));
-    assert_eq!(evs[0].payload.get_str("phase"), Some("refused"));
+    let sound = evs[0].payload.get("sound").expect("a sound field");
+    assert_eq!(sound.get_str("phase"), Some("refused"));
 }
 
 #[test]

@@ -148,8 +148,10 @@ generated from or checked against):
   [`gen/policy.odin`](gen/policy.odin)'s `LOWERING`. A `KuiSpec` field
   no row writes stops the generator.
 - The core's events: `events.odin` is hand-written, but the generator
-  checks every `EVENTS` kind has its `X_Event` struct with every payload
-  field the schema names.
+  checks every `EVENTS` kind that carries data has its `X_Event` struct
+  with every payload field the schema names, and, where the data rides in
+  a field of the app's message (ADR 0047), its `With_X` struct holding
+  just that field, which an app's message embeds with `using _:`.
 - The verbs: every `DOORS` row with a C cell reaches Odin, documented
   with the row's doc and its Rust name.
 

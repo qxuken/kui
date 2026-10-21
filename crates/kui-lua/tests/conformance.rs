@@ -358,7 +358,19 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                        on_key = { kind = "ed" }, role = "multilineTextInput", label = "Buffer",
                        row { key = "l0", height = 20, role = "line", caret = 1,
                              text("ab", { size = 13, family = "mono" }) } },
-              edit { key = "note", initial = "", size = 13, width = 200, label = "Note" } }
+              edit { key = "note", initial = "", size = 13, width = 200, label = "Note",
+                     on_change = { kind = "note" } } }
+        "#
+        .to_string(),
+        // One stock editor held to `value`, a message per handler row
+        // (ADR 0047, decision 7), `on_menu` hearing the stock editing
+        // menu's choice.
+        "edit-rows" => r#"
+            return column { pad = 10, gap = 6,
+              edit { key = "title", value = "AB", size = 13, width = 200, label = "Title",
+                     on_change = { kind = "title" }, on_submit = { kind = "save" },
+                     on_cancel = { kind = "revert" }, on_boundary = { kind = "edge" },
+                     on_menu = { kind = "edit" } } }
         "#
         .to_string(),
         "cells" => r#"
@@ -825,13 +837,14 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         // The stock select (backlog F73): `dropdown`, since `select` is
         // Lua's own; the options are strings or the row tables
-        // `env.open_menu` takes, and `current` counts from 1.
+        // `env.open_menu` takes, `current` counts from 1, and the choice
+        // arrives as `on_menu` (ADR 0047).
         "select" => r#"
             return column { pad = 10, gap = 6,
               dropdown { label = "language",
                          options = { "English", "Deutsch", "Français",
                                      { label = "Latin", id = "la", enabled = false } },
-                         current = 2 },
+                         current = 2, on_menu = { kind = "lang" } },
               text("body", { size = 12 }),
             }
         "#
@@ -878,6 +891,32 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                             on_drag = { kind = "split" } }
         "#
         .to_string(),
+        // The `virtual` list, `selectable`, a line of text in each built
+        // row, and the message the copy's ask arrives as (ADR 0047).
+        "selection-range" => {
+            let count = conformance::VIRTUAL_ROW_COUNT;
+            let rows = conformance::VIRTUAL_ROWS
+                .iter()
+                .map(|i| {
+                    format!(
+                        "column {{ index = {i}, width = \"grow\", height = 20, \
+                         text(\"row {i}\", {{ size = 13 }}) }},"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            format!(
+                r#"
+            return column {{ key = "list", width = 120, height = 60, gap = 0,
+                             scroll_y = true, bg = 0x101018ff, row_count = {count},
+                             selectable = true, on_selection_range = {{ kind = "rows" }},
+              column {{ key = "lead", width = "grow", height = 20 }},
+                {rows}
+              column {{ key = "tail", width = "grow", height = 100 }},
+            }}
+        "#
+            )
+        }
         "virtual" => {
             // `index` is a number where `key` is a string: the row's own
             // data index, which is what a virtual list opens its rows at.

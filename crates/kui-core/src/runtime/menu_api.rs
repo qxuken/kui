@@ -20,14 +20,13 @@ use crate::geom::Vec2;
 /// nothing to say about a passage.
 pub const LOOKUP_MAX: usize = 100;
 
-use crate::input::UiEvent;
+use crate::input::{EventKind, UiEvent};
 use crate::key::Key;
 use crate::menu::{Menu, MenuAction, MenuItem, MenuRole};
 use crate::runtime::Core;
 use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::value::Value;
-use crate::window::WindowId;
 
 impl Core {
     /// The menu this window has open, if any.
@@ -413,7 +412,7 @@ impl Core {
             if ev.origin != origin {
                 return true;
             }
-            if ev.kind() == Some("dismiss") {
+            if ev.is(EventKind::Dismiss) {
                 taken.dismissed = true;
             } else if let Some(i) = index(&ev.payload, "row") {
                 taken.row = Some(i);
@@ -438,7 +437,7 @@ impl Core {
             return;
         };
         self.close_menu();
-        self.perform_menu_item(&item, menu.target, menu.origin, out);
+        self.perform_menu_item(&item, menu.target, menu.origin, false, out);
     }
 
     /// One item, performed and posted, wherever it was chosen from: the
@@ -450,12 +449,15 @@ impl Core {
     /// `target` is the node the event is posted on and `origin` who hears
     /// it; the standard roles act on [`Core::menu_editor`], which each
     /// caller sets when its menu opens — an editor's selection lives with
-    /// its focus, and a menu's rows take that focus.
+    /// its focus, and a menu's rows take that focus. `bar` says the menu
+    /// is the application menu bar's, whose choice is a root event: it
+    /// has no node to declare a handler on (ADR 0047, decision 6).
     pub(crate) fn perform_menu_item(
         &mut self,
         item: &MenuItem,
         target: Key,
         origin: crate::tree::OriginId,
+        bar: bool,
         out: &mut Vec<UiEvent>,
     ) {
         // A row that is its chord plays it instead (backlog F151).
@@ -467,21 +469,31 @@ impl Core {
             return;
         }
         self.perform_role(item.role, target, out);
-        // Every chosen item posts, including the standard ones: an app
-        // that wants to know its editor was cut from does not have to
-        // guess, and one that does not simply ignores the event.
-        let payload = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
-        out.push(UiEvent {
-            origin,
-            window: WindowId::MAIN,
-            key: target,
-            payload: Value::map([
-                ("kind", Value::str("menu")),
-                ("role", Value::str(item.role.name())),
-                ("item", payload),
-            ]),
-            slot: None,
-        });
+        // Every chosen item posts, including the standard ones, to a node
+        // that declared `on_menu` and to the bar's root: an app that wants
+        // to know its editor was cut from does not have to guess, and one
+        // that does not simply ignores the event. A menu opened for a node
+        // that declared none — the stock right-click menu, whose roles the
+        // core has just performed — posts nothing (ADR 0047, decision 5).
+        let picked = item.id.clone().unwrap_or_else(|| Value::str(item.text()));
+        let data = Value::map([("role", Value::str(item.role.name())), ("item", picked)]);
+        if bar {
+            out.push(UiEvent::root(EventKind::Menu, origin, target, data));
+            return;
+        }
+        let message = self
+            .tree
+            .index_of(target)
+            .and_then(|i| self.tree.specs[i].events().on_menu.as_ref());
+        if let Some(message) = message {
+            out.push(UiEvent::declared(
+                EventKind::Menu,
+                origin,
+                target,
+                Some(message),
+                data,
+            ));
+        }
     }
 
     /// What a standard role does, against [`Core::menu_editor`] or the
@@ -546,7 +558,7 @@ impl Core {
                     // (`apply_text`, `apply_key`, a reader's `setValue`),
                     // so an app mirroring the field hears this one too
                     // (AR15).
-                    self.push_edit_event(key, "changed", out);
+                    self.push_edit_event(key, EventKind::Change, out);
                 }
             }
             MenuRole::Paste => self.queue_paste(),
