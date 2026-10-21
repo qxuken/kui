@@ -38,7 +38,7 @@ fn a_press_on_a_keep_focus_node_acts_and_leaves_the_sink_focused() {
         let (mut core, evs) = pressed(on_button, on_row);
         let sink = core.key_of("sink");
         assert!(
-            evs.iter().any(|e| e.payload.as_str() == Some("go")),
+            evs.iter().any(|e| e.payload.get_str("tag") == Some("go")),
             "the click still lands"
         );
         assert_eq!(core.key_focus(), sink, "button {on_button}, row {on_row}");
@@ -89,7 +89,7 @@ fn a_press_on_a_keep_focus_node_leaves_the_selection_it_acts_on() {
         assert!(selected.is_some(), "the drag selected");
         let evs = click(&mut core, Vec2::new(50.0, 60.0));
         assert!(
-            evs.iter().any(|e| e.payload.as_str() == Some("copy")),
+            evs.iter().any(|e| e.payload.get_str("tag") == Some("copy")),
             "the click lands"
         );
         if keep {
@@ -140,7 +140,7 @@ fn a_press_on_a_keep_focus_node_leaves_the_ring_where_the_keyboard_is() {
     // keyboard on "a" — and Tab goes on from there, not into the toolbar's
     // ring under the pointer.
     let evs = click(&mut core, Vec2::new(50.0, 75.0));
-    assert!(evs.iter().any(|e| e.payload.as_str() == Some("bold")));
+    assert!(evs.iter().any(|e| e.payload.get_str("tag") == Some("bold")));
     assert_eq!(core.key_focus(), core.key_of("a"));
     assert_eq!(core.region(), region, "the ring is the keyboard's");
     tab(&mut core, false);

@@ -54,7 +54,7 @@ fn on_click_still_emits_and_hover_tracks() {
     core.handle_input(InputEvent::mouse_down(1));
     let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.as_str(), Some("hit"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("hit"));
 }
 
 #[test]

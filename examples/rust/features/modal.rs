@@ -141,7 +141,7 @@ impl App for Page {
             }
             return;
         }
-        match ev.payload.as_str() {
+        match ev.message::<String>().as_deref() {
             Some("open") => {
                 self.dialog = true;
                 self.confirm = false;

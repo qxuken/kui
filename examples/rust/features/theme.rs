@@ -221,7 +221,7 @@ impl App for Gallery {
             // which the stock menu posts as the row's text — except the
             // one the demo buttons post, which is not a menu choice and
             // must not be reported as the last one.
-            _ => match ev.payload.as_str() {
+            _ => match ev.message::<String>().as_deref() {
                 Some(NOOP) | None => {}
                 Some(s) => {
                     self.said = Some(s.to_string());

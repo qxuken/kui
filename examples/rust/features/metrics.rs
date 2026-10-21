@@ -149,7 +149,7 @@ impl App for Page {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.as_str() {
+        match ev.message::<String>().as_deref() {
             Some("comfortable") => self.density = Density::Comfortable,
             Some("compact") => self.density = Density::Compact,
             Some("large") => self.density = Density::Large,

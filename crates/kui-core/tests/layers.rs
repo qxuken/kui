@@ -131,7 +131,7 @@ fn a_press_on_a_float_over_the_bar_reaches_the_float() {
         button: MouseButton::Primary,
     });
     assert_eq!(out.len(), 1, "one click: {out:?}");
-    assert_eq!(out[0].payload.as_str(), Some("menu"));
+    assert_eq!(out[0].payload.get_str("tag"), Some("menu"));
     scroller_and_float(&mut core, false);
     assert_eq!(
         core.scroll_offset(list).y,
@@ -233,7 +233,7 @@ fn the_hit_list_is_the_stack() {
             button: MouseButton::Primary,
         })
         .pop()
-        .and_then(|e| e.payload.as_str().map(str::to_string))
+        .and_then(|e| e.payload.get_str("tag").map(str::to_string))
     };
     build(&mut core, true);
     assert_eq!(click(&mut core).as_deref(), Some("tip"), "tree order");
@@ -844,7 +844,7 @@ fn a_stroke_is_hit_at_its_place_among_its_siblings() {
         core.handle_input(InputEvent::mouse_down(1));
         let evs = core.handle_input(InputEvent::mouse_up());
         evs.first()
-            .and_then(|e| e.payload.as_str())
+            .and_then(|e| e.payload.get_str("tag"))
             .map(str::to_string)
     }
     let mut core = Core::new();

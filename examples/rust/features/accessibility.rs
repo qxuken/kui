@@ -548,7 +548,9 @@ impl App for A11y {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let payload = &ev.payload;
+        // The messages here are bare strings and numbers, which the core
+        // keeps under `tag` (ADR 0047): that is what is matched.
+        let payload = ev.payload.get("tag").unwrap_or(&ev.payload);
         match payload.as_str() {
             Some("press") => {
                 self.presses += 1;

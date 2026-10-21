@@ -137,7 +137,7 @@ fn key(core: &mut Core, k: EditKey) -> Vec<UiEvent> {
 /// colon for a `dismiss`).
 fn payloads(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .map(|e| match e.payload.as_str() {
+        .map(|e| match e.payload.get_str("tag").filter(|_| e.data().is_none()) {
             Some(s) => s.to_string(),
             None => format!(
                 "{}:{}",
@@ -1031,7 +1031,7 @@ fn a_drag_in_flight_when_a_modal_appears_still_ends() {
         "the capture runs to release"
     );
     assert!(
-        !after.iter().any(|e| e.payload.as_str().is_some()),
+        !after.iter().any(|e| e.is(kui_core::EventKind::Click)),
         "and a release after a drag is not a click"
     );
 

@@ -82,7 +82,7 @@ fn clipped_away_rows_are_culled_and_unclickable() {
     core.handle_input(InputEvent::mouse_down(1));
     let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.as_int(), Some(3));
+    assert_eq!(evs[0].payload.get_int("tag"), Some(3));
 
     // After scrolling down two rows, the same cursor position hits row 5.
     wheel(&mut core, -60.0);
@@ -90,7 +90,7 @@ fn clipped_away_rows_are_culled_and_unclickable() {
     core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 100.0)));
     core.handle_input(InputEvent::mouse_down(1));
     let evs = core.handle_input(InputEvent::mouse_up());
-    assert_eq!(evs[0].payload.as_int(), Some(5));
+    assert_eq!(evs[0].payload.get_int("tag"), Some(5));
 }
 
 #[test]
@@ -674,7 +674,7 @@ fn hit_under(core: &mut Core, y: f32) -> Option<(i64, kui_core::Key)> {
     core.handle_input(InputEvent::mouse_down(1));
     let evs = core.handle_input(InputEvent::mouse_up());
     let e = evs.first()?;
-    Some((e.payload.as_int()?, e.key))
+    Some((e.payload.get_int("tag")?, e.key))
 }
 
 #[test]

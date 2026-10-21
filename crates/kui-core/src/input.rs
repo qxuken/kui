@@ -28,7 +28,7 @@
 //! core.handle_input(InputEvent::mouse_down(1));
 //! let events = core.handle_input(InputEvent::mouse_up());
 //! assert_eq!(events.len(), 1);
-//! assert_eq!(events[0].payload.as_str(), Some("ok"));
+//! assert_eq!(events[0].payload.get_str("tag"), Some("ok"));
 //! assert_eq!(Some(events[0].key), core.key_of("ok"));
 //! ```
 
@@ -1621,11 +1621,13 @@ impl UiEvent {
     /// An event as it arrives at the app: the message that declared it —
     /// a node's handler row, a playback's tag, a file dialog's — with the
     /// event's `data` written into it under the event's name (ADR 0047).
-    /// A `Null` `data` writes nothing, so a plain click arrives exactly as
-    /// declared. A map message keeps its own fields beside the one written;
-    /// a `Null` or absent message is a map of that field alone; any other
-    /// message is kept under `tag` (decision 3). A field the message
-    /// already has is the core's: the event's data replaces it.
+    /// The payload is always a map. A map message keeps its own fields
+    /// beside the one written; a `Null` or absent message is a map of that
+    /// field alone, `{}` for an event with no data; any other message is
+    /// kept under `tag` (decision 3). A `Null` `data` writes nothing, so a
+    /// plain click on a map message arrives exactly as declared. A field
+    /// the message already has is the core's: the event's data replaces
+    /// it.
     ///
     /// The window is left [`WindowId::MAIN`] and the slot `None` for the
     /// core to stamp on the way out (see [`UiEvent::window`],
@@ -1638,26 +1640,22 @@ impl UiEvent {
         data: Value,
     ) -> Self {
         let mut taken = false;
-        let payload = match (message, data) {
-            (Some(m), Value::Null) => m.clone(),
-            (None, Value::Null) => Value::Null,
-            (message, data) => {
-                let mut entries = match message {
-                    Some(Value::Map(own)) => own.clone(),
-                    None | Some(Value::Null) => Vec::new(),
-                    Some(other) => vec![("tag".to_string(), other.clone())],
-                };
-                let field = event.name();
-                match entries.iter_mut().find(|(k, _)| k == field) {
-                    Some(slot) => {
-                        slot.1 = data;
-                        taken = true;
-                    }
-                    None => entries.push((field.to_string(), data)),
-                }
-                Value::Map(entries)
-            }
+        let mut entries = match message {
+            Some(Value::Map(own)) => own.clone(),
+            None | Some(Value::Null) => Vec::new(),
+            Some(other) => vec![("tag".to_string(), other.clone())],
         };
+        if data != Value::Null {
+            let field = event.name();
+            match entries.iter_mut().find(|(k, _)| k == field) {
+                Some(slot) => {
+                    slot.1 = data;
+                    taken = true;
+                }
+                None => entries.push((field.to_string(), data)),
+            }
+        }
+        let payload = Value::Map(entries);
         Self {
             origin,
             window: WindowId::MAIN,
@@ -3151,7 +3149,7 @@ mod tests {
         );
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].key, k);
-        assert_eq!(evs[0].payload.as_str(), Some("go"));
+        assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
     }
 
     #[test]
@@ -3441,7 +3439,7 @@ mod tests {
         assert!(it.is_pressed(k));
         let evs = drive(&mut it, &[InputEvent::mouse_up()]);
         assert_eq!(evs.len(), 1);
-        assert_eq!(evs[0].payload.as_str(), Some("go"));
+        assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
     }
 
     #[test]

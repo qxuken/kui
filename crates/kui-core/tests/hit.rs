@@ -20,7 +20,7 @@ fn frame(core: &mut Core, build: impl FnOnce(&mut kui_core::Ui<'_>)) {
 fn tag(events: &[kui_core::UiEvent]) -> Vec<String> {
     events
         .iter()
-        .filter_map(|e| e.payload.as_str().map(str::to_string))
+        .filter_map(|e| e.payload.get_str("tag").map(str::to_string))
         .collect()
 }
 

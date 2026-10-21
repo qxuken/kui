@@ -461,7 +461,7 @@ fn a_click_request_emits_what_a_pointer_click_would() {
     }));
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, button);
-    assert_eq!(evs[0].payload.as_str(), Some("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 
     // A window button issues its command instead.
     let close = Key::ROOT.str("titlebar").str("close");

@@ -598,7 +598,7 @@ fn a_press_walks_the_ring_presses_a_control_and_nudges_a_slider() {
     let evs = press(&mut core, KeyCode::Space);
     assert_eq!(evs.len(), 1, "space pressed the focused control");
     assert_eq!(evs[0].key, go);
-    assert_eq!(evs[0].payload.as_str(), Some("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 
     press(&mut core, KeyCode::Tab);
     assert_eq!(core.focus(), Some(vol), "tab moved on to the slider");

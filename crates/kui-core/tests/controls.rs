@@ -63,7 +63,7 @@ fn a_checkbox_reads_its_state_and_presses_through_its_payload() {
     assert_eq!(core.focus(), Some(keys.0));
     let evs = key(&mut core, KeyCode::Space);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.as_str(), Some("mute"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("mute"));
 
     build(&mut core, true, false);
     assert_eq!(node(&mut core, keys.0).checked, Some(true));
@@ -89,7 +89,7 @@ fn a_radio_group_s_arrows_press_the_radio_they_land_on() {
     key(&mut core, KeyCode::Tab);
     let evs = key(&mut core, KeyCode::Down);
     assert_eq!(evs.len(), 1, "moving the choice pressed the next radio");
-    assert_eq!(evs[0].payload.as_int(), Some(1));
+    assert_eq!(evs[0].payload.get_int("tag"), Some(1));
     build(&mut core, 1);
     let checked: Vec<Option<bool>> = core
         .access_tree()
@@ -169,7 +169,7 @@ fn a_press_proposes_the_value_under_it_and_a_drag_each_new_step() {
         .collect();
     assert_eq!(ended, [(100.0, "end")]);
     assert!(
-        evs.iter().all(|e| e.payload.as_str() != Some("vol")),
+        evs.iter().all(|e| !e.is(kui_core::EventKind::Click)),
         "a slide is not a click"
     );
 }

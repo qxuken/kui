@@ -176,7 +176,7 @@ fn space_presses_a_button_and_never_reaches_the_shell() {
     assert_eq!(sink_events(&evs), vec![]);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, k.go);
-    assert_eq!(evs[0].payload, Value::str("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn enter_presses_a_button_and_never_reaches_the_shell() {
     let evs = named(&mut core, KeyCode::Enter, EditKey::Enter);
     assert_eq!(sink_events(&evs), vec![]);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload, Value::str("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 }
 
 #[test]
@@ -322,7 +322,7 @@ fn a_text_after_a_chorded_press_bubbles_with_it() {
     // channel — has no chord to agree with, and presses as it always did.
     let evs = core.handle_input(InputEvent::Text(" ".into()));
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload, Value::str("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 }
 
 #[test]

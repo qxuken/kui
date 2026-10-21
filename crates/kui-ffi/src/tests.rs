@@ -1756,8 +1756,8 @@ mod queries_headless {
         assert_eq!(ev_kind(&ev), "submit");
         assert_eq!(ev.root, 0, "a node's, though it carries no data");
         assert!(
-            matches!(unsafe { &(*ev.payload).0 }, Value::Null),
-            "a NULL message is no message: Enter's payload is empty"
+            matches!(unsafe { &(*ev.payload).0 }, Value::Map(m) if m.is_empty()),
+            "a NULL message is no message: Enter's payload is an empty map"
         );
         kui_ctx_free(ctx);
     }
@@ -2193,7 +2193,7 @@ mod queries_headless {
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         assert_eq!(ev.key, out[1].key);
-        assert_eq!(unsafe { &*ev.payload }.0.as_str(), Some("save"));
+        assert_eq!(unsafe { &*ev.payload }.0.get_str("tag"), Some("save"));
         kui_input_access(
             ctx,
             out[2].key,

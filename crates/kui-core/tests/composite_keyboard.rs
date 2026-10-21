@@ -66,14 +66,14 @@ fn frame(
 fn press(core: &mut Core, ek: EditKey) -> Vec<String> {
     let out = core.handle_input(InputEvent::Key(ek, Mods::default()));
     out.iter()
-        .filter_map(|e| e.payload.as_str().map(str::to_string))
+        .filter_map(|e| e.payload.get_str("tag").map(str::to_string))
         .collect()
 }
 
 fn typed(core: &mut Core, s: &str) -> Vec<String> {
     let out = core.handle_input(InputEvent::Text(s.to_string()));
     out.iter()
-        .filter_map(|e| e.payload.as_str().map(str::to_string))
+        .filter_map(|e| e.payload.get_str("tag").map(str::to_string))
         .collect()
 }
 

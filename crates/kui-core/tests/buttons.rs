@@ -341,7 +341,7 @@ fn the_primary_button_is_untouched() {
     // A click on the pane's button still clicks, and no `button` event.
     let evs = click_at(&mut core, 20.0, EDIT_Y + 40.0);
     assert!(
-        evs.iter().any(|e| e.payload.as_str() == Some("go")),
+        evs.iter().any(|e| e.payload.get_str("tag") == Some("go")),
         "{evs:?}"
     );
     assert!(evs.iter().all(|e| e.button().is_none()));

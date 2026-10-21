@@ -625,23 +625,17 @@ impl Extension for LuaExtension {
 }
 
 /// The table `on_event` is handed for a payload: the message as a table,
-/// so the envelope (`event`, `node_key`, …) has somewhere to go. A map
-/// is itself; a message that is not one — a bare `on_click = "mute"`, or a
-/// stock input's submit, whose message is `Null` — is the table the core
-/// makes for one when it has data to add (ADR 0047, decision 3): `{ tag =
-/// "mute" }` for a string or a number, `{}` for nothing.
+/// so the envelope (`event`, `node_key`, …) has somewhere to go. Every
+/// payload the core builds is a map (ADR 0047, decision 3): a bare
+/// `on_click = "mute"` arrives as `{ tag = "mute" }`, and a stock input's
+/// submit, whose message is `Null`, as `{}`.
 fn event_payload(lua: &Lua, payload: &Value) -> mlua::Result<Table> {
-    match payload {
-        Value::Map(_) | Value::List(_) => match value_to_lua(lua, payload)? {
-            mlua::Value::Table(t) => Ok(t),
-            other => unreachable!("a map is a table, not {}", other.type_name()),
-        },
-        Value::Null => lua.create_table(),
-        other => {
-            let t = lua.create_table()?;
-            t.set("tag", value_to_lua(lua, other)?)?;
-            Ok(t)
-        }
+    match value_to_lua(lua, payload)? {
+        mlua::Value::Table(t) => Ok(t),
+        other => Err(mlua::Error::runtime(format!(
+            "an event's payload is a map, not {}",
+            other.type_name()
+        ))),
     }
 }
 
@@ -4950,7 +4944,7 @@ mod tests {
         }));
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].origin, OriginId(1));
-        assert_eq!(evs[0].payload.as_str(), Some("save"));
+        assert_eq!(evs[0].payload.get_str("tag"), Some("save"));
     }
 
     /// A script that draws its own editor: `role = "multilineTextInput"`
@@ -8120,7 +8114,7 @@ mod tests {
         core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, y)));
         core.handle_input(InputEvent::mouse_down(1));
         let evs = core.handle_input(InputEvent::mouse_up());
-        evs.first()?.payload.as_int()
+        evs.first()?.payload.get_int("tag")
     }
 
     /// The Lua port of `widgets::list`'s crux: measuring the rows a frame

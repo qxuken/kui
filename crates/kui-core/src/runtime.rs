@@ -148,7 +148,7 @@ pub(crate) enum RegionTarget {
 /// core.handle_input(InputEvent::mouse_down(1));
 /// let events = core.handle_input(InputEvent::mouse_up());
 /// assert_eq!(events.len(), 1);
-/// assert_eq!(events[0].payload.as_str(), Some("save"));
+/// assert_eq!(events[0].payload.get_str("tag"), Some("save"));
 ///
 /// // 6: diagnostics, and whether another frame is owed.
 /// assert!(core.take_warnings().is_empty());

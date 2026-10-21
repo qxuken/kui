@@ -51,7 +51,7 @@
 //! let events = core.handle_input(InputEvent::mouse_up());
 //! let click = events
 //!     .iter()
-//!     .find(|e| e.payload.as_str() == Some("save"))
+//!     .find(|e| e.payload.get_str("tag") == Some("save"))
 //!     .expect("the click reached the button");
 //! assert_eq!(click.key, button.key);
 //! ```

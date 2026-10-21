@@ -159,7 +159,7 @@ fn plain_on_click_nodes_are_unaffected() {
     frame(&mut core);
     let evs = click_at(&mut core, 50.0, 60.0);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.as_str(), Some("content-click"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("content-click"));
     assert!(core.take_window_commands().is_empty());
 }
 

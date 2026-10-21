@@ -89,7 +89,7 @@ fn a_faded_subtree_still_lays_out_and_still_takes_clicks() {
     core.handle_input(InputEvent::mouse_down(1));
     let events = core.handle_input(InputEvent::mouse_up());
     assert_eq!(
-        events.iter().filter_map(|e| e.payload.as_str()).count(),
+        events.iter().filter_map(|e| e.payload.get_str("tag")).count(),
         1,
         "an invisible button still clicks"
     );

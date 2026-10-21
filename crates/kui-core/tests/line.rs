@@ -232,11 +232,11 @@ fn a_line_with_input_is_hit_by_its_stroke() {
     // On the stroke: the line.
     let events = click(&mut core, 50.0, 50.0);
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].payload, Value::str("line"));
+    assert_eq!(events[0].payload.get_str("tag"), Some("line"));
     // In its box, off the stroke: the box under it.
     let events = click(&mut core, 90.0, 10.0);
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].payload, Value::str("under"));
+    assert_eq!(events[0].payload.get_str("tag"), Some("under"));
     // And it is a control to assistive technology now.
     assert_eq!(
         core.access_tree().nodes.len(),
@@ -634,7 +634,7 @@ fn a_dashed_line_is_hit_in_its_gaps() {
         button: MouseButton::Primary,
     });
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].payload, Value::str("line"));
+    assert_eq!(events[0].payload.get_str("tag"), Some("line"));
 }
 
 /// A departing dashed stroke's ghost is dashed.

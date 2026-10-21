@@ -39,7 +39,7 @@ impl App for Pad {
             });
         } else if let Some((KeyPhase::Down, k)) = ev.key_press() {
             self.typed.extend(k.text);
-        } else if ev.payload.as_str() == Some("add") {
+        } else if ev.payload.get_str("tag") == Some("add") {
             self.clicks += 1;
         }
     }
@@ -125,7 +125,7 @@ fn a_handler_acts_on_the_core_its_event_came_from() {
             });
         }
         fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
-            if ev.payload.as_str() == Some("copy") {
+            if ev.payload.get_str("tag") == Some("copy") {
                 core.set_clipboard("copied", None);
                 let sink = core.key_of("sink");
                 core.set_key_focus(sink);
@@ -171,7 +171,7 @@ fn a_handlers_focus_move_is_reported_as_the_programs() {
             });
         }
         fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
-            if ev.payload.as_str() == Some("go") {
+            if ev.payload.get_str("tag") == Some("go") {
                 let sink = core.key_of("sink");
                 core.set_key_focus(sink);
             }
@@ -319,7 +319,7 @@ fn a_handler_reads_the_clock_it_runs_at() {
             ui.leaf_keyed("toast", NodeSpec::row().size(80.0, 30.0).on_click("toast"));
         }
         fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
-            if ev.payload.as_str() == Some("toast") {
+            if ev.payload.get_str("tag") == Some("toast") {
                 self.until = Some(core.now() + 3.0);
             }
         }
