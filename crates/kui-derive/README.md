@@ -90,7 +90,11 @@ match ev.message::<MsgIn>() {
 `on = slider_change` a slider's (`SliderChange`, `{value, phase}`); every
 other name is the event's own (`click`, `key`, `hover`, `drop`, ...). A
 message declared on the wrong handler lacks the field and does not decode
-as the twin.
+as the twin. `click` is the one that is not always there: only a press on
+a `cells` grid or a sink's `line` rows says more than that it was
+clicked, so a button's message needs no `on`, and the same grid
+activated by Enter, Space or a screen reader arrives without the field —
+read it with `ev.message::<Msg>()` when the twin does not decode.
 
 ## Where it fits
 

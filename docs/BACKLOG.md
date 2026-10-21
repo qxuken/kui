@@ -3102,8 +3102,9 @@ filed, and in the archive.
 
 ## From the alpha.60 pre-tag pass (2026-10-22)
 
-The pass over the round since alpha.59 — ADRs 0047 and 0048, F173 —
-on the Windows machine and under WSL: CI's `check` in order on both,
+Two passes over the round since alpha.59 — ADRs 0047 and 0048, F173 —
+one on each machine, the same day. The first, on the Windows machine
+and under WSL: CI's `check` in order on both,
 the windowed round on both, the bench guard (clean against alpha.59),
 and ten minutes of every fuzz target at once on eight cores. Corrected
 before the tag: Odin's surface walk passed `root_with` a bare spec
@@ -3112,6 +3113,45 @@ step failed on main. One entry, FZ10, is what the fuzzing found — an
 arc past an f32 at one scale measured as its chord and drawn round its
 ellipse, 29 seconds into the `path` target; the other five ran clean —
 **built 2026-10-22**, the day it was filed, and in the archive.
+
+The second, on the Mac, over the same round before the first's FZ10
+and Odin fix were merged: CI's `check` in order (2203 Rust tests in 170 suites; the
+62 scenes through every adapter; the C round; the Odin binding
+generated, vetted, driven and across languages, the local compiler
+working again; Node 241 of 241 with the corpus required; gen; the
+typecheck; the headless round), `cargo audit`, the bench guard against
+alpha.59 on every bench file, and three read-only reviewers — the core,
+the bindings, the docs — each claim checked by reading before it was
+acted on. Green as found; the guard green (the guarded rows −4.3% to
++1.3%). One entry, RG156, is what the reviewers and the one bench the
+guard does not read found, **built 2026-10-22**, the day it was filed,
+and in the archive; RG157 is what the pass left.
+
+### `.` RG157 — What the alpha.60 pre-tag pass left
+
+**Found** by the alpha.60 pre-tag pass's reviewers, 2026-10-22, each
+read and judged too small or too much a design question to change
+before the tag.
+
+- **`benches/editing.rs` is not divan**, so `bench-check.nu` reads no
+  rows from it (`KUI_BENCH=editing` exits 2, "no bench rows") and RG156's
+  keystroke tripling was found by reading its table by hand. Port it to
+  divan, with an `on_change` row beside the undeclared one: an editor
+  that declares `on_change` still copies its whole text into every
+  keystroke's `change: {text}`, which is ADR 0047's decision 7 and costs
+  a 100 000-line document about 3 ms a keystroke.
+- **An event's data and an app field of the same name.** For an event
+  with no data (a plain click, a submit, `fonts`) the payload is the
+  message as declared, so a message that has a field named `click` reads
+  as the event's data through `UiEvent::data()` and `Event::read`, and no
+  `message-field-taken` is raised since the core wrote nothing.
+- **Lua's envelope keeps the message's fields**: a message with its own
+  `event` field hides the event's name from `on_event`, and one with
+  `node_key` hides `node_key`, `window`, `slot` and `from` (in the
+  changelog's What breaks; the `node_key` half predates ADR 0047).
+- **`dismiss_window` reads a closed window's messages**: `messages_of`
+  does not check `live`, so a stale driver report for a window the user
+  closed and the app still declares delivers its `on_dismiss`.
 
 ## After alpha.58
 
@@ -4867,3 +4907,7 @@ move.
 **From the alpha.60 pre-tag fuzz round (2026-10-22)** — FZ10, filed and built the same day
 
 - `!` **FZ10** — [An arc past an f32 at one scale is measured as its chord and drawn round its ellipse](backlog/closed-2026-09.md#-fz10--an-arc-past-an-f32-at-one-scale-is-measured-as-its-chord-and-drawn-round-its-ellipse--done-2026-10-22) — done (2026-10-22) — `rasterize_at` measures the physical outline it hands zeno by `drawable`'s rule and leaves the mask blank past it; `fuzz.nu keep` reads tmin's file past libFuzzer's echoed flag
+
+**From the alpha.60 pre-tag pass (2026-10-22)** — RG156, filed and built the same day; RG157, what it left, open
+
+- `~` **RG156** — [A Lua slot's `window_events` took the host's, and a keystroke copied the document for nobody](backlog/closed-2026-09.md#-rg156--a-lua-slots-window_events-took-the-hosts-and-a-keystroke-copied-the-document-for-nobody--done-2026-10-22) — done (2026-10-22) — the group's origin kept with it, the editor's text copied only for a declared `on_change` (100k lines 4.3 → 1.4 ms), the platform bar's choice through `outbound`, a held value keeps its commit's claim, Node's `'dispatch'` envelope, the docs and the changelog

@@ -16,9 +16,9 @@
 //! - The **field keeps its focus ring** while the list is up, and the arrow
 //!   keys walk the list. A popup does not take OS focus, so the owner still
 //!   believes it has the keyboard; the runner routes the keys on.
-//! - **Escape and a press outside** produce a root `{kind:"dismiss"}` —
-//!   the event a `modal` node gets as `dismiss` in its message — and close
-//!   nothing by themselves. This app
+//! - **Escape and a press outside** arrive as the window entry's
+//!   `on_dismiss` message — the event a `modal` node gets as `dismiss` in
+//!   its message — and close nothing by themselves. This app
 //!   answers by clearing `open`, which is the whole of "closing" a popup.
 //! - The **list draws past the bottom edge** of the main window, which an
 //!   in-window float cannot do. Shrink the window and it still does.

@@ -43,8 +43,9 @@ was the first bare bump to break an app in five releases).
   `text` and setTextSelection a `select` on its `onKey` sink.
 - A menu's choice reaches only a node that declares `onMenu`
   (`menu: {role, item}`); the stock right-click menu posts nothing; the
-  menu bar's arrives as the `menuBar` element's own `onMenu`. The stock select and text input declare a
-  `Null` message by default and keep reporting.
+  menu bar's arrives as the `menuBar` element's own `onMenu`. The stock
+  select and text input declare a `Null` message by default and keep
+  reporting.
 - Every node event's payload is a map. A message that is not one — a
   bare `on_click("save")` — arrives as `{tag: "save"}`, with or without
   the event's data, and a `Null` one with no data as `{}`, where both
@@ -53,11 +54,21 @@ was the first bare bump to break an app in five releases).
   `click`.
 - Node: `CoreMsg` is gone, and so is the `RootMsg` that briefly took
   its place: `update` takes the app's own messages. The `*Msg` types
-  name a message carrying an event (`DragMsg<T> = T & WithDrag`).
+  name a message carrying an event (`DragMsg<T> = T & WithDrag`), so
+  `EditMsg`, `AccessMsg` and `FontsMsg` are gone and `ChangeMsg` is
+  `SliderChangeMsg`. `UiEvent.event` can be `'dispatch'`: a message the
+  app or an effect handler dispatched, which had no envelope at all.
 - Lua: `ev.event` names the event; `on_event` gets a table always, as
-  every payload is a map.
+  every payload is a map. A message's own `event` or `window` field wins
+  over the envelope's, and on a `window` event `ev.window` is its data,
+  `{phase, id?}`.
 - C: ABI 33 — `KuiSpec` gains `on_submit`, `on_cancel`, `on_boundary`,
-  `on_menu`, `on_selection_range`; `KuiEvent` gains `event`.
+  `on_menu`, `on_selection_range`; `KuiEvent` gains `event`. Plain
+  `kui_menu_bar` and `kui_window_declare` post nothing — a bar's choice
+  needs `kui_menu_bar_with`, a window's `opened`/`closed` and dismissal
+  `kui_window_declare_with` — and `kui_open_menu` on a node with no
+  `on_menu` posts nothing. `kui_text_input` reports a submit and a
+  cancel as `{}`, told apart by `KuiEvent.event`.
   Odin: the `*_Event` structs lose `tag`; `Changed_Event`,
   `Access_Event`, `Submit_Event`, `Cancel_Event` and `Change_Event` are
   gone. The frame protocol is v24.
@@ -70,14 +81,15 @@ was the first bare bump to break an app in five releases).
   (`window: {phase, id}`), a popup's dismissal as its `onDismiss`
   (`dismiss: {reason, id}`), and a menu bar's choice as its `onMenu`.
   Nothing that declares none hears it. `name` is gone from the `window`
-  and `dismiss` data. `UiEvent::root` and `UiEvent::is_root` are gone.
+  and `dismiss` data. `NodeSpec::windows` holds a `WindowLifecycle`
+  beside each entry's name and config.
 - Node: `activateMenuBarItem` / `activateMenuBarPath` answer `false`
   for a bar that declares no `onMenu`, since nothing is posted; the
   row's standard role is still performed.
-- Rust `kui::Event`: `WindowEvent` drops `name` and its `id` is an
-  `Option` (`None` for a focus change); `Dismiss.window` is the id
-  alone; `Event::System` holds a `SystemEnv`. `KeyMods::to_value` no
-  longer writes `kind`.
+- `KeyMods::to_value` and `KeyPress::to_value` no longer write `kind`.
+- `testing::kinds` (the `conformance` feature) is the envelope's event
+  name, where it was the payload's `kind`; `testing::messages` is the old
+  reading.
 - `schema::Kind::Tag` is `Kind::Handler`.
 - Rust: `EventSpec`'s eighteen handler fields are rows of a sorted list,
   read with an accessor of the same name (`spec.events().on_click()`,
@@ -126,7 +138,11 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   `text_input_with`).
 - **`kui::Event`** with `UiEvent::split::<Msg>()` and `UiEvent::read()`:
   the message and the event, one variant per kind with its data, for one
-  `match` — `(Some(Msg::Pan), Event::Drag(d)) => …`.
+  `match` — `(Some(Msg::Pan), Event::Drag(d)) => …`. `EventKind` is
+  `UiEvent::event`'s type, `UiEvent::is(kind)` asks it, and `EventField`
+  names the field each event's data rides under.
+- `widgets::select_items_with`, the stock select over menu items with
+  its messages.
 - **The derive's arriving twin**: `#[message(on = drag)]` on a variant
   makes `#[derive(Message)]` emit `MsgIn` too, whose variant carries the
   event's data (`MsgIn::Pan { drag }`), for `ev.message::<MsgIn>()` in a
@@ -153,7 +169,9 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   on the root table, C `kui_root_with` with a `KuiWindowEvents`, Odin
   `root_with`. Read from the last finished frame; what arrives before
   the first (a launch's documents) is held for it. On any other node
-  the group is ignored and `window-events-off-root` says so.
+  the group is ignored and `window-events-off-root` says so. The last
+  group declared wins, and whoever declared it hears it: a Lua slot's
+  `window_events` reaches the script, not the host.
 - **A window's lifecycle messages**: `onWindow` and `onDismiss` on a
   `windows` entry — Rust `ui.window_with(name, config,
   WindowLifecycle::default().on_window(..).on_dismiss(..))`
@@ -190,7 +208,6 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   pointer was over the text that slid there; it now waits until the
   pointer leaves the click slop of the press, as a caret drag has since
   alpha.57 (backlog F173, from kawoosh's terminal).
-
 - A reader's increment or decrement nudges only a `slider` role; it
   reached any enabled node.
 - A reader's `setValue` on an editor is a recorded edit: it undoes in one
@@ -209,6 +226,10 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   debug build, undefined behaviour in the rasterizer in a release one.
   The rasterizer now measures the outline it is handed, not only the
   logical one (backlog FZ10, found by the `path` fuzz target).
+- A choice from the platform's menu bar (`activate_menu_bar_item` /
+  `_path`, the macOS bar) says which window it was made in and which
+  slot drew the bar, is listed in the devtools' events tab, and raises
+  `message-field-taken`, as a choice from the drawn bar always did.
 
 ### Changed
 

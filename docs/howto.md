@@ -969,9 +969,10 @@ One call, in the view, wherever the strip belongs: `<menuBar menu={[…]}/>`,
 whose items are the rows a context menu takes (`id`, `role`, `accel`,
 `enabled`, `checked`). On macOS the call draws nothing and the driver hands
 the same declaration to the OS; everywhere else it draws those menus in the
-window. Choosing a row is one
-`{kind:"menu", role, item}` event either way, and a standard `role` is
-performed by the core — an Edit menu's Copy is the right-click Copy.
+window. Choosing a row arrives as the bar's `onMenu` message with
+`menu: {role, item}` either way — a bar that declares none posts nothing
+— and a standard `role` is performed by the core — an Edit menu's Copy
+is the right-click Copy.
 Declare it every frame: it is diffed, so an unchanged bar costs a
 comparison, and an empty list takes it away.
 

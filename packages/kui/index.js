@@ -625,7 +625,11 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       return model;
     },
     dispatch(msg, event) {
-      apply(updateFrom(msg, event));
+      // A message the app hands the loop itself — `setup`'s, an effect
+      // handler's — has no node behind it, and `update` is still handed an
+      // envelope that says so, as a tick's does: one that reads
+      // `event.event` to tell a click from a submit must not throw here.
+      apply(updateFrom(msg, event ?? { origin: 0, window: 0, key: '', event: 'dispatch', payload: msg, slot: null }));
     },
     /** The end: the config's `teardown(model)`, once, with the model as it
      *  stands. `runWindowed` hands this to the window (`win.onTeardown`),

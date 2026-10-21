@@ -2618,6 +2618,26 @@ test('advance moves the frame clock, so a transition runs headless', () => {
   assert.equal(barWidth(), 200);
 });
 
+test("a dispatched message's envelope says it was dispatched", () => {
+  // ADR 0047 makes `event.event` how `update` tells a click from a
+  // submit; a message an effect or the app dispatched had no envelope at
+  // all, so that read threw (found by the alpha.60 pre-tag pass).
+  const seen = [];
+  const app = createApp(
+    {
+      init: {},
+      update: (m, msg, event) => {
+        seen.push([msg, event.event, event.key]);
+      },
+      view: () => box({}, []),
+    },
+    { startTime: 0, width: 100, height: 100 },
+  );
+  app.render();
+  app.dispatch('loaded');
+  assert.deepEqual(seen, [['loaded', 'dispatch', '']]);
+});
+
 test('setTime under a loop throws and names advance; a bare Ctx keeps it (F16)', () => {
   // Both alpha.7 field reports drove `ctx.setTime` around `render()` under
   // `createApp` — the alpha.6 idiom — and got a bar pinned at its baseline

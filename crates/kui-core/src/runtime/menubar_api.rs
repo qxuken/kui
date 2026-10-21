@@ -177,6 +177,10 @@ impl Core {
         self.menu_focus = self.focus;
         let (target, origin) = (self.menu_bar_target(), self.menu_bar_origin);
         self.perform_menu_item(&item, target, origin, true, &mut out);
+        // The way out an input's events take, as `activate_menu_path`'s
+        // do: stamped with the window and the slot, logged in the
+        // devtools, and a message field the data took warned about.
+        self.outbound(&mut out);
         out
     }
 

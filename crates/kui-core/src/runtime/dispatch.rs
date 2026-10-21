@@ -327,6 +327,7 @@ impl Core {
             return;
         }
         let events = self.window_events_seen.as_deref();
+        let origin = self.window_events_seen_origin;
         let main = self.env.window.id == WindowId::MAIN;
         out.retain_mut(|ev| {
             if !ev.fact {
@@ -339,7 +340,7 @@ impl Core {
                 return false;
             };
             let data = std::mem::take(&mut ev.payload);
-            let mut declared = UiEvent::declared(ev.event, ev.origin, ev.key, Some(message), data);
+            let mut declared = UiEvent::declared(ev.event, origin, ev.key, Some(message), data);
             declared.window = ev.window;
             declared.slot = ev.slot;
             *ev = declared;
@@ -1699,20 +1700,34 @@ impl Core {
     /// its `on_change`, `on_submit` or `on_cancel` row declares — nothing
     /// when the editor declares no such row (ADR 0047, decision 7). A
     /// change carries the whole text after it, `change: {text}`; the
-    /// other two carry no data.
+    /// other two carry no data. The text is copied only for an editor
+    /// that declared `on_change`: a 100 000-line document's keystroke
+    /// copied its 5.6 MB for nobody, and cost three times what it had
+    /// (the alpha.60 pre-tag pass, `benches/editing.rs`).
     pub(crate) fn push_edit_event(&self, key: Key, event: EventKind, out: &mut Vec<UiEvent>) {
-        let data = match event {
+        self.push_editor_event_with(key, event, out, || match event {
             EventKind::Change => {
                 Value::map([("text", Value::Str(self.edit.text(key).unwrap_or_default()))])
             }
             _ => Value::Null,
-        };
-        self.push_editor_event(key, event, data, out);
+        });
     }
 
     /// An event on the editor `key` with `data`, as the message the row
     /// for `event` declares on it; nothing without the row.
     fn push_editor_event(&self, key: Key, event: EventKind, data: Value, out: &mut Vec<UiEvent>) {
+        self.push_editor_event_with(key, event, out, || data);
+    }
+
+    /// [`Self::push_editor_event`] with the data made only once the row is
+    /// known to be there.
+    fn push_editor_event_with(
+        &self,
+        key: Key,
+        event: EventKind,
+        out: &mut Vec<UiEvent>,
+        data: impl FnOnce() -> Value,
+    ) {
         let Some(i) = self.tree.index_of(key) else {
             return;
         };
@@ -1727,6 +1742,7 @@ impl Core {
         let Some(message) = message else {
             return;
         };
+        let data = data();
         out.push(UiEvent::declared(
             event,
             self.edit.origin_of(key).unwrap_or(OriginId::HOST),
