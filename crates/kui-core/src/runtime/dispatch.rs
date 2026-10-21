@@ -761,7 +761,7 @@ impl Core {
                                     edit.click(key, local, clicks, extend, fs)
                                 });
                                 self.edit.dragging = Some((key, origin));
-                                self.edit.press = Some(p);
+                                self.press_slop = Some(p);
                                 self.arm_follow(key, p);
                             }
                             // The press acts (its click is resolved on the
@@ -786,6 +786,7 @@ impl Core {
                                 // A Shift-press keeps the anchor instead
                                 // and goes on by characters.
                                 if self.arm_select_drag(scope, p, clicks, extends) {
+                                    self.press_slop = Some(p);
                                     self.arm_follow(scope, p);
                                 }
                             }
@@ -857,6 +858,7 @@ impl Core {
                     self.end_follow();
                     self.edit.dragging = None;
                     self.select_dragging = None;
+                    self.press_slop = None;
                     self.interaction.scrollbar_drag = None;
                 }
                 let n = self
@@ -925,6 +927,7 @@ impl Core {
         // press over: no caret drag, no selection drag.
         self.select_dragging = None;
         self.edit.dragging = None;
+        self.press_slop = None;
         self.drag_follow = None;
         if let Some((key, content_origin)) = editor {
             let q = self.unturned(key, p);
@@ -1442,6 +1445,7 @@ impl Core {
             // went on dragging with no button down.
             self.edit.dragging = None;
             self.select_dragging = None;
+            self.press_slop = None;
             self.interaction.scrollbar_drag = None;
             let n = self.interaction.release_primary(&mut out);
             self.attach_pointer(&mut out, n);
