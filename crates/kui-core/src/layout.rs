@@ -42,7 +42,7 @@ use crate::tree::{NIL, NodeContent, Tree};
 /// one predicted branch rather than a read through every child's spec.
 #[inline]
 fn is_float(tree: &Tree, i: u32) -> bool {
-    tree.any_float && tree.specs[i as usize].layout.float.is_some()
+    tree.any_float && tree.specs[i as usize].floating().copied().is_some()
 }
 
 /// Where in the free space one thing sits: 0 at the start, 1 at the end.
@@ -247,7 +247,7 @@ pub(crate) fn is_table_row(tree: &Tree, i: u32) -> bool {
     p != NIL
         && tree.specs[p as usize].layout.is_table()
         && row_shaped(
-            &tree.specs[i as usize].layout,
+            &tree.specs[i as usize],
             matches!(tree.content[i as usize], NodeContent::Container),
         )
 }
@@ -257,8 +257,8 @@ pub(crate) fn is_table_row(tree: &Tree, i: u32) -> bool {
 /// departing table's ghost has no tree to ask, and asks this of the
 /// children it copied.
 #[inline]
-pub(crate) fn row_shaped(spec: &crate::spec::LayoutSpec, container: bool) -> bool {
-    spec.dir == Dir::Row && container && spec.float.is_none()
+pub(crate) fn row_shaped(spec: &crate::spec::NodeSpec, container: bool) -> bool {
+    spec.layout.dir == Dir::Row && container && spec.float.is_none()
 }
 
 /// Whether `i` is a cell of a table: an in-flow child of a table row.
@@ -893,7 +893,7 @@ fn node_floats(tree: &Tree) -> Vec<(usize, usize, crate::key::Key)> {
         if let Some(crate::spec::FloatConfig {
             anchor: FloatAnchor::Node(key),
             ..
-        }) = tree.specs[c].layout.float
+        }) = tree.specs[c].floating().copied()
         {
             let mut end = c + 1;
             while end < tree.len() && (tree.parent[end] as usize) >= c {
@@ -912,7 +912,7 @@ fn node_floats(tree: &Tree) -> Vec<(usize, usize, crate::key::Key)> {
 /// on screen as a parent-anchored float is when it declares `fit`, which
 /// a leaf's tooltip anchored to the leaf does (backlog RG113).
 fn place_anchored(tree: &mut Tree, c: usize, anchor: Rect, viewport: Size) {
-    let Some(cfg) = tree.specs[c].layout.float else {
+    let Some(cfg) = tree.specs[c].floating().copied() else {
         return;
     };
     let vp = float_viewport(tree, c as u32, viewport);
@@ -1449,7 +1449,7 @@ fn distribute_axis(
         NIL
     };
     while c != NIL {
-        if let Some(cfg) = tree.specs[c as usize].layout.float {
+        if let Some(cfg) = tree.specs[c as usize].floating().copied() {
             let vp = float_viewport(tree, c, viewport);
             let anchor_dim = match (cfg.anchor, axis) {
                 (FloatAnchor::Parent, AxisSel::Width) => tree.size[i as usize].w,
@@ -2238,7 +2238,7 @@ fn positions(
             NIL
         };
         while c != NIL {
-            if let Some(cfg) = tree.specs[c as usize].layout.float {
+            if let Some(cfg) = tree.specs[c as usize].floating().copied() {
                 place_float(tree, cfg, c, Rect::from_pos_size(origin, size), viewport);
             }
             c = tree.next_sibling[c as usize];

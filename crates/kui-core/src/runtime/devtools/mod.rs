@@ -1554,7 +1554,7 @@ impl Core {
         let mut inner = spec.clone();
         inner.layout.width = Sizing::Grow(1.0);
         inner.layout.height = Sizing::Grow(1.0);
-        inner.layout.float = None;
+        inner.float = None;
         if !(inner.layout.scroll_x || inner.layout.scroll_y) {
             inner.layout.clip = true;
         }

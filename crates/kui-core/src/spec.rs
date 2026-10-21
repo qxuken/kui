@@ -350,8 +350,8 @@ pub enum FloatAnchor {
 ///
 /// let tooltip = NodeSpec::column().float(FloatConfig::below().fit());
 /// let toast = NodeSpec::row().float(FloatConfig::viewport().inside(Align::End, Align::End).offset(-16.0, -16.0));
-/// assert!(tooltip.layout.float.unwrap().fit);
-/// assert_eq!(toast.layout.float.unwrap().offset.x, -16.0);
+/// assert!(tooltip.floating().unwrap().fit);
+/// assert_eq!(toast.floating().unwrap().offset.x, -16.0);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FloatConfig {
@@ -667,8 +667,6 @@ pub struct LayoutSpec {
     /// inserts above the viewport, a row whose estimate was corrected.
     /// On the scroll axis that is the container's main axis only.
     pub anchor: bool,
-    /// Out-of-flow positioning; see [`FloatConfig`].
-    pub float: Option<FloatConfig>,
 }
 
 impl Default for LayoutSpec {
@@ -693,7 +691,6 @@ impl Default for LayoutSpec {
             scroll_x: false,
             scroll_y: false,
             anchor: false,
-            float: None,
         }
     }
 }
@@ -781,8 +778,6 @@ pub struct VisualStyle {
     /// invisible subtree still lays out, still takes clicks and is still
     /// read by assistive technology, exactly like CSS `opacity: 0`.
     pub opacity: f32,
-    /// The drop shadow cast behind this node (see [`Shadow`]).
-    pub shadow: Shadow,
     /// Paint the background, border, shadow and fragment with each edge on
     /// a whole physical pixel (`pixelSnap`). Off by default: a box is drawn where
     /// layout put it, so a gap between two boxes is there at any scale.
@@ -801,7 +796,6 @@ impl Default for VisualStyle {
             border_w: 0.0,
             radius: [0.0; 4],
             opacity: 1.0,
-            shadow: Shadow::default(),
             pixel_snap: false,
         }
     }
@@ -929,6 +923,15 @@ pub struct NodeSpec {
 
     /// See [`InteractSpec`]. `None` when the node declares none of it.
     pub interact: Option<Box<InteractSpec>>,
+
+    /// Out-of-flow positioning; see [`FloatConfig`]. Boxed, as the groups
+    /// above are: few nodes float, and every node carries the pointer.
+    pub float: Option<Box<FloatConfig>>,
+
+    /// The drop shadow cast behind this node (see [`Shadow`]); `None` casts
+    /// none. Boxed for the same reason as `float`. Read it whole with
+    /// [`NodeSpec::drop_shadow`].
+    pub shadow: Option<Box<Shadow>>,
 }
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
@@ -1924,8 +1927,14 @@ impl NodeSpec {
 
     /// Take this node out of flex flow; see [`FloatConfig`].
     pub fn float(mut self, cfg: FloatConfig) -> Self {
-        self.layout.float = Some(cfg);
+        self.float = Some(Box::new(cfg));
         self
+    }
+
+    /// The float this node declares, if it floats.
+    #[inline]
+    pub fn floating(&self) -> Option<&FloatConfig> {
+        self.float.as_deref()
     }
 
     /// Apply the overflow bits ([`OVERFLOW_CLIP`] and friends). What a bit
@@ -2118,40 +2127,52 @@ impl NodeSpec {
 
     /// The whole drop shadow at once: color, offset, blur, spread.
     pub fn shadow(mut self, shadow: Shadow) -> Self {
-        self.style.shadow = shadow;
+        self.shadow = Some(Box::new(shadow));
         self
+    }
+
+    /// The drop shadow this node casts, the default (none) when it declares
+    /// none.
+    #[inline]
+    pub fn drop_shadow(&self) -> Shadow {
+        self.shadow.as_deref().copied().unwrap_or_default()
+    }
+
+    /// The shadow to set one part of, made when the node had none.
+    fn shadow_mut(&mut self) -> &mut Shadow {
+        self.shadow.get_or_insert_with(Default::default)
     }
 
     /// The shadow's color — on its own, a hard shadow exactly behind the
     /// node. Nothing else about a shadow draws without it.
     pub fn shadow_color(mut self, c: Color) -> Self {
-        self.style.shadow.color = c;
+        self.shadow_mut().color = c;
         self
     }
 
     pub fn shadow_blur(mut self, blur: f32) -> Self {
-        self.style.shadow.blur = blur;
+        self.shadow_mut().blur = blur;
         self
     }
 
     pub fn shadow_offset(mut self, dx: f32, dy: f32) -> Self {
-        self.style.shadow.dx = dx;
-        self.style.shadow.dy = dy;
+        self.shadow_mut().dx = dx;
+        self.shadow_mut().dy = dy;
         self
     }
 
     pub fn shadow_x(mut self, dx: f32) -> Self {
-        self.style.shadow.dx = dx;
+        self.shadow_mut().dx = dx;
         self
     }
 
     pub fn shadow_y(mut self, dy: f32) -> Self {
-        self.style.shadow.dy = dy;
+        self.shadow_mut().dy = dy;
         self
     }
 
     pub fn shadow_spread(mut self, spread: f32) -> Self {
-        self.style.shadow.spread = spread;
+        self.shadow_mut().spread = spread;
         self
     }
 
@@ -3216,6 +3237,8 @@ impl PartialEq for NodeSpec {
             && self.anim() == other.anim()
             && self.access() == other.access()
             && self.interact() == other.interact()
+            && self.floating() == other.floating()
+            && self.drop_shadow() == other.drop_shadow()
     }
 }
 
@@ -3233,10 +3256,11 @@ mod size_tests {
     /// This is the number a review can fail. Adding a prop is fine; adding it
     /// *inline* past this bound is the thing to notice. Put cold fields in one
     /// of the boxed groups instead, and only raise this if the field is read
-    /// on every node of every frame.
+    /// on every node of every frame. 208 since `float` and `shadow` were
+    /// boxed (64 bytes inline, for the few nodes that float or cast one).
     #[test]
     fn node_spec_stays_small() {
-        const BOUND: usize = 256;
+        const BOUND: usize = 208;
         let size = std::mem::size_of::<NodeSpec>();
         assert!(
             size <= BOUND,

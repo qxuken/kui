@@ -460,7 +460,13 @@ impl Core {
             }
         }
         let first_quad = self.display.quads.len();
-        painter!(self).paint_box(rect, &style, &paint, leaf);
+        // Only a shadow that draws: the gradient below counts its quad.
+        let shadow = self.tree.specs[i]
+            .shadow
+            .as_deref()
+            .copied()
+            .filter(|sh| sh.is_visible());
+        painter!(self).paint_box(rect, &style, shadow.as_ref(), &paint, leaf);
         // A gradient over the background the box just painted. Out of
         // `emit_node` as the rules below are, and for the same reason.
         if self.tree.any_gradient
@@ -471,7 +477,7 @@ impl Core {
                 NodeContent::Line(_) | NodeContent::Polygon(_) | NodeContent::Path(_)
             )
         {
-            painter!(self).paint_gradient(g, rect, &style, &paint, first_quad);
+            painter!(self).paint_gradient(g, rect, &style, shadow.is_some(), &paint, first_quad);
         }
         // A table's grid rules, with its box and under its cells. Out of
         // `emit_node`: a rare path kept off its codegen (C48).
@@ -493,7 +499,7 @@ impl Core {
     fn emit_rules(&mut self, i: usize, rect: Rect, color: Color, paint: &Paint) {
         let tree = &self.tree;
         let at = |j: u32| Rect::from_pos_size(tree.pos[j as usize], tree.size[j as usize]);
-        let in_flow = |j: &u32| tree.specs[*j as usize].layout.float.is_none();
+        let in_flow = |j: &u32| tree.specs[*j as usize].floating().copied().is_none();
         let children: Vec<RuledChild> = tree
             .children(i as u32)
             .filter(in_flow)
@@ -560,12 +566,12 @@ impl Core {
             if node.parent == NIL || (node.parent as usize) < i {
                 break;
             }
-            if node.spec.layout.float.is_some() {
+            if node.spec.floating().copied().is_some() {
                 continue;
             }
             if node.parent as usize == i {
                 let row = crate::layout::row_shaped(
-                    &node.spec.layout,
+                    &node.spec,
                     matches!(node.content, GhostContent::Container),
                 );
                 children.push(RuledChild {
@@ -944,7 +950,7 @@ impl Core {
                 // not part of the card's paragraph, and a float is
                 // emitted in a later pass than its tree position, which
                 // would put its runs out of reading order anyway.
-                let outer = if parent == NIL || self.tree.specs[i].layout.float.is_some() {
+                let outer = if parent == NIL || self.tree.specs[i].floating().copied().is_some() {
                     None
                 } else {
                     self.scopes[parent as usize]
@@ -1069,8 +1075,8 @@ impl Core {
             let drawn_in_parent = floats_here
                 && parent != NIL
                 && self.tree.specs[i]
-                    .layout
-                    .float
+                    .floating()
+                    .copied()
                     .is_some_and(|f| f.clipped_by_parent());
             // What the walk carries on: the clip's rect in framebuffer space
             // (what the node's regions are cut by), the rect it is culled
@@ -1092,8 +1098,8 @@ impl Core {
                     let turned = any_transform
                         && self.clips[p].turned()
                         && self.tree.specs[i]
-                            .layout
-                            .float
+                            .floating()
+                            .copied()
                             .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Parent);
                     if turned {
                         let c = Clip {
@@ -1734,8 +1740,8 @@ impl Core {
             // F90; the ghost pass kept the old escape, RG26).
             let escapes = node
                 .spec
-                .layout
-                .float
+                .floating()
+                .copied()
                 .is_some_and(|f| !f.clipped_by_parent());
             let (mut clip, mut clip_id) = if node.parent == NIL || escapes {
                 (Clip::NONE, NO_CLIP_ID)
@@ -1850,7 +1856,13 @@ impl Core {
                 backdrop_quad(&mut self.display.quads, rect, &style, &paint, blur);
             }
             let first_quad = self.display.quads.len();
-            painter!(self).paint_box(rect, &style, &paint, leaf);
+            let shadow = node
+                .spec
+                .shadow
+                .as_deref()
+                .copied()
+                .filter(|sh| sh.is_visible());
+            painter!(self).paint_box(rect, &style, shadow.as_ref(), &paint, leaf);
             // A departing box keeps its gradient, from the slot it had.
             if let Some(grad) = &node.spec.interact().gradient
                 && !matches!(
@@ -1860,7 +1872,14 @@ impl Core {
                         | GhostContent::Path { .. }
                 )
             {
-                painter!(self).paint_gradient(grad, rect, &style, &paint, first_quad);
+                painter!(self).paint_gradient(
+                    grad,
+                    rect,
+                    &style,
+                    shadow.is_some(),
+                    &paint,
+                    first_quad,
+                );
             }
             // A departing table keeps its grid for as long as it fades.
             if let Some(c) = node.spec.interact().rules
@@ -2627,6 +2646,7 @@ impl Painter<'_> {
         &mut self,
         rect: Rect,
         style: &crate::spec::VisualStyle,
+        shadow: Option<&crate::spec::Shadow>,
         paint: &Paint,
         leaf: Leaf<'_>,
     ) {
@@ -2637,10 +2657,10 @@ impl Painter<'_> {
             ..
         } = *paint;
         let first_quad = self.display.quads.len();
-        if style.shadow.is_visible() {
+        if let Some(sh) = shadow {
             self.display
                 .quads
-                .push(shadow_quad(style, rect, clip_id, scale));
+                .push(shadow_quad(style, sh, rect, clip_id, scale));
         }
         // A stroke's `bg` is its colour, not a box to fill (ADR 0010,
         // decision 7), and a polygon's is its fill (ADR 0025, decision 6)
@@ -2697,6 +2717,7 @@ impl Painter<'_> {
         g: &crate::gradient::Gradient,
         rect: Rect,
         style: &crate::spec::VisualStyle,
+        shadowed: bool,
         paint: &Paint,
         first_quad: usize,
     ) {
@@ -2730,7 +2751,7 @@ impl Painter<'_> {
         };
         // Where `paint_box` put the box's own solid, when it painted
         // one: after the shadow, before the content.
-        let at = first_quad + usize::from(style.shadow.is_visible());
+        let at = first_quad + usize::from(shadowed);
         let bordered = style.border_w > 0.0 && style.border_color.is_visible();
         if !style.bg.is_visible() && !bordered {
             // No background and no border: the gradient is the box.
@@ -3430,8 +3451,13 @@ fn push_marks(
 /// `emit_node` its arithmetic took two more saved float registers for
 /// every node, shadow or not.
 #[inline(never)]
-fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, scale: f32) -> Quad {
-    let sh = style.shadow;
+fn shadow_quad(
+    style: &crate::spec::VisualStyle,
+    sh: &crate::spec::Shadow,
+    rect: Rect,
+    clip_id: ClipId,
+    scale: f32,
+) -> Quad {
     let blur = sh.blur.max(0.0);
     let shape = Rect::new(
         rect.x + sh.dx - sh.spread,

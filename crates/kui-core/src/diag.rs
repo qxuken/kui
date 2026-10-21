@@ -1386,7 +1386,7 @@ impl Diagnostics {
             let mut lone: Option<(u32, f32)> = None;
             for c in tree.children(p as u32) {
                 let layout = tree.specs[c as usize].layout;
-                if layout.float.is_some() {
+                if tree.specs[c as usize].float.is_some() {
                     continue;
                 }
                 let (main, cross) = if row {
@@ -1452,7 +1452,7 @@ impl Diagnostics {
             } else if l.cross_align == Align::Baseline && l.dir == Dir::Column {
                 Some("crossAlign baseline on a column: a column's cross axis is horizontal, where a baseline is not a line (lay the text out in a row)".to_string())
             } else {
-                l.float.and_then(|f| {
+                tree.specs[i].floating().and_then(|f| {
                     let pts = [
                         f.anchor_point.0,
                         f.anchor_point.1,
@@ -1522,7 +1522,7 @@ impl Diagnostics {
             } else if layout.scroll_x {
                 "a scrollX row's main axis is unbounded, and an axis with no bound has nothing \
                  to break against (drop scrollX, or drop wrapChildren and let it scroll)"
-            } else if layout.float.is_none()
+            } else if tree.specs[i].float.is_none()
                 && tree.parent[i] != NIL
                 && tree.specs[tree.parent[i] as usize].layout.is_table()
             {

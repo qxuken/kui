@@ -107,8 +107,8 @@ impl Tree {
     /// [`FloatConfig::clipped_by_parent`]: crate::spec::FloatConfig::clipped_by_parent
     pub fn opens_layer(&self, i: usize) -> bool {
         self.specs[i]
-            .layout
-            .float
+            .floating()
+            .copied()
             .is_some_and(|f| !(f.clipped_by_parent() && self.content[i].drawn_in_parent()))
     }
 
@@ -116,7 +116,7 @@ impl Tree {
     /// although it floats: [`Tree::opens_layer`]'s complement for a node
     /// that declares `float` at all.
     pub fn floats_in_parent(&self, i: usize) -> bool {
-        self.specs[i].layout.float.is_some() && !self.opens_layer(i)
+        self.specs[i].floating().copied().is_some() && !self.opens_layer(i)
     }
 
     /// One past the last node of `i`'s subtree. Preorder storage makes a
@@ -321,7 +321,7 @@ impl Tree {
             && let Some(crate::spec::FloatConfig {
                 anchor: crate::spec::FloatAnchor::Node(key),
                 ..
-            }) = self.specs[i].layout.float
+            }) = self.specs[i].floating().copied()
         {
             return self.index_of(key).map_or(NIL, |a| a as u32);
         }
@@ -395,7 +395,7 @@ impl Tree {
     /// checks (C15).
     #[inline]
     pub fn note(&mut self, spec: &NodeSpec, content: &NodeContent) {
-        if let Some(f) = spec.layout.float {
+        if let Some(f) = spec.floating().copied() {
             self.any_float = true;
             self.any_node_float |= matches!(f.anchor, crate::spec::FloatAnchor::Node(_));
         }

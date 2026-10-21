@@ -216,16 +216,19 @@ pub(crate) fn spec_of(
     if s.wrap_children != 0 {
         spec = spec.wrap();
     }
-    // Unconditional: the shadow draws only where its color is visible, and
-    // that check belongs at emission, not here — a zeroed struct is the
-    // default shadow either way.
-    spec = spec.shadow(kui_core::Shadow {
+    // A zeroed struct is no shadow, and declares none: the shadow is boxed
+    // on the spec (C15), so an unconditional one would allocate for every
+    // node. Whether a declared one draws is emission's question.
+    let shadow = kui_core::Shadow {
         color: color_of(s.shadow_color),
         dx: s.shadow_x,
         dy: s.shadow_y,
         blur: s.shadow_blur,
         spread: s.shadow_spread,
-    });
+    };
+    if shadow != kui_core::Shadow::default() {
+        spec = spec.shadow(shadow);
+    }
     spec = spec.overflow_bits(s.overflow);
     if s.float_mode != 0 {
         // The struct spells every piece out, so every piece is "declared";

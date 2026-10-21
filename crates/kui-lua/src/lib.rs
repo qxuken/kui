@@ -3999,7 +3999,7 @@ mod tests {
             }
         );
         assert_eq!(
-            p.spec.layout.float,
+            p.spec.floating().copied(),
             Some(FloatConfig::build(
                 FloatConfig::below(),
                 None,
@@ -4018,13 +4018,13 @@ mod tests {
             parse_props(&by_self, false, &mut test_refs())
                 .unwrap()
                 .spec
-                .layout
-                .float,
+                .floating()
+                .copied(),
             parse_props(&by_self_at, false, &mut test_refs())
                 .unwrap()
                 .spec
-                .layout
-                .float
+                .floating()
+                .copied()
         );
 
         // An unknown preset names the ones that exist instead of silently
