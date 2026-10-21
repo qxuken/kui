@@ -188,16 +188,36 @@ impl Core {
     /// drag, the selection's focus for a drag-select, in whichever
     /// geometry its scope has.
     pub(crate) fn rehit(&mut self, p: Vec2) {
-        // Not inside the click slop: a press there is a click, and its
-        // caret stays where the press put it (backlog F170).
-        if let Some((key, _)) = self.edit.dragging
-            && self.edit.left_slop(p)
-        {
+        // Inside the click slop a press is a click: its caret, or its
+        // selection's two ends together, stay where the press put them,
+        // whatever slid under the pointer (backlog F170, F173).
+        if !self.left_slop(p) {
+            return;
+        }
+        if let Some((key, _)) = self.edit.dragging {
             self.edit_drag_to(key, p);
         }
         if let Some(drag) = self.select_dragging {
             self.extend_select_drag(drag, p);
         }
+    }
+
+    /// Whether a drag held at `p` has left the click slop of its press,
+    /// and so places its live end: once it has, it has for the rest of
+    /// the press — a drag that wanders back is still a drag. A press that
+    /// never leaves it is a click, and the release, the frames while it
+    /// is held and the pointer's shake under it place nothing. The slop
+    /// is the pointer's, against the window: a pane a strip scrolls into
+    /// view under the held button moves its text, not the hand.
+    fn left_slop(&mut self, p: Vec2) -> bool {
+        let Some(at) = self.press_slop else {
+            return true;
+        };
+        if (p.x - at.x).abs() + (p.y - at.y).abs() <= crate::input::DRAG_SLOP {
+            return false;
+        }
+        self.press_slop = None;
+        true
     }
 
     /// Moves the caret drag in editor `key` to the viewport point `p`,

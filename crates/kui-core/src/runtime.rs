@@ -501,6 +501,12 @@ pub struct Core {
     /// on the press inside a scope, cleared on release. The counterpart of
     /// `EditStore::dragging` for text nobody is editing.
     select_dragging: Option<crate::select::SelectDrag>,
+    /// Where the press that began the held drag — a caret drag or a
+    /// drag-select — landed (viewport, logical), for as long as the
+    /// pointer has stayed inside the click slop of it: until it leaves,
+    /// the press is a click and places no live end, as an `on_drag`
+    /// node's press reports no `move` (backlog F170, F173).
+    press_slop: Option<Vec2>,
     /// The held drag — a caret drag or a drag-select — following its
     /// scroller: the pointer's last position, the scroller found for it,
     /// and what that scroller was at when the live end was last placed.
@@ -1152,6 +1158,7 @@ impl Core {
             awaiting_paste: false,
             file_ask: Default::default(),
             select_dragging: None,
+            press_slop: None,
             drag_follow: None,
             last_frame_time: None,
             line_carry: None,

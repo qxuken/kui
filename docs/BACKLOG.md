@@ -228,7 +228,9 @@ wrapped caret — where a byte lands in a text no node drew yet — was
 built the day it was filed, after the alpha.57 tag, and is in the
 archive; and F172, from kawoosh's Linux install — a window's Wayland
 `app_id` — was built the day it was filed, after the alpha.58 tag, and
-is in the archive.
+is in the archive; and F173, from kawoosh's terminal — a click in a pane
+a strip scrolls into view — was built the day it was filed, after the
+alpha.59 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1787,6 +1789,14 @@ window's `.desktop` file by its `app_id` and a kui window had none.
 winit 0.30 sets an `app_id` only from `with_name`, which kui never
 called. One entry, F172, **built 2026-10-19**, the day it was filed,
 and in the archive.
+
+## From kawoosh's terminal click (2026-10-21)
+
+kawoosh lays its panes out in a strip wider than the window, and a
+press on a pane half off screen focuses it and scrolls the strip to
+show it, while the button is still held. A click there on a terminal
+selected the cells the grid slid by under the still pointer. One entry,
+F173, **built 2026-10-21**, the day it was filed, and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4817,3 +4827,7 @@ move.
 **From kawoosh's Linux install (2026-10-19)** — F172, filed and built the same day
 
 - `~` **F172** — [A Wayland window has no app id, so no desktop file finds it](backlog/closed-2026-09.md#-f172--a-wayland-window-has-no-app-id-so-no-desktop-file-finds-it--done-2026-10-19) — done (2026-10-19) — `Launcher::app_id`, `kui_set_app_id`, Odin's `set_app_id`, `appId` in `WindowOptions`: winit's `with_name` on every window, the Wayland `app_id` and both halves of `WM_CLASS`
+
+**From kawoosh's terminal click (2026-10-21)** — F173, filed and built the same day
+
+- `~` **F173** — [A click in a pane that slides into view selects what slid under the pointer](backlog/closed-2026-09.md#-f173--a-click-in-a-pane-that-slides-into-view-selects-what-slid-under-the-pointer--done-2026-10-21) — done (2026-10-21) — a drag-select places its live end once the pointer leaves the click slop, as a caret drag does

@@ -36,6 +36,13 @@ was the first bare bump to break an app in five releases).
   since protocol v6, but the element's type left it out, so a
   TypeScript app could not declare where its screen sits without a
   cast.
+- A click in a `selectable` scope selects nothing when the layout moves
+  under the held button — a pane a strip scrolls into view as the press
+  focuses it. A drag-select placed its live end on the release, on
+  every frame the scroller moved and on every move, wherever the
+  pointer was over the text that slid there; it now waits until the
+  pointer leaves the click slop of the press, as a caret drag has since
+  alpha.57 (backlog F173, from kawoosh's terminal).
 
 ### Changed
 

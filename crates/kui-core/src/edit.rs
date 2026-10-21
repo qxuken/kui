@@ -628,11 +628,6 @@ pub struct EditStore {
     pub(crate) focused: Option<Key>,
     /// Edit node being drag-selected (with its content origin, logical).
     pub(crate) dragging: Option<(Key, Vec2)>,
-    /// Where the press that began `dragging` landed (viewport, logical),
-    /// for as long as the pointer has stayed inside the click slop of it:
-    /// until it leaves, the press is a click and moves no caret, as an
-    /// `on_drag` node's press reports no `move` (backlog F170).
-    pub(crate) press: Option<Vec2>,
     /// Edit whose caret moved since the last frame; `finish_frame` scrolls
     /// the nearest scrollable ancestor to keep the caret visible, then clears.
     pub(crate) caret_moved: Option<Key>,
@@ -655,7 +650,6 @@ impl Default for EditStore {
             pending_labels: FxHashMap::default(),
             focused: None,
             dragging: None,
-            press: None,
             caret_moved: None,
             caret_stamp: 0,
             blink_visible: true,
@@ -1588,22 +1582,6 @@ impl EditStore {
             s.break_coalesce();
             self.caret_stamp += 1;
         }
-    }
-
-    /// Whether a caret drag held at `p` has left the click slop of its
-    /// press, and so moves the caret: once it has, it has for the rest of
-    /// the press — a drag that wanders back is still a drag. A press that
-    /// never leaves it is a click, and the release, the frames while it
-    /// is held and the pointer's shake under it place nothing.
-    pub(crate) fn left_slop(&mut self, p: Vec2) -> bool {
-        let Some(at) = self.press else {
-            return true;
-        };
-        if (p.x - at.x).abs() + (p.y - at.y).abs() <= crate::input::DRAG_SLOP {
-            return false;
-        }
-        self.press = None;
-        true
     }
 
     /// Mouse motion with the button held: moves the caret to the point
