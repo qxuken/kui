@@ -318,7 +318,11 @@ pointing into the other three.
   ([ADR 0047](docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)):
   `onDrag={{ kind: 'pan' }}` hears `{ kind: 'pan', drag: { phase, x, y, dx,
   dy, parent } }` — your message plus one field named for the event — and
-  `ev.event` says which event it was. A node that declares no handler for
+  `ev.event` says which event it was. Every payload a node sends is a map:
+  a message that is not one — a string, a number, a boolean, a list — is
+  kept under `tag`, so `onClick: 'save'` is heard as `{ tag: 'save' }` even
+  though a click has no data, and a `null` one arrives as the field alone,
+  or `{}` (`Arrived<M>` in the types). A node that declares no handler for
   an event hears none of it: an `<edit>` reports through `onChange`
   (`change: { text }`, the whole text), `onSubmit`, `onCancel` and
   `onBoundary`, and takes a `value` it is brought back to on every frame it
@@ -349,6 +353,11 @@ pointing into the other three.
   that carry its field, as declared without it (`HandlerMsg<WithDrag>`):
   `onDrag={{ kind: 'pan' }}` fits, `onDrag={{ kind: 'save' }}` does not,
   and `<edit onChange>` takes only an editor's `change`. Register the
-  messages you wrote and keep `MyMsg | RootMsg` for `update`. It is a
+  messages you wrote and keep `MyMsg | RootMsg` for `update`. A bare
+  message is registered as declared (`'save'`) and read as it arrives:
+  `update`, `ev.payload`, `dispatch` and `tick.msg` are typed
+  `Arrived<MyMsg | RootMsg>`, where it is `{ tag: 'save' }`; one that
+  carries an event is registered as it arrives (`DragMsg<{ tag: 'pan' }>`)
+  and the handler prop still takes `onDrag="pan"` (`Declared<M>`). It is a
   program-wide declaration (one app per tsconfig); left out, message props
   stay untyped and nothing else changes.

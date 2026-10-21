@@ -2644,7 +2644,10 @@ macro_rules! core_methods {
             /// payload, slot}]`, payloads as plain data — the message the
             /// node's handler declared, with the event's data in the field
             /// `event` names (`drag`, `change`, …), or a root event's
-            /// `{kind, …}` (ADR 0047). `A` types them — the app's own union,
+            /// `{kind, …}` (ADR 0047). A node's payload is always a map: a
+            /// message that is not one (`onClick: 'save'`) arrives under
+            /// `tag` (`{tag: 'save'}`), a `null` one as the field alone or
+            /// `{}` (`Arrived<A>`). `A` types them — the app's own union,
             /// or one message type when only that is being watched.
             #[napi(
                 ts_generic_types = "A = AppMsg | RootMsg",

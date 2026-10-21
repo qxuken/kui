@@ -35,8 +35,12 @@ type AppMessages =
   | ContextMenuMsg<{ kind: 'openMenu' }>
   | DismissMsg<{ kind: 'closeMenu' }>
   // tools/types.tsx: the key sink's message, the editor's and the
-  // slider's.
+  // slider's; a bare-string click, registered as declared (it arrives as
+  // `{ tag: 'save' }`), and a bare drag, registered as it arrives (the
+  // prop takes `'nudge'` back).
   | KeyMsg<{ tool: string }>
+  | 'save'
+  | DragMsg<{ tag: 'nudge' }>
   | EditChangeMsg<{ kind: 'note' }>
   | SliderChangeMsg<{ kind: 'tally' }>
   // features/slide.tsx: the canvas's drag and a card's click.

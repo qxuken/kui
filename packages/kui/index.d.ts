@@ -27,7 +27,11 @@ export type { ColorToken, LengthToken } from './jsx-runtime.js';
 // envelope's `event` (`UiEvent.event`) says which event it was; the
 // payload no longer does. A `null` handler declares the behaviour and
 // names no message, so its events arrive as the field alone
-// (`{ drag: { … } }`). The shapes are `EVENTS` in
+// (`{ drag: { … } }`), and `{}` for an event with no data. A message
+// that is not a map — a string, a number, a boolean, a list — is kept
+// under `tag`, even when the event has no data: `onClick: 'save'` is
+// heard as `{ tag: 'save' }` (decision 3), so every payload a node sends
+// is a map (`Arrived<M>`). The shapes are `EVENTS` in
 // crates/kui-core/src/schema.rs, the table docs/props.md is generated from.
 //
 // Each event has three types: its data (`DragEvent`), the field that
@@ -37,7 +41,9 @@ export type { ColorToken, LengthToken } from './jsx-runtime.js';
 // handler prop (`onDrag`) takes them as declared, without the field:
 // `HandlerMsg<WithDrag>`. A message registered without the field does not
 // fit the prop, so pairing a message with the wrong handler fails at the
-// node.
+// node. A bare message with a field is registered as it arrives —
+// `DragMsg<{ tag: 'pan' }>` — and the prop takes `'pan'` back
+// (`Declared<M>`).
 //
 // What has no node to declare a handler on — a resize, a window opening,
 // a modifier change — is a root event, and keeps the core's `{ kind, … }`:
@@ -54,10 +60,40 @@ export type { ColorToken, LengthToken } from './jsx-runtime.js';
 export type HandlerMsg<W> = KuiMsg extends { msg: infer M }
   ? Extract<M, W> extends infer E
     ? E extends unknown
-      ? Omit<E, W extends unknown ? keyof W : never>
+      ? Declared<Omit<E, W extends unknown ? keyof W : never>>
       : never
     : never
   : Msg;
+
+/** A message that is not a map — a string, a number, a boolean, a list. A
+ *  node may declare one; it arrives under `tag` (`Arrived<M>`). */
+export type BareMsg = string | number | boolean | readonly unknown[];
+
+/** The message `M` a node declared, as the app hears it (ADR 0047,
+ *  decision 3): every node payload is a map. A map arrives as it is (with
+ *  the event's field added where the event has data); a bare message —
+ *  `onClick: 'save'`, a number, a list — arrives under `tag` beside that
+ *  field, `{ tag: 'save' }`, even when the event has no data; `null`
+ *  arrives as the field alone, or `{}`. This is what `update` is handed
+ *  and what `UiEvent.payload` is: an app registers the messages it
+ *  declares (`'save'`) and reads them as they arrive (`msg.tag`). It
+ *  leaves a map alone, so it is a no-op on an all-map union and on a
+ *  union already mapped through it. */
+export type Arrived<M> = M extends null | undefined
+  ? { [field: string]: Msg }
+  : M extends BareMsg
+    ? { tag: M }
+    : M;
+
+/** The other way round, for a handler prop: a registered message that is
+ *  `{ tag }` and nothing else once the event's field is left out may be
+ *  declared bare — `DragMsg<{ tag: 'pan' }>` registered, `onDrag="pan"`
+ *  declared — as well as spelled out. Anything else is declared as it is. */
+export type Declared<M> = M extends { tag: infer T extends BareMsg }
+  ? [Exclude<keyof M, 'tag'>] extends [never]
+    ? T | M
+    : M
+  : M;
 
 /** A rect in logical viewport px: a container's, the node's own. */
 export interface EventRect {
@@ -69,8 +105,8 @@ export interface EventRect {
 
 /** What a click on a `cells` grid, or inside an `onKey` sink that draws
  *  `role="line"` rows, can say beyond "it was clicked". A plain click
- *  arrives exactly as declared, with no `click` field; this is there only
- *  where the node can say more. */
+ *  arrives as declared (a bare message under `tag`), with no `click`
+ *  field; this is there only where the node can say more. */
 export interface ClickEvent {
   /** On a `cells` grid: the cell under the pointer, clamped to the grid. */
   cell?: { row: number; col: number };
@@ -1396,11 +1432,14 @@ export interface UiEvent<A = AppMsg | RootMsg> {
   /** Which event it was (ADR 0047, decision 14). The payload does not
    *  say: a node's is the message its handler declared, with this event's
    *  data in the field of the same name (`drag`, `change`, …) where it
-   *  has any, so a plain click and a submit can both arrive as the bare
-   *  message. `'tick'` is the loop's own clock (`tick` in the loop
-   *  config), which no node declared. */
+   *  has any, so a plain click and a submit on one map message both
+   *  arrive as that map. `'tick'` is the loop's own clock (`tick` in the
+   *  loop config), which no node declared. */
   event: EventName | 'tick';
-  payload: A;
+  /** The message as it arrives: always a map from a node — a bare
+   *  declared message under `tag` (`Arrived<A>`) — or a root event's
+   *  `{ kind, … }`. */
+  payload: Arrived<A>;
   /** The slot whose fill drew the node, as its key (`keyOf` of the slot's
    *  full name answers the same), or null for a node your app drew. One
    *  extension fills many slots, so `origin` cannot say which; this is
@@ -2842,7 +2881,10 @@ export declare class Ctx {
    * payload, slot}]`, payloads as plain data — the message the
    * node's handler declared, with the event's data in the field
    * `event` names (`drag`, `change`, …), or a root event's
-   * `{kind, …}` (ADR 0047). `A` types them — the app's own union,
+   * `{kind, …}` (ADR 0047). A node's payload is always a map: a
+   * message that is not one (`onClick: 'save'`) arrives under
+   * `tag` (`{tag: 'save'}`), a `null` one as the field alone or
+   * `{}` (`Arrived<A>`). `A` types them — the app's own union,
    * or one message type when only that is being watched.
    */
   pollEvents<A = AppMsg | RootMsg>(): UiEvent<A>[]
@@ -4177,7 +4219,10 @@ export declare class KuiWindow {
    * payload, slot}]`, payloads as plain data — the message the
    * node's handler declared, with the event's data in the field
    * `event` names (`drag`, `change`, …), or a root event's
-   * `{kind, …}` (ADR 0047). `A` types them — the app's own union,
+   * `{kind, …}` (ADR 0047). A node's payload is always a map: a
+   * message that is not one (`onClick: 'save'`) arrives under
+   * `tag` (`{tag: 'save'}`), a `null` one as the field alone or
+   * `{}` (`Arrived<A>`). `A` types them — the app's own union,
    * or one message type when only that is being watched.
    */
   pollEvents<A = AppMsg | RootMsg>(): UiEvent<A>[]
@@ -5286,7 +5331,7 @@ export declare function withEffects<M, E>(model: M | undefined, ...effects: E[])
  *  goes through `update` on the next turn, not inside this one — and the
  *  surface, which shows the frame the effect's cause produced. A
  *  promise-shaped effect is the handler's business. */
-export type EffectHandler<E, A, S> = (effect: E, dispatch: (msg: A) => void, surface: S) => void;
+export type EffectHandler<E, A, S> = (effect: E, dispatch: (msg: A | Arrived<A>) => void, surface: S) => void;
 
 export interface LoopConfig<M, A, S, E = never> {
   /** The first model, or a function that builds it. The function form is
@@ -5304,8 +5349,12 @@ export interface LoopConfig<M, A, S, E = never> {
    *  `withEffects(model, ...effects)` returns it with the effects the loop
    *  should perform after the frame (see `EffectHandler`). `surface` is the
    *  thing being driven — for `editText`, `focus`, `play`,
-   *  `scrollGeometry` and the rest. */
-  update: (model: M, msg: A, event: UiEvent<A>, surface: S) => M | WithEffects<M, E> | undefined | void;
+   *  `scrollGeometry` and the rest. `msg` is the message as it arrives:
+   *  an event's payload is always a map (`Arrived<A>`), so a node's
+   *  `onClick: 'save'` is `{ tag: 'save' }` here (ADR 0047, decision 3);
+   *  a message the app hands the loop itself — `dispatch`, a tick, an
+   *  effect handler's — arrives as it was written. */
+  update: (model: M, msg: A | Arrived<A>, event: UiEvent<A>, surface: S) => M | WithEffects<M, E> | undefined | void;
   /** The tree for one window. Called once per open window per frame with
    *  its name — `'main'` for the one the app starts in, else a name
    *  `windows` declared — so a single-window app ignores the argument. The
@@ -5323,7 +5372,7 @@ export interface LoopConfig<M, A, S, E = never> {
    *  with the clock's own reading — `Date.now()` under a window, the loop's
    *  own milliseconds headless — and the cadence this tick fired on, so a
    *  model can tell a 16 ms reading from a 1000 ms one and know how stale
-   *  `now` may be by the next press) to `update`. Ticks are frequent, so unlike UI
+   *  `now` may be by the next press) to `update`, as written. Ticks are frequent, so unlike UI
    *  events they re-render only when `update` returns a new model — a
    *  countdown that returns undefined until the displayed second changes
    *  costs nothing in between. Read backwards, that is the trap: a tick
@@ -5347,7 +5396,7 @@ export interface LoopConfig<M, A, S, E = never> {
    *  its start: a cadence that shortens after a long quiet owes one tick
    *  `every` from now, not a burst. `0` or less means no tick, as the
    *  number does. */
-  tick?: { every: number | ((model: M) => number); msg: A | ((now: number, every: number) => A) };
+  tick?: { every: number | ((model: M) => number); msg: A | Arrived<A> | ((now: number, every: number) => A | Arrived<A>) };
   /** Runs once as the main window goes for good — its close button,
    *  `win.close()`, Quit from the menu or the dock — with the model as it
    *  stands, from inside the pump that saw it and before `runWindowed`
@@ -5638,7 +5687,10 @@ export interface Loop<M, A, S, E = never> {
    *  printed unless created with `warnings: false`. A test asserts it is
    *  empty, or that a specific code showed up. */
   readonly warnings: Warning[];
-  dispatch(msg: A, event?: UiEvent<A>): void;
+  /** Hands `msg` to `update` as written: `dispatch('save')` is `'save'`
+   *  there, where a node's `onClick: 'save'` arrives as `{ tag: 'save' }`
+   *  (the core makes every event's payload a map). */
+  dispatch(msg: A | Arrived<A>, event?: UiEvent<A>): void;
   /** The config's `teardown(model)`, once; a second call is nothing. The
    *  window calls it as it goes (see `LoopConfig.teardown`); a headless
    *  drive calls it to end. */

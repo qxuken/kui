@@ -951,13 +951,14 @@ Spec :: struct {
 	on_focus: any,
 	// Changes, as this message with `change` in it (ADR 0047).
 	on_change: any,
-	// Enter in a single-line editor, as this message exactly as declared (ADR
-	// 0047).
+	// Enter in a single-line editor, as this message — a map as declared, any
+	// other message under `tag`, none as `{}` (ADR 0047).
 	on_submit: any,
-	// Escape letting go of a focused editor, as this message exactly as declared
-	// (ADR 0047): the keyboard leaves it, as it does for a click elsewhere, and
-	// this says it was Escape — a draft abandoned, where `onSubmit` is one
-	// confirmed and a plain blur is neither.
+	// Escape letting go of a focused editor, as this message — a map as
+	// declared, any other message under `tag`, none as `{}` (ADR 0047): the
+	// keyboard leaves it, as it does for a click elsewhere, and this says it was
+	// Escape — a draft abandoned, where `onSubmit` is one confirmed and a plain
+	// blur is neither.
 	on_cancel: any,
 	// An editing key that met the edge of an editor's text and did nothing, as
 	// this message with `boundary: {key, edge, word, doc}` in it (ADR 0047,

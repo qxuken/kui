@@ -1,6 +1,7 @@
 // kui for Node - Elm-shaped: `view(model)` returns a JSX tree, event payloads
 // are your messages — the one a node's handler declared, with the event's
-// data in a field named for it (ADR 0047) — and `update(model, msg, event)`
+// data in a field named for it (ADR 0047), always a map, a bare message
+// under `tag` (`onClick: 'save'` is `{tag: 'save'}`) — and `update(model, msg, event)`
 // returns the next model, `event.event` saying which event it was.
 import native from './native.cjs';
 import { createEncoder } from './encoder.js';

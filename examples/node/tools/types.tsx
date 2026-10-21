@@ -1,7 +1,7 @@
 // The shipped `.d.ts`, exercised: a typed drive that uses the app-facing
 // types the type checker would otherwise never see used — `App`, `Ctx`,
 // `RootMsg` and the message union, the event helpers (`KeyMsg`,
-// `EditChangeMsg`, `SliderChangeMsg`, `HandlerMsg`), `UiEvent`,
+// `EditChangeMsg`, `SliderChangeMsg`, `HandlerMsg`, `Arrived`), `UiEvent`,
 // `decodeQuads`. `npm run typecheck` is what runs it as
 // types; `--headless` runs it as code and exits non-zero on a wrong answer,
 // since a stale assumption typechecks fine (the `autofocus` one from
@@ -10,7 +10,7 @@
 //   node dist/tools/types.mjs --headless
 import { createApp, decodeQuads, defineTokens, revealRow, roles, rowsInView, splitter, uniformList, Ctx } from '@qxuken/kui';
 import type {
-  App, ColorToken, DragMsg, EditChangeMsg, HandlerMsg, KeyMsg, RootMsg, SliderChangeMsg, Theme, UiEvent, WithDrag,
+  App, Arrived, ColorToken, DragMsg, EditChangeMsg, HandlerMsg, KeyMsg, RootMsg, SliderChangeMsg, Theme, UiEvent, WithDrag,
 } from '@qxuken/kui';
 
 // Tokens (ADR 0027): the names typed at the declaration. `T.peach` is the
@@ -72,6 +72,26 @@ interface PanIn extends WithDrag { kind: 'pan' }
 const arrived: DragMsg<{ kind: 'pan' }> = { kind: 'pan', drag: { phase: 'end', x: 0, y: 0, dx: 0, dy: 0, parent: { x: 0, y: 0, w: 0, h: 0 } } };
 const same: PanIn = arrived;
 void valued; void panned; void wrongHandler; void wrongChange; void pan; void same;
+// ADR 0047, decision 3: every node payload is a map. A bare message is
+// declared bare and heard under `tag`, even from a click, which has no
+// data — `Arrived<M>` is what `update` and `UiEvent.payload` are typed as.
+const saveBtn = <box onClick="save" label="Save" />;
+const savedIn: UiEvent<'save'>['payload'] = { tag: 'save' };
+// @ts-expect-error — a bare-string click no longer arrives bare
+const savedBare: UiEvent<'save'>['payload'] = 'save';
+// A map is left as it is, so an all-map union is its own `Arrived`.
+const resetIn: Arrived<'save' | { kind: 'reset' }> = { kind: 'reset' };
+// @ts-expect-error — an `update` that reads `'save'` bare is not the loop's
+const bareUpdate = () => createApp<number, 'save' | RootMsg>({ init: 0, update: (n: number, msg: 'save' | RootMsg) => (msg === 'save' ? n + 1 : n), view: () => <box /> });
+// A bare message with an event's field is registered as it arrives,
+// `DragMsg<{ tag: 'nudge' }>`, and the handler takes it back bare
+// (`Declared<M>`) or spelled out.
+const nudged = <box onDrag="nudge" />;
+const nudgedMap = <box onDrag={{ tag: 'nudge' }} />;
+const nudge: HandlerMsg<WithDrag> = 'nudge';
+// @ts-expect-error — `save` carries no `drag`
+const wrongBare = <box onDrag="save" />;
+void saveBtn; void savedIn; void savedBare; void resetIn; void bareUpdate; void nudged; void nudgedMap; void nudge; void wrongBare;
 void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wrongRole; void wrongArity; void wrongVerb; void liveText;
 // A scrolling terminal stamps where its screen sits, so a selection keeps
 // its ends across a scroll (ADR 0017).
@@ -210,8 +230,22 @@ lists.frame(300, 100, 1, listTree());
 const revealed = revealRow(lists, 'l', 40, 20);
 const page = rowsInView(lists, 'l', 20);
 
+// A bare-string click, run: `update` reads it under `tag` (ADR 0047).
+const saves = createApp<{ saved: number }, 'save' | RootMsg>(
+  {
+    init: { saved: 0 },
+    update: (m, msg) =>
+      typeof msg === 'object' && 'tag' in msg && msg.tag === 'save' ? { saved: m.saved + 1 } : undefined,
+    view: () => <box width={100} height={40} onClick="save" label="Save" />,
+  },
+  { width: 100, height: 40 },
+);
+saves.render();
+saves.click(50, 20);
+
 const checks: [boolean, string][] = [
   [revealed && page === 5, 'revealRow scrolls to a row the list has not built; rowsInView is a page'],
+  [saves.model.saved === 1 && saves.warnings.length === 0, 'a bare-string click arrives as {tag}'],
   [app.model.count === -1, 'clicks by quad, a reset, and a decrement proposed in the slider\'s own message'],
   [app.model.note === 'hello from jsx' && app.ctx.editText('note') === 'hello from jsx', 'typing, and a word-wise backspace, the model and the editor one text'],
   [imageQuads === 1, 'an image is one image quad'],

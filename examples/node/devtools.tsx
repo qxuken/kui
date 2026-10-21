@@ -27,7 +27,7 @@
 // `windows` still belong on the root — the example's `windows` pass through
 // `windows`.
 import { createApp, runWindowed } from '@qxuken/kui';
-import type { App, RootMsg, KuiNode, KuiWindow, UiEvent, WindowDecl } from '@qxuken/kui';
+import type { App, Arrived, RootMsg, KuiNode, KuiWindow, UiEvent, WindowDecl } from '@qxuken/kui';
 
 export type Dock = 'left' | 'right' | 'bottom' | 'window' | 'off';
 
@@ -35,7 +35,9 @@ export type Example<M, A> = {
   /** The subject, as the README names it: the window title is `kui — name`. */
   name: string;
   init: M | ((win: KuiWindow) => M);
-  update: (model: M, msg: A | RootMsg, ev: UiEvent<A | RootMsg>, win: KuiWindow) => M | undefined | void;
+  /** `msg` as it arrives (`Arrived`): a bare message a node declared
+   *  comes under `tag`. */
+  update: (model: M, msg: A | RootMsg | Arrived<A | RootMsg>, ev: UiEvent<A | RootMsg>, win: KuiWindow) => M | undefined | void;
   view: (model: M, win: KuiWindow) => KuiNode;
   /** Runs before the first frame, with the window: register resources here. */
   setup?: (win: KuiWindow) => void;
@@ -173,7 +175,7 @@ export async function run<M, A>(example: Example<M, A>): Promise<never> {
     const app: App<M, A | RootMsg> = createApp<M, A | RootMsg>(
       {
         init: example.init as M,
-        update: (m: M, msg: A | RootMsg, ev: UiEvent<A | RootMsg>): M | undefined =>
+        update: (m: M, msg: A | RootMsg | Arrived<A | RootMsg>, ev: UiEvent<A | RootMsg>): M | undefined =>
           example.update(m, msg, ev, surface!) ?? undefined,
         view: (m: M): KuiNode => example.view(m, surface!),
         teardown: example.teardown,
@@ -214,7 +216,7 @@ async function open<M, A>(example: Example<M, A>, cli: Cli): Promise<M> {
   const config = {
     init: (win: KuiWindow): M =>
       typeof example.init === 'function' ? (example.init as (w: KuiWindow) => M)(win) : example.init,
-    update: (m: M, msg: A | RootMsg, ev: UiEvent<A | RootMsg>, win: KuiWindow) =>
+    update: (m: M, msg: A | RootMsg | Arrived<A | RootMsg>, ev: UiEvent<A | RootMsg>, win: KuiWindow) =>
       example.update(m, msg, ev, win),
     view: (m: M, windowName: string, win: KuiWindow): KuiNode => {
       if (windowName !== 'main') return example.view(m, win);

@@ -68,7 +68,8 @@ const TS_BY_KIND = {
 // The field type each event's data rides under in the handler's message
 // (ADR 0047, decision 10), by the `field` column of the core's `EVENTS`.
 // `null` is an event with no data — Enter's `submit`, Escape's `cancel` —
-// whose message arrives exactly as declared, so its row takes any message.
+// whose message arrives as declared (a map as it is, anything else under
+// `tag`, `null` as `{}`), so its row takes any message.
 // A field the table grows that is not here stops the run: a handler typed
 // as "anything" because nobody wrote its type is the bug this prevents.
 const WITH = {
@@ -301,9 +302,12 @@ An event arrives as the message its handler declared
 the payload is the handler's message as declared, with the event's data in
 one field of it named for the event — \`onDrag={{kind: "pan"}}\` hears
 \`{kind: "pan", drag: {phase, x, y, dx, dy, parent}}\`. A node that declares
-no handler for an event hears none of it. A \`null\` message arrives as the
-field alone, and one that is not a map is kept under \`tag\` beside it. A
-root event, which no handler declared, keeps the core's \`{kind, …}\`.
+no handler for an event hears none of it. Every payload a node sends is a
+map: a \`null\` message arrives as the field alone (\`{}\` for an event with
+no data), and one that is not a map — a string, a number, a boolean, a
+list — is kept under \`tag\`, beside the field or alone: \`onClick: "save"\`
+is heard as \`{tag: "save"}\`. A root event, which no handler declared,
+keeps the core's \`{kind, …}\`.
 
 ${tableOf(['event', 'handler', 'field', 'payload', 'when'], events.map((e) => [e.kind, e.handler !== 'root' && /^[A-Za-z]+$/.test(e.handler) ? `\`${e.handler}\`` : e.handler, e.field ? `\`${e.field}\`` : '—', e.payload, e.doc]))}
 

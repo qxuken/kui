@@ -1300,7 +1300,8 @@ test('press walks the focus ring, presses a control and nudges a slider', () => 
     {
       init: { pressed: 0, nudged: null },
       update: (m, msg, ev) => {
-        if (msg === 'go') return { ...m, pressed: m.pressed + 1 };
+        // A bare-string message arrives as `{tag}` (ADR 0047).
+        if (msg.tag === 'go') return { ...m, pressed: m.pressed + 1 };
         // A key on a slider is proposed in its `onChange` (ADR 0047).
         if (ev.event === 'change') return { ...m, nudged: msg.change.value };
       },
@@ -3478,7 +3479,9 @@ test('the access tree derives roles and names, and requests drive the app', () =
     {
       init: { n: 0, text: 'hi', nudged: null, tag: null },
       update: (m, msg, ev) => {
-        if (msg === 'bump') return { ...m, n: m.n + 1 };
+        // A bare `onClick: 'bump'` arrives under `tag`, as every non-map
+        // message does.
+        if (msg.tag === 'bump' && ev.event === 'click') return { ...m, n: m.n + 1 };
         // An assistive request arrives as the event a user's would (ADR
         // 0047): the editor's text and the slider's step in `change`.
         if (msg?.kind === 'name') return { ...m, text: msg.change.text };
@@ -4178,8 +4181,9 @@ test('<input> takes value, onChange, onSubmit and onCancel', () => {
   assert.deepEqual(ctx.pollEvents().map((e) => [e.event, e.payload]), [
     ['change', { kind: 'q', change: { text: 'abc' } }],
     ['submit', { kind: 'go' }],
-    // No `onCancel`: a `Null` message, and Escape carries no data.
-    ['cancel', null],
+    // No `onCancel`: a `Null` message and no data still arrive as a map
+    // (ADR 0047), so every node payload reads as an object.
+    ['cancel', {}],
   ]);
   ctx.frame(320, 240, 1, view('reset'));
   assert.equal(ctx.editText('Search'), 'reset', 'a new value reaches the field');
@@ -9210,7 +9214,8 @@ test('an event names the slot its node was filled into, and null for the app’s
   ctx.mouse(true);
   ctx.mouse(false);
   const [ev] = ctx.pollEvents();
-  assert.equal(ev.payload, 'hit');
+  // A bare-string message arrives as `{tag}`, even with no data (ADR 0047).
+  assert.deepEqual(ev.payload, { tag: 'hit' });
   assert.deepEqual(Object.keys(ev).sort(), ['event', 'key', 'origin', 'payload', 'slot', 'window']);
   assert.equal(ev.event, 'click');
   assert.equal(ev.slot, null);
@@ -9251,7 +9256,8 @@ test('a message comes back as it was sent: a whole number past 2^53, a string cu
   const big = 9007199254740994;
   const cut = 'ab😀'.slice(0, 3);
   const frame = (onClick) => ctx.frame(200, 100, 1, { type: 'box', props: { width: 200, height: 100, onClick }, children: [] });
-  for (const [sent, back] of [[big, big], [{ s: cut }, { s: 'ab�' }]]) {
+  // A number arrives under `tag` (ADR 0047); a map as it was sent.
+  for (const [sent, back] of [[big, { tag: big }], [{ s: cut }, { s: 'ab�' }]]) {
     frame(sent);
     ctx.cursor(10, 10);
     ctx.mouse(true, 1);
