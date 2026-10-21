@@ -4,7 +4,7 @@
 //! the script's replies to the host.
 
 use kui_core::{
-    Core, Extension, Extensions, Key, NodeSpec, OriginId, Size, Slot, UiEvent, Value, WindowId,
+    Core, EventKind, Extension, Extensions, Key, NodeSpec, OriginId, Size, Slot, UiEvent, Value,
 };
 use kui_lua::LuaExtension;
 
@@ -107,12 +107,15 @@ fn what_on_event_returns_is_the_scripts_replies() {
     let params = Value::map([("on_pick", Value::map([("kind", "picked".into())]))]);
     host_frame(&mut core, &mut exts, "fs/panel", &params);
     let ext_ref = exts.by_origin(OriginId(1)).unwrap();
-    let ev = |kind: &str, extra: Option<(&'static str, Value)>| UiEvent {
-        origin: OriginId(1),
-        window: WindowId::MAIN,
-        key: Key::ROOT,
-        payload: Value::map(std::iter::once(("kind", Value::str(kind))).chain(extra)),
-        slot: None,
+    let ev = |kind: &str, extra: Option<(&'static str, Value)>| {
+        let msg = Value::map(std::iter::once(("kind", Value::str(kind))).chain(extra));
+        UiEvent::declared(
+            EventKind::Click,
+            OriginId(1),
+            Key::ROOT,
+            Some(&msg),
+            Value::Null,
+        )
     };
     // One table: one reply, the host's template with the field added.
     let replies = ext_ref.on_event(&ev("pick", Some(("item", "foo.rs".into()))));
@@ -181,7 +184,8 @@ fn a_wildcard_script_fills_every_declared_name_and_hears_which_one() {
     let mut replies = Vec::new();
     exts.route(events, |ev| replies.push(ev));
     assert_eq!(replies.len(), 1);
-    assert_eq!(replies[0].kind(), Some("routed"));
+    assert_eq!(replies[0].event, EventKind::Reply);
+    assert_eq!(replies[0].payload.get_str("kind"), Some("routed"));
     assert_eq!(replies[0].payload.get_str("slot"), Some("views/pane:2"));
 }
 
@@ -256,7 +260,7 @@ const NESTING: &str = r#"
       }
     end
     function on_event(ev)
-      return { kind = "counted", was = ev.kind, from = ev.from or "-" }
+      return { kind = "counted", was = ev.kind, event = ev.event, from = ev.from or "-" }
     end
 "#;
 
@@ -317,18 +321,23 @@ fn a_placed_plugins_reply_reaches_the_script_and_not_the_host() {
 
     let mut to_host = Vec::new();
     exts.route(
-        [UiEvent {
-            origin: OriginId(2),
-            window: WindowId::MAIN,
-            key: Key::ROOT,
-            payload: Value::map([("kind", "click".into())]),
-            slot: None,
-        }],
+        [UiEvent::declared(
+            EventKind::Click,
+            OriginId(2),
+            Key::ROOT,
+            Some(&Value::map([("kind", "click".into())])),
+            Value::Null,
+        )],
         |ev| to_host.push(ev),
     );
 
     assert_eq!(to_host.len(), 1);
-    assert_eq!(to_host[0].kind(), Some("counted"));
+    assert_eq!(to_host[0].payload.get_str("kind"), Some("counted"));
+    assert_eq!(
+        to_host[0].payload.get_str("event"),
+        Some("reply"),
+        "the script heard a reply, and `ev.event` says so"
+    );
     assert_eq!(
         to_host[0].payload.get_str("was"),
         Some("toggled"),
@@ -501,7 +510,7 @@ fn a_script_loads_a_c_plugin_and_places_it() {
     exts.route(events, |ev| to_host.push(ev));
     let heard: Vec<_> = to_host
         .iter()
-        .filter(|e| e.kind() == Some("heard"))
+        .filter(|e| e.payload.get_str("kind") == Some("heard"))
         .collect();
     assert_eq!(heard.len(), 1, "got {to_host:?}");
     assert_eq!(

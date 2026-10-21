@@ -11,7 +11,7 @@
 //!   than `d` text, bit 1 the even-odd rule, bit 2 stroked, bit 3 turned;
 //! - byte 1: the stroke's width in eighths of a px;
 //! - byte 2: the turn in sixteenths, signed;
-//! - byte 3: the scale, an index into [`SCALES`].
+//! - byte 3: the scale, an index into `SCALES`.
 
 use kui_core::path::{self, MaskPaint};
 use kui_core::{Color, Core, FillRule, NodeSpec, Path, Size, Stroke, Vec2};

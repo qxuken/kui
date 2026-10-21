@@ -6,7 +6,8 @@
 //! Run: cargo run -p kui-native --example tutorial_04_controls
 
 use kui_native::widgets;
-use kui_native::{Align, App, Key, Message, NodeSpec, TextStyle, Ui, UiEvent};
+use kui_native::widgets::InputMessages;
+use kui_native::{Align, App, Event, Key, Message, NodeSpec, TextStyle, Ui, UiEvent};
 
 const LANGUAGES: [&str; 3] = ["English", "Deutsch", "日本語"];
 
@@ -16,9 +17,11 @@ enum Msg {
     /// A toggle flips: the click is the message, nothing else.
     Notify,
     Sound,
-    /// A slider proposes a value: the message is a tag, the value rides
-    /// beside it on the event.
+    /// A slider proposes a value: the message is the one declared, and
+    /// the value rides inside it, under `change`.
     Volume,
+    /// The text field changed: its whole text rides under `change` too.
+    Name,
 }
 // ANCHOR_END: message
 
@@ -27,6 +30,8 @@ struct Settings {
     notify: bool,
     sound: bool,
     volume: f32,
+    /// The text field's text: the model's, declared back as its value.
+    name: String,
     language: usize,
     /// The select's key, kept so `on_event` knows its choice by key.
     language_key: Option<Key>,
@@ -39,6 +44,7 @@ impl Default for Settings {
             notify: true,
             sound: false,
             volume: 40.0,
+            name: String::new(),
             language: 0,
             language_key: None,
         }
@@ -80,15 +86,26 @@ impl App for Settings {
                     // ANCHOR_END: slider
 
                     // ANCHOR: field
-                    // The editor owns its text between frames. The view
-                    // reads it back by key.
-                    let name = widgets::text_input(ui, "Display name", "");
-                    let typed = ui.edit_text(name).unwrap_or_default();
+                    // The field reports each edit as `Msg::Name`, the
+                    // model keeps the text, and the view declares it
+                    // back as the field's value (`true`).
+                    widgets::text_input_with(
+                        ui,
+                        "Display name",
+                        &self.name,
+                        true,
+                        &InputMessages {
+                            change: Some(Msg::Name.into()),
+                            ..Default::default()
+                        },
+                    );
+                    let name = if self.name.is_empty() {
+                        "stranger"
+                    } else {
+                        &self.name
+                    };
                     ui.text(
-                        &format!(
-                            "Hello, {}",
-                            if typed.is_empty() { "stranger" } else { &typed }
-                        ),
+                        &format!("Hello, {name}"),
                         TextStyle::new(13.0).color(t.muted),
                     );
                     // ANCHOR_END: field
@@ -109,26 +126,26 @@ impl App for Settings {
 
     // ANCHOR: on_event
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.message::<Msg>() {
-            Some(Msg::Notify) => self.notify = !self.notify,
-            Some(Msg::Sound) => self.sound = !self.sound,
-            Some(Msg::Volume) => {
-                // A `change` event: the message was its tag, the value is
-                // a field beside it.
-                if let Some(v) = ev.payload.get_float("value") {
-                    self.volume = v as f32;
-                }
-            }
-            None => {
-                // The select speaks by key, not by message: a `menu`
-                // event with the chosen label as `item`.
-                if Some(ev.key) == self.language_key
-                    && let Some(item) = ev.payload.get_str("item")
-                    && let Some(i) = LANGUAGES.iter().position(|l| *l == item)
+        // The message, and the event it came with, in one match.
+        match ev.split::<Msg>() {
+            (Some(Msg::Notify), _) => self.notify = !self.notify,
+            (Some(Msg::Sound), _) => self.sound = !self.sound,
+            // A slider's `change`: the value the core proposes.
+            (Some(Msg::Volume), Event::SliderChange(c)) => self.volume = c.value as f32,
+            // An editor's `change`: the whole text after the edit.
+            (Some(Msg::Name), Event::EditChange(c)) => self.name = c.text,
+            // The select declared no message: its choice arrives as a
+            // `menu` event on its key, with the chosen label as `item`.
+            (None, Event::Menu(choice)) if Some(ev.key) == self.language_key => {
+                if let Some(i) = choice
+                    .item
+                    .as_str()
+                    .and_then(|item| LANGUAGES.iter().position(|l| *l == item))
                 {
                     self.language = i;
                 }
             }
+            _ => {}
         }
     }
     // ANCHOR_END: on_event

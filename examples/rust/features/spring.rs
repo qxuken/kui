@@ -20,7 +20,8 @@
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Core, Easing, FloatConfig, KeyMods, NodeSpec, Role, TextStyle, Ui, UiEvent, Value,
+    Align, App, Core, Easing, Event, FloatConfig, KeyMods, NodeSpec, Role, TextStyle, Ui, UiEvent,
+    Value,
 };
 
 /// The spring easings, each a named bounce.
@@ -52,7 +53,8 @@ impl Default for Spring {
     }
 }
 
-fn tag(kind: &str) -> Value {
+/// The `{kind}` message every control here declares.
+fn message(kind: &str) -> Value {
     Value::map([("kind", Value::str(kind))])
 }
 
@@ -89,7 +91,7 @@ impl App for Spring {
                             .value_max(1500.0)
                             .value_step(50.0)
                             .value_text(format!("{:.0} ms", self.duration_ms))
-                            .on_change(tag("duration")),
+                            .on_change(message("duration")),
                         None,
                     );
                     ui.text(
@@ -110,7 +112,7 @@ impl App for Spring {
                             .value_max(kui_native::MAX_BOUNCE)
                             .value_step(0.05)
                             .value_text(format!("bounce {:.2}", self.bounce))
-                            .on_change(tag("bounce")),
+                            .on_change(message("bounce")),
                         None,
                     );
                     ui.text(
@@ -120,7 +122,7 @@ impl App for Spring {
                 });
                 ui.with(NodeSpec::row().gap(8.0), |ui| {
                     for (name, _) in PRESETS {
-                        widgets::button(ui, name, tag(name));
+                        widgets::button(ui, name, message(name));
                     }
                 });
 
@@ -136,7 +138,7 @@ impl App for Spring {
                         .gap(12.0)
                         .bg(t.sunken)
                         .radius(8.0)
-                        .on_click(tag("go"))
+                        .on_click(message("go"))
                         .label("Stage: spring the bar and the racer across"),
                     |ui| {
                         // The width is a layout input, so it springs: past
@@ -174,19 +176,13 @@ impl App for Spring {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let tag = ev
-            .payload
-            .get("tag")
-            .and_then(|t| t.get("kind"))
-            .and_then(Value::as_str);
-        match (ev.kind(), tag) {
+        // Every message here is a `{kind}` map: a slider's arrives with
+        // its proposal beside it, under `change`.
+        let (msg, event) = ev.split::<Value>();
+        match (msg.as_ref().and_then(|m| m.get_str("kind")), event) {
             // A slider's proposal: store it, and the next frame draws it.
-            (Some("change"), Some("duration")) => {
-                self.duration_ms = ev.payload.get_float("value").unwrap_or(500.0) as f32;
-            }
-            (Some("change"), Some("bounce")) => {
-                self.bounce = ev.payload.get_float("value").unwrap_or(0.0) as f32;
-            }
+            (Some("duration"), Event::SliderChange(c)) => self.duration_ms = c.value as f32,
+            (Some("bounce"), Event::SliderChange(c)) => self.bounce = c.value as f32,
             (Some("go"), _) => self.far = !self.far,
             (Some(kind), _) => {
                 if let Some((_, e)) = PRESETS.iter().find(|(name, _)| *name == kind) {

@@ -54,7 +54,7 @@ use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
 use crate::value::Value;
-use crate::window::{WindowCommand, WindowConfig, WindowId};
+use crate::window::{WindowCommand, WindowConfig, WindowEvents, WindowId, WindowLifecycle};
 
 pub struct Ui<'a> {
     core: &'a mut Core,
@@ -510,6 +510,20 @@ impl<'a> Ui<'a> {
     /// which window is being drawn.
     pub fn window(&mut self, name: &str, config: WindowConfig) {
         self.core.declare_window(name, config);
+    }
+
+    /// [`Ui::window`], with the messages its opening, closing and a
+    /// popup's dismissal arrive as; see `Core::declare_window_with`.
+    pub fn window_with(&mut self, name: &str, config: WindowConfig, lifecycle: WindowLifecycle) {
+        self.core.declare_window_with(name, config, lifecycle);
+    }
+
+    /// Declares the messages this window's own events arrive as — a
+    /// resize, its keyboard focus, a system setting, the fonts, the
+    /// modifiers, the OS's documents; see `Core::set_window_events` (ADR
+    /// 0048). Declare it every frame: a frame that does not hears none.
+    pub fn window_events(&mut self, events: WindowEvents) {
+        self.core.set_window_events(events);
     }
 
     /// The name of the window this frame is drawing: `"main"` for the one
@@ -1241,6 +1255,26 @@ impl<'a> Ui<'a> {
         self.core.text_edit(label, initial, opts, spec)
     }
 
+    /// An editable text node whose text is `value`, declared every frame:
+    /// [`Self::text_edit`] with [`EditOptions::value`] set, so where the
+    /// editor's text differs from `value` it is brought to it as a
+    /// splice. An app that stores the text its `on_change` message brings
+    /// (`change: {text}`) and declares it back never moves the
+    /// caret; one that declares something else (a filter, a reset) wins.
+    pub fn text_edit_value(
+        &mut self,
+        label: &str,
+        value: &str,
+        opts: &EditOptions,
+        spec: NodeSpec,
+    ) -> Key {
+        let opts = &EditOptions {
+            value: true,
+            ..opts.clone()
+        };
+        self.core.text_edit(label, value, opts, spec)
+    }
+
     /// Whether `key` holds keyboard focus — any node: an editor, a key
     /// sink, a button Tab landed on (see `Core::focus`).
     pub fn is_focused(&self, key: Key) -> bool {
@@ -1429,9 +1463,9 @@ impl<'a> Ui<'a> {
     /// Declares this node focused: it takes keyboard focus when the
     /// declaration *starts* (the first frame it is made), and a Tab press
     /// afterwards is not clobbered by the view repeating it. An `on_key`
-    /// sink then gets presses in `on_event` as `{kind="key", code, ctrl,
-    /// alt, shift, super, text, repeat, tag}`. To move focus at any time,
-    /// `focus(key)`.
+    /// sink then gets presses in `on_event` as its message with `key: {code,
+    /// ctrl, alt, shift, super, text, repeat}` in it. To move focus at any
+    /// time, `focus(key)`.
     pub fn take_key_focus(&mut self, key: Key) {
         self.core.set_key_focus(Some(key));
     }

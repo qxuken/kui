@@ -18,7 +18,7 @@
 //! Run: cargo run -p kui-native --example hover [-- --headless]
 
 use kui_devtools::{Drive, Example};
-use kui_native::{Align, App, Core, NodeSpec, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, HoverPhase, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 const ROWS: [(&str, &str); 3] = [("◆", "inbox"), ("●", "drafts"), ("▲", "sent")];
 
@@ -152,20 +152,20 @@ impl App for Hover {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.kind() != Some("hover") {
+        // A string message arrives as `{tag, hover: {phase, by}}`: the tag
+        // is the row, the hover's data says which way the pointer went.
+        let Some(h) = ev.hover() else {
             return;
-        }
-        let tag = ev.payload.get_str("tag").map(str::to_string);
-        match ev.payload.get_str("phase") {
-            Some("enter") => {
+        };
+        match h.phase {
+            HoverPhase::Enter => {
                 self.enters += 1;
-                self.over = tag;
+                self.over = ev.payload.get_str("tag").map(str::to_string);
             }
-            Some("leave") => {
+            HoverPhase::Leave => {
                 self.leaves += 1;
                 self.over = None;
             }
-            _ => {}
         }
     }
 }

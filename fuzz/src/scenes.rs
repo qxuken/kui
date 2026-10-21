@@ -12,7 +12,10 @@
 //! Checked after every frame: nothing panicked, and while every number
 //! the driver handed over was finite, every quad the frame emitted is.
 //! Most pointer moves aim at a node of the last frame
-//! ([`Action::Aim`]), so presses land on what is there to press.
+//! (`Action::Aim`), so presses land on what is there to press.
+//!
+//! Every input gets a new core, built in a session kept from the inputs
+//! before it, with the fixtures registered once (`crate::reuse`).
 
 use arbitrary::{Arbitrary, Result, Unstructured};
 use kui_core::access::{AccessAction, AccessRequest, TextPos};
@@ -24,6 +27,8 @@ use kui_core::{
     ClipboardMarks, Core, DismissReason, EditOptions, InputEvent, Key, NodeSpec, Size, TextStyle,
     Ui, Vec2, WindowId,
 };
+
+use crate::reuse::{self, Kept};
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -147,37 +152,60 @@ impl<'a> Arbitrary<'a> for Coord {
 const SCALES: &[f32] = &[1.0, 1.25, 1.5, 2.0, 0.5, 3.0];
 
 pub fn run(data: &[u8]) {
+    drive(data, None);
+}
+
+/// What [`run`] saw of `data`, line by line — the events, the commands,
+/// the warnings, the access tree and the quads after every step — for
+/// `tests/reuse.rs` to hold a kept session to a new one. Tracing only
+/// reads what `run` reads.
+pub fn trace(data: &[u8]) -> Vec<String> {
+    let mut lines = Vec::new();
+    drive(data, Some(&mut lines));
+    lines
+}
+
+thread_local! {
+    static KEPT: Kept<Fixtures> = const { Kept::new() };
+}
+
+fn drive(data: &[u8], trace: Option<&mut Vec<String>>) {
     let Ok(input) = Input::arbitrary_take_rest(Unstructured::new(data)) else {
         return;
     };
     let scene = SCENES.get(input.scene as usize % (SCENES.len() + 1));
-    let mut core = Core::new();
-    let fixtures = conformance::fixtures(&mut core);
-    core.set_diagnostics(true);
-    core.set_inspect(true);
-    if let Some(s) = scene {
-        core.env.window = s.env;
-    }
-    let mut d = Driver {
-        core,
-        scene,
-        fixtures,
-        editor: input.editor,
-        edit: None,
-        size: conformance::VIEWPORT,
-        scale: conformance::SCALE,
-        phase: 0,
-        now: 0.0,
-        finite: true,
-    };
-    d.frame();
-    for action in &input.actions {
-        d.apply(action);
+    KEPT.with(|kept| {
+        let (mut core, fixtures) = kept.core(conformance::fixtures);
+        core.set_diagnostics(true);
+        core.set_inspect(true);
+        if let Some(s) = scene {
+            core.env.window = s.env;
+        }
+        let mut d = Driver {
+            core,
+            scene,
+            fixtures,
+            editor: input.editor,
+            edit: None,
+            size: conformance::VIEWPORT,
+            scale: conformance::SCALE,
+            phase: 0,
+            now: 0.0,
+            finite: true,
+            dirty: false,
+            trace,
+        };
         d.frame();
-    }
+        for action in &input.actions {
+            d.note(|| format!("{action:?}"));
+            d.apply(action);
+            d.frame();
+        }
+        kept.done(d.core, fixtures, d.dirty);
+    });
 }
 
-struct Driver {
+struct Driver<'a> {
     core: Core,
     scene: Option<&'static Scene>,
     fixtures: Fixtures,
@@ -190,9 +218,19 @@ struct Driver {
     now: f64,
     /// Whether every number handed to the core so far was finite.
     finite: bool,
+    /// A window opened or a sound was queued: the session is not handed
+    /// back (see [`crate::reuse`]).
+    dirty: bool,
+    trace: Option<&'a mut Vec<String>>,
 }
 
-impl Driver {
+impl Driver<'_> {
+    fn note(&mut self, line: impl FnOnce() -> String) {
+        if let Some(t) = self.trace.as_deref_mut() {
+            t.push(line());
+        }
+    }
+
     fn frame(&mut self) {
         let mut ui = self.core.frame(self.size, self.scale);
         match self.scene {
@@ -201,14 +239,41 @@ impl Driver {
         }
         ui.finish();
         // What a driver takes off the core after a frame.
-        let _ = self.core.take_pending_events();
-        let _ = self.core.take_window_commands();
-        let _ = self.core.take_audio_commands();
-        let _ = self.core.take_announcements();
-        let _ = self.core.take_warnings();
-        let _ = self.core.access_tree();
+        let events = self.core.take_pending_events();
+        let windows = self.core.take_window_commands();
+        let audio = self.core.take_audio_commands();
+        let announced = self.core.take_announcements();
+        let warnings = self.core.take_warnings();
+        self.dirty |= reuse::opens(&windows) || !audio.is_empty();
+        if self.trace.is_some() {
+            let tree = format!("{:?}", self.core.access_tree());
+            let focus = self.core.focus();
+            let text = self.edit.and_then(|k| self.core.edit_text(k));
+            self.note(|| {
+                format!(
+                    "frame: {events:?}\n{windows:?}\n{audio:?}\n{announced:?}\n\
+                     {warnings:?}\nfocus {focus:?} {text:?}\n{tree}"
+                )
+            });
+        } else {
+            let _ = self.core.access_tree();
+        }
         let finite = self.finite;
         let (list, _) = self.core.output();
+        if let Some(t) = self.trace.as_deref_mut() {
+            // Not the handles: a kept session's fixtures are not a new
+            // one's, and the textures and fragments name them.
+            t.push(format!(
+                "{:?}\n{:?}\n{} fragments, {} textures, {} uploads, {} + {} dropped",
+                list.quads,
+                list.clips,
+                list.fragments.len(),
+                list.textures.len(),
+                list.texture_pixels.len(),
+                list.dropped_textures.len(),
+                list.dropped_fragments.len()
+            ));
+        }
         if finite {
             for q in &list.quads {
                 let r = q.rect;

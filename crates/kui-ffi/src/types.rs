@@ -39,6 +39,9 @@ pub struct KuiCtx {
     pub(crate) last_payload: Option<Box<KuiValue>>,
     /// Text most recently handed out by kui_edit_text; freed on the next call.
     pub(crate) last_edit_text: Option<String>,
+    /// The label most recently handed out by `kui_label_of`; valid until
+    /// the next call, like every other borrowed string here.
+    pub(crate) label_of: String,
     /// The WGSL module most recently handed out by `kui_fragment_source`;
     /// valid until the next call, like every other borrowed string here.
     pub(crate) fragment_source: String,
@@ -188,6 +191,7 @@ impl KuiCtx {
             events: Vec::new(),
             last_payload: None,
             last_edit_text: None,
+            label_of: String::new(),
             fragment_source: String::new(),
             fragment_draws: Vec::new(),
             texture_draws: Vec::new(),
@@ -278,6 +282,16 @@ pub struct KuiValue(pub(crate) Value);
 pub struct KuiStr {
     pub ptr: *const u8,
     pub len: usize,
+}
+
+impl KuiStr {
+    /// A string the library never frees: an event's kind, a schema name.
+    pub(crate) fn from_static(s: &'static str) -> Self {
+        Self {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
 }
 
 /// One axis of a node's size: a `KUI_*` tag and its value.
@@ -504,11 +518,11 @@ pub struct KuiSpec {
     /// the pointer enters it; 0 = none. Either makes the node hover-tracked.
     pub click_sound: u64,
     pub hover_sound: u64,
-    /// Layout tag (NULL = none): the node's laid-out rect arrives as
-    /// `{kind="layout", x, y, w, h, parent, tag}` on its first frame and
-    /// whenever it changes. Borrowed — cloned while the node opens, so the
-    /// caller keeps ownership and frees it as usual; `kui_value_null()`
-    /// asks for the events without a tag.
+    /// Layout message (NULL = none): the node's laid-out rect arrives as
+    /// it with `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on
+    /// its first frame and whenever it changes. Borrowed — cloned while the
+    /// node opens, so the caller keeps ownership and frees it as usual;
+    /// `kui_value_null()` asks for the events as the field alone.
     pub on_layout: *const KuiValue,
     /// KUI_ROLE_* (0 = unset: the core derives one). What the node is to
     /// assistive technology; KUI_ROLE_NONE hides it and its subtree.
@@ -554,18 +568,18 @@ pub struct KuiSpec {
     /// Modal surface (NULL = none): while this node is declared the Tab
     /// ring is its subtree, everything outside it is inert to the pointer,
     /// the wheel and assistive technology, and Escape or a press outside
-    /// emits `{kind="dismiss", reason, tag}` on it — the app stops opening
+    /// emits it with `dismiss: {reason}` in it on the node — the app stops opening
     /// the node. The last one declared wins (a confirm inside a dialog);
     /// a modal that must cover the app is a float. Borrowed — cloned
     /// while the node opens, so the caller keeps ownership;
-    /// `kui_value_null()` asks for the behaviour without a tag.
+    /// `kui_value_null()` asks for the behaviour with no message of its own.
     pub modal: *const KuiValue,
     /// Context menu (NULL = none): a secondary-button press over this node
-    /// emits `{kind="contextmenu", x, y, tag}` on it, at the logical point
-    /// to open the menu at. The press moves no focus, places no caret and
+    /// emits it with `contextmenu: {x, y}` in it, the logical point to open
+    /// the menu at. The press moves no focus, places no caret and
     /// produces no click. Borrowed — cloned while the node opens, so the
     /// caller keeps ownership; `kui_value_null()` asks for the behaviour
-    /// without a tag.
+    /// with no message of its own.
     pub on_context_menu: *const KuiValue,
     /// KUI_CURSOR_* (0 = unset: the I-beam over text, the arrow otherwise
     /// — a clickable or draggable node included). The pointer shape while
@@ -632,7 +646,7 @@ pub struct KuiSpec {
     /// behind it, `kui_announce` is the other half.
     pub live: u32,
     /// Non-zero, with a non-NULL `on_key` on `kui_open_with`: the sink hears
-    /// releases too, as the same `{kind="key"}` payload with `phase="up"`
+    /// releases too, as the same key event with `phase="up"`
     /// (`text` null, `repeat` false) — for a held-key interaction (WASD,
     /// press-and-hold, a key that arms a mode while it is down). A key only
     /// comes up where it went down, and focus leaving while a key is held
@@ -673,10 +687,10 @@ pub struct KuiSpec {
     /// inside it selects as one run, and a press-drag across them takes
     /// the lot. Declared on the container, not on each label.
     pub selectable: u32,
-    /// Force-click tag (`on_force_click`): a press that deepens past the
-    /// second stage of a Force Touch trackpad over this node emits
-    /// `{kind:"forceclick", x, y, tag}` on it. Borrowed while the node
-    /// opens, like every other tag.
+    /// Force-click message (`on_force_click`): a press that deepens past
+    /// the second stage of a Force Touch trackpad over this node emits it
+    /// with `forceclick: {x, y}` in it. Borrowed while the node opens, like
+    /// every other message.
     pub on_force_click: *const KuiValue,
     /// Non-zero: this node's subtree is a focus region, a Tab ring of its
     /// own that the ring outside never enters and that never leaves.
@@ -699,18 +713,18 @@ pub struct KuiSpec {
     /// `overflow-anchor`): the first child in view keeps its place on
     /// screen when the content before it changes size.
     pub anchor: u32,
-    /// Scroll tag (`on_scroll`): the wheel over this node emits
-    /// `{kind:"scroll", x, y, dx, dy, lines, tag}` on it instead of
+    /// Scroll message (`on_scroll`): the wheel over this node emits it with
+    /// `scroll: {x, y, dx, dy, lines}` in it instead of
     /// scrolling anything (`lines` the whole lines a `cells` grid's delta
     /// covers, null elsewhere), and a drag-select held past a grid's edge
     /// arrives the same way once a frame. Borrowed while the node opens,
-    /// like every other tag.
+    /// like every other message.
     pub on_scroll: *const KuiValue,
-    /// Drop-zone tag (`on_drop`): files dragged in from the OS over this
-    /// node emit `{kind:"drop", phase, paths, x, y, tag}` on it, `phase`
+    /// Drop-zone message (`on_drop`): files dragged in from the OS over this
+    /// node emit it with `drop: {phase, paths, x, y}` in it, `phase`
     /// one of `enter`, `move`, `leave`, `drop`. A node inside a zone is
     /// the zone's; a node that is no zone is looked past. Borrowed while
-    /// the node opens, like every other tag. ABI 18.
+    /// the node opens, like every other message. ABI 18.
     pub on_drop: *const KuiValue,
     /// Background while dragged files are over this node, `0xRRGGBBAA`;
     /// 0 for none. Wins over `pressed_bg`, `focus_bg` and `hover_bg`;
@@ -731,10 +745,13 @@ pub struct KuiSpec {
     /// A slider's step (`valueStep`), present when `KUI_VALUE_STEP` is in
     /// `value_set`. ABI 19.
     pub value_step: f32,
-    /// A slider's change tag (`onChange`): the core turns a press, a drag,
-    /// the arrows, PageUp / PageDown and Home / End into
-    /// `{kind:"change", value, phase, tag}`. Borrowed while the node
-    /// opens, like every other tag. ABI 19.
+    /// The change message (`onChange`). On a slider the core turns a
+    /// press, a drag, the arrows, PageUp / PageDown, Home / End and
+    /// assistive technology's increment, decrement and set value into it
+    /// with `change: {value, phase}` in it; a slider without one does not
+    /// move. On an editor (ADR 0047) each edit arrives as it with
+    /// `change: {text}` in it. Borrowed while the node opens, like every
+    /// other message. ABI 19.
     pub on_change: *const KuiValue,
     /// Non-zero: paint the background, border, shadow and fragment with each edge
     /// on a whole physical pixel (`pixelSnap`), so snapped boxes that
@@ -745,18 +762,18 @@ pub struct KuiSpec {
     /// Non-zero: a press on this node or inside it leaves keyboard focus
     /// where it was (`keepFocus`). ABI 20.
     pub keep_focus: u32,
-    /// Focus entering or leaving this node's subtree emits `{kind:"focus",
-    /// phase, by, tag}` (`onFocus`). Borrowed while the node opens, like
-    /// every other tag. ABI 20.
+    /// Focus entering or leaving this node's subtree emits it with
+    /// `focus: {phase, by}` in it (`onFocus`). Borrowed while the node
+    /// opens, like every other message. ABI 20.
     pub on_focus: *const KuiValue,
     /// A table's grid rules (`rules`), 0xRRGGBBAA; 0 draws none. ABI 20.
     pub rules: u32,
     /// Their width in logical px (`ruleWidth`); 0 is 1. ABI 20.
     pub rule_w: f32,
-    /// The non-primary buttons as `{kind:"button", phase, button, x, y,
-    /// clicks, tag}` events on the node that claims them, captured from
-    /// press to release (`onButton`). Borrowed while the node opens, like
-    /// every other tag. ABI 20.
+    /// The non-primary buttons as this message with `button: {phase,
+    /// button, x, y, clicks}` in it, on the node that claims them, captured
+    /// from press to release (`onButton`). Borrowed while the node opens,
+    /// like every other message. ABI 20.
     pub on_button: *const KuiValue,
     /// Which buttons `on_button` claims, as `KUI_BUTTONS_*` bits; 0 is all
     /// three. ABI 20.
@@ -822,6 +839,26 @@ pub struct KuiSpec {
     /// glides past its neighbour stays on top whichever way it moved.
     /// ABI 31.
     pub over_siblings: u32,
+    /// An editor's Enter (`onSubmit`, ADR 0047): a field's Enter arrives
+    /// as this message, as declared. An editor without one sends nothing
+    /// on Enter. Borrowed while the node opens, like every other message.
+    /// ABI 33.
+    pub on_submit: *const KuiValue,
+    /// An editor's Escape (`onCancel`): a draft let go, as this message,
+    /// as declared. ABI 33.
+    pub on_cancel: *const KuiValue,
+    /// An editing key that met the edge of an editor's text and did
+    /// nothing (`onBoundary`): this message with `boundary: {key, edge,
+    /// word, doc}` in it. ABI 33.
+    pub on_boundary: *const KuiValue,
+    /// A menu row chosen from a menu opened on this node (`onMenu`): this
+    /// message with `menu: {role, item}` in it. A node without one hears
+    /// no choice. ABI 33.
+    pub on_menu: *const KuiValue,
+    /// A copy on this `selectable` scope that reached rows a virtual list
+    /// has not built (`onSelectionRange`): this message with
+    /// `selectionrange: {from, to}` in it. ABI 33.
+    pub on_selection_range: *const KuiValue,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.
@@ -1507,11 +1544,16 @@ pub struct KuiReplySink {
 /// One event from the UI, as `kui_poll_event` writes it and `kui_run`'s
 /// `on_event` receives it.
 ///
-/// `key` is the node that emitted it, `payload` the tag the node was
-/// declared with plus what the event adds (its `kind`, a pointer
-/// position, a key's `code`), `origin` 0 for the host's own nodes and an
-/// extension's index otherwise, `window` which window it came from. An
-/// `[out]` struct: start from `KUI_EVENT_INIT` so `size` is set.
+/// `key` is the node that emitted it and `event` what happened (ADR
+/// 0047). `payload` is the message its handler declared, with the
+/// event's data in the one field named for `event` (`{kind:"pan", drag:
+/// {phase, x, y, dx, dy, parent}}`): a node's row, or for the events no
+/// node has, the window's own group (`kui_root_with`), its `windows`
+/// entry (`kui_window_declare_with`) or the menu bar
+/// (`kui_menu_bar_with`), ADR 0048. `origin` is 0 for the host's own
+/// nodes and an extension's index otherwise, `window` which window it
+/// came from. An `[out]` struct: start from `KUI_EVENT_INIT` so `size` is
+/// set.
 #[repr(C)]
 pub struct KuiEvent {
     /// Set to `sizeof(KuiEvent)` before the call (`KUI_EVENT_INIT` does);
@@ -1535,6 +1577,13 @@ pub struct KuiEvent {
     /// itself. Appended after `reply_sink` without a bump: a host
     /// reserving the older layout never sees it.
     pub slot: u64,
+    /// What happened, the envelope's event kind (ADR 0047): `"click"`,
+    /// `"drag"`, `"change"`, `"resize"`, … — `schema::EVENTS`' `kind`.
+    /// The payload no longer says it: every payload is the message its
+    /// handler declared, with the event's data in one field named for
+    /// this kind (ADR 0048: there are no root events). Static: valid for
+    /// the life of the library. Appended in ABI 33.
+    pub event: KuiStr,
 }
 
 impl Default for KuiEvent {
@@ -1547,6 +1596,10 @@ impl Default for KuiEvent {
             window: 0,
             reply_sink: std::ptr::null_mut(),
             slot: 0,
+            event: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
         }
     }
 }
@@ -1587,6 +1640,47 @@ pub struct KuiWindowConfig {
     pub anchor_y: f32,
     pub anchor_w: f32,
     pub anchor_h: f32,
+}
+
+/// The messages the events about a window arrive as (`kui_root_with`,
+/// ADR 0048): the root's `windowEvents` group, one borrowed message per
+/// event, NULL for one the window does not hear. `[in]`, read while the
+/// call runs and never retained, like a `KuiSpec`'s messages; a zeroed
+/// one declares nothing. ABI 33.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiWindowEvents {
+    /// `resize: {width, height, scale}`: the viewport or the scale moved.
+    pub on_resize: *const KuiValue,
+    /// `window: {phase: "focused" | "blurred"}`: this window gained or
+    /// lost the keyboard.
+    pub on_focus: *const KuiValue,
+    /// `system: {appearance, accent, motion, locale, assistive}`: a
+    /// setting the user changed in the OS.
+    pub on_system_settings_change: *const KuiValue,
+    /// The system's fonts changed: the message as declared, no data.
+    pub on_fonts: *const KuiValue,
+    /// `modifiers: {shift, ctrl, alt, super}`: the held modifiers changed.
+    pub on_modifiers: *const KuiValue,
+    /// `open: {paths}`: the OS asked the app to open documents. Read on
+    /// the main window's root alone.
+    pub on_open: *const KuiValue,
+}
+
+impl KuiWindowEvents {
+    /// The group as the core takes it: each message cloned out of its
+    /// borrow.
+    pub(crate) fn to_core(self) -> kui_core::WindowEvents {
+        let msg = |p: *const KuiValue| unsafe { p.as_ref() }.map(|v| v.0.clone());
+        kui_core::WindowEvents {
+            on_resize: msg(self.on_resize),
+            on_focus: msg(self.on_focus),
+            on_system_settings_change: msg(self.on_system_settings_change),
+            on_fonts: msg(self.on_fonts),
+            on_modifiers: msg(self.on_modifiers),
+            on_open: msg(self.on_open),
+        }
+    }
 }
 
 /// `KUI_WINDOW_KIND_NORMAL`: a regular top-level window.
@@ -2405,6 +2499,11 @@ pub const KUI_EDIT_KEEP_TAB: u32 = 1 << 3;
 /// A password field: masked, never copied, no composition, no history
 /// (backlog F167).
 pub const KUI_EDIT_SECURE: u32 = 1 << 4;
+/// `initial` is the editor's value, not its seed (ADR 0047): on every
+/// frame it differs from the editor's text, the editor is brought to it,
+/// as a splice. Declare `on_change` with it, or the field reverts every
+/// keystroke (`edit-value-without-handler`).
+pub const KUI_EDIT_VALUE: u32 = 1 << 5;
 
 /// `KUI_MOD_*`: the editing modifiers `kui_input_key` takes — extend the
 /// selection, move by word, move by document.

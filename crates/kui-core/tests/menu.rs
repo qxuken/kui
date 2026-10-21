@@ -12,8 +12,9 @@ fn style() -> TextStyle {
     TextStyle::new(14.0)
 }
 
-/// A card of selectable text, and whatever menu the core has open drawn
-/// over it by `Ui::finish`.
+/// A card of selectable text that declares `on_menu(Null)` — so a row
+/// chosen in a menu about it arrives as `{menu: {role, item}}` — and
+/// whatever menu the core has open drawn over it by `Ui::finish`.
 fn frame(core: &mut Core) -> Key {
     frame_in(core, Size::new(400.0, 300.0))
 }
@@ -22,7 +23,11 @@ fn frame(core: &mut Core) -> Key {
 fn frame_in(core: &mut Core, size: Size) -> Key {
     let mut ui = core.frame(size, 1.0);
     ui.configure_root(NodeSpec::column().fill());
-    let scope = ui.with_keyed("card", NodeSpec::column().grow_width().selectable(), |ui| {
+    let card = NodeSpec::column()
+        .grow_width()
+        .selectable()
+        .on_menu(Value::Null);
+    let scope = ui.with_keyed("card", card, |ui| {
         ui.text("one", style());
         ui.text("two", style());
     });
@@ -90,9 +95,10 @@ fn choosing_a_custom_row_posts_it_on_the_node_the_menu_was_about() {
     );
     let ev = &events[0];
     assert_eq!(ev.key, scope, "posted on the menu's target");
-    assert_eq!(ev.kind(), Some("menu"));
-    assert_eq!(ev.payload.get_str("role"), Some("custom"));
-    assert_eq!(ev.payload.get_str("item"), Some("inspect"));
+    assert_eq!(ev.event.name(), "menu");
+    let menu = ev.data().expect("a menu field");
+    assert_eq!(menu.get_str("role"), Some("custom"));
+    assert_eq!(menu.get_str("item"), Some("inspect"));
     assert!(core.menu().is_none(), "choosing closes it");
 }
 
@@ -114,7 +120,7 @@ fn copy_puts_the_selection_on_the_hosts_clipboard() {
         "the core works out what to copy; the clipboard stays the host's"
     );
     assert_eq!(
-        events[0].payload.get_str("role"),
+        events[0].data().and_then(|d| d.get_str("role")),
         Some("copy"),
         "a standard item posts too, so an app can hear it"
     );
@@ -182,7 +188,7 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().grow_width(),
+        NodeSpec::column().grow_width().on_change(Value::Null),
     );
     ui.finish();
     core.handle_input(InputEvent::Key(
@@ -202,7 +208,7 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
             "field",
             "typed text",
             &kui_core::EditOptions::default(),
-            NodeSpec::column().grow_width(),
+            NodeSpec::column().grow_width().on_change(Value::Null),
         );
         ui.finish();
     };
@@ -222,11 +228,12 @@ fn an_editors_selection_survives_the_menu_that_is_about_it() {
         "and the text is gone from the field"
     );
     // AR15: a cut is an edit, and the app mirroring the field through
-    // `changed` hears it — beside the `menu` event the chosen row posts,
-    // which is not the app's click.
-    let changed: Vec<_> = evs.iter().filter(|e| e.kind() == Some("changed")).collect();
+    // `on_change` hears it as a `change` — the chosen row posts no `menu`
+    // event, as the field declares no `on_menu`, and no click.
+    let changed: Vec<_> = evs.iter().filter(|e| e.event.name() == "change").collect();
     assert_eq!(changed.len(), 1, "{evs:?}");
     assert_eq!(changed[0].key, edit);
+    assert_eq!(evs.len(), 1, "{evs:?}");
 }
 
 #[test]
@@ -574,7 +581,7 @@ fn a_node_that_declares_its_own_context_menu_keeps_it() {
     ui.finish();
     let events = right_click(&mut core, Vec2::new(20.0, 8.0));
     assert_eq!(
-        events.iter().filter_map(|e| e.kind()).collect::<Vec<_>>(),
+        events.iter().map(|e| e.event.name()).collect::<Vec<_>>(),
         ["contextmenu"],
         "the app's declaration wins"
     );
@@ -634,7 +641,10 @@ fn the_host_reports_the_row_it_chose() {
         "the same path the drawn menu's row takes"
     );
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].payload.get_str("role"), Some("copy"));
+    assert_eq!(
+        events[0].data().and_then(|d| d.get_str("role")),
+        Some("copy")
+    );
     assert!(core.menu().is_none());
 }
 
@@ -675,7 +685,10 @@ fn a_disabled_row_or_a_separator_is_refused_and_the_menu_stays_open() {
     assert!(core.menu().is_some());
     let events = core.activate_menu_item(0).expect("an enabled row is taken");
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].payload.get_str("item"), Some("Archive"));
+    assert_eq!(
+        events[0].data().and_then(|d| d.get_str("item")),
+        Some("Archive")
+    );
     assert!(core.menu().is_none());
 }
 
@@ -746,7 +759,7 @@ fn a_force_click_elsewhere_reaches_the_node_that_asked_for_it() {
     let events = core.handle_input(InputEvent::ForceClick(Vec2::new(30.0, 30.0)));
     assert_eq!(events.len(), 1, "{events:?}");
     assert_eq!(events[0].key, key);
-    assert_eq!(events[0].kind(), Some("forceclick"));
+    assert_eq!(events[0].event.name(), "forceclick");
     assert_eq!(events[0].payload.get_str("tag"), Some("peek"));
 }
 

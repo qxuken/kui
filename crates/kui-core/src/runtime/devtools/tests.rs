@@ -748,7 +748,7 @@ fn events_flow_to_the_host_and_into_the_stream_and_the_panel_s_do_not() {
     assert_eq!(evs[0].key, press);
     state(&core, |s| {
         let last = s.stream.back().expect("logged");
-        assert_eq!(last.kind, EntryKind::Event);
+        assert!(matches!(last.kind, EntryKind::Event(_)));
         assert_eq!(last.key, press);
         assert_eq!(last.label.as_deref(), Some("press"));
         assert_eq!(last.payload.get_str("kind"), Some("pressed"));
@@ -1542,6 +1542,7 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     // A view with a centred viewport float, a context-menu box and a
     // layout report, to read the coordinates back through.
     let view = |ui: &mut Ui<'_>| {
+        ui.window_events(crate::WindowEvents::default().on_resize("resized"));
         ui.with(NodeSpec::column().fill(), |ui| {
             ui.leaf_keyed(
                 "target",
@@ -1576,10 +1577,10 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     let evs = frame(&mut core);
     let resize = evs
         .iter()
-        .find(|e| e.kind() == Some("resize"))
+        .find(|e| e.event.name() == "resize")
         .expect("the dock is a resize");
     assert_eq!(
-        resize.payload.get_float("width"),
+        resize.data().and_then(|d| d.get_float("width")),
         Some((VIEWPORT.w - DOCK_SIDE_W) as f64)
     );
     assert_eq!(
@@ -1595,8 +1596,9 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     core.set_devtools_dock(Dock::Bottom);
     let evs = frame(&mut core);
     assert!(evs.iter().any(|e| {
-        e.kind() == Some("resize")
-            && e.payload.get_float("height") == Some((VIEWPORT.h - DOCK_BOTTOM_H) as f64)
+        e.event.name() == "resize"
+            && e.data().and_then(|d| d.get_float("height"))
+                == Some((VIEWPORT.h - DOCK_BOTTOM_H) as f64)
     }));
     // A left dock: the app's origin is the pane's edge, and every
     // coordinate it is handed is relative to it.
@@ -1604,9 +1606,9 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     let evs = frame(&mut core);
     let layout = evs
         .iter()
-        .find(|e| e.kind() == Some("layout"))
+        .find(|e| e.event.name() == "layout")
         .expect("the box reports its rect again: it moved");
-    assert_eq!(layout.payload.get_float("x"), Some(0.0));
+    assert_eq!(layout.data().unwrap().get_float("x"), Some(0.0));
     let target = core.key_of("target").unwrap();
     let r = node(&core, target).rect;
     assert_eq!(
@@ -1644,9 +1646,9 @@ fn the_host_s_viewport_is_the_window_less_the_dock() {
     });
     let menu = evs
         .iter()
-        .find(|e| e.kind() == Some("contextmenu"))
+        .find(|e| e.event.name() == "contextmenu")
         .expect("the context menu event");
-    assert_eq!(menu.payload.get_float("x"), Some(10.0));
+    assert_eq!(menu.data().unwrap().get_float("x"), Some(10.0));
     // And a popup anchored where the app thinks the box is lands where
     // the box is in the window.
     {
@@ -1910,7 +1912,7 @@ fn a_placement_chosen_in_the_panel_s_window_survives_the_window_closing() {
         !core
             .take_pending_events()
             .iter()
-            .any(|e| e.kind() == Some("window")),
+            .any(|e| e.event.name() == "window"),
         "the host hears nothing of the panel's window"
     );
     assert_eq!(
@@ -2114,17 +2116,17 @@ fn the_panel_s_inspect_ask_follows_its_tab_and_stays_apart_from_the_host_s() {
 fn the_stream_never_keeps_a_concealed_pastes_text() {
     let mut core = on();
     let ev = |text: &str, concealed: bool| {
-        let mut fields = vec![("kind", Value::str("text")), ("text", Value::str(text))];
+        let mut fields = vec![("text", Value::str(text))];
         if concealed {
             fields.push(("concealed", Value::Bool(true)));
         }
-        UiEvent {
-            origin: OriginId::HOST,
-            window: WindowId::MAIN,
-            key: Key::ROOT.str("term"),
-            payload: Value::map(fields),
-            slot: None,
-        }
+        UiEvent::declared(
+            crate::input::EventKind::Text,
+            OriginId::HOST,
+            Key::ROOT.str("term"),
+            Some(&Value::Null),
+            Value::map(fields),
+        )
     };
     core.devtools_log(&[ev("hunter2", true), ev("plain", false)]);
     state(&core, |s| {
@@ -2133,7 +2135,10 @@ fn the_stream_never_keeps_a_concealed_pastes_text() {
             .iter()
             .rev()
             .take(2)
-            .map(|e| e.payload.get_str("text").map(str::to_string))
+            .map(|e| {
+                let text = e.payload.get("text")?;
+                text.get_str("text").map(str::to_string)
+            })
             .collect();
         assert_eq!(
             texts,

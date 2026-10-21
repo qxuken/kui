@@ -51,7 +51,10 @@ channel into `on_event` — the model *is* the channel.
 `ui.window_title(..)` is said every frame, and applied when it changes.
 `ui.window_command(WindowCommand::Close(id))` asks the runner to close
 a window; `ui.env().window.id` is this one's id. A second window is
-declared the same way, with `ui.window(name, ..)`;
+declared the same way, with `ui.window(name, ..)`, or `ui.window_with`
+to hear it open and close; and what the window itself does — a resize,
+losing the keyboard — reaches `on_event` only as the messages
+`ui.window_events(..)` declares for it.
 [`docs/design.md`](https://github.com/qxuken/kui/blob/main/docs/design.md) has the multi-window rules under
 *Window chrome is data*.
 

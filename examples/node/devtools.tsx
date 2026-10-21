@@ -23,19 +23,21 @@
 // node from the example.
 //
 // The example's root is wrapped by the core while the panel is docked
-// (ADR 0024, decision 2); its keys do not move for it, and `title` and
-// `windows` still belong on the root — the example's `windows` pass through
-// `windows`.
+// (ADR 0024, decision 2); its keys do not move for it, and `title`,
+// `windows` and `windowEvents` still belong on the root — the example's
+// pass through `windows` and `windowEvents`.
 import { createApp, runWindowed } from '@qxuken/kui';
-import type { App, CoreMsg, KuiNode, KuiWindow, UiEvent, WindowDecl } from '@qxuken/kui';
+import type { App, Arrived, KuiNode, KuiWindow, UiEvent, WindowDecl, WindowEvents } from '@qxuken/kui';
 
 export type Dock = 'left' | 'right' | 'bottom' | 'window' | 'off';
 
-export type Example<M, A extends { kind: string }> = {
+export type Example<M, A> = {
   /** The subject, as the README names it: the window title is `kui — name`. */
   name: string;
   init: M | ((win: KuiWindow) => M);
-  update: (model: M, msg: A | CoreMsg, ev: UiEvent<A | CoreMsg>, win: KuiWindow) => M | undefined | void;
+  /** `msg` as it arrives (`Arrived`): a bare message a node declared
+   *  comes under `tag`. */
+  update: (model: M, msg: A | Arrived<A>, ev: UiEvent<A>, win: KuiWindow) => M | undefined | void;
   view: (model: M, win: KuiWindow) => KuiNode;
   /** Runs before the first frame, with the window: register resources here. */
   setup?: (win: KuiWindow) => void;
@@ -52,6 +54,10 @@ export type Example<M, A extends { kind: string }> = {
    *  keeps the loop's own hands, so `app.advance(ms)` still moves them. */
   clock?: () => number;
   windows?: (model: M) => WindowDecl[];
+  /** The messages the window's own events arrive as (ADR 0048): a resize,
+   *  its keyboard, the OS's settings and the rest. The root's, so the
+   *  harness declares them on the root it wraps the example in. */
+  windowEvents?: (model: M) => WindowEvents;
   /** The key legend the panel's facts tab shows. */
   keys?: [string, string][];
   /** The example's own flags, for the usage text. */
@@ -63,7 +69,7 @@ export type Example<M, A extends { kind: string }> = {
   nativeMenus?: boolean;
   /** The self-check `--headless` runs over a bare `createApp`: return
    *  false (or throw) on a wrong answer. */
-  headless?: (app: App<M, A | CoreMsg>) => boolean | Promise<boolean>;
+  headless?: (app: App<M, A>) => boolean | Promise<boolean>;
   /** What to open once the window has closed, with the model it closed
    *  on: another example — the same one under other `window` options is
    *  the usual answer — or nothing, and the process exits. A second
@@ -72,6 +78,15 @@ export type Example<M, A extends { kind: string }> = {
    *  and the round passes only if every one of them opened. */
   after?: (model: M) => Example<M, A> | undefined;
 };
+
+/** The harness's own message for an OS setting changing (ADR 0048): a
+ *  retained tree re-runs the view only for a message, so this is what
+ *  lets every example's theme roles follow the OS's light and dark. The
+ *  example's `update` never sees it, and one that declares
+ *  `onSystemSettingsChange` itself hears its own instead. */
+const HARNESS_SYSTEM = { kind: '@harness', what: 'system' } as const;
+const isHarness = (msg: unknown): boolean =>
+  msg !== null && typeof msg === 'object' && (msg as { kind?: unknown }).kind === '@harness';
 
 /** The dock's extents, logical px — the core's (`kui_core::devtools`), so
  *  the window the harness sizes around them fits. */
@@ -149,10 +164,17 @@ export function fmtValue(v: unknown): string {
   return String(v);
 }
 
+/** `node` with the window's event group on it, when it is a root box that
+ *  can carry one: the headless drive's root is the example's own. */
+function withWindowEvents(node: KuiNode, events: WindowEvents | undefined): KuiNode {
+  if (!events || node == null || typeof node !== 'object' || Array.isArray(node) || node.type !== 'box') return node;
+  return { ...node, props: { ...node.props, windowEvents: events } };
+}
+
 /** Runs `example` under the harness: the CLI, then either its headless
  *  drive or a window with the dock beside it — and whatever `after` asks
  *  for once that window closes, in turn. Exits the process. */
-export async function run<M, A extends { kind: string }>(example: Example<M, A>): Promise<never> {
+export async function run<M, A>(example: Example<M, A>): Promise<never> {
   let cli: Cli;
   try {
     cli = parseCli(example.name, process.argv.slice(2), example.flags ?? []);
@@ -170,12 +192,13 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
     // The drive's own surface: `view` is handed the same object the window
     // would be, since `Ctx` and `KuiWindow` read alike.
     let surface: KuiWindow | null = null;
-    const app: App<M, A | CoreMsg> = createApp<M, A | CoreMsg>(
+    const app: App<M, A> = createApp<M, A>(
       {
         init: example.init as M,
-        update: (m: M, msg: A | CoreMsg, ev: UiEvent<A | CoreMsg>): M | undefined =>
+        update: (m: M, msg: A | Arrived<A>, ev: UiEvent<A>): M | undefined =>
           example.update(m, msg, ev, surface!) ?? undefined,
-        view: (m: M): KuiNode => example.view(m, surface!),
+        // No wrapper here, so the example's own root carries the group.
+        view: (m: M): KuiNode => withWindowEvents(example.view(m, surface!), example.windowEvents?.(m)),
         teardown: example.teardown,
       },
       { width: w, height: h },
@@ -202,7 +225,7 @@ export async function run<M, A extends { kind: string }>(example: Example<M, A>)
 }
 
 /** One window of `example`, resolved with the model it closed on. */
-async function open<M, A extends { kind: string }>(example: Example<M, A>, cli: Cli): Promise<M> {
+async function open<M, A>(example: Example<M, A>, cli: Cli): Promise<M> {
   const dock = cli.dock ?? example.dock ?? 'right';
   let w = example.window?.width ?? 960;
   let h = example.window?.height ?? 640;
@@ -214,15 +237,17 @@ async function open<M, A extends { kind: string }>(example: Example<M, A>, cli: 
   const config = {
     init: (win: KuiWindow): M =>
       typeof example.init === 'function' ? (example.init as (w: KuiWindow) => M)(win) : example.init,
-    update: (m: M, msg: A | CoreMsg, ev: UiEvent<A | CoreMsg>, win: KuiWindow) =>
-      example.update(m, msg, ev, win),
+    update: (m: M, msg: A | Arrived<A>, ev: UiEvent<A>, win: KuiWindow) =>
+      isHarness(msg) ? undefined : example.update(m, msg, ev, win),
     view: (m: M, windowName: string, win: KuiWindow): KuiNode => {
       if (windowName !== 'main') return example.view(m, win);
       const t = win.theme();
-      // `title` and `windows` are the root's: the example's tree is the
-      // root's child, and the core wraps the root while the panel is docked.
+      // `title`, `windows` and `windowEvents` are the root's: the example's
+      // tree is the root's child, and the core wraps the root while the
+      // panel is docked.
       return (
-        <box width="grow" height="grow" bg={t.bg} title={`kui — ${example.name}`} windows={example.windows?.(m)}>
+        <box width="grow" height="grow" bg={t.bg} title={`kui — ${example.name}`} windows={example.windows?.(m)}
+             windowEvents={{ onSystemSettingsChange: HARNESS_SYSTEM, ...example.windowEvents?.(m) }}>
           {example.view(m, win)}
         </box>
       );

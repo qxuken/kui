@@ -73,6 +73,34 @@ pub extern "C" fn kui_root(ptr: *mut KuiCtx, spec: *const KuiSpec) {
     });
 }
 
+/// [`kui_root`], and the messages the events about this window arrive as
+/// (ADR 0048): the root's `windowEvents` group, read from `events`
+/// (borrowed, NULL for none). A message left NULL is an event the window
+/// does not hear: no handler, no event. The group in force is the one the
+/// last finished frame declared, so a frame that declares none (a plain
+/// `kui_root`) stops hearing them. `on_open` is read on the main window
+/// alone. A NULL `spec` leaves the root as the frame began it and
+/// declares the group alone, for a host that never configures its root.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_root_with(
+    ptr: *mut KuiCtx,
+    spec: *const KuiSpec,
+    events: *const KuiWindowEvents,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if let Some(s) = unsafe { spec.as_ref() } {
+            c.core().configure_root(spec_of(s, NONE, NONE, NONE, NONE));
+        }
+        let events = unsafe { events.as_ref() }
+            .copied()
+            .map(KuiWindowEvents::to_core);
+        c.core().set_window_events(events.unwrap_or_default());
+    });
+}
+
 /// Opens a box node built from `spec`; everything until the matching
 /// [`kui_close`] is its child. Returns the node's key, or 0 for a bad
 /// context or a NULL `spec`.
@@ -657,8 +685,8 @@ pub extern "C" fn kui_polyline(
 }
 
 /// [`kui_open_keyed`] for a draggable node: a press-drag emits
-/// `{kind="drag", phase, x, y, dx, dy, tag}` events with `on_drag` as the
-/// tag. `on_drag` and `on_click` (either NULL) are consumed. A drag past
+/// `drag` events, `on_drag` with `drag: {phase, x, y, dx, dy, parent}` in
+/// it (ADR 0047). `on_drag` and `on_click` (either NULL) are consumed. A drag past
 /// the click slop suppresses the click.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_draggable(
@@ -684,9 +712,10 @@ pub extern "C" fn kui_open_draggable(
 /// NULL meaning absent (so a NULL `on_drag` here does not make the node
 /// draggable, unlike [`kui_open_draggable`]). A non-NULL `on_key` makes
 /// the node a key sink: give it focus with [`kui_set_key_focus`] and
-/// presses arrive as `{kind="key", phase="down", code, ctrl, alt, shift,
-/// super, text, repeat, tag}`, releases too (`phase="up"`) when the spec
-/// sets `key_up`. `on_hover` tags pointer enter and leave. Returns the
+/// presses arrive as `on_key` with `key: {phase="down", code, ctrl, alt,
+/// shift, super, text, repeat}` in it, releases too (`phase="up"`) when
+/// the spec sets `key_up`. `on_hover` is the message pointer enter and
+/// leave arrive as, `hover: {phase, by}` in it. Returns the
 /// key, or 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_open_with(

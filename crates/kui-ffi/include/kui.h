@@ -359,8 +359,30 @@ extern "C" {
  * F164). Recompile; zeroed, the text has none. Still 32 with
  * KUI_EDIT_SECURE and KUI_ROLE_PASSWORD_INPUT, new constants (backlog
  * F167): no struct moved.
+ *
+ * ABI 33: an event arrives as the message its handler declared
+ * (docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md).
+ * A node event's payload is that message, with the event's data in one
+ * field named for the event - {kind:"pan", drag:{phase, x, y, dx, dy,
+ * parent}} for on_drag = {kind:"pan"} - and no longer {kind:"drag", ...,
+ * tag}; a message that is not a map arrives as {tag: msg, drag: ...}, a
+ * NULL one as {drag: ...}. So KuiEvent appends `event`, the envelope's
+ * event kind, which the payload no longer says. KuiSpec appends on_submit,
+ * on_cancel, on_boundary, on_menu and on_selection_range (its 64-bit size
+ * goes from 752 to 792): an editor reports only in the messages it
+ * declares, and a menu choice reaches only a node that declares on_menu.
+ * KUI_EDIT_VALUE, a new flag, makes kui_text_edit's `initial` the
+ * editor's value; kui_text_input_with and kui_select_with are new. The
+ * "changed" and "access" events are gone. And there are no root events
+ * (docs/adr/0048-a-window-declares-the-messages-its-events-arrive-as.md):
+ * the events no node declares arrive as messages the app declared where it
+ * declares the window - its root's KuiWindowEvents (kui_root_with), its
+ * entry in the window set (kui_window_declare_with) and the menu bar
+ * (kui_menu_bar_with), three new functions - and as nothing where it
+ * declared none. Recompile, and move each handler from the payload's
+ * kind to KuiEvent.event and the message's own fields.
  */
-#define KUI_ABI_VERSION 32u
+#define KUI_ABI_VERSION 33u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -376,7 +398,7 @@ uint32_t kui_abi_version(void);
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
  *          KuiDerivedToken, KuiFileFilter, KuiFileDialog, KuiGradientStop,
- *          KuiGradient.
+ *          KuiGradient, KuiWindowEvents.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -613,7 +635,14 @@ enum {
     KUI_EDIT_AUTOFOCUS = 1u << 1,
     KUI_EDIT_WRAP = 1u << 2,
     KUI_EDIT_KEEP_TAB = 1u << 3,
-    KUI_EDIT_SECURE = 1u << 4
+    KUI_EDIT_SECURE = 1u << 4,
+    /* `initial` is the editor's value, not its seed (ADR 0047): on every
+     * frame it differs from the editor's text the editor is brought to
+     * it, as a splice - a caret before the change stays, one after it
+     * moves with the text - joining the undo step of the edit it answers.
+     * Declare on_change with it, or the field reverts every keystroke
+     * (edit-value-without-handler). ABI 33. */
+    KUI_EDIT_VALUE = 1u << 5
 };
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */
@@ -837,11 +866,12 @@ typedef struct KuiSpec {
      * the pointer enters it; 0 = none. Either makes the node hover-tracked. */
     uint64_t click_sound;
     uint64_t hover_sound;
-    /* Layout tag (NULL = none): the rect layout gave the node arrives as
-     * {kind="layout", x, y, w, h, parent={x,y,w,h}, tag} (logical px,
-     * viewport coords) on its first frame and whenever it changes — never
-     * on a frame that left it alone. Borrowed: cloned while the node opens,
-     * so you keep ownership; kui_value_null() asks for untagged events.
+    /* Layout message (NULL = none): the rect layout gave the node arrives
+     * as this message with layout:{x, y, w, h, parent:{x,y,w,h}, scale} in
+     * it (logical px, viewport coords) on its first frame and whenever it
+     * changes — never on a frame that left it alone. Borrowed: cloned while
+     * the node opens, so you keep ownership; kui_value_null() asks for the
+     * event with no message of yours, as {layout:{...}} alone.
      * Needs a stable key (kui_open_keyed). */
     const KuiValue *on_layout;
     /* Accessibility. role: KUI_ROLE_*
@@ -898,20 +928,21 @@ typedef struct KuiSpec {
      * this node is declared the Tab ring is its subtree, everything
      * outside it is inert to the pointer, the wheel and assistive
      * technology (window chrome stays live), and Escape or a press
-     * outside emits {kind="dismiss", reason="escape"|"outside", tag} on
-     * it — the core closes nothing, the app stops opening the node. The
-     * last one declared in tree order is the one in effect (a confirm
-     * inside a dialog); a modal that must cover the app is a float.
-     * Borrowed: cloned while the node opens, so you keep ownership;
-     * kui_value_null() asks for the behaviour without a tag. */
+     * outside emits this message with dismiss:{reason:"escape"|"outside"}
+     * in it on the node — the core closes nothing, the app stops opening
+     * the node. The last one declared in tree order is the one in effect
+     * (a confirm inside a dialog); a modal that must cover the app is a
+     * float. Borrowed: cloned while the node opens, so you keep ownership;
+     * kui_value_null() asks for the behaviour with no message of yours. */
     const KuiValue *modal;
     /* Context menu, NULL = none: a secondary-button press over this node
-     * emits {kind="contextmenu", x, y, tag} on it, at the logical point to
-     * open the menu at. The press does nothing else — it moves no focus,
+     * emits this message with contextmenu:{x, y} in it, the logical point
+     * to open the menu at. The press does nothing else — it moves no focus,
      * places no caret and produces no click, so right-clicking a selection
      * keeps it. Routed like a click: the topmost node under the pointer is
      * the one asked. Borrowed: cloned while the node opens, so you keep
-     * ownership; kui_value_null() asks for the behaviour without a tag. */
+     * ownership; kui_value_null() asks for the behaviour with no message
+     * of yours. */
     const KuiValue *on_context_menu;
     /* KUI_CURSOR_* (0 = unset). The pointer shape while the pointer is
      * over this node. Unset, the pointer is the I-beam over an editor or
@@ -1002,7 +1033,7 @@ typedef struct KuiSpec {
      * behind it, kui_announce is the other half. */
     uint32_t live;
     /* Non-zero, with a non-NULL on_key on kui_open_with: the sink hears
-     * releases too, as the same {kind="key"} payload with phase="up" (a
+     * releases too, as the same key event with phase="up" (a
      * null `text`, `repeat` false) - for a held-key interaction: WASD,
      * press-and-hold, a key that arms a mode while it is down. A key only
      * comes up where it went down (a release whose press the sink never got
@@ -1055,9 +1086,9 @@ typedef struct KuiSpec {
      * it then stood (see the ABI block); zero is not a selection scope,
      * which is what every node was before this. */
     uint32_t selectable;
-    /* Force-click tag: a press that deepens past the second stage of a
-     * Force Touch trackpad over this node emits {kind:"forceclick", x, y,
-     * tag} on it, at the point it happened. Routed like
+    /* Force-click message: a press that deepens past the second stage of a
+     * Force Touch trackpad over this node emits it with forceclick:{x, y}
+     * in it, the point it happened at. Routed like
      * on_context_menu - topmost node, no focus moved, no caret placed, no
      * click - and the ordinary click that press produces still arrives
      * afterwards. Text needs none of this: a force click over an editor or
@@ -1100,8 +1131,8 @@ typedef struct KuiSpec {
      * only. Appended after ABI 14 without a bump, under the [in] rule as
      * it then stood (see the ABI block). */
     uint32_t anchor;
-    /* Scroll tag: the wheel over this node emits {kind:"scroll", x, y, dx,
-     * dy, lines, tag} on it instead of scrolling anything - dx/dy the
+    /* Scroll message: the wheel over this node emits it with scroll:{x, y,
+     * dx, dy, lines} in it instead of scrolling anything - dx/dy the
      * delta in logical px as the driver reported it (positive dy is the
      * wheel rolling up), x/y the pointer, lines the whole lines a `cells`
      * grid's delta covers (positive = later history, the sign origin_line
@@ -1113,9 +1144,9 @@ typedef struct KuiSpec {
      * once a frame with the lines that frame scrolled by. Borrowed while
      * the node opens. */
     const KuiValue *on_scroll;
-    /* Drop-zone tag: files dragged in from the OS over this node emit
-     * {kind:"drop", phase:"enter"|"move"|"leave"|"drop", paths, x, y, tag}
-     * on it - paths the OS paths as strings, x/y the pointer in logical
+    /* Drop-zone message: files dragged in from the OS over this node emit
+     * it with drop:{phase:"enter"|"move"|"leave"|"drop", paths, x, y} in
+     * it - paths the OS paths as strings, x/y the pointer in logical
      * viewport coordinates (absent on leave). The zone under the files is
      * the topmost zone by paint order: a node inside a zone is the zone's,
      * and a node that is no zone and has none enclosing it is looked past,
@@ -1151,13 +1182,17 @@ typedef struct KuiSpec {
      * an arrow moves it and the grid the pointer snaps to (default a
      * hundredth of the range). ABI 19. */
     float value_step;
-    /* A slider's change tag (NULL = none): on a
-     * KUI_ROLE_SLIDER node the core turns a press into the value under the
-     * pointer, a drag into each new step, the arrows into one value_step,
-     * PageUp / PageDown into ten and Home / End into the ends - clamped and
-     * snapped - and emits {kind:"change", value, phase:"move"|"end", tag}.
-     * Proposed, never applied: declare the value as value_now. Borrowed
-     * while the node opens. ABI 19. */
+    /* The change message (NULL = none). On a KUI_ROLE_SLIDER node the core
+     * turns a press into the value under the pointer, a drag into each new
+     * step, the arrows (and assistive technology's increment, decrement
+     * and set value) into one value_step, PageUp / PageDown into ten and
+     * Home / End into the ends - clamped and snapped - and emits this
+     * message with change:{value, phase:"move"|"end"} in it. Proposed,
+     * never applied: declare the value as value_now. A slider without one
+     * cannot be moved (slider-without-handler). On an editor (ADR 0047) an
+     * edit arrives as this message with change:{text} in it, the whole
+     * text after the edit - kui_text_edit, or a custom editor's set value.
+     * Borrowed while the node opens. ABI 19. */
     const KuiValue *on_change;
     /* Non-zero: paint the background, border, shadow and fragment with
      * each edge on a whole physical pixel (pixelSnap), rounded on its own from where
@@ -1175,8 +1210,8 @@ typedef struct KuiSpec {
      * assistive technology still reach it. ABI 20. */
     uint32_t keep_focus;
     /* Focus entering or leaving this node's subtree - the node, or anything
-     * focused inside it - emits {kind:"focus", phase:"in"|"out", by, tag},
-     * by being "pointer", "keyboard", "assistive" or "program" (onFocus).
+     * focused inside it - emits this message with focus:{phase:"in"|"out",
+     * by} in it, by being "pointer", "keyboard", "assistive" or "program" (onFocus).
      * Makes nothing focusable. Borrowed while the node opens. ABI 20. */
     const KuiValue *on_focus;
     /* On a table (dir = KUI_TABLE): grid lines of this 0xRRGGBBAA colour
@@ -1187,13 +1222,13 @@ typedef struct KuiSpec {
     float rule_w;
     /* The non-primary buttons as events (onButton): a press
      * of a button in `buttons` over this node, or over a descendant that
-     * claims no such button, emits {kind:"button", phase:"press", button,
-     * x, y, clicks, tag} on it, and the button is captured by it until
+     * claims no such button, emits this message with button:{phase:"press",
+     * button, x, y, clicks} in it, and the button is captured by it until
      * released - every pointer move while held is phase "move", the
      * release phase "release", on this node wherever the pointer is.
      * `button` is "secondary", "middle" or a further button's number
-     * (KUI_MOUSE_OTHER + n); on a cells grid each event carries cell:
-     * {row, col}. A claimed secondary press is this instead of a
+     * (KUI_MOUSE_OTHER + n); on a cells grid each event's button carries
+     * cell:{row, col}. A claimed secondary press is this instead of a
      * contextmenu event and the stock menu. It moves no focus. Borrowed
      * while the node opens. ABI 20. */
     const KuiValue *on_button;
@@ -1282,6 +1317,28 @@ typedef struct KuiSpec {
      * it, what follows the parent over it, and a float still opens above
      * it. Two such siblings paint in tree order among themselves. ABI 31. */
     uint32_t over_siblings;
+    /* An editor's handler rows beside on_change (ADR 0047; NULL = none,
+     * and an editor without a row sends nothing for it). on_submit: a
+     * field's Enter, arriving as this message as declared. on_cancel:
+     * Escape letting go of the editor - a draft abandoned - as declared.
+     * on_boundary: an editing key that met the edge of the text and did
+     * nothing, as this message with boundary:{key, edge, word, doc} in it
+     * (key "up" | "down" | "left" | "right" | "backspace" | "delete",
+     * edge "start" | "end"). Borrowed while the node opens. ABI 33. */
+    const KuiValue *on_submit;
+    const KuiValue *on_cancel;
+    const KuiValue *on_boundary;
+    /* A row chosen from a menu kui_open_menu opened on this node: this
+     * message with menu:{role, item} in it. A node without one hears no
+     * choice; kui_select declares its own. Borrowed while the node opens.
+     * ABI 33. */
+    const KuiValue *on_menu;
+    /* On a `selectable` scope: a copy that reached rows a virtual list has
+     * not built, as this message with selectionrange:{from:{index, byte},
+     * to:{index, byte}} in it; answer it with kui_answer_selection_range.
+     * NULL: the event arrives as {selectionrange: ...} alone. Borrowed
+     * while the node opens. ABI 33. */
+    const KuiValue *on_selection_range;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -1634,8 +1691,8 @@ typedef struct KuiMenuItem {
      * nested as deep as a menu needs ("Sort by" > Name, Date; "Move to" >
      * every folder). The row is drawn with a chevron and opens them beside
      * it - hover, click, Enter or Right - and is never chosen itself; a
-     * row inside posts {kind:"menu", role, item} like any other, its `id`
-     * or its text. In the context menu (kui_open_menu), the select
+     * row inside posts menu:{role, item} like any other, its `id` or its
+     * text. In the context menu (kui_open_menu), the select
      * (kui_select) and the menu bar (kui_menu_bar) alike, and as NSMenu
      * submenus where macOS draws the bar. Read while the call runs, as
      * the rows are. Nested past 32 levels - a row that is its own
@@ -1652,8 +1709,9 @@ typedef struct KuiMenuItem {
  * and the KuiMenuItems above, and the declaration is sticky and diffed the
  * way kui_window_title is. Where the platform owns a menu bar the host
  * hands it over; everywhere else kui_menu_bar draws it into the frame.
- * Either way a chosen row posts the same {kind:"menu", role, item} event
- * the context menu posts. */
+ * Either way a chosen row arrives as the message kui_menu_bar_with
+ * declared, with menu:{role, item} in it - the field a context menu's
+ * choice carries - and as nothing from a bar that declared none. */
 
 /* [in] One menu of the bar. `items` is `count` rows; `enabled` zero dims
  * the whole menu and opens nothing. On macOS the first menu is the
@@ -1706,8 +1764,8 @@ enum {
  * host's in this library. SET_CLIPBOARD carries the text to put there - the
  * core worked out *what*, which is the half only it can do - and PASTE asks
  * for what is there, which the host delivers back with kui_input_commit: a
- * focused editor takes it as typing, a focused on_key sink hears it as
- * {kind:"text"}. */
+ * focused editor takes it as typing, a focused on_key sink hears it as a
+ * "text" event, text:{text, pasted:true} in its on_key message. */
 typedef struct KuiMenuAction {
     uint32_t size; /* = sizeof(KuiMenuAction) in, bytes filled out */
     uint32_t kind;
@@ -1918,6 +1976,41 @@ typedef struct KuiWindowConfig {
 #define KUI_WINDOW_POPUP_INIT \
     ((KuiWindowConfig){ .kind = KUI_WINDOW_KIND_POPUP, .activates = 0 })
 
+/* [in] The messages the events about a window arrive as (kui_root_with,
+ * ADR 0048): its root's windowEvents group. Each is borrowed while the
+ * call runs, like a KuiSpec's messages, and NULL - the zeroed struct - is
+ * an event the window does not hear: no handler, no event. Each arrives
+ * with the event's data under the field named for it, as a node's do.
+ * env still reads every fact they report, declared or not. ABI 33.
+ *
+ *     KuiValue *resized = kui_value_map();
+ *     kui_value_map_set(resized, KUI_STR("kind"), kui_value_str(KUI_STR("resized")));
+ *     KuiWindowEvents events = { .on_resize = resized };
+ *     kui_root_with(ctx, &root, &events);
+ *     kui_value_free(resized);
+ */
+typedef struct KuiWindowEvents {
+    /* resize:{width, height, scale}: the viewport or the scale moved. */
+    const KuiValue *on_resize;
+    /* window:{phase:"focused"|"blurred"}: this window gained or lost the
+     * keyboard. Its opening and closing are its declaration's
+     * (kui_window_declare_with). */
+    const KuiValue *on_focus;
+    /* system:{appearance, accent, motion, locale, assistive}: a setting
+     * the user changed in the OS, env's system facts as they now read. A
+     * host that retains its view and follows the OS's dark mode declares
+     * this, since nothing else re-runs it. */
+    const KuiValue *on_system_settings_change;
+    /* The system's fonts changed: the message as declared, no data. */
+    const KuiValue *on_fonts;
+    /* modifiers:{shift, ctrl, alt, super}: the held modifiers changed. */
+    const KuiValue *on_modifiers;
+    /* open:{paths}: the OS asked the app to open documents
+     * (kui_input_open). Read on the main window's root alone: the OS
+     * opens documents to the app, not to one of its windows. */
+    const KuiValue *on_open;
+} KuiWindowEvents;
+
 /* [out] One window command (kui_take_window_command): what a chrome node
  * asked for, or what the declared window set decided. Plain data - an open
  * carries no title; the window's first frame declares one through
@@ -1959,6 +2052,17 @@ typedef struct KuiEvent {
      * an event by the slot it came from. Appended under the [out] rule (no
      * bump): a host reserving the older layout never sees it. */
     uint64_t slot;
+    /* What happened (ABI 33): the event's kind - "click", "drag", "key",
+     * "change", "submit", "resize", ... (docs/props.md lists them). The
+     * payload no longer says it: every payload is the message its handler
+     * declared, the event's data in the one field named for this kind
+     * (`drag` on a drag, `resize` on a resize). A node's handlers are its
+     * KuiSpec's; the window's own events' are its root's KuiWindowEvents
+     * (kui_root_with), a declared window's opening, closing and dismissal
+     * its kui_window_declare_with's, and the menu bar's choice its
+     * kui_menu_bar_with's. Static: valid for the library's life, never
+     * freed. Empty on a host reserving an older layout. */
+    KuiStr event;
 } KuiEvent;
 #define KUI_EVENT_INIT ((KuiEvent){ .size = sizeof(KuiEvent) })
 
@@ -2131,22 +2235,23 @@ void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
 void kui_input_scroll_gesture(KuiCtx *ctx, float dx, float dy, bool begins);
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
 /* Text an IME committed at the end of a composition: a focused editor takes
- * it as kui_input_text would; otherwise the focused on_key sink hears
- * {kind:"text", text, tag} - the one committed text a key event never
+ * it as kui_input_text would; otherwise the focused on_key sink hears a
+ * "text" event, its on_key message with text:{text} in it - the one
+ * committed text a key event never
  * carries. Typing stays on kui_input_text (a sink already hears it as the
  * key event's text). */
 void kui_input_commit(KuiCtx *ctx, KuiStr text);
 /* The clipboard's answer to a KUI_MENU_ACTION_PASTE, with the pasteboard's
  * markers as KUI_PASTE_* bits: routed as kui_input_commit
- * is, and the focused on_key sink hears {kind:"text", text, pasted: true,
- * tag} with concealed: true / transient: true for the bits that are set -
+ * is, and the focused on_key sink hears text:{text, pasted: true} in its
+ * on_key message, with concealed: true / transient: true for the bits that are set -
  * absent, never false, for those that are not. 0 is a paste nothing
  * marked, the same answer kui_input_commit gives while a paste is asked
  * for; pasted is what tells either answer from an IME's commit. */
 void kui_input_paste(KuiCtx *ctx, KuiStr text, uint32_t marks);
 /* In-progress IME composition shown at the focused editor's caret, or with
  * no editor focused delivered to the focused on_key sink as
- * {kind:"preedit", text, cursor, tag}; empty text clears it, the commit
+ * preedit:{text, cursor} in its on_key message; empty text clears it, the commit
  * arrives via kui_input_commit. cursor_* are byte offsets into text
  * (UINT32_MAX = none). The candidate window's place is kui_ime_rect either
  * way: a custom editor's `line` carrying `caret` says where. */
@@ -2163,9 +2268,10 @@ void kui_input_key(KuiCtx *ctx, uint32_t key, uint32_t mods); /* KUI_KEY_* + KUI
  * `kmods` is
  * KUI_KMOD_* bits, with KUI_KLOCK_*, one KUI_KLOC_* and KUI_KLAYOUT_NONLATIN
  * beside them; `text` is what the press inserts, or {NULL, 0} to derive it from
- * `code`; `repeat` marks an auto-repeat. The focused sink polls
- * {kind="key", phase="down", code, physical, ctrl, alt, shift, super, text,
- * repeat, location, caps_lock, num_lock, tag} for each press; a sink whose KuiSpec set key_up hears the
+ * `code`; `repeat` marks an auto-repeat. The focused sink polls a "key"
+ * event, its on_key message with key:{phase="down", code, physical, ctrl,
+ * alt, shift, super, text, repeat, location, caps_lock, num_lock} in it,
+ * for each press; a sink whose KuiSpec set key_up hears the
  * release too, as the same payload with phase="up" and a null `text`. A
  * release whose press the sink never got resolves nothing, and moving focus
  * while a key is held delivers the "up" first, so a held-key binding (WASD,
@@ -2189,8 +2295,8 @@ void kui_input_key_up(KuiCtx *ctx, KuiStr code, KuiStr physical,
                       uint32_t kmods);
 /* Files dragged in from the OS: `paths` are `count` OS paths, x/y the
  * pointer in logical viewport coordinates. kui_input_drag_files is entering
- * and moving alike - the zone under the point hears {kind:"drop",
- * phase:"enter"|"move"}, a zone it left hears "leave", a repeat at the
+ * and moving alike - the zone under the point hears drop:{phase:
+ * "enter"|"move", ...} in its on_drop message, a zone it left hears "leave", a repeat at the
  * same point is nothing. kui_input_drop_files is the release: the zone
  * there hears phase "drop" and no leave after it; with no zone there,
  * nothing but the lit zone's leave. kui_input_drag_cancel is the files
@@ -2206,8 +2312,11 @@ void kui_input_drop_files(KuiCtx *ctx, const KuiStr *paths, size_t count,
 void kui_input_drag_cancel(KuiCtx *ctx);
 /* The OS asked the app to open `count` documents (`paths`, file-system
  * paths): the Finder's Open With, a file dropped on the Dock icon,
- * `open -a`. The host hears {kind:"open", paths} on the root whether or
- * not anything asked; none emits nothing. Under kui_run the macOS runner
+ * `open -a`. They arrive as the main window's on_open message
+ * (KuiWindowEvents, kui_root_with) with open:{paths} in it, and as
+ * nothing where its root declares none; none emits nothing. A document
+ * that arrives before any frame finished (at launch) waits for the first
+ * one, so the group it declares hears it. Under kui_run the macOS runner
  * sends it, at launch and while running; a host driving its own window
  * sends it from its app delegate's application:openURLs:. Windows and
  * Linux hand documents over in argv instead. */
@@ -2240,8 +2349,10 @@ void kui_input_release(KuiCtx *ctx, KuiStr code, KuiStr physical,
  * app switch would never arrive, and reporting the loss is what lets go.
  * This is the same release for a host with a reason of its own. */
 void kui_release_held_keys(KuiCtx *ctx);
-/* Physical modifier state changed (KUI_KMOD_* bits); the host polls a
- * {kind="modifiers", shift, ctrl, alt, super} event when it differs. */
+/* Physical modifier state changed (KUI_KMOD_* bits). When it differs from
+ * the last report, the root's on_modifiers message (KuiWindowEvents)
+ * arrives with modifiers:{shift, ctrl, alt, super} in it; a root that
+ * declares none hears nothing. */
 void kui_input_modifiers(KuiCtx *ctx, uint32_t mods);
 bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
 
@@ -2711,9 +2822,9 @@ bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
  * frame declares it - cfg is read then and never again (NULL means
  * KUI_WINDOW_CONFIG_INIT), because the user owns a window's geometry once
  * it exists - and closes on the first frame none does. The KUI_CMD_OPEN /
- * KUI_CMD_CLOSE arrive through kui_take_window_command, and the app sees
- * {kind:"window", phase:"opened"|"closed", name, id} through
- * kui_poll_event. A window the user closed (kui_window_closed) stays closed
+ * KUI_CMD_CLOSE arrive through kui_take_window_command; the app hears
+ * of them through kui_poll_event only as the on_window message
+ * kui_window_declare_with declares. A window the user closed (kui_window_closed) stays closed
  * while it is still declared - stop declaring it, then declare it again -
  * and says so with the "window-declared-while-closed" warning. Two
  * declarations of one name that disagree on the frame it opens warn
@@ -2730,6 +2841,18 @@ bool kui_take_window_command(KuiCtx *ctx, KuiWindowCommand *out);
  * Escape with kui_window_dismissed; you close it when the app stops
  * declaring it, and the core closes it for you when its owner closes. */
 void kui_window_declare(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg);
+/* kui_window_declare, with the messages the window's lifecycle arrives as
+ * (ADR 0048): the onWindow and onDismiss of its entry in the window set.
+ * Its opening and closing arrive as `on_window` with window:{phase:
+ * "opened"|"closed", id} in it, on whichever window's frame noticed, and a
+ * popup's dismissal (kui_window_dismissed) as `on_dismiss` with
+ * dismiss:{reason, id}. The message is what names the window, so the data
+ * does not. Unlike cfg they are read on every declaration, and a closed
+ * window's are the last ones declared - it has no frame left to declare
+ * anything. Consumes both (NULL for one you do not hear), also when the
+ * call is refused, as kui_select_with does. A new function of ABI 33. */
+void kui_window_declare_with(KuiCtx *ctx, KuiStr name, const KuiWindowConfig *cfg,
+                             KuiValue *on_window, KuiValue *on_dismiss);
 /* Asks the driver to resize a window to w x h logical px, or to give it
  * keyboard focus. Requests, not declarations: kui_window_declare's config is
  * read on the opening edge only, because the user owns a window's size once
@@ -2745,8 +2868,9 @@ void kui_set_window_size(KuiCtx *ctx, uint32_t window, float w, float h);
 void kui_focus_window(KuiCtx *ctx, uint32_t window);
 /* Reports that window `id` was asked to go away: a press landed outside it
  * (KUI_DISMISS_OUTSIDE) or Escape reached it (KUI_DISMISS_ESCAPE). The app
- * sees {kind:"dismiss", reason, name, id} through kui_poll_event, and
- * nothing closes - the same contract a modal node's dismissal has, one
+ * gets the window's on_dismiss message (kui_window_declare_with) with
+ * dismiss:{reason, id} in it through kui_poll_event, or nothing where it
+ * declared none, and nothing closes - the same contract a modal node's dismissal has, one
  * level up: only the app can stop declaring the window, on the frame it
  * decides to. You report it because neither fact is the frame's: a press
  * outside a window lands in another surface, and a non-activating popup is
@@ -2762,8 +2886,10 @@ uint32_t kui_ctx_window(KuiCtx *ctx);
 bool kui_ctx_window_name(KuiCtx *ctx, KuiStr *out);
 /* You report that the OS closed window `id` (its close button, the window
  * manager). It stays closed while still declared, whatever only it declared
- * closes with it, and the app gets {kind:"window", phase:"closed"}. Nothing
- * happens for KUI_WINDOW_MAIN or for a window already closed by the diff. */
+ * closes with it, and the app gets its last-declared on_window message
+ * (kui_window_declare_with) with window:{phase:"closed", id} in it.
+ * Nothing happens for KUI_WINDOW_MAIN or for a window already closed by
+ * the diff. */
 void kui_window_closed(KuiCtx *ctx, uint32_t id);
 /* The pointer shape for where the pointer is now (KUI_CURSOR_*, 0 only on a
  * bad context): the `cursor` the topmost node under it declared, the
@@ -2901,10 +3027,19 @@ bool kui_spec_float_preset(KuiSpec *spec, KuiStr name);
 
 /* -- Frame building ------------------------------------------------------ */
 /* w/h are logical pixels. A frame begun at a different size or scale than
- * the last one posts a {kind="resize", width, height, scale} event on the
- * root, polled after kui_frame_finish like any other. */
+ * the last one posts the root's on_resize message (KuiWindowEvents) with
+ * resize:{width, height, scale} in it, polled after kui_frame_finish like
+ * any other; a root that declares none hears nothing. */
 void kui_frame_begin(KuiCtx *ctx, float w, float h, float scale);
 void kui_root(KuiCtx *ctx, const KuiSpec *spec);
+/* kui_root, and the messages the events about this window arrive as
+ * (KuiWindowEvents, borrowed while the call runs; NULL for none). The
+ * group is declared each frame like the rest of the root: the one in force
+ * is what the last finished frame declared, so a frame that calls plain
+ * kui_root stops hearing them. A NULL spec leaves the root as the frame
+ * began it and declares the group alone, for a host that never configures
+ * its root. A new function of ABI 33; KuiSpec does not grow. */
+void kui_root_with(KuiCtx *ctx, const KuiSpec *spec, const KuiWindowEvents *events);
 /* on_click may be NULL; consumed when given. Returns the node key. */
 uint64_t kui_open(KuiCtx *ctx, const KuiSpec *spec, KuiValue *on_click);
 uint64_t kui_open_keyed(KuiCtx *ctx, KuiStr label, const KuiSpec *spec, KuiValue *on_click);
@@ -3019,8 +3154,9 @@ uint32_t kui_ctx_extension_count(KuiCtx *ctx);
  * event's origin back into the name you chose. False (out untouched) for 0
  * or an origin nothing is loaded at. Borrowed until the next call. */
 bool kui_ctx_extension_namespace(KuiCtx *ctx, uint16_t origin, KuiStr *out);
-/* Draggable container: press-drag emits {kind="drag", phase="start"|"move"|
- * "end", x, y, dx, dy, parent, tag} events. dx/dy are the displacement from
+/* Draggable container: press-drag emits "drag" events, the on_drag
+ * message with drag:{phase="start"|"move"|"end", x, y, dx, dy, parent} in
+ * it (a NULL on_drag: {drag:{...}} alone). dx/dy are the displacement from
  * the press point in every phase - start is zero, a move is how far the
  * pointer is from where it pressed, end is the whole distance - so a handler
  * sets value = start + dx rather than summing, and can commit from end
@@ -3033,12 +3169,16 @@ uint64_t kui_open_draggable(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
  * consumed. NULL means absent (a NULL on_drag here does NOT make the node
  * draggable, unlike kui_open_draggable). A non-NULL on_key makes the node a
  * key sink: focus it with kui_set_key_focus and every press arrives as
- * {kind="key", phase="down", code, ctrl, alt, shift, super, text, repeat,
- * tag} - releases too, with phase="up", when KuiSpec.key_up is set. A non-NULL
- * on_hover makes the pointer entering/leaving emit
- * {kind="hover", phase="enter"|"leave", by="pointer"|"content", tag} — for hover-dependent layout;
- * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. A tag of
- * kui_value_null() keeps the behaviour and leaves `tag` off the events.
+ * the on_key message with key:{phase="down", code, ctrl, alt, shift,
+ * super, text, repeat} in it - releases too, with phase="up", when
+ * KuiSpec.key_up is set; text, preedit and select events come in the same
+ * message, KuiEvent.event telling them apart. A non-NULL on_hover makes
+ * the pointer entering/leaving emit the on_hover message with
+ * hover:{phase="enter"|"leave", by="pointer"|"content"} in it — for hover-dependent layout;
+ * plain hover colors belong in KuiSpec.hover_bg / pressed_bg. A message
+ * of kui_value_null() keeps the behaviour, and its events carry the field
+ * alone ({key:{...}}); a string or number message arrives as
+ * {tag: msg, key:{...}}.
  * Layout events come from KuiSpec.on_layout, not an argument. */
 uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
                        KuiValue *on_click, KuiValue *on_drag, KuiValue *on_key,
@@ -3046,8 +3186,8 @@ uint64_t kui_open_with(KuiCtx *ctx, KuiStr label, const KuiSpec *spec,
 /* -- Keyboard focus ------------ */
 /* One focus for every node: editors, on_key sinks, on_click nodes, the
  * control roles and `focusable` boxes are Tab stops in tree order; Enter
- * and Space press the focused control, the arrows nudge a focused slider
- * (increment / decrement access events), a key sink keeps every key (Tab
+ * and Space press the focused control, the arrows move a focused slider
+ * (its on_change), a key sink keeps every key (Tab
  * included) and hands focus on with kui_focus_next. Keyboard focus draws a
  * ring (or the node's focus_bg); a click's does not. */
 /* Declares key focused this frame (0 blurs at once). Edge-triggered: the
@@ -3070,6 +3210,12 @@ void kui_focus(KuiCtx *ctx, uint64_t key);
  * not even its own other slots'; the host from its own first, and
  * everyone's when it opened none. */
 uint64_t kui_key_of(KuiCtx *ctx, KuiStr label);
+/* The reverse of kui_key_of: the label `key` was opened under, in the frame
+ * being built so far and then the last finished one. False for an
+ * auto-keyed node or a key no frame declared; *out is borrowed until the
+ * next kui_label_of call. The label is the local one, so in a list two rows
+ * under different parents answer the same. */
+bool kui_label_of(KuiCtx *ctx, uint64_t key, KuiStr *out);
 /* The key of the first node in the last finished frame whose accessible
  * name is `name` — its `label` row, else its own text, else a control's
  * derived name — so a test presses "the button named Like" as a reader
@@ -3260,8 +3406,9 @@ bool kui_fragment_source(KuiCtx *ctx, uint64_t id, KuiStr *out);
 uint64_t kui_sound_add(KuiCtx *ctx, const uint8_t *data, size_t len);
 void kui_sound_remove(KuiCtx *ctx, uint64_t id);
 /* Starts a playback; returns its id. opts may be NULL (defaults). A non-NULL
- * tag (consumed) asks for a {kind="sound", phase="ended", playback, tag}
- * event when the playback finishes on its own (never when stopped). */
+ * tag (consumed) is the message a "sound" event arrives as when the
+ * playback finishes on its own (never when stopped): the message with
+ * sound:{phase="ended", playback} in it, {sound:{...}} for a null one. */
 uint64_t kui_play(KuiCtx *ctx, uint64_t sound, const KuiPlay *opts, KuiValue *tag);
 void kui_stop(KuiCtx *ctx, uint64_t playback, float fade_ms);
 void kui_set_volume(KuiCtx *ctx, uint64_t playback, float volume, float tween_ms);
@@ -3271,8 +3418,8 @@ void kui_set_master_volume(KuiCtx *ctx, float volume, float tween_ms);
 /* An audio node: a playback retained by key while the frame declares it
  * (present = playing, once or looped; gone = stopped; volume/paused apply
  * live; a changed src restarts). Draws nothing. Empty label = a key from the
- * tree position. tag (nullable, consumed) rides the ended event. Returns the
- * node key the event carries. */
+ * tree position. tag (nullable, consumed) is the message the ended event
+ * arrives as, sound:{...} in it. Returns the node key the event carries. */
 uint64_t kui_audio(KuiCtx *ctx, KuiStr label, const KuiAudio *spec, KuiValue *tag);
 /* Only for hosts with their own audio device (kui_run needs neither): drains
  * queued commands into out (up to cap; the rest are dropped), returns the
@@ -3494,8 +3641,9 @@ bool kui_caret_in_rich_text(KuiCtx *ctx, const KuiSpan *spans, size_t span_count
  * pointer was over. False for a key that drew no text. */
 bool kui_text_hit(KuiCtx *ctx, uint64_t key, float x, float y, KuiTextHit *out);
 /* Opens a context menu at (x, y) over `key`, with `count` items read from
- * `items`; the next frame draws it. Choosing a row posts {kind:"menu",
- * role, item} on `key` and closes the menu, and a press outside it or
+ * `items`; the next frame draws it. Choosing a row posts a "menu" event on
+ * `key` - its KuiSpec.on_menu message with menu:{role, item} in it, and
+ * nothing to a node that declared no on_menu - and closes the menu, and a press outside it or
  * Escape closes it with nothing posted. False - and nothing opens - for a
  * key of 0, no items, or an item whose role this build does not know. */
 bool kui_open_menu(KuiCtx *ctx, uint64_t key, float x, float y,
@@ -3514,8 +3662,17 @@ bool kui_close_menu(KuiCtx *ctx);
  * a frame that does not call it leaves the last declaration in force, the
  * same one again changes nothing, and `count` of 0 takes the menu away.
  * False - declaring and drawing nothing - for a row whose role this build
- * does not know. Between kui_frame_begin and kui_frame_finish. */
+ * does not know. Between kui_frame_begin and kui_frame_finish. It declares
+ * no message, so a choice from it posts nothing: */
 bool kui_menu_bar(KuiCtx *ctx, const KuiMenu *menus, size_t count);
+/* kui_menu_bar whose choices arrive as `on_menu` (the menuBar element's
+ * onMenu, ADR 0048) with menu:{role, item} in it, whether the row was
+ * chosen in the frame's strip or from the platform's bar
+ * (kui_activate_menu_bar_item). Part of the declaration, so sticky with
+ * it. Consumes on_menu (NULL for a bar whose choices post nothing), also
+ * when the call is refused, as kui_select_with does. A new function of
+ * ABI 33. */
+bool kui_menu_bar_with(KuiCtx *ctx, const KuiMenu *menus, size_t count, KuiValue *on_menu);
 /* Tells the core the platform owns the menu bar, so kui_menu_bar draws
  * nothing and you are the one handing the declaration over (read it back
  * with the two calls below) and reporting what was chosen. Off by
@@ -3592,7 +3749,8 @@ enum { KUI_COPY_READY = 0, KUI_COPY_ASKED = 1, KUI_COPY_NOTHING = 2 };
 /* Asks for the selection as text. KUI_COPY_READY writes it into
  * *out, borrowed until the next call on this context. KUI_COPY_ASKED means
  * the selection reaches rows a virtual list never built: a
- * {kind:"selectionrange", from:{index, byte}, to:{index, byte}} event is
+ * "selectionrange" event, selectionrange:{from:{index, byte}, to:{index,
+ * byte}} in the scope's on_selection_range message, is
  * in the queue, the rows behind that gap are yours, and answering with
  * kui_answer_selection_range hands the text back as a
  * KUI_MENU_ACTION_SET_CLIPBOARD. */
@@ -3607,7 +3765,7 @@ bool kui_answer_selection_range(KuiCtx *ctx, KuiStr text);
  * second flavour beside it - empty for none, never instead of it);
  * kui_request_paste queues a KUI_MENU_ACTION_PASTE, which the host answers
  * with kui_input_commit so the text reaches the focused editor as typing
- * or the focused sink as {kind:"text"}. Under kui_run the runner drains
+ * or the focused sink as a "text" event. Under kui_run the runner drains
  * both after every input and every frame; a host driving its own window
  * drains them with kui_take_menu_action as it does a menu's. */
 void kui_set_clipboard(KuiCtx *ctx, KuiStr text, KuiStr html);
@@ -3674,8 +3832,9 @@ void kui_set_lookup_available(KuiCtx *ctx, bool on);
 bool kui_take_menu_action(KuiCtx *ctx, KuiMenuAction *out);
 
 /* File dialogs: ask for the platform's Open, Save or folder
- * dialog and hear the answer as a {kind:"files", paths, tag} event - the
- * paths a drop carries, none when the user cancelled - to whoever asked.
+ * dialog and hear the answer as a "files" event on the root, the message
+ * kui_request_files was given with files:{paths} in it - the paths a drop
+ * carries, none when the user cancelled - to whoever asked.
  * One dialog at a time. Under kui_run the runner shows it; a host driving
  * its own window drains it with kui_take_file_request and answers with
  * kui_input_files. */
@@ -3871,8 +4030,10 @@ size_t kui_take_announcements(KuiCtx *ctx, KuiAnnouncement *out, size_t cap);
 /* A request from assistive technology on a node: one KUI_ACCESS_* bit the
  * node advertises, with value the new text for KUI_ACCESS_SET_VALUE (empty
  * otherwise). Resolved like its pointer/keyboard equivalent: a click emits
- * the node's payload, focus lands on an editor, a slider nudge arrives as
- * a {kind="access", action, tag} event. */
+ * the node's payload, focus lands on an editor, a slider's increment,
+ * decrement or set value arrives on its on_change as change:{value,
+ * phase} (a slider without on_change does not move), and a custom
+ * editor's set value on its on_change as change:{text}. */
 void kui_input_access(KuiCtx *ctx, uint64_t key, uint32_t action, KuiStr value);
 /* The laid-out text of editor node key as runs (KuiAccessRun): fills out
  * with up to cap of them, returns the total. */
@@ -3880,9 +4041,11 @@ size_t kui_access_runs(KuiCtx *ctx, uint64_t key, KuiAccessRun *out, size_t cap)
 /* A text request on an editor: KUI_ACCESS_SET_TEXT_SELECTION with the
  * selection as run positions (anchor the end that stays, focus the caret),
  * or KUI_ACCESS_REPLACE_SELECTED_TEXT / KUI_ACCESS_SET_VALUE with value. A
- * built-in editor applies it (a changed event follows an edit); a custom
- * editor gets it as a {kind="access", action, anchor={line, offset},
- * focus={line, offset}, text, tag} event to apply itself. */
+ * built-in editor applies it (its change event follows an edit); a custom
+ * editor gets it as the event a user doing the same would cause, to apply
+ * itself: a selection as select:{anchor:{line, offset}, focus:{line,
+ * offset}} and a replacement as text:{text} in its on_key message, a set
+ * value as change:{text} in its on_change (ADR 0047). */
 void kui_input_access_text(KuiCtx *ctx, uint64_t key, uint32_t action,
                            uint64_t anchor_run, uint32_t anchor_char,
                            uint64_t focus_run, uint32_t focus_char, KuiStr value);
@@ -3914,19 +4077,36 @@ void kui_tooltip_with(KuiCtx *ctx, KuiViewFn body, void *user);
 void kui_latency_graph(KuiCtx *ctx);
 /* The graph in a corner panel; x/y are KUI_START/CENTER/END. */
 void kui_latency_hud(KuiCtx *ctx, uint32_t x, uint32_t y);
-/* Single-line input with chrome; returns the editor key (kui_edit_text). */
+/* Single-line input with chrome, seeded with `initial`; returns the
+ * editor key (kui_edit_text). It reports on that key in NULL messages: an
+ * edit as {change:{text}}, Enter and Escape as an empty payload whose
+ * KuiEvent.event is "submit" / "cancel". */
 uint64_t kui_text_input(KuiCtx *ctx, KuiStr label, KuiStr initial);
+/* kui_text_input with the messages it reports in (ADR 0047): an edit
+ * arrives as {...on_change, change:{text}}, Enter as on_submit and Escape
+ * as on_cancel, as declared; a NULL one is the field alone, as
+ * kui_text_input sends it. With KUI_EDIT_VALUE in `flags`, `text` is the
+ * field's value - brought back whenever the field's text differs - and
+ * otherwise its seed; other flags are ignored. Consumes the three
+ * messages. A new function of ABI 33. */
+uint64_t kui_text_input_with(KuiCtx *ctx, KuiStr label, KuiStr text, uint32_t flags,
+                             KuiValue *on_change, KuiValue *on_submit, KuiValue *on_cancel);
 /* The stock select: a field showing the `current`th of `count` options
  * (-1 for none) that, clicked, opens the core's own menu of them under
  * it - the rows are the ones kui_open_menu takes, the current one drawn
- * checked. The host holds no open state; the choice arrives as the
- * {kind:"menu", role, item} event a menu row posts, on the key this
- * returns, and drawing the field again with the new `current` is the
- * whole loop. 0 for no label, no items, or a role this build does not
+ * checked. The host holds no open state; the choice arrives as a "menu"
+ * event, {menu:{role, item}}, on the key this returns, and drawing the
+ * field again with the new `current` is the whole loop. 0 for no label, no items, or a role this build does not
  * know; a `current` past the end or on a separator is none, with a
  * select-current-ignored warning on the field. */
 uint64_t kui_select(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, size_t count,
                     int64_t current);
+/* kui_select whose choice arrives as `on_menu` (consumed, also when the
+ * call is refused), with {menu:{role, item}} in it, on the key this
+ * returns - what tells one select's choice from another's without
+ * matching keys (ADR 0047). NULL is a Null message: kui_select. */
+uint64_t kui_select_with(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, size_t count,
+                         int64_t current, KuiValue *on_menu);
 /* The stock controls.
  * A toggle is drawn from the state `spec` declares - `checked`, and on a
  * checkbox `mixed` - labelled `text` and keyed by it; a press by the
@@ -3947,12 +4127,16 @@ uint64_t kui_radio_group_open(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
  * value_min / value_max / value_step (by their KUI_VALUE_* bits),
  * value_text, on_change, width / min_w / max_w where set, label,
  * description, tooltip and disabled off `spec`. With on_change the core
- * proposes values from the pointer and the keys as {kind:"change", value,
- * phase, tag}; declare the value back as value_now. Its key. */
+ * proposes values from the pointer and the keys as the on_change message
+ * with change:{value, phase} in it; declare the value back as value_now.
+ * Its key. */
 uint64_t kui_slider(KuiCtx *ctx, KuiStr label, const KuiSpec *spec);
-/* Editable text node (state retained by key). Returns the node key;
- * "changed"/"submit"/"cancel" events arrive via kui_poll_event with that
- * key ("cancel": Escape let go of it). */
+/* Editable text node (state retained by key), seeded with `initial` - or,
+ * with KUI_EDIT_VALUE, held to it. Returns the node key. It reports in the
+ * messages `spec` declares (ADR 0047): an edit as {...on_change,
+ * change:{text}} with the whole text after it, Enter as on_submit and
+ * Escape as on_cancel as declared, an edge as {...on_boundary,
+ * boundary:{...}}. An editor that declares none sends nothing. */
 uint64_t kui_text_edit(KuiCtx *ctx, KuiStr label, KuiStr initial,
                        const KuiTextStyle *style, uint32_t flags, const KuiSpec *spec);
 /* kui_text_edit with a placeholder: what the editor shows, in the theme's
@@ -3989,7 +4173,7 @@ bool kui_draw_data(KuiCtx *ctx, KuiDrawData *out);
 /* A payload is one of seven shapes - null, bool, integer, float, string,
  * list, map - and an event carries every one of them: a key event's
  * `shift` is a bool, a drag's `dx` a float, a preedit's `cursor` a list
- * of two integers, its `tag` whatever the view declared. Build one with
+ * of two integers, the message around them whatever the view declared. Build one with
  * the constructors and read one with the `as_*` readers, each of which
  * answers false for a shape it is not, so a field's absence and a
  * field's shape are both something a host can branch on. */

@@ -134,6 +134,7 @@ c_type! {
     KuiLengthToken => "KuiLengthToken", KuiColorOp => "KuiColorOp",
     KuiDerivedToken => "KuiDerivedToken", KuiEnter => "KuiEnter",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
+    KuiWindowEvents => "KuiWindowEvents",
     KuiRunConfig => "KuiRunConfig",
     KuiFileFilter => "KuiFileFilter", KuiFileDialog => "KuiFileDialog",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
@@ -437,6 +438,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_EDIT_WRAP,
             KUI_EDIT_KEEP_TAB,
             KUI_EDIT_SECURE,
+            KUI_EDIT_VALUE,
             KUI_MOD_SHIFT,
             KUI_MOD_WORD,
             KUI_MOD_DOC,
@@ -829,6 +831,11 @@ fn asserts() -> (String, Vec<&'static str>) {
         pivot_y: f32 => "float",
         iterations: f32 => "float",
         over_siblings: u32 => "uint32_t",
+        on_submit: *const KuiValue => "const KuiValue *",
+        on_cancel: *const KuiValue => "const KuiValue *",
+        on_boundary: *const KuiValue => "const KuiValue *",
+        on_menu: *const KuiValue => "const KuiValue *",
+        on_selection_range: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1044,6 +1051,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         window: u32 => "uint32_t",
         reply_sink: *mut KuiReplySink => "KuiReplySink *",
         slot: u64 => "uint64_t",
+        event: KuiStr => "KuiStr",
     });
     abi_out_struct!(o, KuiEvent);
 
@@ -1056,6 +1064,15 @@ fn asserts() -> (String, Vec<&'static str>) {
         anchor_y: f32 => "float",
         anchor_w: f32 => "float",
         anchor_h: f32 => "float",
+    });
+
+    abi_struct!(o, KuiWindowEvents {
+        on_resize: *const KuiValue => "const KuiValue *",
+        on_focus: *const KuiValue => "const KuiValue *",
+        on_system_settings_change: *const KuiValue => "const KuiValue *",
+        on_fonts: *const KuiValue => "const KuiValue *",
+        on_modifiers: *const KuiValue => "const KuiValue *",
+        on_open: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiFileFilter {
@@ -1531,8 +1548,10 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // so the 64-bit size stayed at 704 while the layout moved. ABI
         // 27: `rotate`, `scale`, `pivot_set`, `pivot_x` and `pivot_y`
         // (ADR 0043). ABI 31: `over_siblings`, past the end, so 744 + 4 rounds
-        // up to the struct's 8-byte alignment.
-        ("KuiSpec", 752, 31),
+        // up to the struct's 8-byte alignment. ABI 33: `on_submit`,
+        // `on_cancel`, `on_boundary`, `on_menu` and `on_selection_range`
+        // (ADR 0047), five pointers after that padding.
+        ("KuiSpec", 792, 33),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),
@@ -1556,6 +1575,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiPlay", 12, 16),
         ("KuiAudio", 24, 16),
         ("KuiWindowConfig", 32, 16),
+        // ABI 33: the root's `windowEvents` group (ADR 0048), six borrowed
+        // messages.
+        ("KuiWindowEvents", 48, 33),
         // ABI 26: `backdrop` (backlog F126); ABI 28: `titlebar` (W22).
         ("KuiRunConfig", 48, 28),
         // ABI 19: the file dialogs.

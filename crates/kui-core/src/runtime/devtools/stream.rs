@@ -75,7 +75,7 @@ fn summary(e: &Entry) -> String {
             e.payload.get_str("code").unwrap_or(""),
             e.payload.get_str("message").unwrap_or("")
         ),
-        EntryKind::Event => {
+        EntryKind::Event(event) => {
             let who = match &e.label {
                 Some(l) => l.clone(),
                 None => format!("{:08x}", e.key.0 as u32),
@@ -85,7 +85,11 @@ fn summary(e: &Entry) -> String {
             } else {
                 format!("ext{} ", e.origin.0)
             };
-            format!("{window}{origin}{who} {}", fmt_value(&e.payload))
+            format!(
+                "{window}{origin}{who} {} {}",
+                event.name(),
+                fmt_value(&e.payload)
+            )
         }
     }
 }
@@ -215,7 +219,7 @@ pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
 /// One entry: its line, and the payload's lines under it when open.
 fn row(ui: &mut Ui<'_>, t: &Theme, e: &Entry, open: bool) {
     let color = match e.kind {
-        EntryKind::Event => t.fg,
+        EntryKind::Event(_) => t.fg,
         EntryKind::Warning => t.warning,
         EntryKind::Note => t.muted,
     };

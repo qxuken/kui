@@ -1,6 +1,7 @@
 //! File dialogs as an ask: the app describes an Open, Save or folder
 //! dialog, the host shows the platform's own, and the answer comes back as
-//! one `{kind:"files", paths, tag}` event (`paths` empty when cancelled).
+//! one event, the ask's message with `files: {paths}` in it (`paths`
+//! empty when cancelled).
 //!
 //! Build a [`FileDialog`] and hand it to `Ui::request_files` from a view or
 //! `Core::request_files` between frames. The core cannot show a dialog, so
@@ -26,7 +27,7 @@
 //! let asked = core.take_file_requests();
 //! assert_eq!(asked[0].mode, FileDialogMode::Open);
 //! let events = core.handle_input(InputEvent::Files(vec!["/tmp/a.png".into()]));
-//! assert_eq!(events[0].kind(), Some("files"));
+//! assert_eq!(events[0].event.name(), "files");
 //! ```
 
 use crate::key::Key;
@@ -85,7 +86,8 @@ pub struct FileDialog {
     pub directory: Option<String>,
     /// A Save dialog's suggested name.
     pub file_name: Option<String>,
-    /// Handed back on the `files` event, as a node's tag is.
+    /// The message the answer arrives as, with `files: {paths}` in it, as
+    /// a node's handler message is.
     pub tag: Value,
 }
 
@@ -250,17 +252,13 @@ impl FileAsk {
             FileAsk::Queued(d, origin) => (d.tag, origin),
             FileAsk::Taken(tag, origin) => (tag, origin),
         };
-        Some(
-            crate::input::UiEvent::on(
-                origin,
-                Key::ROOT,
-                Value::map([
-                    ("kind", Value::str("files")),
-                    ("paths", Value::list(paths.iter().map(Value::str))),
-                ]),
-            )
-            .tagged(Some(&tag)),
-        )
+        Some(crate::input::UiEvent::declared(
+            crate::input::EventKind::Files,
+            origin,
+            Key::ROOT,
+            Some(&tag),
+            Value::map([("paths", Value::list(paths.iter().map(Value::str)))]),
+        ))
     }
 }
 

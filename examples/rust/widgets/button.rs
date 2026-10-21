@@ -114,7 +114,7 @@ impl App for Buttons {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if let Some(s) = ev.payload.as_str() {
+        if let Some(s) = ev.message::<String>().as_deref() {
             self.presses += 1;
             self.last = Some(s.to_string());
         }

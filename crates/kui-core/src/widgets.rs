@@ -325,12 +325,59 @@ pub fn label(ui: &mut Ui<'_>, text: &str) {
     ui.text(text, TextStyle::default());
 }
 
-/// Single-line text input with chrome (background, focus ring).
-/// Read the value with `ui.edit_text(key)`; "changed"/"submit" events arrive
-/// in `on_event` with this key. The `label` is the key and the accessible
+/// Single-line text input with chrome (background, focus ring). Its
+/// edits, Enter and Escape arrive in `on_event` on this key as `change:
+/// {text}`, a bare `submit` and a bare `cancel` (ADR 0047): the stock
+/// field declares a `Null` message for each, so it reports without the
+/// app naming one, and a view that needs its own messages is a
+/// `text_edit` with `on_change` and the rest. The `label` is the key and the accessible
 /// name both (`"search"`, `"name"`), so a screen reader has something to
 /// announce; use `ui.text_edit` with `NodeSpec::label` when they differ.
 pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
+    input_field(ui, label, initial, false, &InputMessages::default())
+}
+
+/// The messages a stock [`text_input`] reports in: its `change`, Enter's
+/// `submit` and Escape's `cancel` (ADR 0047). One left `None` is a `Null`
+/// message, so the field reports it on its key as the field alone — what
+/// [`text_input`] declares for all three. What a binding's stock input
+/// hands the `onChange` and the rest it was given.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InputMessages {
+    pub change: Option<Value>,
+    pub submit: Option<Value>,
+    pub cancel: Option<Value>,
+}
+
+/// [`text_input`] or [`text_input_value`] with the messages it reports
+/// in: `value` says whether `text` is the field's value or its seed.
+pub fn text_input_with(
+    ui: &mut Ui<'_>,
+    label: &str,
+    text: &str,
+    value: bool,
+    messages: &InputMessages,
+) -> Key {
+    input_field(ui, label, text, value, messages)
+}
+
+/// [`text_input`] whose text is `value`, declared every frame
+/// (`EditOptions::value`): where the field's text differs from it, the
+/// field is brought to it, so the model the app keeps is the field's.
+pub fn text_input_value(ui: &mut Ui<'_>, label: &str, value: &str) -> Key {
+    input_field(ui, label, value, true, &InputMessages::default())
+}
+
+/// The field both inputs draw; `value` says whether `text` is its value
+/// or its seed.
+fn input_field(
+    ui: &mut Ui<'_>,
+    label: &str,
+    text: &str,
+    value: bool,
+    messages: &InputMessages,
+) -> Key {
+    let message = |m: &Option<Value>| m.clone().unwrap_or(Value::Null);
     let key = ui.child_key(label);
     let t = ui.theme();
     let m = ui.metrics();
@@ -341,9 +388,10 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
     };
     ui.text_edit(
         label,
-        initial,
+        text,
         &EditOptions {
             multiline: false,
+            value,
             ..Default::default()
         },
         NodeSpec::column()
@@ -353,7 +401,10 @@ pub fn text_input(ui: &mut Ui<'_>, label: &str, initial: &str) -> Key {
             .radius(m.radius)
             .border(1.0, border)
             .clip()
-            .label(label),
+            .label(label)
+            .on_change(message(&messages.change))
+            .on_submit(message(&messages.submit))
+            .on_cancel(message(&messages.cancel)),
     )
 }
 
@@ -373,7 +424,8 @@ pub(crate) fn select_tag() -> Value {
 /// host shows menus itself, dismissed by Escape or a press outside, its
 /// rows walked by the arrows. So the app holds no open state; what it
 /// hears is the choice, as the `menu` event a menu row posts, on this
-/// key: `{kind: "menu", role: "custom", item: <the option>}`. A view
+/// key: `{menu: {role: "custom", item: <the option>}}` (ADR 0047; a
+/// [`select_with`] spec's `on_menu` message carries it instead). A view
 /// that then draws the select with the new `current` is the whole loop.
 ///
 /// [`select_items`] is the same field over [`MenuItem`]s, for an option
@@ -404,6 +456,29 @@ pub fn select_items(
     )
 }
 
+/// [`select_items`] whose choice arrives as `on_menu`, with `menu: {role,
+/// item}` in it (ADR 0047): what a binding hands the `onMenu` its stock
+/// select was declared with. `None` is the `Null` message
+/// [`select_items`] declares, the choice arriving as the field alone.
+pub fn select_items_with(
+    ui: &mut Ui<'_>,
+    label: &str,
+    items: &[MenuItem],
+    current: Option<usize>,
+    on_menu: Option<Value>,
+) -> Key {
+    let t = ui.theme();
+    let m = ui.metrics();
+    select_with(
+        ui,
+        label,
+        items,
+        current,
+        select_spec(&t, &m).on_menu(on_menu.unwrap_or(Value::Null)),
+        TextStyle::new(m.chrome_text),
+    )
+}
+
 /// The stock select field's spec: a sunken field with the stock radius
 /// and padding, as [`button_spec`] is the stock button's. What
 /// [`select_with`] is handed by [`select_items`]; a caller with a spec
@@ -426,6 +501,11 @@ pub fn select_spec(theme: &Theme, m: &Metrics) -> NodeSpec {
 /// A `current` that names no option (past the end, or a separator) is
 /// none, with a `select-current-ignored` warning on the field: the field
 /// is described by nothing and no row is checked.
+///
+/// A choice arrives as the field's `on_menu` message with `menu: {role,
+/// item}` in it (ADR 0047). A `spec` that declares none gets a `Null`
+/// one, so the choice still arrives, as `{menu: …}` on the field's key:
+/// a select is never declared to be ignored.
 pub fn select_with(
     ui: &mut Ui<'_>,
     label: &str,
@@ -475,6 +555,11 @@ pub fn select_with(
         })
         .collect();
     ui.core().declare_select(key, menu);
+    let spec = if spec.events().on_menu().is_none() {
+        spec.on_menu(Value::Null)
+    } else {
+        spec
+    };
     ui.with_keyed(
         label,
         spec.border(1.0, border)
@@ -1146,8 +1231,8 @@ pub fn slider_spec(m: &Metrics) -> NodeSpec {
 }
 
 /// A slider named `label` over `min..=max`, at `value`, moving by `step`.
-/// Its changes arrive as `{kind: "change", value, phase, tag}` with `tag`
-/// — from the pointer, the arrows, the Page keys, Home / End and
+/// Its changes arrive as `tag` with `change: {value, phase}` in it (ADR
+/// 0047) — from the pointer, the arrows, the Page keys, Home / End and
 /// assistive technology alike — and the view stores `value` and draws the
 /// slider again at it.
 pub fn slider(

@@ -325,12 +325,14 @@ pub enum AccessAction {
     /// sink, a control, a `focusable` box); it shows, as after Tab.
     Focus,
     Blur,
-    /// Replace an editor's text (`AccessRequest::value`); a `changed` event
-    /// follows when it differs. On a custom editor it arrives as
-    /// `{kind="access", action="setValue", text, tag}`.
+    /// Replace an editor's text (`AccessRequest::value`); a `change` event
+    /// follows when it differs. On a custom editor it arrives on its
+    /// `on_change` as `change: {text}`; on a slider, as the value it
+    /// proposes through `on_change`.
     SetValue,
-    /// Nudge a slider. The core cannot know what a step means, so these
-    /// reach the app as `{kind="access", action, tag}` on the node.
+    /// Nudge a slider by one `value_step`, proposed through its
+    /// `on_change` as `change: {value, phase}`. Only a `slider` role takes
+    /// it, and without `on_change` the slider does not move.
     Increment,
     Decrement,
     /// Scroll the nearest scrolling ancestor so the node is visible.
@@ -341,13 +343,13 @@ pub enum AccessAction {
     ScrollLeft,
     ScrollRight,
     /// Move an editor's caret and selection (`AccessRequest::anchor` /
-    /// `focus`). On a custom editor it arrives as `{kind="access",
-    /// action="setTextSelection", anchor={line, offset}, focus={line,
-    /// offset}, tag}`.
+    /// `focus`). On a custom editor it arrives on the sink it types into
+    /// as `select: {anchor={line, offset}, focus={line, offset}}` in its
+    /// `on_key` message.
     SetTextSelection,
     /// Type over an editor's selection (`AccessRequest::value`). On a
-    /// custom editor: `{kind="access", action="replaceSelectedText",
-    /// text, tag}`.
+    /// custom editor: `text: {text}` in its sink's `on_key` message, as
+    /// a paste is.
     ReplaceSelectedText,
 }
 
@@ -808,18 +810,18 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         Some(WindowRole::Button(_)) => return Some(Role::Button),
         None => {}
     }
-    if spec.events().modal.is_some() {
+    if spec.events().modal().is_some() {
         // A modal surface is a dialog to assistive technology; anything
         // else it might be, the view says with an explicit role.
         return Some(Role::Dialog);
     }
-    if spec.events().on_click.is_some() {
+    if spec.events().on_click().is_some() {
         return Some(Role::Button);
     }
     if spec.layout.scroll_x || spec.layout.scroll_y {
         return Some(Role::ScrollView);
     }
-    if spec.events().on_key.is_some() || spec.focusable {
+    if spec.events().on_key().is_some() || spec.focusable {
         // A key sink or a focusable box is at least somewhere focus can
         // land, so a reader has to be able to see it there.
         return Some(Role::Group);
@@ -851,14 +853,14 @@ pub(crate) fn focusable(tree: &Tree, i: usize) -> bool {
         return false;
     }
     if spec.focusable
-        || spec.events().on_key.is_some()
+        || spec.events().on_key().is_some()
         || matches!(tree.content[i], NodeContent::Edit(_))
     {
         return true;
     }
     match spec.access().role {
         Some(r) => r.is_control(),
-        None => spec.events().on_click.is_some(),
+        None => spec.events().on_click().is_some(),
     }
 }
 
@@ -1171,7 +1173,7 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
         spec.disabled.hash(&mut h);
         ax.live.hash(&mut h);
         spec.window.hash(&mut h);
-        spec.events().on_click.is_some().hash(&mut h);
+        spec.events().on_click().is_some().hash(&mut h);
         focusable(tree, i).hash(&mut h);
         crate::composite::orientation(tree, i).hash(&mut h);
         ax.expanded.hash(&mut h);
@@ -1316,7 +1318,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             Some(WindowRole::Button(_)) => actions |= AccessAction::Click.bit(),
             Some(WindowRole::Drag) => {}
             None => {
-                if spec.events().on_click.is_some() && !spec.disabled {
+                if spec.events().on_click().is_some() && !spec.disabled {
                     actions |= AccessAction::Click.bit();
                 }
             }
@@ -1480,7 +1482,7 @@ fn set_positions(tree: &Tree, out: &mut AccessTree) {
 }
 
 /// The `role="line"` nodes under `i`, in tree order — the numbering a
-/// custom editor's `access` events use for `line`, and the one a press
+/// custom editor's `select` events use for `line`, and the one a press
 /// inside a key sink carries, so the two agree. Subtrees
 /// under `role="none"` (a gutter) do not count, and a line's own subtree
 /// is not searched for lines.

@@ -68,7 +68,7 @@ fn reveal_row_centres_a_row_the_list_has_not_built_and_leaves_a_shown_one() {
     // And the rows were built for the offset the same frame scrolled to:
     // the row under the pointer is 40, clickable through its own spec.
     let evs = click(&mut core, Vec2::new(10.0, 45.0));
-    assert_eq!(evs.iter().find_map(|e| e.payload.as_int()), Some(40));
+    assert_eq!(evs.iter().find_map(|e| e.payload.get_int("tag")), Some(40));
     let mut ui = core.frame(VIEW, 1.0);
     assert_eq!(widgets::rows_in_view(&mut ui, "rows", 20.0), 5);
     ui.finish();

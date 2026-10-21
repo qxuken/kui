@@ -688,13 +688,13 @@ fn a_nested_extensions_replies_reach_whoever_placed_it() {
 
     let mut to_host = Vec::new();
     exts.route(
-        [UiEvent {
-            origin: OriginId(2),
-            window: kui_core::WindowId::MAIN,
-            key: Key::ROOT,
-            payload: Value::map([("kind", "click".into())]),
-            slot: None,
-        }],
+        [UiEvent::declared(
+            kui_core::EventKind::Click,
+            OriginId(2),
+            Key::ROOT,
+            Some(&Value::map([("kind", "click".into())])),
+            Value::Null,
+        )],
         |ev| to_host.push(ev),
     );
 

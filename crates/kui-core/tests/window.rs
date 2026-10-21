@@ -2,13 +2,17 @@
 //! `WindowCommand`s for the driver, never `UiEvent`s — through a live `Core`.
 
 use kui_core::testing::{click_at, drive};
-use kui_core::{Core, InputEvent, NodeSpec, Size, Vec2, WindowButton, WindowCommand, WindowId};
+use kui_core::{
+    Core, InputEvent, NodeSpec, Size, Vec2, WindowButton, WindowCommand, WindowEvents, WindowId,
+};
 
 /// Builds a custom-chrome-ish frame: a 40px drag strip with min/max/close
-/// buttons on the right, over a plain button in the content area.
+/// buttons on the right, over a plain button in the content area. The root
+/// declares a resize message, for the test about the events a frame raises.
 fn frame(core: &mut Core) {
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
+    ui.window_events(WindowEvents::default().on_resize("resized"));
     ui.with(
         NodeSpec::row().grow_width().height(40.0).window_drag(),
         |ui| {
@@ -159,7 +163,7 @@ fn plain_on_click_nodes_are_unaffected() {
     frame(&mut core);
     let evs = click_at(&mut core, 50.0, 60.0);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.as_str(), Some("content-click"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("content-click"));
     assert!(core.take_window_commands().is_empty());
 }
 
@@ -430,12 +434,11 @@ fn events_carry_the_window_the_driver_declared() {
     frame(&mut core);
     let mut ui = core.frame(Size::new(500.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
+    ui.window_events(WindowEvents::default().on_resize("resized"));
     ui.finish();
     let pending = core.take_pending_events();
     assert!(
-        pending
-            .iter()
-            .any(|ev| ev.payload.get("kind").and_then(kui_core::Value::as_str) == Some("resize")),
+        pending.iter().any(|ev| ev.event.name() == "resize"),
         "the viewport change should have raised a resize: {pending:?}"
     );
     assert!(

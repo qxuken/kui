@@ -13,7 +13,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, KeyMods, NodeSpec, Role, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, Event, KeyMods, NodeSpec, Role, TextStyle, Ui, UiEvent, Value};
 
 const THEMES: [&str; 3] = ["Light", "Dark", "System"];
 const CHANNELS: [&str; 3] = ["Mail", "Calendar", "Chat"];
@@ -40,11 +40,13 @@ impl Default for Controls {
     }
 }
 
-fn tag(kind: &str) -> Value {
+/// A control's `{kind}` message.
+fn message(kind: &str) -> Value {
     Value::map([("kind", Value::str(kind))])
 }
 
-fn tagged(kind: &str, i: usize) -> Value {
+/// One of a set's `{kind, i}` messages.
+fn indexed(kind: &str, i: usize) -> Value {
     Value::map([("kind", Value::str(kind)), ("i", Value::Int(i as i64))])
 }
 
@@ -64,7 +66,7 @@ impl App for Controls {
                 .bg(t.bg),
             |ui| {
                 heading(ui, "switch");
-                widgets::switch(ui, "Notifications", self.notify, tag("notify"));
+                widgets::switch(ui, "Notifications", self.notify, message("notify"));
 
                 heading(ui, "checkbox, with a select-all that can be mixed");
                 let ticked = self.channels.iter().filter(|c| **c).count();
@@ -76,7 +78,7 @@ impl App for Controls {
                     widgets::toggle_spec(&m)
                         .checked(ticked == CHANNELS.len())
                         .mixed(ticked > 0 && ticked < CHANNELS.len())
-                        .on_click(tag("all"))
+                        .on_click(message("all"))
                         .disabled(!self.notify),
                     None,
                 );
@@ -98,7 +100,7 @@ impl App for Controls {
                                 name,
                                 widgets::toggle_spec(&m)
                                     .checked(self.channels[i])
-                                    .on_click(tagged("channel", i))
+                                    .on_click(indexed("channel", i))
                                     .disabled(!self.notify),
                                 None,
                             );
@@ -108,7 +110,7 @@ impl App for Controls {
 
                 heading(ui, "radio group — Tab to it, then the arrows");
                 widgets::radio_group(ui, "Theme", &THEMES, Some(self.theme), |i| {
-                    tagged("theme", i)
+                    indexed("theme", i)
                 });
 
                 heading(
@@ -116,7 +118,15 @@ impl App for Controls {
                     "slider — press, drag, or the arrows, Page keys, Home and End",
                 );
                 ui.with(NodeSpec::row().gap(12.0).cross_align(Align::Center), |ui| {
-                    widgets::slider(ui, "Volume", self.volume, 0.0, 100.0, 5.0, tag("volume"));
+                    widgets::slider(
+                        ui,
+                        "Volume",
+                        self.volume,
+                        0.0,
+                        100.0,
+                        5.0,
+                        message("volume"),
+                    );
                     ui.text(
                         &format!("{:.0}", self.volume),
                         TextStyle::new(13.0).color(t.fg),
@@ -133,7 +143,7 @@ impl App for Controls {
                             .value_max(1.0)
                             .value_step(0.1)
                             .value_text(format!("gain {:.1}", self.gain))
-                            .on_change(tag("gain")),
+                            .on_change(message("gain")),
                         Some("Steps of a tenth, proposed as the decimal"),
                     );
                     ui.text(
@@ -149,36 +159,25 @@ impl App for Controls {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let kind = ev.kind();
-        let tag = ev
-            .payload
-            .get("tag")
-            .and_then(|t| t.get("kind"))
-            .and_then(Value::as_str);
-        let i = |v: &Value| v.get_int("i").unwrap_or(0) as usize;
-        match (kind, tag) {
+        // Every message here is a `{kind}` map; a slider's arrives with its
+        // proposal beside it, under `change`.
+        let (msg, event) = ev.split::<Value>();
+        let Some(msg) = msg else { return };
+        let i = msg.get_int("i").unwrap_or(0) as usize;
+        match (msg.get_str("kind"), event) {
             // A slider's proposal: store it, and the next frame draws it.
-            (Some("change"), Some(which)) => {
-                let v = ev.payload.get_float("value").unwrap_or(0.0) as f32;
-                match which {
-                    "volume" => self.volume = v,
-                    "gain" => self.gain = v,
-                    _ => {}
-                }
-            }
+            (Some("volume"), Event::SliderChange(c)) => self.volume = c.value as f32,
+            (Some("gain"), Event::SliderChange(c)) => self.gain = c.value as f32,
             (Some("notify"), _) => self.notify = !self.notify,
             (Some("all"), _) => {
                 let all = !self.channels.iter().all(|c| *c);
                 self.channels = [all; 3];
             }
-            (Some("channel"), _) => {
-                let k = i(&ev.payload);
-                self.channels[k] = !self.channels[k];
-            }
-            (Some("theme"), _) => self.theme = i(&ev.payload),
+            (Some("channel"), _) => self.channels[i] = !self.channels[i],
+            (Some("theme"), _) => self.theme = i,
             _ => return,
         }
-        self.last = format!("last event: {:?}", ev.payload);
+        self.last = format!("last event: {} {:?}", ev.event.name(), ev.payload);
     }
 }
 

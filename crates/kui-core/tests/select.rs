@@ -74,12 +74,13 @@ fn a_click_opens_the_menu_under_the_field_and_a_row_posts_the_choice_on_it() {
     let row = rect_of(&mut core, Role::MenuItem, "light").expect("the rows are drawn");
     assert!(row.y >= field.y + field.h, "below the field");
 
-    // A row chosen: one event, on the field, naming the option.
+    // A row chosen: one event, on the field, naming the option — in the
+    // `on_menu(Null)` the stock select declares, so `{menu: {role, item}}`.
     let evs = click(&mut core, center(row));
     assert_eq!(evs.len(), 1, "{evs:?}");
     assert_eq!(evs[0].key, key);
-    assert_eq!(evs[0].kind(), Some("menu"));
-    assert_eq!(evs[0].payload.get_str("item"), Some("light"));
+    assert_eq!(evs[0].event.name(), "menu");
+    assert_eq!(evs[0].data().and_then(|d| d.get_str("item")), Some("light"));
     assert!(core.menu().is_none(), "and the menu is closed");
 
     // The view draws the new choice; nothing else is retained.
@@ -221,7 +222,10 @@ fn a_disabled_option_cannot_be_chosen_through_the_door() {
         .expect("the enabled one is taken");
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, key);
-    assert_eq!(evs[0].payload.get_str("item"), Some("English"));
+    assert_eq!(
+        evs[0].data().and_then(|d| d.get_str("item")),
+        Some("English")
+    );
     assert!(core.menu().is_none());
 }
 

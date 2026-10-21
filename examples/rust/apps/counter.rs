@@ -16,7 +16,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, FloatConfig, Message, NodeSpec, TextStyle, Ui, UiEvent};
+use kui_native::{Align, App, Core, Event, FloatConfig, Message, NodeSpec, TextStyle, Ui, UiEvent};
 
 #[derive(Message, Clone, Debug, PartialEq)]
 enum Msg {
@@ -24,9 +24,9 @@ enum Msg {
     Dec,
     Reset,
     Add10,
-    /// The tag on the root's `on_context_menu` and on the menu's `modal`:
-    /// the press that asks for the menu, and the `dismiss` that ends it,
-    /// both arrive under it.
+    /// The message on the root's `on_context_menu` and on the menu's
+    /// `modal`: the press that asks for the menu, and the `dismiss` that
+    /// ends it, both arrive as it, told apart by the event beside it.
     Menu,
 }
 
@@ -108,31 +108,25 @@ impl App for Counter {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.message::<Msg>() {
-            Some(Msg::Inc) => self.count += 1,
-            Some(Msg::Dec) => self.count -= 1,
-            Some(Msg::Reset) => {
+        match ev.split::<Msg>() {
+            (Some(Msg::Inc), _) => self.count += 1,
+            (Some(Msg::Dec), _) => self.count -= 1,
+            (Some(Msg::Reset), _) => {
                 self.count = 0;
                 self.menu = None;
             }
-            Some(Msg::Add10) => {
+            (Some(Msg::Add10), _) => {
                 self.count += 10;
                 self.menu = None;
             }
-            // The one tag, two events: a right-click — the core reports
+            // One message, two events: a right-click — the core reports
             // where it landed and opens nothing; the next frame's view is
             // what puts a menu there — and a `dismiss`, Escape or a press
             // outside the menu, where the core asks and the app decides.
             // This one just closes.
-            Some(Msg::Menu) => {
-                if ev.kind() == Some("contextmenu") {
-                    let at = |k| ev.payload.get_float(k).unwrap_or(0.0) as f32;
-                    self.menu = Some((at("x"), at("y")));
-                } else {
-                    self.menu = None;
-                }
-            }
-            None => {}
+            (Some(Msg::Menu), Event::ContextMenu(at)) => self.menu = Some((at.x, at.y)),
+            (Some(Msg::Menu), _) => self.menu = None,
+            (None, _) => {}
         }
     }
 }

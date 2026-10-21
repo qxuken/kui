@@ -157,7 +157,7 @@ impl App for Page {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if let Some(name) = ev.payload.as_str()
+        if let Some(name) = ev.message::<String>().as_deref()
             && let Some(a) = MAIN.into_iter().find(|a| a.name() == name)
         {
             self.main = a;

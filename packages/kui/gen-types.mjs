@@ -57,14 +57,75 @@ const TS_BY_KIND = {
   min: 'MinProp',
   max: 'MaxProp',
   msg: 'AppMsg',
-  // A tag may be null: the behaviour without a tag on its events.
-  tag: 'AppMsg | null',
+  // A handler row is typed by the events it delivers (`handlerType`).
   str: 'string',
   resource: 'string',
   keyframes: 'KeyframeProp[]',
   enter: 'EnterProp',
   gradient: 'GradientProp',
 };
+
+// The field type each event's data rides under in the handler's message
+// (ADR 0047, decision 10), by the `field` column of the core's `EVENTS`.
+// `null` is an event with no data — Enter's `submit`, Escape's `cancel` —
+// whose message arrives as declared (a map as it is, anything else under
+// `tag`, `null` as `{}`), so its row takes any message.
+// A field the table grows that is not here stops the run: a handler typed
+// as "anything" because nobody wrote its type is the bug this prevents.
+const WITH = {
+  click: 'WithClick',
+  drag: 'WithDrag',
+  key: 'WithKey',
+  text: 'WithText',
+  preedit: 'WithPreedit',
+  select: 'WithSelect',
+  selectionrange: 'WithSelectionRange',
+  contextmenu: 'WithContextMenu',
+  menu: 'WithMenu',
+  forceclick: 'WithForceClick',
+  button: 'WithButton',
+  scroll: 'WithScroll',
+  focus: 'WithFocus',
+  hover: 'WithHover',
+  drop: 'WithDrop',
+  files: 'WithFiles',
+  layout: 'WithLayout',
+  // On a box the row serves both roles it applies to; `<edit>` and
+  // `<slider>` narrow it to their own (jsx-runtime.d.ts).
+  change: ['WithEditChange', 'WithSliderChange'],
+  submit: null,
+  cancel: null,
+  boundary: 'WithBoundary',
+  sound: 'WithSound',
+  dismiss: 'WithDismiss',
+  // A window's own events (ADR 0048): the root's `windowEvents` keys and a
+  // `windows` entry's `onWindow`, typed in index.d.ts beside the rest.
+  resize: 'WithResize',
+  window: 'WithWindow',
+  system: 'WithSystem',
+  modifiers: 'WithModifiers',
+  open: 'WithOpen',
+};
+// The `onKey` sink's four, under the name the ADR gives the union.
+const KEY_SINK = ['WithKey', 'WithText', 'WithPreedit', 'WithSelect'];
+for (const e of events) {
+  if (e.field && !(e.field in WITH)) {
+    throw new Error(`event \`${e.kind}\` rides under \`${e.field}\`, which has no With type - teach gen-types.mjs about it`);
+  }
+}
+// A row's events: those whose `handler` column names it (the column may
+// go on to say where else the event arrives — `modal; a popup's …`).
+const handlerOf = (e) => /^[A-Za-z]+/.exec(e.handler)?.[0];
+function handlerType(name) {
+  const fields = events.filter((e) => e.field && handlerOf(e) === name).map((e) => e.field);
+  if (!fields.length) throw new Error(`handler row \`${name}\` delivers no event in the core's EVENTS table`);
+  const types = fields.map((f) => WITH[f]);
+  if (types.every((t) => t === null)) return 'AppMsg | null';
+  if (types.some((t) => t === null)) throw new Error(`handler row \`${name}\` delivers events with and without data`);
+  const flat = [...new Set(types.flat())];
+  const union = flat.length === KEY_SINK.length && KEY_SINK.every((t) => flat.includes(t)) ? 'WithKeySink' : flat.join(' | ');
+  return `HandlerMsg<${union}> | null`;
+}
 
 function field([name, def]) {
   // A family is the stock three or any installed name (ADR 0037); `string
@@ -74,7 +135,9 @@ function field([name, def]) {
       ? def.values.map((v) => `'${v}'`).join(' | ')
       : def.kind === 'family'
         ? `${def.values.map((v) => `'${v}'`).join(' | ')} | (string & {})`
-        : TS_BY_KIND[def.kind];
+        : def.kind === 'handler'
+          ? handlerType(name)
+          : TS_BY_KIND[def.kind];
   return `  /** ${def.doc} */\n  ${name}?: ${ts};`;
 }
 
@@ -129,13 +192,26 @@ const buttonBlock = `// -- generated from the addon's button rows; edit BUTTON_R
   extends ${heritage.join(',\n    ')}
   // -- end generated --`;
 
+// The event types the handler rows are typed with, imported from
+// index.d.ts where they are written: every With type the table can name.
+const withNames = [...new Set(Object.values(WITH).flat().filter(Boolean))];
+const importBlock = `// -- generated from the core's event table; edit EVENTS in schema.rs, then \`npm run gen\` --
+import type {
+  HandlerMsg,
+  WithKeySink,
+${withNames.map((n) => `  ${n},`).join('\n')}
+} from './index.js';
+// -- end generated --`;
+
 const path = new URL('./jsx-runtime.d.ts', import.meta.url);
 const src = readFileSync(path, 'utf8');
 const re = /\/\/ -- generated from the addon's prop schema[\s\S]*?\/\/ -- end generated --/;
 if (!re.test(src)) throw new Error('generated-region markers not found in jsx-runtime.d.ts');
 const buttonRe = /\/\/ -- generated from the addon's button rows[\s\S]*?\/\/ -- end generated --/;
 if (!buttonRe.test(src)) throw new Error('button-row markers not found in jsx-runtime.d.ts');
-writeFileSync(path, src.replace(re, block).replace(buttonRe, buttonBlock));
+const importRe = /\/\/ -- generated from the core's event table[\s\S]*?\/\/ -- end generated --/;
+if (!importRe.test(src)) throw new Error('event-import markers not found in jsx-runtime.d.ts');
+writeFileSync(path, src.replace(re, block).replace(buttonRe, buttonBlock).replace(importRe, importBlock));
 console.log(
   `jsx-runtime.d.ts: ${spec.length} spec + ${style.length} style props generated,` +
     ` ButtonProps over ${buttonRows.length} button rows`,
@@ -154,7 +230,7 @@ const TYPE_DOC = {
   min: 'minimum (`number` \\| `"fit"` \\| a size expression \\| `"$length"`)',
   max: 'maximum (`number` \\| a size expression \\| `"$length"`)',
   msg: 'message (any plain data)',
-  tag: 'tag (a message merged into the event under `tag`, or `null` for none)',
+  handler: 'handler (the message its events arrive as, each event\'s data in the field named for it; `null` for the field alone)',
   str: 'string',
   resource: 'resource handle',
   keyframes: 'keyframe list (`[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?, rotate?, scale? }, …]`)',
@@ -221,14 +297,37 @@ ${tableOf(['JSX', 'Lua', 'C', 'Odin', 'notes'], elements.map((e) => [e.jsx, e.lu
 
 ## Events
 
-Events are plain data: \`{ origin, window, key, payload }\` from
-\`pollEvents()\` in Node, \`on_event(ev)\` in Lua (payload fields plus
-\`node_key\`), and \`kui_poll_event\` in C. \`origin\` is which frontend drew
-the node (0 = the app, 1+ = an extension) and \`window\` is which OS window
-it happened in — an extension draws into all of them, so the two are not
-one field. The payload shapes:
+Events are plain data: \`{ origin, window, key, event, payload, slot }\`
+from \`pollEvents()\` in Node, \`on_event(ev)\` in Lua, and
+\`kui_poll_event\` in C. \`event\` is which event it was; \`origin\` is which
+frontend drew the node (0 = the app, 1+ = an extension) and \`window\` is
+which OS window it happened in — an extension draws into all of them, so
+the two are not one field.
 
-${tableOf(['kind', 'payload', 'when'], events.map((e) => [e.kind, e.payload, e.doc]))}
+An event arrives as the message its handler declared
+([ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)):
+the payload is the handler's message as declared, with the event's data in
+one field of it named for the event — \`onDrag={{kind: "pan"}}\` hears
+\`{kind: "pan", drag: {phase, x, y, dx, dy, parent}}\`. A node that declares
+no handler for an event hears none of it. Every payload is a
+map: a \`null\` message arrives as the field alone (\`{}\` for an event with
+no data), and one that is not a map — a string, a number, a boolean, a
+list — is kept under \`tag\`, beside the field or alone: \`onClick: "save"\`
+is heard as \`{tag: "save"}\`.
+
+There are no root events
+([ADR 0048](adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)):
+what has no node of its own is declared where the app declares the
+window. A window's own events — its size, its keyboard, the OS's
+settings, the installed fonts, the modifiers, the documents the OS opens
+— arrive as the messages of the root's \`windowEvents\` group
+(\`onResize\`, \`onFocus\`, \`onSystemSettingsChange\`, \`onFonts\`,
+\`onModifiers\`, \`onOpen\`); a declared window's opening, closing and a
+popup's dismissal as its \`windows\` entry's \`onWindow\` and
+\`onDismiss\`; a choice from the application menu bar as the \`menuBar\`
+element's \`onMenu\`. A key nobody declared is an event nobody hears.
+
+${tableOf(['event', 'handler', 'field', 'payload', 'when'], events.map((e) => [e.kind, /^[A-Za-z.]+$/.test(e.handler) ? `\`${e.handler}\`` : e.handler, e.field ? `\`${e.field}\`` : '—', e.payload, e.doc]))}
 
 ## Resources
 
@@ -454,6 +553,20 @@ const accessRe = /\/\/ -- generated from the core's access lists[\s\S]*?\/\/ -- 
 if (!accessRe.test(indexSrc)) throw new Error('access-list markers not found in index.d.ts');
 indexSrc = indexSrc.replace(accessRe, accessBlock);
 console.log(`index.d.ts: ${accessRoles.length} access roles, ${accessActions.length} access actions generated`);
+
+// The envelope's `event` (`UiEvent.event`), one name per row of the core's
+// `EVENTS` table, so an event kind added in Rust is a name here.
+const eventBlock = [
+  "// -- generated from the core's event table; edit EVENTS in crates/kui-core/src/schema.rs, then `npm run gen` --",
+  '/** Which event it was, as `UiEvent.event` spells it: every row of the',
+  ' *  events table in docs/props.md. */',
+  `export type EventName =\n${union(events.map((e) => e.kind))};`,
+  '// -- end generated --',
+].join('\n');
+const eventRe = /\/\/ -- generated from the core's event table[\s\S]*?\/\/ -- end generated --/;
+if (!eventRe.test(indexSrc)) throw new Error('event-table markers not found in index.d.ts');
+indexSrc = indexSrc.replace(eventRe, eventBlock);
+console.log(`index.d.ts: ${events.length} event names generated`);
 
 const inputBlock = [
   "// -- generated from the core's input lists; edit EditKey::ALL / MouseButton::NAMED in crates/kui-core/src/input.rs, then `npm run gen` --",

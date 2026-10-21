@@ -209,6 +209,25 @@ impl Value {
     }
 }
 
+/// A string message read back, so `ev.message::<String>()` is a bare
+/// `on_click("save")`'s `"save"`: the core keeps a non-map message under
+/// `tag` (ADR 0047), and `message` reads from there.
+impl TryFrom<&Value> for String {
+    type Error = ();
+
+    fn try_from(v: &Value) -> Result<Self, ()> {
+        v.as_str().map(str::to_string).ok_or(())
+    }
+}
+
+/// A copy, so `ev.message::<Value>()` and `ev.split::<Value>()` read an
+/// event's message untyped.
+impl From<&Value> for Value {
+    fn from(v: &Value) -> Self {
+        v.clone()
+    }
+}
+
 impl From<&str> for Value {
     fn from(s: &str) -> Self {
         Value::Str(s.to_string())

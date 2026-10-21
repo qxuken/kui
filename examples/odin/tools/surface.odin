@@ -44,6 +44,8 @@ Keys :: struct {
 	image:                                                  kui.Image, // in: a registered image
 	sound:                                                  kui.Sound, // in: a registered sound
 	claim_focus:                                            bool, // in: declare the editor focused this frame
+	nick_value:                                             string, // in: the value the model holds for `nick`
+	nick:                                                   u64, // out: the stock input with messages and a value
 	card, slider, sink, editor, input, select, drag, child: u64, // out: node keys
 	checkbox, gain:                                         u64, // out: the stock controls' keys
 	hitline, region:                                        u64, // out: the selectable row, the focus region
@@ -112,12 +114,17 @@ surface_view :: proc(k: ^Keys, ui: ^kui.Ui) {
 		focus_bg     = 0x2b3350ff,
 		on_drop      = "files",
 		drop_bg      = 0x2b4a50ff,
+		// The message a menu opened on it posts its choice in (ADR 0047):
+		// without one a choice reaches nothing.
+		on_menu      = "card-menu",
 	}
 	k.card = kui.open(ui, card)
 	{
 		k.child = kui.child_key(ui, "slot")
 
-		// A slider: declared role, value and range; the arrows nudge it.
+		// A slider: declared role, value and range; the arrows and
+		// assistive technology move it through its on_change, which is what
+		// makes it movable at all (ADR 0047).
 		k.slider = kui.open(
 			ui,
 			{
@@ -131,6 +138,7 @@ surface_view :: proc(k: ^Keys, ui: ^kui.Ui) {
 				value_now = 40,
 				value_min = 0,
 				value_max = 100,
+				on_change = "volume",
 			},
 		)
 		kui.close(ui)
@@ -183,6 +191,9 @@ surface_view :: proc(k: ^Keys, ui: ^kui.Ui) {
 
 		// Editors: the styled single-line widget and a raw multiline node.
 		k.input = kui.text_input(ui, "name", "ada")
+		// And the stock input in messages of the app's own, holding a value
+		// (ADR 0047): `nick` is what the model says it is.
+		k.nick = kui.text_input_with(ui, "nick", k.nick_value, value = true, on_change = "nick", on_submit = "save")
 		// The stock select: the rows a context menu takes, the second in
 		// force; the choice comes back as a menu event on this key.
 		langs := []kui.Menu_Item{{label = "English", role = .Custom}, {label = "Deutsch", role = .Custom}}
@@ -340,7 +351,9 @@ surface :: proc() -> bool {
 	kui.font_remove(ui, kui.font_add_system(ui, "Menlo")) // 0 is a no-op
 
 	rgba := [2 * 2 * 4]u8{255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255}
-	k: Keys
+	k := Keys {
+		nick_value = "ada",
+	}
 	k.image = kui.image_add(ui, 2, 2, rgba[:])
 	check(k.image != 0, "image_add")
 	k.sound = kui.sound_add(ui, junk[:])
@@ -454,10 +467,17 @@ surface :: proc() -> bool {
 	// the label it was opened under.
 	check(kui.key_of(ui, "sink") == k.sink, "key_of resolves a declared label")
 	check(kui.key_of(ui, "no such node") == 0, "key_of is 0 for an undeclared one")
+	// And back: label_of turns the key into the label, and nothing for a key
+	// no frame declared.
+	sink_label, has_label := kui.label_of(ui, k.sink)
+	check(has_label && sink_label == "sink", "label_of answers the label the sink was opened under")
+	check(kui.key_of(ui, sink_label) == k.sink, "and key_of of that label is the key again")
+	_, unknown := kui.label_of(ui, 0x1234)
+	check(!unknown, "label_of is false for an unknown key")
 	kui.focus(ui, kui.key_of(ui, "sink"))
 	check(kui.is_focused(ui, k.sink), "is_focused")
 	// "" for `physical` means "the key I just named". A held key on a sink
-	// with key_up is one {kind="key"} payload twice, "down" then "up".
+	// with key_up is the sink's message twice, its key.phase "down" then "up".
 	kui.input_key_down(ui, "w", "", {}, "", false)
 	kui.input_key_down(ui, "w", "", {}, "", true) // OS auto-repeat
 	kui.input_key_up(ui, "w", "", {})
@@ -496,13 +516,19 @@ surface :: proc() -> bool {
 	check(text_ok && strings.contains(text, "replaced"), "edit_set_text")
 	text, text_ok = kui.edit_text(ui, k.input)
 	check(text_ok && len(text) == 3, "the text input kept \"ada\"")
+	nick, nick_ok := kui.edit_text(ui, k.nick)
+	check(k.nick != 0 && nick_ok && nick == "ada", "text_input_with holds the value the model declares")
 
 	// A third frame: re-lays out the edited text, and picks up the focus the
 	// view declares (set_key_focus is edge-triggered, so it lands once).
 	k.claim_focus = true
+	// The model moves `nick`, and the field is brought to it.
+	k.nick_value = "grace"
 	kui.set_time(ui, 0.2)
 	kui.frame(ui, &k, surface_view, 800, 600, 2)
 	check(kui.focused(ui) == k.editor, "the view declared the focus")
+	nick, nick_ok = kui.edit_text(ui, k.nick)
+	check(nick_ok && nick == "grace", "a value the model moved moves the field")
 
 	// Accessibility: the tree, an editor's runs, and requests coming back.
 	nodes := kui.access_tree(ui)
@@ -597,43 +623,48 @@ surface :: proc() -> bool {
 	// of them. What they also proved - the queue's first event is the card's
 	// first on_layout - is kept.
 	first_ev, first_ok := kui.poll_event(ui)
-	check(first_ok && kui.kind(first_ev.payload) == "layout", "the first event is the first on_layout")
+	check(first_ok && first_ev.event == "layout", "the first event is the first on_layout")
 
 	// Everything above lands as data.
-	events, layouts, access, downs, ups := 0, 0, 0, 0, 0
+	events, layouts, nudges, downs, ups := 0, 0, 0, 0, 0
 	latin, physical, preedits, commits := 0, 0, 0, 0
 	drops, drop_paths := 0, 0
 	for ev in kui.poll_event(ui) {
 		events += 1
 		check(ev.window == kui.WINDOW_MAIN, "one window, so every event is from it")
+		check(ev.event != "", "every event says what happened")
 		if ev.payload == nil do continue
-		switch kui.kind(ev.payload) {
+		// What happened is on the envelope; its data under the field of that
+		// name, in the message the node declared (ADR 0047).
+		data := kui.event_data(ev)
+		switch ev.event {
 		case "layout":
 			layouts += 1
-		case "access":
-			access += 1
+		case "change":
+			// A string message is kept under `tag`, beside the field.
+			if tag, _ := kui.as_string(kui.get(ev.payload, "tag")); tag == "volume" do nudges += 1
 		case "preedit":
 			preedits += 1
 		case "text":
 			commits += 1
 		case "drop":
 			drops += 1
-			if kui.length(kui.get(ev.payload, "paths")) == 2 do drop_paths += 1
+			if kui.length(kui.get(data, "paths")) == 2 do drop_paths += 1
 		case "key":
-			phase, phase_ok := kui.as_string(kui.get(ev.payload, "phase"))
+			phase, phase_ok := kui.as_string(kui.get(data, "phase"))
 			if !phase_ok do continue
 			if phase == "down" do downs += 1
 			if phase == "up" do ups += 1
 			// The Cyrillic press folded to its position's Latin letter, and
 			// `physical` rode along beside it.
-			code, code_ok := kui.as_string(kui.get(ev.payload, "code"))
+			code, code_ok := kui.as_string(kui.get(data, "code"))
 			if code_ok && len(code) == 1 && code[0] < 0x80 do latin += 1
-			if kui.get(ev.payload, "physical") != nil do physical += 1
+			if kui.get(data, "physical") != nil do physical += 1
 		}
 	}
 	check(events > 0, "the inputs produced events")
 	check(layouts > 0, "on_layout reported the card's rect")
-	check(access > 0, "the slider nudge arrived as an access event")
+	check(nudges > 0, "the slider's increment arrived as its change")
 	// Four presses through input_key_down (w, its repeat, the Cyrillic w,
 	// ctrl-a) and a release for each of the three distinct holds, plus the
 	// whole-key pair input_press and input_release send.
@@ -695,9 +726,13 @@ surface :: proc() -> bool {
 
 	// Declared windows (ADR 0004): a frame that names one gets an Open back
 	// from the same drain the chrome commands use, carrying its id and the
-	// config it was declared with; the app hears about it as data.
-	// Reporting the OS close keeps it closed while it is still declared.
+	// config it was declared with; the app hears about it as the on_window
+	// message its declaration gave (ADR 0048). Reporting the OS close keeps
+	// it closed while it is still declared.
 	{
+		Palette :: struct {
+			using _: kui.With_Window,
+		}
 		check(kui.ctx_window(ui) == kui.WINDOW_MAIN, "this context draws the main window")
 		name, name_ok := kui.ctx_window_name(ui)
 		check(name_ok && name == "main", "and is named for it")
@@ -708,7 +743,7 @@ surface :: proc() -> bool {
 			height = 300,
 		}
 		kui.frame_begin(ui, 320, 240, 1)
-		kui.window_declare(ui, "palette", cfg)
+		kui.window_declare_with(ui, "palette", cfg, on_window = Palette{})
 		kui.frame_finish(ui)
 		// (surface.c's short command reservation is the handshake again.)
 		cmd, ok := kui.take_window_command(ui)
@@ -720,22 +755,21 @@ surface :: proc() -> bool {
 		check(!ok, "one command for one window")
 		opened, closed := 0, 0
 		for wev in kui.poll_event(ui) {
-			if kui.kind(wev.payload) != "window" do continue
-			phase, phase_ok := kui.as_string(kui.get(wev.payload, "phase"))
-			if !phase_ok do continue
-			if phase == "opened" do opened += 1
-			if phase == "closed" do closed += 1
+			if wev.event != "window" do continue
+			m, is := kui.message(wev, Palette)
+			if !is do continue
+			if m.window.phase == "opened" && m.window.id == 1 do opened += 1
+			if m.window.phase == "closed" do closed += 1
 		}
-		check(opened == 1 && closed == 0, "the app hears the window open")
+		check(opened == 1 && closed == 0, "the app hears the window open, as its own message")
 		kui.window_closed(ui, 1)
 		kui.frame_begin(ui, 320, 240, 1)
-		kui.window_declare(ui, "palette", cfg)
+		kui.window_declare_with(ui, "palette", cfg, on_window = Palette{})
 		kui.frame_finish(ui)
 		_, ok = kui.take_window_command(ui)
 		check(!ok, "a closed window still declared does not reopen")
 		for wev in kui.poll_event(ui) {
-			phase, phase_ok := kui.as_string(kui.get(wev.payload, "phase"))
-			if phase_ok && phase == "closed" do closed += 1
+			if m, is := kui.message(wev, Palette); is && m.window.phase == "closed" do closed += 1
 		}
 		check(closed == 1, "and hears it close")
 		trapped := 0
@@ -773,6 +807,14 @@ surface :: proc() -> bool {
 		kui.frame_begin(ui, 320, 240, 1)
 		check(kui.menu_bar(ui, menus), "menu_bar declares and draws")
 		kui.frame_finish(ui)
+		check(!kui.activate_menu_bar_item(ui, 0, 0), "a bar declared with no message posts nothing")
+		// The same bar with the message its choices arrive as (ADR 0048).
+		Chose :: struct {
+			using _: kui.With_Menu,
+		}
+		kui.frame_begin(ui, 320, 240, 1)
+		check(kui.menu_bar_with(ui, menus, Chose{}), "menu_bar_with declares and draws")
+		kui.frame_finish(ui)
 
 		count, rev := kui.menu_bar_menu_count(ui)
 		check(count == 1 && rev > 0, "one menu, at a revision")
@@ -795,9 +837,16 @@ surface :: proc() -> bool {
 		// drawn bar's row produces.
 		check(kui.activate_menu_bar_item(ui, 0, 0), "activate_menu_bar_item")
 		check(kui.activate_menu_bar_path(ui, 0, {3, 0}), "activate_menu_bar_path")
-		menus_heard := 0
-		for mev in kui.poll_event(ui) do if strings.contains(kui.kind(mev.payload), "menu") do menus_heard += 1
-		check(menus_heard == 2, "and the app hears a menu event for each")
+		menus_heard, names_heard := 0, 0
+		// The bar's choice is its on_menu, with menu = {role, item}.
+		for mev in kui.poll_event(ui) {
+			m, is := kui.message(mev, Chose)
+			if mev.event != "menu" || !is do continue
+			menus_heard += 1
+			if item, item_ok := kui.as_string(m.menu.item); item_ok && item == "Name" do names_heard += 1
+		}
+		check(menus_heard == 2, "and the app hears its message for each")
+		check(names_heard == 1, "the one inside the submenu posting its own row")
 	}
 
 	// -- The rest of the header, so that the walk is what it says it is.
@@ -971,21 +1020,37 @@ surface :: proc() -> bool {
 		check(!kui.awaiting_files(ui), "input_files spends the ask")
 		files := 0
 		for fev in kui.poll_event(ui) {
-			got, got_ok := kui.message(fev, kui.Files_Event)
-			tag, tag_ok := kui.as_string(got.tag)
-			if got_ok && len(got.paths) == 1 && tag_ok && len(tag) == 4 do files += 1
+			// The asker's message - a string, so kept under `tag` - with
+			// files = {paths} beside it, which With_Files reads.
+			got, got_ok := kui.message(fev, kui.With_Files)
+			tag, tag_ok := kui.as_string(kui.get(fev.payload, "tag"))
+			if fev.event == "files" && got_ok && len(got.files.paths) == 1 && tag_ok && len(tag) == 4 do files += 1
 		}
 		check(files == 1, "the answer is one files event with the path and the tag")
 	}
 
 	// Documents the OS asked the app to open (backlog F124): nobody asked,
-	// and the host hears them on the root; none is nothing.
+	// and they arrive as the main window's on_open (ADR 0048), declared with
+	// root_with; none is nothing, and so is a root that declares none.
 	{
+		Docs :: struct {
+			using _: kui.With_Open,
+		}
+		kui.frame_begin(ui, 320, 240, 1)
+		kui.root_with(ui, {}, {})
+		kui.frame_finish(ui)
+		for _ in kui.poll_event(ui) {}
+		kui.input_open(ui, {"/tmp/a.txt", "/tmp/b.md"})
+		_, heard := kui.poll_event(ui)
+		check(!heard, "root_with: no on_open, no event")
+		kui.frame_begin(ui, 320, 240, 1)
+		kui.root_with(ui, nil, {on_open = Docs{}})
+		kui.frame_finish(ui)
 		kui.input_open(ui, {"/tmp/a.txt", "/tmp/b.md"})
 		opened := 0
 		for oev in kui.poll_event(ui) {
-			got, ok := kui.message(oev, kui.Open_Event)
-			if ok && len(got.paths) == 2 && got.paths[1] == "/tmp/b.md" do opened += 1
+			got, ok := kui.message(oev, Docs)
+			if ok && oev.event == "open" && len(got.open.paths) == 2 && got.open.paths[1] == "/tmp/b.md" do opened += 1
 		}
 		check(opened == 1, "input_open is one open event with both paths")
 		kui.input_open(ui, nil)
@@ -1079,8 +1144,12 @@ surface :: proc() -> bool {
 		count, _, _, _ = kui.menu_item_count(ui)
 		check(count == 0, "which closed the menu")
 		chosen := 0
-		for mev in kui.poll_event(ui) do if strings.contains(kui.kind(mev.payload), "menu") && mev.key == k.card do chosen += 1
-		check(chosen == 1, "and the app heard it on the node")
+		// The card's on_menu message, a string, with menu = {role, item}.
+		for mev in kui.poll_event(ui) {
+			tag, _ := kui.as_string(kui.get(mev.payload, "tag"))
+			if mev.event == "menu" && tag == "card-menu" && mev.key == k.card do chosen += 1
+		}
+		check(chosen == 1, "and the app heard it on the node, in its on_menu")
 		check(kui.open_menu(ui, k.card, 0, 0, rows) && kui.close_menu(ui), "close_menu")
 		check(!kui.close_menu(ui), "false when nothing was open")
 		check(!kui.open_menu(ui, 0, 0, 0, rows), "a key of 0 opens nothing")
@@ -1240,8 +1309,13 @@ Rest :: struct {
 	slot:     [2]bool,
 }
 
+// The OS's settings moving, in the message rest_view's root declares.
+Settings :: struct {
+	using _: kui.With_System,
+}
+
 rest_view :: proc(r: ^Rest, ui: ^kui.Ui) {
-	kui.root(ui, {width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true})
+	kui.root_with(ui, {width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true}, {on_system_settings_change = Settings{}})
 	kui.line(ui, 10, 10, 90, 70, 2, 0x7f9cf5ff)
 	kui.polyline(ui, "elbow", {{0, 0}, {40, 20}, {80, 0}}, 3, 0xd8863bff, false, dash = [5]f32{6, 3, 6, 3, 0})
 	kui.polygon(ui, "tri", {{0, 30}, {15, 0}, {30, 30}}, {width = kui.px(30), height = kui.px(30), bg = 0x3b82f6ff})
@@ -1344,8 +1418,12 @@ rest :: proc() {
 	for wr in kui.take_warnings(ui) do if wr.code == "duplicate-slot" do duplicate = true
 	check(duplicate, "the second is a duplicate-slot diagnostic")
 
-	// A popup the host dismisses: the app hears it on the root, by name.
+	// A popup the host dismisses: the app hears it as the on_dismiss its
+	// declaration gave, which names it, with why and its id.
 	{
+		Menu_Gone :: struct {
+			using _: kui.With_Dismiss,
+		}
 		popup := kui.Window_Config {
 			kind     = .Popup,
 			width    = 120,
@@ -1354,7 +1432,7 @@ rest :: proc() {
 			anchor_y = 10,
 		}
 		kui.frame_begin(ui, 320, 240, 1)
-		kui.window_declare(ui, "menu", popup)
+		kui.window_declare_with(ui, "menu", popup, on_dismiss = Menu_Gone{})
 		kui.frame_finish(ui)
 		cmd, ok := kui.take_window_command(ui)
 		check(ok && cmd.kind == .Open && cmd.config.kind == .Popup, "the popup opens")
@@ -1364,8 +1442,8 @@ rest :: proc() {
 		kui.window_dismissed(ui, cmd.window, .Escape)
 		heard := false
 		for ev in kui.poll_event(ui) {
-			if d, is := kui.message(ev, kui.Dismiss_Event); is {
-				heard = d.reason == "escape" && d.name == "menu" && d.id == cmd.window
+			if d, is := kui.message(ev, Menu_Gone); is && ev.event == "dismiss" {
+				heard = d.dismiss.reason == "escape" && d.dismiss.id == cmd.window
 			}
 		}
 		check(heard, "window_dismissed: the app hears whose and why")
@@ -1381,8 +1459,10 @@ rest :: proc() {
 		light := kui.theme(ui)
 		check(dark.appearance == .Dark && light.appearance == .Light && dark.bg != light.bg, "env_set_system: the palette follows the appearance")
 		systems := 0
-		for ev in kui.poll_event(ui) do if _, is := kui.message(ev, kui.System_Event); is do systems += 1
-		check(systems > 0, "and the app hears the system change")
+		for ev in kui.poll_event(ui) {
+			if m, is := kui.message(ev, Settings); is && ev.event == "system" && m.system.locale != "" do systems += 1
+		}
+		check(systems > 0, "and the app hears the system change, as the root's on_system_settings_change")
 	}
 
 	// Extensions, from the refusing side: there is no plugin at this path.

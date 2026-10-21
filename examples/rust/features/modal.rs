@@ -22,7 +22,9 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value};
+use kui_native::{
+    Align, App, Core, EventKind, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value,
+};
 
 #[derive(Default)]
 struct Page {
@@ -30,9 +32,9 @@ struct Page {
     confirm: bool,
     /// What the last dialog saved, shown on the form.
     saved: Option<String>,
-    /// The dialog field's text, read off the editor every frame (a
-    /// `changed` event says *that* it changed; the text is the core's to
-    /// read), which is what "untouched" is judged by.
+    /// The dialog field's text, read off the editor every frame (its
+    /// `change` event carries the text too, but the editor is where it
+    /// lives), which is what "untouched" is judged by.
     draft: String,
 }
 
@@ -128,9 +130,9 @@ impl App for Page {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let kind = ev.kind();
-        if kind == Some("dismiss") {
-            // Which modal asked: the tag is the node's.
+        if ev.is(EventKind::Dismiss) {
+            // Which modal asked: each declared a string, which arrives
+            // as `{tag, dismiss: {reason}}`.
             match ev.payload.get_str("tag") {
                 Some("confirm") => self.confirm = false,
                 Some("dialog") if self.draft.is_empty() => self.dialog = false,
@@ -139,7 +141,7 @@ impl App for Page {
             }
             return;
         }
-        match ev.payload.as_str() {
+        match ev.message::<String>().as_deref() {
             Some("open") => {
                 self.dialog = true;
                 self.confirm = false;
@@ -198,9 +200,9 @@ impl Example for Page {
         let evs = d.click_key(self, other);
         let outside = evs.len() == 1
             && evs[0].key != other
-            && evs[0].kind() == Some("dismiss")
+            && evs[0].is(EventKind::Dismiss)
             && evs[0].payload.get_str("tag") == Some("dialog")
-            && evs[0].payload.get_str("reason") == Some("outside");
+            && evs[0].data().and_then(|d| d.get_str("reason")) == Some("outside");
         d.check(
             outside,
             "the form under the dialog is inert: the click is the press outside",
@@ -250,7 +252,7 @@ impl Example for Page {
         let evs = d.click_key(self, save);
         let outside = evs.len() == 1
             && evs[0].key != save
-            && evs[0].kind() == Some("dismiss")
+            && evs[0].is(EventKind::Dismiss)
             && evs[0].payload.get_str("tag") == Some("confirm");
         d.check(
             outside,

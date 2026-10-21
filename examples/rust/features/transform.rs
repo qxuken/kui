@@ -18,8 +18,8 @@
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Color, Core, CursorShape, Easing, Enter, FloatConfig, Keyframe, NodeSpec, Repeat,
-    TextStyle, Transition, Ui, UiEvent, Value,
+    Align, App, Color, Core, CursorShape, DragPhase, Easing, Enter, FloatConfig, Keyframe,
+    NodeSpec, Repeat, TextStyle, Transition, Ui, UiEvent, Value,
 };
 
 /// A notch of tilt, in turns.
@@ -39,7 +39,8 @@ struct Turn {
     chip: bool,
 }
 
-fn tag(kind: &str) -> Value {
+/// The `{kind}` message every control here declares.
+fn message(kind: &str) -> Value {
     Value::map([("kind", Value::str(kind))])
 }
 
@@ -64,9 +65,9 @@ impl App for Turn {
             NodeSpec::column().fill().pad(24.0).gap(16.0).bg(t.bg),
             |ui| {
                 ui.with(NodeSpec::row().gap(8.0).cross_align(Align::Center), |ui| {
-                    widgets::button(ui, "◀ tilt", tag("left"));
-                    widgets::button(ui, "tilt ▶", tag("right"));
-                    widgets::button(ui, "upright", tag("reset"));
+                    widgets::button(ui, "◀ tilt", message("left"));
+                    widgets::button(ui, "tilt ▶", message("right"));
+                    widgets::button(ui, "upright", message("reset"));
                     widgets::button(
                         ui,
                         if self.corner {
@@ -74,12 +75,12 @@ impl App for Turn {
                         } else {
                             "pivot: centre"
                         },
-                        tag("pivot"),
+                        message("pivot"),
                     );
                     widgets::button(
                         ui,
                         if self.chip { "hide chip" } else { "show chip" },
-                        tag("chip"),
+                        message("chip"),
                     );
                     ui.text(
                         &format!("{:+.3} turn", self.turn()),
@@ -153,23 +154,26 @@ impl App for Turn {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
+        // The card's drag declared the string "card", so it arrives as
+        // `{tag: "card", drag: {...}}`; the buttons' clicks are their
+        // `{kind}` maps as declared.
+        if let Some(d) = ev.drag() {
+            match d.phase {
+                DragPhase::Start | DragPhase::Move => self.drag = Some(d.delta.x),
+                DragPhase::End => self.drag = None,
+            }
+            return;
+        }
+        match ev
+            .message::<Value>()
+            .as_ref()
+            .and_then(|m| m.get_str("kind"))
+        {
             Some("left") => self.tilt -= NOTCH,
             Some("right") => self.tilt += NOTCH,
             Some("reset") => self.tilt = 0.0,
             Some("pivot") => self.corner = !self.corner,
             Some("chip") => self.chip = !self.chip,
-            Some("drag") => {
-                let dx = ev
-                    .payload
-                    .get("dx")
-                    .and_then(Value::as_float)
-                    .unwrap_or(0.0) as f32;
-                match ev.payload.get_str("phase").unwrap_or("") {
-                    "start" | "move" => self.drag = Some(dx),
-                    _ => self.drag = None,
-                }
-            }
             _ => {}
         }
     }
@@ -192,7 +196,7 @@ impl Turn {
             .shadow_blur(16.0)
             .shadow_y(8.0)
             .on_drag("card")
-            .on_click(tag("tap"))
+            .on_click(message("tap"))
             .label("Card")
             .cursor(if self.drag.is_some() {
                 CursorShape::Grabbing
@@ -298,7 +302,7 @@ impl Example for Turn {
         let y = rect.y + 20.0;
         let evs = d.click(self, x, y);
         d.check(
-            evs.iter().any(|e| e.kind() == Some("tap")),
+            evs.iter().any(|e| e.payload.get_str("kind") == Some("tap")),
             "the card is hit where it is drawn",
         )?;
 

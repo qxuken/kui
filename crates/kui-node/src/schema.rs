@@ -39,7 +39,10 @@ pub fn protocol_props() -> Json {
             Kind::Min => ("min", None),
             Kind::Max => ("max", None),
             Kind::Msg => ("msg", None),
-            Kind::Tag => ("tag", None),
+            // A handler row (ADR 0047): the message the node's event
+            // arrives as. The TS generator types each by the events the
+            // `events` table says it delivers.
+            Kind::Handler => ("handler", None),
             Kind::Str => ("str", None),
             // A string on the wire; the stock three listed for the types.
             Kind::Family => ("family", Some(kui_core::schema::FAMILIES)),
@@ -153,6 +156,11 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                 EVENTS,
                 &[
                     ("kind", |e: &EventDef| e.kind),
+                    ("handler", |e| e.handler),
+                    // The field the event's data rides under in the
+                    // handler's message; empty for an event with no data
+                    // (`fonts`, `reply`), whose message arrives as declared.
+                    ("field", |e| e.field.unwrap_or("")),
                     ("payload", |e| e.payload),
                     ("doc", |e| e.doc),
                 ],

@@ -347,14 +347,44 @@ warnings! {
     /// this.
     pub const EDIT_TEXT_WITHOUT_EDITOR: &str = "edit-text-without-editor";
 
+    /// The keyboard or assistive technology asked a `slider` that declares
+    /// no `onChange` to move. A slider proposes its value in the
+    /// `onChange` message and moves when the view declares it back as
+    /// `valueNow`; without the row there is no message to propose it in,
+    /// so the slider stays where it is (ADR 0047, decision 5).
+    pub const SLIDER_WITHOUT_HANDLER: &str = "slider-without-handler";
+
+    /// An editor declares a `value` and no `onChange`. The value always
+    /// wins, so every keystroke is undone on the next frame and the field
+    /// looks frozen: declare `onChange` and store the `change`'s text in
+    /// the model the value is read from (ADR 0047, decision 8).
+    pub const EDIT_VALUE_WITHOUT_HANDLER: &str = "edit-value-without-handler";
+
+    /// A handler's message has a field named for the event it arrives as —
+    /// `{kind: "k", key: "a"}` declared as an `onKey` message — and the
+    /// event's data replaced it, so the app's own value never reaches it
+    /// (ADR 0047, decision 4). Rename the field: the event's name is the
+    /// core's in a message that event arrives as.
+    pub const MESSAGE_FIELD_TAKEN: &str = "message-field-taken";
+
+    /// A node other than the root declares `windowEvents`. The group is the
+    /// window's, read on its root alone, so this one is ignored and its
+    /// events arrive as nothing (ADR 0048): move it to the root.
+    pub const WINDOW_EVENTS_OFF_ROOT: &str = "window-events-off-root";
+
+    /// An editor declares both `initial` and `value`. The value wins, and
+    /// the seed is never read (ADR 0047, decision 8). Raised by the
+    /// bindings whose editor takes the two as separate props.
+    pub const EDIT_VALUE_AND_INITIAL: &str = "edit-value-and-initial";
+
     /// A one-shot `audio` node went away — or changed its `src` — while
     /// the sound it started was still playing, so the user heard it cut
     /// off. Almost always a duration guessed short: the view keeps the
     /// node declared for a constant it picked, and the asset is longer.
     /// Ask for the sound instead of the guess —
     /// `finish` (`AudioSpec::finish`, `finish` in JSX and Lua) releases the
-    /// playback on removal so it plays itself out, and a `tag` reports
-    /// `{kind:"sound", phase:"ended"}` when it gets there. A view that
+    /// playback on removal so it plays itself out, and a `tag` arrives
+    /// with `sound: {phase: "ended"}` in it when it gets there. A view that
     /// means to cut the sound off says so by stopping what it started
     /// (`Core::stop`), which is not reported, and a `looped` playback
     /// never is: it has no end to be short of.
@@ -434,7 +464,8 @@ warnings! {
     /// is refused. The refusal is not left silent because the playback
     /// never starts and so never ends: a `tag`ged node waiting for
     /// `ended` would wait forever. It gets
-    /// `{kind:"sound", phase:"refused"}` instead, and this line says why.
+    /// its message with `sound: {phase: "refused"}` in it instead, and
+    /// this line says why.
     /// Stop what the view no longer needs rather than releasing it, or
     /// release shorter sounds.
     pub const PLAYBACK_REFUSED: &str = "playback-refused";
@@ -646,6 +677,69 @@ pub(crate) fn modal_under_layer(key: Key) -> Warning {
                   of it: everything drawn over a modal is inert, which reads as a broken \
                   dialog (declare it inside the modal, or close it while the modal is up)"
             .to_string(),
+    }
+}
+
+/// The [`SLIDER_WITHOUT_HANDLER`] warning for one slider, keyed by it.
+pub(crate) fn slider_without_handler(key: Key) -> Warning {
+    Warning {
+        code: SLIDER_WITHOUT_HANDLER,
+        key,
+        message: "a key or assistive technology asked this slider to move, and it declares \
+                  no `onChange` to propose the value in, so it did not: declare `onChange` \
+                  with the message the change arrives as, and the value it carries as \
+                  `valueNow`"
+            .to_string(),
+    }
+}
+
+/// The [`EDIT_VALUE_WITHOUT_HANDLER`] warning for one editor, keyed by it.
+pub(crate) fn edit_value_without_handler(key: Key, label: &str) -> Warning {
+    Warning {
+        code: EDIT_VALUE_WITHOUT_HANDLER,
+        key,
+        message: format!(
+            "editor {label:?} declares a `value` and no `onChange`: the value always wins, so \
+             every keystroke is undone on the next frame; declare `onChange` and store the \
+             change's text where the value is read from"
+        ),
+    }
+}
+
+/// The [`MESSAGE_FIELD_TAKEN`] warning for one node, keyed by it — once
+/// per node under the dedup, not once per event.
+pub(crate) fn message_field_taken(key: Key, field: &str) -> Warning {
+    Warning {
+        code: MESSAGE_FIELD_TAKEN,
+        key,
+        message: format!(
+            "this node's message has a field `{field}`, and the `{field}` event it arrives as \
+             wrote its data there: the message's own `{field}` never reaches the app; rename it"
+        ),
+    }
+}
+
+/// The [`WINDOW_EVENTS_OFF_ROOT`] warning for the node that declared it.
+pub(crate) fn window_events_off_root(key: Key) -> Warning {
+    Warning {
+        code: WINDOW_EVENTS_OFF_ROOT,
+        key,
+        message: "`windowEvents` is the window's, read on its root alone; this node's is \
+                  ignored and its events arrive as nothing: declare it on the root"
+            .into(),
+    }
+}
+
+/// The [`EDIT_VALUE_AND_INITIAL`] warning for one editor, keyed by it: a
+/// binding whose editor takes `initial` and `value` apart raises it.
+pub fn edit_value_and_initial(key: Key, label: &str) -> Warning {
+    Warning {
+        code: EDIT_VALUE_AND_INITIAL,
+        key,
+        message: format!(
+            "editor {label:?} declares both `initial` and `value`: the value wins and the seed \
+             is never read; drop `initial`"
+        ),
     }
 }
 
@@ -1089,7 +1183,7 @@ impl Diagnostics {
     fn check_modal(&mut self, tree: &Tree) {
         let Some(i) = (0..tree.len())
             .rev()
-            .find(|&i| tree.specs[i].events().modal.is_some())
+            .find(|&i| tree.specs[i].events().modal().is_some())
         else {
             return;
         };
@@ -1229,7 +1323,7 @@ impl Diagnostics {
                      (give it a `label`, or `role=\"none\"` if it is decoration)"
                         .to_string()
                 });
-            } else if sem.role == Role::Dialog && tree.specs[i].events().modal.is_some() {
+            } else if sem.role == Role::Dialog && tree.specs[i].events().modal().is_some() {
                 self.warn(MODAL_WITHOUT_NAME, key, || {
                     "this modal has no accessible name: a dialog is named by its `label`, never \
                      by the text inside it — a screen reader announces an unnamed dialog to the \

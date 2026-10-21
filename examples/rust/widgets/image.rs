@@ -279,15 +279,14 @@ impl App for Gallery {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get("kind").and_then(|v| v.as_str()) == Some("layout")
-            && ev.payload.get("tag").and_then(|v| v.as_str()) == Some("stream")
+        if let Some(l) = ev.layout()
+            && ev.payload.get_str("tag") == Some("stream")
         {
-            let f = |k: &str| ev.payload.get(k).and_then(|v| v.as_float()).unwrap_or(0.0);
-            // `scale` is the number the ADR put on the payload for exactly
-            // this multiply: physical px per logical px at the node.
+            // `scale` is the number the ADR put on the layout's data for
+            // exactly this multiply: physical px per logical px at the node.
             self.stream_px = (
-                (f("w") * f("scale")).round() as u32,
-                (f("h") * f("scale")).round() as u32,
+                (l.rect.w * l.scale).round() as u32,
+                (l.rect.h * l.scale).round() as u32,
             );
         }
     }

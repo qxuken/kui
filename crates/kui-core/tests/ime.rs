@@ -5,6 +5,7 @@
 //! window at the window's origin. Now both arrive on the sink as data and
 //! the candidate window is anchored at the `line`'s caret.
 
+use kui_core::testing::kinds;
 use kui_core::{Color, Core, InputEvent, Key, NodeSpec, Role, Size, TextStyle, Value};
 
 const LH: f32 = 20.0;
@@ -45,28 +46,10 @@ fn frame(core: &mut Core, caret: u32) -> (Key, Key) {
     (sink, sink.str("l1"))
 }
 
-fn kinds(events: &[kui_core::UiEvent]) -> Vec<String> {
-    events
-        .iter()
-        .map(|e| match &e.payload {
-            Value::Map(m) => m
-                .iter()
-                .find(|(k, _)| k == "kind")
-                .and_then(|(_, v)| match v {
-                    Value::Str(s) => Some(s.clone()),
-                    _ => None,
-                })
-                .unwrap_or_default(),
-            _ => String::new(),
-        })
-        .collect()
-}
-
+/// A field of the event's data: `{tag: "ed", preedit: {text, cursor}}`
+/// reads `text` and `cursor` from the `preedit` (ADR 0047).
 fn field<'a>(ev: &'a kui_core::UiEvent, name: &str) -> Option<&'a Value> {
-    match &ev.payload {
-        Value::Map(m) => m.iter().find(|(k, _)| k == name).map(|(_, v)| v),
-        _ => None,
-    }
+    ev.data()?.get(name)
 }
 
 #[test]
@@ -85,7 +68,7 @@ fn a_composition_reaches_the_focused_sink_as_data() {
         Some(&Value::List(vec![Value::Int(0), Value::Int(6)]))
     );
     assert_eq!(
-        field(&pre[0], "tag"),
+        pre[0].payload.get("tag"),
         Some(&Value::str("ed")),
         "the sink's tag rides along"
     );
@@ -93,7 +76,7 @@ fn a_composition_reaches_the_focused_sink_as_data() {
     let done = core.handle_input(InputEvent::Commit("日本語".into()));
     assert_eq!(kinds(&done), ["text"]);
     assert_eq!(field(&done[0], "text"), Some(&Value::str("日本語")));
-    assert_eq!(field(&done[0], "tag"), Some(&Value::str("ed")));
+    assert_eq!(done[0].payload.get("tag"), Some(&Value::str("ed")));
 
     // A composition that ends without a commit says so: empty text, no cursor.
     let gone = core.handle_input(InputEvent::Preedit(String::new(), None));
@@ -146,7 +129,7 @@ fn the_ime_rect_follows_the_custom_caret() {
 }
 
 /// The stock editor still takes a composition itself: a commit there is a
-/// `changed`, not a `text` event.
+/// `change`, not a `text` event.
 #[test]
 fn a_stock_editor_takes_the_commit_itself() {
     let mut core = Core::new();
@@ -159,11 +142,11 @@ fn a_stock_editor_takes_the_commit_itself() {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().grow_width(),
+        NodeSpec::column().grow_width().on_change(Value::Null),
     );
     ui.finish();
     let events = core.handle_input(InputEvent::Commit("日本語".into()));
-    assert_eq!(kinds(&events), ["changed"]);
+    assert_eq!(kinds(&events), ["change"]);
     assert_eq!(core.edit_text(key).as_deref(), Some("日本語"));
 }
 
@@ -212,4 +195,44 @@ fn a_composition_holds_what_typing_would() {
             frame(&mut core, multiline);
         }
     }
+}
+
+/// A stock editor's caret is a place in its committed text while a
+/// composition is under way, as `caret_and_selection` promises and the
+/// access tree reads it: the composition sits in the buffer to be drawn,
+/// and a caret inside it reads as where it starts (found by the `events`
+/// fuzz target: a composition into an empty field put the caret at 1 of
+/// "").
+#[test]
+fn a_composition_moves_no_caret_in_the_committed_text() {
+    let mut core = Core::new();
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        let key = ui.text_edit(
+            "note",
+            "ab",
+            &kui_core::EditOptions {
+                autofocus: true,
+                ..Default::default()
+            },
+            NodeSpec::column().grow_width(),
+        );
+        ui.finish();
+        key
+    };
+    let key = build(&mut core);
+    assert_eq!(core.edit.caret_and_selection(key), Some((2, None)));
+    core.handle_input(InputEvent::Preedit("にほ".into(), None));
+    build(&mut core);
+    assert_eq!(core.edit_text(key).as_deref(), Some("ab"));
+    assert_eq!(
+        core.edit.caret_and_selection(key),
+        Some((2, None)),
+        "the caret where the composition starts, not inside it"
+    );
+    core.handle_input(InputEvent::Commit("日本".into()));
+    build(&mut core);
+    assert_eq!(core.edit_text(key).as_deref(), Some("ab日本"));
+    assert_eq!(core.edit.caret_and_selection(key), Some((8, None)));
 }

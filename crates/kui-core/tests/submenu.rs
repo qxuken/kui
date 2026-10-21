@@ -9,23 +9,34 @@ use kui_core::{
     TextStyle, Value, Vec2,
 };
 
-/// A card of text the menus are about, with whatever the core has open
-/// drawn over it by `Ui::finish`; the bar when one is given.
+/// A card of text the menus are about — declaring `on_menu(Null)`, so a
+/// choice arrives on it as `{menu: {role, item}}` — with whatever the
+/// core has open drawn over it by `Ui::finish`; the bar when one is given.
 fn frame_with(core: &mut Core, bar: Option<MenuBar>) -> Key {
     let mut ui = core.frame(Size::new(600.0, 400.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     if let Some(bar) = bar {
         kui_core::widgets::menu_bar(&mut ui, bar);
     }
-    let card = ui.with_keyed("card", NodeSpec::column().grow_width(), |ui| {
-        ui.text("a note", TextStyle::new(14.0));
-    });
+    let card = ui.with_keyed(
+        "card",
+        NodeSpec::column().grow_width().on_menu(Value::Null),
+        |ui| {
+            ui.text("a note", TextStyle::new(14.0));
+        },
+    );
     ui.finish();
     card
 }
 
 fn frame(core: &mut Core) -> Key {
     frame_with(core, None)
+}
+
+/// The row a menu event chose: its `menu` field's `item`, on a node's
+/// message and on the bar's `on_menu` message alike.
+fn item(ev: &kui_core::UiEvent) -> Option<&str> {
+    ev.data()?.get_str("item")
 }
 
 /// Noticon's note menu, cut down: a plain row, a submenu of folders with
@@ -189,8 +200,8 @@ fn choosing_a_row_inside_posts_it_and_closes_every_level() {
     let evs = click(&mut core, at);
     assert_eq!(evs.len(), 1, "{evs:?}");
     assert_eq!(evs[0].key, card, "on the node the menu is about");
-    assert_eq!(evs[0].kind(), Some("menu"));
-    assert_eq!(evs[0].payload.get_str("item"), Some("move.kui"));
+    assert_eq!(evs[0].event.name(), "menu");
+    assert_eq!(item(&evs[0]), Some("move.kui"));
     assert!(core.menu().is_none(), "every level closes");
     assert_eq!(core.menu_submenus(), &[] as &[usize]);
 }
@@ -272,7 +283,7 @@ fn the_arrows_open_and_close_a_submenu_and_escape_closes_one_level() {
     assert_eq!(focused_row(&mut core).as_deref(), Some("Inbox"));
     let evs = key(&mut core, EditKey::Enter);
     assert_eq!(evs.len(), 1, "{evs:?}");
-    assert_eq!(evs[0].payload.get_str("item"), Some("move.inbox"));
+    assert_eq!(item(&evs[0]), Some("move.inbox"));
 }
 
 /// A pointer resting on a row does not undo what the keyboard did: the
@@ -333,7 +344,7 @@ fn a_host_reports_a_row_inside_by_its_path() {
     let evs = core.activate_menu_path(&[1, 2, 0]).expect("taken");
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, card);
-    assert_eq!(evs[0].payload.get_str("item"), Some("move.kui"));
+    assert_eq!(item(&evs[0]), Some("move.kui"));
     assert!(core.menu().is_none());
 }
 
@@ -388,6 +399,7 @@ fn the_drawn_bar_opens_submenus_too() {
                 ),
             ],
         )])
+        .on_menu("chose")
     };
     let mut core = Core::new();
     frame_with(&mut core, Some(bar()));
@@ -402,13 +414,13 @@ fn the_drawn_bar_opens_submenus_too() {
     let at = row_center(&mut core, "Date");
     let evs = click(&mut core, at);
     assert_eq!(evs.len(), 1, "{evs:?}");
-    assert_eq!(evs[0].payload.get_str("item"), Some("sort.date"));
+    assert_eq!(item(&evs[0]), Some("sort.date"));
     assert_eq!(core.menu_bar_open(), None, "the bar's menu closes");
     assert_eq!(core.menu_bar_submenus(), &[] as &[usize]);
 
     // And the platform's bar reports a row inside by its path.
     let evs = core.activate_menu_bar_path(0, &[1, 0]);
-    assert_eq!(evs[0].payload.get_str("item"), Some("sort.name"));
+    assert_eq!(item(&evs[0]), Some("sort.name"));
     assert!(
         core.activate_menu_bar_path(0, &[1]).is_empty(),
         "the submenu's own row"
@@ -432,7 +444,8 @@ fn a_host_cannot_choose_a_row_the_menu_would_not_reach() {
     let bar = MenuBar::new(vec![
         BarMenu::new("View", rows()),
         BarMenu::new("Dead", vec![MenuItem::new("Go").id("go")]).enabled(false),
-    ]);
+    ])
+    .on_menu("chose");
     let mut core = Core::new();
     frame_with(&mut core, Some(bar));
     assert!(
@@ -452,7 +465,7 @@ fn a_host_cannot_choose_a_row_the_menu_would_not_reach() {
         "in a dead menu"
     );
     let evs = core.activate_menu_bar_path(0, &[2, 0]);
-    assert_eq!(evs[0].payload.get_str("item"), Some("group.day"));
+    assert_eq!(item(&evs[0]), Some("group.day"));
 
     let card = frame(&mut core);
     core.open_menu(Menu::new(card, Vec2::new(20.0, 20.0), rows()));
@@ -460,7 +473,7 @@ fn a_host_cannot_choose_a_row_the_menu_would_not_reach() {
     assert_eq!(core.activate_menu_path(&[1, 0]), None, "under a dead row");
     assert!(core.menu().is_some(), "and the menu stays open");
     let evs = core.activate_menu_path(&[2, 0]).expect("taken");
-    assert_eq!(evs[0].payload.get_str("item"), Some("group.day"));
+    assert_eq!(item(&evs[0]), Some("group.day"));
 }
 
 /// An app drawing `widgets::context_menu` itself opens no submenu, but the
@@ -496,7 +509,7 @@ fn an_app_drawn_menu_leaves_no_submenu_for_escape_to_spend() {
     let evs = key(&mut core, EditKey::Escape);
     assert_eq!(evs.len(), 1, "{evs:?}");
     assert_eq!(evs[0].key, dialog);
-    assert_eq!(evs[0].kind(), Some("dismiss"));
+    assert_eq!(evs[0].event.name(), "dismiss");
 }
 
 /// On the frame clock, the pointer crossing a row on its way into an open

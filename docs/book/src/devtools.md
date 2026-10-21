@@ -19,8 +19,8 @@ it came from, the window and its size, the focused node, the modifier
 keys, the node count, and a latency graph.
 
 **events** — every event handed to your `on_event`, as it arrives: the
-frame number, the node it came from, and the payload as data. Click a
-row to unfold the payload. This is the tab to keep open while you
+frame number, the event, the node it came from, and the message it
+arrived as, as data. Click a row to unfold the message. This is the tab to keep open while you
 learn. When a button does nothing, look here first: either the click
 arrived and your handler ignored it, or it never arrived and the button
 is not where you think it is.

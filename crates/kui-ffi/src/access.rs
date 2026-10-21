@@ -138,8 +138,10 @@ pub extern "C" fn kui_access_tree(ptr: *mut KuiCtx, out: *mut KuiAccessNode, cap
 /// action bit (the node must advertise it in `KuiAccessNode.actions`),
 /// with `value` the new text for KUI_ACCESS_SET_VALUE (empty otherwise).
 /// Resolved the way the pointer or keyboard equivalent would be: a click
-/// emits the node's payload, focus lands on an editor, a slider nudge
-/// arrives as a `{kind="access", action, tag}` event.
+/// emits the node's payload, focus lands on an editor, and a slider's
+/// increment, decrement or set value arrives on its `on_change` as
+/// `change: {value, phase}` (ADR 0047) — a slider without one does not
+/// move — as a custom editor's set value arrives as `change: {text}`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_access(ptr: *mut KuiCtx, key: u64, action: u32, value: KuiStr) {
     guard((), || {
@@ -224,9 +226,11 @@ pub extern "C" fn kui_access_runs(
 /// KUI_ACCESS_SET_TEXT_SELECTION with the selection as run positions
 /// (`anchor_*` the end that stays, `focus_*` the caret), or
 /// KUI_ACCESS_REPLACE_SELECTED_TEXT / KUI_ACCESS_SET_VALUE with `value`.
-/// A built-in editor applies it (a `changed` event follows an edit); a
-/// custom editor gets it as a `{kind="access", action, anchor, focus,
-/// text, tag}` event to apply itself.
+/// A built-in editor applies it (its `change` follows an edit); a custom
+/// editor gets it as the event a user doing the same would cause (ADR
+/// 0047): a selection as `select: {anchor, focus}` and a replacement as
+/// `text: {text}` in its `on_key` message, a set value as
+/// `change: {text}` in its `on_change`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_access_text(
     ptr: *mut KuiCtx,

@@ -55,9 +55,11 @@ message when clicked. You give it the message and forget about it.
 ```
 
 `ev.message::<Msg>()` is `Some` when the event carries one of your
-messages, and `None` when it is something else the frame produced — a
-resize, a window losing focus. Match exhaustively and the compiler
-tells you when you add a variant and forget to handle it.
+messages, and `None` when it carries something else. Every event
+arrives as a message somebody declared: even a resize or the window
+losing focus arrives only if the root asks for it, with a message of
+yours (`ui.window_events`). Match exhaustively and the compiler tells
+you when you add a variant and forget to handle it.
 
 `on_event` runs after the frame, once per event, in order. It never
 runs during `view`. So the model changes between frames, never in the
@@ -84,7 +86,8 @@ asserts on them. Node, Lua and C receive the same maps.
 - `#[derive(Message)]` and its attributes:
   [`kui_derive`](https://docs.rs/kui-derive) on docs.rs, and
   [`docs/howto.md`](https://github.com/qxuken/kui/blob/main/docs/howto.md).
-- The full click payload, and every other event's shape:
+- What a click adds to its message, and the field every other event
+  adds to the message its handler declared:
   [`docs/props.md`](https://github.com/qxuken/kui/blob/main/docs/props.md#events), events.
 - The reference counter, with a context menu:
   [`examples/rust/apps/counter.rs`](examples/apps/counter.md).

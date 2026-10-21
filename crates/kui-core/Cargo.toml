@@ -23,6 +23,8 @@ unicode-segmentation = "1"
 unicode-linebreak = "0.1"
 # The script a fallback list is asked for (`text::AppFallback`; already in the tree via cosmic-text).
 unicode-script = "0.5"
+# The handler rows on `EventSpec`, two inline (already in the tree via cosmic-text).
+smallvec = { version = "1", features = ["const_new"] }
 kui-derive = { workspace = true, optional = true }
 
 [features]

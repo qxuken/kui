@@ -15,7 +15,7 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::widgets;
-use kui_native::{Align, App, Core, MenuItem, NodeSpec, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, Event, MenuItem, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 const LANGUAGES: [&str; 4] = ["English", "Deutsch", "Français", "日本語"];
 const SIZES: [u32; 4] = [11, 13, 15, 18];
@@ -98,13 +98,12 @@ impl App for Select {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        // `{kind: "menu", role: "custom", item: …}` on the field's key.
-        if ev.kind() != Some("menu") {
-            return;
-        }
-        let Some(item) = ev.payload.get("item") else {
+        // `{menu: {role: "custom", item: …}}` on the field's key: the stock
+        // field declares `on_menu` with no message of its own.
+        let Event::Menu(choice) = ev.read() else {
             return;
         };
+        let item = &choice.item;
         self.last = Some(item.clone());
         if let Some(name) = item.as_str()
             && let Some(i) = LANGUAGES.iter().position(|l| *l == name)

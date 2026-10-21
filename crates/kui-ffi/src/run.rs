@@ -49,6 +49,7 @@ impl kui_native::App for CApp {
             payload: &payload,
             window: ev.window.0,
             slot: ev.slot.map_or(0, |k| k.0),
+            event: KuiStr::from_static(ev.event.name()),
             ..Default::default()
         };
         cb(self.user, &out);

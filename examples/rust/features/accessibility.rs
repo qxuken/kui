@@ -58,7 +58,8 @@
 use kui_devtools::Example;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, EditOptions, FloatConfig, Key, Live, NodeSpec, Role, TextStyle, Ui, UiEvent, Value,
+    Align, App, EditOptions, Event, FloatConfig, Key, Live, NodeSpec, Role, TextStyle, Ui, UiEvent,
+    Value,
 };
 
 const DOC: &str = "hello world\nsecond line";
@@ -449,7 +450,10 @@ impl App for A11y {
 
                 // An editor the app owns: the sink says what it is, each drawn
                 // row is a line of its text, and the caret rides along as a byte
-                // offset. Text requests come back as `access` events.
+                // offset. A reader's requests come back as the events typing
+                // would send: a selection as `select` and a replacement as
+                // `text` on the sink's `on_key`, a new value as `change` on
+                // its `on_change`.
                 ui.text_in(
                     NodeSpec::row().role(Role::Heading),
                     "App-owned editor",
@@ -464,6 +468,7 @@ impl App for A11y {
                         .bg(t.sunken)
                         .radius(6.0)
                         .on_key("code")
+                        .on_change("code")
                         .role(Role::MultilineTextInput)
                         .label("Source"),
                     |ui| {
@@ -543,7 +548,9 @@ impl App for A11y {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let payload = &ev.payload;
+        // The messages here are bare strings and numbers, which the core
+        // keeps under `tag` (ADR 0047): that is what is matched.
+        let payload = ev.payload.get("tag").unwrap_or(&ev.payload);
         match payload.as_str() {
             Some("press") => {
                 self.presses += 1;
@@ -632,62 +639,54 @@ impl App for A11y {
             println!("tab -> {}", self.tab);
             return;
         }
-        // Escape, or a click outside the dialog: the core asks, the app
-        // decides. A dialog holding unsaved work could ask again here.
-        if payload.get_str("kind") == Some("dismiss") {
-            let reason = payload.get_str("reason").unwrap_or("");
-            // Two modals now, so the tag says which one asked to go.
-            let which = payload.get_str("tag").unwrap_or("");
-            println!("dismiss {which} ({reason})");
-            match which {
-                "menu" => self.menu = false,
-                _ => self.dialog = false,
+        // Every other event carries data: a string message arrives as
+        // `{tag, <event>: {...}}`, so the tag says which control and the
+        // event says what happened.
+        let tag = payload.get_str("tag").unwrap_or("");
+        match ev.read() {
+            // Escape, or a click outside the dialog: the core asks, the
+            // app decides. A dialog holding unsaved work could ask again
+            // here. Two modals now, so the tag says which one asked to go.
+            Event::Dismiss(d) => {
+                println!("dismiss {tag} ({})", d.reason.as_str());
+                match tag {
+                    "menu" => self.menu = false,
+                    _ => self.dialog = false,
+                }
             }
-            return;
-        }
-        // The sliders: the core proposes a value — stepped, clamped and
-        // snapped already — and which slider moved is its own tag. The
-        // reading the next frame declares is what a reader announces.
-        if payload.get_str("kind") == Some("change") {
-            let value = payload.get_float("value").unwrap_or(0.0) as f32;
-            match payload.get_str("tag") {
-                Some("focus") => {
-                    self.focus_min = value;
+            // The sliders: the core proposes a value — stepped, clamped
+            // and snapped already — and which slider moved is its own tag.
+            // The reading the next frame declares is what a reader
+            // announces.
+            Event::SliderChange(c) => match tag {
+                "focus" => {
+                    self.focus_min = c.value as f32;
                     println!("focus length -> {} minutes", self.focus_min as i32);
                 }
                 _ => {
-                    self.volume = value;
+                    self.volume = c.value as f32;
                     println!("volume -> {}", self.volume);
                 }
-            }
-            return;
-        }
-        if payload.get_str("kind") != Some("access") {
-            return;
-        }
-        let action = payload.get_str("action").unwrap_or("");
-        match action {
+            },
             // The app-owned editor: line ordinals among the rows it drew
             // (all of them here), byte offsets into their text.
-            "setTextSelection" => {
-                if let Some(f) = payload.get("focus") {
-                    let line = f.get_int("line").unwrap_or(0) as usize;
-                    let offset = f.get_int("offset").unwrap_or(0) as usize;
-                    self.caret = (line, offset);
-                    println!("caret -> {line}:{offset}");
-                }
+            Event::Select(sel) if tag == "code" => {
+                let (line, offset) = (sel.focus.line as usize, sel.focus.offset);
+                self.caret = (line, offset);
+                println!("caret -> {line}:{offset}");
             }
-            "replaceSelectedText" | "setValue" => {
-                let text = payload.get_str("text").unwrap_or("");
-                if action == "setValue" {
-                    self.lines = text.split('\n').map(String::from).collect();
-                    self.caret = (0, 0);
-                } else {
-                    let line = self.caret_line();
-                    let at = self.caret.1.min(self.lines[line].len());
-                    self.lines[line].insert_str(at, text);
-                    self.caret = (line, at + text.len());
-                }
+            // Typed, pasted or a reader's replacement: in at the caret.
+            Event::Text(t) if tag == "code" => {
+                let line = self.caret_line();
+                let at = self.caret.1.min(self.lines[line].len());
+                self.lines[line].insert_str(at, &t.text);
+                self.caret = (line, at + t.text.len());
+                println!("text -> {:?}", self.lines);
+            }
+            // A reader setting the whole value.
+            Event::EditChange(c) if tag == "code" => {
+                self.lines = c.text.split('\n').map(String::from).collect();
+                self.caret = (0, 0);
                 println!("text -> {:?}", self.lines);
             }
             _ => {}

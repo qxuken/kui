@@ -54,7 +54,7 @@ fn wheel(core: &mut Core, y: f32, dy: f32, begins: bool) -> Vec<UiEvent> {
 fn heard(evs: &[UiEvent]) -> Vec<&str> {
     evs.iter()
         .filter(|e| e.scroll().is_some())
-        .filter_map(|e| e.tag().and_then(Value::as_str))
+        .filter_map(|e| e.payload.get("tag").and_then(Value::as_str))
         .collect()
 }
 

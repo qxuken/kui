@@ -22,21 +22,28 @@ State :: struct {
 }
 
 // The messages, as types: each is {kind = "<snake_case name>"} on the wire,
-// which is what the Rust counter's #[derive(Message)] enum sends too.
+// which is what the Rust counter's #[derive(Message)] enum sends too. An
+// event arrives as the message its handler declared, its data in a field
+// named for it (ADR 0047): the card's right-click as {kind = "card",
+// contextmenu = {x, y}}, which the embedded With_Context_Menu reads.
 Inc :: struct {}
 Dec :: struct {}
 Add10 :: struct {}
 Reset :: struct {}
-Card :: struct {} // the tag on the card's context menu
-Menu :: struct {} // the tag on the menu's dismiss
+Card :: struct {
+	using _: kui.With_Context_Menu, // the card's context menu: where it was asked for
+}
+Menu :: struct {
+	using _: kui.With_Dismiss, // the menu's dismiss: why
+}
 
 Msg :: union {
 	Inc,
 	Dec,
 	Add10,
 	Reset,
-	kui.Context_Menu_Event,
-	kui.Dismiss_Event,
+	Card,
+	Menu,
 }
 
 view :: proc(s: ^State, ui: ^kui.Ui) {
@@ -109,9 +116,9 @@ on_event :: proc(s: ^State, ev: kui.Event) {
 	case Reset:
 		s.count = 0
 		s.menu = nil
-	case kui.Context_Menu_Event:
-		s.menu = [2]f32{m.x, m.y}
-	case kui.Dismiss_Event:
+	case Card:
+		s.menu = [2]f32{m.contextmenu.x, m.contextmenu.y}
+	case Menu:
 		s.menu = nil
 	}
 }

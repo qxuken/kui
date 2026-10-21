@@ -5,10 +5,12 @@
 //! spec)`, where `opts` is an [`EditOptions`]. The core keeps the buffer,
 //! caret, selection, IME composition and undo history across frames,
 //! routes `InputEvent::Text` / `InputEvent::Key` to the focused editor and
-//! posts `changed` and `submit` events. An app reads the draft back with
+//! posts the `change`, `submit`, `cancel` and `boundary` events its spec
+//! declares rows for. An app reads the draft back with
 //! `Core::edit_text` / `Ui::edit_text` and replaces it with
-//! `Core::set_edit_text`; the store itself is not something an app
-//! touches.
+//! `Core::set_edit_text`, or declares it on every frame as the editor's
+//! value with `Ui::text_edit_value` (`EditOptions::value`); the store
+//! itself is not something an app touches.
 //!
 //! ```rust
 //! use kui_core::{Core, EditOptions, InputEvent, NodeSpec, Size, TextStyle};
@@ -101,6 +103,19 @@ pub struct EditOptions {
     /// a field: `multiline` is ignored, and ⌥← ⌥→ (Ctrl elsewhere) and a
     /// double click take the whole text, there being no words to show.
     pub secure: bool,
+    /// The text `text_edit` is given is the editor's value, not its seed
+    /// (ADR 0047, decision 8): on every frame it differs from the
+    /// editor's text, the editor is brought to it. Only the span between
+    /// what the two share at the start and at the end changes, so a
+    /// caret before it stays, one after it moves with the text, and one
+    /// inside it goes to the end of what came in; a selection over it
+    /// goes. Applied on the frame after the user's own edit, it joins
+    /// that edit's undo step, so a filter's correction undoes with the
+    /// keystroke it corrected; any other is an undo step of its own.
+    /// While an input method composes, the value waits for the commit.
+    /// Equal, which is every frame of ordinary typing, it costs a string
+    /// compare. A secure editor's value is its secret text.
+    pub value: bool,
 }
 
 /// What a secure editor draws for each grapheme of its text.
@@ -217,6 +232,11 @@ pub(crate) struct EditState {
     redo: VecDeque<EditOp>,
     /// What the top undo op can still absorb (typing bursts, delete runs).
     coalesce: Option<Coalesce>,
+    /// Whether the user's own edit went into the history since this
+    /// editor was last declared: a declared value that differs on the
+    /// next declaration is that edit's correction, and joins its undo
+    /// step (`EditOptions::value`).
+    fresh_edit: bool,
     /// Whether the last declaration carried `autofocus`: with
     /// `last_declared`, what makes the next one an edge or a repeat.
     autofocus: bool,
@@ -248,6 +268,9 @@ struct EditOp {
     /// Caret restore points for undo / redo.
     cursor_before: Cursor,
     cursor_after: Cursor,
+    /// Undone and redone with the op below it, as one step: a declared
+    /// value's correction of the user's edit (`EditOptions::value`).
+    joins: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -324,6 +347,7 @@ impl EditState {
         if self.secret.is_some() {
             return;
         }
+        self.fresh_edit = true;
         if let (Some(k), Some(last)) = (kind, self.undo.back_mut())
             && self.coalesce == Some(k)
             && last.deleted.len() + last.inserted.len() + op.deleted.len() + op.inserted.len()
@@ -355,11 +379,21 @@ impl EditState {
                 return;
             }
         }
+        self.push_undo(op);
+        self.coalesce = kind;
+    }
+
+    /// Pushes `op` as the newest undo op, dropping the oldest past
+    /// [`UNDO_CAP`]. An op that joined the dropped one is a step of its
+    /// own from then on: there is nothing left below it to undo with it.
+    fn push_undo(&mut self, op: EditOp) {
         if self.undo.len() >= UNDO_CAP {
             self.undo.pop_front();
+            if let Some(first) = self.undo.front_mut() {
+                first.joins = false;
+            }
         }
         self.undo.push_back(op);
-        self.coalesce = kind;
     }
 
     /// Caret motion, clicks, blur: the next edit starts a new undo unit.
@@ -402,6 +436,7 @@ impl EditState {
                 inserted: text.to_string(),
                 cursor_before,
                 cursor_after: self.editor.cursor(),
+                joins: false,
             },
             kind,
         );
@@ -430,6 +465,7 @@ impl EditState {
                 inserted: String::new(),
                 cursor_before,
                 cursor_after: at,
+                joins: false,
             },
             None,
         );
@@ -465,6 +501,7 @@ impl EditState {
                 inserted: String::new(),
                 cursor_before,
                 cursor_after: at,
+                joins: false,
             },
             Some(kind),
         );
@@ -569,28 +606,166 @@ impl EditState {
         true
     }
 
+    /// Undoes one step: the newest op, and with it every op below that it
+    /// joins (`EditOp::joins`).
     fn undo_one(&mut self) -> bool {
-        let Some(op) = self.undo.pop_back() else {
-            return false;
-        };
-        self.splice(op.at, &op.inserted, &op.deleted);
-        self.editor.set_cursor(op.cursor_before);
-        self.editor.set_selection(Selection::None);
-        self.redo.push_back(op);
+        let mut any = false;
+        while let Some(op) = self.undo.pop_back() {
+            self.splice(op.at, &op.inserted, &op.deleted);
+            self.editor.set_cursor(op.cursor_before);
+            self.editor.set_selection(Selection::None);
+            let joins = op.joins;
+            self.redo.push_back(op);
+            any = true;
+            if !joins {
+                break;
+            }
+        }
         self.coalesce = None;
-        true
+        self.fresh_edit = false;
+        any
     }
 
+    /// Redoes one step: the op undone last, and every op above it that
+    /// joins it.
     fn redo_one(&mut self) -> bool {
         let Some(op) = self.redo.pop_back() else {
             return false;
         };
-        self.splice(op.at, &op.deleted, &op.inserted);
-        self.editor.set_cursor(op.cursor_after);
-        self.editor.set_selection(Selection::None);
-        self.undo.push_back(op);
+        let mut next = Some(op);
+        while let Some(op) = next.take() {
+            self.splice(op.at, &op.deleted, &op.inserted);
+            self.editor.set_cursor(op.cursor_after);
+            self.editor.set_selection(Selection::None);
+            self.undo.push_back(op);
+            if self.redo.back().is_some_and(|o| o.joins) {
+                next = self.redo.pop_back();
+            }
+        }
         self.coalesce = None;
+        self.fresh_edit = false;
         true
+    }
+
+    /// Brings the editor to a declared `value` (`EditOptions::value`) as
+    /// a splice: the span between what the two texts share at the start
+    /// and at the end is replaced, and the caret and selection move as
+    /// [`moved`] says. `joins` makes the splice part of the undo step
+    /// below it, the user's edit it corrects. Returns whether the caret
+    /// moved; `false` too when the two were equal, which is the common
+    /// case and is answered by comparing the value with the buffer in
+    /// place, without building the editor's text.
+    fn take_value(&mut self, value: &str, joins: bool, fs: &mut FontSystem) -> bool {
+        if self.secret.is_some() {
+            return self.take_secret_value(value);
+        }
+        if self.editor.with_buffer(|b| buffer_is(b, value)) {
+            return false;
+        }
+        // The value as the buffer would hold it: what a field drops, and
+        // a line break in whichever spelling as the one `buffer_text`
+        // joins lines with. A value that differs only there is equal.
+        let admitted = admitted(value, self.multiline);
+        let value = as_buffered(&admitted);
+        if self.editor.with_buffer(|b| buffer_is(b, &value)) {
+            return false;
+        }
+        let old = self.editor.with_buffer(buffer_text);
+        let span = splice_span(&old, &value);
+        let (start, old_end, new_end) = span;
+        let cursor_before = self.editor.cursor();
+        let (caret, bounds) = self.editor.with_buffer(|b| {
+            let caret = abs_offset(b, cursor_before);
+            let bounds = self
+                .editor
+                .selection_bounds()
+                .map(|(a, z)| (abs_offset(b, a), abs_offset(b, z)))
+                .filter(|(a, z)| a != z);
+            (caret, bounds)
+        });
+        let anchor = self.editor.with_buffer(|b| match self.editor.selection() {
+            Selection::None => None,
+            Selection::Normal(c) | Selection::Line(c) | Selection::Word(c) => {
+                Some(abs_offset(b, c))
+            }
+        });
+        let selection = self.editor.selection();
+        let at = cursor_in(&old, start);
+        self.splice(at, &old[start..old_end], &value[start..new_end]);
+        let new_caret = moved(caret, span);
+        let cursor_after = cursor_in(&value, new_caret);
+        self.editor.set_cursor(cursor_after);
+        // A selection over the span goes; one clear of it stays, its
+        // anchor moved as the caret is.
+        let kept = bounds.is_none_or(|(a, z)| !overlaps(a, z, span));
+        self.editor.set_selection(match (selection, anchor) {
+            (_, Some(a)) if kept && moved(a, span) != new_caret => {
+                let c = cursor_in(&value, moved(a, span));
+                match selection {
+                    Selection::Line(_) => Selection::Line(c),
+                    Selection::Word(_) => Selection::Word(c),
+                    _ => Selection::Normal(c),
+                }
+            }
+            _ => Selection::None,
+        });
+        self.redo.clear();
+        self.push_undo(EditOp {
+            at,
+            deleted: old[start..old_end].to_string(),
+            inserted: value[start..new_end].to_string(),
+            cursor_before,
+            cursor_after,
+            joins: joins && !self.undo.is_empty(),
+        });
+        // The next keystroke is an edit of its own, not more of this.
+        self.coalesce = None;
+        self.editor.shape_as_needed(fs, false);
+        self.version += 1;
+        self.invalidate_measurements();
+        new_caret != caret
+    }
+
+    /// [`Self::take_value`] for a secure editor: the value is its secret
+    /// text, spliced there, and the buffer becomes as many bullets as the
+    /// new text has graphemes, the caret and the selection on the
+    /// graphemes the splice rules move them to. Unrecorded, as every
+    /// secure edit is.
+    fn take_secret_value(&mut self, value: &str) -> bool {
+        let Some(secret) = self.secret.as_ref() else {
+            return false;
+        };
+        if secret == value {
+            return false;
+        }
+        let value = admitted(value, false);
+        if *secret == *value {
+            return false;
+        }
+        let span = splice_span(secret, &value);
+        let byte = |c: Cursor| grapheme_start(secret, c.index / BULLET_LEN);
+        let caret = byte(self.editor.cursor());
+        let bounds = self.selected().map(|(a, z)| (byte(a), byte(z)));
+        let anchor = match self.editor.selection() {
+            Selection::Normal(c) | Selection::Line(c) | Selection::Word(c) => Some(byte(c)),
+            Selection::None => None,
+        };
+        let new_caret = moved(caret, span);
+        let kept = bounds.is_none_or(|(a, z)| !overlaps(a, z, span));
+        let anchor = anchor.filter(|_| kept).map(|a| moved(a, span));
+        let bullet = |at: usize| Cursor::new(0, graphemes_before(&value, at) * BULLET_LEN);
+        let (caret_at, anchor_at) = (bullet(new_caret), anchor.map(bullet));
+        let moved_caret = !same_pos(caret_at, self.editor.cursor());
+        self.set_bullets(graphemes(&value));
+        self.editor.set_cursor(caret_at);
+        if let Some(a) = anchor_at.filter(|a| !same_pos(*a, caret_at)) {
+            self.editor.set_selection(Selection::Normal(a));
+        }
+        self.secret = Some(value.into_owned());
+        self.redo.clear();
+        self.version += 1;
+        self.invalidate_measurements();
+        moved_caret
     }
 }
 
@@ -872,13 +1047,16 @@ impl EditStore {
             .is_none_or(|s| s.last_declared + 1 != frame_no || !s.autofocus);
         // Only a creation consumes the seed: a key already declared has
         // no pending text (a `set_text` with state behind it is applied
-        // where it is called), and taking one here would drop it.
+        // where it is called), and taking one here would drop it. A
+        // declared value wins over it, so an editor opened with one
+        // starts from the value and the held text goes.
         let seed = if self.states.contains_key(&key) {
             None
         } else {
-            self.pending.remove(&key)
+            self.pending.remove(&key).filter(|_| !opts.value)
         };
         let seeded = seed.is_some();
+        let declared = initial;
         let initial = seed.as_deref().unwrap_or(initial);
         // A secure editor is a field (`EditOptions::secure`).
         let multiline = opts.multiline && !opts.secure;
@@ -941,6 +1119,7 @@ impl EditStore {
                 undo: VecDeque::new(),
                 redo: VecDeque::new(),
                 coalesce: None,
+                fresh_edit: false,
                 autofocus: false,
                 last_declared: frame_no,
             }
@@ -1012,6 +1191,15 @@ impl EditStore {
                     state.placeholder = Some((p.to_string(), rev, b));
                 }
             }
+        }
+        // A declared value, which the editor is brought to where the two
+        // differ: held while an input method composes, so the preedit
+        // stays and the value lands on the first declaration after the
+        // commit. Whether the user edited since the last declaration is
+        // asked once, here, whatever the options.
+        let fresh = std::mem::take(&mut state.fresh_edit);
+        if opts.value && state.preedit.is_none() && state.take_value(declared, fresh, fs) {
+            self.touch_caret(key);
         }
         // `autofocus` is the core's decision (it owns the one focus).
         edge
@@ -1101,6 +1289,7 @@ impl EditStore {
         s.undo.clear();
         s.redo.clear();
         s.coalesce = None;
+        s.fresh_edit = false;
         self.touch_caret(key);
         true
     }
@@ -1169,14 +1358,26 @@ impl EditStore {
 
     /// The caret as a byte offset into the committed text, and the
     /// non-empty selection as a byte range, for the access tree.
+    ///
+    /// A composition sits in the buffer while it is under way, and it is
+    /// not committed text: a place inside it reads as where it starts, and
+    /// one past it as the same place with the composition taken out.
     pub fn caret_and_selection(&self, key: Key) -> Option<(usize, Option<(usize, usize)>)> {
         let s = self.states.get(&key)?;
         Some(s.editor.with_buffer(|b| {
-            let caret = abs_offset(b, s.editor.cursor());
+            let composing = s
+                .preedit
+                .as_ref()
+                .map(|p| (abs_offset(b, p.start), p.text.len()));
+            let committed = |at: usize| match composing {
+                Some((start, len)) if at > start => start.max(at.saturating_sub(len)),
+                _ => at,
+            };
+            let caret = committed(abs_offset(b, s.editor.cursor()));
             let selection = s
                 .editor
                 .selection_bounds()
-                .map(|(a, z)| (abs_offset(b, a), abs_offset(b, z)))
+                .map(|(a, z)| (committed(abs_offset(b, a)), committed(abs_offset(b, z))))
                 .filter(|(a, z)| a != z);
             (caret, selection)
         }))
@@ -1265,6 +1466,39 @@ impl EditStore {
 
     /// Types `text` over the selection (or at the caret), as one undo
     /// step; true when the content changed.
+    /// Replaces the whole text with `text` as one recorded edit, as if the
+    /// user had selected all and typed it: what assistive technology's
+    /// `setValue` on an editor does, so a reader's edit undoes in one step
+    /// as typing does, and an app's correction in the `update` it reached
+    /// joins that step (ADR 0047, decision 8) — where `set_text`, the
+    /// app's own replacement, clears the history. False when the text is
+    /// already `text`. A secure editor replaces its secret and records
+    /// nothing, as for typing.
+    pub fn replace_all(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
+        let Some(s) = self.states.get_mut(&key) else {
+            return false;
+        };
+        s.abandon_preedit();
+        let text = admitted(text, s.multiline);
+        let now = match &s.secret {
+            Some(secret) => secret.clone(),
+            None => s.editor.with_buffer(buffer_text),
+        };
+        if now == *text {
+            return false;
+        }
+        s.coalesce = None;
+        s.editor.set_selection(Selection::Normal(Cursor::new(0, 0)));
+        s.editor.action(fs, Action::Motion(Motion::BufferEnd));
+        s.insert_recorded(&text);
+        s.coalesce = None;
+        s.editor.shape_as_needed(fs, false);
+        s.version += 1;
+        s.invalidate_measurements();
+        self.touch_caret(key);
+        true
+    }
+
     pub fn replace_selection(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
@@ -2130,4 +2364,155 @@ fn buffer_text(b: &Buffer) -> String {
         out.push_str(line.text());
     }
     out
+}
+
+/// Whether the buffer holds exactly `text`, its lines joined by `\n` as
+/// [`buffer_text`] joins them, read line by line in place: what a
+/// declared value is compared by on every frame, so an equal one costs a
+/// compare and no copy.
+fn buffer_is(b: &Buffer, text: &str) -> bool {
+    let mut rest = text;
+    for (i, line) in b.lines.iter().enumerate() {
+        if i > 0 {
+            match rest.strip_prefix('\n') {
+                Some(r) => rest = r,
+                None => return false,
+            }
+        }
+        match rest.strip_prefix(line.text()) {
+            Some(r) => rest = r,
+            None => return false,
+        }
+    }
+    rest.is_empty()
+}
+
+/// `text` with every line break the buffer takes as one (`\r\n`, `\n\r`,
+/// `\r`, `\n`, read as cosmic-text's line iterator reads them) spelled
+/// `\n`, the way [`buffer_text`] gives the text back. Borrowed when there
+/// is no `\r`, which is always but for text pasted from elsewhere.
+fn as_buffered(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.contains('\r') {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(['\r', '\n']) {
+        out.push_str(&rest[..i]);
+        out.push('\n');
+        let after = &rest[i..];
+        let len = if after.starts_with("\r\n") || after.starts_with("\n\r") {
+            2
+        } else {
+            1
+        };
+        rest = &after[len..];
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
+/// How many leading bytes `a` and `b` share, compared a block at a time
+/// before byte by byte: a value's splice into a long document finds its
+/// span by this and [`common_suffix`].
+fn common_prefix(a: &[u8], b: &[u8]) -> usize {
+    const BLOCK: usize = 64;
+    let blocks = a
+        .as_chunks::<BLOCK>()
+        .0
+        .iter()
+        .zip(b.as_chunks::<BLOCK>().0)
+        .take_while(|(x, y)| x == y)
+        .count();
+    let at = blocks * BLOCK;
+    at + a[at..]
+        .iter()
+        .zip(&b[at..])
+        .take_while(|(x, y)| x == y)
+        .count()
+}
+
+/// How many trailing bytes `a` and `b` share, at most `max`.
+fn common_suffix(a: &[u8], b: &[u8], max: usize) -> usize {
+    const BLOCK: usize = 64;
+    let (a, b) = (&a[a.len() - max..], &b[b.len() - max..]);
+    let blocks = a
+        .as_rchunks::<BLOCK>()
+        .1
+        .iter()
+        .rev()
+        .zip(b.as_rchunks::<BLOCK>().1.iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count();
+    let at = blocks * BLOCK;
+    at + a[..a.len() - at]
+        .iter()
+        .rev()
+        .zip(b[..b.len() - at].iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count()
+}
+
+/// Whether `at` is a grapheme boundary of `text`.
+fn grapheme_boundary(text: &str, at: usize) -> bool {
+    use unicode_segmentation::GraphemeCursor;
+    text.is_char_boundary(at)
+        && GraphemeCursor::new(at, text.len(), true)
+            .is_boundary(text, 0)
+            .unwrap_or(true)
+}
+
+/// The span a declared value differs from an editor's text by, as
+/// `(start, old_end, new_end)`: `old[start..old_end]` is what goes and
+/// `new[start..new_end]` what comes in. The text before `start` and after
+/// each end is what the two share, each end on a grapheme boundary of
+/// both texts, so a splice never leaves half an accent or half a flag.
+fn splice_span(old: &str, new: &str) -> (usize, usize, usize) {
+    let (a, b) = (old.as_bytes(), new.as_bytes());
+    let mut start = common_prefix(a, b);
+    let mut tail = common_suffix(a, b, a.len().min(b.len()) - start);
+    while start > 0 && !(grapheme_boundary(old, start) && grapheme_boundary(new, start)) {
+        start -= 1;
+    }
+    while tail > 0
+        && !(grapheme_boundary(old, old.len() - tail) && grapheme_boundary(new, new.len() - tail))
+    {
+        tail -= 1;
+    }
+    (start, old.len() - tail, new.len() - tail)
+}
+
+/// Where an offset into an editor's text lands after a value's splice
+/// (`span`, from [`splice_span`]): one before the span stays, one after
+/// it moves by the length the text gained or lost, and one inside it goes
+/// to the end of what came in. An offset at the span's end is after it,
+/// so a caret where text is inserted ends up past it, as typing leaves it.
+fn moved(at: usize, (start, old_end, new_end): (usize, usize, usize)) -> usize {
+    if at >= old_end {
+        at - old_end + new_end
+    } else if at <= start {
+        at
+    } else {
+        new_end
+    }
+}
+
+/// Whether the selection `a..z` meets a splice's span: it covers some of
+/// what goes, or, for a span that only inserts, the place it goes in.
+fn overlaps(a: usize, z: usize, (start, old_end, _): (usize, usize, usize)) -> bool {
+    if old_end > start {
+        a < old_end && z > start
+    } else {
+        a < start && z > start
+    }
+}
+
+/// The buffer cursor at byte `at` of `text`, the text of a buffer whose
+/// lines are joined by `\n`.
+fn cursor_in(text: &str, at: usize) -> Cursor {
+    let head = &text[..at];
+    match head.rfind('\n') {
+        Some(i) => Cursor::new(head.bytes().filter(|b| *b == b'\n').count(), at - i - 1),
+        None => Cursor::new(0, at),
+    }
 }

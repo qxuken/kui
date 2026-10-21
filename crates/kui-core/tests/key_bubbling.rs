@@ -4,8 +4,8 @@
 //! and the controls in the ring keep the keys the core presses them with.
 
 use kui_core::{
-    Core, EditKey, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Role, Size,
-    UiEvent, Value,
+    Core, EditKey, EventKind, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Role,
+    Size, UiEvent, Value,
 };
 
 const H: f32 = 20.0;
@@ -20,8 +20,8 @@ struct Shell {
 }
 
 /// One `on_key` shell wrapping a ring: a button (something to activate), a
-/// slider (arrows, and nothing to activate), and a nested sink with a
-/// button of its own — the shape every app shell has, and the shape the
+/// slider (arrows, and nothing to activate — its `on_change` is what moves
+/// it), and a nested sink with a button of its own — the shape every app shell has, and the shape the
 /// pomodoro in backlog F7 could not have.
 fn shell(core: &mut Core, disabled_shell: bool) -> Shell {
     let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
@@ -42,6 +42,7 @@ fn shell(core: &mut Core, disabled_shell: bool) -> Shell {
                 row()
                     .role(Role::Slider)
                     .on_drag("vol")
+                    .on_change("vol")
                     .label("Volume")
                     .value_now(3.0)
                     .value_min(0.0)
@@ -121,15 +122,16 @@ fn named(core: &mut Core, code: KeyCode, ek: EditKey) -> Vec<UiEvent> {
     window_press(core, code, KeyMods::default(), Some(ek), None)
 }
 
-/// `(key, kind, code)` of every key event in a batch: which sink heard it,
-/// which phase, which key.
+/// `(key, phase, code)` of every key event in a batch: which sink heard
+/// it, which phase, which key — read from the `key` field of the sink's
+/// message (`{tag: "shell", key: {phase, code, ...}}`).
 fn sink_events(evs: &[UiEvent]) -> Vec<(Key, String, String)> {
     evs.iter()
-        .filter(|e| e.kind() == Some("key"))
+        .filter(|e| e.is(EventKind::Key))
         .map(|e| {
             let at = |k: &str| {
-                e.payload
-                    .get(k)
+                e.data()
+                    .and_then(|d| d.get(k))
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string()
@@ -174,7 +176,7 @@ fn space_presses_a_button_and_never_reaches_the_shell() {
     assert_eq!(sink_events(&evs), vec![]);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, k.go);
-    assert_eq!(evs[0].payload, Value::str("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 }
 
 #[test]
@@ -185,7 +187,7 @@ fn enter_presses_a_button_and_never_reaches_the_shell() {
     let evs = named(&mut core, KeyCode::Enter, EditKey::Enter);
     assert_eq!(sink_events(&evs), vec![]);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload, Value::str("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 }
 
 #[test]
@@ -197,7 +199,11 @@ fn a_slider_keeps_its_arrows() {
     assert_eq!(sink_events(&evs), vec![]);
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, k.vol);
-    assert_eq!(evs[0].payload.get_str("action"), Some("increment"));
+    // One step up from 3, proposed through the slider's `on_change`.
+    assert_eq!(evs[0].event, EventKind::Change);
+    assert_eq!(evs[0].payload.get_str("tag"), Some("vol"));
+    let value = evs[0].data().and_then(|d| d.get("value")?.as_float());
+    assert!(value.is_some_and(|v| v > 3.0), "{value:?}");
 }
 
 #[test]
@@ -316,7 +322,7 @@ fn a_text_after_a_chorded_press_bubbles_with_it() {
     // channel — has no chord to agree with, and presses as it always did.
     let evs = core.handle_input(InputEvent::Text(" ".into()));
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload, Value::str("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 }
 
 #[test]

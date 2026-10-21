@@ -38,7 +38,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 32
+ABI_VERSION :: 33
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -156,6 +156,7 @@ EDIT_AUTOFOCUS :: 2
 EDIT_WRAP :: 4
 EDIT_KEEP_TAB :: 8
 EDIT_SECURE :: 16
+EDIT_VALUE :: 32
 
 FLOAT_NONE :: 0
 FLOAT_PARENT :: 1
@@ -657,6 +658,11 @@ Spec :: struct {
 	pivot_y: f32,
 	iterations: f32,
 	over_siblings: u32,
+	on_submit: ^Value,
+	on_cancel: ^Value,
+	on_boundary: ^Value,
+	on_menu: ^Value,
+	on_selection_range: ^Value,
 }
 
 Announcement :: struct {
@@ -858,6 +864,15 @@ WindowConfig :: struct {
 	anchor_h: f32,
 }
 
+WindowEvents :: struct {
+	on_resize: ^Value,
+	on_focus: ^Value,
+	on_system_settings_change: ^Value,
+	on_fonts: ^Value,
+	on_modifiers: ^Value,
+	on_open: ^Value,
+}
+
 WindowCommand :: struct {
 	size: u32,
 	kind: u32,
@@ -877,6 +892,7 @@ Event :: struct {
 	window: u32,
 	reply_sink: ^ReplySink,
 	slot: u64,
+	event: string,
 }
 
 Quad :: struct {
@@ -1122,6 +1138,7 @@ foreign lib {
 	env_set_window :: proc(ctx: ^Ctx, window: u32, custom_chrome: bool, maximized: bool, fullscreen: bool, controls_w: f32, controls_h: f32) ---
 	take_window_command :: proc(ctx: ^Ctx, out: ^WindowCommand) -> bool ---
 	window_declare :: proc(ctx: ^Ctx, name: string, cfg: ^WindowConfig) ---
+	window_declare_with :: proc(ctx: ^Ctx, name: string, cfg: ^WindowConfig, on_window: ^Value, on_dismiss: ^Value) ---
 	set_window_size :: proc(ctx: ^Ctx, window: u32, w: f32, h: f32) ---
 	focus_window :: proc(ctx: ^Ctx, window: u32) ---
 	window_dismissed :: proc(ctx: ^Ctx, id: u32, reason: u32) ---
@@ -1145,6 +1162,7 @@ foreign lib {
 	spec_float_preset :: proc(spec: ^Spec, name: string) -> bool ---
 	frame_begin :: proc(ctx: ^Ctx, w: f32, h: f32, scale: f32) ---
 	root :: proc(ctx: ^Ctx, spec: ^Spec) ---
+	root_with :: proc(ctx: ^Ctx, spec: ^Spec, events: ^WindowEvents) ---
 	open :: proc(ctx: ^Ctx, spec: ^Spec, on_click: ^Value) -> u64 ---
 	open_keyed :: proc(ctx: ^Ctx, label: string, spec: ^Spec, on_click: ^Value) -> u64 ---
 	open_indexed :: proc(ctx: ^Ctx, index: u64, spec: ^Spec, on_click: ^Value) -> u64 ---
@@ -1162,6 +1180,7 @@ foreign lib {
 	set_key_focus :: proc(ctx: ^Ctx, key: u64) ---
 	focus :: proc(ctx: ^Ctx, key: u64) ---
 	key_of :: proc(ctx: ^Ctx, label: string) -> u64 ---
+	label_of :: proc(ctx: ^Ctx, key: u64, out: ^string) -> bool ---
 	key_named :: proc(ctx: ^Ctx, name: string) -> u64 ---
 	focus_next :: proc(ctx: ^Ctx, forward: bool) ---
 	focused :: proc(ctx: ^Ctx) -> u64 ---
@@ -1236,6 +1255,7 @@ foreign lib {
 	open_menu :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, items: [^]MenuItem, count: uint) -> bool ---
 	close_menu :: proc(ctx: ^Ctx) -> bool ---
 	menu_bar :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint) -> bool ---
+	menu_bar_with :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint, on_menu: ^Value) -> bool ---
 	set_native_menu_bar :: proc(ctx: ^Ctx, on: bool) ---
 	menu_bar_menu_count :: proc(ctx: ^Ctx, revision: ^u64) -> uint ---
 	menu_bar_menu :: proc(ctx: [^]Ctx, menu: uint, label: ^string, enabled: ^bool) -> uint ---
@@ -1311,7 +1331,9 @@ foreign lib {
 	latency_graph :: proc(ctx: ^Ctx) ---
 	latency_hud :: proc(ctx: ^Ctx, x: u32, y: u32) ---
 	text_input :: proc(ctx: ^Ctx, label: string, initial: string) -> u64 ---
+	text_input_with :: proc(ctx: ^Ctx, label: string, text: string, flags: u32, on_change: ^Value, on_submit: ^Value, on_cancel: ^Value) -> u64 ---
 	select :: proc(ctx: ^Ctx, label: string, items: [^]MenuItem, count: uint, current: i64) -> u64 ---
+	select_with :: proc(ctx: ^Ctx, label: string, items: [^]MenuItem, count: uint, current: i64, on_menu: ^Value) -> u64 ---
 	checkbox :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) -> u64 ---
 	radio :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) -> u64 ---
 	@(link_name = "kui_switch")

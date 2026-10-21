@@ -145,10 +145,13 @@ impl App for Chrome {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.kind() == Some("pin") {
+        let Some(msg) = ev.message::<Value>() else {
+            return;
+        };
+        if msg.get_str("kind") == Some("pin") {
             self.pinned = !self.pinned;
         }
-        if let Some(name) = ev.payload.get_str("name")
+        if let Some(name) = msg.get_str("name")
             && let Some(i) = TABS.iter().position(|t| *t == name)
         {
             self.tab = i;

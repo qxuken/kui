@@ -25,15 +25,16 @@
 
 use kui_core::{
     Align, Color, Content, EditOptions, FloatConfig, ImageId, Key, NodeSpec, PadShorthand, Sizing,
-    Span, TextStyle, TokenKind, TokenLookup, Warning, WindowConfig, widgets,
+    Span, TextStyle, TokenKind, TokenLookup, Warning, WindowConfig, WindowEvents, WindowLifecycle,
+    widgets,
 };
 use serde_json::{Map as JsonMap, Value as Json};
 
 use crate::schema::{
     self, Kind, P_ALWAYS_ON_TOP, P_BORDER, P_DIR, P_FLOAT, P_IME_OFF, P_INDEX, P_KEY, P_KEY_FOCUS,
     P_OPTION_AS_ALT, P_OVERFLOW, P_PAD, P_ROW_COUNT, P_SECURE_INPUT, P_SIZE, P_TITLE, P_TOOLTIP,
-    P_WINDOWS, Parsed, PropsOut, SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx, color_num, min_num,
-    sizing_num,
+    P_WINDOW_EVENTS, P_WINDOWS, Parsed, PropsOut, SIZE_MODE_CALC, SIZE_MODE_TREE, align_idx,
+    color_num, min_num, sizing_num,
 };
 use crate::{Result, err, value_of};
 
@@ -110,7 +111,20 @@ use crate::{Result, err, value_of};
 /// absent for none) and `size` (0 for the paragraph's).
 /// v23: `slot` carries a flags word after its params: 1 keeps the fill,
 /// 2 replays it (ADR 0045). A slot in the middle of an op again.
-pub const VERSION: u32 = 23;
+/// v24: an event arrives as the message its handler declared (ADR 0047).
+/// The edit op's flags word bit 32 says its text is the editor's `value`
+/// and not a seed, and bit 64 that the view declared `initial` beside it
+/// (`edit-value-and-initial`); the stock field (bit 4) reads its prop
+/// list, which carries its `onChange` / `onSubmit` / `onCancel` rows and
+/// nothing else; `select` carries its `onMenu` message (a strref, absent
+/// for none) after the current index; and the handler rows `onSubmit`,
+/// `onCancel`, `onBoundary`, `onMenu` and `onSelectionRange` are new.
+/// And a window declares the messages its own events arrive as (ADR 0048,
+/// the same unreleased version): the root's `windowEvents` group rides as
+/// one JSON blob (`P_WINDOW_EVENTS`), a `windows` entry carries its
+/// `onWindow` / `onDismiss`, and `menuBar` carries its `onMenu` message
+/// (a strref, absent for none) after the menu.
+pub const VERSION: u32 = 24;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -794,11 +808,24 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                     return Err(err("windows: a list of names or entries"));
                 };
                 for entry in entries {
-                    out.windows.push(
-                        WindowConfig::from_value(entry)
-                            .map_err(|e| err(format!("windows: {e}")))?,
-                    );
+                    let (name, config) = WindowConfig::from_value(entry)
+                        .map_err(|e| err(format!("windows: {e}")))?;
+                    // The entry's `onWindow` / `onDismiss` messages (ADR
+                    // 0048), by the reader Lua's entries go through too.
+                    let lifecycle = WindowLifecycle::from_entry(entry, false);
+                    out.windows.push((name, config, lifecycle));
                 }
+            }
+            // The root's `windowEvents` group (ADR 0048): one JSON blob,
+            // read by `WindowEvents::from_value`, the reader Lua's table
+            // goes through. Sent from any node, so the core can say
+            // `window-events-off-root` about one that is not the root.
+            P_WINDOW_EVENTS => {
+                let group = payload(r.req_str()?)?;
+                out.window_events = Some(
+                    WindowEvents::from_value(&group, false)
+                        .map_err(|e| err(format!("windowEvents: {e}")))?,
+                );
             }
             P_TOOLTIP => out.apply_tooltip(r.req_str()?),
             _ if is_ref
@@ -883,7 +910,7 @@ fn read_props_over(r: &mut Reader<'_>, mut out: PropsOut, refs: &mut Refs<'_>) -
                         },
                         m => min_num(m, r.f()?),
                     }),
-                    Kind::Msg | Kind::Tag => Parsed::Msg(payload(r.req_str()?)?),
+                    Kind::Msg | Kind::Handler => Parsed::Msg(payload(r.req_str()?)?),
                     Kind::Str => Parsed::Str(r.req_str()?.to_string()),
                     // A strref since v18: a stock family or an installed
                     // one by name, registered as it is read (ADR 0037).
@@ -1162,25 +1189,43 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let placeholder = r.str_ref()?;
             // A leaf: its `tooltip` floats beside it (backlog RG113).
             let p = lower_props(r, ui)?.for_leaf();
-            // Bit 4: the stock field (`<input label initial>`), the same
-            // widget Lua's `input { }` and C's `kui_text_input` lower to.
-            if flags & 4 != 0 {
-                widgets::text_input(ui, label, initial);
-                return Ok(());
-            }
-            let opts = EditOptions {
-                style: p.style,
-                multiline: flags & 1 != 0,
-                autofocus: flags & 2 != 0,
-                // Bit 8: `keepTab`, a field's Tab the app's (backlog F146).
-                keep_tab: flags & 8 != 0,
-                // Bit 16: `secure`, a password field (backlog F167).
-                secure: flags & 16 != 0,
-                placeholder: placeholder.map(str::to_string),
-                wrap: p.wrap,
-                ..Default::default()
+            // Bit 32: the text is the editor's `value`, brought back to on
+            // every frame it differs, not a seed (ADR 0047, decision 8).
+            let value = flags & 32 != 0;
+            // Bit 4: the stock field (`<input label initial|value>`), the
+            // same widget Lua's `input { }` and C's `kui_text_input` lower
+            // to. Its prop list is its three handler rows alone, handed
+            // over as the messages it reports in.
+            let key = if flags & 4 != 0 {
+                let ev = p.spec.events();
+                let messages = widgets::InputMessages {
+                    change: ev.on_change().cloned(),
+                    submit: ev.on_submit().cloned(),
+                    cancel: ev.on_cancel().cloned(),
+                };
+                widgets::text_input_with(ui, label, initial, value, &messages)
+            } else {
+                let opts = EditOptions {
+                    style: p.style,
+                    multiline: flags & 1 != 0,
+                    autofocus: flags & 2 != 0,
+                    // Bit 8: `keepTab`, a field's Tab the app's (backlog F146).
+                    keep_tab: flags & 8 != 0,
+                    // Bit 16: `secure`, a password field (backlog F167).
+                    secure: flags & 16 != 0,
+                    value,
+                    placeholder: placeholder.map(str::to_string),
+                    wrap: p.wrap,
+                    ..Default::default()
+                };
+                ui.core().text_edit(label, initial, &opts, p.spec)
             };
-            ui.core().text_edit(label, initial, &opts, p.spec);
+            // Bit 64: `initial` was declared beside `value`, which wins;
+            // the core cannot tell, since it is handed one text.
+            if value && flags & 64 != 0 {
+                ui.core()
+                    .warn(kui_core::diag::edit_value_and_initial(key, label));
+            }
             Ok(())
         }
         // src (hi, lo), sampling, fit, then props (ADR 0025, decision 4).
@@ -1508,12 +1553,29 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
         }
         OP_SELECT => {
             // Label, the options as one JSON blob (strings, or the item
-            // objects `openMenu` takes), the current index plus one.
+            // objects `openMenu` takes), the current index plus one, the
+            // `onMenu` message.
             let label = r.req_str()?;
             let options = crate::select_options_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
             let current = r.u()?;
             let current = (current > 0).then(|| current as usize - 1);
-            widgets::select_items(ui, label, &options, current);
+            // The `onMenu` message the choice arrives as (ADR 0047), or
+            // none, which the widget declares `Null` for: `{menu: …}`.
+            let on_menu = r.str_ref()?.map(payload).transpose()?;
+            let t = ui.theme();
+            let m = ui.metrics();
+            let mut spec = widgets::select_spec(&t, &m);
+            if let Some(msg) = on_menu {
+                spec = spec.on_menu(msg);
+            }
+            widgets::select_with(
+                ui,
+                label,
+                &options,
+                current,
+                spec,
+                TextStyle::new(m.chrome_text),
+            );
             Ok(())
         }
         OP_TOGGLE => {
@@ -1565,7 +1627,12 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             // One JSON blob, read by the same parser `openMenu`'s items go
             // through: a menu nests, and two readers of one shape are two
             // things to keep in step.
-            let (bar, stray) = crate::menu_bar_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
+            let (mut bar, stray) =
+                crate::menu_bar_of(r.req_str()?).map_err(|e| err(e.to_string()))?;
+            // Then the `onMenu` message a choice from the bar arrives as
+            // (ADR 0048), a strref as `select`'s is; absent, the bar posts
+            // nothing.
+            bar.on_menu = r.str_ref()?.map(payload).transpose()?;
             crate::warn_stray_menu_keys(ui.core(), stray);
             widgets::menu_bar(ui, bar);
             Ok(())
@@ -1706,7 +1773,7 @@ mod tests {
                     stream.extend([0.0, 37.0]);
                     Parsed::Bound(kui_core::Bound::Px(37.0))
                 }
-                Kind::Msg | Kind::Tag => {
+                Kind::Msg | Kind::Handler => {
                     stream.extend([0.0, 1.0]);
                     Parsed::Msg(Value::Int(7))
                 }
@@ -1844,7 +1911,8 @@ mod tests {
                     // anchored to a 60x20 rect at (10, 20) — read by
                     // `WindowConfig::from_value`, the same reader Lua's
                     // list goes through.
-                    const LIST: &[u8] = br#"[{"name":"abc","kind":"popup","width":400,"height":300,"activates":false,"anchor":{"x":10,"y":20,"w":60,"h":20}}]"#;
+                    // Its `onDismiss` is the entry's lifecycle (ADR 0048).
+                    const LIST: &[u8] = br#"[{"name":"abc","kind":"popup","width":400,"height":300,"activates":false,"anchor":{"x":10,"y":20,"w":60,"h":20},"onDismiss":{"kind":"x"}}]"#;
                     s.extend([0.0, LIST.len() as f64]);
                     strings = LIST;
                     expected.windows.push((
@@ -1855,7 +1923,23 @@ mod tests {
                             activates: false,
                             anchor: kui_core::Rect::new(10.0, 20.0, 60.0, 20.0),
                         },
+                        WindowLifecycle::default().on_dismiss(kui_core::Value::map([(
+                            "kind",
+                            kui_core::Value::str("x"),
+                        )])),
                     ));
+                }
+                "windowEvents" => {
+                    // One JSON blob (ADR 0048), read by
+                    // `WindowEvents::from_value`, as Lua's table is.
+                    const GROUP: &[u8] = br#"{"onResize":{"kind":"r"},"onFonts":"f"}"#;
+                    s.extend([0.0, GROUP.len() as f64]);
+                    strings = GROUP;
+                    expected.window_events = Some(
+                        WindowEvents::default()
+                            .on_resize(kui_core::Value::map([("kind", kui_core::Value::str("r"))]))
+                            .on_fonts(kui_core::Value::str("f")),
+                    );
                 }
                 other => panic!(
                     "custom prop {other:?} has no binary decoder arm: add one in read_props, \

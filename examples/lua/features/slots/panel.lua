@@ -70,9 +70,6 @@ function view(env, slot)
   title = params.title or "lua panel"
   on_toggle = params.on_toggle
 
-  -- The editor's text, by the label its `key` declares; nil until a
-  -- frame has declared it.
-  filter = env.edit_text("filter") or ""
 
   local items = {}
   for i, todo in ipairs(todos) do
@@ -106,10 +103,12 @@ function view(env, slot)
     text({ title, { " · " .. remaining .. " left", color = t.muted } },
          { size = 12, color = t.muted }),
     -- `label` because nothing else names it: an edit with no text inside it
-    -- and no label is what `control-without-name` is for.
-    edit { key = "filter", label = "filter todos", initial = "", size = 14,
+    -- and no label is what `control-without-name` is for. Its text is the
+    -- script's `filter`, declared as `value` every frame and kept up to
+    -- date from the `change` its on_change message arrives with.
+    edit { key = "filter", label = "filter todos", value = filter, size = 14,
            width = "grow", pad = { l = 8, r = 8, t = 6, b = 6 },
-           bg = t.sunken, radius = 6 },
+           bg = t.sunken, radius = 6, on_change = { kind = "filter" } },
     column { height = "grow", scroll = true, table.unpack(items) },
     row {
       gap = 8,
@@ -169,8 +168,10 @@ function on_event(ev)
       for k, v in pairs(on_toggle) do reply[k] = v end
       return reply
     end
-  elseif ev.kind == "changed" then
-    -- The next view reads the field by label; nothing to keep here.
+  elseif ev.kind == "filter" then
+    -- The field's whole text after the edit, on the event: the next
+    -- view filters by it and declares it back as the field's value.
+    filter = ev.change.text
   elseif ev.kind == "add" then
     todos[#todos + 1] = "todo #" .. (#todos + 1)
   elseif ev.kind == "clear" then

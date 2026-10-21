@@ -14,7 +14,7 @@
 use kui_devtools::{Drive, Example};
 use kui_native::menu::MenuItem;
 use kui_native::widgets;
-use kui_native::{Align, App, Core, Metrics, NodeSpec, TextStyle, Ui, UiEvent, Value};
+use kui_native::{Align, App, Core, Event, Metrics, NodeSpec, TextStyle, Ui, UiEvent, Value};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Density {
@@ -149,18 +149,15 @@ impl App for Page {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.as_str() {
+        match ev.message::<String>().as_deref() {
             Some("comfortable") => self.density = Density::Comfortable,
             Some("compact") => self.density = Density::Compact,
             Some("large") => self.density = Density::Large,
             _ => {}
         }
-        match ev.kind() {
-            Some("contextmenu") => {
-                let at = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-                self.menu = Some((at("x"), at("y")));
-            }
-            Some("dismiss") => self.menu = None,
+        match ev.read() {
+            Event::ContextMenu(at) => self.menu = Some((at.x, at.y)),
+            Event::Dismiss(_) => self.menu = None,
             _ => {}
         }
     }

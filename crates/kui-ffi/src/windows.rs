@@ -66,11 +66,11 @@ pub extern "C" fn kui_take_window_command(ptr: *mut KuiCtx, out: *mut KuiWindowC
 /// first frame any window's frame declares it — `cfg` is
 /// read then and never again, NULL meaning `KUI_WINDOW_CONFIG_INIT` — and
 /// closes on the first frame none does. The `Open` / `Close` arrive
-/// through `kui_take_window_command`; the app sees `{kind:"window",
-/// phase:"opened"|"closed", name, id}` events. A window the user closed
-/// (`kui_window_closed`) stays closed while still declared: stop declaring
-/// it, then declare it again. Call between `kui_frame_begin` and
-/// `kui_frame_finish`.
+/// through `kui_take_window_command`; the app hears nothing of them,
+/// since this declaration names no message (`kui_window_declare_with`
+/// does). A window the user closed (`kui_window_closed`) stays closed
+/// while still declared: stop declaring it, then declare it again. Call
+/// between `kui_frame_begin` and `kui_frame_finish`.
 ///
 /// A `cfg` with `kind = KUI_WINDOW_KIND_POPUP` (start from
 /// `KUI_WINDOW_POPUP_INIT`) declares a menu surface instead: borderless,
@@ -81,22 +81,59 @@ pub extern "C" fn kui_take_window_command(ptr: *mut KuiCtx, out: *mut KuiWindowC
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_window_declare(ptr: *mut KuiCtx, name: KuiStr, cfg: *const KuiWindowConfig) {
     guard((), || {
-        if let Some(c) = unsafe { ctx(ptr) } {
-            let raw = unsafe { cfg.as_ref() };
-            let cfg = window_config_of(raw);
-            let name = kstr(name);
-            // A kind this build does not have degrades to `Normal` (see
-            // `window_config_of`) — but silently it would read as the popup
-            // having shipped, so the degradation says so.
-            if let Some(k) = raw
-                .map(|c| c.kind)
-                .filter(|k| *k != KUI_WINDOW_KIND_NORMAL && *k != KUI_WINDOW_KIND_POPUP)
-            {
-                c.core().warn(kui_core::diag::unknown_window_kind(&name, k));
-            }
-            c.core().declare_window(&name, cfg);
-        }
+        declare(ptr, name, cfg, kui_core::WindowLifecycle::default());
     });
+}
+
+/// [`kui_window_declare`], and the messages the window's lifecycle arrives
+/// as (ADR 0048), the `onWindow` and `onDismiss` of its `windows` entry:
+/// its opening and closing as `on_window` with `window: {phase:
+/// "opened"|"closed", id}` in it, on whichever window's frame noticed, and
+/// a popup's dismissal (`kui_window_dismissed`) as `on_dismiss` with
+/// `dismiss: {reason, id}`. The message names the window, so the data does
+/// not. Read on every declaration, unlike `cfg`; a closed window's are the
+/// last ones declared. Consumes both (NULL for one the app does not
+/// hear), also when the call is refused, as `kui_select_with` does.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_window_declare_with(
+    ptr: *mut KuiCtx,
+    name: KuiStr,
+    cfg: *const KuiWindowConfig,
+    on_window: *mut KuiValue,
+    on_dismiss: *mut KuiValue,
+) {
+    // Taken before anything can refuse, so a refused call frees them too.
+    let lifecycle = kui_core::WindowLifecycle {
+        on_window: take_msg(on_window),
+        on_dismiss: take_msg(on_dismiss),
+    };
+    guard((), || {
+        declare(ptr, name, cfg, lifecycle);
+    });
+}
+
+fn declare(
+    ptr: *mut KuiCtx,
+    name: KuiStr,
+    cfg: *const KuiWindowConfig,
+    lifecycle: kui_core::WindowLifecycle,
+) {
+    let Some(c) = (unsafe { ctx(ptr) }) else {
+        return;
+    };
+    let raw = unsafe { cfg.as_ref() };
+    let cfg = window_config_of(raw);
+    let name = kstr(name);
+    // A kind this build does not have degrades to `Normal` (see
+    // `window_config_of`) — but silently it would read as the popup
+    // having shipped, so the degradation says so.
+    if let Some(k) = raw
+        .map(|c| c.kind)
+        .filter(|k| *k != KUI_WINDOW_KIND_NORMAL && *k != KUI_WINDOW_KIND_POPUP)
+    {
+        c.core().warn(kui_core::diag::unknown_window_kind(&name, k));
+    }
+    c.core().declare_window_with(&name, cfg, lifecycle);
 }
 
 /// Asks the driver to resize `window` to `w`x`h` logical px. A request and
@@ -168,8 +205,10 @@ pub extern "C" fn kui_ctx_window_name(ptr: *mut KuiCtx, out: *mut KuiStr) -> boo
 
 /// A host reports that window `id` was asked to go away: a press landed
 /// outside it (`KUI_DISMISS_OUTSIDE`), or Escape reached it
-/// (`KUI_DISMISS_ESCAPE`). The app gets `{kind:"dismiss", reason, name,
-/// id}` from `kui_poll_event` and **nothing closes** — exactly what a
+/// (`KUI_DISMISS_ESCAPE`). The app gets the window's `on_dismiss` message
+/// (`kui_window_declare_with`) with `dismiss: {reason, id}` in it from
+/// `kui_poll_event`, or nothing when it declared none, and **nothing
+/// closes** — exactly what a
 /// `modal` node's dismissal does, one level up: only the app can stop
 /// declaring the window, and it does that on the frame it decides to. So a
 /// dropdown that graduates from a modal float to a popup window changes
@@ -197,7 +236,8 @@ pub extern "C" fn kui_window_dismissed(ptr: *mut KuiCtx, id: u32, reason: u32) {
 /// A host reports that the OS closed window `id` — its close button, the
 /// window manager. The window stays closed while its name is still
 /// declared (see `kui_window_declare`), whatever only it declared closes
-/// with it, and the app gets `{kind:"window", phase:"closed", name, id}`
+/// with it, and the app gets its last-declared `on_window` message
+/// (`kui_window_declare_with`) with `window: {phase: "closed", id}` in it
 /// from `kui_poll_event`. Nothing happens for `KUI_WINDOW_MAIN` or for a
 /// window already closed by the diff.
 #[unsafe(no_mangle)]

@@ -246,7 +246,7 @@ impl App for Motion {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.as_str() {
+        match ev.message::<String>().as_deref() {
             Some("race") => self.far = !self.far,
             Some("flip") => self.right = !self.right,
             _ => {

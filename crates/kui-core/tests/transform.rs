@@ -7,7 +7,7 @@
 
 use std::f32::consts::TAU;
 
-use kui_core::testing::{click_at, hover, kinds, solids};
+use kui_core::testing::{click_at, hover, messages, solids};
 use kui_core::{
     Clip, Color, Core, Easing, Enter, FloatConfig, Keyframe, NO_CLIP, NodeSpec, Quad, Rect, Size,
     Transform, Transition, Vec2,
@@ -277,7 +277,7 @@ fn a_turned_box_is_hit_where_it_is_drawn() {
     build(&mut core);
     // Drawn as 50 wide and 100 tall about (70, 45): x 45..95, y -5..95.
     // Inside the drawn box but outside the layout rect (y 20..70).
-    assert_eq!(kinds(&click_at(&mut core, 85.0, 10.0)), vec!["card"]);
+    assert_eq!(messages(&click_at(&mut core, 85.0, 10.0)), vec!["card"]);
     // Inside the layout rect but outside the drawn box.
     assert!(click_at(&mut core, 25.0, 25.0).is_empty());
     // Hover reads the same geometry.
@@ -299,7 +299,7 @@ fn a_rounded_turned_box_still_misses_its_corner() {
     // corner turned: (120, 20) → (95, -5)... just inside it, in the arc's
     // dead zone, misses; the middle of that edge hits.
     assert!(click_at(&mut core, 93.0, -3.0).is_empty());
-    assert_eq!(kinds(&click_at(&mut core, 93.0, 45.0)), vec!["card"]);
+    assert_eq!(messages(&click_at(&mut core, 93.0, 45.0)), vec!["card"]);
 }
 
 #[test]
@@ -329,7 +329,7 @@ fn a_child_inside_a_turned_clipper_is_hit_inside_the_inner_clip_only() {
     let inside = clip.transform.apply(Vec2::new(70.0, 45.0));
     let past = clip.transform.apply(Vec2::new(170.0, 45.0));
     assert_eq!(
-        kinds(&click_at(&mut core, inside.x, inside.y)),
+        messages(&click_at(&mut core, inside.x, inside.y)),
         vec!["wide"]
     );
     assert!(click_at(&mut core, past.x, past.y).is_empty());

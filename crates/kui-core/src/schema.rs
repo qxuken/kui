@@ -183,6 +183,12 @@ pub const P_ITERATIONS: u32 = 131;
 pub const P_BOLD: u32 = 132;
 pub const P_OVER_SIBLINGS: u32 = 133;
 pub const P_INITIAL_LETTER: u32 = 134;
+pub const P_ON_SUBMIT: u32 = 135;
+pub const P_ON_CANCEL: u32 = 136;
+pub const P_ON_BOUNDARY: u32 = 137;
+pub const P_ON_MENU: u32 = 138;
+pub const P_ON_SELECTION_RANGE: u32 = 139;
+pub const P_WINDOW_EVENTS: u32 = 140;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -412,13 +418,14 @@ pub enum Kind {
     Max,
     /// An arbitrary message payload (a `Value`). Binary: strref to JSON.
     Msg,
-    /// A message merged into the core's own event under `tag` (`onDrag`,
-    /// `onKey`, `onHover`, `onLayout`). Parsed and carried exactly like a
-    /// `Msg`, but null is a legal value: the node still gets the behaviour
-    /// (a key sink, a drag source) and its events simply carry no `tag` —
-    /// so an app whose messages are a typed union needs no inert member
-    /// just to name a sink.
-    Tag,
+    /// A handler: the message a node event arrives as, with the event's
+    /// data in it under the event's name (`onDrag`, `onKey`, `onHover`,
+    /// `onLayout`; ADR 0047). Parsed and carried exactly like a `Msg`, but
+    /// null is a legal value: the node still gets the behaviour (a key
+    /// sink, a drag source) and its events arrive as the data's field
+    /// alone — so an app whose messages are a typed union needs no inert
+    /// member just to name a sink.
+    Handler,
     /// A plain string (a name, not a message). Binary: strref.
     Str,
     /// A font family: one of the stock names (`FAMILIES`) or an installed
@@ -949,9 +956,9 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "modal",
         id: P_MODAL,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.modal(v)),
-        doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:\"dismiss\", reason:\"escape\"|\"outside\", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on.",
+        doc: "Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside arrives on it as this message with `dismiss: {reason: \"escape\" | \"outside\"}` in it (ADR 0047) — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on.",
     },
     PropDef {
         name: "initialFocus",
@@ -970,23 +977,23 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "onHover",
         id: P_ON_HOVER,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_hover(v)),
-        doc: "Hover tag: the pointer entering/leaving emits {kind:\"hover\", phase:\"enter\"|\"leave\", tag} events.",
+        doc: "Hover handler: the pointer entering or leaving arrives as this message with `hover: {phase: \"enter\" | \"leave\", by}` in it (ADR 0047).",
     },
     PropDef {
         name: "onDrop",
         id: P_ON_DROP,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_drop(v)),
-        doc: "Drop-zone tag (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): files dragged in from the OS over this node emit {kind:\"drop\", phase:\"enter\"|\"move\"|\"leave\"|\"drop\", paths, x, y, tag} — `paths` the OS paths as strings, `x`/`y` the pointer in logical viewport coordinates (absent on `leave`). The zone under the files is the topmost zone by paint order: a node inside a zone is the zone's (a button in it, a field in it), and a node that is no zone and has none enclosing it is looked past, so an overlay shown on `enter` cannot make the zone lose the files. No `leave` follows a `drop`; a drop off every zone is refused by the driver. Implies hover tracking. No access row — a screen-reader user's way in is a button beside the zone. On Windows and Linux the position is the OS cursor at enter and release only, so `move` never fires there.",
+        doc: "Drop-zone handler (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): files dragged in from the OS over this node arrive as this message with `drop: {phase: \"enter\" | \"move\" | \"leave\" | \"drop\", paths, x, y}` in it (ADR 0047) — `paths` the OS paths as strings, `x`/`y` the pointer in logical viewport coordinates (absent on `leave`). The zone under the files is the topmost zone by paint order: a node inside a zone is the zone's (a button in it, a field in it), and a node that is no zone and has none enclosing it is looked past, so an overlay shown on `enter` cannot make the zone lose the files. No `leave` follows a `drop`; a drop off every zone is refused by the driver. Implies hover tracking. No access row — a screen-reader user's way in is a button beside the zone. On Windows and Linux the position is the OS cursor at enter and release only, so `move` never fires there.",
     },
     PropDef {
         name: "onLayout",
         id: P_ON_LAYOUT,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_layout(v)),
-        doc: "Layout tag: the node's laid-out rect arrives as {kind:\"layout\", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key).",
+        doc: "Layout handler: the node's laid-out rect arrives as this message with `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame and whenever it changes (needs a stable key).",
     },
     PropDef {
         name: "onClick",
@@ -998,16 +1005,16 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "onDrag",
         id: P_ON_DRAG,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_drag(v)),
-        doc: "Drag tag: emits {kind:\"drag\", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role=\"line\"` rows they carry `line`, `byte` and `clicks` — see the events table.",
+        doc: "Drag handler: the drag arrives as this message with `drag: {phase, x, y, dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role=\"line\"` rows they carry `line`, `byte` and `clicks` — see the events table.",
     },
     PropDef {
         name: "onKey",
         id: P_ON_KEY,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_key(v)),
-        doc: "Key-sink tag: with key focus held, presses arrive as {kind:\"key\", phase:\"down\", code, ...} events. Releases only with `keyUp` beside it.",
+        doc: "Key sink: with key focus held, presses arrive as this message with `key: {phase: \"down\", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it.",
     },
     PropDef {
         name: "keyUp",
@@ -1026,23 +1033,23 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "onContextMenu",
         id: P_ON_CONTEXT_MENU,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_context_menu(v)),
-        doc: "Context-menu tag: a secondary-button (right) press emits {kind:\"contextmenu\", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and tag, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary.",
+        doc: "Context-menu handler: a secondary-button (right) press arrives on the node as this message with `contextmenu: {x, y}` in it (ADR 0047), at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and message, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary.",
     },
     PropDef {
         name: "onForceClick",
         id: P_ON_FORCE_CLICK,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_force_click(v)),
-        doc: "Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:\"forceclick\", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something.",
+        doc: "Force-click handler: a press that deepens past the second stage of a Force Touch trackpad arrives on the node as this message with `forceclick: {x, y}` in it (ADR 0047), at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something.",
     },
     PropDef {
         name: "onButton",
         id: P_ON_BUTTON,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_button(v)),
-        doc: "Button tag (backlog F105): a press of a non-primary button — middle, secondary, or one past those — emits {kind:\"button\", phase:\"press\", button, x, y, clicks, tag} on the node, and the button is then captured by it: every pointer move while it is held arrives as phase:\"move\" and its release as phase:\"release\", on this node wherever the pointer is. `button` is `\"secondary\"`, `\"middle\"` or a further button's number (3 and up); `x`/`y` are logical viewport coordinates, and on a `cells` grid each event carries `cell: {row, col}` as a click does. Several buttons can be held at once, each its own capture, and a primary drag is untouched. `buttons` says which buttons it claims — all of them unless it narrows them. Asked of the topmost node under the pointer, and when that node claims no such button the press reaches the nearest enclosing node that does, the way a context menu's does: a disabled node's own is skipped and the walk stops at the modal boundary. A claimed secondary press is this event *instead of* a `contextmenu` event and the stock menu (a nearer `onContextMenu` still wins, being the nested declaration). Like every non-primary press it moves no focus, places no caret and touches no selection or scrollbar. For a terminal's middle-click paste, and the mouse reports a program in it asked for.",
+        doc: "Button handler (backlog F105): a press of a non-primary button — middle, secondary, or one past those — arrives on the node as this message with `button: {phase: \"press\", button, x, y, clicks}` in it (ADR 0047), and the button is then captured by it: every pointer move while it is held arrives as phase:\"move\" and its release as phase:\"release\", on this node wherever the pointer is. `button` is `\"secondary\"`, `\"middle\"` or a further button's number (3 and up); `x`/`y` are logical viewport coordinates, and on a `cells` grid each event carries `cell: {row, col}` as a click does. Several buttons can be held at once, each its own capture, and a primary drag is untouched. `buttons` says which buttons it claims — all of them unless it narrows them. Asked of the topmost node under the pointer, and when that node claims no such button the press reaches the nearest enclosing node that does, the way a context menu's does: a disabled node's own is skipped and the walk stops at the modal boundary. A claimed secondary press is this event *instead of* a `contextmenu` event and the stock menu (a nearer `onContextMenu` still wins, being the nested declaration). Like every non-primary press it moves no focus, places no caret and touches no selection or scrollbar. For a terminal's middle-click paste, and the mouse reports a program in it asked for.",
     },
     PropDef {
         name: "buttons",
@@ -1054,9 +1061,9 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "onScroll",
         id: P_ON_SCROLL,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_scroll(v)),
-        doc: "Scroll tag: the wheel over this node emits {kind:\"scroll\", x, y, dx, dy, lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go — except on an axis the node also scrolls (`scrollX`/`scrollY`, its offset the app's to set), where it is answered by its room as a container is, so at its edge a gesture that way passes to the scroller around it (backlog F118) — and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it still takes the axes it scrolls while it can move that way, passing this node the rest — the other axis, and a gesture that begins with that scroller at its limit (`overscroll: \"contain\"` on the scroller keeps it there). The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
+        doc: "Scroll handler: the wheel over this node arrives on it as this message with `scroll: {x, y, dx, dy, lines}` in it (ADR 0047) instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go — except on an axis the node also scrolls (`scrollX`/`scrollY`, its offset the app's to set), where it is answered by its room as a container is, so at its edge a gesture that way passes to the scroller around it (backlog F118) — and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it still takes the axes it scrolls while it can move that way, passing this node the rest — the other axis, and a gesture that begins with that scroller at its limit (`overscroll: \"contain\"` on the scroller keeps it there). The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
     },
     PropDef {
         name: "scrollAxes",
@@ -1380,16 +1387,51 @@ pub const PROPS: &[PropDef] = &[
     PropDef {
         name: "onFocus",
         id: P_ON_FOCUS,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_focus(v)),
-        doc: "Keyboard focus entering or leaving this node's subtree — the node itself, or anything focused inside it — emits `{kind:\"focus\", phase:\"in\"|\"out\", by, tag}` (backlog DX18). `by` is what moved it: `pointer` (a press), `keyboard` (Tab, a key a control answered), `assistive` (a screen reader's request) or `program` (the view or the app — `keyFocus`, `setFocus`, a modal's entry). Reported once the move settles, after the input that made it or at the end of the frame that declared it, so an app hears a pane taking the keyboard instead of diffing the focused key every frame. Leaving is reported innermost first, entering outermost first. It makes nothing focusable or interactive.",
+        doc: "Keyboard focus entering or leaving this node's subtree — the node itself, or anything focused inside it — arrives as this message with `focus: {phase: \"in\" | \"out\", by}` in it (backlog DX18, ADR 0047). `by` is what moved it: `pointer` (a press), `keyboard` (Tab, a key a control answered), `assistive` (a screen reader's request) or `program` (the view or the app — `keyFocus`, `setFocus`, a modal's entry). Reported once the move settles, after the input that made it or at the end of the frame that declared it, so an app hears a pane taking the keyboard instead of diffing the focused key every frame. Leaving is reported innermost first, entering outermost first. It makes nothing focusable or interactive.",
     },
     PropDef {
         name: "onChange",
         id: P_ON_CHANGE,
-        kind: Kind::Tag,
+        kind: Kind::Handler,
         apply: Apply::SpecMsg(|s, v| s.on_change(v)),
-        doc: "A `slider` role's changes (ADR 0034): the core turns a press on the node into the value under the pointer, a drag into the value under it, the arrows and assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step — and emits `{kind:\"change\", value, phase, tag}`: `phase` is `\"move\"` while the pointer holds the slider and `\"end\"` when it lets go or a key moved it. The value is proposed and never applied; the slider moves when the view declares it as `valueNow`. A key that lands where the slider already is proposes nothing. The pointer reads the node's content box along its main axis, so a `dir=\"column\"` slider runs bottom to top. Without it a slider's arrows reach the app as `{kind:\"access\", action}`. Ignored on any other role.",
+        doc: "Changes, as this message with `change` in it (ADR 0047). On a `slider` role (ADR 0034) the core turns a press on the node into the value under the pointer, a drag into the value under it, the arrows and assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step — and proposes it as `change: {value, phase}`: `phase` is `\"move\"` while the pointer holds the slider and `\"end\"` when it lets go or a key moved it. The value is proposed and never applied; the slider moves when the view declares it as `valueNow`. A key that lands where the slider already is proposes nothing. The pointer reads the node's content box along its main axis, so a `dir=\"column\"` slider runs bottom to top. Without it a slider does not move and a key or a reader's request raises `slider-without-handler`. On an editor — an `edit`, or a node with an editor role that draws its own text — every change to the text arrives as `change: {text}`, the whole text after it: typing, a paste, a composition's commit, assistive technology setting the value. Ignored on any other role.",
+    },
+    PropDef {
+        name: "onSubmit",
+        id: P_ON_SUBMIT,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_submit(v)),
+        doc: "Enter in a single-line editor, as this message — a map as declared, any other message under `tag`, none as `{}` (ADR 0047).",
+    },
+    PropDef {
+        name: "onCancel",
+        id: P_ON_CANCEL,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_cancel(v)),
+        doc: "Escape letting go of a focused editor, as this message — a map as declared, any other message under `tag`, none as `{}` (ADR 0047): the keyboard leaves it, as it does for a click elsewhere, and this says it was Escape — a draft abandoned, where `onSubmit` is one confirmed and a plain blur is neither. A field that commits on blur cancels here instead.",
+    },
+    PropDef {
+        name: "onBoundary",
+        id: P_ON_BOUNDARY,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_boundary(v)),
+        doc: "An editing key that met the edge of an editor's text and did nothing, as this message with `boundary: {key, edge, word, doc}` in it (ADR 0047, backlog F145): ↑ on the first line, ← or Backspace at the start (`edge: \"start\"`), ↓ on the last line, → or Delete at the end (`\"end\"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried.",
+    },
+    PropDef {
+        name: "onMenu",
+        id: P_ON_MENU,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_menu(v)),
+        doc: "A choice from a menu opened for this node — a `select`'s, or one `openMenu` named it the target of — as this message with `menu: {role, item}` in it (ADR 0047): `item` is the row's `id`, else its label. The stock right-click menu, whose roles the core performs itself, sends nothing.",
+    },
+    PropDef {
+        name: "onSelectionRange",
+        id: P_ON_SELECTION_RANGE,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_selection_range(v)),
+        doc: "On a `selectable` scope: a copy reached rows a virtual list has not built, as this message with `selectionrange` in it (ADR 0047) — what a list answers by building them.",
     },
     PropDef {
         name: "caret",
@@ -1613,11 +1655,22 @@ pub const CUSTOM: &[CustomProp] = &[
         id: P_WINDOWS,
         jsx_names: &["windows"],
         lua_names: &["windows"],
-        jsx: "`windows={[{ name, kind?, anchor?, width?, height?, activates? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
-        lua: "`windows = { { name=, kind=, anchor=, width=, height=, activates= } }` (root table)",
-        c: "`kui_window_declare`",
-        odin: "`kui.window_declare`",
-        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the app sees `{kind:\"window\", phase, name, id}`. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape raises `{kind:\"dismiss\", reason, name, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.",
+        jsx: "`windows={[{ name, kind?, anchor?, width?, height?, activates?, onWindow?, onDismiss? }]}` (root box only; `windows: (model) => [...]` in the loop config)",
+        lua: "`windows = { { name=, kind=, anchor=, width=, height=, activates=, on_window=, on_dismiss= } }` (root table)",
+        c: "`kui_window_declare`, `kui_window_declare_with`",
+        odin: "`kui.window_declare`, `kui.window_declare_with`",
+        doc: "Declares which windows exist this frame, by stable name (`docs/adr/0004-multi-window.md`). A window opens on the first frame any window's frame declares it — its config is read then and never again, since the user owns its geometry once it exists — and closes on the first frame none does. The driver drains the `Open` / `Close` that result, and the entry's `onWindow` message hears both edges as `window: {phase: \"opened\" | \"closed\", id}` (ADR 0048) — read on every declaration, unlike the config, and for a window that closed the last one declared. A window the user closed does not reopen while it is still declared: stop declaring it, then declare it again. `kind: \"popup\"` makes it a menu surface instead: borderless, off the taskbar, owned by the window that declared it and closed with it, placed in screen coordinates against `anchor` — the `{x, y, w, h}` an `onLayout` node reported — and non-activating unless `activates` says otherwise, so the field that opened it keeps the focus ring while the arrows walk the list. A press outside it or Escape arrives as the entry's `onDismiss` message with `dismiss: {reason, id}` and closes nothing, exactly as a `modal` node's does: stop declaring the window. Reach for a popup only for the placements a float cannot make — a list taller than the window, a menu with nowhere in-window to go, a panel beside the app; everything else stays `fit` plus a `modal` float, which costs one tree instead of an OS surface.",
+    },
+    CustomProp {
+        name: "windowEvents",
+        id: P_WINDOW_EVENTS,
+        jsx_names: &["windowEvents"],
+        lua_names: &["window_events"],
+        jsx: "`windowEvents={{ onResize?, onFocus?, onSystemSettingsChange?, onFonts?, onModifiers?, onOpen? }}` (root box only)",
+        lua: "`window_events = { on_resize=, on_focus=, on_system_settings_change=, on_fonts=, on_modifiers=, on_open= }` (root table)",
+        c: "`kui_root_with` (`KuiWindowEvents`)",
+        odin: "`kui.root_with` (`Window_Events`)",
+        doc: "The messages the window's own events arrive as (ADR 0048), one boxed group on the root rather than six rows on every node: `onResize` hears `resize: {width, height, scale}`, `onFocus` this window gaining or losing the keyboard as `window: {phase: \"focused\" | \"blurred\"}`, `onSystemSettingsChange` `system: {appearance, accent, motion, locale, assistive}`, `onFonts` the system's fonts changing (the message as declared), `onModifiers` `modifiers: {shift, ctrl, alt, super}`, and `onOpen` the OS's documents as `open: {paths}` — read on the main window's root alone, since the OS opens documents to the app. Each arrives as its message with the data in the field named for the event, as a node's handler does. A root that declares no group, or a group that leaves a key out, hears none of those events; `env` reads every fact they report either way. Read from the last frame the window finished, so a resize the next frame begins with arrives as the message the frame before declared. A window's opening and closing are its `windows` entry's (`onWindow`), and the menu bar's choice is the `menuBar` element's (`onMenu`). Declared on any node but the root it is ignored, and `window-events-off-root` says so.",
     },
     CustomProp {
         name: "tooltip",
@@ -2032,6 +2085,7 @@ pub const ELEMENTS: &[ElementDef] = &[
             "keepTab",
             "placeholder",
             "secure",
+            "value",
         ],
         lua_own: &[
             "initial",
@@ -2040,28 +2094,29 @@ pub const ELEMENTS: &[ElementDef] = &[
             "keep_tab",
             "placeholder",
             "secure",
+            "value",
         ],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<edit key initial multiline autofocus keepTab placeholder secure>`, `<input label initial>`",
-        lua: "`edit { key=, initial=, keep_tab=, placeholder=, secure=, … }`, `input { label=, initial= }`",
-        c: "`kui_text_edit`, `kui_text_edit_placeholder`, `kui_text_input`",
-        odin: "`kui.text_edit`, `kui.text_input`",
-        doc: "Retained editor state by key; read it back with `editText(key)` after a `changed` event. `initial` seeds a new editor only — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. The one exception is a field with `wrap` declared (`wrap=\"word\"` or `\"glyph\"`): it folds to its width the way a document does and keeps a field\'s keyboard — Enter still submits, a newline is still never admitted, the caret still opens at the end — so a rename field breaks where the label it renames breaks, and with `width=\"fit\"` plus `maxWidth` it sizes to its wrapped draft on the keystroke frame. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time. A focused editor keeps the keys it acts on — the editing keys, what it types, the clipboard and undo chords — and a chord it does not (⌘N, Ctrl+K) goes to the nearest `onKey` sink above it, as a chord bubbles from a control (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, amended 2026-10-09). `keepTab` makes a field's Tab the app's: Tab and Shift-Tab do not walk the focus ring from it, and the press goes to the sink above it the same way, so a list or an outline built from fields indents on Tab; a `multiline` editor keeps Tab for indentation either way. An arrow, Backspace or Delete that meets the edge of the text emits `boundary` (see the events). `placeholder` is what an empty editor shows where its text would be, in the theme's `faint` — never part of the value, gone with the first character typed or composed, and read as the field's accessible description when it declares none. `secure` makes it a password field (backlog F167): the text is drawn as a bullet (•) per grapheme and measured, hit and selected as the bullets; a copy or a cut from it is refused and a paste taken; no input method composes into it, and it keeps no undo history; the access tree reads it as a `passwordInput` whose value is the bullets; and while it has the keyboard the window asks for secure keyboard entry and the input method off, as `secureInput` and `imeOff` would. `editText` still reads the text. Declare it off on a later frame — an app's show-password toggle — and the same editor draws its text again, the caret where it was; on again, it masks it. A secure editor is a field: `multiline` is ignored, and the word keys and a double click take the whole text, as there are no words to show. In C it is `KUI_EDIT_SECURE`, in Odin `.Secure`.",
+        jsx: "`<edit key initial value multiline autofocus keepTab placeholder secure onChange onSubmit onCancel onBoundary>`, `<input label initial value onChange onSubmit onCancel>`",
+        lua: "`edit { key=, initial=, value=, keep_tab=, placeholder=, secure=, on_change=, … }`, `input { label=, initial=, value=, on_change=, on_submit=, on_cancel= }`",
+        c: "`kui_text_edit`, `kui_text_edit_placeholder`, `kui_text_input`, `kui_text_input_with`",
+        odin: "`kui.text_edit`, `kui.text_input`, `kui.text_input_with`",
+        doc: "Retained editor state by key. Its edits arrive as its `onChange` message with `change: {text}` in it, the whole text after the edit; Enter as its `onSubmit` message and Escape as its `onCancel` one; an editor that declares none of them hears nothing (ADR 0047). `value` is the text declared every frame: where it differs from the editor's, the editor is brought to it as a splice that keeps the caret, and a correction made in the `update` the edit reached joins that edit's undo step — so the model is the editor's, with `onChange` storing the text (without it the field reverts every keystroke, `edit-value-without-handler`). `initial` seeds a new editor only, and is never read beside `value` (`edit-value-and-initial`) — a key declared again keeps the draft the user typed, and `setEditText(name, text)` is what resets one (it leaves the caret at the end and clears undo). Name it by the label its `key` prop declares — `setEditText(\'note\', text)` — or by the hex key an event carried. It reaches an editor that does not exist yet: the text is held for the frame that declares that name and seeds it there, over `initial`, so the `update` that opens a rename field can fill it in the same turn, which is what the label spelling is for — the hex key comes from an event an editor being opened has not fired. A name nothing declares on that frame drops its text with an `edit-text-without-editor` warning. A single-line editor is a field and a `multiline` one a document, which decides how each is laid out as well as how it reads: a field takes one line whatever its box, sizes to the text it holds when its width is `fit`, and scrolls that line under the caret when it is not, while a document wraps to its box. The one exception is a field with `wrap` declared (`wrap=\"word\"` or `\"glyph\"`): it folds to its width the way a document does and keeps a field\'s keyboard — Enter still submits, a newline is still never admitted, the caret still opens at the end — so a rename field breaks where the label it renames breaks, and with `width=\"fit\"` plus `maxWidth` it sizes to its wrapped draft on the keystroke frame. A single-line editor opens with the caret after its seeded text, as a native field does; a multiline one is a document and opens at its top — a held `setEditText` is the call, not a seed, so it opens at the end either way. State is kept while the key is declared; an undeclared one is kept until the budget needs the room (256 undeclared editors, longest-undeclared evicted first). `autofocus` asks once: the editor takes focus on the frame the flag starts being declared — a new editor, or one whose flag just turned on — and only while nothing holds focus, so a blur afterwards stands and a focused control is never robbed (`docs/adr/0022-focus-regions.md`, decision 9); `focus(key)` is the call for taking it at any other time. A focused editor keeps the keys it acts on — the editing keys, what it types, the clipboard and undo chords — and a chord it does not (⌘N, Ctrl+K) goes to the nearest `onKey` sink above it, as a chord bubbles from a control (`docs/adr/0011-keys-bubble-to-the-enclosing-sink.md`, amended 2026-10-09). `keepTab` makes a field's Tab the app's: Tab and Shift-Tab do not walk the focus ring from it, and the press goes to the sink above it the same way, so a list or an outline built from fields indents on Tab; a `multiline` editor keeps Tab for indentation either way. An arrow, Backspace or Delete that meets the edge of the text emits `boundary` (see the events). `placeholder` is what an empty editor shows where its text would be, in the theme's `faint` — never part of the value, gone with the first character typed or composed, and read as the field's accessible description when it declares none. `secure` makes it a password field (backlog F167): the text is drawn as a bullet (•) per grapheme and measured, hit and selected as the bullets; a copy or a cut from it is refused and a paste taken; no input method composes into it, and it keeps no undo history; the access tree reads it as a `passwordInput` whose value is the bullets; and while it has the keyboard the window asks for secure keyboard entry and the input method off, as `secureInput` and `imeOff` would. `editText` still reads the text. Declare it off on a later frame — an app's show-password toggle — and the same editor draws its text again, the caret where it was; on again, it masks it. A secure editor is a field: `multiline` is ignored, and the word keys and a double click take the whole text, as there are no words to show. In C it is `KUI_EDIT_SECURE`, in Odin `.Secure`.",
     },
     ElementDef {
         name: "select",
         jsx_own: &["label", "options", "current"],
         lua_own: &["label", "options", "current"],
-        // Its look is its own, like the button's, and it has no rows of
-        // the box's to read: the three it takes are all its own.
-        jsx_rows: Some(&[]),
-        lua_rows: Some(&[]),
-        jsx: "`<select label options={[…]} current>`",
-        lua: "`dropdown { label=, options={…}, current= }`",
-        c: "`kui_select`",
-        odin: "`kui.select`",
-        doc: "The stock select (`widgets::select_items`, backlog F72): a field showing the choice in force that, clicked, opens the core's own menu of the options under it with the current one checked — the menu a right-click opens, drawn in the frame or the platform's where the host shows menus itself, dismissed by Escape or a press outside, its rows walked by the arrows and read as a menu. `label` is the key and the accessible name both; `options` is a list whose entries are strings (an option by its label, posting it) or menu-item objects `{ label, id, enabled }` (posting `id`), and a `{ role: \"separator\" }` is a separator; `current` is the index in force, counted from 0 in JSX and C and from 1 in Lua, or none — one past the options or on a separator is none, with a `select-current-ignored` warning on the field; an empty `options` is refused, and a key of an option object no row reads (`disabled`, where the key is `enabled`) is an `unknown-prop` warning. The app holds no open state: the choice arrives as the `menu` event a menu row posts, on the field's key — `{kind: \"menu\", role: \"custom\", item: <the option>}` — and drawing the field again with the new `current` is the whole loop. A reader hears a button named by the field, described by its choice, expanded while the menu is open. Its look is its spec, so it reads no other row: a layout, paint or access row on it is dropped with an `unknown-prop` warning. Lua spells it `dropdown`, since `select` is Lua's own.",
+        // Its look is its own, like the button's, and of the box's rows it
+        // reads one: the message a choice arrives as.
+        jsx_rows: Some(&["onMenu"]),
+        lua_rows: Some(&["on_menu"]),
+        jsx: "`<select label options={[…]} current onMenu>`",
+        lua: "`dropdown { label=, options={…}, current=, on_menu= }`",
+        c: "`kui_select`, `kui_select_with`",
+        odin: "`kui.select`, `kui.select_with`",
+        doc: "The stock select (`widgets::select_items`, backlog F72): a field showing the choice in force that, clicked, opens the core's own menu of the options under it with the current one checked — the menu a right-click opens, drawn in the frame or the platform's where the host shows menus itself, dismissed by Escape or a press outside, its rows walked by the arrows and read as a menu. `label` is the key and the accessible name both; `options` is a list whose entries are strings (an option by its label, posting it) or menu-item objects `{ label, id, enabled }` (posting `id`), and a `{ role: \"separator\" }` is a separator; `current` is the index in force, counted from 0 in JSX and C and from 1 in Lua, or none — one past the options or on a separator is none, with a `select-current-ignored` warning on the field; an empty `options` is refused, and a key of an option object no row reads (`disabled`, where the key is `enabled`) is an `unknown-prop` warning. The app holds no open state: the choice arrives as the field's `onMenu` message with `menu: {role: \"custom\", item: <the option>}` in it, on the field's key — a field that declares no `onMenu` still reports, as `{menu: …}` alone (ADR 0047) — and drawing the field again with the new `current` is the whole loop. A reader hears a button named by the field, described by its choice, expanded while the menu is open. Its look is its spec, so it reads no other row: a layout, paint or access row on it is dropped with an `unknown-prop` warning. Lua spells it `dropdown`, since `select` is Lua's own.",
     },
     ElementDef {
         name: "checkbox",
@@ -2121,7 +2176,7 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua: "`slider { label=, value_now=, value_min=, value_max=, value_step=, value_text=, on_change=, width=, … }`",
         c: "`kui_slider`",
         odin: "`kui.slider`",
-        doc: "The stock slider (`widgets::slider_with`, ADR 0034): a track, a fill to `valueNow` and a thumb, as wide as a menu (`width` sizes it), keyed by its `label`, which is also its accessible name. With `onChange` the core does the arithmetic: a press proposes the value under the pointer, a drag each new step, the arrows one `valueStep`, PageUp / PageDown ten, Home / End the ends, all clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step, as `{kind:\"change\", value, phase:\"move\"|\"end\", tag}`. The value is proposed, never applied: the view stores it and declares it as `valueNow`. Its look is its spec, so the rows it reads are the value rows, the access rows and its width.",
+        doc: "The stock slider (`widgets::slider_with`, ADR 0034): a track, a fill to `valueNow` and a thumb, as wide as a menu (`width` sizes it), keyed by its `label`, which is also its accessible name. With `onChange` the core does the arithmetic: a press proposes the value under the pointer, a drag each new step, the arrows one `valueStep`, PageUp / PageDown ten, Home / End the ends, all clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step, as its `onChange` message with `change: {value, phase: \"move\" | \"end\"}` in it (ADR 0047). The value is proposed, never applied: the view stores it and declares it as `valueNow`. Its look is its spec, so the rows it reads are the value rows, the access rows and its width.",
     },
     ElementDef {
         name: "image",
@@ -2242,15 +2297,15 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "menuBar",
-        jsx_own: &["menu"],
-        lua_own: &["menu"],
+        jsx_own: &["menu", "onMenu"],
+        lua_own: &["menu", "on_menu"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<menuBar menu={[{ label, items: [{ label, id?, role?, accel?, enabled?, checked?, items? }] }]}/>`",
-        lua: "`menu_bar { menu = { { label=, items= { { label=, id=, role=, accel=, enabled=, checked=, items= } } } } }`",
-        c: "`kui_menu_bar`",
-        odin: "`kui.menu_bar`",
-        doc: "The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `menu` is what it *is*, and where this element sits is where its titles go when they have to be drawn in the window. One call and not two, because declaring the menu and placing the strip are one decision. It draws **nothing** where the platform owns the bar — macOS, where the driver hands the same declaration to the OS — so the frame has still said what the app's menu is and the strip simply is not there; that is the contract `windowButtons` has under native decorations, and it is what makes one view portable. Its rows are the rows a context menu has: the same `role`s the core performs itself (`copy`, `paste`, `selectAll`, `cut`, `lookUp`), the same `id` payload, the same `accel` text, plus `checked` for a setting — and choosing one posts the same `{kind:\"menu\", role, item}` event, so an app handles one thing whichever menu it came from. Declared every frame and diffed: an unchanged menu costs a comparison, and an empty list takes it away. An accelerator kui can parse is rewritten into the platform's spelling, so `\"mod+s\"` reads as `⌘S` on macOS and `Ctrl+S` elsewhere and binds that key in the platform's own bar. On macOS the first menu is the application menu, which the OS titles with the app's own name whatever the label says. While a menu is open the bar is the frame's modal scope, so hovering across the titles moves the open menu, a press on the open title closes it, and Escape or a press in the app below closes it and reaches nothing else.",
+        jsx: "`<menuBar menu={[{ label, items: [{ label, id?, role?, accel?, enabled?, checked?, items? }] }]} onMenu={msg}/>`",
+        lua: "`menu_bar { menu = { { label=, items= { { label=, id=, role=, accel=, enabled=, checked=, items= } } } }, on_menu = msg }`",
+        c: "`kui_menu_bar`, `kui_menu_bar_with`",
+        odin: "`kui.menu_bar`, `kui.menu_bar_with`",
+        doc: "The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `menu` is what it *is*, and where this element sits is where its titles go when they have to be drawn in the window. One call and not two, because declaring the menu and placing the strip are one decision. It draws **nothing** where the platform owns the bar — macOS, where the driver hands the same declaration to the OS — so the frame has still said what the app's menu is and the strip simply is not there; that is the contract `windowButtons` has under native decorations, and it is what makes one view portable. Its rows are the rows a context menu has: the same `role`s the core performs itself (`copy`, `paste`, `selectAll`, `cut`, `lookUp`), the same `id` payload, the same `accel` text, plus `checked` for a setting — and choosing one arrives as the bar's own `onMenu` message with `menu: {role, item}` in it (ADR 0048), the field a context menu's choice carries on its target's `onMenu`; a bar that declares no `onMenu` posts nothing. Declared every frame and diffed: an unchanged menu costs a comparison, and an empty list takes it away. An accelerator kui can parse is rewritten into the platform's spelling, so `\"mod+s\"` reads as `⌘S` on macOS and `Ctrl+S` elsewhere and binds that key in the platform's own bar. On macOS the first menu is the application menu, which the OS titles with the app's own name whatever the label says. While a menu is open the bar is the frame's modal scope, so hovering across the titles moves the open menu, a press on the open title closes it, and Escape or a press in the app below closes it and reaches nothing else.",
     },
     ElementDef {
         name: "windowButtons",
@@ -2298,13 +2353,22 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua: "`audio { src=, loop=, volume=, paused=, finish=, tag= }`",
         c: "`kui_audio`",
         odin: "`kui.audio`",
-        doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings back `{kind:\"sound\", phase:\"ended\", tag}`. Draws nothing. `finish` changes what *gone* means: the node's removal releases the playback rather than stopping it, so a one-shot plays to its end and the view need not know the asset's length to declare the node for it (a loop still stops on removal — there is no end to reach — and a paused playback released has nothing to finish). Without it, the way to play a sound whole is to hold the node declared until the `tag`'s `ended` message arrives. A released playback is not free: it holds one of the device's 128 voices until its file ends, and the 129th play is refused — reported as a `playback-refused` warning and, for a `tag`, `phase: \"refused\"` rather than a wait that never returns. In the app's units, voices held = sound length × release rate: a 1.4 s chime released four times a second holds 6 of the 128 at any moment, a 10 s ambience released once a second holds 10, and every playback still declared (a loop included) counts beside them — a `refused` `sound` event is what arriving at 128 sounds like.",
+        doc: "A playback retained by node key: present = playing (once, or looped), gone = stopped; `volume` / `paused` apply live, a changed `src` restarts; a `tag` brings that message back with `sound: {phase: \"ended\", playback}` in it (ADR 0047). Draws nothing. `finish` changes what *gone* means: the node's removal releases the playback rather than stopping it, so a one-shot plays to its end and the view need not know the asset's length to declare the node for it (a loop still stops on removal — there is no end to reach — and a paused playback released has nothing to finish). Without it, the way to play a sound whole is to hold the node declared until the `tag`'s `ended` message arrives. A released playback is not free: it holds one of the device's 128 voices until its file ends, and the 129th play is refused — reported as a `playback-refused` warning and, for a `tag`, `phase: \"refused\"` rather than a wait that never returns. In the app's units, voices held = sound length × release rate: a 1.4 s chime released four times a second holds 6 of the 128 at any moment, a 10 s ambience released once a second holds 10, and every playback still declared (a loop included) counts beside them — a `refused` `sound` event is what arriving at 128 sounds like.",
     },
 ];
 
-/// An event kind hosts receive, with its payload shape.
+/// An event kind hosts receive: what delivers it, where its data rides,
+/// and the shape it arrives in (ADR 0047). Every [`crate::input::EventKind`]
+/// has a row, in the same order.
 pub struct EventDef {
     pub kind: &'static str,
+    /// What declares the message the event arrives as: a handler row
+    /// (`onDrag`), a key of the root's `windowEvents` group or a `windows`
+    /// entry (ADR 0048), or a door (`requestFiles`).
+    pub handler: &'static str,
+    /// The field of that message the event's data rides under — its kind
+    /// — or `None` for an event that carries no data.
+    pub field: Option<&'static str>,
     pub payload: &'static str,
     pub doc: &'static str,
 }
@@ -2312,153 +2376,213 @@ pub struct EventDef {
 pub const EVENTS: &[EventDef] = &[
     EventDef {
         kind: "click",
-        payload: "the `onClick` payload as-is",
-        doc: "A press and release on the node (suppressed when a drag moved past the slop). A map payload gains fields where the node can say more: `cell: {row, col}` on a `cells` grid, and inside an `onKey` sink that draws `role=\"line\"` rows, `line`, `byte`, `inside` and `clicks` as a `drag` inside one carries them.",
+        handler: "onClick",
+        field: Some("click"),
+        payload: "the `onClick` message as a map (a non-map one under `tag`); `click: { cell?: { row, col }, line?, byte?, inside?, clicks? }` in it where the node can say more",
+        doc: "A press and release on the node (suppressed when a drag moved past the slop). A plain click arrives as declared — a map as it is, any other message under `tag`. Where the node can say more the message gains `click`: `cell: {row, col}` on a `cells` grid, and inside an `onKey` sink that draws `role=\"line\"` rows, `line`, `byte`, `inside` and `clicks` as a `drag` inside one carries them. A message that is not a map is kept under `tag` beside it.",
     },
     EventDef {
         kind: "drag",
-        payload: "`{ kind: \"drag\", phase: \"start\" | \"move\" | \"end\", x, y, dx, dy, parent: { x, y, w, h }, tag }`",
-        doc: "A pointer-captured drag on an `onDrag` node. `x`/`y` are where the pointer is; `dx`/`dy` are its displacement **from the press point**, in every phase — `start` carries zero, a `move` how far the pointer is from where it pressed, `end` the whole distance — so a handler sets `value = start + dx` rather than summing deltas, and can commit from `end` alone. Nothing is dropped under the click slop (3 px, measured from the press): the first `move` already carries the whole distance. `parent` is the container rect, so fractions need no geometry query. On a `cells` grid every phase also carries `cell: {row, col}`. Inside an `onKey` sink that draws `role=\"line\"` rows — an editor the app owns — every phase carries `line` (the ordinal among the sink's lines, the numbering its `access` events use), `byte` (where the point falls in that line's text, what `textHit` would answer) and `clicks` (the press's count), so click-to-caret, drag-select and double-click-word are arithmetic on the event with no query and no frame of lag; a point above the first line is the first, below the last the last, and one in a `role=\"none\"` gutter is the line beside it, and `inside` says whether the point is within that line's own box at all — false above, below and in the margin beside a row, so a margin gesture (block selection) is told from a press on the text without comparing `x` to a rect. Nothing is added where the sink draws no lines.",
+        handler: "onDrag",
+        field: Some("drag"),
+        payload: "`drag: { phase: \"start\" | \"move\" | \"end\", x, y, dx, dy, parent: { x, y, w, h } }` in the `onDrag` message",
+        doc: "A pointer-captured drag on an `onDrag` node. `x`/`y` are where the pointer is; `dx`/`dy` are its displacement **from the press point**, in every phase — `start` carries zero, a `move` how far the pointer is from where it pressed, `end` the whole distance — so a handler sets `value = start + dx` rather than summing deltas, and can commit from `end` alone. Nothing is dropped under the click slop (3 px, measured from the press): the first `move` already carries the whole distance. `parent` is the container rect, so fractions need no geometry query. On a `cells` grid every phase also carries `cell: {row, col}`. Inside an `onKey` sink that draws `role=\"line\"` rows — an editor the app owns — every phase carries `line` (the ordinal among the sink's lines, the numbering its `select` events use), `byte` (where the point falls in that line's text, what `textHit` would answer) and `clicks` (the press's count), so click-to-caret, drag-select and double-click-word are arithmetic on the event with no query and no frame of lag; a point above the first line is the first, below the last the last, and one in a `role=\"none\"` gutter is the line beside it, and `inside` says whether the point is within that line's own box at all — false above, below and in the margin beside a row, so a margin gesture (block selection) is told from a press on the text without comparing `x` to a rect. Nothing is added where the sink draws no lines.",
     },
     EventDef {
         kind: "key",
-        payload: "`{ kind: \"key\", phase: \"down\" | \"up\", code, physical, shift, ctrl, alt, super, text, repeat, location, caps_lock, num_lock, tag }`",
+        handler: "onKey",
+        field: Some("key"),
+        payload: "`key: { phase: \"down\" | \"up\", code, physical, shift, ctrl, alt, super, text, repeat, location, caps_lock, num_lock }` in the `onKey` message",
         doc: "A key press or release on the focused `onKey` sink; `code` is a character or a name (`\"left\"`, `\"f5\"`) and is what a keymap binds against. `physical` is the US-QWERTY key at that *position*, spelled the same way — bind it instead when you want the finger rather than the label (WASD stays a square on every layout). `code` follows the layout while the layout speaks ASCII, so a chord lands on the key the user can see (Dvorak's `⌥v` on the key printed V); on a layout that does not (Cyrillic, Greek, Hebrew, Arabic) the position's US key stands in, as Shift prints it (`J`, `:`; unshifted under Alt, as a chord reads it), so a Latin keymap keeps matching instead of matching nothing. A shifted letter arrives as the upper-case letter — `Z` with `shift` set for ⇧⌘Z, `physical` staying `z` — so a keymap that binds letters folds a one-character `code` to lower case under a chord; a headless press is spelled the same way, since no door re-spells it (`\"z\"` with `shift` is a chord no keyboard produces). `repeat` marks a press the OS auto-repeated; `text` is what the press would insert — always the layout's own character — and is null on every release. A key only comes up where it went down: a release whose press the sink never got is dropped, and focus leaving while a key is held delivers the `up` first, so a held-key binding (WASD, press-and-hold) cannot be left stuck down. `location` says which of a key's twins it was (backlog F108): `\"left\"` or `\"right\"` for a modifier, `\"numpad\"` for the keypad's digits, operators, Enter and (Num Lock off) arrows — `code` still `\"1\"`, `\"enter\"` — else `\"standard\"`; `caps_lock` and `num_lock` what the lock keys held. The keys F13–F35, `printscreen`, `pause`, `menu`, `clear` and the media keys (`mediaplaypause`, `volumeup`, …) are keys like any other; the modifier and lock keys themselves (`shift`, `ctrl`, `alt`, `super`, `capslock`, `numlock`, `scrolllock`) reach only a sink that says `modifierKeys`.",
     },
     EventDef {
         kind: "text",
-        payload: "`{ kind: \"text\", text, pasted?: true, concealed?: true, transient?: true, tag }`",
-        doc: "Text an IME committed at the end of a composition — or the clipboard's text, when the app asked for a paste with `requestPaste` / `request_paste` / `kui_request_paste` — on the focused `onKey` sink (or the nearest one above the focused control, or the root sink with nothing focused) — the one committed text the platform never reports as a key press carrying `text`, so a custom editor inserts it as it would a key's `text`. Plain typing does not arrive this way: the `key` event already carries what the press would insert, and a sink hearing both would type every character twice. A focused `<edit>` takes the commit itself and reports `changed`. A paste's answer carries `pasted: true` (backlog DX14) — an answer being the host's paste reply, or any commit while a paste is outstanding — so a sink that asked tells the clipboard's text from an IME's commit without keeping its own flag; an IME commit has no `pasted`. It also says what the pasteboard marked it (backlog F84): `concealed: true` for a secret — a password manager's copy, which a view should not show, log or keep — and `transient: true` for text not to keep in a history, after the nspasteboard.org convention (on Windows the clipboard's exclusion formats); a marker that is not set is absent, never false. The runner reads them on macOS and Windows; on Linux, and from a host that answers with a bare commit, a paste arrives unmarked.",
+        handler: "onKey",
+        field: Some("text"),
+        payload: "`text: { text, pasted?: true, concealed?: true, transient?: true }` in the `onKey` message",
+        doc: "Text an IME committed at the end of a composition — or the clipboard's text, when the app asked for a paste with `requestPaste` / `request_paste` / `kui_request_paste` — on the focused `onKey` sink (or the nearest one above the focused control, or the root sink with nothing focused) — the one committed text the platform never reports as a key press carrying `text`, so a custom editor inserts it as it would a key's `text`. Plain typing does not arrive this way: the `key` event already carries what the press would insert, and a sink hearing both would type every character twice. A focused `<edit>` takes the commit itself and reports it as its `change`. Assistive technology replacing a custom editor's selection arrives this way too: text to insert over the selection, as a paste is (ADR 0047). A paste's answer carries `pasted: true` (backlog DX14) — an answer being the host's paste reply, or any commit while a paste is outstanding — so a sink that asked tells the clipboard's text from an IME's commit without keeping its own flag; an IME commit has no `pasted`. It also says what the pasteboard marked it (backlog F84): `concealed: true` for a secret — a password manager's copy, which a view should not show, log or keep — and `transient: true` for text not to keep in a history, after the nspasteboard.org convention (on Windows the clipboard's exclusion formats); a marker that is not set is absent, never false. The runner reads them on macOS and Windows; on Linux, and from a host that answers with a bare commit, a paste arrives unmarked.",
     },
     EventDef {
         kind: "preedit",
-        payload: "`{ kind: \"preedit\", text, cursor: [start, end] | null, tag }`",
+        handler: "onKey",
+        field: Some("preedit"),
+        payload: "`preedit: { text, cursor: [start, end] | null }` in the `onKey` message",
         doc: "An in-progress IME composition on the focused `onKey` sink: `text` is the uncommitted string to show inline at the caret, `cursor` the byte range inside it the IME's own caret covers (null when it does not say), and an empty `text` means the composition ended without a commit, so what was shown goes away. The OS candidate window is anchored for you: the `line` carrying `caret` says where. A focused `<edit>` draws the composition itself.",
     },
     EventDef {
+        kind: "select",
+        handler: "onKey",
+        field: Some("select"),
+        payload: "`select: { anchor: { line, offset }, focus: { line, offset } }` in the `onKey` message",
+        doc: "Assistive technology asked a custom editor — a node with an editor role that draws its own `role=\"line\"` rows — to set its selection (ADR 0047): `anchor` and `focus` as line ordinals and byte offsets into those lines' text. It reaches the sink the editor types into, its own `onKey` or the nearest one above it. The app owns the selection, so nothing moves until the view draws it.",
+    },
+    EventDef {
         kind: "selectionrange",
-        payload: "`{ kind: \"selectionrange\", from: { index, byte }, to: { index, byte } }` on the scope",
-        doc: "A copy reached rows of a `selectable` virtual list that no frame built (`docs/adr/0017-selection-as-a-scope.md`, tier 3): the core cannot read text it never laid out, so it asks the app for the range — `index` is a row's data index (its `index` prop), `byte` an offset into that row's text, past the row's length for \"the whole row\" (a Select All over a list that declared `rowCount` ends that way, on its last row) — and the app answers with `answerSelectionRange(text)` / `answer_selection_range` / `kui_answer_selection_range`, which is what reaches the clipboard as a `setClipboard` action. Raised only while a copy is outstanding (`requestCopy()` answered `asked`, or the runner's Cmd/Ctrl-C did); a late answer changes nothing. `examples/rust/features/clipboard.rs` and its Node twin show the round trip.",
+        handler: "onSelectionRange",
+        field: Some("selectionrange"),
+        payload: "`selectionrange: { from: { index, byte }, to: { index, byte } }` in the scope's `onSelectionRange` message, or alone",
+        doc: "A copy reached rows of a `selectable` virtual list that no frame built (`docs/adr/0017-selection-as-a-scope.md`, tier 3): the core cannot read text it never laid out, so it asks the app for the range — `index` is a row's data index (its `index` prop), `byte` an offset into that row's text, past the row's length for \"the whole row\" (a Select All over a list that declared `rowCount` ends that way, on its last row) — and the app answers with `answerSelectionRange(text)` / `answer_selection_range` / `kui_answer_selection_range`, which is what reaches the clipboard as a `setClipboard` action. Raised only while a copy is outstanding (`requestCopy()` answered `asked`, or the runner's Cmd/Ctrl-C did); a late answer changes nothing. `examples/rust/features/clipboard.rs` and its Node twin show the round trip. The app asked for the copy, so a scope that declares no `onSelectionRange` still hears it, as the field alone.",
     },
     EventDef {
         kind: "contextmenu",
-        payload: "`{ kind: \"contextmenu\", x, y, tag }`",
+        handler: "onContextMenu",
+        field: Some("contextmenu"),
+        payload: "`contextmenu: { x, y }` in the `onContextMenu` message",
         doc: "A secondary-button press on an `onContextMenu` node, on the press rather than the release; `x`/`y` are logical viewport coordinates — where the menu goes. The core opens nothing: the app declares the menu (a `modal` float) and stops declaring it on `dismiss`.",
     },
     EventDef {
         kind: "menu",
-        payload: "`{ kind: \"menu\", role, item }`",
-        doc: "A row of the core's own context menu was chosen (`openMenu` / `open_menu` / `kui_open_menu`), on the node the menu was about. `item` is the row's `id`, or its label when it declared none; `role` is the row's standard role or `custom`. Every chosen row posts, the standard ones included: a `cut` or `paste` role is carried out by the core (its clipboard work queued for the host) *and* reported, so an app can hear its editor being cut from and is free to ignore it (`docs/adr/0017-selection-as-a-scope.md`, decision 5).",
+        handler: "onMenu",
+        field: Some("menu"),
+        payload: "`menu: { role, item }` in the `onMenu` message of the node, or of the `menuBar`",
+        doc: "A row of the core's own menu was chosen, on the node the menu was about: a `select`'s, or the target `openMenu` / `open_menu` / `kui_open_menu` named, as its `onMenu` message (ADR 0047). `item` is the row's `id`, or its label when it declared none; `role` is the row's standard role or `custom`. Every chosen row posts, the standard ones included: a `cut` or `paste` role is carried out by the core (its clipboard work queued for the host) *and* reported, so an app can hear its editor being cut from and is free to ignore it (`docs/adr/0017-selection-as-a-scope.md`, decision 5). The stock right-click menu, opened for a node that declared no `onMenu`, sends nothing; a choice from the application menu bar arrives as the `menuBar` element's own `onMenu` message (ADR 0048).",
     },
     EventDef {
         kind: "forceclick",
-        payload: "`{ kind: \"forceclick\", x, y, tag }`",
+        handler: "onForceClick",
+        field: Some("forceclick"),
+        payload: "`forceclick: { x, y }` in the `onForceClick` message",
         doc: "A press that deepened past the second stage of a Force Touch trackpad, on an `onForceClick` node, at the logical viewport point it happened at. Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, and the ordinary click the press is still producing arrives afterwards. Text needs none of this: over an `edit` or a `selectable` scope the core selects the word under it and asks the host for its Look Up panel instead. macOS-only in practice.",
     },
     EventDef {
         kind: "button",
-        payload: "`{ kind: \"button\", phase: \"press\" | \"move\" | \"release\", button: \"secondary\" | \"middle\" | number, x, y, clicks, cell?: { row, col }, line?, byte?, inside?, tag }`",
+        handler: "onButton",
+        field: Some("button"),
+        payload: "`button: { phase: \"press\" | \"move\" | \"release\", button: \"secondary\" | \"middle\" | number, x, y, clicks, cell?: { row, col }, line?, byte?, inside? }` in the `onButton` message",
         doc: "A non-primary button on an `onButton` node that claims it (`buttons`), backlog F105: `press` where it went down — with the driver's click count, `clicks`, which the native runner keeps for the primary button alone and so always reports as 1 here — then `move` for every pointer move while it is held and `release` where it came up, both on the same node wherever the pointer went, since the press captured the button. `button` is the button's name, or for one past the middle button its number (`3 + n`, as `kui_input_mouse_button` takes it; Node's `ctx.mouse` takes the three names only); `x`/`y` are logical viewport coordinates. On a `cells` grid each carries `cell: {row, col}`, clamped to the grid, and inside an `onKey` sink that draws `role=\"line\"` rows `line`, `byte` and `inside` as a drag does. A claimed secondary press is this event instead of `contextmenu`; the press moves no focus, caret, selection or scrollbar.",
     },
     EventDef {
         kind: "scroll",
-        payload: "`{ kind: \"scroll\", x, y, dx, dy, lines, mods?: { shift, ctrl, alt, super }, tag }`",
+        handler: "onScroll",
+        field: Some("scroll"),
+        payload: "`scroll: { x, y, dx, dy, lines, mods?: { shift, ctrl, alt, super } }` in the `onScroll` message",
         doc: "The wheel over an `onScroll` node, or a drag-select held past a `cells` grid's top or bottom edge: `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer in logical viewport coordinates, `lines` the whole lines a `cells` grid's `dy` covers — positive is later history, the sign `originLine` grows in, the fraction carried to the next notch — and null on any other node. The core scrolls nothing for it: the app re-declares the grid's `originLine`, or zooms its canvas. From the edge drag it comes once a frame while the pointer is held past the edge, with the lines that frame's step covers, and the selection's absolute lines survive the scroll the app answers with (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`).",
     },
     EventDef {
         kind: "focus",
-        payload: "`{ kind: \"focus\", phase: \"in\" | \"out\", by: \"pointer\" | \"keyboard\" | \"assistive\" | \"program\", tag }`",
+        handler: "onFocus",
+        field: Some("focus"),
+        payload: "`focus: { phase: \"in\" | \"out\", by: \"pointer\" | \"keyboard\" | \"assistive\" | \"program\" }` in the `onFocus` message",
         doc: "Keyboard focus entered or left an `onFocus` node's subtree (backlog DX18). `by` is what moved it — a press, a key, a screen reader's request, or the view and the app — so a pane that follows a click into its sink tells that apart from a move the app made itself.",
     },
     EventDef {
         kind: "hover",
-        payload: "`{ kind: \"hover\", phase: \"enter\" | \"leave\", by: \"pointer\" | \"content\", tag }`",
+        handler: "onHover",
+        field: Some("hover"),
+        payload: "`hover: { phase: \"enter\" | \"leave\", by: \"pointer\" | \"content\" }` in the `onHover` message",
         doc: "The pointer entered or left an `onHover` node — also when a new frame moved it under a still cursor. `by` says which (backlog DX20): `pointer` when the pointer moved or left the window, `content` when it stayed and what is under it changed — a list scrolled by the wheel or the keys, a row that grew, a float that opened. A picker whose selection follows the pointer ignores `content`, or the rows sliding under a still pointer as the keys scroll the list drag the selection with them.",
     },
     EventDef {
         kind: "drop",
-        payload: "`{ kind: \"drop\", phase: \"enter\" | \"move\" | \"leave\" | \"drop\", paths: string[], x, y, tag }`",
+        handler: "onDrop",
+        field: Some("drop"),
+        payload: "`drop: { phase: \"enter\" | \"move\" | \"leave\" | \"drop\", paths: string[], x, y }` in the `onDrop` message",
         doc: "Files dragged in from the OS over an `onDrop` node (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): `enter` when they come over the zone, `move` while they move over it (never twice for one point), `leave` when they go to another zone, to no zone or out of the window, `drop` when they land — and no `leave` after a `drop`. `paths` are the OS paths as strings; `x`/`y` the pointer in logical viewport coordinates, absent on `leave`. The zone is the topmost one under the pointer by paint order; a node inside it is its, and a node that is no zone is looked past (an overlay shown on `enter` does not end the hover). Nothing is re-resolved when a frame lands: only the driver's next report moves the files, so a zone the view stops declaring hears its `leave` then.",
     },
     EventDef {
         kind: "files",
-        payload: "`{ kind: \"files\", paths: string[], tag }`",
-        doc: "A file dialog's answer (backlog C51): what an Open, Save or folder dialog asked for with `requestFiles` / `request_files` / `kui_request_files` picked — the OS paths, as a `drop` carries them — or no paths when the user cancelled. `tag` is the dialog's own. It reaches whoever asked: the host, or the extension whose fill asked; one dialog is out at a time.",
+        handler: "requestFiles",
+        field: Some("files"),
+        payload: "`files: { paths: string[] }` in the message `requestFiles` was given, on the root",
+        doc: "A file dialog's answer (backlog C51): what an Open, Save or folder dialog asked for with `requestFiles` / `request_files` / `kui_request_files` picked — the OS paths, as a `drop` carries them — or no paths when the user cancelled. It arrives as the message the dialog was asked with. It reaches whoever asked: the host, or the extension whose fill asked; one dialog is out at a time.",
     },
     EventDef {
         kind: "open",
-        payload: "`{ kind: \"open\", paths: string[] }` on the root",
-        doc: "The OS asked the app to open documents (backlog F124): the Finder's Open With, a file dropped on the Dock icon, `open -a App file`, a double-click on a document of a type the app's `Info.plist` declares under `CFBundleDocumentTypes`. Delivered to the host on the root whether or not anything asked — unlike `files`, which answers an ask. `paths` are file-system paths as strings; a URL of a scheme the app registers is not one, and is not carried (room is left for a `urls` beside `paths`). The macOS runner sends it at launch — held until the main window has opened, since AppKit hands the documents over before it exists and puts none in the arguments — and while the app runs; a host driving its own window sends it as input (`openDocuments`, `kui_input_open`, `InputEvent::Open`). Windows and Linux pass documents in the process's arguments instead, and nothing sends it there.",
+        handler: "windowEvents.onOpen",
+        field: Some("open"),
+        payload: "`open: { paths: string[] }` in the main window's `windowEvents.onOpen` message",
+        doc: "The OS asked the app to open documents (backlog F124): the Finder's Open With, a file dropped on the Dock icon, `open -a App file`, a double-click on a document of a type the app's `Info.plist` declares under `CFBundleDocumentTypes`. It arrives as the main window's `windowEvents.onOpen` message (ADR 0048) whether or not anything asked — unlike `files`, which answers an ask — and not at all from a main window that declares none. `paths` are file-system paths as strings; a URL of a scheme the app registers is not one, and is not carried (room is left for a `urls` beside `paths`). The macOS runner sends it at launch — held until the main window has opened, since AppKit hands the documents over before it exists and puts none in the arguments — and while the app runs; a host driving its own window sends it as input (`openDocuments`, `kui_input_open`, `InputEvent::Open`). Windows and Linux pass documents in the process's arguments instead, and nothing sends it there.",
     },
     EventDef {
         kind: "layout",
-        payload: "`{ kind: \"layout\", x, y, w, h, parent: { x, y, w, h }, scale, tag }`",
+        handler: "onLayout",
+        field: Some("layout"),
+        payload: "`layout: { x, y, w, h, parent: { x, y, w, h }, scale }` in the `onLayout` message",
         doc: "The rect layout gave an `onLayout` node (logical px, viewport coords, after scrolling and easing): on its first frame and whenever it changes, never on a frame that left it alone. `scale` is physical px per logical px at the node — `w × scale` by `h × scale` is how many pixels to render for it before `updateImage` (the frame's scale today; where a zoom would compose in).",
     },
     EventDef {
         kind: "resize",
-        payload: "`{ kind: \"resize\", width, height, scale }`",
-        doc: "The viewport changed size or DPI (logical px, delivered to the host on the root): the window less the devtools' dock while the panel is docked (`docs/adr/0024`), so a dock coming, going or being dragged is a resize too. `KuiWindow.size()` queries the same numbers, before the first frame as well (backlog F43). The first frame establishes the viewport rather than reporting it, so a dock present at launch posts none.",
+        handler: "windowEvents.onResize",
+        field: Some("resize"),
+        payload: "`resize: { width, height, scale }` in the `windowEvents.onResize` message",
+        doc: "The viewport changed size or DPI (logical px), as the root's `windowEvents.onResize` message (ADR 0048): the window less the devtools' dock while the panel is docked (`docs/adr/0024`), so a dock coming, going or being dragged is a resize too. `KuiWindow.size()` queries the same numbers, before the first frame as well (backlog F43). The first frame establishes the viewport rather than reporting it, so a dock present at launch posts none.",
     },
     EventDef {
         kind: "window",
-        payload: "`{ kind: \"window\", phase: \"opened\" | \"closed\" | \"focused\" | \"blurred\", name, id }`",
-        doc: "A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring `name`, then declare it again to reopen. `id` is what its events carry; the event itself is on the root of whichever window's frame noticed. `focused` and `blurred` are this window gaining and losing the keyboard (backlog DX18) — `env.focused` changing, as the driver reports it — so an app that saves on blur or re-reads the clipboard on return hears it once instead of diffing `env.focused` every frame.",
+        handler: "a `windows` entry's `onWindow`; `windowEvents.onFocus`",
+        field: Some("window"),
+        payload: "`window: { phase: \"opened\" | \"closed\", id }` in the entry's `onWindow` message; `window: { phase: \"focused\" | \"blurred\" }` in the `windowEvents.onFocus` message",
+        doc: "A declared window opened (the diff queued its `Open`) or closed — because nothing declares it any more, or because the user closed it, in which case it stays closed while still declared: stop declaring it, then declare it again to reopen. It arrives as the `onWindow` message of the window's `windows` entry (ADR 0048) — the last one declared, for a window that closed — and `id` is what the window's events carry; the event itself comes from whichever window's frame noticed. `focused` and `blurred` are this window gaining and losing the keyboard, as its root's `windowEvents.onFocus` message (backlog DX18) — `env.focused` changing, as the driver reports it — so an app that saves on blur or re-reads the clipboard on return hears it once instead of diffing `env.focused` every frame.",
     },
     EventDef {
         kind: "system",
-        payload: "`{ kind: \"system\", appearance, accent, motion, locale, assistive }`",
-        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (delivered to the host on the root, one per window that noticed). The payload is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so this is how a palette follows the OS.",
+        handler: "windowEvents.onSystemSettingsChange",
+        field: Some("system"),
+        payload: "`system: { appearance, accent, motion, locale, assistive }` in the `windowEvents.onSystemSettingsChange` message",
+        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (as the root's `windowEvents.onSystemSettingsChange` message, ADR 0048: one per window that noticed and declared it). The field is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so declaring this is how a palette follows the OS.",
     },
     EventDef {
         kind: "fonts",
-        payload: "`{ kind: \"fonts\" }`",
-        doc: "The system's installed fonts changed: a rescan found a face installed or removed since the last one (delivered to the host on the root, one per window that noticed). The winit runner rescans itself when macOS or Windows says the set changed; elsewhere it is the app calling `reloadSystemFonts`. Re-read `systemFonts()` / `systemFontFamilies()` here if the model holds them; a view naming a family by `family` needs nothing, it resolves on the same frame. A font the app loads itself raises none, and the first frame establishes the set rather than reporting it.",
+        handler: "windowEvents.onFonts",
+        field: None,
+        payload: "none: the `windowEvents.onFonts` message as declared",
+        doc: "The system's installed fonts changed: a rescan found a face installed or removed since the last one (as the root's `windowEvents.onFonts` message, ADR 0048: one per window that noticed and declared it). The winit runner rescans itself when macOS or Windows says the set changed; elsewhere it is the app calling `reloadSystemFonts`. Re-read `systemFonts()` / `systemFontFamilies()` here if the model holds them; a view naming a family by `family` needs nothing, it resolves on the same frame. A font the app loads itself raises none, and the first frame establishes the set rather than reporting it.",
     },
     EventDef {
         kind: "modifiers",
-        payload: "`{ kind: \"modifiers\", shift, ctrl, alt, super }`",
-        doc: "The physical modifier state changed (delivered to the host on the root).",
+        handler: "windowEvents.onModifiers",
+        field: Some("modifiers"),
+        payload: "`modifiers: { shift, ctrl, alt, super }` in the `windowEvents.onModifiers` message",
+        doc: "The physical modifier state changed (as the root's `windowEvents.onModifiers` message, ADR 0048).",
     },
     EventDef {
-        kind: "changed",
-        payload: "`{ kind: \"changed\" }`, with the editor's key on the event",
-        doc: "An editor's text changed.",
+        kind: "change",
+        handler: "onChange",
+        field: Some("change"),
+        payload: "`change: { value, phase: \"move\" | \"end\" }` on a slider, `change: { text }` on an editor, in the `onChange` message",
+        doc: "A `slider` that declared `onChange` (the stock `<slider>`, ADR 0034): the core turned a press into the value under the pointer, a drag into each new step, an arrow or assistive technology's increment / decrement into one `valueStep` and its set value into that value snapped, PageUp / PageDown into ten, Home / End into the ends — clamped to `valueMin`..`valueMax` and snapped to the step, the decimal the step names. `phase` is `move` while the pointer holds the slider and `end` when it lets go or a key moved it; a key that lands where the slider is proposes nothing. The value is proposed: declare it as `valueNow`. An editor that declared `onChange` — an `<edit>`, or a custom editor assistive technology set the value of — reports every change to its text as `text`, the whole text after it (ADR 0047).",
     },
     EventDef {
         kind: "submit",
-        payload: "`{ kind: \"submit\" }`, with the editor's key on the event",
+        handler: "onSubmit",
+        field: Some("submit"),
+        payload: "the `onSubmit` message as a map (a non-map one under `tag`, none as an empty map)",
         doc: "Enter in a single-line editor.",
     },
     EventDef {
         kind: "cancel",
-        payload: "`{ kind: \"cancel\" }`, with the editor's key on the event",
+        handler: "onCancel",
+        field: Some("cancel"),
+        payload: "the `onCancel` message as a map (a non-map one under `tag`, none as an empty map)",
         doc: "Escape let go of a focused editor: the keyboard leaves it, as it does for a click elsewhere, and this says it was Escape — a draft abandoned, where `submit` is one confirmed and a plain blur is neither. A field that commits on blur cancels here instead.",
     },
     EventDef {
         kind: "boundary",
-        payload: "`{ kind: \"boundary\", key: \"up\" | \"down\" | \"left\" | \"right\" | \"backspace\" | \"delete\", edge: \"start\" | \"end\", word, doc }`, with the editor's key on the event",
+        handler: "onBoundary",
+        field: Some("boundary"),
+        payload: "`boundary: { key: \"up\" | \"down\" | \"left\" | \"right\" | \"backspace\" | \"delete\", edge: \"start\" | \"end\", word, doc }` in the `onBoundary` message",
         doc: "An editing key that met the edge of an editor's text and did nothing: ↑ on the first line, ← or Backspace at the start (`edge: \"start\"`), ↓ on the last line, → or Delete at the end (`\"end\"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried (Option or Ctrl, ⌘ or Ctrl — `docs/adr/0002`).",
     },
     EventDef {
         kind: "sound",
-        payload: "`{ kind: \"sound\", phase: \"ended\" | \"refused\", playback, tag }`",
+        handler: "`play(id, { tag })`, `<audio tag>`",
+        field: Some("sound"),
+        payload: "`sound: { phase: \"ended\" | \"refused\", playback }` in the playback's message",
         doc: "A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. `phase: \"refused\"` instead when the device would not take the play at all (its 128 voices are all held, or the sound did not decode): that playback never starts and so never ends, so this is what arrives in place of the `ended` a view would otherwise wait forever for.",
     },
     EventDef {
         kind: "dismiss",
-        payload: "`{ kind: \"dismiss\", reason: \"escape\" | \"outside\", tag }` on a node; `{ kind: \"dismiss\", reason, name, id }` on the root for a popup window",
-        doc: "The user asked for a surface to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the surface (or asks first). A `modal` node gets one on the node, carrying its tag, and only the modal in effect does; a `kind: \"popup\"` window gets one on the root, carrying the window's `name` and `id`, reported by the driver because a press outside a window and a key sent to a non-activating one are both facts only the OS has. The two are the same event, so a dropdown that graduates from a modal float to a popup window changes its declaration and not its handler.",
+        handler: "modal; a popup's `windows` entry `onDismiss`",
+        field: Some("dismiss"),
+        payload: "`dismiss: { reason: \"escape\" | \"outside\" }` in the `modal` message on a node; `dismiss: { reason, id }` in a popup's `onDismiss` message",
+        doc: "The user asked for a surface to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the surface (or asks first). A `modal` node gets one on the node, as its `modal` message, and only the modal in effect does; a `kind: \"popup\"` window gets one as its `windows` entry's `onDismiss` message (ADR 0048), carrying the window's `id`, reported by the driver because a press outside a window and a key sent to a non-activating one are both facts only the OS has. The two are the same event, so a dropdown that graduates from a modal float to a popup window changes its declaration and not its handler.",
     },
     EventDef {
-        kind: "access",
-        payload: "`{ kind: \"access\", action, tag, text?, value?, anchor?: { line, offset }, focus?: { line, offset } }`",
-        doc: "Assistive technology — or the keyboard — asked for what only the app can do: `increment` / `decrement` on a `slider` role that declared no `onChange` (a reader's nudge, or the arrow keys on the focused slider), and `setValue` there with the number asked for as `value` (Windows' UI Automation sets a slider rather than nudging it); `setValue` / `replaceSelectedText` (with `text`) / `setTextSelection` (with `anchor` and `focus` as line ordinals and byte offsets) on a custom editor. `tag` is the node's `onClick` payload (or its `onDrag` / `onKey` tag). Every other request resolves in the core and arrives as the events a pointer would have produced.",
-    },
-    EventDef {
-        kind: "change",
-        payload: "`{ kind: \"change\", value, phase: \"move\" | \"end\", tag }`",
-        doc: "A `slider` that declared `onChange` (the stock `<slider>`, ADR 0034): the core turned a press into the value under the pointer, a drag into each new step, an arrow or assistive technology's increment / decrement into one `valueStep` and its set value into that value snapped, PageUp / PageDown into ten, Home / End into the ends — clamped to `valueMin`..`valueMax` and snapped to the step, the decimal the step names. `phase` is `move` while the pointer holds the slider and `end` when it lets go or a key moved it; a key that lands where the slider is proposes nothing. The value is proposed: declare it as `valueNow`. `tag` is the `onChange` payload.",
+        kind: "reply",
+        handler: "an extension",
+        field: None,
+        payload: "the message the extension sent, on the node its event was about",
+        doc: "An extension's message to whoever placed its slot (`docs/adr/0014-slots-an-extension-fills-in-place.md`): what its handler answered an event of its own fill with, routed up to the host — or to the guest that placed it, up to the reply hops' limit. `origin` is the extension that spoke.",
     },
 ];
 
@@ -2756,7 +2880,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["audio.live"],
         lua: &["audio.live"],
         c: "`kui_env_set_audio(live)`",
-        doc: "Playbacks started and not yet ended, plus any waiting on the device to open. Zero with the device still `\"open\"` is the idle stream the row above is about. A play that arrives while the device is `\"opening\"` counts here from the frame it was asked, until the open answers: if the device refuses, the play is refused on the next apply — `{kind:\"sound\", phase:\"refused\"}` for a tagged one — and leaves the count with it, so what a machine with no output device shows is `opening`/1 then `failed`/0 with the refusal between (backlog F63).",
+        doc: "Playbacks started and not yet ended, plus any waiting on the device to open. Zero with the device still `\"open\"` is the idle stream the row above is about. A play that arrives while the device is `\"opening\"` counts here from the frame it was asked, until the open answers: if the device refuses, the play is refused on the next apply — its message with `sound: {phase: \"refused\"}` for a tagged one — and leaves the count with it, so what a machine with no output device shows is `opening`/1 then `failed`/0 with the refusal between (backlog F63).",
     },
     EnvField {
         name: "viewport.w",
@@ -3348,8 +3472,13 @@ pub struct PropsOut {
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
     /// node while it is hovered (the parser also marks the spec hoverable).
     pub tooltip: Option<String>,
-    /// The windows the root declared (`Core::declare_window`, in order).
-    pub windows: Vec<(String, WindowConfig)>,
+    /// The windows the root declared, with each entry's lifecycle
+    /// messages (`Core::declare_window_with`, in order).
+    pub windows: Vec<(String, WindowConfig, crate::window::WindowLifecycle)>,
+    /// `windowEvents`: the messages the root declared for the window's own
+    /// events (`Core::set_window_events`, ADR 0048). Off the root it is
+    /// ignored and `window-events-off-root` says so.
+    pub window_events: Option<crate::window::WindowEvents>,
     /// Whether the `wrap` row was declared: the mode is in `style.wrap`,
     /// whose default is `Word`, so the style alone cannot say. A
     /// single-line editor folds to its width when it was
@@ -3392,6 +3521,7 @@ impl PropsOut {
             key_focus: false,
             tooltip: None,
             windows: Vec::new(),
+            window_events: None,
             wrap: false,
         }
     }
@@ -3630,6 +3760,55 @@ mod tests {
         assert_eq!(easing_idx(99), Easing::default());
         assert_eq!(repeat_idx(99), Repeat::default());
         assert_eq!(FontFamily::from_index(99), FontFamily::Sans);
+    }
+
+    #[test]
+    fn every_event_kind_has_its_row_and_its_field() {
+        // One row per kind, in `EventKind::ALL`'s order, and a message
+        // event's field is its kind (ADR 0047, decision 2).
+        let kinds: Vec<&str> = crate::input::EventKind::ALL
+            .iter()
+            .map(|k| k.name())
+            .collect();
+        let rows: Vec<&str> = EVENTS.iter().map(|e| e.kind).collect();
+        assert_eq!(kinds, rows);
+        for e in EVENTS {
+            assert!(
+                e.field.is_none_or(|f| f == e.kind),
+                "{}'s field is its kind",
+                e.kind
+            );
+            // No event is a root one any more (ADR 0048): a window's own
+            // are keys of its `windowEvents` group.
+            assert_ne!(e.handler, "root", "{} is a root event", e.kind);
+            if let Some(key) = e.handler.strip_prefix("windowEvents.") {
+                assert!(
+                    crate::window::WindowEvents::KEYS
+                        .iter()
+                        .any(|(jsx, _)| *jsx == key),
+                    "{} names windowEvents.{key}, which the group has no key for",
+                    e.kind
+                );
+            }
+            assert!(
+                !e.payload.contains("tag }"),
+                "{} still spells a tag",
+                e.kind
+            );
+        }
+        // The handler rows the table names are rows of the schema.
+        for e in EVENTS {
+            let row = e.handler.split(';').next().unwrap_or_default();
+            if row.starts_with("on") {
+                assert!(
+                    PROPS
+                        .iter()
+                        .any(|p| p.name == row && matches!(p.kind, Kind::Handler | Kind::Msg)),
+                    "{} names {row}, which is no handler row",
+                    e.kind
+                );
+            }
+        }
     }
 
     #[test]
@@ -4155,7 +4334,7 @@ mod tests {
                 Kind::Sizing => Parsed::Sizing(Sizing::Percent(0.5)),
                 Kind::Min => Parsed::Bound(Bound::Fit),
                 Kind::Max => Parsed::Bound(Bound::Px(10.0)),
-                Kind::Msg | Kind::Tag => Parsed::Msg(Value::Int(1)),
+                Kind::Msg | Kind::Handler => Parsed::Msg(Value::Int(1)),
                 // A list of four names, and a string of none of them is
                 // the default: none.
                 Kind::Str if def.name == "scrollMods" => Parsed::Str("ctrl".into()),
@@ -4179,8 +4358,9 @@ mod tests {
         }
     }
 
-    /// A null tag keeps the behaviour and drops the `tag` field; the
-    /// contract every transport relies on to accept `null` for `Tag` rows.
+    /// A null message keeps the behaviour, and its events arrive as the
+    /// field alone; the contract every transport relies on to accept
+    /// `null` for `Handler` rows.
     #[test]
     fn a_null_tag_still_declares_the_behaviour() {
         let mut out = PropsOut::new();
@@ -4190,7 +4370,7 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        assert_eq!(out.spec.events().on_key, Some(Value::Null));
+        assert_eq!(out.spec.events().on_key(), Some(&Value::Null));
         assert!(out.spec.hover_tracked());
         let mut out = PropsOut::new();
         apply(
@@ -4199,7 +4379,7 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        assert_eq!(out.spec.events().on_layout, Some(Value::Null));
+        assert_eq!(out.spec.events().on_layout(), Some(&Value::Null));
     }
 
     /// `ROLES` is the wire order for the `role` enum — a binding sends the

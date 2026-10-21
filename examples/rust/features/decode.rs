@@ -119,7 +119,7 @@ impl App for Player {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.as_str() == Some("pause") {
+        if ev.message::<String>().as_deref() == Some("pause") {
             self.paused = !self.paused;
         }
     }

@@ -176,7 +176,7 @@ impl Core {
         self.menu_editor = self.edit.focused();
         self.menu_focus = self.focus;
         let (target, origin) = (self.menu_bar_target(), self.menu_bar_origin);
-        self.perform_menu_item(&item, target, origin, &mut out);
+        self.perform_menu_item(&item, target, origin, true, &mut out);
         out
     }
 
@@ -233,7 +233,7 @@ impl Core {
             self.set_menu_bar_open(None);
             if let Some(item) = item {
                 let (target, origin) = (self.menu_bar_target(), self.menu_bar_origin);
-                self.perform_menu_item(&item, target, origin, out);
+                self.perform_menu_item(&item, target, origin, true, out);
             }
         } else if dismissed {
             self.set_menu_bar_open(None);

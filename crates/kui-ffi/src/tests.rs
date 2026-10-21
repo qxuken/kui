@@ -11,6 +11,23 @@ fn ks(s: &str) -> KuiStr {
     }
 }
 
+/// The envelope's event kind a polled event carries (ADR 0047): what
+/// happened, which the payload no longer says.
+fn ev_kind(ev: &KuiEvent) -> &'static str {
+    assert!(!ev.event.ptr.is_null(), "every polled event names its kind");
+    // SAFETY: the library hands out the static `EventKind::name`.
+    unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(ev.event.ptr, ev.event.len)) }
+}
+
+/// A polled event's data, as `UiEvent::data` reads it: the payload's
+/// field named for its kind, `Null` for one that carries none. Every
+/// event's, since there are no root events (ADR 0048).
+fn ev_data(ev: &KuiEvent) -> &Value {
+    const NONE: &Value = &Value::Null;
+    let payload = unsafe { &(*ev.payload).0 };
+    payload.get(ev_kind(ev)).unwrap_or(NONE)
+}
+
 #[cfg(test)]
 mod widgets_headless {
     use super::*;
@@ -126,11 +143,49 @@ mod widgets_headless {
         assert!(kui_activate_menu_item(ctx, 1));
         assert!(kui_poll_event(ctx, &raw mut ev));
         assert_eq!(ev.key, key);
-        let payload = unsafe { &(*ev.payload).0 };
-        assert_eq!(payload.get_str("kind"), Some("menu"));
-        assert_eq!(payload.get_str("item"), Some("la"));
+        // The stock select declares a `Null` message: the field alone.
+        assert_eq!(ev_kind(&ev), "menu");
+        assert_eq!(ev_data(&ev).get_str("item"), Some("la"));
         assert!(!kui_poll_event(ctx, &raw mut ev), "one event, no more");
         assert_eq!(kui_menu_item_count(ctx, &mut target, &mut x, &mut y), 0);
+        // `kui_select_with`: the choice arrives as the message it was
+        // given, the menu field in it (ADR 0047).
+        let build_with = |current: i64| {
+            kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+            let mut root: KuiSpec = unsafe { std::mem::zeroed() };
+            root.pad_l = 10.0;
+            root.pad_r = 10.0;
+            root.pad_t = 10.0;
+            root.pad_b = 10.0;
+            kui_root(ctx, &root);
+            let key = kui_select_with(
+                ctx,
+                ks("language"),
+                items.as_ptr(),
+                items.len(),
+                current,
+                kui_value_str(ks("lang")),
+            );
+            kui_frame_finish(ctx);
+            key
+        };
+        assert_eq!(build_with(1), key, "the same field, keyed by its label");
+        kui_input_mouse(ctx, true, 1);
+        kui_input_mouse(ctx, false, 1);
+        build_with(1);
+        assert!(kui_activate_menu_item(ctx, 0));
+        assert!(kui_poll_event(ctx, &raw mut ev));
+        assert_eq!(ev_kind(&ev), "menu");
+        let payload = unsafe { &(*ev.payload).0 };
+        assert_eq!(payload.get_str("tag"), Some("lang"), "its own message");
+        assert_eq!(ev_data(&ev).get_str("item"), Some("English"));
+        // Refused, it still frees the message it took.
+        kui_frame_begin(ctx, 320.0, 240.0, 1.0);
+        assert_eq!(
+            kui_select_with(ctx, ks(""), items.as_ptr(), 0, 0, kui_value_str(ks("x"))),
+            0
+        );
+        kui_frame_finish(ctx);
         kui_value_free(la);
         kui_ctx_free(ctx);
     }
@@ -819,8 +874,9 @@ mod window_commands_headless {
     /// Popups through the C surface: the kind and the anchor
     /// ride the declaration out to the `KUI_CMD_OPEN` untouched, `owner`
     /// names the window whose frame declared it, and a dismissal reported
-    /// by the host is an event and nothing else — no command, and the
-    /// window still open and still declared.
+    /// by the host is the `on_dismiss` message its declaration gave and
+    /// nothing else — no command, and the window still open and still
+    /// declared.
     #[test]
     fn a_popup_declaration_and_its_dismissal_cross_the_c_surface() {
         let ctx = kui_ctx_new();
@@ -834,8 +890,13 @@ mod window_commands_headless {
             anchor_w: 160.0,
             anchor_h: 24.0,
         };
+        let menu = || {
+            let m = kui_value_map();
+            kui_value_map_set(m, ks("kind"), kui_value_str(ks("menu")));
+            m
+        };
         kui_frame_begin(ctx, 300.0, 100.0, 1.0);
-        kui_window_declare(ctx, ks("menu"), &popup);
+        kui_window_declare_with(ctx, ks("menu"), &popup, menu(), menu());
         kui_frame_finish(ctx);
 
         let mut cmd = KuiWindowCommand::default();
@@ -854,18 +915,23 @@ mod window_commands_headless {
         );
         assert!(!kui_take_window_command(ctx, &raw mut cmd));
 
-        // The frame's own `{kind:"window", phase:"opened"}` comes first.
+        // The opening comes first, as the app's own `on_window`, the
+        // core's kind on the envelope and its data under `window`.
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &raw mut ev));
-        assert_eq!(unsafe { &(*ev.payload).0 }.get_str("kind"), Some("window"));
+        assert_eq!(ev_kind(&ev), "window");
+        assert_eq!(unsafe { &(*ev.payload).0 }.get_str("kind"), Some("menu"));
+        assert_eq!(ev_data(&ev).get_str("phase"), Some("opened"));
         assert!(!kui_poll_event(ctx, &raw mut ev));
 
         kui_window_dismissed(ctx, 1, KUI_DISMISS_ESCAPE);
         assert!(kui_poll_event(ctx, &raw mut ev));
+        assert_eq!(ev_kind(&ev), "dismiss");
         let payload = unsafe { &(*ev.payload).0 };
-        assert_eq!(payload.get_str("kind"), Some("dismiss"));
-        assert_eq!(payload.get_str("reason"), Some("escape"));
-        assert_eq!(payload.get_str("name"), Some("menu"));
+        assert_eq!(payload.get_str("kind"), Some("menu"));
+        assert_eq!(ev_data(&ev).get_str("reason"), Some("escape"));
+        assert_eq!(ev_data(&ev).get("id"), Some(&Value::Int(1)));
+        assert_eq!(ev_data(&ev).get("name"), None, "the message names it");
         assert!(!kui_poll_event(ctx, &raw mut ev), "one event, no more");
         assert!(
             !kui_take_window_command(ctx, &raw mut cmd),
@@ -929,16 +995,17 @@ mod audio_headless {
         assert_eq!((out[0].kind, out[0].sound), (1, sound));
 
         // Re-declaring is silent; the driver reporting the music ended
-        // surfaces the tag as an event.
+        // surfaces its message as an event: a string one is kept under
+        // `tag`, beside the `sound` field (ADR 0047).
         frame(ctx);
         assert_eq!(kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len()), 0);
         kui_audio_ended(ctx, music);
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         let payload = unsafe { &*ev.payload };
-        assert_eq!(payload.0.get_str("kind"), Some("sound"));
+        assert_eq!(ev_kind(&ev), "sound");
         assert_eq!(payload.0.get_str("tag"), Some("music"));
-        assert_eq!(payload.0.get_int("playback"), Some(music as i64));
+        assert_eq!(ev_data(&ev).get_int("playback"), Some(music as i64));
         kui_ctx_free(ctx);
     }
 
@@ -1013,7 +1080,7 @@ mod audio_headless {
         assert!(kstr(warnings[0].message).contains("0.50s"));
 
         // Declared again, and this time the device will not take it: the
-        // tag comes back as a refused sound event, the node is warned.
+        // message comes back as a refused sound event, the node is warned.
         let node = frame(ctx, true);
         assert_eq!(kui_take_audio_commands(ctx, out.as_mut_ptr(), out.len()), 1);
         let playback = out[0].playback;
@@ -1021,8 +1088,8 @@ mod audio_headless {
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         let payload = unsafe { &*ev.payload };
-        assert_eq!(payload.0.get_str("kind"), Some("sound"));
-        assert_eq!(payload.0.get_str("phase"), Some("refused"));
+        assert_eq!(ev_kind(&ev), "sound");
+        assert_eq!(ev_data(&ev).get_str("phase"), Some("refused"));
         assert_eq!(payload.0.get_str("tag"), Some("jingle"));
         assert!(!kui_poll_event(ctx, &mut ev), "one event");
         assert_eq!(codes(ctx, &mut warnings), ["playback-refused"]);
@@ -1100,9 +1167,48 @@ mod queries_headless {
         kui_ctx_free(ctx);
     }
 
+    /// The way back (ADR 0047): `kui_label_of` turns a key into the label
+    /// the view opened it under, mid-build and after, and `kui_key_of` of
+    /// that label is the key again. An auto-keyed node and a key nothing
+    /// declared answer false.
+    #[test]
+    fn a_key_turns_back_into_its_label() {
+        let ctx = kui_ctx_new();
+        let plain = unsafe { std::mem::zeroed::<KuiSpec>() };
+        let mut out = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        let auto = kui_open(ctx, &plain, NONE);
+        let item = kui_open_keyed(ctx, ks("item"), &plain, NONE);
+        assert!(
+            kui_label_of(ctx, item, &mut out),
+            "in the frame being built"
+        );
+        assert_eq!(&*kstr(out), "item");
+        kui_close(ctx);
+        kui_close(ctx);
+        kui_frame_finish(ctx);
+
+        assert!(kui_label_of(ctx, item, &mut out), "and after it");
+        assert_eq!(&*kstr(out), "item");
+        assert_eq!(kui_key_of(ctx, out), item, "key_of(label_of(k)) is k");
+        assert!(
+            !kui_label_of(ctx, auto, &mut out),
+            "an auto-keyed node has none"
+        );
+        assert!(
+            !kui_label_of(ctx, 0x1234, &mut out),
+            "nor does an unknown key"
+        );
+        assert!(!kui_label_of(ctx, item, std::ptr::null_mut()));
+        kui_ctx_free(ctx);
+    }
+
     /// Raw keys cross as strings: a C host drives an `on_key` sink with
-    /// `kui_input_key_down` / `_up`, gets both halves back as one
-    /// `{kind="key"}` payload apart by `phase`, and lets go of what is
+    /// `kui_input_key_down` / `_up`, gets both halves back as one `key`
+    /// event apart by its data's `phase`, and lets go of what is
     /// held when its window loses the keyboard.
     #[test]
     fn raw_keys_and_their_releases_cross_the_boundary() {
@@ -1119,6 +1225,15 @@ mod queries_headless {
         // Releases are opt-in: without this the sink hears presses only.
         spec.key_up = 1;
         kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        // The window's own focus is heard when its root declares it (ADR
+        // 0048), and the group is borrowed for the call.
+        let focus = kui_value_str(ks("focus"));
+        let events = KuiWindowEvents {
+            on_focus: focus,
+            ..unsafe { std::mem::zeroed() }
+        };
+        kui_root_with(ctx, &unsafe { std::mem::zeroed() }, &events);
+        kui_value_free(focus);
         let sink = kui_open_with(
             ctx,
             ks("sink"),
@@ -1154,30 +1269,37 @@ mod queries_headless {
         let mut seen = Vec::new();
         let mut window = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
-            let get = |k: &str| {
-                let v = kui_value_get(ev.payload, ks(k));
+            // The data is the payload's field named for the event, as a C
+            // host reads it: `kui_value_get(payload, ev.event)`.
+            let data = kui_value_get(ev.payload, ev.event);
+            let get_in = |v: *const KuiValue, k: &str| {
+                let v = kui_value_get(v, ks(k));
                 let mut out = KuiStr {
                     ptr: std::ptr::null(),
                     len: 0,
                 };
                 kui_value_as_str(v, &mut out).then(|| kstr(out).into_owned())
             };
-            // Losing the keyboard is the window's event too (DX18).
-            if get("kind").as_deref() == Some("window") {
+            let get = |k: &str| get_in(data, k);
+            // Losing the keyboard is the window's event too (DX18), as
+            // its root's `on_focus`.
+            if ev_kind(&ev) == "window" {
+                assert_eq!(get_in(ev.payload, "tag").as_deref(), Some("focus"));
                 window.push(get("phase").unwrap_or_default());
                 continue;
             }
             assert_eq!(ev.key, sink);
-            assert_eq!(get("kind").as_deref(), Some("key"));
-            assert_eq!(get("tag").as_deref(), Some("keys"));
+            assert_eq!(ev_kind(&ev), "key");
+            // A string message is kept under `tag` beside the field.
+            assert_eq!(get_in(ev.payload, "tag").as_deref(), Some("keys"));
             let mut ctrl = false;
             assert!(kui_value_as_bool(
-                kui_value_get(ev.payload, ks("ctrl")),
+                kui_value_get(data, ks("ctrl")),
                 &mut ctrl
             ));
             let mut repeat = false;
             assert!(kui_value_as_bool(
-                kui_value_get(ev.payload, ks("repeat")),
+                kui_value_get(data, ks("repeat")),
                 &mut repeat
             ));
             seen.push((
@@ -1248,17 +1370,18 @@ mod queries_headless {
         let mut ev = KuiEvent::default();
         let mut seen = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
+            let key = kui_value_get(ev.payload, ks("key"));
             let str_of = |k: &str| {
                 let mut out = KuiStr {
                     ptr: std::ptr::null(),
                     len: 0,
                 };
-                kui_value_as_str(kui_value_get(ev.payload, ks(k)), &mut out);
+                kui_value_as_str(kui_value_get(key, ks(k)), &mut out);
                 kstr(out).into_owned()
             };
             let bool_of = |k: &str| {
                 let mut b = false;
-                kui_value_as_bool(kui_value_get(ev.payload, ks(k)), &mut b);
+                kui_value_as_bool(kui_value_get(key, ks(k)), &mut b);
                 b
             };
             seen.push((
@@ -1333,7 +1456,7 @@ mod queries_headless {
         let mut seen = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
             let get = |k: &str| {
-                let v = kui_value_get(ev.payload, ks(k));
+                let v = kui_value_get(kui_value_get(ev.payload, ks("key")), ks(k));
                 let mut out = KuiStr {
                     ptr: std::ptr::null(),
                     len: 0,
@@ -1432,6 +1555,9 @@ mod queries_headless {
             value: 300.0,
         };
         spec.label = ks("Doc");
+        // The editor reports an edit only in a message it declares.
+        let edited = KuiValue(Value::map([("kind", "doc".into())]));
+        spec.on_change = &edited;
         kui_frame_begin(ctx, 400.0, 200.0, 1.0);
         let key = kui_text_edit(
             ctx,
@@ -1498,7 +1624,150 @@ mod queries_headless {
         assert_eq!(kstr(text).as_ref(), "hello there");
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
-        assert_eq!(unsafe { &*ev.payload }.0.get_str("kind"), Some("changed"));
+        assert_eq!(ev_kind(&ev), "change");
+        assert_eq!(unsafe { &*ev.payload }.0.get_str("kind"), Some("doc"));
+        assert_eq!(ev_data(&ev).get_str("text"), Some("hello there"));
+        kui_ctx_free(ctx);
+    }
+
+    /// The editor's handler rows cross in `KuiSpec` (ADR 0047): an edit
+    /// arrives as `on_change` with `change: {text}` in it, Enter as
+    /// `on_submit` and Escape as `on_cancel` as declared, and an editor
+    /// that declares none of them sends nothing. With `KUI_EDIT_VALUE`
+    /// `initial` is held as the value: a model that changes it brings the
+    /// editor along, and one that keeps it reverts a keystroke.
+    #[test]
+    fn an_editor_reports_in_its_messages_and_holds_its_value() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let change = KuiValue(Value::map([("kind", "title".into())]));
+        let submit = KuiValue(Value::map([("kind", "save".into())]));
+        let cancel = KuiValue(Value::str("revert"));
+        let frame = |ctx: *mut KuiCtx, value: &str, rows: bool| {
+            let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };
+            spec.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            if rows {
+                spec.on_change = &change;
+                spec.on_submit = &submit;
+                spec.on_cancel = &cancel;
+            }
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            let key = kui_text_edit(
+                ctx,
+                ks("title"),
+                ks(value),
+                std::ptr::null(),
+                KUI_EDIT_AUTOFOCUS | KUI_EDIT_VALUE,
+                &spec,
+            );
+            kui_frame_finish(ctx);
+            key
+        };
+        let text_of = |ctx: *mut KuiCtx, key: u64| {
+            let mut out = KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            };
+            assert!(kui_edit_text(ctx, key, &mut out));
+            kstr(out).into_owned()
+        };
+        let drain = |ctx: *mut KuiCtx| {
+            let mut ev = KuiEvent::default();
+            let mut out = Vec::new();
+            while kui_poll_event(ctx, &mut ev) {
+                let payload = unsafe { &(*ev.payload).0 };
+                // A message with no data arrives as declared: Escape's
+                // bare string is the payload itself.
+                let name = payload
+                    .as_str()
+                    .or_else(|| payload.get_str("kind"))
+                    .or_else(|| payload.get_str("tag"))
+                    .unwrap_or("-")
+                    .to_string();
+                let text = ev_data(&ev).get_str("text").map(str::to_string);
+                out.push((ev_kind(&ev).to_string(), name, text));
+            }
+            out
+        };
+        let key = frame(ctx, "ab", true);
+        kui_input_text(ctx, ks("c"));
+        assert_eq!(
+            drain(ctx),
+            [("change".into(), "title".into(), Some("abc".into()))]
+        );
+        // The model took the text and uppercased it: the editor follows.
+        frame(ctx, "ABC", true);
+        assert_eq!(text_of(ctx, key), "ABC");
+        kui_input_key(ctx, 10, 0); // KUI_KEY_ENTER
+        kui_input_key(ctx, 13, 0); // KUI_KEY_ESCAPE
+        assert_eq!(
+            drain(ctx),
+            [
+                ("submit".into(), "save".into(), None),
+                ("cancel".into(), "revert".into(), None),
+            ]
+        );
+        // No rows: nothing is sent, and the value the frame declares wins
+        // over the keystroke on the next frame.
+        let key = frame(ctx, "ABC", false);
+        kui_set_key_focus(ctx, key);
+        frame(ctx, "ABC", false);
+        kui_input_text(ctx, ks("x"));
+        assert!(drain(ctx).is_empty(), "an editor without rows says nothing");
+        frame(ctx, "ABC", false);
+        assert_eq!(text_of(ctx, key), "ABC");
+        kui_ctx_free(ctx);
+    }
+
+    /// `kui_text_input_with`: the stock field in the app's own messages,
+    /// with its value; NULL messages are the field alone.
+    #[test]
+    fn the_stock_input_takes_messages_and_a_value() {
+        let ctx = kui_ctx_new();
+        let frame = |ctx: *mut KuiCtx, value: &str, named: bool| {
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            let root: KuiSpec = unsafe { std::mem::zeroed() };
+            kui_root(ctx, &root);
+            let (change, submit) = if named {
+                (kui_value_str(ks("query")), kui_value_str(ks("search")))
+            } else {
+                (std::ptr::null_mut(), std::ptr::null_mut())
+            };
+            let key = kui_text_input_with(
+                ctx,
+                ks("q"),
+                ks(value),
+                KUI_EDIT_VALUE,
+                change,
+                submit,
+                std::ptr::null_mut(),
+            );
+            kui_close(ctx);
+            kui_frame_finish(ctx);
+            key
+        };
+        let key = frame(ctx, "", true);
+        assert_ne!(key, 0);
+        kui_focus(ctx, key);
+        frame(ctx, "", true);
+        kui_input_text(ctx, ks("k"));
+        let mut ev = KuiEvent::default();
+        assert!(kui_poll_event(ctx, &mut ev));
+        assert_eq!(ev_kind(&ev), "change");
+        let payload = unsafe { &(*ev.payload).0 };
+        assert_eq!(payload.get_str("tag"), Some("query"));
+        assert_eq!(ev_data(&ev).get_str("text"), Some("k"));
+        frame(ctx, "k", false);
+        kui_input_key(ctx, 10, 0); // KUI_KEY_ENTER
+        assert!(kui_poll_event(ctx, &mut ev));
+        assert_eq!(ev_kind(&ev), "submit");
+        assert!(
+            matches!(unsafe { &(*ev.payload).0 }, Value::Map(m) if m.is_empty()),
+            "a NULL message is no message: Enter's payload is an empty map"
+        );
         kui_ctx_free(ctx);
     }
 
@@ -1661,8 +1930,10 @@ mod queries_headless {
         let mut ev = KuiEvent::default();
         let mut seen = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
+            // The event's data, under the field its kind names.
+            let data = kui_value_get(ev.payload, ev.event);
             let get_str = |k: &str| {
-                let v = kui_value_get(ev.payload, ks(k));
+                let v = kui_value_get(data, ks(k));
                 let mut out = KuiStr {
                     ptr: std::ptr::null(),
                     len: 0,
@@ -1671,14 +1942,14 @@ mod queries_headless {
             };
             let get_int = |k: &str| {
                 let mut out = 0i64;
-                kui_value_as_int(kui_value_get(ev.payload, ks(k)), &mut out).then_some(out)
+                kui_value_as_int(kui_value_get(data, ks(k)), &mut out).then_some(out)
             };
             assert_eq!(ev.key, sink);
             let get_bool = |k: &str| {
                 let mut out = false;
-                kui_value_as_bool(kui_value_get(ev.payload, ks(k)), &mut out).then_some(out)
+                kui_value_as_bool(kui_value_get(data, ks(k)), &mut out).then_some(out)
             };
-            match get_str("kind").as_deref() {
+            match Some(ev_kind(&ev)) {
                 Some("text") => seen.push(format!(
                     "text:{}{}{}",
                     get_str("text").unwrap(),
@@ -1886,6 +2157,10 @@ mod queries_headless {
         slider.value_set = KUI_VALUE_NOW | KUI_VALUE_MAX;
         slider.value_now = 3.0;
         slider.value_max = 10.0;
+        // Assistive technology moves a slider through its on_change, as
+        // the arrows do (ADR 0047): without one it cannot move it.
+        let volume = KuiValue(Value::map([("kind", "vol".into())]));
+        slider.on_change = &volume;
         let plain = unsafe { std::mem::zeroed::<KuiSpec>() };
         kui_frame_begin(ctx, 200.0, 100.0, 1.0);
         kui_open_keyed(ctx, ks("save"), &button, kui_value_str(ks("save")));
@@ -1927,7 +2202,7 @@ mod queries_headless {
         let mut ev = KuiEvent::default();
         assert!(kui_poll_event(ctx, &mut ev));
         assert_eq!(ev.key, out[1].key);
-        assert_eq!(unsafe { &*ev.payload }.0.as_str(), Some("save"));
+        assert_eq!(unsafe { &*ev.payload }.0.get_str("tag"), Some("save"));
         kui_input_access(
             ctx,
             out[2].key,
@@ -1936,8 +2211,10 @@ mod queries_headless {
         );
         assert!(kui_poll_event(ctx, &mut ev));
         let payload = unsafe { &*ev.payload };
-        assert_eq!(payload.0.get_str("kind"), Some("access"));
-        assert_eq!(payload.0.get_str("action"), Some("increment"));
+        assert_eq!(ev_kind(&ev), "change");
+        assert_eq!(payload.0.get_str("kind"), Some("vol"));
+        let value = ev_data(&ev).get_float("value").expect("a proposed value");
+        assert!(value > 3.0, "an increment proposes more: {value}");
         assert!(!kui_poll_event(ctx, &mut ev));
         // An unknown action bit is ignored, not a crash.
         kui_input_access(ctx, out[1].key, 1 << 30, ks(""));
@@ -1993,8 +2270,8 @@ mod queries_headless {
         assert!(kui_poll_event(ctx, &mut ev));
         assert_eq!(ev.key, key);
         let payload = unsafe { &*ev.payload };
-        assert_eq!(payload.0.get_str("kind"), Some("layout"));
-        assert_eq!(payload.0.get_float("w"), Some(300.0));
+        assert_eq!(ev_kind(&ev), "layout");
+        assert_eq!(ev_data(&ev).get_float("w"), Some(300.0));
         assert_eq!(payload.0.get_str("tag"), Some("panel"));
         // The same rect as a query, and nothing for
         // a key that declared no on_layout.
@@ -2724,7 +3001,8 @@ mod follow_headless {
     /// A press through the C surface with Shift held (`kui_input_modifiers`)
     /// keeps the anchor, which `kui_selection_ends` reads back as the
     /// directed pair; an `on_scroll` grid hears
-    /// the wheel as `{kind="scroll", lines}` with the fraction carried,
+    /// the wheel as a `scroll` event, `scroll: {lines}` in its message,
+    /// with the fraction carried,
     /// and nothing else scrolls for it.
     #[test]
     fn a_shift_press_extends_and_an_on_scroll_grid_hears_the_wheel_in_lines() {
@@ -2823,27 +3101,20 @@ mod follow_headless {
         let mut ev = KuiEvent::default();
         let mut lines = Vec::new();
         while kui_poll_event(ctx, &mut ev) {
-            let mut kind = KuiStr {
-                ptr: std::ptr::null(),
-                len: 0,
-            };
-            kui_value_as_str(kui_value_get(ev.payload, ks("kind")), &mut kind);
-            if &*kstr(kind) != "scroll" {
+            if ev_kind(&ev) != "scroll" {
                 continue;
             }
             let mut n = 0i64;
             assert!(kui_value_as_int(
-                kui_value_get(ev.payload, ks("lines")),
+                kui_value_get(kui_value_get(ev.payload, ks("scroll")), ks("lines")),
                 &mut n
             ));
+            // The message is the payload: its own `kind`, the app's.
             let mut t = KuiStr {
                 ptr: std::ptr::null(),
                 len: 0,
             };
-            kui_value_as_str(
-                kui_value_get(kui_value_get(ev.payload, ks("tag")), ks("kind")),
-                &mut t,
-            );
+            kui_value_as_str(kui_value_get(ev.payload, ks("kind")), &mut t);
             assert_eq!(&*kstr(t), "term");
             lines.push(n);
         }
@@ -3791,5 +4062,251 @@ mod replay_headless {
         assert_eq!(core.slot_fill_why("painted/root"), Some("Metrics"));
         assert_eq!(frame(&mut core, false), Some(SlotFill::Replayed));
         assert_eq!(views.get(), 3);
+    }
+}
+
+/// ADR 0048 through C: the events no node declares arrive as messages the
+/// app declared where it declares the window — its root's group
+/// (`kui_root_with`), its entry in the window set
+/// (`kui_window_declare_with`) and the menu bar (`kui_menu_bar_with`) —
+/// and as nothing where it declared none.
+#[cfg(test)]
+mod window_events_headless {
+    use super::*;
+
+    fn zspec() -> KuiSpec {
+        unsafe { std::mem::zeroed() }
+    }
+
+    /// `{kind: <kind>}`, owned by the caller.
+    fn msg(kind: &str) -> *mut KuiValue {
+        let m = kui_value_map();
+        kui_value_map_set(m, ks("kind"), kui_value_str(ks(kind)));
+        m
+    }
+
+    fn poll_all(ctx: *mut KuiCtx) -> Vec<(&'static str, Value)> {
+        let mut out = Vec::new();
+        let mut ev = KuiEvent::default();
+        while kui_poll_event(ctx, &mut ev) {
+            out.push((ev_kind(&ev), unsafe { &(*ev.payload).0 }.clone()));
+        }
+        out
+    }
+
+    /// A resize and a modifier change arrive as the root's `on_resize` and
+    /// `on_modifiers`, their data under the field named for the event; a
+    /// frame whose root declares none (a plain `kui_root`, or a NULL
+    /// group) hears neither.
+    #[test]
+    fn the_roots_group_delivers_its_resize_and_modifiers() {
+        let ctx = kui_ctx_new();
+        let resized = kui_value_str(ks("resized"));
+        let mods = msg("mods");
+        let frame = |w: f32, declare: bool| {
+            kui_frame_begin(ctx, w, 100.0, 1.0);
+            let events = KuiWindowEvents {
+                on_resize: resized,
+                on_modifiers: mods,
+                ..unsafe { std::mem::zeroed() }
+            };
+            if declare {
+                kui_root_with(ctx, &zspec(), &events);
+            } else {
+                kui_root(ctx, &zspec());
+            }
+            kui_frame_finish(ctx);
+        };
+        frame(200.0, true);
+        assert!(poll_all(ctx).is_empty(), "the first frame resizes nothing");
+
+        frame(300.0, true);
+        let evs = poll_all(ctx);
+        assert_eq!(evs.len(), 1, "{evs:?}");
+        let (kind, payload) = &evs[0];
+        assert_eq!(*kind, "resize");
+        assert_eq!(payload.get_str("tag"), Some("resized"), "a string message");
+        let data = payload.get("resize").expect("the data's field");
+        assert_eq!(data.get("width").and_then(Value::as_float), Some(300.0));
+        assert_eq!(payload.get("kind"), None, "the core writes no kind");
+
+        kui_input_modifiers(ctx, KUI_KMOD_SHIFT);
+        let evs = poll_all(ctx);
+        assert_eq!(evs.len(), 1, "{evs:?}");
+        let (kind, payload) = &evs[0];
+        assert_eq!(*kind, "modifiers");
+        assert_eq!(payload.get_str("kind"), Some("mods"), "a map message's own");
+        let data = payload.get("modifiers").expect("the data's field");
+        assert_eq!(data.get("shift"), Some(&Value::Bool(true)));
+
+        // No handler, no event: the group in force is the last finished
+        // frame's, and this one declares none.
+        frame(400.0, false);
+        kui_input_modifiers(ctx, 0);
+        assert!(poll_all(ctx).is_empty());
+        // A NULL group is none.
+        kui_frame_begin(ctx, 500.0, 100.0, 1.0);
+        kui_root_with(ctx, &zspec(), std::ptr::null());
+        kui_frame_finish(ctx);
+        kui_input_modifiers(ctx, KUI_KMOD_SHIFT);
+        assert!(poll_all(ctx).is_empty());
+        // A NULL spec declares the group alone, the root left as it was.
+        kui_frame_begin(ctx, 500.0, 100.0, 1.0);
+        let events = KuiWindowEvents {
+            on_modifiers: mods,
+            ..unsafe { std::mem::zeroed() }
+        };
+        kui_root_with(ctx, std::ptr::null(), &events);
+        kui_frame_finish(ctx);
+        kui_input_modifiers(ctx, 0);
+        let evs = poll_all(ctx);
+        assert_eq!(evs.len(), 1, "{evs:?}");
+        assert_eq!(evs[0].0, "modifiers");
+
+        kui_value_free(resized);
+        kui_value_free(mods);
+        kui_ctx_free(ctx);
+    }
+
+    /// A declared window's opening and closing arrive as its entry's
+    /// `on_window` — the closing as the last one declared, the window
+    /// having no frame left — and a window declared without one is heard
+    /// of only through the window commands.
+    #[test]
+    fn a_window_declared_with_messages_hears_its_lifecycle() {
+        let ctx = kui_ctx_new();
+        let frame = |declare: u8| {
+            kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+            kui_root(ctx, &zspec());
+            match declare {
+                1 => kui_window_declare_with(
+                    ctx,
+                    ks("palette"),
+                    std::ptr::null(),
+                    msg("palette"),
+                    std::ptr::null_mut(),
+                ),
+                2 => kui_window_declare(ctx, ks("plain"), std::ptr::null()),
+                _ => {}
+            }
+            kui_frame_finish(ctx);
+        };
+        frame(1);
+        let evs = poll_all(ctx);
+        assert_eq!(evs.len(), 1, "{evs:?}");
+        let (kind, payload) = &evs[0];
+        assert_eq!(*kind, "window");
+        assert_eq!(payload.get_str("kind"), Some("palette"));
+        let data = payload.get("window").expect("the data's field");
+        assert_eq!(data.get_str("phase"), Some("opened"));
+        assert_eq!(data.get("id"), Some(&Value::Int(1)));
+        assert_eq!(data.get("name"), None, "the message names the window");
+
+        frame(0);
+        let evs = poll_all(ctx);
+        assert_eq!(evs.len(), 1, "{evs:?}");
+        assert_eq!(evs[0].1.get_str("kind"), Some("palette"));
+        let data = evs[0].1.get("window").expect("the data's field");
+        assert_eq!(data.get_str("phase"), Some("closed"));
+
+        // Declared without messages: it opens and closes in silence.
+        frame(2);
+        frame(0);
+        assert!(poll_all(ctx).is_empty());
+        kui_ctx_free(ctx);
+    }
+
+    /// A choice from the bar arrives as `kui_menu_bar_with`'s message with
+    /// `menu: {role, item}` in it, whether the platform reported it or the
+    /// drawn strip; a bar declared without one posts nothing.
+    #[test]
+    fn a_bar_declared_with_a_message_hears_its_choice() {
+        let ctx = kui_ctx_new();
+        let rows = [KuiMenuItem {
+            label: ks("New"),
+            role: KUI_MENU_CUSTOM,
+            enabled: 1,
+            id: std::ptr::null(),
+            accel: ks(""),
+            checked: 0,
+            replay: 0,
+            submenu: std::ptr::null(),
+            submenu_count: 0,
+        }];
+        let menus = [KuiMenu {
+            label: ks("File"),
+            items: rows.as_ptr(),
+            count: rows.len(),
+            enabled: 1,
+        }];
+        let frame = |with: bool| {
+            kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+            kui_root(ctx, &zspec());
+            if with {
+                assert!(kui_menu_bar_with(ctx, menus.as_ptr(), 1, msg("chose")));
+            } else {
+                assert!(kui_menu_bar(ctx, menus.as_ptr(), 1));
+            }
+            kui_frame_finish(ctx);
+        };
+        kui_set_native_menu_bar(ctx, true);
+        frame(true);
+        assert!(kui_activate_menu_bar_item(ctx, 0, 0));
+        let evs = poll_all(ctx);
+        assert_eq!(evs.len(), 1, "{evs:?}");
+        let (kind, payload) = &evs[0];
+        assert_eq!(*kind, "menu");
+        assert_eq!(payload.get_str("kind"), Some("chose"));
+        let data = payload.get("menu").expect("the data's field");
+        assert_eq!(data.get_str("item"), Some("New"));
+
+        frame(false);
+        assert!(
+            !kui_activate_menu_bar_item(ctx, 0, 0),
+            "nothing posted from a bar with no message"
+        );
+        assert!(poll_all(ctx).is_empty());
+        kui_ctx_free(ctx);
+    }
+
+    /// Each `_with` door consumes its messages, also when it refuses the
+    /// call: a NULL context, a row whose role this build does not know.
+    #[test]
+    fn the_with_doors_consume_their_messages_when_refused() {
+        kui_window_declare_with(
+            std::ptr::null_mut(),
+            ks("x"),
+            std::ptr::null(),
+            msg("a"),
+            msg("b"),
+        );
+        assert!(!kui_menu_bar_with(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            0,
+            msg("c")
+        ));
+        let ctx = kui_ctx_new();
+        let bad = [KuiMenuItem {
+            label: ks("?"),
+            role: 0xffff,
+            enabled: 1,
+            id: std::ptr::null(),
+            accel: ks(""),
+            checked: 0,
+            replay: 0,
+            submenu: std::ptr::null(),
+            submenu_count: 0,
+        }];
+        let menus = [KuiMenu {
+            label: ks("File"),
+            items: bad.as_ptr(),
+            count: 1,
+            enabled: 1,
+        }];
+        kui_frame_begin(ctx, 300.0, 100.0, 1.0);
+        assert!(!kui_menu_bar_with(ctx, menus.as_ptr(), 1, msg("d")));
+        kui_frame_finish(ctx);
+        kui_ctx_free(ctx);
     }
 }

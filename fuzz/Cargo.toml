@@ -67,6 +67,14 @@ bench = false
 required-features = ["libfuzzer"]
 
 [[bin]]
+name = "events"
+path = "fuzz_targets/events.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]
+
+[[bin]]
 name = "decode"
 path = "fuzz_targets/decode.rs"
 test = false

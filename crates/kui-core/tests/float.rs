@@ -146,7 +146,7 @@ fn float_escapes_ancestor_clip_and_hits_topmost() {
     core.handle_input(InputEvent::mouse_down(1));
     let evs = core.handle_input(InputEvent::mouse_up());
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.as_str(), Some("float"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("float"));
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn percent_floats_tile_their_parent_into_zones() {
             .find_map(|e| e.payload.get_str("tag").map(str::to_string))
             .or_else(|| {
                 evs.iter()
-                    .find_map(|e| e.payload.as_str().map(str::to_string))
+                    .find_map(|e| e.payload.get_str("tag").map(str::to_string))
             })
             .unwrap_or_default()
     };
@@ -338,7 +338,7 @@ fn click_at(core: &mut Core, x: f32, y: f32) -> Option<String> {
     core.handle_input(InputEvent::mouse_down(1));
     let evs = core.handle_input(InputEvent::mouse_up());
     evs.first()
-        .and_then(|e| e.payload.as_str())
+        .and_then(|e| e.payload.get_str("tag"))
         .map(str::to_string)
 }
 

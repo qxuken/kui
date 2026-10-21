@@ -26,6 +26,7 @@
 //! ```
 
 use crate::color::Color;
+use crate::value::Value;
 use crate::window::WindowEnv;
 
 /// What the host knows about the display/window. Defaults are safe for
@@ -105,6 +106,44 @@ pub struct SystemEnv {
 }
 
 impl SystemEnv {
+    /// The reading as a `system` event carries it, `{appearance, accent,
+    /// motion, locale, assistive}`: the names each type spells itself,
+    /// the accent as `0xRRGGBBAA`, and `null` for an accent or a locale the
+    /// host cannot tell.
+    pub fn to_value(&self) -> Value {
+        Value::map([
+            ("appearance", Value::str(self.appearance.name())),
+            (
+                "accent",
+                self.accent
+                    .map_or(Value::Null, |c| Value::Int(c.to_hex() as i64)),
+            ),
+            ("motion", Value::str(self.motion.name())),
+            (
+                "locale",
+                self.locale.map_or(Value::Null, |l| Value::str(l.as_str())),
+            ),
+            ("assistive", Value::str(self.assistive.name())),
+        ])
+    }
+
+    /// [`Self::to_value`] read back; `None` for a name no field spells.
+    pub fn from_value(v: &Value) -> Option<Self> {
+        Some(Self {
+            appearance: Appearance::parse(v.get_str("appearance")?)?,
+            accent: match v.get("accent")? {
+                Value::Null => None,
+                c => Some(Color::hex(u32::try_from(c.as_int()?).ok()?)),
+            },
+            motion: MotionPref::parse(v.get_str("motion")?)?,
+            locale: match v.get("locale")? {
+                Value::Null => None,
+                l => Some(Locale::new(l.as_str()?)?),
+            },
+            assistive: Assistive::parse(v.get_str("assistive")?)?,
+        })
+    }
+
     /// `self` laid over `base`: every field `self` knows wins, every field
     /// it left at "cannot tell" is `base`'s. The merge behind a launcher's
     /// pinned reading (`kui_native::Launcher::system`, Node's `runWindowed(..,

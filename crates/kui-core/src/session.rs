@@ -50,7 +50,7 @@ use cosmic_text::FontSystem;
 use crate::audio::AudioStore;
 use crate::resources::{FontId, FragmentId, ImageId, Resources, SessionId, SoundId};
 use crate::tree::OriginId;
-use crate::window::{WindowConfig, WindowId};
+use crate::window::{WindowConfig, WindowId, WindowLifecycle};
 
 /// The session's contents. Reached through [`Session::state`], one borrow
 /// at a time.
@@ -164,6 +164,9 @@ pub(crate) struct Dropped {
 pub(crate) struct WindowDecl {
     pub(crate) name: Rc<str>,
     pub(crate) config: WindowConfig,
+    /// What the window's opening, closing and dismissal arrive as: read on
+    /// every declaration, where `config` is read on the opening edge alone.
+    pub(crate) lifecycle: WindowLifecycle,
     pub(crate) origin: OriginId,
     /// The same frame declared this name again with a different config.
     /// The first declaration is the one kept; this remembers that there
@@ -179,6 +182,19 @@ struct WindowEntry {
     name: Rc<str>,
     id: WindowId,
     live: bool,
+    /// The messages and the origin of the declaration in force, refreshed
+    /// by every diff and kept once the declaration lapses: a window that
+    /// closed has nothing left declaring it, and its `closed` arrives as
+    /// what was last declared (ADR 0048).
+    lifecycle: WindowLifecycle,
+    origin: OriginId,
+}
+
+/// A window's lifecycle messages and who declared them: what its
+/// `window` and `dismiss` events are built from.
+pub(crate) struct WindowMessages {
+    pub(crate) lifecycle: WindowLifecycle,
+    pub(crate) origin: OriginId,
 }
 
 /// What one diff of the declared set decided; the core turns each into a
@@ -198,7 +214,8 @@ pub(crate) enum WindowChange {
     },
     Closed {
         id: WindowId,
-        name: Rc<str>,
+        /// The messages last declared for it.
+        messages: WindowMessages,
     },
 }
 
@@ -228,6 +245,8 @@ impl WindowRegistry {
                 name: Rc::from(MAIN_WINDOW_NAME),
                 id: WindowId::MAIN,
                 live: true,
+                lifecycle: WindowLifecycle::default(),
+                origin: OriginId::HOST,
             }],
             next_id: 1,
         }
@@ -252,6 +271,17 @@ impl WindowRegistry {
         if let Ok(i) = self.slots.binary_search_by_key(&id, |(i, _)| *i) {
             self.slots.remove(i);
         }
+    }
+
+    /// The lifecycle messages of the window `id`, while it is open.
+    pub(crate) fn messages_of(&self, id: WindowId) -> Option<WindowMessages> {
+        self.windows
+            .iter()
+            .find(|w| w.id == id)
+            .map(|w| WindowMessages {
+                lifecycle: w.lifecycle.clone(),
+                origin: w.origin,
+            })
     }
 
     /// The name the window `id` was declared under, while it is open.
@@ -293,18 +323,21 @@ impl WindowRegistry {
 
     /// The driver reports that the OS closed window `id`. Its declarations
     /// leave the union with it; its name stays known, closed, until the
-    /// declaration lapses. Returns the name if the window was open; `None`
-    /// for the main window (which closing ends the app) and for an id the
-    /// diff already closed.
-    pub(crate) fn os_closed(&mut self, id: WindowId) -> Option<Rc<str>> {
+    /// declaration lapses. Returns its messages if the window was
+    /// open; `None` for the main window (which closing ends the app) and
+    /// for an id the diff already closed.
+    pub(crate) fn os_closed(&mut self, id: WindowId) -> Option<WindowMessages> {
         if id == WindowId::MAIN {
             return None;
         }
         let w = self.windows.iter_mut().find(|w| w.id == id && w.live)?;
         w.live = false;
-        let name = w.name.clone();
+        let messages = WindowMessages {
+            lifecycle: w.lifecycle.clone(),
+            origin: w.origin,
+        };
         self.remove_slot(id);
-        Some(name)
+        Some(messages)
     }
 
     /// Diffs the union of every slot against the open windows.
@@ -325,12 +358,24 @@ impl WindowRegistry {
                 .rev()
                 .filter(|&i| {
                     let w = &self.windows[i];
-                    w.id != WindowId::MAIN && !union.iter().any(|u| u.0 == w.name)
+                    w.id != WindowId::MAIN && !union.iter().any(|u| u.name == w.name)
                 })
                 .collect();
             if gone.is_empty() {
-                for (name, config, owner, origin, conflict) in union {
-                    if self.windows.iter().any(|w| w.name == name) {
+                for u in union {
+                    let UnionEntry {
+                        name,
+                        config,
+                        lifecycle,
+                        owner,
+                        origin,
+                        conflict,
+                    } = u;
+                    if let Some(w) = self.windows.iter_mut().find(|w| w.name == name) {
+                        // Open already: its messages are read on every
+                        // declaration, so the latest one's are in force.
+                        w.lifecycle = lifecycle;
+                        w.origin = origin;
                         continue;
                     }
                     let id = WindowId(self.next_id);
@@ -339,6 +384,8 @@ impl WindowRegistry {
                         name: name.clone(),
                         id,
                         live: true,
+                        lifecycle,
+                        origin,
                     });
                     out.push(WindowChange::Opened {
                         id,
@@ -357,7 +404,10 @@ impl WindowRegistry {
                 if w.live {
                     out.push(WindowChange::Closed {
                         id: w.id,
-                        name: w.name,
+                        messages: WindowMessages {
+                            lifecycle: w.lifecycle,
+                            origin: w.origin,
+                        },
                     });
                 }
             }
@@ -368,18 +418,35 @@ impl WindowRegistry {
     /// slot — whose window id rides along as the owner, since the slot key
     /// *is* the window whose frame declared it — with whether any
     /// declaration of it disagreed.
-    fn union(&self) -> Vec<(Rc<str>, WindowConfig, WindowId, OriginId, bool)> {
-        let mut union: Vec<(Rc<str>, WindowConfig, WindowId, OriginId, bool)> = Vec::new();
+    fn union(&self) -> Vec<UnionEntry> {
+        let mut union: Vec<UnionEntry> = Vec::new();
         for (slot, decls) in &self.slots {
             for d in decls {
-                match union.iter_mut().find(|u| u.0 == d.name) {
-                    Some(u) => u.4 |= u.1 != d.config,
-                    None => union.push((d.name.clone(), d.config, *slot, d.origin, d.conflict)),
+                match union.iter_mut().find(|u| u.name == d.name) {
+                    Some(u) => u.conflict |= u.config != d.config,
+                    None => union.push(UnionEntry {
+                        name: d.name.clone(),
+                        config: d.config,
+                        lifecycle: d.lifecycle.clone(),
+                        owner: *slot,
+                        origin: d.origin,
+                        conflict: d.conflict,
+                    }),
                 }
             }
         }
         union
     }
+}
+
+/// One name of the declared set, as [`WindowRegistry::union`] found it.
+struct UnionEntry {
+    name: Rc<str>,
+    config: WindowConfig,
+    lifecycle: WindowLifecycle,
+    owner: WindowId,
+    origin: OriginId,
+    conflict: bool,
 }
 
 /// The font database, registries and audio store a set of windows share.

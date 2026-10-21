@@ -20,7 +20,11 @@ fn editor_frame(core: &mut Core, initial: &str) -> Key {
             autofocus: true,
             ..Default::default()
         },
-        NodeSpec::column().width(300.0).pad(4.0).label("Doc"),
+        NodeSpec::column()
+            .width(300.0)
+            .pad(4.0)
+            .label("Doc")
+            .on_change(Value::Null),
     );
     ui.finish();
     key
@@ -152,13 +156,18 @@ fn selection_requests_move_the_caret_and_type_over_it() {
     assert_eq!(node.caret, Some(18));
     assert_eq!(node.selection, Some((6, 18)));
 
-    // Typing over it: one changed event, the text follows, the caret
+    // Typing over it: one change event, the text follows, the caret
     // lands after what was typed.
     let evs = core.handle_input(InputEvent::Access(
         AccessRequest::new(key, AccessAction::ReplaceSelectedText).with_value("there"),
     ));
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].kind(), Some("changed"));
+    assert_eq!(evs[0].event.name(), "change");
+    assert_eq!(
+        evs[0].data().and_then(|d| d.get_str("text")),
+        Some("hello there line"),
+        "the whole text after the change"
+    );
     assert_eq!(core.edit_text(key).as_deref(), Some("hello there line"));
     editor_frame(&mut core, "");
     let node = core.access_tree().get(key).unwrap().clone();
@@ -199,8 +208,9 @@ fn selection_requests_move_the_caret_and_type_over_it() {
 }
 
 /// An app that owns its text: an `on_key` sink declared a multiline
-/// editor, a decorative gutter, each drawn line a `role="line"` row made
-/// of two text nodes, caret and anchor offsets on the lines holding them.
+/// editor (with an `on_change` for a reader's setValue), a decorative
+/// gutter, each drawn line a `role="line"` row made of two text nodes,
+/// caret and anchor offsets on the lines holding them.
 fn custom_frame(
     core: &mut Core,
     lines: &[&str],
@@ -226,6 +236,7 @@ fn custom_frame_in(
         NodeSpec::column()
             .fill()
             .on_key("ed")
+            .on_change("ed")
             .role(Role::MultilineTextInput)
             .label("Doc"),
         |ui| {
@@ -337,7 +348,9 @@ fn a_custom_editor_declares_its_lines_caret_and_selection() {
     assert!(node.supports(AccessAction::Focus));
 
     // Requests the core cannot honour come back as data, in the app's
-    // own terms: line ordinals and byte offsets.
+    // own terms: line ordinals and byte offsets. A selection is a
+    // `select` on the sink, typing over it a `text`, setting the whole
+    // value a `change`.
     let evs = core.handle_input(InputEvent::Access(
         AccessRequest::new(sink, AccessAction::SetTextSelection).with_selection(
             TextPos {
@@ -352,36 +365,42 @@ fn a_custom_editor_declares_its_lines_caret_and_selection() {
     ));
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, sink);
+    assert_eq!(evs[0].event.name(), "select");
     let pos = |line: i64, offset: i64| {
         Value::map([("line", Value::Int(line)), ("offset", Value::Int(offset))])
     };
     assert_eq!(
         evs[0].payload,
         Value::map([
-            ("kind", Value::str("access")),
-            ("action", Value::str("setTextSelection")),
-            ("anchor", pos(0, 1)),
-            ("focus", pos(1, 6)),
             ("tag", Value::str("ed")),
+            (
+                "select",
+                Value::map([("anchor", pos(0, 1)), ("focus", pos(1, 6))])
+            ),
         ])
     );
     let evs = core.handle_input(InputEvent::Access(
         AccessRequest::new(sink, AccessAction::ReplaceSelectedText).with_value("x"),
     ));
+    assert_eq!(evs[0].event.name(), "text");
     assert_eq!(
         evs[0].payload,
         Value::map([
-            ("kind", Value::str("access")),
-            ("action", Value::str("replaceSelectedText")),
-            ("text", Value::str("x")),
             ("tag", Value::str("ed")),
+            ("text", Value::map([("text", Value::str("x"))])),
         ])
     );
     let evs = core.handle_input(InputEvent::Access(
         AccessRequest::new(sink, AccessAction::SetValue).with_value("all new"),
     ));
-    assert_eq!(evs[0].payload.get_str("action"), Some("setValue"));
-    assert_eq!(evs[0].payload.get_str("text"), Some("all new"));
+    assert_eq!(evs[0].event.name(), "change");
+    assert_eq!(
+        evs[0].payload,
+        Value::map([
+            ("tag", Value::str("ed")),
+            ("change", Value::map([("text", Value::str("all new"))])),
+        ])
+    );
 
     // No caret declared: no positions, value still there.
     let mut core = Core::new();

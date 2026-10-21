@@ -13,7 +13,7 @@
 //   npm run slide                              a real window to drag by hand
 //   node dist/features/slide.mjs --headless    the same gesture, no window
 //   node dist/features/slide.mjs --trace       print every event the loop gets
-import type { App, CoreMsg, KuiWindow, UiEvent } from '@qxuken/kui';
+import type { App, DragMsg, KuiWindow, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Card = { id: string; x: number; y: number; label: string };
@@ -24,8 +24,9 @@ type Model = {
   log: string;
 };
 
-type AppMsg = { kind: 'pan' } | { kind: 'card'; id: string };
-type Msg = AppMsg | CoreMsg;
+// The canvas's drag arrives as its `pan` message with the drag in it.
+type AppMsg = DragMsg<{ kind: 'pan' }> | { kind: 'card'; id: string };
+type Msg = AppMsg;
 
 const CARDS: Card[] = [
   { id: 'a', x: 60, y: 60, label: 'root' },
@@ -43,8 +44,8 @@ const init: Model = { pan: { x: 0, y: 0 }, from: null, panAt: { x: 0, y: 0 }, lo
 
 function update(model: Model, msg: Msg, _ev: UiEvent<Msg>): Model | undefined {
   if (TRACE) console.log('ev', JSON.stringify(msg));
-  if (msg.kind !== 'drag') return undefined;
-  const { phase, x, y } = msg;
+  if (msg.kind !== 'pan') return undefined;
+  const { phase, x, y } = msg.drag;
   if (phase === 'start') {
     return { ...model, from: { x, y }, panAt: model.pan, log: `start ${Math.round(x)},${Math.round(y)}` };
   }

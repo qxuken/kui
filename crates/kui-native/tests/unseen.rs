@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 
 use kui_native::testing::Drive;
-use kui_native::{App, Core, FrameCause, NodeSpec, Size, TextStyle, Ui, UiEvent};
+use kui_native::{App, Core, FrameCause, NodeSpec, Size, TextStyle, Ui, UiEvent, WindowEvents};
 
 /// Notes another thread hands over, as a sync engine or a folder watcher
 /// does, taken in by the view; and a sweep the view asks to run every two
@@ -34,6 +34,7 @@ impl App for Inbox {
             self.next_sweep = now + 2.0;
         }
         ui.request_frame_at(self.next_sweep);
+        ui.window_events(WindowEvents::default().on_resize("resized"));
         ui.with_keyed("list", NodeSpec::column().fill(), |ui| {
             for (i, n) in self.notes.iter().enumerate() {
                 ui.text_in_keyed(&format!("n{i}"), NodeSpec::row(), n, TextStyle::new(12.0));
@@ -42,9 +43,9 @@ impl App for Inbox {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.kind() == Some("resize") {
-            let at = |k: &str| ev.payload.get_float(k).unwrap_or(0.0);
-            self.resizes.push((at("width"), at("height")));
+        if let kui_native::Event::Resize(r) = ev.read() {
+            self.resizes
+                .push((f64::from(r.size.w), f64::from(r.size.h)));
         }
     }
 }

@@ -23,10 +23,12 @@ fn key(core: &mut Core, code: KeyCode) -> Vec<UiEvent> {
     core.press(KeyPress::new(code, KeyMods::default()))
 }
 
+/// A slider's proposal: the `change` field's value and phase.
 fn value(ev: &UiEvent) -> (f64, &str) {
+    let change = ev.data().expect("a change field");
     (
-        ev.payload.get_float("value").unwrap(),
-        ev.payload.get_str("phase").unwrap(),
+        change.get_float("value").unwrap(),
+        change.get_str("phase").unwrap(),
     )
 }
 
@@ -61,7 +63,7 @@ fn a_checkbox_reads_its_state_and_presses_through_its_payload() {
     assert_eq!(core.focus(), Some(keys.0));
     let evs = key(&mut core, KeyCode::Space);
     assert_eq!(evs.len(), 1);
-    assert_eq!(evs[0].payload.as_str(), Some("mute"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("mute"));
 
     build(&mut core, true, false);
     assert_eq!(node(&mut core, keys.0).checked, Some(true));
@@ -87,7 +89,7 @@ fn a_radio_group_s_arrows_press_the_radio_they_land_on() {
     key(&mut core, KeyCode::Tab);
     let evs = key(&mut core, KeyCode::Down);
     assert_eq!(evs.len(), 1, "moving the choice pressed the next radio");
-    assert_eq!(evs[0].payload.as_int(), Some(1));
+    assert_eq!(evs[0].payload.get_int("tag"), Some(1));
     build(&mut core, 1);
     let checked: Vec<Option<bool>> = core
         .access_tree()
@@ -153,7 +155,7 @@ fn a_press_proposes_the_value_under_it_and_a_drag_each_new_step() {
     let evs = core.handle_input(InputEvent::CursorMoved(Vec2::new(150.0, 40.0)));
     let moved: Vec<(f64, &str)> = evs
         .iter()
-        .filter(|e| e.kind() == Some("change"))
+        .filter(|e| e.event.name() == "change")
         .map(value)
         .collect();
     assert_eq!(moved, [(70.0, "move")]);
@@ -162,12 +164,12 @@ fn a_press_proposes_the_value_under_it_and_a_drag_each_new_step() {
     let evs = release(&mut core);
     let ended: Vec<(f64, &str)> = evs
         .iter()
-        .filter(|e| e.kind() == Some("change"))
+        .filter(|e| e.event.name() == "change")
         .map(value)
         .collect();
     assert_eq!(ended, [(100.0, "end")]);
     assert!(
-        evs.iter().all(|e| e.payload.as_str() != Some("vol")),
+        evs.iter().all(|e| !e.is(kui_core::EventKind::Click)),
         "a slide is not a click"
     );
 }
@@ -181,7 +183,7 @@ fn the_keys_move_it_by_its_step_and_to_its_ends() {
     let step = |core: &mut Core, code| {
         let evs = key(core, code);
         evs.iter()
-            .filter(|e| e.kind() == Some("change"))
+            .filter(|e| e.event.name() == "change")
             .map(|e| value(e).0)
             .collect::<Vec<_>>()
     };
@@ -218,11 +220,15 @@ fn a_disabled_slider_proposes_nothing() {
     assert!(evs.is_empty());
 }
 
-/// A slider without `on_change` keeps ADR 0007's nudge: the arrows reach
-/// the app as `access` events, and its Page, Home and End keys are not
-/// its own.
+/// A slider without `on_change` has no message to propose a value in
+/// (ADR 0047, decision 5): the arrows and a reader's requests move
+/// nothing, and say so once as `slider-without-handler`; its Page, Home
+/// and End keys are not its own.
 #[test]
-fn a_slider_without_on_change_still_nudges() {
+fn a_slider_without_on_change_does_not_move_and_warns() {
+    use kui_core::diag::SLIDER_WITHOUT_HANDLER;
+    use kui_core::testing::codes;
+
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
     let k = ui.leaf_keyed(
@@ -236,18 +242,20 @@ fn a_slider_without_on_change_still_nudges() {
             .on_drag("vol"),
     );
     ui.finish();
+    core.take_warnings();
     key(&mut core, KeyCode::Tab);
     assert_eq!(core.focus(), Some(k));
-    assert_eq!(kinds(&key(&mut core, KeyCode::Right)), ["access"]);
+    assert!(key(&mut core, KeyCode::Right).is_empty(), "no access event");
     assert!(key(&mut core, KeyCode::End).is_empty());
 
-    // A reader's set value reaches the app with the number (RG42).
+    // A reader's set value is nothing too (RG42's request, refused).
     let evs = core.handle_input(InputEvent::Access(
         AccessRequest::new(k, AccessAction::SetValue).with_value("7.5"),
     ));
-    assert_eq!(kinds(&evs), ["access"]);
-    assert_eq!(evs[0].payload.get_str("action"), Some("setValue"));
-    assert_eq!(evs[0].payload.get_float("value"), Some(7.5));
+    assert!(evs.is_empty());
+    let ws = core.take_warnings();
+    assert_eq!(codes(&ws), [SLIDER_WITHOUT_HANDLER], "{ws:?}");
+    assert_eq!(ws[0].key, k);
 }
 
 /// Windows' UI Automation moves a slider only by setting it — RangeValue

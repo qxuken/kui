@@ -12,11 +12,15 @@ use kui_core::{
     Size, TextStyle, UiEvent, Value, WindowButton, WindowCommand,
 };
 
+/// What each event was: a click by the message it names (its `kind`), as
+/// the app routes it, any other event by its name.
 fn kinds(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .map(|ev| match ev.kind() {
-            Some(k) => k.to_string(),
-            None => format!("{:?}", ev.payload),
+        .map(|ev| match ev.event {
+            kui_core::EventKind::Click => {
+                kui_core::testing::messages(std::slice::from_ref(ev))[0].to_string()
+            }
+            kind => kind.name().to_string(),
         })
         .collect()
 }
@@ -63,7 +67,10 @@ fn app_frame(core: &mut Core, focus_edit: bool) -> (Key, Key, Key) {
             autofocus: focus_edit,
             ..Default::default()
         },
-        NodeSpec::column().width(200.0).label("Name"),
+        NodeSpec::column()
+            .width(200.0)
+            .label("Name")
+            .on_change(Value::Null),
     );
     let list = ui.with_keyed(
         "list",
@@ -454,7 +461,7 @@ fn a_click_request_emits_what_a_pointer_click_would() {
     }));
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, button);
-    assert_eq!(evs[0].payload.as_str(), Some("go"));
+    assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
 
     // A window button issues its command instead.
     let close = Key::ROOT.str("titlebar").str("close");
@@ -509,8 +516,13 @@ fn focus_and_value_requests_drive_an_editor() {
         anchor: None,
         focus: None,
     }));
-    assert_eq!(kinds(&evs), ["changed"]);
+    assert_eq!(kinds(&evs), ["change"]);
     assert_eq!(evs[0].key, edit);
+    assert_eq!(
+        evs[0].payload,
+        Value::map([("change", Value::map([("text", Value::str("world"))]))]),
+        "the whole text after the change, in the `on_change` message"
+    );
     assert_eq!(core.edit_text(edit).as_deref(), Some("world"));
     // The same text again changes nothing.
     let evs = core.handle_input(InputEvent::Access(AccessRequest {
@@ -542,8 +554,14 @@ fn focus_and_value_requests_drive_an_editor() {
     assert!(core.is_focused(edit));
 }
 
+/// A reader's increment and decrement on a slider are proposals in its
+/// `on_change` message, worked out by the core as an arrow's are (ADR
+/// 0047, decision 5); a slider without `on_change` does not move and
+/// says so as `slider-without-handler`.
 #[test]
-fn slider_nudges_reach_the_app_as_access_events() {
+fn slider_nudges_reach_the_app_as_changes() {
+    use kui_core::diag::SLIDER_WITHOUT_HANDLER;
+
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     let slider = ui.leaf_keyed(
@@ -551,10 +569,12 @@ fn slider_nudges_reach_the_app_as_access_events() {
         NodeSpec::row()
             .role(Role::Slider)
             .label("Volume")
-            .on_drag("vol"),
+            .on_drag("vol")
+            .on_change("vol"),
     );
     let untagged = ui.leaf_keyed("bare", NodeSpec::row().role(Role::Slider).label("x"));
     ui.finish();
+    core.take_warnings();
 
     let evs = core.handle_input(InputEvent::Access(AccessRequest {
         key: slider,
@@ -565,12 +585,17 @@ fn slider_nudges_reach_the_app_as_access_events() {
     }));
     assert_eq!(evs.len(), 1);
     assert_eq!(evs[0].key, slider);
+    assert_eq!(kinds(&evs), ["change"]);
+    // Unset, the range is 0..100 by a hundredth of it, and the value its
+    // minimum: one step up is 1.
     assert_eq!(
         evs[0].payload,
         Value::map([
-            ("kind", Value::str("access")),
-            ("action", Value::str("increment")),
             ("tag", Value::str("vol")),
+            (
+                "change",
+                Value::map([("value", Value::Float(1.0)), ("phase", Value::str("end"))])
+            ),
         ])
     );
     let evs = core.handle_input(InputEvent::Access(AccessRequest {
@@ -580,13 +605,10 @@ fn slider_nudges_reach_the_app_as_access_events() {
         anchor: None,
         focus: None,
     }));
-    assert_eq!(
-        evs[0].payload,
-        Value::map([
-            ("kind", Value::str("access")),
-            ("action", Value::str("decrement")),
-        ])
-    );
+    assert!(evs.is_empty(), "no `on_change`, no move: {evs:?}");
+    let ws = core.take_warnings();
+    assert_eq!(codes(&ws), [SLIDER_WITHOUT_HANDLER]);
+    assert_eq!(ws[0].key, untagged);
 }
 
 #[test]
@@ -645,7 +667,7 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
             "name",
             "before",
             &EditOptions::default(),
-            NodeSpec::row().size(100.0, 20.0),
+            NodeSpec::row().size(100.0, 20.0).on_change(Value::Null),
         );
         let slider = ui.leaf_keyed(
             "vol",
@@ -653,7 +675,8 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
                 .size(100.0, 20.0)
                 .role(Role::Slider)
                 .label("Volume")
-                .on_drag("vol"),
+                .on_drag("vol")
+                .on_change("vol"),
         );
         let off = ui.leaf_keyed(
             "off",
@@ -723,11 +746,11 @@ fn requests_behind_a_modal_or_on_a_disabled_node_do_nothing() {
     let evs = core.handle_input(InputEvent::Access(
         AccessRequest::new(field, AccessAction::SetValue).with_value("after"),
     ));
-    assert_eq!(kinds(&evs), ["changed"]);
+    assert_eq!(kinds(&evs), ["change"]);
     assert_eq!(core.edit_text(field).as_deref(), Some("after"));
     assert_eq!(
         kinds(&core.handle_input(req(slider, AccessAction::Increment))),
-        ["access"]
+        ["change"]
     );
     assert!(
         core.handle_input(req(off, AccessAction::Increment))
@@ -809,7 +832,10 @@ fn a_click_behind_a_modal_fires_nothing_and_asks_the_modal_to_go() {
     let evs = click(&mut core, save);
     assert_eq!(kinds(&evs), ["dismiss"]);
     assert_eq!(evs[0].key, dialog);
-    assert_eq!(evs[0].payload.get_str("reason"), Some("outside"));
+    assert_eq!(
+        evs[0].data().and_then(|d| d.get_str("reason")),
+        Some("outside")
+    );
     assert_eq!(evs[0].payload.get_str("tag"), Some("dlg"));
     assert_eq!(core.focus(), Some(ok));
     // A disabled one behind it is outside all the same — the pointer's

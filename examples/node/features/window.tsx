@@ -4,8 +4,9 @@
 // own — not the counter, which is `apps/counter.tsx`:
 //
 // - `init` is handed the window and runs after `setup`, so the first model
-//   already knows the size the window actually opened at, and `resize`
-//   messages keep it current — no module-level variable, no constant
+//   already knows the size the window actually opened at, and the
+//   `resize` message its root declares (`windowEvents.onResize`, ADR
+//   0048) keeps it current — no module-level variable, no constant
 //   corrected on the first frame;
 // - resources are the window's: an image registered in `setup` and drawn
 //   with `<image src>`, a sound registered there and played by a
@@ -15,12 +16,12 @@
 //   controls sit where `env().window.nativeControls` says.
 //
 //   npm run window
-import type { CoreMsg, KuiWindow, UiEvent, WindowSize } from '@qxuken/kui';
+import type { KuiWindow, ResizeMsg, UiEvent, WindowSize } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Model = { size: WindowSize; clicks: number; hum: boolean };
-type AppMsg = { kind: 'hum' } | { kind: 'add'; by: number };
-type Msg = AppMsg | CoreMsg;
+type AppMsg = { kind: 'hum' } | { kind: 'add'; by: number } | ResizeMsg<{ kind: 'resize' }>;
+type Msg = AppMsg;
 
 // `init` is handed the window, and runs after setup(), so the first model
 // already knows the size the window actually opened at.
@@ -32,12 +33,10 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>): Model | undefined {
       return { ...model, clicks: model.clicks + msg.by };
     case 'hum':
       return { ...model, hum: !model.hum };
-    // Sent by the core when the window changes size or DPI; `win.size()`
-    // answers the same at any time.
-    case 'resize': {
-      const { width, height, scale } = msg;
-      return { ...model, size: { width, height, scale } };
-    }
+    // The root's `onResize`, sent when the window changes size or DPI;
+    // `win.size()` answers the same at any time.
+    case 'resize':
+      return { ...model, size: msg.resize };
   }
 }
 
@@ -107,6 +106,9 @@ await run<Model, AppMsg>({
   view,
   window: { width: 640, height: 420, minWidth: 420, minHeight: 320, chrome: 'custom' },
   dock: 'bottom',
+  // The root's own events (ADR 0048): the harness declares them on the
+  // root it wraps this view in.
+  windowEvents: () => ({ onResize: { kind: 'resize' } }),
   setup(win) {
     const [w, h] = [64, 32];
     const px = Buffer.alloc(w * h * 4);

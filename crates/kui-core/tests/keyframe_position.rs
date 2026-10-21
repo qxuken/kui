@@ -3,7 +3,7 @@
 //! where an eased position is, so the node and its subtree are drawn and
 //! hit along the stops while the room it takes stays its own place's.
 
-use kui_core::testing::{click_at, kinds, solids};
+use kui_core::testing::{click_at, messages, solids};
 use kui_core::{
     Color, Core, Easing, Keyframe, NodeSpec, Repeat, Size, TextStyle, Transition, Value,
 };
@@ -75,7 +75,7 @@ fn a_moved_node_is_hit_where_it_is_drawn() {
     };
     bob(&mut core, 0.5, stops(), None);
     // Drawn 20 px up: y 0..40 now, so y 5 is on it and y 50 is not.
-    assert_eq!(kinds(&click_at(&mut core, 30.0, 5.0)), vec!["bob"]);
+    assert_eq!(messages(&click_at(&mut core, 30.0, 5.0)), vec!["bob"]);
     bob(&mut core, 0.5, stops(), None);
     assert!(click_at(&mut core, 30.0, 50.0).is_empty());
 }
@@ -164,10 +164,10 @@ fn on_layout_reports_the_layout_rect_and_not_the_cycle() {
         ui.finish();
         core.take_pending_events()
             .into_iter()
-            .filter(|e| e.kind() == Some("layout"))
+            .filter(|e| e.event.name() == "layout")
             .map(|e| {
-                e.payload
-                    .get("y")
+                e.data()
+                    .and_then(|d| d.get("y"))
                     .and_then(Value::as_float)
                     .unwrap_or(f64::NAN)
             })

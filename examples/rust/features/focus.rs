@@ -199,7 +199,7 @@ impl App for Focus {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.payload.as_str() {
+        match ev.message::<String>().as_deref() {
             Some("verb:field") => self.verb = Some("field"),
             Some("verb:next") => self.verb = Some("next"),
             Some("verb:blur") => self.verb = Some("blur"),

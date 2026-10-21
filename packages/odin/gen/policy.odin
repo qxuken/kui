@@ -232,6 +232,12 @@ STRUCT_NAMES :: [][2]string {
 	{"KuiMenu", "Bar_Menu"},
 }
 
+// An event whose data is one shape per role, each its own X_Event and
+// With_X (ADR 0047): a slider's change and an editor's.
+EVENT_STRUCTS :: [][2]string {
+	{"change", "slider_change edit_change"},
+}
+
 // -- The schema rows ----------------------------------------------------------
 
 // A prop whose value is a string in the other bindings but a set of bits
@@ -318,6 +324,7 @@ CUSTOM_RULES :: []Custom_Rule {
 	{"optionAsAlt", "verb", "", "", "kui_set_option_as_alt"},
 	{"imeOff", "verb", "", "", "kui_set_ime_off"},
 	{"windows", "verb", "", "", "kui_window_declare"},
+	{"windowEvents", "verb", "", "", "kui_root_with"},
 }
 
 // -- Doors --------------------------------------------------------------------
@@ -343,7 +350,7 @@ DEFAULTS :: [][2]string {
 
 // A struct parameter kui.h says may be NULL, and what NULL means there: a
 // Maybe, nil by default.
-NULLABLE :: []string{"kui_theme_set.theme", "kui_metrics_set.metrics", "kui_window_declare.cfg", "kui_play.opts"}
+NULLABLE :: []string{"kui_theme_set.theme", "kui_metrics_set.metrics", "kui_window_declare.cfg", "kui_window_declare_with.cfg", "kui_play.opts"}
 
 // A field whose C zero is not the default its INIT macro gives: a Maybe in
 // the mirror, the INIT value when it is nil. A window activates by

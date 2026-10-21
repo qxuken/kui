@@ -5,12 +5,13 @@
 //! field declared `keep_tab` hands its Tab to the app.
 
 use kui_core::{
-    Core, EditKey, EditOptions, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Size,
-    UiEvent, Value, Vec2,
+    Core, EditKey, EditOptions, EventKind, InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods,
+    NodeSpec, Size, UiEvent, Value, Vec2,
 };
 
 /// A shell sink around one editor (and a button after it, for Tab to
-/// reach), or the editor alone with `shell: false`.
+/// reach), or the editor alone with `shell: false`. The editor declares
+/// its boundary row: an editor with no row sends nothing (ADR 0047).
 fn frame(core: &mut Core, opts: &EditOptions, shell: bool) -> (Key, Key) {
     let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
@@ -23,7 +24,9 @@ fn frame(core: &mut Core, opts: &EditOptions, shell: bool) -> (Key, Key) {
                 autofocus: true,
                 ..opts.clone()
             },
-            NodeSpec::column().size(200.0, 40.0),
+            NodeSpec::column()
+                .size(200.0, 40.0)
+                .on_boundary(Value::Null),
         );
         ui.leaf_keyed(
             "after",
@@ -85,21 +88,31 @@ fn press(core: &mut Core, code: KeyCode, mods: KeyMods, text: Option<&str>) -> V
     out
 }
 
+/// The `(phase, code)` of each key the sink heard, from the `key` field of
+/// its message (`{tag: "shell", key: {phase, code, ...}}`).
 fn heard(evs: &[UiEvent], sink: Key) -> Vec<(String, String)> {
     evs.iter()
-        .filter(|e| e.key == sink && e.kind() == Some("key"))
+        .filter(|e| e.key == sink && e.is(EventKind::Key))
         .map(|e| {
-            let at = |k: &str| e.payload.get_str(k).unwrap_or("").to_string();
+            let at = |k: &str| {
+                e.data()
+                    .and_then(|d| d.get_str(k))
+                    .unwrap_or("")
+                    .to_string()
+            };
             (at("phase"), at("code"))
         })
         .collect()
 }
 
+/// The `(key, edge)` of the field's boundary event, from the `boundary`
+/// field of its message (`{boundary: {key, edge, word, doc}}`).
 fn boundary(evs: &[UiEvent], field: Key) -> Option<(String, String)> {
     let e = evs
         .iter()
-        .find(|e| e.key == field && e.kind() == Some("boundary"))?;
-    let at = |k: &str| e.payload.get_str(k).unwrap_or("").to_string();
+        .find(|e| e.key == field && e.is(EventKind::Boundary))?;
+    let data = e.data()?;
+    let at = |k: &str| data.get_str(k).unwrap_or("").to_string();
     Some((at("key"), at("edge")))
 }
 
@@ -171,7 +184,7 @@ fn the_editor_keeps_what_it_acts_on() {
 fn with_no_sink_above_a_chord_goes_nowhere() {
     let (mut core, _, field) = rig(EditOptions::default(), false);
     let evs = press(&mut core, KeyCode::Char('n'), primary(), None);
-    assert!(evs.iter().all(|e| e.kind() != Some("key")));
+    assert!(evs.iter().all(|e| e.event.name() != "key"));
     assert_eq!(core.edit_text(field).as_deref(), Some("ab"));
 }
 
@@ -250,7 +263,9 @@ fn a_document_reports_its_first_and_last_lines() {
                 autofocus: true,
                 ..opts.clone()
             },
-            NodeSpec::column().size(300.0, 100.0),
+            NodeSpec::column()
+                .size(300.0, 100.0)
+                .on_boundary(Value::Null),
         );
         ui.finish();
         k

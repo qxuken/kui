@@ -453,8 +453,9 @@ On macOS and Windows a window app does nothing: the runner hears the OS
 say the installed fonts changed, scans them again, and draws, and a view
 that names the new family (`family="…"`) or lists `systemFonts()` sees
 it on that frame. An app that holds the list in its model — a font
-picker's rows — re-reads it on the `fonts` message (`FontsMsg`, one per
-window, on the root), which every rescan that found a change raises. Elsewhere — Linux, where fontconfig sends no such
+picker's rows — re-reads it on the message its root declares as
+`windowEvents.onFonts` (one per window that declares it, ADR 0048),
+which every rescan that found a change raises. Elsewhere — Linux, where fontconfig sends no such
 signal, or a host with its own windowing — call `ctx.reloadSystemFonts()`
 (Rust `Core::reload_system_fonts()`, C `kui_font_reload_system`). kui
 scans the system's fonts once a process and every session starts from
@@ -556,12 +557,12 @@ list(ctx, { key: 'log', heights },
 `cells`: rows × cols of `{ch, fg, bg, flags}` and a cursor, one node — a
 200×50 screen costs ~60 µs a frame with every character new, against ~2 ms
 as a text node per cell. A click or drag on it carries `cell: {row, col}`
-in its payload, and the node reads as a `terminal` with the rows joined as
+in its `click` or `drag` field, and the node reads as a `terminal` with the rows joined as
 its value. Inverse, dim and a wide cell's blank spacer are the app's.
 
 So is the scrollback: a grid is one screenful, and `originLine` says which.
-Declare `onScroll` on it and the wheel arrives as `{kind:"scroll", lines,
-…}` — the whole lines the notch covers, positive toward later history, the
+Declare `onScroll` on it and the wheel arrives as its message with
+`scroll: {lines, …}` in it — the whole lines the notch covers, positive toward later history, the
 fraction carried to the next notch — and you re-declare the grid with
 `originLine + lines`. A drag-select held past the grid's top or bottom
 edge arrives the same way, once a frame with the lines that frame scrolled
@@ -571,7 +572,8 @@ the scroll you answer with. `examples/rust/widgets/cells.rs` does both.
 [`cells` row](props.md#elements) ·
 [`scroll` event](props.md#events) ·
 [ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How does a selection follow the pointer past the edge?
 
@@ -586,8 +588,8 @@ characters. Nothing to declare; a headless test sees the nudge as
 `scrollOffset` moving a frame at a time under `animating()` — ten px a
 frame with no clock, the clock's own share with one (`app.advance(ms)` in
 Node, `Drive::advance` in Rust). The wheel over any node that declares
-`onScroll` is a message instead — `{kind:"scroll", x, y, dx, dy, lines,
-tag}` — and the node takes it from the scroller above, on the axes its
+`onScroll` is its message instead, with `scroll: {x, y, dx, dy, lines}`
+in it, and the node takes it from the scroller above, on the axes its
 `scrollAxes` names; a gesture that began over it stays its own, and one
 that began over a scroller inside it at its limit comes to it; a `cells` grid
 gets its edge drag the same way, since its history is yours.
@@ -595,20 +597,22 @@ gets its edge drag the same way, since its history is yours.
 [`onScroll` row](props.md#container-props) ·
 [`scroll` event](props.md#events) ·
 [ADR 0029](adr/0029-a-selection-follows-the-pointer-past-the-edge.md) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I pan a canvas with a drag?
 
-`onDrag` events carry `dx`/`dy` measured **from the press point** in every
-phase, so a pan handler is `offset = offsetAtPress + dx` rather than a sum of
+An `onDrag` message arrives with `drag: {phase, x, y, dx, dy, parent}` in
+it, and `dx`/`dy` are measured **from the press point** in every phase, so a pan handler is `offset = offsetAtPress + dx` rather than a sum of
 deltas, and `end` alone is enough to commit. Cards that carry `slide` and a
 `transition` may keep them: a tween whose target moves every frame trails it
 by about one transition's worth of travel instead of freezing, as of
 alpha.7.
 
-[`drag` payload](props.md#events) ·
+[`drag` event](props.md#events) ·
 [`slide` row](props.md#container-props) ·
-[alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06)
+[alpha.7](../CHANGELOG.md#010-alpha7-2026-09-06) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### Why does a tab moved left glide under its neighbour, and right over it?
 
@@ -698,22 +702,27 @@ can carry `accent` too, which substitutes its `bg` and nothing else;
 is not a role.
 
 The reading is there before your first view — a window fills it in as it
-opens, not on its first frame — and a change to it arrives as a `system`
-message on the root, carrying the whole of `env.system` as it now reads:
+opens, not on its first frame — and a change to it arrives as the message
+the root declares for it in its `windowEvents` group (ADR 0048), carrying
+the whole of `env.system` as it now reads under `system`:
 
-```ts
+```tsx
+<box windowEvents={{ onSystemSettingsChange: { kind: 'settings' } }}>…</box>
+
 update(m, msg) {
-  if (msg.kind === 'system') return { ...m, dark: msg.appearance === 'dark' };
+  if (msg.kind === 'settings') return { ...m, dark: msg.system.appearance === 'dark' };
   ...
 }
 ```
 
-Take the message rather than only reading `env`, because a driver's redraw
+Declare it rather than only reading `env`, because a driver's redraw
 re-lowers the tree it was handed and does not re-run your `view`: an app
 that paints only on input would otherwise hold the palette its first frame
-picked for as long as the user leaves it alone. A Rust `App`, whose `view`
-*is* what the runner calls every frame, can read `env` and ignore the
-message.
+picked for as long as the user leaves it alone, and nothing arrives that
+the root did not ask for. A Rust `App`, whose `view` *is* what the runner
+calls every frame, can read `env` and declare nothing. Lua spells it
+`window_events = { on_system_settings_change = … }` on the root table, C
+`kui_root_with` with a `KuiWindowEvents`.
 
 [`system.*` rows](props.md#env) ·
 [Theme table](props.md#theme) ·
@@ -805,16 +814,19 @@ back its frame draws the node unblurred.
 
 A `modal` node is one tree: the Tab ring becomes its subtree, everything
 outside it is inert to the pointer, the wheel and assistive technology, and
-Escape or an outside press emits `{kind:"dismiss"}` on the node, which the
-app answers by not declaring it. Reach for a `kind: "popup"` window only for
+Escape or an outside press arrives as the `modal` message with `dismiss:
+{reason}` in it, which the app answers by not declaring it. Reach for a `kind: "popup"` window only for
 the placements a float cannot make — a list taller than the window, a panel
 beside the app — because a popup is an OS surface where a `fit` float plus a
-`modal` costs one tree; it reports the same `dismiss` event, on the root.
+`modal` costs one tree; it reports the same `dismiss` event, as its
+`windows` entry's `onDismiss` message with `dismiss: {reason, id}` in it
+(ADR 0048), so the handler stays when the declaration changes.
 
 [`modal` row](props.md#container-props) ·
 [`windows` row](props.md#composite-props-hand-written-per-binding) ·
 [ADR 0003](adr/0003-modal-surfaces.md) ·
-[ADR 0004](adr/0004-multi-window.md)
+[ADR 0004](adr/0004-multi-window.md) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I offer a choice among a few options?
 
@@ -827,9 +839,10 @@ field that shows the choice in force and, clicked, drops the core's own
 menu of the options with the current one checked — the menu a right-click
 opens, drawn in the frame or the platform's where the host shows menus
 itself, dismissed by Escape or a press outside, walked by the arrows. You
-hold no open state. The choice arrives as the `menu` event a menu row
-posts, on the field's key — `{kind:"menu", role:"custom", item:"Deutsch"}`
-— and drawing the field again with the new index is the whole loop. An
+hold no open state. The choice arrives on the field's key with the row in
+`menu` — `{menu:{role:"custom", item:"Deutsch"}}`, or inside the `on_menu`
+message a Rust `select_with` spec declares — and drawing the field again
+with the new index is the whole loop. An
 option may be a menu item instead of a string — `{ label: "18 pt", id: 18 }`,
 `enabled: false` for a dead row — so a choice can post an `id` of its own
 (a size in points, an enum's tag) instead of its label; in Rust that is
@@ -846,7 +859,8 @@ posted, the menu still open — as the pointer never reaches it.
 [`select` element](props.md#elements) ·
 [examples/rust/widgets/select.rs](../examples/rust/widgets/select.rs) ·
 [examples/node/widgets/select.tsx](../examples/node/widgets/select.tsx) ·
-[the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough)
+[the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I add a checkbox, a radio group, a switch or a slider?
 
@@ -869,10 +883,11 @@ A slider says its range and step and asks the core for its changes:
 valueStep={5} onChange={{kind: 'volume'}}/>`. A press proposes the value
 under the pointer, a drag each new step, the arrows one step, PageUp /
 PageDown ten, Home / End the ends — clamped, snapped, and the decimal the
-step names (`0.3`, not `0.30000001`) — as `{kind: 'change', value, phase:
-'move' | 'end', tag}`. Store `value` and declare it as `valueNow`; nothing
-moves until you do. A slider without `onChange` is the hand-drawn kind
-and keeps the `access` nudge.
+step names (`0.3`, not `0.30000001`) — as `{kind: 'volume', change: {value,
+phase: 'move' | 'end'}}`. Store `change.value` and declare it as `valueNow`;
+nothing moves until you do. A slider without `onChange` does not move for
+the pointer, the keys or a screen reader, and the core warns
+`slider-without-handler`.
 
 The controls' look is their spec, so they read only their own rows, and
 a paint row on one is an `unknown-prop` warning; a control that needs a
@@ -882,17 +897,20 @@ moves them with the stock button.
 
 [the elements](props.md#elements) ·
 [examples/rust/widgets/controls.rs](../examples/rust/widgets/controls.rs) ·
-[examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx)
+[examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I match my app's messages as types, in Rust?
 
 `#[derive(Message)]` on an enum: each variant becomes a `{kind, …fields}`
 payload (the kind is the variant's name in snake_case, or `#[message(kind
 = "…")]`), so `on_click(Msg::Save)` builds it, and `ev.message::<Msg>()`
-reads it back into an exhaustive `match`. A click delivers the message as
-its payload; a drag, a change, a scroll or a drop delivers it as the `tag`
-inside the core's event, and `message` looks in both places. The event's
-own fields stay on `ev.payload` — a drag's `phase`, a change's `value`.
+reads it back into an exhaustive `match`. Every event delivers the message
+as its payload, with the event's data in one field named for the event, and
+a field the enum does not name is not read, so one message decodes whatever
+brought it. The data is read beside it — `ev.drag()` and the other views,
+or `ev.split::<Msg>()`, the message and an `Event` (`Event::Drag(d)` with
+its `d.phase`, `Event::SliderChange(c)` with its `c.value`) in one `match`.
 Field types are the numbers, `bool`, `String`, `Option`, `Vec`, `Value`
 and other messages. An enum of unit variants marked `#[message(string)]`
 is a bare string where it is a field (`dir: SplitDir` as `"h"`).
@@ -913,21 +931,22 @@ fn on_event(&mut self, ev: UiEvent) {
         Some(Msg::Focus { pane }) => self.focused = pane,
         Some(Msg::Split { path, dir }) => self.drag_divider(&ev, path, dir),
         Some(Msg::TabNew) => self.new_tab(),
-        None => {} // a core event with no message of ours: a key, a resize
+        None => {} // no message of ours
     }
 }
 ```
 
 [`splitmux.rs`](../examples/rust/apps/splitmux.rs) ·
-[alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-2026-09-26)
+[alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-2026-09-26) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I let the user pick a file, or where to save one?
 
 Ask for the platform's dialog: `ctx.requestFiles({ mode: 'open', multiple:
 true, filters: [{ name: 'Images', extensions: ['png', 'jpg'] }], tag })`
-(`'save'` with a `fileName`, or `'folder'`). The answer is one `files`
-message — `{kind: 'files', paths, tag}`, the paths a `drop` carries, none
-when the user cancelled — so a list that takes dropped files takes picked
+(`'save'` with a `fileName`, or `'folder'`). The answer is the `tag`
+message on the root with `files: {paths}` in it — the paths a `drop`
+carries, none when the user cancelled — so a list that takes dropped files takes picked
 ones with the same code. An Open or folder answer carries only what
 exists: a name typed into Windows' multi-select panel that is not there
 is left out. One dialog at a time: asking again while one is
@@ -939,7 +958,8 @@ C with `kui_request_files`.
 
 [`files` event](props.md#events) ·
 [`drop.tsx`](../examples/node/features/drop.tsx) ·
-[`drop.rs`](../examples/rust/features/drop.rs)
+[`drop.rs`](../examples/rust/features/drop.rs) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I give my app a menu bar?
 
@@ -983,8 +1003,9 @@ chevron and opens its rows beside it when the pointer rests on it, it is
 clicked, or Enter or the Right arrow is pressed; Left or Escape closes
 it, and Escape again closes the menu. It nests, in a context menu and in
 a menu bar, drawn or the platform's. A row inside is chosen like any
-row: one `{kind:"menu", role, item}` with its own `id`, on the node the
-menu is about. Give the rows inside an `id`: a row without one posts its
+row: one `menu: {role, item}` with its own `id`, in the `onMenu` message
+of the node the menu is about, or of the `menuBar` element for a row of
+the bar (ADR 0048). Give the rows inside an `id`: a row without one posts its
 label, and "Name" under "Sort by ▸" and "Name" under "Group by ▸" would
 post the same `item`. A host that shows menus itself reports one with
 `Core::activate_menu_path(&[1, 0])` (Node `activateMenuPath`, C
@@ -1001,13 +1022,14 @@ clock, an open submenu waits 0.3 s before giving way to a row the
 pointer crosses, so a diagonal path into it does not close it.
 
 [ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
-[`tests/submenu.rs`](../crates/kui-core/tests/submenu.rs)
+[`tests/submenu.rs`](../crates/kui-core/tests/submenu.rs) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I take files dropped from the Finder?
 
 Declare `onDrop` (Rust and Lua `on_drop`, C `KuiSpec.on_drop`) on the box
-that takes them, and it hears `{kind:"drop", phase, paths, x, y, tag}` in
-four phases — `enter`, `move`, `leave`, `drop`, with the OS paths as
+that takes them, and its message arrives with `drop: {phase, paths, x, y}`
+in four phases — `enter`, `move`, `leave`, `drop`, with the OS paths as
 strings and the pointer in viewport coordinates. Add `dropBg` and the box
 lights while the files hover, the way `hoverBg` does, with nothing kept in
 your model. A button or field inside the box is the box's; the banner you
@@ -1020,19 +1042,24 @@ drive, and `dropTarget()` is what a driver answers the OS with.
 
 [ADR 0031](adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md) ·
 [`onDrop` row](props.md#container-props) ·
-[`drop` payload](props.md#events) ·
-[`examples/rust/features/drop.rs`](../examples/rust/features/drop.rs)
+[`drop` event](props.md#events) ·
+[`examples/rust/features/drop.rs`](../examples/rust/features/drop.rs) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I hear the documents the OS opens: Finder's Open With, the Dock icon?
 
-Handle `{kind:"open", paths}` in `update` (Rust `on_event`, C's event
-callback): it arrives on the root, asked for or not, with the file-system
-paths of the documents the Finder's Open With, a file dropped on the Dock
+Declare the message they arrive as on the main window's root —
+`windowEvents={{ onOpen: { kind: 'open' } }}` (Rust
+`ui.window_events(WindowEvents::default().on_open(Msg::Open))`, Lua
+`window_events = { on_open = … }`, C `kui_root_with`) — and handle it in
+`update` (Rust `on_event`, C's event callback) with `open: {paths}` in
+it: the file-system paths of the documents the Finder's Open With, a file dropped on the Dock
 icon, `open -a YourApp file.rs` or a double-click handed the app. The
 macOS runner hears them from the application delegate's
 `application:openURLs:` — at launch, where AppKit sends them before the
 window exists and puts none in the arguments, the paths wait for the main
-window and arrive on its first turn; while the app runs, at once. One
+window, and are held until its first frame has declared the message;
+while the app runs, at once. One
 `open` per request, several paths when the user opened several.
 
 The app's bundle has to say it opens documents, or the Finder will not
@@ -1050,7 +1077,8 @@ Headless, `ctx.openDocuments(paths)` (C `kui_input_open`, Rust
 `InputEvent::Open`) is the drive.
 
 [`open` payload](props.md#events) ·
-[alpha.40 `### Added`](../CHANGELOG.md#010-alpha40-2026-10-07)
+[alpha.40 `### Added`](../CHANGELOG.md#010-alpha40-2026-10-07) ·
+[ADR 0048](adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)
 
 ### How do I have global shortcuts and a Tab ring at once?
 
@@ -1084,10 +1112,10 @@ rows.
 
 Put an `onScroll` on the node that zooms and say which keys it is for:
 `<box onScroll={{ kind: 'zoom' }} scrollMods="ctrl super">` (Rust
-`.on_scroll(tag).scroll_mods(KeyMods::NONE.with_ctrl().with_super())`,
+`.on_scroll(msg).scroll_mods(KeyMods::NONE.with_ctrl().with_super())`,
 C `.scroll_mods = KUI_KMOD_CTRL | KUI_KMOD_SUPER`, Lua `scroll_mods =
 "ctrl super"`). A wheel turned with one of them held is then that
-node's `scroll` event wherever under the pointer it began — over a
+node's message with `scroll` in it wherever under the pointer it began — over a
 list inside it, and the list does not move — and a plain wheel passes
 the node by, so the lists go on scrolling — the node itself too, if it
 is the list: a scroll container that names a key for its own zoom
@@ -1096,14 +1124,15 @@ the whole window's zoom; a canvas inside can name the same key and take
 the gesture for itself, the innermost winning. Positive `dy` is the
 wheel rolling up, "bigger". A mouse's notch is 40 px and a trackpad's
 swipe comes in small pixel steps, so add `dy` up and step when the sum
-crosses your notch rather than once an event. The event's `mods` are
+crosses your notch rather than once an event. The `scroll` field's `mods` are
 the keys held when the gesture began: a swipe begun with the key held
 stays yours to the end of its glide even if the key was let go, and
 one begun without it never becomes yours, so there is nothing to latch
 yourself. Without the row an `onScroll` cannot do this: every scroll
 container inside it takes the wheel first.
 
-[`scrollMods` row](props.md#container-props)
+[`scrollMods` row](props.md#container-props) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### Why does a swipe down not move the strip sideways?
 
@@ -1161,7 +1190,7 @@ own sends `ScrollGesture { delta, begins }` (C's
 Yes, since alpha.17. A key reaches a node by holding focus, not by being
 somewhere a pointer could land, so a sink scrolled out of its container,
 or drawn part-way to its place by `slide` or an `enter` offset, hears
-every press with its tag as usual — you can give the keyboard to a
+every press as its message as usual — you can give the keyboard to a
 column on a ribbon and type into it before the reveal has brought it
 back, and animate the ribbon while you do. A `disabled` sink and one a
 modal shut out hear nothing, wherever they are drawn, and the pointer is
@@ -1175,14 +1204,15 @@ floor.
 ### How do I get an IME into an editor I own?
 
 An `onKey` sink drawing `line` rows with `caret` hears a composition as
-data: `{kind:"preedit", text, cursor, tag}` while it is composed (an empty
-`text` is the composition ending) and `{kind:"text", text, tag}` on the
+data: its message with `preedit: {text, cursor}` while it is composed (an
+empty `text` is the composition ending) and with `text: {text}` on the
 commit. Plain typing is not a commit — the `key` event already carries what
 the press would insert — so nothing arrives twice. The candidate window is
 anchored at the `line` carrying `caret` for you.
 
 [`text` and `preedit` events](props.md#events) ·
-[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08)
+[alpha.9](../CHANGELOG.md#010-alpha9-2026-09-08) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How does copy and paste work?
 
@@ -1204,9 +1234,9 @@ input. There are four ways onto it, and they end in one queue:
    the row and queues a `setClipboard` (with `text` and `html`) or a
    `paste`.
 3. **A virtual list's ask.** A copy whose selection reaches rows no frame
-   built cannot be answered by the core: `requestCopy()` says `asked`, a
-   `{kind:"selectionrange", from:{index, byte}, to:{index, byte}}`
-   message arrives on the scope, and `answerSelectionRange(text)` — the
+   built cannot be answered by the core: `requestCopy()` says `asked`, the
+   scope's `onSelectionRange` message arrives with `selectionrange:
+   {from:{index, byte}, to:{index, byte}}` in it, and `answerSelectionRange(text)` — the
    rows are yours — queues the `setClipboard`. Select All in such a list
    spans the whole of it — rows `0..rowCount`, which `uniformList` and
    its siblings declare for you (`rowCount` on a list you compose by
@@ -1223,7 +1253,7 @@ input. There are four ways onto it, and they end in one queue:
 **The queue.** In a window the runner drains it after every input and
 every frame and does the work: a `setClipboard` goes to the OS, a `paste`
 reads the OS and comes back as a **commit** — typing into the focused
-editor, or `{kind:"text", text, tag}` on the focused `onKey` sink (the
+editor, or the focused `onKey` sink's message with `text: {text}` (the
 nearest one above a focused control, or the root sink with nothing
 focused), the same message an IME's commit arrives on, so one arm handles
 both. Headless, `takeMenuActions()` (`Core::take_menu_actions`,
@@ -1240,34 +1270,36 @@ the wheel under the held press and the Shift-click that extends
 
 [`selectionrange` and `text` events](props.md#events) ·
 [ADR 0017](adr/0017-selection-as-a-scope.md) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I give the editor I own a mouse and a clipboard?
 
-Put `onDrag` on the same `onKey` sink. Every `drag` event inside it then
-carries `line` (which of the sink's `role="line"` rows the pointer is on —
-the same numbering its `access` events use), `byte` (where on that line,
+Put `onDrag` on the same `onKey` sink. Every drag inside it then carries,
+in its `drag` field, `line` (which of the sink's `role="line"` rows the
+pointer is on — the same numbering its `select` requests use), `byte` (where on that line,
 as `textHit` would answer) and `clicks` (the press's count), so the press
 places the caret, a `move` extends the selection from where it pressed,
 and a count of two takes the word — all arithmetic in the handler, with
-no query and no frame of lag. A click's map payload gains the same three.
+no query and no frame of lag. A click gains the same three in a `click`
+field.
 
 The clipboard is the host's, and the sink hears the raw `Ctrl-c` /
 `Ctrl-v`: bind `y` to `setClipboard(text)` (Lua `env.set_clipboard`, C
 `kui_set_clipboard`, Rust `ui.set_clipboard`) and `p` to `requestPaste()`
-— the paste comes back as the same `{kind:"text", text}` event an IME's
-commit does, so one arm inserts both. A window applies both after every
+— the paste comes back as the same `text: {text}` an IME's commit does, so one arm inserts both. A window applies both after every
 input and every frame; headless, `takeMenuActions()` hands them out and
 `commit(text)` answers the paste.
 
 [`drag` and `text` events](props.md#events) ·
-[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14)
+[alpha.12](../CHANGELOG.md#010-alpha12-2026-09-14) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I hear the middle button, or give a terminal's program the mouse?
 
 Declare `onButton` on the pane. A middle press over it — or over anything
-inside it that claims no button of its own — is `{kind:"button",
-phase:"press", button:"middle", x, y, clicks, tag}` on the pane, and the
+inside it that claims no button of its own — is the pane's message with
+`button: {phase:"press", button:"middle", x, y, clicks}` in it, and the
 button is then the pane's until it comes up: every move while it is held
 is `phase:"move"` and the release `phase:"release"`, on the pane wherever
 the pointer went, so a drag that leaves the pane still ends there. On a
@@ -1289,13 +1321,14 @@ it always did.
 
 [`onButton` and `buttons` rows](props.md#container-props) ·
 [`button` event](props.md#events) ·
-[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-2026-09-28)
+[alpha.22 `### Added`](../CHANGELOG.md#010-alpha22-2026-09-28) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I keep a pasted password out of my editor's history, and copy one?
 
 Read the markers on the paste. A password manager copies a secret with
 the pasteboard marked concealed and transient, and the answer to
-`requestPaste()` says so: the sink's `{kind:"text", text}` carries
+`requestPaste()` says so: the sink's `text: {text}` carries
 `concealed: true` (a secret — show it to no one, log it nowhere) and
 `transient: true` (keep it in no history), each only when it is set.
 Insert the text as usual and leave it out of whatever you remember —
@@ -1312,7 +1345,8 @@ managers neither show nor keep it. Headless, it comes out of
 answers a paste with `paste(text, {concealed, transient})`.
 
 [`text` events](props.md#events) ·
-[alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
+[alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I make a password field?
 
@@ -1494,7 +1528,7 @@ and a relaunch.
 
 ### How do I tell the keypad from the main keys, or hear a lone Shift?
 
-Every key payload says which of a key's twins it was, `location`:
+Every `key` field says which of a key's twins it was, `location`:
 `"numpad"` for the keypad's digits, operators and Enter — `code` still
 `"1"` or `"enter"`, so a keymap that does not care reads nothing new —
 `"left"` or `"right"` for a modifier, else `"standard"`; `caps_lock` and
@@ -1510,11 +1544,75 @@ media keys (`mediaplaypause`, `volumeup`, …) need nothing: they are keys.
 [ADR 0002](adr/0002-keyboard-focus-as-data.md#amendment-where-a-key-is-the-modifier-keys-the-locks-built-2026-09-28) ·
 [alpha.24](../CHANGELOG.md#010-alpha24-2026-09-28)
 
+### Which field did this edit come from?
+
+The one whose message it is. An event arrives as the message its handler
+declared, with the event's data in one field named for the event ([ADR
+0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)), so
+an editor declared `onChange={{kind: 'rename', id: row.id}}` hands `update`
+`{kind: 'rename', id, change: {text}}` — the row and the text, with no key
+to look up. A list of fields is a list of messages; `keyOf` never enters
+into it. `onSubmit` and `onCancel` arrive as declared, and an editor that
+declares none of the four rows hears nothing, as a box without `onClick`
+is no button. In TypeScript the message is typed where it is declared:
+
+```tsx
+type Rename = EditChangeMsg<{ kind: 'rename'; id: string }>;
+// or: interface Rename extends WithEditChange { kind: 'rename'; id: string }
+
+<edit key={`name:${r.id}`} value={r.name} onChange={{ kind: 'rename', id: r.id }} />
+
+case 'rename': return renameRow(model, msg.id, msg.change.text);
+```
+
+`onChange` takes only a message that declares `change`, so pairing one
+with the wrong handler fails at the node. In Rust, `ev.split::<Msg>()`
+reads the message beside an `Event`, or `#[message(on = change)]` on the
+variant makes the derive's arriving twin carry the text inside it.
+
+[`onChange` row](props.md#container-props) ·
+[`change` event](props.md#events) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I keep an editor's text in my model?
+
+Declare it as the editor's `value`, and store what `onChange` brings back.
+On every frame the declared value differs from the editor's text, the
+editor is brought to it as a splice: only the span that differs changes,
+so a caret before it stays, one after it moves with the text, and undo
+still steps back through the user's own typing. A correction made in
+`update` — an uppercasing filter, a digits-only field, a length cap —
+joins the undo step of the keystroke it corrected, so one undo takes back
+both. Make it in `update`, not in an effect that resolves later: a
+correction that lands frames after the edit is an undo step of its own,
+and undoing it lets the effect correct it again. While an input method is
+composing, the value waits for the commit.
+
+```tsx
+<edit value={model.code} onChange={{ kind: 'code' }} />
+
+case 'code': return { ...model, code: msg.change.text.replace(/\D/g, '').slice(0, 6) };
+```
+
+A `value` without `onChange` reverts every keystroke, and the core warns
+`edit-value-without-handler`; `value` beside `initial` warns
+`edit-value-and-initial`, since the seed is never read. An equal value — every
+frame of ordinary typing — costs a string compare: 1.25 µs a frame for a
+40-byte field in the core, the same as a seed, and about 5 µs over a seed
+for a 100 KB document, which in Node also crosses the wire every frame. So
+`value` is for fields; a document keeps `initial` and `onChange`, and the
+imperative way below stays for it.
+
+[`edit` element](props.md#elements) ·
+[`edit-value-without-handler`](props.md#warnings) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
 ### How do I reset an editor's text?
 
-`initial` seeds a *new* editor only — a key declared again keeps the draft
-the user typed — and `setEditText(name, text)` is what resets one, leaving
-the caret at the end. Name it by the label the editor's own `key` prop
+An editor with a `value` resets when the model does: declare the new value.
+For one without, `initial` seeds a *new* editor only — a key declared again
+keeps the draft the user typed — and `setEditText(name, text)` is what
+resets one, leaving the caret at the end and clearing its undo. Name it by the label the editor's own `key` prop
 declares, `setEditText('edit-n13', text)`, and it can be called from the
 `update` that *opens* the editor: no frame has declared it yet, so the text
 is held and the frame that draws it takes it, over `initial`. That is the
@@ -1608,7 +1706,11 @@ resolve a label through the frame being built so far and then the last
 finished one, so a node the user has never touched can be named. `keyOf(label)`
 (Node) and `kui_key_of` (C) hand back that hex key when one is wanted to hold
 on to, and null / 0 when no recent frame declared the label; Lua's focus,
-scroll and editor verbs take the label itself, so a script needs neither. One verb goes further:
+scroll and editor verbs take the label itself, so a script needs neither.
+The way back is `labelOf(key)` (Node), `kui_label_of` (C), `label_of`
+(Odin) and `env.label_of` (Lua): the label a key from an event, `focused()`
+or a log was opened under, and null for an auto-keyed node. It is the local
+label, so two rows of a list under different parents answer the same. One verb goes further:
 `setEditText` accepts a label *no* frame has declared, and holds the text for
 the frame that does — that is how the `update` opening an editor names it.
 A label declared by two nodes under different parents raises `ambiguous-key`
@@ -1633,7 +1735,7 @@ Register the bytes once (`ctx.addSound(buffer)` in `setup`, wav / ogg / mp3 /
 flac) and declare `<audio key src>` for as long as it should play: present is
 playing, gone is stopped, so a chime is one node under a key that changes
 when the event does. Give it a `tag` and the playback's own end arrives as
-`{kind:"sound", phase:"ended"}` — which is what to keep the node declared
+that message with `sound: {phase:"ended", playback}` in it — which is what to keep the node declared
 until, rather than a guessed duration.
 
 Guess it short and the sound is cut off mid-chime, which is what
@@ -1647,8 +1749,8 @@ end is `audioCommands()` holding a `stop` for the node.
 `finish` plays a one-shot out after its node goes, and a released playback
 is not free: it holds one of the device's 128 voices until its file ends,
 released or not, and the 129th play is refused. A refused play never starts
-and so never ends — it arrives as `{kind:"sound", phase:"refused"}` on a
-`tag`, and as a `playback-refused` warning either way, so nothing waits on
+and so never ends — it arrives as the `tag` message with `sound:
+{phase:"refused"}` in it, and as a `playback-refused` warning either way, so nothing waits on
 an `ended` that cannot come. In the app's units, voices held = sound length
 × release rate: a 1.4 s chime released four times a second holds 6 of the
 128 at any moment, a 10 s ambience released once a second holds 10, and every
@@ -1660,7 +1762,8 @@ longer needs instead of releasing it, and release short sounds.
 [sound resources](props.md#resources) ·
 [`sound` event](props.md#events) ·
 [`truncated-playback`](props.md#warnings) ·
-[`playback-refused`](props.md#warnings)
+[`playback-refused`](props.md#warnings) ·
+[ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
 ### How do I do the thing my app defines — a file write, a request?
 
@@ -1701,7 +1804,7 @@ block in page by page (fixed in alpha.21). The upload to the GPU comes on top.
 ### How many pixels should I render for this box?
 
 `w × scale` by `h × scale`, from the `layout` event: put `onLayout` on the
-box, and its payload carries the logical rect and `scale`, the physical px
+box, and its `layout` field carries the logical rect and `scale`, the physical px
 per logical px at that node. Render that many pixels, `update_image`, and
 the next frame shows them one texel per pixel — the loop the `image`
 example runs. It is one frame late, which is the frame model: until the
@@ -2085,7 +2188,7 @@ const mine = decodeQuads(win.quads()).filter((q) =>
   q.x >= r.x * s && q.y >= r.y * s && q.x + q.w <= (r.x + r.w) * s && q.y + q.h <= (r.y + r.h) * s);
 ```
 
-[`access` event](props.md#events) ·
+[`access` input](props.md#doors) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07) ·
 [alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-2026-09-26)
 
@@ -2138,8 +2241,8 @@ hands `kui_run_with`. The partial is the one `Ctx.setEnv` takes, so the
 branch you assert headless and the window you then look at read one
 spelling — and every field you leave out, `'unknown'` or null is *not
 pinned*: the appearance, accent and locale stay the OS's, a change to one
-of them still arrives as the `system` message, and that message carries
-your pin with it, since it is the whole reading. The examples' harnesses
+of them still arrives as the root's `onSystemSettingsChange` message, and
+that message carries your pin with it, since it is the whole reading. The examples' harnesses
 take `--motion reduced` for the same look at any example.
 
 It is an option and not an environment variable on purpose, for the reason

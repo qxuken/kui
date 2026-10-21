@@ -432,11 +432,11 @@ impl Tree {
         self.any_animate |= spec.animate;
         self.any_over_siblings |= spec.over_siblings;
         if let Some(events) = spec.events.as_deref() {
-            self.any_modal |= events.modal.is_some();
-            self.any_layout |= events.on_layout.is_some();
-            self.any_context_menu |= events.on_context_menu.is_some();
-            self.any_scroll_handler |= events.on_scroll.is_some();
-            self.any_drop |= events.on_drop.is_some();
+            self.any_modal |= events.modal().is_some();
+            self.any_layout |= events.on_layout().is_some();
+            self.any_context_menu |= events.on_context_menu().is_some();
+            self.any_scroll_handler |= events.on_scroll().is_some();
+            self.any_drop |= events.on_drop().is_some();
         }
         if spec.transition.is_some() {
             match spec.anim.as_deref() {

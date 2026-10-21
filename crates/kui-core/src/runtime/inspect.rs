@@ -294,25 +294,25 @@ impl Core {
             let ev = spec.events();
             let it = spec.interact();
             let mut flags = Vec::new();
-            if ev.on_click.is_some() {
+            if ev.on_click().is_some() {
                 flags.push("click");
             }
-            if ev.on_drag.is_some() {
+            if ev.on_drag().is_some() {
                 flags.push("drag");
             }
-            if ev.on_key.is_some() {
+            if ev.on_key().is_some() {
                 flags.push("key");
             }
-            if ev.on_hover.is_some() {
+            if ev.on_hover().is_some() {
                 flags.push("hover");
             }
-            if ev.on_drop.is_some() {
+            if ev.on_drop().is_some() {
                 flags.push("drop");
             }
-            if ev.on_context_menu.is_some() {
+            if ev.on_context_menu().is_some() {
                 flags.push("context-menu");
             }
-            if ev.modal.is_some() {
+            if ev.modal().is_some() {
                 flags.push("modal");
             }
             if spec.hoverable {
@@ -337,16 +337,16 @@ impl Core {
             }
             let mut events = Vec::new();
             for (name, v) in [
-                ("click", &ev.on_click),
-                ("drag", &ev.on_drag),
-                ("key", &ev.on_key),
-                ("hover", &ev.on_hover),
-                ("drop", &ev.on_drop),
-                ("context-menu", &ev.on_context_menu),
-                ("force-click", &ev.on_force_click),
-                ("button", &ev.on_button),
-                ("layout", &ev.on_layout),
-                ("modal", &ev.modal),
+                ("click", ev.on_click()),
+                ("drag", ev.on_drag()),
+                ("key", ev.on_key()),
+                ("hover", ev.on_hover()),
+                ("drop", ev.on_drop()),
+                ("context-menu", ev.on_context_menu()),
+                ("force-click", ev.on_force_click()),
+                ("button", ev.on_button()),
+                ("layout", ev.on_layout()),
+                ("modal", ev.modal()),
             ] {
                 if let Some(v) = v {
                     events.push((name, v.clone()));

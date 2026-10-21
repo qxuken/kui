@@ -97,6 +97,10 @@ under a lucky 16-unit build's: one unit inlines more.
 | `list_100k_rows_variable_learning` | the same 100k list learning a visible row's height | ~14.7 µs |
 | `slot_1500_nodes_fresh` | an extension filling a slot with 500 rows — a box, a text and a hover-tracking box each, 1,500 nodes — built fresh every frame (ADR 0045) | ~277 µs |
 | `slot_1500_nodes_replayed` | the same frame replayed from what the first fill kept: the gap is the extension's own pushes, which a Rust fill has little of and a Lua or C fill's walk is most of | ~208 µs |
+| `edit_value_field` | a focused 40-byte field declared with `EditOptions::value` equal to its text, every frame of ordinary typing (ADR 0047): a compare over the same frame with a seed, which read ~1.25 µs (measured 2026-10-21 with the three rows below) | ~1.25 µs |
+| `edit_value_field_splice` | the same field declared a value one character away from its text every frame, so every frame splices, records an undo step and lays the field out again | ~5.12 µs |
+| `edit_value_doc` | a focused 100 KB document declared with a value equal to its text: the compare, read line by line in place, over the same frame with a seed, which read ~42.2 µs | ~47.2 µs |
+| `edit_value_doc_splice` | the same document declared a value one character away from its text every frame: the copy and the span search, then what a keystroke costs, which read ~195 µs typed into the same document | ~147 µs |
 | `walk` (`-p kui-lua --bench walk`) | a settings pane's worth of Lua tables (120 settings: a name, a line of spans, four chips with a background, a radius, a pad and a click payload), built once and lowered every frame, layout and emission included; the diagnostics off, as a release runner has them (on: ~1.75 ms) | ~1.64 ms |
 | `build_and_walk` | the same tables built by the view each frame, as a view does: the gap is the script's own time | ~2.50 ms |
 | `warm_50x200` (`--bench stream`) | fifty 200-column mono lines, the same every frame — a terminal pane at rest | ~85 µs |

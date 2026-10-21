@@ -6,7 +6,7 @@
 //! menu itself is an ordinary modal float the app declares, so this only
 //! covers the routing that makes one buildable.
 
-use kui_core::testing::{click_at, kinds};
+use kui_core::testing::{click_at, kinds, messages};
 use kui_core::{
     Core, EditOptions, InputEvent, Key, MouseButton, NodeSpec, Size, TextStyle, UiEvent, Vec2,
 };
@@ -82,8 +82,14 @@ fn a_secondary_press_emits_the_menu_where_it_landed() {
     assert_eq!(kinds(&evs), ["contextmenu"]);
     assert_eq!(evs[0].key, k.row, "the topmost node is the one asked");
     assert_eq!(evs[0].payload.get("tag").unwrap().as_str(), Some("row"));
-    assert_eq!(evs[0].payload.get("x").unwrap().as_float(), Some(30.0));
-    assert_eq!(evs[0].payload.get("y").unwrap().as_float(), Some(20.0));
+    assert_eq!(
+        evs[0].data().unwrap().get("x").unwrap().as_float(),
+        Some(30.0)
+    );
+    assert_eq!(
+        evs[0].data().unwrap().get("y").unwrap().as_float(),
+        Some(20.0)
+    );
 }
 
 /// The container answers where no child covers it — and, since T1, where
@@ -105,7 +111,7 @@ fn a_secondary_press_is_never_a_click() {
     let mut core = Core::new();
     frame(&mut core);
     assert_eq!(kinds(&right_click(&mut core, 30.0, 20.0)), ["contextmenu"]);
-    assert_eq!(kinds(&click_at(&mut core, 30.0, 20.0)), ["open"]);
+    assert_eq!(messages(&click_at(&mut core, 30.0, 20.0)), ["open"]);
 }
 
 /// A disabled node's own menu is stripped like its click, and the press
@@ -142,7 +148,10 @@ fn a_child_without_a_menu_reaches_the_enclosing_one() {
     assert_eq!(kinds(&evs), ["contextmenu"]);
     assert_eq!(evs[0].key, Key::ROOT);
     assert_eq!(evs[0].payload.get("tag").unwrap().as_str(), Some("shell"));
-    assert_eq!(evs[0].payload.get("x").unwrap().as_float(), Some(150.0));
+    assert_eq!(
+        evs[0].data().unwrap().get("x").unwrap().as_float(),
+        Some(150.0)
+    );
     assert_ne!(evs[0].key, sink);
 
     // Two levels down, on a button that has a click and no menu: the
@@ -150,7 +159,7 @@ fn a_child_without_a_menu_reaches_the_enclosing_one() {
     let evs = right_click(&mut core, 30.0, 20.0);
     assert_eq!(kinds(&evs), ["contextmenu"]);
     assert_eq!(evs[0].key, Key::ROOT);
-    assert_eq!(kinds(&click_at(&mut core, 30.0, 20.0)), ["open"]);
+    assert_eq!(messages(&click_at(&mut core, 30.0, 20.0)), ["open"]);
 }
 
 /// The walk stops at the modal boundary, as the key walk does: a dialog
@@ -260,7 +269,7 @@ fn a_secondary_press_does_not_break_a_drag() {
     let out = core.handle_input(InputEvent::mouse_up());
     assert_eq!(kinds(&out), ["drag"]);
     assert_eq!(
-        out[0].payload.get("phase").unwrap().as_str(),
+        out[0].data().unwrap().get("phase").unwrap().as_str(),
         Some("end"),
         "the primary release is what ends the drag"
     );
@@ -323,7 +332,7 @@ fn a_modal_contains_and_dismisses_on_secondary_presses() {
     assert_eq!(kinds(&evs), ["dismiss"]);
     assert_eq!(evs[0].key, menu_key);
     assert_eq!(
-        evs[0].payload.get("reason").unwrap().as_str(),
+        evs[0].data().unwrap().get("reason").unwrap().as_str(),
         Some("outside")
     );
 }

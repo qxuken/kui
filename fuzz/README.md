@@ -12,6 +12,7 @@ published.
 | `path`    | SVG `d` and the wire's floats, flattened, rasterized, and drawn as a node                                          | the wire form of parsed ops reads back to them                                                       |
 | `scenes`  | a corpus scene, or an editor, driven by every input a driver sends: pointer, wheel, keys, text, IME, files, access requests, resizes, the clock | every quad is finite while every input was; the editor keeps its text                               |
 | `decode`  | bytes to `kui_native::decode_image` and `decode_animation`                                                        | every frame is `width * height * 4` bytes; `Animation::at` names a frame                            |
+| `events`  | a view whose handler rows declare the fuzzer's messages — maps whose keys may be the event's own field, strings, numbers, `Null` — and an editor whose `value` the app declares back through a filter, driven by pointer, keys, text, IME, menus and assistive requests (ADR 0047) | every event reads back whole; a node's payload keeps its message's fields, a non-map one under `tag`; a `change` carries the editor's text; the editor holds the declared value, its caret on a character boundary |
 
 The Node addon's binary decoder is fuzzed in its own crate's tests
 (`crates/kui-node/src/fuzz_binary.rs`): the addon is a cdylib, which a
@@ -49,6 +50,13 @@ Both are replayed by `tests/regressions.rs` through the function the
 fuzz target calls, under `cargo test --workspace` on stable, so a fixed
 crash stays fixed without a fuzzer. `corpus/` and `artifacts/` are a
 run's working state and are not checked in.
+
+`events` and `scenes` build each input's `Core` in a session kept from
+the inputs before it, because a new session's font caches were nine
+tenths of an input's time (`src/reuse.rs` says what a kept session
+holds and when it is dropped). `tests/reuse.rs` checks that an input runs
+the same on a kept session as on a new one; `KUI_FUZZ_CORPUS=1 cargo
+test -p kui-fuzz --test reuse` checks a run's whole corpus too.
 
 The target binaries need libFuzzer, so they sit behind the `libfuzzer`
 feature, which only `scripts/fuzz.nu` turns on: a workspace build never

@@ -23,15 +23,17 @@
 //   npm run clipboard                              a real window
 //   node dist/features/clipboard.mjs --headless    every path, no window
 import { uniformList } from '@qxuken/kui';
-import type { App, CoreMsg, Ctx, KuiWindow, UiEvent } from '@qxuken/kui';
+import type { App, Ctx, KeySinkMsg, KuiWindow, SelectionRangeMsg, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 const ROWS = 2000;
 const ROW_H = 22;
 
 type Model = { lines: string[]; cursor: number; awaitingPaste: boolean; sent: string; received: string };
-type AppMsg = { kind: 'register' };
-type Msg = AppMsg | CoreMsg;
+// What the register's sink hears — a key or committed text, told apart by
+// its field — and the log's question for rows it never built.
+type AppMsg = KeySinkMsg<{ kind: 'register' }> | SelectionRangeMsg<{ kind: 'log' }>;
+type Msg = AppMsg;
 
 const init: Model = {
   lines: [
@@ -60,44 +62,44 @@ function rangeText(from: { index: number; byte: number }, to: { index: number; b
 }
 
 function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
-  switch (msg.kind) {
-    case 'key': {
-      switch (msg.code) {
-        case 'j': case 'down':
-          return { ...model, cursor: Math.min(model.cursor + 1, model.lines.length - 1) };
-        case 'k': case 'up':
-          return { ...model, cursor: Math.max(model.cursor - 1, 0) };
-        case 'y': {
-          // The sink's own Cmd-C: the app chose the text, the host puts
-          // it on the clipboard.
-          const line = model.lines[model.cursor];
-          win.setClipboard(line);
-          return { ...model, sent: `the register's line: ${JSON.stringify(line)}` };
-        }
-        case 'p':
-          // And its own Cmd-V: the host reads the clipboard and the text
-          // comes back as a `text` message, below.
-          win.requestPaste();
-          return { ...model, awaitingPaste: true };
+  if (msg.kind === 'register' && 'key' in msg) {
+    switch (msg.key.code) {
+      case 'j': case 'down':
+        return { ...model, cursor: Math.min(model.cursor + 1, model.lines.length - 1) };
+      case 'k': case 'up':
+        return { ...model, cursor: Math.max(model.cursor - 1, 0) };
+      case 'y': {
+        // The sink's own Cmd-C: the app chose the text, the host puts
+        // it on the clipboard.
+        const line = model.lines[model.cursor];
+        win.setClipboard(line);
+        return { ...model, sent: `the register's line: ${JSON.stringify(line)}` };
       }
-      return undefined;
+      case 'p':
+        // And its own Cmd-V: the host reads the clipboard and the text
+        // comes back as a `text` message, below.
+        win.requestPaste();
+        return { ...model, awaitingPaste: true };
     }
-    case 'text':
-      if (!model.awaitingPaste) return undefined;
-      return {
-        ...model,
-        awaitingPaste: false,
-        lines: [...model.lines, msg.text],
-        cursor: model.lines.length,
-        received: JSON.stringify(msg.text),
-      };
-    case 'selectionrange': {
-      // The log's copy reached rows no frame built: the rows are the
-      // app's, so the app answers, and the answer is what is copied.
-      const text = rangeText(msg.from, msg.to);
-      win.answerSelectionRange(text);
-      return { ...model, sent: `the log's rows: ${text.length} bytes` };
-    }
+    return undefined;
+  }
+  if (msg.kind === 'register' && 'text' in msg) {
+    if (!model.awaitingPaste) return undefined;
+    return {
+      ...model,
+      awaitingPaste: false,
+      lines: [...model.lines, msg.text.text],
+      cursor: model.lines.length,
+      received: JSON.stringify(msg.text.text),
+    };
+  }
+  if (msg.kind === 'log') {
+    // The log's copy reached rows no frame built: the rows are the
+    // app's, so the app answers, and the answer is what is copied.
+    const { from, to } = msg.selectionrange;
+    const text = rangeText(from, to);
+    win.answerSelectionRange(text);
+    return { ...model, sent: `the log's rows: ${text.length} bytes` };
   }
   return undefined;
 }
@@ -125,7 +127,7 @@ function view(model: Model, win: Surface) {
         {caption('a virtual list: select, scroll away, ⌘C — the app answers')}
         {uniformList(
           win,
-          { key: 'log', rows: ROWS, rowH: ROW_H, width: 'grow', height: 4 * ROW_H, bg: t.sunken, radius: 6, selectable: true, role: 'list', label: 'log' },
+          { key: 'log', rows: ROWS, rowH: ROW_H, width: 'grow', height: 4 * ROW_H, bg: t.sunken, radius: 6, selectable: true, role: 'list', label: 'log', onSelectionRange: { kind: 'log' } },
           (i) => (
             <box width="grow" height="grow" padX={8} dir="row" crossAlign="center">
               <text size={12} family="mono" color={t.fg}>{row(i)}</text>

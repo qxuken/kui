@@ -16,10 +16,10 @@ impl Core {
     ///
     /// The window opens on the first frame any core declares it — that
     /// frame's `finish_frame` queues a [`crate::WindowCommand::Open`] with
-    /// the id the core assigned and raises `{kind:"window",
-    /// phase:"opened", name, id}` — and closes, with a `Close` and a
-    /// `phase:"closed"`, on the first frame none does. Declared every
-    /// frame it costs nothing after the first.
+    /// the id the core assigned — and closes, with a `Close`, on the first
+    /// frame none does. Declared every frame it costs nothing after the
+    /// first. The app hears the two edges only through
+    /// [`Self::declare_window_with`]'s messages.
     ///
     /// `config` is read on that opening edge and never again: re-declaring
     /// a live window at another size changes nothing, because the user
@@ -31,7 +31,24 @@ impl Core {
     /// to stop and start again — and keeps raising
     /// [`crate::diag::WINDOW_DECLARED_WHILE_CLOSED`] until it does.
     /// `"main"` names the window the launcher opened and is always live.
-    pub fn declare_window(&mut self, name: &str, mut config: WindowConfig) {
+    pub fn declare_window(&mut self, name: &str, config: WindowConfig) {
+        self.declare_window_with(name, config, WindowLifecycle::default());
+    }
+
+    /// [`Self::declare_window`], with the messages the window's lifecycle
+    /// arrives as (ADR 0048): `on_window` hears it open and close, as
+    /// `window: {phase: "opened" | "closed", id}`, and `on_dismiss` hears a
+    /// popup asked to go away, as `dismiss: {reason, id}`. Unlike `config`
+    /// they are read on every declaration, and a window that closed
+    /// arrives as the ones last declared for it. The event's origin is the
+    /// declaring frontend's, so an extension that declared a window hears
+    /// its lifecycle.
+    pub fn declare_window_with(
+        &mut self,
+        name: &str,
+        mut config: WindowConfig,
+        lifecycle: WindowLifecycle,
+    ) {
         self.taint_kept("it declared a window");
         // A popup's anchor is declared in the host's coordinates and
         // resolved by the driver against the window's (ADR 0024): the
@@ -48,6 +65,7 @@ impl Core {
         self.declared_windows.push(WindowDecl {
             name: Rc::from(name),
             config,
+            lifecycle,
             origin: self.origin,
             conflict: false,
         });
@@ -89,21 +107,21 @@ impl Core {
     /// and stays gone while its name is still declared (the app has to stop
     /// declaring it and start again to reopen it; see
     /// [`Self::declare_window`]); its own declarations leave the union, so
-    /// whatever only it declared closes too. Raises `{kind:"window",
-    /// phase:"closed", name, id}` for the app, pending like a resize.
+    /// whatever only it declared closes too. Raises its `on_window` message
+    /// with `window: {phase: "closed", id}`, pending like a resize.
     /// Nothing happens for the main window (closing it ends the app) or
     /// for a window the diff already closed.
     pub fn window_closed(&mut self, id: WindowId) {
         let mut changes = Vec::new();
-        let name = {
+        let messages = {
             let sess = &mut *self.session.state();
-            let Some(name) = sess.windows.os_closed(id) else {
+            let Some(messages) = sess.windows.os_closed(id) else {
                 return;
             };
             sess.windows.diff(&mut changes);
-            name
+            messages
         };
-        self.push_window_event("closed", &name, id);
+        self.push_window_event("closed", id, &messages);
         self.release_window_audio(id);
         self.apply_window_changes(changes);
     }
@@ -120,9 +138,9 @@ impl Core {
 
     /// The driver reports that window `id` was asked to go away — a press
     /// landed outside it, or Escape reached it (see
-    /// [`crate::window::DismissReason`]). Raises `{kind:"dismiss", reason,
-    /// name, id}` on the root, pending like a resize, and **closes
-    /// nothing**: only the app can stop declaring the window, and it does
+    /// [`crate::window::DismissReason`]). Raises the window's `on_dismiss`
+    /// message with `dismiss: {reason, id}`, pending like a resize, and
+    /// **closes nothing**: only the app can stop declaring the window, and it does
     /// that on the frame it decides to, the way a modal closes. So an app that
     /// graduates a dropdown from a `modal` float
     /// to a popup window changes its declaration and keeps its handler.
@@ -133,21 +151,22 @@ impl Core {
     /// the way it reports a close ([`Self::window_closed`]). Nothing
     /// happens for a window the session has not opened.
     pub fn dismiss_window(&mut self, id: WindowId, reason: crate::window::DismissReason) {
-        let Some(name) = self.session.state().windows.name_of(id) else {
+        let Some(messages) = self.session.state().windows.messages_of(id) else {
             return;
         };
-        self.pending.push(UiEvent {
-            origin: OriginId::HOST,
-            window: WindowId::MAIN,
-            key: Key::ROOT,
-            payload: Value::map([
-                ("kind", Value::str("dismiss")),
+        let Some(message) = &messages.lifecycle.on_dismiss else {
+            return;
+        };
+        self.pending.push(UiEvent::declared(
+            EventKind::Dismiss,
+            messages.origin,
+            Key::ROOT,
+            Some(message),
+            Value::map([
                 ("reason", Value::str(reason.as_str())),
-                ("name", Value::str(&*name)),
                 ("id", Value::Int(id.0 as i64)),
             ]),
-            slot: None,
-        });
+        ));
     }
 
     /// Hands this frame's declarations to the session and takes back what
@@ -178,8 +197,8 @@ impl Core {
     }
 
     /// Turns the diff's decisions into what a driver and an app see: a
-    /// command in the queue, a `{kind:"window"}` event, and the conflict
-    /// warning where the opening edge found one.
+    /// command in the queue, a `window` event where the declaration asked
+    /// for one, and the conflict warning where the opening edge found one.
     fn apply_window_changes(&mut self, changes: Vec<WindowChange>) {
         for change in changes {
             match change {
@@ -199,39 +218,49 @@ impl Core {
                             origin,
                             config,
                         });
-                    self.push_window_event("opened", &name, id);
+                    let messages = self.session.state().windows.messages_of(id);
+                    if let Some(messages) = messages {
+                        self.push_window_event("opened", id, &messages);
+                    }
                     if conflict {
                         self.diag.raise(crate::diag::duplicate_window_config(&name));
                     }
                 }
-                WindowChange::Closed { id, name } => {
+                WindowChange::Closed { id, messages } => {
                     self.interaction
                         .window_commands
                         .push(crate::window::WindowCommand::Close(id));
-                    self.push_window_event("closed", &name, id);
+                    self.push_window_event("closed", id, &messages);
                     self.release_window_audio(id);
                 }
             }
         }
     }
 
-    /// `{kind:"window", phase, name, id}` on the root, pending for the
-    /// driver to route after the frame (or with the next input). `id` is
-    /// in the payload because `UiEvent::window` says which core reported
-    /// it, and the diff runs on whichever core finished its frame.
-    pub(crate) fn push_window_event(&mut self, phase: &str, name: &str, id: WindowId) {
-        self.pending.push(UiEvent {
-            origin: OriginId::HOST,
-            window: WindowId::MAIN,
-            key: Key::ROOT,
-            payload: Value::map([
-                ("kind", Value::str("window")),
+    /// The window's `on_window` message with `window: {phase, id}` in it,
+    /// pending for the driver to route after the frame (or with the next
+    /// input), and nothing when the declaration named none. `id` is in the
+    /// data because `UiEvent::window` says which core reported it, and the
+    /// diff runs on whichever core finished its frame.
+    pub(crate) fn push_window_event(
+        &mut self,
+        phase: &str,
+        id: WindowId,
+        messages: &WindowMessages,
+    ) {
+        let Some(message) = &messages.lifecycle.on_window else {
+            return;
+        };
+        self.pending.push(UiEvent::declared(
+            EventKind::Window,
+            messages.origin,
+            Key::ROOT,
+            Some(message),
+            Value::map([
                 ("phase", Value::str(phase)),
-                ("name", Value::str(name)),
                 ("id", Value::Int(id.0 as i64)),
             ]),
-            slot: None,
-        });
+        ));
     }
 
     /// Queues a window command as if chrome had produced it, so apps can
@@ -278,6 +307,24 @@ impl Core {
     pub fn set_window_title(&mut self, title: &str) {
         self.taint_kept("it declared the window's title");
         self.window_title = Some(title.to_string());
+    }
+
+    /// Declares the messages this window's own events arrive as, for this
+    /// frame: the root's `windowEvents` group (ADR 0048). Frame state like
+    /// the title, but read rather than applied: an event about the window
+    /// — a resize, its keyboard focus, a system setting, the fonts, the
+    /// modifiers, the OS's documents — arrives as the message the last
+    /// finished frame declared for it, and a frame that declares none, or
+    /// leaves a key out, hears none of those. Last writer wins.
+    pub fn set_window_events(&mut self, events: WindowEvents) {
+        self.taint_kept("it declared the window's events");
+        self.window_events = (!events.is_empty()).then(|| Box::new(events));
+    }
+
+    /// The `windowEvents` group in force: what the last finished frame
+    /// declared, which the window's own events are read against.
+    pub fn window_events(&self) -> Option<&WindowEvents> {
+        self.window_events_seen.as_deref()
     }
 
     /// The title declared this frame, if any (for the frame driver).

@@ -1,6 +1,8 @@
 //! Env + declared window title: frame-scoped data the driver reconciles.
 
-use kui_core::{Appearance, Assistive, Core, MotionPref, OptionAsAlt, Size, SystemEnv, Value};
+use kui_core::{
+    Appearance, Assistive, Core, MotionPref, OptionAsAlt, Size, SystemEnv, Value, WindowEvents,
+};
 
 #[test]
 fn window_title_is_frame_scoped() {
@@ -239,12 +241,15 @@ fn an_accent_button_repaints_its_whole_palette() {
 
 /// A `system` event is how a host that retains its tree learns the OS
 /// settings changed: its `view` runs for a message, and the driver's
-/// redraw only re-lowers what it was handed (backlog F40).
+/// redraw only re-lowers what it was handed (backlog F40). It arrives as
+/// the root's `windowEvents` message (ADR 0048).
 #[test]
 fn a_changed_system_reading_becomes_an_event() {
     let mut core = Core::new();
     let frame = |core: &mut Core| {
-        core.frame(Size::new(100.0, 100.0), 1.0).finish();
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.window_events(WindowEvents::default().on_system_settings_change(system_msg()));
+        ui.finish();
         core.take_pending_events()
     };
 
@@ -265,9 +270,14 @@ fn a_changed_system_reading_becomes_an_event() {
     core.env.system.appearance = Appearance::Dark;
     core.env.system.motion = MotionPref::Reduced;
     let evs = frame(&mut core);
-    assert_eq!(kinds(&evs), vec!["system"], "one event, on the root");
-    let p = &evs[0].payload;
+    assert_eq!(
+        kinds(&evs),
+        vec!["system"],
+        "one event, as the root's windowEvents message"
+    );
     assert_eq!(evs[0].key, kui_core::Key::ROOT);
+    assert_eq!(evs[0].payload.get_str("kind"), Some("settings"));
+    let p = evs[0].data().expect("the reading, under `system`");
     assert_eq!(p.get_str("appearance"), Some("dark"));
     assert_eq!(p.get_str("motion"), Some("reduced"));
     // The whole reading, in `env().system`'s own spellings and nulls.
@@ -277,6 +287,18 @@ fn a_changed_system_reading_becomes_an_event() {
 
     // And once only: a reading that stops changing stops reporting.
     assert!(kinds(&frame(&mut core)).is_empty());
+
+    // A root that declares no message for it hears nothing; `env` still
+    // reads the change.
+    core.env.system.appearance = Appearance::Light;
+    core.frame(Size::new(100.0, 100.0), 1.0).finish();
+    assert!(kinds(&core.take_pending_events()).is_empty());
+    assert_eq!(core.env.system.appearance, Appearance::Light);
+}
+
+/// The message the tests' roots declare for a `system` event.
+fn system_msg() -> Value {
+    Value::map([("kind", Value::str("settings"))])
 }
 
 /// A screen reader attaching is the same kind of change as the appearance
@@ -289,7 +311,9 @@ fn a_changed_system_reading_becomes_an_event() {
 fn assistive_technology_attaching_is_a_system_event() {
     let mut core = Core::new();
     let frame = |core: &mut Core| {
-        core.frame(Size::new(100.0, 100.0), 1.0).finish();
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.window_events(WindowEvents::default().on_system_settings_change(system_msg()));
+        ui.finish();
         core.take_pending_events()
     };
     // A driver with a bridge and no client yet.
@@ -303,7 +327,7 @@ fn assistive_technology_attaching_is_a_system_event() {
     core.env.system.assistive = Assistive::Listening;
     let evs = frame(&mut core);
     assert_eq!(kinds(&evs), vec!["system"]);
-    let p = &evs[0].payload;
+    let p = evs[0].data().expect("the reading");
     assert_eq!(p.get_str("assistive"), Some("listening"));
     // The other four ride along unchanged, so a handler keeps the whole
     // reading as it does for any other `system` event.
@@ -316,11 +340,11 @@ fn assistive_technology_attaching_is_a_system_event() {
     core.env.system.assistive = Assistive::None;
     let evs = frame(&mut core);
     assert_eq!(kinds(&evs), vec!["system"]);
-    assert_eq!(evs[0].payload.get_str("assistive"), Some("none"));
+    assert_eq!(evs[0].data().unwrap().get_str("assistive"), Some("none"));
 }
 
 fn kinds(evs: &[kui_core::UiEvent]) -> Vec<&str> {
-    evs.iter().filter_map(|e| e.kind()).collect()
+    evs.iter().map(|e| e.event.name()).collect()
 }
 
 /// A launcher's pinned reading is a `SystemEnv` laid *over* the OS's, every
@@ -374,7 +398,9 @@ fn the_system_event_carries_the_pinned_reading() {
     let frame = |core: &mut Core, real: SystemEnv, pinned: SystemEnv| {
         // What the runner's `sync_env` writes: the pin over the OS.
         core.env.system = pinned.over(real);
-        core.frame(Size::new(100.0, 100.0), 1.0).finish();
+        let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+        ui.window_events(WindowEvents::default().on_system_settings_change(system_msg()));
+        ui.finish();
         core.take_pending_events()
     };
     let pinned = SystemEnv {
@@ -400,7 +426,7 @@ fn the_system_event_carries_the_pinned_reading() {
     real.appearance = Appearance::Dark;
     let evs = frame(&mut core, real, pinned);
     assert_eq!(kinds(&evs), vec!["system"]);
-    let p = &evs[0].payload;
+    let p = evs[0].data().expect("the reading");
     assert_eq!(p.get_str("appearance"), Some("dark"));
     assert_eq!(p.get_str("motion"), Some("reduced"));
 

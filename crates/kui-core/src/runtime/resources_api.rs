@@ -377,8 +377,8 @@ impl Core {
 
     /// Starts a playback; the returned id addresses it in `stop` /
     /// `set_volume` / `pause` / `resume`. With a tag in the options, the
-    /// playback finishing on its own comes back as
-    /// `{kind="sound", phase="ended", playback, tag}` on the current
+    /// playback finishing on its own comes back as that message with
+    /// `sound: {phase="ended", playback}` in it, on the current
     /// origin's root — the host's, or the extension's during its view.
     pub fn play(
         &mut self,
@@ -498,8 +498,8 @@ impl Core {
 
     /// The driver refused a play: the device's voices are all held, or
     /// the sound failed to decode. The playback never started, so it can
-    /// never report `ended` — a tagged one gets
-    /// `{kind="sound", phase="refused", playback, tag}` instead, pending
+    /// never report `ended` — a tagged one gets its message with
+    /// `sound: {phase="refused", playback}` in it instead, pending
     /// like an `ended` is, so a view waiting on the sound is unstuck and
     /// can tell the two apart. [`crate::diag::PLAYBACK_REFUSED`] is raised
     /// on the node that asked either way, behind the usual diagnostics
@@ -954,10 +954,12 @@ mod tests {
         let fresh = std::sync::Arc::new(SystemFonts::from_db(held.locale().into(), db));
 
         let framed = |core: &mut Core| {
-            core.frame(crate::Size::new(100.0, 100.0), 1.0).finish();
+            let mut ui = core.frame(crate::Size::new(100.0, 100.0), 1.0);
+            ui.window_events(crate::WindowEvents::default().on_fonts("fonts"));
+            ui.finish();
             let evs = core.take_pending_events();
             evs.iter()
-                .filter_map(|e| e.kind().map(str::to_owned))
+                .map(|e| e.event.name().to_owned())
                 .collect::<Vec<_>>()
         };
         let mut other = Core::new_in(&core.session);
@@ -995,7 +997,11 @@ mod tests {
                 "a face that stayed keeps its id"
             );
         }
-        assert_eq!(framed(&mut core), ["fonts"], "one event, on the root");
+        assert_eq!(
+            framed(&mut core),
+            ["fonts"],
+            "one event, as the root declared"
+        );
         assert_eq!(
             framed(&mut other),
             ["fonts"],
@@ -1032,7 +1038,7 @@ mod tests {
             !core
                 .take_pending_events()
                 .iter()
-                .any(|e| e.kind() == Some("fonts"))
+                .any(|e| e.event.name() == "fonts")
         );
         let after = Core::new();
         assert!(std::sync::Arc::ptr_eq(

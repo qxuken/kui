@@ -333,7 +333,7 @@ impl App for Demo {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.as_str() == Some("advance") {
+        if ev.message::<String>().as_deref() == Some("advance") {
             self.progress = (self.progress + 0.125) % 1.125;
         }
     }

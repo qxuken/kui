@@ -10,7 +10,7 @@
 //
 //   npm run counter                    a window, with the devtools dock
 //   node dist/apps/counter.mjs --headless
-import type { App, CoreMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
+import type { App, ContextMenuMsg, DismissMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 type Model = {
@@ -19,11 +19,17 @@ type Model = {
   menu: { x: number; y: number } | null;
 };
 
-// The payloads this app's own nodes carry, plus the ones the core sends on
-// its own (`changed`, `contextmenu`, `dismiss`, ...): one flat union, so
-// `update` switches over `msg.kind` with no casts.
-type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
-type Msg = CounterMsg | CoreMsg;
+// The messages this app's own nodes declare, each as it arrives (ADR 0047):
+// a right-click is the `menu` message with its `contextmenu` field, the
+// menu's dismissal the `closeMenu` message with its `dismiss`. Nothing
+// else arrives (ADR 0048): one flat union, so `update` switches over
+// `msg.kind` with no casts.
+export type CounterMsg =
+  | { kind: 'add'; by: number }
+  | { kind: 'reset' }
+  | ContextMenuMsg<{ kind: 'menu' }>
+  | DismissMsg<{ kind: 'closeMenu' }>;
+type Msg = CounterMsg;
 
 const init: Model = { count: 0, menu: null };
 
@@ -35,11 +41,11 @@ function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, _win: KuiWindow): Mod
       return { ...model, count: model.count + msg.by, menu: null };
     case 'reset':
       return { ...model, count: 0, menu: null };
-    case 'contextmenu':
+    case 'menu':
       // A right-click: the core opens nothing, the view declares the menu
       // where the press landed.
-      return { ...model, menu: { x: msg.x, y: msg.y } };
-    case 'dismiss':
+      return { ...model, menu: { x: msg.contextmenu.x, y: msg.contextmenu.y } };
+    case 'closeMenu':
       // Escape, or a press outside the menu.
       return { ...model, menu: null };
   }
@@ -52,7 +58,7 @@ function Menu({ at, t }: { at: { x: number; y: number }; t: Theme }) {
     <box
       float={{ anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'],
                dx: at.x, dy: at.y, fit: true }}
-      modal={{ kind: 'menu' }}
+      modal={{ kind: 'closeMenu' }}
       label="Actions"
       pad={4} gap={4} width={120} bg={t.raised} radius={6} borderW={1} borderColor={t.borderStrong}
     >

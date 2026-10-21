@@ -128,7 +128,7 @@ impl App for Tooltip {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.as_str().is_some() {
+        if ev.message::<String>().as_deref().is_some() {
             self.clicks += 1;
             self.pinned = true;
         }

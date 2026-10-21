@@ -1,5 +1,8 @@
 // kui for Node - Elm-shaped: `view(model)` returns a JSX tree, event payloads
-// are your messages, `update(model, msg)` returns the next model.
+// are your messages — the one a node's handler declared, with the event's
+// data in a field named for it (ADR 0047), always a map, a bare message
+// under `tag` (`onClick: 'save'` is `{tag: 'save'}`) — and `update(model, msg, event)`
+// returns the next model, `event.event` saying which event it was.
 import native from './native.cjs';
 import { createEncoder } from './encoder.js';
 
@@ -456,7 +459,8 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
       const msg = typeof tick.msg === 'function' ? tick.msg(t, every) : tick.msg;
       inTick = lastTick;
       try {
-        if (apply(updateFrom(msg, { origin: 0, key: '', payload: msg }))) {
+        // `event: 'tick'`: the loop's own clock, which no node declared.
+        if (apply(updateFrom(msg, { origin: 0, window: 0, key: '', event: 'tick', payload: msg, slot: null }))) {
           redraw = true;
         }
       } finally {
@@ -478,14 +482,14 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // Everything the surface has queued, through `update`. The loop draws once
   // after, not once per event.
   //
-  // All but one kind: a `uniformList`'s sentinel says its container
-  // scrolled, and the widget slices by the geometry the next frame reads for
-  // itself. So it is a redraw and nothing else — an app that had to add a
-  // `case 'layout'` for a widget to work has not been given a widget.
+  // All but one: a `uniformList`'s sentinel says its container scrolled,
+  // and the widget slices by the geometry the next frame reads for itself.
+  // So it is a redraw and nothing else — an app that had to handle a
+  // `layout` event for a widget to work has not been given a widget.
   function drainEvents() {
     const events = surface.pollEvents();
     for (const ev of events) {
-      if (isVirtualLayout(ev.payload)) continue;
+      if (isVirtualLayout(ev)) continue;
       app.dispatch(ev.payload, ev);
     }
     return events.length > 0;
@@ -522,7 +526,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   }
 
   // `update` with the surface aimed at the window the event came from —
-  // a `changed` from a second window's editor has `setEditText` seed that
+  // a `change` from a second window's editor has `setEditText` seed that
   // editor — and at main for a message with no event behind it (a tick,
   // an effect); aimed back at main after, whatever `update` did.
   function updateFrom(msg, event) {
@@ -1096,19 +1100,21 @@ export function createApp(config, opts = {}) {
 // content moves, and `createLoop` redraws on it *without* handing it to
 // `update`: it is the widget's own bookkeeping, not a message the app wrote.
 
-/** The tag on that sentinel — a string key so it survives the wire as the
- *  plain data every payload is, and one nothing else would spell. */
+/** The field on that sentinel's `onLayout` message — a string key so it
+ *  survives the wire as the plain data every payload is, and one nothing
+ *  else would spell. */
 const VIRTUAL_TAG = '@kui/virtual';
 
-/** Whether an event is one of those sentinels rather than an app message. */
-function isVirtualLayout(payload) {
+/** Whether an event is one of those sentinels rather than an app message:
+ *  read off the envelope, since a payload is the app's message and says
+ *  nothing of which event it came with (ADR 0047). */
+function isVirtualLayout(ev) {
+  const payload = ev.payload;
   return (
+    ev.event === 'layout' &&
     payload !== null &&
     typeof payload === 'object' &&
-    payload.kind === 'layout' &&
-    payload.tag !== null &&
-    typeof payload.tag === 'object' &&
-    typeof payload.tag[VIRTUAL_TAG] === 'string'
+    typeof payload[VIRTUAL_TAG] === 'string'
   );
 }
 

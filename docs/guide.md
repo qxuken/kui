@@ -28,7 +28,7 @@ app.ctx.mouse(false);
 app.settle();                                         // events → update → render
 assert.equal(app.model.volume, 0.5);
 app.press('tab');                                     // a whole key, both channels
-app.press('right');                                   // so the ring moves and the slider nudges
+app.press('right');                                   // so the ring moves and the slider steps
 assert.equal(app.model.volume, 0.55);
 assert.deepEqual(app.ctx.audioCommands().map((c) => c.kind), ['setVolume']);
 assert.ok(decodeQuads(app.ctx.quads()).every((q) => q.x + q.w <= 320), 'nothing overflows');
@@ -152,9 +152,14 @@ no reconciler and no React — `Ctx.frame()` encodes the element tree into a
 flat binary IR stream (one `Float64Array` + a string table) and the addon
 lowers it in a single zero-copy call, and `onClick` carries a message value,
 never a closure. That value is the app's own union in TypeScript: annotate
-`update` with `type Msg = MyMsg | CoreMsg` and `createApp` / `runWindowed`
-infer it, so events, `dispatch` and ticks all speak it and `update` is one
-switch over `msg.kind` (see [packages/kui](../packages/kui/README.md)). The
+`update` with `type Msg = MyMsg` and `createApp` / `runWindowed` infer it,
+so events, `dispatch` and ticks all speak it and `update` is one switch over
+`msg.kind`: a click arrives as the message it declared, a drag as that
+message with a `drag` field in it, and a resize or a menu bar's choice as
+the message the root or the `menuBar` declared for it
+([ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md),
+[ADR 0048](adr/0048-a-window-declares-the-messages-its-events-arrive-as.md),
+and see [packages/kui](../packages/kui/README.md)). The
 encoder is the only door: there is one element dispatcher in the addon, not
 one per transport, and a malformed view is rejected in JS before anything
 crosses the boundary. `npm test` in [packages/kui](../packages/kui) pins the
@@ -174,17 +179,16 @@ A Lua extension in full:
 slots = { "panel" }                       -- what it fills, in its own words
 
 function view(env, slot)                  -- slot = { name, namespace, params, key }
-  if note_key then note = env.edit_text(note_key) end   -- read editors back by key
   return column { gap = 8, pad = 16, bg = 0x14161eff,
     text({ slot.params.title, { " · " .. tostring(count), bold = true } }, { size = 20 }),
     row { tooltip = "adds one", button { label = "bump", on_click = { kind = "bump" } } },
-    edit { key = "note", initial = "", width = "grow" },
+    edit { key = "note", initial = "", width = "grow", on_change = { kind = "note" } },
   }
 end
 
-function on_event(ev)                     -- ev = payload + node_key
+function on_event(ev)                     -- ev = the message + event + node_key
   if ev.kind == "bump" then count = count + 1; return { kind = "bumped", count = count } end
-  if ev.kind == "changed" then note_key = ev.node_key end
+  if ev.kind == "note" then note = ev.change.text end   -- the text rides in `change`
 end                                       -- what it returns is a reply to the host
 ```
 

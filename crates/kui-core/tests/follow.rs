@@ -279,13 +279,13 @@ fn an_on_scroll_node_takes_the_wheel_and_a_scroller_inside_it_still_wins() {
     assert_eq!(out.len(), 1);
     let ev = &out[0];
     assert_eq!(ev.key, canvas);
-    assert_eq!(ev.kind(), Some("scroll"));
-    assert_eq!(ev.payload.get_float("dx"), Some(3.0));
-    assert_eq!(ev.payload.get_float("dy"), Some(-12.0));
-    assert_eq!(ev.payload.get_float("x"), Some(50.0));
-    assert_eq!(ev.payload.get_float("y"), Some(60.0));
+    assert_eq!(ev.event.name(), "scroll");
+    assert_eq!(ev.data().unwrap().get_float("dx"), Some(3.0));
+    assert_eq!(ev.data().unwrap().get_float("dy"), Some(-12.0));
+    assert_eq!(ev.data().unwrap().get_float("x"), Some(50.0));
+    assert_eq!(ev.data().unwrap().get_float("y"), Some(60.0));
     assert_eq!(
-        ev.payload.get("lines"),
+        ev.data().unwrap().get("lines"),
         Some(&Value::Null),
         "no grid, no lines"
     );
@@ -369,19 +369,19 @@ fn the_wheel_over_a_grid_is_whole_lines_with_the_fraction_carried() {
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -2.5 * h)));
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].key, key);
-    assert_eq!(out[0].payload.get_int("lines"), Some(2));
+    assert_eq!(out[0].data().unwrap().get_int("lines"), Some(2));
     assert_eq!(out[0].payload.get_str("tag"), Some("term"));
     // Another half: the carried half makes a whole line.
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -0.5 * h)));
-    assert_eq!(out[0].payload.get_int("lines"), Some(1));
+    assert_eq!(out[0].data().unwrap().get_int("lines"), Some(1));
     // Up by a line and a bit: earlier history is negative.
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, 1.2 * h)));
-    assert_eq!(out[0].payload.get_int("lines"), Some(-1));
+    assert_eq!(out[0].data().unwrap().get_int("lines"), Some(-1));
     // A notch too small for a line still arrives, with zero lines and the
     // pixels, so an app that wants the delta has it.
     let out = core.handle_input(InputEvent::Scroll(Vec2::new(0.0, -1.0)));
-    assert_eq!(out[0].payload.get_int("lines"), Some(0));
-    assert_eq!(out[0].payload.get_float("dy"), Some(-1.0));
+    assert_eq!(out[0].data().unwrap().get_int("lines"), Some(0));
+    assert_eq!(out[0].data().unwrap().get_float("dy"), Some(-1.0));
 }
 
 #[test]
@@ -401,8 +401,8 @@ fn a_drag_held_past_a_grids_edge_asks_the_app_for_lines_and_the_ends_survive() {
         assert!(core.animating());
         for ev in core.take_pending_events() {
             assert_eq!(ev.key, key);
-            assert_eq!(ev.kind(), Some("scroll"));
-            let n = ev.payload.get_int("lines").unwrap();
+            assert_eq!(ev.event.name(), "scroll");
+            let n = ev.data().unwrap().get_int("lines").unwrap();
             lines += n;
             // The app answers by moving its screen.
             origin = (origin as i64 + n) as u64;

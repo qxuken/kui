@@ -1088,7 +1088,27 @@ scene_ime :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 				kui.text(ui, "ab", {size = 13, family = .Mono})
 			}
 		}
-		kui.text_edit(ui, "note", "", {}, {size = 13}, {width = kui.px(200), label = "Note"})
+		// The stock editor reports its edits in a message it declares (ADR
+		// 0047): {kind = "note", change = {text}}.
+		kui.text_edit(ui, "note", "", {}, {size = 13}, {width = kui.px(200), label = "Note", on_change = msg("note")})
+	}
+}
+
+// conformance::build_edit_rows: one stock editor held to the value "AB"
+// (.Value), a message per handler row (ADR 0047, decision 7), and on_menu
+// hearing the stock editing menu's choice.
+scene_edit_rows :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	if kui.box(ui, {pad = kui.pad(10), gap = 6}) {
+		title := kui.Spec {
+			width       = kui.px(200),
+			label       = "Title",
+			on_change   = msg("title"),
+			on_submit   = msg("save"),
+			on_cancel   = msg("revert"),
+			on_boundary = msg("edge"),
+			on_menu     = msg("edit"),
+		}
+		kui.text_edit(ui, "title", "AB", {.Value}, {size = 13}, title)
 	}
 }
 
@@ -1403,18 +1423,19 @@ scene_composite :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 
 // conformance::build_windows: the declaration comes and goes with the
 // phase. Phase 0 declares `palette` twice, disagreeing about the size, so the
-// first wins and the second warns.
+// first wins and the second warns. Each names the message its opening and
+// closing arrive as (ADR 0048).
 scene_windows :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	cfg := kui.Window_Config {
 		kind   = .Normal,
 		width  = 400,
 		height = 300,
 	}
-	if phase == 0 || phase == 2 do kui.window_declare(ui, "palette", cfg)
+	if phase == 0 || phase == 2 do kui.window_declare_with(ui, "palette", cfg, msg("palette"))
 	if phase == 0 {
 		cfg.width = 500
 		cfg.height = 500
-		kui.window_declare(ui, "palette", cfg)
+		kui.window_declare_with(ui, "palette", cfg, msg("palette"))
 	}
 	if kui.box(ui, {pad = kui.pad(8), bg = 0x14161eff}) {
 		kui.text(ui, "open" if phase == 0 || phase == 2 else "closed", {size = 12})
@@ -1422,7 +1443,8 @@ scene_windows :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 }
 
 // conformance::build_popup: one declaration, with the kind and the anchor a
-// menu carries (ADR 0004 decision 9).
+// menu carries (ADR 0004 decision 9), and one message for its opening,
+// closing and dismissal alike (ADR 0048).
 scene_popup :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	if phase == 0 {
 		cfg := kui.Window_Config {
@@ -1435,7 +1457,7 @@ scene_popup :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			anchor_w  = 160,
 			anchor_h  = 24,
 		}
-		kui.window_declare(ui, "menu", cfg)
+		kui.window_declare_with(ui, "menu", cfg, msg("popup"), msg("popup"))
 	}
 	if kui.box(ui, {pad = kui.pad(8), bg = 0x14161eff}) {
 		kui.text(ui, "menu" if phase == 0 else "closed", {size = 12})
@@ -1635,6 +1657,31 @@ scene_virtual :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// conformance::build_selection_range: the virtual scene's list, selectable,
+// a line of text in each built row, and the message the copy's ask arrives
+// as (ADR 0047's on_selection_range).
+scene_selection_range :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	list := kui.Spec {
+		key                = "list",
+		width              = kui.px(120),
+		height             = kui.px(60),
+		overflow           = {.Scroll_Y},
+		bg                 = 0x101018ff,
+		selectable         = true,
+		row_count          = 109,
+		on_selection_range = msg("rows"),
+	}
+	if kui.box(ui, list) {
+		if kui.box(ui, {key = "lead", width = kui.GROW, height = kui.px(20)}) {}
+		for i in u64(100) ..< 103 {
+			if kui.box(ui, {index = i, width = kui.GROW, height = kui.px(20)}) {
+				kui.text(ui, fmt.tprintf("row %d", i), {size = 13})
+			}
+		}
+		if kui.box(ui, {key = "tail", width = kui.GROW, height = kui.px(100)}) {}
+	}
+}
+
 // conformance::LAYERS_ROWS: enough rows to overflow the viewport.
 LAYERS_ROWS :: 16
 
@@ -1684,6 +1731,9 @@ scene_layers :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 // and across the phases a hoverable float over the first zone that is no
 // zone (phase 1) and a modal over it (phase 2).
 scene_drop :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	// The OS's documents are the window's, declared on its root (ADR 0048);
+	// a nil spec leaves the root as the frame began it.
+	kui.root_with(ui, nil, {on_open = msg("docs")})
 	if kui.row(ui, {width = kui.GROW, height = kui.GROW}) {
 		zone := kui.Spec {
 			key     = "files",
@@ -1880,7 +1930,8 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 }
 
 // conformance::build_select: the stock select over four rows, the fourth
-// posting an id and disabled, the second in force.
+// posting an id and disabled, the second in force, the choice arriving as
+// its on_menu message (select_with, ADR 0047).
 scene_select :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	langs := []kui.Menu_Item {
 		{label = "English", role = .Custom},
@@ -1889,7 +1940,7 @@ scene_select :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		{label = "Latin", role = .Custom, disabled = true, id = "la"},
 	}
 	if kui.box(ui, {pad = kui.pad(10), gap = 6}) {
-		kui.select(ui, "language", langs, 1)
+		kui.select_with(ui, "language", langs, 1, msg("lang"))
 		kui.text(ui, "body", {size = 12})
 	}
 }
@@ -1908,6 +1959,29 @@ scene_menu_bar :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	menus := []kui.Bar_Menu{{label = "File", items = file}, {label = "Edit", items = edit}}
 	if kui.box(ui, {gap = 6, width = kui.GROW}) {
 		kui.menu_bar(ui, menus)
+		kui.text(ui, "body", {size = 12})
+	}
+}
+
+// conformance::build_window_events (ADR 0048): the root declares every key
+// of its window's group, each as {kind = <k>}, and the menu bar the message
+// its choice arrives as.
+scene_window_events :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	kui.root_with(
+		ui,
+		nil,
+		{
+			on_resize = msg("resized"),
+			on_focus = msg("focus"),
+			on_system_settings_change = msg("settings"),
+			on_fonts = msg("fonts"),
+			on_modifiers = msg("mods"),
+			on_open = msg("docs"),
+		},
+	)
+	file := []kui.Menu_Item{{label = "New", role = .Custom, id = "file.new"}}
+	if kui.box(ui, {gap = 6, width = kui.GROW}) {
+		kui.menu_bar_with(ui, {{label = "File", items = file}}, msg("chose"))
 		kui.text(ui, "body", {size = 12})
 	}
 }
@@ -1949,6 +2023,7 @@ SCENES := [?]Scene {
 	{"ime", scene_ime},
 	// The paste scene's tree is the ime scene's (backlog F84).
 	{"paste", scene_ime},
+	{"edit-rows", scene_edit_rows},
 	{"cells", scene_cells},
 	{"underlines", scene_underlines},
 	{"joined-backgrounds", scene_joined_backgrounds},
@@ -1980,6 +2055,7 @@ SCENES := [?]Scene {
 	{"menu", scene_selection},
 	{"menubar", scene_menu_bar},
 	{"virtual", scene_virtual},
+	{"selection-range", scene_selection_range},
 	{"layers", scene_layers},
 	{"drop", scene_drop},
 	{"anchor", scene_anchor},
@@ -1987,6 +2063,7 @@ SCENES := [?]Scene {
 	{"tokens", scene_tokens},
 	{"sampler", scene_sampler},
 	{"caret-in-text", scene_caret_in_text},
+	{"window-events", scene_window_events},
 }
 
 // -- Driving one scene ----------------------------------------------------------
@@ -2159,6 +2236,13 @@ apply :: proc(ui: ^kui.Ui, s: Step) {
 		kui.input_modifiers(ui, transmute(kui.Mods)u32(s.a))
 	case "escape":
 		kui.input_key(ui, .Escape, {})
+	case "enter":
+		kui.input_key(ui, .Enter, {})
+	case "copy":
+		// The app asking for the selection as text, as Cmd/Ctrl-C does:
+		// past a virtual list's built rows the core asks back with
+		// selectionrange.
+		kui.request_copy(ui)
 	case "arrow":
 		// conformance::ARROWS order: left, right, up, down - Edit_Key's.
 		kui.input_key(ui, kui.Edit_Key(u32(kui.Edit_Key.Left) + u32(s.a)), {})
@@ -2211,49 +2295,67 @@ apply :: proc(ui: ^kui.Ui, s: Step) {
 }
 
 // Drains the event queue; payloads are borrowed until the next poll, so each
-// is formatted before the next.
+// is formatted before the next. The row is conformance::event_row's (ADR
+// 0047): the envelope's event, then the message's name - a bare string
+// message, its `kind`, else the `tag` a non-map one is kept under -
+// falling back to the data's `phase` or `reason`, then the extras some
+// events carry, read from the event's data. A named window or dismiss event
+// adds the edge it is, one message carrying every edge (ADR 0048).
 drain_events :: proc(ui: ^kui.Ui, out: ^strings.Builder) {
 	for ev in kui.poll_event(ui) {
 		p := ev.payload
-		kind, tag := "-", "-"
+		data := kui.event_data(ev)
+		kind := ev.event if ev.event != "" else "-"
+		tag := "-"
+		named := false
 		if p != nil {
-			if s, ok := kui.as_string(kui.get(p, "kind")); ok do kind = s
-			t := kui.get(p, "tag")
-			tk: kui.Value
-			if t != nil do tk = kui.get(t, "kind")
-			// The tag column, or - for the window-level events, which have
-			// none - the field that tells one from its siblings.
-			if tk == nil do tk = kui.get(p, "phase")
-			if tk == nil do tk = kui.get(p, "reason")
-			if s, ok := kui.as_string(tk); ok do tag = s
+			for v in ([]kui.Value{p, kui.get(p, "kind"), kui.get(p, "tag")}) {
+				if s, ok := kui.as_string(v); ok {
+					tag, named = s, true
+					break
+				}
+			}
 		}
+		which := "-"
+		for key in ([]string{"phase", "reason"}) {
+			if s, ok := kui.as_string(kui.get(data, key)); ok {
+				which = s
+				break
+			}
+		}
+		if !named do tag = which
 		fmt.sbprintf(out, "event %s %s", kind, tag)
+		if named && (ev.event == "window" || ev.event == "dismiss") do fmt.sbprintf(out, " %s", which)
 		phase := "-"
-		if p != nil {
-			if s, ok := kui.as_string(kui.get(p, "phase")); ok do phase = s
-		}
+		if s, ok := kui.as_string(kui.get(data, "phase")); ok do phase = s
 		switch kind {
 		case "change":
-			// A slider's phase and the value the core worked out.
-			v, _ := kui.as_i64(kui.get(p, "value"))
-			fmt.sbprintf(out, " %s %d", phase, v)
+			if text, ok := kui.as_string(kui.get(data, "text")); ok {
+				// An editor's whole text, quoted as Rust's {:?} quotes it.
+				strings.write_byte(out, ' ')
+				debug_str(out, text)
+			} else {
+				// A slider's phase and the value the core worked out.
+				v, _ := kui.as_i64(kui.get(data, "value"))
+				fmt.sbprintf(out, " %s %d", phase, v)
+			}
 		case "drag":
 			// dx/dy from the press point in every phase.
-			dx, _ := kui.as_i64(kui.get(p, "dx"))
-			dy, _ := kui.as_i64(kui.get(p, "dy"))
+			dx, _ := kui.as_i64(kui.get(data, "dx"))
+			dy, _ := kui.as_i64(kui.get(data, "dy"))
 			fmt.sbprintf(out, " %s %d %d", phase, dx, dy)
 		case "key":
 			// A key from one of a key's twins says which (backlog F108).
 			loc := "standard"
-			if s, ok := kui.as_string(kui.get(p, "location")); ok do loc = s
+			if s, ok := kui.as_string(kui.get(data, "location")); ok do loc = s
 			if loc != "standard" {
 				code := "-"
-				if s, ok := kui.as_string(kui.get(p, "code")); ok do code = s
+				if s, ok := kui.as_string(kui.get(data, "code")); ok do code = s
 				fmt.sbprintf(out, " %s %s %s", phase, code, loc)
 			}
 		case "button":
 			// A held button's phase and which button (backlog F105).
-			b := kui.get(p, "button")
+			b := kui.get(data, "button")
 			if name, ok := kui.as_string(b); ok {
 				fmt.sbprintf(out, " %s %s", phase, name)
 			} else if code, is_int := kui.as_i64(b); is_int {
@@ -2263,25 +2365,65 @@ drain_events :: proc(ui: ^kui.Ui, out: ^strings.Builder) {
 			}
 		case "scroll":
 			// The whole lines a grid's notch covers, `-` off a grid.
-			if n, ok := kui.as_i64(kui.get(p, "lines")); ok {
+			if n, ok := kui.as_i64(kui.get(data, "lines")); ok {
 				fmt.sbprintf(out, " %d", n)
 			} else {
 				fmt.sbprintf(out, " -")
 			}
 		case "drop":
-			l := kui.get(p, "paths")
+			l := kui.get(data, "paths")
 			fmt.sbprintf(out, " %s %d", phase, kui.length(l) if l != nil else 0)
 		case "open":
-			l := kui.get(p, "paths")
+			l := kui.get(data, "paths")
 			fmt.sbprintf(out, " %d", kui.length(l) if l != nil else 0)
+		case "boundary":
+			// An editor's edge and the key that met it (ADR 0047, decision 7).
+			edge, key := "-", "-"
+			if s, ok := kui.as_string(kui.get(data, "edge")); ok do edge = s
+			if s, ok := kui.as_string(kui.get(data, "key")); ok do key = s
+			fmt.sbprintf(out, " %s %s", edge, key)
+		case "menu":
+			// A menu choice's item: an option's label or its id, `-` for an
+			// id that is not a string.
+			item := "-"
+			if s, ok := kui.as_string(kui.get(data, "item")); ok do item = s
+			fmt.sbprintf(out, " %s", item)
 		case "text":
 			// A paste's markers, each only when it is set (backlog F84).
 			for marker in ([]string{"concealed", "transient"}) {
-				if on, ok := kui.as_bool(kui.get(p, marker)); ok && on do fmt.sbprintf(out, " %s", marker)
+				if on, ok := kui.as_bool(kui.get(data, marker)); ok && on do fmt.sbprintf(out, " %s", marker)
 			}
 		}
 		strings.write_byte(out, '\n')
 	}
+}
+
+// `s` as Rust's {:?} prints a str: the corpus types ASCII, so the escapes
+// that matter are the quote, the backslash and the control characters.
+debug_str :: proc(out: ^strings.Builder, s: string) {
+	strings.write_byte(out, '"')
+	for i in 0 ..< len(s) {
+		ch := s[i]
+		switch ch {
+		case '"':
+			strings.write_string(out, `\"`)
+		case '\\':
+			strings.write_string(out, `\\`)
+		case '\n':
+			strings.write_string(out, `\n`)
+		case '\t':
+			strings.write_string(out, `\t`)
+		case '\r':
+			strings.write_string(out, `\r`)
+		case:
+			if ch < 0x20 {
+				fmt.sbprintf(out, "\\u{%x}", ch)
+			} else {
+				strings.write_byte(out, ch)
+			}
+		}
+	}
+	strings.write_byte(out, '"')
 }
 
 // The protocol conformance::drive documents: the window facts, then a frame,
@@ -2307,14 +2449,26 @@ run_scene :: proc(scene: Scene, env: Env, steps: []Step, out: ^strings.Builder) 
 	cmds := strings.builder_make(context.temp_allocator)
 	audio := strings.builder_make(context.temp_allocator)
 	phase := 0
+	vw, vh: f32 = 320, 240
 	for i in 0 ..= len(steps) {
 		if i > 0 {
-			// Four steps are not input: the clock, the view changing its
-			// mind, and the OS closing a window or dismissing a popup.
+			// Some steps are not input: the clock, the view changing its
+			// mind, the window's size from here on, and the OS closing a
+			// window, dismissing a popup, moving the keyboard or changing
+			// its appearance.
 			s := steps[i - 1]
 			switch s.kind {
 			case "phase":
 				phase = s.a
+			case "viewport":
+				// Every frame from here is built at this size, so the next
+				// one begins with a resize.
+				vw, vh = f32(s.a), f32(s.b)
+			case "focused":
+				// The window lost or gained the keyboard: env_set's
+				// `focused`, the refresh rate left unknown.
+				kui.env_set(ui, 0, s.a != 0)
+				drain_events(ui, &events)
 			case "time":
 				kui.set_time(ui, f64(s.a) / 1000.0)
 			case "windowclosed":
@@ -2337,7 +2491,7 @@ run_scene :: proc(scene: Scene, env: Env, steps: []Step, out: ^strings.Builder) 
 				drain_audio(ui, &audio)
 			}
 		}
-		kui.frame_begin(ui, 320, 240, 1)
+		kui.frame_begin(ui, vw, vh, 1)
 		scene.build(ui, &f, phase)
 		kui.frame_finish(ui)
 		drain_events(ui, &events)

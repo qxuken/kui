@@ -242,11 +242,8 @@ impl App for SyntaxView {
         // Presses only, because the sink never asked for releases (no
         // `key_up`): this pane scrolls on a chord, and nothing arrives on
         // the way up to be filtered out.
-        if ev.kind() == Some("key")
-            && let Some(code) = ev.payload.get_str("code")
-        {
-            let code = code.to_string();
-            self.on_key(&code);
+        if let Some((_, press)) = ev.key_press() {
+            self.on_key(&press.code.name());
         }
     }
 }

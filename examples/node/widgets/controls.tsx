@@ -1,41 +1,39 @@
 // The stock controls from JSX (docs/adr/0034-stock-controls-over-the-roles.md):
 // `<switch>`, `<checkbox>` with a select-all that goes `mixed`, `<radioGroup>`
 // of `<radio>`s whose arrows move the choice, and `<slider>`s whose changes
-// arrive as `{kind: 'change', value, phase}` messages. None holds state: each
+// arrive as their `onChange` message with `change: {value, phase}` in it. None holds state: each
 // is drawn from the model, a toggle's press is its `onClick` message, and a
 // slider's value is proposed by the core and stored by `update` — the twin
 // of `rust/widgets/controls.rs`.
 //
 //   npm run controls                           a window to use by hand
 //   node dist/widgets/controls.mjs --headless  the same loop, no window
-import type { App, ChangeMsg, CoreMsg, UiEvent } from '@qxuken/kui';
+import type { App, SliderChangeMsg, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 const THEMES = ['Light', 'Dark', 'System'];
 const CHANNELS = ['Mail', 'Calendar', 'Chat'];
 
-type Msg =
-  | CoreMsg
+type AppMsg =
   | { kind: 'notify' }
   | { kind: 'all' }
   | { kind: 'channel'; i: number }
   | { kind: 'theme'; i: number }
-  | { kind: 'volume' }
-  | { kind: 'gain' };
+  | SliderChangeMsg<{ kind: 'volume' }>
+  | SliderChangeMsg<{ kind: 'gain' }>;
+type Msg = AppMsg;
 type Model = { notify: boolean; channels: boolean[]; theme: number; volume: number; gain: number };
 
 const init: Model = { notify: true, channels: [true, false, true], theme: 2, volume: 40, gain: 0.5 };
 
 function update(model: Model, msg: Msg, _ev: UiEvent<Msg>): Model | undefined {
   switch (msg.kind) {
-    // A slider's proposal, tagged with its `onChange`: store it and the
-    // next frame draws it.
-    case 'change': {
-      const { value, tag } = msg as ChangeMsg<Msg>;
-      if (tag?.kind === 'volume') return { ...model, volume: value };
-      if (tag?.kind === 'gain') return { ...model, gain: value };
-      return undefined;
-    }
+    // A slider's proposal, in the message its `onChange` declared: store
+    // it and the next frame draws it.
+    case 'volume':
+      return { ...model, volume: msg.change.value };
+    case 'gain':
+      return { ...model, gain: msg.change.value };
     case 'notify':
       return { ...model, notify: !model.notify };
     case 'all': {
@@ -105,7 +103,7 @@ function view(model: Model) {
   );
 }
 
-await run<Model, never>({
+await run<Model, AppMsg>({
   name: 'controls',
   init,
   update,

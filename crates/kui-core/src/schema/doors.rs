@@ -420,13 +420,11 @@ pub const DOORS: &[Door] = &[
     },
     Door {
         rust: "Core::label_of",
-        c: No(
-            "the label is the app's own word for the node, and every door names a node by it or by the key an event carried; the one reader is the devtools' inspector, in the core",
-        ),
-        odin: No(ODIN_IS_C),
-        node: No("the same reason as C's"),
-        lua: No("the same reason as C's"),
-        doc: "The label a key was opened under.",
+        c: Is("kui_label_of"),
+        odin: Is("label_of"),
+        node: Is("labelOf"),
+        lua: Is("label_of"),
+        doc: "The label a key was opened under, in the frame being built and then the last one; none for an auto-keyed node. The reverse of `key_of`.",
     },
     Door {
         rust: "Ui::caret_visible",
@@ -973,6 +971,14 @@ pub const DOORS: &[Door] = &[
         node: As("the root's `windows` prop"),
         lua: As("the root's `windows` field"),
         doc: "Declares that a named window exists this frame (ADR 0003 step 3).",
+    },
+    Door {
+        rust: "Ui::window_with",
+        c: Is("kui_window_declare_with"),
+        odin: Is("window_declare_with"),
+        node: As("a `windows` entry's `onWindow` / `onDismiss`"),
+        lua: As("a `windows` entry's `on_window` / `on_dismiss`"),
+        doc: "Declares a window with the messages its opening, closing and a popup's dismissal arrive as (ADR 0048).",
     },
     Door {
         rust: "Core::windows",

@@ -358,7 +358,19 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                        on_key = { kind = "ed" }, role = "multilineTextInput", label = "Buffer",
                        row { key = "l0", height = 20, role = "line", caret = 1,
                              text("ab", { size = 13, family = "mono" }) } },
-              edit { key = "note", initial = "", size = 13, width = 200, label = "Note" } }
+              edit { key = "note", initial = "", size = 13, width = 200, label = "Note",
+                     on_change = { kind = "note" } } }
+        "#
+        .to_string(),
+        // One stock editor held to `value`, a message per handler row
+        // (ADR 0047, decision 7), `on_menu` hearing the stock editing
+        // menu's choice.
+        "edit-rows" => r#"
+            return column { pad = 10, gap = 6,
+              edit { key = "title", value = "AB", size = 13, width = 200, label = "Title",
+                     on_change = { kind = "title" }, on_submit = { kind = "save" },
+                     on_cancel = { kind = "revert" }, on_boundary = { kind = "edge" },
+                     on_menu = { kind = "edit" } } }
         "#
         .to_string(),
         "cells" => r#"
@@ -777,27 +789,31 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         ),
         // The declaration comes and goes with the phase, on the root table
         // beside `window_title`; twice in phase 0, disagreeing on the size.
+        // Both edges arrive as the entry's `on_window` (ADR 0048).
         "windows" => r#"
             local declared = nil
+            local palette = { kind = "palette" }
             if phase == 0 then
-              declared = { { name = "palette", width = 400, height = 300 },
-                           { name = "palette", width = 500, height = 500 } }
+              declared = { { name = "palette", width = 400, height = 300, on_window = palette },
+                           { name = "palette", width = 500, height = 500, on_window = palette } }
             elseif phase == 2 then
-              declared = { { name = "palette", width = 400, height = 300 } }
+              declared = { { name = "palette", width = 400, height = 300, on_window = palette } }
             end
             return column { windows = declared, pad = 8, bg = 0x14161eff,
               text((phase == 0 or phase == 2) and "open" or "closed", { size = 12 }),
             }
         "#
         .to_string(),
-        // A popup, declared with the kind and the anchor a menu carries.
+        // A popup, declared with the kind and the anchor a menu carries,
+        // and one message for its lifecycle and its dismissal (ADR 0048).
         "popup" => format!(
             r#"
             local declared = nil
             if phase == 0 then
               declared = {{ {{ name = "menu", kind = "popup",
                                width = {w}, height = {h},
-                               anchor = {{ x = {x}, y = {y}, w = {aw}, h = {ah} }} }} }}
+                               anchor = {{ x = {x}, y = {y}, w = {aw}, h = {ah} }},
+                               on_window = {{ kind = "popup" }}, on_dismiss = {{ kind = "popup" }} }} }}
             end
             return column {{ windows = declared, pad = 8, bg = 0x14161eff,
               text(phase == 0 and "menu" or "closed", {{ size = 12 }}),
@@ -825,13 +841,14 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         .to_string(),
         // The stock select (backlog F73): `dropdown`, since `select` is
         // Lua's own; the options are strings or the row tables
-        // `env.open_menu` takes, and `current` counts from 1.
+        // `env.open_menu` takes, `current` counts from 1, and the choice
+        // arrives as `on_menu` (ADR 0047).
         "select" => r#"
             return column { pad = 10, gap = 6,
               dropdown { label = "language",
                          options = { "English", "Deutsch", "Français",
                                      { label = "Latin", id = "la", enabled = false } },
-                         current = 2 },
+                         current = 2, on_menu = { kind = "lang" } },
               text("body", { size = 12 }),
             }
         "#
@@ -878,6 +895,32 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                             on_drag = { kind = "split" } }
         "#
         .to_string(),
+        // The `virtual` list, `selectable`, a line of text in each built
+        // row, and the message the copy's ask arrives as (ADR 0047).
+        "selection-range" => {
+            let count = conformance::VIRTUAL_ROW_COUNT;
+            let rows = conformance::VIRTUAL_ROWS
+                .iter()
+                .map(|i| {
+                    format!(
+                        "column {{ index = {i}, width = \"grow\", height = 20, \
+                         text(\"row {i}\", {{ size = 13 }}) }},"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n                ");
+            format!(
+                r#"
+            return column {{ key = "list", width = 120, height = 60, gap = 0,
+                             scroll_y = true, bg = 0x101018ff, row_count = {count},
+                             selectable = true, on_selection_range = {{ kind = "rows" }},
+              column {{ key = "lead", width = "grow", height = 20 }},
+                {rows}
+              column {{ key = "tail", width = "grow", height = 100 }},
+            }}
+        "#
+            )
+        }
         "virtual" => {
             // `index` is a number where `key` is a string: the row's own
             // data index, which is what a virtual list opens its rows at.
@@ -1049,11 +1092,13 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         ),
         // ADR 0031: two zones, a button inside the first, and across the
         // phases a hoverable float over the first zone that is no zone
-        // (phase 1) and a modal over it (phase 2).
+        // (phase 1) and a modal over it (phase 2). The OS's documents are
+        // the root's `window_events.on_open` (ADR 0048).
         "drop" => r#"
             local over = { anchor = "viewport", at = { "start", "start" },
                            self_at = { "start", "start" }, dx = 20, dy = 20 }
             local t = { width = { grow = 1 }, height = { grow = 1 },
+              window_events = { on_open = { kind = "docs" } },
               column { key = "files", width = 200, height = { grow = 1 }, pad = 10,
                        bg = 0x22242cff, drop_bg = 0x2b3350ff, on_drop = { kind = "files" },
                        row { key = "pick", width = 60, height = 40, bg = 0x3b5bd4ff,
@@ -1106,6 +1151,20 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 k3 = keys[3],
             )
         }
+        // ADR 0048: every key of the root's group, each its own `kind`,
+        // and a drawn menu bar declaring `on_menu`.
+        "window-events" => r#"
+            return column { gap = 6, width = "grow",
+              window_events = { on_resize = { kind = "resized" }, on_focus = { kind = "focus" },
+                                on_system_settings_change = { kind = "settings" },
+                                on_fonts = { kind = "fonts" }, on_modifiers = { kind = "mods" },
+                                on_open = { kind = "docs" } },
+              menu_bar { menu = { { label = "File", items = { { label = "New", id = "file.new" } } } },
+                         on_menu = { kind = "chose" } },
+              text("body", { size = 12 }),
+            }
+        "#
+        .to_string(),
         other => panic!("no Lua scene for {other:?} — every corpus scene needs one"),
     };
     let prelude = match scene.name {

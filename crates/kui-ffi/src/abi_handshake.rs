@@ -50,21 +50,31 @@ fn window_cmds(ctx: *mut KuiCtx) -> Vec<KuiWindowCommand> {
     out
 }
 
-/// `(kind, phase)` of every `window` event queued.
+/// `(phase, message kind)` of every `window` event queued: the message
+/// is the declaration's `on_window`, which names the window (ADR 0048).
 fn window_events(ctx: *mut KuiCtx) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut ev = KuiEvent::default();
     while kui_poll_event(ctx, &raw mut ev) {
-        let payload = unsafe { &(*ev.payload).0 };
-        let kind = payload.get_str("kind").unwrap_or("-");
-        if kind != "window" {
+        if &*kstr(ev.event) != "window" {
             continue;
         }
-        let phase = payload.get_str("phase").unwrap_or("-");
-        let name = payload.get_str("name").unwrap_or("-");
+        let payload = unsafe { &(*ev.payload).0 };
+        let phase = payload
+            .get("window")
+            .and_then(|w| w.get_str("phase"))
+            .unwrap_or("-");
+        let name = payload.get_str("kind").unwrap_or("-");
         out.push((phase.to_string(), name.to_string()));
     }
     out
+}
+
+/// `{kind: "palette"}`, the message the palette's lifecycle arrives as.
+fn palette() -> *mut KuiValue {
+    let m = kui_value_map();
+    kui_value_map_set(m, ks("kind"), kui_value_str(ks("palette")));
+    m
 }
 
 fn frame_declaring(ctx: *mut KuiCtx, declare: &[(f32, f32)]) {
@@ -77,7 +87,7 @@ fn frame_declaring(ctx: *mut KuiCtx, declare: &[(f32, f32)]) {
             activates: 1,
             ..Default::default()
         };
-        kui_window_declare(ctx, ks("palette"), &cfg);
+        kui_window_declare_with(ctx, ks("palette"), &cfg, palette(), std::ptr::null_mut());
     }
     kui_frame_finish(ctx);
 }
@@ -206,12 +216,24 @@ fn env_set_window_names_the_context_and_stamps_its_events() {
     };
     assert!(kui_ctx_window_name(ctx, &raw mut name));
     assert_eq!(&*kstr(name), "palette");
-    // A frame at another viewport raises a resize, stamped with the id.
-    kui_frame_begin(ctx, 200.0, 100.0, 1.0);
-    kui_window_declare(ctx, ks("palette"), std::ptr::null());
-    kui_frame_finish(ctx);
+    // A frame at another viewport raises the resize its root declares,
+    // stamped with the id.
+    let resized = kui_value_str(ks("resized"));
+    let events = KuiWindowEvents {
+        on_resize: resized,
+        ..unsafe { std::mem::zeroed() }
+    };
+    let root: KuiSpec = unsafe { std::mem::zeroed() };
+    for w in [320.0, 200.0] {
+        kui_frame_begin(ctx, w, 100.0, 1.0);
+        kui_root_with(ctx, &root, &events);
+        kui_window_declare(ctx, ks("palette"), std::ptr::null());
+        kui_frame_finish(ctx);
+    }
+    kui_value_free(resized);
     let mut ev = KuiEvent::default();
     assert!(kui_poll_event(ctx, &raw mut ev));
+    assert_eq!(&*kstr(ev.event), "resize");
     assert_eq!(ev.window, 1);
     kui_ctx_free(ctx);
 }

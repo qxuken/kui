@@ -80,7 +80,10 @@ impl App for Host {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
+        // The handler's message is the payload (ADR 0047): the button's
+        // `{kind: "click"}` as declared, and the script's reply as it
+        // returned it.
+        match ev.payload.get_str("kind") {
             Some("click") => self.clicks += 1,
             // The script's reply, with its origin on the event.
             Some("toggled") => {

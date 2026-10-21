@@ -9,8 +9,8 @@
 
 use kui_core::testing::{click_at, tab};
 use kui_core::{
-    AccessAction, AccessRequest, Align, Color, Core, EditKey, EditOptions, FloatConfig, InputEvent,
-    Key, Mods, NodeSpec, Role, Size, TextStyle, UiEvent, Value, Vec2, WindowButton,
+    AccessAction, AccessRequest, Align, Color, Core, EditKey, EditOptions, EventKind, FloatConfig,
+    InputEvent, Key, Mods, NodeSpec, Role, Size, TextStyle, UiEvent, Value, Vec2, WindowButton,
 };
 
 const H: f32 = 20.0;
@@ -76,6 +76,7 @@ fn frame(core: &mut Core, declare_pane: bool, autofocus_edit: bool) -> Keys {
         row()
             .role(Role::Slider)
             .on_drag("vol")
+            .on_change("vol")
             .label("Volume")
             .value_now(3.0)
             .value_min(0.0)
@@ -131,16 +132,24 @@ fn key(core: &mut Core, k: EditKey) -> Vec<UiEvent> {
     core.handle_input(InputEvent::Key(k, Mods::default()))
 }
 
+/// Each event as its bare message, or `event:value` for one whose message
+/// carries data (a slider's proposed `change` value; nothing after the
+/// colon for a `dismiss`).
 fn payloads(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .map(|e| match e.payload.as_str() {
-            Some(s) => s.to_string(),
-            None => format!(
-                "{}:{}",
-                e.kind().unwrap_or("?"),
-                e.payload.get_str("action").unwrap_or("")
-            ),
-        })
+        .map(
+            |e| match e.payload.get_str("tag").filter(|_| e.data().is_none()) {
+                Some(s) => s.to_string(),
+                None => format!(
+                    "{}:{}",
+                    e.event.name(),
+                    e.data()
+                        .and_then(|d| d.get_float("value"))
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                ),
+            },
+        )
         .collect()
 }
 
@@ -272,7 +281,7 @@ fn enter_and_space_press_the_focused_control() {
     assert!(
         key(&mut core, EditKey::Enter)
             .iter()
-            .all(|e| e.payload.get_str("kind") == Some("submit"))
+            .all(|e| e.is(EventKind::Submit))
     );
     core.set_focus(Some(k.pane));
     assert!(key(&mut core, EditKey::Enter).is_empty());
@@ -289,24 +298,22 @@ fn arrows_nudge_a_focused_slider_like_assistive_technology_does() {
     let k = frame(&mut core, false, false);
     core.set_focus(Some(k.vol));
     let up = key(&mut core, EditKey::Right);
-    assert_eq!(payloads(&up), ["access:increment"]);
+    assert_eq!(
+        payloads(&up),
+        ["change:3.1"],
+        "one step (a hundredth of the range) up from 3"
+    );
     assert_eq!(up[0].key, k.vol);
     assert_eq!(up[0].payload.get_str("tag"), Some("vol"));
-    assert_eq!(payloads(&key(&mut core, EditKey::Up)), ["access:increment"]);
-    assert_eq!(
-        payloads(&key(&mut core, EditKey::Left)),
-        ["access:decrement"]
-    );
-    assert_eq!(
-        payloads(&key(&mut core, EditKey::Down)),
-        ["access:decrement"]
-    );
+    assert_eq!(payloads(&key(&mut core, EditKey::Up)), ["change:3.1"]);
+    assert_eq!(payloads(&key(&mut core, EditKey::Left)), ["change:2.9"]);
+    assert_eq!(payloads(&key(&mut core, EditKey::Down)), ["change:2.9"]);
     // The same request from a reader yields the same event.
     let req = core.handle_input(InputEvent::Access(AccessRequest::new(
         k.vol,
         AccessAction::Increment,
     )));
-    assert_eq!(payloads(&req), ["access:increment"]);
+    assert_eq!(payloads(&req), ["change:3.1"]);
     // Arrows on a button are nothing.
     core.set_focus(Some(k.go));
     assert!(key(&mut core, EditKey::Right).is_empty());
@@ -603,7 +610,12 @@ fn modal_frame(core: &mut Core, dialog: bool) -> Modal {
         },
     );
     let behind = Key::ROOT.str("list").str("a");
-    let note = ui.text_edit("note", "hi", &EditOptions::default(), row().label("Note"));
+    let note = ui.text_edit(
+        "note",
+        "hi",
+        &EditOptions::default(),
+        row().label("Note").on_cancel(Value::Null),
+    );
     let mut ok = Key::ROOT;
     let mut reason = Key::ROOT;
     let mut dlg = Key::ROOT;
@@ -650,7 +662,10 @@ fn everything_outside_the_modal_is_inert() {
     // only the modal's dismiss — and does not move focus.
     let out = click_at(&mut core, BEHIND.0, BEHIND.1);
     assert_eq!(payloads(&out), ["dismiss:"], "no `open`, one dismiss");
-    assert_eq!(out[0].payload.get_str("reason"), Some("outside"));
+    assert_eq!(
+        out[0].data().and_then(|d| d.get_str("reason")),
+        Some("outside")
+    );
     assert_eq!(out[0].key, m.dialog);
     assert_eq!(core.focus(), Some(m.ok), "focus stays in the modal");
 
@@ -712,7 +727,10 @@ fn escape_asks_the_modal_to_go_away_and_does_nothing_else() {
     let out = key(&mut core, EditKey::Escape);
     assert_eq!(payloads(&out), ["dismiss:"]);
     assert_eq!(out[0].key, m.dialog);
-    assert_eq!(out[0].payload.get_str("reason"), Some("escape"));
+    assert_eq!(
+        out[0].data().and_then(|d| d.get_str("reason")),
+        Some("escape")
+    );
     assert_eq!(
         out[0].payload.get_str("tag"),
         Some("dlg"),
@@ -732,12 +750,8 @@ fn escape_asks_the_modal_to_go_away_and_does_nothing_else() {
     let m = modal_frame(&mut core, false);
     core.set_focus(Some(m.note));
     let out = key(&mut core, EditKey::Escape);
-    let kinds: Vec<_> = out.iter().map(|e| e.kind()).collect();
-    assert_eq!(
-        kinds,
-        [Some("cancel")],
-        "an editor let go by Escape says so"
-    );
+    let kinds: Vec<_> = out.iter().map(|e| e.event.name()).collect();
+    assert_eq!(kinds, ["cancel"], "an editor let go by Escape says so");
     assert_eq!(core.focus(), None);
 }
 
@@ -769,7 +783,7 @@ fn a_modal_without_a_tag_still_dismisses() {
     let out = key(&mut core, EditKey::Escape);
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].key, menu);
-    assert_eq!(out[0].kind(), Some("dismiss"));
+    assert_eq!(out[0].event.name(), "dismiss");
     assert_eq!(out[0].payload.get("tag"), None, "a null tag carries none");
 }
 
@@ -986,8 +1000,13 @@ fn drag_frame(core: &mut Core, dialog: bool) -> (Key, Key) {
 
 fn drag_phases(evs: &[UiEvent]) -> Vec<String> {
     evs.iter()
-        .filter(|e| e.kind() == Some("drag"))
-        .map(|e| e.payload.get_str("phase").unwrap_or("?").to_string())
+        .filter(|e| e.event.name() == "drag")
+        .map(|e| {
+            e.data()
+                .and_then(|d| d.get_str("phase"))
+                .unwrap_or("?")
+                .to_string()
+        })
         .collect()
 }
 
@@ -1014,7 +1033,7 @@ fn a_drag_in_flight_when_a_modal_appears_still_ends() {
         "the capture runs to release"
     );
     assert!(
-        !after.iter().any(|e| e.payload.as_str().is_some()),
+        !after.iter().any(|e| e.is(kui_core::EventKind::Click)),
         "and a release after a drag is not a click"
     );
 
@@ -1220,10 +1239,7 @@ fn a_key_acting_on_pointer_focus_shows_it() {
     click_at(&mut core, 50.0, 5.0 * H + 10.0);
     assert_eq!(core.focus(), Some(k.vol));
     assert!(!core.focus_visible());
-    assert_eq!(
-        payloads(&key(&mut core, EditKey::Right)),
-        ["access:increment"]
-    );
+    assert_eq!(payloads(&key(&mut core, EditKey::Right)), ["change:3.1"]);
     assert!(core.focus_visible(), "the slider moved: say which one");
 
     // A key the core does nothing with shows nothing: an arrow on a

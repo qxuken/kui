@@ -62,6 +62,36 @@ The derive generates `From<Msg> for Value`, `TryFrom<Value>` (with a
 can be a field of another. `#[message(string)]` on an enum of unit
 variants encodes it as a bare string instead of a map.
 
+An event arrives as the message its handler declared, with the event's
+data in one field named for the event. `#[message(on = drag)]` on a
+variant makes the derive emit a second enum, `MsgIn` (or the name
+`#[message(incoming = "...")]` gives), in which that variant carries the
+data, so `update` reads the message and its data in one `match`:
+
+```rust
+#[derive(Message, Clone, Debug, PartialEq)]
+enum Msg {
+    #[message(on = drag)]
+    Pan,                   // declared as .on_drag(Msg::Pan)
+    #[message(on = change)]
+    Rename { id: u64 },    // an editor's .on_change(Msg::Rename { id })
+    Save,
+}
+
+match ev.message::<MsgIn>() {
+    Some(MsgIn::Pan { drag }) => self.pan(drag.delta),
+    Some(MsgIn::Rename { id, change }) => self.rename(id, change.text),
+    Some(MsgIn::Save) => self.save(),
+    None => {}
+}
+```
+
+`on = change` is an editor's change (`EditChange`, `{text}`) and
+`on = slider_change` a slider's (`SliderChange`, `{value, phase}`); every
+other name is the event's own (`click`, `key`, `hover`, `drop`, ...). A
+message declared on the wrong handler lacks the field and does not decode
+as the twin.
+
 ## Where it fits
 
 | Crate | What it is |

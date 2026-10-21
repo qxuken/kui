@@ -20,3 +20,9 @@ proc-macro = true
 syn = { version = "2", default-features = false, features = ["derive", "parsing", "printing", "proc-macro", "clone-impls"] }
 quote = "1"
 proc-macro2 = "1"
+
+[dev-dependencies]
+# The twin's tests read real events off a headless core. A path with no
+# version, so `cargo publish` drops it rather than asking the registry for
+# a kui-core that is published after this crate.
+kui-core = { path = "../kui-core" }

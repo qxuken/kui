@@ -1,6 +1,8 @@
 import type {
   AppMsg,
   BoxProps,
+  KuiMsg,
+  Msg,
   EnterProp,
   GeneratedSpecProps,
   KuiNode,
@@ -16,11 +18,109 @@ export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js'
 export type { MenuItemInput, MenuItemRole, MenuInput, MenuBarInput } from './jsx-runtime.js';
 export type { ColorToken, LengthToken } from './jsx-runtime.js';
 
-// -- the messages the core itself sends ------------------------------------
-// Payload shapes from `EVENTS` in crates/kui-core/src/schema.rs (the table
-// docs/props.md is generated from). `tag` is the payload declared on the
-// node (`onDrag` / `onHover` / `onKey`), left off when the node declared
-// none.
+// -- events ------------------------------------------------------------------
+// An event arrives as the message its handler declared
+// (docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md):
+// a node that declares `onDrag={{ kind: 'pan' }}` hears a drag as
+// `{ kind: 'pan', drag: { phase, x, y, dx, dy, parent } }` — the message
+// as declared plus one field, named for the event, holding its data. The
+// envelope's `event` (`UiEvent.event`) says which event it was; the
+// payload no longer does. A `null` handler declares the behaviour and
+// names no message, so its events arrive as the field alone
+// (`{ drag: { … } }`), and `{}` for an event with no data. A message
+// that is not a map — a string, a number, a boolean, a list — is kept
+// under `tag`, even when the event has no data: `onClick: 'save'` is
+// heard as `{ tag: 'save' }` (decision 3), so every payload a node sends
+// is a map (`Arrived<M>`). The shapes are `EVENTS` in
+// crates/kui-core/src/schema.rs, the table docs/props.md is generated from.
+//
+// Each event has three types: its data (`DragEvent`), the field that
+// carries it (`WithDrag`, an interface, so `extends` works), and a helper
+// that adds the field to the app's own message (`DragMsg<T>`). Register
+// the messages as they arrive — `DragMsg<{ kind: 'pan' }>` — and the
+// handler prop (`onDrag`) takes them as declared, without the field:
+// `HandlerMsg<WithDrag>`. A message registered without the field does not
+// fit the prop, so pairing a message with the wrong handler fails at the
+// node. A bare message with a field is registered as it arrives —
+// `DragMsg<{ tag: 'pan' }>` — and the prop takes `'pan'` back
+// (`Declared<M>`).
+//
+// What has no node of its own — a resize, the window's keyboard, a
+// modifier change, the OS's documents — is declared where the window is
+// (ADR 0048): the root box's `windowEvents` group (`WindowEvents`), a
+// `windows` entry's `onWindow` / `onDismiss` (`WindowDecl`), and
+// `<menuBar onMenu>`. They arrive as the app's own messages too, so
+// `update` takes the registered messages and nothing else.
+
+/** The registered messages that carry the event field `W`, as a node
+ *  declares them: without the field, which the core writes in. Every
+ *  handler prop is typed as this — `onDrag` as `HandlerMsg<WithDrag>`,
+ *  `onKey` as `HandlerMsg<WithKeySink>` — so only a registered message
+ *  with that field fits it. `W` may be a union, for a handler that
+ *  delivers several events; the `keyof` and the `Omit` distribute, so
+ *  each message keeps its own fields. Left un-augmented (no `KuiMsg`),
+ *  it is `Msg`, any plain data, as every prop is. */
+export type HandlerMsg<W> = KuiMsg extends { msg: infer M }
+  ? Extract<M, W> extends infer E
+    ? E extends unknown
+      ? Declared<Omit<E, W extends unknown ? keyof W : never>>
+      : never
+    : never
+  : Msg;
+
+/** A message that is not a map — a string, a number, a boolean, a list. A
+ *  node may declare one; it arrives under `tag` (`Arrived<M>`). */
+export type BareMsg = string | number | boolean | readonly unknown[];
+
+/** The message `M` a node declared, as the app hears it (ADR 0047,
+ *  decision 3): every node payload is a map. A map arrives as it is (with
+ *  the event's field added where the event has data); a bare message —
+ *  `onClick: 'save'`, a number, a list — arrives under `tag` beside that
+ *  field, `{ tag: 'save' }`, even when the event has no data; `null`
+ *  arrives as the field alone, or `{}`. This is what `update` is handed
+ *  and what `UiEvent.payload` is: an app registers the messages it
+ *  declares (`'save'`) and reads them as they arrive (`msg.tag`). It
+ *  leaves a map alone, so it is a no-op on an all-map union and on a
+ *  union already mapped through it. */
+export type Arrived<M> = M extends null | undefined
+  ? { [field: string]: Msg }
+  : M extends BareMsg
+    ? { tag: M }
+    : M;
+
+/** The other way round, for a handler prop: a registered message that is
+ *  `{ tag }` and nothing else once the event's field is left out may be
+ *  declared bare — `DragMsg<{ tag: 'pan' }>` registered, `onDrag="pan"`
+ *  declared — as well as spelled out. Anything else is declared as it is. */
+export type Declared<M> = M extends { tag: infer T extends BareMsg }
+  ? [Exclude<keyof M, 'tag'>] extends [never]
+    ? T | M
+    : M
+  : M;
+
+/** A rect in logical viewport px: a container's, the node's own. */
+export interface EventRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** What a click on a `cells` grid, or inside an `onKey` sink that draws
+ *  `role="line"` rows, can say beyond "it was clicked". A plain click
+ *  arrives as declared (a bare message under `tag`), with no `click`
+ *  field; this is there only where the node can say more. */
+export interface ClickEvent {
+  /** On a `cells` grid: the cell under the pointer, clamped to the grid. */
+  cell?: { row: number; col: number };
+  /** Inside an `onKey` sink that draws `role="line"` rows: the line and
+   *  the byte in its text, as a drag carries them, whether the point is
+   *  within that line's own box, and the press's click count. */
+  line?: number;
+  byte?: number;
+  inside?: boolean;
+  clicks?: number;
+}
 
 /** A pointer-captured drag on an `onDrag` node. `x`/`y` are where the
  *  pointer is; `dx`/`dy` are its displacement **from the press point**, in
@@ -30,16 +130,23 @@ export type { ColorToken, LengthToken } from './jsx-runtime.js';
  *  `end` alone. Nothing is dropped under the click slop (3 px, measured
  *  from the press): the first `move` already carries the whole distance.
  *  `parent` is the container rect, so fractions need no geometry query. */
-export type DragMsg<T = AppMsg> = {
-  kind: 'drag';
+export interface DragEvent {
   phase: 'start' | 'move' | 'end';
   x: number;
   y: number;
   dx: number;
   dy: number;
-  parent: { x: number; y: number; w: number; h: number };
-  tag?: T;
-};
+  parent: EventRect;
+  /** On a `cells` grid: the cell under the pointer, clamped to the grid. */
+  cell?: { row: number; col: number };
+  /** Inside an `onKey` sink that draws `role="line"` rows: the line, the
+   *  byte in its text, whether the point is within that line's own box,
+   *  and the press's click count. */
+  line?: number;
+  byte?: number;
+  inside?: boolean;
+  clicks?: number;
+}
 
 /** A key press on the focused `onKey` sink — and its release too, as
  *  `phase: 'up'`, when the sink also declares `keyUp`; without that flag a
@@ -50,8 +157,7 @@ export type DragMsg<T = AppMsg> = {
  *  whose press the sink never got is dropped, and focus leaving while a key is
  *  held delivers the `up` first — so a held-key binding cannot be left stuck
  *  down. */
-export type KeyMsg<T = AppMsg> = {
-  kind: 'key';
+export interface KeyEvent {
   phase: 'down' | 'up';
   code: string;
   /** The US-QWERTY key at that *position*, spelled as `code` is — bind
@@ -74,10 +180,9 @@ export type KeyMsg<T = AppMsg> = {
    *  press reports the state it made (backlog RG96). */
   caps_lock: boolean;
   num_lock: boolean;
-  tag?: T;
-};
+}
 
-/** Where a key sits, for the keys that have twins (`KeyMsg.location`). */
+/** Where a key sits, for the keys that have twins (`KeyEvent.location`). */
 export type KeyLocationName = 'standard' | 'left' | 'right' | 'numpad';
 
 /** Text an IME committed at the end of a composition, on the focused
@@ -86,7 +191,9 @@ export type KeyLocationName = 'standard' | 'left' | 'right' | 'numpad';
  *  `text`, so insert it as you would a key's `text`. Plain typing does not
  *  arrive this way: the `key` event already carries it, and a sink hearing
  *  both would type every character twice. A focused `<edit>` takes the
- *  commit itself and reports `changed`.
+ *  commit itself and reports its `change`. Assistive technology replacing
+ *  a custom editor's selection arrives this way too: text to insert over
+ *  the selection.
  *
  *  The answer to a `requestPaste()` arrives the same way, with `pasted`
  *  set (backlog DX14) — an IME's commit never has it — and with what the
@@ -94,14 +201,12 @@ export type KeyLocationName = 'standard' | 'left' | 'right' | 'numpad';
  *  manager copied — show it to no one, keep it nowhere — and `transient`
  *  for text not to keep in a history. A marker that is not set is absent,
  *  never `false`. */
-export type TextMsg<T = AppMsg> = {
-  kind: 'text';
+export interface TextEvent {
   text: string;
   pasted?: true;
   concealed?: true;
   transient?: true;
-  tag?: T;
-};
+}
 
 /** An in-progress IME composition on the focused `onKey` sink: `text` is
  *  the uncommitted string to show inline at the caret, `cursor` the byte
@@ -109,23 +214,66 @@ export type TextMsg<T = AppMsg> = {
  *  and an empty `text` means the composition ended without a commit. The
  *  OS candidate window is anchored for you: the `line` carrying `caret`
  *  says where (`imeRect()` headless). */
-export type PreeditMsg<T = AppMsg> = {
-  kind: 'preedit';
+export interface PreeditEvent {
   text: string;
   cursor: [number, number] | null;
-  tag?: T;
-};
+}
+
+/** Assistive technology set the selection of a custom editor — an `onKey`
+ *  sink that draws its own `role="line"` rows (ADR 0047): line ordinals
+ *  among the drawn lines and byte offsets into their text, the end that
+ *  stays (`anchor`) and the caret (`focus`). */
+export interface SelectEvent {
+  anchor: { line: number; offset: number };
+  focus: { line: number; offset: number };
+}
+
+/** A copy reached rows of a `selectable` virtual list that no frame built
+ *  (ADR 0017, tier 3): the core cannot read text it never laid out, so it
+ *  asks the app, on the scope, for the range — `from`/`to` are row indices
+ *  (`index`, the row's data index) and byte offsets into each row's text —
+ *  and the app answers with `answerSelectionRange(text)`, which is what
+ *  reaches the clipboard. Only while `requestCopy()` answered `asked`; a
+ *  late answer changes nothing. A Select All over a list that declared
+ *  `rowCount` asks for `0..rowCount - 1` with `to.byte` past the last
+ *  row's length (the row was never built) — cut it to the row. */
+export interface SelectionRangeEvent {
+  from: { index: number; byte: number };
+  to: { index: number; byte: number };
+}
 
 /** A secondary-button (right) press on an `onContextMenu` node — on the
  *  press, not the release. `x`/`y` are logical viewport coordinates: where
  *  the menu goes. The core opens nothing; declare the menu as a `modal`
- *  float and stop declaring it on `dismiss`. */
-export type ContextMenuMsg<T = AppMsg> = {
-  kind: 'contextmenu';
+ *  float and stop declaring it on `dismiss`, or `openMenu`. */
+export interface ContextMenuEvent {
   x: number;
   y: number;
-  tag?: T;
-};
+}
+
+/** A menu row was chosen, from a menu opened for an `onMenu` node — a
+ *  `<select>`'s, or one `Ctx.openMenu` named it the target of — or from
+ *  the application menu bar (`docs/adr/0018-a-menu-bar-the-app-declares.md`),
+ *  as `<menuBar onMenu>`'s message. `item` is the row's `id`, or its label
+ *  when it declared none. `role` says whether the core already carried
+ *  the row out: a standard role is performed (and its clipboard work
+ *  queued for the host) *and* posted. The stock right-click menu, whose
+ *  roles the core performs itself, sends nothing. */
+export interface MenuEvent {
+  role: MenuItemRole;
+  item: Msg;
+}
+
+/** A press that deepened past the second stage of a Force Touch trackpad,
+ *  on an `onForceClick` node, at the logical viewport point it happened
+ *  at. Routed as a secondary press is — no focus moved, no click — and the
+ *  ordinary click the press is still producing arrives afterwards. Text
+ *  needs none of this: over an `edit` or a `selectable` scope the core
+ *  selects the word and asks the host for its Look Up panel instead. */
+export interface ForceClickEvent {
+  x: number;
+  y: number;
+}
 
 /** A non-primary button on an `onButton` node that claims it (`buttons`),
  *  backlog F105: `press` where it went down, with the click count, then
@@ -137,8 +285,7 @@ export type ContextMenuMsg<T = AppMsg> = {
  *  an `onKey` sink that draws `role="line"` rows `line` and `byte`, as a
  *  drag does. A claimed secondary press is this instead of a
  *  `contextmenu`. */
-export type ButtonMsg<T = AppMsg> = {
-  kind: 'button';
+export interface ButtonEvent {
   phase: 'press' | 'move' | 'release';
   button: 'secondary' | 'middle' | number;
   x: number;
@@ -154,8 +301,7 @@ export type ButtonMsg<T = AppMsg> = {
   line?: number;
   byte?: number;
   inside?: boolean;
-  tag?: T;
-};
+}
 
 /** The wheel over an `onScroll` node, or a drag-select held past a
  *  `cells` grid's top or bottom edge
@@ -168,8 +314,7 @@ export type ButtonMsg<T = AppMsg> = {
  *  The core scrolls nothing for it: re-declare the grid's `originLine`,
  *  or zoom the canvas. From the edge drag it comes once a frame while the
  *  pointer is held past the edge. */
-export type ScrollMsg<T = AppMsg> = {
-  kind: 'scroll';
+export interface ScrollEvent {
   x: number;
   y: number;
   dx: number;
@@ -178,58 +323,23 @@ export type ScrollMsg<T = AppMsg> = {
   /** On a node that names `scrollMods`: the modifiers held when the
    *  gesture began. */
   mods?: { shift: boolean; ctrl: boolean; alt: boolean; super: boolean };
-  tag?: T;
-};
-
-/** A menu row was chosen — a context menu's (`Ctx.openMenu`, or the stock
- *  one a right-click opens) or the application menu bar's
- *  (`docs/adr/0018-a-menu-bar-the-app-declares.md`). One message for both,
- *  so an app that wires Save once has it in both places.
- *
- *  `item` is the row's `id`, or its label when it declared none. `role`
- *  says whether the core already carried the row out: a standard role is
- *  performed (and its clipboard work queued for the host) *and* posted, so
- *  an app can hear its editor being cut from and is free to ignore it. */
-export type MenuMsg<T = AppMsg> = {
-  kind: 'menu';
-  role: MenuItemRole;
-  item: T;
-};
-
-/** A copy reached rows of a `selectable` virtual list that no frame built
- *  (ADR 0017, tier 3): the core cannot read text it never laid out, so it
- *  asks the app, on the scope, for the range — `from`/`to` are row indices
- *  (`index`, the row's data index) and byte offsets into each row's text —
- *  and the app answers with `answerSelectionRange(text)`, which is what
- *  reaches the clipboard. Only while `requestCopy()` answered `asked`; a
- *  late answer changes nothing. A Select All over a list that declared
- *  `rowCount` asks for `0..rowCount - 1` with `to.byte` past the last
- *  row's length (the row was never built) — cut it to the row. */
-export type SelectionRangeMsg = {
-  kind: 'selectionrange';
-  from: { index: number; byte: number };
-  to: { index: number; byte: number };
-};
+}
 
 /** Keyboard focus entered or left an `onFocus` node's subtree, and what
  *  moved it (backlog DX18). */
-export type FocusMsg<T = AppMsg> = {
-  kind: 'focus';
+export interface FocusEvent {
   phase: 'in' | 'out';
   by: 'pointer' | 'keyboard' | 'assistive' | 'program';
-  tag?: T;
-};
+}
 
 /** The pointer entered or left an `onHover` node — also when a new frame
  *  moved it under a still cursor, which `by` tells apart. */
-export type HoverMsg<T = AppMsg> = {
-  kind: 'hover';
+export interface HoverEvent {
   phase: 'enter' | 'leave';
   /** What moved: the pointer, or what is under a still one — a list the
    *  keys scrolled, a row that grew (backlog DX20). */
   by: 'pointer' | 'content';
-  tag?: T;
-};
+}
 
 /** Files dragged in from the OS over an `onDrop` node
  *  (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`):
@@ -241,23 +351,328 @@ export type HoverMsg<T = AppMsg> = {
  *  topmost one under the pointer by paint order: a node inside it is its,
  *  and a node that is no zone is looked past, so an overlay shown on
  *  `enter` does not end the hover. */
-export type DropMsg<T = AppMsg> = {
-  kind: 'drop';
+export interface DropEvent {
   phase: 'enter' | 'move' | 'leave' | 'drop';
   paths: string[];
   x?: number;
   y?: number;
-  tag?: T;
-};
+}
 
 /** A file dialog's answer (backlog C51): the paths an Open, Save or folder
  *  dialog asked for with `requestFiles` picked, as a `drop` carries them —
- *  none when the user cancelled. `tag` is the dialog's own. */
-export type FilesMsg<T = AppMsg> = {
-  kind: 'files';
+ *  none when the user cancelled. It arrives on the root, in the dialog's
+ *  own `tag` message. */
+export interface FilesEvent {
   paths: string[];
-  tag?: T;
-};
+}
+
+/** The rect layout gave an `onLayout` node — logical px, viewport
+ *  coordinates, after scrolling and position easing — on its first frame
+ *  and whenever it changes, never on a frame that left it alone (a
+ *  transition that moves the node reports every frame it moves). `parent`
+ *  is the container rect, as on drags. Layout's numbers, so the view never
+ *  re-derives them by hand. */
+export interface LayoutEvent {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  parent: EventRect;
+  /** Physical px per logical px at the node — `w × scale` by `h × scale`
+   *  is how many pixels to render for it before `updateImage`. */
+  scale: number;
+}
+
+/** An editor's text changed, on an `<edit>` (or a custom editor — a node
+ *  with an editor role that draws its own text) that declared `onChange`:
+ *  typing, a paste, a composition's commit, assistive technology setting
+ *  the value. `text` is the whole text after the change, so storing it and
+ *  declaring it back as `value` keeps the editor and the model one text
+ *  (ADR 0047, decision 8). An editor without `onChange` sends nothing. */
+export interface EditChangeEvent {
+  text: string;
+}
+
+/** A stock slider's proposal (docs/adr/0034-stock-controls-over-the-roles.md):
+ *  the core turned a press, a drag, an arrow, a Page key, Home / End or an
+ *  assistive-technology increment into `value` — clamped to the range and
+ *  snapped to `valueStep` — on a `<slider>` (or a `role="slider"` box) that
+ *  declared `onChange`. `phase` is `'move'` while the pointer holds it and
+ *  `'end'` when it lets go or a key moved it. Nothing moves until the view
+ *  declares `value` as `valueNow`; a slider without `onChange` does not
+ *  move at all (`slider-without-handler`). */
+export interface SliderChangeEvent {
+  value: number;
+  phase: 'move' | 'end';
+}
+
+/** An editing key that met the edge of an editor's text and did nothing
+ *  (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on
+ *  the last line, → or Delete at the end — from a caret with no selection
+ *  and without Shift, on an editor that declared `onBoundary`. `word` and
+ *  `doc` are the editing modifiers the key carried. */
+export interface BoundaryEvent {
+  key: 'up' | 'down' | 'left' | 'right' | 'backspace' | 'delete';
+  edge: 'start' | 'end';
+  word: boolean;
+  doc: boolean;
+}
+
+/** A playback with a message (`play(id, { tag })` or `<audio tag>`)
+ *  finished on its own — never when something stopped it. On an
+ *  `<audio>` node's key, or the root for `play`. `'refused'` is the
+ *  device declining to start it at all (its 128 voices are all held, or
+ *  the sound did not decode): that playback never starts and so never
+ *  ends, so this arrives in place of the `'ended'` a view would otherwise
+ *  wait forever for. */
+export interface SoundEvent {
+  phase: 'ended' | 'refused';
+  playback: number;
+}
+
+/** A surface was asked to go away: Escape, or a press that landed
+ *  outside it. The core closes nothing — stop declaring the surface (or
+ *  ask first). On a `modal` node only the modal in effect hears it; a
+ *  `kind: 'popup'` window hears it as its `windows` entry's `onDismiss`,
+ *  with the window's `id` — the driver reports it, because a press outside
+ *  a window and a key sent to a non-activating one are facts only the OS
+ *  has. */
+export interface DismissEvent {
+  reason: 'escape' | 'outside';
+  /** A popup window's: the id its own events carry in `window`. */
+  id?: number;
+}
+
+/** The viewport changed size or DPI (logical px), as the root's
+ *  `windowEvents.onResize`: the window's, or what the devtools' dock
+ *  leaves of it while the panel is docked, so a dock coming, moving or
+ *  being dragged is one too; `win.size()` queries the same numbers. */
+export interface ResizeEvent {
+  width: number;
+  height: number;
+  scale: number;
+}
+
+/** A window's lifecycle or its keyboard. `opened` / `closed` arrive as a
+ *  `windows` entry's `onWindow`, with the window's `id` — on whichever
+ *  window's frame noticed; a closed window's is the last `onWindow` its
+ *  entry declared. A window the user closed stays closed while it is
+ *  still declared (a declaration reopens a window only when it *starts*):
+ *  stop declaring it, then declare it again. `focused` / `blurred` arrive
+ *  as the root's `windowEvents.onFocus`: this window gained or lost the
+ *  keyboard (backlog DX18), and carry no id. */
+export interface WindowEvent {
+  phase: 'opened' | 'closed' | 'focused' | 'blurred';
+  /** `opened` / `closed` only: what that window's events carry in
+   *  `window`. */
+  id?: number;
+}
+
+/** The physical modifier state changed, as the root's
+ *  `windowEvents.onModifiers`. */
+export interface ModifiersEvent {
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  super: boolean;
+}
+
+/** The OS asked the app to open these documents (backlog F124), as the
+ *  main window's `windowEvents.onOpen`: the Finder's Open With, a file
+ *  dropped on the Dock icon, `open -a`, a double-click on a document type
+ *  the app's Info.plist declares (`CFBundleDocumentTypes`) — whether or
+ *  not the app asked, at launch once the window is open, and while it
+ *  runs. `paths` are file-system paths. macOS only: Windows and Linux
+ *  hand documents over in `process.argv`. `ctx.openDocuments(paths)` is
+ *  the headless drive. */
+export interface OpenEvent {
+  paths: string[];
+}
+
+/** The `click` field: a click on a node that can say more than "it was
+ *  clicked" (`ClickEvent`). */
+export interface WithClick {
+  click: ClickEvent;
+}
+/** The `drag` field, on an `onDrag` message. */
+export interface WithDrag {
+  drag: DragEvent;
+}
+/** The `key` field, on an `onKey` message. */
+export interface WithKey {
+  key: KeyEvent;
+}
+/** The `text` field, on an `onKey` message. */
+export interface WithText {
+  text: TextEvent;
+}
+/** The `preedit` field, on an `onKey` message. */
+export interface WithPreedit {
+  preedit: PreeditEvent;
+}
+/** The `select` field, on an `onKey` message. */
+export interface WithSelect {
+  select: SelectEvent;
+}
+/** What an `onKey` sink hears: a key, committed text, a composition or a
+ *  selection set by assistive technology — one message for all four, told
+ *  apart with `'key' in msg`. */
+export type WithKeySink = WithKey | WithText | WithPreedit | WithSelect;
+/** The `selectionrange` field, on an `onSelectionRange` message. */
+export interface WithSelectionRange {
+  selectionrange: SelectionRangeEvent;
+}
+/** The `contextmenu` field, on an `onContextMenu` message. */
+export interface WithContextMenu {
+  contextmenu: ContextMenuEvent;
+}
+/** The `menu` field, on an `onMenu` message. */
+export interface WithMenu {
+  menu: MenuEvent;
+}
+/** The `forceclick` field, on an `onForceClick` message. */
+export interface WithForceClick {
+  forceclick: ForceClickEvent;
+}
+/** The `button` field, on an `onButton` message. */
+export interface WithButton {
+  button: ButtonEvent;
+}
+/** The `scroll` field, on an `onScroll` message. */
+export interface WithScroll {
+  scroll: ScrollEvent;
+}
+/** The `focus` field, on an `onFocus` message. */
+export interface WithFocus {
+  focus: FocusEvent;
+}
+/** The `hover` field, on an `onHover` message. */
+export interface WithHover {
+  hover: HoverEvent;
+}
+/** The `drop` field, on an `onDrop` message. */
+export interface WithDrop {
+  drop: DropEvent;
+}
+/** The `files` field, on the message `requestFiles` was given. */
+export interface WithFiles {
+  files: FilesEvent;
+}
+/** The `layout` field, on an `onLayout` message. */
+export interface WithLayout {
+  layout: LayoutEvent;
+}
+/** The `change` field of an editor's `onChange` message. */
+export interface WithEditChange {
+  change: EditChangeEvent;
+}
+/** The `change` field of a slider's `onChange` message. */
+export interface WithSliderChange {
+  change: SliderChangeEvent;
+}
+/** The `boundary` field, on an `onBoundary` message. */
+export interface WithBoundary {
+  boundary: BoundaryEvent;
+}
+/** The `sound` field, on a playback's message. */
+export interface WithSound {
+  sound: SoundEvent;
+}
+/** The `dismiss` field, on a `modal` message or a popup's `onDismiss`. */
+export interface WithDismiss {
+  dismiss: DismissEvent;
+}
+/** The `resize` field, on `windowEvents.onResize`. */
+export interface WithResize {
+  resize: ResizeEvent;
+}
+/** The `window` field, on a `windows` entry's `onWindow` or
+ *  `windowEvents.onFocus`. */
+export interface WithWindow {
+  window: WindowEvent;
+}
+/** The `system` field, on `windowEvents.onSystemSettingsChange`: an OS
+ *  setting changed while the app was open — the appearance, the accent
+ *  colour, reduced motion or the UI language — or assistive technology
+ *  started listening (one per window that noticed). It is `env().system`
+ *  as it now reads.
+ *
+ *  A window's view runs when a message changes the model, so without it a
+ *  palette picked from `env().system.appearance` is the one the first
+ *  frame read and stays it: the driver's redraw re-lowers the tree it was
+ *  handed, it does not re-run `view`. The first frame establishes the
+ *  reading rather than reporting it, the way a resize does. */
+export interface WithSystem {
+  system: SystemEnv;
+}
+/** The `modifiers` field, on `windowEvents.onModifiers`. */
+export interface WithModifiers {
+  modifiers: ModifiersEvent;
+}
+/** The `open` field, on `windowEvents.onOpen`. */
+export interface WithOpen {
+  open: OpenEvent;
+}
+
+/** The app's message `T` as a click with data arrives (`WithClick`). */
+export type ClickMsg<T = {}> = T & WithClick;
+/** The app's message `T` as an `onDrag` drag arrives. */
+export type DragMsg<T = {}> = T & WithDrag;
+/** The app's message `T` as an `onKey` key press arrives. */
+export type KeyMsg<T = {}> = T & WithKey;
+/** The app's message `T` as committed text on an `onKey` sink arrives. */
+export type TextMsg<T = {}> = T & WithText;
+/** The app's message `T` as a composition on an `onKey` sink arrives. */
+export type PreeditMsg<T = {}> = T & WithPreedit;
+/** The app's message `T` as a selection set on an `onKey` sink arrives. */
+export type SelectMsg<T = {}> = T & WithSelect;
+/** The app's message `T` as everything an `onKey` sink hears arrives:
+ *  one of four, told apart with `'key' in msg`, `'text' in msg`, … */
+export type KeySinkMsg<T = {}> = T & WithKeySink;
+/** The app's message `T` as an `onSelectionRange` ask arrives. */
+export type SelectionRangeMsg<T = {}> = T & WithSelectionRange;
+/** The app's message `T` as an `onContextMenu` press arrives. */
+export type ContextMenuMsg<T = {}> = T & WithContextMenu;
+/** The app's message `T` as an `onMenu` choice arrives. */
+export type MenuMsg<T = {}> = T & WithMenu;
+/** The app's message `T` as an `onForceClick` press arrives. */
+export type ForceClickMsg<T = {}> = T & WithForceClick;
+/** The app's message `T` as an `onButton` press, move or release arrives. */
+export type ButtonMsg<T = {}> = T & WithButton;
+/** The app's message `T` as an `onScroll` gesture arrives. */
+export type ScrollMsg<T = {}> = T & WithScroll;
+/** The app's message `T` as an `onFocus` move arrives. */
+export type FocusMsg<T = {}> = T & WithFocus;
+/** The app's message `T` as an `onHover` enter or leave arrives. */
+export type HoverMsg<T = {}> = T & WithHover;
+/** The app's message `T` as an `onDrop` event arrives. */
+export type DropMsg<T = {}> = T & WithDrop;
+/** The app's message `T` (a file dialog's `tag`) as its answer arrives. */
+export type FilesMsg<T = {}> = T & WithFiles;
+/** The app's message `T` as an `onLayout` rect arrives. */
+export type LayoutMsg<T = {}> = T & WithLayout;
+/** The app's message `T` as an editor's `onChange` arrives. */
+export type EditChangeMsg<T = {}> = T & WithEditChange;
+/** The app's message `T` as a slider's `onChange` arrives. */
+export type SliderChangeMsg<T = {}> = T & WithSliderChange;
+/** The app's message `T` as an editor's `onBoundary` arrives. */
+export type BoundaryMsg<T = {}> = T & WithBoundary;
+/** The app's message `T` (a playback's `tag`) as its end arrives. */
+export type SoundMsg<T = {}> = T & WithSound;
+/** The app's message `T` (a `modal`, a popup's `onDismiss`) as its
+ *  dismissal arrives. */
+export type DismissMsg<T = {}> = T & WithDismiss;
+/** The app's message `T` as `windowEvents.onResize` arrives. */
+export type ResizeMsg<T = {}> = T & WithResize;
+/** The app's message `T` as a `windows` entry's `onWindow` or
+ *  `windowEvents.onFocus` arrives. */
+export type WindowMsg<T = {}> = T & WithWindow;
+/** The app's message `T` as `windowEvents.onSystemSettingsChange` arrives. */
+export type SystemMsg<T = {}> = T & WithSystem;
+/** The app's message `T` as `windowEvents.onModifiers` arrives. */
+export type ModifiersMsg<T = {}> = T & WithModifiers;
+/** The app's message `T` as `windowEvents.onOpen` arrives. */
+export type OpenMsg<T = {}> = T & WithOpen;
 
 /** A file dialog to ask for with `requestFiles`, and what
  *  `takeFileRequests` hands a host that shows it itself. Every field is
@@ -274,129 +689,38 @@ export interface FileDialogOptions {
   directory?: string;
   /** A save dialog's suggested name. */
   fileName?: string;
-  /** Handed back on the `files` event. */
-  tag?: AppMsg;
+  /** The message the answer arrives as, `files: { paths }` in it (a
+   *  `FilesMsg`); without one it arrives as `{ files }` alone. */
+  tag?: HandlerMsg<WithFiles>;
 }
 
-/** The rect layout gave an `onLayout` node — logical px, viewport
- *  coordinates, after scrolling and position easing — on its first frame
- *  and whenever it changes, never on a frame that left it alone (a
- *  transition that moves the node reports every frame it moves). `parent`
- *  is the container rect, as on drags. Layout's numbers, so the view never
- *  re-derives them by hand. */
-export type LayoutMsg<T = AppMsg> = {
-  kind: 'layout';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  parent: { x: number; y: number; w: number; h: number };
-  /** Physical px per logical px at the node — `w × scale` by `h × scale`
-   *  is how many pixels to render for it before `updateImage`. */
-  scale: number;
-  tag?: T;
-};
+// -- a window's own events (ADR 0048) ---------------------------------------
 
-/** A press that deepened past the second stage of a Force Touch trackpad,
- *  on an `onForceClick` node, at the logical viewport point it happened
- *  at. Routed as a secondary press is — no focus moved, no click — and the
- *  ordinary click the press is still producing arrives afterwards. Text
- *  needs none of this: over an `edit` or a `selectable` scope the core
- *  selects the word and asks the host for its Look Up panel instead. */
-export type ForceClickMsg<T = AppMsg> = {
-  kind: 'forceclick';
-  x: number;
-  y: number;
-  tag?: T;
-};
-
-/** A surface was asked to go away: Escape, or a press that landed outside
- *  it. The core closes nothing — stop declaring the surface (or ask first).
- *
- *  On a node it is the frame's `modal`, carrying its `tag`, and only the
- *  modal in effect gets one. On the root it is a `kind: 'popup'` window,
- *  carrying that window's `name` and `id`; the driver reports it, because a
- *  press outside a window and a key sent to a non-activating one are facts
- *  only the OS has. The two are one event, so a dropdown that graduates
- *  from a modal float to a popup window changes its declaration and keeps
- *  its handler. */
-export type DismissMsg<T = AppMsg> = {
-  kind: 'dismiss';
-  reason: 'escape' | 'outside';
-  tag?: T;
-  /** Popup windows only: which window, as `windows` named it and as its
-   *  events carry it. */
-  name?: string;
-  id?: number;
-};
-
-/** The viewport changed size or DPI (logical px, delivered on the root) —
- *  the window's, or what the devtools' dock leaves of it while the panel
- *  is docked, so a dock coming, moving or being dragged is one too;
- *  `win.size()` queries the same numbers. */
-export type ResizeMsg = {
-  kind: 'resize';
-  width: number;
-  height: number;
-  scale: number;
-};
-
-/** An OS setting changed while the app was open — the appearance, the
- *  accent colour, reduced motion or the UI language — or assistive
- *  technology started listening (delivered on the root, one per window
- *  that noticed). The payload is `env().system` as it now reads, so a
- *  handler keeps the whole reading or takes the one field it branches on.
- *
- *  A window's view runs when a message changes the model, so without this
- *  a palette picked from `env().system.appearance` is the one the first
- *  frame read and stays it: the driver's redraw re-lowers the tree it was
- *  handed, it does not re-run `view`. The first frame establishes the
- *  reading rather than reporting it, the way `ResizeMsg` does. */
-export type SystemMsg = {
-  kind: 'system';
-  appearance: 'unknown' | 'light' | 'dark';
-  /** `0xRRGGBBAA`, or null where the host cannot tell. */
-  accent: number | null;
-  motion: 'unknown' | 'full' | 'reduced';
-  /** A BCP-47 tag, or null where the host cannot tell. */
-  locale: string | null;
-  assistive: 'unknown' | 'none' | 'listening';
-};
-
-/** The system's installed fonts changed: a rescan found a face installed
- *  or removed (delivered on the root, one per window that noticed). A
- *  window rescans itself when macOS or Windows says the set changed;
- *  elsewhere it follows `reloadSystemFonts()`. Re-read `systemFonts()` here
- *  if the model holds the list; a `family` named in the view needs nothing.
- *  A font the app loads itself raises none. */
-export type FontsMsg = { kind: 'fonts' };
-
-/** The OS asked the app to open these documents (backlog F124): the
- *  Finder's Open With, a file dropped on the Dock icon, `open -a`, a
- *  double-click on a document type the app's Info.plist declares
- *  (`CFBundleDocumentTypes`). Delivered on the root whether or not the app
- *  asked — at launch, once the window is open, and while it runs. `paths`
- *  are file-system paths. macOS only: Windows and Linux hand documents over
- *  in `process.argv`. `ctx.openDocuments(paths)` is the headless drive. */
-export type OpenMsg = {
-  kind: 'open';
-  paths: string[];
-};
-
-/** A declared window opened, or closed — because nothing declares it any
- *  more, or because the user closed it. A window the user closed stays
- *  closed while it is still declared (a declaration reopens a window only
- *  when it *starts*): stop declaring `name`, then declare it again. `id` is
- *  what that window's events carry in `window`; the message itself arrives
- *  on the root of whichever window's frame noticed. */
-export type WindowMsg = {
-  kind: 'window';
-  /** `focused` / `blurred`: this window gained or lost the keyboard
-   *  (backlog DX18). */
-  phase: 'opened' | 'closed' | 'focused' | 'blurred';
-  name: string;
-  id: number;
-};
+/** The root box's `windowEvents` group: the messages the window's own
+ *  events arrive as, each with its data in the field named for the event
+ *  (`onResize: { kind: 'resized' }` is heard as `{ kind: 'resized',
+ *  resize: { width, height, scale } }`). A key left out is an event the
+ *  window does not hear; `env()` reads every fact they report either way.
+ *  Root only — on any other node it is ignored and warned about
+ *  (`window-events-off-root`). `onOpen` is read on the main window alone,
+ *  since the OS opens documents to the app; `onFonts` carries no data, so
+ *  it takes any message `A` and arrives as declared. A host that retains
+ *  its tree re-runs the view only for a message, so a view that follows
+ *  the OS's appearance declares `onSystemSettingsChange`. */
+export interface WindowEvents<A = AppMsg> {
+  onResize?: HandlerMsg<WithResize> | null;
+  /** This window's keyboard, `window: { phase: 'focused' | 'blurred' }`;
+   *  not the node row `onFocus`. */
+  onFocus?: HandlerMsg<WithWindow> | null;
+  onSystemSettingsChange?: HandlerMsg<WithSystem> | null;
+  /** The system's installed fonts changed (a rescan found a face
+   *  installed or removed). Re-read `systemFonts()` here if the model
+   *  holds the list; a `family` named in the view needs nothing. A font
+   *  the app loads itself raises none. */
+  onFonts?: A | null;
+  onModifiers?: HandlerMsg<WithModifiers> | null;
+  onOpen?: HandlerMsg<WithOpen> | null;
+}
 
 /** One entry of `windows(model)` (or of the root box's `windows` prop): a
  *  window that should exist, by stable name. `width`/`height` are the
@@ -409,10 +733,10 @@ export type WindowMsg = {
  *  `kind: 'popup'` makes it a menu surface instead: borderless, off the
  *  taskbar, owned by the window that declared it and closed with it, placed
  *  in screen coordinates against `anchor` — the `{x, y, w, h}` a
- *  `LayoutMsg` already reports for the field or button the menu belongs to
+ *  `LayoutEvent` already reports for the field or button the menu belongs to
  *  — and non-activating, so the field keeps its focus ring while the arrows
- *  walk the list. A press outside it or Escape arrives as a `DismissMsg`
- *  and closes nothing: stop declaring the window, the way you stop
+ *  walk the list. A press outside it or Escape arrives as its `onDismiss`
+ *  message (a `DismissMsg`) and closes nothing: stop declaring the window, the way you stop
  *  declaring a `modal` node. Reach for one only where an in-window float
  *  cannot go — a list taller than the window, a menu with nowhere in-window
  *  to sit, a panel beside the app; everything else is cheaper as a `float`
@@ -426,8 +750,14 @@ export type WindowDecl =
       height?: number;
       activates?: boolean;
       /** `kind: 'popup'` only: what to place it against, in the declaring
-       *  window's own logical coordinates — a `LayoutMsg`'s rect. */
+       *  window's own logical coordinates — a `LayoutEvent`'s rect. */
       anchor?: { x?: number; y?: number; w?: number; h?: number };
+      /** The message its opening and closing arrive as, with `window:
+       *  { phase: 'opened' | 'closed', id }` in it (ADR 0048). */
+      onWindow?: HandlerMsg<WithWindow> | null;
+      /** A popup's: the message a press outside it or Escape arrives as,
+       *  with `dismiss: { reason, id }` in it. */
+      onDismiss?: HandlerMsg<WithDismiss> | null;
     };
 
 /** What `Ctx.windowCommands()` drains: what chrome nodes asked for
@@ -457,115 +787,16 @@ export type WindowCommand =
       };
     };
 
-/** The physical modifier state changed (delivered on the root). */
-export type ModifiersMsg = {
-  kind: 'modifiers';
-  shift: boolean;
-  ctrl: boolean;
-  alt: boolean;
-  super: boolean;
-};
-
-/** An editor's text changed / Enter in a single-line editor / Escape let
- *  go of it (backlog F160: a draft abandoned, where a plain blur is
- *  neither); the editor's key is on the event, so `editText(ev.key)` reads
- *  it back. */
-export type EditMsg = { kind: 'changed' } | { kind: 'submit' } | { kind: 'cancel' };
-
-/** An editing key that met the edge of an editor's text and did nothing
- *  (backlog F145): ↑ on the first line, ← or Backspace at the start, ↓ on
- *  the last line, → or Delete at the end — from a caret with no selection
- *  and without Shift. On the editor's key. `word` and `doc` are the
- *  editing modifiers the key carried. */
-export type BoundaryMsg = {
-  kind: 'boundary';
-  key: 'up' | 'down' | 'left' | 'right' | 'backspace' | 'delete';
-  edge: 'start' | 'end';
-  word: boolean;
-  doc: boolean;
-};
-
-/** A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its
- *  own — never when something stopped it. On an `<audio>` node's key, or the
- *  root for `play`. `'refused'` is the device declining to start it at all
- *  (its 128 voices are all held, or the sound did not decode): that playback
- *  never starts and so never ends, so this arrives in place of the `'ended'`
- *  a view would otherwise wait forever for. */
-export type SoundMsg<T = AppMsg> = {
-  kind: 'sound';
-  phase: 'ended' | 'refused';
-  playback: number;
-  tag: T;
-};
-
-/** Everything the core sends on its own. Put it in the app's union —
- *  `type Msg = MyMsg | CoreMsg` — and `update` switches over one flat
- *  discriminated union, no casts and no narrowing preamble. */
-export type CoreMsg =
-  | DragMsg
-  | KeyMsg
-  | TextMsg
-  | PreeditMsg
-  | ContextMenuMsg
-  | ButtonMsg
-  | ScrollMsg
-  | MenuMsg
-  | SelectionRangeMsg
-  | HoverMsg
-  | FocusMsg
-  | DropMsg
-  | LayoutMsg
-  | ForceClickMsg
-  | DismissMsg
-  | ResizeMsg
-  | SystemMsg
-  | FontsMsg
-  | WindowMsg
-  | ModifiersMsg
-  | EditMsg
-  | BoundaryMsg
-  | SoundMsg
-  | AccessMsg
-  | ChangeMsg
-  | FilesMsg
-  | OpenMsg;
-
-/** A stock slider's proposal (docs/adr/0034-stock-controls-over-the-roles.md):
- *  the core turned a press, a drag, an arrow, a Page key, Home / End or an
- *  assistive-technology increment into `value` — clamped to the range and
- *  snapped to `valueStep` — on a `<slider>` (or a `role="slider"` box) that
- *  declared `onChange`. `phase` is `'move'` while the pointer holds it and
- *  `'end'` when it lets go or a key moved it. Nothing moves until the view
- *  declares `value` as `valueNow`. `tag` is the `onChange` payload. */
-export interface ChangeMsg<T = AppMsg> {
-  kind: 'change';
-  value: number;
-  phase: 'move' | 'end';
-  tag?: T;
-}
-
-/** Assistive technology nudged a `slider` role. `tag` is the node's
- *  `onClick` payload (or its `onDrag` / `onKey` tag), typed as the app's
- *  own union like every other core message, so a handler reads it with no
- *  cast. Activation, focus, text and scrolling requests resolve in the
- *  core and arrive as the messages a pointer would have produced. */
-export interface AccessMsg<T = AppMsg> {
-  kind: 'access';
-  /** `increment` / `decrement` on a `slider` role, and `setValue` there
-   *  with the number asked for in `value` (Windows' UI Automation sets a
-   *  slider rather than nudging it); `setValue`, `replaceSelectedText`
-   *  (with `text`) and `setTextSelection` (with `anchor` / `focus`) on a
-   *  custom editor — an `onKey` sink declared `role="multilineTextInput"`
-   *  that draws its own `role="line"` rows. */
-  action: 'increment' | 'decrement' | 'setValue' | 'replaceSelectedText' | 'setTextSelection';
-  text?: string;
-  value?: number;
-  /** Line ordinals among the drawn `role="line"` rows and byte offsets
-   *  into their text. */
-  anchor?: { line: number; offset: number };
-  focus?: { line: number; offset: number };
-  tag?: T;
-}
+// -- generated from the core's event table; edit EVENTS in crates/kui-core/src/schema.rs, then `npm run gen` --
+/** Which event it was, as `UiEvent.event` spells it: every row of the
+ *  events table in docs/props.md. */
+export type EventName =
+  | 'click' | 'drag' | 'key' | 'text' | 'preedit' | 'select'
+  | 'selectionrange' | 'contextmenu' | 'menu' | 'forceclick' | 'button'
+  | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
+  | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
+  | 'submit' | 'cancel' | 'boundary' | 'sound' | 'dismiss' | 'reply';
+// -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character
  *  index into it (the run's character count is its end). */
@@ -777,7 +1008,7 @@ export interface OpenMenu {
  *  transient; `paste` asks for what is on the clipboard, delivered back
  *  with `Ctx.paste(text, marks)` (or `Ctx.commit(...)`, a paste nothing
  *  marked) — a focused editor takes it as typing, a focused
- *  `onKey` sink hears it as `{kind:"text"}`; `lookUp` asks for the
+ *  `onKey` sink hears it as a `text` event; `lookUp` asks for the
  *  platform's definition panel for `text`, anchored at the baseline
  *  origin `x`, `y`. A view queues the first two itself with
  *  `setClipboard` / `requestPaste`. */
@@ -1031,13 +1262,38 @@ export type WarningCode =
    *  itself). An editor that already exists takes the text where the call is
    *  made and never reaches this. */
   | 'edit-text-without-editor'
+  /** The keyboard or assistive technology asked a `slider` that declares no
+   *  `onChange` to move. A slider proposes its value in the `onChange` message
+   *  and moves when the view declares it back as `valueNow`; without the row
+   *  there is no message to propose it in, so the slider stays where it is (ADR
+   *  0047, decision 5). */
+  | 'slider-without-handler'
+  /** An editor declares a `value` and no `onChange`. The value always wins, so
+   *  every keystroke is undone on the next frame and the field looks frozen:
+   *  declare `onChange` and store the `change`'s text in the model the value is
+   *  read from (ADR 0047, decision 8). */
+  | 'edit-value-without-handler'
+  /** A handler's message has a field named for the event it arrives as —
+   *  `{kind: "k", key: "a"}` declared as an `onKey` message — and the event's
+   *  data replaced it, so the app's own value never reaches it (ADR 0047,
+   *  decision 4). Rename the field: the event's name is the core's in a message
+   *  that event arrives as. */
+  | 'message-field-taken'
+  /** A node other than the root declares `windowEvents`. The group is the
+   *  window's, read on its root alone, so this one is ignored and its events
+   *  arrive as nothing (ADR 0048): move it to the root. */
+  | 'window-events-off-root'
+  /** An editor declares both `initial` and `value`. The value wins, and the
+   *  seed is never read (ADR 0047, decision 8). Raised by the bindings whose
+   *  editor takes the two as separate props. */
+  | 'edit-value-and-initial'
   /** A one-shot `audio` node went away — or changed its `src` — while the sound
    *  it started was still playing, so the user heard it cut off. Almost always
    *  a duration guessed short: the view keeps the node declared for a constant
    *  it picked, and the asset is longer. Ask for the sound instead of the guess
    *  — `finish` (`AudioSpec::finish`, `finish` in JSX and Lua) releases the
-   *  playback on removal so it plays itself out, and a `tag` reports
-   *  `{kind:"sound", phase:"ended"}` when it gets there. A view that means to
+   *  playback on removal so it plays itself out, and a `tag` arrives with
+   *  `sound: {phase: "ended"}` in it when it gets there. A view that means to
    *  cut the sound off says so by stopping what it started (`Core::stop`),
    *  which is not reported, and a `looped` playback never is: it has no end to
    *  be short of. Only a driver with a real device raises it, because only a
@@ -1105,10 +1361,10 @@ export type WarningCode =
    *  voices until its file ends, so a view that releases faster than its sounds
    *  finish reaches the limit and the 129th play is refused. The refusal is not
    *  left silent because the playback never starts and so never ends: a
-   *  `tag`ged node waiting for `ended` would wait forever. It gets
-   *  `{kind:"sound", phase:"refused"}` instead, and this line says why. Stop
-   *  what the view no longer needs rather than releasing it, or release shorter
-   *  sounds. */
+   *  `tag`ged node waiting for `ended` would wait forever. It gets its message
+   *  with `sound: {phase: "refused"}` in it instead, and this line says why.
+   *  Stop what the view no longer needs rather than releasing it, or release
+   *  shorter sounds. */
   | 'playback-refused'
   /** A devtools tab name declared twice in one frame: two `devtools_tab` /
    *  `devtools_tab_with` calls, a host form and an extension form of one name,
@@ -1149,8 +1405,9 @@ export interface PlayOptions {
   volume?: number;
   loop?: boolean;
   fadeIn?: number;
-  /** Asks for a `SoundMsg` when the playback ends on its own. */
-  tag?: AppMsg;
+  /** The message the playback's end arrives as, `sound: { phase,
+   *  playback }` in it (a `SoundMsg`), when it ends on its own. */
+  tag?: HandlerMsg<WithSound>;
 }
 
 /** What a driver plays; `Ctx.audioCommands()` drains them (headless), a
@@ -1180,8 +1437,8 @@ export interface Announcement {
 // --------------------------------------------------------------------------
 
 /** One event out of the loop. `A` is the app's message union; it defaults to
- *  the registered `AppMsg` plus the core's own messages. */
-export interface UiEvent<A = AppMsg | CoreMsg> {
+ *  the registered `AppMsg`. */
+export interface UiEvent<A = AppMsg> {
   /** Which frontend drew the node: 0 is your app, 1+ an extension. Not the
    *  window — an extension draws into every one of them. */
   origin: number;
@@ -1190,7 +1447,17 @@ export interface UiEvent<A = AppMsg | CoreMsg> {
   window: number;
   /** Node key as a hex string; pass back to editText()/isFocused()/... */
   key: string;
-  payload: A;
+  /** Which event it was (ADR 0047, decision 14). The payload does not
+   *  say: a node's is the message its handler declared, with this event's
+   *  data in the field of the same name (`drag`, `change`, …) where it
+   *  has any, so a plain click and a submit on one map message both
+   *  arrive as that map. `'tick'` is the loop's own clock (`tick` in the
+   *  loop config), which no node declared. */
+  event: EventName | 'tick';
+  /** The message as it arrives: always a map — a bare declared message
+   *  under `tag` (`Arrived<A>`). A window's own events are messages its
+   *  root, its `windows` entry or its `<menuBar>` declared (ADR 0048). */
+  payload: Arrived<A>;
   /** The slot whose fill drew the node, as its key (`keyOf` of the slot's
    *  full name answers the same), or null for a node your app drew. One
    *  extension fills many slots, so `origin` cannot say which; this is
@@ -1415,9 +1682,9 @@ export interface NodeInfo {
   scale: number;
   /** A scroller's offset; `null` for a node that does not scroll. */
   scroll: { x: number; y: number } | null;
-  /** Every handler it declared with the payload it would post: `click`,
-   *  `drag`, `key` (the sink's tag), `hover`, `context-menu`,
-   *  `force-click`, `layout`, `modal`. */
+  /** Every handler it declared with the message it would post: `click`,
+   *  `drag`, `key` (the sink's message), `hover`, `context-menu`,
+   *  `force-click`, `layout`, `modal`, …. */
   events: Record<string, unknown>;
 }
 
@@ -2252,31 +2519,32 @@ export declare class Ctx {
   /**
    * Files dragged in from the OS are over the window at (`x`, `y`) —
    * entering and moving alike: the `onDrop` zone under the
-   * point hears `{kind:"drop", phase:"enter"|"move", paths, x, y,
-   * tag}`, a zone it left hears `leave`, a repeat at the same point is
-   * nothing. `dropTarget()` afterwards is what a driver answers the OS
+   * point hears its message with `drop: {phase: "enter"|"move", paths,
+   * x, y}` in it, a zone it left hears `leave`, a repeat at the same
+   * point is nothing. `dropTarget()` afterwards is what a driver answers the OS
    * with.
    */
   dragFiles(paths: Array<string>, x: number, y: number): void
   /**
    * A file dialog's answer, as a host that showed it reports it: the
    * paths picked, none for a cancelled dialog. Whoever asked with
-   * `requestFiles` hears `{kind:"files", paths, tag}`; with nothing
-   * asked it is dropped.
+   * `requestFiles` hears the message it gave with `files: {paths}` in
+   * it; with nothing asked it is dropped.
    */
   answerFiles(paths: Array<string>): void
   /**
    * The OS asked the app to open these documents (backlog F124) — the
    * Finder's Open With, a file dropped on the Dock icon, `open -a`: the
-   * app hears `{kind:"open", paths}` on the root whether or not it
-   * asked; none is nothing. A `KuiWindow` on macOS hears it from the
+   * app hears its root's `windowEvents.onOpen` message with `open:
+   * {paths}` in it, whether or not it asked (ADR 0048); none is nothing,
+   * and so is a root that declares no `onOpen`. A `KuiWindow` on macOS hears it from the
    * runner; this is the headless drive.
    */
   openDocuments(paths: Array<string>): void
   /**
    * The dragged files released at (`x`, `y`): the zone there hears
-   * `{kind:"drop", phase:"drop", paths, x, y, tag}` and no `leave`
-   * after it; with no zone there, nothing but the lit zone's `leave`.
+   * its message with `drop: {phase: "drop", paths, x, y}` and no
+   * `leave` after it; with no zone there, nothing but the lit zone's `leave`.
    */
   dropFiles(paths: Array<string>, x: number, y: number): void
   /**
@@ -2310,15 +2578,16 @@ export declare class Ctx {
   /**
    * Text an IME committed at the end of a composition: a focused
    * `<edit>` takes it, otherwise the focused `onKey` sink hears it as
-   * `{kind:"text", text, tag}` — the one committed text a `key` event
-   * never carries. `type`/`press` stay the way to type.
+   * its message with `text: {text}` in it — the one committed text a
+   * `key` event never carries. `type`/`press` stay the way to type.
    */
   commit(text: string): void
   /**
    * The clipboard's answer to a paste (`requestPaste()`), with what
    * the pasteboard marked it: routed as `commit` is, and
-   * a focused `onKey` sink hears `{kind:"text", text, tag}` with
-   * `concealed: true` / `transient: true` for the markers set. No
+   * a focused `onKey` sink hears its message with `text: {text}` in
+   * it, `concealed: true` / `transient: true` there for the markers
+   * set. No
    * marks is a paste nothing marked, the same answer `commit` gives.
    */
   paste(text: string, marks?: { concealed?: boolean; transient?: boolean } | null): void
@@ -2326,8 +2595,8 @@ export declare class Ctx {
    * An in-progress IME composition: `text` is the uncommitted string
    * (empty ends the composition without a commit), `cursor` the byte
    * range inside it the IME's caret covers, or null. A focused `<edit>`
-   * shows it inline; otherwise the focused `onKey` sink hears
-   * `{kind:"preedit", text, cursor, tag}`.
+   * shows it inline; otherwise the focused `onKey` sink hears its
+   * message with `preedit: {text, cursor}` in it.
    */
   preedit(text: string, cursor?: [number, number] | null): void
   /**
@@ -2340,7 +2609,8 @@ export declare class Ctx {
    * (layout-resolved, e.g. "W" or "$"), a name ("left", "enter", "escape",
    * "f5", ...), with mods `{shift, ctrl, alt, super}`. Editing keys for
    * focused editors still go through `key()`. `repeat` marks a press the
-   * OS auto-repeated. The sink hears `{kind:"key", phase:"down", ...}`.
+   * OS auto-repeated. The sink hears its message with `key: {phase:
+   * "down", ...}` in it.
    *
    * `physical` is the US-QWERTY key at that *position*, spelled the same
    * way; omit it and it is the position's US key: the lower-case letter
@@ -2356,8 +2626,8 @@ export declare class Ctx {
   keyDown(code: string, mods?: KeySinkMods, repeat?: boolean, physical?: string): void
   /**
    * The release of a key, spelled the way `keyDown` spells it (`physical`
-   * included): a sink that declared `keyUp` hears `{kind:"key",
-   * phase:"up", ...}` with `text` null; one that did not hears nothing,
+   * included): a sink that declared `keyUp` hears `key: {phase: "up",
+   * ...}` with `text` null; one that did not hears nothing,
    * since presses only is the keymap default. A release whose press the
    * sink never got resolves nothing, and moving focus while a key is
    * held delivers the `up` first.
@@ -2400,9 +2670,10 @@ export declare class Ctx {
    */
   release(code: string, mods?: KeySinkMods, physical?: string): void
   /**
-   * Physical modifier state changed: `{shift, ctrl, alt, super}`. The
-   * host receives `{kind:"modifiers", ...}` when it differs from the
-   * last report.
+   * Physical modifier state changed: `{shift, ctrl, alt, super}`. When
+   * it differs from the last report, the root's
+   * `windowEvents.onModifiers` message arrives with `modifiers: {…}` in
+   * it (ADR 0048).
    */
   modifiers(mods?: KeySinkMods): void
   /**
@@ -2448,16 +2719,17 @@ export declare class Ctx {
   /**
    * A custom driver reports that the OS closed window `id`: it stays
    * closed while still declared, whatever only it declared closes with
-   * it, and `{kind:"window", phase:"closed", name, id}` lands in
-   * `pollEvents`. Nothing happens for the main window (0) or for a
+   * it, and its `windows` entry's `onWindow` message lands in
+   * `pollEvents` with `window: {phase: "closed", id}` in it (ADR 0048). Nothing happens for the main window (0) or for a
    * window the diff already closed.
    */
   windowClosed(id: number): void
   /**
    * A custom driver reports that window `id` was asked to go away: a
    * press landed outside it (`"outside"`) or Escape reached it
-   * (`"escape"`). `{kind:"dismiss", reason, name, id}` lands in
-   * `pollEvents` and **nothing closes** — the app stops declaring the
+   * (`"escape"`). Its `windows` entry's `onDismiss` message lands in
+   * `pollEvents` with `dismiss: {reason, id}` in it (ADR 0048), and
+   * **nothing closes** — the app stops declaring the
    * window on the frame it decides to, exactly as it answers a `modal`
    * node's dismissal. Nothing happens for a window that is not open.
    */
@@ -2601,8 +2873,10 @@ export declare class Ctx {
   removeSound(id: string): void
   /**
    * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
-   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
-   * back as a `SoundMsg` when the playback finishes on its own.
+   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` is
+   * the playback's message: it comes back with `sound: {phase,
+   * playback}` in it (a `SoundMsg`) when the playback finishes on
+   * its own.
    * Says something once, with no node behind it: `announce("Saved")`,
    * `announce("3 results", "assertive")`. `"off"` and an empty string
    * are both no-ops. A region whose message is on screen is the `live`
@@ -2624,12 +2898,19 @@ export declare class Ctx {
   resume(playback: number, fadeMs?: number): void
   setMasterVolume(volume: number, tweenMs?: number): void
   /**
-   * Events since the last poll: `[{origin, window, key, payload}]`,
-   * payloads as plain data (your Elm messages come back out
-   * here). `A` types them — the app's own union, or one core
-   * message type when only that is being watched.
+   * Events since the last poll: `[{origin, window, key, event,
+   * payload, slot}]`, payloads as plain data — the message the
+   * node's handler declared, with the event's data in the field
+   * `event` names (`drag`, `change`, …); a window's own events
+   * as its root's `windowEvents` messages and its lifecycle as
+   * its `windows` entry's (ADR 0047, ADR 0048). A payload is
+   * always a map: a message that is not one (`onClick: 'save'`)
+   * arrives under
+   * `tag` (`{tag: 'save'}`), a `null` one as the field alone or
+   * `{}` (`Arrived<A>`). `A` types them — the app's own union,
+   * or one message type when only that is being watched.
    */
-  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[]
+  pollEvents<A = AppMsg>(): UiEvent<A>[]
   /**
    * True when the last frame left a transition mid-flight. A window
    * schedules its own redraws for that; this is for tests and
@@ -3030,7 +3311,9 @@ export declare class Ctx {
   /**
    * A request from assistive technology on a node: an `AccessAction`
    * name the node advertises, with `value` the new text for
-   * `setValue`. `key` is either spelling of the node — the hex key
+   * `setValue`. It arrives as the event a user doing the same
+   * would cause (ADR 0047): a click, a slider's or an editor's
+   * `change`, an `onKey` sink's `text` or `select`. `key` is either spelling of the node — the hex key
    * an event carried (16 digits), or the label its `key` prop
    * declared, resolved through the last frame (see `focus`).
    * Resolved like its pointer/keyboard equivalent, so the resulting
@@ -3187,6 +3470,16 @@ export declare class Ctx {
    */
   keyOf(label: string): string | null
   /**
+   * The reverse of `keyOf`: the label the node with this hex key
+   * (as an event carries it) was opened under, in the frame
+   * being built so far and then the last finished one — or null
+   * for an auto-keyed node, a key no frame declared, or a string
+   * that is not a key. What a key from `focused()`, an event or
+   * a log turns back into; the label is the local one, so two
+   * rows of a list under different parents answer the same.
+   */
+  labelOf(key: string): string | null
+  /**
    * What a `<slot replay>` of `name` got this frame, or the
    * frame before while this one is being built (ADR 0045):
    * `'replayed'`, or why it was filled fresh — `'not-kept'`,
@@ -3307,7 +3600,8 @@ export declare class Ctx {
    * their own wording when `label` is empty, and the core
    * performs the ones it can.
    *
-   * Choosing a row posts `{kind:"menu", role, item}` on `key`
+   * Choosing a row posts `key`'s `onMenu` message with `menu:
+   * {role, item}` in it, or nothing where `key` declares none,
    * and closes the menu; a press outside it or Escape closes it
    * with nothing posted. What an app answering its own
    * `onContextMenu` calls — and what the core calls itself for
@@ -3322,7 +3616,7 @@ export declare class Ctx {
    * where there is formatting to carry), `"paste"` asking for
    * what is on the clipboard (deliver it back with `commit()`,
    * which a focused editor takes as typing and a focused
-   * `onKey` sink hears as `{kind:"text"}`),
+   * `onKey` sink hears as a `text` event),
    * or `"lookUp"` with the `text` to show a definition panel
    * for at `x`, `y`.
    *
@@ -3332,8 +3626,8 @@ export declare class Ctx {
    * Asks for the platform's Open, Save or folder dialog:
    * `{mode, multiple, title, filters: [{name, extensions}],
    * directory, fileName, tag}`, every field optional. The answer
-   * is a `{kind:"files", paths, tag}` event — `paths` empty when
-   * the user cancelled. A window's runner shows the dialog; a
+   * is a `files` event, the dialog's `tag` with `files: {paths}`
+   * in it — `paths` empty when the user cancelled. A window's runner shows the dialog; a
    * headless context queues it for `takeFileRequests`. False when
    * one is already out: one dialog at a time.
    */
@@ -3372,9 +3666,9 @@ export declare class Ctx {
    * Asks for what is on the clipboard — the action a menu's
    * Paste queues. A window reads the clipboard and hands the
    * text back as a paste: a focused `<edit>` takes it as
-   * typing, and a focused `onKey` sink hears it as
-   * `{kind:"text", text, tag}` — with `concealed: true` /
-   * `transient: true` where the pasteboard marked it so
+   * typing, and a focused `onKey` sink hears it as its message
+   * with `text: {text}` in it — with `concealed: true` /
+   * `transient: true` there where the pasteboard marked it so
    * — so an app that owns its text inserts a
    * paste the way it inserts a committed IME string and never
    * reads the clipboard itself. Headless, the request comes out
@@ -3425,7 +3719,8 @@ export declare class Ctx {
   /**
    * Reports that the platform's menu bar chose row `item` of
    * menu `menu` — the same path a press on the drawn bar's row
-   * takes. False for a row that is not there.
+   * takes. False when the app hears nothing: a row that is not
+   * there, or a `<menuBar>` that declares no `onMenu` (ADR 0048).
    */
   activateMenuBarItem(menu: number, item: number): boolean
   /**
@@ -3463,9 +3758,10 @@ export declare class Ctx {
    *
    * `text` is the selection when the core has all of it. When
    * the selection reaches rows a virtual list never built,
-   * `asked` is true instead and a `{kind:"selectionrange",
-   * from:{index, byte}, to:{index, byte}}` event is posted on
-   * the scope — the rows behind that gap are the app's, so the
+   * `asked` is true instead and a `selectionrange` event —
+   * the scope's `onSelectionRange` message with `selectionrange:
+   * {from: {index, byte}, to: {index, byte}}` in it — is posted
+   * on the scope — the rows behind that gap are the app's, so the
    * app answers with `answerSelectionRange`, and the answer is
    * what reaches the clipboard.
    */
@@ -3796,8 +4092,8 @@ export declare class KuiWindow {
    * the devtools' dock while the panel is docked.
    * Readable before the first frame (in `setup` and `init`, where
    * `env().viewport` is still 0×0), and re-reported as a
-   * `{kind:"resize", width, height, scale}` event through `pollEvents`
-   * — a `ResizeMsg` — whenever the window changes size, moves to a
+   * `resize: {width, height, scale}` in the root's
+   * `windowEvents.onResize` message (a `ResizeMsg<T>`) whenever the window changes size, moves to a
    * display with another DPI, or the dock comes, goes or is dragged.
    * It used to be the window's inner size, so an app that seeded
    * its tiers from it under `KUI_DEVTOOLS=1` drew for the whole window.
@@ -3918,8 +4214,10 @@ export declare class KuiWindow {
   removeSound(id: string): void
   /**
    * Starts a playback: `{volume, loop, fadeIn, tag}`; returns its
-   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` comes
-   * back as a `SoundMsg` when the playback finishes on its own.
+   * id for `stop` / `setVolume` / `pause` / `resume`. A `tag` is
+   * the playback's message: it comes back with `sound: {phase,
+   * playback}` in it (a `SoundMsg`) when the playback finishes on
+   * its own.
    * Says something once, with no node behind it: `announce("Saved")`,
    * `announce("3 results", "assertive")`. `"off"` and an empty string
    * are both no-ops. A region whose message is on screen is the `live`
@@ -3941,12 +4239,19 @@ export declare class KuiWindow {
   resume(playback: number, fadeMs?: number): void
   setMasterVolume(volume: number, tweenMs?: number): void
   /**
-   * Events since the last poll: `[{origin, window, key, payload}]`,
-   * payloads as plain data (your Elm messages come back out
-   * here). `A` types them — the app's own union, or one core
-   * message type when only that is being watched.
+   * Events since the last poll: `[{origin, window, key, event,
+   * payload, slot}]`, payloads as plain data — the message the
+   * node's handler declared, with the event's data in the field
+   * `event` names (`drag`, `change`, …); a window's own events
+   * as its root's `windowEvents` messages and its lifecycle as
+   * its `windows` entry's (ADR 0047, ADR 0048). A payload is
+   * always a map: a message that is not one (`onClick: 'save'`)
+   * arrives under
+   * `tag` (`{tag: 'save'}`), a `null` one as the field alone or
+   * `{}` (`Arrived<A>`). `A` types them — the app's own union,
+   * or one message type when only that is being watched.
    */
-  pollEvents<A = AppMsg | CoreMsg>(): UiEvent<A>[]
+  pollEvents<A = AppMsg>(): UiEvent<A>[]
   /**
    * True when the last frame left a transition mid-flight. A window
    * schedules its own redraws for that; this is for tests and
@@ -4347,7 +4652,9 @@ export declare class KuiWindow {
   /**
    * A request from assistive technology on a node: an `AccessAction`
    * name the node advertises, with `value` the new text for
-   * `setValue`. `key` is either spelling of the node — the hex key
+   * `setValue`. It arrives as the event a user doing the same
+   * would cause (ADR 0047): a click, a slider's or an editor's
+   * `change`, an `onKey` sink's `text` or `select`. `key` is either spelling of the node — the hex key
    * an event carried (16 digits), or the label its `key` prop
    * declared, resolved through the last frame (see `focus`).
    * Resolved like its pointer/keyboard equivalent, so the resulting
@@ -4504,6 +4811,16 @@ export declare class KuiWindow {
    */
   keyOf(label: string): string | null
   /**
+   * The reverse of `keyOf`: the label the node with this hex key
+   * (as an event carries it) was opened under, in the frame
+   * being built so far and then the last finished one — or null
+   * for an auto-keyed node, a key no frame declared, or a string
+   * that is not a key. What a key from `focused()`, an event or
+   * a log turns back into; the label is the local one, so two
+   * rows of a list under different parents answer the same.
+   */
+  labelOf(key: string): string | null
+  /**
    * What a `<slot replay>` of `name` got this frame, or the
    * frame before while this one is being built (ADR 0045):
    * `'replayed'`, or why it was filled fresh — `'not-kept'`,
@@ -4624,7 +4941,8 @@ export declare class KuiWindow {
    * their own wording when `label` is empty, and the core
    * performs the ones it can.
    *
-   * Choosing a row posts `{kind:"menu", role, item}` on `key`
+   * Choosing a row posts `key`'s `onMenu` message with `menu:
+   * {role, item}` in it, or nothing where `key` declares none,
    * and closes the menu; a press outside it or Escape closes it
    * with nothing posted. What an app answering its own
    * `onContextMenu` calls — and what the core calls itself for
@@ -4639,7 +4957,7 @@ export declare class KuiWindow {
    * where there is formatting to carry), `"paste"` asking for
    * what is on the clipboard (deliver it back with `commit()`,
    * which a focused editor takes as typing and a focused
-   * `onKey` sink hears as `{kind:"text"}`),
+   * `onKey` sink hears as a `text` event),
    * or `"lookUp"` with the `text` to show a definition panel
    * for at `x`, `y`.
    *
@@ -4649,8 +4967,8 @@ export declare class KuiWindow {
    * Asks for the platform's Open, Save or folder dialog:
    * `{mode, multiple, title, filters: [{name, extensions}],
    * directory, fileName, tag}`, every field optional. The answer
-   * is a `{kind:"files", paths, tag}` event — `paths` empty when
-   * the user cancelled. A window's runner shows the dialog; a
+   * is a `files` event, the dialog's `tag` with `files: {paths}`
+   * in it — `paths` empty when the user cancelled. A window's runner shows the dialog; a
    * headless context queues it for `takeFileRequests`. False when
    * one is already out: one dialog at a time.
    */
@@ -4689,9 +5007,9 @@ export declare class KuiWindow {
    * Asks for what is on the clipboard — the action a menu's
    * Paste queues. A window reads the clipboard and hands the
    * text back as a paste: a focused `<edit>` takes it as
-   * typing, and a focused `onKey` sink hears it as
-   * `{kind:"text", text, tag}` — with `concealed: true` /
-   * `transient: true` where the pasteboard marked it so
+   * typing, and a focused `onKey` sink hears it as its message
+   * with `text: {text}` in it — with `concealed: true` /
+   * `transient: true` there where the pasteboard marked it so
    * — so an app that owns its text inserts a
    * paste the way it inserts a committed IME string and never
    * reads the clipboard itself. Headless, the request comes out
@@ -4742,7 +5060,8 @@ export declare class KuiWindow {
   /**
    * Reports that the platform's menu bar chose row `item` of
    * menu `menu` — the same path a press on the drawn bar's row
-   * takes. False for a row that is not there.
+   * takes. False when the app hears nothing: a row that is not
+   * there, or a `<menuBar>` that declares no `onMenu` (ADR 0048).
    */
   activateMenuBarItem(menu: number, item: number): boolean
   /**
@@ -4780,9 +5099,10 @@ export declare class KuiWindow {
    *
    * `text` is the selection when the core has all of it. When
    * the selection reaches rows a virtual list never built,
-   * `asked` is true instead and a `{kind:"selectionrange",
-   * from:{index, byte}, to:{index, byte}}` event is posted on
-   * the scope — the rows behind that gap are the app's, so the
+   * `asked` is true instead and a `selectionrange` event —
+   * the scope's `onSelectionRange` message with `selectionrange:
+   * {from: {index, byte}, to: {index, byte}}` in it — is posted
+   * on the scope — the rows behind that gap are the app's, so the
    * app answers with `answerSelectionRange`, and the answer is
    * what reaches the clipboard.
    */
@@ -5038,7 +5358,7 @@ export declare function withEffects<M, E>(model: M | undefined, ...effects: E[])
  *  goes through `update` on the next turn, not inside this one — and the
  *  surface, which shows the frame the effect's cause produced. A
  *  promise-shaped effect is the handler's business. */
-export type EffectHandler<E, A, S> = (effect: E, dispatch: (msg: A) => void, surface: S) => void;
+export type EffectHandler<E, A, S> = (effect: E, dispatch: (msg: A | Arrived<A>) => void, surface: S) => void;
 
 export interface LoopConfig<M, A, S, E = never> {
   /** The first model, or a function that builds it. The function form is
@@ -5056,8 +5376,12 @@ export interface LoopConfig<M, A, S, E = never> {
    *  `withEffects(model, ...effects)` returns it with the effects the loop
    *  should perform after the frame (see `EffectHandler`). `surface` is the
    *  thing being driven — for `editText`, `focus`, `play`,
-   *  `scrollGeometry` and the rest. */
-  update: (model: M, msg: A, event: UiEvent<A>, surface: S) => M | WithEffects<M, E> | undefined | void;
+   *  `scrollGeometry` and the rest. `msg` is the message as it arrives:
+   *  an event's payload is always a map (`Arrived<A>`), so a node's
+   *  `onClick: 'save'` is `{ tag: 'save' }` here (ADR 0047, decision 3);
+   *  a message the app hands the loop itself — `dispatch`, a tick, an
+   *  effect handler's — arrives as it was written. */
+  update: (model: M, msg: A | Arrived<A>, event: UiEvent<A>, surface: S) => M | WithEffects<M, E> | undefined | void;
   /** The tree for one window. Called once per open window per frame with
    *  its name — `'main'` for the one the app starts in, else a name
    *  `windows` declared — so a single-window app ignores the argument. The
@@ -5075,7 +5399,7 @@ export interface LoopConfig<M, A, S, E = never> {
    *  with the clock's own reading — `Date.now()` under a window, the loop's
    *  own milliseconds headless — and the cadence this tick fired on, so a
    *  model can tell a 16 ms reading from a 1000 ms one and know how stale
-   *  `now` may be by the next press) to `update`. Ticks are frequent, so unlike UI
+   *  `now` may be by the next press) to `update`, as written. Ticks are frequent, so unlike UI
    *  events they re-render only when `update` returns a new model — a
    *  countdown that returns undefined until the displayed second changes
    *  costs nothing in between. Read backwards, that is the trap: a tick
@@ -5099,7 +5423,7 @@ export interface LoopConfig<M, A, S, E = never> {
    *  its start: a cadence that shortens after a long quiet owes one tick
    *  `every` from now, not a burst. `0` or less means no tick, as the
    *  number does. */
-  tick?: { every: number | ((model: M) => number); msg: A | ((now: number, every: number) => A) };
+  tick?: { every: number | ((model: M) => number); msg: A | Arrived<A> | ((now: number, every: number) => A | Arrived<A>) };
   /** Runs once as the main window goes for good — its close button,
    *  `win.close()`, Quit from the menu or the dock — with the model as it
    *  stands, from inside the pump that saw it and before `runWindowed`
@@ -5114,11 +5438,11 @@ export interface LoopConfig<M, A, S, E = never> {
 }
 
 /** `runWindowed`'s config: `update` also gets the window. */
-export type WindowedConfig<M, A = AppMsg | CoreMsg, E = never> = LoopConfig<M, A, KuiWindow, E>;
+export type WindowedConfig<M, A = AppMsg, E = never> = LoopConfig<M, A, KuiWindow, E>;
 
 /** Opens the main window and runs the Elm loop; resolves with the final
  *  model when that window closes. `config.windows` opens more. */
-export declare function runWindowed<M, A = AppMsg | CoreMsg, E = never>(
+export declare function runWindowed<M, A = AppMsg, E = never>(
   config: WindowedConfig<M, A, E>,
   opts?: WindowOptions & {
     title?: string;
@@ -5288,14 +5612,14 @@ export declare function rowsInView(
 ): number;
 
 /** What `splitter` draws: the parent's direction, the bar's thickness and
- *  the drag's tag. */
+ *  the message its drag arrives as (a `DragMsg`). */
 export interface SplitterProps {
   key?: string;
   /** The parent's direction: `'row'` (the default) for panes side by side. */
   dir?: 'row' | 'column';
   /** Across the bar, in logical px; 4 by default. */
   thickness?: number;
-  onDrag?: AppMsg;
+  onDrag?: HandlerMsg<WithDrag> | null;
 }
 
 /**
@@ -5374,10 +5698,9 @@ export declare function decodeQuads(buffer: Buffer): Quad[];
 export declare function decodeClips(buffer: Buffer): Clip[];
 
 /** `M` is the model, `A` every message `update` can see. Annotate `update`
- *  with the app's own union (`type Msg = MyMsg | CoreMsg`) and `A` is
- *  inferred from it; leave it and `A` is the registered `AppMsg` plus the
- *  core's messages. */
-export type AppConfig<M, A = AppMsg | CoreMsg, E = never> = LoopConfig<M, A, Ctx, E>;
+ *  with the app's own union (`type Msg = MyMsg`) and `A` is inferred from
+ *  it; leave it and `A` is the registered `AppMsg`. */
+export type AppConfig<M, A = AppMsg, E = never> = LoopConfig<M, A, Ctx, E>;
 
 /** The loop both drivers run, over the surface it was handed. Everything
  *  here is written once and works against either — which is what lets the
@@ -5390,7 +5713,10 @@ export interface Loop<M, A, S, E = never> {
    *  printed unless created with `warnings: false`. A test asserts it is
    *  empty, or that a specific code showed up. */
   readonly warnings: Warning[];
-  dispatch(msg: A, event?: UiEvent<A>): void;
+  /** Hands `msg` to `update` as written: `dispatch('save')` is `'save'`
+   *  there, where a node's `onClick: 'save'` arrives as `{ tag: 'save' }`
+   *  (the core makes every event's payload a map). */
+  dispatch(msg: A | Arrived<A>, event?: UiEvent<A>): void;
   /** The config's `teardown(model)`, once; a second call is nothing. The
    *  window calls it as it goes (see `LoopConfig.teardown`); a headless
    *  drive calls it to end. */
@@ -5443,7 +5769,7 @@ export interface Loop<M, A, S, E = never> {
   access(key: string, action: AccessAction, value?: string | AccessArg): void;
 }
 
-export interface App<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, A, Ctx, E> {
+export interface App<M, A = AppMsg, E = never> extends Loop<M, A, Ctx, E> {
   /** The surface, under the name headless tests reach for. */
   ctx: Ctx;
   /** Moves the loop's own clock `ms` forward: every tick inside the span
@@ -5466,7 +5792,7 @@ export interface App<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, A, Ctx,
  *  and no `runOut`: a window runs on the wall clock and ticks itself, so
  *  nothing here can move time — what it has instead is the two waits below,
  *  answered from inside the driver's pump. */
-export interface WindowLoop<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, A, KuiWindow, E> {
+export interface WindowLoop<M, A = AppMsg, E = never> extends Loop<M, A, KuiWindow, E> {
   /** Resolves the first time a pump — `win.pump()` and the `step()` after
    *  it — leaves `animating()` false and no effect unflushed, with the
    *  wall-clock milliseconds it waited. Stops at `maxMs` (default 10 000)
@@ -5500,7 +5826,7 @@ export interface WindowLoop<M, A = AppMsg | CoreMsg, E = never> extends Loop<M, 
   frame(): Promise<void>;
 }
 
-export declare function createApp<M, A = AppMsg | CoreMsg, E = never>(
+export declare function createApp<M, A = AppMsg, E = never>(
   config: AppConfig<M, A, E>,
   opts?: {
     width?: number;

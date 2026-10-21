@@ -4,13 +4,14 @@
 //! [`Core::handle_input`](crate::Core::handle_input). The core hit-tests
 //! them against the frame that last finished (the standard immediate-mode
 //! trade: a click lands on what was drawn) and answers with [`UiEvent`]s:
-//! plain data, each tagged with the node's key, the origin that declared
+//! plain data, each carrying the node's key, the origin that declared
 //! the node (the host app or an extension) and the window, so the runner
 //! can route it without knowing what either looks like.
 //!
 //! What an input becomes depends on what the node under it declared: a
-//! primary click on an `on_click` node is the node's tag as the payload,
-//! an `on_hover` node makes `{kind:"hover", ...}` events, a focused
+//! primary click on an `on_click` node is the node's message as the
+//! payload, an `on_hover` node's message arrives with `hover: {...}` in
+//! it, a focused
 //! editor takes [`InputEvent::Text`] and [`InputEvent::Key`], a key sink
 //! takes [`InputEvent::KeyDown`] and [`InputEvent::KeyUp`].
 //!
@@ -27,7 +28,7 @@
 //! core.handle_input(InputEvent::mouse_down(1));
 //! let events = core.handle_input(InputEvent::mouse_up());
 //! assert_eq!(events.len(), 1);
-//! assert_eq!(events[0].payload.as_str(), Some("ok"));
+//! assert_eq!(events[0].payload.get_str("tag"), Some("ok"));
 //! assert_eq!(Some(events[0].key), core.key_of("ok"));
 //! ```
 
@@ -91,7 +92,8 @@ pub enum InputEvent {
     Text(String),
     /// Text an IME committed at the end of a composition.
     /// Routed like `Text` to a focused editor; otherwise delivered to the
-    /// focused sink as `{kind:"text", text, tag}` — the one committed text
+    /// focused sink as its `on_key` message with `text: {text}` in it — the
+    /// one committed text
     /// the platform never reports as a key press with `text`, so it is the
     /// one a sink has to be told about. Drivers send `Ime::Commit` here and
     /// keep typing on `Text`.
@@ -100,8 +102,9 @@ pub enum InputEvent {
     /// (`Core::request_paste`, a menu's Paste), with what the pasteboard
     /// said about it. Routed exactly as [`InputEvent::Commit`]
     /// is — a focused editor takes it as typing, a focused sink hears
-    /// `{kind:"text", text, tag}` — and the sink's event gains
-    /// `concealed: true` and `transient: true` for the markers that are
+    /// its `on_key` message with `text: {text}` in it — and the event's
+    /// `text` gains `concealed: true` and `transient: true` for the markers
+    /// that are
     /// set, and nothing for those that are not.
     ///
     /// A variant of its own rather than two fields on `Commit`, so every
@@ -118,7 +121,8 @@ pub enum InputEvent {
     /// marked range: following text shifts and the paragraph rewraps.
     /// Empty text cancels it; the commit arrives separately as `Commit`.
     /// With no editor focused it goes to the focused sink as
-    /// `{kind:"preedit", text, cursor: [start, end] | null, tag}`, an
+    /// its `on_key` message with `preedit: {text, cursor: [start, end] |
+    /// null}` in it, an
     /// empty `text` meaning the composition ended without a commit.
     Preedit(String, Option<(usize, usize)>),
     /// Navigation/editing key. Routed to the focused editor.
@@ -171,7 +175,8 @@ pub enum InputEvent {
         at: Vec2,
     },
     /// The dragged files were released at `at`: the zone there hears
-    /// `{kind="drop", phase="drop"}` and nothing hears a `leave`; with no
+    /// its `on_drop` message with `drop: {phase="drop"}` in it and nothing
+    /// hears a `leave`; with no
     /// zone there, nothing is emitted and whatever was lit hears its
     /// `leave`.
     DropFiles {
@@ -183,8 +188,8 @@ pub enum InputEvent {
     DragCancel,
     /// A file dialog's answer: the paths the user picked,
     /// none for a dialog cancelled. Whoever asked with
-    /// `Core::request_files` hears `{kind:"files", paths, tag}`; with no
-    /// ask outstanding it is dropped.
+    /// `Core::request_files` hears the message it gave with `files: {paths}`
+    /// in it; with no ask outstanding it is dropped.
     Files(Vec<String>),
     /// The OS asked the app to open these documents (backlog F124): the
     /// Finder's Open With, a file dropped on the Dock icon, `open -a`, a
@@ -761,8 +766,8 @@ impl KeyCode {
 }
 
 /// Which half of a key's life an event reports. Both halves arrive as one
-/// `{kind="key"}` payload — the way a drag's three phases and a hover's
-/// two do — so an app binds one handler and matches `phase`.
+/// `key` field in the sink's message — the way a drag's three phases and a
+/// hover's two do — so an app binds one handler and matches `phase`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum KeyPhase {
     #[default]
@@ -1110,11 +1115,10 @@ impl KeyMods {
         }
     }
 
-    /// The payload form of a modifier change:
-    /// `{kind="modifiers", shift=, ctrl=, alt=, super=}`.
+    /// A modifier change's data, `{shift, ctrl, alt, super}`: the
+    /// `modifiers` field of the root's `onModifiers` message (ADR 0048).
     pub fn to_value(self) -> Value {
         Value::map([
-            ("kind", Value::str("modifiers")),
             ("shift", Value::Bool(self.shift)),
             ("ctrl", Value::Bool(self.ctrl)),
             ("alt", Value::Bool(self.alt)),
@@ -1417,13 +1421,12 @@ impl KeyPress {
         self
     }
 
-    /// The payload form crossing into events, C, and Lua:
-    /// `{kind="key", phase="down"|"up", code="w", physical="w", shift=,
-    /// ctrl=, alt=, super=, text=, repeat=, location="standard",
-    /// caps_lock=, num_lock=}`.
+    /// The `key` event's data, as it crosses into C, Lua and Node:
+    /// `{phase="down"|"up", code="w", physical="w", shift=, ctrl=, alt=,
+    /// super=, text=, repeat=, location="standard", caps_lock=,
+    /// num_lock=}`.
     pub fn to_value(&self, phase: KeyPhase) -> Value {
         Value::map([
-            ("kind", Value::str("key")),
             ("phase", Value::str(phase.name())),
             ("code", Value::Str(self.code.name())),
             ("physical", Value::Str(self.physical.name())),
@@ -1446,6 +1449,129 @@ impl KeyPress {
     }
 }
 
+/// Which event happened: what an event's envelope says beside its payload
+/// (ADR 0047, decision 14). The payload no longer says it, since a node
+/// event's payload is the app's own message — a plain click and a submit
+/// can both arrive as the bare message — so this is where a decode, the
+/// devtools and the corpus read it.
+///
+/// The wire name ([`EventKind::name`]) is also the field a node event's
+/// data rides under in the message (decision 2): a drag's is `drag`. The
+/// `schema::EVENTS` table has a row for every kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum EventKind {
+    Click,
+    Drag,
+    Key,
+    Text,
+    Preedit,
+    Select,
+    SelectionRange,
+    ContextMenu,
+    Menu,
+    ForceClick,
+    Button,
+    Scroll,
+    Focus,
+    Hover,
+    Drop,
+    Files,
+    Open,
+    Layout,
+    Resize,
+    Window,
+    System,
+    Fonts,
+    Modifiers,
+    Change,
+    Submit,
+    Cancel,
+    Boundary,
+    Sound,
+    Dismiss,
+    /// An extension's message to whoever placed its slot (ADR 0014): the
+    /// payload is the message as the extension sent it.
+    Reply,
+}
+
+impl EventKind {
+    /// Every kind, in `schema::EVENTS` order.
+    pub const ALL: &[EventKind] = &[
+        EventKind::Click,
+        EventKind::Drag,
+        EventKind::Key,
+        EventKind::Text,
+        EventKind::Preedit,
+        EventKind::Select,
+        EventKind::SelectionRange,
+        EventKind::ContextMenu,
+        EventKind::Menu,
+        EventKind::ForceClick,
+        EventKind::Button,
+        EventKind::Scroll,
+        EventKind::Focus,
+        EventKind::Hover,
+        EventKind::Drop,
+        EventKind::Files,
+        EventKind::Open,
+        EventKind::Layout,
+        EventKind::Resize,
+        EventKind::Window,
+        EventKind::System,
+        EventKind::Fonts,
+        EventKind::Modifiers,
+        EventKind::Change,
+        EventKind::Submit,
+        EventKind::Cancel,
+        EventKind::Boundary,
+        EventKind::Sound,
+        EventKind::Dismiss,
+        EventKind::Reply,
+    ];
+
+    /// The wire name: what `ev.event` reads in every binding, a root
+    /// event's `kind`, and the field a node event's data rides under.
+    pub fn name(self) -> &'static str {
+        match self {
+            EventKind::Click => "click",
+            EventKind::Drag => "drag",
+            EventKind::Key => "key",
+            EventKind::Text => "text",
+            EventKind::Preedit => "preedit",
+            EventKind::Select => "select",
+            EventKind::SelectionRange => "selectionrange",
+            EventKind::ContextMenu => "contextmenu",
+            EventKind::Menu => "menu",
+            EventKind::ForceClick => "forceclick",
+            EventKind::Button => "button",
+            EventKind::Scroll => "scroll",
+            EventKind::Focus => "focus",
+            EventKind::Hover => "hover",
+            EventKind::Drop => "drop",
+            EventKind::Files => "files",
+            EventKind::Open => "open",
+            EventKind::Layout => "layout",
+            EventKind::Resize => "resize",
+            EventKind::Window => "window",
+            EventKind::System => "system",
+            EventKind::Fonts => "fonts",
+            EventKind::Modifiers => "modifiers",
+            EventKind::Change => "change",
+            EventKind::Submit => "submit",
+            EventKind::Cancel => "cancel",
+            EventKind::Boundary => "boundary",
+            EventKind::Sound => "sound",
+            EventKind::Dismiss => "dismiss",
+            EventKind::Reply => "reply",
+        }
+    }
+
+    /// The kind a wire name names, `None` for one that names none.
+    pub fn from_name(name: &str) -> Option<EventKind> {
+        EventKind::ALL.iter().copied().find(|k| k.name() == name)
+    }
+}
+
 /// An event produced by the UI, ready for routing.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiEvent {
@@ -1464,6 +1590,12 @@ pub struct UiEvent {
     /// driver that builds an event itself stamps it itself.
     pub window: WindowId,
     pub key: Key,
+    /// Which event it was. The payload does not say: see [`EventKind`].
+    pub event: EventKind,
+    /// What the event carries: the message that declared it — a node's
+    /// handler row, a window's `windowEvents` key or `windows` entry, a
+    /// playback's tag, a file dialog's — with the event's data in one
+    /// field named for the event ([`UiEvent::declared`]).
     pub payload: Value,
     /// The slot whose fill drew the node — its key, the one `begin_slot`
     /// returned and `key_of(full_name)` answers — or `None` for a node the
@@ -1473,41 +1605,145 @@ pub struct UiEvent {
     /// the way out like `window`, from the fill ranges the last frame
     /// recorded (`Tree::fills`); a producer leaves it `None`.
     pub slot: Option<Key>,
+    /// The message already had a field named for the event, and the
+    /// event's data replaced it: what the core raises
+    /// `message-field-taken` for on the way out (ADR 0047, decision 4).
+    pub(crate) taken: bool,
+    /// A fact about the window ([`UiEvent::fact`]) whose message is not
+    /// known where it was noticed: a resize, a modifier change, the OS's
+    /// documents. Its payload is the bare data until the core resolves it
+    /// against the root's `windowEvents` on the way out
+    /// (`Core::resolve_window_facts`), and none leaves the core unresolved
+    /// (ADR 0048).
+    pub(crate) fact: bool,
 }
 
 impl UiEvent {
-    /// An event as a producer builds it: the window is left [`WindowId::MAIN`]
-    /// and the slot `None` for the core to stamp on the way out (see
-    /// [`UiEvent::window`], [`UiEvent::slot`]).
-    pub fn on(origin: OriginId, key: Key, payload: Value) -> Self {
+    /// An event as it arrives at the app: the message that declared it —
+    /// a node's handler row, a playback's tag, a file dialog's — with the
+    /// event's `data` written into it under the event's name (ADR 0047).
+    /// The payload is always a map. A map message keeps its own fields
+    /// beside the one written; a `Null` or absent message is a map of that
+    /// field alone, `{}` for an event with no data; any other message is
+    /// kept under `tag` (decision 3). A `Null` `data` writes nothing, so a
+    /// plain click on a map message arrives exactly as declared. A field
+    /// the message already has is the core's: the event's data replaces
+    /// it.
+    ///
+    /// The window is left [`WindowId::MAIN`] and the slot `None` for the
+    /// core to stamp on the way out (see [`UiEvent::window`],
+    /// [`UiEvent::slot`]).
+    pub fn declared(
+        event: EventKind,
+        origin: OriginId,
+        key: Key,
+        message: Option<&Value>,
+        data: Value,
+    ) -> Self {
+        let mut taken = false;
+        let mut entries = match message {
+            Some(Value::Map(own)) => own.clone(),
+            None | Some(Value::Null) => Vec::new(),
+            Some(other) => vec![("tag".to_string(), other.clone())],
+        };
+        if data != Value::Null {
+            let field = event.name();
+            match entries.iter_mut().find(|(k, _)| k == field) {
+                Some(slot) => {
+                    slot.1 = data;
+                    taken = true;
+                }
+                None => entries.push((field.to_string(), data)),
+            }
+        }
+        let payload = Value::Map(entries);
         Self {
             origin,
             window: WindowId::MAIN,
             key,
+            event,
             payload,
             slot: None,
+            taken,
+            fact: false,
         }
     }
 
-    /// Merges the node's tag into a map payload. A `Null` tag declares the
-    /// behaviour and names nothing, so it is the one value left out — the
-    /// rule every row with a tag reads by, stated once.
-    /// The payload's `kind`: what a core event says it is — `"drag"`,
-    /// `"key"`, `"scroll"` — or the `kind` of an app's own map tag. None
-    /// for a payload that is not a map or has no string `kind`.
+    /// A fact about the window, noticed where the message it arrives as
+    /// is not known — the input router's modifier change, the frame's
+    /// resize. The core reads its message from the root's `windowEvents`
+    /// on the way out, and drops it when the root declared none (ADR 0048).
+    pub(crate) fn fact(event: EventKind, data: Value) -> Self {
+        Self {
+            origin: OriginId::HOST,
+            window: WindowId::MAIN,
+            key: Key::ROOT,
+            event,
+            payload: data,
+            slot: None,
+            taken: false,
+            fact: true,
+        }
+    }
+
+    /// The event's own data: its field in the message, and `None` for an
+    /// event that carries none (a plain click, a submit).
+    pub fn data(&self) -> Option<&Value> {
+        self.payload.get(self.event.name())
+    }
+
+    /// The event's data map, for a producer adding a field after the
+    /// event is built: a hover's `by`, a scroll's `mods`, a click's
+    /// pointer fields. `None` when the event carries no data map.
+    pub(crate) fn data_fields_mut(&mut self) -> Option<&mut Vec<(String, Value)>> {
+        let field = self.event.name();
+        let Value::Map(entries) = &mut self.payload else {
+            return None;
+        };
+        match entries.iter_mut().find(|(k, _)| k == field) {
+            Some((_, Value::Map(data))) => Some(data),
+            _ => None,
+        }
+    }
+
+    /// [`Self::data_fields_mut`], making the field when the event carries
+    /// none yet — what a click on a grid or a line row is given its
+    /// `click: {cell, line, …}` by. A bare non-map message is kept under
+    /// `tag` beside the new field, as [`Self::declared`] keeps one.
+    pub(crate) fn data_fields_or_new(&mut self) -> &mut Vec<(String, Value)> {
+        let field = self.event.name();
+        if !matches!(self.payload, Value::Map(_)) {
+            let own = std::mem::take(&mut self.payload);
+            self.payload = Value::Map(match own {
+                Value::Null => Vec::new(),
+                other => vec![("tag".to_string(), other)],
+            });
+        }
+        let Value::Map(entries) = &mut self.payload else {
+            unreachable!("made a map above")
+        };
+        let at = match entries.iter().position(|(k, _)| k == field) {
+            Some(at) => {
+                if !matches!(entries[at].1, Value::Map(_)) {
+                    entries[at].1 = Value::Map(Vec::new());
+                }
+                at
+            }
+            None => {
+                entries.push((field.to_string(), Value::Map(Vec::new())));
+                entries.len() - 1
+            }
+        };
+        match &mut entries[at].1 {
+            Value::Map(data) => data,
+            _ => unreachable!("made a map above"),
+        }
+    }
+
+    /// Whether this is the event `kind`.
     #[inline]
-    pub fn kind(&self) -> Option<&str> {
-        self.payload.get_str("kind")
-    }
-
-    pub fn tagged(mut self, tag: Option<&Value>) -> Self {
-        if let Some(tag) = tag
-            && *tag != Value::Null
-            && let Value::Map(entries) = &mut self.payload
-        {
-            entries.push(("tag".to_string(), tag.clone()));
-        }
-        self
+    pub fn is(&self, kind: EventKind) -> bool {
+        self.event == kind
     }
 }
 
@@ -1623,9 +1859,9 @@ pub struct HitRegion {
     /// Click payload; None for hover-only regions (hoverable, edits) — a
     /// click on those emits no `UiEvent`.
     pub payload: Option<Value>,
-    /// Drag tag when the node declared `on_drag`: pressing it starts a
-    /// pointer-captured drag, and cursor motion until release emits
-    /// `{kind="drag", phase, x, y, dx, dy, parent, tag}` events on this node.
+    /// Drag message when the node declared `on_drag`: pressing it starts a
+    /// pointer-captured drag, and cursor motion until release emits it on
+    /// this node with `drag: {phase, x, y, dx, dy, parent}` in it.
     pub drag: Option<Value>,
     /// The node's parent rect (logical) — carried into drag payloads so
     /// handlers can turn absolute positions into fractions of the container
@@ -1640,8 +1876,8 @@ pub struct HitRegion {
     /// selectable card clicks it — so this is read only where nothing
     /// else claims the press.
     pub select_scope: Option<Key>,
-    /// Key-sink tag when the node declared `on_key`: clicking it takes
-    /// key focus, and key presses then arrive on it carrying this tag.
+    /// Key-sink message when the node declared `on_key`: clicking it takes
+    /// key focus, and key presses then arrive on it as this message.
     pub key_sink: Option<Value>,
     /// The sink declared `key_up`: releases reach it too. Without it a
     /// release is dropped at routing, and the sink hears presses only.
@@ -1654,7 +1890,8 @@ pub struct HitRegion {
     /// unclaimed key reaches the enclosing sink. Resolved at
     /// emission, where the tree is; the walk stops at the modal boundary
     /// and skips a disabled node's own. The press emits
-    /// `{kind="contextmenu", x, y, tag}` on the *owner*, not on this node.
+    /// the owner's message with `contextmenu: {x, y}` in it, on the
+    /// *owner*, not on this node.
     /// None when nothing encloses this region offers one, and the press
     /// is swallowed here.
     pub context_menu: Option<MenuOwner>,
@@ -1668,8 +1905,9 @@ pub struct HitRegion {
     pub focusable: bool,
     /// Window-chrome role: interactions become `WindowCommand`s, not events.
     pub window: Option<WindowRole>,
-    /// Hover tag when the node declared `on_hover`: the pointer entering or
-    /// leaving emits `{kind="hover", phase="enter"|"leave", tag}` on it.
+    /// Hover message when the node declared `on_hover`: the pointer entering
+    /// or leaving emits it on the node with `hover: {phase="enter"|"leave"}`
+    /// in it.
     pub hover: Option<Value>,
     /// Hover group id (`NodeSpec::hover_group`): hovering or pressing any
     /// member lights up every member.
@@ -2239,31 +2477,37 @@ impl Interaction {
     /// A hover event's `by`, set as it goes out: a `leave` is built when
     /// its node is entered, before anyone knows what will move.
     fn moved_by(mut ev: UiEvent, by: &'static str) -> UiEvent {
-        if let Value::Map(entries) = &mut ev.payload {
-            // After `phase`, before the tag: the order the payload reads in.
-            let at = entries
-                .iter()
-                .position(|(k, _)| k == "tag")
-                .unwrap_or(entries.len());
-            entries.insert(at, ("by".to_string(), Value::str(by)));
+        if let Some(hover) = ev.data_fields_mut() {
+            hover.push(("by".to_string(), Value::str(by)));
         }
         ev
     }
 
     fn hover_event(region: &HitRegion, phase: &str) -> Option<UiEvent> {
         let tag = region.hover.as_ref()?;
-        let payload = Value::map([("kind", Value::str("hover")), ("phase", Value::str(phase))]);
-        Some(UiEvent::on(region.origin, region.key, payload).tagged(Some(tag)))
+        let data = Value::map([("phase", Value::str(phase))]);
+        Some(UiEvent::declared(
+            EventKind::Hover,
+            region.origin,
+            region.key,
+            Some(tag),
+            data,
+        ))
     }
 
     fn context_menu_event(region: &HitRegion, p: Vec2) -> Option<UiEvent> {
         let owner = region.context_menu.as_ref()?;
-        let payload = Value::map([
-            ("kind", Value::str("contextmenu")),
+        let data = Value::map([
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
         ]);
-        Some(UiEvent::on(owner.origin, owner.key, payload).tagged(Some(&owner.tag)))
+        Some(UiEvent::declared(
+            EventKind::ContextMenu,
+            owner.origin,
+            owner.key,
+            Some(&owner.tag),
+            data,
+        ))
     }
 
     /// What is under `p`, by the paint order and nothing else: the topmost
@@ -2294,8 +2538,7 @@ impl Interaction {
 
     fn drag_event(state: &DragState, phase: &str, p: Vec2, d: Vec2) -> UiEvent {
         let pr = state.parent_rect;
-        let payload = Value::map([
-            ("kind", Value::str("drag")),
+        let data = Value::map([
             ("phase", Value::str(phase)),
             ("x", Value::Float(p.x as f64)),
             ("y", Value::Float(p.y as f64)),
@@ -2311,10 +2554,16 @@ impl Interaction {
                 ]),
             ),
         ]);
-        UiEvent::on(state.origin, state.key, payload).tagged(Some(&state.tag))
+        UiEvent::declared(
+            EventKind::Drag,
+            state.origin,
+            state.key,
+            Some(&state.tag),
+            data,
+        )
     }
 
-    /// `{kind="button", phase, button, x, y, clicks?, tag}` on the owner;
+    /// `{button: {phase, button, x, y, clicks?}}` in the owner's message;
     /// `clicks` on the press only.
     fn button_event(
         owner: &ButtonOwner,
@@ -2324,7 +2573,6 @@ impl Interaction {
         clicks: Option<u8>,
     ) -> UiEvent {
         let mut fields = vec![
-            ("kind", Value::str("button")),
             ("phase", Value::str(phase)),
             ("button", button.to_value()),
             ("x", Value::Float(p.x as f64)),
@@ -2333,7 +2581,13 @@ impl Interaction {
         if let Some(clicks) = clicks {
             fields.push(("clicks", Value::Int(clicks as i64)));
         }
-        UiEvent::on(owner.origin, owner.key, Value::map(fields)).tagged(Some(&owner.tag))
+        UiEvent::declared(
+            EventKind::Button,
+            owner.origin,
+            owner.key,
+            Some(&owner.tag),
+            Value::map(fields),
+        )
     }
 
     /// A non-primary press the core found an `on_button` owner for:
@@ -2537,13 +2791,7 @@ impl Interaction {
             InputEvent::Modifiers(m) => {
                 if m != self.modifiers {
                     self.modifiers = m;
-                    out.push(UiEvent {
-                        origin: OriginId::HOST,
-                        window: WindowId::MAIN,
-                        key: Key::ROOT,
-                        payload: m.to_value(),
-                        slot: None,
-                    });
+                    out.push(UiEvent::fact(EventKind::Modifiers, m.to_value()));
                 }
             }
             // Routed by the core (they need the retained stores).
@@ -2608,13 +2856,13 @@ impl Interaction {
                         }
                         (Some(WindowRole::Drag), _) | (None, None) => {}
                         (None, Some(payload)) => {
-                            out.push(UiEvent {
-                                origin: region.origin,
-                                window: WindowId::MAIN,
-                                key: region.key,
-                                payload: payload.clone(),
-                                slot: None,
-                            });
+                            out.push(UiEvent::declared(
+                                EventKind::Click,
+                                region.origin,
+                                region.key,
+                                Some(payload),
+                                Value::Null,
+                            ));
                             pointer_made += 1;
                         }
                     }
@@ -2656,7 +2904,6 @@ impl Interaction {
 
     fn drop_event(owner: &DropOwner, phase: &str, paths: &[String], at: Option<Vec2>) -> UiEvent {
         let mut fields = vec![
-            ("kind", Value::str("drop")),
             ("phase", Value::str(phase)),
             (
                 "paths",
@@ -2672,7 +2919,13 @@ impl Interaction {
             fields.push(("x", Value::Float(p.x as f64)));
             fields.push(("y", Value::Float(p.y as f64)));
         }
-        UiEvent::on(owner.origin, owner.key, Value::map(fields)).tagged(Some(&owner.tag))
+        UiEvent::declared(
+            EventKind::Drop,
+            owner.origin,
+            owner.key,
+            Some(&owner.tag),
+            Value::map(fields),
+        )
     }
 
     fn drag_files(&mut self, paths: &[String], at: Vec2, out: &mut Vec<UiEvent>) {
@@ -2878,7 +3131,7 @@ mod tests {
         );
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].key, k);
-        assert_eq!(evs[0].payload.as_str(), Some("go"));
+        assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
     }
 
     #[test]
@@ -2980,12 +3233,10 @@ mod tests {
         // the release adds nothing — no click, though the node has one.
         assert_eq!(evs.len(), 1);
         assert_eq!(evs[0].key, k);
-        assert_eq!(
-            evs[0].payload.get("kind").unwrap().as_str(),
-            Some("contextmenu")
-        );
-        assert_eq!(evs[0].payload.get("x").unwrap().as_float(), Some(40.0));
-        assert_eq!(evs[0].payload.get("y").unwrap().as_float(), Some(30.0));
+        assert_eq!(evs[0].event, EventKind::ContextMenu);
+        let at = evs[0].data().unwrap();
+        assert_eq!(at.get("x").unwrap().as_float(), Some(40.0));
+        assert_eq!(at.get("y").unwrap().as_float(), Some(30.0));
         assert_eq!(
             evs[0].payload.get("tag").unwrap().as_str(),
             Some("panel-menu")
@@ -3026,7 +3277,8 @@ mod tests {
                 .map(|e| {
                     (
                         e.key,
-                        e.payload
+                        e.data()
+                            .unwrap()
                             .get("phase")
                             .unwrap()
                             .as_str()
@@ -3046,7 +3298,7 @@ mod tests {
         );
         assert_eq!(phases(&evs), vec![(zone, "enter".to_string())]);
         assert_eq!(evs[0].payload.get("tag").unwrap().as_str(), Some("files"));
-        assert_eq!(evs[0].payload.get("x").unwrap().as_float(), Some(20.0));
+        assert_eq!(evs[0].data().unwrap().get_float("x"), Some(20.0));
         assert_eq!(it.drop_target(), Some(zone));
         assert!(it.is_drop_target(zone));
         // The same point again is nothing; a new one is a move.
@@ -3169,7 +3421,7 @@ mod tests {
         assert!(it.is_pressed(k));
         let evs = drive(&mut it, &[InputEvent::mouse_up()]);
         assert_eq!(evs.len(), 1);
-        assert_eq!(evs[0].payload.as_str(), Some("go"));
+        assert_eq!(evs[0].payload.get_str("tag"), Some("go"));
     }
 
     #[test]

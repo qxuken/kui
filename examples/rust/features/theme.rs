@@ -19,7 +19,7 @@
 
 use kui_devtools::Example;
 use kui_native::widgets;
-use kui_native::{Align, App, Color, NodeSpec, TextStyle, Theme, Ui, UiEvent, Value};
+use kui_native::{Align, App, Color, Event, NodeSpec, TextStyle, Theme, Ui, UiEvent, Value};
 
 /// What the demo buttons post: they are here to be looked at, not to say
 /// anything, and the menu's rows post their own text.
@@ -214,17 +214,14 @@ impl App for Gallery {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("contextmenu") => {
-                let at = |k| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-                self.menu = Some((at("x"), at("y")));
-            }
-            Some("dismiss") => self.menu = None,
+        match ev.read() {
+            Event::ContextMenu(at) => self.menu = Some((at.x, at.y)),
+            Event::Dismiss(_) => self.menu = None,
             // Every other string payload here is a menu row's own id,
             // which the stock menu posts as the row's text — except the
             // one the demo buttons post, which is not a menu choice and
             // must not be reported as the last one.
-            _ => match ev.payload.as_str() {
+            _ => match ev.message::<String>().as_deref() {
                 Some(NOOP) | None => {}
                 Some(s) => {
                     self.said = Some(s.to_string());

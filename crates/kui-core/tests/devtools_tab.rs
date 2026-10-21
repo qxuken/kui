@@ -130,7 +130,7 @@ fn a_host_form_tab_is_lazy_and_lands_over_the_body() {
     // Its events are the host's: a click on the tab's button comes out.
     let evs = click_at(&mut core, content.x + 2.0, content.y + 2.0);
     assert_eq!(evs.len(), 1, "one event, the host's: {evs:?}");
-    assert_eq!(evs[0].kind(), Some("jump"));
+    assert_eq!(evs[0].payload.get_str("kind"), Some("jump"));
     assert_eq!(evs[0].key, core.key_of("jump").unwrap());
 
     // The content is the dock's region, not the app's ring: Tab from the
@@ -677,6 +677,6 @@ fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
     exts.route(evs, |ev| out.push(ev));
     assert_eq!(heard.borrow().len(), 1, "the extension heard its click");
     assert_eq!(out.len(), 1, "one reply for the host: {out:?}");
-    assert_eq!(out[0].kind(), Some("reply"));
+    assert_eq!(out[0].event.name(), "reply");
     let _ = Key::ROOT;
 }

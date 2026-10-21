@@ -1,33 +1,75 @@
 // Types for kui's JSX runtime. Set in tsconfig:
 //   "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"
 
+// -- generated from the core's event table; edit EVENTS in schema.rs, then `npm run gen` --
+import type {
+  HandlerMsg,
+  WithKeySink,
+  WithClick,
+  WithDrag,
+  WithKey,
+  WithText,
+  WithPreedit,
+  WithSelect,
+  WithSelectionRange,
+  WithContextMenu,
+  WithMenu,
+  WithForceClick,
+  WithButton,
+  WithScroll,
+  WithFocus,
+  WithHover,
+  WithDrop,
+  WithFiles,
+  WithLayout,
+  WithEditChange,
+  WithSliderChange,
+  WithBoundary,
+  WithSound,
+  WithDismiss,
+  WithResize,
+  WithWindow,
+  WithSystem,
+  WithModifiers,
+  WithOpen,
+} from './index.js';
+// -- end generated --
+import type { WindowDecl, WindowEvents } from './index.js';
+
 /** Event message payloads: plain data, both directions (the Elm shape).
  *  This is the wire type — anything JSON-shaped crosses; an app narrows it
  *  to its own union with `KuiMsg` below. */
 export type Msg = null | boolean | number | string | Msg[] | { [key: string]: Msg };
 
-/** Declare the app's message type once, and the payload prop (`onClick`),
- *  the tag props (`onDrag`, `onHover`, `onKey`, `onLayout`) and `createApp`
- *  / `runWindowed` take it instead of "any plain data":
+/** Declare the app's message type once, and the message props (`onClick`),
+ *  the handler props (`onDrag`, `onHover`, `onKey`, `onChange`, …) and
+ *  `createApp` / `runWindowed` take it instead of "any plain data":
  *
  *  ```ts
- *  type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
+ *  type CounterMsg =
+ *    | { kind: 'add'; by: number }
+ *    | DragMsg<{ kind: 'pan' }>
+ *    | EditChangeMsg<{ kind: 'rename'; id: string }>;
  *
  *  declare module '@qxuken/kui/jsx-runtime' {
  *    interface KuiMsg { msg: CounterMsg }
  *  }
  *  ```
  *
- *  Register the messages you wrote — not `CounterMsg | CoreMsg`. `CoreMsg`
- *  (what the core sends by itself) is typed in terms of this registration:
- *  its `tag` fields carry your messages. Naming it here makes the alias
- *  refer to itself, and TypeScript reports a circular type. Keep the full
- *  union for `update` (`type Msg = CounterMsg | CoreMsg`); the loop types
- *  infer it from there.
+ *  Register each message as it arrives (ADR 0047): a drag's message with
+ *  its `drag` field (`DragMsg<T>`, `T & WithDrag`), an editor's with its
+ *  `change`. A handler prop takes the registered messages that carry its
+ *  field, as declared without it (`HandlerMsg<WithDrag>`), so
+ *  `onDrag={{ kind: 'pan' }}` fits and `onDrag={{ kind: 'add', by: 1 }}`
+ *  does not. The window's own events are declared the same way (ADR
+ *  0048): `windowEvents={{ onResize: { kind: 'resized' } }}` on the root
+ *  takes a registered `ResizeMsg<{ kind: 'resized' }>`. `update` sees the
+ *  registered messages and nothing else, and the loop types infer it from
+ *  there.
  *
- *  A tag prop also takes `null`: `<box onKey={null} keyFocus>` is a key
- *  sink whose events carry no `tag`, so a sink that only needs the node key
- *  costs no inert member in the union.
+ *  A handler prop also takes `null`: `<box onKey={null} keyFocus>` is a key
+ *  sink whose events arrive as their field alone (`{ key: { … } }`), so a
+ *  sink that only needs the node key costs no member in the union.
  *
  *  A payload typo then fails where it is written rather than in `update`.
  *  Left un-augmented, payloads stay `Msg` and nothing changes. (One app per
@@ -368,34 +410,44 @@ export interface GeneratedSpecProps {
   minWidth?: MinProp;
   /** A `checkbox` that is neither on nor off — the select-all box over a list some of whose rows are selected (ADR 0034). Read as mixed by assistive technology whatever `checked` says, and drawn as a dash by the stock `<checkbox>`. Meaningful on the checkbox role alone. */
   mixed?: boolean;
-  /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside emits {kind:"dismiss", reason:"escape"|"outside", tag} on it — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on. */
-  modal?: AppMsg | null;
+  /** Modal surface: the Tab ring becomes this node's subtree, everything outside it is inert to the pointer, the wheel and assistive technology, and Escape or a press outside arrives on it as this message with `dismiss: {reason: "escape" | "outside"}` in it (ADR 0047) — the app stops declaring the node. The last one declared in tree order is the one in effect (a confirm inside a dialog); a modal that must cover the app is a float. The access tree is not pruned to the modal: it keeps every node of the frame and marks the one in effect `modal` (`docs/adr/0003-modal-surfaces.md`, decision 7), which is what assistive technology acts on. */
+  modal?: HandlerMsg<WithDismiss> | null;
   /** With `onKey`: the modifier and lock keys arrive as keys of their own (backlog F108) — `code` "shift", "ctrl", "alt", "super", "capslock", "numlock", "scrolllock", which side in `location` ("left" / "right"), releases too with `keyUp`. Without it a modifier is only ever held — the next key's `shift`, `ctrl`, … and the `modifiers` event — so a keymap mid-sequence never reads a Shift as a key between two others. For a terminal speaking kitty's keyboard protocol, or a game that binds a lone Shift. */
   modifierKeys?: boolean;
-  /** Button tag (backlog F105): a press of a non-primary button — middle, secondary, or one past those — emits {kind:"button", phase:"press", button, x, y, clicks, tag} on the node, and the button is then captured by it: every pointer move while it is held arrives as phase:"move" and its release as phase:"release", on this node wherever the pointer is. `button` is `"secondary"`, `"middle"` or a further button's number (3 and up); `x`/`y` are logical viewport coordinates, and on a `cells` grid each event carries `cell: {row, col}` as a click does. Several buttons can be held at once, each its own capture, and a primary drag is untouched. `buttons` says which buttons it claims — all of them unless it narrows them. Asked of the topmost node under the pointer, and when that node claims no such button the press reaches the nearest enclosing node that does, the way a context menu's does: a disabled node's own is skipped and the walk stops at the modal boundary. A claimed secondary press is this event *instead of* a `contextmenu` event and the stock menu (a nearer `onContextMenu` still wins, being the nested declaration). Like every non-primary press it moves no focus, places no caret and touches no selection or scrollbar. For a terminal's middle-click paste, and the mouse reports a program in it asked for. */
-  onButton?: AppMsg | null;
-  /** A `slider` role's changes (ADR 0034): the core turns a press on the node into the value under the pointer, a drag into the value under it, the arrows and assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step — and emits `{kind:"change", value, phase, tag}`: `phase` is `"move"` while the pointer holds the slider and `"end"` when it lets go or a key moved it. The value is proposed and never applied; the slider moves when the view declares it as `valueNow`. A key that lands where the slider already is proposes nothing. The pointer reads the node's content box along its main axis, so a `dir="column"` slider runs bottom to top. Without it a slider's arrows reach the app as `{kind:"access", action}`. Ignored on any other role. */
-  onChange?: AppMsg | null;
+  /** An editing key that met the edge of an editor's text and did nothing, as this message with `boundary: {key, edge, word, doc}` in it (ADR 0047, backlog F145): ↑ on the first line, ← or Backspace at the start (`edge: "start"`), ↓ on the last line, → or Delete at the end (`"end"`) — from a caret with no selection and without Shift. What a block editor joins blocks and moves between fields by. A field has one line, so its ↑ and ↓ always report. `word` and `doc` are the editing modifiers the key carried. */
+  onBoundary?: HandlerMsg<WithBoundary> | null;
+  /** Button handler (backlog F105): a press of a non-primary button — middle, secondary, or one past those — arrives on the node as this message with `button: {phase: "press", button, x, y, clicks}` in it (ADR 0047), and the button is then captured by it: every pointer move while it is held arrives as phase:"move" and its release as phase:"release", on this node wherever the pointer is. `button` is `"secondary"`, `"middle"` or a further button's number (3 and up); `x`/`y` are logical viewport coordinates, and on a `cells` grid each event carries `cell: {row, col}` as a click does. Several buttons can be held at once, each its own capture, and a primary drag is untouched. `buttons` says which buttons it claims — all of them unless it narrows them. Asked of the topmost node under the pointer, and when that node claims no such button the press reaches the nearest enclosing node that does, the way a context menu's does: a disabled node's own is skipped and the walk stops at the modal boundary. A claimed secondary press is this event *instead of* a `contextmenu` event and the stock menu (a nearer `onContextMenu` still wins, being the nested declaration). Like every non-primary press it moves no focus, places no caret and touches no selection or scrollbar. For a terminal's middle-click paste, and the mouse reports a program in it asked for. */
+  onButton?: HandlerMsg<WithButton> | null;
+  /** Escape letting go of a focused editor, as this message — a map as declared, any other message under `tag`, none as `{}` (ADR 0047): the keyboard leaves it, as it does for a click elsewhere, and this says it was Escape — a draft abandoned, where `onSubmit` is one confirmed and a plain blur is neither. A field that commits on blur cancels here instead. */
+  onCancel?: AppMsg | null;
+  /** Changes, as this message with `change` in it (ADR 0047). On a `slider` role (ADR 0034) the core turns a press on the node into the value under the pointer, a drag into the value under it, the arrows and assistive technology's increment / decrement into one `valueStep`, PageUp / PageDown into ten, Home / End into the range's ends — clamped to `valueMin`..`valueMax` (0..100 unset) and snapped to the step — and proposes it as `change: {value, phase}`: `phase` is `"move"` while the pointer holds the slider and `"end"` when it lets go or a key moved it. The value is proposed and never applied; the slider moves when the view declares it as `valueNow`. A key that lands where the slider already is proposes nothing. The pointer reads the node's content box along its main axis, so a `dir="column"` slider runs bottom to top. Without it a slider does not move and a key or a reader's request raises `slider-without-handler`. On an editor — an `edit`, or a node with an editor role that draws its own text — every change to the text arrives as `change: {text}`, the whole text after it: typing, a paste, a composition's commit, assistive technology setting the value. Ignored on any other role. */
+  onChange?: HandlerMsg<WithEditChange | WithSliderChange> | null;
   /** Message emitted when clicked (data, not a callback). */
   onClick?: AppMsg;
-  /** Context-menu tag: a secondary-button (right) press emits {kind:"contextmenu", x, y, tag} on the node, at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and tag, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary. */
-  onContextMenu?: AppMsg | null;
-  /** Drag tag: emits {kind:"drag", phase, x, y, dx, dy, parent, tag} events, `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role="line"` rows they carry `line`, `byte` and `clicks` — see the events table. */
-  onDrag?: AppMsg | null;
-  /** Drop-zone tag (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): files dragged in from the OS over this node emit {kind:"drop", phase:"enter"|"move"|"leave"|"drop", paths, x, y, tag} — `paths` the OS paths as strings, `x`/`y` the pointer in logical viewport coordinates (absent on `leave`). The zone under the files is the topmost zone by paint order: a node inside a zone is the zone's (a button in it, a field in it), and a node that is no zone and has none enclosing it is looked past, so an overlay shown on `enter` cannot make the zone lose the files. No `leave` follows a `drop`; a drop off every zone is refused by the driver. Implies hover tracking. No access row — a screen-reader user's way in is a button beside the zone. On Windows and Linux the position is the OS cursor at enter and release only, so `move` never fires there. */
-  onDrop?: AppMsg | null;
-  /** Keyboard focus entering or leaving this node's subtree — the node itself, or anything focused inside it — emits `{kind:"focus", phase:"in"|"out", by, tag}` (backlog DX18). `by` is what moved it: `pointer` (a press), `keyboard` (Tab, a key a control answered), `assistive` (a screen reader's request) or `program` (the view or the app — `keyFocus`, `setFocus`, a modal's entry). Reported once the move settles, after the input that made it or at the end of the frame that declared it, so an app hears a pane taking the keyboard instead of diffing the focused key every frame. Leaving is reported innermost first, entering outermost first. It makes nothing focusable or interactive. */
-  onFocus?: AppMsg | null;
-  /** Force-click tag: a press that deepens past the second stage of a Force Touch trackpad emits {kind:"forceclick", x, y, tag} on the node, at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something. */
-  onForceClick?: AppMsg | null;
-  /** Hover tag: the pointer entering/leaving emits {kind:"hover", phase:"enter"|"leave", tag} events. */
-  onHover?: AppMsg | null;
-  /** Key-sink tag: with key focus held, presses arrive as {kind:"key", phase:"down", code, ...} events. Releases only with `keyUp` beside it. */
-  onKey?: AppMsg | null;
-  /** Layout tag: the node's laid-out rect arrives as {kind:"layout", x, y, w, h, parent, tag} on its first frame and whenever it changes (needs a stable key). */
-  onLayout?: AppMsg | null;
-  /** Scroll tag: the wheel over this node emits {kind:"scroll", x, y, dx, dy, lines, tag} on it instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go — except on an axis the node also scrolls (`scrollX`/`scrollY`, its offset the app's to set), where it is answered by its room as a container is, so at its edge a gesture that way passes to the scroller around it (backlog F118) — and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it still takes the axes it scrolls while it can move that way, passing this node the rest — the other axis, and a gesture that begins with that scroller at its limit (`overscroll: "contain"` on the scroller keeps it there). The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`). */
-  onScroll?: AppMsg | null;
+  /** Context-menu handler: a secondary-button (right) press arrives on the node as this message with `contextmenu: {x, y}` in it (ADR 0047), at the logical viewport point to open the menu at. The press moves no focus, places no caret and produces no click, so right-clicking a selection keeps it. Asked of the topmost node under the pointer, and when that node offers no menu the press reaches the nearest enclosing node that does — a container declaring a menu for everything inside it is the common case — the way an unclaimed key reaches the enclosing sink (`docs/adr/0011`): the event carries the *owner's* key and message, a nested declaration wins over its ancestor's, a disabled node's own is skipped, and the walk stops at the modal boundary. */
+  onContextMenu?: HandlerMsg<WithContextMenu> | null;
+  /** Drag handler: the drag arrives as this message with `drag: {phase, x, y, dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role="line"` rows they carry `line`, `byte` and `clicks` — see the events table. */
+  onDrag?: HandlerMsg<WithDrag> | null;
+  /** Drop-zone handler (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): files dragged in from the OS over this node arrive as this message with `drop: {phase: "enter" | "move" | "leave" | "drop", paths, x, y}` in it (ADR 0047) — `paths` the OS paths as strings, `x`/`y` the pointer in logical viewport coordinates (absent on `leave`). The zone under the files is the topmost zone by paint order: a node inside a zone is the zone's (a button in it, a field in it), and a node that is no zone and has none enclosing it is looked past, so an overlay shown on `enter` cannot make the zone lose the files. No `leave` follows a `drop`; a drop off every zone is refused by the driver. Implies hover tracking. No access row — a screen-reader user's way in is a button beside the zone. On Windows and Linux the position is the OS cursor at enter and release only, so `move` never fires there. */
+  onDrop?: HandlerMsg<WithDrop> | null;
+  /** Keyboard focus entering or leaving this node's subtree — the node itself, or anything focused inside it — arrives as this message with `focus: {phase: "in" | "out", by}` in it (backlog DX18, ADR 0047). `by` is what moved it: `pointer` (a press), `keyboard` (Tab, a key a control answered), `assistive` (a screen reader's request) or `program` (the view or the app — `keyFocus`, `setFocus`, a modal's entry). Reported once the move settles, after the input that made it or at the end of the frame that declared it, so an app hears a pane taking the keyboard instead of diffing the focused key every frame. Leaving is reported innermost first, entering outermost first. It makes nothing focusable or interactive. */
+  onFocus?: HandlerMsg<WithFocus> | null;
+  /** Force-click handler: a press that deepens past the second stage of a Force Touch trackpad arrives on the node as this message with `forceclick: {x, y}` in it (ADR 0047), at the logical viewport point it happened at (`docs/adr/0017-selection-as-a-scope.md`). Routed as a secondary press is — no focus moved, no caret placed, no click — but asked of the topmost node only, with no walk to an enclosing declaration — and the ordinary click the press is still producing arrives afterwards, as it does on macOS. Text needs none of this: a force click over an `edit` or a `selectable` scope selects the word under it and asks the host for its Look Up panel. macOS-only in practice, and there the user can switch the gesture off, so nothing may declare itself the only way to reach something. */
+  onForceClick?: HandlerMsg<WithForceClick> | null;
+  /** Hover handler: the pointer entering or leaving arrives as this message with `hover: {phase: "enter" | "leave", by}` in it (ADR 0047). */
+  onHover?: HandlerMsg<WithHover> | null;
+  /** Key sink: with key focus held, presses arrive as this message with `key: {phase: "down", code, …}` in it, and a composition, a commit and a reader's selection as `preedit`, `text` and `select` the same way (ADR 0047). Releases only with `keyUp` beside it. */
+  onKey?: HandlerMsg<WithKeySink> | null;
+  /** Layout handler: the node's laid-out rect arrives as this message with `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame and whenever it changes (needs a stable key). */
+  onLayout?: HandlerMsg<WithLayout> | null;
+  /** A choice from a menu opened for this node — a `select`'s, or one `openMenu` named it the target of — as this message with `menu: {role, item}` in it (ADR 0047): `item` is the row's `id`, else its label. The stock right-click menu, whose roles the core performs itself, sends nothing. */
+  onMenu?: HandlerMsg<WithMenu> | null;
+  /** Scroll handler: the wheel over this node arrives on it as this message with `scroll: {x, y, dx, dy, lines}` in it (ADR 0047) instead of scrolling anything — `dx`/`dy` the delta in logical px as the driver reported it (positive `dy` is the wheel rolling up, toward earlier content), `x`/`y` the pointer, and `lines` on a `cells` grid the whole lines the delta covers (positive = later history, the sign `originLine` grows in; the fraction is carried to the next notch so a trackpad's small steps add up) and null on any other node. The node takes the wheel on the axes `scrollAxes` names (both unless it narrows them): a gesture that starts over it is its own whether or not it has anywhere to go — except on an axis the node also scrolls (`scrollX`/`scrollY`, its offset the app's to set), where it is answered by its room as a container is, so at its edge a gesture that way passes to the scroller around it (backlog F118) — and stays its own until it ends, wherever the pointer goes (backlog F107); it reaches no scroll container above it, and a scroller inside it still takes the axes it scrolls while it can move that way, passing this node the rest — the other axis, and a gesture that begins with that scroller at its limit (`overscroll: "contain"` on the scroller keeps it there). The core moves nothing — a grid re-declares `originLine`, a canvas zooms. A drag-select held past a `cells` grid's top or bottom edge arrives here too, once a frame with the lines that frame scrolled by (`docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md`). */
+  onScroll?: HandlerMsg<WithScroll> | null;
+  /** On a `selectable` scope: a copy reached rows a virtual list has not built, as this message with `selectionrange` in it (ADR 0047) — what a list answers by building them. */
+  onSelectionRange?: HandlerMsg<WithSelectionRange> | null;
+  /** Enter in a single-line editor, as this message — a map as declared, any other message under `tag`, none as `{}` (ADR 0047). */
+  onSubmit?: AppMsg | null;
   /** Group opacity 0..1 (default 1): fades this node and its whole subtree. A per-quad alpha multiply rather than an offscreen composite, so overlapping pieces of one subtree show their seams through the fade. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in. */
   opacity?: LengthProp;
   /** Paint this node and its subtree after its siblings, over any it overlaps: a tab that glides past its neighbour under `slide` passes over it whichever way it moved, so the selected tab declared `overSiblings` stays on top without the view tracking when it moves. Siblings otherwise paint in tree order, a later place over an earlier. Only the sibling order changes: the parent still paints under it, what follows the parent over it, it keeps the parent's clip, and a float still opens above it. The hit test reads the same order, so where it overlaps a sibling it takes the press. Two siblings that both declare it paint in tree order between themselves. Not a z-index: there is no number to outbid (`docs/adr/0046-a-node-over-its-siblings-paints-after-them.md`). */
@@ -602,10 +654,18 @@ export interface BoxProps extends Keyed, GeneratedSpecProps, CustomSpecProps {
    *  keys and accents back. */
   imeOff?: boolean;
   /** Root box only: which windows exist besides the main one (see
-   *  `WindowDecl` in `@qxuken/kui`). `runWindowed` / `createApp` write it
-   *  from the loop config's `windows(model)`; a view driving a `Ctx` by
-   *  hand declares it here. */
-  windows?: (string | { name: string; width?: number; height?: number; activates?: boolean })[];
+   *  `WindowDecl` in `@qxuken/kui`), each entry with the `onWindow` /
+   *  `onDismiss` messages its lifecycle arrives as. `runWindowed` /
+   *  `createApp` write it from the loop config's `windows(model)`; a view
+   *  driving a `Ctx` by hand declares it here. */
+  windows?: WindowDecl[];
+  /** Root box only: the messages this window's own events arrive as
+   *  (ADR 0048) — `onResize`, `onFocus` (the window's keyboard),
+   *  `onSystemSettingsChange`, `onFonts`, `onModifiers` and, on the main
+   *  window, `onOpen`. A key left out is an event the window does not
+   *  hear. On any other node it is ignored and warned about
+   *  (`window-events-off-root`). See `WindowEvents` in `@qxuken/kui`. */
+  windowEvents?: WindowEvents;
   children?: KuiNode;
 }
 
@@ -701,11 +761,12 @@ export interface ToggleProps
 
 /** The stock slider (docs/adr/0034-stock-controls-over-the-roles.md): a
  *  track, a fill to `valueNow` and a thumb. With `onChange` the core turns
- *  a press, a drag, the arrows, PageUp / PageDown and Home / End into
- *  `{kind: 'change', value, phase: 'move' | 'end', tag}` — clamped to
- *  `valueMin`..`valueMax` (0..100 unset) and snapped to `valueStep` (a
- *  hundredth of the range unset); store `value` and declare it as
- *  `valueNow`, since nothing moves until you do. `label` is its name and,
+ *  a press, a drag, the arrows, PageUp / PageDown and Home / End into the
+ *  `onChange` message with `change: {value, phase: 'move' | 'end'}` in it
+ *  (a `SliderChangeMsg`) — clamped to `valueMin`..`valueMax` (0..100
+ *  unset) and snapped to `valueStep` (a hundredth of the range unset);
+ *  store `change.value` and declare it as `valueNow`, since nothing moves
+ *  until you do. Without `onChange` it does not move at all. `label` is its name and,
  *  unless `key` says otherwise, its key. Its look is its spec: the rows it
  *  reads are these (`SLIDER_ROWS_JSX` in schema.rs). */
 export interface SliderProps
@@ -720,13 +781,14 @@ export interface SliderProps
       | 'valueMax'
       | 'valueStep'
       | 'valueText'
-      | 'onChange'
       | 'width'
       | 'minWidth'
       | 'maxWidth'
     >,
     Pick<CustomSpecProps, 'tooltip'> {
   label: string;
+  /** The message a proposal arrives as, `change: {value, phase}` in it. */
+  onChange?: HandlerMsg<WithSliderChange> | null;
 }
 
 /** A container of `<radio>`s (docs/adr/0034-stock-controls-over-the-roles.md):
@@ -738,10 +800,26 @@ export interface RadioGroupProps extends BoxProps {
   label: string;
 }
 
-export interface EditProps extends TextProps, GeneratedSpecProps, CustomSpecProps {
+export interface EditProps extends TextProps, Omit<GeneratedSpecProps, 'onChange'>, CustomSpecProps {
   /** Stable identity (state is retained by key); `key` works too. */
   id?: string;
+  /** The seed: the text a new editor starts from. After the first frame
+   *  the editor owns its text, and `setEditText` is what replaces it. */
   initial?: string;
+  /** The editor's text, declared on every frame (ADR 0047, decision 8):
+   *  where it differs from the editor's, the editor is brought to it as a
+   *  splice, so a caret before the change stays put and a filter's
+   *  correction undoes with the keystroke it corrected. Store
+   *  `change.text` from `onChange` and declare it back here; without
+   *  `onChange` every keystroke is undone (`edit-value-without-handler`).
+   *  Beside `initial` it wins (`edit-value-and-initial`). In Node it
+   *  crosses the wire every frame, so a long document keeps `initial`
+   *  plus `onChange`. */
+  value?: string;
+  /** The message every change to the text arrives as, `change: {text}`
+   *  in it with the whole text after the change (an `EditChangeMsg`). An
+   *  editor without it sends nothing. */
+  onChange?: HandlerMsg<WithEditChange> | null;
   multiline?: boolean;
   /** Takes focus once, on the frame the flag starts being declared, and only
    *  while nothing holds focus (ADR 0022, decision 9); a blur afterwards
@@ -795,11 +873,21 @@ export declare namespace JSX {
     edit: EditProps;
     /** The stock single-line field with its chrome (`widgets::text_input`):
      *  `label` is the key and the accessible name both, `initial` the seed
-     *  (a new editor only), and nothing else is read — the same door as
-     *  Lua's `input { label= }` and C's `kui_text_input`. Read it back
-     *  with `editText(label)`; a field that needs any other row is an
-     *  `<edit>` in a box of its own. */
-    input: { key?: string | number; label?: string; initial?: string };
+     *  (a new editor only) or `value` the text declared every frame, as on
+     *  an `<edit>`, and `onChange` / `onSubmit` / `onCancel` the messages
+     *  its change (`change: {text}` in it), Enter and Escape arrive as —
+     *  each left out arrives as its field alone. Nothing else is read: the
+     *  same door as Lua's `input { label= }` and C's `kui_text_input`. A
+     *  field that needs any other row is an `<edit>` in a box of its own. */
+    input: {
+      key?: string | number;
+      label?: string;
+      initial?: string;
+      value?: string;
+      onChange?: HandlerMsg<WithEditChange> | null;
+      onSubmit?: AppMsg | null;
+      onCancel?: AppMsg | null;
+    };
     /** The stock select (`widgets::select_items`): a field showing the
      *  choice in force that, clicked, opens the core's own menu of the
      *  options under it with the current one checked — drawn, or the
@@ -807,12 +895,19 @@ export declare namespace JSX {
      *  outside closes it. `label` is the key and the accessible name;
      *  `options` are strings (posting the label) or the menu items
      *  `openMenu` takes (posting `id`); `current` is the index in force,
-     *  from 0. You hold no open state: the choice arrives as a `MenuMsg`
-     *  on the field's key — `{kind: 'menu', item}` — and drawing the
+     *  from 0. You hold no open state: the choice arrives as the
+     *  `onMenu` message with `menu: {role, item}` in it (a `MenuMsg`), on
+     *  the field's key — `{menu}` alone without one — and drawing the
      *  field again with the new `current` is the whole loop. Nothing else
      *  is read; a field that needs any other row is a `<box role="button">`
      *  and `openMenu`. Lua spells it `dropdown { }`, C `kui_select`. */
-    select: { key?: string | number; label?: string; options: (string | MenuItemInput)[]; current?: number };
+    select: {
+      key?: string | number;
+      label?: string;
+      options: (string | MenuItemInput)[];
+      current?: number;
+      onMenu?: HandlerMsg<WithMenu> | null;
+    };
     /** The node form of a tooltip (`widgets::tooltip`): a float hanging
      *  below the parent, always drawn — where the `tooltip` prop is
      *  hover-gated — for a hint the view gates itself
@@ -1057,8 +1152,10 @@ export declare namespace JSX {
      *  titles go when they have to be drawn in the window. Draws nothing
      *  where the platform owns the bar (macOS, where the driver hands the
      *  same declaration to the OS), so one view is portable. `[]` takes
-     *  the menu away. */
-    menuBar: Keyed & { menu?: MenuBarInput };
+     *  the menu away. `onMenu` is the message a choice arrives as, drawn
+     *  bar or the platform's, with `menu: { role, item }` in it (ADR
+     *  0048); a bar without one posts nothing. */
+    menuBar: Keyed & { menu?: MenuBarInput; onMenu?: HandlerMsg<WithMenu> | null };
     /** Per-phase frame-latency bars (input/view/layout/render) vs the
      *  display budget. Reads the runner's frame stats — renders empty
      *  when headless. */
@@ -1070,13 +1167,14 @@ export declare namespace JSX {
      *  changed `src` restarts. `finish` changes what gone means — the
      *  removal releases the playback to play itself out, so a one-shot need
      *  not stay declared for a length the view would have to guess (a loop
-     *  still stops). `tag` comes back as a `SoundMsg` when it ends on its
-     *  own, a released playback included. A released playback holds one of
+     *  still stops). `tag` is the message its end arrives as, `sound:
+     *  {phase, playback}` in it (a `SoundMsg`), when it ends on its own, a
+     *  released playback included. A released playback holds one of
      *  the device's 128 voices until its file ends — voices held = sound
      *  length × release rate, so a 1.4 s chime released four times a second
-     *  holds 6 — and the 129th play is refused (`phase: "refused"` on the
-     *  `tag`). Draws nothing and takes no space. */
-    audio: Keyed & { src: string; loop?: boolean; volume?: number; paused?: boolean; finish?: boolean; tag?: AppMsg };
+     *  holds 6 — and the 129th play is refused (`phase: "refused"` in its
+     *  `sound`). Draws nothing and takes no space. */
+    audio: Keyed & { src: string; loop?: boolean; volume?: number; paused?: boolean; finish?: boolean; tag?: HandlerMsg<WithSound> };
     /** A terminal's screen as one node (backlog C20): `rows × cols` cells,
      *  four entries each in `cells` — codepoint, fg, bg (`0xRRGGBBAA`, 0 = no
      *  background), flags (1 bold, 2 italic, 4 underline, 8 strikethrough,

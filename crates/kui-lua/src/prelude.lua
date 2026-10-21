@@ -80,15 +80,21 @@ function radio_group(t)
 end
 
 -- slider { label = "Volume", value_now = v, value_min = 0, value_max = 100,
--- value_step = 5, on_change = "vol" }: the core turns the pointer and the
--- keys into {kind = "change", value, phase, tag} events; store `value` and
--- draw the slider at it.
+-- value_step = 5, on_change = { kind = "vol" } }: the core turns the pointer
+-- and the keys into that message with `change = { value, phase }` in it
+-- (ev.event == "change"); store `ev.change.value` and draw the slider at it.
+-- Without on_change the slider does not move.
 function slider(t)
   t.type = "slider"
   return t
 end
 
--- Single-line input with chrome: input { label = "name", initial = "" }
+-- Single-line input with chrome: input { label = "name", value = name,
+-- on_change = { kind = "name" }, on_submit = { kind = "go" }, on_cancel = ... }.
+-- `value` is the text, declared every frame (or `initial`, a seed for a new
+-- field); a change arrives as the on_change message with `change = { text }`
+-- in it, Enter and Escape as on_submit and on_cancel as declared. A handler
+-- left out still reports, as the field alone on its key.
 function input(t)
   t.type = "input"
   return t
@@ -97,18 +103,24 @@ end
 -- The stock select: dropdown { label = "language", options = { "English",
 -- "Deutsch", { label = "Latin", id = "la", enabled = false } }, current = 2 }.
 -- A field showing the choice in force that, clicked, opens the core's own
--- menu of the options under it; the choice arrives as the {kind = "menu"}
--- event a menu row posts, on the field's key, its `item` the option's label
--- or id. `current` counts from 1, as a Lua list does; nil for none. Named
--- `dropdown` here because `select` is Lua's own.
+-- menu of the options under it; the choice arrives as the `on_menu` message
+-- with `menu = { role, item }` in it (ev.event == "menu"), `item` the
+-- option's label or id -- or, with no on_menu, as `{ menu = ... }` on the
+-- field's key. `current` counts from 1, as a Lua list does; nil for none.
+-- Named `dropdown` here because `select` is Lua's own.
 function dropdown(t)
   t.type = "dropdown"
   return t
 end
 
--- Bare editor: edit { key = "note", initial = "", multiline = true,
--- autofocus = true, size = 14, ...spec props }. Read it back in view(env)
--- with env.edit_text(key) after a {kind = "changed"} event (ev.node_key).
+-- Bare editor: edit { key = "note", value = note, on_change = { kind = "note" },
+-- multiline = true, autofocus = true, size = 14, ...spec props }. An edit
+-- arrives as the on_change message with `change = { text }` in it, the whole
+-- text after it; store it and declare it back as `value`, which the editor
+-- is brought to wherever they differ. `initial` instead seeds a new editor
+-- that then keeps its own text (env.edit_text(key) reads it). on_submit,
+-- on_cancel and on_boundary report Enter, Escape and an edge; an editor
+-- that declares none of them hears nothing.
 function edit(t)
   t.type = "edit"
   return t
@@ -190,6 +202,8 @@ end
 -- key = "music" }: a playback retained by key while the view declares it
 -- (present = playing, gone = stopped; volume/paused apply live). Draws
 -- nothing. The host registers the sound and hands the id to the script.
+-- `tag` is the playback's message: its end arrives as that message with
+-- `sound = { phase, playback }` in it (ev.event == "sound").
 function audio(t)
   t.type = "audio"
   return t
@@ -211,7 +225,9 @@ end
 -- application menu (docs/adr/0018-a-menu-bar-the-app-declares.md). `menu`
 -- is what it is; where this sits is where its titles go when they have to
 -- be drawn in the window. Nothing is drawn where the platform owns the bar
--- (macOS), so a view writes it once and is portable.
+-- (macOS), so a view writes it once and is portable. A choice from it
+-- arrives as `on_menu = msg`, with `menu = { role, item }` in it (ADR
+-- 0048); a bar with no `on_menu` posts nothing.
 function menu_bar(t)
   t = t or {}
   t.type = "menu_bar"

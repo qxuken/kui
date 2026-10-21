@@ -32,6 +32,8 @@ typedef struct Keys {
     uint64_t image;    /* in: a registered image handle */
     uint64_t sound;    /* in: a registered sound handle */
     bool claim_focus;  /* in: declare the editor focused this frame */
+    const char *nick_value; /* in: the value the model holds for `nick` */
+    uint64_t nick;     /* out: the stock input with messages and a value */
     uint64_t card, slider, sink, editor, input, select, drag, child; /* out: node keys */
     uint64_t checkbox, gain; /* out: the stock controls' keys */
     uint64_t hitline, region; /* out: the selectable row, the focus region */
@@ -41,7 +43,12 @@ static void surface_view(void *user, KuiCtx *ui) {
     Keys *k = (Keys *)user;
 
     KuiSpec root = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}, .gap = 8};
-    kui_root(ui, &root);
+    /* The window's own events (ADR 0048): the held modifiers arrive as
+     * this message, borrowed for the call. */
+    KuiValue *mods = kui_value_str(KUI_STR("mods"));
+    KuiWindowEvents window_events = {.on_modifiers = mods};
+    kui_root_with(ui, &root, &window_events);
+    kui_value_free(mods);
     kui_window_title(ui, KUI_STR("surface"));
     kui_set_always_on_top(ui, true);
     kui_set_secure_input(ui, true);
@@ -70,9 +77,12 @@ static void surface_view(void *user, KuiCtx *ui) {
          .bg = 0x1b1e28ff, .radius = 10},
     };
     KuiValue *layout_tag = kui_value_str(KUI_STR("card"));
-    /* And a drop zone (ADR 0031): the tag every phase of a file drag over
+    /* And a drop zone (ADR 0031): the message every phase of a file drag over
      * the card carries, and the colour the card takes while it lasts. */
     KuiValue *drop_tag = kui_value_str(KUI_STR("files"));
+    /* And the message a menu opened on it posts its choice in (ADR 0047):
+     * without one a choice reaches nothing. */
+    KuiValue *menu_msg = kui_value_str(KUI_STR("card-menu"));
     KuiSpec card = {
         .dir = KUI_COLUMN, .gap = 8, .cross_align = KUI_START,
         .pad_l = 12, .pad_r = 12, .pad_t = 12, .pad_b = 12,
@@ -90,23 +100,30 @@ static void surface_view(void *user, KuiCtx *ui) {
         .role = KUI_ROLE_GROUP, .label = KUI_STR("surface card"),
         .focusable = 1, .focus_bg = 0x2b3350ff,
         .on_drop = drop_tag, .drop_bg = 0x2b4a50ff,
+        .on_menu = menu_msg,
     };
     k->card = kui_open_keyed(ui, KUI_STR("card"), &card, NULL);
     kui_value_free(layout_tag); /* on_layout is cloned, not adopted */
     kui_value_free(drop_tag);   /* and so is on_drop */
+    kui_value_free(menu_msg);   /* and on_menu */
     {
         k->child = kui_child_key(ui, KUI_STR("slot"));
 
-        /* A slider: declared role, value and range; the arrows nudge it. */
+        /* A slider: declared role, value and range; the arrows and
+         * assistive technology move it through its on_change, which is
+         * what makes it movable at all (ADR 0047). */
+        KuiValue *volume = kui_value_str(KUI_STR("volume"));
         KuiSpec slider = {
             .width = {KUI_FIXED, 160}, .height = {KUI_FIXED, 20},
             .bg = 0x2a2d3aff, .radius = 10,
             .role = KUI_ROLE_SLIDER, .label = KUI_STR("volume"),
             .value_set = KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX,
             .value_now = 40, .value_min = 0, .value_max = 100,
+            .on_change = volume,
         };
         k->slider = kui_open_keyed(ui, KUI_STR("slider"), &slider, NULL);
         kui_close(ui);
+        kui_value_free(volume);
 
         /* A checked switch that is also disabled: inert, and says so. */
         KuiSpec sw = {
@@ -149,6 +166,11 @@ static void surface_view(void *user, KuiCtx *ui) {
 
         /* Editors: the styled single-line widget and a raw multiline node. */
         k->input = kui_text_input(ui, KUI_STR("name"), KUI_STR("ada"));
+        /* And the stock input in messages of the app's own, holding a
+         * value (ADR 0047): `nick` is what the model says it is. */
+        k->nick = kui_text_input_with(ui, KUI_STR("nick"), KUI_STR(k->nick_value),
+                                      KUI_EDIT_VALUE, kui_value_str(KUI_STR("nick")),
+                                      kui_value_str(KUI_STR("save")), NULL);
         /* The stock select: the rows a context menu takes, the second in
          * force; the choice comes back as a menu event on this key. */
         KuiMenuItem langs[] = {
@@ -323,7 +345,7 @@ static int surface(void) {
         255, 0, 0, 255,   0, 255, 0, 255,
         0, 0, 255, 255,   255, 255, 255, 255,
     };
-    Keys k = {0};
+    Keys k = {.nick_value = "ada"};
     k.image = kui_image_add(ui, 2, 2, rgba);
     check(k.image != 0, "kui_image_add");
     k.sound = kui_sound_add(ui, junk, sizeof junk);
@@ -452,12 +474,19 @@ static int surface(void) {
     /* The key sink is focusable and takes focus like anything else, and a
      * host drives its raw keys directly: kui_input_key carries the editing
      * keys (KUI_KEY_*), kui_input_key_down / _up the whole keyboard. A held
-     * key on a sink with key_up set is one {kind="key"} payload twice,
-     * phase="down" then "up". */
+     * key on a sink with key_up set is the sink's message twice, its
+     * key.phase "down" then "up". */
     /* A node the host never got an event from is named by the label it was
      * opened under: kui_key_of walks the path from the root for it. */
     check(kui_key_of(ui, KUI_STR("sink")) == k.sink, "kui_key_of resolves a declared label");
     check(kui_key_of(ui, KUI_STR("no such node")) == 0, "kui_key_of is 0 for an undeclared one");
+    /* And back: kui_label_of turns the key into the label, and nothing for
+     * a key no frame declared. */
+    KuiStr label = {0};
+    check(kui_label_of(ui, k.sink, &label) && label.len == 4 && !memcmp(label.ptr, "sink", 4),
+          "kui_label_of answers the label the sink was opened under");
+    check(kui_key_of(ui, label) == k.sink, "and kui_key_of of that label is the key again");
+    check(!kui_label_of(ui, 0x1234, &label), "kui_label_of is false for an unknown key");
     /* A slot with nothing loaded under its namespace is a placed, empty
      * node; kept, replayed and read back the same (ADR 0045): nothing
      * filled it, so nothing was kept, and the replay says so. */
@@ -503,8 +532,8 @@ static int surface(void) {
     kui_input_press(ui, KUI_STR("w"), same_key, 0, no_text, false);
     kui_input_release(ui, KUI_STR("w"), same_key, 0);
     /* An IME on a sink: the composition and its commit arrive as data
-     * ({kind="preedit"} then {kind="text"}), where kui_input_text would have
-     * reached no sink at all. */
+     * (preedit={...} then text={...} in the sink's message), where
+     * kui_input_text would have reached no sink at all. */
     kui_input_preedit(ui, KUI_STR("日本"), 0, 6);
     kui_input_commit(ui, KUI_STR("日本語"));
 
@@ -521,15 +550,21 @@ static int surface(void) {
     kui_edit_set_text(ui, k.editor, KUI_STR("replaced"));
     check(kui_edit_text(ui, k.editor, &text) && has(text, "replaced"), "kui_edit_set_text");
     check(kui_edit_text(ui, k.input, &text) && text.len == 3, "the text input kept \"ada\"");
+    check(k.nick && kui_edit_text(ui, k.nick, &text) && kui_str_eq(text, "ada"),
+          "kui_text_input_with holds the value the model declares");
 
     /* A third frame: re-lays out the edited text, and picks up the focus the
      * view declares (kui_set_key_focus is edge-triggered, so it lands once). */
     k.claim_focus = true;
+    /* The model moves `nick`, and the field is brought to it. */
+    k.nick_value = "grace";
     kui_set_time(ui, 0.2);
     kui_frame_begin(ui, 800, 600, 2.0f);
     surface_view(&k, ui);
     kui_frame_finish(ui);
     check(kui_focused(ui) == k.editor, "the view declared the focus");
+    check(kui_edit_text(ui, k.nick, &text) && kui_str_eq(text, "grace"),
+          "a value the model moved moves the field");
 
     /* Accessibility: the tree, an editor's runs, and requests coming back. */
     KuiAccessNode nodes[64];
@@ -660,39 +695,45 @@ static int surface(void) {
         check(old_host.size == (uint32_t)offsetof(KuiEvent, window),
               "`size` comes back as the prefix that was filled");
         check(old_host.window == 0xdead, "nothing was written past that prefix");
-        KuiStr kind;
-        const KuiValue *k = old_host.payload
-            ? kui_value_get(old_host.payload, KUI_STR("kind")) : NULL;
-        check(k && kui_value_as_str(k, &kind) && kind.len == 6
-                  && memcmp(kind.ptr, "layout", 6) == 0,
+        /* `event` is ABI 33's, past the prefix too: an old host reads what
+         * happened off the field the data rides under. */
+        check(old_host.event.len == 0, "nor was `event`, appended after it");
+        check(old_host.payload && kui_value_get(old_host.payload, KUI_STR("layout")),
               "the fields it knows are filled, and this is the first on_layout");
     }
 
     /* Everything above lands as data. */
     KuiEvent ev = KUI_EVENT_INIT;
-    int events = 0, layouts = 0, access = 0, downs = 0, ups = 0;
+    int events = 0, layouts = 0, nudges = 0, downs = 0, ups = 0;
     int latin = 0, physical = 0, preedits = 0, commits = 0;
-    int drops = 0, drop_paths = 0;
+    int drops = 0, drop_paths = 0, held = 0;
     while (kui_poll_event(ui, &ev)) {
         events++;
         check(ev.size == sizeof ev, "a current host is filled all the way");
         check(ev.window == KUI_WINDOW_MAIN, "one window, so every event is from it");
+        check(ev.event.len > 0, "every event says what happened");
         if (!ev.payload) continue;
-        const KuiValue *kind = kui_value_get(ev.payload, KUI_STR("kind"));
-        KuiStr s;
-        if (!kind || !kui_value_as_str(kind, &s)) continue;
-        if (s.len == 6 && memcmp(s.ptr, "layout", 6) == 0) layouts++;
-        if (s.len == 6 && memcmp(s.ptr, "access", 6) == 0) access++;
-        if (s.len == 7 && memcmp(s.ptr, "preedit", 7) == 0) preedits++;
-        if (s.len == 4 && memcmp(s.ptr, "text", 4) == 0) commits++;
-        if (s.len == 4 && memcmp(s.ptr, "drop", 4) == 0) {
+        /* What happened is on the envelope; its data under the field of
+         * that name, in the message the node declared (ADR 0047). */
+        const KuiValue *data = ev_data(&ev);
+        KuiStr msg = {0};
+        ev_message(&ev, &msg);
+        if (ev_is(&ev, "layout")) layouts++;
+        if (ev_is(&ev, "change") && kui_str_eq(msg, "volume")) nudges++;
+        if (ev_is(&ev, "preedit")) preedits++;
+        if (ev_is(&ev, "text")) commits++;
+        if (ev_is(&ev, "modifiers") && kui_str_eq(msg, "mods")) {
+            bool shift = false;
+            if (kui_value_as_bool(kui_value_get(data, KUI_STR("shift")), &shift) && shift) held++;
+        }
+        if (ev_is(&ev, "drop")) {
             drops++;
-            const KuiValue *paths = kui_value_get(ev.payload, KUI_STR("paths"));
+            const KuiValue *paths = kui_value_get(data, KUI_STR("paths"));
             if (paths && kui_value_len(paths) == 2) drop_paths++;
         }
-        if (s.len == 3 && memcmp(s.ptr, "key", 3) == 0) {
+        if (ev_is(&ev, "key")) {
             KuiStr phase;
-            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
+            const KuiValue *p = kui_value_get(data, KUI_STR("phase"));
             if (!p || !kui_value_as_str(p, &phase)) continue;
             if (phase.len == 4 && memcmp(phase.ptr, "down", 4) == 0) downs++;
             if (phase.len == 2 && memcmp(phase.ptr, "up", 2) == 0) ups++;
@@ -700,16 +741,16 @@ static int surface(void) {
              * a keymap written in ASCII matches every key event here - and
              * `physical` rode along beside it. */
             KuiStr c;
-            const KuiValue *code = kui_value_get(ev.payload, KUI_STR("code"));
+            const KuiValue *code = kui_value_get(data, KUI_STR("code"));
             if (code && kui_value_as_str(code, &c) && c.len == 1
                 && c.ptr[0] < 0x80)
                 latin++;
-            if (kui_value_get(ev.payload, KUI_STR("physical"))) physical++;
+            if (kui_value_get(data, KUI_STR("physical"))) physical++;
         }
     }
     check(events > 0, "the inputs produced events");
     check(layouts > 0, "on_layout reported the card's rect");
-    check(access > 0, "the slider nudge arrived as an access event");
+    check(nudges > 0, "the slider's increment arrived as its change");
     /* Four presses through kui_input_key_down (w, its repeat, the Cyrillic
      * w, ctrl-a) and a release for each of the three distinct holds — the
      * last synthesized by letting go — plus the whole-key pair that
@@ -725,6 +766,7 @@ static int surface(void) {
     /* enter, move, leave, enter, drop (no leave after it), enter, leave. */
     check(drops == 7, "every phase of the file drag landed as data");
     check(drop_paths == drops, "each carrying both paths");
+    check(held == 1, "kui_root_with: the modifiers arrived as the root's on_modifiers");
 
     /* Values round-trip, including the ones the counter never builds. */
     KuiValue *map = kui_value_map();
@@ -750,7 +792,8 @@ static int surface(void) {
     /* Declared windows (docs/adr/0004-multi-window.md): a frame that names
      * one gets a KUI_CMD_OPEN back from the same drain the chrome commands
      * use, carrying the id its events will say and the config it was
-     * declared with; the app hears about it as data. Reporting the OS
+     * declared with; the app hears about it as the on_window message
+     * kui_window_declare_with gave it (ADR 0048). Reporting the OS
      * close keeps it closed while it is still declared - a declaration
      * reopens a window only when it starts - and the drain's size
      * handshake refuses a reservation it cannot fill, leaving the command
@@ -764,7 +807,8 @@ static int surface(void) {
         cfg.width = 400;
         cfg.height = 300;
         kui_frame_begin(ui, 320, 240, 1);
-        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg,
+                                kui_value_str(KUI_STR("palette")), NULL);
         kui_frame_finish(ui);
         KuiWindowCommand shortcmd = KUI_WINDOW_COMMAND_INIT;
         shortcmd.size = 4;
@@ -780,10 +824,10 @@ static int surface(void) {
         int opened = 0, closed = 0;
         KuiEvent wev = KUI_EVENT_INIT;
         while (kui_poll_event(ui, &wev)) {
-            const KuiValue *kind = wev.payload ? kui_value_get(wev.payload, KUI_STR("kind")) : NULL;
-            const KuiValue *phase = wev.payload ? kui_value_get(wev.payload, KUI_STR("phase")) : NULL;
-            KuiStr ks, ps;
-            if (!kind || !kui_value_as_str(kind, &ks) || ks.len != 6 || memcmp(ks.ptr, "window", 6)) continue;
+            const KuiValue *phase = kui_value_get(ev_data(&wev), KUI_STR("phase"));
+            KuiStr ps, msg;
+            if (!ev_is(&wev, "window")) continue;
+            if (!ev_message(&wev, &msg) || !kui_str_eq(msg, "palette")) continue;
             if (!phase || !kui_value_as_str(phase, &ps)) continue;
             if (ps.len == 6 && memcmp(ps.ptr, "opened", 6) == 0) opened++;
             if (ps.len == 6 && memcmp(ps.ptr, "closed", 6) == 0) closed++;
@@ -791,11 +835,12 @@ static int surface(void) {
         check(opened == 1 && closed == 0, "the app hears the window open");
         kui_window_closed(ui, 1);
         kui_frame_begin(ui, 320, 240, 1);
-        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg,
+                                kui_value_str(KUI_STR("palette")), NULL);
         kui_frame_finish(ui);
         check(!kui_take_window_command(ui, &cmd), "a closed window still declared does not reopen");
         while (kui_poll_event(ui, &wev)) {
-            const KuiValue *phase = wev.payload ? kui_value_get(wev.payload, KUI_STR("phase")) : NULL;
+            const KuiValue *phase = kui_value_get(ev_data(&wev), KUI_STR("phase"));
             KuiStr ps;
             if (phase && kui_value_as_str(phase, &ps) && ps.len == 6 && memcmp(ps.ptr, "closed", 6) == 0) closed++;
         }
@@ -849,6 +894,14 @@ static int surface(void) {
         kui_frame_begin(ui, 320, 240, 1);
         check(kui_menu_bar(ui, menus, 1), "kui_menu_bar declares and draws");
         kui_frame_finish(ui);
+        check(kui_activate_menu_bar_item(ui, 0, 0) == false,
+              "a bar declared without a message posts nothing for a choice");
+        /* The same bar with the message its choices arrive as (ADR 0048). */
+        KuiValue *chose = kui_value_map();
+        kui_value_map_set(chose, KUI_STR("kind"), kui_value_str(KUI_STR("chose")));
+        kui_frame_begin(ui, 320, 240, 1);
+        check(kui_menu_bar_with(ui, menus, 1, chose), "kui_menu_bar_with declares and draws");
+        kui_frame_finish(ui);
         kui_value_free(save);
 
         uint64_t rev = 0;
@@ -898,10 +951,11 @@ static int surface(void) {
         KuiEvent mev = KUI_EVENT_INIT;
         int menus_heard = 0, names_heard = 0;
         while (kui_poll_event(ui, &mev)) {
-            const KuiValue *kind = kui_value_get(mev.payload, KUI_STR("kind"));
-            const KuiValue *item = kui_value_get(mev.payload, KUI_STR("item"));
-            KuiStr s = {0};
-            if (kind && kui_value_as_str(kind, &s) && has(s, "menu")) menus_heard++;
+            /* The bar's choice is its on_menu, with menu:{role, item}. */
+            const KuiValue *item = kui_value_get(ev_data(&mev), KUI_STR("item"));
+            KuiStr s = {0}, msg = {0};
+            if (ev_is(&mev, "menu") && ev_message(&mev, &msg) && kui_str_eq(msg, "chose"))
+                menus_heard++;
             if (item && kui_value_as_str(item, &s) && has(s, "Name")) names_heard++;
         }
         check(menus_heard == 2, "and the app hears a menu event for each");
@@ -1095,11 +1149,12 @@ static int surface(void) {
         int files = 0;
         KuiEvent fev = KUI_EVENT_INIT;
         while (kui_poll_event(ui, &fev)) {
-            const KuiValue *kind = fev.payload ? kui_value_get(fev.payload, KUI_STR("kind")) : NULL;
-            const KuiValue *paths = fev.payload ? kui_value_get(fev.payload, KUI_STR("paths")) : NULL;
+            /* The asker's message - a string, so kept under `tag` - with
+             * files:{paths} beside it. */
+            const KuiValue *paths = kui_value_get(ev_data(&fev), KUI_STR("paths"));
             const KuiValue *tag = fev.payload ? kui_value_get(fev.payload, KUI_STR("tag")) : NULL;
-            KuiStr ks, ts;
-            if (kind && kui_value_as_str(kind, &ks) && ks.len == 5 && memcmp(ks.ptr, "files", 5) == 0
+            KuiStr ts;
+            if (ev_is(&fev, "files")
                 && paths && kui_value_len(paths) == 1 && tag && kui_value_as_str(tag, &ts)
                 && ts.len == 4) {
                 files++;
@@ -1109,17 +1164,31 @@ static int surface(void) {
     }
 
     /* Documents the OS asked the app to open (backlog F124): nobody asked,
-     * and the host hears them on the root; none is nothing. */
+     * and they arrive as the main window's on_open (ADR 0048); none is
+     * nothing, and neither is a root that declares no on_open. */
     {
         KuiStr docs[] = { KUI_STR("/tmp/a.txt"), KUI_STR("/tmp/b.md") };
+        KuiEvent oev = KUI_EVENT_INIT;
+        KuiSpec plain = {0};
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_root_with(ui, &plain, NULL);
+        kui_frame_finish(ui);
+        while (kui_poll_event(ui, &oev)) {}
+        kui_input_open(ui, docs, 2);
+        check(!kui_poll_event(ui, &oev), "kui_root_with: no on_open, no event");
+        KuiValue *docs_msg = kui_value_map();
+        kui_value_map_set(docs_msg, KUI_STR("kind"), kui_value_str(KUI_STR("docs")));
+        KuiWindowEvents we = {.on_open = docs_msg};
+        kui_frame_begin(ui, 320, 240, 1);
+        kui_root_with(ui, &plain, &we);
+        kui_frame_finish(ui);
+        kui_value_free(docs_msg);
         kui_input_open(ui, docs, 2);
         int opened = 0;
-        KuiEvent oev = KUI_EVENT_INIT;
         while (kui_poll_event(ui, &oev)) {
-            const KuiValue *kind = oev.payload ? kui_value_get(oev.payload, KUI_STR("kind")) : NULL;
-            const KuiValue *paths = oev.payload ? kui_value_get(oev.payload, KUI_STR("paths")) : NULL;
-            KuiStr ks, second;
-            if (kind && kui_value_as_str(kind, &ks) && ks.len == 4 && memcmp(ks.ptr, "open", 4) == 0
+            const KuiValue *paths = kui_value_get(ev_data(&oev), KUI_STR("paths"));
+            KuiStr second, msg;
+            if (ev_is(&oev, "open") && ev_message(&oev, &msg) && kui_str_eq(msg, "docs")
                 && paths && kui_value_len(paths) == 2
                 && kui_value_as_str(kui_value_at(paths, 1), &second) && second.len == 9
                 && memcmp(second.ptr, "/tmp/b.md", 9) == 0) {
@@ -1233,11 +1302,13 @@ static int surface(void) {
         KuiEvent mev = KUI_EVENT_INIT;
         int chosen = 0;
         while (kui_poll_event(ui, &mev)) {
-            const KuiValue *kind = mev.payload ? kui_value_get(mev.payload, KUI_STR("kind")) : NULL;
-            KuiStr ks = {0};
-            if (kind && kui_value_as_str(kind, &ks) && has(ks, "menu") && mev.key == k.card) chosen++;
+            /* The card's on_menu message, a string, with menu:{role, item}. */
+            KuiStr msg = {0};
+            if (ev_is(&mev, "menu") && ev_message(&mev, &msg) && kui_str_eq(msg, "card-menu")
+                && kui_value_get(mev.payload, KUI_STR("menu")) && mev.key == k.card)
+                chosen++;
         }
-        check(chosen == 1, "and the app heard it on the node");
+        check(chosen == 1, "and the app heard it on the node, in its on_menu");
         check(kui_open_menu(ui, k.card, 0, 0, rows, 3) && kui_close_menu(ui), "kui_close_menu");
         check(!kui_close_menu(ui), "false when nothing was open");
         check(!kui_open_menu(ui, 0, 0, 0, rows, 3), "a key of 0 opens nothing");
@@ -1285,6 +1356,7 @@ static int surface(void) {
         float narrow_w = 0, open_h = 0, sort_w = 0, sort_h = 0;
         MENU_ROW("Open", narrow_w, open_h);
         MENU_ROW("Sort by", sort_w, sort_h);
+        (void)sort_h;
         check(narrow_w > 0 && narrow_w == sort_w, "every row as wide as the menu");
         KuiStr label = {0}, accel = {0};
         uint32_t role = 99, flags = 0;
@@ -1310,7 +1382,8 @@ static int surface(void) {
         KuiEvent mev = KUI_EVENT_INIT;
         int named = 0;
         while (kui_poll_event(ui, &mev)) {
-            const KuiValue *item = mev.payload ? kui_value_get(mev.payload, KUI_STR("item")) : NULL;
+            /* menu:{role, item} in the card's on_menu message. */
+            const KuiValue *item = ev_is(&mev, "menu") ? kui_value_get(ev_data(&mev), KUI_STR("item")) : NULL;
             KuiStr s = {0};
             if (item && kui_value_as_str(item, &s) && has(s, "Name") && mev.key == k.card) named++;
         }

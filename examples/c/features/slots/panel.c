@@ -229,6 +229,7 @@ void kui_ext_on_event(void *user, const KuiEvent *ev) {
         }
         p->count = kept;
     }
-    /* {kind="changed"} from the filter editor lands here too, and needs
-     * nothing: view() reads the editor's text back every frame. */
+    /* The filter field's edits land here too, as {change:{text}} - the
+     * stock input's message is null, so the field alone and no kind - and
+     * need nothing: view() reads the editor's text back every frame. */
 }

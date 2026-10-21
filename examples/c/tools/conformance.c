@@ -340,7 +340,7 @@ static void conf_table(KuiCtx *ui, const Fixtures *f, int phase) {
     for (int i = 0; i < 3; i++) {
         KuiSpec row = {.dir = KUI_ROW, .gap = 6, .width = {KUI_GROW, 1}};
         kui_open(ui, &row, NULL);
-        kui_text(ui, (KuiStr){labels[i], strlen(labels[i])}, &style);
+        kui_text(ui, (KuiStr){(const uint8_t *)labels[i], strlen(labels[i])}, &style);
         KuiSpec fixed = {.width = {KUI_FIXED, rows[i][0]},
                          .height = {KUI_FIXED, rows[i][1]},
                          .bg = 0x30344aff};
@@ -1427,8 +1427,37 @@ static void conf_ime(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
     kui_close(ui);
     KuiTextStyle s13 = {.size = 13};
-    KuiSpec note = {.width = {KUI_FIXED, 200}, .label = KUI_STR("Note")};
+    /* The stock editor reports its edits in a message it declares
+     * (ADR 0047): {kind:"note", change:{text}}. */
+    KuiValue *note_msg = kui_value_map();
+    kui_value_map_set(note_msg, KUI_STR("kind"), kui_value_str(KUI_STR("note")));
+    KuiSpec note = {.width = {KUI_FIXED, 200}, .label = KUI_STR("Note"), .on_change = note_msg};
     kui_text_edit(ui, KUI_STR("note"), KUI_STR(""), &s13, 0, &note);
+    kui_value_free(note_msg);
+    kui_close(ui);
+}
+
+/* conformance::build_edit_rows: one stock editor held to the value "AB"
+ * (KUI_EDIT_VALUE), a message per handler row (ADR 0047, decision 7), and
+ * on_menu hearing the stock editing menu's choice. */
+static void conf_edit_rows(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
+    kui_open(ui, &outer, NULL);
+    KuiValue *change = conf_kind("title"), *submit = conf_kind("save"),
+             *cancel = conf_kind("revert"), *boundary = conf_kind("edge"),
+             *menu = conf_kind("edit");
+    KuiSpec title = {.width = {KUI_FIXED, 200}, .label = KUI_STR("Title"),
+                     .on_change = change, .on_submit = submit, .on_cancel = cancel,
+                     .on_boundary = boundary, .on_menu = menu};
+    KuiTextStyle s13 = {.size = 13};
+    kui_text_edit(ui, KUI_STR("title"), KUI_STR("AB"), &s13, KUI_EDIT_VALUE, &title);
+    kui_value_free(change);
+    kui_value_free(submit);
+    kui_value_free(cancel);
+    kui_value_free(boundary);
+    kui_value_free(menu);
     kui_close(ui);
 }
 
@@ -1739,17 +1768,20 @@ typedef struct ConfScene {
 
 /* conformance::build_windows: the declaration comes and goes with the
  * phase; the tree only says which. Phase 0 declares `palette` twice,
- * disagreeing about the size, so the first wins and the second warns. */
+ * disagreeing about the size, so the first wins and the second warns.
+ * Each declaration names the message its opening and closing arrive as
+ * (kui_window_declare_with, ADR 0048), consumed by the call. */
 static void conf_windows(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     KuiWindowConfig cfg = KUI_WINDOW_CONFIG_INIT;
     cfg.width = 400;
     cfg.height = 300;
-    if (phase == 0 || phase == 2) kui_window_declare(ui, KUI_STR("palette"), &cfg);
+    if (phase == 0 || phase == 2)
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg, conf_kind("palette"), NULL);
     if (phase == 0) {
         cfg.width = 500;
         cfg.height = 500;
-        kui_window_declare(ui, KUI_STR("palette"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("palette"), &cfg, conf_kind("palette"), NULL);
     }
     KuiSpec box = {0};
     box.pad_l = box.pad_r = box.pad_t = box.pad_b = 8;
@@ -1762,7 +1794,8 @@ static void conf_windows(KuiCtx *ui, const Fixtures *f, int phase) {
 }
 
 /* conformance::build_popup: one declaration, with the kind and the anchor
- * a menu carries (ADR 0004 decision 9). The dismissals are steps, not
+ * a menu carries (ADR 0004 decision 9), and one message for its opening,
+ * closing and dismissal alike (ADR 0048). The dismissals are steps, not
  * anything the tree says. */
 static void conf_popup(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
@@ -1774,7 +1807,7 @@ static void conf_popup(KuiCtx *ui, const Fixtures *f, int phase) {
         cfg.anchor_y = 40;
         cfg.anchor_w = 160;
         cfg.anchor_h = 24;
-        kui_window_declare(ui, KUI_STR("menu"), &cfg);
+        kui_window_declare_with(ui, KUI_STR("menu"), &cfg, conf_kind("popup"), conf_kind("popup"));
     }
     KuiSpec box = {0};
     box.pad_l = box.pad_r = box.pad_t = box.pad_b = 8;
@@ -1988,6 +2021,37 @@ static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_selection_range: the virtual scene's list, selectable,
+ * a line of text in each built row, and the message the copy's ask arrives
+ * as (ADR 0047's on_selection_range). */
+static void conf_selection_range(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiValue *rows = conf_kind("rows");
+    KuiSpec list = {.width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 60},
+                    .gap = 0, .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
+                    .selectable = 1, .on_selection_range = rows};
+    kui_open_keyed(ui, KUI_STR("list"), &list, NULL);
+    kui_value_free(rows);
+    kui_row_count(ui, 109);
+    KuiSpec lead = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 20}};
+    kui_open_keyed(ui, KUI_STR("lead"), &lead, NULL);
+    kui_close(ui);
+    KuiTextStyle s13 = {.size = 13};
+    for (uint64_t i = 100; i < 103; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "row %llu", (unsigned long long)i);
+        KuiSpec row = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 20}};
+        kui_open_indexed(ui, i, &row, NULL);
+        kui_text(ui, KUI_STR(name), &s13);
+        kui_close(ui);
+    }
+    KuiSpec tail = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 100}};
+    kui_open_keyed(ui, KUI_STR("tail"), &tail, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* conformance::LAYERS_ROWS: enough rows to overflow the viewport, so the
  * page has a bar for the popover to cover. */
 #define CONF_LAYERS_ROWS 16
@@ -2043,6 +2107,12 @@ static void conf_layers(KuiCtx *ui, const Fixtures *f, int phase) {
  * borrowed for the open call, like `modal`. */
 static void conf_drop(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
+    /* The OS's documents are the window's, declared on its root (ADR
+     * 0048). A NULL spec leaves the root as the frame began it. */
+    KuiValue *docs = conf_kind("docs");
+    KuiWindowEvents events = {.on_open = docs};
+    kui_root_with(ui, NULL, &events);
+    kui_value_free(docs);
     KuiSpec outer = {.dir = KUI_ROW, .width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
     kui_open(ui, &outer, NULL);
     KuiValue *files = kui_value_map();
@@ -2223,8 +2293,10 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
 }
 
 /* conformance::build_select: the stock select over four rows, the fourth
- * posting an id and disabled, the second in force. The rows are the
- * KuiMenuItems a context menu takes; `id` is borrowed for the call. */
+ * posting an id and disabled, the second in force, the choice arriving as
+ * its on_menu message (kui_select_with, ADR 0047). The rows are the
+ * KuiMenuItems a context menu takes; `id` is borrowed for the call, the
+ * message consumed by it. */
 static void conf_select(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -2237,7 +2309,7 @@ static void conf_select(KuiCtx *ui, const Fixtures *f, int phase) {
     };
     KuiSpec outer = {.pad_l = 10, .pad_r = 10, .pad_t = 10, .pad_b = 10, .gap = 6};
     kui_open(ui, &outer, NULL);
-    kui_select(ui, KUI_STR("language"), langs, 4, 1);
+    kui_select_with(ui, KUI_STR("language"), langs, 4, 1, conf_kind("lang"));
     kui_value_free(la);
     KuiTextStyle body = {.size = 12};
     kui_text(ui, KUI_STR("body"), &body);
@@ -2281,6 +2353,46 @@ static void conf_menu_bar(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_window_events (ADR 0048): the root declares every
+ * key of its window's group, each as {kind: <k>}, borrowed for the call,
+ * and the menu bar declares the message its choice arrives as. */
+static void conf_window_events(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiValue *resized = conf_kind("resized"), *focus = conf_kind("focus");
+    KuiValue *settings = conf_kind("settings"), *fonts = conf_kind("fonts");
+    KuiValue *mods = conf_kind("mods"), *docs = conf_kind("docs");
+    KuiWindowEvents events = {
+        .on_resize = resized,
+        .on_focus = focus,
+        .on_system_settings_change = settings,
+        .on_fonts = fonts,
+        .on_modifiers = mods,
+        .on_open = docs,
+    };
+    kui_root_with(ui, NULL, &events);
+    kui_value_free(resized);
+    kui_value_free(focus);
+    kui_value_free(settings);
+    kui_value_free(fonts);
+    kui_value_free(mods);
+    kui_value_free(docs);
+    KuiValue *new_id = kui_value_str(KUI_STR("file.new"));
+    KuiMenuItem file[] = {
+        {.label = KUI_STR("New"), .role = KUI_MENU_CUSTOM, .enabled = 1, .id = new_id},
+    };
+    KuiMenu menus[] = {
+        {.label = KUI_STR("File"), .items = file, .count = 1, .enabled = 1},
+    };
+    KuiSpec outer = {.gap = 6, .width = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    kui_menu_bar_with(ui, menus, 1, conf_kind("chose"));
+    kui_value_free(new_id);
+    KuiTextStyle body = {.size = 12};
+    kui_text(ui, KUI_STR("body"), &body);
+    kui_close(ui);
+}
+
 /* One entry per scene of conformance::SCENES; a scene in the reference with
  * no entry here fails the run rather than being skipped. */
 static const ConfScene CONF_SCENES[] = {
@@ -2310,6 +2422,7 @@ static const ConfScene CONF_SCENES[] = {
     /* The paste scene's tree is the ime scene's: two editors, a paste's
      * markers heard by one and ignored by the other (backlog F84). */
     {"paste", conf_ime},
+    {"edit-rows", conf_edit_rows},
     {"cells", conf_cells},
     {"underlines", conf_underlines},
     {"joined-backgrounds", conf_joined_backgrounds},
@@ -2342,6 +2455,7 @@ static const ConfScene CONF_SCENES[] = {
     {"menu", conf_selection},
     {"menubar", conf_menu_bar},
     {"virtual", conf_virtual},
+    {"selection-range", conf_selection_range},
     {"layers", conf_layers},
     {"drop", conf_drop},
     {"anchor", conf_anchor},
@@ -2349,6 +2463,7 @@ static const ConfScene CONF_SCENES[] = {
     {"tokens", conf_tokens},
     {"sampler", conf_sampler},
     {"caret-in-text", conf_caret_in_text},
+    {"window-events", conf_window_events},
 };
 
 /* -- driving one scene --------------------------------------------------- */
@@ -2455,6 +2570,13 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
        what a Shift-press reads (ADR 0029). */
     else if (strcmp(s->kind, "modifiers") == 0) kui_input_modifiers(ctx, (uint32_t)s->a);
     else if (strcmp(s->kind, "escape") == 0) kui_input_key(ctx, KUI_KEY_ESCAPE, 0);
+    else if (strcmp(s->kind, "enter") == 0) kui_input_key(ctx, KUI_KEY_ENTER, 0);
+    /* The app asking for the selection as text, as Cmd/Ctrl-C does: past a
+     * virtual list's built rows the core asks back with selectionrange. */
+    else if (strcmp(s->kind, "copy") == 0) {
+        KuiStr text;
+        kui_request_copy(ctx, &text);
+    }
     /* conformance::ARROWS order: left, right, up, down - which is
      * KUI_KEY_LEFT..KUI_KEY_DOWN, so the index is the key. */
     else if (strcmp(s->kind, "arrow") == 0) kui_input_key(ctx, KUI_KEY_LEFT + (uint32_t)s->a, 0);
@@ -2540,75 +2662,89 @@ static void conf_apply(KuiCtx *ctx, const ConfStep *s) {
     }
 }
 
+/* A string field of the event's data, or `fallback`. */
+static KuiStr conf_str(const KuiValue *data, const char *key, KuiStr fallback) {
+    const KuiValue *v = data ? kui_value_get(data, (KuiStr){(const uint8_t *)key, strlen(key)}) : NULL;
+    KuiStr out;
+    return v && kui_value_as_str(v, &out) ? out : fallback;
+}
+
+/* Prints `s` as Rust's `{:?}` prints a str, which is how the reference
+ * quotes an editor's text: the corpus types ASCII, so the escapes that
+ * matter are the quote, the backslash and the control characters. */
+static void conf_debug_str(Rep *r, KuiStr s) {
+    repf(r, "\"");
+    for (size_t i = 0; i < s.len; i++) {
+        uint8_t c = s.ptr[i];
+        if (c == '"') repf(r, "\\\"");
+        else if (c == '\\') repf(r, "\\\\");
+        else if (c == '\n') repf(r, "\\n");
+        else if (c == '\t') repf(r, "\\t");
+        else if (c == '\r') repf(r, "\\r");
+        else if (c < 0x20) repf(r, "\\u{%x}", c);
+        else repf(r, "%c", c);
+    }
+    repf(r, "\"");
+}
+
 /* Drains the queue into `events`; payloads are borrowed until the next
- * poll, so each is formatted before the next call. */
+ * poll, so each is formatted before the next call. The row is
+ * conformance::event_row's: the envelope's event, then the message's
+ * name - a bare string message, its `kind`, else its `tag` - falling back
+ * to the data's `phase` or `reason`, then the extras some events carry,
+ * all read from the event's data (ADR 0047). A named window or dismiss
+ * event adds the edge it is, since one message carries every edge (ADR
+ * 0048). */
 static void conf_drain(KuiCtx *ctx, Rep *events) {
     KuiEvent ev = KUI_EVENT_INIT;
     while (kui_poll_event(ctx, &ev)) {
-        KuiStr kind = KUI_STR("-"), tag = KUI_STR("-");
-        const KuiValue *k = ev.payload ? kui_value_get(ev.payload, KUI_STR("kind")) : NULL;
-        if (k) kui_value_as_str(k, &kind);
-        const KuiValue *t = ev.payload ? kui_value_get(ev.payload, KUI_STR("tag")) : NULL;
-        const KuiValue *tk = t ? kui_value_get(t, KUI_STR("kind")) : NULL;
-        /* The tag column, or - for the two window-level events, which have
-         * none - the field that tells one from its siblings
-         * (conformance::event_row). */
-        if (!tk && ev.payload) {
-            tk = kui_value_get(ev.payload, KUI_STR("phase"));
-            if (!tk) tk = kui_value_get(ev.payload, KUI_STR("reason"));
-        }
-        if (tk) kui_value_as_str(tk, &tag);
+        KuiStr kind = ev.event.len ? ev.event : KUI_STR("-");
+        const KuiValue *data = ev_data(&ev);
+        KuiStr tag = KUI_STR("-");
+        bool named = ev_message(&ev, &tag);
+        KuiStr edge = conf_str(data, "phase", KUI_STR("-"));
+        if (kui_str_eq(edge, "-")) edge = conf_str(data, "reason", KUI_STR("-"));
+        if (!named) tag = edge;
         repf(events, "event %.*s %.*s", (int)kind.len, kind.ptr, (int)tag.len, tag.ptr);
+        if (named && (ev_is(&ev, "window") || ev_is(&ev, "dismiss")))
+            repf(events, " %.*s", (int)edge.len, edge.ptr);
+        /* A slider's change carries its phase and the value the core
+         * worked out (docs/adr/0034); the corpus steps land on whole
+         * values, which kui_value_as_int truncates to as the reference's
+         * cast does. An editor's carries its whole text instead, quoted
+         * (ADR 0047). */
+        if (ev_is(&ev, "change")) {
+            const KuiValue *text = data ? kui_value_get(data, KUI_STR("text")) : NULL;
+            KuiStr t;
+            if (text && kui_value_as_str(text, &t)) {
+                repf(events, " ");
+                conf_debug_str(events, t);
+            } else {
+                KuiStr phase = conf_str(data, "phase", KUI_STR("-"));
+                int64_t v = 0;
+                const KuiValue *vv = data ? kui_value_get(data, KUI_STR("value")) : NULL;
+                if (vv) kui_value_as_int(vv, &v);
+                repf(events, " %.*s %lld", (int)phase.len, phase.ptr, (long long)v);
+            }
+        }
         /* A drag's phase and deltas ride in the tag column: dx/dy are the
          * displacement from the press point in every phase, and the corpus
          * steps are integers, so they print exactly (kui_value_as_int
          * truncates a float the way the reference's cast does). */
-        /* A slider's change carries its phase and the value the core
-         * worked out (docs/adr/0034); the corpus steps land on whole
-         * values, which kui_value_as_int truncates to as the reference's
-         * cast does. */
-        if (kind.len == 6 && memcmp(kind.ptr, "change", 6) == 0) {
-            KuiStr phase = KUI_STR("-");
-            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
-            if (p) kui_value_as_str(p, &phase);
-            int64_t v = 0;
-            const KuiValue *vv = kui_value_get(ev.payload, KUI_STR("value"));
-            if (vv) kui_value_as_int(vv, &v);
-            repf(events, " %.*s %lld", (int)phase.len, phase.ptr, (long long)v);
-        }
-        if (kind.len == 4 && memcmp(kind.ptr, "drag", 4) == 0) {
-            KuiStr phase = KUI_STR("-");
-            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
-            if (p) kui_value_as_str(p, &phase);
+        if (ev_is(&ev, "drag")) {
+            KuiStr phase = conf_str(data, "phase", KUI_STR("-"));
             int64_t dx = 0, dy = 0;
-            const KuiValue *vx = kui_value_get(ev.payload, KUI_STR("dx"));
-            const KuiValue *vy = kui_value_get(ev.payload, KUI_STR("dy"));
+            const KuiValue *vx = data ? kui_value_get(data, KUI_STR("dx")) : NULL;
+            const KuiValue *vy = data ? kui_value_get(data, KUI_STR("dy")) : NULL;
             if (vx) kui_value_as_int(vx, &dx);
             if (vy) kui_value_as_int(vy, &dy);
             repf(events, " %.*s %lld %lld", (int)phase.len, phase.ptr, (long long)dx, (long long)dy);
         }
-        /* A key from one of a key's twins says which, with its phase and
-         * code (backlog F108); a standard key prints as it did. */
-        if (kind.len == 3 && memcmp(kind.ptr, "key", 3) == 0) {
-            KuiStr loc = KUI_STR("standard"), phase = KUI_STR("-"), code = KUI_STR("-");
-            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("location"));
-            if (l) kui_value_as_str(l, &loc);
-            if (!(loc.len == 8 && memcmp(loc.ptr, "standard", 8) == 0)) {
-                const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
-                const KuiValue *c = kui_value_get(ev.payload, KUI_STR("code"));
-                if (p) kui_value_as_str(p, &phase);
-                if (c) kui_value_as_str(c, &code);
-                repf(events, " %.*s %.*s %.*s", (int)phase.len, phase.ptr, (int)code.len,
-                     code.ptr, (int)loc.len, loc.ptr);
-            }
-        }
         /* A held button's phase and which button ride the same way
          * (backlog F105): a lost mask claims the secondary presses. */
-        if (kind.len == 6 && memcmp(kind.ptr, "button", 6) == 0) {
-            KuiStr phase = KUI_STR("-");
-            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
-            if (p) kui_value_as_str(p, &phase);
-            const KuiValue *b = kui_value_get(ev.payload, KUI_STR("button"));
+        if (ev_is(&ev, "button")) {
+            KuiStr phase = conf_str(data, "phase", KUI_STR("-"));
+            const KuiValue *b = data ? kui_value_get(data, KUI_STR("button")) : NULL;
             KuiStr name;
             int64_t code = 0;
             if (b && kui_value_as_str(b, &name))
@@ -2618,34 +2754,55 @@ static void conf_drain(KuiCtx *ctx, Rep *events) {
             else
                 repf(events, " %.*s -", (int)phase.len, phase.ptr);
         }
+        /* A key from one of a key's twins says which, with its phase and
+         * code (backlog F108); a standard key prints as it did. */
+        if (ev_is(&ev, "key")) {
+            KuiStr loc = conf_str(data, "location", KUI_STR("standard"));
+            if (!kui_str_eq(loc, "standard")) {
+                KuiStr phase = conf_str(data, "phase", KUI_STR("-"));
+                KuiStr code = conf_str(data, "code", KUI_STR("-"));
+                repf(events, " %.*s %.*s %.*s", (int)phase.len, phase.ptr, (int)code.len,
+                     code.ptr, (int)loc.len, loc.ptr);
+            }
+        }
         /* A scroll's lines ride the same way - the whole lines a grid's
          * notch covers, `-` off a grid - so a lost carry disagrees here
          * (ADR 0029). */
-        if (kind.len == 6 && memcmp(kind.ptr, "scroll", 6) == 0) {
-            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("lines"));
+        if (ev_is(&ev, "scroll")) {
+            const KuiValue *l = data ? kui_value_get(data, KUI_STR("lines")) : NULL;
             int64_t n = 0;
             if (l && kui_value_as_int(l, &n)) repf(events, " %lld", (long long)n);
             else repf(events, " -");
         }
         /* A drop's phase and its path count ride the same way (ADR 0031). */
-        if (kind.len == 4 && memcmp(kind.ptr, "drop", 4) == 0) {
-            KuiStr phase = KUI_STR("-");
-            const KuiValue *p = kui_value_get(ev.payload, KUI_STR("phase"));
-            if (p) kui_value_as_str(p, &phase);
-            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("paths"));
+        if (ev_is(&ev, "drop")) {
+            KuiStr phase = conf_str(data, "phase", KUI_STR("-"));
+            const KuiValue *l = data ? kui_value_get(data, KUI_STR("paths")) : NULL;
             repf(events, " %.*s %zu", (int)phase.len, phase.ptr, l ? kui_value_len(l) : (size_t)0);
         }
         /* The documents the OS handed over, as a count (backlog F124). */
-        if (kind.len == 4 && memcmp(kind.ptr, "open", 4) == 0) {
-            const KuiValue *l = kui_value_get(ev.payload, KUI_STR("paths"));
+        if (ev_is(&ev, "open")) {
+            const KuiValue *l = data ? kui_value_get(data, KUI_STR("paths")) : NULL;
             repf(events, " %zu", l ? kui_value_len(l) : (size_t)0);
+        }
+        /* An editor's edge and the key that met it (ADR 0047, decision 7). */
+        if (ev_is(&ev, "boundary")) {
+            KuiStr edge = conf_str(data, "edge", KUI_STR("-"));
+            KuiStr key = conf_str(data, "key", KUI_STR("-"));
+            repf(events, " %.*s %.*s", (int)edge.len, edge.ptr, (int)key.len, key.ptr);
+        }
+        /* A menu choice's item: an option's label or its id, `-` for an id
+         * that is not a string. */
+        if (ev_is(&ev, "menu")) {
+            KuiStr item = conf_str(data, "item", KUI_STR("-"));
+            repf(events, " %.*s", (int)item.len, item.ptr);
         }
         /* A paste's markers ride the same way, each only when it is set
          * (backlog F84). */
-        if (kind.len == 4 && memcmp(kind.ptr, "text", 4) == 0) {
+        if (ev_is(&ev, "text")) {
             static const char *const markers[] = {"concealed", "transient"};
             for (int m = 0; m < 2; m++) {
-                const KuiValue *v = kui_value_get(ev.payload, (KuiStr){(const uint8_t *)markers[m], strlen(markers[m])});
+                const KuiValue *v = data ? kui_value_get(data, (KuiStr){(const uint8_t *)markers[m], strlen(markers[m])}) : NULL;
                 bool on = false;
                 if (v && kui_value_as_bool(v, &on) && on) repf(events, " %s", markers[m]);
             }
@@ -2674,16 +2831,29 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
     rep_init(&cmds);
     rep_init(&audio);
     int phase = 0;
+    float vw = 320, vh = 240;
     for (int i = 0; i <= nsteps; i++) {
         if (i > 0) {
-            /* Four steps are not input: one moves the clock the
-             * transitions read, one is the view changing its mind, and two
-             * are the OS closing a window and asking a popup to go away. */
+            /* Some steps are not input: one moves the clock the
+             * transitions read, one is the view changing its mind, one the
+             * window's size from here on, and the rest are the OS closing
+             * a window, asking a popup to go away, moving the keyboard
+             * and changing its appearance. */
             const ConfStep *s = &steps[i - 1];
             if (strcmp(s->kind, "phase") == 0) {
                 phase = s->a;
             } else if (strcmp(s->kind, "time") == 0) {
                 kui_set_time(ctx, s->a / 1000.0);
+            } else if (strcmp(s->kind, "viewport") == 0) {
+                /* Every frame from here is built at this size, so the
+                 * next one begins with a resize. */
+                vw = (float)s->a;
+                vh = (float)s->b;
+            } else if (strcmp(s->kind, "focused") == 0) {
+                /* The window lost or gained the keyboard: kui_env_set's
+                 * `focused`, the refresh rate left unknown. */
+                kui_env_set(ctx, 0, s->a != 0);
+                conf_drain(ctx, &events);
             } else if (strcmp(s->kind, "windowclosed") == 0) {
                 kui_window_closed(ctx, (uint32_t)s->a);
                 conf_drain(ctx, &events);
@@ -2705,7 +2875,7 @@ static void conf_run(const ConfScene *scene, const ConfEnv *env,
                 conf_drain_audio(ctx, &audio);
             }
         }
-        kui_frame_begin(ctx, 320, 240, 1);
+        kui_frame_begin(ctx, vw, vh, 1);
         scene->build(ctx, &f, phase);
         kui_frame_finish(ctx);
         conf_drain(ctx, &events);

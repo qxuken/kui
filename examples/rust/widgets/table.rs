@@ -167,12 +167,16 @@ impl App for Table {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
+        // A row's and a header's clicks: each the map it declared.
+        let Some(msg) = ev.message::<Value>() else {
+            return;
+        };
+        match msg.get_str("kind") {
             Some("select") => {
-                self.selected = ev.payload.get_int("row").map(|i| i as usize);
+                self.selected = msg.get_int("row").map(|i| i as usize);
             }
             Some("sort") => {
-                self.sort = match ev.payload.get_str("by") {
+                self.sort = match msg.get_str("by") {
                     Some("size") => Sort::Size,
                     Some("kind") => Sort::Kind,
                     _ => Sort::Name,

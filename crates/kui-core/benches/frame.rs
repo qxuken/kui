@@ -1382,3 +1382,80 @@ fn slot_1500_nodes_replayed(bencher: divan::Bencher) {
     run_slot_frame(&mut core, &mut exts, false);
     bencher.bench_local(|| run_slot_frame(&mut core, &mut exts, true));
 }
+
+// -- An editor's declared value (ADR 0047, decision 8) ----------------------
+// A focused editor declared with `EditOptions::value` every frame. The
+// plain rows declare the editor's own text, which is every frame of
+// ordinary typing and should cost a compare over the same frame without a
+// value; the `_splice` rows declare a text one character away from the
+// editor's, alternately inserted and taken out again, so every frame
+// splices. A 40-byte field and a 100 KB document: the numbers the howto
+// tells a document editor by.
+
+const EDIT_VALUE_FIELD: &str = "the quick brown fox jumps over a lazy do";
+
+fn hundred_kb_doc() -> String {
+    let mut s = String::new();
+    let mut i = 0;
+    while s.len() < 100_000 {
+        s.push_str(&format!(
+            "line {i}: the quick brown fox jumps over the lazy dog {i}\n"
+        ));
+        i += 1;
+    }
+    s
+}
+
+fn run_edit_value(core: &mut Core, value: &str, multiline: bool) -> usize {
+    let mut ui = core.frame(Size::new(1200.0, 800.0), 2.0);
+    ui.configure_root(NodeSpec::column().fill().scroll_y());
+    ui.text_edit_value(
+        "edit",
+        value,
+        &kui_core::EditOptions {
+            style: TextStyle::new(14.0).mono(),
+            multiline,
+            autofocus: true,
+            ..Default::default()
+        },
+        NodeSpec::column().grow_width().pad(20.0),
+    );
+    ui.finish();
+    let (dl, _) = core.output();
+    dl.quads.len()
+}
+
+/// Frames declaring `text` as the value, every frame or (`splice`) every
+/// other one, the rest declaring it with one character inserted halfway.
+fn bench_edit_value(bencher: divan::Bencher, text: &str, multiline: bool, splice: bool) {
+    let mut core = Core::new();
+    let mut spliced = text.to_string();
+    spliced.insert(text.len() / 2, 'x');
+    run_edit_value(&mut core, text, multiline);
+    run_edit_value(&mut core, text, multiline);
+    let mut odd = false;
+    bencher.bench_local(|| {
+        odd = splice && !odd;
+        run_edit_value(&mut core, if odd { &spliced } else { text }, multiline)
+    });
+}
+
+#[divan::bench]
+fn edit_value_field(bencher: divan::Bencher) {
+    bench_edit_value(bencher, EDIT_VALUE_FIELD, false, false);
+}
+
+#[divan::bench]
+fn edit_value_field_splice(bencher: divan::Bencher) {
+    bench_edit_value(bencher, EDIT_VALUE_FIELD, false, true);
+}
+
+#[divan::bench]
+fn edit_value_doc(bencher: divan::Bencher) {
+    bench_edit_value(bencher, &hundred_kb_doc(), true, false);
+}
+
+#[divan::bench]
+fn edit_value_doc_splice(bencher: divan::Bencher) {
+    bench_edit_value(bencher, &hundred_kb_doc(), true, true);
+}

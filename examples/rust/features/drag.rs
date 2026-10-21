@@ -29,7 +29,8 @@
 
 use kui_devtools::{Drive, Example};
 use kui_native::{
-    Align, App, Core, CursorShape, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
+    Align, App, Core, CursorShape, DragPhase, Event, FloatConfig, NodeSpec, Sizing, TextStyle, Ui,
+    UiEvent,
 };
 
 const TRACK_W: f32 = 320.0;
@@ -136,59 +137,55 @@ impl App for Drag {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        let num = |k: &str| ev.payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-        match ev.kind() {
-            Some("layout") => {
-                self.card_size = (num("w"), num("h"));
+        // Both nodes declare a string message, so the event arrives as
+        // `{tag, drag: {...}}` or `{tag, layout: {...}}`: the tag says
+        // which node, the event what happened.
+        let tag = ev.payload.get_str("tag").unwrap_or("").to_string();
+        let d = match ev.read() {
+            Event::Layout(l) => {
+                self.card_size = (l.rect.w, l.rect.h);
                 return;
             }
-            Some("drag") => {}
+            Event::Drag(d) => d,
             _ => return,
-        }
-        let phase = ev.payload.get_str("phase").unwrap_or("");
-        let tag = ev.payload.get_str("tag").unwrap_or("");
+        };
+        let phase = match d.phase {
+            DragPhase::Start => "start",
+            DragPhase::Move => "move",
+            DragPhase::End => "end",
+        };
         self.log = format!(
             "{tag} {phase} x {:.0} y {:.0} dx {:.0} dy {:.0}",
-            num("x"),
-            num("y"),
-            num("dx"),
-            num("dy")
+            d.pos.x, d.pos.y, d.delta.x, d.delta.y
         );
-        match (tag, phase) {
-            ("slider", "start") => {
+        match (tag.as_str(), d.phase) {
+            ("slider", DragPhase::Start) => {
                 self.dragging = Some("slider".into());
                 self.at_press.0 = self.value;
             }
-            ("slider", "end") => self.dragging = None,
-            ("slider", _) => {
+            ("slider", DragPhase::End) => self.dragging = None,
+            ("slider", DragPhase::Move) => {
                 // The value at the press plus the displacement over the
                 // track's width: absolute, so nothing accumulates.
-                self.value = (self.at_press.0 + num("dx") / TRACK_W).clamp(0.0, 1.0);
+                self.value = (self.at_press.0 + d.delta.x / TRACK_W).clamp(0.0, 1.0);
             }
-            ("card", "start") => {
+            ("card", DragPhase::Start) => {
                 self.dragging = Some("card".into());
                 self.at_press.1 = self.card;
             }
-            ("card", "move") => {
+            ("card", DragPhase::Move) => {
                 // The offset at the press plus the displacement, kept
                 // inside the stage: the event carries the parent's rect,
                 // and the card's own size came from its `on_layout`.
                 let (ox, oy) = self.at_press.1;
-                let parent = ev.payload.get("parent");
-                let dim = |k: &str| {
-                    parent
-                        .and_then(|p| p.get(k))
-                        .and_then(Value::as_float)
-                        .unwrap_or(0.0) as f32
-                };
-                let max_x = (dim("w") - self.card_size.0).max(0.0);
-                let max_y = (dim("h") - self.card_size.1).max(0.0);
+                let max_x = (d.parent.w - self.card_size.0).max(0.0);
+                let max_y = (d.parent.h - self.card_size.1).max(0.0);
                 self.card = (
-                    (ox + num("dx")).clamp(0.0, max_x),
-                    (oy + num("dy")).clamp(0.0, max_y),
+                    (ox + d.delta.x).clamp(0.0, max_x),
+                    (oy + d.delta.y).clamp(0.0, max_y),
                 );
             }
-            ("card", "end") => self.dragging = None,
+            ("card", DragPhase::End) => self.dragging = None,
             _ => {}
         }
     }
@@ -219,7 +216,7 @@ impl Example for Drag {
         let evs = d.input(self, kui_native::InputEvent::mouse_down(1));
         d.check(
             evs.iter()
-                .any(|e| e.payload.get_str("phase") == Some("start")),
+                .any(|e| e.drag().is_some_and(|d| d.phase == DragPhase::Start)),
             "a press on the track starts a drag",
         )?;
         d.frame(self);

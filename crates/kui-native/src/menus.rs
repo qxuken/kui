@@ -229,7 +229,7 @@ impl DynShell<'_> {
     /// Paste as a request for what is there, delivered back as a paste
     /// carrying the pasteboard's markers:
     /// a focused editor takes it as typing, the path Cmd-V takes, and a
-    /// focused key sink hears it as `{kind:"text"}` — the paste an app
+    /// focused key sink hears it as a `text` event — the paste an app
     /// that owns its text asked for with `request_paste`.
     /// Called after every input and after every frame, since a view can
     /// queue both (`ui.set_clipboard`, `ui.request_paste`).

@@ -168,7 +168,18 @@
 ///   `KUI_EDIT_SECURE` and `KUI_ROLE_PASSWORD_INPUT`, new constants
 ///   (backlog F167): no struct moved. And with `kui_set_app_id`
 ///   (backlog F172), a new function.
-pub const KUI_ABI_VERSION: u32 = 32;
+/// - ABI 33: an event arrives as the message its handler declared (ADR
+///   0047). `KuiSpec` appends `on_submit`, `on_cancel`, `on_boundary`,
+///   `on_menu` and `on_selection_range` (792 bytes on 64-bit, from 752);
+///   `KuiEvent` appends `event`, the envelope's event kind, now that the
+///   payload no longer says it; `KUI_EDIT_VALUE`, a new constant, makes
+///   `kui_text_edit`'s `initial` the editor's value; and
+///   `kui_text_input_with` and `kui_select_with`, new functions. With ADR
+///   0048 there are no root events: the window's own events arrive as the
+///   messages `kui_root_with` declares in a new `KuiWindowEvents`, a
+///   declared window's lifecycle as `kui_window_declare_with`'s and a
+///   menu-bar choice as `kui_menu_bar_with`'s, three new functions.
+pub const KUI_ABI_VERSION: u32 = 33;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

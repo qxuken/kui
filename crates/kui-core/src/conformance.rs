@@ -25,7 +25,7 @@ use crate::display::{Clip, Quad, QuadKind};
 use crate::edit::EditOptions;
 use crate::enter::Enter;
 use crate::geom::{Edges, Rect, Size, Vec2};
-use crate::input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, OptionAsAlt};
+use crate::input::{EditKey, InputEvent, KeyCode, KeyMods, KeyPress, Mods, OptionAsAlt, UiEvent};
 use crate::key::Key;
 use crate::line::Stroke;
 use crate::menu::{BarMenu, MenuBar, MenuItem, MenuRole};
@@ -40,7 +40,10 @@ use crate::tree::{NodeContent, Tree};
 use crate::ui::Ui;
 use crate::value::Value;
 use crate::widgets;
-use crate::window::{DismissReason, WindowCommand, WindowConfig, WindowEnv, WindowId, WindowRole};
+use crate::window::{
+    DismissReason, WindowCommand, WindowConfig, WindowEnv, WindowEvents, WindowId, WindowLifecycle,
+    WindowRole,
+};
 
 /// Every scene is built at this viewport and scale. A binding that drives
 /// its own frames has to use the same numbers or nothing lines up.
@@ -302,6 +305,15 @@ pub enum Step {
     Modifiers(u32),
     /// Escape: lets go of a focused control, or asks a modal to go away.
     Escape,
+    /// Enter: a field's submit (ADR 0047), the editing key and not the raw
+    /// press a [`Step::KeyAtDown`] makes, so a stock editor hears it.
+    Enter,
+    /// Not an input: the app asking for the selection as text
+    /// (`Core::request_copy`, the request-copy door in every binding), what
+    /// a host's Cmd/Ctrl-C does. Over a selection that reaches rows a
+    /// virtual list never built, the core asks the app with a
+    /// `selectionrange` event (ADR 0017, tier 3).
+    Copy,
     /// An arrow key, as an index into [`ARROWS`] — inside a composite it
     /// moves the inner selection
     /// (`docs/adr/0007-composite-keyboard-patterns.md`), and a slider it
@@ -331,19 +343,19 @@ pub enum Step {
     KeyAtUp(u32, u32),
     /// An IME composing one character (its Unicode scalar value, the caret
     /// at its end) on whatever holds focus — a stock editor shows it
-    /// inline, an `on_key` sink hears `{kind="preedit"}`.
+    /// inline, an `on_key` sink hears a `preedit` in its message.
     /// Zero is the composition ending without a commit: empty text, no
     /// cursor.
     Preedit(u32),
     /// The IME committing one character: `InputEvent::Commit`, which a
-    /// stock editor takes as typed text and a sink hears as
-    /// `{kind="text"}`.
+    /// stock editor takes as typed text and a sink hears as a `text` in
+    /// its message.
     Commit(u32),
     /// The clipboard answering a paste with one character and the
     /// pasteboard's markers as [`crate::input::ClipboardMarks::bits`] —
     /// 1 concealed, 2 transient: `InputEvent::Paste`, which
-    /// a stock editor takes as typed text and a sink hears as
-    /// `{kind="text"}` with `concealed` / `transient` beside it.
+    /// a stock editor takes as typed text and a sink hears as a `text` in
+    /// its message, `concealed` / `transient` beside the text.
     Paste(u32, u32),
     /// Not an input: the view is a function of a phase, and this is the
     /// view changing its mind. Every scene but `exit` builds the same tree
@@ -385,6 +397,13 @@ pub enum Step {
     /// backlog F124), spelled as [`Step::DragFiles`]'s files are
     /// ([`drop_paths`]). Zero is an empty list, which emits nothing.
     Open(u32),
+    /// Not an input: the window resized, so every frame from here on is
+    /// `w` x `h` logical px (the scene's first frame is [`VIEWPORT`]). The
+    /// next frame begins with a `resize` (ADR 0048).
+    Viewport(u32, u32),
+    /// Not an input: the driver reporting that the window gained (1) or
+    /// lost (0) the keyboard (`Core::set_focused`).
+    Focused(u32),
 }
 
 /// The paths a [`Step::DragFiles`] / [`Step::DropFiles`] / [`Step::Open`]
@@ -416,6 +435,8 @@ impl Step {
                 let _ = writeln!(out, "step modifiers {m}");
             }
             Step::Escape => out.push_str("step escape\n"),
+            Step::Enter => out.push_str("step enter\n"),
+            Step::Copy => out.push_str("step copy\n"),
             Step::Arrow(d) => {
                 let _ = writeln!(out, "step arrow {d}");
             }
@@ -470,6 +491,12 @@ impl Step {
             Step::Open(n) => {
                 let _ = writeln!(out, "step open {n}");
             }
+            Step::Viewport(w, h) => {
+                let _ = writeln!(out, "step viewport {w} {h}");
+            }
+            Step::Focused(on) => {
+                let _ = writeln!(out, "step focused {on}");
+            }
         }
     }
 
@@ -482,7 +509,10 @@ impl Step {
             | Step::Time(_)
             | Step::WindowClosed(_)
             | Step::WindowDismissed(..)
-            | Step::Appearance(_) => {
+            | Step::Appearance(_)
+            | Step::Viewport(..)
+            | Step::Focused(_)
+            | Step::Copy => {
                 return None;
             }
             Step::Cursor(x, y) => InputEvent::CursorMoved(Vec2::new(x as f32, y as f32)),
@@ -508,6 +538,7 @@ impl Step {
             Step::ShiftTab => InputEvent::Key(EditKey::Tab, Mods::NONE.with_shift()),
             Step::Modifiers(m) => InputEvent::Modifiers(KeyMods::from_bits(m)),
             Step::Escape => InputEvent::Key(EditKey::Escape, Mods::default()),
+            Step::Enter => InputEvent::Key(EditKey::Enter, Mods::default()),
             Step::Arrow(d) => InputEvent::Key(ARROWS[d as usize], Mods::default()),
             Step::Home => InputEvent::Key(EditKey::Home, Mods::default()),
             Step::End => InputEvent::Key(EditKey::End, Mods::default()),
@@ -595,7 +626,7 @@ pub struct Expect {
     /// The access tree in tree order, one `depth role name|description|value`
     /// per node (see [`report`]'s `node` lines, without the key and flags).
     pub access: &'static [&'static str],
-    /// Events in order, `kind tag`.
+    /// Events in order, `event message`: the envelope's kind, then the message by name and each event's data extras (`event_row`).
     pub events: &'static [&'static str],
     /// Announcements in order, `politeness text` (see
     /// `docs/adr/0008-live-regions-and-announcements.md`).
@@ -864,7 +895,7 @@ pub const SCENES: &[Scene] = &[
                 "change vol end 40",
                 "change vol end 0",
                 "change vol end 100",
-                "mute -",
+                "click mute",
             ],
             announcements: &[],
             warnings: &[],
@@ -1025,7 +1056,7 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText tokensx||"],
             // The OS setting moving under the app is itself an event.
-            events: &["system -"],
+            events: &[],
             announcements: &[],
             warnings: &["reserved-token", "unknown-token", "unknown-token"],
             commands: &[],
@@ -1216,7 +1247,7 @@ pub const SCENES: &[Scene] = &[
                 "1 button Node||",
                 "1 button Free||",
             ],
-            events: &["toolbar -", "node -", "free -"],
+            events: &["click toolbar", "click node", "click free"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -1383,8 +1414,8 @@ pub const SCENES: &[Scene] = &[
               its own, disabled — with the second in force. The steps click \
               the field, which opens the core's menu under it and reaches \
               the app as nothing; choose the first row, which is the one \
-              event the app hears — the row's label, on the field's key — \
-              and closes the menu; then click the field again, so the frame \
+              event the app hears — the row's label, in the field's `onMenu` \
+              message (ADR 0047) — and closes the menu; then click the field again, so the frame \
               the report keeps has the field *and* the menu: the current \
               row checked, the dead one dimmed. Three clicks, one event.",
         custom: &["key", "pad", "size"],
@@ -1424,8 +1455,8 @@ pub const SCENES: &[Scene] = &[
                 "2 menuItem Latin||",
             ],
             // The field's two clicks are the core's; the row's choice is
-            // the app's one event, a `menu` on the field.
-            events: &["menu -"],
+            // the app's one event, a `menu` on the field naming the row.
+            events: &["menu lang English"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -1675,7 +1706,7 @@ pub const SCENES: &[Scene] = &[
                 "1 slider Focus length||25 minutes",
             ],
             events: &[
-                "go -",
+                "click go",
                 "contextmenu menu",
                 "contextmenu menu",
                 "button panel press middle",
@@ -1747,7 +1778,7 @@ pub const SCENES: &[Scene] = &[
                 "2 button Go||",
             ],
             events: &[
-                "key down", "key up", "go -", "key down", "key down", "key up",
+                "key down", "key up", "click go", "key down", "key down", "key up",
             ],
             announcements: &[],
             warnings: &[],
@@ -1827,8 +1858,9 @@ pub const SCENES: &[Scene] = &[
               editor — an `on_key` sink drawing a `line` with a caret — is \
               clicked into focus, composed into, committed to, and left with \
               the composition ended: it hears preedit, text and preedit as \
-              data on its tag. Then the stock editor takes the same two \
-              steps itself and reports a change. The commit is its own \
+              data in its `onKey` message. Then the stock editor takes the \
+              same two steps itself and reports its text as a `change` in \
+              its `onChange` message. The commit is its own \
               input, since a sink already hears typing as the key's text.",
         custom: &["key", "size"],
         elements: &["box", "text", "edit"],
@@ -1862,7 +1894,7 @@ pub const SCENES: &[Scene] = &[
                 "1 multilineTextInput Buffer||ab",
                 "1 textInput Note||y",
             ],
-            events: &["preedit ed", "text ed", "preedit ed", "changed -"],
+            events: &["preedit ed", "text ed", "preedit ed", "change note \"y\""],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -1881,9 +1913,10 @@ pub const SCENES: &[Scene] = &[
               clicked into focus and answered three times: a secret a \
               password manager copied (concealed and transient), a \
               transient one, and a bare commit — the answer an older \
-              driver sends — each heard as `text` on its tag with the \
-              markers that were set and no others. Then the stock editor \
-              takes a concealed paste as typed text and reports a change, \
+              driver sends — each heard as `text` in its `onKey` message \
+              with the markers that were set and no others. Then the stock \
+              editor takes a concealed paste as typed text and reports a \
+              `change`, \
               the markers being the sink's to read.",
         custom: &["key", "size"],
         elements: &["box", "text", "edit"],
@@ -1920,7 +1953,76 @@ pub const SCENES: &[Scene] = &[
                 "text ed concealed transient",
                 "text ed transient",
                 "text ed",
-                "changed -",
+                "change note \"v\"",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
+        name: "edit-rows",
+        doc: "A stock editor's handler rows (ADR 0047, decision 7): one \
+              field declaring `value` and all five rows an editor hears, \
+              each with a message of its own. Clicked into at its end and \
+              typed into, it reports the typed text as a `change`; the \
+              corpus has no app loop, so the declared value never follows \
+              it and the next frame brings the field back (decision 8), \
+              which the last frame's access row pins. Right at the end and \
+              Left after Home meet the two edges as `boundary` events \
+              naming the edge and the key; Enter is `submit` and Escape \
+              `cancel`, each the message as declared. Then a right-click \
+              opens the stock editing menu over it, and choosing Select \
+              All reaches its `onMenu` message (decision 5): a node that \
+              declares the row hears the stock menu's choices too.",
+        custom: &["key", "size"],
+        elements: &["edit", "box"],
+        build: build_edit_rows,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(150, 18),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Type('c' as u32),
+            Step::Arrow(RIGHT),
+            Step::Home,
+            Step::Arrow(LEFT),
+            Step::Enter,
+            Step::Escape,
+            Step::Cursor(150, 18),
+            Step::SecondaryDown,
+            Step::SecondaryUp,
+            // Select All, the menu's last row.
+            Step::Cursor(200, 125),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            // Escape let go of the field and the menu took no focus back
+            // to it, so no caret: the two glyphs of the value it was
+            // brought back to are the whole frame.
+            solid: 0,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 2,
+            access: &["0 window ||", "1 textInput Title||AB"],
+            events: &[
+                "change title \"ABc\"",
+                "boundary edge end right",
+                "boundary edge start left",
+                "submit save",
+                "cancel revert",
+                "menu edit Select All",
             ],
             announcements: &[],
             warnings: &[],
@@ -1958,7 +2060,7 @@ pub const SCENES: &[Scene] = &[
             textures: 0,
             glyphs_min: 10,
             access: &["0 window ||", "1 terminal term||hello world"],
-            events: &["hit -"],
+            events: &["click hit"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -2061,7 +2163,7 @@ pub const SCENES: &[Scene] = &[
             textures: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 button Elbow||"],
-            events: &["elbow -"],
+            events: &["click elbow"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -2109,7 +2211,7 @@ pub const SCENES: &[Scene] = &[
             textures: 0,
             glyphs_min: 0,
             access: &["0 window ||", "1 button Triangle||"],
-            events: &["tri -"],
+            events: &["click tri"],
             announcements: &[],
             warnings: &["polygon-points-truncated"],
             commands: &[],
@@ -2161,7 +2263,7 @@ pub const SCENES: &[Scene] = &[
             textures: 0,
             glyphs_min: 7,
             access: &["0 window ||", "1 button Wedge||"],
-            events: &["wedge -"],
+            events: &["click wedge"],
             announcements: &[],
             warnings: &["path-malformed"],
             commands: &[],
@@ -2296,7 +2398,12 @@ pub const SCENES: &[Scene] = &[
                 "1 button Open||",
                 "1 button Note||",
             ],
-            events: &["dismiss dlg", "ok -", "cancel -", "dismiss dlg"],
+            events: &[
+                "dismiss dlg outside",
+                "click ok",
+                "click cancel",
+                "dismiss dlg escape",
+            ],
             announcements: &[],
             warnings: &[],
             // The titlebar press: chrome stays live under a modal, and a
@@ -2389,7 +2496,7 @@ pub const SCENES: &[Scene] = &[
                 "2 listItem ||",
                 "3 staticText Bravo||",
             ],
-            events: &["one -", "two -", "three -", "alpha -"],
+            events: &["click one", "click two", "click three", "click alpha"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -2474,7 +2581,7 @@ pub const SCENES: &[Scene] = &[
             textures: 0,
             glyphs_min: 3,
             access: &["0 window ||", "1 group A||", "1 group B||"],
-            events: &["hit -"],
+            events: &["click hit"],
             announcements: &[],
             warnings: &["exit-budget", "exit-budget"],
             commands: &[],
@@ -2501,8 +2608,10 @@ pub const SCENES: &[Scene] = &[
               which is what lets phase 2's declaration *start*: a second \
               `Open`, with a new id, because a closed window's identity did \
               not survive its lapse. Phase 3 stops again and the diff \
-              closes it. Four `window` events, three commands, two \
-              warnings, and the report keeps the frame with nothing open.",
+              closes it. Four `window` events, each the entry's `onWindow` \
+              message (ADR 0048) — the last close the one declared before \
+              the declaration lapsed — three commands, two warnings, and \
+              the report keeps the frame with nothing open.",
         custom: &["windows", "size"],
         elements: &["box", "text"],
         build: build_windows,
@@ -2529,10 +2638,10 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
-                "window opened",
-                "window closed",
-                "window opened",
-                "window closed",
+                "window palette opened",
+                "window palette closed",
+                "window palette opened",
+                "window palette closed",
             ],
             announcements: &[],
             warnings: &["duplicate-window-config", "window-declared-while-closed"],
@@ -2559,7 +2668,8 @@ pub const SCENES: &[Scene] = &[
               four numbers and a kind: the `open` line carries kind 1, \
               `activates` 0, the owner that declared it (main, 0) and the \
               anchor rect an `onLayout` node reported for the field the menu \
-              belongs to. Then the driver reports the two dismissals, and \
+              belongs to. Then the driver reports the two dismissals, as \
+              the entry's `onDismiss` message (ADR 0048), and \
               **neither closes anything**: the window is still open, still \
               declared, and no command follows — the app stops declaring it \
               on the frame it chooses, which is phase 1, and only that \
@@ -2591,10 +2701,10 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 6,
             access: &["0 window ||", "1 staticText closed||"],
             events: &[
-                "window opened",
-                "dismiss outside",
-                "dismiss escape",
-                "window closed",
+                "window popup opened",
+                "dismiss popup outside",
+                "dismiss popup escape",
+                "window popup closed",
             ],
             // A popup says nothing to a screen reader by opening: it is a
             // window, and a window announcing itself is what the access
@@ -2851,10 +2961,10 @@ pub const SCENES: &[Scene] = &[
                 "1 staticText two||",
                 "1 staticText three||",
             ],
-            // The modifier going down and up is itself an event on the
-            // root — the one an app keeps in its model for a held-key
-            // overlay — so the two steps leave two rows.
-            events: &["modifiers -", "modifiers -"],
+            // The modifier going down and up is an event only for a root
+            // that declares `onModifiers` (ADR 0048), which this one does
+            // not: what the Shift does is the selection's.
+            events: &[],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -2981,12 +3091,7 @@ pub const SCENES: &[Scene] = &[
                 "2 scrollView ||",
                 "3 scrollView ||",
             ],
-            events: &[
-                "scroll term -",
-                "modifiers -",
-                "scroll zoom -",
-                "modifiers -",
-            ],
+            events: &["scroll term -", "scroll zoom -"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -3159,6 +3264,64 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "selection-range",
+        doc: "A copy past a virtual list's built rows (ADR 0017, tier 3; ADR \
+              0047's `onSelectionRange` row). The `virtual` scene's list, \
+              `selectable` and with a line of text in each built row, \
+              declares its size with `rowCount` and a message for the ask. \
+              A right-click on a row opens the stock menu a selection scope \
+              gets; its Select All spans the declared rows, 0 to 108, of \
+              which only 100..102 were ever built. The copy request that \
+              follows cannot be answered from text the core shaped, so the \
+              core asks the app, as the scope's message with \
+              `selectionrange` in it.",
+        custom: &["index", "rowCount", "key", "overflow"],
+        elements: &["box", "text"],
+        build: build_selection_range,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(30, 30),
+            Step::SecondaryDown,
+            Step::SecondaryUp,
+            // Select All, the menu's second row.
+            Step::Cursor(100, 77),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Copy,
+        ],
+        expect: Expect {
+            // The list's background, the selection over the two rows that
+            // draw, and the list's scrollbar.
+            solid: 4,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 12,
+            access: &[
+                "0 window ||",
+                "1 scrollView ||",
+                "2 staticText row 100||",
+                "2 staticText row 101||",
+                "2 staticText row 102||",
+            ],
+            // Select All posts nothing (the scope declares no `onMenu`);
+            // the copy's ask is the one event.
+            events: &["selectionrange rows"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
         name: "layers",
         doc: "The paint order as a stack of layers \
               (`docs/adr/0023-layers-stack-in-the-order-they-open.md`): a \
@@ -3208,7 +3371,7 @@ pub const SCENES: &[Scene] = &[
                 "1 button Popover||",
                 "1 button Toast||",
             ],
-            events: &["toast -", "popover -", "popover -"],
+            events: &["click toast", "click popover", "click popover"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -3239,9 +3402,10 @@ pub const SCENES: &[Scene] = &[
               built once, so a zone the view stops declaring still gets \
               it, and the paths cannot change within one OS drag. Then \
               the OS asks the app to open two documents (backlog F124), \
-              which the host hears on the root with no zone and no ask, \
-              and an empty list, which is nothing.",
-        custom: &["float", "key"],
+              which the root hears as its `windowEvents.onOpen` message \
+              (ADR 0048) with no zone and no ask, and an empty list, \
+              which is nothing.",
+        custom: &["float", "key", "windowEvents"],
         elements: &["box"],
         build: build_drop,
         env: NATIVE_CHROME,
@@ -3284,7 +3448,7 @@ pub const SCENES: &[Scene] = &[
                 "drop files leave 1",
                 "drop other enter 1",
                 "drop other drop 1",
-                "open - 2",
+                "open docs 2",
             ],
             announcements: &[],
             warnings: &[],
@@ -3634,8 +3798,9 @@ pub const SCENES: &[Scene] = &[
               selection anchor. \
               The card is a lone `tab`, so the one warning is \
               `item-outside-container`. \
-              The pointer enters the card (its hover tag and sound) and \
-              clicks it (its sound), and the layout tag reports its rect. \
+              The pointer enters the card (its `onHover` message and \
+              sound) and clicks it (its sound), and the `onLayout` message \
+              reports its rect. \
               The Node suite holds every generic prop to some scene's \
               source; this is the scene the rest land in.",
         custom: &["key", "size"],
@@ -3669,10 +3834,10 @@ pub const SCENES: &[Scene] = &[
                 "1 staticText Drop cap||",
                 "1 staticText sel||",
             ],
-            // The layout tag from the first frame, the hover tag as the
-            // pointer entered, and the click; the hover sound and the
+            // The layout from the first frame, the hover as the pointer
+            // entered, and the click; the hover sound and the
             // click sound as two playbacks.
-            events: &["layout lay", "hover hov", "card -"],
+            events: &["layout lay", "hover hov", "click card"],
             announcements: &[],
             // The card is a `tab` with no `tabList` above it, and every
             // binding says so the same way.
@@ -3727,6 +3892,77 @@ pub const SCENES: &[Scene] = &[
             ime_off: false,
         },
     },
+    Scene {
+        name: "window-events",
+        doc: "A window's own events, each as the message its root declared \
+              (ADR 0048): the root declares every key of its \
+              `windowEvents` group and a `menuBar` its `onMenu`, and the \
+              steps drive each one. The window shrinks (`resize`), loses \
+              and regains the keyboard (`window`, `blurred` then \
+              `focused`), the OS goes dark (`system`), Shift goes down \
+              and up (`modifiers`, twice), the OS hands over one \
+              document (`open`), and a row of the drawn bar's File menu \
+              is chosen (`menu`). Every one arrives under the app's own \
+              `kind`; none is a root event. `fonts` is declared and not \
+              driven: a rescan that finds what was there says nothing, so \
+              no headless step can make one.",
+        custom: &["windowEvents", "key", "pad", "size"],
+        elements: &["menuBar", "box", "text"],
+        build: build_window_events,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Viewport(300, 200),
+            Step::Focused(0),
+            Step::Focused(1),
+            Step::Appearance(2),
+            Step::Modifiers(KeyMods::SHIFT),
+            Step::Modifiers(0),
+            Step::Open(1),
+            // Open the File menu, then choose its first row.
+            Step::Cursor(20, 13),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Cursor(40, 45),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            // The bar; the menu the choice closed is gone.
+            solid: 1,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 6,
+            access: &[
+                "0 window ||",
+                "1 menu Menu bar||",
+                "2 menuItem File||",
+                "1 staticText body||",
+            ],
+            events: &[
+                "resize resized",
+                "window focus blurred",
+                "window focus focused",
+                "system settings",
+                "modifiers mods",
+                "modifiers mods",
+                "open docs 1",
+                "menu chose file.new",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
 ];
 
 /// The rows a virtual list builds, at the data indices it builds them at.
@@ -3767,6 +4003,31 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                             _ => "row 102",
                         }),
                 );
+            }
+            ui.leaf_keyed("tail", virtual_spacer(100.0));
+        },
+    );
+}
+
+/// The selection-range scene: the `virtual` scene's list, `selectable`,
+/// each built row a line of text, and a message for the copy's ask.
+fn build_selection_range(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    ui.with_keyed(
+        "list",
+        NodeSpec::column()
+            .size(120.0, 60.0)
+            .gap(0.0)
+            .scroll_y()
+            .bg(Color::hex(0x101018ff))
+            .selectable()
+            .on_selection_range(Value::map([("kind", Value::str("rows"))])),
+        |ui| {
+            ui.row_count(VIRTUAL_ROW_COUNT);
+            ui.leaf_keyed("lead", virtual_spacer(20.0));
+            for i in VIRTUAL_ROWS {
+                ui.with_indexed(i, NodeSpec::column().grow_width().height(20.0), |ui| {
+                    ui.text(&format!("row {i}"), TextStyle::new(13.0));
+                });
             }
             ui.leaf_keyed("tail", virtual_spacer(100.0));
         },
@@ -4521,7 +4782,13 @@ fn build_select(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         MenuItem::new("Latin").id(Value::str("la")).enabled(false),
     ];
     ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
-        widgets::select_items(ui, "language", &options, Some(1));
+        widgets::select_items_with(
+            ui,
+            "language",
+            &options,
+            Some(1),
+            Some(Value::map([("kind", Value::str("lang"))])),
+        );
         ui.text("body", TextStyle::new(12.0));
     });
 }
@@ -4733,7 +5000,59 @@ fn build_ime(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 style: TextStyle::new(13.0),
                 ..Default::default()
             },
-            NodeSpec::column().width(200.0).label("Note"),
+            NodeSpec::column()
+                .width(200.0)
+                .label("Note")
+                .on_change(Value::map([("kind", Value::str("note"))])),
+        );
+    });
+}
+
+/// The edit-rows scene: one stock editor held to the value `AB`, with a
+/// message per handler row so the report says which row each event came
+/// in on.
+/// Every key of the root's `windowEvents` group, each its own `kind`, and
+/// a drawn menu bar declaring `onMenu` (ADR 0048).
+fn build_window_events(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let msg = |kind: &str| Value::map([("kind", Value::str(kind))]);
+    ui.window_events(
+        WindowEvents::default()
+            .on_resize(msg("resized"))
+            .on_focus(msg("focus"))
+            .on_system_settings_change(msg("settings"))
+            .on_fonts(msg("fonts"))
+            .on_modifiers(msg("mods"))
+            .on_open(msg("docs")),
+    );
+    let bar = MenuBar::new(vec![BarMenu::new(
+        "File",
+        vec![MenuItem::new("New").id(Value::str("file.new"))],
+    )])
+    .on_menu(msg("chose"));
+    ui.with(NodeSpec::column().gap(6.0).grow_width(), |ui| {
+        widgets::menu_bar(ui, bar);
+        ui.text("body", TextStyle::new(12.0));
+    });
+}
+
+fn build_edit_rows(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    let msg = |k: &str| Value::map([("kind", Value::str(k))]);
+    ui.with(NodeSpec::column().pad(10.0).gap(6.0), |ui| {
+        ui.text_edit_value(
+            "title",
+            "AB",
+            &EditOptions {
+                style: TextStyle::new(13.0),
+                ..Default::default()
+            },
+            NodeSpec::column()
+                .width(200.0)
+                .label("Title")
+                .on_change(msg("title"))
+                .on_submit(msg("save"))
+                .on_cancel(msg("revert"))
+                .on_boundary(msg("edge"))
+                .on_menu(msg("edit")),
         );
     });
 }
@@ -5026,6 +5345,8 @@ fn build_polygon(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
 /// is. The curve's chords are 44.7, 50 and 82.5, which
 /// `line::flatten_curve` cuts into 8, 9 and 14 pieces at `CURVE_STEP` 6.
 fn build_drop(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    // The OS's documents are the window's, declared on its root (ADR 0048).
+    ui.window_events(WindowEvents::default().on_open(Value::map([("kind", Value::str("docs"))])));
     ui.with(NodeSpec::row().fill(), |ui| {
         ui.with_keyed(
             "files",
@@ -5729,7 +6050,14 @@ fn build_popup(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
     // A list 320 tall under a 240-tall viewport: the case `FloatConfig::fit`
     // cannot place, which is the whole reason for the kind.
     if phase == 0 {
-        ui.window("menu", WindowConfig::popup(POPUP_ANCHOR, 160.0, 320.0));
+        let popup = Value::map([("kind", Value::str("popup"))]);
+        ui.window_with(
+            "menu",
+            WindowConfig::popup(POPUP_ANCHOR, 160.0, 320.0),
+            WindowLifecycle::default()
+                .on_window(popup.clone())
+                .on_dismiss(popup),
+        );
     }
     ui.text_in(
         NodeSpec::column().pad(8.0).bg(Color::hex(0x14161eff)),
@@ -5784,13 +6112,17 @@ fn build_live(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
 }
 
 fn build_windows(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    // Both edges arrive as the entry's one message (ADR 0048); the
+    // phase-3 close as the one declared before the declaration lapsed.
+    let palette =
+        || WindowLifecycle::default().on_window(Value::map([("kind", Value::str("palette"))]));
     if phase == 0 || phase == 2 {
-        ui.window("palette", WindowConfig::sized(400.0, 300.0));
+        ui.window_with("palette", WindowConfig::sized(400.0, 300.0), palette());
     }
     if phase == 0 {
         // The same name again with another config: the first declaration
         // wins, and the disagreement is reported on the frame it opens.
-        ui.window("palette", WindowConfig::sized(500.0, 500.0));
+        ui.window_with("palette", WindowConfig::sized(500.0, 500.0), palette());
     }
     ui.with(
         NodeSpec::column().pad(8.0).bg(Color::hex(0x14161eff)),
@@ -5928,6 +6260,11 @@ fn observe(core: &Core, cov: &mut Coverage) {
     if !core.declared_windows().is_empty() {
         cov.custom.insert("windows");
     }
+    // Nor is the root's `windowEvents` group: the frame just finished is
+    // the one whose group is in force.
+    if core.window_events().is_some() {
+        cov.custom.insert("windowEvents");
+    }
     // The `menuBar` element declares a menu and may draw nothing at all, so
     // neither its rows nor its nodes are a reliable trace of it; the
     // declaration is. (The bar it draws is told from a hand-built row of
@@ -5983,7 +6320,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         }
         // `widgets::button_spec` plus a payload: the stock button is the
         // node that declares a click and both interaction backgrounds.
-        if spec.events().on_click.is_some()
+        if spec.events().on_click().is_some()
             && spec.interact().hover_bg.is_some()
             && spec.interact().pressed_bg.is_some()
         {
@@ -6005,7 +6342,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
             Some(Role::Switch) => {
                 cov.elements.insert("switch");
             }
-            Some(Role::Slider) if spec.events().on_change.is_some() => {
+            Some(Role::Slider) if spec.events().on_change().is_some() => {
                 cov.elements.insert("slider");
             }
             _ => {}
@@ -6015,8 +6352,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         // declares that payload.
         if spec
             .events()
-            .on_click
-            .as_ref()
+            .on_click()
             .is_some_and(|v| v.get_bool("select") == Some(true))
         {
             cov.elements.insert("select");
@@ -6322,25 +6658,41 @@ fn rows(tree: &AccessTree) -> Vec<NodeRow> {
         .collect()
 }
 
-/// The one event shape the corpus compares: a payload's `kind`, and the
-/// `kind` inside its `tag` when the core merged one in. Anything richer
-/// would need a map walker in the C API, which there is none of.
-fn event_row(payload: &Value) -> (String, String) {
-    let kind = payload.get_str("kind").unwrap_or("-").to_string();
-    // The second column is the event's tag. The two window-level events
-    // carry none — they are on the window and not on a node — and without
-    // a fallback two `window` lines or two `dismiss` lines are the same
-    // line, which is exactly the difference those scenes are about. So an
-    // untagged payload shows the field that tells it from its siblings:
-    // `phase` for a `window`, `reason` for a `dismiss`.
-    let mut tag = payload
-        .get("tag")
-        .and_then(|t| t.get("kind"))
-        .or_else(|| payload.get("phase"))
-        .or_else(|| payload.get("reason"))
-        .and_then(Value::as_str)
+/// The one event shape the corpus compares (ADR 0047): the envelope's
+/// `event`, and the app's message by its `kind` — a map message's own, or
+/// the string a non-map message was kept under `tag` as — followed by the
+/// few data fields that are each event's contract. Anything richer would
+/// need a map walker in the C API, which there is none of.
+fn event_row(ev: &UiEvent) -> (String, String) {
+    let kind = ev.event.name().to_string();
+    let payload = &ev.payload;
+    let empty = Value::Null;
+    let data = ev.data().unwrap_or(&empty);
+    // The second column is the event's message. A handler that declared
+    // a `Null` one has no name for it, and without a fallback two
+    // `window` lines or two `dismiss` lines are the same line, which is
+    // exactly the difference those scenes are about. So an event with no
+    // message name shows the field that tells it from its siblings:
+    // `phase` for a `window` or a `key`, `reason` for a `dismiss`.
+    let named = payload
+        .as_str()
+        .or_else(|| payload.get_str("kind"))
+        .or_else(|| payload.get_str("tag"));
+    let mut tag = named
+        .or_else(|| data.get_str("phase"))
+        .or_else(|| data.get_str("reason"))
         .unwrap_or("-")
         .to_string();
+    // A window's lifecycle and a dismissal arrive as one declared message
+    // each edge (ADR 0048), so a named one carries the field that tells
+    // the edges apart after its name: `window palette opened`.
+    if named.is_some() && (kind == "window" || kind == "dismiss") {
+        let edge = data
+            .get_str("phase")
+            .or_else(|| data.get_str("reason"))
+            .unwrap_or("-");
+        let _ = write!(tag, " {edge}");
+    }
     // A drag's phase and deltas ride in the tag column (`split move 8 0`),
     // because the deltas are the contract: `dx`/`dy` are measured from the
     // press point in every phase, and a binding that summed
@@ -6348,15 +6700,23 @@ fn event_row(payload: &Value) -> (String, String) {
     // integers — the steps are integers, so the deltas are exact.
     // A slider's change carries its phase and the value the core worked
     // out, the arithmetic being what is pinned. The corpus
-    // steps land on whole values, so they print as integers.
+    // steps land on whole values, so they print as integers. An editor's
+    // carries its whole text, which is the contract there (ADR 0047).
     if kind == "change" {
-        let phase = payload.get_str("phase").unwrap_or("-");
-        let v = payload.get_float("value").unwrap_or(0.0) as i64;
-        let _ = write!(tag, " {phase} {v}");
+        match data.get_str("text") {
+            Some(text) => {
+                let _ = write!(tag, " {text:?}");
+            }
+            None => {
+                let phase = data.get_str("phase").unwrap_or("-");
+                let v = data.get_float("value").unwrap_or(0.0) as i64;
+                let _ = write!(tag, " {phase} {v}");
+            }
+        }
     }
     if kind == "drag" {
-        let num = |k: &str| payload.get(k).and_then(Value::as_float).unwrap_or(0.0) as i64;
-        let phase = payload.get_str("phase").unwrap_or("-");
+        let num = |k: &str| data.get(k).and_then(Value::as_float).unwrap_or(0.0) as i64;
+        let phase = data.get_str("phase").unwrap_or("-");
         let _ = write!(tag, " {phase} {} {}", num("dx"), num("dy"));
     }
     // A scroll's lines ride the same way (`scroll term 2`): the whole
@@ -6369,8 +6729,8 @@ fn event_row(payload: &Value) -> (String, String) {
     // went — and a binding that lost the mask would claim the secondary
     // presses and disagree here.
     if kind == "button" {
-        let phase = payload.get_str("phase").unwrap_or("-");
-        match payload.get("button") {
+        let phase = data.get_str("phase").unwrap_or("-");
+        match data.get("button") {
             Some(Value::Str(b)) => {
                 let _ = write!(tag, " {phase} {b}");
             }
@@ -6387,15 +6747,15 @@ fn event_row(payload: &Value) -> (String, String) {
     // contract, and a binding that dropped it would agree on the kind and
     // disagree here. A key from the standard place prints as it did.
     if kind == "key"
-        && let Some(loc) = payload.get_str("location")
+        && let Some(loc) = data.get_str("location")
         && loc != "standard"
     {
-        let phase = payload.get_str("phase").unwrap_or("-");
-        let code = payload.get_str("code").unwrap_or("-");
+        let phase = data.get_str("phase").unwrap_or("-");
+        let code = data.get_str("code").unwrap_or("-");
         let _ = write!(tag, " {phase} {code} {loc}");
     }
     if kind == "scroll" {
-        match payload.get_int("lines") {
+        match data.get_int("lines") {
             Some(n) => {
                 let _ = write!(tag, " {n}");
             }
@@ -6407,21 +6767,36 @@ fn event_row(payload: &Value) -> (String, String) {
     // decision 1), and a binding that dropped the list on the wire would
     // agree on the kind and disagree here.
     if kind == "drop" {
-        let phase = payload.get_str("phase").unwrap_or("-");
-        let n = payload
+        let phase = data.get_str("phase").unwrap_or("-");
+        let n = data
             .get("paths")
             .and_then(Value::as_list)
             .map_or(0, <[Value]>::len);
         let _ = write!(tag, " {phase} {n}");
     }
     // The documents the OS handed over ride the same way, as a count
-    // (`open - 2`, backlog F124).
+    // (`open docs 2`, backlog F124).
     if kind == "open" {
-        let n = payload
+        let n = data
             .get("paths")
             .and_then(Value::as_list)
             .map_or(0, <[Value]>::len);
         let _ = write!(tag, " {n}");
+    }
+    // An editor's edge rides the same way (`boundary edge end right`): the
+    // edge and the key that met it are the contract (ADR 0047, decision
+    // 7), and a binding that swapped the two ends would agree on the kind
+    // and disagree here.
+    if kind == "boundary" {
+        let edge = data.get_str("edge").unwrap_or("-");
+        let key = data.get_str("key").unwrap_or("-");
+        let _ = write!(tag, " {edge} {key}");
+    }
+    // A menu choice's item rides the same way (`menu - English`): which
+    // row was chosen is the contract, an option's label or the `id` it
+    // posts, `-` for an id that is not a string.
+    if kind == "menu" {
+        let _ = write!(tag, " {}", data.get_str("item").unwrap_or("-"));
     }
     // A paste's markers ride the same way (`text ed concealed transient`),
     // each only when it is set, as the payload carries them (backlog
@@ -6430,7 +6805,7 @@ fn event_row(payload: &Value) -> (String, String) {
     // always was.
     if kind == "text" {
         for marker in ["concealed", "transient"] {
-            if payload.get(marker).and_then(Value::as_bool) == Some(true) {
+            if data.get(marker).and_then(Value::as_bool) == Some(true) {
                 let _ = write!(tag, " {marker}");
             }
         }
@@ -6468,27 +6843,26 @@ pub fn drive(
     let mut audio = Vec::new();
     let mut coverage = Coverage::default();
     let mut phase = 0u32;
+    let mut viewport = VIEWPORT;
     let mut frame = |core: &mut Core,
                      phase: u32,
+                     viewport: Size,
                      events: &mut Vec<(String, String)>,
                      commands: &mut Vec<WindowCommand>,
                      audio: &mut Vec<AudioCommand>,
                      coverage: &mut Coverage| {
-        let mut ui = core.frame(VIEWPORT, SCALE);
+        let mut ui = core.frame(viewport, SCALE);
         build(&mut ui, phase);
         ui.finish();
         observe(core, coverage);
-        events.extend(
-            core.take_pending_events()
-                .iter()
-                .map(|e| event_row(&e.payload)),
-        );
+        events.extend(core.take_pending_events().iter().map(event_row));
         commands.extend(core.take_window_commands());
         audio.extend(core.take_audio_commands());
     };
     frame(
         core,
         phase,
+        viewport,
         &mut events,
         &mut commands,
         &mut audio,
@@ -6498,23 +6872,24 @@ pub fn drive(
         match *step {
             Step::Phase(n) => phase = n,
             Step::Time(ms) => core.set_time(ms as f64 / 1000.0),
+            Step::Viewport(w, h) => viewport = Size::new(w as f32, h as f32),
+            Step::Focused(on) => {
+                core.set_focused(on != 0);
+                events.extend(core.take_pending_events().iter().map(event_row));
+            }
             Step::WindowClosed(id) => {
                 core.window_closed(WindowId(id));
-                events.extend(
-                    core.take_pending_events()
-                        .iter()
-                        .map(|e| event_row(&e.payload)),
-                );
+                events.extend(core.take_pending_events().iter().map(event_row));
                 commands.extend(core.take_window_commands());
                 audio.extend(core.take_audio_commands());
             }
             Step::WindowDismissed(id, reason) => {
                 core.dismiss_window(WindowId(id), DISMISS_REASONS[reason as usize]);
-                events.extend(
-                    core.take_pending_events()
-                        .iter()
-                        .map(|e| event_row(&e.payload)),
-                );
+                events.extend(core.take_pending_events().iter().map(event_row));
+            }
+            Step::Copy => {
+                core.request_copy();
+                events.extend(core.take_pending_events().iter().map(event_row));
             }
             Step::Appearance(n) => {
                 let appearance = crate::env::Appearance::ALL[n as usize];
@@ -6525,7 +6900,7 @@ pub fn drive(
             }
             _ => {
                 let evs = core.handle_input(step.event().expect("an input step"));
-                events.extend(evs.iter().map(|e| event_row(&e.payload)));
+                events.extend(evs.iter().map(event_row));
                 commands.extend(core.take_window_commands());
                 audio.extend(core.take_audio_commands());
             }
@@ -6533,6 +6908,7 @@ pub fn drive(
         frame(
             core,
             phase,
+            viewport,
             &mut events,
             &mut commands,
             &mut audio,

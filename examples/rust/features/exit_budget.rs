@@ -154,7 +154,8 @@ impl App for BulkExit {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
+        let msg = ev.message::<Value>();
+        match msg.as_ref().and_then(|m| m.get_str("kind")) {
             Some("fill") => {
                 self.a = true;
                 self.b = true;
@@ -183,10 +184,12 @@ impl Example for BulkExit {
         d.frame(self);
         d.warnings();
         let step = |d: &mut kui_devtools::Drive<'_>, app: &mut BulkExit, kind: &str| {
-            app.on_event(UiEvent::on(
+            app.on_event(UiEvent::declared(
+                kui_native::EventKind::Click,
                 kui_native::OriginId::HOST,
                 kui_native::Key::ROOT,
-                Value::map([("kind", kind.into())]),
+                Some(&Value::map([("kind", kind.into())])),
+                Value::Null,
             ));
             d.advance(0.016);
             d.frame(app);

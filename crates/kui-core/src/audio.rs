@@ -39,8 +39,8 @@
 //! core.stop(playback, 0.0);
 //! ```
 //!
-//! A playback started with a tag comes back as
-//! `{kind:"sound", phase:"ended", playback, tag}` on the origin that
+//! A playback started with a tag comes back as that message with
+//! `sound: {phase: "ended", playback}` in it, on the origin that
 //! started it once the driver reports it finished (`Core::audio_ended`),
 //! not when something stopped it. A play the device refused comes back as
 //! `phase:"refused"` (`Core::audio_refused`), so nothing waits on an
@@ -102,7 +102,8 @@ impl PlayOptions {
         self
     }
 
-    /// Asks for an `ended` event carrying this tag.
+    /// Asks for an `ended` event, arriving as this message with `sound` in
+    /// it.
     pub fn tag(mut self, tag: impl Into<Value>) -> Self {
         self.tag = Some(tag.into());
         self
@@ -172,7 +173,8 @@ impl AudioSpec {
     /// A released playback is not free: it holds one of the device's 128
     /// voices until its file ends, and the 129th play is refused (reported
     /// as [`crate::diag::PLAYBACK_REFUSED`] and, for a tagged node,
-    /// `{kind:"sound", phase:"refused"}`). A loop would hold a voice for
+    /// its message with `sound: {phase: "refused"}` in it). A loop would
+    /// hold a voice for
     /// ever, which is why a loop is stopped rather than released.
     pub fn finish(mut self) -> Self {
         self.finish = true;
@@ -495,18 +497,25 @@ impl AudioStore {
         // cut nothing off.
         self.stopped.remove(&playback);
         let t = self.tagged.remove(&playback)?;
-        Some(UiEvent {
-            origin: t.origin,
-            window: t.window,
-            key: t.key,
-            payload: Value::map([
-                ("kind", Value::str("sound")),
-                ("phase", Value::str("ended")),
-                ("playback", Value::Int(playback.0 as i64)),
-                ("tag", t.tag),
-            ]),
-            slot: None,
-        })
+        Some(Self::sound_event(t, playback, "ended"))
+    }
+
+    /// `{sound: {phase, playback}}` in the playback's message, from the
+    /// window that declared it.
+    fn sound_event(t: Tagged, playback: PlaybackId, phase: &str) -> UiEvent {
+        let data = Value::map([
+            ("phase", Value::str(phase)),
+            ("playback", Value::Int(playback.0 as i64)),
+        ]);
+        let mut ev = UiEvent::declared(
+            crate::input::EventKind::Sound,
+            t.origin,
+            t.key,
+            Some(&t.tag),
+            data,
+        );
+        ev.window = t.window;
+        ev
     }
 
     /// The driver refused a play — the device's voices are all held, or
@@ -525,18 +534,10 @@ impl AudioStore {
         playback: PlaybackId,
     ) -> (Option<UiEvent>, crate::diag::Warning) {
         let warning = crate::diag::playback_refused(self.key_of(playback), playback);
-        let event = self.tagged.remove(&playback).map(|t| UiEvent {
-            origin: t.origin,
-            window: t.window,
-            key: t.key,
-            payload: Value::map([
-                ("kind", Value::str("sound")),
-                ("phase", Value::str("refused")),
-                ("playback", Value::Int(playback.0 as i64)),
-                ("tag", t.tag),
-            ]),
-            slot: None,
-        });
+        let event = self
+            .tagged
+            .remove(&playback)
+            .map(|t| Self::sound_event(t, playback, "refused"));
         (event, warning)
     }
 
@@ -707,9 +708,12 @@ mod tests {
         assert_eq!(a.take_commands().len(), 2);
         assert!(a.ended(quiet).is_none());
         let ev = a.ended(loud).expect("tagged playback reports ended");
-        assert_eq!(ev.kind(), Some("sound"));
+        assert_eq!(ev.event.name(), "sound");
         assert_eq!(ev.payload.get_str("tag"), Some("t"));
-        assert_eq!(ev.payload.get_int("playback"), Some(loud.0 as i64));
+        assert_eq!(
+            ev.data().and_then(|d| d.get_int("playback")),
+            Some(loud.0 as i64)
+        );
         // Reported once.
         assert!(a.ended(loud).is_none());
     }
@@ -827,14 +831,17 @@ mod tests {
         let (event, warning) = a.refused(p);
         let ev = event.expect("a tagged playback hears the refusal");
         assert_eq!(ev.key, k);
-        assert_eq!(ev.kind(), Some("sound"));
+        assert_eq!(ev.event.name(), "sound");
         assert_eq!(
-            ev.payload.get_str("phase"),
+            ev.data().and_then(|d| d.get_str("phase")),
             Some("refused"),
             "told apart from the `ended` that will never come"
         );
         assert_eq!(ev.payload.get_str("tag"), Some("chime"));
-        assert_eq!(ev.payload.get_int("playback"), Some(p.0 as i64));
+        assert_eq!(
+            ev.data().and_then(|d| d.get_int("playback")),
+            Some(p.0 as i64)
+        );
         assert_eq!(warning.code, crate::diag::PLAYBACK_REFUSED);
         assert_eq!(warning.key, k);
 
@@ -887,7 +894,7 @@ mod tests {
         let (event, warning) = a.refused(p);
         let ev = event.expect("a released playback still hears the refusal");
         assert_eq!(ev.key, k);
-        assert_eq!(ev.payload.get_str("phase"), Some("refused"));
+        assert_eq!(ev.data().and_then(|d| d.get_str("phase")), Some("refused"));
         assert_eq!(warning.key, k);
     }
 

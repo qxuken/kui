@@ -423,7 +423,7 @@ impl Core {
     pub(crate) fn modal_scope(&self) -> Option<(usize, usize, Key)> {
         let i = (0..self.tree.len())
             .rev()
-            .find(|&i| self.tree.specs[i].events().modal.is_some())?;
+            .find(|&i| self.tree.specs[i].events().modal().is_some())?;
         Some((i, self.tree.subtree_end(i), self.tree.keys[i]))
     }
 
@@ -463,7 +463,7 @@ impl Core {
         let mut now: Vec<(Key, Option<Key>)> = Vec::new();
         if self.tree.any_modal {
             for i in 0..self.tree.len() {
-                if self.tree.specs[i].events().modal.is_none() {
+                if self.tree.specs[i].events().modal().is_none() {
                     continue;
                 }
                 let key = self.tree.keys[i];
@@ -573,7 +573,7 @@ impl Core {
         if self.tree.specs[i].window.is_some() {
             return self.focus;
         }
-        if self.tree.specs[i].events().on_key.is_some() {
+        if self.tree.specs[i].events().on_key().is_some() {
             return Some(key);
         }
         match self.enclosing_sink(i) {
@@ -598,7 +598,7 @@ impl Core {
             if !self.interactive(j) {
                 return None;
             }
-            if self.tree.specs[j].events().on_key.is_some() && !self.tree.specs[j].disabled {
+            if self.tree.specs[j].events().on_key().is_some() && !self.tree.specs[j].disabled {
                 return Some(j);
             }
             n = self.tree.parent[j];
@@ -615,7 +615,7 @@ impl Core {
     /// reaches the container's.
     pub(crate) fn enclosing_menu(&self, i: usize) -> Option<usize> {
         let offers = |j: usize| {
-            self.tree.specs[j].events().on_context_menu.is_some() && !self.tree.specs[j].disabled
+            self.tree.specs[j].events().on_context_menu().is_some() && !self.tree.specs[j].disabled
         };
         if offers(i) {
             return Some(i);
@@ -652,10 +652,10 @@ impl Core {
             let spec = &self.tree.specs[j];
             if !spec.disabled {
                 let ev = spec.events();
-                if ev.on_button.is_some() && ev.buttons.contains(button) {
+                if ev.on_button().is_some() && ev.buttons.contains(button) {
                     return Some(j);
                 }
-                if button == MouseButton::Secondary && ev.on_context_menu.is_some() {
+                if button == MouseButton::Secondary && ev.on_context_menu().is_some() {
                     return None;
                 }
             }
@@ -670,7 +670,7 @@ impl Core {
     /// and skipping a disabled node's own.
     pub(crate) fn enclosing_drop(&self, i: usize) -> Option<usize> {
         let declares = |j: usize| {
-            self.tree.specs[j].events().on_drop.is_some() && !self.tree.specs[j].disabled
+            self.tree.specs[j].events().on_drop().is_some() && !self.tree.specs[j].disabled
         };
         if declares(i) {
             return Some(i);
@@ -744,7 +744,7 @@ impl Core {
         let mut path = Vec::new();
         if let Some(mut i) = self.focus.and_then(|k| self.tree.index_of(k)) {
             loop {
-                if self.tree.specs[i].events().on_focus.is_some() {
+                if self.tree.specs[i].events().on_focus().is_some() {
                     path.push(i);
                 }
                 let p = self.tree.parent[i];
@@ -768,19 +768,15 @@ impl Core {
             .map(|&i| {
                 let tag = self.tree.specs[i]
                     .events()
-                    .on_focus
-                    .clone()
+                    .on_focus()
+                    .cloned()
                     .unwrap_or_default();
                 (self.tree.keys[i], self.tree.origins[i], tag)
             })
             .collect();
         let event = |(key, origin, tag): &(Key, crate::tree::OriginId, Value), phase: &str| {
-            let payload = Value::map([
-                ("kind", Value::str("focus")),
-                ("phase", Value::str(phase)),
-                ("by", Value::str(by)),
-            ]);
-            UiEvent::on(*origin, *key, payload).tagged(Some(tag))
+            let data = Value::map([("phase", Value::str(phase)), ("by", Value::str(by))]);
+            UiEvent::declared(EventKind::Focus, *origin, *key, Some(tag), data)
         };
         for r in self.focus_reported.iter().rev() {
             if !now.iter().any(|n| n.0 == r.0) {

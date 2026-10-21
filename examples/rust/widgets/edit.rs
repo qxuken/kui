@@ -6,15 +6,19 @@
 //! its text back (`ui.edit_text`) — the buffer lives in the core keyed by
 //! the widget's identity, so it survives every rebuild of the tree.
 //!
-//! What arrives in `on_event`: `changed` on every edit and `submit` from
-//! the single-line field on Enter, both carrying the editor's key and
-//! nothing else — the text is the core's, read back with `edit_text`.
+//! What arrives in `on_event` is what each editor declared: the
+//! document's `on_change` message on every edit, with the whole text
+//! beside it under `change`, and from the single-line field its own
+//! change message and, on Enter, its submit message as declared. An
+//! editor that declares none of them sends nothing.
 //!
 //! Run: cargo run -p kui-native --example edit [-- --headless]
 
 use kui_devtools::{Drive, Example};
+use kui_native::widgets::{self, InputMessages};
 use kui_native::{
-    Align, App, Core, EditOptions, FontFamily, Key, NodeSpec, TextStyle, Ui, UiEvent,
+    Align, App, Core, EditOptions, Event, FontFamily, Key, Message, NodeSpec, TextStyle, Ui,
+    UiEvent,
 };
 
 const INITIAL: &str = "\
@@ -33,15 +37,24 @@ text survives every rebuild of the UI tree - the view below is
 regenerated from scratch every frame, like any other kui view.
 ";
 
+#[derive(Message, Clone, Debug, PartialEq)]
+enum Msg {
+    /// The document changed: its text arrives beside, under `change`.
+    Doc,
+    /// The title field changed, the same way.
+    Title,
+    /// Enter in the title field: the message as declared, nothing more.
+    Submit,
+}
+
 #[derive(Default)]
 struct Edit {
     doc: Option<Key>,
     chars: usize,
     lines: usize,
     edited: bool,
-    seen_version: u64,
-    /// The field a `submit` arrived on, read back on the next view.
-    submit: Option<Key>,
+    /// The title field's text, as its last `change` said.
+    title: String,
     /// What the single-line field last submitted.
     submitted: Option<String>,
 }
@@ -62,10 +75,17 @@ impl App for Edit {
                     .border(1.0, t.border),
                 |ui| {
                     ui.text("title", TextStyle::new(12.0).color(t.muted));
-                    let title = kui_native::widgets::text_input(ui, "title", "");
-                    if self.submit.take() == Some(title) {
-                        self.submitted = ui.edit_text(title);
-                    }
+                    widgets::text_input_with(
+                        ui,
+                        "title",
+                        "",
+                        false,
+                        &InputMessages {
+                            change: Some(Msg::Title.into()),
+                            submit: Some(Msg::Submit.into()),
+                            cancel: None,
+                        },
+                    );
                     ui.text(
                         &match &self.submitted {
                             Some(s) => format!("submitted: {s:?}"),
@@ -93,17 +113,21 @@ impl App for Edit {
                     },
                     // Nothing inside an editor names it, so
                     // `control-without-name` is right to ask: a screen
-                    // reader would say "text input".
-                    NodeSpec::column().grow_width().pad(20.0).label("document"),
+                    // reader would say "text input". `on_change` is what
+                    // makes it report its edits at all.
+                    NodeSpec::column()
+                        .grow_width()
+                        .pad(20.0)
+                        .label("document")
+                        .on_change(Msg::Doc),
                 );
                 self.doc = Some(key);
-                // Recount only when the document actually changed —
-                // pulling the full text out every frame would be
-                // O(doc) per keystroke.
-                let version = ui.core().edit.version(key);
-                if version != self.seen_version || self.chars == 0 {
-                    self.recount(ui.edit_text(key));
-                    self.seen_version = version;
+                // The first count is of the seed, read back once; after
+                // that every edit brings its text with it.
+                if self.chars == 0
+                    && let Some(text) = ui.edit_text(key)
+                {
+                    self.recount(&text);
                 }
             });
 
@@ -131,23 +155,22 @@ impl App for Edit {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("changed") if Some(ev.key) == self.doc => {
+        match ev.split::<Msg>() {
+            (Some(Msg::Doc), Event::EditChange(c)) => {
                 self.edited = true;
-                self.chars = 0; // recount next view
+                self.recount(&c.text);
             }
-            Some("submit") => self.submit = Some(ev.key),
+            (Some(Msg::Title), Event::EditChange(c)) => self.title = c.text,
+            (Some(Msg::Submit), _) => self.submitted = Some(self.title.clone()),
             _ => {}
         }
     }
 }
 
 impl Edit {
-    fn recount(&mut self, text: Option<String>) {
-        if let Some(t) = text {
-            self.chars = t.chars().count();
-            self.lines = t.lines().count().max(1);
-        }
+    fn recount(&mut self, text: &str) {
+        self.chars = text.chars().count();
+        self.lines = text.lines().count().max(1);
     }
 }
 
@@ -171,10 +194,13 @@ impl Example for Edit {
         )?;
 
         // Typing lands in the document (it autofocused) and the status
-        // bar sees the change through `changed`.
+        // bar sees the change through its `on_change` message.
         d.text(self, "x");
         d.frame(self);
-        d.check(self.edited, "a keystroke reports `changed`")?;
+        d.check(
+            self.edited && self.chars == INITIAL.chars().count() + 1,
+            "a keystroke reports `change`, with the text",
+        )?;
         let text = d.core.edit_text(doc).unwrap_or_default();
         d.check(text.contains('x'), "and the text read back has it")?;
 

@@ -43,6 +43,31 @@ pub extern "C" fn kui_key_of(ptr: *mut KuiCtx, label: KuiStr) -> u64 {
     })
 }
 
+/// The reverse of [`kui_key_of`]: the label `key` was opened under, in the
+/// frame being built so far and then the last finished one, borrowed until
+/// the next `kui_label_of` on this context or [`kui_ctx_free`]. False for
+/// an auto-keyed node or a key no frame declared. What a host holding a
+/// key from an event, `kui_focused` or a log turns back into the name the
+/// view gave it; the label is the local one, so two rows of a list under
+/// different parents answer the same.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_label_of(ptr: *mut KuiCtx, key: u64, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let (Some(c), Some(out)) = (unsafe { ctx(ptr) }, unsafe { out.as_mut() }) else {
+            return false;
+        };
+        let Some(label) = c.core().label_of(Key(key)) else {
+            return false;
+        };
+        c.label_of = label.to_owned();
+        *out = KuiStr {
+            ptr: c.label_of.as_ptr(),
+            len: c.label_of.len(),
+        };
+        true
+    })
+}
+
 /// The key of the first node in the last finished frame whose accessible
 /// name is `name` (backlog F137) — its `label` row, else its own text, else
 /// a control's derived name — so a test presses "the button named Like" as

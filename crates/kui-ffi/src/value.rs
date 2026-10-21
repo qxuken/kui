@@ -5,8 +5,9 @@ use super::*;
 // ---------------------------------------------------------------------------
 // Values
 
-/// A new null value, owned by the caller. Where a tag is taken it asks
-/// for the events without a tag.
+/// A new null value, owned by the caller. Where a handler's message is
+/// taken it asks for the behaviour with no message of the caller's: the
+/// events arrive as their field alone (`{drag: {...}}`, ADR 0047).
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_null() -> *mut KuiValue {
     Box::into_raw(Box::new(KuiValue(Value::Null)))
@@ -206,7 +207,7 @@ pub extern "C" fn kui_value_as_bool(v: *const KuiValue, out: *mut bool) -> bool 
 }
 
 /// Whether the value is the null one: what a key event's `text` is on a
-/// release, and a missing `tag`. A NULL pointer answers true too, so a
+/// release, and a missing field. A NULL pointer answers true too, so a
 /// `kui_value_get` miss reads the same as an explicit null.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_value_is_null(v: *const KuiValue) -> bool {

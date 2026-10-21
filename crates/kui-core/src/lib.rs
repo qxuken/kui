@@ -51,7 +51,7 @@
 //! let events = core.handle_input(InputEvent::mouse_up());
 //! let click = events
 //!     .iter()
-//!     .find(|e| e.payload.as_str() == Some("save"))
+//!     .find(|e| e.payload.get_str("tag") == Some("save"))
 //!     .expect("the click reached the button");
 //! assert_eq!(click.key, button.key);
 //! ```
@@ -180,16 +180,19 @@ pub use edit::{EditOptions, MAX_UNDECLARED_EDITS, SECURE_BULLET};
 pub use enter::Enter;
 pub use env::{Appearance, Assistive, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
 pub use event::{
-    ButtonEvent, ButtonPhase, Drag, DragPhase, Hover, HoverBy, HoverPhase, Layout, Scroll,
-    TextInput,
+    Boundary, ButtonEvent, ButtonPhase, ChangePhase, Click, ContextMenu, Dismiss, Drag, DragPhase,
+    DropPhase, EditChange, Event, FileDrop, Files, Focus, FocusBy, FocusPhase, ForceClick, Hover,
+    HoverBy, HoverPhase, KeyEvent, Layout, LinePos, MenuChoice, Preedit, Resize, Scroll, Select,
+    SelectionRange, SliderChange, Sound, SoundPhase, Text, TextEdge, TextInput, WindowEvent,
+    WindowPhase,
 };
 pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Transform, Vec2};
 pub use gradient::{Gradient, Side, Stop as GradientStop};
 pub use input::ScrollAxis;
 pub use input::{
-    Buttons, ClipboardMarks, EditKey, InputEvent, KeyCode, KeyLocation, KeyLocks, KeyMods,
-    KeyPhase, KeyPress, LayoutScript, Mods, MouseButton, OptionAsAlt, UiEvent,
+    Buttons, ClipboardMarks, EditKey, EventKind, InputEvent, KeyCode, KeyLocation, KeyLocks,
+    KeyMods, KeyPhase, KeyPress, LayoutScript, Mods, MouseButton, OptionAsAlt, UiEvent,
 };
 pub use key::Key;
 pub use keyframes::Keyframe;
@@ -201,7 +204,7 @@ pub use keyframes::Keyframe;
 pub use kui_derive::Message;
 pub use line::{Dash, LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
-pub use message::{MessageError, MessageField};
+pub use message::{EventField, MessageError, MessageField};
 pub use metrics::Metrics;
 pub use path::{FillRule, Path, PathError, PathId, PathOp, PathStore, Turn};
 pub use resources::{
@@ -236,6 +239,6 @@ pub use tree::OriginId;
 pub use ui::Ui;
 pub use value::{Handles, Value};
 pub use window::{
-    Backdrop, DismissReason, WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowId,
-    WindowKind, WindowRole,
+    Backdrop, DismissReason, WindowButton, WindowCommand, WindowConfig, WindowEnv, WindowEvents,
+    WindowId, WindowKind, WindowLifecycle, WindowRole,
 };

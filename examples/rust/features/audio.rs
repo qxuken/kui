@@ -19,7 +19,10 @@
 use kui_devtools::{Drive, Example};
 use kui_native::audio::{blip, wav_pcm16};
 use kui_native::widgets;
-use kui_native::{Align, App, AudioSpec, Core, NodeSpec, SoundId, TextStyle, Ui, UiEvent, Value};
+use kui_native::{
+    Align, App, AudioSpec, Core, Event, HoverPhase, NodeSpec, SoundId, TextStyle, Ui, UiEvent,
+    Value,
+};
 
 #[derive(Default)]
 struct Audio {
@@ -139,10 +142,13 @@ impl App for Audio {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("click") => self.clicks += 1,
-            Some("hum") => self.hum = !self.hum,
-            Some("hover") if ev.payload.get_str("phase") == Some("enter") => self.hovers += 1,
+        // The message is the map the view declared, and a hover's data
+        // rides beside it under `hover`.
+        let (msg, event) = ev.split::<Value>();
+        match (msg.as_ref().and_then(|m| m.get_str("kind")), event) {
+            (Some("click"), _) => self.clicks += 1,
+            (Some("hum"), _) => self.hum = !self.hum,
+            (Some("hover"), Event::Hover(h)) if h.phase == HoverPhase::Enter => self.hovers += 1,
             _ => {}
         }
     }

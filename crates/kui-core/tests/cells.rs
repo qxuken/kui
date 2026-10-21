@@ -191,10 +191,8 @@ fn a_click_names_its_cell_and_the_screen_is_the_value() {
         .iter()
         .find(|e| matches!(&e.payload, Value::Map(m) if m.iter().any(|(k, v)| k == "kind" && *v == Value::str("hit"))))
         .expect("the click arrived");
-    let Value::Map(m) = &click.payload else {
-        panic!()
-    };
-    let cell = m.iter().find(|(k, _)| k == "cell").map(|(_, v)| v.clone());
+    // The cell rides in the click's data, beside the declared `kind`.
+    let cell = click.data().and_then(|d| d.get("cell")).cloned();
     assert_eq!(
         cell,
         Some(Value::map([("row", Value::Int(1)), ("col", Value::Int(3))])),
@@ -237,7 +235,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
     );
     ui.take_key_focus(key);
     ui.finish();
-    let has_cell = |e: &kui_core::UiEvent| e.payload.get("cell").is_some();
+    let has_cell = |e: &kui_core::UiEvent| e.data().and_then(|d| d.get("cell")).is_some();
     // The mouse rests on the grid.
     core.handle_input(InputEvent::CursorMoved(Vec2::new(15.0, 15.0)));
     let evs = core.handle_input(InputEvent::KeyDown(KeyPress::new(
@@ -246,7 +244,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
     )));
     let k = evs
         .iter()
-        .find(|e| e.kind() == Some("key"))
+        .find(|e| e.event.name() == "key")
         .expect("the key arrived");
     assert!(!has_cell(k), "{:?}", k.payload);
     // A click Enter made: the sink holds focus, so it is the keyboard's
@@ -258,7 +256,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
     )));
     let click = evs
         .iter()
-        .find(|e| e.kind() == Some("hit"))
+        .find(|e| e.payload.get_str("kind") == Some("hit"))
         .expect("the click arrived");
     assert!(!has_cell(click), "{:?}", click.payload);
     // And a real press does name it.
@@ -266,7 +264,7 @@ fn a_key_on_the_grid_and_a_click_without_a_press_name_no_cell() {
     let evs = core.handle_input(InputEvent::mouse_up());
     let click = evs
         .iter()
-        .find(|e| e.kind() == Some("hit"))
+        .find(|e| e.payload.get_str("kind") == Some("hit"))
         .expect("the click arrived");
     assert!(has_cell(click), "{:?}", click.payload);
 }

@@ -269,23 +269,23 @@ impl Core {
     /// A slider move on node `i`. A slider that declared `on_change` has
     /// the core do the arithmetic: the move is
     /// worked from its declared `value_now`, range and step, and proposed
-    /// as `{kind="change", value, phase="end", tag}` — nothing when it
-    /// lands where the slider already is. Any other slider reaches the app
-    /// as `{kind="access", action, tag}`, since the core cannot know what
-    /// a step means there, and only for a single step: its Page, Home and
-    /// End keys were never its own.
+    /// as `{change: {value, phase: "end"}}` in the `onChange` message —
+    /// nothing when it lands where the slider already is. A slider without
+    /// `on_change` does not move and raises `slider-without-handler`, and
+    /// a node that is not a slider is not nudged at all: an assistive
+    /// increment reaches this for any node it names.
     pub(crate) fn nudge(
         &mut self,
         i: usize,
         mv: crate::slider::SliderMove,
         out: &mut Vec<UiEvent>,
     ) {
-        use crate::slider::{SliderMove, SliderRange, change_event};
+        use crate::slider::{SliderRange, change_event};
         let spec = &self.tree.specs[i];
-        if spec.disabled {
+        if spec.disabled || spec.access().role != Some(crate::access::Role::Slider) {
             return;
         }
-        if let Some(tag) = spec.events().on_change.as_ref() {
+        if let Some(tag) = spec.events().on_change() {
             let ax = spec.access();
             let Some(range) = SliderRange::of(ax) else {
                 return;
@@ -302,19 +302,16 @@ impl Core {
             }
             return;
         }
-        let action = match mv {
-            SliderMove::Step(n) if n > 0 => crate::access::AccessAction::Increment,
-            SliderMove::Step(_) => crate::access::AccessAction::Decrement,
-            _ => return,
-        };
-        let payload = Value::map([
-            ("kind", Value::str("access")),
-            ("action", Value::str(action.name())),
-        ]);
-        out.push(
-            UiEvent::on(self.tree.origins[i], self.tree.keys[i], payload)
-                .tagged(self.access_tag(i).as_ref()),
-        );
+        // A slider with no `onChange` is read-only to the keyboard and to
+        // assistive technology alike: there is no message to propose a
+        // value in (ADR 0047, decision 5).
+        self.note_slider_without_handler(i);
+    }
+
+    /// Raises [`crate::diag::SLIDER_WITHOUT_HANDLER`] for slider `i`.
+    fn note_slider_without_handler(&mut self, i: usize) {
+        let key = self.tree.keys[i];
+        self.warn(crate::diag::slider_without_handler(key));
     }
 
     /// A reader's `SetValue` on slider `i`: `value` as the number it
@@ -322,9 +319,8 @@ impl Core {
     /// only this way — its RangeValue pattern has no increment — and the
     /// request was dropped, so a UIA client read a writable slider whose
     /// writes did nothing. With `on_change` the core proposes `value`
-    /// snapped to the step and clamped, as the pointer does; without, the
-    /// app hears `{kind="access", action="setValue", value}` beside the
-    /// increments it already hears. Text that is not a number — the
+    /// snapped to the step and clamped, as the pointer does; without, it
+    /// moves nothing, as the increments do not. Text that is not a number — the
     /// Value pattern handing over a `value_text` such as "25 minutes" —
     /// is nothing.
     pub(crate) fn set_slider(&mut self, i: usize, value: &str, out: &mut Vec<UiEvent>) {
@@ -336,7 +332,7 @@ impl Core {
         let Some(asked) = value.trim().parse::<f64>().ok().filter(|v| v.is_finite()) else {
             return;
         };
-        if let Some(tag) = spec.events().on_change.as_ref() {
+        if let Some(tag) = spec.events().on_change() {
             let ax = spec.access();
             let Some(range) = SliderRange::of(ax) else {
                 return;
@@ -353,17 +349,6 @@ impl Core {
             }
             return;
         }
-        let payload = Value::map([
-            ("kind", Value::str("access")),
-            (
-                "action",
-                Value::str(crate::access::AccessAction::SetValue.name()),
-            ),
-            ("value", Value::Float(asked)),
-        ]);
-        out.push(
-            UiEvent::on(self.tree.origins[i], self.tree.keys[i], payload)
-                .tagged(self.access_tag(i).as_ref()),
-        );
+        self.note_slider_without_handler(i);
     }
 }

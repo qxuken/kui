@@ -21,7 +21,7 @@
 //
 //   npm run devtools_tab                              a real window
 //   node dist/features/devtools_tab.mjs --headless    the same, no window
-import type { App, CoreMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
+import type { App, HoverMsg, KuiWindow, Theme, UiEvent } from '@qxuken/kui';
 import { run } from '../devtools.js';
 
 /** One node of the syntax tree: its kind, the highlight group a token
@@ -126,23 +126,32 @@ type Model = {
 // hover reveals its row once and the list stays where the user put it.
 let built = 0;
 let revealed: number | null = null;
-type AppMsg = { kind: 'tok'; id: number } | { kind: 'row'; id: number } | { kind: 'inspect-pick' } | { kind: 'show-tab' };
-type Msg = AppMsg | CoreMsg;
+// A token and a row each declare two messages, one per event (ADR 0047,
+// decision 2): the hover arrives with its `hover` field, the click as
+// declared.
+type AppMsg =
+  | HoverMsg<{ kind: 'tok'; id: number }>
+  | HoverMsg<{ kind: 'row'; id: number }>
+  | { kind: 'tokClick'; id: number }
+  | { kind: 'rowClick'; id: number }
+  | { kind: 'inspect-pick' }
+  | { kind: 'show-tab' };
+type Msg = AppMsg;
 
 const init: Model = { hoverRow: null, hoverTok: null };
 
 function update(model: Model, msg: Msg, _ev: UiEvent<Msg>, win: KuiWindow): Model | undefined {
   switch (msg.kind) {
-    case 'hover': {
-      // The tag is the node's own message; enter names it, leave clears it.
-      const tag = msg.tag;
-      if (!tag || !('kind' in tag) || (tag.kind !== 'tok' && tag.kind !== 'row')) return undefined;
-      const field = tag.kind === 'tok' ? 'hoverTok' : 'hoverRow';
-      if (msg.phase === 'enter') return { ...model, [field]: tag.id };
-      return model[field] === tag.id ? { ...model, [field]: null } : undefined;
-    }
     case 'tok':
     case 'row': {
+      // The node's own message, with the hover in it: enter names it,
+      // leave clears it.
+      const field = msg.kind === 'tok' ? 'hoverTok' : 'hoverRow';
+      if (msg.hover.phase === 'enter') return { ...model, [field]: msg.id };
+      return model[field] === msg.id ? { ...model, [field]: null } : undefined;
+    }
+    case 'tokClick':
+    case 'rowClick': {
       // A click on a row or a token: select it in the panel's tree. An
       // inner node has no token to select, and clears nothing.
       const key = win.keyOf(`tok:${msg.id}`);
@@ -203,7 +212,7 @@ const view = (model: Model, win: KuiWindow) => {
                   bg={lit(i) ? t.accentSoft : undefined}
                   hoverBg={t.hover}
                   onHover={{ kind: 'tok', id: i }}
-                  onClick={{ kind: 'tok', id: i }}
+                  onClick={{ kind: 'tokClick', id: i }}
                 >
                   <text size={14} family="mono" color={groupColor(t, n.group)}>{n.text}</text>
                 </box>,
@@ -256,7 +265,7 @@ const view = (model: Model, win: KuiWindow) => {
                       bg={on ? t.accentSoft : undefined}
                       hoverBg={t.hover}
                       onHover={{ kind: 'row', id: i }}
-                      onClick={{ kind: 'row', id: i }}
+                      onClick={{ kind: 'rowClick', id: i }}
                     >
                       <box width={10 * depth(i)} />
                       <text size={12} family="mono" wrap="none" color={n.text != null ? t.fg : t.muted}>{n.kind}</text>

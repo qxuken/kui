@@ -128,9 +128,32 @@ def main [
         })
     if not $no_doc {
         let filter = if ($args | is-empty) { [] } else { ["--"] | append $args }
-        $records = ($records | append {
-            key: "doctests", cwd: $root, argv: (["cargo" "test"] | append $cargo_args | append "--doc" | append $filter)
-        })
+        # `cargo test --doc` refuses a package with no library it can
+        # doctest — kui-node is a cdylib alone ("no library targets
+        # found") — so a `-p` selection keeps the packages that have a lib
+        # or a proc-macro, and with none left there is no doctest leg.
+        # `--workspace` skips such a package itself.
+        let doc_select = if ($packages | is-empty) {
+            $select
+        } else {
+            let meta = (^cargo metadata --no-deps --format-version 1 | from json)
+            $packages
+                | where {|p|
+                    $meta.packages
+                        | where name == $p
+                        | get targets
+                        | flatten
+                        | any {|t| ($t.kind | any {|k| $k in [lib rlib proc-macro] }) }
+                }
+                | each {|p| ["-p" $p] }
+                | flatten
+        }
+        if not ($doc_select | is-empty) {
+            let doc_args = if $wants_core { $doc_select | append ["--features" "kui-core/conformance"] } else { $doc_select }
+            $records = ($records | append {
+                key: "doctests", cwd: $root, argv: (["cargo" "test"] | append $doc_args | append "--doc" | append $filter)
+            })
+        }
     }
     if $node {
         # The addon `native.cjs` picks up (the newest build wins); built

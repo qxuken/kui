@@ -348,8 +348,8 @@ pub extern "C" fn kui_sound_remove(ptr: *mut KuiCtx, id: u64) {
 
 /// Starts a playback; returns its id for kui_stop / kui_set_volume /
 /// kui_pause / kui_resume. `opts` may be NULL (defaults). A non-NULL `tag`
-/// (consumed) asks for a `{kind="sound", phase="ended", playback, tag}`
-/// event when the playback finishes on its own.
+/// (consumed) is the message a `sound` event arrives as when the playback
+/// finishes on its own: `sound: {phase="ended", playback}` in it.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_play(
     ptr: *mut KuiCtx,
@@ -432,7 +432,7 @@ pub extern "C" fn kui_set_master_volume(ptr: *mut KuiCtx, volume: f32, tween_ms:
 /// src restarts). `finish` changes what gone means — the playback is
 /// released to play itself out rather than stopped, except for a loop.
 /// Empty label = a key from the tree position. `tag` (nullable, consumed)
-/// rides the `ended` event, and survives a release. Returns the node key.
+/// is the message the `ended` event arrives as, and survives a release. Returns the node key.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_audio(
     ptr: *mut KuiCtx,

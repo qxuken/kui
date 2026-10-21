@@ -130,7 +130,7 @@ fn a_tab_moved_left_glides_over_its_neighbour_when_over_its_siblings() {
         let evs = click(&mut core, Vec2::new(100.0, 15.0));
         let hit = if over.is_some() { "b" } else { "a" };
         assert_eq!(
-            evs.first().and_then(|e| e.payload.as_str()),
+            evs.first().and_then(|e| e.payload.get_str("tag")),
             Some(hit),
             "over={over:?}: the press goes to what is on top"
         );

@@ -31,8 +31,8 @@ use kui_devtools::Example;
 use kui_ffi::CExtension;
 use kui_native::widgets;
 use kui_native::{
-    Align, App, Core, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size, TextStyle, Ui,
-    UiEvent, Value, Vec2,
+    Align, App, Core, EventKind, Extension, Extensions, InputEvent, NodeSpec, OriginId, Size,
+    TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 #[derive(Default)]
@@ -93,11 +93,14 @@ impl App for Host {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("click") => self.clicks += 1,
+        // The envelope says what happened; the payload is the message the
+        // button (or the panel's reply) declared (ADR 0047).
+        let kind = ev.payload.get("kind").and_then(Value::as_str);
+        match (ev.event, kind) {
+            (EventKind::Click, Some("click")) => self.clicks += 1,
             // A reply the panel made from its own click: the origin says
             // which extension, the key which of its nodes.
-            Some("toggled") => {
+            (EventKind::Reply, Some("toggled")) => {
                 self.toggles += 1;
                 self.last_reply_from = Some(ev.origin);
             }

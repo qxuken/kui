@@ -1,17 +1,17 @@
 //! A custom editor's mouse (backlog C34): a press or drag inside a key
-//! sink carries `line` (the ordinal among the sink's `role="line"` nodes —
-//! the numbering `access` events use), `byte` (where the point falls in
-//! that line's text) and `clicks` (the press's count), so click-to-caret,
-//! drag-select and double-click-word are `on_event` arithmetic with no
-//! query and no frame of lag. And the clipboard for the same editor
+//! sink carries, in its `drag` or `click` data, `line` (the ordinal among
+//! the sink's `role="line"` nodes — the numbering a `select` uses),
+//! `byte` (where the point falls in that line's text) and `clicks` (the
+//! press's count), so click-to-caret, drag-select and double-click-word
+//! are `on_event` arithmetic with no query and no frame of lag. And the clipboard for the same editor
 //! (backlog C33): `set_clipboard` / `request_paste` are the two actions a
 //! menu's Copy and Paste queue, and a paste comes back as a `text` event
 //! on the sink.
 
 use kui_core::testing::{press, release};
 use kui_core::{
-    ClipboardMarks, Core, InputEvent, Key, KeyCode, KeyMods, KeyPress, MenuAction, NodeSpec, Role,
-    Size, TextStyle, UiEvent, Value, Vec2,
+    ClipboardMarks, Core, EditOptions, EventKind, InputEvent, Key, KeyCode, KeyMods, KeyPress,
+    MenuAction, NodeSpec, Role, Size, TextStyle, UiEvent, Value, Vec2,
 };
 
 const LH: f32 = 20.0;
@@ -59,14 +59,17 @@ fn frame(core: &mut Core, lines: &[&str]) -> Key {
     sink
 }
 
+/// A field of the event's own data: the `drag`, `click`, `key` or `text`
+/// map the core wrote into the declared message.
 fn field(ev: &UiEvent, name: &str) -> Option<Value> {
-    ev.payload.get(name).cloned()
+    ev.data().and_then(|d| d.get(name)).cloned()
 }
 
 fn field_of(ev: &UiEvent, name: &str) -> Option<Value> {
     field(ev, name)
 }
 
+/// The `kind` of the message the handler row declared.
 fn kind(ev: &UiEvent) -> Option<String> {
     ev.payload.get_str("kind").map(str::to_string)
 }
@@ -83,7 +86,7 @@ fn a_press_in_a_sink_says_which_line_and_where() {
     let evs = press(&mut core, at);
     let start = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("drag"))
+        .find(|e| e.is(EventKind::Drag))
         .expect("the drag started");
     assert_eq!(start.key, sink);
     assert_eq!(field(start, "line"), Some(Value::Int(1)));
@@ -141,7 +144,7 @@ fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() 
     let evs = press(&mut core, Vec2::new(10.0 + GUTTER + 200.0, 250.0));
     let start = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("drag"))
+        .find(|e| e.is(EventKind::Drag))
         .expect("the drag started");
     assert_eq!(field(start, "line"), Some(Value::Int(0)));
     // Past the end of the line's text: its length.
@@ -150,7 +153,7 @@ fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() 
     assert_eq!(field(start, "inside"), Some(Value::Bool(false)));
     release(&mut core);
 
-    // A sink that draws no lines: the payload is as it was.
+    // A sink that draws no lines: the drag's data is as it was.
     let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
     ui.configure_root(NodeSpec::column().fill());
     let sink = ui.text_in_keyed(
@@ -164,7 +167,7 @@ fn below_the_last_line_is_the_last_line_and_a_sink_without_lines_adds_nothing() 
     let evs = press(&mut core, Vec2::new(50.0, 50.0));
     let start = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("drag"))
+        .find(|e| e.is(EventKind::Drag))
         .expect("the drag started");
     assert_eq!(field(start, "line"), None);
     assert_eq!(field(start, "inside"), None);
@@ -214,7 +217,7 @@ fn a_key_on_the_sink_gains_nothing() {
     )));
     let key = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("key"))
+        .find(|e| e.is(EventKind::Key))
         .expect("the key arrived");
     assert_eq!(field(key, "line"), None);
     assert_eq!(field(key, "clicks"), None);
@@ -226,7 +229,7 @@ fn a_key_on_the_sink_gains_nothing() {
 /// lines (a shell with a minibuffer) got `line`, `byte` and `clicks` on
 /// every keystroke, resolved from wherever the mouse rested, after a
 /// walk of the whole sink. An event is pointer-made where it is built
-/// now, and a keystroke's `changed` is not.
+/// now, and a keystroke's `change` is not.
 #[test]
 fn an_editors_changed_under_the_sink_gains_nothing() {
     let mut core = Core::new();
@@ -239,7 +242,13 @@ fn an_editors_changed_under_the_sink_gains_nothing() {
             "a line",
             mono(),
         );
-        field = kui_core::widgets::text_input(ui, "minibuffer", "");
+        // An editor is heard through its `change` row.
+        field = ui.text_edit(
+            "minibuffer",
+            "",
+            &EditOptions::default(),
+            NodeSpec::row().on_change(Value::Null),
+        );
     });
     ui.finish();
     // A click on the line row first — the count it leaves behind is what
@@ -252,7 +261,7 @@ fn an_editors_changed_under_the_sink_gains_nothing() {
     let evs = core.handle_input(InputEvent::Text("x".into()));
     let changed = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("changed"))
+        .find(|e| e.is(EventKind::Change))
         .expect("the editor changed");
     assert_eq!(changed.key, field);
     assert_eq!(field_of(changed, "line"), None, "{:?}", changed.payload);
@@ -302,7 +311,7 @@ fn a_click_payload_named_like_a_core_event_still_gains_its_line() {
 /// RG75: a `button` event of the core's carries its own `clicks`, so the
 /// pass left a payload of that kind without one — and an app's click
 /// payload spelled `{kind: "button"}` lost its count with it. The core's
-/// is told by its `phase` and `button` fields now.
+/// is told by the envelope's event now, and the count rides in `click`.
 #[test]
 fn a_click_payload_named_button_still_gains_its_count() {
     let mut core = Core::new();
@@ -362,7 +371,7 @@ fn the_sink_yanks_to_the_clipboard_and_a_paste_comes_back_as_text() {
     let evs = core.handle_input(InputEvent::Commit("from the clipboard".into()));
     let text = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("text"))
+        .find(|e| e.is(EventKind::Text))
         .expect("the paste arrived");
     assert_eq!(text.key, sink);
     assert_eq!(field(text, "text"), Some(Value::str("from the clipboard")));
@@ -393,10 +402,10 @@ fn a_root_sink_hears_a_paste_with_nothing_focused() {
     let evs = core.handle_input(InputEvent::Commit("pasted".into()));
     let text = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("text"))
+        .find(|e| e.is(EventKind::Text))
         .expect("the root sink heard it");
     assert_eq!(text.key, Key::ROOT);
-    assert_eq!(field(text, "tag"), Some(Value::str("shell")));
+    assert_eq!(text.payload.get("tag"), Some(&Value::str("shell")));
 }
 
 /// One paste ask at a time (backlog AR34): a view that asks on every frame
@@ -436,7 +445,7 @@ fn a_second_paste_ask_is_dropped_until_the_first_is_answered() {
 /// A paste's answer says what the pasteboard marked it (backlog F84): a
 /// password manager's secret reaches the sink with `concealed` and
 /// `transient` beside the text, each only when it is set, so a sink that
-/// never heard of them sees the payload it always did. The answer clears
+/// never heard of them sees the `text` data it always did. The answer clears
 /// the one-ask gate the way a bare commit does, and a secret the app puts
 /// on the clipboard itself is its own action for the host to write marked.
 #[test]
@@ -452,7 +461,7 @@ fn a_paste_carries_the_pasteboards_markers_to_the_sink() {
     assert!(!core.awaiting_paste(), "a paste is the answer");
     let text = evs
         .iter()
-        .find(|e| kind(e).as_deref() == Some("text"))
+        .find(|e| e.is(EventKind::Text))
         .expect("the paste arrived");
     assert_eq!(text.key, sink);
     assert_eq!(field(text, "text"), Some(Value::str("hunter2")));
@@ -467,14 +476,11 @@ fn a_paste_carries_the_pasteboards_markers_to_the_sink() {
             transient: true,
         },
     });
-    let text = evs
-        .iter()
-        .find(|e| kind(e).as_deref() == Some("text"))
-        .unwrap();
+    let text = evs.iter().find(|e| e.is(EventKind::Text)).unwrap();
     assert_eq!(field(text, "concealed"), None, "absent, never false");
     assert_eq!(field(text, "transient"), Some(Value::Bool(true)));
 
-    // Unmarked, and a bare commit: the payload it always was.
+    // Unmarked, and a bare commit: the `text` data it always was.
     for ev in [
         InputEvent::Paste {
             text: "plain".into(),
@@ -483,10 +489,7 @@ fn a_paste_carries_the_pasteboards_markers_to_the_sink() {
         InputEvent::Commit("plain".into()),
     ] {
         let evs = core.handle_input(ev);
-        let text = evs
-            .iter()
-            .find(|e| kind(e).as_deref() == Some("text"))
-            .unwrap();
+        let text = evs.iter().find(|e| e.is(EventKind::Text)).unwrap();
         assert_eq!(field(text, "concealed"), None);
         assert_eq!(field(text, "transient"), None);
     }
@@ -520,14 +523,12 @@ fn a_sink_hears_the_paste_chord_and_never_a_bare_text() {
     let cmd_v = KeyPress::new(KeyCode::Char('v'), KeyMods::NONE.with_super());
     let evs = core.handle_input(InputEvent::KeyDown(cmd_v));
     assert!(
-        evs.iter()
-            .any(|e| e.key == sink && kind(e).as_deref() == Some("key")),
+        evs.iter().any(|e| e.key == sink && e.is(EventKind::Key)),
         "the sink hears the chord: {evs:?}"
     );
     let evs = core.handle_input(InputEvent::Text("hunter2".into()));
     assert!(
-        !evs.iter()
-            .any(|e| e.key == sink && kind(e).as_deref() == Some("text")),
+        !evs.iter().any(|e| e.key == sink && e.is(EventKind::Text)),
         "a bare Text is not the sink's: {evs:?}"
     );
 }

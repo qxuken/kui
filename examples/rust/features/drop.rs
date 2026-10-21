@@ -20,8 +20,9 @@
 //! Run: cargo run -p kui-native --example drop [-- --headless]
 
 use kui_devtools::{Drive, Example};
+use kui_native::event::DropPhase;
 use kui_native::{
-    Align, App, Core, FileDialog, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value, Vec2,
+    Align, App, Core, Event, FileDialog, FloatConfig, NodeSpec, TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 #[derive(Default)]
@@ -169,62 +170,48 @@ impl App for Drop {
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        match ev.kind() {
-            Some("clear") => {
-                self.landed.clear();
-                self.cleared += 1;
-                return;
-            }
-            Some("open") => {
-                self.open = true;
-                return;
-            }
+        let d = match ev.read() {
             // The dialog's answer: the same paths a drop carries, none when
             // it was cancelled.
-            Some("files") => {
-                let paths = ev.payload.get("paths").and_then(Value::as_list);
-                self.landed.extend(
-                    paths
-                        .unwrap_or(&[])
-                        .iter()
-                        .filter_map(|p| p.as_str().map(str::to_string)),
-                );
+            Event::Files(paths) => {
+                self.landed.extend(paths);
                 return;
             }
-            Some("drop") => {}
-            _ => return,
-        }
-        self.events += 1;
-        let paths: Vec<String> = ev
-            .payload
-            .get("paths")
-            .and_then(Value::as_list)
-            .map(|l| {
-                l.iter()
-                    .filter_map(|p| p.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let at = match (ev.payload.get_float("x"), ev.payload.get_float("y")) {
-            (Some(x), Some(y)) => Some((x as f32, y as f32)),
-            _ => None,
+            Event::Drop(d) => d,
+            // The buttons' clicks, each the message it declared.
+            _ => {
+                match ev
+                    .message::<Value>()
+                    .as_ref()
+                    .and_then(|m| m.get_str("kind"))
+                {
+                    Some("clear") => {
+                        self.landed.clear();
+                        self.cleared += 1;
+                    }
+                    Some("open") => self.open = true,
+                    _ => {}
+                }
+                return;
+            }
         };
-        match ev.payload.get_str("phase") {
-            Some("enter") => {
-                self.hovering = paths;
+        self.events += 1;
+        let at = d.pos.map(|p| (p.x, p.y));
+        match d.phase {
+            DropPhase::Enter => {
+                self.hovering = d.paths;
                 self.at = at;
             }
-            Some("move") => self.at = at,
-            Some("leave") => {
+            DropPhase::Move => self.at = at,
+            DropPhase::Leave => {
                 self.hovering.clear();
                 self.at = None;
             }
-            Some("drop") => {
+            DropPhase::Drop => {
                 self.hovering.clear();
                 self.at = None;
-                self.landed.extend(paths);
+                self.landed.extend(d.paths);
             }
-            _ => {}
         }
     }
 }

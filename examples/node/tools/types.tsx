@@ -1,14 +1,19 @@
 // The shipped `.d.ts`, exercised: a typed drive that uses the app-facing
 // types the type checker would otherwise never see used — `App`, `Ctx`,
-// `CoreMsg` and the message union, `KeyMsg` with a tag, `UiEvent`, the
-// access messages, `decodeQuads`. `npm run typecheck` is what runs it as
+// the message union, the event helpers (`KeyMsg`, `EditChangeMsg`,
+// `SliderChangeMsg`, `ResizeMsg`, `HandlerMsg`, `Arrived`), the window's
+// own declarations (`WindowEvents`, `WindowDecl`), `UiEvent`,
+// `decodeQuads`. `npm run typecheck` is what runs it as
 // types; `--headless` runs it as code and exits non-zero on a wrong answer,
 // since a stale assumption typechecks fine (the `autofocus` one from
 // 0.1.0-alpha.5 did). A tool, not an example: nothing here is a subject.
 //
 //   node dist/tools/types.mjs --headless
 import { createApp, decodeQuads, defineTokens, revealRow, roles, rowsInView, splitter, uniformList, Ctx } from '@qxuken/kui';
-import type { App, ColorToken, CoreMsg, KeyMsg, Theme, UiEvent } from '@qxuken/kui';
+import type {
+  App, Arrived, ColorToken, DragMsg, EditChangeMsg, HandlerMsg, KeyMsg, ResizeMsg, SliderChangeMsg, Theme, UiEvent, WindowDecl,
+  WindowEvents, WithDrag, WithResize,
+} from '@qxuken/kui';
 
 // Tokens (ADR 0027): the names typed at the declaration. `T.peach` is the
 // literal `'$peach'` branded as a colour, `T.sideW` a length; a colour
@@ -50,8 +55,63 @@ const liveText = <text live="polite">saved</text>;
 // stock field, and a tooltip the view gates itself.
 const field = <input label="search" initial="" />;
 const hint = <box hoverable>{true && <tooltip value="a hint" />}<tooltip><text>legend</text></tooltip></box>;
-// @ts-expect-error — `<input>` is the stock field: `label` and `initial`, nothing else
+// @ts-expect-error — `<input>` is the stock field: its text and its three messages, nothing else
 const styledField = <input label="search" radius={4} />;
+// Its text declared every frame, and the messages it reports in.
+const valued = <input label="query" value="kui" onChange={{ kind: 'note' }} onSubmit={{ kind: 'reset' }} onCancel={null} />;
+// ADR 0047: a handler takes only a registered message that carries its
+// event's field, declared without it — `pan` is registered as a
+// `DragMsg`, `reset` as a plain message.
+const panned = <box onDrag={{ kind: 'pan' }} />;
+// @ts-expect-error — `reset` carries no `drag`, so it is no drag's message
+const wrongHandler = <box onDrag={{ kind: 'reset' }} />;
+// @ts-expect-error — an editor's `onChange` is not a slider's
+const wrongChange = <edit key="e" onChange={{ kind: 'tally' }} />;
+// The prop type, named: what an `onDrag` takes, as an app can spell it.
+const pan: HandlerMsg<WithDrag> = { kind: 'pan' };
+// The three spellings of one arriving message mean the same thing.
+interface PanIn extends WithDrag { kind: 'pan' }
+const arrived: DragMsg<{ kind: 'pan' }> = { kind: 'pan', drag: { phase: 'end', x: 0, y: 0, dx: 0, dy: 0, parent: { x: 0, y: 0, w: 0, h: 0 } } };
+const same: PanIn = arrived;
+void valued; void panned; void wrongHandler; void wrongChange; void pan; void same;
+// ADR 0047, decision 3: every node payload is a map. A bare message is
+// declared bare and heard under `tag`, even from a click, which has no
+// data — `Arrived<M>` is what `update` and `UiEvent.payload` are typed as.
+const saveBtn = <box onClick="save" label="Save" />;
+const savedIn: UiEvent<'save'>['payload'] = { tag: 'save' };
+// @ts-expect-error — a bare-string click no longer arrives bare
+const savedBare: UiEvent<'save'>['payload'] = 'save';
+// A map is left as it is, so an all-map union is its own `Arrived`.
+const resetIn: Arrived<'save' | { kind: 'reset' }> = { kind: 'reset' };
+// @ts-expect-error — an `update` that reads `'save'` bare is not the loop's
+const bareUpdate = () => createApp<number, 'save'>({ init: 0, update: (n: number, msg: 'save') => (msg === 'save' ? n + 1 : n), view: () => <box /> });
+// A bare message with an event's field is registered as it arrives,
+// `DragMsg<{ tag: 'nudge' }>`, and the handler takes it back bare
+// (`Declared<M>`) or spelled out.
+const nudged = <box onDrag="nudge" />;
+const nudgedMap = <box onDrag={{ tag: 'nudge' }} />;
+const nudge: HandlerMsg<WithDrag> = 'nudge';
+// @ts-expect-error — `save` carries no `drag`
+const wrongBare = <box onDrag="save" />;
+void saveBtn; void savedIn; void savedBare; void resetIn; void bareUpdate; void nudged; void nudgedMap; void nudge; void wrongBare;
+// ADR 0048: the window's own events are declared where the window is, and
+// each key takes a registered message carrying its event's field: the
+// root's `windowEvents`, a `windows` entry's `onWindow` / `onDismiss`, and
+// `<menuBar onMenu>`. `onFonts` has no data, so it takes any message.
+const windowEvents: WindowEvents = { onResize: { kind: 'resize' }, onFonts: { kind: 'reset' }, onModifiers: null };
+const rooted = <box windowEvents={windowEvents} />;
+// @ts-expect-error — `reset` carries no `resize`
+const wrongResize: WindowEvents = { onResize: { kind: 'reset' } };
+// @ts-expect-error — `onResise` is no key of the group
+const typoKey: WindowEvents = { onResise: { kind: 'resize' } };
+const resizeIn: HandlerMsg<WithResize> = { kind: 'resize' };
+const entry: WindowDecl = { name: 'palette', onWindow: null, onDismiss: null };
+// @ts-expect-error — `reset` carries no `window`
+const wrongEntry: WindowDecl = { name: 'palette', onWindow: { kind: 'reset' } };
+const bar = <menuBar menu={[{ label: 'File', items: [{ label: 'New' }] }]} onMenu={{ kind: 'language' }} />;
+// @ts-expect-error — `reset` carries no `menu`
+const wrongBar = <menuBar menu={[]} onMenu={{ kind: 'reset' }} />;
+void rooted; void wrongResize; void typoKey; void resizeIn; void entry; void wrongEntry; void bar; void wrongBar;
 void peach; void hover; void sideW; void lit; void typo; void wrongKind; void wrongRole; void wrongArity; void wrongVerb; void liveText;
 // A scrolling terminal stamps where its screen sits, so a selection keeps
 // its ends across a scroll (ADR 0017).
@@ -59,8 +119,14 @@ const term = <cells rows={1} cols={2} cells={new Uint32Array(8)} originLine={900
 void field; void hint; void styledField; void term;
 
 type Model = { count: number; note: string };
-type CounterMsg = { kind: 'add'; by: number } | { kind: 'reset' };
-type Msg = CounterMsg | CoreMsg;
+// The editor's text and the slider's proposal arrive as the messages the
+// two declared, with the event's data in their `change` field.
+type CounterMsg =
+  | { kind: 'add'; by: number }
+  | { kind: 'reset' }
+  | EditChangeMsg<{ kind: 'note' }>
+  | SliderChangeMsg<{ kind: 'tally' }>;
+type Msg = CounterMsg;
 
 const init: Model = { count: 0, note: '' };
 
@@ -70,16 +136,14 @@ function update(model: Model, msg: Msg, ev: UiEvent<Msg>): Model | undefined {
       return { ...model, count: model.count + msg.by };
     case 'reset':
       return { ...model, count: 0 };
-    case 'changed':
-      return { ...model, note: app.ctx.editText(ev.key) ?? '' };
-    case 'access': {
-      // A screen reader nudged the slider. `msg.tag` is the slider's own
-      // payload, typed as this app's union — no cast — so the step the
-      // node declared is the step the nudge takes.
-      const tag = msg.tag;
-      const by = tag && 'kind' in tag && tag.kind === 'add' ? tag.by : 1;
-      return { ...model, count: model.count + (msg.action === 'increment' ? by : -by) };
-    }
+    case 'note':
+      // The whole text after the change, declared back as the editor's
+      // `value` — the envelope says which event it was.
+      return ev.event === 'change' ? { ...model, note: msg.change.text } : undefined;
+    case 'tally':
+      // A screen reader (or a key) moved the slider: its proposal is the
+      // value to declare back as `valueNow`.
+      return { ...model, count: msg.change.value };
   }
 }
 
@@ -92,10 +156,10 @@ function Counter({ count, t }: { count: number; t: Theme }) {
       <text size={20} color={t.fg}>{`count = ${count}`}</text>
       {/* The count as a slider, for assistive technology: the range it
           declares is the range the value is held to, or the core warns
-          (`slider-value-out-of-range`). Its payload is what a nudge
-          carries back. */}
-      <box key="tally" role="slider" label="count" valueNow={count} valueMin={0} valueMax={10}
-           onClick={{ kind: 'add', by: 1 }} width={100} height={8} bg={t.sunken} radius={4} />
+          (`slider-value-out-of-range`). A nudge is proposed in its
+          `onChange` message. */}
+      <box key="tally" role="slider" label="count" valueNow={count} valueMin={-10} valueMax={10} valueStep={1}
+           onChange={{ kind: 'tally' }} width={100} height={8} bg={t.sunken} radius={4} />
     </box>
   );
 }
@@ -109,7 +173,7 @@ const view = (model: Model) => {
       <text size={T.gap} color={roles.muted}>tokens</text>
       <text size={24} color={t.fg}><span bold color={t.accent}>kui</span> × Node × JSX</text>
       <Counter count={model.count} t={t} />
-      <edit key="note" label="note" initial="" size={16} width={280} padX={10} padY={6}
+      <edit key="note" label="note" value={model.note} onChange={{ kind: 'note' }} size={16} width={280} padX={10} padY={6}
             bg={t.sunken} color={t.fg} radius={4} autofocus />
       <text size={14} color={t.muted}>{`note: ${model.note || '(empty)'}`}</text>
     </box>
@@ -151,6 +215,14 @@ app.type('jsx');
 app.click(...center(buttons[2])); // reset
 app.access('tally', 'decrement');
 
+// The window resizing (ADR 0048): the root's `onResize` message, run on a
+// bare context, whose frames choose their own size.
+const sized = new Ctx();
+const sizedTree = () => <box windowEvents={{ onResize: { kind: 'resize' } }} />;
+sized.frame(320, 240, 1, sizedTree());
+sized.frame(500, 400, 1, sizedTree());
+const resized = sized.pollEvents<ResizeMsg<{ kind: 'resize' }>>().map((e) => e.payload);
+
 // A fresh context: images and a key sink with a tag, both halves of a key.
 const modal = new Ctx();
 const pixels = Buffer.alloc(8 * 8 * 4);
@@ -165,7 +237,7 @@ modal.frame(240, 240, 1, (
 const imageQuads = decodeQuads(modal.quads()).filter((q) => q.kind === 3).length;
 modal.keyDown('x', { ctrl: true });
 modal.keyUp('x', { ctrl: true });
-const kevs = modal.pollEvents<KeyMsg<{ tool: string }>>().filter((e) => e.payload.kind === 'key');
+const kevs = modal.pollEvents<KeyMsg<{ tool: string }>>().filter((e) => e.event === 'key');
 const p = kevs[0]?.payload;
 const up = kevs[1]?.payload;
 
@@ -186,13 +258,28 @@ lists.frame(300, 100, 1, listTree());
 const revealed = revealRow(lists, 'l', 40, 20);
 const page = rowsInView(lists, 'l', 20);
 
+// A bare-string click, run: `update` reads it under `tag` (ADR 0047).
+const saves = createApp<{ saved: number }, 'save'>(
+  {
+    init: { saved: 0 },
+    update: (m, msg) =>
+      typeof msg === 'object' && 'tag' in msg && msg.tag === 'save' ? { saved: m.saved + 1 } : undefined,
+    view: () => <box width={100} height={40} onClick="save" label="Save" />,
+  },
+  { width: 100, height: 40 },
+);
+saves.render();
+saves.click(50, 20);
+
 const checks: [boolean, string][] = [
   [revealed && page === 5, 'revealRow scrolls to a row the list has not built; rowsInView is a page'],
-  [app.model.count === -1, 'clicks by quad, a reset, and a decrement nudge through the slider\'s own tag'],
-  [app.model.note === 'hello from jsx', 'typing, and a word-wise backspace'],
+  [saves.model.saved === 1 && saves.warnings.length === 0, 'a bare-string click arrives as {tag}'],
+  [resized.length === 1 && resized[0].kind === 'resize' && resized[0].resize.width === 500, "a resize arrives as the root's onResize message, its size in `resize`"],
+  [app.model.count === -1, 'clicks by quad, a reset, and a decrement proposed in the slider\'s own message'],
+  [app.model.note === 'hello from jsx' && app.ctx.editText('note') === 'hello from jsx', 'typing, and a word-wise backspace, the model and the editor one text'],
   [imageQuads === 1, 'an image is one image quad'],
-  [p?.code === 'x' && p?.ctrl === true && p?.tag?.tool === 'brush', 'a key sink hears the chord with its tag'],
-  [p?.phase === 'down' && up?.phase === 'up' && up?.text === null, 'both halves of the key, with keyUp'],
+  [p?.key.code === 'x' && p?.key.ctrl === true && p?.tool === 'brush', 'a key sink hears the chord in its own message'],
+  [p?.key.phase === 'down' && up?.key.phase === 'up' && up?.key.text === null, 'both halves of the key, with keyUp'],
   [tokened?.rect.w === 132 && tokened?.bg === 0xffcc99ff && tokened?.borderWidth === 6, 'a $name resolves in a length and a colour slot'],
   [tokened?.borderColor === 0xeeeeeeff && resolved.colors.ink === 0xeeeeeeff, 'a themed token takes the dark half on the dark base'],
   [tokened?.radius[0] === app.ctx.metrics().radius, '$radius is the metric'],
