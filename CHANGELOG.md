@@ -203,6 +203,12 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   field put the caret at 1 of "" (backlog FZ9, found by the new `events`
   fuzz target, which drives every handler row with the fuzzer's own
   messages and an editor whose `value` follows its `change`).
+- A path with an arc whose radius, scaled up to reach its end, is past
+  what an f32 holds draws nothing on a display under a scale of 1, where
+  it drew round an ellipse some 2e38 px across: an overflow panic in a
+  debug build, undefined behaviour in the rasterizer in a release one.
+  The rasterizer now measures the outline it is handed, not only the
+  logical one (backlog FZ10, found by the `path` fuzz target).
 
 ### Changed
 
