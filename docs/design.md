@@ -56,9 +56,10 @@ recorded under [adr/](adr); this page is their consequences for an app.
   down. Modal keymaps live in the
   app, in any language, with no runner hook (the `modal_editor` and
   `splitmux` examples are built on this). Modifier
-  state is data too: the host gets `{kind="modifiers", shift, ctrl, alt,
-  super}` whenever it changes, keeps it in its model, and lets the view
-  react — splitmux floats drop-zone overlays over every pane while ⌘ is
+  state is data too: a root that declares `windowEvents.onModifiers` gets
+  that message with `modifiers: {shift, ctrl, alt, super}` in it whenever
+  it changes ([ADR 0048](adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)),
+  keeps it in its model, and lets the view react — splitmux floats drop-zone overlays over every pane while ⌘ is
   held, so a ⌘-drag moves a pane and a plain click still focuses it, with
   no "modifier-gated drag" concept in the core at all.
 - **Accessibility is data too** ([ADR 0001](adr/0001-accessibility-as-data.md)).
@@ -272,8 +273,9 @@ recorded under [adr/](adr); this page is their consequences for an app.
   runs once per open window with `ui.window_name()` saying which (Node's
   `view(model, name, win)` gets `win` aimed at that window, so `editText`
   and `focus` answer for its tree — `win.useWindow(name)` re-aims it);
-  the same drain carries the `Open` / `Close`, and the app hears
-  `{kind="window", phase, name, id}`. What a declaration does *not* carry is
+  the same drain carries the `Open` / `Close`, and the app hears the
+  `onWindow` message the declaration's entry carries, with `window: {phase,
+  id}` in it (`ui.window_with` in Rust, `kui_window_declare_with` in C). What a declaration does *not* carry is
   a live window's geometry: a config is read on the frame it opens and never
   again, because the user owns a window's size once it exists, so moving one
   is an explicit request — `ui.set_window_size(window, size)` and
@@ -282,8 +284,8 @@ recorded under [adr/](adr); this page is their consequences for an app.
   `env.focus_window` in Lua), queued into that same drain for the driver to
   apply on its next pump. The window's *size* travels the same
   way: a frame begun at a different viewport or DPI than the last one posts
-  `{kind="resize", width, height, scale}` on the root, routed with the frame's
-  other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`
+  the root's `windowEvents.onResize` message with `resize: {width, height,
+  scale}` in it, routed with the frame's other pending events — `App::on_event` in Rust, `pollEvents` in Node, `kui_poll_event`
   in C. As a query it is `KuiWindow.size()` / `PumpRunner::window_size()`,
   which answer before the first frame too (`Core::viewport()` after it).
   What the user may resize *to* is a launch option: `kui_native::app("t").min_size(420.0,

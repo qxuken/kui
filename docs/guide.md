@@ -152,11 +152,13 @@ no reconciler and no React — `Ctx.frame()` encodes the element tree into a
 flat binary IR stream (one `Float64Array` + a string table) and the addon
 lowers it in a single zero-copy call, and `onClick` carries a message value,
 never a closure. That value is the app's own union in TypeScript: annotate
-`update` with `type Msg = MyMsg | RootMsg` and `createApp` / `runWindowed`
-infer it, so events, `dispatch` and ticks all speak it and `update` is one
-switch over `msg.kind`: a click arrives as the message it declared, a drag
-as that message with a `drag` field in it
+`update` with `type Msg = MyMsg` and `createApp` / `runWindowed` infer it,
+so events, `dispatch` and ticks all speak it and `update` is one switch over
+`msg.kind`: a click arrives as the message it declared, a drag as that
+message with a `drag` field in it, and a resize or a menu bar's choice as
+the message the root or the `menuBar` declared for it
 ([ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md),
+[ADR 0048](adr/0048-a-window-declares-the-messages-its-events-arrive-as.md),
 and see [packages/kui](../packages/kui/README.md)). The
 encoder is the only door: there is one element dispatcher in the addon, not
 one per transport, and a malformed view is rejected in JS before anything

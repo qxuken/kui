@@ -30,8 +30,8 @@ Door :: struct {
 
 Event_Def :: struct {
 	kind, payload, doc: string,
-	handler:            string, // the row (onDrag), a door, or "root"
-	field:              string, // the message's field the data rides under; "" for a root event
+	handler:            string, // the row (onDrag), a windowEvents key or windows entry key, or a door
+	field:              string, // the message's field the data rides under; "" for an event with no data
 }
 
 Named :: struct {
@@ -76,7 +76,7 @@ load_schema :: proc(path: string) -> (s: Schema) {
 	}
 	for v in o["events"].(json.Array) {
 		p := v.(json.Object)
-		// A root event's field is null, which reads as "".
+		// An event with no data (fonts, submit) has a null field, which reads as "".
 		append(&s.events, Event_Def{kind = str(p, "kind"), payload = str(p, "payload"), doc = str(p, "doc"), handler = str(p, "handler"), field = str(p, "field")})
 	}
 	for v in o["doors"].(json.Array) {

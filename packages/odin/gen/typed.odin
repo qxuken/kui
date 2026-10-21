@@ -1356,8 +1356,9 @@ hand_struct_named :: proc(g: ^Gen, prefix, name, suffix: string) -> string {
 
 // The keys of a payload as the schema writes it: `drag: { phase: "start" |
 // "move", x, y, parent: { x, y } } in the message` is phase, x, y, parent,
-// and `{ kind: "resize", width }` is width. Every top-level {...} is read,
-// a second shape after a `;` (the same event on the root) the same way.
+// and `resize: { width, height }` is width, height. Every top-level {...}
+// is read, a second shape after a `;` (the same event declared elsewhere,
+// as a popup's dismiss is) the same way.
 payload_fields :: proc(payload: string) -> (out: [dynamic]string) {
 	for part in strings.split(payload, ";") {
 		depth := 0
