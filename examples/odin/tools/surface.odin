@@ -1315,7 +1315,7 @@ Settings :: struct {
 }
 
 rest_view :: proc(r: ^Rest, ui: ^kui.Ui) {
-	kui.root_with(ui, {width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true}, {on_system_settings_change = Settings{}})
+	kui.root_with(ui, kui.Spec{width = kui.GROW, height = kui.GROW, dir = .Row, gap = 4, wrap_children = true}, {on_system_settings_change = Settings{}})
 	kui.line(ui, 10, 10, 90, 70, 2, 0x7f9cf5ff)
 	kui.polyline(ui, "elbow", {{0, 0}, {40, 20}, {80, 0}}, 3, 0xd8863bff, false, dash = [5]f32{6, 3, 6, 3, 0})
 	kui.polygon(ui, "tri", {{0, 30}, {15, 0}, {30, 30}}, {width = kui.px(30), height = kui.px(30), bg = 0x3b82f6ff})
