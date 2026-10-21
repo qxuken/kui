@@ -199,17 +199,13 @@ impl Core {
         let mut color = |slot: Slot, c: Color| Color::from_lanes(ease(slot, c.lanes()));
         spec.style.bg = color(Slot::Bg, spec.style.bg);
         spec.style.border_color = color(Slot::Border, spec.style.border_color);
-        // A shadow eased toward none still draws while it fades, so the
-        // eased value is kept whenever it casts one; a node at rest with
-        // none keeps none.
-        let mut sh = spec.drop_shadow();
-        sh.color = color(Slot::ShadowColor, sh.color);
+        spec.style.shadow.color = color(Slot::ShadowColor, spec.style.shadow.color);
+        let sh = spec.style.shadow;
         let geom = ease(Slot::Shadow, [sh.dx, sh.dy, sh.blur, sh.spread]);
-        sh.dx = geom[0];
-        sh.dy = geom[1];
-        sh.blur = geom[2].max(0.0);
-        sh.spread = geom[3];
-        spec.shadow = (sh != crate::spec::Shadow::default()).then(|| Box::new(sh));
+        spec.style.shadow.dx = geom[0];
+        spec.style.shadow.dy = geom[1];
+        spec.style.shadow.blur = geom[2].max(0.0);
+        spec.style.shadow.spread = geom[3];
         spec.style.opacity = ease(Slot::Opacity, one(spec.style.opacity))[0].clamp(0.0, 1.0);
         spec.style.radius = ease(Slot::Radius, spec.style.radius);
     }
@@ -732,10 +728,10 @@ impl Core {
     /// a tween may lag.
     fn float_box_for(spec: &mut NodeSpec, rect: Rect) {
         let anchor = spec
-            .floating()
-            .copied()
+            .layout
+            .float
             .map_or(crate::spec::FloatAnchor::Parent, |f| f.anchor);
-        spec.float = Some(Box::new(crate::spec::FloatConfig {
+        spec.layout.float = Some(crate::spec::FloatConfig {
             anchor,
             offset: crate::spec::Vec2Offset {
                 x: rect.x,
@@ -748,7 +744,7 @@ impl Core {
             // one escapes regardless (`FloatConfig::clipped_by_parent`).
             clip: true,
             ..crate::spec::FloatConfig::default()
-        }));
+        });
         spec.layout.width = Sizing::Fixed(rect.w);
         spec.layout.height = Sizing::Fixed(rect.h);
         spec.layout.min_w = crate::spec::Min::AUTO;
@@ -1347,7 +1343,7 @@ impl Core {
         spec.style.bg = stroke.color;
         spec.style.border_w = 0.0;
         spec.style.border_color = Color::TRANSPARENT;
-        spec.shadow = None;
+        spec.style.shadow = crate::spec::Shadow::default();
         // The same pipeline as a box's, so a stroke's `hover_bg` is the
         // colour it takes under the pointer and `accent` is honoured.
         self.prepare_spec(key, &mut spec);
@@ -1473,7 +1469,7 @@ impl Core {
         // applies.
         spec.style.border_w = 0.0;
         spec.style.border_color = Color::TRANSPARENT;
-        spec.shadow = None;
+        spec.style.shadow = crate::spec::Shadow::default();
         self.prepare_spec(key, &mut spec);
         Self::float_box_for(&mut spec, rect);
         self.push_leaf(key, spec, NodeContent::Polygon(draw));
@@ -1803,7 +1799,7 @@ impl Core {
         // border slots, which is what a border is to a box.
         spec.style.border_w = stroke_w;
         spec.style.border_color = stroke.map_or(Color::TRANSPARENT, |s| s.color);
-        spec.shadow = None;
+        spec.style.shadow = crate::spec::Shadow::default();
         self.prepare_spec(key, &mut spec);
         Self::float_box_for(&mut spec, rect);
         self.push_leaf(key, spec, NodeContent::Path(id));

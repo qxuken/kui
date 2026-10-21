@@ -6164,7 +6164,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         if l.clips() {
             cov.custom.insert("overflow");
         }
-        if let Some(f) = spec.floating() {
+        if let Some(f) = l.float {
             cov.custom.insert("float");
             // The `tooltip` *element* is by definition a float hanging
             // below its parent, centered (`FloatConfig::below`), which is
@@ -6236,7 +6236,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         // technology, which is the one thing the graph declares about
         // itself. The `tooltip` prop's hint is the corpus's other
         // `Role::None`, and a float, which the graph is not.
-        if spec.access().role == Some(Role::None) && spec.float.is_none() {
+        if spec.access().role == Some(Role::None) && l.float.is_none() {
             cov.elements.insert("latencyGraph");
         }
 

@@ -397,7 +397,7 @@ impl Core {
                 width: spec.layout.width,
                 height: spec.layout.height,
                 bg: spec.style.bg,
-                float: spec.floating().copied().is_some(),
+                float: spec.layout.float.is_some(),
                 role: crate::access::derived_role(tree, i),
                 text,
                 flags,

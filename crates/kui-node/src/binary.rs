@@ -1996,7 +1996,7 @@ mod tests {
                 0.0, // no dy
                 flags,
             ];
-            decode(&s, b"").spec.floating().copied().unwrap()
+            decode(&s, b"").spec.layout.float.unwrap()
         };
         assert!(!float(0.0).fit && !float(0.0).clip);
         assert!(float(1.0).fit && !float(1.0).clip);

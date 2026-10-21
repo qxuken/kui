@@ -301,7 +301,7 @@ pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
 pub(crate) fn leaf_hint(ui: &mut Ui<'_>, leaf: Key, text: &str) {
     let size = ui.metrics().hint_text;
     let mut spec = tooltip_spec(ui).role(crate::access::Role::None);
-    if let Some(float) = spec.float.as_deref_mut() {
+    if let Some(float) = spec.layout.float.as_mut() {
         float.anchor = crate::spec::FloatAnchor::Node(leaf);
     }
     ui.core().open_key(leaf.str("tooltip"), spec);
@@ -1502,8 +1502,8 @@ fn menu_level(
     // ceiling where layout will read it against a parent this build has
     // not placed yet (backlog RG154).
     let in_viewport = spec
-        .floating()
-        .copied()
+        .layout
+        .float
         .is_some_and(|f| f.anchor == crate::spec::FloatAnchor::Viewport);
     let cap = if spec.layout.max_w >= 0.0 {
         spec.layout.max_w

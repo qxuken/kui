@@ -31,7 +31,7 @@ fn a_named_float_preset_round_trips_through_the_struct() {
             }
         ));
         assert_eq!(
-            spec_of(&spec, NONE, NONE, NONE, NONE).floating().copied(),
+            spec_of(&spec, NONE, NONE, NONE, NONE).layout.float,
             FloatConfig::preset(name),
             "{name}: the C fields do not rebuild the preset"
         );
@@ -48,10 +48,7 @@ fn a_named_float_preset_round_trips_through_the_struct() {
         }
     ));
     assert_eq!(spec.float_mode, KUI_FLOAT_NONE);
-    assert_eq!(
-        spec_of(&spec, NONE, NONE, NONE, NONE).floating().copied(),
-        None
-    );
+    assert_eq!(spec_of(&spec, NONE, NONE, NONE, NONE).layout.float, None);
 }
 
 #[test]

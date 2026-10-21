@@ -96,7 +96,7 @@ impl Core {
     fn anchored_elsewhere(&self, i: usize) -> bool {
         self.tree.any_node_float
             && matches!(
-                self.tree.specs[i].floating().copied(),
+                self.tree.specs[i].layout.float,
                 Some(crate::spec::FloatConfig {
                     anchor: crate::spec::FloatAnchor::Node(_),
                     ..
