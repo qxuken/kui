@@ -1180,9 +1180,9 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             let key = if flags & 4 != 0 {
                 let ev = p.spec.events();
                 let messages = widgets::InputMessages {
-                    change: ev.on_change.clone(),
-                    submit: ev.on_submit.clone(),
-                    cancel: ev.on_cancel.clone(),
+                    change: ev.on_change().cloned(),
+                    submit: ev.on_submit().cloned(),
+                    cancel: ev.on_cancel().cloned(),
                 };
                 widgets::text_input_with(ui, label, initial, value, &messages)
             } else {

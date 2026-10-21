@@ -5222,17 +5222,13 @@ mod tests {
         );
         let p = parse_props(&t, false, &mut test_refs()).unwrap();
         let ev = p.spec.events();
-        let kind = |v: &Option<Value>| {
-            v.as_ref()
-                .and_then(|v| v.get_str("kind"))
-                .map(str::to_owned)
-        };
-        assert_eq!(kind(&ev.on_submit).as_deref(), Some("s"));
-        assert_eq!(ev.on_cancel, Some(Value::str("c")));
-        assert_eq!(kind(&ev.on_boundary).as_deref(), Some("b"));
-        assert_eq!(kind(&ev.on_menu).as_deref(), Some("m"));
-        assert_eq!(kind(&ev.on_selection_range).as_deref(), Some("r"));
-        assert_eq!(kind(&ev.on_change).as_deref(), Some("ch"));
+        let kind = |v: Option<&Value>| v.and_then(|v| v.get_str("kind")).map(str::to_owned);
+        assert_eq!(kind(ev.on_submit()).as_deref(), Some("s"));
+        assert_eq!(ev.on_cancel(), Some(&Value::str("c")));
+        assert_eq!(kind(ev.on_boundary()).as_deref(), Some("b"));
+        assert_eq!(kind(ev.on_menu()).as_deref(), Some("m"));
+        assert_eq!(kind(ev.on_selection_range()).as_deref(), Some("r"));
+        assert_eq!(kind(ev.on_change()).as_deref(), Some("ch"));
     }
 
     /// `value` beside `initial` on one editor: the value wins, and the

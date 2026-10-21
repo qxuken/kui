@@ -6185,7 +6185,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         }
         // `widgets::button_spec` plus a payload: the stock button is the
         // node that declares a click and both interaction backgrounds.
-        if spec.events().on_click.is_some()
+        if spec.events().on_click().is_some()
             && spec.interact().hover_bg.is_some()
             && spec.interact().pressed_bg.is_some()
         {
@@ -6207,7 +6207,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
             Some(Role::Switch) => {
                 cov.elements.insert("switch");
             }
-            Some(Role::Slider) if spec.events().on_change.is_some() => {
+            Some(Role::Slider) if spec.events().on_change().is_some() => {
                 cov.elements.insert("slider");
             }
             _ => {}
@@ -6217,8 +6217,7 @@ fn observe(core: &Core, cov: &mut Coverage) {
         // declares that payload.
         if spec
             .events()
-            .on_click
-            .as_ref()
+            .on_click()
             .is_some_and(|v| v.get_bool("select") == Some(true))
         {
             cov.elements.insert("select");

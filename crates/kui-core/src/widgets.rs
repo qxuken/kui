@@ -555,7 +555,7 @@ pub fn select_with(
         })
         .collect();
     ui.core().declare_select(key, menu);
-    let spec = if spec.events().on_menu.is_none() {
+    let spec = if spec.events().on_menu().is_none() {
         spec.on_menu(Value::Null)
     } else {
         spec

@@ -810,18 +810,18 @@ pub(crate) fn derived_role(tree: &Tree, i: usize) -> Option<Role> {
         Some(WindowRole::Button(_)) => return Some(Role::Button),
         None => {}
     }
-    if spec.events().modal.is_some() {
+    if spec.events().modal().is_some() {
         // A modal surface is a dialog to assistive technology; anything
         // else it might be, the view says with an explicit role.
         return Some(Role::Dialog);
     }
-    if spec.events().on_click.is_some() {
+    if spec.events().on_click().is_some() {
         return Some(Role::Button);
     }
     if spec.layout.scroll_x || spec.layout.scroll_y {
         return Some(Role::ScrollView);
     }
-    if spec.events().on_key.is_some() || spec.focusable {
+    if spec.events().on_key().is_some() || spec.focusable {
         // A key sink or a focusable box is at least somewhere focus can
         // land, so a reader has to be able to see it there.
         return Some(Role::Group);
@@ -853,14 +853,14 @@ pub(crate) fn focusable(tree: &Tree, i: usize) -> bool {
         return false;
     }
     if spec.focusable
-        || spec.events().on_key.is_some()
+        || spec.events().on_key().is_some()
         || matches!(tree.content[i], NodeContent::Edit(_))
     {
         return true;
     }
     match spec.access().role {
         Some(r) => r.is_control(),
-        None => spec.events().on_click.is_some(),
+        None => spec.events().on_click().is_some(),
     }
 }
 
@@ -1173,7 +1173,7 @@ pub(crate) fn inputs_hash(tree: &Tree, src: &Sources<'_>) -> Option<u64> {
         spec.disabled.hash(&mut h);
         ax.live.hash(&mut h);
         spec.window.hash(&mut h);
-        spec.events().on_click.is_some().hash(&mut h);
+        spec.events().on_click().is_some().hash(&mut h);
         focusable(tree, i).hash(&mut h);
         crate::composite::orientation(tree, i).hash(&mut h);
         ax.expanded.hash(&mut h);
@@ -1318,7 +1318,7 @@ pub(crate) fn build(tree: &Tree, src: &Sources<'_>) -> AccessTree {
             Some(WindowRole::Button(_)) => actions |= AccessAction::Click.bit(),
             Some(WindowRole::Drag) => {}
             None => {
-                if spec.events().on_click.is_some() && !spec.disabled {
+                if spec.events().on_click().is_some() && !spec.disabled {
                     actions |= AccessAction::Click.bit();
                 }
             }

@@ -484,7 +484,7 @@ impl Core {
         let message = self
             .tree
             .index_of(target)
-            .and_then(|i| self.tree.specs[i].events().on_menu.as_ref());
+            .and_then(|i| self.tree.specs[i].events().on_menu());
         if let Some(message) = message {
             out.push(UiEvent::declared(
                 EventKind::Menu,
@@ -601,7 +601,7 @@ impl Core {
             self.modal = (0..i)
                 .rev()
                 .find(|&j| {
-                    self.tree.specs[j].events().modal.is_some()
+                    self.tree.specs[j].events().modal().is_some()
                         && !self.tree.origins[j].is_core_surface()
                 })
                 .map(|j| (j, self.tree.subtree_end(j), self.tree.keys[j]));
@@ -923,7 +923,7 @@ impl Core {
         let focused = self.focus.and_then(|k| {
             let i = self.tree.keys.iter().position(|key| *key == k)?;
             let s = MenuSurface::of(self.tree.origins[i])?;
-            let tag = self.tree.specs[i].events().on_click.as_ref()?;
+            let tag = self.tree.specs[i].events().on_click()?;
             let row = tag.get("row").and_then(Value::as_int)? as usize;
             let mut path = row_path_of(tag);
             path.push(row);
@@ -984,14 +984,10 @@ impl Core {
         let origin = s.origin();
         let at = (0..self.tree.len()).find(|&n| {
             self.tree.origins[n] == origin
-                && self.tree.specs[n]
-                    .events()
-                    .on_click
-                    .as_ref()
-                    .is_some_and(|tag| {
-                        tag.get("row").and_then(Value::as_int) == Some(i[0] as i64)
-                            && row_path_of(tag) == parent
-                    })
+                && self.tree.specs[n].events().on_click().is_some_and(|tag| {
+                    tag.get("row").and_then(Value::as_int) == Some(i[0] as i64)
+                        && row_path_of(tag) == parent
+                })
         });
         if let Some(n) = at {
             self.land_focus(n);

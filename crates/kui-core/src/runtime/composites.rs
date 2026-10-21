@@ -285,7 +285,7 @@ impl Core {
         if spec.disabled || spec.access().role != Some(crate::access::Role::Slider) {
             return;
         }
-        if let Some(tag) = spec.events().on_change.as_ref() {
+        if let Some(tag) = spec.events().on_change() {
             let ax = spec.access();
             let Some(range) = SliderRange::of(ax) else {
                 return;
@@ -332,7 +332,7 @@ impl Core {
         let Some(asked) = value.trim().parse::<f64>().ok().filter(|v| v.is_finite()) else {
             return;
         };
-        if let Some(tag) = spec.events().on_change.as_ref() {
+        if let Some(tag) = spec.events().on_change() {
             let ax = spec.access();
             let Some(range) = SliderRange::of(ax) else {
                 return;

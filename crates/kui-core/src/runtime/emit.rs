@@ -96,8 +96,8 @@ impl Core {
                 origin: self.tree.origins[j],
                 tag: self.tree.specs[j]
                     .events()
-                    .on_context_menu
-                    .clone()
+                    .on_context_menu()
+                    .cloned()
                     .expect("enclosing_menu returns a node that offers one"),
             })
         } else {
@@ -106,7 +106,7 @@ impl Core {
         // A slider that asked for its changes reads the pointer along
         // its content box (ADR 0034, decision 4); a disabled one, or a
         // range that is not one, reads nothing.
-        let slider = match spec.events().on_change.as_ref() {
+        let slider = match spec.events().on_change() {
             Some(tag) if live && spec.access().role == Some(crate::access::Role::Slider) => {
                 crate::slider::SliderRange::of(spec.access()).map(|range| {
                     Box::new(crate::slider::SliderTrack::new(
@@ -189,10 +189,10 @@ impl Core {
             clip,
             turn: turn.map(Box::new),
             shape,
-            payload: spec.events().on_click.clone().filter(|_| live),
-            drag: spec.events().on_drag.clone().filter(|_| live),
+            payload: spec.events().on_click().cloned().filter(|_| live),
+            drag: spec.events().on_drag().cloned().filter(|_| live),
             parent_rect,
-            key_sink: spec.events().on_key.clone().filter(|_| live),
+            key_sink: spec.events().on_key().cloned().filter(|_| live),
             key_up: spec.events().key_up,
             context_menu,
             drop,
@@ -200,7 +200,7 @@ impl Core {
             edit_origin: None,
             select_scope: self.scope_of(i).filter(|_| live),
             window: spec.window,
-            hover: spec.events().on_hover.clone(),
+            hover: spec.events().on_hover().cloned(),
             group: spec.interact().hover_group,
             click_sound: spec.interact().click_sound.filter(|_| live),
             hover_sound: spec.interact().hover_sound,
@@ -329,8 +329,8 @@ impl Core {
                 origin: self.tree.origins[j],
                 tag: self.tree.specs[j]
                     .events()
-                    .on_drop
-                    .clone()
+                    .on_drop()
+                    .cloned()
                     .expect("enclosing_drop returns a node that declares one"),
             })
         } else {
@@ -344,7 +344,7 @@ impl Core {
         let spec = &self.tree.specs[i];
         // An `on_scroll` node takes the wheel the way a container does —
         // one list, one paint-order rule (ADR 0029, decision 4).
-        let handler = self.tree.any_scroll_handler && spec.events().on_scroll.is_some();
+        let handler = self.tree.any_scroll_handler && spec.events().on_scroll().is_some();
         if spec.layout.scroll_x || spec.layout.scroll_y || handler {
             // A container behind a modal keeps its scrollbar drawn and
             // refuses the wheel and the thumb.
@@ -1969,7 +1969,7 @@ impl Core {
     fn emit_layout_events(&mut self) {
         let frame_no = self.frame_no;
         for i in 0..self.tree.len() {
-            let Some(tag) = &self.tree.specs[i].events().on_layout else {
+            let Some(tag) = &self.tree.specs[i].events().on_layout() else {
                 continue;
             };
             let key = self.tree.keys[i];
@@ -2307,7 +2307,7 @@ impl Core {
                 .role
                 .is_some_and(crate::access::Role::is_editor);
         if editor
-            || spec.events().on_key.is_some()
+            || spec.events().on_key().is_some()
             || spec.interact().focus_bg.is_some()
             || spec.disabled
         {
@@ -2409,7 +2409,7 @@ impl Core {
         // editor un-armed the blink clock and lost the IME its anchor
         // while the keys kept arriving (backlog AR29).
         let i = self.focus_index()?;
-        let i = if self.tree.specs[i].events().on_key.is_some() {
+        let i = if self.tree.specs[i].events().on_key().is_some() {
             i
         } else {
             self.enclosing_sink(i)?

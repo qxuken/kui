@@ -148,14 +148,14 @@ impl Core {
             }
             // The sink: this node, or the nearest above it.
             let mut sink = i;
-            while self.tree.specs[sink].events().on_key.is_none() {
+            while self.tree.specs[sink].events().on_key().is_none() {
                 let p = self.tree.parent[sink];
                 if p == crate::tree::NIL {
                     break;
                 }
                 sink = p as usize;
             }
-            if self.tree.specs[sink].events().on_key.is_none() {
+            if self.tree.specs[sink].events().on_key().is_none() {
                 continue;
             }
             let lines = crate::access::lines_under(&self.tree, sink);
@@ -526,7 +526,7 @@ impl Core {
                     use crate::slider::SliderMove;
                     let slider =
                         self.tree.specs[i].access().role == Some(crate::access::Role::Slider);
-                    let changes = slider && self.tree.specs[i].events().on_change.is_some();
+                    let changes = slider && self.tree.specs[i].events().on_change().is_some();
                     // Each key the core acts with shows the focus first
                     // (`docs/adr/0002`, decision 4a): pointer focus is
                     // unshown, but the moment the keyboard uses it the
@@ -874,7 +874,7 @@ impl Core {
         Some(crate::input::ButtonOwner {
             key: self.tree.keys[j],
             origin: self.tree.origins[j],
-            tag: self.tree.specs[j].events().on_button.clone()?,
+            tag: self.tree.specs[j].events().on_button().cloned()?,
         })
     }
 
@@ -902,7 +902,7 @@ impl Core {
             .keys
             .iter()
             .position(|k| *k == key)
-            .and_then(|i| self.tree.specs[i].events().on_force_click.clone());
+            .and_then(|i| self.tree.specs[i].events().on_force_click().cloned());
         let editor = region.edit_origin.map(|origin| (key, origin));
         let scope = region.select_scope;
         // Text first: the word under the pointer, selected, and looked up.
@@ -1031,7 +1031,7 @@ impl Core {
                     // The app owns the text: the value arrives as the
                     // change a user typing it would make, in the editor's
                     // `on_change` message (ADR 0047, decision 5).
-                    if let Some(message) = self.tree.specs[i].events().on_change.as_ref() {
+                    if let Some(message) = self.tree.specs[i].events().on_change() {
                         let text = req.value.unwrap_or_default();
                         out.push(UiEvent::declared(
                             EventKind::Change,
@@ -1090,7 +1090,7 @@ impl Core {
                     // would send there (ADR 0047, decision 5). Replacing
                     // the selection is inserting text over it, as a paste
                     // is; setting it is a `select`.
-                    let sink = if self.tree.specs[i].events().on_key.is_some() {
+                    let sink = if self.tree.specs[i].events().on_key().is_some() {
                         Some(i)
                     } else {
                         self.enclosing_sink(i)
@@ -1304,7 +1304,7 @@ impl Core {
             .rev()
             .find(|&i| self.tree.keys[i] == key)?;
         let spec = &self.tree.specs[i];
-        (spec.events().on_key.is_some() && !spec.disabled && self.interactive(i)).then_some(i)
+        (spec.events().on_key().is_some() && !spec.disabled && self.interactive(i)).then_some(i)
     }
 
     /// Hands `event` with `data` to the sink `target` names, as its
@@ -1325,7 +1325,7 @@ impl Core {
             event,
             self.tree.origins[i],
             self.tree.keys[i],
-            self.tree.specs[i].events().on_key.as_ref(),
+            self.tree.specs[i].events().on_key(),
             data,
         ));
         true
@@ -1346,12 +1346,12 @@ impl Core {
                 return false;
             }
             let root = &self.tree.specs[0];
-            if root.events().on_key.is_none() || root.disabled {
+            if root.events().on_key().is_none() || root.disabled {
                 return false;
             }
             return self.deliver_to_sink(self.tree.keys[0], event, data, out);
         };
-        let target = if self.tree.specs[i].events().on_key.is_some() {
+        let target = if self.tree.specs[i].events().on_key().is_some() {
             self.tree.keys[i]
         } else {
             match self.enclosing_sink(i) {
@@ -1485,11 +1485,12 @@ impl Core {
                 return None;
             }
             let root = &self.tree.specs[0];
-            return (root.events().on_key.is_some() && !root.disabled).then_some(self.tree.keys[0]);
+            return (root.events().on_key().is_some() && !root.disabled)
+                .then_some(self.tree.keys[0]);
         };
         // A sink that holds focus keeps everything, as it always has
         // (`docs/adr/0002`, decision 3).
-        if self.tree.specs[i].events().on_key.is_some() {
+        if self.tree.specs[i].events().on_key().is_some() {
             return Some(self.tree.keys[i]);
         }
         if !chord && self.claims(i, code) {
@@ -1542,7 +1543,7 @@ impl Core {
             .is_some_and(|h| h.payload.is_some() || h.window.is_some());
         let item = crate::composite::owner(&self.tree, i, &mut Vec::new()).is_some();
         let slider = self.tree.specs[i].access().role == Some(Role::Slider);
-        let changes = slider && self.tree.specs[i].events().on_change.is_some();
+        let changes = slider && self.tree.specs[i].events().on_change().is_some();
         match code {
             KeyCode::Enter => activates,
             // Inside a composite, Space either extends a type-ahead search
@@ -1582,7 +1583,7 @@ impl Core {
     /// Whether the focused node is a key sink (it owns its keys).
     fn focused_sink(&self) -> bool {
         self.focus_index()
-            .is_some_and(|i| self.tree.specs[i].events().on_key.is_some())
+            .is_some_and(|i| self.tree.specs[i].events().on_key().is_some())
     }
 
     /// The focused node when it is a control the core presses itself:
@@ -1591,7 +1592,7 @@ impl Core {
         let i = self.focus_index()?;
         let spec = &self.tree.specs[i];
         let editor = matches!(self.tree.content[i], NodeContent::Edit(_));
-        (!editor && spec.events().on_key.is_none() && crate::access::focusable(&self.tree, i))
+        (!editor && spec.events().on_key().is_none() && crate::access::focusable(&self.tree, i))
             .then_some(i)
     }
 
@@ -1646,7 +1647,7 @@ impl Core {
             EventKind::Dismiss,
             self.tree.origins[i],
             key,
-            self.tree.specs[i].events().modal.as_ref(),
+            self.tree.specs[i].events().modal(),
             data,
         ));
     }
@@ -1674,10 +1675,10 @@ impl Core {
         };
         let ev = self.tree.specs[i].events();
         let message = match event {
-            EventKind::Change => ev.on_change.as_ref(),
-            EventKind::Submit => ev.on_submit.as_ref(),
-            EventKind::Cancel => ev.on_cancel.as_ref(),
-            EventKind::Boundary => ev.on_boundary.as_ref(),
+            EventKind::Change => ev.on_change(),
+            EventKind::Submit => ev.on_submit(),
+            EventKind::Cancel => ev.on_cancel(),
+            EventKind::Boundary => ev.on_boundary(),
             _ => None,
         };
         let Some(message) = message else {

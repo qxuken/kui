@@ -61,6 +61,11 @@ was the first bare bump to break an app in five releases).
   `Access_Event`, `Submit_Event`, `Cancel_Event` and `Change_Event` are
   gone. The frame protocol is v24.
 - `schema::Kind::Tag` is `Kind::Handler`.
+- Rust: `EventSpec`'s eighteen handler fields are rows of a sorted list,
+  read with an accessor of the same name (`spec.events().on_click()`,
+  an `Option<&Value>`) and written with `set` / `put` / `take` by
+  `spec::Handler`. A node with a click handler allocates 112 bytes for
+  the group, where it was 592.
 
 Matching an editor's `changed` meant `ev.key === ctx.keyOf('title')`,
 and a list of editors could not be matched at all: key labels are unique

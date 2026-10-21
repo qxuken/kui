@@ -627,7 +627,7 @@ impl Core {
         // without one the question still arrives, as the field alone.
         let i = self.tree.keys.iter().position(|k| *k == sel.scope);
         let origin = i.map_or(crate::tree::OriginId::HOST, |i| self.tree.origins[i]);
-        let message = i.and_then(|i| self.tree.specs[i].events().on_selection_range.as_ref());
+        let message = i.and_then(|i| self.tree.specs[i].events().on_selection_range());
         self.pending.push(crate::input::UiEvent::declared(
             crate::input::EventKind::SelectionRange,
             origin,

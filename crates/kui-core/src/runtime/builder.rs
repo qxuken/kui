@@ -1032,7 +1032,7 @@ impl Core {
         }
         // A value with nowhere to hear the edits it would follow reverts
         // every keystroke (ADR 0047, decision 8).
-        if opts.value && spec.events().on_change.is_none() {
+        if opts.value && spec.events().on_change().is_none() {
             self.warn(crate::diag::edit_value_without_handler(key, label));
         }
         self.prepare_spec(key, &mut spec);
