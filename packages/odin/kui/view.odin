@@ -39,10 +39,11 @@ root :: proc(ui: ^Ui, spec: Spec = {}) {
 // calls plain root stops hearing them.
 //
 //     Resized :: struct {using _: kui.With_Resize}
-//     kui.root_with(ui, {width = kui.GROW, height = kui.GROW}, {on_resize = Resized{}})
+//     kui.root_with(ui, kui.Spec{width = kui.GROW, height = kui.GROW}, {on_resize = Resized{}})
 //
 // A nil spec leaves the root as the frame began it and declares the group
-// alone.
+// alone. The spec is a Maybe, so a literal one names its type: a bare
+// `{width = ...}` does not compile, and a bare `{}` is the nil.
 root_with :: proc(ui: ^Ui, spec: Maybe(Spec), events: Window_Events) {
 	scratch: Scratch
 	defer scratch_free(&scratch)
