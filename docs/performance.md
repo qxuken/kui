@@ -246,26 +246,34 @@ rebuild. On Windows one frame is queued (RG46): D3D12 waits on its
 frame-latency object, and one delivered every vsync of 240 Hz at 100 to
 10,000 boxes, so a second would be a vsync of latency for nothing.
 
-Editing latency (`cargo bench -p kui-core --bench editing`, same machine and
-day — one keystroke: applying the edit, then the full frame it causes, warm
-caches). Each cell is the median of four runs, because a single run of the
-100k row moves by ~10%:
+Editing latency (`cargo bench -p kui-core --bench editing`, divan since
+the alpha.60 pre-tag pass, so `KUI_BENCH=editing nu scripts/bench-check.nu`
+reads it): a keystroke into a focused multiline editor — the edit, then
+the full frame it causes, warm caches. Measured 2026-10-22 on a loaded M3
+Pro (an earlier hand-read of the old bench, on the same machine idle, put
+the 100k keystroke at 1.4 ms + 2.1 ms), one codegen unit; the medians
+repeated within 8% across runs:
 
-| document | apply | frame | quads |
-|---|---|---|---|
-| 50 lines | 0.087 ms | 0.050 ms | 1860 |
-| 500 lines | 0.090 ms | 0.052 ms | 1860 |
-| 2k lines | 0.096 ms | 0.067 ms | 1860 |
-| 10k lines | 0.130 ms | 0.140 ms | 1860 |
-| 100k lines | 1.79 ms | 2.08 ms | 1860 |
+| bench | what | median |
+|---|---|---|
+| `keystroke_500_lines` | one character typed into 500 lines, and the frame it causes | ~230 µs |
+| `keystroke_10k_lines` | the same into 10k lines | ~390 µs |
+| `keystroke_100k_lines` | the same into 100k lines | ~7.3 ms |
+| `keystroke_100k_lines_on_change` | the 100k keystroke into an editor that declares `on_change`, whose `change: {text}` carries the whole text every keystroke (ADR 0047, decision 7) | ~17 ms |
+| `keystroke_apply_100k_lines` | the 100k edit alone, the frame run untimed between samples: the half RG156 tripled, when the text was copied for an editor that declared no `on_change` | ~3.1 ms |
+| `cosmic_insert_and_shape_500_lines` | cosmic-text alone, an insert and its reshape in 500 lines, for scale | ~170 µs |
 
-So a keystroke costs well under a frame's worth up to 10k lines, and ~3.9 ms
-at 100k. The quad count is flat because glyph emission is viewport-culled (a
-huge document emits only the visible screenful), and single-line reshapes go
-through cosmic-text's shape-run cache. This bench never regressed with the
-frame benches above — at `dabe671` it measured 0.084/0.045 ms at 50 lines and
-0.134/0.116 ms at 10k — because its frame is 1860 quads, not 10k nodes, which
-was itself a clue that the cost was per node.
+The rows time the whole keystroke because one short call timed alone
+reads bimodal on this machine (the 500-line edit alone 86 to 266 µs),
+wider than the guard's 10%; the apply row is the exception, kept for
+the regression it caught, and read against `keystroke_100k_lines`. The
+frame half's quad count is flat at every size because glyph emission is
+viewport-culled (a huge document emits only the visible screenful), and
+single-line reshapes go through cosmic-text's shape-run cache. This bench
+never regressed with the frame benches above — at `dabe671` it measured
+0.084/0.045 ms at 50 lines and 0.134/0.116 ms at 10k — because its frame
+is 1860 quads, not 10k nodes, which was itself a clue that the cost was
+per node.
 
 Layout solver, atlas packer, key scheme, event dispatch, editing,
 measurement, layout events, diagnostics and the Lua binding are covered by

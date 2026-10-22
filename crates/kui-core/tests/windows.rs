@@ -296,4 +296,20 @@ fn a_dismissed_popup_closes_nothing_until_the_app_stops_declaring_it() {
     assert!(events.is_empty(), "no `on_window`, no `opened`: {events:?}");
     main.dismiss_window(WindowId(2), DismissReason::Outside);
     assert!(main.take_pending_events().is_empty());
+
+    // Closed by the user and still declared: the window stays closed and
+    // in the registry, and a dismissal the driver reports late is about a
+    // window that is gone (backlog RG157).
+    frame(&mut main, &[]);
+    let (cmds, _) = frame(&mut main, &[("menu", menu)]);
+    let id = opened(&cmds)[0].0;
+    main.window_closed(WindowId(id));
+    main.take_pending_events();
+    frame(&mut main, &[("menu", menu)]);
+    main.take_pending_events();
+    main.dismiss_window(WindowId(id), DismissReason::Outside);
+    assert!(
+        main.take_pending_events().is_empty(),
+        "no dismissal of a closed window"
+    );
 }

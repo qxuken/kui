@@ -85,6 +85,33 @@ fn a_plain_click_arrives_exactly_as_declared() {
     assert_eq!(click.read(), Event::Click(Default::default()));
 }
 
+/// An event with no data leaves the message as declared, so a field the
+/// app named like the event is the app's: not the event's data, and not
+/// taken (the alpha.60 pre-tag pass, backlog RG157).
+#[test]
+fn a_dataless_event_leaves_the_app_s_field_of_its_name_alone() {
+    let mut core = Core::new();
+    let own = Value::map([("kind", Value::str("k")), ("click", Value::Int(5))]);
+    frame(&mut core, NodeSpec::column().on_click(own.clone()));
+    core.take_warnings();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 10.0)));
+    let mut evs = core.handle_input(InputEvent::mouse_down(1));
+    evs.extend(core.handle_input(InputEvent::mouse_up()));
+    let click = evs
+        .iter()
+        .find(|e| e.is(EventKind::Click))
+        .expect("a click");
+    assert_eq!(click.payload, own, "the message as declared");
+    assert_eq!(
+        click.data(),
+        None,
+        "the app's `click` is not the event's data"
+    );
+    assert_eq!(click.read(), Event::Click(Default::default()));
+    let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(!codes.contains(&MESSAGE_FIELD_TAKEN), "{codes:?}");
+}
+
 #[test]
 fn a_field_the_message_already_has_is_the_core_s_and_it_says_so() {
     let mut core = Core::new();

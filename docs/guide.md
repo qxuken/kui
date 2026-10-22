@@ -186,7 +186,7 @@ function view(env, slot)                  -- slot = { name, namespace, params, k
   }
 end
 
-function on_event(ev)                     -- ev = the message + event + node_key
+function on_event(ev, at)                 -- ev = the message + event + node_key; at = the envelope alone
   if ev.kind == "bump" then count = count + 1; return { kind = "bumped", count = count } end
   if ev.kind == "note" then note = ev.change.text end   -- the text rides in `change`
 end                                       -- what it returns is a reply to the host

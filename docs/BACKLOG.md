@@ -2807,7 +2807,11 @@ says it is expandable or expanded — every AccessKit app on Linux.
   `mouse(true, -1)` is 255 clicks and `activateMenuItem(-1)` closes the
   menu. The frame path refuses the same numbers with an error
   (`binary.rs`). **Wants:** the doors to take `f64` / `i64` and refuse
-  what is not a count.
+  what is not a count. **Built 2026-10-22**, after the alpha.60 tag: every
+  door that read a `u32` from JavaScript takes an `f64` through `count`,
+  which refuses anything but a whole number from 0 to `u32::MAX` by the
+  door's and the argument's name (`test.mjs`, "a count from JavaScript
+  that is not one"); the types are unchanged.
 - **Node errors that name nothing.** A number where a string is wanted
   (`key: 5`, the root's `title: 42`, `<edit initial={5}>`) throws Node's
   own "The \"src\" argument must be of type string"; `addImage(0, 0,
@@ -2885,6 +2889,13 @@ RG145 is what the pass left.
   volume per checkout. Smaller: `SHA256SUMS`
   lists older versions' tarballs, a `--no-runner` pack overwrites a full
   one of the same name, and bsdtar's xattrs warn under GNU tar.
+  **Built 2026-10-22**, after the alpha.60 tag: a target volume per
+  checkout (`target-volume`, named for its path), the staged copies
+  `chown`ed back to the caller, the import libraries copied where the
+  build fetched them, `SHA256SUMS` over this version's tarballs, a
+  `-no-runner` pack name, and (in the alpha.60 round itself) tarballs
+  written without xattrs. Not run on a rootful Linux Docker or with
+  `--no-runner` on Windows; read, and the macOS legs run.
 - **RG135 left the offsets beside the run.** `KuiAccessNode.caret`,
   `selection_start` and `selection_end` still carry a custom editor's
   byte inside a character; only the run's `focus` and `anchor` are
@@ -3130,33 +3141,8 @@ accessibility audit, 95 of 106 (the example's own tags, below); the
 guard green (the guarded rows −4.3% to +1.3%). One entry, RG156, is
 what the reviewers, the audit and the one bench the guard does not read
 found, **built 2026-10-22**, the day it was filed, and in the archive;
-RG157 is what the pass left.
-
-### `.` RG157 — What the alpha.60 pre-tag pass left
-
-**Found** by the alpha.60 pre-tag pass's reviewers, 2026-10-22, each
-read and judged too small or too much a design question to change
-before the tag.
-
-- **`benches/editing.rs` is not divan**, so `bench-check.nu` reads no
-  rows from it (`KUI_BENCH=editing` exits 2, "no bench rows") and RG156's
-  keystroke tripling was found by reading its table by hand. Port it to
-  divan, with an `on_change` row beside the undeclared one: an editor
-  that declares `on_change` still copies its whole text into every
-  keystroke's `change: {text}`, which is ADR 0047's decision 7 and costs
-  a 100 000-line document about 3 ms a keystroke.
-- **An event's data and an app field of the same name.** For an event
-  with no data (a plain click, a submit, `fonts`) the payload is the
-  message as declared, so a message that has a field named `click` reads
-  as the event's data through `UiEvent::data()` and `Event::read`, and no
-  `message-field-taken` is raised since the core wrote nothing.
-- **Lua's envelope keeps the message's fields**: a message with its own
-  `event` field hides the event's name from `on_event`, and one with
-  `node_key` hides `node_key`, `window`, `slot` and `from` (in the
-  changelog's What breaks; the `node_key` half predates ADR 0047).
-- **`dismiss_window` reads a closed window's messages**: `messages_of`
-  does not check `live`, so a stale driver report for a window the user
-  closed and the app still declares delivers its `on_dismiss`.
+RG157, what the pass left,
+**built 2026-10-22** after the alpha.60 tag, and in the archive.
 
 ## From the alpha.60 fuzz hour (2026-10-22)
 
@@ -4926,9 +4912,10 @@ move.
 
 - `!` **FZ10** — [An arc past an f32 at one scale is measured as its chord and drawn round its ellipse](backlog/closed-2026-09.md#-fz10--an-arc-past-an-f32-at-one-scale-is-measured-as-its-chord-and-drawn-round-its-ellipse--done-2026-10-22) — done (2026-10-22) — `rasterize_at` measures the physical outline it hands zeno by `drawable`'s rule and leaves the mask blank past it; `fuzz.nu keep` reads tmin's file past libFuzzer's echoed flag
 
-**From the alpha.60 pre-tag pass (2026-10-22)** — RG156, filed and built the same day; RG157, what it left, open
+**From the alpha.60 pre-tag pass (2026-10-22)** — RG156, filed and built the same day; RG157, what it left, built the same day after the alpha.60 tag
 
 - `~` **RG156** — [A Lua slot's `window_events` took the host's, and a keystroke copied the document for nobody](backlog/closed-2026-09.md#-rg156--a-lua-slots-window_events-took-the-hosts-and-a-keystroke-copied-the-document-for-nobody--done-2026-10-22) — done (2026-10-22) — the group's origin kept with it, the editor's text copied only for a declared `on_change` (100k lines 4.3 → 1.4 ms), the platform bar's choice through `outbound`, a held value keeps its commit's claim, Node's `'dispatch'` envelope, the accessibility example's tags (AX audit 95 → 106 of 106), the docs and the changelog
+- `.` **RG157** — [What the alpha.60 pre-tag pass left](backlog/closed-2026-09.md#-rg157--what-the-alpha60-pre-tag-pass-left--done-2026-10-22) — done (2026-10-22) — `benches/editing.rs` on divan with an `on_change` row, a data-less event's `data()` none whatever the app's field, Lua's envelope as `on_event`'s second argument, no dismissal of a closed window
 
 **From the alpha.60 fuzz hour (2026-10-22)** — FZ11, filed and built the same day
 

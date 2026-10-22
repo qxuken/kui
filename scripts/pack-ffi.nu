@@ -22,7 +22,8 @@
 #     link.txt    what a static link needs besides the archive (rustc's
 #                 native-static-libs: -lm, -framework Metal, ws2_32.lib, ...)
 #     BUILD.txt   the target, the features, the toolchain it was built with
-#   kui-ffi-<version>-<platform>.tar.gz, and SHA256SUMS over every tarball there
+#   kui-ffi-<version>-<platform>.tar.gz, and SHA256SUMS over this version's
+#   (`-no-runner` after the platform for a --no-runner pack)
 #
 # Where each is built: the machine's own platform natively with cargo, and
 # the rest in a Docker image this script builds once (pinned below):
@@ -158,13 +159,14 @@ def main [
         } else {
             build-docker $row.target $row.builder $features
         }
-        stage ($row | update how {|r| if $r.how == "native" and $zig and $r.builder == "zigbuild" { "native, cargo-zigbuild" } else { $r.how } }) $note $feature_note
+        stage ($row | update how {|r| if $r.how == "native" and $zig and $r.builder == "zigbuild" { "native, cargo-zigbuild" } else { $r.how } }) $note $feature_note $no_runner
     }
 
-    # Over every tarball here, not only this run's: a run of one platform
-    # leaves the others' packs, and their sums, where they were.
+    # Over every tarball of this version here, not only this run's: a run
+    # of one platform leaves the others' packs, and their sums, where they
+    # were. An older version's tarballs stay on disk and out of the sums.
     cd $OUT
-    let sums = glob "kui-ffi-*.tar.gz" | each {|t| sha256sum-of ($t | path basename) } | sort
+    let sums = glob $"kui-ffi-(version)-*.tar.gz" | each {|t| sha256sum-of ($t | path basename) } | sort
     $sums | str join "\n" | save -f SHA256SUMS
     # A width of its own: off a terminal (a pipe, tee, a CI log) nu reads
     # the width as 1 and prints "Couldn't fit table" in place of it.
@@ -245,7 +247,15 @@ RUN cargo install cargo-xwin --locked --version ($CARGO_XWIN_VERSION)
 
 # A leg in the container: the checkout read-only, the target dir and the
 # registry in named volumes (so a second run is incremental), and xwin's
-# download of the SDK in a third.
+# download of the SDK in a third. The target volume is the checkout's own
+# (`target-volume`): cargo keys a path package by its path, and every
+# checkout is /src in here, so a shared one let a worktree's pack find
+# another's newer build fresh and ship its library beside this kui.h.
+# The container target dir of this checkout, named after its path.
+def target-volume [] {
+    $"kui-pack-target-($ROOT | hash sha256 | str substring 0..<10)"
+}
+
 def build-docker [target: string, builder: string, features: list<string>] {
     let arch_dir = match $target {
         "x86_64-unknown-linux-gnu" => "x86_64-linux-gnu"
@@ -265,7 +275,7 @@ def build-docker [target: string, builder: string, features: list<string>] {
     let r = do {
         (docker run --rm
             -v $"($ROOT):/src:ro"
-            -v kui-pack-target:/target
+            -v $"(target-volume):/target"
             -v kui-pack-registry:/usr/local/cargo/registry
             -v kui-pack-xwin:/xwin
             -e CARGO_TARGET_DIR=/target -e CARGO_PROFILE_RELEASE_STRIP=debuginfo
@@ -282,9 +292,15 @@ def build-docker [target: string, builder: string, features: list<string>] {
     mkdir $staging
     let files = libraries $target | each {|f| $"/target/($target)/release/($f)" }
     let imports = import-lib-dirs $target | each {|d| $"/usr/local/cargo/registry/src/*/($d)" }
-    (docker run --rm -v kui-pack-target:/target -v kui-pack-registry:/usr/local/cargo/registry
+    # The import libraries only where the build fetched them (the runner's
+    # dependencies are what download windows-targets' crates): `stage`
+    # says so if the link line wants one that is missing. And the copies
+    # handed back to whoever runs this, since a rootful Docker writes them
+    # as root and the next `rm -rf` of the staging dir would fail.
+    let owner = if $nu.os-info.name == "windows" { "" } else { $" && chown -R (^id -u | str trim):(^id -g | str trim) /out" }
+    (docker run --rm -v $"(target-volume):/target" -v kui-pack-registry:/usr/local/cargo/registry
         -v $"($staging):/out" (image-tag)
-        sh -c $"cp ($files | str join ' ') /out/ && mkdir /out/imports ($imports | each {|i| $' && cp ($i) /out/imports/' } | str join '')")
+        sh -c $"cp ($files | str join ' ') /out/ && mkdir /out/imports ($imports | each {|i| $' && { cp ($i) /out/imports/ 2>/dev/null || true; }' } | str join '')($owner)")
     let toolchain = docker run --rm (image-tag) rustc --version
     let extra = if ($imports | is-empty) { [] } else { glob ($staging | path join imports "*.lib" | str replace -a '\' '/') }
     { dir: $staging, log: $r.stderr, toolchain: $toolchain, extra: $extra }
@@ -303,8 +319,10 @@ def libraries [target: string] {
 }
 
 # target/pack/kui-ffi-<version>-<platform>/ and its tarball.
-def stage [row: record, built: record, feature_note: string] {
-    let name = $"kui-ffi-(version)-($row.platform)"
+def stage [row: record, built: record, feature_note: string, no_runner: bool] {
+    # A pack without the runner is another library, so another name: it
+    # used to overwrite the full pack of its platform.
+    let name = $"kui-ffi-(version)-($row.platform)(if $no_runner { '-no-runner' } else { '' })"
     let dir = $OUT | path join $name
     rm -rf $dir
     mkdir ($dir | path join include) ($dir | path join lib)

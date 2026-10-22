@@ -276,9 +276,12 @@ impl WindowRegistry {
 
     /// The lifecycle messages of the window `id`, while it is open.
     pub(crate) fn messages_of(&self, id: WindowId) -> Option<WindowMessages> {
+        // `live`, not only present: a window the user closed stays in the
+        // registry while the app still declares it, and a driver's stale
+        // report about it must not post its `on_dismiss` (backlog RG157).
         self.windows
             .iter()
-            .find(|w| w.id == id)
+            .find(|w| w.id == id && w.live)
             .map(|w| WindowMessages {
                 lifecycle: w.lifecycle.clone(),
                 origin: w.origin,

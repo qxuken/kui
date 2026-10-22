@@ -61,6 +61,21 @@ fn err(msg: impl AsRef<str>) -> napi::Error {
     napi::Error::from_reason(msg.as_ref())
 }
 
+/// A count or an index from JavaScript, for a door that would otherwise
+/// take a `u32`: napi reads one by ToUint32, which wraps -1 to 4294967295
+/// and drops a fraction, so `new RowHeights(-1, 20)` held four billion
+/// rows (backlog RG139). This takes the number as it is and refuses one
+/// that is not a whole number from 0 to `u32::MAX`, naming `what`.
+fn count(v: f64, what: &str) -> Result<u32> {
+    if v.is_finite() && v >= 0.0 && v.fract() == 0.0 && v <= f64::from(u32::MAX) {
+        Ok(v as u32)
+    } else {
+        Err(err(format!(
+            "{what}: {v} is not a whole number from 0 to 4294967295"
+        )))
+    }
+}
+
 /// The binary-frame protocol tables (`{version, op, prop}`). The JS encoder
 /// reads its opcodes and prop ids from here at module init, so the two sides
 /// cannot drift.
@@ -813,15 +828,16 @@ impl Ctx {
     pub fn mouse(
         &mut self,
         down: bool,
-        clicks: Option<u32>,
-        button: Option<Either<String, u32>>,
+        clicks: Option<f64>,
+        button: Option<Either<String, f64>>,
     ) -> Result<()> {
         let button = match &button {
             Some(Either::A(name)) => MouseButton::from_name(name)
                 .ok_or_else(|| err(format!("unknown mouse button {name:?}")))?,
-            Some(Either::B(code)) => MouseButton::from_code(*code),
+            Some(Either::B(code)) => MouseButton::from_code(count(*code, "mouse: button")?),
             None => MouseButton::Primary,
         };
+        let clicks = clicks.map(|c| count(c, "mouse: clicks")).transpose()?;
         self.input(if down {
             InputEvent::MouseDown {
                 button,
@@ -895,11 +911,16 @@ impl Ctx {
     /// shows it inline; otherwise the focused `onKey` sink hears its
     /// message with `preedit: {text, cursor}` in it.
     #[napi(ts_args_type = "text: string, cursor?: [number, number] | null")]
-    pub fn preedit(&mut self, text: String, cursor: Option<Vec<u32>>) {
-        let cursor = cursor
-            .filter(|c| c.len() == 2)
-            .map(|c| (c[0] as usize, c[1] as usize));
+    pub fn preedit(&mut self, text: String, cursor: Option<Vec<f64>>) -> Result<()> {
+        let cursor = match cursor.filter(|c| c.len() == 2) {
+            Some(c) => Some((
+                count(c[0], "preedit: cursor start")? as usize,
+                count(c[1], "preedit: cursor end")? as usize,
+            )),
+            None => None,
+        };
         self.input(InputEvent::Preedit(text, cursor));
+        Ok(())
     }
 
     /// Editing key by name ("left", "backspace", "enter", ...) with optional
@@ -1185,10 +1206,12 @@ impl Ctx {
     /// `pollEvents` with `window: {phase: "closed", id}` in it (ADR 0048). Nothing happens for the main window (0) or for a
     /// window the diff already closed.
     #[napi]
-    pub fn window_closed(&mut self, id: u32) {
-        self.core.window_closed(kui_core::WindowId(id));
+    pub fn window_closed(&mut self, id: f64) -> Result<()> {
+        self.core
+            .window_closed(kui_core::WindowId(count(id, "windowClosed: id")?));
         let pending = self.core.take_pending_events();
         self.take_events(pending);
+        Ok(())
     }
 
     /// A custom driver reports that window `id` was asked to go away: a
@@ -1199,7 +1222,8 @@ impl Ctx {
     /// window on the frame it decides to, exactly as it answers a `modal`
     /// node's dismissal. Nothing happens for a window that is not open.
     #[napi]
-    pub fn window_dismissed(&mut self, id: u32, reason: String) {
+    pub fn window_dismissed(&mut self, id: f64, reason: String) -> Result<()> {
+        let id = count(id, "windowDismissed: id")?;
         let reason = match &*reason {
             "escape" => kui_core::DismissReason::Escape,
             _ => kui_core::DismissReason::Outside,
@@ -1207,6 +1231,7 @@ impl Ctx {
         self.core.dismiss_window(kui_core::WindowId(id), reason);
         let pending = self.core.take_pending_events();
         self.take_events(pending);
+        Ok(())
     }
 
     // -- Queries ---------------------------------------------------------
@@ -1789,7 +1814,12 @@ pub fn decode_animation(bytes: Buffer) -> Result<DecodedAnimation> {
 /// started)`, then `updateImage` when the index moved and
 /// `requestFrameAt(started + next)`.
 #[napi]
-pub fn animation_at(delays: Vec<f64>, loops: Option<u32>, elapsed: f64) -> AnimationShowing {
+pub fn animation_at(
+    delays: Vec<f64>,
+    loops: Option<f64>,
+    elapsed: f64,
+) -> Result<AnimationShowing> {
+    let loops = loops.map(|n| count(n, "animationAt: loops")).transpose()?;
     let a = kui_native::Animation {
         width: 0,
         height: 0,
@@ -1804,10 +1834,10 @@ pub fn animation_at(delays: Vec<f64>, loops: Option<u32>, elapsed: f64) -> Anima
         loops: loops.filter(|&n| n != 0),
     };
     let s = a.at(elapsed);
-    AnimationShowing {
+    Ok(AnimationShowing {
         index: s.index as u32,
         next: s.next,
-    }
+    })
 }
 
 /// Byte stride of one quad in the `quads()` buffer.
@@ -2394,7 +2424,8 @@ macro_rules! core_methods {
             /// Registers a w×h RGBA image (pixels copied); returns its id for
             /// `<image src={id}>`. Stable until `removeImage`.
             #[napi]
-            pub fn add_image(&mut self, width: u32, height: u32, rgba: Buffer) -> Result<String> {
+            pub fn add_image(&mut self, width: f64, height: f64, rgba: Buffer) -> Result<String> {
+                let (width, height) = (count(width, "addImage: width")?, count(height, "addImage: height")?);
                 add_image_impl(self.$core(), width, height, &rgba)
             }
 
@@ -2416,11 +2447,12 @@ macro_rules! core_methods {
             pub fn update_image(
                 &mut self,
                 id: String,
-                width: u32,
-                height: u32,
+                width: f64,
+                height: f64,
                 rgba: Buffer,
             ) -> Result<()> {
                 let id = ImageId::from_ffi(parse_u64(&id)?);
+                let (width, height) = (count(width, "updateImage: width")?, count(height, "updateImage: height")?);
                 update_image_impl(self.$core(), id, width, height, &rgba)
             }
 
@@ -4005,10 +4037,10 @@ macro_rules! core_methods {
             /// takes. False when the app hears nothing: a row that is not
             /// there, or a `<menuBar>` that declares no `onMenu` (ADR 0048).
             #[napi]
-            pub fn activate_menu_bar_item(&mut self, menu: u32, item: u32) -> Result<bool> {
-                let events = self
-                    .$core()
-                    .activate_menu_bar_item(menu as usize, item as usize);
+            pub fn activate_menu_bar_item(&mut self, menu: f64, item: f64) -> Result<bool> {
+                let menu = count(menu, "activateMenuBarItem: menu")? as usize;
+                let item = count(item, "activateMenuBarItem: item")? as usize;
+                let events = self.$core().activate_menu_bar_item(menu, item);
                 let any = !events.is_empty();
                 self.$take(events);
                 self.$redraw();
@@ -4019,9 +4051,13 @@ macro_rules! core_methods {
             /// `menu`, by its path through the rows' `items`. False for a
             /// row that is not there or that opens a submenu.
             #[napi]
-            pub fn activate_menu_bar_path(&mut self, menu: u32, path: Vec<u32>) -> Result<bool> {
-                let path: Vec<usize> = path.into_iter().map(|i| i as usize).collect();
-                let events = self.$core().activate_menu_bar_path(menu as usize, &path);
+            pub fn activate_menu_bar_path(&mut self, menu: f64, path: Vec<f64>) -> Result<bool> {
+                let menu = count(menu, "activateMenuBarPath: menu")? as usize;
+                let path = path
+                    .into_iter()
+                    .map(|i| count(i, "activateMenuBarPath: path").map(|i| i as usize))
+                    .collect::<Result<Vec<usize>>>()?;
+                let events = self.$core().activate_menu_bar_path(menu, &path);
                 let any = !events.is_empty();
                 self.$take(events);
                 self.$redraw();
@@ -4044,8 +4080,9 @@ macro_rules! core_methods {
             /// chosen — disabled, or a separator — in which case the menu
             /// stays open and nothing is posted.
             #[napi]
-            pub fn activate_menu_item(&mut self, index: u32) -> Result<bool> {
-                let Some(events) = self.$core().activate_menu_item(index as usize) else {
+            pub fn activate_menu_item(&mut self, index: f64) -> Result<bool> {
+                let index = count(index, "activateMenuItem: index")? as usize;
+                let Some(events) = self.$core().activate_menu_item(index) else {
                     return Ok(false);
                 };
                 self.$take(events);
@@ -4058,8 +4095,11 @@ macro_rules! core_methods {
             /// third row's submenu. False where `activateMenuItem` is, and
             /// for a row that opens a submenu, which is never chosen.
             #[napi]
-            pub fn activate_menu_path(&mut self, path: Vec<u32>) -> Result<bool> {
-                let path: Vec<usize> = path.into_iter().map(|i| i as usize).collect();
+            pub fn activate_menu_path(&mut self, path: Vec<f64>) -> Result<bool> {
+                let path = path
+                    .into_iter()
+                    .map(|i| count(i, "activateMenuPath: path").map(|i| i as usize))
+                    .collect::<Result<Vec<usize>>>()?;
                 let Some(events) = self.$core().activate_menu_path(&path) else {
                     return Ok(false);
                 };
@@ -4282,9 +4322,9 @@ macro_rules! core_methods {
             /// request. `window` is the id events carry (`env().window.id`),
             /// 0 for the main window.
             #[napi]
-            pub fn set_window_size(&mut self, window: u32, width: f64, height: f64) -> Result<()> {
+            pub fn set_window_size(&mut self, window: f64, width: f64, height: f64) -> Result<()> {
                 self.$core().set_window_size(
-                    kui_core::WindowId(window),
+                    kui_core::WindowId(count(window, "setWindowSize: window")?),
                     Size::new(width as f32, height as f32),
                 );
                 self.$redraw();
@@ -4295,8 +4335,9 @@ macro_rules! core_methods {
             /// way. Advisory: whether the window manager agreed shows up as
             /// `env().focused` on the frames that follow, not as a reply.
             #[napi]
-            pub fn focus_window(&mut self, window: u32) -> Result<()> {
-                self.$core().focus_window(kui_core::WindowId(window));
+            pub fn focus_window(&mut self, window: f64) -> Result<()> {
+                self.$core()
+                    .focus_window(kui_core::WindowId(count(window, "focusWindow: window")?));
                 self.$redraw();
                 Ok(())
             }

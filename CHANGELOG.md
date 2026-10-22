@@ -21,6 +21,69 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.61 (unreleased)
+
+**What breaks.**
+
+- Node: a door taking a count or an index throws, naming the door and
+  the argument, for a number that is not a whole number from 0 to
+  4294967295, where napi wrapped it (-1 was 4294967295, 2.5 was 2):
+  `RowHeights` (`new`, `setLen`, `set`, `get`, `measured`, `offsetOf`),
+  `mouse`'s clicks and button code, `preedit`'s cursor, `windowClosed`,
+  `windowDismissed`, `animationAt`'s loops, `addImage` and
+  `updateImage`'s size, `activateMenuItem`, `activateMenuPath`,
+  `activateMenuBarItem`, `activateMenuBarPath`, `setWindowSize` and
+  `focusWindow` (backlog RG139). The types are unchanged.
+- `UiEvent::data()`, and so `Event::read` and the event views, is `None`
+  for an event the core wrote no data for (a plain click, a submit,
+  `fonts`), where an app's own field named like the event read as the
+  event's data. A grid's or a line row's click into a message with its
+  own `click` field replaces it and raises `message-field-taken`, where
+  the pointer's fields were added to the app's map (backlog RG157).
+
+A message named its own fields, and the core read one of them as its
+own whenever the event had nothing to write there; the flag that says
+the core wrote the field is what both readings now ask.
+
+### Added
+
+- **Lua's `on_event(ev, at)`**: the envelope alone as a second argument
+  — `at.event`, `at.node_key`, `at.window`, and `at.slot` and `at.from`
+  where they apply — which no message can hide. In the first argument a
+  message's own `event` or `node_key` field keeps its value, so a
+  message with either hid what happened and where (backlog RG157). A
+  script that names one argument is unchanged.
+
+### Fixed
+
+- A dismissal a driver reports for a window the user closed, while the
+  app still declares it, posts nothing; it delivered the entry's
+  `onDismiss` about a window that was gone (backlog RG157).
+- `scripts/pack-ffi.nu`'s Docker legs (backlog RG145): each checkout
+  builds in a target volume of its own, so a worktree no longer packs
+  another's newer build beside its own `kui.h`; the staged copies are
+  handed back to the caller, which a rootful Docker left root's; a
+  `--no-runner` build, which fetches no Windows import libraries, packs
+  without them; `SHA256SUMS` lists this version's tarballs only; and a
+  `--no-runner` pack is `kui-ffi-<version>-<platform>-no-runner`, where it
+  overwrote the full pack of its platform. The volume before this one,
+  `kui-pack-target`, can go.
+
+### Changed
+
+- `benches/editing.rs` is a divan bench, so `KUI_BENCH=editing
+  scripts/bench-check.nu` compares it: a whole keystroke at 500, 10k and
+  100k lines, the 100k one into an editor that declares `on_change`, and
+  the 100k edit alone, the half RG156 tripled (backlog RG157). It printed a
+  table of its own, which the guard could not read.
+
+**What you can delete.**
+
+- A Lua message's field renamed away from `event` or `node_key` so
+  `on_event` could see the envelope's: `at` has it.
+- A Node guard that checked a row count or an index was a whole,
+  non-negative number before handing it to kui: the door refuses one.
+
 ## 0.1.0-alpha.60 (2026-10-22)
 
 **What breaks.**

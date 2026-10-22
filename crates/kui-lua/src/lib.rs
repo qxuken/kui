@@ -253,7 +253,10 @@
 //! and `slot` (the full name of the slot the node was filled into). A message
 //! that is not a table arrives as `{ tag = message }`, and none as `{}`,
 //! so the envelope always has somewhere to go; a message's own field
-//! under one of the envelope's names is the message's.
+//! under one of the envelope's names is the message's. The envelope also
+//! comes alone as the second argument, `on_event(ev, at)`, which no
+//! message can hide: `at.event`, `at.node_key`, `at.window`, and `at.slot`
+//! and `at.from` where they apply.
 //!
 //! A node hears only the events it declares a handler for. An `edit`
 //! reports through its own: `on_change` as `change = { text }` (the whole
@@ -634,7 +637,16 @@ impl Extension for LuaExtension {
         // 0014 decision 6): nothing, a table (one reply), or a sequence of
         // tables (several) — the list-or-map reading `lua_to_value` already
         // makes.
-        match payload.and_then(|p| f.call::<mlua::Value>(p)) {
+        // The envelope again, whole, as the second argument: the fields
+        // merged into the message above give way to the message's own, so
+        // a message with an `event` or a `node_key` field of its own hid
+        // what happened and where (the alpha.60 pre-tag pass, backlog
+        // RG157). A script that names one argument never sees it.
+        let at = self.envelope(ev);
+        match payload
+            .and_then(|p| Ok((p, at?)))
+            .and_then(|(p, at)| f.call::<mlua::Value>((p, at)))
+        {
             Ok(mlua::Value::Nil) => Vec::new(),
             Ok(v) => match lua_to_value(&v) {
                 Ok(Value::List(replies)) => replies,
@@ -649,6 +661,26 @@ impl Extension for LuaExtension {
                 Vec::new()
             }
         }
+    }
+}
+
+impl LuaExtension {
+    /// `on_event`'s second argument: the envelope alone, nothing of the
+    /// message in it — `event`, `node_key`, `window`, and `slot` and
+    /// `from` where they apply, as the first argument carries them when
+    /// the message leaves them free.
+    fn envelope(&self, ev: &UiEvent) -> mlua::Result<Table> {
+        let t = self.lua.create_table()?;
+        t.set("event", ev.event.name())?;
+        t.set("node_key", ev.key.0 as i64)?;
+        t.set("window", ev.window.0)?;
+        if let Some(name) = ev.slot.and_then(|k| self.slot_names.get(&k)) {
+            t.set("slot", name.as_str())?;
+        }
+        if let Some(ns) = self.loaded_as(ev.origin) {
+            t.set("from", ns)?;
+        }
+        Ok(t)
     }
 }
 
@@ -4187,6 +4219,42 @@ mod tests {
         ));
         let count: i64 = ext.lua.globals().get("count").unwrap();
         assert_eq!(count, 42);
+    }
+
+    /// `on_event`'s second argument is the envelope alone: a message with
+    /// its own `event` and `node_key` keeps them in the first, and the
+    /// second still says what happened and where (backlog RG157).
+    #[test]
+    fn the_second_argument_is_the_envelope_whatever_the_message_has() {
+        let mut ext = LuaExtension::from_source(
+            "test",
+            r#"
+                function view() return column {} end
+                function on_event(ev, at)
+                  seen = { ev.event, ev.node_key, at.event, at.node_key, at.window }
+                end
+            "#,
+        )
+        .unwrap();
+        let own = Value::map([
+            ("kind", "log".into()),
+            ("event", "mine".into()),
+            ("node_key", Value::Int(-1)),
+        ]);
+        ext.on_event(&UiEvent::declared(
+            kui_core::EventKind::Submit,
+            OriginId(1),
+            Key(77),
+            Some(&own),
+            Value::Null,
+        ));
+        let seen: Vec<mlua::Value> = ext.lua.globals().get("seen").unwrap();
+        let s = |i: usize| seen[i].to_string().unwrap();
+        assert_eq!(s(0), "mine", "the message's own field wins in the first");
+        assert_eq!(s(1), "-1");
+        assert_eq!(s(2), "submit");
+        assert_eq!(s(3), "77");
+        assert_eq!(s(4), "0");
     }
 
     /// `devtools_tab` (ADR 0032): the script's `view` is called only while

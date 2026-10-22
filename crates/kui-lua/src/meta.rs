@@ -711,7 +711,17 @@ fn events_meta() -> String {
          ---@field from? string The namespace of the plugin a reply came from.\n\
          ---@field kind? string The message's own `kind`: the core never writes one.\n\
          ---@field tag? any A message that is not a table, kept under `tag`.\n\
-         ---@field [string] any\n\n",
+         ---@field [string] any\n\n\
+         ---`on_event`'s second argument: the envelope alone, whatever fields the message has.\n\
+         ---The first argument's envelope fields give way to the message's own; these never do.\n\
+         ---@class kui.Envelope\n",
+    );
+    let _ = writeln!(out, "---@field event {}", kinds.join("|"));
+    out.push_str(
+        "---@field node_key integer\n\
+         ---@field window integer The window it came from, as `env.window.id` reads.\n\
+         ---@field slot? string\n\
+         ---@field from? string\n\n",
     );
     let shape_line = |out: &mut String, name: &str, required: bool, ty: &str| {
         let opt = if required { "" } else { "?" };

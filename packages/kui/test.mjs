@@ -9409,3 +9409,26 @@ test('a select option or a menu bar row cut through an emoji draws U+FFFD, not a
     assert.ok(JSON.stringify(ctx.accessTree()).includes('ab�'), node.type);
   }
 });
+
+test('a count from JavaScript that is not one is refused by name, not wrapped (RG139)', () => {
+  // napi read these as u32 by ToUint32: -1 was 4294967295 rows, 1e12 was
+  // 3567587328, 2.5 was 2, and a preedit cursor of -1 reached the sink as
+  // 4294967295.
+  assert.throws(() => new RowHeights(-1, 20), /RowHeights: rows: -1 is not a whole number/);
+  assert.throws(() => new RowHeights(1e12, 20), /RowHeights: rows/);
+  assert.throws(() => new RowHeights(2.5, 20), /RowHeights: rows: 2.5/);
+  assert.equal(new RowHeights(3, 20).length, 3);
+  const heights = new RowHeights(3, 20);
+  assert.throws(() => heights.setLen(-1), /setLen: rows/);
+  assert.throws(() => heights.get(NaN), /get: i: NaN/);
+  assert.equal(heights.get(2), 20);
+  const ctx = new Ctx();
+  assert.throws(() => ctx.mouse(true, -1), /mouse: clicks: -1/);
+  assert.throws(() => ctx.mouse(true, 1, -2), /mouse: button: -2/);
+  assert.throws(() => ctx.preedit('か', [-1, 1.5]), /preedit: cursor start: -1/);
+  assert.throws(() => ctx.activateMenuItem(-1), /activateMenuItem: index: -1/);
+  assert.throws(() => ctx.activateMenuPath([0, -1]), /activateMenuPath: path: -1/);
+  assert.throws(() => ctx.focusWindow(1.5), /focusWindow: window: 1.5/);
+  assert.throws(() => animationAt([0.1], -1, 0), /animationAt: loops: -1/);
+  assert.equal(animationAt([0.1, 0.1], 0, 0.15).index, 1);
+});

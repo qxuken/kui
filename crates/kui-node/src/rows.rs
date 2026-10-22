@@ -26,8 +26,9 @@ pub struct RowHeights {
     pending: Vec<usize>,
 }
 
-fn row(i: u32) -> usize {
-    i as usize
+/// A row count or index, as `crate::count` takes one (backlog RG139).
+fn row(i: f64, what: &str) -> Result<usize> {
+    Ok(crate::count(i, what)? as usize)
 }
 
 #[napi]
@@ -37,12 +38,12 @@ impl RowHeights {
     /// magnitude: it decides how wrong the scrollbar is before the list has
     /// been scrolled through, and nothing else.
     #[napi(constructor)]
-    pub fn new(rows: u32, estimate: f64) -> Self {
-        RowHeights {
-            inner: Heights::new(row(rows), estimate as f32),
+    pub fn new(rows: f64, estimate: f64) -> Result<Self> {
+        Ok(RowHeights {
+            inner: Heights::new(row(rows, "RowHeights: rows")?, estimate as f32),
             slice: None,
             pending: Vec::new(),
-        }
+        })
     }
 
     /// How many rows.
@@ -54,8 +55,9 @@ impl RowHeights {
     /// Grows or shrinks to `rows`, keeping what is still in range — rows
     /// appended to a log keep every height already measured.
     #[napi]
-    pub fn set_len(&mut self, rows: u32) {
-        self.inner.set_len(row(rows));
+    pub fn set_len(&mut self, rows: f64) -> Result<()> {
+        self.inner.set_len(row(rows, "setLen: rows")?);
+        Ok(())
     }
 
     /// Forgets every measurement, keeping the length and the estimate —
@@ -68,20 +70,21 @@ impl RowHeights {
     /// Records row `i`'s height; the estimate for the others is the mean of
     /// the rows recorded this way.
     #[napi]
-    pub fn set(&mut self, i: u32, h: f64) {
-        self.inner.set(row(i), h as f32);
+    pub fn set(&mut self, i: f64, h: f64) -> Result<()> {
+        self.inner.set(row(i, "set: i")?, h as f32);
+        Ok(())
     }
 
     /// Row `i`'s height as measured, or null for one at the estimate.
     #[napi]
-    pub fn measured(&self, i: u32) -> Option<f64> {
-        self.inner.measured(row(i)).map(f64::from)
+    pub fn measured(&self, i: f64) -> Result<Option<f64>> {
+        Ok(self.inner.measured(row(i, "measured: i")?).map(f64::from))
     }
 
     /// Row `i`'s height: measured, or the estimate.
     #[napi]
-    pub fn get(&self, i: u32) -> f64 {
-        f64::from(self.inner.get(row(i)))
+    pub fn get(&self, i: f64) -> Result<f64> {
+        Ok(f64::from(self.inner.get(row(i, "get: i")?)))
     }
 
     /// What an unmeasured row stands at.
@@ -100,8 +103,8 @@ impl RowHeights {
     /// heights.offsetOf(i))` puts row `i` at the top — exactly for a
     /// measured row, within a frame or two for one at the estimate.
     #[napi]
-    pub fn offset_of(&mut self, i: u32) -> f64 {
-        f64::from(self.inner.offset_of(row(i)))
+    pub fn offset_of(&mut self, i: f64) -> Result<f64> {
+        Ok(f64::from(self.inner.offset_of(row(i, "offsetOf: i")?)))
     }
 
     /// The row content-coordinate `y` lands in.

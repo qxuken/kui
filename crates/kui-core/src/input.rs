@@ -1609,6 +1609,13 @@ pub struct UiEvent {
     /// event's data replaced it: what the core raises
     /// `message-field-taken` for on the way out (ADR 0047, decision 4).
     pub(crate) taken: bool,
+    /// The payload's field named for the event is the core's: it wrote
+    /// the event's data there. An event with no data (a plain click, a
+    /// submit, `fonts`) leaves the message as declared, and a field the
+    /// app's own message has under the event's name is the app's, which
+    /// [`UiEvent::data`] does not read as the event's (the alpha.60 pre-tag
+    /// pass, backlog RG157).
+    pub(crate) data: bool,
     /// A fact about the window ([`UiEvent::fact`]) whose message is not
     /// known where it was noticed: a resize, a modifier change, the OS's
     /// documents. Its payload is the bare data until the core resolves it
@@ -1641,12 +1648,13 @@ impl UiEvent {
         data: Value,
     ) -> Self {
         let mut taken = false;
+        let has_data = data != Value::Null;
         let mut entries = match message {
             Some(Value::Map(own)) => own.clone(),
             None | Some(Value::Null) => Vec::new(),
             Some(other) => vec![("tag".to_string(), other.clone())],
         };
-        if data != Value::Null {
+        if has_data {
             let field = event.name();
             match entries.iter_mut().find(|(k, _)| k == field) {
                 Some(slot) => {
@@ -1665,6 +1673,7 @@ impl UiEvent {
             payload,
             slot: None,
             taken,
+            data: has_data,
             fact: false,
         }
     }
@@ -1682,13 +1691,18 @@ impl UiEvent {
             payload: data,
             slot: None,
             taken: false,
+            data: false,
             fact: true,
         }
     }
 
     /// The event's own data: its field in the message, and `None` for an
-    /// event that carries none (a plain click, a submit).
+    /// event that carries none (a plain click, a submit) — even when the
+    /// app's message has a field of that name, which is the app's.
     pub fn data(&self) -> Option<&Value> {
+        if !self.data {
+            return None;
+        }
         self.payload.get(self.event.name())
     }
 
@@ -1696,6 +1710,9 @@ impl UiEvent {
     /// event is built: a hover's `by`, a scroll's `mods`, a click's
     /// pointer fields. `None` when the event carries no data map.
     pub(crate) fn data_fields_mut(&mut self) -> Option<&mut Vec<(String, Value)>> {
+        if !self.data {
+            return None;
+        }
         let field = self.event.name();
         let Value::Map(entries) = &mut self.payload else {
             return None;
@@ -1712,6 +1729,7 @@ impl UiEvent {
     /// `tag` beside the new field, as [`Self::declared`] keeps one.
     pub(crate) fn data_fields_or_new(&mut self) -> &mut Vec<(String, Value)> {
         let field = self.event.name();
+        let core_data = std::mem::replace(&mut self.data, true);
         if !matches!(self.payload, Value::Map(_)) {
             let own = std::mem::take(&mut self.payload);
             self.payload = Value::Map(match own {
@@ -1723,10 +1741,15 @@ impl UiEvent {
             unreachable!("made a map above")
         };
         let at = match entries.iter().position(|(k, _)| k == field) {
+            // The core's own data map: added to.
+            Some(at) if core_data && matches!(entries[at].1, Value::Map(_)) => at,
+            // The app's field of the event's name: the event's data takes
+            // it, as `declared` takes one, and says so.
             Some(at) => {
-                if !matches!(entries[at].1, Value::Map(_)) {
-                    entries[at].1 = Value::Map(Vec::new());
+                if !core_data {
+                    self.taken = true;
                 }
+                entries[at].1 = Value::Map(Vec::new());
                 at
             }
             None => {

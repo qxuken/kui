@@ -673,3 +673,61 @@ fn a_family_without_an_m_draws_its_own_glyphs_as_its_own() {
         .collect();
     assert_eq!(glyphs, [(0.0, 8.0)], "the face's own 字, where it puts it");
 }
+
+/// A grid's click writes its `cell` into a field of the event's name, so
+/// an app's own `click` field is taken and said so, not merged into: the
+/// pointer's fields used to be pushed into whatever map the app had there
+/// (the alpha.60 pre-tag pass, backlog RG157).
+#[test]
+fn a_grid_click_takes_the_app_s_click_field_and_says_so() {
+    use kui_core::{InputEvent, MouseButton, Value};
+    let mut core = Core::new();
+    let cells: Vec<Cell> = "hello world"
+        .chars()
+        .map(|c| Cell::new(c, 0xffffffff, 0))
+        .collect();
+    let own = Value::map([
+        ("kind", Value::str("hit")),
+        ("click", Value::map([("mine", Value::Int(1))])),
+    ]);
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    ui.cells_keyed(
+        "term",
+        &CellGrid {
+            rows: 1,
+            cols: 11,
+            cells: &cells,
+            style: mono(),
+            cursor: None,
+            origin_line: 0,
+        },
+        NodeSpec::default().on_click(own),
+    );
+    ui.finish();
+    core.take_warnings();
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(14.0, 14.0)));
+    core.handle_input(InputEvent::MouseDown {
+        button: MouseButton::Primary,
+        clicks: 1,
+    });
+    let events = core.handle_input(InputEvent::MouseUp {
+        button: MouseButton::Primary,
+    });
+    let click = events
+        .iter()
+        .find(|e| e.event.name() == "click")
+        .expect("the click arrived");
+    let data = click.data().expect("the grid's click data");
+    assert!(data.get("cell").is_some(), "{:?}", click.payload);
+    assert!(
+        data.get("mine").is_none(),
+        "not merged into the app's map: {:?}",
+        click.payload
+    );
+    let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+    assert!(
+        codes.contains(&kui_core::diag::MESSAGE_FIELD_TAKEN),
+        "{codes:?}"
+    );
+}
