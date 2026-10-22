@@ -3174,6 +3174,43 @@ did, but kui-lua read a count one way in `index` and another in
 division. One entry, F180, **built 2026-10-22**, the day it was filed,
 and in the archive.
 
+## From a smooth-scroll question (2026-10-23)
+
+The user, from Windows: a mouse wheel scrolls in hard steps there where
+a macOS trackpad glides. Read against the runner and the store, a
+notch is a 40 px jump on every platform, a plain mouse on macOS
+included; only a trackpad's pixel stream is smooth, and the core eases
+programmatic scrolls but never the hand's. One entry, F182, with [ADR
+0050](adr/0050-a-wheel-notch-glides.md), proposed.
+
+### `~` F182 — A wheel notch is a hard 40 px step on every platform
+
+**Found.** The runner turns winit's `LineDelta` into pixels
+(`Core::lines_to_px`) and sends it as `ScrollGesture`, the event a
+trackpad's `PixelDelta` becomes, and `scroll_into` adds it to the
+offset the next layout draws. Windows reports every wheel as
+`LineDelta`, X11 and Wayland a wheel's notches, macOS any mouse without
+precise deltas. The store's eased leg (`smooth`, for `set_scroll` and
+`reveal`) leaves the hand's writes alone on purpose, restarts from rest
+on every write and runs only under a declared `transition`, so it
+cannot carry a spun wheel.
+
+**Do.** ADR 0050: `InputEvent::Wheel { lines, begins }` beside
+`ScrollGesture` (C `kui_input_wheel`, Odin `input_wheel`, Node
+`ctx.wheel`; no ABI bump), sent by the runner for `LineDelta`; a whole
+notch eases toward a target every further notch moves, on a critically
+damped spring that keeps its velocity (about 150 ms), clamped to the
+travel; a fraction (precision touchpads, high-resolution wheels)
+applied as it comes, or added to a running glide; `room` reads the
+target so a gesture is handed off by where the glide is going; a pixel
+delta, a thumb drag, the autoscroll, an AT scroll action and
+`set_scroll` end it from the drawn place; handlers get pixels as today.
+On by default: `Core::set_smooth_wheel(false)` in four bindings (Lua a
+guest), the launcher's `smooth_wheel` and Node's `smoothWheel` for the
+whole app; `env.system.motion` at `reduced` jumps. What breaks: a
+notch lands over ~150 ms, and a view reading the offset the frame
+after reads it mid-glide.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After

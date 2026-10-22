@@ -1,0 +1,234 @@
+---
+status: proposed
+date: 2026-10-23
+---
+
+# A wheel notch glides
+
+> **Proposed 2026-10-23; backlog F182.** Raised by the user from
+> Windows: a mouse wheel there scrolls in hard 40 px steps, where a
+> macOS trackpad scrolls smoothly. The steps are not Windows' alone. A
+> notch is a step on every platform, a plain mouse on macOS included;
+> macOS looks smooth only because a trackpad sends a stream of pixels,
+> not notches. The proposal: a notch becomes an input of its own, which
+> the core turns into a short glide toward a target that every further
+> notch moves on. Pixel streams stay as they are. It is on by default,
+> and an app turns it off with one switch.
+
+## Context
+
+### Where a notch goes today
+
+The native runner turns winit's `MouseScrollDelta::LineDelta` into
+pixels at once (`Core::lines_to_px`, 40 px a line, `SCROLL_LINE_PX`) and
+sends it as `InputEvent::ScrollGesture { delta, begins }`, the same
+event a trackpad's `PixelDelta` becomes (`crates/kui-native/src/lib.rs`,
+the `MouseWheel` arm). The runner keeps the difference only to tell
+where a gesture begins (`scroll_gesture::Kind`, ADR 0038). The core
+routes the delta (`route_scroll`, `runtime/gesture.rs`), and
+`scroll_into` adds it to the container's stored offset
+(`ScrollStore::scroll_by`). The next layout draws it there. One notch
+is one 40 px jump on the next frame.
+
+How winit 0.30 reports a wheel, per backend (to be checked against the
+pinned winit when this is built):
+
+- **Windows**: every `WM_MOUSEWHEEL` is a `LineDelta` of `delta / 120`.
+  A notch is 1.0. A precision touchpad and a high-resolution wheel
+  send fractions of a line, many times a second.
+- **X11**: notches as `LineDelta`, and XInput2's smooth-scroll
+  valuators as fractional `LineDelta`s.
+- **Wayland**: a wheel's notches as `LineDelta`, and a touchpad's
+  continuous axis as `PixelDelta`.
+- **macOS**: an event with precise scrolling deltas (a trackpad, a
+  Magic Mouse, a smooth-scrolling mouse driver) is a `PixelDelta`,
+  with phases and a momentum run. Any other mouse is a `LineDelta`.
+
+So an unsmoothed `LineDelta` reaches the user on every platform
+whenever the hand is on a plain wheel.
+
+### What the core already eases, and why it does not fit
+
+A scroll container that declares a `transition` eases a *programmatic*
+offset change (a `set_scroll`, a `reveal`) as a leg in the store:
+`smooth: Option<(from, start, transition)>`, with the target in
+`offset` and `sample` drawing a curve between the two
+(`crates/kui-core/src/scroll.rs`). `geometry` samples the leg at the
+clock the coming layout reads, so a virtual list slices the rows that
+frame will draw. Two things keep it from serving a wheel:
+
+- **The hand's writes are never eased, on purpose.** `asked_smooth`
+  stays false for the pointer, since easing a swipe or a thumb drag
+  "would lag behind the finger". That is right for pixels. A notch
+  carries no finger, and the hand is waiting on the step.
+- **A leg is a curve from a start, not a chase.** `scroll_by` mid-leg
+  ends the leg and moves on from the drawn place, and a new leg starts
+  its curve again from rest. A wheel spun at ten notches a second would
+  restart every 100 ms at zero speed and stutter. It would also need
+  the container to declare a `transition`, whose duration is chosen
+  for reveals (a few hundred ms), too slow for a wheel.
+
+## Decision
+
+1. **A notch is an input of its own.** `InputEvent::Wheel { lines:
+   Vec2, begins: bool }`, beside `ScrollGesture`, in lines rather than
+   pixels. The core converts with `lines_to_px` as before, routes it as
+   `ScrollGesture` is routed (the same latch, ADR 0038), and alone
+   knows it came from a notch. `Scroll` and `ScrollGesture` keep their
+   meaning: pixels, applied as they arrive. The native runner sends
+   `LineDelta` as `Wheel`. A driver that keeps sending notches as
+   pixels keeps today's jump, so nothing an existing host does changes
+   under it. Doors: C `kui_input_wheel(ctx, lx, ly, begins)` (a new
+   function, no struct moves, so no ABI bump), Odin `input_wheel`, Node
+   `ctx.wheel(lx, ly, begins)`. Lua is a guest and feeds no input.
+
+2. **A whole notch glides, a fraction does not.** Per axis, a `Wheel`
+   delta of at least one line is eased. A smaller one, from a precision
+   touchpad on Windows, a high-resolution wheel or XInput2's smooth
+   scrolling, is already a fine stream, so it is applied as it arrives.
+   The only exception is a container that is mid-glide, where the
+   fraction is added to the target so the content does not jump back.
+   The threshold is per event, not per gesture, because a
+   high-resolution wheel turned fast sends whole lines.
+
+3. **A glide chases a target with momentum.** Each notch adds its
+   pixels to the container's target (`offset`), clamped to the last
+   layout's `max_offset`. A notch past the end therefore stores nothing
+   that would have to be scrolled back before a reverse spin moves the
+   content. The drawn offset chases the target on a critically damped
+   spring, the `smooth` easing's integration (`anim.rs`), which keeps
+   its velocity when the target moves. A spun wheel speeds up and a
+   reversed one turns, with no restart from rest. The spring settles in
+   about 150 ms. The number is a constant tuned when building, against
+   browsers, not a prop. The glide sits in the store beside the
+   existing leg as a third state of an entry: offset at rest, a leg
+   toward a programmatic target, or a glide (drawn place, velocity,
+   last clock). It is advanced at the clock the layout reads, as `sample`
+   is, so `geometry` and the virtual lists see the drawn place
+   unchanged. It ignores the container's `transition`: a container with
+   none still glides, and one with a slow reveal does not make its
+   wheel slow.
+
+4. **Routing reads the target.** `ScrollStore::room`, what a gesture
+   asks to learn whether a scroller can still move a way, answers from
+   the target while a glide runs. That differs from a leg, where the
+   delta ends the leg and the drawn place is the truth. So a list whose
+   glide is headed for its end passes the next gesture to the scroller
+   around it at once, not when the animation lands. A handler, meaning
+   an `on_scroll` node such as a terminal's sink scrolling its rows,
+   gets a notch's pixels as an event, as it does today, unsmoothed. It
+   owns its content, and a fraction of a terminal row is not a place.
+
+5. **What ends a glide.** These end it and go on from the drawn place,
+   as `scroll_by` does with a leg today:
+   - a pixel delta on the container (a trackpad taking over)
+   - a thumb drag
+   - the held-drag autoscroll (`follow.rs`)
+   - an assistive technology's scroll action
+
+   A `set_scroll` or `reveal` ends it and starts its own leg from the
+   drawn place. A layout that shrinks `max_offset` clamps the target and
+   the glide lands there. The glide snaps to its target once within
+   half a pixel and nearly still, so a settled view is never left a
+   subpixel off.
+
+6. **It keeps frames coming the way a leg does.** A gliding entry is in
+   `ScrollStore::animating` (the `owing` set), so the runner's pacer
+   draws until it settles and idles after, as for a leg. The runner
+   changes only in the event it sends.
+
+7. **On by default, one switch to turn it off.** `Core::set_smooth_wheel
+   (on)`, true by default, read back by `Core::smooth_wheel`. It is a
+   `DOORS` row in the shape of `set_devtools_key`: C
+   `kui_set_smooth_wheel` / `kui_smooth_wheel`, Odin `set_smooth_wheel`
+   / `smooth_wheel`, Node `ctx.setSmoothWheel` / `ctx.smoothWheel`, and
+   Lua `No(GUEST)`, since an extension does not set the app's input
+   feel. Off, a notch jumps as it does today. The launcher's
+   `smooth_wheel(on)` is sugar for `setup_core`, and the runner copies
+   the main core's setting to every window it opens, so the switch is
+   the app's and not one window's. Node's `runWindowed` takes the same
+   as `smoothWheel: false`.
+
+8. **Reduced motion jumps.** When the window's `env.system.motion`
+   reads `reduced`, a notch jumps whatever the switch says. Up to now
+   nothing in the core shortened an animation for that setting; a view
+   honoured it where it declared one (`schema.rs`, the `system.motion`
+   fact). A glide
+   is the first animation the core starts on its own, which no view
+   declared and so no view can honour. The fact's doc says so.
+
+## Considered options
+
+- **Smoothing in the runner.** The runner could spread a notch over a
+  few frames as small `ScrollGesture` pixel deltas, with no core change.
+  Rejected for four reasons:
+  - A C, Odin or Node host driving its own window would not get it.
+    That breaks the bindings-first rule: shared behaviour goes in the
+    core, with a door per binding.
+  - The runner would need a clock and frames of its own.
+  - The core would see invented pixels it could not tell from a
+    trackpad's.
+  - Routing could not hand a gesture off by the target (decision 4),
+    since the core would never learn the target.
+- **Reuse the leg, `scroll_by_smooth`.** It restarts from rest on every
+  notch (see Context), and it runs only in a container that declares a
+  `transition`. Rejected.
+- **Guess notches from pixel deltas.** For example, treat a
+  `ScrollGesture` that is a multiple of 40 px as a notch. That is
+  fragile: a host may send any pixel count, and a trackpad's delta can
+  happen to be 40. The event that says what it is costs one variant and
+  one door. Rejected.
+- **Smooth pixel streams too.** That adds lag to trackpads, which the
+  OS already smooths, with momentum. Rejected.
+- **Opt-in.** Rejected by the user. Browsers glide a notch by default,
+  and an option each app has to discover leaves most apps stepping.
+- **A per-container switch** (a prop, or reading `transition`).
+  Deferred. The app-level switch answers the ask, and a container that
+  must stay instant has not been named yet. If one is, it is a prop in
+  `scrollMods`' shape.
+
+## Consequences
+
+- **What breaks:** under the native runner, a notch now lands over
+  about 150 ms instead of on the next frame, for every app that does
+  not opt out. A view or a test that reads a container's offset in the
+  frame after a notch now reads it mid-glide. The headless doors that
+  feed pixels (`scroll`, `kui_input_scroll`, `scrollGesture`) are
+  unchanged, so tests written against them do not move.
+- **The changelog lists it under What breaks**, with
+  `set_smooth_wheel(false)` as the way back, and a What-you-can-delete
+  line: an `on_scroll` handler that intercepts the wheel only to call
+  `set_scroll` on its own container with an easing.
+- **Cost:** an entry at rest pays nothing. `animating` is the same set
+  and the store's walk is the same walk. A glide costs one spring step
+  per gliding container per frame. The frame benches have no wheel in
+  them, and the guard should read the same.
+- **Tests, at the core** (headless, with `set_time`):
+  - a notch is part-way after one frame and at its target once settled
+  - ten notches 100 ms apart move without a stall (the drawn offset
+    keeps rising, never repeats)
+  - a reverse spin turns without overshooting the start
+  - a fraction is applied at once, or added to a running glide
+  - the target clamps at the end, and the next gesture is handed off by
+    the target
+  - a pixel delta, a thumb drag, a `set_scroll` and a shrinking layout
+    each end or clamp a glide as decision 5 says
+  - the switch off, or `reduced` motion, jumps
+  - a handler gets the notch's pixels unsmoothed
+- **At the runner:** a `LineDelta` becomes `Wheel` and a `PixelDelta`
+  stays `ScrollGesture`. Seen by hand on macOS with a plain mouse, on
+  Windows, and on Linux under X11 and Wayland, since the per-backend
+  list in Context is from reading, not from running.
+
+### Not done here
+
+- **Windows' "lines per notch" setting** (`SPI_GETWHEELSCROLLLINES`,
+  3 by default) and macOS's scroll speed. A notch stays 40 px. Reading
+  the user's setting is a separate question about how far a notch goes,
+  not how it gets there.
+- **Easing a key's scroll**, such as PageDown in a container. The core
+  scrolls no container by key today, and the assistive-technology
+  scroll actions stay jumps (decision 5).
+- **A notch on a handler.** It is not smoothed, and the event does not
+  say it was a notch. An app that wants to know asks for that
+  separately.
