@@ -483,6 +483,10 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                             }
                         }
                         crate::tokens::TokenKind::Length => format!("{:.0} px", tok.length),
+                        crate::tokens::TokenKind::Family => match &tok.family {
+                            Some(f) => f.clone(),
+                            None => "sans (none matched)".to_string(),
+                        },
                     };
                     ui.text(&value, TextStyle::new(11.0).color(t.muted).mono().nowrap());
                     // A derived token (ADR 0028) prints its recipe after the

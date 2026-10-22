@@ -1494,6 +1494,17 @@ pub struct KuiLengthToken {
     pub value: f32,
 }
 
+/// One family token as `kui_tokens_families` reads it: a name and a
+/// fallback list of family names, the first that resolves picked by the
+/// core (ADR 0049). Array-carried like `KuiColorToken`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KuiFamilyToken {
+    pub name: KuiStr,
+    pub names: *const KuiStr,
+    pub name_count: usize,
+}
+
 /// One step of a derived colour token's recipe as `kui_tokens_derive`
 /// reads it: the verb as one of the `KUI_OP_*` numbers, the number it
 /// takes, and (for `KUI_OP_MIX` and `KUI_OP_READABLE` only) the colour

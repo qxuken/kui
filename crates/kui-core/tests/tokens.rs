@@ -2,7 +2,8 @@
 //! a table per origin, a colour with a light and a dark half picked by the
 //! theme, a length in px, the roles reachable by the same spelling, and
 //! the two warnings — a name nothing declared, and a declared name a role
-//! owns.
+//! owns. And ADR 0049's two: `$disabledOpacity` as a role, and a family
+//! token picked from its fallback list.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -421,4 +422,108 @@ fn an_unresolved_source_warns_at_declaration() {
         .collect();
     assert_eq!(unknown.len(), 1, "{warnings:?}");
     assert!(unknown[0].message.contains("`$bad`") && unknown[0].message.contains("`$nothing`"));
+}
+
+/// `$disabledOpacity` (ADR 0049): the theme's number, reachable by the
+/// roles' spelling in the length space after the metrics, following a
+/// pinned theme's value and refused as a declared name.
+#[test]
+fn the_disabled_opacity_is_a_role_after_the_metrics() {
+    let mut core = Core::new();
+    let stock = core.theme().disabled_opacity;
+    {
+        let look = core.token_lookup();
+        assert_eq!(look.length("disabledOpacity"), Ok(stock));
+        assert_eq!(look.length("disabled_opacity"), Ok(stock));
+        assert_eq!(
+            look.resolve("disabledOpacity"),
+            Some(TokenRef::LengthRole(LENGTH_ROLES - 1))
+        );
+        assert_eq!(look.length_at(LENGTH_ROLES as u32 - 1), Some(stock));
+        assert!(matches!(
+            look.color("disabledOpacity"),
+            Err(TokenError::Kind { .. })
+        ));
+    }
+    let mut pinned = *core.theme();
+    pinned.disabled_opacity = 0.3;
+    core.set_theme(pinned);
+    assert_eq!(core.token_lookup().length("disabledOpacity"), Ok(0.3));
+    core.set_tokens(
+        Tokens::new()
+            .length("disabledOpacity", 0.9)
+            .length("fade", 0.4),
+    );
+    assert_eq!(core.token_lookup().length("disabledOpacity"), Ok(0.3));
+    assert_eq!(
+        core.token_lookup().length_at(LENGTH_ROLES as u32),
+        Some(0.4),
+        "the refused name took no index"
+    );
+    assert!(codes(&core.take_warnings()).contains(&RESERVED_TOKEN));
+}
+
+/// A family token (ADR 0049): the first name of its list that resolves,
+/// a stock name included; sans and `unknown-family` for a list nothing
+/// matches; a stock family's name refused; another kind's name a kind
+/// error, through the lookup and through a `$name` in a `family`.
+#[test]
+fn a_family_token_picks_the_first_name_that_resolves() {
+    use kui_core::FontFamily;
+    use kui_core::diag::{UNKNOWN_FAMILY, UNKNOWN_TOKEN};
+    let mut core = Core::new();
+    core.set_tokens(
+        Tokens::new()
+            .color("peach", PEACH)
+            .family("code", ["kui-no-such-family-2026", "mono"])
+            .family("gone", ["kui-no-such-family-2026"])
+            .family("mono", ["serif"]),
+    );
+    let warnings = core.take_warnings();
+    assert!(codes(&warnings).contains(&UNKNOWN_FAMILY), "{warnings:?}");
+    assert!(codes(&warnings).contains(&RESERVED_TOKEN), "{warnings:?}");
+    let table = core.tokens().unwrap();
+    let (_, code) = &table.families()[0];
+    assert_eq!(code.picked(), Some("mono"));
+    assert_eq!(table.families().len(), 2, "`mono` is a stock family's name");
+    let look = core.token_lookup();
+    assert_eq!(look.family("code"), Ok(FontFamily::Mono));
+    assert_eq!(look.family("gone"), Ok(FontFamily::Sans));
+    assert!(matches!(look.family("peach"), Err(TokenError::Kind { .. })));
+    let mut refs = kui_core::NameRefs::new(look);
+    assert_eq!(refs.family("$code"), FontFamily::Mono);
+    assert_eq!(refs.family("$peach"), FontFamily::Sans);
+    assert_eq!(refs.family("$nothing"), FontFamily::Sans);
+    assert_eq!(refs.take_missed().len(), 2);
+    assert!(
+        refs.take_missed_families().is_empty(),
+        "a token's miss is unknown-token"
+    );
+    let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    assert_eq!(ui.token_family("code"), Some(FontFamily::Mono));
+    assert_eq!(ui.token_family("peach"), None);
+    ui.finish();
+    assert!(codes(&core.take_warnings()).contains(&UNKNOWN_TOKEN));
+}
+
+/// A family loaded after the table was declared wins the list it lost at
+/// the next frame's start, without the app declaring again.
+#[test]
+fn a_family_token_is_picked_again_when_the_fonts_change() {
+    use kui_core::FontFamily;
+    let mut core = Core::new();
+    core.set_tokens(Tokens::new().family("display", ["Kui Liga", "serif"]));
+    assert_eq!(core.token_lookup().family("display"), Ok(FontFamily::Serif));
+    let id = core
+        .add_font_data(kui_core::testing::liga_font())
+        .expect("the fixture face registers");
+    assert_eq!(core.font_family(id), Some("Kui Liga"));
+    let ui = core.frame(Size::new(100.0, 100.0), 1.0);
+    ui.finish();
+    let table = core.tokens().unwrap();
+    assert_eq!(table.families()[0].1.picked(), Some("Kui Liga"));
+    assert!(matches!(
+        core.token_lookup().family("display"),
+        Ok(FontFamily::Custom(_))
+    ));
 }

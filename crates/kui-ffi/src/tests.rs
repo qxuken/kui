@@ -447,6 +447,60 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
+    /// Family tokens (ADR 0049) add to the table after `kui_tokens_set`
+    /// and read back as the two fields a `KuiTextStyle` takes: a stock
+    /// pick as its `KUI_FONT_*` and no handle, a list nothing matched as
+    /// sans; a colour's name is false. And `disabled_opacity` reads as
+    /// any length does.
+    #[test]
+    fn family_tokens_read_back_as_a_style_s_two_fields() {
+        let ctx = kui_ctx_new();
+        let colors = [KuiColorToken {
+            name: ks("peach"),
+            light: 0xffcc99ff,
+            dark: 0xffcc99ff,
+        }];
+        kui_tokens_set(ctx, colors.as_ptr(), 1, std::ptr::null(), 0);
+        let code = [ks("kui-no-such-family-2026"), ks("mono")];
+        let gone = [ks("kui-no-such-family-2026")];
+        let families = [
+            KuiFamilyToken {
+                name: ks("code"),
+                names: code.as_ptr(),
+                name_count: code.len(),
+            },
+            KuiFamilyToken {
+                name: ks("gone"),
+                names: gone.as_ptr(),
+                name_count: gone.len(),
+            },
+        ];
+        kui_tokens_families(ctx, families.as_ptr(), families.len());
+        let (mut family, mut font) = (9u32, 9u64);
+        assert!(kui_token_family(ctx, ks("code"), &mut family, &mut font));
+        assert_eq!((family, font), (2, 0), "KUI_FONT_MONO, no handle");
+        assert!(kui_token_family(ctx, ks("gone"), &mut family, &mut font));
+        assert_eq!((family, font), (0, 0), "nothing matched: sans");
+        assert!(!kui_token_family(ctx, ks("peach"), &mut family, &mut font));
+        assert!(!kui_token_family(
+            ctx,
+            ks("code"),
+            std::ptr::null_mut(),
+            &mut font
+        ));
+        let mut c = 0u32;
+        assert!(
+            kui_token_color(ctx, ks("peach"), &mut c),
+            "the colours stayed"
+        );
+        let mut v = 0.0f32;
+        assert!(kui_token_length(ctx, ks("disabled_opacity"), &mut v));
+        let mut theme = KuiTheme::default();
+        assert!(kui_theme(ctx, &mut theme));
+        assert_eq!(v, theme.disabled_opacity);
+        kui_ctx_free(ctx);
+    }
+
     /// Tokens cross as two `[in]` arrays and read back by name:
     /// a themed colour answers the dark half on an unknown appearance, a
     /// role's name answers the role, an unknown or wrong-kind name is

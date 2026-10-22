@@ -113,14 +113,17 @@ function setTokens(decl) {
   for (const name of Object.keys(d.lengths ?? {})) {
     if (!encoder.isRole(name)) map.set(name, { kind: 'length', index: i++ });
   }
+  // A family token (ADR 0049) takes no index: a `family` crosses by name
+  // and the core resolves the `$`, so the encoder never looks one up.
   for (const k of Object.keys(d)) {
-    if (k !== 'colors' && k !== 'lengths') throw new Error(`setTokens(): unknown key ${JSON.stringify(k)} (colors, lengths)`);
+    if (k !== 'colors' && k !== 'lengths' && k !== 'families')
+      throw new Error(`setTokens(): unknown key ${JSON.stringify(k)} (colors, lengths, families)`);
   }
   // The addon first, as ordered pairs — a JSON object's key order does not
   // survive the crossing, and the order is the index — so a declaration it
   // refuses (a bad colour, a half missing) leaves the encoder's map as it
   // was.
-  this.setTokensRaw({ colors, lengths: Object.entries(d.lengths ?? {}) });
+  this.setTokensRaw({ colors, lengths: Object.entries(d.lengths ?? {}), families: Object.entries(d.families ?? {}) });
   this[TOKENS] = map;
 }
 Ctx.prototype.setTokens = setTokens;
@@ -163,6 +166,7 @@ export function defineTokens(decl) {
   const out = {};
   for (const name of Object.keys(decl.colors ?? {})) out[name] = '$' + name;
   for (const name of Object.keys(decl.lengths ?? {})) out[name] = '$' + name;
+  for (const name of Object.keys(decl.families ?? {})) out[name] = '$' + name;
   return out;
 }
 

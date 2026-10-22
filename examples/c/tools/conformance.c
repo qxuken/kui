@@ -493,6 +493,11 @@ static void conf_tokens(KuiCtx *ui, const Fixtures *f, int phase) {
         {KUI_STR("bad"), KUI_STR("nothing"), bad_ops, 1},
     };
     kui_tokens_derive(ui, derived, 6);
+    /* conformance::TOKEN_FAMILIES (ADR 0049): a list whose first name is no
+     * family, so the core picks `mono`. */
+    KuiStr code_names[] = {KUI_STR("kui-no-such-family-2026"), KUI_STR("mono")};
+    KuiFamilyToken families[] = {{KUI_STR("code"), code_names, 2}};
+    kui_tokens_families(ui, families, 1);
     uint32_t peach = 0, ink = 0, surface = 0, nothing = 0;
     float side_w = 0, gap = 0, big = 0, radius = 0;
     kui_token_color(ui, KUI_STR("peach"), &peach);
@@ -540,6 +545,20 @@ static void conf_tokens(KuiCtx *ui, const Fixtures *f, int phase) {
     };
     KuiTextStyle style = {.size = big, .color = peach};
     kui_rich_text(ui, spans, 2, &style);
+    /* ADR 0049: the theme's number read as any length is, and the family
+     * token's pick as the two fields a style takes. */
+    float dim = 1.0f;
+    kui_token_length(ui, KUI_STR("disabled_opacity"), &dim);
+    cell.bg = peach;
+    cell.opacity_set = 1;
+    cell.opacity = dim;
+    kui_open_keyed(ui, KUI_STR("dimmed"), &cell, NULL);
+    kui_close(ui);
+    uint32_t family = 0;
+    uint64_t font = 0;
+    kui_token_family(ui, KUI_STR("code"), &family, &font);
+    KuiTextStyle code = {.size = big, .color = peach, .family = family, .font = font};
+    kui_text(ui, KUI_STR("code"), &code);
     kui_close(ui);
 }
 

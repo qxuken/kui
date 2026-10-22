@@ -132,7 +132,8 @@ c_type! {
     KuiAudioCommand => "KuiAudioCommand", KuiTheme => "KuiTheme",
     KuiMetrics => "KuiMetrics", KuiColorToken => "KuiColorToken",
     KuiLengthToken => "KuiLengthToken", KuiColorOp => "KuiColorOp",
-    KuiDerivedToken => "KuiDerivedToken", KuiEnter => "KuiEnter",
+    KuiDerivedToken => "KuiDerivedToken", KuiFamilyToken => "KuiFamilyToken",
+    KuiEnter => "KuiEnter",
     KuiEvent => "KuiEvent", KuiWindowConfig => "KuiWindowConfig",
     KuiWindowEvents => "KuiWindowEvents",
     KuiRunConfig => "KuiRunConfig",
@@ -1043,6 +1044,11 @@ fn asserts() -> (String, Vec<&'static str>) {
         ops: *const KuiColorOp => "const KuiColorOp *",
         op_count: usize => "size_t",
     });
+    abi_struct!(o, KuiFamilyToken {
+        name: KuiStr => "KuiStr",
+        names: *const KuiStr => "const KuiStr *",
+        name_count: usize => "size_t",
+    });
 
     abi_struct!(o, KuiEvent {
         size: u32 => "uint32_t",
@@ -1588,6 +1594,9 @@ fn an_in_struct_s_size_is_the_abi_s() {
         ("KuiLengthToken", 24, 16),
         ("KuiColorOp", 24, 16),
         ("KuiDerivedToken", 48, 16),
+        // New beside ABI 34's surface, no bump (ADR 0049): a new array
+        // struct moves no existing stride.
+        ("KuiFamilyToken", 32, 34),
     ];
     let (text, _) = asserts();
     let sizes: BTreeMap<&str, usize> = text

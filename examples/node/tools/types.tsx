@@ -31,6 +31,7 @@ const TOKENS = {
     accent2: { from: 'accent' },
   },
   lengths: { sideW: 132, gap: 6 },
+  families: { code: ['JetBrains Mono', 'mono'], display: 'serif' },
 } as const;
 const T = defineTokens(TOKENS);
 const peach: '$peach' = T.peach;
@@ -45,6 +46,14 @@ const typo = T.peech;
 const wrongKind = <box width={T.peach} />;
 // @ts-expect-error — a role is a colour or a length, never both
 const wrongRole = <box width={roles.surface} />;
+// ADR 0049: the theme's number fits any number prop, a family token any
+// `family`, on a text or a span.
+const dimmed = <box opacity={roles.disabledOpacity} />;
+const code: '$code' = T.code;
+const coded = <text family={T.code}>x<span family={T.display}>y</span></text>;
+// @ts-expect-error — a family token is no length (a colour slot takes any
+// string, so there it is `unknown-token` at encode time instead)
+const wrongFamily = <box width={T.display} />;
 // @ts-expect-error — `lift` takes one number, not a colour
 const wrongArity = defineTokens({ colors: { x: { from: 'peach', ops: [['lift', 'ink', 0.3]] } } });
 // @ts-expect-error — `glow` is no verb

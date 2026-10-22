@@ -285,6 +285,9 @@ pub(crate) struct TokenFact {
     pub(crate) resolved: Color,
     /// The px, for a length token.
     pub(crate) length: f32,
+    /// The face a family token picked, or `None` when nothing in its list
+    /// matched.
+    pub(crate) family: Option<String>,
     /// A derived colour token's recipe, as the panel prints it beside the
     /// hex: `peach → lift 0.3`.
     pub(crate) recipe: Option<String>,
@@ -2191,6 +2194,7 @@ impl Core {
                     dark,
                     resolved: table.resolve_color(i as u16, &self.theme),
                     length: 0.0,
+                    family: None,
                     recipe: table.recipe(i as u16),
                 });
             }
@@ -2203,7 +2207,23 @@ impl Core {
                     dark: Color::TRANSPARENT,
                     resolved: Color::TRANSPARENT,
                     length: *v,
+                    family: None,
                     recipe: None,
+                });
+            }
+            // A family token prints its pick, and its list where it has
+            // more than one name to choose from (ADR 0049).
+            for (name, tok) in table.families() {
+                tokens.push(TokenFact {
+                    origin: *origin,
+                    name: name.clone(),
+                    kind: crate::tokens::TokenKind::Family,
+                    light: Color::TRANSPARENT,
+                    dark: Color::TRANSPARENT,
+                    resolved: Color::TRANSPARENT,
+                    length: 0.0,
+                    family: tok.picked().map(str::to_string),
+                    recipe: (tok.names().len() > 1).then(|| tok.names().join(", ")),
                 });
             }
         }

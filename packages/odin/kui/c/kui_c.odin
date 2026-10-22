@@ -1033,6 +1033,12 @@ DerivedToken :: struct {
 	op_count: uint,
 }
 
+FamilyToken :: struct {
+	name: string,
+	names: [^]string,
+	name_count: uint,
+}
+
 LayoutRect :: struct {
 	size: u32,
 	x: f32,
@@ -1127,6 +1133,8 @@ foreign lib {
 	token_color :: proc(ctx: ^Ctx, name: string, out: ^u32) -> bool ---
 	token_length :: proc(ctx: ^Ctx, name: string, out: ^f32) -> bool ---
 	tokens_derive :: proc(ctx: ^Ctx, derived: [^]DerivedToken, count: uint) -> bool ---
+	tokens_families :: proc(ctx: ^Ctx, families: [^]FamilyToken, count: uint) ---
+	token_family :: proc(ctx: ^Ctx, name: string, family: ^u32, font: ^u64) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---
 	request_frame_at :: proc(ctx: ^Ctx, at: f64) ---

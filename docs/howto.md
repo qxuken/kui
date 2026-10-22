@@ -731,6 +731,56 @@ calls every frame, can read `env` and declare nothing. Lua spells it
 [ADR 0019](adr/0019-a-theme-derived-from-appearance-and-accent.md) ·
 [alpha.10](../CHANGELOG.md#010-alpha10-2026-09-09)
 
+### How do I use the theme in a component without passing `ctx` down to it?
+
+Name the value instead of reading it. Every theme role, metric and token of
+your own is reachable as a `'$name'` string in any prop that takes one, and
+the core swaps in this frame's value as it lowers the node — so the string
+is a constant, written at module scope, and it follows a light/dark flip or
+a host's re-theme without the view running again:
+
+```tsx
+import { defineTokens, roles } from '@qxuken/kui';
+
+export const T = defineTokens({
+  colors: { peach: '#ffcc99', ink: { light: '#111111', dark: '#eeeeee' } },
+  lengths: { sideW: 132 },
+  families: { code: ['JetBrains Mono', 'Cascadia Code', 'mono'] },
+});
+// once, where the app starts: ctx.setTokens(<the same declaration>)
+
+const Card = ({ off, children }) => (
+  <box bg={roles.surface} radius={roles.radius} borderColor={T.peach} borderW={1}
+       opacity={off ? roles.disabledOpacity : 1}>
+    <text family={T.code} color={roles.muted}>{children}</text>
+  </box>
+);
+```
+
+`roles` is every colour role, every metric and the theme's
+`disabledOpacity` — the one theme value that is a number, which dims a node
+of yours as a disabled stock control is dimmed. `defineTokens` types your
+own names, so `T.peech` does not compile and `width={T.peach}` neither. A
+number token fits any number prop, `opacity` and `scale` as much as a
+`width`. A family token is a fallback list: the core picks the first name
+that is `sans`, `serif`, `mono` or an installed or loaded family, and picks
+again when a font loads, so the list is where "is JetBrains Mono here?" goes.
+
+Lua writes the same strings — `bg = "$surface"`, `opacity =
+"$disabled_opacity"`, `family = "$code"` — with the table as a `tokens`
+global. Rust and C have no reference in a prop: read the value by name
+(`ui.token_color("peach")`, `ui.token_family("code")`, `kui_token_length`)
+and write it, which is what a module constant does there anyway.
+
+What a name cannot do is arithmetic. `opacity * 0.8`, a colour mixed in
+code, or a ternary on the colour itself still reads `ctx.theme()` /
+`env.theme` — or declare the result as a [derived
+token](adr/0028-derived-tokens.md) and name that.
+
+[Theme table](props.md#theme) · [Metrics](props.md#metrics) ·
+[ADR 0027](adr/0027-tokens-beside-the-theme.md) ·
+[ADR 0049](adr/0049-the-disabled-opacity-and-font-families-by-token.md)
+
 ### How do I show the blurred desktop through my sidebar, like a Mac app?
 
 Ask the launcher for the effect — `kui_native::app("Notes")

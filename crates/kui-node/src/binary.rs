@@ -259,7 +259,8 @@ pub fn protocol_json() -> Json {
     // The role names a `$name` may take in front of the app's tokens, in
     // wire order (ADR 0027, decision 6): the encoder resolves `$surface`
     // to index 1 of the colour space and `$radius` to its metric's, the
-    // same indices `TokenRef::index` gives the core.
+    // same indices `TokenRef::index` gives the core. The length space ends
+    // with the theme's number roles (`$disabledOpacity`, ADR 0049).
     let roles = |names: Vec<&str>| Json::Array(names.into_iter().map(Json::from).collect());
     o.insert(
         "tokenRoles".into(),
@@ -276,12 +277,7 @@ pub fn protocol_json() -> Json {
                 ),
                 (
                     "lengths".to_string(),
-                    roles(
-                        kui_core::schema::METRIC_ROLES
-                            .iter()
-                            .map(|r| r.node)
-                            .collect(),
-                    ),
+                    roles(kui_core::tokens::length_role_names().collect()),
                 ),
             ]
             .into_iter()

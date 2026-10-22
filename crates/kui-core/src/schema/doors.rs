@@ -1180,6 +1180,14 @@ pub const DOORS: &[Door] = &[
         doc: "Declares the origin's colour and length tokens (ADR 0027).",
     },
     Door {
+        rust: "Tokens::family",
+        c: Is("kui_tokens_families"),
+        odin: Is("tokens_families"),
+        node: As("`families` in `setTokens`"),
+        lua: As("`families` in `set_tokens`"),
+        doc: "Adds font family tokens, each picked from a fallback list (ADR 0049).",
+    },
+    Door {
         rust: "Tokens::derive",
         c: Is("kui_tokens_derive"),
         odin: Is("tokens_derive"),
@@ -1189,8 +1197,8 @@ pub const DOORS: &[Door] = &[
     },
     Door {
         rust: "Ui::tokens",
-        c: As("`kui_token_color` / `kui_token_length`, one name at a time"),
-        odin: As("`token_color` / `token_length`, one name at a time"),
+        c: As("`kui_token_color` / `kui_token_length` / `kui_token_family`, one name at a time"),
+        odin: As("`token_color` / `token_length` / `token_family`, one name at a time"),
         node: Is("tokens"),
         lua: As("`env.tokens`, a reading"),
         doc: "The tokens in effect, resolved for the appearance.",

@@ -42,7 +42,7 @@ const ALIASES: &[Alias] = &[
     },
     Alias {
         name: "kui.Length",
-        doc: "A length in logical px, or a `\"$token\"`.",
+        doc: "A length in logical px — any number where the slot is no length, such as `opacity` — or a `\"$token\"` (`\"$disabled_opacity\"` among the roles).",
         ty: "number|string",
         strings: &["\"$gap\""],
     },

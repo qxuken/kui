@@ -128,13 +128,14 @@ function handlerType(name) {
 }
 
 function field([name, def]) {
-  // A family is the stock three or any installed name (ADR 0037); `string
-  // & {}` keeps the three offered by an editor beside the open case.
+  // A family is the stock three, any installed name (ADR 0037) or a family
+  // token (ADR 0049); `string & {}` keeps the three offered by an editor
+  // beside the open case.
   const ts =
     def.kind === 'enum'
       ? def.values.map((v) => `'${v}'`).join(' | ')
       : def.kind === 'family'
-        ? `${def.values.map((v) => `'${v}'`).join(' | ')} | (string & {})`
+        ? `${def.values.map((v) => `'${v}'`).join(' | ')} | FamilyToken | (string & {})`
         : def.kind === 'handler'
           ? handlerType(name)
           : TS_BY_KIND[def.kind];
@@ -245,7 +246,7 @@ const typeOf = (def) =>
   def.kind === 'enum'
     ? def.values.map((v) => `\`${v}\``).join(' \\| ')
     : def.kind === 'family'
-      ? `${def.values.map((v) => `\`${v}\``).join(' \\| ')} \\| a family name`
+      ? `${def.values.map((v) => `\`${v}\``).join(' \\| ')} \\| a family name \\| a \`$family\` token`
       : TYPE_DOC[def.kind];
 const tableOf = (header, rows) =>
   [`| ${header.join(' | ')} |`, `|${header.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`)].join('\n');

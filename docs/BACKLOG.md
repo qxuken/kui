@@ -237,7 +237,10 @@ day it was filed, before the tag, and is in the archive; and F178, from
 a question about a dimmed box's tooltip, was built the day it was filed,
 after the alpha.61 tag, and is in the archive; and F179, from the same
 conversation — a box's tooltip gone over its own child — was built the
-day it was filed, after the alpha.61 tag, and is in the archive.
+day it was filed, after the alpha.61 tag, and is in the archive; and T6, from a
+question about reaching the theme without a `ctx` — the disabled opacity
+and font families by token — was built with its ADR the day it was
+filed, after the alpha.61 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3075,6 +3078,16 @@ with a toggle, two copies of a password nothing zeroed, a Windows Odin
 plugin linking kui statically, and the docs — **built 2026-10-22**, the
 day it was filed, before the tag, and in the archive.
 
+## From a token question (2026-10-22)
+
+Asked whether a TSX or Lua component can reach the theme without a
+`ctx` passed down: it can, by `'$name'`, for every colour role, metric
+and token — except the theme's `disabledOpacity`, the one theme value
+with no `$` spelling, and font families, which had no shared name at
+all. One entry, T6, with [ADR
+0049](adr/0049-the-disabled-opacity-and-font-families-by-token.md),
+**built 2026-10-22**, the day it was filed, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -4862,3 +4875,7 @@ move.
 
 - `~` **F178** — [A box's tooltip fades with the box](backlog/closed-2026-09.md#-f178--a-boxs-tooltip-fades-with-the-box--done-2026-10-22) — done (2026-10-22) — the hint the core floats under a box (`AccessSpec::hint`) takes the opacity of the box's parent, as a leaf's always did
 - `~` **F179** — [A box's tooltip goes away over its own child](backlog/closed-2026-09.md#-f179--a-boxs-tooltip-goes-away-over-its-own-child--done-2026-10-22) — done (2026-10-22) — the hint shows while the hovered node is the box or inside it, a scan of the box's subtree at its `close`; the innermost hint floated wins
+
+**From a token question (2026-10-22)** — T6, filed with ADR 0049 and built the same day
+
+- `.` **T6** — [The theme's disabled opacity and font families have no `$` name](backlog/closed-2026-09.md#-t6--the-themes-disabled-opacity-and-font-families-have-no--name--done-2026-10-22) — done (2026-10-22) — `$disabledOpacity` a role in the length space after the metrics; family tokens, a fallback list picked by the core at declaration and when the fonts change, `family="$code"` resolved where a family name is

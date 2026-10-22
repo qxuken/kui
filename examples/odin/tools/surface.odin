@@ -1350,6 +1350,12 @@ rest :: proc() {
 	check(gap_ok && gap == 8, "token_length")
 	_, nothing := kui.token_color(ui, "nothing")
 	check(!nothing, "an undeclared token is false")
+	// ADR 0049: a family token's pick, and the theme's number as a role.
+	kui.tokens_families(ui, {{name = "code", names = {"kui-no-such-family-2026", "mono"}}})
+	family, font, family_ok := kui.token_family(ui, "code")
+	check(family_ok && family == .Mono && font == 0, "token_family: the list falls through to mono")
+	dim, dim_ok := kui.token_length(ui, "disabled_opacity")
+	check(dim_ok && dim > 0 && dim < 1, "the disabled opacity reads as a length")
 
 	// An announcement: said once, drained once.
 	kui.announce(ui, "Saved", .Assertive)

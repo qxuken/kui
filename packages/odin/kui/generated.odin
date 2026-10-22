@@ -1417,6 +1417,25 @@ color_op_from_c :: proc(v: c.ColorOp) -> (out: Color_Op) {
 	return
 }
 
+// kui.h's KuiFamilyToken.
+Family_Token :: struct {
+	name: string,
+	names: []string,
+}
+
+family_token_to_c :: proc(v: Family_Token, scratch: ^Scratch) -> (out: c.FamilyToken) {
+	out.name = v.name
+	out.names, out.name_count = ([^]string)(raw_data(v.names)), uint(len(v.names))
+	_ = scratch
+	return
+}
+
+family_token_from_c :: proc(v: c.FamilyToken) -> (out: Family_Token) {
+	out.name = v.name
+	out.names = ([^]string)(v.names)[:v.name_count]
+	return
+}
+
 // kui.h's KuiWindowCommand.
 Window_Command :: struct {
 	kind: Window_Cmd,
@@ -2376,6 +2395,16 @@ tokens_derive :: proc(ui: ^Ui, derived: []Derived_Token) -> bool {
 	derived_c := make([]c.DerivedToken, len(derived), context.temp_allocator)
 	for x, k in derived do derived_c[k] = derived_token_to_c(x, &scratch)
 	return c.tokens_derive(ui, raw_data(derived_c), uint(len(derived)))
+}
+
+// Adds font family tokens, each picked from a fallback list (ADR 0049).
+// Rust: Tokens::family.
+tokens_families :: proc(ui: ^Ui, families: []Family_Token) {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	families_c := make([]c.FamilyToken, len(families), context.temp_allocator)
+	for x, k in families do families_c[k] = family_token_to_c(x, &scratch)
+	c.tokens_families(ui, raw_data(families_c), uint(len(families)))
 }
 
 // The clock the tweens read; a window's runner sets it from the display.

@@ -367,6 +367,8 @@ scene_tokens :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		{name = "bad", from = "nothing", ops = {{op = .Lift, t = 0.1}}},
 	}
 	kui.tokens_derive(ui, derived)
+	// conformance::TOKEN_FAMILIES (ADR 0049): the core picks `mono`.
+	kui.tokens_families(ui, {{name = "code", names = {"kui-no-such-family-2026", "mono"}}})
 	peach := kui.token_color(ui, "peach")
 	ink := kui.token_color(ui, "ink")
 	surface := kui.token_color(ui, "surface")
@@ -405,6 +407,14 @@ scene_tokens :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		}
 		spans := []kui.Span{{text = "tokens"}, {text = "x", color = ink}}
 		kui.rich_text(ui, spans, {size = big, color = peach})
+		// ADR 0049: the theme's number read as any length is, and the
+		// family token's pick as the two style fields.
+		cell.key = "dimmed"
+		cell.bg = peach
+		cell.opacity = kui.token_length(ui, "disabled_opacity")
+		if kui.box(ui, cell) {}
+		family, font, _ := kui.token_family(ui, "code")
+		kui.text(ui, "code", {size = big, color = peach, family = family, font = font})
 	}
 }
 

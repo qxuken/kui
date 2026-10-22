@@ -123,6 +123,11 @@ names typed, so `T.peech` does not compile; the roles take the same spelling
 slot keeps its default. The devtools list the tokens with their swatches and
 print a token's name after the value it painted. C declares and reads
 (`kui_token_color` / `kui_token_length`); its props carry no reference.
+A length token is any number, so it fits every number prop, and the theme's
+`disabledOpacity` is a role among them (`$disabledOpacity`); a **family
+token** is a fallback list of font families, the first that resolves picked
+by the core and picked again when the fonts change, referenced as
+`family="$code"` ([ADR 0049](adr/0049-the-disabled-opacity-and-font-families-by-token.md)).
 
 **Layout.** Wrapping is rows only, for the pass-order reason in [design.md](design.md#layout): a
 **column** that outgrows its height is still one line, so it shrinks its `Fit`

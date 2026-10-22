@@ -592,6 +592,85 @@ pub extern "C" fn kui_tokens_derive(
     })
 }
 
+/// Adds family tokens to the calling origin's table, after
+/// [`kui_tokens_set`] (ADR 0049): each a name and a fallback list of
+/// family names — `sans`, `serif`, `mono`, an installed or loaded
+/// family's — the first that resolves picked by the core now and again
+/// when the fonts change. A list nothing matches is sans, with an
+/// `unknown-family` warning; a token named for a stock family or a role
+/// is dropped with `reserved-token`. A C spec carries a `KUI_FONT_*` and a
+/// handle, not a name, so read a token back with [`kui_token_family`];
+/// the table gives the name to the devtools and to a Lua panel's
+/// `family = "$code"`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tokens_families(
+    ptr: *mut KuiCtx,
+    families: *const KuiFamilyToken,
+    count: usize,
+) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if families.is_null() || count == 0 {
+            return;
+        }
+        let mut t = c.core().tokens().cloned().unwrap_or_default();
+        for f in unsafe { std::slice::from_raw_parts(families, count) } {
+            let names: Vec<String> = if f.names.is_null() {
+                Vec::new()
+            } else {
+                unsafe { std::slice::from_raw_parts(f.names, f.name_count) }
+                    .iter()
+                    .map(|n| kstr(*n).into_owned())
+                    .collect()
+            };
+            t = t.family(kstr(f.name).into_owned(), names);
+        }
+        c.core().set_tokens(t);
+    })
+}
+
+/// A family token by name: the face its list picked, as the two fields a
+/// `KuiTextStyle` takes — a `KUI_FONT_*` through `family` and a font
+/// handle through `font`, 0 for a stock family. A list nothing matched
+/// answers `KUI_FONT_SANS` and 0. False for a name nothing declared or
+/// one of another kind, which also raises `unknown-token` once per name,
+/// a bad context or a NULL out.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_token_family(
+    ptr: *mut KuiCtx,
+    name: KuiStr,
+    family: *mut u32,
+    font: *mut u64,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let (Some(family), Some(font)) = (unsafe { family.as_mut() }, unsafe { font.as_mut() })
+        else {
+            return false;
+        };
+        let name = kstr(name);
+        match c.core().token_lookup().family(&name) {
+            Ok(f) => {
+                (*family, *font) = match f {
+                    kui_core::FontFamily::Sans => (0, 0),
+                    kui_core::FontFamily::Serif => (1, 0),
+                    kui_core::FontFamily::Mono => (2, 0),
+                    kui_core::FontFamily::Custom(id) => (0, id.to_ffi()),
+                };
+                true
+            }
+            Err(e) => {
+                c.core().warn_unknown_token(&e);
+                false
+            }
+        }
+    })
+}
+
 /// A colour token by name, resolved for this frame's appearance, as
 /// `0xRRGGBBAA` through `out`. The calling origin's table is tried first,
 /// then the host's; a theme role's name (`surface`) answers with the role.

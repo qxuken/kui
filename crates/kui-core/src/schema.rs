@@ -1209,7 +1209,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_FAMILY,
         kind: Kind::Family,
         apply: Apply::StyleFamily(|t, f| t.family(f)),
-        doc: "Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `\"Berkeley Mono\"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, exactly as the font database spells it (`\"menlo\"` is not `\"Menlo\"`); the session's first registration of any font maps the installed font files once (~30 ms on a Mac, backlog DX24), which a family named in a view pays in that frame. `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. It and `font` set the same thing, so declare one.",
+        doc: "Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `\"Berkeley Mono\"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, exactly as the font database spells it (`\"menlo\"` is not `\"Menlo\"`); the session's first registration of any font maps the installed font files once (~30 ms on a Mac, backlog DX24), which a family named in a view pays in that frame. `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. A `$name` is a family token (ADR 0049): the face its fallback list picked, the first of its names that resolves. It and `font` set the same thing, so declare one.",
     },
     PropDef {
         name: "font",
@@ -3264,6 +3264,26 @@ pub const METRIC_ROLES: &[MetricRole] = &[
         elsewhere crate::metrics::TITLEBAR_H_ELSEWHERE
     ),
 ];
+
+/// A theme value that is a number and no colour, reachable by the same
+/// `$` spelling as the roles (ADR 0049): a role in the length tokens'
+/// space, after the metrics, since that space is every `f32` slot.
+/// `appearance` is the theme's other non-colour, and is no number.
+pub struct NumberRole {
+    /// The Rust field, and the name used everywhere but Node.
+    pub name: &'static str,
+    /// What Node calls it (camelCase).
+    pub node: &'static str,
+    pub doc: &'static str,
+    pub get: fn(&crate::theme::Theme) -> f32,
+}
+
+pub const NUMBER_ROLES: &[NumberRole] = &[NumberRole {
+    name: "disabled_opacity",
+    node: "disabledOpacity",
+    doc: "What a disabled stock control's opacity is multiplied by; `opacity: $disabledOpacity` dims a node of the app's the same way.",
+    get: |t| t.disabled_opacity,
+}];
 
 static SNAKE_NAMES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     PROPS

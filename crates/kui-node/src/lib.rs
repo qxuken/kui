@@ -1419,8 +1419,9 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
 /// that is what a `color` prop already takes, so `bg={theme.surface}` is
 /// the whole of using one.
 /// `setTokensRaw`'s object: `{ colors: [[name, colour | { light, dark }],
-/// …], lengths: [[name, px], …] }` — the declaration `index.js` flattened
-/// from the user's `{ colors: {…}, lengths: {…} }`, as *pairs* because
+/// …], lengths: [[name, px], …], families: [[name, family | [family, …]],
+/// …] }` — the declaration `index.js` flattened from the user's
+/// `{ colors: {…}, lengths: {…}, families: {…} }`, as *pairs* because
 /// declaration order is the wire index and a JSON object's key order does
 /// not survive the crossing (`serde_json` sorts it). Names apart by kind
 /// because a colour and a length are both a number here, and the kind
@@ -1430,7 +1431,9 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
 /// normalised.
 fn tokens_from_json(v: &Json) -> Result<Tokens> {
     let Json::Object(o) = v else {
-        return Err(err("setTokens(): expected { colors?, lengths? }"));
+        return Err(err(
+            "setTokens(): expected { colors?, lengths?, families? }",
+        ));
     };
     let pairs = |half: &Json, what: &str| -> Result<Vec<(String, Json)>> {
         let Json::Array(items) = half else {
@@ -1511,10 +1514,29 @@ fn tokens_from_json(v: &Json) -> Result<Tokens> {
             t = t.length(name, px as f32);
         }
     }
+    // A family token (ADR 0049): a name, or a fallback list of them.
+    if let Some(families) = o.get("families") {
+        for (name, v) in pairs(families, "families")? {
+            let bad = || {
+                err(format!(
+                    "setTokens(): {name}: a family is a name or a list of names"
+                ))
+            };
+            let names: Vec<String> = match &v {
+                Json::String(n) => vec![n.clone()],
+                Json::Array(list) if !list.is_empty() => list
+                    .iter()
+                    .map(|n| n.as_str().map(str::to_string).ok_or_else(bad))
+                    .collect::<Result<_>>()?,
+                _ => return Err(bad()),
+            };
+            t = t.family(name, names);
+        }
+    }
     for k in o.keys() {
-        if k != "colors" && k != "lengths" {
+        if k != "colors" && k != "lengths" && k != "families" {
             return Err(err(format!(
-                "setTokens(): unknown key {k:?} (colors, lengths)"
+                "setTokens(): unknown key {k:?} (colors, lengths, families)"
             )));
         }
     }
@@ -1570,8 +1592,9 @@ fn color_op_from_json(op: &Json, token: &str) -> Result<kui_core::ColorOp> {
 }
 
 /// The tokens a reader in this core sees, resolved for the frame: the
-/// running origin's over the host's, colours as `0xRRGGBBAA` numbers and
-/// lengths as px, under `colors` and `lengths`.
+/// running origin's over the host's, colours as `0xRRGGBBAA` numbers,
+/// lengths as px and families as the name each list picked (`sans` for
+/// one nothing matched), under `colors`, `lengths` and `families`.
 fn tokens_json(core: &Core) -> Json {
     let look = core.token_lookup();
     let colors: JsonMap<String, Json> = look
@@ -1584,9 +1607,15 @@ fn tokens_json(core: &Core) -> Json {
         .into_iter()
         .map(|(n, v)| (n.to_string(), Json::from(v as f64)))
         .collect();
+    let families: JsonMap<String, Json> = look
+        .families()
+        .into_iter()
+        .map(|(n, f)| (n.to_string(), Json::from(f.picked().unwrap_or("sans"))))
+        .collect();
     let mut o = JsonMap::new();
     o.insert("colors".into(), Json::Object(colors));
     o.insert("lengths".into(), Json::Object(lengths));
+    o.insert("families".into(), Json::Object(families));
     Json::Object(o)
 }
 
@@ -3053,8 +3082,9 @@ macro_rules! core_methods {
 
             /// The tokens a view here sees this frame, resolved: colours as
             /// `0xRRGGBBAA` for the appearance in effect, lengths in px,
-            /// under `colors` and `lengths`. Roles are not listed — read
-            /// them off `theme()` and `metrics()`.
+            /// families as the name each list picked, under `colors`,
+            /// `lengths` and `families`. Roles are not listed — read them
+            /// off `theme()` and `metrics()`.
             #[napi(ts_return_type = "ResolvedTokens")]
             pub fn tokens(&mut self) -> Json {
                 tokens_json(self.$core())

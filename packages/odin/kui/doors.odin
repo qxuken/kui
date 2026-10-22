@@ -16,6 +16,18 @@ image_pixels :: proc(ui: ^Ui, id: Image) -> (w, h: u32, rgba: []u8, ok: bool) {
 	return w, h, p[:w * h * 4], true
 }
 
+// A family token's pick as the two Text_Style fields it fills (ADR 0049):
+// a stock pick as its Font_Family and no handle, an installed or loaded one
+// as its Font handle (family Sans). ok is false, with unknown-token raised,
+// for a name nothing declared or one of another kind.
+// Rust: Ui::token_family.
+token_family :: proc(ui: ^Ui, name: string) -> (family: Font_Family, font: Font, ok: bool) {
+	f: u32
+	h: u64
+	c.token_family(ui, name, &f, &h) or_return
+	return Font_Family(f), Font(h), true
+}
+
 // Names the exit a node leaves by if this frame stops declaring it, over the
 // one it declared: a throw a button aims. Read during the call; it aims a
 // node that declares an exit, with that node's transition.

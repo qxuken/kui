@@ -34,6 +34,46 @@ was the first bare bump to break an app in five releases).
   hidden, and now it shows (backlog F179).
 - Rust: `AccessSpec` gains `hint`, so a struct literal of it without
   `..` needs the field.
+- Rust: `TokenKind` gains `Family` and `TokenRef` gains `Family(u16)`,
+  so a `match` over either needs the arm; `tokens::LENGTH_ROLES` is one
+  more, the length space now ending with the theme's number roles
+  (ADR 0049, backlog T6).
+- A length token named `disabledOpacity` or `disabled_opacity` is
+  refused with `reserved-token`, as a role's name is: `$disabledOpacity`
+  now means the theme's. A family token named `sans`, `serif` or `mono`
+  is refused the same way.
+- `ctx.tokens()` and Lua's `env.tokens` carry a third table, `families`,
+  so a test comparing the whole reading sees it.
+
+### Added
+
+- **`$disabledOpacity`, the theme's number by name** (ADR 0049, backlog
+  T6). Every number prop has taken a `$length` token since ADR 0027 —
+  `opacity`, `scale` and `transition` as much as a `width` — and the theme's
+  `disabledOpacity` is now a role in that space, beside the metrics:
+  `opacity={roles.disabledOpacity}` in JSX, `opacity =
+  "$disabled_opacity"` in Lua, in an `enter` or a keyframe stop too,
+  dims a node of the app's the way a disabled stock control is dimmed,
+  with no `ctx.theme()` read and so no `ctx` passed down to the
+  component. A host's `setTheme({ disabledOpacity })` is what it reads.
+  Rust reads it with `ui.token_length("disabled_opacity")`, C with
+  `kui_token_length`.
+
+- **Font family tokens** (ADR 0049): a name for a face, declared as one
+  family or a fallback list beside the colours and lengths —
+  `setTokens({ families: { code: ['JetBrains Mono', 'Cascadia Code',
+  'mono'] } })`, a `families` table in Lua's `tokens`,
+  `Tokens::family("code", [...])` in Rust, `kui_tokens_families` in C,
+  `tokens_families` in Odin — and referenced as `family="$code"` on a
+  text, an editor or a span. The core picks the first name that is a
+  stock family or an installed or loaded one when the table is declared,
+  and again when the fonts change, so a family loaded later wins the list
+  it lost; a list nothing matches is sans, with `unknown-family` naming
+  the token. `defineTokens` types the names (a `FamilyToken` brand),
+  `ctx.tokens().families` and `env.tokens.families` read each pick back,
+  `ui.token_family` answers the `FontFamily`, `kui_token_family` /
+  Odin's `token_family` the two `KuiTextStyle` fields, and the devtools'
+  facts list each token with its list and its pick.
 
 ### Fixed
 
@@ -61,6 +101,11 @@ was the first bare bump to break an app in five releases).
 - A box's `tooltip` repeated on each interactive child, or an `onHover`
   on the children feeding a hint the app floated itself, so the hint
   stayed up over them.
+- A `ctx` or `env` threaded through a component only to read
+  `theme().disabledOpacity`: `roles.disabledOpacity` is a module-level
+  constant.
+- A constant holding a family name, and the "is it installed?" check
+  that picked between two: a family token's list is that check.
 
 ## 0.1.0-alpha.61 (2026-10-22)
 

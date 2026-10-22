@@ -385,7 +385,8 @@ extern "C" {
  * ABI 34: KUI_TURNED, OR'd into kui_path's and kui_path_d's fill_rule, says
  * the path turns, so a rotate of 0 is declared and keeps the swept box
  * (backlog RG121). No struct moved; a library before 34 would read the
- * bit as a fill rule.
+ * bit as a fill rule. Still 34 with KuiFamilyToken, kui_tokens_families
+ * and kui_token_family (ADR 0049): a new [in] array and two functions.
  */
 #define KUI_ABI_VERSION 34u
 uint32_t kui_abi_version(void);
@@ -402,8 +403,8 @@ uint32_t kui_abi_version(void);
  *          KuiSpec, KuiSizing, KuiKeyframe, KuiEnter, KuiTextStyle, KuiSpan,
  *          KuiCell, KuiMenuItem, KuiMenu, KuiPlay, KuiAudio, KuiWindowConfig,
  *          KuiRunConfig, KuiColorToken, KuiLengthToken, KuiColorOp,
- *          KuiDerivedToken, KuiFileFilter, KuiFileDialog, KuiGradientStop,
- *          KuiGradient, KuiWindowEvents.
+ *          KuiDerivedToken, KuiFamilyToken, KuiFileFilter, KuiFileDialog,
+ *          KuiGradientStop, KuiGradient, KuiWindowEvents.
  *
  * [out]    You allocate it; the library WRITES it. These lead with a
  *          `uint32_t size` you set to sizeof the struct, and the library
@@ -2609,7 +2610,9 @@ void kui_metrics_set(KuiCtx *ctx, const KuiMetrics *metrics);
  * The app's own named colours and lengths, beside the theme's roles and
  * the metrics'. A colour token has a value per base - the same one twice
  * for a colour that does not follow the appearance - and a length token
- * is logical px. Declared whole with kui_tokens_set into the table of
+ * is a number: logical px where the slot is a length, the number itself
+ * where it is not (an opacity). The theme's disabled opacity is a role
+ * of the length kind, "disabled_opacity" (ADR 0049). Declared whole with kui_tokens_set into the table of
  * whoever is drawing: the host's outside a plugin's kui_ext_view, the
  * plugin's own inside it, so a guest's declaration never replaces the
  * host's palette. A plugin reads the host's names through the same two
@@ -2699,6 +2702,38 @@ typedef struct KuiDerivedToken {
     size_t op_count;
 } KuiDerivedToken;
 bool kui_tokens_derive(KuiCtx *ctx, const KuiDerivedToken *derived, size_t count);
+
+/* -- Family tokens ----------------------
+ *
+ * A font family by a fallback list (ADR 0049): a name and the family
+ * names it tries in order - "sans", "serif", "mono", or an installed or
+ * loaded family's - the first that resolves picked by the core when the
+ * call lands and again when the fonts change. Added to the drawing
+ * origin's table after kui_tokens_set, as kui_tokens_derive adds:
+ *
+ *   KuiStr code[] = { KUI_STR("JetBrains Mono"), KUI_STR("Menlo"), KUI_STR("mono") };
+ *   KuiFamilyToken families[] = { { KUI_STR("code"), code, 3 } };
+ *   kui_tokens_families(ctx, families, 1);
+ *   uint32_t family; uint64_t font;
+ *   if (kui_token_family(ctx, KUI_STR("code"), &family, &font)) {
+ *     style.family = family; style.font = font;
+ *   }
+ *
+ * A list nothing matches is sans, with `unknown-family`; a token named for
+ * a stock family or a role is dropped with `reserved-token`. A C style
+ * carries a KUI_FONT_* and a handle rather than a name, so read the pick
+ * back: kui_token_family fills the two KuiTextStyle fields, `font` 0 for
+ * a stock family. False for a name nothing declared or one of another
+ * kind (both also raise `unknown-token`), a bad context or a NULL out.
+ * KuiFamilyToken is an [in] array: an append moves the stride and is a
+ * bump. */
+typedef struct KuiFamilyToken {
+    KuiStr name;
+    const KuiStr *names; /* in preference order */
+    size_t name_count;
+} KuiFamilyToken;
+void kui_tokens_families(KuiCtx *ctx, const KuiFamilyToken *families, size_t count);
+bool kui_token_family(KuiCtx *ctx, KuiStr name, uint32_t *family, uint64_t *font);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before
  * each kui_frame_begin, and before handing the context input after the host

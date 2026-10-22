@@ -176,8 +176,9 @@
 //! - Palette: `env.theme` has one `0xRRGGBBAA` number per theme role
 //!   (`bg`, `surface`, `fg`, `muted`, `border`, `accent`, ...) plus
 //!   `appearance` and `disabled_opacity`; `env.metrics` the sizes the stock
-//!   widgets use; `env.tokens.colors` / `env.tokens.lengths` the named
-//!   tokens in force, the script's own over the host's. All read-only.
+//!   widgets use; `env.tokens.colors` / `env.tokens.lengths` /
+//!   `env.tokens.families` the named tokens in force, the script's own over
+//!   the host's (a family as the name its list picked). All read-only.
 //!
 //! Functions, by topic. `key` is an integer key an event carried or the
 //! string label a node's `key` prop declared, resolved among the script's
@@ -384,7 +385,7 @@ pub struct LuaExtension {
     /// key — what `on_event` reads `ev.slot` off, since an event carries
     /// the key and the script thinks in the names it was handed.
     slot_names: std::collections::HashMap<kui_core::Key, String>,
-    /// The `tokens = { colors = …, lengths = … }` global the script
+    /// The `tokens = { colors = …, lengths = …, families = … }` global the script
     /// declared at load, declared into the core under this
     /// extension's origin on the first `view` that finds none there;
     /// `env.set_tokens` replaces it from inside a view.
@@ -444,7 +445,7 @@ impl LuaExtension {
             mlua::Value::Table(t) => Some(parse_tokens(&t)?),
             other => {
                 return Err(mlua::Error::runtime(format!(
-                    "`tokens` must be a table {{ colors = …, lengths = … }}, not {}",
+                    "`tokens` must be a table {{ colors = …, lengths = …, families = … }}, not {}",
                     other.type_name()
                 )));
             }
@@ -1669,8 +1670,9 @@ fn env_table<'scope, 'env: 'scope>(
 /// linearly: `measured × zoom` is not `measure(size × zoom)`, because
 /// shaping rounds per size, so anything that zooms measures at the size it
 /// draws.
-/// `env.tokens`: the frame's resolved tokens, own over host, as two
-/// tables of name → value.
+/// `env.tokens`: the frame's resolved tokens, own over host, as three
+/// tables of name → value: colours as `0xRRGGBBAA`, lengths, and each
+/// family token's pick (`sans` for a list nothing matched).
 fn tokens_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
     let look = ui.tokens();
     let tokens = lua.create_table()?;
@@ -1682,8 +1684,13 @@ fn tokens_table(lua: &Lua, ui: &Ui<'_>) -> mlua::Result<Table> {
     for (name, v) in look.lengths() {
         lengths.set(name, v)?;
     }
+    let families = lua.create_table()?;
+    for (name, f) in look.families() {
+        families.set(name, f.picked().unwrap_or("sans"))?;
+    }
     tokens.set("colors", colors)?;
     tokens.set("lengths", lengths)?;
+    tokens.set("families", families)?;
     Ok(tokens)
 }
 
@@ -2953,7 +2960,9 @@ fn span_part(t: &Table, refs: &mut Refs<'_>) -> mlua::Result<SpanPart> {
 /// Reads a `tokens` table as a [`kui_core::Tokens`].
 ///
 /// The shape is `{ colors = { name = colour | { light =, dark = } | { from =,
-/// ops = } }, lengths = { name = px } }`. A colour with `from` is derived
+/// ops = } }, lengths = { name = px }, families = { name = family | { family,
+/// ... } } }`. A family is a name or a fallback list of them, the first that
+/// resolves picked by the core (ADR 0049). A colour with `from` is derived
 /// from an earlier token by its `ops`, a list of `{ verb, ... }` tuples.
 /// Names are sorted, since a Lua table's iteration order is not one a
 /// declaration can promise; derived tokens are declared after the values
@@ -2963,8 +2972,10 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
     let mut out = kui_core::Tokens::new();
     for pair in t.pairs::<String, mlua::Value>() {
         let (k, _) = pair?;
-        if k != "colors" && k != "lengths" {
-            return Err(bad(format!("tokens: unknown key {k:?} (colors, lengths)")));
+        if k != "colors" && k != "lengths" && k != "families" {
+            return Err(bad(format!(
+                "tokens: unknown key {k:?} (colors, lengths, families)"
+            )));
         }
     }
     if let Some(colors) = t.get::<Option<Table>>("colors")? {
@@ -3024,6 +3035,31 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
             let px = number(&v)
                 .ok_or_else(|| bad(format!("tokens.lengths.{name}: a length is a number")))?;
             out = out.length(&name, px);
+        }
+    }
+    if let Some(families) = t.get::<Option<Table>>("families")? {
+        let mut entries: Vec<(String, mlua::Value)> = families
+            .pairs::<String, mlua::Value>()
+            .collect::<mlua::Result<_>>()?;
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, v) in entries {
+            let bad_family = || {
+                bad(format!(
+                    "tokens.families.{name}: a family is a name or a list of names"
+                ))
+            };
+            let names: Vec<String> = match &v {
+                mlua::Value::String(s) => vec![s.to_str()?.to_string()],
+                mlua::Value::Table(list) if list.raw_len() > 0 => list
+                    .sequence_values::<mlua::Value>()
+                    .map(|n| match n? {
+                        mlua::Value::String(s) => Ok(s.to_str()?.to_string()),
+                        _ => Err(bad_family()),
+                    })
+                    .collect::<mlua::Result<_>>()?,
+                _ => return Err(bad_family()),
+            };
+            out = out.family(&name, names);
         }
     }
     Ok(out)
@@ -6733,9 +6769,10 @@ mod tests {
                 .iter()
                 .map(|r| format!("metrics.{}", r.name)),
         );
-        // And the tokens (ADR 0027): two tables, the app's own names
-        // under them, so the keys pinned here are the two halves.
+        // And the tokens (ADR 0027, 0049): three tables, the app's own
+        // names under them, so the keys pinned here are the three kinds.
         documented.push("tokens.colors".into());
+        documented.push("tokens.families".into());
         documented.push("tokens.lengths".into());
         documented.sort();
         assert_eq!(
@@ -6799,6 +6836,64 @@ mod tests {
         );
         let unknown: Option<String> = ext.lua.globals().get("unknown").unwrap();
         assert_eq!(unknown, None, "an unknown key answers nil");
+    }
+
+    /// ADR 0049 in Lua: `$disabled_opacity` dims a box by the theme's
+    /// number, a family token picks the first name of its list that
+    /// resolves and `family = "$code"` shapes in it, and `env.tokens
+    /// .families` reads the pick back.
+    #[test]
+    fn a_script_dims_by_the_role_and_names_a_family_token() {
+        let mut ext = LuaExtension::from_source(
+            "families",
+            r##"
+                tokens = {
+                  families = { code = { "kui-no-such-family-2026", "mono" }, gone = "kui-no-such-family-2026" },
+                }
+                function view(env)
+                  seen = env.tokens.families
+                  code_w = env.measure_text("iiiiiiii", { size = 14, family = "$code" }).width
+                  mono_w = env.measure_text("iiiiiiii", { size = 14, family = "mono" }).width
+                  sans_w = env.measure_text("iiiiiiii", { size = 14 }).width
+                  return column {
+                    row { width = 20, height = 20, bg = 0xff0000ff, opacity = "$disabled_opacity" },
+                    text("x", { family = "$code" }),
+                  }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert_eq!(
+            codes,
+            [kui_core::diag::UNKNOWN_FAMILY],
+            "the list nothing matched"
+        );
+        let seen: Table = ext.lua.globals().get("seen").unwrap();
+        assert_eq!(seen.get::<String>("code").unwrap(), "mono");
+        assert_eq!(seen.get::<String>("gone").unwrap(), "sans");
+        let g = ext.lua.globals();
+        let (code_w, mono_w, sans_w): (f32, f32, f32) = (
+            g.get("code_w").unwrap(),
+            g.get("mono_w").unwrap(),
+            g.get("sans_w").unwrap(),
+        );
+        assert_eq!(code_w, mono_w);
+        assert_ne!(mono_w, sans_w);
+        let dim = core.theme().disabled_opacity;
+        let dl = core.output().0;
+        let red = dl
+            .quads
+            .iter()
+            .find(|q| q.kind == kui_core::QuadKind::Solid && q.color.r == 1.0)
+            .expect("the dimmed box");
+        assert!(
+            (red.color.a - dim).abs() < 1e-3,
+            "{} against {dim}",
+            red.color.a
+        );
     }
 
     /// Tokens (ADR 0027): the `tokens` global is declared under the

@@ -182,7 +182,8 @@
 /// - ABI 34: `KUI_TURNED`, a bit in `kui_path`'s and `kui_path_d`'s
 ///   `fill_rule`: the path turns, so a `rotate` of 0 is declared (backlog
 ///   RG121). No struct moved; an older library would read the bit as a
-///   fill rule.
+///   fill rule. Also new, with no break of their own (ADR 0049):
+///   `KuiFamilyToken`, `kui_tokens_families` and `kui_token_family`.
 pub const KUI_ABI_VERSION: u32 = 34;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

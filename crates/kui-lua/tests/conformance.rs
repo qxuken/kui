@@ -1153,8 +1153,12 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
               column {{ key = "{k3}", width = "$side_w", height = 30, bg = "$nothing" }},
 {derived_cells}
               text({{ "tokens", {{ "x", color = "$ink" }} }}, {{ size = "$big", color = "$peach" }}),
+              column {{ key = "{dimmed}", width = "$side_w", height = 30, bg = "$peach",
+                        opacity = "$disabled_opacity" }},
+              text("code", {{ size = "$big", color = "$peach", family = "$code" }}),
             }}
         "##,
+                dimmed = conformance::TOKEN_DIMMED,
                 k0 = keys[0],
                 k1 = keys[1],
                 k2 = keys[2],
@@ -1214,8 +1218,22 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
+            // ADR 0049's family token, its list in the array part.
+            let families = conformance::TOKEN_FAMILIES
+                .iter()
+                .map(|(n, names)| {
+                    let names = names
+                        .iter()
+                        .map(|f| format!("\"{f}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{n} = {{ {names} }}")
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
             format!(
-                "tokens = {{ colors = {{ {colors}, {derived} }}, lengths = {{ {lengths} }} }}\n"
+                "tokens = {{ colors = {{ {colors}, {derived} }}, lengths = {{ {lengths} }}, \
+                 families = {{ {families} }} }}\n"
             )
         }
         _ => String::new(),

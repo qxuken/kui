@@ -623,6 +623,10 @@ pub struct Core {
     /// The session's `system_fonts_rev` the last frame was begun with; the
     /// difference is what becomes a `fonts` event.
     system_fonts_seen: u64,
+    /// The session's `fonts_rev` the family tokens were last picked at
+    /// (ADR 0049): a font loaded or the system's fonts rescanned since
+    /// re-picks them at the next frame's start.
+    families_picked_rev: u64,
     /// Frames begun so far; stamps the per-key stores below.
     frame_no: u64,
     /// The rect last reported for each `on_layout` node and the frame it
@@ -920,15 +924,23 @@ impl Core {
     /// declares again on `resize`. A name a role owns is dropped with a
     /// `reserved-token` warning, once per name. A derived token whose
     /// source did not resolve is dropped with `unknown-token`, naming both.
-    pub fn set_tokens(&mut self, tokens: crate::tokens::Tokens) {
+    pub fn set_tokens(&mut self, mut tokens: crate::tokens::Tokens) {
         for name in tokens.reserved() {
+            let message = if crate::tokens::is_role(name) {
+                format!(
+                    "`{name}` is a theme, metrics or number role, so the token is dropped: \
+                     `${name}` always means the role's value, and an app does not shadow one"
+                )
+            } else {
+                format!(
+                    "`{name}` is a stock family, so the family token is dropped: `family` \
+                     already spells it bare, and `${name}` would be a second name for it"
+                )
+            };
             let w = Warning {
                 code: crate::diag::RESERVED_TOKEN,
                 key: Key::ROOT.str(crate::diag::RESERVED_TOKEN).str(name),
-                message: format!(
-                    "`{name}` is a theme or metrics role, so the token is dropped: `${name}` \
-                     always means the role's value, and an app does not shadow one"
-                ),
+                message,
             };
             self.diag.raise(w);
         }
@@ -946,7 +958,47 @@ impl Core {
             };
             self.diag.raise(w);
         }
+        let missed = tokens.pick_families(|n| self.session.register_family(n));
+        self.warn_unpicked_families(missed);
         self.tokens.insert(self.origin, tokens);
+    }
+
+    /// Re-picks every origin's family tokens when the session's fonts
+    /// moved since they were picked: a family loaded or installed since
+    /// can now win a list it lost (ADR 0049). Once a frame, at its start;
+    /// a revision check when nothing moved.
+    fn repick_families(&mut self) {
+        let rev = self.session.state().fonts_rev;
+        if rev == self.families_picked_rev {
+            return;
+        }
+        let mut missed = Vec::new();
+        for tokens in self.tokens.values_mut() {
+            missed.extend(tokens.pick_families(|n| self.session.register_family(n)));
+        }
+        self.warn_unpicked_families(missed);
+        // A pick that registered a family moved the revision itself; the
+        // one read after the picks is what they are of.
+        self.families_picked_rev = self.session.state().fonts_rev;
+    }
+
+    /// `unknown-family` for each family token whose list matched nothing,
+    /// once per token: the text naming it shapes as sans.
+    fn warn_unpicked_families(&mut self, missed: Vec<(String, Vec<String>)>) {
+        for (name, names) in missed {
+            self.diag.raise(Warning {
+                code: crate::diag::UNKNOWN_FAMILY,
+                key: Key::ROOT
+                    .str(crate::diag::UNKNOWN_FAMILY)
+                    .str("$")
+                    .str(&name),
+                message: format!(
+                    "the family token `${name}` lists {names:?}, and none is a stock family or \
+                     an installed or loaded one, so a text naming it shapes as sans; \
+                     `systemFonts()` lists the names there are"
+                ),
+            });
+        }
     }
 
     /// Whether `origin` has declared a table — what an extension asks
@@ -1228,6 +1280,7 @@ impl Core {
             framed: false,
             system_seen: SystemEnv::default(),
             system_fonts_seen: 0,
+            families_picked_rev: 0,
             frame_no: 0,
             layouts: FxHashMap::default(),
             announcements: Vec::new(),
@@ -1819,6 +1872,7 @@ impl Core {
                 .push(UiEvent::fact(EventKind::Fonts, Value::Null));
         }
         self.system_fonts_seen = fonts_rev;
+        self.repick_families();
         // The palette is a function of what the OS said and what the app
         // asked for, so it is recomputed rather than invalidated: a
         // couple of dozen float ops once a frame, against a cache that

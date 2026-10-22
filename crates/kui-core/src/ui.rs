@@ -461,6 +461,19 @@ impl<'a> Ui<'a> {
         }
     }
 
+    /// A family token by name: the face its fallback list picked, sans
+    /// for a list nothing matched (ADR 0049); unknown warns and answers
+    /// `None`, as above.
+    pub fn token_family(&mut self, name: &str) -> Option<crate::spec::FontFamily> {
+        match self.core.token_lookup().family(name) {
+            Ok(f) => Some(f),
+            Err(e) => {
+                self.core.warn_unknown_token(&e);
+                None
+            }
+        }
+    }
+
     /// Declares this frame's window title (declare every frame you care;
     /// the driver diffs and applies changes).
     pub fn window_title(&mut self, title: &str) {

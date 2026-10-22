@@ -1036,7 +1036,10 @@ pub const SCENES: &[Scene] = &[
               a `pad` edge, a `border`'s width and colour, a text's `size` \
               and `color`, a span's `color`; `$surface` and `$radius` as the \
               roles by the same spelling; and `$nothing`, which paints \
-              nothing and raises `unknown-token`. The one step flips the \
+              nothing and raises `unknown-token`. Then ADR 0049's two: a \
+              box at `opacity: $disabled_opacity`, the theme's number as a \
+              role, and a text in `family: $code`, a family token whose \
+              list falls through a name nothing has to `mono`. The one step flips the \
               appearance to light, so the frame the report keeps is the \
               themed token's light half and the theme's light base, both \
               without the view changing.",
@@ -1046,15 +1049,19 @@ pub const SCENES: &[Scene] = &[
         env: NATIVE_CHROME,
         steps: &[Step::Appearance(1)],
         expect: Expect {
-            solid: 8,
+            solid: 9,
             shadows: 0,
             images: 0,
             segments: 0,
             segments_follow_text: false,
             fragments: 0,
             textures: 0,
-            glyphs_min: 6,
-            access: &["0 window ||", "1 staticText tokensx||"],
+            glyphs_min: 10,
+            access: &[
+                "0 window ||",
+                "1 staticText tokensx||",
+                "1 staticText code||",
+            ],
             // The OS setting moving under the app is itself an event.
             events: &[],
             announcements: &[],
@@ -4457,6 +4464,13 @@ pub const TOKEN_COLORS: [(&str, u32, u32); 3] = [
     ("surface", 0xff0000ff, 0xff0000ff),
 ];
 pub const TOKEN_LENGTHS: [(&str, f32); 3] = [("side_w", 60.0), ("gap", 8.0), ("big", 16.0)];
+/// The scene's family token (ADR 0049): a list whose first name is no
+/// family anywhere, so the pick is the second, `mono` — the same face on
+/// every machine, and no `unknown-family`.
+pub const TOKEN_FAMILIES: [(&str, &[&str]); 1] = [("code", &["kui-no-such-family-2026", "mono"])];
+/// The scene's box dimmed by `$disabled_opacity` (ADR 0049), after the
+/// derived tokens' boxes.
+pub const TOKEN_DIMMED: &str = "dimmed";
 
 /// The scene's derived tokens, declared after the values in
 /// this order: the name, its source, and the chain as `(verb, colour
@@ -4501,6 +4515,9 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
         });
         t = t.derive(name, from, ops);
     }
+    for (name, names) in TOKEN_FAMILIES {
+        t = t.family(name, names.iter().copied());
+    }
     ui.set_tokens(t);
     // Rust holds no reference: it reads each value by name and writes it,
     // which is what the other adapters' `$name` resolves to — and a name
@@ -4518,6 +4535,8 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     let gap = ui.token_length("gap").expect("declared");
     let big = ui.token_length("big").expect("declared");
     let radius = ui.token_length("radius").expect("a role");
+    let dim = ui.token_length("disabled_opacity").expect("a role");
+    let code = ui.token_family("code").expect("declared");
     let cell = |bg: Option<Color>| {
         let spec = NodeSpec::column().size(side_w, 30.0);
         match bg {
@@ -4546,6 +4565,8 @@ fn build_tokens(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
                 &[Span::new("tokens"), Span::new("x").color(ink)],
                 TextStyle::new(big).color(peach),
             );
+            ui.leaf_keyed(TOKEN_DIMMED, cell(Some(peach)).opacity(dim));
+            ui.text("code", TextStyle::new(big).color(peach).family(code));
         },
     );
 }

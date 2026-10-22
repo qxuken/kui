@@ -1,13 +1,15 @@
-//! [`Tokens`]: named colours and lengths an app declares beside the theme
-//! and references by name (`$peach`, `$sidebar`) in any colour or length
-//! prop.
+//! [`Tokens`]: named colours, lengths and font families an app declares
+//! beside the theme and references by name (`$peach`, `$sidebar`, `$code`)
+//! in any colour, number or `family` prop.
 //!
 //! A [`Theme`] is a closed set of roles and a [`Metrics`] a closed set of
 //! lengths. An app whose palette *is* the design has names neither covers,
 //! and `Tokens` is that vocabulary. A colour token carries a light and a
 //! dark half (the same value twice in the common case) or a recipe over an
 //! earlier token (a source and a chain of [`ColorOp`]s, folded on read); a
-//! length token is one number in logical px. The app declares them once,
+//! length token is one number, logical px where the slot is a length; a
+//! family token is a fallback list of family names, the first that
+//! resolves picked by the core (ADR 0049). The app declares them once,
 //! whole, with [`Core::set_tokens`](crate::runtime::Core::set_tokens), and
 //! a Rust view reads them back through
 //! [`Ui::token_color`](crate::ui::Ui::token_color) and
@@ -34,17 +36,20 @@
 //! One table per origin. A lookup reads the table of the origin whose view
 //! is running, then the host's, so an extension can paint in the host's
 //! vocabulary and still name a grey of its own, and never replaces the
-//! host's palette. The theme's roles and the metrics' roles are reachable
-//! by the same spelling (`$surface`, `$radius`) through a reserved range in
-//! front of the app's, so a declared token that takes a role's name is
-//! refused ([`crate::diag::RESERVED_TOKEN`]) rather than shadowing it.
+//! host's palette. The theme's roles, the metrics' roles and the theme's
+//! number roles are reachable by the same spelling (`$surface`, `$radius`,
+//! `$disabledOpacity`) through a reserved range in front of the app's, so a
+//! declared token that takes a role's name is refused
+//! ([`crate::diag::RESERVED_TOKEN`]) rather than shadowing it; so is a
+//! family token named for a stock family (`sans`, `serif`, `mono`).
 
 use rustc_hash::FxHashMap;
 
 use crate::color::Color;
 use crate::env::Appearance;
 use crate::metrics::Metrics;
-use crate::schema::{METRIC_ROLES, THEME_ROLES};
+use crate::schema::{METRIC_ROLES, NUMBER_ROLES, THEME_ROLES};
+use crate::spec::FontFamily;
 use crate::theme::Theme;
 
 /// A colour token: one value per base, or a recipe over an earlier token
@@ -187,7 +192,12 @@ pub struct Unresolved {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
     Color,
+    /// A number: logical px where the slot is a length, the number itself
+    /// where it is not (`opacity`, `scale`, `transition`) — every `f32`
+    /// slot takes one (ADR 0049).
     Length,
+    /// A font family, picked from a fallback list (ADR 0049).
+    Family,
 }
 
 impl TokenKind {
@@ -195,6 +205,7 @@ impl TokenKind {
         match self {
             TokenKind::Color => "color",
             TokenKind::Length => "length",
+            TokenKind::Family => "family",
         }
     }
 }
@@ -203,9 +214,13 @@ impl TokenKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenRef {
     ColorRole(u16),
+    /// A metrics role, or past [`METRIC_ROLES`] a number role
+    /// ([`NUMBER_ROLES`]): `$disabledOpacity`.
     LengthRole(u16),
     Color(u16),
     Length(u16),
+    /// A family token. No wire index: a `family` crosses by name.
+    Family(u16),
 }
 
 impl TokenRef {
@@ -213,15 +228,17 @@ impl TokenRef {
         match self {
             TokenRef::ColorRole(_) | TokenRef::Color(_) => TokenKind::Color,
             TokenRef::LengthRole(_) | TokenRef::Length(_) => TokenKind::Length,
+            TokenRef::Family(_) => TokenKind::Family,
         }
     }
 
     /// The index a binding writes on the wire for this reference: roles
     /// first, the app's after them, one space per kind
-    /// ([`COLOR_ROLES`] / [`LENGTH_ROLES`] wide).
+    /// ([`COLOR_ROLES`] / [`LENGTH_ROLES`] wide). A family's is its place
+    /// in the table, which no wire carries.
     pub fn index(self) -> u16 {
         match self {
-            TokenRef::ColorRole(i) | TokenRef::LengthRole(i) => i,
+            TokenRef::ColorRole(i) | TokenRef::LengthRole(i) | TokenRef::Family(i) => i,
             TokenRef::Color(i) => COLOR_ROLES + i,
             TokenRef::Length(i) => LENGTH_ROLES + i,
         }
@@ -231,8 +248,57 @@ impl TokenRef {
 /// How many indices the theme's roles take in front of the app's colour
 /// tokens: `$surface` is index 1 whatever the app declared.
 pub const COLOR_ROLES: u16 = THEME_ROLES.len() as u16;
-/// The same for the metrics' roles in front of the app's lengths.
-pub const LENGTH_ROLES: u16 = METRIC_ROLES.len() as u16;
+/// The same for the metrics' roles and the number roles after them, in
+/// front of the app's lengths.
+pub const LENGTH_ROLES: u16 = (METRIC_ROLES.len() + NUMBER_ROLES.len()) as u16;
+
+/// The length role at `i` of the length space, read: a metric's value,
+/// or past the metrics a number role's out of the theme.
+fn length_role(i: u16, theme: &Theme, metrics: &Metrics) -> f32 {
+    let i = i as usize;
+    match METRIC_ROLES.get(i) {
+        Some(m) => (m.get)(metrics),
+        None => (NUMBER_ROLES[i - METRIC_ROLES.len()].get)(theme),
+    }
+}
+
+/// The Node spelling of the length role at `i`, in wire order: what
+/// `protocol().tokenRoles.lengths` lists.
+pub fn length_role_names() -> impl Iterator<Item = &'static str> {
+    METRIC_ROLES
+        .iter()
+        .map(|r| r.node)
+        .chain(NUMBER_ROLES.iter().map(|r| r.node))
+}
+
+/// One family token: the names it was declared with, in preference order,
+/// and which of them the core picked — the first a stock name or an
+/// installed or loaded family matched. Picked when the table is declared
+/// and again when the fonts change, so a lowering reads a slot rather
+/// than querying fontdb.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FamilyToken {
+    names: Vec<String>,
+    pick: Option<usize>,
+    family: FontFamily,
+}
+
+impl FamilyToken {
+    /// The fallback list as declared.
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    /// The name that won, or `None` when none matched (the token is sans).
+    pub fn picked(&self) -> Option<&str> {
+        self.pick.map(|i| self.names[i].as_str())
+    }
+
+    /// The family a text naming this token shapes in.
+    pub fn family(&self) -> FontFamily {
+        self.family
+    }
+}
 
 /// Why a name did not resolve.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -273,6 +339,7 @@ impl std::fmt::Display for TokenError {
 pub struct Tokens {
     colors: Vec<(String, ColorToken)>,
     lengths: Vec<(String, f32)>,
+    families: Vec<(String, FamilyToken)>,
     by_name: FxHashMap<String, TokenRef>,
     /// Every derived token's steps, end to end; a token holds its range.
     ops: Vec<Step>,
@@ -409,6 +476,66 @@ impl Tokens {
         self
     }
 
+    /// A font family by a fallback list (ADR 0049): the first of `names`
+    /// that is a stock family (`sans`, `serif`, `mono`) or an installed or
+    /// loaded family's name is what a `family="$name"` shapes in, picked
+    /// by the core when the table is declared and again when the fonts
+    /// change. One name is a list of one; a list nothing matches is sans,
+    /// and the core says so (`unknown-family`). A token named for a stock
+    /// family or a role is refused (`reserved-token`).
+    pub fn family<S: Into<String>>(
+        mut self,
+        name: impl Into<String>,
+        names: impl IntoIterator<Item = S>,
+    ) -> Self {
+        let name = name.into();
+        if is_role(&name) || stock_family(&name).is_some() {
+            self.reserved.push(name);
+            return self;
+        }
+        let token = FamilyToken {
+            names: names.into_iter().map(Into::into).collect(),
+            pick: None,
+            family: FontFamily::Sans,
+        };
+        match self.by_name.get(&name) {
+            Some(TokenRef::Family(i)) => self.families[*i as usize].1 = token,
+            _ => {
+                let i = self.families.len() as u16;
+                self.families.push((name.clone(), token));
+                self.by_name.insert(name, TokenRef::Family(i));
+            }
+        }
+        self
+    }
+
+    /// Picks every family token's face: the first name of its list that
+    /// is a stock family or that `register` turns into a handle. Answers
+    /// the tokens nothing matched, for the caller to raise. What the core
+    /// runs when the table is declared and when the session's fonts move.
+    pub fn pick_families(
+        &mut self,
+        mut register: impl FnMut(&str) -> Option<crate::resources::FontId>,
+    ) -> Vec<(String, Vec<String>)> {
+        let mut missed = Vec::new();
+        for (name, tok) in &mut self.families {
+            tok.pick = None;
+            tok.family = FontFamily::Sans;
+            for (i, n) in tok.names.iter().enumerate() {
+                let found = stock_family(n).or_else(|| register(n).map(FontFamily::Custom));
+                if let Some(f) = found {
+                    tok.pick = Some(i);
+                    tok.family = f;
+                    break;
+                }
+            }
+            if tok.pick.is_none() {
+                missed.push((name.clone(), tok.names.clone()));
+            }
+        }
+        missed
+    }
+
     /// The reference a declared name resolves to in this table alone —
     /// what a Rust app holds instead of the name.
     pub fn id(&self, name: &str) -> Option<TokenRef> {
@@ -423,6 +550,10 @@ impl Tokens {
         self.id(name).filter(|r| r.kind() == TokenKind::Length)
     }
 
+    pub fn family_id(&self, name: &str) -> Option<TokenRef> {
+        self.id(name).filter(|r| r.kind() == TokenKind::Family)
+    }
+
     /// The colours, in declaration order.
     pub fn colors(&self) -> &[(String, ColorToken)] {
         &self.colors
@@ -433,7 +564,13 @@ impl Tokens {
         &self.lengths
     }
 
-    /// The names a role owns that this declaration tried to take.
+    /// The families, in declaration order.
+    pub fn families(&self) -> &[(String, FamilyToken)] {
+        &self.families
+    }
+
+    /// The names a role or a stock family owns that this declaration
+    /// tried to take.
     pub fn reserved(&self) -> &[String] {
         &self.reserved
     }
@@ -445,7 +582,7 @@ impl Tokens {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.colors.is_empty() && self.lengths.is_empty()
+        self.colors.is_empty() && self.lengths.is_empty() && self.families.is_empty()
     }
 
     /// The colour token at `i` under `theme`: a value's half, or a
@@ -490,7 +627,9 @@ impl Tokens {
         match r {
             TokenRef::ColorRole(i) => (THEME_ROLES[i as usize].get)(theme),
             TokenRef::Color(i) => self.resolve_color(i, theme),
-            TokenRef::LengthRole(_) | TokenRef::Length(_) => unreachable!("a colour source"),
+            TokenRef::LengthRole(_) | TokenRef::Length(_) | TokenRef::Family(_) => {
+                unreachable!("a colour source")
+            }
         }
     }
 
@@ -548,8 +687,8 @@ impl Tokens {
     }
 }
 
-/// Whether a name is a theme or metrics role under either spelling
-/// (`border_strong` and `borderStrong` both are).
+/// Whether a name is a theme, metrics or number role under either
+/// spelling (`border_strong` and `borderStrong` both are).
 pub fn is_role(name: &str) -> bool {
     role_ref(name).is_some()
 }
@@ -562,10 +701,24 @@ pub fn role_ref(name: &str) -> Option<TokenRef> {
     {
         return Some(TokenRef::ColorRole(i as u16));
     }
-    METRIC_ROLES
+    if let Some(i) = METRIC_ROLES
         .iter()
         .position(|r| r.name == name || r.node == name)
-        .map(|i| TokenRef::LengthRole(i as u16))
+    {
+        return Some(TokenRef::LengthRole(i as u16));
+    }
+    NUMBER_ROLES
+        .iter()
+        .position(|r| r.name == name || r.node == name)
+        .map(|i| TokenRef::LengthRole((METRIC_ROLES.len() + i) as u16))
+}
+
+/// The stock family a name spells (`sans`, `serif`, `mono`), if it is one.
+fn stock_family(name: &str) -> Option<FontFamily> {
+    FontFamily::ALL
+        .iter()
+        .copied()
+        .find(|f| f.name() == Some(name))
 }
 
 /// A frame's view of the tokens a lowering can reference: the running
@@ -626,8 +779,27 @@ impl<'a> TokenLookup<'a> {
                 is: r.kind(),
                 wanted: TokenKind::Length,
             }),
-            Some(TokenRef::LengthRole(i)) => Ok((METRIC_ROLES[i as usize].get)(self.metrics)),
+            Some(TokenRef::LengthRole(i)) => Ok(length_role(i, self.theme, self.metrics)),
             Some(TokenRef::Length(i)) => Ok(self.length_in(name, i)),
+            Some(_) => unreachable!(),
+        }
+    }
+
+    /// The family a name resolves to: the face its list picked, sans for
+    /// a list nothing matched (the core raised that when it picked).
+    pub fn family(&self, name: &str) -> Result<FontFamily, TokenError> {
+        match self.resolve(name) {
+            None => Err(TokenError::Unknown(name.to_string())),
+            Some(r) if r.kind() != TokenKind::Family => Err(TokenError::Kind {
+                name: name.to_string(),
+                is: r.kind(),
+                wanted: TokenKind::Family,
+            }),
+            Some(TokenRef::Family(i)) => {
+                let own = self.own.filter(|t| t.id(name) == Some(TokenRef::Family(i)));
+                let t = own.or(self.host).expect("resolved in a table");
+                Ok(t.families[i as usize].1.family)
+            }
             Some(_) => unreachable!(),
         }
     }
@@ -662,7 +834,7 @@ impl<'a> TokenLookup<'a> {
     /// A length by wire index, the same way over [`LENGTH_ROLES`].
     pub fn length_at(&self, index: u32) -> Option<f32> {
         if index < LENGTH_ROLES as u32 {
-            return Some((METRIC_ROLES[index as usize].get)(self.metrics));
+            return Some(length_role(index as u16, self.theme, self.metrics));
         }
         let i = (index - LENGTH_ROLES as u32) as usize;
         self.table().and_then(|t| t.lengths.get(i)).map(|(_, v)| *v)
@@ -703,6 +875,23 @@ impl<'a> TokenLookup<'a> {
                 match out.iter_mut().find(|(n, _)| *n == name.as_str()) {
                     Some(slot) => slot.1 = *v,
                     None => out.push((name.as_str(), *v)),
+                }
+            }
+        }
+        out
+    }
+
+    /// The same for families: each name with its token, own over host.
+    pub fn families(&self) -> Vec<(&'a str, &'a FamilyToken)> {
+        let mut out: Vec<(&'a str, &'a FamilyToken)> = Vec::new();
+        for t in [self.host, self.own].into_iter().flatten() {
+            for (i, (name, tok)) in t.families.iter().enumerate() {
+                if t.id(name) != Some(TokenRef::Family(i as u16)) {
+                    continue;
+                }
+                match out.iter_mut().find(|(n, _)| *n == name.as_str()) {
+                    Some(slot) => slot.1 = tok,
+                    None => out.push((name.as_str(), tok)),
                 }
             }
         }
@@ -760,15 +949,28 @@ impl<'a> NameRefs<'a> {
         }
     }
 
-    /// The `family` a text names: a stock one by its spelling
-    /// (`sans`, `serif`, `mono`), else an installed or loaded family,
+    /// The `family` a text names: a `$name` family token's pick, a stock
+    /// one by its spelling (`sans`, `serif`, `mono`), else an installed or
+    /// loaded family,
     /// registered in the session and drawn by its handle. A name nothing
     /// matches is sans, and remembered for the caller to raise as
     /// `unknown-family` (`Core::warn_unknown_family`).
     pub fn family(&mut self, name: &str) -> crate::spec::FontFamily {
         use crate::spec::FontFamily;
-        if let Some(stock) = FontFamily::ALL.iter().find(|f| f.name() == Some(name)) {
-            return *stock;
+        // A family token (ADR 0049): the face its list picked. One that
+        // misses, or names another kind, is sans and remembered as any
+        // reference's miss is.
+        if let Some(token) = reference(name) {
+            return match self.look.family(token) {
+                Ok(f) => f,
+                Err(e) => {
+                    self.missed.push(e);
+                    FontFamily::Sans
+                }
+            };
+        }
+        if let Some(stock) = stock_family(name) {
+            return stock;
         }
         match self.look.session.and_then(|s| s.register_family(name)) {
             Some(id) => FontFamily::Custom(id),

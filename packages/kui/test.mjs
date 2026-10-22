@@ -4739,6 +4739,7 @@ const SCENE_TREES = {
         ...TOKEN_DERIVED.map(([n, from, ops]) => [n, { from, ops }]),
       ]),
       lengths: Object.fromEntries(TOKEN_LENGTHS),
+      families: Object.fromEntries(TOKEN_FAMILIES),
     });
     const cell = (key, extra) => box({ width: '$side_w', height: 30, ...extra }, [], key);
     return root({}, [
@@ -4749,6 +4750,9 @@ const SCENE_TREES = {
         cell(TOKEN_KEYS[3], { bg: '$nothing' }),
         ...TOKEN_KEYS.slice(4).map((k) => cell(k, { bg: "$" + k })),
         el('text', { size: '$big', color: '$peach' }, ['tokens', el('span', { color: '$ink' }, ['x'])]),
+        // ADR 0049: the theme's number as a role, and a family token.
+        cell(TOKEN_DIMMED, { bg: '$peach', opacity: roles.disabledOpacity }),
+        el('text', { size: '$big', color: '$peach', family: '$code' }, ['code']),
       ]),
     ]);
   },
@@ -5782,6 +5786,9 @@ const TOKEN_DERIVED = [
   ['bad', 'nothing', [['lift', 0.1]]],
 ];
 const TOKEN_KEYS = ['peach', 'ink', 'role', 'missing', 'lit', 'dim', 'up', 'deep', 'read'];
+/** `conformance::TOKEN_FAMILIES` / `TOKEN_DIMMED` (ADR 0049). */
+const TOKEN_FAMILIES = [['code', ['kui-no-such-family-2026', 'mono']]];
+const TOKEN_DIMMED = 'dimmed';
 /** A root box sized like the core's implicit root: `configure_root` with
  *  the same data it already has, so only `title` actually lands. */
 const root = (props, children) => box({ width: 'grow', height: 'grow', ...props }, children);
@@ -8157,7 +8164,59 @@ test('a $name in a colour or length prop paints the declared token, and a themed
   assert.deepEqual(resolved, {
     colors: { peach: 0xffcc99ff, ink: 0x111111ff },
     lengths: { sideW: 132, gap: 6 },
+    families: {},
   });
+});
+
+// -- The disabled opacity and family tokens (ADR 0049) ------------------------
+
+test('$disabledOpacity is a role any number prop takes, following a pinned theme', () => {
+  assert.equal(roles.disabledOpacity, '$disabledOpacity');
+  assert.ok(protocol().tokenRoles.lengths.includes('disabledOpacity'));
+  const ctx = new Ctx();
+  ctx.setTokens({ lengths: { disabledOpacity: 0.9, fade: 0.75 } });
+  const alpha = () => solidColors(ctx).map((c) => c & 0xff);
+  const tree = () =>
+    root({}, [
+      box({ width: 20, height: 20, bg: 0xff0000ff, opacity: roles.disabledOpacity }),
+      box({ width: 20, height: 20, bg: 0xff0000ff, opacity: '$fade' }),
+    ]);
+  ctx.frame(320, 240, 1, tree());
+  assert.deepEqual(
+    ctx.warnings().map((w) => w.code),
+    ['reserved-token'],
+    'the role name is refused as a declaration',
+  );
+  const stock = ctx.theme().disabledOpacity;
+  assert.deepEqual(alpha(), [Math.round(stock * 255), Math.round(0.75 * 255)], 'the role, then the token after the refused name');
+  ctx.setTheme({ disabledOpacity: 0.25 });
+  ctx.frame(320, 240, 1, tree());
+  assert.deepEqual(alpha(), [Math.round(0.25 * 255), Math.round(0.75 * 255)], 'the pinned theme\'s number');
+});
+
+test('a family token picks the first name that resolves, and a $name in family shapes in it', () => {
+  const T = defineTokens({ families: { code: ['kui-no-such-family-2026', 'mono'], gone: 'kui-no-such-family-2026' } });
+  assert.deepEqual(T, { code: '$code', gone: '$gone' });
+  const ctx = new Ctx();
+  ctx.setTokens({
+    colors: { peach: '#ffcc99' },
+    families: { code: ['kui-no-such-family-2026', 'mono'], gone: 'kui-no-such-family-2026', mono: 'serif' },
+  });
+  assert.deepEqual(ctx.tokens().families, { code: 'mono', gone: 'sans' });
+  const codes = ctx.warnings().map((w) => w.code).sort();
+  assert.deepEqual(codes, ['reserved-token', 'unknown-family'], 'a list nothing matched, and a stock family\'s name');
+  const width = (family) => ctx.measureText('iiiiiiii', { size: 14, family }).width;
+  assert.equal(width(T.code), width('mono'), 'the token is the face its list picked');
+  assert.notEqual(width('mono'), width('sans'));
+  assert.equal(width(T.gone), width('sans'));
+  ctx.frame(320, 240, 1, root({}, [el('text', { family: '$peach' }, ['x']), el('text', { family: '$nothing' }, ['x'])]));
+  assert.deepEqual(
+    ctx.warnings().filter((w) => w.code === 'unknown-token').length,
+    2,
+    'another kind or nothing declared is unknown-token',
+  );
+  assert.throws(() => ctx.setTokens({ families: { code: 3 } }), /a family is a name or a list of names/);
+  assert.throws(() => ctx.setTokens({ fonts: {} }), /unknown key "fonts"/);
 });
 
 test('a role takes the same $ spelling, and a declared role name is refused with reserved-token', () => {
@@ -8333,7 +8392,7 @@ test('setTokens replaces the table whole and rejects what it is not', () => {
   const ctx = new Ctx();
   ctx.setTokens({ colors: { peach: '#ffcc99' }, lengths: { gap: 6 } });
   ctx.setTokens({ lengths: { gap: 8 } });
-  assert.deepEqual(ctx.tokens(), { colors: {}, lengths: { gap: 8 } });
+  assert.deepEqual(ctx.tokens(), { colors: {}, lengths: { gap: 8 }, families: {} });
   assert.throws(() => ctx.setTokens({ colors: { bad: 'red' } }), /bad: /);
   assert.throws(() => ctx.setTokens({ colors: { half: { light: '#fff' } } }), /needs both light and dark/);
   assert.throws(() => ctx.setTokens({ lengths: { w: 'wide' } }), /a length is a number/);

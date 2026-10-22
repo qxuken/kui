@@ -16,7 +16,7 @@ export type { KuiNode, KuiElement, Msg, KuiMsg, AppMsg } from './jsx-runtime.js'
 // takes one; they are re-exported here because `Ctx.openMenu` takes one
 // too, and an app should not have to know which file a type sits in.
 export type { MenuItemInput, MenuItemRole, MenuInput, MenuBarInput } from './jsx-runtime.js';
-export type { ColorToken, LengthToken } from './jsx-runtime.js';
+export type { ColorToken, FamilyToken, LengthToken } from './jsx-runtime.js';
 
 // -- events ------------------------------------------------------------------
 // An event arrives as the message its handler declared
@@ -2321,26 +2321,40 @@ export type ColorTokenValue =
   | { light: number | string; dark: number | string }
   | DerivedColor;
 
-/** What `setTokens` / `defineTokens` take: the app's named colours and
- *  lengths, apart by kind — a colour and a length are both a number, so
- *  the kind cannot be read off the value. Declaration order is the wire
- *  index. A name a theme or metrics role owns (`surface`, `radius`) is
- *  dropped by the core with a `reserved-token` warning: `$surface` always
- *  means the role's. */
+/** A family token's value: a family name — `sans`, `serif`, `mono`, an
+ *  installed or loaded family's — or a fallback list of them, the first
+ *  that resolves picked by the core when the table is declared and again
+ *  when the fonts change (ADR 0049). A list nothing matches is sans, with
+ *  `unknown-family`. */
+export type FamilyTokenValue = string | readonly string[];
+
+/** What `setTokens` / `defineTokens` take: the app's named colours,
+ *  lengths and font families, apart by kind — a colour and a length are
+ *  both a number, so the kind cannot be read off the value. Declaration
+ *  order is the wire index. A length is any number: logical px where the
+ *  slot is a length, the number itself where it is not (`opacity`). A name
+ *  a theme, metrics or number role owns (`surface`, `radius`,
+ *  `disabledOpacity`) is dropped by the core with a `reserved-token`
+ *  warning: `$surface` always means the role's; so is a family token
+ *  named `sans`, `serif` or `mono`. */
 export interface TokenDeclaration<
   C extends Record<string, ColorTokenValue> = Record<string, ColorTokenValue>,
   L extends Record<string, number> = Record<string, number>,
+  F extends Record<string, FamilyTokenValue> = Record<string, FamilyTokenValue>,
 > {
   colors?: C;
   lengths?: L;
+  families?: F;
 }
 
 /** The references a declaration's names become: `{ peach: '$peach',
- *  sideW: '$sideW' }`, each a literal type branded by kind. */
+ *  sideW: '$sideW', code: '$code' }`, each a literal type branded by kind. */
 export type TokenRefs<D extends TokenDeclaration> = {
   readonly [K in keyof D['colors'] & string]: `$${K}` & { readonly __kuiToken?: 'color' };
 } & {
   readonly [K in keyof D['lengths'] & string]: `$${K}` & { readonly __kuiToken?: 'length' };
+} & {
+  readonly [K in keyof D['families'] & string]: `$${K}` & { readonly __kuiToken?: 'family' };
 };
 
 /**
@@ -2355,19 +2369,23 @@ export declare function defineTokens<const D extends TokenDeclaration>(decl: D):
 
 /** The theme's and metrics' roles as references — `roles.surface` is
  *  `'$surface'`, `roles.radius` is `'$radius'` — the same spelling an app
- *  token takes, resolved to the role's value whatever the app declared. */
+ *  token takes, resolved to the role's value whatever the app declared.
+ *  `roles.disabledOpacity` is the theme's number (ADR 0049), for
+ *  `opacity={roles.disabledOpacity}`. */
 export declare const roles: {
   readonly [K in Exclude<keyof Theme, 'appearance' | 'disabledOpacity'> & string]: `$${K}` & { readonly __kuiToken?: 'color' };
 } & {
-  readonly [K in keyof Metrics & string]: `$${K}` & { readonly __kuiToken?: 'length' };
+  readonly [K in (keyof Metrics | 'disabledOpacity') & string]: `$${K}` & { readonly __kuiToken?: 'length' };
 };
 
 /** `tokens()`: the tokens a view here sees this frame, resolved — colours
- *  as `0xRRGGBBAA` for the appearance in effect, lengths in px. Roles are
- *  not listed; read them off `theme()` and `metrics()`. */
+ *  as `0xRRGGBBAA` for the appearance in effect, lengths in px, families
+ *  as the name each list picked (`'sans'` for one nothing matched). Roles
+ *  are not listed; read them off `theme()` and `metrics()`. */
 export interface ResolvedTokens {
   colors: Record<string, number>;
   lengths: Record<string, number>;
+  families: Record<string, string>;
 }
 
 // -- generated from the addon's `#[napi]` surface; edit crates/kui-node/src/lib.rs, then `npm run gen` --
@@ -3112,8 +3130,9 @@ export declare class Ctx {
   /**
    * The tokens a view here sees this frame, resolved: colours as
    * `0xRRGGBBAA` for the appearance in effect, lengths in px,
-   * under `colors` and `lengths`. Roles are not listed — read
-   * them off `theme()` and `metrics()`.
+   * families as the name each list picked, under `colors`,
+   * `lengths` and `families`. Roles are not listed — read them
+   * off `theme()` and `metrics()`.
    */
   tokens(): ResolvedTokens
   /**
@@ -4455,8 +4474,9 @@ export declare class KuiWindow {
   /**
    * The tokens a view here sees this frame, resolved: colours as
    * `0xRRGGBBAA` for the appearance in effect, lengths in px,
-   * under `colors` and `lengths`. Roles are not listed — read
-   * them off `theme()` and `metrics()`.
+   * families as the name each list picked, under `colors`,
+   * `lengths` and `families`. Roles are not listed — read them
+   * off `theme()` and `metrics()`.
    */
   tokens(): ResolvedTokens
   /**

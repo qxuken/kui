@@ -102,12 +102,21 @@ export type KuiNode =
 export type ColorToken = `$${string}` & { readonly __kuiToken?: 'color' };
 /** A reference to a length token by name — `'$sideW'` — for any length
  *  prop: a size, a pad edge, a radius, a border width, a fixed width or
- *  height. Resolved to logical px by the core's table. A colour token in a
+ *  height. Resolved to logical px by the core's table. Every other number
+ *  prop takes one too, as the number itself: `opacity={roles.disabledOpacity}`
+ *  dims a node as a disabled stock control is dimmed (ADR 0049). A colour token in a
  *  length slot is a type error here; a length token in a colour slot is
  *  caught at encode time instead (`unknown-token`), since `ColorProp`
  *  admits any string and narrowing it would refuse every helper that
  *  returns one. */
 export type LengthToken = `$${string}` & { readonly __kuiToken?: 'length' };
+/** A reference to a family token by name — `'$code'` — for a `family`
+ *  prop: the face the token's fallback list picked
+ *  (`docs/adr/0049-the-disabled-opacity-and-font-families-by-token.md`).
+ *  `family` takes any string, so the brand documents rather than narrows;
+ *  it is what keeps a family token out of a length slot (a colour slot
+ *  takes any string, so there it is `unknown-token` at encode time). */
+export type FamilyToken = `$${string}` & { readonly __kuiToken?: 'family' };
 /** Logical px, or a length token. */
 export type LengthProp = number | LengthToken;
 
@@ -541,8 +550,8 @@ export interface GeneratedStyleProps {
   color?: ColorProp;
   /** End the last line with an ellipsis when the text is cut off: a single line unless `maxLines` says otherwise. */
   ellipsis?: boolean;
-  /** Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `"Berkeley Mono"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, exactly as the font database spells it (`"menlo"` is not `"Menlo"`); the session's first registration of any font maps the installed font files once (~30 ms on a Mac, backlog DX24), which a family named in a view pays in that frame. `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. It and `font` set the same thing, so declare one. */
-  family?: 'sans' | 'serif' | 'mono' | (string & {});
+  /** Font family: `sans`, `serif` or `mono`, kui's own, or the name of an installed family or one loaded with `loadFontsDir` / `loadFontFile` — `"Berkeley Mono"` — drawn in its face in the frame that names it (ADR 0037). A name is matched as `addSystemFont` matches it and registered in the session on first sight, exactly as the font database spells it (`"menlo"` is not `"Menlo"`); the session's first registration of any font maps the installed font files once (~30 ms on a Mac, backlog DX24), which a family named in a view pays in that frame. `systemFonts()` lists the names there are. A name nothing matches shapes as sans and raises `unknown-family`. A `$name` is a family token (ADR 0049): the face its fallback list picked, the first of its names that resolves. It and `font` set the same thing, so declare one. */
+  family?: 'sans' | 'serif' | 'mono' | FamilyToken | (string & {});
   /** OpenType features for the shaper, as `tag=value` pairs separated by spaces or commas — a bare `tag` is 1, `-tag` is 0: `"liga=0 calt=0"` keeps a coding font from joining `->` and `!=` (what a terminal built on runs needs to hold its grid), `"tnum"` lines figures up in a gutter, `"ss01"` picks a stylistic set. Unset, the font's own defaults apply. At most 8; part of what the text is shaped as, so two texts differing only here are shaped twice. */
   features?: string;
   /** A registered font handle (addFont / addSystemFont); overrides `family`. */
@@ -704,11 +713,11 @@ export interface SpanProps extends Keyed {
    *  A selection over rows, or over a paragraph's wrapped lines, is one
    *  outline. Nested spans inherit; 0 (the default) is square. */
   bgRadius?: number;
-  /** The span's own face: `sans`, `serif`, `mono` or an installed family's
-   *  name, as the text's `family` takes — inline code in `mono` inside a
-   *  sans paragraph. Carets, hits and selection are measured in the face
-   *  the glyphs are drawn in. Nested spans inherit. */
-  family?: string;
+  /** The span's own face: `sans`, `serif`, `mono`, an installed family's
+   *  name or a `$family` token, as the text's `family` takes — inline code
+   *  in `mono` inside a sans paragraph. Carets, hits and selection are
+   *  measured in the face the glyphs are drawn in. Nested spans inherit. */
+  family?: 'sans' | 'serif' | 'mono' | FamilyToken | (string & {});
   /** A registered font handle (`addFont` / `addSystemFont`), the span's
    *  face; wins over `family`. Nested spans inherit. */
   font?: string;
