@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.61 (unreleased)
+## 0.1.0-alpha.61 (2026-10-22)
 
 **What breaks.**
 
@@ -215,6 +215,37 @@ the core wrote the field is what both readings now ask.
   `on_event` could see the envelope's: `at` has it.
 - A Node guard that checked a row count or an index was a whole,
   non-negative number before handing it to kui: the door refuses one.
+
+### Native verification
+
+One pre-tag pass on 2026-10-22 over the round since alpha.60 — F176,
+F177, RG121, RG126, RG139, RG145, RG157, FZ11, the C and Odin
+tarballs, the dependencies — on the Mac (backlog, "From the alpha.61
+pre-tag pass").
+
+**macOS** (Apple silicon, macOS 27): CI's `check` step by step — fmt,
+clippy, the book, the conformance report, the C round, the Odin leg
+(`gen --check`, `check`, `test`, `slots`) on dev-2026-10, CI's pin, the
+Node addon under `KUI_CONFORMANCE_REQUIRED=1`, gen, the examples'
+typecheck, the headless round — and `nu scripts/test.nu --node` on the
+tagged tree: **2471 tests over 170 Rust suites and Node's**. `cargo audit` clean. The windowed round
+with Node's: 55 examples on both bases, 132 windows. The accessibility
+audit: **106 of 106**. The bench guard against alpha.60: the guarded
+rows −1.0% to +2.4%, stream and long_line flat, a warm cell grid
+−11.8% (RG126); `benches/editing.rs`, divan now but not in alpha.60,
+compared by hand — a 100 000-line edit 1.40 ms against alpha.60's
+1.395. Three read-only reviewers over the diff found RG158, fixed
+before the tag: F176's walk out of the selection scope a press on
+selectable text is in, F177's shown password, two unzeroed copies of a
+password, a Windows Odin plugin linking kui statically.
+
+**The C and Odin tarballs**: darwin-arm64 packed natively, bundled with
+the link block RG158 changed, and `pack-ffi.nu verify` over both — the
+counter linked shared and static and run `--headless`, C and Odin, on
+the Mac. The Linux packs and the Docker legs are as alpha.60's and
+GitHub's workflow_dispatch run of `ddb16eb5`, which built all four
+platforms, Windows's first pack among them; no Windows plugin has been
+built from a pack.
 
 ## 0.1.0-alpha.60 (2026-10-22)
 
