@@ -1101,6 +1101,33 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         "#,
             rows = conformance::LAYERS_ROWS,
         ),
+        // ADR 0053: a `floats_in_order` canvas of `a` and `b`, `n` declared
+        // first from phase 1, `a` and `b` swapped in phase 2, and a menu
+        // after the canvas, outside it.
+        "floats-in-order" => r#"
+            local function item(key, x, y, w, h, bg, label)
+              return column { key = key, float = { anchor = "viewport", at = { "start", "start" },
+                                                    self_at = { "start", "start" }, dx = x, dy = y },
+                              width = w, height = h, bg = bg, on_click = { kind = key }, label = label }
+            end
+            local canvas = { key = "canvas", width = { grow = 1 }, height = { grow = 1 },
+                             bg = 0x101018ff, floats_in_order = true }
+            if phase >= 1 then
+              canvas[#canvas + 1] = item("n", 200, 40, 120, 80, 0x3b5bd4ff, "N")
+            end
+            local a = item("a", 40, 60, 120, 80, 0xd9534fff, "A")
+            local b = item("b", 120, 100, 120, 80, 0x73d98cff, "B")
+            if phase >= 2 then
+              canvas[#canvas + 1] = b
+              canvas[#canvas + 1] = a
+            else
+              canvas[#canvas + 1] = a
+              canvas[#canvas + 1] = b
+            end
+            return column { width = { grow = 1 }, height = { grow = 1 }, column(canvas),
+                            item("menu", 280, 20, 80, 200, 0x888888ff, "Menu") }
+        "#
+        .to_string(),
         // ADR 0031: two zones, a button inside the first, and across the
         // phases a hoverable float over the first zone that is no zone
         // (phase 1) and a modal over it (phase 2). The OS's documents are

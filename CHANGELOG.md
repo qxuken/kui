@@ -41,6 +41,9 @@ was the first bare bump to break an app in five releases).
 - C: `KuiSpec` appends `reveal_on_hover` and grows to 800 bytes on
   64-bit; `KUI_ABI_VERSION` is 35. Recompile; a zeroed field is a node
   drawn as before (ADR 0051).
+- C: `KuiSpec` takes `floats_in_order` in the tail padding after
+  `reveal_on_hover`, still 800 bytes on 64-bit; `KUI_ABI_VERSION` is
+  36. Recompile; a zeroed field stacks floats as before (ADR 0053).
 - Rust: `MenuBar` has a third public field, `standard_menus`, and
   `InteractSpec` a `reveal_on_hover`; a struct literal of either names
   it or ends in `..Default::default()` (`MenuBar::new` and the builders
@@ -87,6 +90,20 @@ was the first bare bump to break an app in five releases).
   the window there are no standard menus, and the flag changes nothing.
   Read back with `menuBar().standardMenus` and
   `kui_menu_bar_has_standard_menus`.
+- **A canvas's floats stacked in its document's order** (ADR 0053,
+  backlog F186). Floats stack in the order they open, so on a drawing
+  whose items are floats an item that panned into view, or was added,
+  landed over every other item, and moving an item in the tree moved
+  nothing. `floatsInOrder` on the canvas (`floats_in_order` in Lua and
+  Rust, `KuiSpec.floats_in_order` in C and Odin) paints every float
+  under it, at any depth, in tree order, the last declared on top,
+  worked out every frame: a newcomer goes to its place, two items
+  swapped in the tree swap on the next frame, and the press follows.
+  As a group the canvas's floats keep their place among the window's
+  other floats, so a menu opened after them stays over all of them. A
+  popup declared under the canvas is one of its floats and paints by
+  its place; declare it outside. The hover hint of a `tooltip` is the
+  core's and goes over the items.
 
 - **A wheel's notch glides** (ADR 0050, backlog F182). A notch was a
   hard 40 px step on every platform — any mouse wheel on Windows and
@@ -154,6 +171,10 @@ was the first bare bump to break an app in five releases).
 - An `onScroll` handler on a scroll container that caught the wheel
   only to call `set_scroll` with an easing of its own, so a mouse did
   not step.
+- Re-keying a canvas of floats whenever the set it draws changed, or
+  re-keying an item to bring it forward, kept only so the floats would
+  stack in the document's order — and the node state each re-key threw
+  away: `floatsInOrder` on the canvas (ADR 0053).
 
 ## 0.1.0-alpha.63 (2026-10-22)
 

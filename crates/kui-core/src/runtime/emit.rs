@@ -2296,6 +2296,10 @@ impl Core {
                 .map(|&(_, rank)| roots[rank as usize])
                 .collect()
         };
+        let mut order = order;
+        if self.tree.any_floats_in_order {
+            group_in_tree_order(&self.tree, roots, &mut order, stack, &mut self.float_groups);
+        }
         // Said here so the placement above cannot drift.
         debug_assert!(nested_above(&order));
         order
@@ -3878,4 +3882,99 @@ fn ring_over_content(quads: &mut Vec<Quad>, solid: Option<usize>) {
     quads[at].border_w = 0.0;
     quads[at].border_color = Color::TRANSPARENT;
     quads.push(ring);
+}
+
+/// The floats under a `floats_in_order` node, put in tree order where the
+/// stack has them (ADR 0053): each group — the float roots whose
+/// outermost such ancestor is one node — goes where its lowest member
+/// was, in tree order, and whatever else lay between its members moves up
+/// over it, in the order it had. A float under such a node is in its
+/// group however deep; the hover hint the core floats for a `tooltip`,
+/// and anything inside one, is not, and keeps the stack's rule.
+///
+/// What it moves only ever goes down, to the group's lowest place: a
+/// nested float the stack put over the float it is in stays over it,
+/// and so does a float the group is in stay under it. The stack is
+/// written back, so the next frame's steady check reads this order; a
+/// frame whose order already is this one — the steady case — refills
+/// `groups` and checks, with no allocation.
+fn group_in_tree_order(
+    tree: &Tree,
+    roots: &[u32],
+    order: &mut Vec<u32>,
+    stack: &mut Vec<(Key, u32)>,
+    groups: &mut Vec<u32>,
+) {
+    let is_hint = |i: u32| tree.specs[i as usize].access().hint;
+    groups.clear();
+    groups.extend(roots.iter().map(|&r| {
+        let mut group = NIL;
+        if !is_hint(r) {
+            let mut a = tree.parent[r as usize];
+            while a != NIL && !is_hint(a) {
+                if tree.specs[a as usize].floats_in_order {
+                    group = a;
+                }
+                a = tree.parent[a as usize];
+            }
+            if a != NIL {
+                group = NIL; // inside a hint
+            }
+        }
+        group
+    }));
+    // Roots are in tree order, so a rank is a search away.
+    let rank_of = |r: u32| roots.binary_search(&r).expect("a root this frame") as u32;
+    // A group's members are one run of its subtree's range in tree order:
+    // count the groups there, then the runs in the order the stack left.
+    let mut distinct = 0usize;
+    let mut last = NIL;
+    for &g in groups.iter() {
+        if g != NIL && g != last {
+            distinct += 1;
+            last = g;
+        }
+    }
+    if distinct == 0 {
+        return;
+    }
+    let mut runs = 0usize;
+    let mut sorted = true;
+    let (mut prev_group, mut prev_rank) = (NIL, 0u32);
+    for &r in order.iter() {
+        let rank = rank_of(r);
+        let g = groups[rank as usize];
+        if g != NIL {
+            if g != prev_group {
+                runs += 1;
+            } else if rank < prev_rank {
+                sorted = false;
+                break;
+            }
+        }
+        (prev_group, prev_rank) = (g, rank);
+    }
+    if sorted && runs == distinct {
+        return;
+    }
+    let mut out: Vec<u32> = Vec::with_capacity(order.len());
+    let mut placed: Vec<u32> = Vec::new();
+    for &r in order.iter() {
+        let g = groups[rank_of(r) as usize];
+        if g == NIL {
+            out.push(r);
+        } else if !placed.contains(&g) {
+            placed.push(g);
+            out.extend(
+                roots
+                    .iter()
+                    .zip(groups.iter())
+                    .filter(|&(_, &m)| m == g)
+                    .map(|(&m, _)| m),
+            );
+        }
+    }
+    stack.clear();
+    stack.extend(out.iter().map(|&r| (tree.keys[r as usize], rank_of(r))));
+    *order = out;
 }

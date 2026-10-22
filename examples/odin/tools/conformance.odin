@@ -1747,6 +1747,47 @@ scene_layers :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// One item of scene_floats_in_order: a viewport float at (x, y) that posts
+// its key when clicked.
+order_item :: proc(ui: ^kui.Ui, key: string, x, y, w, h: f32, bg: kui.Color, label: string) {
+	spec := kui.Spec {
+		key      = key,
+		float    = {mode = .Viewport, anchor_x = .Start, anchor_y = .Start, self_x = .Start, self_y = .Start, dx = x, dy = y},
+		width    = kui.px(w),
+		height   = kui.px(h),
+		bg       = bg,
+		label    = label,
+		on_click = msg(key),
+	}
+	if kui.box(ui, spec) {}
+}
+
+// conformance::build_floats_in_order (ADR 0053): a floats_in_order canvas of
+// `a` and `b`, `n` declared first from phase 1, `a` and `b` swapped in phase
+// 2, and a menu after the canvas, outside it.
+scene_floats_in_order :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	if kui.box(ui, {width = kui.GROW, height = kui.GROW}) {
+		canvas := kui.Spec {
+			key             = "canvas",
+			width           = kui.GROW,
+			height          = kui.GROW,
+			bg              = 0x101018ff,
+			floats_in_order = true,
+		}
+		if kui.box(ui, canvas) {
+			if phase >= 1 do order_item(ui, "n", 200, 40, 120, 80, 0x3b5bd4ff, "N")
+			for i in 0 ..< 2 {
+				if (i == 1) == (phase >= 2) {
+					order_item(ui, "a", 40, 60, 120, 80, 0xd9534fff, "A")
+				} else {
+					order_item(ui, "b", 120, 100, 120, 80, 0x73d98cff, "B")
+				}
+			}
+		}
+		order_item(ui, "menu", 280, 20, 80, 200, 0x888888ff, "Menu")
+	}
+}
+
 // conformance::build_drop (ADR 0031): two zones, a button inside the first,
 // and across the phases a hoverable float over the first zone that is no
 // zone (phase 1) and a modal over it (phase 2).
@@ -2079,6 +2120,7 @@ SCENES := [?]Scene {
 	{"virtual", scene_virtual},
 	{"selection-range", scene_selection_range},
 	{"layers", scene_layers},
+	{"floats-in-order", scene_floats_in_order},
 	{"drop", scene_drop},
 	{"anchor", scene_anchor},
 	{"scrollbar", scene_scrollbar},

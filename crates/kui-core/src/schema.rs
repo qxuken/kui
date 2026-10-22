@@ -190,6 +190,7 @@ pub const P_ON_MENU: u32 = 138;
 pub const P_ON_SELECTION_RANGE: u32 = 139;
 pub const P_WINDOW_EVENTS: u32 = 140;
 pub const P_REVEAL_ON_HOVER: u32 = 141;
+pub const P_FLOATS_IN_ORDER: u32 = 142;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1141,6 +1142,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Flag,
         apply: Apply::SpecFlag(|s| s.over_siblings()),
         doc: "Paint this node and its subtree after its siblings, over any it overlaps: a tab that glides past its neighbour under `slide` passes over it whichever way it moved, so the selected tab declared `overSiblings` stays on top without the view tracking when it moves. Siblings otherwise paint in tree order, a later place over an earlier. Only the sibling order changes: the parent still paints under it, what follows the parent over it, it keeps the parent's clip, and a float still opens above it. The hit test reads the same order, so where it overlaps a sibling it takes the press. Two siblings that both declare it paint in tree order between themselves. Not a z-index: there is no number to outbid (`docs/adr/0046-a-node-over-its-siblings-paints-after-them.md`).",
+    },
+    PropDef {
+        name: "floatsInOrder",
+        id: P_FLOATS_IN_ORDER,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.floats_in_order()),
+        doc: "Paint the floats under this node in tree order, the last declared on top, worked out again every frame — the order its in-flow children paint in — instead of the order they opened: a drawing canvas whose items are floats stacks them as its file does, so an item that pans into view or is added takes its place in the order rather than going over the rest, and moving an item in the tree moves it in the stack on the next frame. Every float at any depth under the node takes part, and one nested in another is still over the float it is in. As a group they keep the place the stack gives them among the floats outside the node: a menu opened after them stays over all of them, a new item included. A menu declared under the node is one of them and paints by its place; declare it outside the node to have it open over everything. The hover hint the core floats for a `tooltip` is the exception, over them all. The hit test reads the same order. Not a z-index: the order is the tree's (`docs/adr/0053-floats-under-a-node-paint-in-tree-order.md`).",
     },
     PropDef {
         name: "keyframes",

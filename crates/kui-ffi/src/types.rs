@@ -866,6 +866,11 @@ pub struct KuiSpec {
     /// (`revealOnHover`, ADR 0051). Hidden is opacity 0: it keeps its room,
     /// its hits and its place in the access tree. ABI 35.
     pub reveal_on_hover: u32,
+    /// Non-zero: the floats under the node, at any depth, paint in tree
+    /// order, the last declared on top, instead of the order they opened
+    /// (`floatsInOrder`, ADR 0053). As a group they keep their place among
+    /// the floats outside the node. ABI 36.
+    pub floats_in_order: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

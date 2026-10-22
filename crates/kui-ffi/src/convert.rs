@@ -454,6 +454,9 @@ pub(crate) fn spec_of(
     if s.reveal_on_hover != 0 {
         spec = spec.reveal_on_hover();
     }
+    if s.floats_in_order != 0 {
+        spec = spec.floats_in_order();
+    }
     if s.cursor != 0 {
         // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".
         spec = spec.cursor(kui_core::schema::cursor_idx(s.cursor as usize - 1));

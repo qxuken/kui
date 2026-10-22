@@ -887,6 +887,13 @@ Spec :: struct {
 	// way it moved, so the selected tab declared `overSiblings` stays on top
 	// without the view tracking when it moves.
 	over_siblings: bool,
+	// Paint the floats under this node in tree order, the last declared on top,
+	// worked out again every frame — the order its in-flow children paint in
+	// — instead of the order they opened: a drawing canvas whose items are
+	// floats stacks them as its file does, so an item that pans into view or is
+	// added takes its place in the order rather than going over the rest, and
+	// moving an item in the tree moves it in the stack on the next frame.
+	floats_in_order: bool,
 	// CSS-style stops `[{ at?, dx?, dy?, width?, height?, bg?, radius?, opacity?,
 	// rotate?, scale? }, …]`: the slots they name cycle through them over
 	// `transition` ms, for ever unless `iterations` says how many times, without
@@ -1077,6 +1084,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.bounce = s.bounce
 	out.slide = 1 if s.slide else 0
 	out.over_siblings = 1 if s.over_siblings else 0
+	out.floats_in_order = 1 if s.floats_in_order else 0
 	out.keyframes, out.keyframes_len = ([^]c.Keyframe)(raw_data(s.keyframes)), uint(len(s.keyframes))
 	out.enter = transmute(c.Enter)s.enter
 	out.exit = transmute(c.Enter)s.exit

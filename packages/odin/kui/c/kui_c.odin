@@ -42,7 +42,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 35
+ABI_VERSION :: 36
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -670,6 +670,7 @@ Spec :: struct {
 	on_menu: ^Value,
 	on_selection_range: ^Value,
 	reveal_on_hover: u32,
+	floats_in_order: u32,
 }
 
 Announcement :: struct {

@@ -3441,6 +3441,72 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "floats-in-order",
+        doc: "Floats under a `floatsInOrder` node paint in tree order \
+              (`docs/adr/0053-floats-under-a-node-paint-in-tree-order.md`): \
+              a canvas of three items and a menu outside it, with a click \
+              where two of them overlap. In phase 0 `b`, later in the tree, \
+              is over `a`. In phase 1 `n` comes in declared first: under `b` \
+              where they overlap, where the stack alone would have put the \
+              newcomer on top, and under the menu that opened before it, \
+              since the canvas's floats keep their place below it as a \
+              group. In phase 2 `a` and `b` swap places in the tree and \
+              swap in the paint and the press on that frame. The digest \
+              carries the order; the events pin what it decides.",
+        custom: &["float", "key"],
+        elements: &["box"],
+        build: build_floats_in_order,
+        env: NATIVE_CHROME,
+        steps: &[
+            // Where `a` and `b` overlap: `b`, later in the tree.
+            Step::Cursor(140, 120),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Phase(1),
+            // Where `n` and `b` overlap: `b`, though `n` opened last.
+            Step::Cursor(220, 110),
+            Step::MouseDown,
+            Step::MouseUp,
+            // Where `n` and the menu overlap: the menu.
+            Step::Cursor(300, 80),
+            Step::MouseDown,
+            Step::MouseUp,
+            Step::Phase(2),
+            // `a` and `b` swapped in the tree: `a`.
+            Step::Cursor(140, 120),
+            Step::MouseDown,
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            // The canvas, its three items and the menu.
+            solid: 5,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &[
+                "0 window ||",
+                "1 button N||",
+                "1 button B||",
+                "1 button A||",
+                "1 button Menu||",
+            ],
+            events: &["click b", "click b", "click menu", "click a"],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
         name: "drop",
         doc: "Files dragged in from the OS \
               (`docs/adr/0031-a-drop-zone-is-a-row-and-the-files-are-an-event.md`): \
@@ -7629,5 +7695,52 @@ fn build_layers(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
                 .on_click(Value::map([("kind", Value::str("toast"))]))
                 .label("Toast"),
         );
+    });
+}
+
+/// The `floats-in-order` scene: a `floatsInOrder` canvas of items `a`
+/// and `b`, `n` declared first from phase 1, `a` and `b` swapped in
+/// phase 2, and a menu after the canvas, outside it, in every phase.
+fn build_floats_in_order(ui: &mut Ui<'_>, _f: &Fixtures, phase: u32) {
+    let float =
+        |ui: &mut Ui<'_>, key: &str, x: f32, y: f32, w: f32, h: f32, bg: u32, label: &str| {
+            ui.leaf_keyed(
+                key,
+                NodeSpec::column()
+                    .float(
+                        FloatConfig::viewport()
+                            .inside(Align::Start, Align::Start)
+                            .offset(x, y),
+                    )
+                    .size(w, h)
+                    .bg(Color::hex(bg))
+                    .on_click(Value::map([("kind", Value::str(key))]))
+                    .label(label),
+            );
+        };
+    ui.with(NodeSpec::column().fill(), |ui| {
+        ui.with_keyed(
+            "canvas",
+            NodeSpec::column()
+                .fill()
+                .bg(Color::hex(0x101018ff))
+                .floats_in_order(),
+            |ui| {
+                if phase >= 1 {
+                    float(ui, "n", 200.0, 40.0, 120.0, 80.0, 0x3b5bd4ff, "N");
+                }
+                let a = |ui: &mut Ui<'_>| float(ui, "a", 40.0, 60.0, 120.0, 80.0, 0xd9534fff, "A");
+                let b =
+                    |ui: &mut Ui<'_>| float(ui, "b", 120.0, 100.0, 120.0, 80.0, 0x73d98cff, "B");
+                if phase >= 2 {
+                    b(ui);
+                    a(ui);
+                } else {
+                    a(ui);
+                    b(ui);
+                }
+            },
+        );
+        float(ui, "menu", 280.0, 20.0, 80.0, 200.0, 0x888888ff, "Menu");
     });
 }

@@ -5539,6 +5539,33 @@ SCENE_TREES.layers = (_fx, phase) => {
   ].filter(Boolean))]);
 };
 
+// `conformance::build_floats_in_order` (ADR 0053): a `floatsInOrder` canvas
+// of `a` and `b`, `n` declared first from phase 1, `a` and `b` swapped in
+// phase 2, and a menu after the canvas, outside it.
+SCENE_TREES['floats-in-order'] = (_fx, phase) => {
+  const item = (key, dx, dy, width, height, bg, label) => box(
+    {
+      float: { anchor: 'viewport', at: ['start', 'start'], self: ['start', 'start'], dx, dy },
+      width, height, bg, onClick: { kind: key }, label,
+    },
+    [],
+    key,
+  );
+  const a = item('a', 40, 60, 120, 80, '#d9534f', 'A');
+  const b = item('b', 120, 100, 120, 80, '#73d98c', 'B');
+  return root({}, [box({ width: 'grow', height: 'grow' }, [
+    box(
+      { width: 'grow', height: 'grow', bg: '#101018', floatsInOrder: true },
+      [
+        phase >= 1 && item('n', 200, 40, 120, 80, '#3b5bd4', 'N'),
+        ...(phase >= 2 ? [b, a] : [a, b]),
+      ].filter(Boolean),
+      'canvas',
+    ),
+    item('menu', 280, 20, 80, 200, '#888888', 'Menu'),
+  ])]);
+};
+
 // `conformance::build_drop` (ADR 0031): two zones, a button inside the
 // first, and across the phases a hoverable float over the first zone that
 // is no zone (phase 1) and a modal over it (phase 2). The OS's documents

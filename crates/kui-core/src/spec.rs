@@ -891,6 +891,19 @@ pub struct NodeSpec {
     /// such siblings paint in tree order among themselves. Not a layer:
     /// a float still opens above it, and it keeps its parent's clip.
     pub over_siblings: bool,
+    /// Paint the floats under this node in tree order, the last declared
+    /// on top, recomputed every frame — as its in-flow children paint —
+    /// instead of in the order they opened: a drawing canvas whose items
+    /// are floats stacks them as its document does, so an item that pans
+    /// into view or is added goes to its place in the order rather than
+    /// over the rest, and moving an item in the tree moves it in the
+    /// stack. Every float at any depth under the node takes part, a float
+    /// nested in one of them still over the float it is in; as a group
+    /// they keep the place the stack gives them among the floats outside
+    /// the node, only their order among themselves changes. The hover
+    /// hint the core floats for a `tooltip` keeps the stack's rule and
+    /// goes over them. The hit test reads the same order.
+    pub floats_in_order: bool,
     /// Reachable by Tab, and focused by a click or an assistive-technology
     /// request, without a click payload or a control role — a list row
     /// that opens on Enter, a card. Controls (editors, key sinks,
@@ -2885,6 +2898,13 @@ impl NodeSpec {
         self
     }
 
+    /// Paint the floats under this node in tree order (see the
+    /// `floats_in_order` field).
+    pub fn floats_in_order(mut self) -> Self {
+        self.floats_in_order = true;
+        self
+    }
+
     /// Easing for the node's transition (sets a default 200ms one if none
     /// was declared yet).
     pub fn easing(mut self, easing: Easing) -> Self {
@@ -3397,6 +3417,7 @@ impl PartialEq for NodeSpec {
             && self.transition == other.transition
             && self.slide == other.slide
             && self.over_siblings == other.over_siblings
+            && self.floats_in_order == other.floats_in_order
             && self.focusable == other.focusable
             && self.initial_focus == other.initial_focus
             && self.disabled == other.disabled
