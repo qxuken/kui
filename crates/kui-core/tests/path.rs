@@ -307,6 +307,28 @@ fn a_big_mask_takes_a_texture_and_a_huge_one_warns() {
     );
 }
 
+/// An arc whose radius, scaled up to reach its end, is past what an f32
+/// holds (backlog FZ10, from the alpha.60 fuzz round): the node's box,
+/// taken in logical px, is its chord, and at a scale of 1 the mask is
+/// too, but at 0.5 the scaled radius is a number again and the mask went
+/// round an ellipse 2e38 px across, into the rasterizer. It draws
+/// nothing at that scale rather than overflowing it, and its chord at 1.
+#[test]
+fn an_arc_past_an_f32_draws_its_chord_or_nothing_at_any_scale() {
+    let arc = Path::from_floats(&[4.0, -8.507_059e37, -0.522_464_8, 0.0, 1.0, 1.0, 0.0, 5.125])
+        .unwrap()
+        .stroked(Stroke::new(2.0, Color::WHITE));
+    for scale in [0.5, 1.0, 2.0] {
+        let mut core = Core::new();
+        frame_at(&mut core, scale, |ui| {
+            ui.with(NodeSpec::column().fill(), |ui| {
+                ui.path_keyed("arc", &arc, NodeSpec::column().bg(Color::WHITE));
+            });
+        });
+        let _ = core.output();
+    }
+}
+
 /// A path whose ops change twice within a few frames leaves the atlas for a
 /// texture of its own, stays there through a pause, and is the atlas's
 /// again once it has held still for long enough (RG112).

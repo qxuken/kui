@@ -3100,6 +3100,19 @@ entries, F174 and FZ9 — what the `events` fuzz target, written for the
 ADR, found in its first run — **built 2026-10-21**, the day they were
 filed, and in the archive.
 
+## From the alpha.60 pre-tag pass (2026-10-22)
+
+The pass over the round since alpha.59 — ADRs 0047 and 0048, F173 —
+on the Windows machine and under WSL: CI's `check` in order on both,
+the windowed round on both, the bench guard (clean against alpha.59),
+and ten minutes of every fuzz target at once on eight cores. Corrected
+before the tag: Odin's surface walk passed `root_with` a bare spec
+literal, which does not compile against its `Maybe(Spec)`, so CI's Odin
+step failed on main. One entry, FZ10, is what the fuzzing found — an
+arc past an f32 at one scale measured as its chord and drawn round its
+ellipse, 29 seconds into the `path` target; the other five ran clean —
+**built 2026-10-22**, the day it was filed, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -4850,3 +4863,7 @@ move.
 **From ADR 0047's follow-ups (2026-10-21)** — F175, filed with its ADR and built the next day
 
 - `.` **F175** — [A window declares the messages its events arrive as](backlog/closed-2026-09.md#-f175--a-window-declares-the-messages-its-events-arrive-as--done-2026-10-22) — done (2026-10-22) — ADR 0048: no root events; the root's boxed `windowEvents` group, `onWindow`/`onDismiss` on a `windows` entry, the menu bar's `onMenu`, in every binding
+
+**From the alpha.60 pre-tag fuzz round (2026-10-22)** — FZ10, filed and built the same day
+
+- `!` **FZ10** — [An arc past an f32 at one scale is measured as its chord and drawn round its ellipse](backlog/closed-2026-09.md#-fz10--an-arc-past-an-f32-at-one-scale-is-measured-as-its-chord-and-drawn-round-its-ellipse--done-2026-10-22) — done (2026-10-22) — `rasterize_at` measures the physical outline it hands zeno by `drawable`'s rule and leaves the mask blank past it; `fuzz.nu keep` reads tmin's file past libFuzzer's echoed flag

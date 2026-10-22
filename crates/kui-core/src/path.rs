@@ -1126,7 +1126,9 @@ pub type DashCut = crate::line::Cut;
 /// wide and tall together at this scale (stroke included), one farther
 /// than [`RASTER_REACH`] from the mask's origin, or a mask wider or taller
 /// than [`MAX_MASK_SIDE`]. A path node never asks for one — its mask is
-/// its outline's box, and at most `MAX_MASK_SIDE` a side.
+/// its outline's box, and at most `MAX_MASK_SIDE` a side — but for an arc
+/// whose radius is past an f32 at one scale and not at the other (backlog
+/// FZ10): the outline drawn is measured too, and left blank past either.
 pub fn rasterize(
     ops: &[PathOp],
     scale: f32,
@@ -1268,6 +1270,19 @@ pub fn rasterize_at(
         physical.extend(ops.iter().map(|op| op.placed(scale, off)));
         let (mut pts, mut closes) = (Vec::new(), Vec::new());
         flatten_as(&physical, &mut pts, true, RASTER, Some(&mut closes));
+        // `drawable` measured the outline in logical px; this is the one
+        // drawn, and an arc can differ between the two by more than its
+        // fineness (backlog FZ10). A radius scaled up to reach the arc's
+        // end can be past an f32 in logical px and a number again at a
+        // scale under 1: the logical arc was its chord, this one went
+        // round an ellipse 2e38 px across. Its points are the fill's
+        // arc's too, cut alike, so this box holds every point zeno is
+        // handed that kui flattened.
+        if let Some(b) = bounds(&pts)
+            && !fits(b.x, b.y, b.x + b.w, b.y + b.h, stroke_width(paint))
+        {
+            return buf;
+        }
         let mut lines: Vec<Command> = Vec::with_capacity(pts.len() + closes.len());
         let mut closes = closes.into_iter();
         let mut kept: Vec<Point> = Vec::new();
@@ -1384,17 +1399,12 @@ pub const RASTER_REACH: f32 = 262_144.0;
 /// the hit outline's flattening, the same points a path node's mask is
 /// sized by.
 fn drawable(ops: &[PathOp], scale: f32, off: Vec2, w: u32, h: u32, paint: MaskPaint) -> bool {
-    let width = match paint {
-        // The fill's bleed is a one-pixel stroke.
-        MaskPaint::Fill(_) => 1.0,
-        MaskPaint::Stroke(w) => w,
-        MaskPaint::Dashed(w, cut) => {
-            if !cut.offset.is_finite() || !cut.lens.iter().all(|l| l.is_finite()) {
-                return false;
-            }
-            w
-        }
-    };
+    if let MaskPaint::Dashed(_, cut) = paint
+        && (!cut.offset.is_finite() || !cut.lens.iter().all(|l| l.is_finite()))
+    {
+        return false;
+    }
+    let width = stroke_width(paint);
     if !(scale.is_finite() && off.x.is_finite() && off.y.is_finite() && width.is_finite())
         || w > MAX_MASK_SIDE
         || h > MAX_MASK_SIDE
@@ -1409,7 +1419,23 @@ fn drawable(ops: &[PathOp], scale: f32, off: Vec2, w: u32, h: u32, paint: MaskPa
         return true;
     };
     let (x0, y0) = (b.x * scale + off.x, b.y * scale + off.y);
-    let (x1, y1) = (x0 + b.w * scale, y0 + b.h * scale);
+    fits(x0, y0, x0 + b.w * scale, y0 + b.h * scale, width)
+}
+
+/// The width of the outline a mask paints, in physical px: the fill's
+/// bleed is a one-pixel stroke.
+fn stroke_width(paint: MaskPaint) -> f32 {
+    match paint {
+        MaskPaint::Fill(_) => 1.0,
+        MaskPaint::Stroke(w) | MaskPaint::Dashed(w, _) => w,
+    }
+}
+
+/// Whether an outline whose box runs from `(x0, y0)` to `(x1, y1)` in the
+/// mask's physical px, stroked `width` wide, is one zeno can draw: within
+/// [`RASTER_REACH`] of the origin and [`RASTER_SPAN`] across. A box that
+/// is not finite is neither.
+fn fits(x0: f32, y0: f32, x1: f32, y1: f32, width: f32) -> bool {
     let reach = [x0, y0, x1, y1].iter().all(|v| v.abs() <= RASTER_REACH);
     reach && (x1 - x0).abs() + (y1 - y0).abs() + 2.0 * width.abs() <= RASTER_SPAN
 }
@@ -1801,6 +1827,34 @@ mod tests {
             MAX_MASK_SIDE,
             fill
         ));
+    }
+
+    /// What the rasterizer measures is the outline it draws, not only the
+    /// logical one (backlog FZ10, from the alpha.60 fuzz round): this
+    /// arc's radius, scaled up to reach its end, is past an f32 in
+    /// logical px, so that outline is its chord - while at a scale of 0.5
+    /// the radius is a number again and the outline went round an ellipse
+    /// 2e38 px across, into zeno. Left blank there; its chord at 1 and 2,
+    /// where the scaled radius is past an f32 too.
+    #[test]
+    fn an_arc_past_an_f32_in_logical_px_is_measured_as_drawn() {
+        let ops = [PathOp::ArcTo {
+            rx: -8.507_059e37,
+            ry: -0.522_464_8,
+            rotation: 0.0,
+            large: true,
+            sweep: true,
+            to: Vec2::new(0.0, 5.125),
+        }];
+        let stroke = MaskPaint::Stroke(2.0);
+        for paint in [MaskPaint::Fill(FillRule::NonZero), stroke] {
+            let mask = rasterize(&ops, 0.5, (0, 0), 48, 32, paint);
+            assert!(mask.iter().all(|&a| a == 0), "{paint:?}");
+        }
+        for scale in [1.0, 2.0] {
+            let chord = rasterize(&ops, scale, (2, 0), 48, 32, stroke);
+            assert!(chord.iter().any(|&a| a > 0), "at {scale}");
+        }
     }
 
     /// An arc's rotation is taken within one turn before it is drawn

@@ -160,7 +160,15 @@ def "main keep" [
     } | complete)
     # tmin writes `minimized-from-<hash>` beside the crash and names it
     # (after "Minimized artifact:", and again in its "Reproduce with").
-    let found = ($r.stdout + $r.stderr | parse -r '(?<path>\S*minimized-from-[0-9a-f]+)' | get path | uniq)
+    # libFuzzer also echoes the name it was asked for, as the flag
+    # `-exact_artifact_path=<path>`, whether or not it wrote the file: the
+    # flag's name is no part of the path, and a name with no file behind
+    # it is not a minimized input (the alpha.60 round's `path` crash).
+    let found = ($r.stdout + $r.stderr
+        | parse -r '(?:^|[\s=])(?<path>[^\s=]*minimized-from-[0-9a-f]+)'
+        | get path
+        | uniq
+        | where {|p| $p | path exists })
     let small = if ($found | is-empty) {
         print -e "tmin did not minimize it; keeping the artifact as found"
         $artifact
