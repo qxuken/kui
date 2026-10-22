@@ -319,7 +319,10 @@ def stage [row: record, built: record, feature_note: string] {
         cp $src ($dir | path join lib)
     }
     # rustc's own line: "note: native-static-libs: -lgcc_s -lutil ...".
-    let link = $built.log | lines | where {|l| $l | str contains "native-static-libs:" } | each {|l| $l | split row "native-static-libs:" | last | str trim } | get -o 0 | default ""
+    # Coloured where cargo colours (the release workflow sets
+    # CARGO_TERM_COLOR=always), so its last flag carried the reset code:
+    # alpha.60's macOS verify could not find `-lm\e[0m`.
+    let link = $built.log | ansi strip | lines | where {|l| $l | str contains "native-static-libs:" } | each {|l| $l | split row "native-static-libs:" | last | str trim } | get -o 0 | default ""
     let static = libraries $row.target | last
     # A library the link line names that no system has (windows-targets'
     # windows.0.53.0.lib) goes in lib/ beside the archive.
