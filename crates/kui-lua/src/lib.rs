@@ -294,6 +294,16 @@
 //!
 //! A key no table claims is an `unknown-prop` warning the host can read.
 //!
+//! A number is any number. Where kui wants a whole one — a count, a
+//! position, an index, a byte offset, a line: `cells`' `rows`, `cols`,
+//! runs and `cursor_at`, `index`, a dropdown's `current`, `list`'s
+//! `overscan`, `row_heights`, `env.caret_rect`'s byte — a fraction is
+//! floored and below 0 is 0, so `rows = room_h / line_h` is the rows that
+//! fit. A handle kui gave out — an `image`'s `id`, a `fragment`'s, an
+//! `audio`'s `src`, a sound row, a window id — is a whole number: `3.0` is
+//! handle 3, and `3.5` is refused by name, since no arithmetic makes a
+//! handle (backlog F180).
+//!
 //! ## A script may host a plugin
 //!
 //! `env.add_extension(namespace, path)` loads a C extension, a `.so` /
@@ -1459,7 +1469,8 @@ fn env_table<'scope, 'env: 'scope>(
     // drew no text. A byte past the text is the end.
     t.set(
         "caret_rect",
-        scope.create_function(move |lua, (key, byte): (mlua::Value, usize)| {
+        scope.create_function(move |lua, (key, byte): (mlua::Value, mlua::Value)| {
+            let byte = measure_arg(&byte, "caret_rect: byte")?;
             let mut ui = ui.borrow_mut();
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(mlua::Value::Nil);
@@ -1547,7 +1558,8 @@ fn env_table<'scope, 'env: 'scope>(
     // one there is until step 3.
     t.set(
         "set_window_size",
-        scope.create_function(move |_, (window, w, h): (i64, f32, f32)| {
+        scope.create_function(move |_, (window, w, h): (mlua::Value, f32, f32)| {
+            let window = handle_arg(&window, "set_window_size: window")?;
             ui.borrow_mut()
                 .set_window_size(kui_core::WindowId(window as u32), kui_core::Size::new(w, h));
             Ok(())
@@ -1568,7 +1580,8 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     t.set(
         "focus_window",
-        scope.create_function(move |_, window: i64| {
+        scope.create_function(move |_, window: mlua::Value| {
+            let window = handle_arg(&window, "focus_window: window")?;
             ui.borrow_mut()
                 .focus_window(kui_core::WindowId(window as u32));
             Ok(())
@@ -1587,7 +1600,9 @@ fn env_table<'scope, 'env: 'scope>(
     t.set(
         "caret_in_text",
         scope.create_function(
-            move |lua, (s, opts, max_w, byte): (mlua::Value, Option<Table>, Option<f32>, usize)| {
+            move |lua, args: (mlua::Value, Option<Table>, Option<f32>, mlua::Value)| {
+                let (s, opts, max_w, byte) = args;
+                let byte = measure_arg(&byte, "caret_in_text: byte")?;
                 let mut guard = ui.borrow_mut();
                 match caret_in_from_lua(&mut guard, &s, opts.as_ref(), max_w, byte)? {
                     Some(r) => value_to_lua(lua, &r.to_value()),
@@ -2100,8 +2115,9 @@ fn open_fragment(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     // passed to scripts as a plain integer, like an image's — and
     // `image`, the image handle the function samples (backlog V1),
     // absent or 0 for none.
-    let id: i64 = t.get("id")?;
-    let image: Option<i64> = t.get("image")?;
+    let id = handle_at(t, "id", "fragment id")?
+        .ok_or_else(|| bad("fragment needs an id, the handle the host added it as"))?;
+    let image = handle_at(t, "image", "fragment image")?;
     let params: Vec<f32> = match t.get::<Option<Table>>("params")? {
         Some(list) => list.sequence_values::<f32>().collect::<mlua::Result<_>>()?,
         None => Vec::new(),
@@ -2191,7 +2207,8 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // Handle from the host (kui_image_add / Resources::add_image),
             // passed to scripts as a plain integer. `sampling` and `fit`
             // are the rows ADR 0025 gives the element, by name.
-            let id: i64 = t.get("id")?;
+            let id = handle_at(t, "id", "image id")?
+                .ok_or_else(|| bad("image needs an id, the handle the host added it as"))?;
             // A leaf: its `tooltip` floats beside it (backlog RG113).
             let spec = props_of(ui, t, ty, &mut checked)?.for_leaf().spec;
             let named = |row: &str, names: &[&str]| -> mlua::Result<usize> {
@@ -2339,38 +2356,62 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // underline's own colour, backlog K4). The style rows size
             // the cells; the node rows are the node's.
             let p = props_of(ui, t, ty, &mut checked)?;
-            let rows: usize = t.get::<Option<usize>>("rows")?.unwrap_or(0);
-            let cols: usize = t.get::<Option<usize>>("cols")?.unwrap_or(0);
+            // Counts and positions are measures (backlog F180): `rows =
+            // room_h / line_h` is the rows that fit.
+            let rows = measure_at(t, "rows", "cells rows")?.map_or(0, to_usize);
+            let cols = measure_at(t, "cols", "cells cols")?.map_or(0, to_usize);
             if rows == 0 || cols == 0 {
                 return Err(bad("cells needs rows and cols"));
             }
             let default_fg = p.style.color.unwrap_or(ui.theme().fg).to_hex();
-            let mut cells = vec![kui_core::Cell::new(' ', default_fg, 0); rows * cols];
+            // No more than the core draws (`MAX_CELLS`, which it warns
+            // past): the grid it keeps is a prefix of this one, row-major
+            // at `cols`, so a cell past the buffer is one it cuts anyway,
+            // and a `rows = math.huge` is a warning, not an allocation.
+            let n = rows.saturating_mul(cols).min(kui_core::cells::MAX_CELLS);
+            let mut cells = vec![kui_core::Cell::new(' ', default_fg, 0); n];
             if let Some(lines) = t.get::<Option<Table>>("lines")? {
                 for (r, line) in lines.sequence_values::<String>().enumerate() {
                     if r >= rows {
                         break;
                     }
                     for (c, ch) in line?.chars().take(cols).enumerate() {
-                        cells[r * cols + c].ch = ch;
+                        let Some(cell) = cells.get_mut(r * cols + c) else {
+                            break;
+                        };
+                        cell.ch = ch;
                     }
                 }
             }
             if let Some(runs) = t.get::<Option<Table>>("runs")? {
+                let word = |run: &Table, i: usize, what: &str| -> mlua::Result<u32> {
+                    match run.get::<mlua::Value>(i)? {
+                        mlua::Value::Nil => Ok(0),
+                        v => color_word(&v).ok_or_else(|| {
+                            bad(format!("cells run {what} must be a 0xRRGGBBAA number"))
+                        }),
+                    }
+                };
                 for run in runs.sequence_values::<Table>() {
                     let run = run?;
-                    let row: usize = run.get(1)?;
-                    let col: usize = run.get(2)?;
-                    let len: usize = run.get(3)?;
-                    let fg: u32 = run.get::<Option<u32>>(4)?.unwrap_or(0);
-                    let bg: u32 = run.get::<Option<u32>>(5)?.unwrap_or(0);
-                    let flags: u8 = run.get::<Option<u8>>(6)?.unwrap_or(0);
-                    let ul: u32 = run.get::<Option<u32>>(7)?.unwrap_or(0);
+                    let at = |i: usize, what: &str| -> mlua::Result<usize> {
+                        measure_arg(&run.get::<mlua::Value>(i)?, what)
+                    };
+                    let row = at(1, "cells run row")?;
+                    let col = at(2, "cells run col")?;
+                    let len = at(3, "cells run len")?;
+                    let fg = word(&run, 4, "fg")?;
+                    let bg = word(&run, 5, "bg")?;
+                    // A bit set: its low byte, as C's and Node's carry it.
+                    let flags = measure_at(&run, 6, "cells run flags")?.unwrap_or(0) as u8;
+                    let ul = word(&run, 7, "ul")?;
                     if row >= rows {
                         continue;
                     }
-                    for c in col..(col + len).min(cols) {
-                        let cell = &mut cells[row * cols + c];
+                    for c in col..col.saturating_add(len).min(cols) {
+                        let Some(cell) = cells.get_mut(row * cols + c) else {
+                            break;
+                        };
                         if fg != 0 {
                             cell.fg = fg;
                         }
@@ -2402,12 +2443,14 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                         v => with_refs(ui, |refs| parse_color(&v, refs))?,
                     }
                     .unwrap_or(Color::rgb8(0xff, 0xff, 0xff));
-                    Some((cur.get::<usize>(1)?, cur.get::<usize>(2)?, shape, color))
+                    let row = measure_arg(&cur.get::<mlua::Value>(1)?, "cells cursor_at row")?;
+                    let col = measure_arg(&cur.get::<mlua::Value>(2)?, "cells cursor_at col")?;
+                    Some((row, col, shape, color))
                 }
                 None => None,
             };
             // The absolute line row 0 is; 0 when the app says nothing.
-            let origin_line = t.get::<Option<u64>>("origin_line")?.unwrap_or(0);
+            let origin_line = measure_at(t, "origin_line", "cells origin_line")?.unwrap_or(0);
             let grid = kui_core::CellGrid {
                 rows,
                 cols,
@@ -2422,7 +2465,8 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
         "audio" => {
             // Handle from the host (kui_sound_add / Core::add_sound), passed
             // to scripts as a plain integer, like images.
-            let src: i64 = t.get("src")?;
+            let src = handle_at(t, "src", "audio src")?
+                .ok_or_else(|| bad("audio needs a src, the handle the host added the sound as"))?;
             let mut spec = kui_core::AudioSpec::new(kui_core::SoundId::from_ffi(src as u64));
             if let Some(v) = t.get::<Option<f32>>("volume")? {
                 spec = spec.volume(v);
@@ -2491,12 +2535,17 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             }
             let items =
                 kui_core::MenuItem::options_from_value(&rows).map_err(mlua::Error::runtime)?;
-            let current = match t.get::<Option<i64>>("current")? {
-                None => None,
-                Some(i) if i >= 1 => Some(i as usize - 1),
-                Some(i) => {
-                    return Err(bad(format!("dropdown current is an index from 1, not {i}")));
-                }
+            let current = match t.get::<mlua::Value>("current")? {
+                mlua::Value::Nil => None,
+                v => match measure_arg(&v, "dropdown current")? {
+                    0 => {
+                        return Err(bad(format!(
+                            "dropdown current is an index from 1, not {}",
+                            v.to_string()?
+                        )));
+                    }
+                    i => Some(i - 1),
+                },
             };
             // `on_menu` is the message the choice arrives as, `menu = {
             // role, item }` in it; without one the field still reports,
@@ -2606,7 +2655,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             })?;
             // An `index` keys the button by its row, as it does a box
             // (backlog AR40): declared beside `key`, the index wins.
-            match t.get::<Option<u64>>("index")? {
+            match measure_at(t, "index", "button index")? {
                 Some(i) => widgets::button_indexed(ui, i, &text, out.spec, out.tooltip.as_deref()),
                 None => widgets::button_with(ui, &key, &text, out.spec, out.tooltip.as_deref()),
             }
@@ -3481,18 +3530,18 @@ fn parse_node(
                 out.key = Some(s.to_str()?.to_string());
             }
             Item::Index => {
-                let Some(i) = v.as_number().or_else(|| v.as_integer().map(|i| i as f64)) else {
+                let Some(i) = measure(&v) else {
                     return Err(bad("index must be a number (the row's data index)"));
                 };
-                out.index = Some(i.max(0.0) as u64);
+                out.index = Some(i);
             }
             Item::RowCount => {
-                let Some(n) = v.as_number().or_else(|| v.as_integer().map(|i| i as f64)) else {
+                let Some(n) = measure(&v) else {
                     return Err(bad(
                         "row_count must be a number (how many indexed rows the list has)",
                     ));
                 };
-                out.row_count = Some(n.max(0.0) as u64);
+                out.row_count = Some(n);
             }
             Item::Tooltip => {
                 let mlua::Value::String(s) = &v else {
@@ -3577,6 +3626,97 @@ fn number(v: &mlua::Value) -> Option<f32> {
     }
 }
 
+/// A count, a position, an index, a byte offset or a line number from
+/// Lua: any number, floored, below 0 read as 0 and past `u64::MAX` as it
+/// (backlog F180). Lua 5.5's `/` always yields a float, so a grid sized
+/// `room_h / line_h` is 7.5 rows on an odd window, and 7 is the rows that
+/// fit; mlua 0.12.2 raises on a fraction where Rust takes an integer, so
+/// every such read goes through here and agrees with `index`, which has
+/// always read a number. `None` for a value that is no number, for the
+/// caller to name.
+fn measure(v: &mlua::Value) -> Option<u64> {
+    match *v {
+        mlua::Value::Integer(i) => Some(i.max(0) as u64),
+        // `as` floors a non-negative float and saturates; NaN is 0.
+        mlua::Value::Number(n) => Some(n.max(0.0) as u64),
+        _ => None,
+    }
+}
+
+/// A [`measure`] as a `usize`, saturating where that is narrower.
+fn to_usize(n: u64) -> usize {
+    usize::try_from(n).unwrap_or(usize::MAX)
+}
+
+/// A [`measure`] argument or field as a `usize`, refused naming `what`
+/// when it is no number.
+pub(crate) fn measure_arg(v: &mlua::Value, what: &str) -> mlua::Result<usize> {
+    measure(v)
+        .map(to_usize)
+        .ok_or_else(|| bad(format!("{what} must be a number, not {}", v.type_name())))
+}
+
+/// `t[k]` as a [`measure`], `None` when absent, refused naming `what`
+/// when it is no number.
+fn measure_at(t: &Table, k: impl mlua::IntoLua, what: &str) -> mlua::Result<Option<u64>> {
+    match t.get::<mlua::Value>(k)? {
+        mlua::Value::Nil => Ok(None),
+        v => measure(&v)
+            .map(Some)
+            .ok_or_else(|| bad(format!("{what} must be a number, not {}", v.type_name()))),
+    }
+}
+
+/// A handle from Lua — an image's, a fragment's, a sound's, a window's:
+/// a whole number, as the host handed it out (backlog F180). A float
+/// that is one (`3.0`, out of a JSON decode) is that number; a fraction
+/// is refused naming `what`, where a count is floored, since a handle
+/// is never computed and flooring one names a different image. `None`
+/// for a value that is no number, for the caller to name. Node keys are
+/// not read here: a key is a 64-bit hash no float holds, so a float key
+/// is already a wrong one and stays refused.
+fn handle(v: &mlua::Value, what: &str) -> mlua::Result<Option<i64>> {
+    match *v {
+        mlua::Value::Integer(i) => Ok(Some(i)),
+        // The range keeps a huge float from saturating into a handle
+        // that happens to exist; `fract` is NaN for an infinity.
+        mlua::Value::Number(n) if n.fract() == 0.0 && n.abs() < 2f64.powi(63) => Ok(Some(n as i64)),
+        mlua::Value::Number(n) => Err(bad(format!(
+            "{what} is a handle, a whole number as kui gave it out, not {n}"
+        ))),
+        _ => Ok(None),
+    }
+}
+
+/// A [`handle`] argument or field, refused naming `what` when it is no
+/// number.
+fn handle_arg(v: &mlua::Value, what: &str) -> mlua::Result<i64> {
+    handle(v, what)?.ok_or_else(|| {
+        bad(format!(
+            "{what} must be a handle (integer), not {}",
+            v.type_name()
+        ))
+    })
+}
+
+/// `t[k]` as a [`handle_arg`], `None` when absent.
+fn handle_at(t: &Table, k: &str, what: &str) -> mlua::Result<Option<i64>> {
+    match t.get::<mlua::Value>(k)? {
+        mlua::Value::Nil => Ok(None),
+        v => handle_arg(&v, what).map(Some),
+    }
+}
+
+/// A `0xRRGGBBAA` word from a Lua number, as every colour number is read:
+/// [`parse_color_value`]'s number arm, and a `cells` run's fg, bg and ul.
+fn color_word(v: &mlua::Value) -> Option<u32> {
+    match *v {
+        mlua::Value::Integer(n) => Some(n as u32),
+        mlua::Value::Number(n) => Some(n as u32),
+        _ => None,
+    }
+}
+
 /// One schema value from Lua, by kind. `None` = absent (a false flag).
 fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Result<Option<Parsed>> {
     Ok(Some(match kind {
@@ -3651,10 +3791,9 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
             };
             Parsed::Family(refs.family(&s.to_str()?))
         }
-        Kind::Resource => match v {
-            mlua::Value::Integer(n) => Parsed::Resource(*n as u64),
-            mlua::Value::Number(n) => Parsed::Resource(*n as u64),
-            _ => return Err(bad("expected a resource handle (integer)")),
+        Kind::Resource => match handle(v, "a resource")? {
+            Some(n) => Parsed::Resource(n as u64),
+            None => return Err(bad("expected a resource handle (integer)")),
         },
         // A `$name` in a stop resolves through the same refs as a prop's
         // and misses the same way (AR14).
@@ -3673,9 +3812,10 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
 /// `0xRRGGBBAA` integers or `"#hex"` strings — a value, never a reference:
 /// what a token declaration holds.
 fn parse_color_value(v: &mlua::Value) -> mlua::Result<Color> {
+    if let Some(n) = color_word(v) {
+        return Ok(schema::color_num(n));
+    }
     match v {
-        mlua::Value::Integer(n) => Ok(schema::color_num(*n as u32)),
-        mlua::Value::Number(n) => Ok(schema::color_num(*n as u32)),
         mlua::Value::String(s) => schema::color_hex_str(&s.to_str()?).map_err(bad),
         _ => Err(bad("color must be a 0xRRGGBBAA integer or \"#hex\" string")),
     }
@@ -7685,6 +7825,176 @@ mod tests {
             .find(|n| n.role == kui_core::Role::Terminal)
             .expect("a terminal node");
         assert_eq!(term.value.as_deref(), Some("hello world\n  bye"));
+    }
+
+    /// Every count, position, index, byte and line the binding reads is
+    /// a measure (backlog F180): Lua 5.5's `/` yields a float, so a grid
+    /// sized `room_h / line_h` is 7.5 rows on an odd window, and under
+    /// mlua 0.12.2 a fraction where Rust took an integer raised. The scene
+    /// below is drawn twice, its numbers whole and then each with a half
+    /// added, and draws, keys and answers the same — `index` on a box
+    /// always read so, and now `cells`, its runs and cursor, a button's
+    /// `index`, a dropdown's `current`, `list`'s `overscan`, `row_heights`
+    /// and `caret_rect` / `caret_in_text` agree with it.
+    #[test]
+    fn a_count_from_a_division_is_floored_where_the_binding_reads_one() {
+        const SCENE: &str = r#"
+            heights = row_heights(10 + H, 20)
+            frames = 0
+            function view(env)
+              frames = frames + 1
+              heights:set(2 + H, 30)
+              got = { heights:len(), heights:get(2 + H), heights:measured(2 + H),
+                      heights:offset_of(3 + H) }
+              if frames > 1 then
+                local r = env.caret_rect("para", 3 + H)
+                caret = { r.x, r.y }
+                local c = env.caret_in_text("hello", { size = 14 }, nil, 3 + H)
+                caret_in = { c.x, c.y }
+              end
+              return column {
+                cells { key = "term", rows = 15 / 2 - 0.5 + H, cols = 4 + H,
+                        size = 14, family = "mono", origin_line = 900 + H,
+                        lines = { "abcdef", "ghij", "kl", "m", "n", "o", "p", "q" },
+                        runs = { { 1 + H, 1 + H, 2 + H, 0xff0000ff + H, 0x0000ffff + H,
+                                   1 + H, 0x00ff00ff + H } },
+                        cursor_at = { 0 + H, 1 + H } },
+                row { key = "para", text("hello", { size = 14 }) },
+                button { label = "Open", index = 2 + H, on_click = "open" },
+                dropdown { label = "language", options = { "A", "B", "C" }, current = 2 + H },
+                column { key = "list", width = 200, height = 60,
+                  list(env, { key = "rows", heights = heights, width = "grow", height = "grow",
+                              overscan = 1 + H },
+                    function(i, width) return 20 end,
+                    function(i) return text("row " .. i) end) },
+              }
+            end
+        "#;
+        // What a frame drew, keyed and read back, and what the script
+        // got from the calls.
+        let scene = |half: bool| -> String {
+            let src = SCENE.replace("H", if half { "0.5" } else { "0" });
+            let mut ext = LuaExtension::from_source("whole", &src).unwrap();
+            let mut core = Core::new();
+            core.set_diagnostics(true);
+            for _ in 0..2 {
+                let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
+                ui.set_origin(OriginId(1));
+                ext.view(&Slot::root(), &mut ui).unwrap();
+                ui.finish();
+            }
+            let (dl, _) = core.output();
+            let quads = format!("{:?}", dl.quads);
+            let tree: Vec<String> = core
+                .access_tree()
+                .nodes
+                .iter()
+                .map(|n| format!("{:?} {:?} {:?} {:?}", n.key, n.role, n.name, n.value))
+                .collect();
+            let g = ext.lua.globals();
+            let got: Vec<f64> = ["got", "caret", "caret_in"]
+                .iter()
+                .flat_map(|name| g.get::<Vec<f64>>(*name).unwrap())
+                .collect();
+            let warnings: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+            format!("{quads}\n{tree:#?}\n{got:?}\n{warnings:?}")
+        };
+        let whole = scene(false);
+        // The tree is printed `{:#?}` over `{:?}`, so its newlines are
+        // escaped twice.
+        assert!(
+            whole.contains(r#"abcd\\nghij\\nkl\\nm\\nn\\no\\np\")"#),
+            "the grid is 7 x 4: {whole}"
+        );
+        assert_eq!(
+            scene(true),
+            whole,
+            "a half added to every number draws the same"
+        );
+    }
+
+    /// A handle — an image's, a fragment's, a sound's, a window's — is a
+    /// whole number as kui gave it out (backlog F180): a float that is one
+    /// is that handle, and a fraction is refused by name, where a count is
+    /// floored, since flooring a handle names a different image.
+    #[test]
+    fn a_handle_is_a_whole_number_and_a_fraction_is_refused_by_name() {
+        let view = |body: &str| -> Result<(), String> {
+            let src = format!("function view(env) {body} end");
+            let mut ext = LuaExtension::from_source("handles", &src).unwrap();
+            let mut core = Core::new();
+            let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            let r = ext.view(&Slot::root(), &mut ui).map_err(|e| e.to_string());
+            ui.finish();
+            r
+        };
+        for whole in [
+            "return column { image { id = 3.0, width = 10, height = 10 } }",
+            "return column { audio { src = 2.0 } }",
+            "return column { fragment { id = 4.0, image = 3.0, width = 10, height = 10 } }",
+            "return column { row { click_sound = 2.0, on_click = 'x', text('a') } }",
+            "env.focus_window(env.window.id + 0.0) return column {}",
+            "env.set_window_size(env.window.id * 1.0, 300, 200) return column {}",
+        ] {
+            assert_eq!(view(whole), Ok(()), "{whole}");
+        }
+        for (fraction, named) in [
+            (
+                "return column { image { id = 3.5, width = 10, height = 10 } }",
+                "image id",
+            ),
+            ("return column { audio { src = 2.5 } }", "audio src"),
+            ("return column { fragment { id = 4.5 } }", "fragment id"),
+            (
+                "return column { fragment { id = 4, image = 0.5 } }",
+                "fragment image",
+            ),
+            (
+                "return column { row { click_sound = 2.5, on_click = 'x', text('a') } }",
+                "click_sound",
+            ),
+            (
+                "env.focus_window(env.window.id + 0.5) return column {}",
+                "focus_window: window",
+            ),
+            (
+                "env.set_window_size(1 / 0, 300, 200) return column {}",
+                "set_window_size: window",
+            ),
+            (
+                "return column { image { id = 'a' } }",
+                "image id must be a handle",
+            ),
+        ] {
+            let err = view(fraction).unwrap_err();
+            assert!(err.contains(named), "{fraction}: {err}");
+        }
+    }
+
+    /// A grid's rows and cols are measures, so `math.huge` is one; the
+    /// buffer the binding fills is cut to what the core draws (`MAX_CELLS`,
+    /// with its warning), not `rows * cols` cells asked of the allocator.
+    #[test]
+    fn a_grid_past_what_the_core_draws_is_cut_not_allocated() {
+        let mut ext = LuaExtension::from_source(
+            "huge",
+            r#"
+                function view(env)
+                  return column { cells { key = "term", rows = math.huge, cols = 2048,
+                    size = 14, family = "mono", lines = { "top" } } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_diagnostics(true);
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert_eq!(codes, [kui_core::diag::CELLS_TOO_LARGE]);
     }
 
     /// A `selectable` grid selects in cells, and the click count picks the
