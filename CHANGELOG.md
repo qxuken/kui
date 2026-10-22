@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.62 (unreleased)
+## 0.1.0-alpha.62 (2026-10-22)
 
 **What breaks.**
 
@@ -173,8 +173,9 @@ pre-tag pass").
 clippy, the book, the conformance report, the C round, the Odin leg
 (`gen --check`, `check`, `test`, `slots`) on dev-2026-10, CI's pin, the
 Node addon under `KUI_CONFORMANCE_REQUIRED=1`, gen, the examples'
-typecheck, the headless round — on the tree the tag holds: **2250 Rust
-tests over 171 suites, and Node's 247**. `cargo audit` clean. The
+typecheck, the headless round — and `nu scripts/test.nu --node` on the
+tagged tree: **2497 tests over 172 Rust suites and Node's**. `cargo
+audit` clean. The
 windowed round with Node's: 55 examples on both bases, 132 windows.
 The accessibility audit: **106 of 106**. The bench guard against
 alpha.61 on `frame`, `stream`, `cells`, `long_line` and `editing`: the
