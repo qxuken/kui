@@ -256,8 +256,9 @@ recorded under [adr/](adr); this page is their consequences for an app.
   option: `kui_native::app("t").icon(rgba, w, h).icon_resource(1)` — the pixels
   on X11, the executable's icon resource on Windows, for the title bar,
   Alt-Tab and the taskbar (`icon` in Node's `WindowOptions`,
-  `kui_set_icon` in C); macOS and Wayland take the app's icon from the
-  bundle and the `.desktop` file instead. Custom chrome is an opt-in:
+  `kui_set_icon` in C); on macOS the pixels are the app's Dock icon
+  unless the bundle names one (backlog F181), and Wayland takes the app's
+  icon from the `.desktop` file. Custom chrome is an opt-in:
   `kui_native::app("title").custom_titlebar().run(app)` — macOS keeps native traffic lights over your content (`.titlebar(Titlebar::Tall)` makes AppKit's titlebar a toolbar's height and centres them lower, backlog W22); Windows/Linux go
   undecorated with drawn buttons. On Windows the runner also subclasses the
   window and answers `WM_NCHITTEST` from the frame's chrome regions

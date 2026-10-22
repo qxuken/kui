@@ -479,7 +479,7 @@ pub struct Launcher {
     /// not pinned.
     system: SystemEnv,
     /// The windows' icon ([`Launcher::icon`]), checked when it was given.
-    icon: Option<winit::window::Icon>,
+    icon: Option<icon::Pixels>,
     /// The executable's icon resource on Windows
     /// ([`Launcher::icon_resource`]).
     icon_resource: Option<u16>,
@@ -611,10 +611,16 @@ impl Launcher {
     /// The icon every window of the app is created with: `rgba` is
     /// `width` by `height` pixels, four bytes each, row by row from the top
     /// left, alpha not premultiplied. Windows shows it in the title bar,
-    /// Alt-Tab and the taskbar, X11 in the window manager's; macOS and
-    /// Wayland take the app's icon from the bundle or the `.desktop` file
-    /// and ignore this. Pass something a taskbar can shrink cleanly, 64 to
-    /// 256 px. Panics when the pixels are not that size;
+    /// Alt-Tab and the taskbar, X11 in the window manager's. A macOS
+    /// window has no icon, so there it is the app's, in the Dock and ⌘Tab
+    /// while the app runs (backlog F181) — unless the app is a bundle
+    /// whose `Info.plist` names an icon, which wins; a `cargo run` or a
+    /// Node app under `node` shows these pixels rather than the
+    /// executable's. Wayland takes the app's icon from the `.desktop`
+    /// file ([`Launcher::app_id`]) and ignores this. Pass something a
+    /// taskbar can shrink cleanly, 64 to 256 px — 512 or 1024 for a Dock
+    /// that draws it large, with the margin a macOS icon leaves around its
+    /// shape. Panics when the pixels are not that size;
     /// [`Launcher::try_icon`] returns the reason instead.
     ///
     /// ```rust,no_run
@@ -2886,6 +2892,7 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             Err(e) => return self.fail_open(event_loop, format!("cannot open the window: {e}")),
         };
         self.icon.set_on(&window);
+        self.icon.show_in_dock();
         let px = window.inner_size();
         let renderer = pollster::block_on(kui_wgpu::Renderer::new_with(
             window.clone(),

@@ -248,7 +248,10 @@ day it was filed, before the tag, and is in the archive; and RG161, the
 five of RG160's that wanted a decision — a dialog inside a tooltip
 box, an invisible or departing box's hint, the bindings' token edges,
 a Lua grid of no rows — was built the day it was filed, after the
-alpha.62 tag, and is in the archive.
+alpha.62 tag, and is in the archive; and F181, from the Cookie Mapping
+Builder's question about its Dock icon — the launcher's icon as the
+app's on macOS, for an app that is no bundle — was built the day it was
+filed, after the alpha.62 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -4946,3 +4949,7 @@ move.
 **After the alpha.62 tag (2026-10-22)** — RG161, five of RG160's, built the same day
 
 - `~` **RG161** — [What RG160 asked, decided](backlog/closed-2026-09.md#-rg161--what-rg160-asked-decided--done-2026-10-22) — done (2026-10-22) — a tooltip box's scan stops at a descendant floated against the viewport or a node; no hint under a box at 0 or in an exit ghost; an empty family list taken everywhere; Node's encoder drops a name a family took; the devtools print a length token as its number; a grid of no rows is an empty grid in Lua, Node and C, and names no cell
+
+**From the Cookie Mapping Builder's Dock icon (2026-10-22)** — F181, filed and built the same day
+
+- `~` **F181** — [The launcher's icon is nothing on macOS, so an unbundled app shows its executable's in the Dock](backlog/closed-2026-09.md#-f181--the-launchers-icon-is-nothing-on-macos-so-an-unbundled-app-shows-its-executables-in-the-dock--done-2026-10-22) — done (2026-10-22) — the pixels as `NSApp.applicationIconImage` once the first window is open, unless the main bundle's `Info.plist` names an icon; no name option, since nothing a process calls renames it

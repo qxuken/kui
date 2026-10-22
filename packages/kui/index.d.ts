@@ -2222,8 +2222,11 @@ export interface WindowOptions {
    *  by row from the top left, alpha not premultiplied — a `Buffer` is a
    *  `Uint8Array` — and 64 to 256 px is what a taskbar shrinks cleanly.
    *  Windows shows it in the title bar, Alt-Tab and the taskbar, X11 in
-   *  the window manager's; macOS (the bundle's `.icns`) and Wayland (the
-   *  `.desktop` file's) have no window icon. `resource` is an icon
+   *  the window manager's. macOS has no window icon, so there it is the
+   *  app's, in the Dock and ⌘Tab while it runs — the icon a CLI run with
+   *  `node` shows instead of Node's — unless the app is a bundle whose
+   *  `Info.plist` names an icon, which wins (backlog F181); Wayland's is
+   *  the `.desktop` file's (`appId`). `resource` is an icon
    *  resource in the executable, on Windows, and wins there — only a
    *  packaged app has one of its own: under `node.exe` it is Node's.
    *  Pixels that are not the size are refused, as the constructor

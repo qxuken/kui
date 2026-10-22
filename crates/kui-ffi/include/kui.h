@@ -4297,8 +4297,10 @@ void kui_on_teardown(KuiTeardownFn teardown);
  * resource the executable lacks is said on stderr and the pixels are used.
  * NULL, 0, 0 is no pixels and 0 no resource; all four zero clears it.
  * Windows shows the icon in the title bar, Alt-Tab and the taskbar, X11 in
- * the window manager's; macOS draws the bundle's .icns and Wayland the
- * .desktop file's, and neither has a window icon. Returns false with the
+ * the window manager's. A macOS window has no icon, so there the pixels
+ * are the app's, in the Dock and Cmd-Tab while it runs, unless the app is
+ * a bundle whose Info.plist names an icon, which wins (backlog F181);
+ * Wayland draws the .desktop file's. Returns false with the
  * reason on stderr - a zero side with pixels, a side with none, a resource
  * past 65535 - keeping what was set before. The last call before the run
  * wins, and the run takes it. A free function for kui_on_teardown's

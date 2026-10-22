@@ -131,8 +131,10 @@ unsafe fn icon_ask_of(
 /// is an icon resource in the executable (the `1 ICON "app.ico"` of its
 /// `.rc`), which wins there. NULL, 0, 0 is no pixels and 0 no resource;
 /// all four zero clears it. Windows shows the icon in the title bar,
-/// Alt-Tab and the taskbar and X11 in the window manager's; macOS and
-/// Wayland have no window icon. Returns false, with the reason on stderr,
+/// Alt-Tab and the taskbar and X11 in the window manager's; macOS has no
+/// window icon, so there the pixels are the app's in the Dock and ⌘Tab
+/// unless the bundle names an icon (backlog F181), and Wayland takes the
+/// `.desktop` file's. Returns false, with the reason on stderr,
 /// for what is not an icon (a zero side with pixels, a side with none, a
 /// resource past 65535) and keeps what was set before. The last call
 /// before the run wins; a run takes it.

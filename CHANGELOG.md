@@ -45,6 +45,26 @@ was the first bare bump to break an app in five releases).
 - A `cells` grid of 0 rows or 0 columns is an empty grid declared under
   its key in Lua, Node and C: Lua and Node refused it and failed the
   frame, C declared no node. A click on it carries no `cell`.
+- macOS: the windows' `icon` (`Launcher::icon`, Node's `icon` in
+  `WindowOptions`, `kui_set_icon`, Odin's `set_icon`) is the app's Dock
+  and ⌘Tab icon while it runs, where alpha.62 ignored it — unless the
+  app is a bundle whose `Info.plist` names an icon (backlog F181).
+
+### Added
+
+- **The app's icon in the macOS Dock without a bundle** (backlog F181).
+  A macOS window has no icon of its own, so the launcher's `icon` was
+  nothing there, and an app that is no `.app` — a Node CLI run with
+  `node`, a `cargo run` — showed its executable's icon in the Dock and
+  ⌘Tab, Node's or the generic one. The pixels are now the app's icon
+  (`NSApp.applicationIconImage`), set when the first window opens and
+  kept until the process ends. A bundle whose `Info.plist` names an icon
+  (`CFBundleIconFile` or `CFBundleIconName`) keeps its own, the way a
+  Windows icon resource wins over the pixels: an `.icns` has a frame for
+  each size, and it is what the Finder shows. The name under the tile
+  and in the menu bar stays the executable's — no process call changes
+  it; only a bundle does. Pass 512 or 1024 px with the margin a macOS
+  icon leaves around its shape, or it is drawn edge to edge in the tile.
 
 ### Fixed
 
@@ -89,6 +109,8 @@ was the first bare bump to break an app in five releases).
 
 **What you can delete.**
 
+- An `.app` wrapper, or a call of your own into AppKit, kept only so an
+  app run unbundled on macOS showed its own icon in the Dock.
 - A `math.max(1, …)` (or `Math.max`) around a grid's row count that was
   there only so a short pane did not fail the frame.
 - A `tooltip` moved off a component, or an `if open` hint guard, kept

@@ -171,6 +171,11 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     # The titlebar's height under custom chrome (`mod macos_chrome`,
     # backlog W22): an empty toolbar in the style that makes it.
     "NSToolbar",
+    # The launcher's icon as the app's in the Dock (`mod icon`, backlog
+    # F181): its pixels in a bitmap rep, in an image.
+    "NSImage",
+    "NSImageRep",
+    "NSBitmapImageRep",
 ] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = [
     "std",
@@ -194,6 +199,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     "NSObjCRuntime",
     # The application menu's rows take the process's name (backlog F152).
     "NSProcessInfo",
+    # Whether the bundle names an icon of its own, which the Dock keeps
+    # over the launcher's (backlog F181).
+    "NSBundle",
 ] }
 
 # Every example in the repo lives under examples/ at the root, one directory

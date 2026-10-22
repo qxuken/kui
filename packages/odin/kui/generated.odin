@@ -3950,8 +3950,10 @@ draw_data :: proc(ui: ^Ui) -> (out: Draw_Data, ok: bool) #optional_ok {
 
 // The icon every window of the app is created with — RGBA pixels and their
 // size — shown by Windows in the title bar, Alt-Tab and the taskbar and by
-// X11's window manager; macOS (the bundle's `.icns`) and Wayland (the
-// `.desktop` file's) have no window icon (backlog F86).
+// X11's window manager (backlog F86), and on macOS, where a window has none,
+// as the app's in the Dock and ⌘Tab while it runs, unless the app is a
+// bundle whose `Info.plist` names an icon (backlog F181); Wayland's is the
+// `.desktop` file's.
 // Rust: Launcher::icon.
 set_icon :: proc(rgba: []u8, width: u32, height: u32, resource: u32) -> bool {
 	assert(rgba == nil || len(rgba) >= int(width) * int(height) * 4, "set_icon: rgba holds fewer bytes than int(width) * int(height) * 4")

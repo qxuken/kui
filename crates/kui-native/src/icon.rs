@@ -9,8 +9,21 @@
 //! winit registers its window class with no icon, so a window shows the
 //! platform's default until it is given one; on X11 the window manager's
 //! `_NET_WM_ICON`. Wayland finds an app's icon through its `.desktop`
-//! file and macOS through the bundle's `.icns` (the Dock's — a macOS
-//! window has none of its own), and winit ignores a window icon on both.
+//! file, and winit ignores a window icon there.
+//!
+//! A macOS window has no icon of its own: the app has one, in the Dock
+//! and ⌘Tab, which AppKit takes from the bundle's `.icns` — and a process
+//! that is no bundle (a Node app run with `node`, a `cargo run`) shows its
+//! executable's, Node's or the generic one. So on macOS the pixels are the
+//! *app's* icon (backlog F181): `NSApp.applicationIconImage`, set once the
+//! first window is open ([`AppIcon::show_in_dock`]), unless the main bundle
+//! names an icon of its own, which wins the way Windows' resource does —
+//! an `.icns` carries a frame drawn for each size, and the Finder shows it
+//! whatever the Dock does. Only while the process runs: a tile kept in the
+//! Dock is the executable's again once it quits. The name beside it can
+//! not be set the same way — the menu bar, the Dock's label and
+//! `NSRunningApplication` read the executable's however the process names
+//! itself — so there is no such option.
 //!
 //! Which `.desktop` file is the app's is the launcher's
 //! [`app_id`](crate::Launcher::app_id) (backlog F172): the Wayland
@@ -19,7 +32,29 @@
 //! `StartupWMClass`. Without one a Wayland window has no `app_id` at all
 //! and is drawn with the compositor's generic icon.
 
+#[cfg(target_os = "macos")]
+use std::sync::Arc;
+
 use winit::window::{Icon, WindowAttributes};
+
+/// The launcher's pixels, checked: winit's icon for the windows and, on
+/// macOS, the pixels themselves for the Dock — winit keeps an icon's
+/// pixels private, and its macOS backend does nothing with one.
+#[derive(Clone, Debug)]
+pub(crate) struct Pixels {
+    window: Icon,
+    #[cfg(target_os = "macos")]
+    dock: DockPixels,
+}
+
+/// What `NSApp.applicationIconImage` is made from: RGBA, straight alpha.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug)]
+struct DockPixels {
+    rgba: Arc<[u8]>,
+    width: u32,
+    height: u32,
+}
 
 /// What every window of the app is created with; empty unless the
 /// launcher was given an icon or an app id.
@@ -33,6 +68,9 @@ pub(crate) struct AppIcon {
     /// Windows' `ICON_BIG`: Alt-Tab and the taskbar.
     #[cfg(target_os = "windows")]
     taskbar: Option<Icon>,
+    /// The app's icon in the Dock and ⌘Tab ([`AppIcon::show_in_dock`]).
+    #[cfg(target_os = "macos")]
+    dock: Option<DockPixels>,
     /// The executable's icon resource, loaded from the process's own
     /// module and sent to each window once it exists ([`AppIcon::set_on`]).
     /// Not a winit icon: winit loads a resource from the module winit is
@@ -57,13 +95,23 @@ struct ResourceIcons {
 
 /// The launcher's pixels as an icon, refused with the reason when they are
 /// not `width` × `height` RGBA — what `Launcher::try_icon` returns.
-pub(crate) fn from_rgba(rgba: Vec<u8>, width: u32, height: u32) -> Result<Icon, String> {
+pub(crate) fn from_rgba(rgba: Vec<u8>, width: u32, height: u32) -> Result<Pixels, String> {
     if width == 0 || height == 0 {
         return Err(format!(
             "an icon is at least one pixel, not {width}x{height}"
         ));
     }
-    Icon::from_rgba(rgba, width, height).map_err(|e| format!("icon: {e}"))
+    #[cfg(target_os = "macos")]
+    let dock = DockPixels {
+        rgba: rgba.as_slice().into(),
+        width,
+        height,
+    };
+    Ok(Pixels {
+        window: Icon::from_rgba(rgba, width, height).map_err(|e| format!("icon: {e}"))?,
+        #[cfg(target_os = "macos")]
+        dock,
+    })
 }
 
 impl AppIcon {
@@ -73,7 +121,7 @@ impl AppIcon {
     /// load the one theirs is. A resource the executable does not have is
     /// said once on stderr and the pixels are used instead. Elsewhere the
     /// resource is nothing.
-    pub(crate) fn new(rgba: Option<Icon>, resource: Option<u16>) -> Self {
+    pub(crate) fn new(rgba: Option<Pixels>, resource: Option<u16>) -> Self {
         #[cfg(target_os = "windows")]
         if let Some(id) = resource {
             match from_resource(id) {
@@ -100,10 +148,12 @@ impl AppIcon {
         AppIcon {
             app_id: None,
             #[cfg(target_os = "windows")]
-            taskbar: rgba.clone(),
+            taskbar: rgba.as_ref().map(|p| p.window.clone()),
             #[cfg(target_os = "windows")]
             resource: None,
-            window: rgba,
+            #[cfg(target_os = "macos")]
+            dock: rgba.as_ref().map(|p| p.dock.clone()),
+            window: rgba.map(|p| p.window),
         }
     }
 
@@ -142,6 +192,20 @@ impl AppIcon {
         let _ = window;
     }
 
+    /// Makes the pixels the app's icon in the Dock and ⌘Tab, on macOS,
+    /// unless the main bundle names an icon of its own; nothing without
+    /// pixels, so a second runner with none leaves the first's. Called
+    /// once a runner's first window is open: the app has finished
+    /// launching by then, and is a regular app with a Dock tile.
+    pub(crate) fn show_in_dock(&self) {
+        #[cfg(target_os = "macos")]
+        if let Some(px) = &self.dock
+            && !bundle_has_icon()
+        {
+            set_dock_icon(px);
+        }
+    }
+
     /// `attrs` with the icons and the app id set, for
     /// `Shell::window_attrs`.
     pub(crate) fn apply(&self, attrs: WindowAttributes) -> WindowAttributes {
@@ -163,6 +227,76 @@ impl AppIcon {
         let _ = &self.app_id;
         attrs
     }
+}
+
+/// Whether the main bundle's `Info.plist` names the app's icon — a
+/// `CFBundleIconFile` (an `.icns`) or a `CFBundleIconName` (an asset
+/// catalog's). A process that is no bundle has no `Info.plist`, unless
+/// one is linked into its `__info_plist` section, and names none.
+#[cfg(target_os = "macos")]
+fn bundle_has_icon() -> bool {
+    use objc2_foundation::{NSBundle, NSString};
+    let bundle = NSBundle::mainBundle();
+    ["CFBundleIconFile", "CFBundleIconName"].iter().any(|key| {
+        bundle
+            .objectForInfoDictionaryKey(&NSString::from_str(key))
+            .is_some()
+    })
+}
+
+/// `px` as `NSApp.applicationIconImage`, which the Dock scales to its
+/// tile and ⌘Tab to its own.
+#[cfg(target_os = "macos")]
+fn set_dock_icon(px: &DockPixels) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+    let (Some(mtm), Some(image)) = (MainThreadMarker::new(), dock_image(px)) else {
+        return;
+    };
+    // SAFETY: an image, not nil, on the main thread.
+    unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
+}
+
+/// `px` as an image of one bitmap rep, as many points as it has pixels;
+/// `None` when AppKit will not make the rep.
+#[cfg(target_os = "macos")]
+fn dock_image(px: &DockPixels) -> Option<objc2::rc::Retained<objc2_app_kit::NSImage>> {
+    use objc2::AllocAnyThread;
+    use objc2_app_kit::{NSBitmapFormat, NSBitmapImageRep, NSDeviceRGBColorSpace, NSImage};
+    use objc2_foundation::NSSize;
+    let (w, h) = (px.width as isize, px.height as isize);
+    // SAFETY: no planes, so AppKit allocates the buffer itself — four
+    // 8-bit samples a pixel, `w * 4` bytes a row, straight alpha, as the
+    // launcher's pixels are.
+    let rep = unsafe {
+        NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bitmapFormat_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(),
+            w,
+            h,
+            8,
+            4,
+            true,
+            false,
+            NSDeviceRGBColorSpace,
+            NSBitmapFormat::AlphaNonpremultiplied,
+            w * 4,
+            32,
+        )
+    }?;
+    let data = rep.bitmapData();
+    if data.is_null() || rep.bytesPerRow() != w * 4 {
+        return None;
+    }
+    // SAFETY: the rep's own buffer, `bytesPerRow * h` bytes — the length
+    // of the launcher's pixels, which `from_rgba` checked.
+    unsafe { std::ptr::copy_nonoverlapping(px.rgba.as_ptr(), data, px.rgba.len()) };
+    let image = NSImage::initWithSize(
+        NSImage::alloc(),
+        NSSize::new(px.width as f64, px.height as f64),
+    );
+    image.addRepresentation(&rep);
+    Some(image)
 }
 
 /// The small and the large icon from the executable's resource `id`: the
@@ -254,6 +388,37 @@ mod tests {
                 .expect("no resource in a test binary");
             assert!(why.raw_os_error().is_some(), "{why}");
         }
+    }
+
+    /// On macOS the pixels are the app's Dock icon (backlog F181): kept
+    /// whole beside winit's icon, and made into an image of that many
+    /// points whose one rep holds them byte for byte, straight alpha. A
+    /// test binary is no bundle, so it names no icon to keep instead.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_pixels_are_the_dock_s_icon_on_macos() {
+        use objc2_app_kit::NSBitmapImageRep;
+        let rgba: Vec<u8> = (0..3 * 2 * 4).map(|i| (i * 10) as u8).collect();
+        let set = AppIcon::new(Some(from_rgba(rgba.clone(), 3, 2).unwrap()), None);
+        let px = set.dock.as_ref().expect("the dock's pixels");
+        assert_eq!((&px.rgba[..], px.width, px.height), (&rgba[..], 3, 2));
+        assert!(AppIcon::new(None, None).dock.is_none());
+        assert!(!bundle_has_icon());
+
+        let image = dock_image(px).expect("an image");
+        let size = image.size();
+        assert_eq!((size.width, size.height), (3.0, 2.0));
+        let reps = image.representations();
+        assert_eq!(reps.len(), 1);
+        let rep = reps
+            .objectAtIndex(0)
+            .downcast::<NSBitmapImageRep>()
+            .unwrap();
+        assert_eq!((rep.pixelsWide(), rep.pixelsHigh()), (3, 2));
+        // SAFETY: the rep's buffer, 3 × 2 pixels of four bytes, unpadded
+        // (`dock_image` refuses a rep that pads its rows).
+        let bytes = unsafe { std::slice::from_raw_parts(rep.bitmapData(), rgba.len()) };
+        assert_eq!(bytes, &rgba[..]);
     }
 
     /// The app id reaches every window's attributes as winit's name, both

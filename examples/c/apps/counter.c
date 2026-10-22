@@ -326,7 +326,7 @@ static int headless(void) {
 /* Every window's icon (backlog F86): a disc in the buttons' blue, drawn
  * here rather than read from a file. Windows shows it in the title bar,
  * Alt-Tab and the taskbar, X11 in the window manager's; a Mac has no
- * window icon (the Dock draws the bundle's). A shipped Windows program
+ * window icon, so it is the app's in the Dock (backlog F181). A shipped Windows program
  * would pass its .rc's icon resource as the last argument instead. */
 static int set_icon(void) {
     enum { N = 64 };

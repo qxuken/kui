@@ -2432,9 +2432,16 @@ what Explorer and a shortcut draw; the window gets it only when told,
 since winit registers its window class with none. The resource wins
 there, and the title bar and the taskbar each load the `.ico`'s frame
 for their size; X11 shows the pixels. Pass both and let each platform
-take its own: macOS draws the bundle's `.icns` in the Dock and Wayland
-the `.desktop` file's icon, and neither has a window icon, so both
-calls are nothing there. Node: `icon: {rgba, width, height, resource}`
+take its own: Wayland draws the `.desktop` file's icon and has no window
+icon, so both calls are nothing there. A macOS window has no icon
+either, so there the pixels are the app's, in the Dock and ⌘Tab while it
+runs — what lets a `cargo run`, or a Node CLI run with
+`node`, show its own icon rather than the executable's — unless the app
+is a bundle whose `Info.plist` names an icon, which wins: an `.icns`
+has a frame drawn for each size, and the Finder shows it whatever the
+Dock does. Only the icon: the name in the menu bar and under the Dock
+tile is the executable's however the process names itself, and only a
+bundle changes it. Node: `icon: {rgba, width, height, resource}`
 in the window's options — under `node.exe` the resource is Node's, so
 only a packaged app has one of its own. C: `kui_set_icon(rgba, w, h,
 resource)` before `kui_run`. Pixels that are not the size are refused

@@ -247,7 +247,7 @@ round_trip :: proc() -> bool {
 // Every window's icon (backlog F86): a disc in the buttons' blue, drawn
 // here rather than read from a file. Windows shows it in the title bar,
 // Alt-Tab and the taskbar, X11 in the window manager's; a Mac has no window
-// icon (the Dock draws the bundle's).
+// icon, so it is the app's in the Dock (backlog F181).
 set_icon :: proc() -> bool {
 	N :: 64
 	@(static) px: [N * N * 4]u8
