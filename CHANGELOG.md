@@ -44,6 +44,17 @@ was the first bare bump to break an app in five releases).
   is refused the same way.
 - `ctx.tokens()` and Lua's `env.tokens` carry a third table, `families`,
   so a test comparing the whole reading sees it.
+- Lua: a sound row (`click_sound`, `hover_sound`, …) given a fraction is
+  refused by name, where it was cut (2.5 was sound 2); an `image`'s `id`,
+  a `fragment`'s `id` and `image`, an `audio`'s `src` and
+  `env.set_window_size` / `env.focus_window`'s window, refused by mlua
+  0.12.2 without a name, now name the prop or the call (backlog F180).
+- Lua: a count, position or byte below 0 is 0 where it was refused —
+  a `cells` run's or `cursor_at`'s row and col, a button's `index`,
+  `env.caret_rect` / `env.caret_in_text`'s byte — as `index` on a box
+  and `row_heights` always read one; a string there (`rows = "7"`),
+  which mlua coerced, is refused, as `index` always refused one
+  (backlog F180).
 
 ### Added
 
@@ -93,6 +104,25 @@ was the first bare bump to break an app in five releases).
   pointer is over the box or anything inside it, as a browser's `title`
   does, and with tooltips nested the innermost one under the pointer is
   the one shown. The same in every binding (backlog F179).
+- Lua: a number where kui reads a whole one raised for a fraction under
+  mlua 0.12.2 (0.12.1 cut it), and Lua 5.5's `/` always yields a float,
+  so a terminal grid sized `rows = room_h / line_h` failed the frame on
+  an odd window size — while `index` on a box had always read any
+  number, and the sound rows cut one. The binding now reads every count,
+  position, index, byte offset and line as `index` reads one, floored
+  and below 0 as 0: `cells`' `rows`, `cols`, `origin_line`, `cursor_at`
+  and its runs' `row`, `col`, `len` and `flags`, a button's `index`, a
+  dropdown's `current` (still counted from 1), `list`'s `overscan`,
+  `row_heights` and its methods, and `env.caret_rect` /
+  `env.caret_in_text`'s byte. A handle — an `image`'s `id`, a
+  `fragment`'s `id` and `image`, an `audio`'s `src`, the sound rows, a
+  window id — is a whole number: `3.0` is handle 3, and a fraction is
+  refused naming the prop or the call, since flooring one names a
+  different image. A run's colours read as every colour number does. A
+  `cells` grid's buffer is cut to the cells the core draws
+  (`MAX_CELLS`, with its `cells-too-large` warning), where `rows *
+  cols` was allocated first, so `rows = math.huge` warns rather than
+  aborts (backlog F180).
 
 **What you can delete.**
 
@@ -106,6 +136,9 @@ was the first bare bump to break an app in five releases).
   constant.
 - A constant holding a family name, and the "is it installed?" check
   that picked between two: a family token's list is that check.
+- A `math.floor` (or `//`) around a Lua count, position or byte offset
+  that was there only because the binding raised on a fraction: `cells
+  { rows = room_h / line_h }` is the rows that fit.
 
 ## 0.1.0-alpha.61 (2026-10-22)
 

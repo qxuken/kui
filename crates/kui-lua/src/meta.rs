@@ -147,17 +147,18 @@ const LIST: &[(&str, bool, &str, &str)] = &[
 ];
 
 /// `row_heights`' methods: what a script calls on the heights it keeps.
-/// The three `slice_*` steps are `list`'s and left out.
+/// The three `slice_*` steps are `list`'s and left out. A row or a count
+/// is a `number`, floored as `index` is (backlog F180).
 const ROW_HEIGHTS: &[(&str, &str, &str)] = &[
     ("len", "", "integer"),
-    ("set_len", "rows: integer", "nil"),
+    ("set_len", "rows: number", "nil"),
     ("clear", "", "nil"),
-    ("set", "i: integer, h: number", "nil"),
-    ("measured", "i: integer", "number?"),
-    ("get", "i: integer", "number"),
+    ("set", "i: number, h: number", "nil"),
+    ("measured", "i: number", "number?"),
+    ("get", "i: number", "number"),
     ("estimate", "", "number"),
     ("total", "", "number"),
-    ("offset_of", "i: integer", "number"),
+    ("offset_of", "i: number", "number"),
     ("row_at", "y: number", "integer"),
 ];
 
@@ -630,7 +631,7 @@ pub fn luals_meta() -> String {
         );
     }
     out.push_str(
-        "\n---`rows` rows, none measured, each at `estimate` logical px (20 when left out) until measured.\n---@param rows integer\n---@param estimate? number\n---@return kui.RowHeights\nfunction row_heights(rows, estimate) end\n\n",
+        "\n---`rows` rows, none measured, each at `estimate` logical px (20 when left out) until measured.\n---@param rows number\n---@param estimate? number\n---@return kui.RowHeights\nfunction row_heights(rows, estimate) end\n\n",
     );
 
     // The events a view's `on_event` hears: the envelope, then each
@@ -1405,8 +1406,10 @@ mod tests {
     ];
 
     /// Whether `ty` admits `p`. `integer` admits a float: the parser
-    /// truncates one where a colour or a handle goes, and the annotation
-    /// says which the value means rather than every number it survives.
+    /// truncates one where a colour goes and takes a whole one where a
+    /// handle does (backlog F180), and the annotation says which the
+    /// value means rather than every number it survives. A count or a
+    /// position is `number`, since any number is floored to one.
     fn admits(ty: &str, p: &Probe) -> bool {
         members(ty).into_iter().any(|m| match (m, p) {
             ("any", _) => true,

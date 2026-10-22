@@ -240,7 +240,10 @@ conversation — a box's tooltip gone over its own child — was built the
 day it was filed, after the alpha.61 tag, and is in the archive; and T6, from a
 question about reaching the theme without a `ctx` — the disabled opacity
 and font families by token — was built with its ADR the day it was
-filed, after the alpha.61 tag, and is in the archive.
+filed, after the alpha.61 tag, and is in the archive; and F180, from
+kawoosh's mlua 0.12.2 audit — a fraction where kui-lua reads a whole
+number — was built the day it was filed, after the alpha.61 tag, and is
+in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3088,6 +3091,15 @@ all. One entry, T6, with [ADR
 0049](adr/0049-the-disabled-opacity-and-font-families-by-token.md),
 **built 2026-10-22**, the day it was filed, and in the archive.
 
+## From kawoosh's mlua 0.12.2 audit (2026-10-22)
+
+kawoosh took mlua 0.12.2, which raises on a fractional float where Rust
+takes an integer, and audited its bundled Lua for one reaching kui: none
+did, but kui-lua read a count one way in `index` and another in
+`button { index }`, and Lua 5.5's `/` makes a fraction of every
+division. One entry, F180, **built 2026-10-22**, the day it was filed,
+and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -4879,3 +4891,7 @@ move.
 **From a token question (2026-10-22)** — T6, filed with ADR 0049 and built the same day
 
 - `.` **T6** — [The theme's disabled opacity and font families have no `$` name](backlog/closed-2026-09.md#-t6--the-themes-disabled-opacity-and-font-families-have-no--name--done-2026-10-22) — done (2026-10-22) — `$disabledOpacity` a role in the length space after the metrics; family tokens, a fallback list picked by the core at declaration and when the fonts change, `family="$code"` resolved where a family name is
+
+**From kawoosh's mlua 0.12.2 audit (2026-10-22)** — F180, filed and built the same day
+
+- `~` **F180** — [kui-lua refuses a fraction where it reads a whole number, but not everywhere](backlog/closed-2026-09.md#-f180--kui-lua-refuses-a-fraction-where-it-reads-a-whole-number-but-not-everywhere--done-2026-10-22) — done (2026-10-22) — a count, position, index, byte or line floored as `index` is (`measure`), a handle whole or refused by name (`handle`), a run's colours as every colour number; the `cells` buffer cut to `MAX_CELLS`

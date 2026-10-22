@@ -8,7 +8,7 @@
 
 use kui_core::widgets::{ListReading, ListSlice, RowHeights};
 use kui_core::{Rect, ScrollGeometry, Size, Vec2};
-use mlua::{Lua, Table, UserData, UserDataMethods};
+use mlua::{Lua, Table, UserData, UserDataMethods, Value};
 
 /// The userdata: the heights, and the frame's slicing between
 /// `slice_begin` and `slice_finish` with the rows the last step asked for.
@@ -18,34 +18,38 @@ pub(crate) struct LuaRowHeights {
     pending: Vec<usize>,
 }
 
-/// A row index from Lua: 0-based, as `uniform_list`'s and `index` are.
-fn row(i: i64) -> usize {
-    i.max(0) as usize
+/// A row count or index from Lua: 0-based, as `uniform_list`'s and
+/// `index` are, and read as `index` reads one — floored, below 0 as 0
+/// (`crate::measure`, backlog F180).
+fn row(i: &Value, what: &str) -> mlua::Result<usize> {
+    crate::measure_arg(i, what)
 }
 
 impl UserData for LuaRowHeights {
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
         m.add_method("len", |_, this, ()| Ok(this.inner.len()));
-        m.add_method_mut("set_len", |_, this, rows: i64| {
-            this.inner.set_len(row(rows));
+        m.add_method_mut("set_len", |_, this, rows: Value| {
+            this.inner.set_len(row(&rows, "set_len: rows")?);
             Ok(())
         });
         m.add_method_mut("clear", |_, this, ()| {
             this.inner.clear();
             Ok(())
         });
-        m.add_method_mut("set", |_, this, (i, h): (i64, f32)| {
-            this.inner.set(row(i), h);
+        m.add_method_mut("set", |_, this, (i, h): (Value, f32)| {
+            this.inner.set(row(&i, "set: i")?, h);
             Ok(())
         });
-        m.add_method("measured", |_, this, i: i64| {
-            Ok(this.inner.measured(row(i)))
+        m.add_method("measured", |_, this, i: Value| {
+            Ok(this.inner.measured(row(&i, "measured: i")?))
         });
-        m.add_method("get", |_, this, i: i64| Ok(this.inner.get(row(i))));
+        m.add_method("get", |_, this, i: Value| {
+            Ok(this.inner.get(row(&i, "get: i")?))
+        });
         m.add_method("estimate", |_, this, ()| Ok(this.inner.estimate()));
         m.add_method("total", |_, this, ()| Ok(this.inner.total()));
-        m.add_method_mut("offset_of", |_, this, i: i64| {
-            Ok(this.inner.offset_of(row(i)))
+        m.add_method_mut("offset_of", |_, this, i: Value| {
+            Ok(this.inner.offset_of(row(&i, "offset_of: i")?))
         });
         m.add_method_mut("row_at", |_, this, y: f32| Ok(this.inner.row_at(y)));
 
@@ -143,7 +147,10 @@ fn parse_reading(t: &Table) -> mlua::Result<ListReading> {
         viewport: Size::new(num(t, "viewport_w")?, num(t, "viewport_h")?),
         pad_t: num(t, "pad_t")?,
         pad_x: num(t, "pad_x")?,
-        overscan: t.get::<Option<i64>>("overscan")?.unwrap_or(2).max(0) as usize,
+        overscan: match t.get::<Value>("overscan")? {
+            Value::Nil => 2,
+            v => row(&v, "list overscan")?,
+        },
     })
 }
 
@@ -152,9 +159,9 @@ fn parse_reading(t: &Table) -> mlua::Result<ListReading> {
 pub(crate) fn register(lua: &Lua) -> mlua::Result<()> {
     lua.globals().set(
         "row_heights",
-        lua.create_function(|_, (rows, estimate): (i64, Option<f32>)| {
+        lua.create_function(|_, (rows, estimate): (Value, Option<f32>)| {
             Ok(LuaRowHeights {
-                inner: RowHeights::new(row(rows), estimate.unwrap_or(20.0)),
+                inner: RowHeights::new(row(&rows, "row_heights: rows")?, estimate.unwrap_or(20.0)),
                 slice: None,
                 pending: Vec::new(),
             })
