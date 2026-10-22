@@ -2140,6 +2140,48 @@ static void conf_layers(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_floats_in_order (ADR 0053): a floats_in_order canvas
+ * of `a` and `b`, `n` declared first from phase 1, `a` and `b` swapped in
+ * phase 2, and a menu after the canvas, outside it. */
+static void conf_order_item(KuiCtx *ui, const char *key, float x, float y, float w,
+                            float h, uint32_t bg, const char *label) {
+    KuiValue *tag = kui_value_map();
+    kui_value_map_set(tag, KUI_STR("kind"), kui_value_str(KUI_STR(key)));
+    KuiSpec spec = {
+        .float_mode = KUI_FLOAT_VIEWPORT,
+        .float_anchor_x = KUI_START, .float_anchor_y = KUI_START,
+        .float_self_x = KUI_START, .float_self_y = KUI_START,
+        .float_dx = x, .float_dy = y,
+        .width = {KUI_FIXED, w}, .height = {KUI_FIXED, h}, .bg = bg,
+        .label = KUI_STR(label),
+    };
+    kui_open_keyed(ui, KUI_STR(key), &spec, tag);
+    kui_close(ui);
+}
+
+static void conf_floats_in_order(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    KuiSpec outer = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1}};
+    kui_open(ui, &outer, NULL);
+    KuiSpec canvas = {.width = {KUI_GROW, 1}, .height = {KUI_GROW, 1},
+                      .bg = 0x101018ff, .floats_in_order = 1};
+    kui_open_keyed(ui, KUI_STR("canvas"), &canvas, NULL);
+    if (phase >= 1) {
+        conf_order_item(ui, "n", 200, 40, 120, 80, 0x3b5bd4ff, "N");
+    }
+    for (int i = 0; i < 2; i++) {
+        int is_a = phase >= 2 ? i == 1 : i == 0;
+        if (is_a) {
+            conf_order_item(ui, "a", 40, 60, 120, 80, 0xd9534fff, "A");
+        } else {
+            conf_order_item(ui, "b", 120, 100, 120, 80, 0x73d98cff, "B");
+        }
+    }
+    kui_close(ui);
+    conf_order_item(ui, "menu", 280, 20, 80, 200, 0x888888ff, "Menu");
+    kui_close(ui);
+}
+
 /* conformance::build_drop (ADR 0031): two zones, a button inside the
  * first, and across the phases a hoverable float over the first zone that
  * is no zone (phase 1) and a modal over it (phase 2). The tags are
@@ -2497,6 +2539,7 @@ static const ConfScene CONF_SCENES[] = {
     {"virtual", conf_virtual},
     {"selection-range", conf_selection_range},
     {"layers", conf_layers},
+    {"floats-in-order", conf_floats_in_order},
     {"drop", conf_drop},
     {"anchor", conf_anchor},
     {"scrollbar", conf_scrollbar},

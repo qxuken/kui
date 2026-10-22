@@ -242,6 +242,9 @@ pub struct Tree {
     /// Whether any node declares `over_siblings`, so the in-flow walk keeps no
     /// deferred subtrees on a frame that raises nothing.
     pub any_over_siblings: bool,
+    /// Whether any node declares `floats_in_order`, so the float stack
+    /// looks for the groups it orders only on a frame that has one.
+    pub any_floats_in_order: bool,
     /// Whether any node declares `on_layout`, so the rect report can skip
     /// the walk.
     pub any_layout: bool,
@@ -372,6 +375,7 @@ impl Tree {
         self.any_reveal = false;
         self.any_slide = false;
         self.any_over_siblings = false;
+        self.any_floats_in_order = false;
         self.any_layout = false;
         self.any_context_menu = false;
         self.any_scroll_handler = false;
@@ -442,6 +446,7 @@ impl Tree {
         self.any_opacity |= spec.style.opacity < 1.0;
         self.any_animate |= spec.animate;
         self.any_over_siblings |= spec.over_siblings;
+        self.any_floats_in_order |= spec.floats_in_order;
         if let Some(events) = spec.events.as_deref() {
             self.any_modal |= events.modal().is_some();
             self.any_layout |= events.on_layout().is_some();

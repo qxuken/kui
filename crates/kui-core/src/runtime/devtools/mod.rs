@@ -1580,6 +1580,7 @@ impl Core {
         inner.focusable = false;
         inner.initial_focus = false;
         inner.over_siblings = false;
+        inner.floats_in_order = false;
         inner.hoverable = false;
         inner.cursor = None;
         inner.window = None;

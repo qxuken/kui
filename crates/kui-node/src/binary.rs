@@ -125,8 +125,8 @@ use crate::{Result, err, value_of};
 /// `onWindow` / `onDismiss`, and `menuBar` carries its `onMenu` message
 /// (a strref, absent for none) after the menu.
 /// v25: `menuBar` carries a flags word after its `onMenu` message, 1
-/// for `standardMenus` (ADR 0052); and `revealOnHover` (ADR 0051) is a
-/// new row.
+/// for `standardMenus` (ADR 0052); and `revealOnHover` (ADR 0051) and
+/// `floatsInOrder` (ADR 0053) are new rows.
 pub const VERSION: u32 = 25;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a

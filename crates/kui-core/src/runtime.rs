@@ -447,6 +447,11 @@ pub struct Core {
     /// order the layers opened in. Bounded by the
     /// frame's own float count; nothing to evict.
     float_stack: Vec<(Key, u32)>,
+    /// Scratch for `stack_floats` on a frame with a `floats_in_order`
+    /// node: each float root's group — the outermost such node above it,
+    /// or `NIL` — by rank in tree order. Kept so a steady frame refills
+    /// it without allocating.
+    float_groups: Vec<u32>,
     /// The hover hints of the nodes open right now that declared a
     /// `tooltip` (`Core::hint`), each with the stack depth it was opened
     /// at, so `close` knows whose turn it is. Only nodes that declared one
@@ -1234,6 +1239,7 @@ impl Core {
             opacity: Vec::new(),
             float_root: Vec::new(),
             float_stack: Vec::new(),
+            float_groups: Vec::new(),
             hints: Vec::new(),
             floated_hint: crate::tree::NIL,
             reveal_pointer: Vec::new(),

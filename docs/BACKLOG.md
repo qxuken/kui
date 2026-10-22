@@ -260,7 +260,15 @@ it was filed, and is in the archive; and F183–F185, from the Cookie
 Mapping Builder's redesign — a row's actions shown while it is hovered,
 a toggle's label cut to one line, an app's menus beside the standard
 ones — were built the day they were filed, F183 and F185 with ADRs 0051
-and 0052, after the alpha.63 tag, and are in the archive.
+and 0052, after the alpha.63 tag, and are in the archive; and RG163,
+from the Cookie Mapping Builder's scrolled cookie — a wrapped long
+line's half-shown row ending at its first low glyph — was built the day
+it was filed, after the alpha.63 tag, and is in the archive; and RG164,
+the same cut in every other text, found when RG163 did not end it in
+the app, was built the day it was filed and is in the archive; and F186, from
+kawoosh's diagram pane — the floats under a node stacked in tree order
+— was built the day it was filed, with ADR 0053, after the alpha.63
+tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3205,6 +3213,17 @@ menu, an Edit menu and `Window`. Three entries, F183 with [ADR
 with [ADR 0052](adr/0052-a-declared-bar-beside-the-standard-menus.md),
 **built 2026-10-23**, the day they were filed, and in the archive.
 
+## From kawoosh's diagram pane (2026-10-23)
+
+kawoosh draws a `.kdraw` file as a canvas, one float per item, and the
+user asked that the drawing's order be the file's: the last line on top,
+and reordering is moving lines. kui stacks floats in the order they
+opened, by key, so an item that panned into view or was added went over
+the rest and a reordered tree moved nothing; only re-keying the canvas
+reordered it, and that threw its node state away. One entry, F186, with
+[ADR 0053](adr/0053-floats-under-a-node-paint-in-tree-order.md),
+**built 2026-10-23**, the day it was filed, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5026,3 +5045,7 @@ move.
 - `~` **F183** — [A row's actions cannot show only while the row is hovered](backlog/closed-2026-09.md#-f183--a-rows-actions-cannot-show-only-while-the-row-is-hovered--done-2026-10-23) — done (2026-10-23) — `revealOnHover`: drawn while the nearest ancestor that tracks the pointer is hovered (anything inside it), holds a press or keyboard-visible focus, or while focus is inside the node; hidden is opacity 0, so the room, the hits, the access tree and the Tab ring stay; `reveal-without-anchor`
 - `~` **F184** — [A stock toggle's label cannot be cut](backlog/closed-2026-09.md#-f184--a-stock-toggles-label-cannot-be-cut--done-2026-10-23) — done (2026-10-23) — `ellipsis`, `maxLines` and `wrap` on `checkbox` / `radio` / `switch`, read on the label; a cut label stays the click target, is named whole, and floats whole as the hint while cut (`Core::text_cut`); `toggle_with_style`, `kui_*_with`
 - `~` **F185** — [A declared menu bar drops the standard menus](backlog/closed-2026-09.md#-f185--a-declared-menu-bar-drops-the-standard-menus--done-2026-10-23) — done (2026-10-23) — `standardMenus` on the bar: on macOS the process's application menu, the standard Edit, the declared menus, the standard Window; nothing where the bar is drawn
+
+**From kawoosh's diagram pane (2026-10-23)** — F186, filed and built the same day, with ADR 0053
+
+- `~` **F186** — [A canvas of floats cannot stack in its document's order](backlog/closed-2026-09.md#-f186--a-canvas-of-floats-cannot-stack-in-its-documents-order--done-2026-10-23) — done (2026-10-23) — `floatsInOrder`: every float under the node, at any depth, in tree order each frame; the group keeps its place in the stack among the other floats; a `tooltip`'s hint stays over it; hits follow

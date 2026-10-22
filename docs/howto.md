@@ -647,6 +647,40 @@ tree order between themselves.
 [`slide` row](props.md#container-props) ·
 [ADR 0046](adr/0046-a-node-over-its-siblings-paints-after-them.md)
 
+### How do I stack a canvas's items in the order my document lists them?
+
+Floats stack in the order they open: a key the stack has not seen goes on
+top. That suits menus, and not a drawing whose items are floats, where an
+item that pans into view (or is added) would land over the rest, and
+moving an item in the tree would move nothing. Declare `floatsInOrder` on
+the canvas:
+
+```jsx
+<box width="grow" height="grow" clip floatsInOrder>
+  {items.map((it) => (
+    <box key={it.id} float={{ anchor: 'parent', clip: true, dx: it.x - pan.x, dy: it.y - pan.y }}>
+      …
+    </box>
+  ))}
+</box>
+```
+
+Every float under it, at any depth, paints in tree order, the last
+declared on top, worked out each frame; a label floated inside an item is
+over that item and under the items after it. To bring an item forward,
+move it later in the list. The press follows the same order. As a group
+the items keep their place among the window's other floats: a menu that
+opened after them is over all of them, a newcomer included.
+
+A menu or popup declared under the canvas is one of its floats and paints
+by its place, so declare popups outside it, after it, where they open on
+top. The hover hint of a `tooltip` on an item is the core's and goes over
+every item. There is no need to re-key the canvas when its items change.
+
+[`floatsInOrder` row](props.md#container-props) ·
+[ADR 0053](adr/0053-floats-under-a-node-paint-in-tree-order.md) ·
+[ADR 0023](adr/0023-layers-stack-in-the-order-they-open.md)
+
 ### How do I follow the OS's dark mode, accent or reduce-motion setting?
 
 Read `env.system`: `appearance` (`"light"` / `"dark"` / `"unknown"`),

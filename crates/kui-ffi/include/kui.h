@@ -398,8 +398,14 @@ extern "C" {
  * kui_menu_bar_has_standard_menus, a declared bar with the platform's
  * standard menus kept around it
  * (docs/adr/0052-a-declared-bar-beside-the-standard-menus.md).
+ *
+ * ABI 36 adds floats_in_order to KuiSpec, in what was the tail padding
+ * after reveal_on_hover, so the 64-bit size stays 800 while the layout
+ * moves: the floats under the node paint in tree order, the last declared
+ * on top (docs/adr/0053-floats-under-a-node-paint-in-tree-order.md).
+ * Recompile; zeroed, the floats stack in the order they opened as they did.
  */
-#define KUI_ABI_VERSION 35u
+#define KUI_ABI_VERSION 36u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1370,6 +1376,14 @@ typedef struct KuiSpec {
      * opacity 0, eased by transition_ms: the node keeps its room, its hit
      * regions and its place in the access tree and the Tab ring. ABI 35. */
     uint32_t reveal_on_hover;
+    /* Non-zero: the floats under this node, at any depth, paint in tree
+     * order, the last declared on top, worked out again every frame,
+     * instead of in the order they opened (floatsInOrder) - a canvas whose
+     * items are floats stacks them as its document does. As a group they
+     * keep their place in the stack among the floats outside the node; the
+     * hover hint a tooltip floats goes over them. The hit test reads the
+     * same order. ABI 36. */
+    uint32_t floats_in_order;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

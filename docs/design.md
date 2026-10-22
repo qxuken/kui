@@ -571,6 +571,12 @@ siblings paint in tree order, a later one over an earlier; one that declares
 `overSiblings` paints after its siblings and still under whatever follows its
 parent — a tab gliding past its neighbour stays on top whichever way it
 moved (`docs/adr/0046-a-node-over-its-siblings-paints-after-them.md`).
+A node that declares `floatsInOrder` takes the floats under it out of
+the opening order: they paint in tree order among themselves, worked out
+every frame, and keep, as a group, the place the stack gives them among
+the floats outside it — a canvas whose items are floats stacks them as its
+document does, and the hover hint of a `tooltip` still goes over them
+(`docs/adr/0053-floats-under-a-node-paint-in-tree-order.md`).
 `FloatConfig::below()`/`above()` give tooltip placement in one call
 (`widgets::tooltip` wraps it); `FloatConfig::viewport().at(End, End)` pins a
 HUD to a corner.

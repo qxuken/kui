@@ -191,7 +191,10 @@
 ///   toggle with its label's line breaking (backlog F184), and
 ///   `kui_menu_bar_standard_menus` and `kui_menu_bar_has_standard_menus`,
 ///   the platform's standard menus kept beside a declared bar (ADR 0052).
-pub const KUI_ABI_VERSION: u32 = 35;
+/// - ABI 36: `floats_in_order` added to `KuiSpec` in the tail padding
+///   after `reveal_on_hover` (still 800 bytes on 64-bit): the floats under
+///   the node paint in tree order (ADR 0053).
+pub const KUI_ABI_VERSION: u32 = 36;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

@@ -336,6 +336,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "iterations" => s.iterations = F,
             "overSiblings" => s.over_siblings = 1,
             "revealOnHover" => s.reveal_on_hover = 1,
+            "floatsInOrder" => s.floats_in_order = 1,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -557,6 +558,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_menu: &menu_tag,
         on_selection_range: &menu_tag,
         reveal_on_hover: 1,
+        floats_in_order: 1,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -666,6 +668,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_menu("cm")
         .on_selection_range("cm")
         .reveal_on_hover()
+        .floats_in_order()
         .modifier_keys()
         .initial_focus()
         .disabled(true)
