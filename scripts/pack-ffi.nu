@@ -84,7 +84,7 @@ const OUT = $ROOT | path join target pack
 # The first two pinned like the release workflow's
 # (.github/workflows/release.yml); cargo-xwin only here.
 const CARGO_ZIGBUILD_VERSION = "0.23.3"
-const ZIGLANG_VERSION = "0.16.0"
+const ZIGLANG_VERSION = "0.17.0"
 const CARGO_XWIN_VERSION = "0.23.1"
 
 const PLATFORMS = [

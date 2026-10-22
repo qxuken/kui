@@ -169,6 +169,17 @@ the core wrote the field is what both readings now ask.
   the 100k edit alone, the half RG156 tripled (backlog RG157). It printed a
   table of its own, which the guard could not read.
 
+- Dependencies, each release two weeks old or more: `mlua` 0.12.2 (with
+  `mlua-sys` 0.13), `glam`, `objc2`, `either`, `arbitrary`,
+  `async-recursion`, `lazy_static`, `napi-build` and `toml_datetime` in
+  the lockfile; the examples' `@types/node` 26.6.4; Nushell 0.116.1 in
+  CI and the release scripts; zig 0.17.0 under cargo-zigbuild for the
+  Linux prebuilds and packs, whose libraries still need only glibc 2.28
+  (checked on Debian 10). The 29 newer lockfile updates, napi 3.15 among
+  them, and cargo-zigbuild 0.24 wait for their two weeks; `x11rb` 0.14
+  waits for winit and arboard, which pin 0.13. `cargo audit` and
+  `npm audit` are clean.
+
 **What you can delete.**
 
 - A Lua message's field renamed away from `event` or `node_key` so

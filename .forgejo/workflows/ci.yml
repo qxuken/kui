@@ -135,7 +135,7 @@ env:
   RUSTUP_HOME: /usr/local/rustup
   # The Nushell the scripts are written against (scripts/*.nu), pinned like
   # every other tool here.
-  NU_VERSION: "0.116.0"
+  NU_VERSION: "0.116.1"
   # The Odin the binding (packages/odin) is generated and checked with: an
   # odin-lang release tag, whose Linux build is one self-contained binary
   # beside its core library. Moved with the compiler the binding is

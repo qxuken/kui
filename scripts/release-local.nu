@@ -70,9 +70,9 @@ apt-get install -y --no-install-recommends libasound2-dev:amd64
 curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable \
   -t x86_64-unknown-linux-gnu -t aarch64-unknown-linux-gnu
 export PATH="$HOME/.cargo/bin:$PATH"
-pip3 install --break-system-packages "cargo-zigbuild==0.23.3" "ziglang==0.16.0"
-nu_dir="nu-0.116.0-$(uname -m)-unknown-linux-gnu"
-curl -fL --retry 3 "https://github.com/nushell/nushell/releases/download/0.116.0/${nu_dir}.tar.gz" \
+pip3 install --break-system-packages "cargo-zigbuild==0.23.3" "ziglang==0.17.0"
+nu_dir="nu-0.116.1-$(uname -m)-unknown-linux-gnu"
+curl -fL --retry 3 "https://github.com/nushell/nushell/releases/download/0.116.1/${nu_dir}.tar.gz" \
   | tar -xz -C /usr/local/bin --strip-components=1 "${nu_dir}/nu"
 mkdir -p /work && cd /work && tar -xf /src.tar
 cargo zigbuild -p kui-node --release --target aarch64-unknown-linux-gnu.2.28

@@ -52,7 +52,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_HOME: /usr/local/cargo
   RUSTUP_HOME: /usr/local/rustup
-  NU_VERSION: "0.116.0"
+  NU_VERSION: "0.116.1"
   # cargo-fuzz builds with flags only a nightly takes (`-Zsanitizer`).
   # Pinned, like every other tool here, to the nightly the first round ran
   # on: a run is reproducible from the commit that started it.
