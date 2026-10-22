@@ -3067,11 +3067,13 @@ in the alpha.56 round.
 ## From the alpha.62 pre-tag pass (2026-10-22)
 
 The round since alpha.61 — F178, F179, T6 with ADR 0049, F180 — on the
-Mac: CI's `check` in order (the Rust tests; the C round; the Odin leg
-on dev-2026-10, CI's pin; Node with the corpus required; gen; the
-typecheck; the headless round), `cargo audit`, the windowed smoke with
-Node's (55 examples on both bases), the accessibility audit (106 of
-106), the bench guard against alpha.61, and three read-only reviewers
+Mac: CI's `check` in order (2250 Rust tests in 171 suites; the C
+round; the Odin leg on dev-2026-10, CI's pin; Node with the corpus
+required, 247 tests; gen; the typecheck; the headless round), `cargo
+audit`, the windowed smoke with Node's (55 examples on both bases, 132
+windows), the accessibility audit (106 of 106), the bench guard against
+alpha.61 on five bench files (the guarded rows −3.2% to +0.9%, every
+row within its noise), and three read-only reviewers
 — the core, the bindings, the docs — each claim checked by reading
 before it was acted on. Green as found. RG159 is what the reviewers
 found — F179's second hint over a stock control, F178 missing the

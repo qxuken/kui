@@ -163,6 +163,35 @@ was the first bare bump to break an app in five releases).
   that was there only because the binding raised on a fraction: `cells
   { rows = room_h / line_h }` is the rows that fit.
 
+### Native verification
+
+One pre-tag pass on 2026-10-22 over the round since alpha.61 — F178,
+F179, T6 with ADR 0049, F180 — on the Mac (backlog, "From the alpha.62
+pre-tag pass").
+
+**macOS** (Apple silicon, macOS 27): CI's `check` step by step — fmt,
+clippy, the book, the conformance report, the C round, the Odin leg
+(`gen --check`, `check`, `test`, `slots`) on dev-2026-10, CI's pin, the
+Node addon under `KUI_CONFORMANCE_REQUIRED=1`, gen, the examples'
+typecheck, the headless round — on the tree the tag holds: **2250 Rust
+tests over 171 suites, and Node's 247**. `cargo audit` clean. The
+windowed round with Node's: 55 examples on both bases, 132 windows.
+The accessibility audit: **106 of 106**. The bench guard against
+alpha.61 on `frame`, `stream`, `cells`, `long_line` and `editing`: the
+guarded rows −3.2% to +0.9%, and every row of the five within its
+noise. Three read-only reviewers over the diff found RG159, fixed
+before the tag: a second hint over a stock control inside a tooltip
+box, the toggles' and the slider's hint dimmed with them, four
+overflows and a wrapping handle F180 opened in kui-lua, a snake_case
+role counted as a token by Node's encoder, a family table re-picked
+every frame. What they raised that wants a decision is RG160.
+
+**The C and Odin tarballs**: darwin-arm64 packed natively, bundled, and
+`pack-ffi.nu verify` over both — the counter linked shared and static
+and run headless, C and Odin, on the Mac. Nothing in the round touched
+the packing; the Linux and Windows packs are as alpha.61's, which
+GitHub's release run built.
+
 ## 0.1.0-alpha.61 (2026-10-22)
 
 **What breaks.**
