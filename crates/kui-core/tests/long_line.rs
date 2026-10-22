@@ -301,41 +301,46 @@ fn a_glyph_wrapped_long_line_fills_every_row() {
 /// A row the view's bottom cuts through draws every glyph that reaches
 /// into the view, not those up to the first whose ink starts below it: a
 /// row's glyphs start at different heights (`.` under `0`), so the row's
-/// top, not a glyph's, is where nothing further can show.
+/// top, not a glyph's, is where nothing further can show. A long line's
+/// chunks (backlog RG163) and a run shaped whole (RG164) alike.
 #[test]
 fn a_row_the_view_cuts_draws_every_glyph_reaching_into_it() {
-    let text = line(20_000);
-    // The glyph quads on the sixth row (90..108) whose ink starts above
-    // 100, in a view `h` tall: 100 cuts the row at 10 px, 200 shows it.
-    let row_5 = |h: f32| {
-        let mut core = Core::new();
-        for _ in 0..2 {
-            let mut ui = core.frame(Size::new(VIEW_W, 300.0), 1.0);
-            ui.configure_root(NodeSpec::column().fill());
-            ui.with_keyed(
-                "view",
-                NodeSpec::column().size(VIEW_W, h).scroll_y(),
-                |ui| {
-                    let style = wrapped(TextWrap::Glyph);
-                    ui.text_in_keyed("row", NodeSpec::column().width(VIEW_W), &text, style);
-                },
-            );
-            ui.finish();
-        }
-        let (dl, _) = core.output();
-        let mut xs: Vec<_> = dl
-            .quads
-            .iter()
-            .filter(|q| q.kind == QuadKind::GlyphMask)
-            .filter(|q| q.rect.y + q.rect.h > 5.0 * LH && q.rect.y < 100.0)
-            .map(|q| (q.rect.x, q.rect.y))
-            .collect();
-        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        xs
-    };
-    let shown = row_5(200.0);
-    assert!(shown.len() > 20, "{shown:?}");
-    assert_eq!(row_5(100.0), shown);
+    for len in [3_000, 20_000] {
+        let text = line(len);
+        // The glyph quads on the sixth row (90..108) whose ink starts
+        // above 100, in a view `h` tall: 100 cuts the row at 10 px, 200
+        // shows it.
+        let row_5 = |h: f32| {
+            let mut core = Core::new();
+            for _ in 0..2 {
+                let mut ui = core.frame(Size::new(VIEW_W, 300.0), 1.0);
+                ui.configure_root(NodeSpec::column().fill());
+                ui.with_keyed(
+                    "view",
+                    NodeSpec::column().size(VIEW_W, h).scroll_y(),
+                    |ui| {
+                        let style = wrapped(TextWrap::Glyph);
+                        ui.text_in_keyed("row", NodeSpec::column().width(VIEW_W), &text, style);
+                    },
+                );
+                ui.finish();
+            }
+            assert_eq!(core.long_lines(), usize::from(len >= LONG_LINE_BYTES));
+            let (dl, _) = core.output();
+            let mut xs: Vec<_> = dl
+                .quads
+                .iter()
+                .filter(|q| q.kind == QuadKind::GlyphMask)
+                .filter(|q| q.rect.y + q.rect.h > 5.0 * LH && q.rect.y < 100.0)
+                .map(|q| (q.rect.x, q.rect.y))
+                .collect();
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            xs
+        };
+        let shown = row_5(200.0);
+        assert!(shown.len() > 20, "{len}: {shown:?}");
+        assert_eq!(row_5(100.0), shown, "{len} bytes");
+    }
 }
 
 #[test]

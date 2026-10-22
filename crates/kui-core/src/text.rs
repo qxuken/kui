@@ -330,6 +330,12 @@ struct GlyphTemplate {
     /// on a row when a wrapped long line's chunk is drawn. Every slice of
     /// a glyph carries the glyph's, so they go to its row together.
     byte: u32,
+    /// Where the glyph's line starts showing: the line box's top, or the
+    /// highest ink on the line where that rises above it. Every glyph of
+    /// a line has the line's, so emission stops at the first line below
+    /// the clip rather than at the first glyph whose ink is — a `.`
+    /// starts lower than the `0` after it (backlog RG164).
+    line_y: f32,
 }
 
 /// One decoration rect relative to the text origin, physical px.
@@ -3455,6 +3461,7 @@ fn build_templates(
                             .color_opt
                             .map(|c| Color::rgba8(c.r(), c.g(), c.b(), c.a())),
                         byte: glyph.start as u32,
+                        line_y: run.line_top,
                     };
                     // A colour bitmap (an emoji) paints its own colours.
                     if painted && template.kind != QuadKind::GlyphColor {
@@ -3472,11 +3479,18 @@ fn build_templates(
                 let (dx, dy) = entry.shift(run.line_i);
                 if dx != 0.0 || dy != 0.0 {
                     for g in &mut entry.glyphs[g0..] {
-                        (g.x, g.y) = (g.x + dx, g.y + dy);
+                        (g.x, g.y, g.line_y) = (g.x + dx, g.y + dy, g.line_y + dy);
                     }
                     for d in &mut entry.deco[d0..] {
                         (d.x, d.y) = (d.x + dx, d.y + dy);
                     }
+                }
+                // The line shows from its box's top or its highest ink.
+                let top = entry.glyphs[g0..]
+                    .iter()
+                    .fold(f32::INFINITY, |t, g| t.min(g.y).min(g.line_y));
+                for g in &mut entry.glyphs[g0..] {
+                    g.line_y = top;
                 }
                 // An initial's background is as tall as the lines it
                 // drops through, as its caret and selection are, and
@@ -3487,11 +3501,13 @@ fn build_templates(
                     }
                 }
             }
-            // Emission stops at the first glyph below the clip, so the
-            // templates go top to bottom: an initial's run comes first and
+            // Emission stops at the first line below the clip, so the
+            // templates go line by line: an initial's run comes first and
             // reaches down beside the rows after it.
             if entry.initial.is_some() {
-                entry.glyphs.sort_by(|a, b| a.y.total_cmp(&b.y));
+                entry
+                    .glyphs
+                    .sort_by(|a, b| a.line_y.total_cmp(&b.line_y).then(a.y.total_cmp(&b.y)));
             }
             // Rasterizing may have extended the page mid-build, which
             // keeps every slot where it was but moves the stamp: keep the
@@ -3563,17 +3579,23 @@ fn emit_entry(
             });
         }
 
-        // Glyph templates are in layout order; skip everything above the clip
-        // and stop at the first glyph past it (rows below never come back).
-        // Horizontally clipped glyphs (an unwrapped line) are dropped too.
+        // Glyph templates are in layout order; skip everything outside the
+        // clip and stop at the first line that starts below it (lines below
+        // never come back). A glyph's own ink says nothing of the rest of
+        // its line — a `.` starts lower than the `0` after it — so it is
+        // skipped, not stopped at (backlog RG164). Horizontally clipped
+        // glyphs (an unwrapped line) are dropped too.
         out.extend(
             entry
                 .glyphs
                 .iter()
+                .take_while(|g| oy + g.line_y <= vis.y + vis.h)
                 .filter(|g| {
-                    oy + g.y + g.h >= vis.y && ox + g.x < vis.x + vis.w && ox + g.x + g.w > vis.x
+                    oy + g.y + g.h >= vis.y
+                        && oy + g.y <= vis.y + vis.h
+                        && ox + g.x < vis.x + vis.w
+                        && ox + g.x + g.w > vis.x
                 })
-                .take_while(|g| oy + g.y <= vis.y + vis.h)
                 .map(|g| Quad {
                     rect: Rect::new(ox + g.x, oy + g.y, g.w, g.h),
                     color: g.color.unwrap_or(color),

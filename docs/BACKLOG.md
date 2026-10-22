@@ -263,7 +263,9 @@ ones — were built the day they were filed, F183 and F185 with ADRs 0051
 and 0052, after the alpha.63 tag, and are in the archive; and RG163,
 from the Cookie Mapping Builder's scrolled cookie — a wrapped long
 line's half-shown row ending at its first low glyph — was built the day
-it was filed, after the alpha.63 tag, and is in the archive.
+it was filed, after the alpha.63 tag, and is in the archive; and RG164,
+the same cut in every other text, found when RG163 did not end it in
+the app, was built the day it was filed and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day

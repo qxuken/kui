@@ -133,6 +133,12 @@ was the first bare bump to break an app in five releases).
   edge: a `.` or a `,` under the `0` before it, so the half-shown row
   ended mid-row and the rest appeared as it scrolled in. The row draws
   every glyph that reaches into the view now (backlog RG163).
+- Any wrapped text did the same, long or not: a scroll view cutting
+  through a row of a paragraph, a log or a code block drew that row only
+  up to its first glyph whose ink starts below the view's edge, and the
+  rest of the row appeared once it scrolled further in. A text stopped
+  drawing at its first glyph below the clip; it stops at its first line
+  below it now (backlog RG164).
 
 **What you can delete.**
 
