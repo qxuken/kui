@@ -2816,6 +2816,56 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "drag-through",
+        doc: "A press on a child that does nothing with a press is the \
+              enclosing `onDrag` node's (backlog F176). A 20x100 track \
+              declares the drag; inside it, under a 30 px spacer, a \
+              thumb declares only `hoverBg`, so it is hit-tracked and \
+              claims nothing. The pointer presses at (10, 45), on the \
+              thumb, moves 10 px and 40 px down and lets go: every phase \
+              arrives as the track's message, the deltas measured from \
+              the press. Before F176 the thumb's region took the press \
+              and nothing was emitted — a scrollbar built of boxes \
+              dragged from its empty track and never by its thumb.",
+        custom: &["key"],
+        elements: &["box"],
+        build: build_drag_through,
+        env: NATIVE_CHROME,
+        steps: &[
+            Step::Cursor(10, 45),
+            Step::MouseDown,
+            Step::Cursor(10, 55),
+            Step::Cursor(10, 85),
+            Step::MouseUp,
+        ],
+        expect: Expect {
+            solid: 2,
+            shadows: 0,
+            images: 0,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 0,
+            access: &["0 window ||"],
+            events: &[
+                "drag thumb start 0 0",
+                "drag thumb move 0 10",
+                "drag thumb move 0 40",
+                "drag thumb end 0 40",
+            ],
+            announcements: &[],
+            warnings: &[],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
         name: "selection",
         doc: "A `selectable` card and a drag across it (ADR 0017): the \
               pointer presses inside the first label, moves into the third \
@@ -6076,6 +6126,28 @@ fn build_drag(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .size(80.0, 40.0)
             .bg(Color::hex(0x30344aff))
             .on_drag(Value::map([("kind", Value::str("split"))])),
+    );
+}
+
+fn build_drag_through(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    // A scrollbar of boxes: the track takes the drag, the thumb inside
+    // it only lights up. (10, 45) is on the thumb.
+    ui.with_keyed(
+        "track",
+        NodeSpec::column()
+            .size(20.0, 100.0)
+            .bg(Color::hex(0x1b1d27ff))
+            .on_drag(Value::map([("kind", Value::str("thumb"))])),
+        |ui| {
+            ui.leaf(NodeSpec::column().size(20.0, 30.0));
+            ui.leaf_keyed(
+                "knob",
+                NodeSpec::column()
+                    .size(20.0, 30.0)
+                    .bg(Color::hex(0x30344aff))
+                    .hover_bg(Color::hex(0x3a3f52ff)),
+            );
+        },
     );
 }
 

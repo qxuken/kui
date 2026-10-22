@@ -227,7 +227,9 @@ archive; and F172, from kawoosh's Linux install — a window's Wayland
 `app_id` — was built the day it was filed, after the alpha.58 tag, and
 is in the archive; and F173, from kawoosh's terminal — a click in a pane
 a strip scrolls into view — was built the day it was filed, after the
-alpha.59 tag, and is in the archive.
+alpha.59 tag, and is in the archive; and F176, from kawoosh's hex pane
+— a press on a draggable node's hover-lit child — was built the day it
+was filed, after the alpha.60 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1794,6 +1796,15 @@ press on a pane half off screen focuses it and scrolls the strip to
 show it, while the button is still held. A click there on a terminal
 selected the cells the grid slid by under the still pointer. One entry,
 F173, **built 2026-10-21**, the day it was filed, and in the archive.
+
+## From kawoosh's hex scrollbar (2026-10-22)
+
+kawoosh's hex pane draws its scrollbar as boxes: an `on_drag` track
+with a thumb inside it that lights up under the pointer. Adding tests
+for every event surface of the alpha.60 move found the bar dragging
+from its empty track and never from its thumb — on alpha.58 as well.
+One entry, F176, **built 2026-10-22**, the day it was filed, and in the
+archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4789,3 +4800,7 @@ move.
 - `.` **RG139** — [What the round after RG127 left](backlog/closed-2026-09.md#-rg139--what-the-round-after-rg127-left--done-2026-10-22) — done (2026-10-22)
 - `.` **RG145** — [What the alpha.42 pre-tag pass left](backlog/closed-2026-09.md#-rg145--what-the-alpha42-pre-tag-pass-left--done-2026-10-22) — done (2026-10-22)
 - `.` **RG121** — [What RG76, RG113 and RG118 left](backlog/closed-2026-09.md#-rg121--what-rg76-rg113-and-rg118-left--done-2026-10-22) — done (2026-10-22)
+
+**From kawoosh's hex scrollbar (2026-10-22)** — F176, filed and built the same day
+
+- `~` **F176** — [A press on a draggable node's child that claims nothing drags nothing](backlog/closed-2026-09.md#-f176--a-press-on-a-draggable-nodes-child-that-claims-nothing-drags-nothing--done-2026-10-22) — done (2026-10-22) — `enclosing_drag` resolved at the press, as `on_button`'s owner is: the nearest live `on_drag` above a region with no claim of its own, ending at the first node that has one; the `drag-through` scene

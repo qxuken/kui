@@ -63,6 +63,10 @@ was the first bare bump to break an app in five releases).
 - The Odin binding's `kui/c` takes the context as `^Ctx` in the ten
   functions it typed `[^]Ctx` (a context followed by a `size_t`): the
   same ABI, the C type it claims to keep (backlog RG145).
+- A primary press on a node that does nothing with a press — one that
+  only declares `hoverBg`, `hoverable`, `onHover` or a `cursor` — starts
+  the drag of the nearest enclosing `onDrag` node, where it started
+  nothing (backlog F176).
 
 A message named its own fields, and the core read one of them as its
 own whenever the event had nothing to write there; the flag that says
@@ -90,6 +94,20 @@ the core wrote the field is what both readings now ask.
 
 ### Fixed
 
+- A press on a child of an `onDrag` node drags it when the child does
+  nothing with a press itself: a scrollbar built of boxes, whose thumb
+  only lights up under the pointer, dragged from its empty track and
+  never by its thumb — the thumb's hover region took the press and
+  dropped it. The press now goes to the nearest enclosing `onDrag`
+  node, as a secondary press does to the enclosing menu: past nodes
+  that do nothing with a press, stopping at the first that does (a
+  clickable chip, a key sink, window chrome, a slider) and at the
+  modal boundary, passing a disabled one, and not out of the selection
+  scope it is in. A child with a claim of its own keeps it. The drag's
+  `parent` is the owner's parent (backlog F176, from kawoosh's hex
+  pane). **What you can delete:** a drag handler declared again on
+  every lit child of a draggable node, or a bar's thumb drawn as a
+  sibling float so that the press finds the track.
 - A dismissal a driver reports for a window the user closed, while the
   app still declares it, posts nothing; it delivered the entry's
   `onDismiss` about a window that was gone (backlog RG157).

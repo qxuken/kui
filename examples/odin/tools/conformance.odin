@@ -1483,6 +1483,16 @@ scene_drag :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	kui.close(ui)
 }
 
+// conformance::build_drag_through: a track that declares the drag and, inside
+// it, a thumb that declares only `hover_bg`: the press on the thumb drags the
+// track (backlog F176).
+scene_drag_through :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	kui.open_draggable(ui, "track", {width = kui.px(20), height = kui.px(100), bg = 0x1b1d27ff}, nil, msg("thumb"))
+	if kui.box(ui, {width = kui.px(20), height = kui.px(30)}) {}
+	if kui.box(ui, {key = "knob", width = kui.px(20), height = kui.px(30), bg = 0x30344aff, hover_bg = 0x3a3f52ff}) {}
+	kui.close(ui)
+}
+
 // conformance::build_selection: a `selectable` card of three runs.
 scene_selection :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	card := kui.Spec {
@@ -2045,6 +2055,7 @@ SCENES := [?]Scene {
 	{"popup", scene_popup},
 	{"live", scene_live},
 	{"drag", scene_drag},
+	{"drag-through", scene_drag_through},
 	{"selection", scene_selection},
 	{"selection-extend", scene_selection},
 	{"selection-scroll", scene_selection_scroll},

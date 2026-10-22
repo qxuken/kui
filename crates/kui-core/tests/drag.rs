@@ -459,3 +459,199 @@ fn losing_the_keyboard_mid_drag_ends_it_without_a_click() {
         "{evs:?}"
     );
 }
+
+/// A scrollbar built out of boxes: an 8px `on_drag` track down the right
+/// of a 200px-tall panel, a 40px spacer, and a thumb under it that lights
+/// up on hover. `thumb` builds the thumb's spec, so a test can give it
+/// a claim of its own. The track's parent is the panel (x 100, w 100).
+fn bar_frame(core: &mut Core, thumb: impl Fn() -> NodeSpec) -> (kui_core::Key, kui_core::Key) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::row().fill());
+    ui.leaf(NodeSpec::column().width(100.0).grow_height());
+    let mut keys = (kui_core::Key::ROOT, kui_core::Key::ROOT);
+    ui.with(NodeSpec::row().width(100.0).height(200.0), |ui| {
+        ui.leaf(NodeSpec::column().width(92.0).grow_height());
+        keys.0 = ui.with_keyed(
+            "track",
+            NodeSpec::column().width(8.0).grow_height().on_drag("thumb"),
+            |ui| {
+                ui.leaf(NodeSpec::column().height(40.0));
+                keys.1 = ui.leaf_keyed("knob", thumb().width(6.0).height(30.0));
+            },
+        );
+    });
+    ui.finish();
+    keys
+}
+
+fn hover_thumb() -> NodeSpec {
+    NodeSpec::column()
+        .radius(3.0)
+        .hover_bg(kui_core::Color::hex(0x888888))
+}
+
+/// Presses at (195, y), moves 50px down, lets go.
+fn drag_on_bar(core: &mut Core, y: f32) -> Vec<UiEvent> {
+    [
+        InputEvent::CursorMoved(Vec2::new(195.0, y)),
+        InputEvent::mouse_down(1),
+        InputEvent::CursorMoved(Vec2::new(195.0, y + 50.0)),
+        InputEvent::mouse_up(),
+    ]
+    .into_iter()
+    .flat_map(|ev| core.handle_input(ev))
+    .collect()
+}
+
+/// A press on a child that does nothing with a press of its own — the
+/// thumb only lights up under the pointer — is the enclosing `on_drag`
+/// node's, as an unclaimed secondary press is the enclosing menu's
+/// (backlog F176). The child's hover region used to take the press and
+/// drop it: the bar dragged from its empty track and never by its thumb.
+#[test]
+fn a_press_on_a_child_that_claims_nothing_drags_the_enclosing_node() {
+    let mut core = Core::new();
+    let (track, _) = bar_frame(&mut core, hover_thumb);
+    bar_frame(&mut core, hover_thumb);
+
+    let evs = drag_on_bar(&mut core, 55.0);
+    assert_eq!(phases(&evs), ["start", "move", "end"]);
+    let drags: Vec<&UiEvent> = evs.iter().filter(|e| e.event.name() == "drag").collect();
+    assert!(
+        drags.iter().all(|e| e.key == track),
+        "on the track: {drags:?}"
+    );
+    assert_eq!(drags[0].payload.get_str("tag"), Some("thumb"));
+    // The geometry is the owner's: its parent is the 100px panel.
+    let mv = drags[1].data().unwrap();
+    assert_eq!(mv.get_float("dy"), Some(50.0));
+    let parent = mv.get("parent").unwrap();
+    assert_eq!(parent.get_float("x"), Some(100.0));
+    assert_eq!(parent.get_float("w"), Some(100.0));
+
+    // The track's empty part drags as it always did.
+    let evs = drag_on_bar(&mut core, 150.0);
+    assert_eq!(phases(&evs), ["start", "move", "end"]);
+}
+
+/// A child that does something with a press keeps it: a clickable knob
+/// inside the track clicks, and the track does not drag.
+#[test]
+fn a_child_that_claims_the_press_keeps_it() {
+    let mut core = Core::new();
+    let knob = || hover_thumb().on_click("knob");
+    bar_frame(&mut core, knob);
+    bar_frame(&mut core, knob);
+
+    let evs = [
+        InputEvent::CursorMoved(Vec2::new(195.0, 55.0)),
+        InputEvent::mouse_down(1),
+        InputEvent::mouse_up(),
+    ]
+    .into_iter()
+    .flat_map(|ev| core.handle_input(ev))
+    .collect::<Vec<_>>();
+    assert!(phases(&evs).is_empty(), "no drag: {evs:?}");
+    assert!(
+        evs.iter().any(|e| e.payload.get_str("tag") == Some("knob")),
+        "{evs:?}"
+    );
+}
+
+/// The walk up stops at the first node that does something with a
+/// press: a hover-lit icon inside a clickable chip inside a draggable
+/// card is the chip's, not the card's — the nested declaration wins, as
+/// it does for menus and buttons.
+#[test]
+fn the_walk_stops_at_a_nearer_control() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "card",
+            NodeSpec::column().size(200.0, 100.0).on_drag("card"),
+            |ui| {
+                ui.with_keyed(
+                    "chip",
+                    NodeSpec::row().size(60.0, 30.0).on_click("chip"),
+                    |ui| {
+                        ui.leaf_keyed("icon", hover_thumb().size(20.0, 20.0));
+                    },
+                );
+            },
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    frame(&mut core);
+
+    let evs: Vec<UiEvent> = [
+        InputEvent::CursorMoved(Vec2::new(10.0, 10.0)),
+        InputEvent::mouse_down(1),
+        InputEvent::CursorMoved(Vec2::new(60.0, 60.0)),
+        InputEvent::mouse_up(),
+    ]
+    .into_iter()
+    .flat_map(|ev| core.handle_input(ev))
+    .collect();
+    assert!(phases(&evs).is_empty(), "the card stays put: {evs:?}");
+
+    // Past the chip, on the card itself, it drags.
+    let evs: Vec<UiEvent> = [
+        InputEvent::CursorMoved(Vec2::new(150.0, 80.0)),
+        InputEvent::mouse_down(1),
+        InputEvent::CursorMoved(Vec2::new(160.0, 90.0)),
+        InputEvent::mouse_up(),
+    ]
+    .into_iter()
+    .flat_map(|ev| core.handle_input(ev))
+    .collect();
+    assert_eq!(phases(&evs), ["start", "move", "end"]);
+}
+
+/// A disabled `on_drag` node lends nothing, and the walk goes on past it
+/// to the one above, as a disabled node's own menu is skipped.
+#[test]
+fn a_disabled_owner_is_walked_past() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "outer",
+            NodeSpec::column().size(200.0, 100.0).on_drag("outer"),
+            |ui| {
+                ui.with_keyed(
+                    "inner",
+                    NodeSpec::column()
+                        .size(100.0, 50.0)
+                        .on_drag("inner")
+                        .disabled(true),
+                    |ui| {
+                        ui.leaf_keyed("lit", hover_thumb().size(20.0, 20.0));
+                    },
+                );
+            },
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    frame(&mut core);
+
+    let evs: Vec<UiEvent> = [
+        InputEvent::CursorMoved(Vec2::new(10.0, 10.0)),
+        InputEvent::mouse_down(1),
+        InputEvent::CursorMoved(Vec2::new(60.0, 60.0)),
+        InputEvent::mouse_up(),
+    ]
+    .into_iter()
+    .flat_map(|ev| core.handle_input(ev))
+    .collect();
+    let drags: Vec<&str> = evs
+        .iter()
+        .filter(|e| e.event.name() == "drag")
+        .filter_map(|e| e.payload.get_str("tag"))
+        .collect();
+    assert_eq!(drags, ["outer", "outer", "outer"]);
+}

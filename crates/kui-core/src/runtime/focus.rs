@@ -664,6 +664,47 @@ impl Core {
         None
     }
 
+    /// The node a primary press on node `i` drags when `i` does nothing
+    /// with a press (backlog F176): the nearest ancestor with a live
+    /// `on_drag`. The walk passes nodes that do nothing with a press
+    /// either and ends with nothing at the first that does — a clickable
+    /// chip, a key sink, window chrome, a slider — so the nested
+    /// declaration wins, as it does for menus and buttons. A disabled
+    /// node is passed, its own drag with it, as a disabled menu is; the
+    /// walk stops at the modal boundary, and it does not climb out of the
+    /// selection scope `scope` the press is in: past that, the press is
+    /// the scope's drag-select.
+    pub(crate) fn enclosing_drag(&self, i: usize, scope: Option<Key>) -> Option<usize> {
+        let mut n = self.tree.parent[i];
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            if !self.interactive(j) {
+                return None;
+            }
+            let spec = &self.tree.specs[j];
+            if !spec.disabled {
+                let ev = spec.events();
+                if ev.on_drag().is_some() {
+                    return Some(j);
+                }
+                let slider = ev.on_change().is_some()
+                    && spec.access().role == Some(crate::access::Role::Slider);
+                if ev.on_click().is_some()
+                    || ev.on_key().is_some()
+                    || spec.window.is_some()
+                    || slider
+                {
+                    return None;
+                }
+            }
+            if scope == Some(self.tree.keys[j]) {
+                return None;
+            }
+            n = self.tree.parent[j];
+        }
+        None
+    }
+
     /// The zone node `i` belongs to: itself when it declares `on_drop`,
     /// else the nearest enclosing declaration —
     /// the same walk as `enclosing_menu`, stopping at the modal boundary

@@ -1793,6 +1793,21 @@ pub type DropOwner = MenuOwner;
 /// frame.
 pub type ButtonOwner = MenuOwner;
 
+/// The node above the region pressed whose `on_drag` a primary press
+/// starts, when the region itself does nothing with a press (backlog
+/// F176): a thumb that only lights up under the pointer is its track's.
+/// Resolved by the core at the press, as [`ButtonOwner`] is, and lent to
+/// the one `MouseDown` it routes next.
+#[derive(Clone, Debug)]
+pub(crate) struct DragOwner {
+    pub key: Key,
+    pub origin: OriginId,
+    pub tag: Value,
+    /// The owner's parent rect, not the region's: a drag's fractions are
+    /// of the container the dragged node sits in.
+    pub parent_rect: Rect,
+}
+
 /// The shape inside a region's rect that a point has to be in to hit it.
 /// The rect is always tested
 /// first, so a shape is evaluated only for the few regions under the
@@ -2261,6 +2276,9 @@ pub struct Interaction {
     pub(crate) sound_requests: Vec<crate::resources::SoundId>,
     /// Pointer-captured drag on an `on_drag` node.
     drag: Option<DragState>,
+    /// The enclosing drag the core found for the press it is about to
+    /// route; taken by that `MouseDown` whatever it lands on.
+    pub(crate) lent_drag: Option<DragOwner>,
     /// The non-primary buttons held on the node that claimed each with
     /// `on_button`, one capture per button, in press order.
     /// Empty — and unallocated — in an app that declares none.
@@ -2779,6 +2797,7 @@ impl Interaction {
                 self.pressed = self.hovered;
                 self.pressed_group = self.hovered_group;
                 self.press_clicks = clicks;
+                let lent = self.lent_drag.take();
                 if let Some(h) = self.cursor.and_then(|p| self.hit_at(p)) {
                     if h.window == Some(WindowRole::Drag) {
                         // The OS drag steals subsequent mouse events, so don't
@@ -2794,13 +2813,23 @@ impl Interaction {
                         ));
                         pointer_made += 1;
                         self.slide = Some((h.key, h.origin, track.clone(), v));
-                    } else if let Some(tag) = &h.drag {
-                        let p = self.cursor.unwrap();
-                        let state = DragState {
+                    } else if let Some(owner) = h
+                        .drag
+                        .as_ref()
+                        .map(|tag| DragOwner {
                             key: h.key,
                             origin: h.origin,
                             tag: tag.clone(),
                             parent_rect: h.parent_rect,
+                        })
+                        .or(lent)
+                    {
+                        let p = self.cursor.unwrap();
+                        let state = DragState {
+                            key: owner.key,
+                            origin: owner.origin,
+                            tag: owner.tag,
+                            parent_rect: owner.parent_rect,
                             press: p,
                             last: p,
                             moved: false,

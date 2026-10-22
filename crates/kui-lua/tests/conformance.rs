@@ -895,6 +895,16 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                             on_drag = { kind = "split" } }
         "#
         .to_string(),
+        // The press lands on the thumb, which declares only `hover_bg`:
+        // the drag is the track's (backlog F176).
+        "drag-through" => r#"
+            return column { key = "track", width = 20, height = 100, bg = 0x1b1d27ff,
+                            on_drag = { kind = "thumb" },
+              column { width = 20, height = 30 },
+              column { key = "knob", width = 20, height = 30, bg = 0x30344aff,
+                       hover_bg = 0x3a3f52ff } }
+        "#
+        .to_string(),
         // The `virtual` list, `selectable`, a line of text in each built
         // row, and the message the copy's ask arrives as (ADR 0047).
         "selection-range" => {
