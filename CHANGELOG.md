@@ -242,6 +242,10 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   run lists all that is wrong. `docs/releasing.md` has it.
 - CI checks the Odin binding on Odin dev-2026-10, where it pinned
   dev-2026-09; the binding still builds on dev-2026-09.
+- GitHub's release workflow uses `actions/checkout@v7`, `cache@v6`,
+  `upload-artifact@v7` and `download-artifact@v8`, which run on Node 24:
+  the v4s ran on Node 20, which GitHub deprecated and warned about on
+  every job.
 
 **What you can delete.**
 

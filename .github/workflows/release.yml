@@ -56,7 +56,7 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # A hosted runner has about 14 GB free and this workspace's test
       # build does not fit beside the toolchains the image ships that this
@@ -82,7 +82,7 @@ jobs:
           cargo --version
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -121,7 +121,7 @@ jobs:
             prebuild: win32-x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain
         shell: bash
@@ -146,7 +146,7 @@ jobs:
           "$HOME/.local/bin/cargo-zigbuild" --version
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -182,7 +182,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/$src" "packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node"
           ls -l "packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.prebuild }}
           path: packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node
@@ -197,7 +197,7 @@ jobs:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       NPMJS_REGISTRY: https://registry.npmjs.org/
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The repository's scripts are Nushell; the release tarball runs on
       # the runner as it is.
@@ -227,7 +227,7 @@ jobs:
       # under target/package against the registry copies of its dependencies;
       # keeping that dir and the registry cache makes later releases quick.
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -242,7 +242,7 @@ jobs:
 
       # Without `name`, every artifact of the run lands in <path>/<artifact
       # name>/, which is exactly the prebuilds layout.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: packages/kui/prebuilds
 
