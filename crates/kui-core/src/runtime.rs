@@ -451,7 +451,12 @@ pub struct Core {
     /// `tooltip` (`Core::hint`), each with the stack depth it was opened
     /// at, so `close` knows whose turn it is. Only nodes that declared one
     /// are here: a frame without a tooltip pays one length check per close.
-    hints: Vec<(usize, Key, String)>,
+    hints: Vec<(usize, Key, crate::access::Label)>,
+    /// The tree index of the last hover hint this frame floated, or
+    /// `NIL`: a box whose hint would float looks for one inside itself,
+    /// so the innermost `tooltip` under the pointer is the one shown
+    /// (backlog F179).
+    floated_hint: u32,
     /// The context menu this window has open, the keys the stock renderer
     /// gave its rows (so their clicks can be told from the app's), and
     /// what choosing one left for the host to do.
@@ -1162,6 +1167,7 @@ impl Core {
             float_root: Vec::new(),
             float_stack: Vec::new(),
             hints: Vec::new(),
+            floated_hint: crate::tree::NIL,
             menu: None,
             menu_actions: Vec::new(),
             menu_editor: None,
@@ -1943,6 +1949,7 @@ impl Core {
         // A frame that ended with nodes unclosed must not leak its hints
         // into the next one.
         self.hints.clear();
+        self.floated_hint = crate::tree::NIL;
         self.origin = OriginId::HOST;
         self.frame_requested = false;
         // And the lines that asked, with it: an ask the reset above

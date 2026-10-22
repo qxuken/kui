@@ -560,7 +560,8 @@ pub struct KuiSpec {
     /// Hover hint (empty = none), the `tooltip` prop of the other
     /// bindings: makes the node hover-tracked, becomes its accessible
     /// description, and floats `kui_core::widgets::tooltip` below it while
-    /// the pointer is over it: as its last child for the `kui_open*`
+    /// the pointer is over it or anything inside it, the innermost tooltip
+    /// winning (backlog F179): as its last child for the `kui_open*`
     /// family and the `kui_fragment*` doors (backlog RG124), which
     /// `kui_close` draws, and beside a leaf, anchored to it,
     /// for the leaf doors (`leaf_spec_of`, backlog RG113).

@@ -641,18 +641,19 @@ impl Core {
         self.stack.push(idx);
         self.counters.push(0);
         if let Some(tip) = tip {
-            self.spec_hint(key, &tip);
+            self.spec_hint(key, tip);
         }
     }
 
     /// The hint of a node that declared [`NodeSpec::tooltip`], recorded
-    /// only while it is hovered — `close` would drop it otherwise.
+    /// whether or not it is hovered: whether it shows is `close`'s to say,
+    /// once the children that may be hovered are in (backlog F179). The
+    /// description is shared, not copied. Not journaled as an `Op::Hint`:
+    /// a kept fill's replayed `Op::Open` comes back through here.
     #[cold]
     #[inline(never)]
-    fn spec_hint(&mut self, key: Key, tip: &str) {
-        if self.is_hovered(key) {
-            self.hint(key, tip);
-        }
+    fn spec_hint(&mut self, key: Key, tip: crate::access::Label) {
+        self.hints.push((self.stack.len(), key, tip));
     }
 
     /// Pushes a leaf — a node that is never left open for children: a
@@ -696,6 +697,7 @@ impl Core {
         else {
             return;
         };
+        self.floated_hint = self.tree.len() as u32;
         self.pause_keeping();
         crate::widgets::leaf_hint(&mut Ui::wrap(self), key, &tip);
         self.resume_keeping();
@@ -766,7 +768,8 @@ impl Core {
             && *depth == self.stack.len()
         {
             let (_, key, hint) = self.hints.pop().unwrap();
-            if self.is_hovered(key) {
+            if self.hint_shows(key) {
+                self.floated_hint = self.tree.len() as u32;
                 // The core's own nodes, not the fill's (ADR 0045).
                 self.pause_keeping();
                 crate::widgets::hover_hint(&mut Ui::wrap(self), &hint);
@@ -782,6 +785,30 @@ impl Core {
         }
     }
 
+    /// Whether the box being closed, `key`, floats its hint: while the
+    /// pointer is over it or over anything inside it — a child that
+    /// tracks the pointer takes the hover, and the hint stayed only over
+    /// the box's bare background — unless a hint inside it already
+    /// floated, so the innermost `tooltip` under the pointer is the one
+    /// shown, as a browser's `title` is (backlog F179). The box's subtree
+    /// is every node pushed since it opened, so the descendant test is a
+    /// scan of those keys, run only for a box with a hint whose own
+    /// region is not the hovered one.
+    #[cold]
+    #[inline(never)]
+    fn hint_shows(&self, key: Key) -> bool {
+        let at = self.current();
+        if self.floated_hint != NIL && self.floated_hint > at {
+            return false;
+        }
+        if self.is_hovered(key) {
+            return true;
+        }
+        self.interaction
+            .hovered()
+            .is_some_and(|h| self.tree.keys[at as usize + 1..].contains(&h))
+    }
+
     /// Records the hover hint of the node just opened (the top of the
     /// stack): `close` floats `widgets::hover_hint` below it while it is
     /// hovered. The one place that decides *when* a tooltip shows, so a
@@ -794,7 +821,7 @@ impl Core {
                 text: text.as_str().into(),
             });
         }
-        self.hints.push((self.stack.len(), key, text));
+        self.hints.push((self.stack.len(), key, text.into()));
     }
 
     /// Names the node under `key` `label` for `key_of`: what every keyed

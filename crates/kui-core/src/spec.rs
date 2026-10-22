@@ -2103,8 +2103,10 @@ impl NodeSpec {
     }
 
     /// A tooltip: the node tracks hover, `hint` is its accessible
-    /// description, and the core floats the hint below it while it is
-    /// hovered. On a box or a fragment the float is the node's last child;
+    /// description, and the core floats the hint below it while the
+    /// pointer is over it or over anything inside it, a child that tracks
+    /// the pointer included; with tooltips nested, the innermost one under
+    /// the pointer is the one shown (backlog F179). On a box or a fragment the float is the node's last child;
     /// on a leaf — an image, an editor, a cells grid, a line, a polygon, a
     /// path — which holds no children, it floats beside the leaf, anchored
     /// to it ([`FloatAnchor::Node`]), and lands below the leaf's box all

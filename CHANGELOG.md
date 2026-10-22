@@ -28,6 +28,10 @@ was the first bare bump to break an app in five releases).
 - The hint a `tooltip` floats under a box is drawn at the opacity of the
   box's parent, not the box's own: a box at `opacity: 0.4` had a hint at
   0.4 (backlog F178).
+- A box's `tooltip` shows while the pointer is over anything inside
+  the box, where it showed only while the box itself was the hovered
+  node: over a child button, a field or a row with a `hoverBg` it was
+  hidden, and now it shows (backlog F179).
 - Rust: `AccessSpec` gains `hint`, so a struct literal of it without
   `..` needs the field.
 
@@ -42,11 +46,21 @@ was the first bare bump to break an app in five releases).
   box's own, on a box and a leaf alike; a panel fading around the box
   still fades the hint with it. A `widgets::tooltip` the view places
   itself is content and fades as before (backlog F178).
+- A box's `tooltip` went away while the pointer was over a child that
+  tracks the pointer — a button, a field, a row with a `hoverBg` or an
+  `onClick` — since that child, not the box, was the hovered node; it
+  showed only over the box's bare background. It now shows while the
+  pointer is over the box or anything inside it, as a browser's `title`
+  does, and with tooltips nested the innermost one under the pointer is
+  the one shown. The same in every binding (backlog F179).
 
 **What you can delete.**
 
 - An `opacity` moved off a box with a `tooltip` and onto its children,
   or a hint drawn by hand outside the box, to keep the hint readable.
+- A box's `tooltip` repeated on each interactive child, or an `onHover`
+  on the children feeding a hint the app floated itself, so the hint
+  stayed up over them.
 
 ## 0.1.0-alpha.61 (2026-10-22)
 

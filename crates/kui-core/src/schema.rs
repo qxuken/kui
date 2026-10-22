@@ -1681,7 +1681,7 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`tooltip = \"hint\"`",
         c: "`KuiSpec.tooltip` (`kui_tooltip` / `kui_tooltip_with` draw a hint that is not hover-gated)",
         odin: "`Spec.tooltip` (`kui.tooltip` / `kui.tooltip_with` draw a hint that is not hover-gated)",
-        doc: "Floats a hint below the node while hovered. All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn. On a box or a `fragment` the float is the node's last child; a leaf holds no children — a `line`, `polygon`, `path`, `cells` grid, `image` or `edit` — and its hint floats beside it instead, anchored to it, and lands below its box the same way, out of every clip and flipping above near the window's bottom (backlog RG113; `PropsOut::for_leaf`). A leaf draws its description, which is the hint unless a `description` applied after it overwrote the slot. A `line`, `polygon` or `path` is hovered by its shape, so its hint shows while the pointer is on the stroke or inside the outline, not anywhere in its box. The hint is drawn at the opacity the node's parent has, not the node's own: a box or a leaf at `opacity: 0.4` has a hint that is not, and a panel fading around it takes the hint with it (backlog F178).",
+        doc: "Floats a hint below the node while the pointer is over it or over anything inside it — a child button, a field, a row with a `hoverBg` included, as a browser's `title` shows over a descendant; with tooltips nested, the innermost one under the pointer is the one shown (backlog F179). All three effects — hover tracking, the accessible description, and the float itself — come from `PropsOut::apply_tooltip`, so no frontend can implement two of them; a Rust view has all three in `NodeSpec::tooltip` (`NodeSpec::apply_tooltip` is the spec half, for a caller that floats the hint itself). The `description` row is that middle effect on its own, for a hint that is spoken and never drawn. On a box or a `fragment` the float is the node's last child; a leaf holds no children — a `line`, `polygon`, `path`, `cells` grid, `image` or `edit` — and its hint floats beside it instead, anchored to it, and lands below its box the same way, out of every clip and flipping above near the window's bottom (backlog RG113; `PropsOut::for_leaf`). A leaf draws its description, which is the hint unless a `description` applied after it overwrote the slot. A `line`, `polygon` or `path` is hovered by its shape, so its hint shows while the pointer is on the stroke or inside the outline, not anywhere in its box. The hint is drawn at the opacity the node's parent has, not the node's own: a box or a leaf at `opacity: 0.4` has a hint that is not, and a panel fading around it takes the hint with it (backlog F178).",
     },
 ];
 
@@ -3470,7 +3470,8 @@ pub struct PropsOut {
     pub ime_off: bool,
     pub key_focus: bool,
     /// Hover hint: the element lowering floats `widgets::tooltip` below the
-    /// node while it is hovered (the parser also marks the spec hoverable).
+    /// node while the pointer is over it or anything inside it (backlog
+    /// F179; the parser also marks the spec hoverable).
     pub tooltip: Option<String>,
     /// The windows the root declared, with each entry's lifecycle
     /// messages (`Core::declare_window_with`, in order).
