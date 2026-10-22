@@ -1856,6 +1856,26 @@ static void conf_drag(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_close(ui);
 }
 
+/* conformance::build_drag_through: a track that declares the drag and,
+ * inside it, a thumb that declares only `hover_bg`: the press on the thumb
+ * drags the track (backlog F176). */
+static void conf_drag_through(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiValue *thumb = kui_value_map();
+    kui_value_map_set(thumb, KUI_STR("kind"), kui_value_str(KUI_STR("thumb")));
+    KuiSpec track = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 100}, .bg = 0x1b1d27ff};
+    kui_open_draggable(ui, KUI_STR("track"), &track, NULL, thumb);
+    KuiSpec spacer = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 30}};
+    kui_open(ui, &spacer, NULL);
+    kui_close(ui);
+    KuiSpec knob = {.width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 30},
+                    .bg = 0x30344aff, .hover_bg = 0x3a3f52ff};
+    kui_open_keyed(ui, KUI_STR("knob"), &knob, NULL);
+    kui_close(ui);
+    kui_close(ui);
+}
+
 /* conformance::build_selection: a `selectable` card of three runs the
  * pointer drags across, leaving the three highlight quads the report pins.
  * The row is on the container; the labels inside declare nothing. */
@@ -2444,6 +2464,7 @@ static const ConfScene CONF_SCENES[] = {
     {"popup", conf_popup},
     {"live", conf_live},
     {"drag", conf_drag},
+    {"drag-through", conf_drag_through},
     {"selection", conf_selection},
     {"selection-extend", conf_selection},
     {"selection-scroll", conf_selection_scroll},

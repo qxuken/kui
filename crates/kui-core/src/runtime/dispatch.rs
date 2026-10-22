@@ -665,6 +665,7 @@ impl Core {
                 // node's instead, and captured by it (backlog F105).
                 let primary = button == MouseButton::Primary;
                 let mut owner = None;
+                let mut lent = None;
                 // A scrollbar wins what it was painted over — its own
                 // scroller's content, not a float over it (ADR 0023): a
                 // thumb press starts a drag, a track press jumps there
@@ -691,7 +692,7 @@ impl Core {
                 // Click-to-focus / caret placement / start drag-selection,
                 // against the previous frame's layout.
                 if let Some(p) = self.interaction.cursor() {
-                    let hit = self.interaction.hit_at(p).map(|h| {
+                    let pressed = self.interaction.hit_at(p).map(|h| {
                         // A region that does something with a press
                         // claims it: a button inside a selectable
                         // card is a button first (ADR 0017).
@@ -699,8 +700,21 @@ impl Core {
                             || h.drag.is_some()
                             || h.key_sink.is_some()
                             || h.window.is_some();
-                        let scope = h.select_scope.filter(|_| !claimed);
-                        (h.key, h.edit_origin, h.focusable, scope, h.origin)
+                        // One that does nothing with it at all — a thumb
+                        // that only lights up under the pointer — is the
+                        // enclosing `on_drag` node's to drag (backlog
+                        // F176).
+                        let lends = !claimed && h.slider.is_none() && h.edit_origin.is_none();
+                        let pressed = (h.key, h.edit_origin, h.focusable, h.select_scope, h.origin);
+                        (pressed, claimed, lends)
+                    });
+                    if primary && let Some(((key, _, _, scope, _), _, true)) = pressed {
+                        lent = self.drag_owner(key, scope);
+                    }
+                    // A drag it starts is not also a drag-select.
+                    let hit = pressed.map(|((key, edit, focusable, scope, origin), claimed, _)| {
+                        let scope = scope.filter(|_| !claimed && lent.is_none());
+                        (key, edit, focusable, scope, origin)
                     });
                     // While a modal is up, a press outside it never
                     // touches focus: one that finds no region asks the
@@ -838,6 +852,7 @@ impl Core {
                     }
                 }
                 let claimed_button = owner.is_some();
+                self.interaction.lent_drag = lent;
                 let n = match owner {
                     Some(owner) => self
                         .interaction
@@ -916,6 +931,28 @@ impl Core {
             key: self.tree.keys[j],
             origin: self.tree.origins[j],
             tag: self.tree.specs[j].events().on_button().cloned()?,
+        })
+    }
+
+    /// The drag a primary press on node `key` starts when the node does
+    /// nothing with a press itself: the nearest enclosing `on_drag`
+    /// node's, with that node's parent rect, as its own region would
+    /// have carried it.
+    fn drag_owner(&self, key: Key, scope: Option<Key>) -> Option<crate::input::DragOwner> {
+        let i = self.tree.index_of(key)?;
+        let j = self.enclosing_drag(i, scope)?;
+        let parent = self.tree.parent[j];
+        let parent_rect = if parent == crate::tree::NIL {
+            Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h)
+        } else {
+            let p = parent as usize;
+            Rect::from_pos_size(self.tree.pos[p], self.tree.size[p])
+        };
+        Some(crate::input::DragOwner {
+            key: self.tree.keys[j],
+            origin: self.tree.origins[j],
+            tag: self.tree.specs[j].events().on_drag().cloned()?,
+            parent_rect,
         })
     }
 

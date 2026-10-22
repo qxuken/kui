@@ -5729,6 +5729,16 @@ SCENE_TREES['scroll-handler-room'] = () =>
 SCENE_TREES.drag = () =>
   root({}, [box({ width: 80, height: 40, bg: '#30344a', onDrag: { kind: 'split' } }, [], 'handle')]);
 
+// `conformance::build_drag_through`: the press lands on a thumb that
+// declares only `hoverBg`, and the drag is the track's (backlog F176).
+SCENE_TREES['drag-through'] = () =>
+  root({}, [
+    box({ width: 20, height: 100, bg: '#1b1d27', onDrag: { kind: 'thumb' } }, [
+      box({ width: 20, height: 30 }),
+      box({ width: 20, height: 30, bg: '#30344a', hoverBg: '#3a3f52' }, [], 'knob'),
+    ], 'track'),
+  ]);
+
 /** `conformance::EXIT_BULK_ROWS`: with its own root, one node past
  *  `kui_core::depart::MAX_NODES`, so the whole subtree is refused. */
 const EXIT_BULK_ROWS = 4096;
