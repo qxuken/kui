@@ -214,6 +214,8 @@ pub(crate) enum Read {
     ScrollGeom(Key, Option<ScrollGeometry>),
     Layout(Key, Option<Rect>),
     TextHit(Key, Vec2, Option<crate::text::TextHit>),
+    /// Whether the text under a key was cut short (`Core::text_cut`).
+    TextCut(Key, bool),
     EditText(Key, Option<String>),
     /// The env reading handed out whole, less the clock and the caret
     /// phase it carries (see [`env_same`]).
@@ -514,6 +516,7 @@ impl Core {
             Read::ScrollGeom(k, g) => self.scroll_geometry(*k) == *g,
             Read::Layout(k, r) => self.layout_of_raw(*k) == *r,
             Read::TextHit(k, p, h) => self.text_hit_raw(*k, *p) == *h,
+            Read::TextCut(k, v) => self.text.cut(*k, self.building) == *v,
             Read::EditText(k, s) => self.edit.text(*k) == *s,
             Read::Env(f) => env_same(f, &self.env_facts_raw()),
             Read::Measure(rev) => self.text_rev() == *rev,

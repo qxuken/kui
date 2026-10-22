@@ -48,6 +48,7 @@ Keys :: struct {
 	nick:                                                   u64, // out: the stock input with messages and a value
 	card, slider, sink, editor, input, select, drag, child: u64, // out: node keys
 	checkbox, gain:                                         u64, // out: the stock controls' keys
+	cut_box, cut_radio, cut_switch:                         u64, // out: the toggles with a cut label
 	hitline, region:                                        u64, // out: the selectable row, the focus region
 }
 
@@ -206,6 +207,18 @@ surface_view :: proc(k: ^Keys, ui: ^kui.Ui) {
 			kui.radio(ui, "Dark", true, "dark")
 		}
 		kui.toggle(ui, "Wi-Fi", true, "wifi")
+		// The three with a label kept to one line and cut with an ellipsis
+		// where a narrow row squeezes them (backlog F184).
+		if kui.box(ui, {dir = .Row, width = kui.px(120), gap = 4}) {
+			one_line := kui.Text_Style {
+				ellipsis = true,
+			}
+			k.cut_box = kui.checkbox(ui, "a-very-long-cookie-name-that-is-cut", false, "cut", text = one_line)
+			if kui.radio_group(ui, "Cut") {
+				k.cut_radio = kui.radio(ui, "another long name", false, "cut-radio", text = one_line)
+			}
+			k.cut_switch = kui.toggle(ui, "a third long name", true, "cut-switch", text = one_line)
+		}
 		k.gain = kui.slider(ui, "Gain", 40, 0, 100, "gain", {value_step = 5})
 		mono := kui.Text_Style {
 			size   = 13,
@@ -370,6 +383,7 @@ surface :: proc() -> bool {
 	kui.frame(ui, &k, surface_view, 800, 600, 2)
 
 	check(k.checkbox != 0 && k.gain != 0, "checkbox and slider return their keys")
+	check(k.cut_box != 0 && k.cut_radio != 0 && k.cut_switch != 0 && k.cut_box != k.cut_radio, "the toggles with a cut label return their keys")
 	check(
 		k.card != 0 && k.slider != 0 && k.sink != 0 && k.editor != 0 && k.input != 0 && k.select != 0 && k.drag != 0 && k.child != 0,
 		"every node got a key",
@@ -815,6 +829,12 @@ surface :: proc() -> bool {
 		kui.frame_begin(ui, 320, 240, 1)
 		check(kui.menu_bar_with(ui, menus, Chose{}), "menu_bar_with declares and draws")
 		kui.frame_finish(ui)
+		check(!kui.menu_bar_has_standard_menus(ui), "a bar declared alone keeps no standard menus")
+		// The same bar beside the platform's standard menus (ADR 0052).
+		kui.frame_begin(ui, 320, 240, 1)
+		check(kui.menu_bar_standard_menus(ui, menus, Chose{}), "menu_bar_standard_menus declares and draws")
+		kui.frame_finish(ui)
+		check(kui.menu_bar_has_standard_menus(ui), "and says it keeps the standard menus")
 
 		count, rev := kui.menu_bar_menu_count(ui)
 		check(count == 1 && rev > 0, "one menu, at a revision")

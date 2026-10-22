@@ -394,6 +394,12 @@ impl Core {
 
     #[inline(never)]
     fn resolve_declared_hover_style(&self, key: Key, spec: &mut NodeSpec) {
+        // Before the backgrounds, and whether or not it declares any: a
+        // revealed node is hidden by its opacity, which the transition
+        // then eases (ADR 0051).
+        if spec.interact().reveal_on_hover && !self.revealed(key) {
+            spec.style.opacity = 0.0;
+        }
         let Some(interact) = spec.interact.as_deref() else {
             return;
         };
@@ -434,6 +440,62 @@ impl Core {
         } else if hovered && let Some(c) = hover_bg {
             spec.style.bg = c;
         }
+    }
+
+    /// Whether the `reveal_on_hover` node `key`, about to open under the
+    /// current node, is drawn (ADR 0051): its anchor — the nearest
+    /// ancestor with a hit region of its own — was hovered, held a press,
+    /// or held keyboard-visible focus in the frame that finished, as the
+    /// keys `note_reveal_anchors` took from it say; or the focus is in
+    /// the node itself. With no anchor it is drawn, and
+    /// `reveal-without-anchor` says why it never hides.
+    #[cold]
+    fn revealed(&self, key: Key) -> bool {
+        if self.reveal_focus.contains(&key) {
+            return true;
+        }
+        let mut n = if self.stack.is_empty() {
+            NIL
+        } else {
+            self.current()
+        };
+        while n != NIL {
+            let i = n as usize;
+            if self.tree.specs[i].hover_tracked() {
+                let anchor = self.tree.keys[i];
+                return self.reveal_pointer.contains(&anchor)
+                    || (self.focus_visible && self.reveal_focus.contains(&anchor));
+            }
+            n = self.tree.parent[i];
+        }
+        true
+    }
+
+    /// Takes, from the frame about to be cleared, the keys from the
+    /// hovered node, the pressed one and the focused one up to the root:
+    /// what `revealed` reads the next frame's anchors against. The
+    /// pointer's are the nodes the last hit test found in this very tree,
+    /// so a key there is found by its index here. Only when the frame
+    /// declared a `reveal_on_hover` node; otherwise the lists are emptied.
+    pub(crate) fn note_reveal_anchors(&mut self) {
+        self.reveal_pointer.clear();
+        self.reveal_focus.clear();
+        if !self.tree.any_reveal {
+            return;
+        }
+        let tree = &self.tree;
+        let up = |from: Option<Key>, out: &mut Vec<Key>| {
+            let Some(mut n) = from.and_then(|k| tree.index_of(k)).map(|i| i as u32) else {
+                return;
+            };
+            while n != NIL {
+                out.push(tree.keys[n as usize]);
+                n = tree.parent[n as usize];
+            }
+        };
+        up(self.interaction.hovered(), &mut self.reveal_pointer);
+        up(self.interaction.pressed_key(), &mut self.reveal_pointer);
+        up(self.focus, &mut self.reveal_focus);
     }
 
     /// Physical modifier state as of the last `InputEvent::Modifiers`.

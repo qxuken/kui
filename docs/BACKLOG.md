@@ -256,7 +256,11 @@ the alpha.63 pre-tag pass — a leaf's hint under the box's opacity rule
 — was built the day it was filed, after the alpha.63 tag, and is in the
 archive; and F182, from a question about the wheel's steps on Windows —
 a notch gliding toward its place — was built with its ADR the day after
-it was filed, and is in the archive.
+it was filed, and is in the archive; and F183–F185, from the Cookie
+Mapping Builder's redesign — a row's actions shown while it is hovered,
+a toggle's label cut to one line, an app's menus beside the standard
+ones — were built the day they were filed, F183 and F185 with ADRs 0051
+and 0052, after the alpha.63 tag, and are in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3186,6 +3190,21 @@ programmatic scrolls but never the hand's. One entry, F182, with [ADR
 0050](adr/0050-a-wheel-notch-glides.md), **built 2026-10-23**, the day
 after it was filed, and in the archive.
 
+## From the Cookie Mapping Builder's redesign (2026-10-23)
+
+The Cookie Mapping Builder, a Node app on alpha.63, was redesigned with
+everything kui lacked to be added to kui rather than worked around. Three
+gaps came up. A row's or a group header's secondary actions could not
+show only while the row is hovered without the view tracking the hover,
+so the app drew quiet buttons always. A stock checkbox's label could not
+be cut, so the app paired a bare checkbox with a clickable text of its
+own. And a declared menu bar replaces the standard one, so one menu of
+the app's — «Пакеты», with ⌘F and ⌘R — cost re-declaring the application
+menu, an Edit menu and `Window`. Three entries, F183 with [ADR
+0051](adr/0051-a-node-shown-while-its-row-is-hovered.md), F184, and F185
+with [ADR 0052](adr/0052-a-declared-bar-beside-the-standard-menus.md),
+**built 2026-10-23**, the day they were filed, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5001,3 +5020,9 @@ move.
 **From a smooth-scroll question (2026-10-23)** — F182, filed with ADR 0050 and built the day after
 
 - `~` **F182** — [A wheel notch is a hard 40 px step on every platform](backlog/closed-2026-09.md#-f182--a-wheel-notch-is-a-hard-40-px-step-on-every-platform--done-2026-10-23) — done (2026-10-23) — `InputEvent::Wheel` in lines; a whole notch glides toward a clamped target on a critically damped spring each notch gives its own ease-out speed; fractions as they come; `room` by the target; `set_smooth_wheel` on by default, reduced motion jumps
+
+**From the Cookie Mapping Builder's redesign (2026-10-23)** — F183–F185, filed and built the same day, F183 and F185 with ADRs 0051 and 0052
+
+- `~` **F183** — [A row's actions cannot show only while the row is hovered](backlog/closed-2026-09.md#-f183--a-rows-actions-cannot-show-only-while-the-row-is-hovered--done-2026-10-23) — done (2026-10-23) — `revealOnHover`: drawn while the nearest ancestor that tracks the pointer is hovered (anything inside it), holds a press or keyboard-visible focus, or while focus is inside the node; hidden is opacity 0, so the room, the hits, the access tree and the Tab ring stay; `reveal-without-anchor`
+- `~` **F184** — [A stock toggle's label cannot be cut](backlog/closed-2026-09.md#-f184--a-stock-toggles-label-cannot-be-cut--done-2026-10-23) — done (2026-10-23) — `ellipsis`, `maxLines` and `wrap` on `checkbox` / `radio` / `switch`, read on the label; a cut label stays the click target, is named whole, and floats whole as the hint while cut (`Core::text_cut`); `toggle_with_style`, `kui_*_with`
+- `~` **F185** — [A declared menu bar drops the standard menus](backlog/closed-2026-09.md#-f185--a-declared-menu-bar-drops-the-standard-menus--done-2026-10-23) — done (2026-10-23) — `standardMenus` on the bar: on macOS the process's application menu, the standard Edit, the declared menus, the standard Window; nothing where the bar is drawn

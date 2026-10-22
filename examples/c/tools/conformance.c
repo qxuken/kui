@@ -2306,7 +2306,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
     kui_open_keyed(ui, KUI_STR("dock"), &dock, NULL);
     KuiSpec stop = {.dir = KUI_ROW, .width = {KUI_FIXED, 20}, .height = {KUI_FIXED, 20},
                     .bg = 0x2a2d3aff, .focusable = 1, .role = KUI_ROLE_BUTTON,
-                    .label = KUI_STR("Stop")};
+                    .label = KUI_STR("Stop"), .reveal_on_hover = 1};
     kui_open_keyed(ui, KUI_STR("stop"), &stop, NULL);
     kui_close(ui);
     kui_close(ui);

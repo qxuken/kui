@@ -4061,6 +4061,15 @@ impl TextSystem {
         out
     }
 
+    /// Whether any run `key` names was cut short as it was laid out
+    /// ([`CachedText::cut`]): from the frame that finished (`prev`) or
+    /// the one being emitted.
+    pub(crate) fn cut(&self, key: Key, prev: bool) -> bool {
+        self.runs_of(key, prev)
+            .iter()
+            .any(|(_, entry, _)| matches!(entry, Entry::Run(e) if e.cut()))
+    }
+
     /// How many bytes of content this frame's text `id` holds — what a
     /// selection range over it is measured against.
     pub(crate) fn content_len(&self, id: TextId) -> usize {
@@ -5117,6 +5126,18 @@ impl CachedText {
             }
             None => self.buffer.hit(x, y),
         }
+    }
+
+    /// Whether the text, as laid out, is short of its content: a line
+    /// past its budget, or the ellipsis the shaper puts where it cut —
+    /// the one glyph whose byte range is empty, pinned to the seam
+    /// between what shows and what does not. A long line has no budget.
+    fn cut(&self) -> bool {
+        let cap = line_cap(self.max_lines);
+        self.buffer
+            .layout_runs()
+            .enumerate()
+            .any(|(i, run)| i >= cap || run.glyphs.iter().any(|g| g.start == g.end))
     }
 
     /// The text's size and rows as laid out: [`measure_run`].

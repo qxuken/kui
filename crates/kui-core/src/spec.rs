@@ -1548,6 +1548,20 @@ pub struct InteractSpec {
     /// paints, takes the pointer and appears in the access tree as before,
     /// and keys bubble through it to the sink above.
     pub focus_region: bool,
+    /// Drawn only while its nearest hover-tracked ancestor — its
+    /// *anchor*, the first ancestor with a hit region of its own: an
+    /// `on_click` row, a `hover_bg` card, an explicit `hoverable` — is
+    /// hovered (the pointer over it or anything inside it), holds a press
+    /// begun inside it, or holds keyboard-visible focus inside it; and
+    /// while focus of any kind is inside the node itself, so a focused
+    /// control in it never vanishes (ADR 0051). Hidden is opacity 0,
+    /// eased by a `transition`: the node keeps its room, its hit regions
+    /// and its place in the access tree and the Tab ring, so the
+    /// row's secondary actions are there for the pointer that reaches
+    /// them, the keyboard that tabs to them and a screen reader, and
+    /// appear for each. With no anchor it is always drawn, and warned
+    /// about (`reveal-without-anchor`).
+    pub reveal_on_hover: bool,
     /// How this node's scrollbars look, when it scrolls (see
     /// [`Scrollbar`]). Cold: read once per scroller when its layer's
     /// chrome is emitted, which is why it lives in this box rather than
@@ -1777,6 +1791,7 @@ impl InteractSpec {
         drop_bg: None,
         selectable: false,
         focus_region: false,
+        reveal_on_hover: false,
         scrollbar: Scrollbar::DEFAULT,
         overscroll: Overscroll::Auto,
         rules: None,
@@ -2452,6 +2467,14 @@ impl NodeSpec {
     /// field): a Tab ring of its own, entered on purpose.
     pub fn focus_region(mut self) -> Self {
         self.interact_mut().focus_region = true;
+        self
+    }
+
+    /// Draws this node only while its anchor is hovered or focus is
+    /// inside it (see the `reveal_on_hover` field, ADR 0051): a row's
+    /// secondary actions, shown for the row under the pointer.
+    pub fn reveal_on_hover(mut self) -> Self {
+        self.interact_mut().reveal_on_hover = true;
         self
     }
 

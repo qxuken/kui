@@ -457,6 +457,14 @@ pub struct Core {
     /// so the innermost `tooltip` under the pointer is the one shown
     /// (backlog F179).
     floated_hint: u32,
+    /// Where the pointer and the focus were in the frame that finished,
+    /// as keys from the node up to the root: the hovered node's and the
+    /// pressed one's (`pointer`), and the focused one's (`focus`). What a
+    /// `reveal_on_hover` node reads its anchor against when it opens
+    /// (ADR 0051). Filled at `begin_frame` from the outgoing tree only
+    /// when that tree declared one, so a frame with none walks nothing.
+    reveal_pointer: Vec<Key>,
+    reveal_focus: Vec<Key>,
     /// The context menu this window has open, the keys the stock renderer
     /// gave its rows (so their clicks can be told from the app's), and
     /// what choosing one left for the host to do.
@@ -1228,6 +1236,8 @@ impl Core {
             float_stack: Vec::new(),
             hints: Vec::new(),
             floated_hint: crate::tree::NIL,
+            reveal_pointer: Vec::new(),
+            reveal_focus: Vec::new(),
             menu: None,
             menu_actions: Vec::new(),
             menu_editor: None,
@@ -1399,6 +1409,18 @@ impl Core {
         let hit = self.text_hit_raw(key, point);
         self.note_read(|| replay::Read::TextHit(key, point, hit));
         hit
+    }
+
+    /// Whether the text under `key` — its own, or any inside it — was cut
+    /// short where it was laid out: a text under a line budget (`ellipsis`,
+    /// `max_lines`) that ended in its ellipsis or dropped lines past the
+    /// budget. Answered from the frame that finished during a build, as
+    /// `text_hit` is: what a stock toggle reads to float its whole label
+    /// as a hint (backlog F184). False for a key that drew no text.
+    pub fn text_cut(&self, key: Key) -> bool {
+        let cut = self.text.cut(key, self.building);
+        self.note_read(|| replay::Read::TextCut(key, cut));
+        cut
     }
 
     pub(crate) fn text_hit_raw(&self, key: Key, point: Vec2) -> Option<TextHit> {
@@ -1953,6 +1975,9 @@ impl Core {
         // that already existed and no copying. Nothing else keeps it — a
         // frame with no exits empties the spare, so a stale tree can never
         // be diffed against.
+        // Read before the tree goes: a `reveal_on_hover` node opening in
+        // this frame asks where the pointer and the focus were in it.
+        self.note_reveal_anchors();
         let keep_prev = self.tree.any_exit;
         if keep_prev {
             std::mem::swap(&mut self.tree, &mut self.prev_tree);

@@ -42,7 +42,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 34
+ABI_VERSION :: 35
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -669,6 +669,7 @@ Spec :: struct {
 	on_boundary: ^Value,
 	on_menu: ^Value,
 	on_selection_range: ^Value,
+	reveal_on_hover: u32,
 }
 
 Announcement :: struct {
@@ -1271,6 +1272,8 @@ foreign lib {
 	close_menu :: proc(ctx: ^Ctx) -> bool ---
 	menu_bar :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint) -> bool ---
 	menu_bar_with :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint, on_menu: ^Value) -> bool ---
+	menu_bar_standard_menus :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint, on_menu: ^Value) -> bool ---
+	menu_bar_has_standard_menus :: proc(ctx: ^Ctx) -> bool ---
 	set_native_menu_bar :: proc(ctx: ^Ctx, on: bool) ---
 	menu_bar_menu_count :: proc(ctx: ^Ctx, revision: ^u64) -> uint ---
 	menu_bar_menu :: proc(ctx: ^Ctx, menu: uint, label: ^string, enabled: ^bool) -> uint ---
@@ -1355,6 +1358,9 @@ foreign lib {
 	radio :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) -> u64 ---
 	@(link_name = "kui_switch")
 	switch_ :: proc(ctx: ^Ctx, text: string, spec: ^Spec, payload: ^Value) -> u64 ---
+	checkbox_with :: proc(ctx: ^Ctx, text: string, spec: ^Spec, label: ^TextStyle, payload: ^Value) -> u64 ---
+	radio_with :: proc(ctx: ^Ctx, text: string, spec: ^Spec, label: ^TextStyle, payload: ^Value) -> u64 ---
+	switch_with :: proc(ctx: ^Ctx, text: string, spec: ^Spec, label: ^TextStyle, payload: ^Value) -> u64 ---
 	radio_group_open :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	slider :: proc(ctx: ^Ctx, label: string, spec: ^Spec) -> u64 ---
 	text_edit :: proc(ctx: ^Ctx, label: string, initial: string, style: ^TextStyle, flags: u32, spec: ^Spec) -> u64 ---

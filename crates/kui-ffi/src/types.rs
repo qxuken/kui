@@ -860,6 +860,12 @@ pub struct KuiSpec {
     /// has not built (`onSelectionRange`): this message with
     /// `selectionrange: {from, to}` in it. ABI 33.
     pub on_selection_range: *const KuiValue,
+    /// Non-zero: drawn only while its anchor — the nearest ancestor with a
+    /// hit region of its own — is hovered, holds a press or holds
+    /// keyboard-visible focus, or while focus is inside it
+    /// (`revealOnHover`, ADR 0051). Hidden is opacity 0: it keeps its room,
+    /// its hits and its place in the access tree. ABI 35.
+    pub reveal_on_hover: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

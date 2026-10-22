@@ -274,6 +274,12 @@ warnings! {
     /// transparency (`#ffffff40`) — frosted glass is a translucent fill
     /// over a blur (backlog F129).
     pub const BACKDROP_BLUR_HIDDEN: &str = "backdrop-blur-hidden";
+    /// A `revealOnHover` node with no ancestor that tracks the pointer —
+    /// no `onClick`, `hoverBg`, `hoverable` or other hit region above it
+    /// — so nothing's hover can show it, and it is drawn always rather
+    /// than hidden for good. Put `hoverable` on the row or group whose
+    /// hover should show it (ADR 0051).
+    pub const REVEAL_WITHOUT_ANCHOR: &str = "reveal-without-anchor";
     /// A text node sits more than four levels below the `line` row above
     /// it, which is as far as a text's place remembers its ancestors — so
     /// `textHit` / `caretRect` asked by that row's key cannot find the run,
@@ -1169,6 +1175,9 @@ impl Diagnostics {
         if tree.any_backdrop_blur {
             self.check_backdrop_blur(tree);
         }
+        if tree.any_reveal {
+            self.check_reveal(tree);
+        }
         self.check_auto_keyed_transitions(tree);
         self.check_duplicate_keys(tree);
         self.check_modal(tree);
@@ -1549,6 +1558,29 @@ impl Diagnostics {
                      the whole blur (give the bg some transparency, #ffffff40, for frosted glass)"
                 )
             });
+        }
+    }
+
+    /// [`REVEAL_WITHOUT_ANCHOR`]. Asked only on a frame that has a
+    /// `reveal_on_hover` node; each one walks its ancestors as the
+    /// builder did when it opened.
+    fn check_reveal(&mut self, tree: &Tree) {
+        for i in 0..tree.len() {
+            if !tree.specs[i].interact().reveal_on_hover {
+                continue;
+            }
+            let mut n = tree.parent[i];
+            while n != NIL && !tree.specs[n as usize].hover_tracked() {
+                n = tree.parent[n as usize];
+            }
+            if n == NIL {
+                self.warn(REVEAL_WITHOUT_ANCHOR, tree.keys[i], || {
+                    "revealOnHover has no ancestor that tracks the pointer, so no hover can show \
+                     it and it is always drawn (put `hoverable` on the row or group whose hover \
+                     should show it)"
+                        .to_string()
+                });
+            }
         }
     }
 

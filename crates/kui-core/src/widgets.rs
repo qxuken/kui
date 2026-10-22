@@ -1063,8 +1063,7 @@ pub fn switch(ui: &mut Ui<'_>, text: &str, on: bool, payload: impl Into<Value>) 
 /// tooltip drawn while it is hovered. The role is `kind`'s whatever the
 /// spec said. Keyed by `key`; an empty `text` draws the indicator alone,
 /// which then wants a `label`. A disabled toggle is dimmed as well as
-/// inert. This is what `<checkbox>`, `<radio>`, `<switch>` and their Lua
-/// and C doors lower to.
+/// inert. A label that wraps; [`toggle_with_style`] cuts it.
 pub fn toggle_with(
     ui: &mut Ui<'_>,
     kind: Toggle,
@@ -1072,6 +1071,28 @@ pub fn toggle_with(
     text: &str,
     spec: NodeSpec,
     hint: Option<&str>,
+) -> Key {
+    toggle_with_style(ui, kind, key, text, spec, hint, &TextStyle::default())
+}
+
+/// [`toggle_with`] with its label's line breaking in the caller's hands
+/// (backlog F184): `label`'s `wrap`, `max_lines` and `ellipsis`, and
+/// nothing else of it — the label's size, colour and face are the
+/// stock's. With `ellipsis` the label is one line, cut with an ellipsis
+/// where the toggle is squeezed (a row of names narrower than the
+/// longest, a list column), and it stays part of the toggle: a press on
+/// it toggles, its name is the whole text, and while it is cut and
+/// hovered the whole text floats as the toggle's hint, unless `hint`
+/// says something else. This is what `<checkbox>`, `<radio>`, `<switch>`
+/// and their Lua and C doors lower to.
+pub fn toggle_with_style(
+    ui: &mut Ui<'_>,
+    kind: Toggle,
+    key: &str,
+    text: &str,
+    spec: NodeSpec,
+    hint: Option<&str>,
+    label: &TextStyle,
 ) -> Key {
     let t = ui.theme();
     let m = ui.metrics();
@@ -1162,12 +1183,20 @@ pub fn toggle_with(
             }
         }
         if !text.is_empty() {
-            ui.text(text, TextStyle::new(m.control_text).color(t.fg));
+            let mut style = TextStyle::new(m.control_text).color(t.fg);
+            style.wrap = label.wrap;
+            style.max_lines = label.max_lines;
+            style.ellipsis = label.ellipsis;
+            ui.text(text, style);
         }
-        if let Some(hint) = hint
-            && ui.is_hovered(node)
-        {
-            hover_hint(ui, hint);
+        if ui.is_hovered(node) {
+            if let Some(hint) = hint {
+                hover_hint(ui, hint);
+            } else if (label.ellipsis || label.max_lines > 0) && ui.text_cut(node) {
+                // The whole label, where the frame drew less of it: the
+                // name already is the whole text, so this is the eye's.
+                hover_hint(ui, text);
+            }
         }
     })
 }

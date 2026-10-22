@@ -335,6 +335,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "pivotY" => (s.pivot_set, s.pivot_y) = (KUI_PIVOT_Y, F),
             "iterations" => s.iterations = F,
             "overSiblings" => s.over_siblings = 1,
+            "revealOnHover" => s.reveal_on_hover = 1,
             "initialFocus" => s.initial_focus = 1,
             "disabled" => s.disabled = 1,
             "focusBg" => s.focus_bg = C,
@@ -555,6 +556,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_boundary: &menu_tag,
         on_menu: &menu_tag,
         on_selection_range: &menu_tag,
+        reveal_on_hover: 1,
         disabled: 1,
         focus_bg: 0x11_22_33_ff,
         tooltip: KuiStr {
@@ -663,6 +665,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_boundary("cm")
         .on_menu("cm")
         .on_selection_range("cm")
+        .reveal_on_hover()
         .modifier_keys()
         .initial_focus()
         .disabled(true)
@@ -907,8 +910,11 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_select",
             "kui_select_with",
             "kui_checkbox",
+            "kui_checkbox_with",
             "kui_radio",
+            "kui_radio_with",
             "kui_switch",
+            "kui_switch_with",
             "kui_radio_group_open",
             "kui_slider",
             "kui_image",
@@ -929,6 +935,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_window_buttons",
             "kui_menu_bar",
             "kui_menu_bar_with",
+            "kui_menu_bar_standard_menus",
             "kui_latency_graph",
             "kui_latency_hud",
             "kui_tooltip",

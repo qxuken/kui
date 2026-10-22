@@ -387,8 +387,19 @@ extern "C" {
  * (backlog RG121). No struct moved; a library before 34 would read the
  * bit as a fill rule. Still 34 with KuiFamilyToken, kui_tokens_families
  * and kui_token_family (ADR 0049): a new [in] array and two functions.
+ *
+ * ABI 35 appends reveal_on_hover to KuiSpec (its 64-bit size goes from 792
+ * to 800): the node is drawn only while its row is hovered or focus is
+ * inside it (docs/adr/0051-a-node-shown-while-its-row-is-hovered.md).
+ * Recompile; zeroed, a node is drawn as it was. New with it, moving no
+ * struct: kui_checkbox_with, kui_radio_with and kui_switch_with, a stock
+ * toggle whose label takes the line breaking of a KuiTextStyle (backlog
+ * F184), and kui_menu_bar_standard_menus and
+ * kui_menu_bar_has_standard_menus, a declared bar with the platform's
+ * standard menus kept around it
+ * (docs/adr/0052-a-declared-bar-beside-the-standard-menus.md).
  */
-#define KUI_ABI_VERSION 34u
+#define KUI_ABI_VERSION 35u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1350,6 +1361,15 @@ typedef struct KuiSpec {
      * NULL: the event arrives as {selectionrange: ...} alone. Borrowed
      * while the node opens. ABI 33. */
     const KuiValue *on_selection_range;
+    /* Non-zero: drawn only while its anchor - the nearest ancestor with a
+     * hit region of its own, an on_click row or a hoverable group header -
+     * is hovered (the pointer over it or anything inside it), holds a press
+     * begun inside it or holds keyboard-visible focus inside it, and while
+     * focus of any kind is inside the node itself (revealOnHover,
+     * docs/adr/0051-a-node-shown-while-its-row-is-hovered.md). Hidden is
+     * opacity 0, eased by transition_ms: the node keeps its room, its hit
+     * regions and its place in the access tree and the Tab ring. ABI 35. */
+    uint32_t reveal_on_hover;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -3734,6 +3754,21 @@ bool kui_menu_bar(KuiCtx *ctx, const KuiMenu *menus, size_t count);
  * when the call is refused, as kui_select_with does. A new function of
  * ABI 33. */
 bool kui_menu_bar_with(KuiCtx *ctx, const KuiMenu *menus, size_t count, KuiValue *on_menu);
+/* kui_menu_bar_with with the platform's standard menus kept around these
+ * (the menuBar element's standardMenus,
+ * docs/adr/0052-a-declared-bar-beside-the-standard-menus.md): on macOS the
+ * process's application menu, the standard Edit menu, these menus in order
+ * and the standard Window menu with its tiling and full-screen rows - so
+ * adding one menu is declaring that one. None of these is then the
+ * application menu, and a menu titled "Window" is only a menu. Where the
+ * bar is drawn in the frame there are no standard menus and the bar is
+ * these alone. Consumes on_menu as kui_menu_bar_with does. New in ABI 35. */
+bool kui_menu_bar_standard_menus(KuiCtx *ctx, const KuiMenu *menus, size_t count,
+                                 KuiValue *on_menu);
+/* Whether the bar in force keeps the standard menus around its own: what a
+ * host that hands the declaration to its own platform bar reads beside the
+ * menus. False with no bar declared. New in ABI 35. */
+bool kui_menu_bar_has_standard_menus(KuiCtx *ctx);
 /* Tells the core the platform owns the menu bar, so kui_menu_bar draws
  * nothing and you are the one handing the declaration over (read it back
  * with the two calls below) and reporting what was chosen. Off by
@@ -4185,6 +4220,20 @@ uint64_t kui_select_with(KuiCtx *ctx, KuiStr label, const KuiMenuItem *items, si
 uint64_t kui_checkbox(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
 uint64_t kui_radio(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
 uint64_t kui_switch(KuiCtx *ctx, KuiStr text, const KuiSpec *spec, KuiValue *payload);
+/* The three with their label's line breaking: `label`'s wrap, max_lines
+ * and ellipsis, and nothing else of it - the label's size, colour and face
+ * stay the stock's (NULL: a label that wraps, as above). With ellipsis the
+ * label is one line, cut with an ellipsis where the toggle is squeezed - a
+ * list of long names in a narrow column - and still the toggle: a press on
+ * it toggles, its name is the whole text, and while it is cut and hovered
+ * the whole text floats as its hint, unless spec's tooltip says something
+ * else. Backlog F184; new in ABI 35. */
+uint64_t kui_checkbox_with(KuiCtx *ctx, KuiStr text, const KuiSpec *spec,
+                           const KuiTextStyle *label, KuiValue *payload);
+uint64_t kui_radio_with(KuiCtx *ctx, KuiStr text, const KuiSpec *spec,
+                        const KuiTextStyle *label, KuiValue *payload);
+uint64_t kui_switch_with(KuiCtx *ctx, KuiStr text, const KuiSpec *spec,
+                         const KuiTextStyle *label, KuiValue *payload);
 /* Opens a radio group named `label`: `spec`'s box rows (NULL = a column),
  * the group's role and name, the stock gap where spec has none. One Tab
  * stop whose arrows, Home and End move the choice and press the radio

@@ -232,6 +232,10 @@ pub struct Tree {
     pub any_modal: bool,
     /// Whether any node declares `focus_region`.
     pub any_region: bool,
+    /// Whether any node declares `reveal_on_hover`, so the next frame
+    /// reads where the hover and the focus are in this one before it is
+    /// cleared (ADR 0051), and a frame without one walks nothing.
+    pub any_reveal: bool,
     /// Whether any node eases its position (`slide`, or an `enter` with
     /// an offset) under a transition.
     pub any_slide: bool,
@@ -365,6 +369,7 @@ impl Tree {
         self.any_hint = false;
         self.any_modal = false;
         self.any_region = false;
+        self.any_reveal = false;
         self.any_slide = false;
         self.any_over_siblings = false;
         self.any_layout = false;
@@ -422,6 +427,7 @@ impl Tree {
         if let Some(i) = spec.interact.as_deref() {
             self.any_selectable |= i.selectable;
             self.any_region |= i.focus_region;
+            self.any_reveal |= i.reveal_on_hover;
             self.any_backdrop_blur |= i.backdrop_blur > 0.0;
             self.any_transform |= i.transform.as_deref().is_some_and(|t| t.active());
         }

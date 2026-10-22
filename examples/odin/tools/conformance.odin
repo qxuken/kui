@@ -1917,6 +1917,7 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 				focusable = true,
 				role      = .Button,
 				label     = "Stop",
+				reveal_on_hover = true,
 			}
 			if kui.box(ui, stop) {}
 		}

@@ -296,6 +296,7 @@ fn toggle(
     kind: kui_core::widgets::Toggle,
     text: KuiStr,
     spec: *const KuiSpec,
+    label: *const KuiTextStyle,
     payload: *mut KuiValue,
 ) -> u64 {
     guard(0, || {
@@ -327,13 +328,19 @@ fn toggle(
                 .checked(s.checked != 0)
                 .mixed(s.mixed != 0);
         }
-        kui_core::widgets::toggle_with(
+        // The label's line breaking, and nothing else of the style: its
+        // size, colour and face are the stock's (backlog F184).
+        let label = unsafe { label.as_ref() }
+            .map(crate::convert::text_style_of)
+            .unwrap_or_default();
+        kui_core::widgets::toggle_with_style(
             &mut kui_core::Ui::wrap(c.core()),
             kind,
             &text,
             &text,
             node,
             hint.as_deref(),
+            &label,
         )
         .0
     })
@@ -355,6 +362,31 @@ pub extern "C" fn kui_checkbox(
         kui_core::widgets::Toggle::Checkbox,
         text,
         spec,
+        std::ptr::null(),
+        payload,
+    )
+}
+
+/// [`kui_checkbox`] with its label's line breaking: `label`'s `wrap`,
+/// `max_lines` and `ellipsis` (NULL: a label that wraps, as
+/// `kui_checkbox`'s). `ellipsis` keeps the label on one line, cut where
+/// the checkbox is squeezed, and floats the whole text as its hint while
+/// it is cut and hovered, unless `spec`'s `tooltip` says something else.
+/// The label's size, colour and face stay the stock's. Backlog F184.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_checkbox_with(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    label: *const KuiTextStyle,
+    payload: *mut KuiValue,
+) -> u64 {
+    toggle(
+        ptr,
+        kui_core::widgets::Toggle::Checkbox,
+        text,
+        spec,
+        label,
         payload,
     )
 }
@@ -368,7 +400,34 @@ pub extern "C" fn kui_radio(
     spec: *const KuiSpec,
     payload: *mut KuiValue,
 ) -> u64 {
-    toggle(ptr, kui_core::widgets::Toggle::Radio, text, spec, payload)
+    toggle(
+        ptr,
+        kui_core::widgets::Toggle::Radio,
+        text,
+        spec,
+        std::ptr::null(),
+        payload,
+    )
+}
+
+/// [`kui_radio`] with its label's line breaking; see
+/// [`kui_checkbox_with`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_radio_with(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    label: *const KuiTextStyle,
+    payload: *mut KuiValue,
+) -> u64 {
+    toggle(
+        ptr,
+        kui_core::widgets::Toggle::Radio,
+        text,
+        spec,
+        label,
+        payload,
+    )
 }
 
 /// The stock switch; see [`kui_checkbox`].
@@ -379,7 +438,34 @@ pub extern "C" fn kui_switch(
     spec: *const KuiSpec,
     payload: *mut KuiValue,
 ) -> u64 {
-    toggle(ptr, kui_core::widgets::Toggle::Switch, text, spec, payload)
+    toggle(
+        ptr,
+        kui_core::widgets::Toggle::Switch,
+        text,
+        spec,
+        std::ptr::null(),
+        payload,
+    )
+}
+
+/// [`kui_switch`] with its label's line breaking; see
+/// [`kui_checkbox_with`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_switch_with(
+    ptr: *mut KuiCtx,
+    text: KuiStr,
+    spec: *const KuiSpec,
+    label: *const KuiTextStyle,
+    payload: *mut KuiValue,
+) -> u64 {
+    toggle(
+        ptr,
+        kui_core::widgets::Toggle::Switch,
+        text,
+        spec,
+        label,
+        payload,
+    )
 }
 
 /// Opens a radio group named `label`: `spec`'s box rows (NULL for a

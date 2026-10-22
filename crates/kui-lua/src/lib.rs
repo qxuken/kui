@@ -1832,16 +1832,18 @@ fn element_of(ty: &str) -> &str {
     }
 }
 
-/// `menu_bar { menu = { … }, on_menu = msg }`: the bar the core reads
-/// from plain data, and the message a choice from it arrives as, with
-/// `menu = { role, item }` in it (ADR 0048). A bar with no `on_menu`
-/// posts nothing.
+/// `menu_bar { menu = { … }, on_menu = msg, standard_menus = true }`:
+/// the bar the core reads from plain data, the message a choice from it
+/// arrives as, with `menu = { role, item }` in it (ADR 0048), and whether
+/// the platform's standard menus stay around it (ADR 0052). A bar with no
+/// `on_menu` posts nothing.
 fn menu_bar_of(t: &Table) -> mlua::Result<(kui_core::MenuBar, Vec<String>)> {
     let (mut bar, stray) = menus_of(t)?;
     let on_menu = t.get::<mlua::Value>("on_menu")?;
     if !on_menu.is_nil() {
         bar = bar.on_menu(lua_to_value(&on_menu)?);
     }
+    bar.standard_menus = t.get::<Option<bool>>("standard_menus")?.unwrap_or(false);
     Ok((bar, stray))
 }
 
@@ -2715,10 +2717,26 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             apply_named_rows(
                 ui,
                 t,
-                &["description", "disabled", "checked", "mixed"],
+                &[
+                    "description",
+                    "disabled",
+                    "checked",
+                    "mixed",
+                    "wrap",
+                    "max_lines",
+                    "ellipsis",
+                ],
                 &mut out,
             )?;
-            widgets::toggle_with(ui, kind, &key, &text, out.spec, out.tooltip.as_deref());
+            widgets::toggle_with_style(
+                ui,
+                kind,
+                &key,
+                &text,
+                out.spec,
+                out.tooltip.as_deref(),
+                &out.style,
+            );
             Ok(())
         }
         "slider" => {
@@ -9567,6 +9585,86 @@ mod tests {
             core.activate_menu_bar_item(0, 0).is_empty(),
             "no on_menu, no event"
         );
+        assert!(core.take_warnings().is_empty());
+    }
+
+    /// `menu_bar { standard_menus = true }` (ADR 0052): the platform's
+    /// standard menus stay around the declared ones; the bar the core
+    /// holds says so, and holds the declared menus alone.
+    #[test]
+    fn standard_menus_on_the_menu_bar() {
+        let mut ext = LuaExtension::from_source(
+            "bar",
+            r#"
+                keep = true
+                function view(env)
+                  return column {
+                    menu_bar { menu = { { label = "Packages", items = {
+                                 { label = "Find", id = "find", accel = "mod+f" } } } },
+                               standard_menus = keep },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let bar = core.menu_bar().expect("declared");
+        assert!(bar.standard_menus);
+        assert_eq!(bar.menus.len(), 1);
+        ext.lua.globals().set("keep", false).unwrap();
+        frame(&mut core, &mut ext);
+        assert!(!core.menu_bar().unwrap().standard_menus);
+        assert!(core.take_warnings().is_empty());
+    }
+
+    /// `reveal_on_hover` (ADR 0051) is a row like any other, and a
+    /// toggle's `ellipsis` (backlog F184) cuts its label to one line: the
+    /// checkbox keeps to its column and is named by the whole text.
+    #[test]
+    fn reveal_on_hover_and_a_cut_toggle_label() {
+        let mut ext = LuaExtension::from_source(
+            "rows",
+            r#"
+                function view(env)
+                  return column {
+                    row { key = "row", width = 120, hoverable = true,
+                      checkbox { label = "a-very-long-cookie-name-that-will-not-fit",
+                                 ellipsis = true, on_click = "pick" },
+                      row { key = "actions", width = 20, height = 20, bg = 0xff0000ff,
+                            reveal_on_hover = true },
+                    },
+                  }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        let node = core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.role == kui_core::Role::Checkbox)
+            .cloned()
+            .expect("the checkbox");
+        assert_eq!(
+            node.name.as_deref(),
+            Some("a-very-long-cookie-name-that-will-not-fit")
+        );
+        assert!(node.rect.w <= 100.5, "beside the actions: {:?}", node.rect);
+        assert!(core.text_cut(node.key), "cut");
+        // Nothing hovered: the actions' red is drawn at 0, or not at all.
+        let red = core
+            .output()
+            .0
+            .quads
+            .iter()
+            .filter(|q| q.color.r == 1.0 && q.color.g == 0.0)
+            .map(|q| q.color.a)
+            .fold(0.0f32, f32::max);
+        assert_eq!(red, 0.0, "hidden while the row is not hovered");
         assert!(core.take_warnings().is_empty());
     }
 

@@ -124,7 +124,10 @@ use crate::{Result, err, value_of};
 /// one JSON blob (`P_WINDOW_EVENTS`), a `windows` entry carries its
 /// `onWindow` / `onDismiss`, and `menuBar` carries its `onMenu` message
 /// (a strref, absent for none) after the menu.
-pub const VERSION: u32 = 24;
+/// v25: `menuBar` carries a flags word after its `onMenu` message, 1
+/// for `standardMenus` (ADR 0052); and `revealOnHover` (ADR 0051) is a
+/// new row.
+pub const VERSION: u32 = 25;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -1638,14 +1641,17 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             };
             let mut base = PropsOut::new();
             base.spec = widgets::toggle_spec(&ui.metrics()).on_click(msg);
+            // The label's line breaking — `wrap`, `maxLines`, `ellipsis`
+            // — rides in the style the text rows lower into (F184).
             let p = lower_props_over(r, base, ui)?;
-            widgets::toggle_with(
+            widgets::toggle_with_style(
                 ui,
                 kind,
                 key.unwrap_or(text),
                 text,
                 p.spec,
                 p.tooltip.as_deref(),
+                &p.style,
             );
             Ok(())
         }
@@ -1678,6 +1684,9 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
             // (ADR 0048), a strref as `select`'s is; absent, the bar posts
             // nothing.
             bar.on_menu = r.str_ref()?.map(payload).transpose()?;
+            // Then a flags word (v25): 1 keeps the platform's standard
+            // menus around these (`standardMenus`, ADR 0052).
+            bar.standard_menus = r.u()? & 1 != 0;
             crate::warn_stray_menu_keys(ui.core(), stray);
             widgets::menu_bar(ui, bar);
             Ok(())

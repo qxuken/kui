@@ -677,6 +677,14 @@ impl<'a> Ui<'a> {
         self.core.text_hit(key, point)
     }
 
+    /// Whether the text under `key` was cut short where the last frame
+    /// laid it out — ended in its ellipsis, or lost lines past its
+    /// `max_lines`; see `Core::text_cut`. What a label that may be cut
+    /// reads to float its whole text as a hint.
+    pub fn text_cut(&self, key: Key) -> bool {
+        self.core.text_cut(key)
+    }
+
     /// The window's selected text — a `selectable` scope's, or the
     /// focused editor's; see `Core::copy_selection`.
     pub fn selection_text(&self) -> Option<String> {

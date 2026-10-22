@@ -189,6 +189,7 @@ pub const P_ON_BOUNDARY: u32 = 137;
 pub const P_ON_MENU: u32 = 138;
 pub const P_ON_SELECTION_RANGE: u32 = 139;
 pub const P_WINDOW_EVENTS: u32 = 140;
+pub const P_REVEAL_ON_HOVER: u32 = 141;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -973,6 +974,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Str,
         apply: Apply::SpecStr(|s, name| s.hover_group(name)),
         doc: "Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape).",
+    },
+    PropDef {
+        name: "revealOnHover",
+        id: P_REVEAL_ON_HOVER,
+        kind: Kind::Flag,
+        apply: Apply::SpecFlag(|s| s.reveal_on_hover()),
+        doc: "Draw this node only while its anchor — the nearest ancestor that tracks the pointer: an `onClick` row, a `hoverBg` card, a `hoverable` group header — is hovered (the pointer over it or anything inside it), holds a press begun inside it, or holds keyboard-visible focus inside it; and while focus of any kind is inside the node itself (ADR 0051). A row's secondary actions, shown for the row under the pointer with no `onHover` and no redraw of the view: the core decides it each frame as it decides `hoverBg`. Hidden is `opacity` 0, eased by a `transition`: the node keeps its room and its hit regions, and stays in the access tree and the Tab ring, so a control in it is there for the pointer that reaches it, the keyboard that tabs to it and a screen reader, and shows for each. With no anchor above it, it is always drawn and `reveal-without-anchor` says so.",
     },
     PropDef {
         name: "onHover",
@@ -1979,6 +1987,9 @@ pub const TOGGLE_ROWS_JSX: &[&str] = &[
     "disabled",
     "checked",
     "mixed",
+    "wrap",
+    "maxLines",
+    "ellipsis",
 ];
 pub const TOGGLE_ROWS_LUA: &[&str] = &[
     "on_click",
@@ -1989,6 +2000,9 @@ pub const TOGGLE_ROWS_LUA: &[&str] = &[
     "disabled",
     "checked",
     "mixed",
+    "wrap",
+    "max_lines",
+    "ellipsis",
 ];
 /// The rows the stock slider reads (`widgets::slider_with`): the
 /// value rows, its change tag, the access rows, and its width — the one
@@ -2124,11 +2138,11 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua_own: &["text"],
         jsx_rows: Some(TOGGLE_ROWS_JSX),
         lua_rows: Some(TOGGLE_ROWS_LUA),
-        jsx: "`<checkbox checked mixed onClick key label description tooltip disabled>text</checkbox>`",
-        lua: "`checkbox { label=, checked=, mixed=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
-        c: "`kui_checkbox`",
+        jsx: "`<checkbox checked mixed onClick key label description tooltip disabled ellipsis maxLines wrap>text</checkbox>`",
+        lua: "`checkbox { label=, checked=, mixed=, on_click=, key=, text=, description=, tooltip=, disabled=, ellipsis=, max_lines=, wrap= }`",
+        c: "`kui_checkbox`, `kui_checkbox_with`",
         odin: "`kui.checkbox`",
-        doc: "The stock checkbox (`widgets::toggle_with`, ADR 0034): a box drawn from the state the view declares — `checked`, or `mixed` for the select-all box over a list some of whose rows are selected, drawn as a dash and read as mixed — and its label beside it, keyed by its text (`key` overrides). The state is the app's: a press by the pointer, Space, Enter or assistive technology posts `onClick`, and the view flips its model and draws it again. Its look is its spec, so the layout and paint rows are closed and dropped with an `unknown-prop` warning; the rows it reads are its state and the access rows. In Lua `label` is the name and the text both unless `text` says otherwise. The box is the metrics' control text plus one (16 px comfortable), so `compact` and `scaled` move it with the stock button.",
+        doc: "The stock checkbox (`widgets::toggle_with`, ADR 0034): a box drawn from the state the view declares — `checked`, or `mixed` for the select-all box over a list some of whose rows are selected, drawn as a dash and read as mixed — and its label beside it, keyed by its text (`key` overrides). The state is the app's: a press by the pointer, Space, Enter or assistive technology posts `onClick`, and the view flips its model and draws it again. Its look is its spec, so the layout and paint rows are closed and dropped with an `unknown-prop` warning; the rows it reads are its state, the access rows, and its label's line breaking (backlog F184): `ellipsis` keeps the label on one line, cut with an ellipsis where the checkbox is squeezed — a list of long names in a narrow column — and `maxLines` (with `ellipsis`, a clamp) and `wrap` are the text's own rows, read on the label; the label's size, colour and face stay the stock's (C: `kui_checkbox_with`'s `KuiTextStyle`, of which it reads those three). A cut label is still the checkbox: a press on it toggles, its name is the whole text, and while it is cut the whole text floats as its hint on hover, unless a `tooltip` says something else. In Lua `label` is the name and the text both unless `text` says otherwise. The box is the metrics' control text plus one (16 px comfortable), so `compact` and `scaled` move it with the stock button.",
     },
     ElementDef {
         name: "radio",
@@ -2136,9 +2150,9 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua_own: &["text"],
         jsx_rows: Some(TOGGLE_ROWS_JSX),
         lua_rows: Some(TOGGLE_ROWS_LUA),
-        jsx: "`<radio checked onClick key label description tooltip disabled>text</radio>`",
-        lua: "`radio { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
-        c: "`kui_radio`",
+        jsx: "`<radio checked onClick key label description tooltip disabled ellipsis maxLines wrap>text</radio>`",
+        lua: "`radio { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled=, ellipsis=, max_lines=, wrap= }`",
+        c: "`kui_radio`, `kui_radio_with`",
         odin: "`kui.radio`",
         doc: "The stock radio (`widgets::toggle_with`, ADR 0034): a circle drawn from `checked`, and its label, keyed by its text. Put radios in a `radioGroup`, which makes them one Tab stop whose arrows, Home and End move the choice and press the radio they land on (ADR 0007), so radios whose `onClick` each set the choice answer the keyboard with no more code. The state is the app's, as a checkbox's is; the rows are the checkbox's, `mixed` aside.",
     },
@@ -2160,9 +2174,9 @@ pub const ELEMENTS: &[ElementDef] = &[
         lua_own: &["text"],
         jsx_rows: Some(TOGGLE_ROWS_JSX),
         lua_rows: Some(TOGGLE_ROWS_LUA),
-        jsx: "`<switch checked onClick key label description tooltip disabled>text</switch>`",
-        lua: "`switch { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled= }`",
-        c: "`kui_switch`",
+        jsx: "`<switch checked onClick key label description tooltip disabled ellipsis maxLines wrap>text</switch>`",
+        lua: "`switch { label=, checked=, on_click=, key=, text=, description=, tooltip=, disabled=, ellipsis=, max_lines=, wrap= }`",
+        c: "`kui_switch`, `kui_switch_with`",
         odin: "`kui.toggle`",
         doc: "The stock switch (`widgets::toggle_with`, ADR 0034): a track and a knob drawn from `checked`, the knob sliding across when it changes, and its label; read as a switch, on or off. The state is the app's, as a checkbox's is; the rows are the checkbox's, `mixed` aside.",
     },
@@ -2297,15 +2311,15 @@ pub const ELEMENTS: &[ElementDef] = &[
     },
     ElementDef {
         name: "menuBar",
-        jsx_own: &["menu", "onMenu"],
-        lua_own: &["menu", "on_menu"],
+        jsx_own: &["menu", "onMenu", "standardMenus"],
+        lua_own: &["menu", "on_menu", "standard_menus"],
         jsx_rows: None,
         lua_rows: None,
-        jsx: "`<menuBar menu={[{ label, items: [{ label, id?, role?, accel?, enabled?, checked?, items? }] }]} onMenu={msg}/>`",
-        lua: "`menu_bar { menu = { { label=, items= { { label=, id=, role=, accel=, enabled=, checked=, items= } } } }, on_menu = msg }`",
-        c: "`kui_menu_bar`, `kui_menu_bar_with`",
-        odin: "`kui.menu_bar`, `kui.menu_bar_with`",
-        doc: "The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `menu` is what it *is*, and where this element sits is where its titles go when they have to be drawn in the window. One call and not two, because declaring the menu and placing the strip are one decision. It draws **nothing** where the platform owns the bar — macOS, where the driver hands the same declaration to the OS — so the frame has still said what the app's menu is and the strip simply is not there; that is the contract `windowButtons` has under native decorations, and it is what makes one view portable. Its rows are the rows a context menu has: the same `role`s the core performs itself (`copy`, `paste`, `selectAll`, `cut`, `lookUp`), the same `id` payload, the same `accel` text, plus `checked` for a setting — and choosing one arrives as the bar's own `onMenu` message with `menu: {role, item}` in it (ADR 0048), the field a context menu's choice carries on its target's `onMenu`; a bar that declares no `onMenu` posts nothing. Declared every frame and diffed: an unchanged menu costs a comparison, and an empty list takes it away. An accelerator kui can parse is rewritten into the platform's spelling, so `\"mod+s\"` reads as `⌘S` on macOS and `Ctrl+S` elsewhere and binds that key in the platform's own bar. On macOS the first menu is the application menu, which the OS titles with the app's own name whatever the label says. While a menu is open the bar is the frame's modal scope, so hovering across the titles moves the open menu, a press on the open title closes it, and Escape or a press in the app below closes it and reaches nothing else.",
+        jsx: "`<menuBar menu={[{ label, items: [{ label, id?, role?, accel?, enabled?, checked?, items? }] }]} onMenu={msg} standardMenus/>`",
+        lua: "`menu_bar { menu = { { label=, items= { { label=, id=, role=, accel=, enabled=, checked=, items= } } } }, on_menu = msg, standard_menus = true }`",
+        c: "`kui_menu_bar`, `kui_menu_bar_with`, `kui_menu_bar_standard_menus`",
+        odin: "`kui.menu_bar`, `kui.menu_bar_with`, `kui.menu_bar_standard_menus`",
+        doc: "The application menu (`docs/adr/0018-a-menu-bar-the-app-declares.md`): `menu` is what it *is*, and where this element sits is where its titles go when they have to be drawn in the window. One call and not two, because declaring the menu and placing the strip are one decision. It draws **nothing** where the platform owns the bar — macOS, where the driver hands the same declaration to the OS — so the frame has still said what the app's menu is and the strip simply is not there; that is the contract `windowButtons` has under native decorations, and it is what makes one view portable. Its rows are the rows a context menu has: the same `role`s the core performs itself (`copy`, `paste`, `selectAll`, `cut`, `lookUp`), the same `id` payload, the same `accel` text, plus `checked` for a setting — and choosing one arrives as the bar's own `onMenu` message with `menu: {role, item}` in it (ADR 0048), the field a context menu's choice carries on its target's `onMenu`; a bar that declares no `onMenu` posts nothing. Declared every frame and diffed: an unchanged menu costs a comparison, and an empty list takes it away. An accelerator kui can parse is rewritten into the platform's spelling, so `\"mod+s\"` reads as `⌘S` on macOS and `Ctrl+S` elsewhere and binds that key in the platform's own bar. On macOS the first menu is the application menu, which the OS titles with the app's own name whatever the label says — unless the bar declares `standardMenus` (ADR 0052): then the platform's standard menus stay and these go beside them, so adding one menu is declaring that one menu. On macOS that is the application menu the process has, the standard Edit menu, these menus in order, and the standard Window menu with its tiling and full-screen rows; none of these menus is the application menu, a menu titled `Window` is only a menu, and an `accel` binds as any row's does. Where the bar is drawn in the window (Windows, Linux, a core drawing its own) there are no standard menus, and the bar is these menus alone. While a menu is open the bar is the frame's modal scope, so hovering across the titles moves the open menu, a press on the open title closes it, and Escape or a press in the app below closes it and reaches nothing else.",
     },
     ElementDef {
         name: "windowButtons",

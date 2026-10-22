@@ -5661,7 +5661,7 @@ SCENE_TREES.sampler = (fx) =>
       ),
       box({ dir: 'row', width: 60, height: 10, bg: '#3a3f52', window: 'drag' }, [], 'strip'),
       box({ dir: 'row', focusRegion: true, gap: 4, height: 30, mainAlign: 'center', crossAlign: 'end', backdropBlur: 6 }, [
-        box({ dir: 'row', width: 20, height: 20, bg: '#2a2d3a', focusable: true, role: 'button', label: 'Stop' }, [], 'stop'),
+        box({ dir: 'row', width: 20, height: 20, bg: '#2a2d3a', focusable: true, role: 'button', label: 'Stop', revealOnHover: true }, [], 'stop'),
       ], 'dock'),
       box({ width: 60, overSiblings: true }, [
         text('a long line that is cut short', { size: 12, maxLines: 1, ellipsis: true, underline: true, strikethrough: true, features: 'liga=0' }),
@@ -8863,6 +8863,68 @@ test('the stock toggles read their state and their rows only, and press through 
   assert.match(ws[0].message, /`radius`/);
   ctx.access('Wi-Fi', 'click');
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['wifi']);
+});
+
+test('a toggle label with ellipsis stays on one line, cut, named by its whole text (F184)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const long = 'a-very-long-cookie-name-that-will-not-fit-in-the-column';
+  const view = (props) => box({ dir: 'row', width: 120 }, [
+    el('checkbox', { onClick: { kind: 'pick' }, ...props }, [long]),
+  ]);
+  ctx.frame(320, 240, 1, view({}));
+  const wrapped = ctx.accessTree().nodes.find((n) => n.role === 'checkbox');
+  ctx.frame(320, 240, 1, view({ ellipsis: true }));
+  ctx.frame(320, 240, 1, view({ ellipsis: true }));
+  const cut = ctx.accessTree().nodes.find((n) => n.role === 'checkbox');
+  assert.equal(cut.name, long, 'named by the whole text');
+  assert.ok(cut.rect.w <= 120.5, `held to the row: ${JSON.stringify(cut.rect)}`);
+  assert.ok(cut.rect.h < wrapped.rect.h, `one line (${cut.rect.h}) where it wrapped (${wrapped.rect.h})`);
+  assert.deepEqual(ctx.warnings().filter((w) => w.code === 'unknown-prop'), [], 'ellipsis is a row the toggle reads');
+  ctx.access(long, 'click');
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['pick']);
+});
+
+test('revealOnHover draws a row\'s actions only while the row is hovered (ADR 0051)', () => {
+  const ctx = new Ctx();
+  const view = () => box({ dir: 'row', width: 200, height: 50, hoverable: true }, [
+    box({ width: 50, height: 50, bg: '#ff0000', revealOnHover: true }, [], 'actions'),
+  ], 'row');
+  // The actions box's alpha on the wire, 0 when no quad of it was drawn.
+  const alpha = () => {
+    ctx.frame(320, 240, 1, view());
+    const quads = Buffer.from(ctx.quads());
+    const stride = quads.byteLength / ctx.stats().quadCount;
+    for (let off = 0; off < quads.byteLength; off += stride) {
+      if (quads.readUInt32LE(off + KIND_WORD * 4) !== 0) continue;
+      if (quads.readFloatLE(off + 2 * 4) === 50 && quads.readFloatLE(off + 4 * 4) === 1) {
+        return quads.readFloatLE(off + 7 * 4);
+      }
+    }
+    return 0;
+  };
+  assert.equal(alpha(), 0, 'nothing hovered: hidden');
+  ctx.cursor(150, 25);
+  assert.ok(alpha() > 0.99, 'the row hovered: shown');
+  ctx.cursor(150, 150);
+  assert.equal(alpha(), 0, 'off the row: hidden');
+  // Still in the access tree while hidden: a reader reaches it.
+  assert.ok(ctx.keyOf('actions'));
+});
+
+test('<menuBar standardMenus> keeps the standard menus, and menuBar() says so (ADR 0052)', () => {
+  const ctx = new Ctx();
+  ctx.setDiagnostics(true);
+  const menu = [{ label: 'Packages', items: [{ label: 'Find', id: 'find', accel: 'mod+f' }] }];
+  ctx.frame(320, 240, 1, box({}, [el('menuBar', { menu, onMenu: { kind: 'chose' } })]));
+  assert.equal(ctx.menuBar().standardMenus, false, 'a bar declared alone');
+  ctx.frame(320, 240, 1, box({}, [el('menuBar', { menu, onMenu: { kind: 'chose' }, standardMenus: true })]));
+  const bar = ctx.menuBar();
+  assert.equal(bar.standardMenus, true);
+  assert.deepEqual(bar.menus.map((m) => m.label), ['Packages'], 'the declared menus alone: the standard ones are the platform\'s');
+  assert.deepEqual(ctx.warnings().filter((w) => w.code === 'unknown-prop'), []);
+  ctx.activateMenuBarItem(0, 0);
+  assert.deepEqual(ctx.pollEvents().map((e) => e.payload.menu.item), ['find']);
 });
 
 test('a <radio> outside a <radioGroup> and a tab outside a tabList are warned about, once (F96)', () => {

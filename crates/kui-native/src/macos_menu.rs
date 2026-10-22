@@ -496,6 +496,55 @@ fn trim_edit(menu: &NSMenu, own: isize) {
     }
 }
 
+/// The standard Window menu, built new: the rows AppKit's own
+/// responders answer, with no target so the key window is the one that
+/// minimizes, and autoenabled so a window that cannot zoom greys the row.
+/// Registered by `apply` as the Window menu, which is what makes AppKit
+/// add Fill, Center, the tiling submenus and the window list to it.
+fn window_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
+    let window = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Window"));
+    window.addItem(&responder_row(
+        mtm,
+        "Minimize",
+        sel!(performMiniaturize:),
+        "m",
+        None,
+    ));
+    window.addItem(&responder_row(mtm, "Zoom", sel!(performZoom:), "", None));
+    full_screen_rows(mtm, &window);
+    window.addItem(&NSMenuItem::separatorItem(mtm));
+    window.addItem(&responder_row(
+        mtm,
+        "Bring All to Front",
+        sel!(arrangeInFront:),
+        "",
+        None,
+    ));
+    window
+}
+
+/// A bar entry titled `title` whose submenu is `menu`.
+fn titled_head(mtm: MainThreadMarker, title: &str, menu: &NSMenu) -> Retained<NSMenuItem> {
+    let head = NSMenuItem::new(mtm);
+    head.setTitle(&NSString::from_str(title));
+    head.setSubmenu(Some(menu));
+    head
+}
+
+/// Moves `item` to `index` of `into`, out of whatever menu holds it: an
+/// item has one menu, and adding one that has another is an exception.
+fn home(item: &NSMenuItem, into: &NSMenu, index: isize) {
+    // SAFETY: on the main thread (the menus are main-thread-only), and
+    // the menu handed back is retained for as long as it is used here.
+    if let Some(old) = unsafe { item.menu() } {
+        if std::ptr::eq(&*old, into) {
+            return;
+        }
+        old.removeItem(item);
+    }
+    into.insertItem_atIndex(item, index);
+}
+
 /// Enter Full Screen, in every Window menu kui registers.
 ///
 /// AppKit adds this row itself, but only to a Window menu registered
@@ -706,6 +755,12 @@ pub struct MacMenuBar {
 /// about by name.
 struct Standard {
     root: Retained<NSMenu>,
+    /// The application menu's item, the one row of the bar that cannot
+    /// be built again: winit's, with its Services registration. It sits
+    /// in `root`, or at the head of a bar declared beside the standard
+    /// menus while that one is up (ADR 0052), and moves back first thing
+    /// when `root` goes up again.
+    app_head: Retained<NSMenuItem>,
     window: Retained<NSMenu>,
     /// The Edit menu and how many of its rows are kui's, for
     /// [`trim_edit`] after every `setMainMenu:`.
@@ -830,6 +885,10 @@ impl MacMenuBar {
     /// (and their shortcuts work), and gains the one row AppKit adds only
     /// at launch, Enter Full Screen; any other declaration has none of
     /// this, which is what declaring the bar exactly means.
+    ///
+    /// A bar declared with `standard_menus` is none of the above: its
+    /// menus go between the standard bar's Edit and Window menus, after
+    /// the process's own application menu (ADR 0052).
     pub fn apply(&self, bar: &MenuBar) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
@@ -842,9 +901,14 @@ impl MacMenuBar {
             self.map.borrow_mut().clear();
             let standard = self.standard.borrow();
             let standard = standard.as_ref().expect("built above");
+            home(&standard.app_head, &standard.root, 0);
             app.setWindowsMenu(Some(&standard.window));
             app.setMainMenu(Some(&standard.root));
             trim_edit(&standard.edit.0, standard.edit.1);
+            return;
+        }
+        if bar.standard_menus {
+            self.apply_beside_standard(mtm, &app, bar);
             return;
         }
         let mut map = Vec::new();
@@ -856,15 +920,7 @@ impl MacMenuBar {
         // `validateMenuItem:`, which is all of them.
         root.setAutoenablesItems(false);
         for (mi, menu) in bar.menus.iter().enumerate() {
-            let title = NSString::from_str(&menu.label);
-            // A top-level entry is a titled item whose submenu holds the
-            // rows; the item itself does nothing when clicked.
-            let head = NSMenuItem::new(mtm);
-            head.setTitle(&title);
-            head.setEnabled(menu.enabled);
-            let sub = NSMenu::initWithTitle(NSMenu::alloc(mtm), &title);
-            sub.setAutoenablesItems(false);
-            self.rows(mtm, &sub, mi, &menu.items, &[], &mut map);
+            let (head, sub) = self.declared_head(mtm, mi, menu, &mut map);
             if menu.label == "Edit" {
                 edit_menus.push((sub.clone(), sub.numberOfItems()));
             }
@@ -879,7 +935,6 @@ impl MacMenuBar {
                 sub.setAutoenablesItems(true);
                 windows_menu = Some(sub.clone());
             }
-            head.setSubmenu(Some(&sub));
             root.addItem(&head);
         }
         *self.map.borrow_mut() = map;
@@ -939,14 +994,28 @@ impl MacMenuBar {
                 head
             });
         root.addItem(&app_head);
+        let (edit, edit_own) = self.edit_menu(mtm);
+        root.addItem(&titled_head(mtm, "Edit", &edit));
+        let window = window_menu(mtm);
+        root.addItem(&titled_head(mtm, "Window", &window));
 
-        // Edit: every row is a chord the runner already performs, spelled
-        // where a Mac user looks for it. The key equivalent is real, so
-        // AppKit consumes ⌘C and hands it here — and the runner replays it
-        // as the key it was, which is why nothing is lost by the detour.
-        // Autoenabled, alone among kui's menus: every row's target is
-        // `BarTarget`, whose `validateMenuItem:` answers from the state the
-        // runner stamped (`set_edit_state`).
+        *self.standard.borrow_mut() = Some(Standard {
+            root,
+            app_head,
+            window,
+            edit: (edit, edit_own),
+        });
+    }
+
+    /// The standard Edit menu, built new: every row is a chord the runner
+    /// already performs, spelled where a Mac user looks for it, and how
+    /// many rows are kui's, for [`trim_edit`]. The key equivalent is real,
+    /// so AppKit consumes ⌘C and hands it here — and the runner replays
+    /// it as the key it was, which is why nothing is lost by the detour.
+    /// Autoenabled, alone among kui's menus: every row's target is
+    /// `BarTarget`, whose `validateMenuItem:` answers from the state the
+    /// runner stamped (`set_edit_state`).
+    fn edit_menu(&self, mtm: MainThreadMarker) -> (Retained<NSMenu>, isize) {
         let edit = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Edit"));
         let target = unsafe { &*(&*self.target as *const BarTarget as *const AnyObject) };
         for (i, row) in EDIT_ROWS.iter().enumerate() {
@@ -973,45 +1042,69 @@ impl MacMenuBar {
             }
             edit.addItem(&item);
         }
-        let edit_own = edit.numberOfItems();
-        let edit_head = NSMenuItem::new(mtm);
-        edit_head.setTitle(ns_string!("Edit"));
-        edit_head.setSubmenu(Some(&edit));
-        root.addItem(&edit_head);
+        let own = edit.numberOfItems();
+        (edit, own)
+    }
 
-        // Window: the rows AppKit's own responders answer, with no target
-        // so the key window is the one that minimizes, and autoenabled so
-        // a window that cannot zoom greys the row. Registered by `apply`
-        // as the Window menu, which is what makes AppKit add Fill, Center,
-        // the tiling submenus and the window list to it.
-        let window = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!("Window"));
-        window.addItem(&responder_row(
-            mtm,
-            "Minimize",
-            sel!(performMiniaturize:),
-            "m",
-            None,
-        ));
-        window.addItem(&responder_row(mtm, "Zoom", sel!(performZoom:), "", None));
-        full_screen_rows(mtm, &window);
-        window.addItem(&NSMenuItem::separatorItem(mtm));
-        window.addItem(&responder_row(
-            mtm,
-            "Bring All to Front",
-            sel!(arrangeInFront:),
-            "",
-            None,
-        ));
-        let window_head = NSMenuItem::new(mtm);
-        window_head.setTitle(ns_string!("Window"));
-        window_head.setSubmenu(Some(&window));
-        root.addItem(&window_head);
+    /// A declared bar beside the standard menus (ADR 0052): the
+    /// application menu the process has, a standard Edit menu, the
+    /// declared menus in order — none of them the application menu, and
+    /// none registered by its title, so a declared `Window` is only a
+    /// menu — and a standard Window menu, registered. The Edit and Window
+    /// menus are built new for each bar, as a declared bar's menus are:
+    /// AppKit appends its rows to an Edit menu in the scan of a root it
+    /// has not seen, and to the registered Window menu when it is first
+    /// asked for, so the kept ones would gather a second copy.
+    fn apply_beside_standard(&self, mtm: MainThreadMarker, app: &NSApplication, bar: &MenuBar) {
+        let standard = self.standard.borrow();
+        let standard = standard.as_ref().expect("built before any bar");
+        let mut map = Vec::new();
+        let mut edit_menus = Vec::new();
+        let root = NSMenu::new(mtm);
+        root.setAutoenablesItems(false);
+        home(&standard.app_head, &root, 0);
+        let (edit, own) = self.edit_menu(mtm);
+        root.addItem(&titled_head(mtm, "Edit", &edit));
+        edit_menus.push((edit, own));
+        for (mi, menu) in bar.menus.iter().enumerate() {
+            let (head, sub) = self.declared_head(mtm, mi, menu, &mut map);
+            // AppKit appends its rows to a menu titled Edit wherever it
+            // is, so a declared one is trimmed as the standard one is.
+            if menu.label == "Edit" {
+                edit_menus.push((sub.clone(), sub.numberOfItems()));
+            }
+            root.addItem(&head);
+        }
+        let window = window_menu(mtm);
+        root.addItem(&titled_head(mtm, "Window", &window));
+        *self.map.borrow_mut() = map;
+        app.setWindowsMenu(Some(&window));
+        app.setMainMenu(Some(&root));
+        for (menu, own) in &edit_menus {
+            trim_edit(menu, *own);
+        }
+    }
 
-        *self.standard.borrow_mut() = Some(Standard {
-            root,
-            window,
-            edit: (edit, edit_own),
-        });
+    /// One declared menu as a bar entry: a titled head item whose
+    /// submenu holds the rows, each chosen row's tag its index in `map`.
+    /// The head does nothing when clicked. Every enable state is the
+    /// declaration's.
+    fn declared_head(
+        &self,
+        mtm: MainThreadMarker,
+        mi: usize,
+        menu: &kui_core::BarMenu,
+        map: &mut Vec<(usize, Vec<usize>)>,
+    ) -> (Retained<NSMenuItem>, Retained<NSMenu>) {
+        let title = NSString::from_str(&menu.label);
+        let head = NSMenuItem::new(mtm);
+        head.setTitle(&title);
+        head.setEnabled(menu.enabled);
+        let sub = NSMenu::initWithTitle(NSMenu::alloc(mtm), &title);
+        sub.setAutoenablesItems(false);
+        self.rows(mtm, &sub, mi, &menu.items, &[], map);
+        head.setSubmenu(Some(&sub));
+        (head, sub)
     }
 
     /// One row: its wording, its shortcut where kui can parse one, and the

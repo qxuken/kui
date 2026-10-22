@@ -451,6 +451,9 @@ pub(crate) fn spec_of(
     if let Some(msg) = unsafe { s.on_selection_range.as_ref() } {
         spec = spec.on_selection_range(msg.0.clone());
     }
+    if s.reveal_on_hover != 0 {
+        spec = spec.reveal_on_hover();
+    }
     if s.cursor != 0 {
         // KUI_CURSOR_* = schema index + 1, so zero can mean "derive".
         spec = spec.cursor(kui_core::schema::cursor_idx(s.cursor as usize - 1));

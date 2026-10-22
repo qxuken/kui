@@ -333,6 +333,9 @@ CUSTOM_RULES :: []Custom_Rule {
 // why: what calls it instead.
 SKIP :: [][2]string {
 	{"kui_button", "kui.button lowers to kui_button_with, which with an empty spec is kui_button"},
+	{"kui_checkbox", "kui.checkbox lowers to kui_checkbox_with, which with a zeroed label style is kui_checkbox"},
+	{"kui_radio", "kui.radio lowers to kui_radio_with, which with a zeroed label style is kui_radio"},
+	{"kui_switch", "kui.toggle lowers to kui_switch_with, which with a zeroed label style is kui_switch"},
 	{"kui_run", "kui.run lowers to kui_run_with, which with no context and no config is kui_run"},
 }
 

@@ -38,8 +38,55 @@ was the first bare bump to break an app in five releases).
   the jump back (ADR 0050, backlog F182). A trackpad, and every door
   that feeds pixels (`scroll`, `scrollGesture`, `kui_input_scroll*`,
   `InputEvent::Scroll`), are unchanged.
+- C: `KuiSpec` appends `reveal_on_hover` and grows to 800 bytes on
+  64-bit; `KUI_ABI_VERSION` is 35. Recompile; a zeroed field is a node
+  drawn as before (ADR 0051).
+- Rust: `MenuBar` has a third public field, `standard_menus`, and
+  `InteractSpec` a `reveal_on_hover`; a struct literal of either names
+  it or ends in `..Default::default()` (`MenuBar::new` and the builders
+  are unchanged).
 
 ### Added
+
+- **A row's actions shown while the row is hovered** (ADR 0051, backlog
+  F183). `revealOnHover` (`reveal_on_hover` in Lua and Rust,
+  `KuiSpec.reveal_on_hover` in C and Odin) draws a node only while its
+  nearest ancestor that tracks the pointer — a `hoverable` row, an
+  `onClick` card, a group header — has the pointer over it or anything
+  inside it, holds a press begun inside it, or holds keyboard focus
+  inside it, and while focus of any kind is inside the node itself. A
+  file list's rename and delete, shown for the row under the pointer,
+  are one row on their box, with no `onHover`, no hovered row in the
+  model and no redraw of the view: the core decides it each frame, as
+  it decides a `hoverBg`. Hidden is opacity 0, so the row keeps its
+  layout and the controls stay in the access tree and the Tab ring;
+  Tab onto the row shows them, and a `transition` fades them. With
+  nothing above it that tracks the pointer the node is always drawn,
+  and the new `reveal-without-anchor` warning says why.
+- **A stock toggle's label cut to one line** (backlog F184).
+  `<checkbox ellipsis>`, and `<radio>` and `<switch>` alike, keep the
+  label on one line, ending in an ellipsis wherever the toggle is
+  squeezed; `maxLines` (a clamp, with `ellipsis`) and `wrap` read on the
+  label too, as on a `<text>`. The cut label is still the toggle: a
+  press on it toggles, its name is the whole text, and while it is cut
+  the whole text floats as its hint on hover unless a `tooltip` says
+  something else. Rust `widgets::toggle_with_style`, C
+  `kui_checkbox_with` / `kui_radio_with` / `kui_switch_with` (a
+  `KuiTextStyle` for the label), Odin's `text` parameter on
+  `kui.checkbox` / `kui.radio` / `kui.toggle`. `Core::text_cut` (and
+  `Ui::text_cut`) says whether the text under a key was cut in the frame
+  that finished.
+- **An app's menus beside the standard ones** (ADR 0052, backlog F185).
+  `<menuBar standardMenus menu={…}>` (Lua `standard_menus = true`, C
+  `kui_menu_bar_standard_menus`, Rust `MenuBar::standard_menus(true)`,
+  Odin `kui.menu_bar_standard_menus`) keeps the platform's standard
+  menus and puts the declared ones beside them: on macOS the
+  application menu, the standard Edit menu, the declared menus in order
+  and the standard Window menu, with its tiling and full-screen rows. A
+  declared menu's `accel` binds as on any row. Where the bar is drawn in
+  the window there are no standard menus, and the flag changes nothing.
+  Read back with `menuBar().standardMenus` and
+  `kui_menu_bar_has_standard_menus`.
 
 - **A wheel's notch glides** (ADR 0050, backlog F182). A notch was a
   hard 40 px step on every platform — any mouse wheel on Windows and
@@ -83,6 +130,15 @@ was the first bare bump to break an app in five releases).
 
 **What you can delete.**
 
+- An `onHover` per row and a hovered-row field in the model, kept only
+  to draw a row's actions while it is hovered: `revealOnHover` on the
+  actions' box (ADR 0051).
+- A bare toggle beside a clickable ellipsized text of the app's, kept
+  only so a long label would not wrap: `ellipsis` on the toggle (backlog
+  F184).
+- An application menu, an Edit menu of `copy` / `paste` roles and a
+  `Window` menu, declared only so the bar kept them beside the app's
+  own menu: `standardMenus` on the bar (ADR 0052).
 - An `onScroll` handler on a scroll container that caught the wheel
   only to call `set_scroll` with an easing of its own, so a mouse did
   not step.

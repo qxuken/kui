@@ -790,6 +790,12 @@ Spec :: struct {
 	// Nodes sharing a group name show hoverBg/pressedBg together (a split button,
 	// a multi-piece shape).
 	hover_group: string,
+	// Draw this node only while its anchor — the nearest ancestor that tracks
+	// the pointer: an `onClick` row, a `hoverBg` card, a `hoverable` group header
+	// — is hovered (the pointer over it or anything inside it), holds a press
+	// begun inside it, or holds keyboard-visible focus inside it; and while focus
+	// of any kind is inside the node itself (ADR 0051).
+	reveal_on_hover: bool,
 	// Hover handler: the pointer entering or leaving arrives as this message with
 	// `hover: {phase: "enter" | "leave", by}` in it (ADR 0047).
 	on_hover: any,
@@ -1052,6 +1058,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.modal = borrow(scratch, s.modal)
 	out.initial_focus = 1 if s.initial_focus else 0
 	out.hover_group = s.hover_group
+	out.reveal_on_hover = 1 if s.reveal_on_hover else 0
 	out.on_drop = borrow(scratch, s.on_drop)
 	out.on_layout = borrow(scratch, s.on_layout)
 	out.key_up = 1 if s.key_up else 0
@@ -3352,6 +3359,20 @@ menu_bar_with :: proc(ui: ^Ui, menus: []Bar_Menu, on_menu: any = nil) -> bool {
 	menus_c := make([]c.Menu, len(menus), context.temp_allocator)
 	for x, k in menus do menus_c[k] = bar_menu_to_c(x, &scratch)
 	return c.menu_bar_with(ui, raw_data(menus_c), uint(len(menus)), to_value(on_menu))
+}
+
+// kui_menu_bar_standard_menus (kui.h).
+menu_bar_standard_menus :: proc(ui: ^Ui, menus: []Bar_Menu, on_menu: any = nil) -> bool {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	menus_c := make([]c.Menu, len(menus), context.temp_allocator)
+	for x, k in menus do menus_c[k] = bar_menu_to_c(x, &scratch)
+	return c.menu_bar_standard_menus(ui, raw_data(menus_c), uint(len(menus)), to_value(on_menu))
+}
+
+// kui_menu_bar_has_standard_menus (kui.h).
+menu_bar_has_standard_menus :: proc(ui: ^Ui) -> bool {
+	return c.menu_bar_has_standard_menus(ui)
 }
 
 // Whether the host owns the bar; the core then draws no strip.

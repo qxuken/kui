@@ -36,6 +36,7 @@ typedef struct Keys {
     uint64_t nick;     /* out: the stock input with messages and a value */
     uint64_t card, slider, sink, editor, input, select, drag, child; /* out: node keys */
     uint64_t checkbox, gain; /* out: the stock controls' keys */
+    uint64_t cut_box, cut_radio, cut_switch; /* out: the toggles with a cut label */
     uint64_t hitline, region; /* out: the selectable row, the focus region */
 } Keys;
 
@@ -189,6 +190,25 @@ static void surface_view(void *user, KuiCtx *ui) {
         kui_radio(ui, KUI_STR("Dark"), &on, kui_value_str(KUI_STR("dark")));
         kui_close(ui);
         kui_switch(ui, KUI_STR("Wi-Fi"), &on, kui_value_str(KUI_STR("wifi")));
+        /* The three with a label kept to one line and cut with an
+         * ellipsis where a narrow row squeezes them (backlog F184):
+         * floated to the viewport's bottom-right corner, out of the flow,
+         * where the walk below looks for nothing. */
+        KuiSpec narrow = {.dir = KUI_ROW, .width = {KUI_FIXED, 120}, .gap = 4,
+                          .float_mode = KUI_FLOAT_VIEWPORT,
+                          .float_anchor_x = KUI_END, .float_anchor_y = KUI_END,
+                          .float_self_x = KUI_END, .float_self_y = KUI_END};
+        kui_open(ui, &narrow, NULL);
+        KuiTextStyle one_line = {.ellipsis = 1};
+        k->cut_box = kui_checkbox_with(ui, KUI_STR("a-very-long-cookie-name-that-is-cut"), NULL,
+                                       &one_line, kui_value_str(KUI_STR("cut")));
+        kui_radio_group_open(ui, KUI_STR("Cut"), NULL);
+        k->cut_radio = kui_radio_with(ui, KUI_STR("another long name"), NULL, &one_line,
+                                      kui_value_str(KUI_STR("cut-radio")));
+        kui_close(ui);
+        k->cut_switch = kui_switch_with(ui, KUI_STR("a third long name"), &on, NULL,
+                                        kui_value_str(KUI_STR("cut-switch")));
+        kui_close(ui);
         KuiValue *gain_tag = kui_value_str(KUI_STR("gain"));
         KuiSpec gain = {
             .value_set = KUI_VALUE_NOW | KUI_VALUE_MIN | KUI_VALUE_MAX | KUI_VALUE_STEP,
@@ -373,6 +393,8 @@ static int surface(void) {
     kui_frame_finish(ui);
 
     check(k.checkbox && k.gain, "kui_checkbox and kui_slider return their keys");
+    check(k.cut_box && k.cut_radio && k.cut_switch && k.cut_box != k.cut_radio,
+          "kui_checkbox_with, kui_radio_with and kui_switch_with return their keys");
     check(k.card && k.slider && k.sink && k.editor && k.input && k.select && k.drag && k.child,
           "every node got a key");
     check(kui_animating(ui), "the keyframes keep animating");
@@ -902,6 +924,15 @@ static int surface(void) {
         kui_frame_begin(ui, 320, 240, 1);
         check(kui_menu_bar_with(ui, menus, 1, chose), "kui_menu_bar_with declares and draws");
         kui_frame_finish(ui);
+        check(!kui_menu_bar_has_standard_menus(ui), "a bar declared alone keeps no standard menus");
+        /* The same bar beside the platform's standard menus (ADR 0052). */
+        KuiValue *chose_too = kui_value_map();
+        kui_value_map_set(chose_too, KUI_STR("kind"), kui_value_str(KUI_STR("chose")));
+        kui_frame_begin(ui, 320, 240, 1);
+        check(kui_menu_bar_standard_menus(ui, menus, 1, chose_too),
+              "kui_menu_bar_standard_menus declares and draws");
+        kui_frame_finish(ui);
+        check(kui_menu_bar_has_standard_menus(ui), "and says it keeps the standard menus");
         kui_value_free(save);
 
         uint64_t rev = 0;

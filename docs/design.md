@@ -310,7 +310,12 @@ recorded under [adr/](adr); this page is their consequences for an app.
   `is_hovered` in the view; with `transition` the swap eases. `hover_group`
   ties nodes together (a two-piece elbow, a split button lights up as one).
   `widgets::button`, `<button>` and `kui_button` are all that same data
-  (`widgets::button_spec()`). When hover must change *layout* — a close
+  (`widgets::button_spec()`). A control that shows only for the row
+  under the pointer — a list row's rename and delete — is declared the
+  same way: `reveal_on_hover` hides it by its opacity while the nearest
+  ancestor that tracks the pointer is neither hovered (anything inside it
+  counts) nor holds keyboard focus, keeping its room and its access node
+  (ADR 0051). When hover must change *layout* — a close
   button that appears — `on_hover`'s message arrives with `hover =
   {phase="enter"|"leave", by}` in it like any other interaction, including when a new
   frame moves a node under a still cursor (`by: "content"` then, `"pointer"`

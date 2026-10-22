@@ -7398,6 +7398,8 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                 // A frosted dock: what the card drew blurs under it.
                 .backdrop_blur(6.0),
             |ui| {
+                // Shown while the dock is hovered or focus is in it (ADR
+                // 0051): neither, here, so it is drawn at 0.
                 ui.leaf_keyed(
                     "stop",
                     NodeSpec::row()
@@ -7405,7 +7407,8 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
                         .bg(Color::hex(0x2a2d3aff))
                         .focusable()
                         .role(Role::Button)
-                        .label("Stop"),
+                        .label("Stop")
+                        .reveal_on_hover(),
                 );
             },
         );

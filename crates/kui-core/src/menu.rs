@@ -743,6 +743,16 @@ pub struct MenuBar {
     /// item}` in it (ADR 0048), the field a context menu's choice carries.
     /// A bar that declares none posts nothing.
     pub on_menu: Option<Value>,
+    /// Keep the platform's standard menus and put these beside them
+    /// (ADR 0052): on macOS the application menu the process has, the
+    /// standard Edit menu, these menus in order, and the standard Window
+    /// menu — so an app adds one menu without declaring the other three,
+    /// and its accelerators bind as any declared row's do. None of these
+    /// menus is then the application menu. Where there is no platform bar
+    /// — the bar drawn in the window, on Windows and Linux or under a core
+    /// that draws its own — there are no standard menus to keep, and the
+    /// bar is these menus alone.
+    pub standard_menus: bool,
 }
 
 impl MenuBar {
@@ -750,12 +760,20 @@ impl MenuBar {
         Self {
             menus,
             on_menu: None,
+            standard_menus: false,
         }
     }
 
     /// Declares the message a choice from the bar arrives as.
     pub fn on_menu(mut self, message: impl Into<Value>) -> Self {
         self.on_menu = Some(message.into());
+        self
+    }
+
+    /// Keeps the platform's standard menus around these (see the
+    /// `standard_menus` field, ADR 0052).
+    pub fn standard_menus(mut self, on: bool) -> Self {
+        self.standard_menus = on;
         self
     }
 

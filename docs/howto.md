@@ -912,6 +912,44 @@ posted, the menu still open — as the pointer never reaches it.
 [the context menu](#how-do-i-open-a-popup-and-when-is-a-modal-enough) ·
 [ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
 
+### How do I show a row's buttons only while the pointer is on the row?
+
+`revealOnHover` on the box that holds them (`reveal_on_hover = true` in
+Lua, `.reveal_on_hover = 1` in C, `NodeSpec::reveal_on_hover()` in
+Rust): it is drawn only while its row is hovered — the pointer over the
+row or anything in it, the buttons included — or holds a press, or holds
+keyboard focus. Nothing else to declare: no `onHover`, no hovered row in
+the model, no redraw of the view; the core decides it each frame as it
+decides a `hoverBg`.
+
+```tsx
+<box dir="row" hoverable gap={6} crossAlign="center">
+  <checkbox checked={m.on[i]} ellipsis onClick={{ kind: 'pick', i }}>{name}</checkbox>
+  <box width="grow" />
+  <box dir="row" gap={4} revealOnHover>
+    <button onClick={{ kind: 'rename', i }}>Rename</button>
+    <button onClick={{ kind: 'delete', i }}>Delete</button>
+  </box>
+</box>
+```
+
+The row is the box's nearest ancestor that tracks the pointer: one with
+`hoverable`, `onClick`, `hoverBg`, `focusable` — a group header is a
+`hoverable` row. A row of controls wants `hoverable` (or a role of its
+own) rather than `onClick`: a box with `onClick` and no role reads as a
+button named by its content, and the buttons inside it would be part of
+that name. With nothing above it that tracks the pointer the box is
+always drawn, and `reveal-without-anchor` says so.
+
+Hidden is opacity 0, so the row does not reflow as the pointer crosses
+it, and the buttons stay where a screen reader and the Tab key find them:
+Tab onto the row's checkbox and its buttons show, Tab onto one of them
+and it stays shown, and a field in there keeps the row's actions up while
+it has the keyboard. A `transition` on the box fades it in and out.
+
+[`revealOnHover` row](props.md#container-props) ·
+[ADR 0051](adr/0051-a-node-shown-while-its-row-is-hovered.md)
+
 ### How do I add a checkbox, a radio group, a switch or a slider?
 
 The stock controls ([ADR 0034](adr/0034-stock-controls-over-the-roles.md))
@@ -949,6 +987,23 @@ moves them with the stock button.
 [examples/rust/widgets/controls.rs](../examples/rust/widgets/controls.rs) ·
 [examples/node/widgets/controls.tsx](../examples/node/widgets/controls.tsx) ·
 [ADR 0047](adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)
+
+### How do I keep a long checkbox label on one line?
+
+`ellipsis` on the toggle — `<checkbox ellipsis>`, `checkbox { ellipsis =
+true }`, `kui_checkbox_with(ctx, text, spec, &(KuiTextStyle){.ellipsis =
+1}, payload)`, `widgets::toggle_with_style(…, &TextStyle { ellipsis: true,
+..Default::default() })` — and the same on `<radio>` and `<switch>`. The
+label stays on one line and ends in an ellipsis wherever the toggle is
+squeezed: in a row narrower than the name, beside a `grow` spacer, in a
+list column. It is still the toggle: a press on the cut text toggles it,
+its accessible name is the whole text, and while it is cut the whole
+text floats as its hint on hover (a `tooltip` you declare wins). A label
+that fits floats nothing. `maxLines` and `wrap` read too, as on a
+`<text>`: `maxLines={2} ellipsis` is a two-line clamp. The label's size,
+colour and face stay the stock's.
+
+[the elements](props.md#elements)
 
 ### How do I match my app's messages as types, in Rust?
 
@@ -1032,7 +1087,20 @@ the runner already performs (greyed when the chord would do nothing), and a Wind
 Full Screen and — added by AppKit because the menu is registered as the
 platform's — Fill, Center and the tiling submenus, so fn+ctrl+F and fn+F
 work. A declared bar is exactly what you declared; name a menu `Window`
-and it is the platform's, with those rows and shortcuts in it. An `Edit`
+and it is the platform's, with those rows and shortcuts in it.
+
+To add a menu and keep the rest, say `standardMenus`: `<menuBar
+standardMenus menu={[{ label: 'Packages', items: […] }]}/>`, `menu_bar {
+standard_menus = true, … }`, `kui_menu_bar_standard_menus(ctx, menus,
+count, on_menu)`, `MenuBar::standard_menus(true)`. On macOS the bar is
+then the application menu, the standard Edit menu, your menus in order,
+and the standard Window menu with its tiling and full-screen rows — none
+of yours is the application menu, and an `accel` binds as on any row.
+Where the bar is drawn in the window there are no standard menus to
+keep, and it is your menus alone, so the same view is portable. The
+standard menus read in English; an app that needs them in its own
+language still declares them ([ADR
+0052](adr/0052-a-declared-bar-beside-the-standard-menus.md)). An `Edit`
 menu, standard or declared, also carries the two rows AppKit appends
 that work in a kui window — Emoji & Symbols and Dictation both type
 into the focused editor or key sink, the palette's pick and a dictated
@@ -1044,6 +1112,7 @@ the same palette from the keyboard and types the same way.
 [`menuBar` element](props.md#elements) ·
 [ADR 0018](adr/0018-a-menu-bar-the-app-declares.md) ·
 [ADR 0030](adr/0030-the-standard-menus-the-runner-keeps.md) ·
+[ADR 0052](adr/0052-a-declared-bar-beside-the-standard-menus.md) ·
 [examples/rust/widgets/menu_bar.rs](../examples/rust/widgets/menu_bar.rs)
 
 ### How do I put a submenu in a menu — "Move to ▸", "Sort by ▸"?

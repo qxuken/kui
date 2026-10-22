@@ -163,32 +163,38 @@ button :: proc(ui: ^Ui, label: string, msg: any = nil, spec: Spec = {}) {
 	c.button_with(ui, label, &cs, to_value(msg))
 }
 
-checkbox :: proc(ui: ^Ui, label: string, checked: bool, msg: any = nil, spec: Spec = {}) -> u64 {
+// The stock toggles. Of spec each reads checked (and on a checkbox
+// mixed), label, description, tooltip and disabled; of text, its label's
+// line breaking - wrap, max_lines and ellipsis - and nothing else: with
+// ellipsis the label is one line, cut where the toggle is squeezed, and
+// its whole text floats as the hint while it is cut (backlog F184).
+checkbox :: proc(ui: ^Ui, label: string, checked: bool, msg: any = nil, spec: Spec = {}, text: Text_Style = {}) -> u64 {
 	s := spec
 	s.checked = checked
-	return stock(c.checkbox, ui, label, s, msg)
+	return stock(c.checkbox_with, ui, label, s, msg, text)
 }
 
-radio :: proc(ui: ^Ui, label: string, checked: bool, msg: any = nil, spec: Spec = {}) -> u64 {
+radio :: proc(ui: ^Ui, label: string, checked: bool, msg: any = nil, spec: Spec = {}, text: Text_Style = {}) -> u64 {
 	s := spec
 	s.checked = checked
-	return stock(c.radio, ui, label, s, msg)
+	return stock(c.radio_with, ui, label, s, msg, text)
 }
 
 // The stock switch (kui_switch; `switch` is Odin's).
-toggle :: proc(ui: ^Ui, label: string, on: bool, msg: any = nil, spec: Spec = {}) -> u64 {
+toggle :: proc(ui: ^Ui, label: string, on: bool, msg: any = nil, spec: Spec = {}, text: Text_Style = {}) -> u64 {
 	s := spec
 	s.checked = on
-	return stock(c.switch_, ui, label, s, msg)
+	return stock(c.switch_with, ui, label, s, msg, text)
 }
 
 @(private)
-stock :: proc(door: proc "c" (_: ^c.Ctx, _: string, _: ^c.Spec, _: ^c.Value) -> u64, ui: ^Ui, label: string, spec: Spec, msg: any) -> u64 {
+stock :: proc(door: proc "c" (_: ^c.Ctx, _: string, _: ^c.Spec, _: ^c.TextStyle, _: ^c.Value) -> u64, ui: ^Ui, label: string, spec: Spec, msg: any, text: Text_Style) -> u64 {
 	cs: c.Spec
 	scratch: Scratch
 	defer scratch_free(&scratch)
 	spec_to_c(spec, &cs, &scratch)
-	return door(ui, label, &cs, to_value(msg))
+	st := text_style_to_c(text)
+	return door(ui, label, &cs, &st, to_value(msg))
 }
 
 // A group of radios, one Tab stop with the arrows inside it.

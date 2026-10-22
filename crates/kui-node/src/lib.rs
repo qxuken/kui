@@ -4120,6 +4120,7 @@ macro_rules! core_methods {
                     .collect();
                 let mut o = JsonMap::new();
                 o.insert("revision".into(), Json::from(revision));
+                o.insert("standardMenus".into(), Json::Bool(bar.standard_menus));
                 o.insert("menus".into(), Json::Array(menus));
                 Ok(Some(Json::Object(o)))
             }

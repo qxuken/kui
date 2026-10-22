@@ -1362,6 +1362,10 @@ export function createEncoder(P) {
         // The message a choice from the bar arrives as, `menu: {role,
         // item}` in it (ADR 0048); none (or null) and the bar posts nothing.
         strRef(p.onMenu == null ? null : JSON.stringify(p.onMenu));
+        // A flags word (v25): 1 keeps the platform's standard menus
+        // around these (`standardMenus`, ADR 0052).
+        reserve(1);
+        f[fi++] = p.standardMenus ? 1 : 0;
         return;
       case 'latencyGraph':
         f[fi++] = OP.latencyGraph;

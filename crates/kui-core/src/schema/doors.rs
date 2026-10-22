@@ -930,10 +930,10 @@ pub const DOORS: &[Door] = &[
     Door {
         rust: "Core::menu_bar",
         c: As(
-            "`kui_menu_bar_menu_count` / `kui_menu_bar_menu` / `kui_menu_bar_item`, one row at a time, and a submenu's by path with `kui_menu_bar_submenu_count` / `kui_menu_bar_item_path`",
+            "`kui_menu_bar_menu_count` / `kui_menu_bar_menu` / `kui_menu_bar_item`, one row at a time, and a submenu's by path with `kui_menu_bar_submenu_count` / `kui_menu_bar_item_path`; whether it keeps the standard menus with `kui_menu_bar_has_standard_menus`",
         ),
         odin: As(
-            "`menu_bar_menu_count` / `menu_bar_menu` / `menu_bar_item`, one row at a time, and a submenu's by path with `menu_bar_submenu_count` / `menu_bar_item_path`",
+            "`menu_bar_menu_count` / `menu_bar_menu` / `menu_bar_item`, one row at a time, and a submenu's by path with `menu_bar_submenu_count` / `menu_bar_item_path`; whether it keeps the standard menus with `menu_bar_has_standard_menus`",
         ),
         node: Is("menuBar"),
         lua: No(GUEST),

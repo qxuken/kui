@@ -411,7 +411,7 @@ pub struct KuiMenu {
 /// not know. Call between `kui_frame_begin` and `kui_frame_finish`.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_menu_bar(ptr: *mut KuiCtx, menus: *const KuiMenu, count: usize) -> bool {
-    guard(false, || menu_bar(ptr, menus, count, None))
+    guard(false, || menu_bar(ptr, menus, count, None, false))
 }
 
 /// [`kui_menu_bar`] whose choices arrive as `on_menu` (ADR 0048), the
@@ -430,10 +430,48 @@ pub extern "C" fn kui_menu_bar_with(
 ) -> bool {
     // Taken before anything can refuse, so a refused call frees it too.
     let on_menu = take_msg(on_menu);
-    guard(false, || menu_bar(ptr, menus, count, on_menu))
+    guard(false, || menu_bar(ptr, menus, count, on_menu, false))
 }
 
-fn menu_bar(ptr: *mut KuiCtx, menus: *const KuiMenu, count: usize, on_menu: Option<Value>) -> bool {
+/// [`kui_menu_bar_with`] with the platform's standard menus kept around
+/// these (ADR 0052, the `menuBar` element's `standardMenus`): on macOS the
+/// process's application menu, the standard Edit menu, these menus in
+/// order and the standard Window menu, so an app adds one menu by
+/// declaring that one. None of these is then the application menu. Where
+/// the bar is drawn in the frame there are no standard menus, and it is
+/// these alone. Consumes `on_menu` as `kui_menu_bar_with` does.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_standard_menus(
+    ptr: *mut KuiCtx,
+    menus: *const KuiMenu,
+    count: usize,
+    on_menu: *mut KuiValue,
+) -> bool {
+    let on_menu = take_msg(on_menu);
+    guard(false, || menu_bar(ptr, menus, count, on_menu, true))
+}
+
+/// Whether the bar in force keeps the platform's standard menus around
+/// its own (`kui_menu_bar_standard_menus`): what a host that hands the
+/// declaration to its own platform bar reads beside the menus. False with
+/// no bar declared.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_menu_bar_has_standard_menus(ptr: *mut KuiCtx) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        c.core().menu_bar().is_some_and(|b| b.standard_menus)
+    })
+}
+
+fn menu_bar(
+    ptr: *mut KuiCtx,
+    menus: *const KuiMenu,
+    count: usize,
+    on_menu: Option<Value>,
+    standard_menus: bool,
+) -> bool {
     let Some(c) = (unsafe { ctx(ptr) }) else {
         return false;
     };
@@ -457,7 +495,7 @@ fn menu_bar(ptr: *mut KuiCtx, menus: *const KuiMenu, count: usize, on_menu: Opti
         }
     }
     let mut ui = kui_core::Ui::wrap(c.core());
-    let mut bar = kui_core::MenuBar::new(out);
+    let mut bar = kui_core::MenuBar::new(out).standard_menus(standard_menus);
     bar.on_menu = on_menu;
     kui_core::widgets::menu_bar(&mut ui, bar);
     true

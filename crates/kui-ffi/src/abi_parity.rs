@@ -838,6 +838,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         on_boundary: *const KuiValue => "const KuiValue *",
         on_menu: *const KuiValue => "const KuiValue *",
         on_selection_range: *const KuiValue => "const KuiValue *",
+        reveal_on_hover: u32 => "uint32_t",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1557,8 +1558,10 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // (ADR 0043). ABI 31: `over_siblings`, past the end, so 744 + 4 rounds
         // up to the struct's 8-byte alignment. ABI 33: `on_submit`,
         // `on_cancel`, `on_boundary`, `on_menu` and `on_selection_range`
-        // (ADR 0047), five pointers after that padding.
-        ("KuiSpec", 792, 33),
+        // (ADR 0047), five pointers after that padding. ABI 35:
+        // `reveal_on_hover` (ADR 0051), past the end, so 792 + 4 rounds up
+        // to 800.
+        ("KuiSpec", 800, 35),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

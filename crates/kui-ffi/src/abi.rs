@@ -184,7 +184,14 @@
 ///   RG121). No struct moved; an older library would read the bit as a
 ///   fill rule. Also new, with no break of their own (ADR 0049):
 ///   `KuiFamilyToken`, `kui_tokens_families` and `kui_token_family`.
-pub const KUI_ABI_VERSION: u32 = 34;
+/// - ABI 35: `reveal_on_hover` appended to `KuiSpec` (800 bytes on
+///   64-bit, from 792): the node is drawn only while its row is hovered
+///   or focus is inside it (ADR 0051). New with it, moving no struct:
+///   `kui_checkbox_with`, `kui_radio_with` and `kui_switch_with`, a stock
+///   toggle with its label's line breaking (backlog F184), and
+///   `kui_menu_bar_standard_menus` and `kui_menu_bar_has_standard_menus`,
+///   the platform's standard menus kept beside a declared bar (ADR 0052).
+pub const KUI_ABI_VERSION: u32 = 35;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header
