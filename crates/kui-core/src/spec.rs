@@ -2106,7 +2106,10 @@ impl NodeSpec {
     /// description, and the core floats the hint below it while the
     /// pointer is over it or over anything inside it, a child that tracks
     /// the pointer included; with tooltips nested, the innermost one under
-    /// the pointer is the one shown (backlog F179). On a box or a fragment the float is the node's last child;
+    /// the pointer is the one shown (backlog F179) — but not over a
+    /// descendant floated against the viewport or another node, a dialog,
+    /// which is placed somewhere else (backlog RG160). On a box or a
+    /// fragment the float is the node's last child;
     /// on a leaf — an image, an editor, a cells grid, a line, a polygon, a
     /// path — which holds no children, it floats beside the leaf, anchored
     /// to it ([`FloatAnchor::Node`]), and lands below the leaf's box all

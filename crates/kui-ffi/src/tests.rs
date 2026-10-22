@@ -501,6 +501,60 @@ mod widgets_headless {
         kui_ctx_free(ctx);
     }
 
+    /// An empty family list — a zero count, or a NULL `names` whatever
+    /// the count — is a token that is always sans, as in every binding,
+    /// with `unknown-family` listing `[]`.
+    #[test]
+    fn an_empty_family_list_is_a_token_that_is_always_sans() {
+        let ctx = kui_ctx_new();
+        kui_set_diagnostics(ctx, true);
+        let mono = [ks("mono")];
+        let families = [
+            KuiFamilyToken {
+                name: ks("none"),
+                names: mono.as_ptr(),
+                name_count: 0,
+            },
+            KuiFamilyToken {
+                name: ks("null"),
+                names: std::ptr::null(),
+                name_count: 3,
+            },
+        ];
+        kui_tokens_families(ctx, families.as_ptr(), families.len());
+        for name in ["none", "null"] {
+            let (mut family, mut font) = (9u32, 9u64);
+            assert!(kui_token_family(ctx, ks(name), &mut family, &mut font));
+            assert_eq!((family, font), (0, 0), "{name}: sans, no handle");
+        }
+        let mut out = [KuiWarning {
+            code: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+            key: 0,
+            message: KuiStr {
+                ptr: std::ptr::null(),
+                len: 0,
+            },
+        }; 8];
+        let n = kui_take_warnings(ctx, out.as_mut_ptr(), out.len());
+        let named: Vec<(String, String)> = out[..n]
+            .iter()
+            .map(|w| (kstr(w.code).into_owned(), kstr(w.message).into_owned()))
+            .collect();
+        for name in ["none", "null"] {
+            assert!(
+                named
+                    .iter()
+                    .any(|(c, m)| c == "unknown-family"
+                        && m.contains(&format!("`${name}` lists []"))),
+                "{named:?}"
+            );
+        }
+        kui_ctx_free(ctx);
+    }
+
     /// Tokens cross as two `[in]` arrays and read back by name:
     /// a themed colour answers the dark half on an unknown appearance, a
     /// role's name answers the role, an unknown or wrong-kind name is
@@ -2916,6 +2970,42 @@ mod parity_headless {
 #[cfg(test)]
 mod follow_headless {
     use super::*;
+
+    /// A grid of no rows — a pane shorter than one line — is an empty
+    /// grid declared under its key, as Lua's and Node's are, where C
+    /// declared nothing and the key went with it (backlog RG160).
+    #[test]
+    fn a_grid_of_no_rows_is_declared_under_its_key() {
+        let ctx = kui_ctx_new();
+        let mut mono = unsafe { std::mem::zeroed::<KuiTextStyle>() };
+        mono.size = 14.0;
+        mono.family = 2;
+        let term = fixed(200.0, 20.0);
+        for _ in 0..2 {
+            kui_frame_begin(ctx, 400.0, 200.0, 1.0);
+            kui_cells(
+                ctx,
+                ks("term"),
+                0,
+                11,
+                std::ptr::null(),
+                0,
+                &mono,
+                &term,
+                NONE,
+                NONE,
+                NONE,
+                0,
+                0,
+                0,
+                0,
+                0,
+            );
+            kui_frame_finish(ctx);
+        }
+        assert_ne!(kui_key_of(ctx, ks("term")), 0, "the grid is declared");
+        kui_ctx_free(ctx);
+    }
 
     fn fixed(w: f32, h: f32) -> KuiSpec {
         let mut spec = unsafe { std::mem::zeroed::<KuiSpec>() };

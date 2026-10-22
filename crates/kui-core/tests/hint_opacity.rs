@@ -176,3 +176,80 @@ fn a_disabled_toggles_and_sliders_hint_is_not_dimmed() {
         assert!(close(a, 1.0), "{name}: the hint is not dimmed: {a:?}");
     }
 }
+
+/// No hint, or one drawn at 0: what a frame shows for a hint not drawn.
+fn hidden(a: Option<f32>) -> bool {
+    a.is_none_or(|a| a == 0.0)
+}
+
+/// A box at opacity 0 is not there to explain: hovered, its hint is not
+/// drawn, where F178's rule — the opacity the box inherited — drew it in
+/// full over nothing (backlog RG160).
+#[test]
+fn an_invisible_boxs_tooltip_is_not_drawn() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.with(
+            NodeSpec::column()
+                .size(100.0, 40.0)
+                .opacity(0.0)
+                .tooltip("a hint"),
+            |_| {},
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    hover(&mut core, Vec2::new(50.0, 20.0));
+    frame(&mut core);
+    frame(&mut core);
+    let a = hint_alpha(&mut core);
+    assert!(hidden(a), "no hint over an invisible box: {a:?}");
+}
+
+/// A hovered box with a `tooltip` and an `exit`, removed: the ghost fades
+/// out and its hint is not in the picture — the hover went with the box
+/// (backlog RG160).
+#[test]
+fn a_departing_boxs_tooltip_leaves_with_the_hover() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let card = |core: &mut Core, shown: bool| {
+        let mut ui = core.frame(VIEW, 1.0);
+        if shown {
+            ui.with_keyed(
+                "card",
+                NodeSpec::column()
+                    .size(100.0, 40.0)
+                    .bg(Color::hex(0xff0000ff))
+                    .opacity(0.4)
+                    .tooltip("a hint")
+                    .exit(kui_core::Enter::default().opacity(0.0)),
+                |_| {},
+            );
+        }
+        ui.finish();
+    };
+    card(&mut core, true);
+    hover(&mut core, Vec2::new(50.0, 20.0));
+    card(&mut core, true);
+    card(&mut core, true);
+    assert!(close(hint_alpha(&mut core), 1.0), "the live hint, in full");
+    core.set_time(0.05);
+    card(&mut core, false);
+    core.set_time(0.1);
+    card(&mut core, false);
+    let red = core
+        .output()
+        .0
+        .quads
+        .iter()
+        .find(|q| q.kind == QuadKind::Solid && q.color.r == 1.0 && q.color.g == 0.0)
+        .map(|q| q.color.a);
+    assert!(
+        red.is_some_and(|a| a > 0.0 && a < 0.4),
+        "the ghost fades: {red:?}"
+    );
+    let a = hint_alpha(&mut core);
+    assert!(hidden(a), "and its hint is gone: {a:?}");
+}

@@ -2354,12 +2354,19 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // the cells; the node rows are the node's.
             let p = props_of(ui, t, ty, &mut checked)?;
             // Counts and positions are measures (backlog F180): `rows =
-            // room_h / line_h` is the rows that fit.
-            let rows = measure_at(t, "rows", "cells rows")?.map_or(0, to_usize);
-            let cols = measure_at(t, "cols", "cells cols")?.map_or(0, to_usize);
-            if rows == 0 || cols == 0 {
+            // room_h / line_h` is the rows that fit. A window shorter
+            // than one line fits none, and 0 rows or 0 cols is an empty
+            // grid — the node still declared under its key, sized as the
+            // core sizes no cells, so its focus and selection outlive
+            // the frame it had no room in (backlog RG160). Only a count
+            // left out is refused.
+            let (Some(rows), Some(cols)) = (
+                measure_at(t, "rows", "cells rows")?,
+                measure_at(t, "cols", "cells cols")?,
+            ) else {
                 return Err(bad("cells needs rows and cols"));
-            }
+            };
+            let (rows, cols) = (to_usize(rows), to_usize(cols));
             let default_fg = p.style.color.unwrap_or(ui.theme().fg).to_hex();
             // No more than the core draws (`MAX_CELLS`, which it warns
             // past): the grid it keeps is a prefix of this one, row-major
@@ -3113,9 +3120,12 @@ pub fn parse_tokens(t: &Table) -> mlua::Result<kui_core::Tokens> {
                     "tokens.families.{name}: a family is a name or a list of names"
                 ))
             };
+            // `{}` is a list too, a token that is always sans with
+            // `unknown-family`, as in the other bindings; a table of only
+            // named keys is no list.
             let names: Vec<String> = match &v {
                 mlua::Value::String(s) => vec![s.to_str()?.to_string()],
-                mlua::Value::Table(list) if list.raw_len() > 0 => list
+                mlua::Value::Table(list) if list.raw_len() > 0 || list.is_empty() => list
                     .sequence_values::<mlua::Value>()
                     .map(|n| match n? {
                         mlua::Value::String(s) => Ok(s.to_str()?.to_string()),
@@ -7084,6 +7094,86 @@ mod tests {
         );
     }
 
+    /// An empty family list is a token that is always sans, as in every
+    /// binding, with `unknown-family` listing `[]`; a table of only named
+    /// keys or a list holding a number is still refused. And a family
+    /// token takes a colour's name, declared after it, so `bg = "$code"`
+    /// paints nothing and warns `unknown-token` — what Node's encoder
+    /// mirrors.
+    #[test]
+    fn an_empty_family_list_is_sans_and_a_family_takes_a_colour_s_name() {
+        let mut ext = LuaExtension::from_source(
+            "empty-family",
+            r##"
+                tokens = {
+                  colors = { code = "#ff0000" },
+                  families = { none = {}, code = "mono" },
+                }
+                function view(env)
+                  seen = env.tokens
+                  none_w = env.measure_text("iiiiiiii", { size = 14, family = "$none" }).width
+                  sans_w = env.measure_text("iiiiiiii", { size = 14 }).width
+                  return column { row { width = 20, height = 20, bg = "$code" } }
+                end
+            "##,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let ws = core.take_warnings();
+        let mut codes: Vec<_> = ws.iter().map(|w| w.code).collect();
+        codes.sort();
+        assert_eq!(
+            codes,
+            [
+                kui_core::diag::UNKNOWN_FAMILY,
+                kui_core::diag::UNKNOWN_TOKEN
+            ],
+            "{ws:?}"
+        );
+        let family = ws
+            .iter()
+            .find(|w| w.code == kui_core::diag::UNKNOWN_FAMILY)
+            .unwrap();
+        assert!(
+            family.message.contains("`$none` lists []"),
+            "{}",
+            family.message
+        );
+        let seen: Table = ext.lua.globals().get("seen").unwrap();
+        let families: Table = seen.get("families").unwrap();
+        assert_eq!(families.get::<String>("none").unwrap(), "sans");
+        assert_eq!(families.get::<String>("code").unwrap(), "mono");
+        let colors: Table = seen.get("colors").unwrap();
+        assert_eq!(colors.get::<Option<u32>>("code").unwrap(), None);
+        let g = ext.lua.globals();
+        assert_eq!(
+            g.get::<f32>("none_w").unwrap(),
+            g.get::<f32>("sans_w").unwrap()
+        );
+        assert!(
+            !core
+                .output()
+                .0
+                .quads
+                .iter()
+                .any(|q| q.kind == kui_core::QuadKind::Solid && q.color.r == 1.0),
+            "nothing painted from the colour the family took the name of"
+        );
+        let lua = mlua::Lua::new();
+        for bad in ["{ code = { a = 1 } }", "{ code = { 3 } }", "{ code = 3 }"] {
+            let t: Table = lua
+                .load(format!("return {{ families = {bad} }}"))
+                .eval()
+                .unwrap();
+            let e = parse_tokens(&t).unwrap_err().to_string();
+            assert!(
+                e.contains("a family is a name or a list of names"),
+                "{bad}: {e}"
+            );
+        }
+    }
+
     /// Tokens (ADR 0027): the `tokens` global is declared under the
     /// script's origin, a `$name` resolves in a colour, a length, a sizing,
     /// a pad edge, a border and a span, a themed colour follows the
@@ -8075,6 +8165,137 @@ mod tests {
         ui.finish();
         let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
         assert_eq!(codes, [kui_core::diag::CELLS_TOO_LARGE]);
+    }
+
+    /// Counts are floored (backlog F180), so `rows = room_h / line_h` in a
+    /// window shorter than one line is 0, and `cells` refused it, failing
+    /// the whole view. 0 rows, 0 cols or half a row is an empty grid: the
+    /// node is declared under its key with every row an app would pass
+    /// it, nothing selects in it, and a press in its box, a double
+    /// click's word, a triple click's row and a copy find no cell. A count left out is
+    /// still refused (backlog RG160).
+    #[test]
+    fn a_grid_of_no_rows_or_no_cols_is_an_empty_grid() {
+        for (rows, cols) in [("0", "12"), ("3", "0"), ("0.5", "12"), ("0", "0")] {
+            let src = format!(
+                r#"
+                frames = 0
+                function view(env)
+                  frames = frames + 1
+                  if frames == 2 then picked = env.select_all_in("term") end
+                  sel = env.cell_selection()
+                  return column {{ cells {{ key = "term", rows = {rows}, cols = {cols},
+                    size = 14, family = "mono", line_height = 20, width = 200, height = 20,
+                    origin_line = 40, selectable = true, on_click = "hit", on_layout = "laid",
+                    lines = {{ "hello", "world" }}, runs = {{ {{ 0, 0, 5, 0xff0000ff }} }},
+                    cursor_at = {{ 0, 2 }}, cursor_shape = "bar" }} }}
+                end
+            "#
+            );
+            let what = format!("rows = {rows}, cols = {cols}");
+            let mut ext = LuaExtension::from_source("empty", &src).unwrap();
+            let mut core = Core::new();
+            core.set_diagnostics(true);
+            let frame = |core: &mut Core, ext: &mut LuaExtension| {
+                let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+                ui.set_origin(OriginId(1));
+                ext.view(&Slot::root(), &mut ui).unwrap();
+                ui.finish();
+                core.output();
+            };
+            for _ in 0..3 {
+                frame(&mut core, &mut ext);
+            }
+            let warnings = core.take_warnings();
+            assert!(warnings.is_empty(), "{what}: {warnings:?}");
+            let key = core.key_of("term").expect("the grid is declared");
+            let r = core.layout_of(key).expect("the grid is laid out");
+            let g = ext.lua.globals();
+            assert!(
+                !g.get::<bool>("picked").unwrap(),
+                "{what}: nothing to select"
+            );
+            assert!(g.get::<Option<Table>>("sel").unwrap().is_none(), "{what}");
+
+            // A press, then a double and a triple click, on the box sized
+            // round no cells.
+            let at = Vec2::new(r.x + 5.0, r.y + 5.0);
+            core.handle_input(InputEvent::CursorMoved(at));
+            for clicks in [1, 2, 3] {
+                core.handle_input(InputEvent::MouseDown {
+                    button: kui_core::MouseButton::Primary,
+                    clicks,
+                });
+                let up = core.handle_input(InputEvent::MouseUp {
+                    button: kui_core::MouseButton::Primary,
+                });
+                assert!(
+                    up.iter().any(|e| e.key == key),
+                    "{what}: the click is the grid's"
+                );
+                frame(&mut core, &mut ext);
+            }
+            assert_eq!(core.cell_selection_text(), None, "{what}");
+            assert_eq!(core.key_of("term"), Some(key), "{what}");
+        }
+
+        let mut missing = LuaExtension::from_source(
+            "missing",
+            r#"function view(env) return column { cells { key = "term", cols = 12 } } end"#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        let err = missing.view(&Slot::root(), &mut ui).unwrap_err();
+        ui.finish();
+        assert!(
+            err.to_string().contains("cells needs rows and cols"),
+            "{err}"
+        );
+    }
+
+    /// The window grows back: a grid that fit no rows and then fits three
+    /// is one node throughout, so the focus the app put on it — a
+    /// terminal's key sink — is still there when the rows come back.
+    #[test]
+    fn a_grid_that_grows_from_no_rows_keeps_its_key_and_focus() {
+        let mut ext = LuaExtension::from_source(
+            "grow",
+            r#"
+                rows = 0
+                function view(env)
+                  return column { cells { key = "term", rows = rows, cols = 12,
+                    size = 14, family = "mono", line_height = 20, on_key = "keys", on_layout = "laid",
+                    lines = { "one", "two", "three" } } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+            core.output();
+        };
+        frame(&mut core, &mut ext);
+        let key = core.key_of("term").expect("an empty grid is declared");
+        assert_eq!(core.layout_of(key).unwrap().h, 0.0);
+        core.set_focus(Some(key));
+        frame(&mut core, &mut ext);
+        assert_eq!(core.focus(), Some(key));
+
+        ext.lua.globals().set("rows", 3).unwrap();
+        frame(&mut core, &mut ext);
+        assert_eq!(core.key_of("term"), Some(key));
+        assert_eq!(
+            core.focus(),
+            Some(key),
+            "the focus outlived the empty frames"
+        );
+        assert_eq!(core.layout_of(key).unwrap().h, 60.0);
     }
 
     /// `origin_line = math.huge` saturates to `u64::MAX`, and the core adds

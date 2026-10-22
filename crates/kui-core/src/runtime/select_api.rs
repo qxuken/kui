@@ -90,6 +90,11 @@ impl Core {
                 .cell_size(id, false, &sess.resources, &mut sess.fonts)
         };
         let (rows, cols) = self.cells.dims(id, false);
+        // An empty grid has no cell to name, and a clamped (0, 0) would
+        // be one past the app's buffer (backlog RG160).
+        if rows == 0 || cols == 0 {
+            return None;
+        }
         let pos = self.cells_origin(i);
         let col = ((point.x - pos.x) / cell.w.max(f32::EPSILON)).floor();
         let row = ((point.y - pos.y) / cell.h.max(f32::EPSILON)).floor();

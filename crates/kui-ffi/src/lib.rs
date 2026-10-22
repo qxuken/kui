@@ -597,7 +597,8 @@ pub extern "C" fn kui_tokens_derive(
 /// family names — `sans`, `serif`, `mono`, an installed or loaded
 /// family's — the first that resolves picked by the core now and again
 /// when the fonts change. A list nothing matches is sans, with an
-/// `unknown-family` warning; a token named for a stock family or a role
+/// `unknown-family` warning, and so is a NULL `names` or a zero count: a
+/// token that is always sans. A token named for a stock family or a role
 /// is dropped with `reserved-token`. A C spec carries a `KUI_FONT_*` and a
 /// handle, not a name, so read a token back with [`kui_token_family`];
 /// the table gives the name to the devtools and to a Lua panel's

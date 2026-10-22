@@ -1514,7 +1514,9 @@ fn tokens_from_json(v: &Json) -> Result<Tokens> {
             t = t.length(name, px as f32);
         }
     }
-    // A family token (ADR 0049): a name, or a fallback list of them.
+    // A family token (ADR 0049): a name, or a fallback list of them. An
+    // empty list is a token that is always sans, as it is in Rust, C and
+    // Odin: nothing in it resolves, so the core warns `unknown-family`.
     if let Some(families) = o.get("families") {
         for (name, v) in pairs(families, "families")? {
             let bad = || {
@@ -1524,7 +1526,7 @@ fn tokens_from_json(v: &Json) -> Result<Tokens> {
             };
             let names: Vec<String> = match &v {
                 Json::String(n) => vec![n.clone()],
-                Json::Array(list) if !list.is_empty() => list
+                Json::Array(list) => list
                     .iter()
                     .map(|n| n.as_str().map(str::to_string).ok_or_else(bad))
                     .collect::<Result<_>>()?,

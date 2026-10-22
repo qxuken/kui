@@ -1940,7 +1940,9 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
             // A derived token (ADR 0028) lists with its recipe after the
             // hex, and its halves are computed under each base.
             .derive("inkSoft", "ink", [crate::tokens::ColorOp::Alpha(0.5)])
-            .length("gap", 7.0),
+            .length("gap", 7.0)
+            // A length token is any number (ADR 0049), printed as one.
+            .length("fade", 0.4),
     );
     let view = |ui: &mut Ui<'_>| {
         ui.with(NodeSpec::column().fill().gap(7.0), |ui| {
@@ -1977,7 +1979,12 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
         t.iter().any(|s| s == "#eeeeeeff · #111111ff"),
         "a themed colour shows the half in effect first: {t:?}"
     );
-    assert!(t.iter().any(|s| s == "7 px"), "{t:?}");
+    assert!(t.iter().any(|s| s == "7"), "{t:?}");
+    assert!(
+        t.iter().any(|s| s == "0.4"),
+        "a fraction, not rounded to 0: {t:?}"
+    );
+    assert!(!t.iter().any(|s| s.ends_with(" px")), "no unit: {t:?}");
     assert!(
         t.iter().any(|s| s == "#eeeeee80 · #11111180"),
         "a derived token's halves, each under its base: {t:?}"
@@ -1994,7 +2001,7 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
         "the fonts row: {t:?}"
     );
     let facts = state(&core, |s| s.facts.tokens.clone());
-    assert_eq!(facts.len(), 4);
+    assert_eq!(facts.len(), 5);
     assert_eq!(facts[1].resolved, Color::hex(0xeeeeeeff));
     assert_eq!(facts[2].recipe.as_deref(), Some("ink → alpha 0.5"));
     assert_eq!(facts[0].recipe, None);

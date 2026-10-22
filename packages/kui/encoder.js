@@ -1275,11 +1275,15 @@ export function createEncoder(P) {
         // stream carries four slots a cell (codepoint | flags << 21, fg,
         // bg, underline colour). The style rows ride the props pass; the
         // cursor names a cell to paint under its glyph.
+        // A count of 0 — `rows = Math.floor(roomH / lineH)` in a pane
+        // shorter than a line — is an empty grid, declared under its key
+        // like any other; only a missing or negative count is refused
+        // (backlog RG160).
+        if (!(p.rows >= 0 && p.cols >= 0)) throw new Error('<cells> needs rows and cols');
         const rows = p.rows | 0;
         const cols = p.cols | 0;
-        if (!(rows > 0 && cols > 0)) throw new Error('<cells> needs rows and cols');
-        const cells = p.cells;
         const n = rows * cols;
+        const cells = p.cells ?? (n === 0 ? [] : null);
         const per = cells != null && cells.length === n * 5 ? 5 : 4;
         if (cells == null || cells.length !== n * per) {
           throw new Error(`<cells> needs a cells array of ${n * 4} entries (four per cell) or ${n * 5} (five, with an underline colour) for ${rows}×${cols}, got ${cells?.length}`);

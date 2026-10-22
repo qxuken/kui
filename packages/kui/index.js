@@ -80,6 +80,8 @@ function reportUnknown(surface, unknown, unknownTokens) {
 // Insertion order is the index, after the roles — the same order the
 // addon's `setTokensRaw` reads the object in.
 const TOKENS = Symbol('kui.tokens');
+// kui's own families, which a family token cannot be named for.
+const STOCK_FAMILIES = new Set(['sans', 'serif', 'mono']);
 
 function setTokens(decl) {
   const d = decl ?? {};
@@ -114,7 +116,17 @@ function setTokens(decl) {
     if (!encoder.isRole(name)) map.set(name, { kind: 'length', index: i++ });
   }
   // A family token (ADR 0049) takes no index: a `family` crosses by name
-  // and the core resolves the `$`, so the encoder never looks one up.
+  // and the core resolves the `$`, so the encoder never looks one up. It
+  // does take its name: the core declares families after colours and
+  // lengths, and a name declared as two kinds binds the later one, so a
+  // colour or length of the same name is left reachable by index only.
+  // Kept here, `bg: '$code'` would paint from that slot where the core
+  // and every other binding raise `unknown-token`. A stock family's or a
+  // role's name is refused as a family (`reserved-token`) and takes
+  // nothing.
+  for (const name of Object.keys(d.families ?? {})) {
+    if (!encoder.isRole(name) && !STOCK_FAMILIES.has(name)) map.delete(name);
+  }
   for (const k of Object.keys(d)) {
     if (k !== 'colors' && k !== 'lengths' && k !== 'families')
       throw new Error(`setTokens(): unknown key ${JSON.stringify(k)} (colors, lengths, families)`);

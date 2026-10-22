@@ -1496,6 +1496,25 @@ test('cells draws a screen from a Uint32Array and a click names its cell', () =>
   assert.deepEqual(hit, { kind: 'hit', click: { cell: { row: 1, col: 3 } } }, 'the cell rides in the click field');
 });
 
+test('a cells grid of no rows is an empty grid under its key, and a click on it names no cell', () => {
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  const mono = { size: 14, family: 'mono', lineHeight: 20 };
+  // `rows = Math.floor(roomH / lineH)` in a pane shorter than a line.
+  const view = (rows) => root({}, [el('cells', { ...mono, rows, cols: 11, width: 100, height: 20, onClick: { kind: 'hit' } }, [], 'term')]);
+  ctx.frame(400, 200, 1, view(0));
+  ctx.frame(400, 200, 1, view(0));
+  assert.deepEqual(ctx.warnings(), []);
+  assert.ok(ctx.nodes().find((n) => n.label === 'term'), 'declared under its key');
+  ctx.cursor(20, 10);
+  ctx.mouse(true);
+  ctx.mouse(false);
+  const hit = ctx.pollEvents().find((e) => e.event === 'click')?.payload;
+  assert.equal(hit?.kind, 'hit', 'the click is the grid\'s');
+  assert.equal(hit?.click?.cell, undefined, 'and names no cell an empty grid has');
+  assert.throws(() => ctx.frame(400, 200, 1, root({}, [el('cells', { ...mono, cols: 11 }, [], 'term')])), /needs rows and cols/);
+});
+
 // A `selectable` grid selects in cells, and the click count picks the
 // grain the same way it does over a paragraph: one a cell, two the word,
 // three the whole row (ADR 0017, decision 4). Driven from Node because
@@ -8216,7 +8235,51 @@ test('a family token picks the first name that resolves, and a $name in family s
     'another kind or nothing declared is unknown-token',
   );
   assert.throws(() => ctx.setTokens({ families: { code: 3 } }), /a family is a name or a list of names/);
+  assert.throws(() => ctx.setTokens({ families: { code: [3] } }), /a family is a name or a list of names/);
   assert.throws(() => ctx.setTokens({ fonts: {} }), /unknown key "fonts"/);
+});
+
+test('an empty family list is a token that is always sans, with unknown-family listing []', () => {
+  const ctx = new Ctx();
+  ctx.setTokens({ families: { none: [] } });
+  assert.deepEqual(ctx.tokens().families, { none: 'sans' });
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-family');
+  assert.equal(ws.length, 1, JSON.stringify(ctx.warnings()));
+  assert.match(ws[0].message, /`\$none` lists \[\]/);
+  const width = (family) => ctx.measureText('iiiiiiii', { size: 14, family }).width;
+  assert.equal(width('$none'), width('sans'));
+});
+
+test('a family token takes its name from a colour or length declared before it, as in the core', () => {
+  // The core declares families after colours and lengths, and a name
+  // declared as two kinds binds the later one: `$code` is the family, so
+  // a colour slot naming it paints nothing and warns, as in Lua, C and
+  // Rust, rather than painting from the colour's orphaned index.
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  ctx.setTokens({ colors: { code: '#ff0000', peach: '#ffcc99' }, lengths: { gap: 5 }, families: { code: 'mono', gap: 'serif' } });
+  ctx.frame(
+    320,
+    240,
+    1,
+    root({}, [
+      box({ width: 20, height: 20, bg: '$code' }, [], 'c'),
+      box({ width: 20, height: 20, bg: '$peach', padL: '$gap' }, [], 'p'),
+    ]),
+  );
+  const node = (l) => ctx.nodes().find((n) => n.label === l);
+  assert.ok(!node('c').bg, `no bg from the orphaned colour: ${node('c').bg}`);
+  assert.equal(node('p').bg, 0xffcc99ff, 'the colour after it keeps its index');
+  assert.equal(node('p').padding.l, 0, 'a length slot naming a family token is unknown too');
+  const named = (w) => /`\$([a-z]+)`/.exec(w.message)?.[1] ?? w.message;
+  const ws = ctx.warnings().filter((w) => w.code === 'unknown-token');
+  assert.deepEqual(ws.map(named).sort(), ['code', 'gap'], JSON.stringify(ws));
+  assert.deepEqual(ctx.tokens().colors, { peach: 0xffcc99ff }, 'the name lists as the family');
+  assert.deepEqual(ctx.tokens().families, { code: 'mono', gap: 'serif' });
+  // A stock family's name is refused as a family and takes nothing.
+  ctx.setTokens({ colors: { mono: '#00ff00' }, families: { mono: 'serif' } });
+  ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, bg: '$mono' }, [], 'm')]));
+  assert.equal(node('m').bg, 0x00ff00ff, 'the colour keeps a name the family could not take');
 });
 
 test('a role takes the same $ spelling, and a declared role name is refused with reserved-token', () => {

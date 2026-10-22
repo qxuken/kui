@@ -791,7 +791,13 @@ impl Core {
     /// shown, as a browser's `title` is (backlog F179). The box's subtree
     /// is every node pushed since it opened, so the descendant test is a
     /// scan of those keys, run only for a box with a hint whose own
-    /// region is not the hovered one.
+    /// region is not the hovered one. A descendant floated against
+    /// something other than its parent — the viewport, as a dialog or a
+    /// toast is, or another node by key — is placed somewhere else, so
+    /// the pointer over it, or over anything in it, is not over the box
+    /// (backlog RG160); one floated against its parent, a badge or a
+    /// menu below a trigger, still is, as a positioned child is under a
+    /// browser's `title`.
     #[cold]
     #[inline(never)]
     fn hint_shows(&self, key: Key) -> bool {
@@ -802,9 +808,27 @@ impl Core {
         if self.is_hovered(key) {
             return true;
         }
-        self.interaction
-            .hovered()
-            .is_some_and(|h| self.tree.keys[at as usize + 1..].contains(&h))
+        let Some(h) = self.interaction.hovered() else {
+            return false;
+        };
+        let Some(off) = self.tree.keys[at as usize + 1..]
+            .iter()
+            .position(|k| *k == h)
+        else {
+            return false;
+        };
+        let mut n = at + 1 + off as u32;
+        while n != at {
+            if self.tree.specs[n as usize]
+                .layout
+                .float
+                .is_some_and(|f| f.anchor != crate::spec::FloatAnchor::Parent)
+            {
+                return false;
+            }
+            n = self.tree.parent[n as usize];
+        }
+        true
     }
 
     /// Notes that a hint floats at the next node pushed, so every box with

@@ -482,7 +482,7 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                                 format!("#{:08x}", tok.resolved.to_hex())
                             }
                         }
-                        crate::tokens::TokenKind::Length => format!("{:.0} px", tok.length),
+                        crate::tokens::TokenKind::Length => length_value(tok.length),
                         crate::tokens::TokenKind::Family => match &tok.family {
                             Some(f) => f.clone(),
                             None => "sans (none matched)".to_string(),
@@ -501,6 +501,16 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             ui.close();
         }
     });
+}
+
+/// A length token as the panel prints it: the number, to at most three
+/// decimals with the trailing zeros cut, and no unit. A length token is
+/// any number (ADR 0049) — px where the slot is a length, the number
+/// itself in an `opacity` — so `fade: 0.4` reads `0.4`, not `0 px`.
+fn length_value(v: f32) -> String {
+    let s = format!("{v:.3}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    if s == "-0" { "0" } else { s }.to_string()
 }
 
 /// A 12 px colour sample with a hairline, so a colour near the panel's

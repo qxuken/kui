@@ -21,6 +21,79 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.63 (unreleased)
+
+**What breaks.**
+
+- A box's `tooltip` stays down while the pointer is over a descendant
+  floated against something other than the box — a dialog or a toast
+  on the viewport, a popover anchored to another node by key — where
+  alpha.62 showed it there (backlog RG160).
+- A box at `opacity: 0` floats no hint, and a departing box's ghost
+  carries none: alpha.62 drew the first in full and faded the second
+  with the box.
+- An empty family list (`families: { x: [] }` in Node, `{ x = {} }` in
+  Lua) is a token that is always sans, with `unknown-family` listing
+  `[]`, where Node and Lua refused it with "a family is a name or a list
+  of names"; Rust, C and Odin already took one.
+- Node: a family token takes its name over from a colour or length of
+  the same name, as it does in the core and every other binding, so
+  `bg="$code"` with `code` declared as both gets its default and an
+  `unknown-token`, where it painted the colour.
+- The devtools' facts tab prints a length token as the number it is —
+  `7`, `0.4` — where it printed `{:.0} px`.
+- A `cells` grid of 0 rows or 0 columns is an empty grid declared under
+  its key in Lua, Node and C: Lua and Node refused it and failed the
+  frame, C declared no node. A click on it carries no `cell`.
+
+### Fixed
+
+- A box's `tooltip` showed while the pointer was over anything declared
+  inside the box, a dialog included: F179's test was the tree's
+  subtree, so `if open { dialog(..) }` inside a component put the
+  component's hint up over the dialog, painted above content declared
+  before it. A descendant floated against the viewport or another node
+  is placed somewhere else, and the pointer over it, or over anything
+  in it, is not over the box; one floated against the box — a badge, a
+  menu below a trigger — still is, as a positioned child is under a
+  browser's `title` (backlog RG160).
+- A box at `opacity: 0` — laid out but not shown, or at the first frame
+  of an `enter` from 0 — floated its hint in full over nothing, since
+  F178 takes the hint's opacity from the box's parent. It floats none.
+  And a hovered box removed with an `exit` faded its hint with the
+  ghost, from the box's own opacity: the hint leaves with the hover
+  now, and the ghost fades without it.
+- Lua: a `cells` grid of 0 rows or 0 columns — `rows = room_h /
+  line_h` in a pane shorter than one line, or `rows = 0.5` — raised
+  "cells needs rows and cols" and failed the whole view, though F180
+  made a division the rows that fit. It is an empty grid, zero-sized
+  unless it declares a size, kept under its key so its focus and
+  selection survive the pane growing back; a count left out is still
+  refused. Node refused one the same way, and C declared no node at
+  all, so the key and its focus went with it; both declare the empty
+  grid now. A click on an empty grid named cell (0, 0), clamped to a
+  grid that has none, which an app indexing its screen by it read past;
+  it names no cell.
+- Node: a family token declared under the name of a colour or length
+  token left the encoder pointing `$name` at the colour's or length's
+  index, so `bg="$code"` painted the orphaned colour where Lua, C and
+  Rust raised `unknown-token`. The encoder drops the name as the core
+  does.
+- An empty family list was refused in Node and Lua and taken in Rust,
+  C and Odin. It is taken everywhere: a token that is always sans,
+  which `unknown-family` reports.
+- The devtools printed a length token as whole px, so a `fade: 0.4`
+  token an `opacity` takes read "0 px". A length token is any number
+  (ADR 0049): the facts tab prints it trimmed to three decimals, with
+  no unit.
+
+**What you can delete.**
+
+- A `math.max(1, …)` (or `Math.max`) around a grid's row count that was
+  there only so a short pane did not fail the frame.
+- A `tooltip` moved off a component, or an `if open` hint guard, kept
+  only so the component's hint did not show over its own dialog.
+
 ## 0.1.0-alpha.62 (2026-10-22)
 
 **What breaks.**

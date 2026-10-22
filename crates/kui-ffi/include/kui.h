@@ -2719,8 +2719,10 @@ bool kui_tokens_derive(KuiCtx *ctx, const KuiDerivedToken *derived, size_t count
  *     style.family = family; style.font = font;
  *   }
  *
- * A list nothing matches is sans, with `unknown-family`; a token named for
- * a stock family or a role is dropped with `reserved-token`. A C style
+ * A list nothing matches is sans, with `unknown-family`, and so is a NULL
+ * `names` or a zero name_count (whatever the count with NULL): a token
+ * that is always sans. A token named for a stock family or a role is
+ * dropped with `reserved-token`. A C style
  * carries a KUI_FONT_* and a handle rather than a name, so read the pick
  * back: kui_token_family fills the two KuiTextStyle fields, `font` 0 for
  * a stock family. False for a name nothing declared or one of another

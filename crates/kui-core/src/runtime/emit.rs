@@ -1055,16 +1055,20 @@ impl Core {
             // floats under a hovered box skips the box itself and takes
             // what the box inherited, as a leaf's hint, floated beside
             // the leaf, does: a dimmed box keeps a readable hint (F178).
+            // A box at 0 is not there to explain, and its hint is not
+            // drawn either (backlog RG160).
             let opacity = if !any_opacity {
                 1.0
             } else {
-                let from =
-                    if self.tree.any_hint && parent != NIL && self.tree.specs[i].access().hint {
-                        self.tree.parent[parent as usize]
-                    } else {
-                        parent
-                    };
-                let inherited = if from == NIL {
+                let hint = self.tree.any_hint && parent != NIL && self.tree.specs[i].access().hint;
+                let from = if hint {
+                    self.tree.parent[parent as usize]
+                } else {
+                    parent
+                };
+                let inherited = if hint && self.tree.specs[parent as usize].style.opacity <= 0.0 {
+                    0.0
+                } else if from == NIL {
                     1.0
                 } else {
                     self.opacity[from as usize]
@@ -1739,7 +1743,15 @@ impl Core {
             } else {
                 self.ghost_opacity[node.parent as usize]
             };
-            let opacity = (inherited * style.opacity).clamp(0.0, 1.0);
+            // The hint the core floated under a hovered box leaves with
+            // the hover: a departing box is under no pointer, and its
+            // hint, faded from full or from the box's own opacity, would
+            // be a hint for something already going (backlog RG160).
+            let opacity = if node.parent != NIL && node.spec.access().hint {
+                0.0
+            } else {
+                (inherited * style.opacity).clamp(0.0, 1.0)
+            };
             self.ghost_opacity[i] = opacity;
             // The clip is the subtree's own: a scroll box or `clip` node
             // inside the picture still bounds what it held (the rows a

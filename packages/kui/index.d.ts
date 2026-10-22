@@ -2330,7 +2330,7 @@ export type ColorTokenValue =
  *  installed or loaded family's — or a fallback list of them, the first
  *  that resolves picked by the core when the table is declared and again
  *  when the fonts change (ADR 0049). A list nothing matches is sans, with
- *  `unknown-family`. */
+ *  `unknown-family`, and so is an empty one: a token that is always sans. */
 export type FamilyTokenValue = string | readonly string[];
 
 /** What `setTokens` / `defineTokens` take: the app's named colours,

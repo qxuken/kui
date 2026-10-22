@@ -1015,12 +1015,9 @@ pub extern "C" fn kui_cells(
             }
             return;
         };
-        if rows == 0 || cols == 0 {
-            for p in [on_click, on_drag, on_key] {
-                drop(take_msg(p));
-            }
-            return;
-        }
+        // A grid of no rows or no columns is an empty grid, declared under
+        // its key like any other, so its focus and selection survive the
+        // window growing back; it was not declared at all (backlog RG160).
         let raw: &[KuiCell] = if cells.is_null() || count == 0 {
             &[]
         } else {

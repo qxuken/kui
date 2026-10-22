@@ -7,7 +7,7 @@
 
 use kui_core::schema::PropsOut;
 use kui_core::testing::hover;
-use kui_core::{Color, Content, Core, NodeSpec, QuadKind, Rect, Size, Vec2, widgets};
+use kui_core::{Color, Content, Core, FloatConfig, NodeSpec, QuadKind, Rect, Size, Vec2, widgets};
 
 /// A view a case builds.
 type Child = dyn Fn(&mut kui_core::Ui<'_>);
@@ -186,4 +186,45 @@ fn a_stock_controls_own_hint_is_the_innermost() {
             "{name}: the control's, not the box's: {over_child:?}"
         );
     }
+}
+
+/// A dialog declared inside a tooltip box — a viewport float — is placed
+/// somewhere else: over it, or over a button in it, the box's hint stays
+/// down. A badge floated against the box is still inside (backlog
+/// RG160).
+#[test]
+fn a_dialog_declared_inside_a_tooltip_box_is_not_inside_it() {
+    let dialog = |ui: &mut kui_core::Ui<'_>| {
+        ui.with(
+            NodeSpec::column()
+                .size(80.0, 40.0)
+                .float(FloatConfig::viewport().offset(250.0, 150.0))
+                .hover_bg(Color::hex(0x00ff00ff)),
+            |ui| {
+                ui.with(NodeSpec::column().size(20.0, 20.0).on_click("ok"), |_| {});
+            },
+        );
+    };
+    let mut core = Core::new();
+    frame(&mut core, &dialog);
+    let over_dialog = at(&mut core, Vec2::new(290.0, 180.0), &dialog);
+    assert!(over_dialog.is_empty(), "over the dialog: {over_dialog:?}");
+    let over_button = at(&mut core, Vec2::new(255.0, 155.0), &dialog);
+    assert!(over_button.is_empty(), "over its button: {over_button:?}");
+    let over_box = at(&mut core, Vec2::new(50.0, 30.0), &dialog);
+    assert_eq!(over_box.len(), 1, "over the box: {over_box:?}");
+
+    let badge = |ui: &mut kui_core::Ui<'_>| {
+        ui.with(
+            NodeSpec::column()
+                .size(20.0, 20.0)
+                .float(FloatConfig::parent().offset(10.0, 10.0))
+                .hover_bg(Color::hex(0x00ff00ff)),
+            |_| {},
+        );
+    };
+    let mut core = Core::new();
+    frame(&mut core, &badge);
+    let over_badge = at(&mut core, Vec2::new(15.0, 15.0), &badge);
+    assert_eq!(over_badge.len(), 1, "over a badge: {over_badge:?}");
 }
