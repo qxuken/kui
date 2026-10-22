@@ -84,6 +84,20 @@ pub enum InputEvent {
         delta: Vec2,
         begins: bool,
     },
+    /// A wheel's notches, in lines (positive y = scroll up), as part of
+    /// a scroll gesture: routed and latched as [`InputEvent::ScrollGesture`]
+    /// is, at 40 px a line, and on a scroll container a whole notch glides
+    /// toward a target every further notch moves rather than jumping
+    /// (ADR 0050) — unless `Core::set_smooth_wheel(false)` or the
+    /// system's reduced motion. A fraction of a line — a precision
+    /// touchpad on Windows, a high-resolution wheel — is applied as it
+    /// comes, or added to a glide under way. A handler hears the pixels,
+    /// unsmoothed. What the native runner sends for winit's `LineDelta`
+    /// (`kui_input_wheel`, Node's `wheel`).
+    Wheel {
+        lines: Vec2,
+        begins: bool,
+    },
     /// Committed text (typing, paste). Routed to the focused editor; with
     /// none, a printable character presses or searches the focused
     /// control. Never delivered to an `onKey` sink: the raw press already
@@ -2849,6 +2863,7 @@ impl Interaction {
             // Routed by the core (they need the retained stores).
             InputEvent::Scroll(_)
             | InputEvent::ScrollGesture { .. }
+            | InputEvent::Wheel { .. }
             | InputEvent::Text(_)
             | InputEvent::Commit(_)
             | InputEvent::Paste { .. }

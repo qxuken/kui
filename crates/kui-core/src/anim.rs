@@ -238,10 +238,10 @@ impl Repeat {
 
 /// Spring integration step (seconds); a frame is split into steps this
 /// long so a stiff spring stays stable at any frame rate.
-const SPRING_STEP: f64 = 0.004;
+pub(crate) const SPRING_STEP: f64 = 0.004;
 /// A pause longer than this (window hidden, debugger) doesn't get replayed
 /// as one giant step.
-const MAX_FRAME_DT: f64 = 0.1;
+pub(crate) const MAX_FRAME_DT: f64 = 0.1;
 
 /// The most bounce a spring takes: at 1 it would never settle, and past
 /// 0.9 it rings for seconds.

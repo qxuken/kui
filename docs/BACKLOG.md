@@ -254,7 +254,9 @@ app's on macOS, for an app that is no bundle — was built the day it was
 filed, after the alpha.62 tag, and is in the archive; and RG162, from
 the alpha.63 pre-tag pass — a leaf's hint under the box's opacity rule
 — was built the day it was filed, after the alpha.63 tag, and is in the
-archive.
+archive; and F182, from a question about the wheel's steps on Windows —
+a notch gliding toward its place — was built with its ADR the day after
+it was filed, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3181,35 +3183,8 @@ a macOS trackpad glides. Read against the runner and the store, a
 notch is a 40 px jump on every platform, a plain mouse on macOS
 included; only a trackpad's pixel stream is smooth, and the core eases
 programmatic scrolls but never the hand's. One entry, F182, with [ADR
-0050](adr/0050-a-wheel-notch-glides.md), proposed.
-
-### `~` F182 — A wheel notch is a hard 40 px step on every platform
-
-**Found.** The runner turns winit's `LineDelta` into pixels
-(`Core::lines_to_px`) and sends it as `ScrollGesture`, the event a
-trackpad's `PixelDelta` becomes, and `scroll_into` adds it to the
-offset the next layout draws. Windows reports every wheel as
-`LineDelta`, X11 and Wayland a wheel's notches, macOS any mouse without
-precise deltas. The store's eased leg (`smooth`, for `set_scroll` and
-`reveal`) leaves the hand's writes alone on purpose, restarts from rest
-on every write and runs only under a declared `transition`, so it
-cannot carry a spun wheel.
-
-**Do.** ADR 0050: `InputEvent::Wheel { lines, begins }` beside
-`ScrollGesture` (C `kui_input_wheel`, Odin `input_wheel`, Node
-`ctx.wheel`; no ABI bump), sent by the runner for `LineDelta`; a whole
-notch eases toward a target every further notch moves, on a critically
-damped spring that keeps its velocity (about 150 ms), clamped to the
-travel; a fraction (precision touchpads, high-resolution wheels)
-applied as it comes, or added to a running glide; `room` reads the
-target so a gesture is handed off by where the glide is going; a pixel
-delta, a thumb drag, the autoscroll, an AT scroll action and
-`set_scroll` end it from the drawn place; handlers get pixels as today.
-On by default: `Core::set_smooth_wheel(false)` in four bindings (Lua a
-guest), the launcher's `smooth_wheel` and Node's `smoothWheel` for the
-whole app; `env.system.motion` at `reduced` jumps. What breaks: a
-notch lands over ~150 ms, and a view reading the offset the frame
-after reads it mid-glide.
+0050](adr/0050-a-wheel-notch-glides.md), **built 2026-10-23**, the day
+after it was filed, and in the archive.
 
 ## After alpha.58
 
@@ -5022,3 +4997,7 @@ move.
 **From the alpha.63 pre-tag pass (2026-10-22)** — RG162, what it left, built the same day after the tag
 
 - `.` **RG162** — [What the alpha.63 pre-tag pass left](backlog/closed-2026-09.md#-rg162--what-the-alpha63-pre-tag-pass-left--done-2026-10-22) — done (2026-10-22) — a leaf's hint carries the core's hint flag: none under a leaf at 0 (the leaf is the node before its hint), none in a ghost; app-drawn hints stay content
+
+**From a smooth-scroll question (2026-10-23)** — F182, filed with ADR 0050 and built the day after
+
+- `~` **F182** — [A wheel notch is a hard 40 px step on every platform](backlog/closed-2026-09.md#-f182--a-wheel-notch-is-a-hard-40-px-step-on-every-platform--done-2026-10-23) — done (2026-10-23) — `InputEvent::Wheel` in lines; a whole notch glides toward a clamped target on a critically damped spring each notch gives its own ease-out speed; fractions as they come; `room` by the target; `set_smooth_wheel` on by default, reduced motion jumps

@@ -328,6 +328,9 @@ function withWindows(tree, windows) {
  */
 function createLoop({ init, update, view, tick, windows, teardown }, opts, surface, clock) {
   surface.setDiagnostics(opts.diagnostics ?? diagnosticsByDefault());
+  // The app's input feel (ADR 0050): the window copies it to every window
+  // it opens after the main.
+  if (opts.smoothWheel !== undefined) surface.setSmoothWheel(opts.smoothWheel);
   const { show, open } = transport(surface, opts);
   let model;
   // Whether `teardown` has run: once, whichever end reaches it first — the

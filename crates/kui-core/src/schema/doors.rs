@@ -1222,6 +1222,23 @@ pub const DOORS: &[Door] = &[
         lua: No(GUEST),
         doc: "Turns the per-frame checks on.",
     },
+    // -- Input feel ---------------------------------------------------------
+    Door {
+        rust: "Core::set_smooth_wheel",
+        c: Is("kui_set_smooth_wheel"),
+        odin: Is("set_smooth_wheel"),
+        node: Is("setSmoothWheel"),
+        lua: No(GUEST),
+        doc: "Whether a wheel's notch glides on a scroll container (ADR 0050): on by default; off, a notch jumps on the next frame. The system's reduced motion jumps either way.",
+    },
+    Door {
+        rust: "Core::smooth_wheel",
+        c: Is("kui_smooth_wheel"),
+        odin: Is("smooth_wheel"),
+        node: Is("smoothWheel"),
+        lua: No(GUEST),
+        doc: "That switch, read back.",
+    },
     Door {
         rust: "Core::take_warnings",
         c: Is("kui_take_warnings"),
@@ -1556,7 +1573,7 @@ pub const DOORS: &[Door] = &[
             "`Ctx.cursor` … `Ctx.access`, one per `InputEvent`; a `KuiWindow` refuses injection",
         ),
         lua: No(GUEST),
-        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; a wheel gesture's latching is `scroll_gesture` (`kui_input_scroll_gesture`, `Ctx.scrollGesture`, backlog F107); `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031); a file dialog's answer is `answer_files` (`kui_input_files`, `Ctx.answerFiles`, backlog C51); the documents the OS asked the app to open are `InputEvent::Open` (`kui_input_open`, `Ctx.openDocuments`, backlog F124).",
+        doc: "Pointer, wheel, key, text, IME, assistive and OS file-drag input; a wheel gesture's latching is `scroll_gesture` (`kui_input_scroll_gesture`, `Ctx.scrollGesture`, backlog F107), and a wheel's notches, which glide, are `InputEvent::Wheel` in lines (`kui_input_wheel`, `Ctx.wheel`, ADR 0050); `press` / `release` are a click by label (`kui_input_press`, `Ctx.press`); the file drag is `drag_files` / `drop_files` / `drag_cancel` (ADR 0031); a file dialog's answer is `answer_files` (`kui_input_files`, `Ctx.answerFiles`, backlog C51); the documents the OS asked the app to open are `InputEvent::Open` (`kui_input_open`, `Ctx.openDocuments`, backlog F124).",
     },
     Door {
         rust: "Core::modifiers",

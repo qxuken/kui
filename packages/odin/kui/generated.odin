@@ -2213,6 +2213,11 @@ input_scroll_gesture :: proc(ui: ^Ui, dx: f32, dy: f32, begins: bool) {
 	c.input_scroll_gesture(ui, dx, dy, begins)
 }
 
+// kui_input_wheel (kui.h).
+input_wheel :: proc(ui: ^Ui, lx: f32, ly: f32, begins: bool) {
+	c.input_wheel(ui, lx, ly, begins)
+}
+
 // kui_input_text (kui.h).
 input_text :: proc(ui: ^Ui, text: string) {
 	c.input_text(ui, text)
@@ -3668,6 +3673,19 @@ take_warnings :: proc(ui: ^Ui) -> (out: []Warning) {
 // Rust: Core::set_diagnostics.
 set_diagnostics :: proc(ui: ^Ui, on: bool) {
 	c.set_diagnostics(ui, on)
+}
+
+// Whether a wheel's notch glides on a scroll container (ADR 0050): on by
+// default; off, a notch jumps on the next frame.
+// Rust: Core::set_smooth_wheel.
+set_smooth_wheel :: proc(ui: ^Ui, on: bool) {
+	c.set_smooth_wheel(ui, on)
+}
+
+// That switch, read back.
+// Rust: Core::smooth_wheel.
+smooth_wheel :: proc(ui: ^Ui) -> bool {
+	return c.smooth_wheel(ui)
 }
 
 // Turns the devtools panel on.

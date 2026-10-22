@@ -1146,16 +1146,27 @@ not leak to the app behind it.
 
 ### How do I make a scroll glide instead of jumping?
 
-Declare a `transition` on the scroll container. A `reveal` or a
-`set_scroll` then eases the offset over it — the ribbon a keyboard
-walks, a list a shortcut jumps to — while the wheel, the scrollbar's
-thumb and a drag past the edge keep landing whole, since none of them
-may lag a finger; any of them interrupts a leg in flight and takes the
-content where it stands. `scroll_offset` is where it is going and
-`scroll_geometry`'s offset is where the content is, which is what a
-virtual list slices by, so a long list glides without drawing the wrong
-rows.
+A mouse wheel's notch already glides, in every scroll container: each
+notch moves a target and the content eases after it, most of the way
+in a tenth of a second, a spun wheel speeding up rather than stepping. A
+trackpad's swipe, which the OS smooths itself, and a fraction of a
+notch (a precision touchpad on Windows, a high-resolution wheel) land
+as they come. To make notches jump instead, for the whole app, turn it
+off once: `Launcher::smooth_wheel(false)`, `smoothWheel: false` to
+`runWindowed`, `kui_set_smooth_wheel(ctx, false)`; the system's reduced
+motion makes them jump either way.
 
+For the app's own moves, declare a `transition` on the scroll
+container. A `reveal` or a `set_scroll` then eases the offset over it —
+the ribbon a keyboard walks, a list a shortcut jumps to — while the
+scrollbar's thumb and a drag past the edge keep landing whole, since
+neither may lag a finger; either interrupts a leg or a glide in flight
+and takes the content where it stands. `scroll_offset` is where it is
+going and `scroll_geometry`'s offset is where the content is, which is
+what a virtual list slices by, so a long list glides without drawing
+the wrong rows.
+
+[ADR 0050](adr/0050-a-wheel-notch-glides.md) ·
 [`transition` row](props.md#container-props) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 

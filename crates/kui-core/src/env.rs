@@ -78,10 +78,12 @@ impl Env {
 /// a view is expected to honour. The core acts on two of them in one way:
 /// `appearance` and `accent` derive the theme, so the stock
 /// widgets and a `<text>` with no colour follow the OS — and nothing else
-/// moves. Reduced motion does not shorten an animation and a dark
-/// appearance repaints none of the app's own colours: the view decides,
-/// because only it knows which of its colours is the background and which
-/// of its animations carries meaning.
+/// moves. Reduced motion does not shorten an animation a view declared,
+/// and a dark appearance repaints none of the app's own colours: the view
+/// decides, because only it knows which of its colours is the background
+/// and which of its animations carries meaning. The one animation the
+/// core starts on its own, a wheel notch's glide (ADR 0050), no view can
+/// honour it for, and that one jumps.
 ///
 /// Each field defaults to "the host cannot tell", which is what a headless
 /// core reports and what any driver reports for a fact its platform gives

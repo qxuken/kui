@@ -1115,6 +1115,22 @@ static int surface(void) {
         kui_scroll_offset(ui, k.card, NULL, &sy);
         check(geo.max_offset_y < 5 || sy == before - 5 * way,
               "kui_input_scroll_gesture moves the card it began over");
+
+        /* A wheel's notch (ADR 0050) glides by default; with the switch
+         * off it jumps its 40 px on the next frame, clamped to the card's
+         * travel. */
+        check(kui_smooth_wheel(ui), "kui_smooth_wheel: on by default");
+        kui_set_smooth_wheel(ui, false);
+        check(!kui_smooth_wheel(ui), "kui_set_smooth_wheel turns it off");
+        float want = sy - 40 * way;
+        want = want < 0 ? 0 : want > geo.max_offset_y ? geo.max_offset_y : want;
+        kui_input_wheel(ui, 0, way, true);
+        kui_frame_begin(ui, 800, 600, 2.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        kui_scroll_offset(ui, k.card, NULL, &sy);
+        check(sy == want, "kui_input_wheel moves the card a notch");
+        kui_set_smooth_wheel(ui, true);
     }
 
     /* File dialogs (backlog C51): ask, drain as the host, answer, hear it. */

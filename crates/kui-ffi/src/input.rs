@@ -76,6 +76,23 @@ pub extern "C" fn kui_input_scroll_gesture(ptr: *mut KuiCtx, dx: f32, dy: f32, b
     );
 }
 
+/// A wheel's notches, in lines (+y = scroll up), as part of a scroll
+/// gesture: latched as [`kui_input_scroll_gesture`] is, at 40 px a line,
+/// and on a scroll container a whole notch glides rather than jumping
+/// (ADR 0050) unless [`crate::kui_set_smooth_wheel`] turned that off. A
+/// fraction of a line is applied as it comes. What `kui_run` sends for a
+/// mouse wheel.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_input_wheel(ptr: *mut KuiCtx, lx: f32, ly: f32, begins: bool) {
+    push_input(
+        ptr,
+        InputEvent::Wheel {
+            lines: Vec2::new(lx, ly),
+            begins,
+        },
+    );
+}
+
 /// Committed text input (typing, paste); routed to the focused editor.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_input_text(ptr: *mut KuiCtx, text: KuiStr) {

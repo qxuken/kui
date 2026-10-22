@@ -538,6 +538,16 @@ impl Launcher {
         self.setup_core(move |core| core.set_devtools(on))
     }
 
+    /// Whether a mouse wheel's notch glides toward its place on a scroll
+    /// container rather than jumping there on the next frame (ADR 0050):
+    /// on unless this says otherwise, in every window the app opens. The
+    /// system's reduced motion jumps either way, and a trackpad's pixels
+    /// are never eased. Sugar for `setup_core(|c| c.set_smooth_wheel(on))`;
+    /// the runner copies the main window's setting to every other.
+    pub fn smooth_wheel(self, on: bool) -> Self {
+        self.setup_core(move |core| core.set_smooth_wheel(on))
+    }
+
     /// Respells the chord that moves the keyboard into the devtools panel
     /// and back, and brings a hidden panel back, from its default
     /// `Ctrl+Shift+I`: `Accel::parse("f12")`, `"mod+shift+d"`, any spelling
@@ -1201,6 +1211,7 @@ fn input_completes(ev: &InputEvent) -> bool {
         | InputEvent::CursorLeft
         | InputEvent::Scroll(_)
         | InputEvent::ScrollGesture { .. }
+        | InputEvent::Wheel { .. }
         | InputEvent::Preedit(..)
         | InputEvent::Modifiers(_)
         // Files moving over the window is the pointer moving.
@@ -3198,9 +3209,12 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 let pane = &mut self.panes[i];
                 let scale = pane.window.scale_factor() as f32;
                 let now = std::time::Instant::now();
+                // A notch goes in lines, so the core can glide it (ADR 0050).
+                let mut lines = None;
                 let (d, kind) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => {
                         pane.axis_lock.end();
+                        lines = Some(Vec2::new(x, y));
                         (
                             Vec2::new(Core::lines_to_px(x), Core::lines_to_px(y)),
                             scroll_gesture::Kind::Line,
@@ -3224,11 +3238,11 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
                 // with (`mod scroll_gesture`, backlog F107).
                 if d != Vec2::ZERO {
                     let begins = pane.scroll_gesture.begins(kind, started, now);
-                    self.dispatch(
-                        event_loop,
-                        i,
-                        InputEvent::ScrollGesture { delta: d, begins },
-                    );
+                    let ev = match lines {
+                        Some(lines) => InputEvent::Wheel { lines, begins },
+                        None => InputEvent::ScrollGesture { delta: d, begins },
+                    };
+                    self.dispatch(event_loop, i, ev);
                 } else {
                     pane.scroll_gesture.note(kind, started, now);
                 }

@@ -2415,6 +2415,40 @@ test('scrollGesture latches: a swipe that moved the strip keeps it past a termin
   assert.deepEqual(ctx.pollEvents().map((e) => e.payload.kind), ['term']);
 });
 
+// A wheel's notch glides (ADR 0050): `wheel` takes lines, a whole one
+// eases toward its 40 px over a few frames of the clock, and
+// `setSmoothWheel(false)` makes it jump as pixels do.
+test('wheel: a notch glides to its place, and jumps with smoothWheel off', () => {
+  const ctx = new Ctx();
+  const tree = box({ width: 'grow', height: 'grow' }, [
+    box({ width: 300, height: 200, scrollY: true }, [box({ width: 300, height: 2000 })], 'list'),
+  ]);
+  let t = 0;
+  const frame = () => {
+    ctx.setTime(t);
+    ctx.frame(300, 200, 1, tree);
+    return ctx.scrollGeometry('list').offset.y;
+  };
+  frame();
+  frame();
+  ctx.cursor(150, 100);
+  assert.equal(ctx.smoothWheel(), true, 'on by default');
+  ctx.wheel(0, -1, true);
+  t += 1 / 60;
+  const first = frame();
+  assert.ok(first > 0 && first < 40, `part-way: ${first}`);
+  for (let i = 0; i < 30; i++) {
+    t += 1 / 60;
+    frame();
+  }
+  assert.equal(frame(), 40, 'lands on the notch');
+  ctx.setSmoothWheel(false);
+  assert.equal(ctx.smoothWheel(), false);
+  ctx.wheel(0, -1, true);
+  t += 1 / 60;
+  assert.equal(frame(), 80, 'a jump');
+});
+
 // A point on the text a keyed node drew is a byte offset, and a byte
 // offset is a caret rect (backlog C18): the `line` row of a custom editor
 // answers across its token runs, so a click becomes a caret with one call.
@@ -8725,7 +8759,7 @@ test('the two classes are the verb table\'s Node column, both ways (B1a)', () =>
     'frameBinary', 'setViewBinary', 'setView', 'measureTextBinary', 'caretInTextBinary', 'setTokensRaw',
     'warnUnknownProps', 'warnUnknownTokens', 'clips', 'fragmentDraws', 'textureDraws', 'stats',
     // The input injection, one per `InputEvent` (the table's `handle_input` row).
-    'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
+    'cursor', 'cursorLeft', 'mouse', 'scroll', 'scrollGesture', 'wheel', 'text', 'commit', 'paste', 'preedit', 'key', 'keyDown', 'keyUp',
     'press', 'release', 'access', 'dragFiles', 'dropFiles', 'dragCancel', 'answerFiles', 'openDocuments',
     // The two-class mechanics: the window's own loop and its lifetime.
     'useWindow', 'pump', 'pumpUntil', 'nextDeadlineMs', 'size', 'frameStats', 'close',

@@ -2776,7 +2776,7 @@ pub const ENV_FIELDS: &[EnvField] = &[
         node: &["system.motion"],
         lua: &["system.motion"],
         c: "`kui_env_set_system(motion)`",
-        doc: "The OS reduce-motion setting: `\"reduced\"` when the user asked for less animation, `\"full\"` when they did not, `\"unknown\"` when nobody asked the OS (`KUI_MOTION_*` in C, unknown 0). Spelled as what the user wants rather than as a `reduceMotion` boolean, because the third reading has no place in a boolean. Nothing in the core shortens an animation for it — a view that honours it does so where it declares one.",
+        doc: "The OS reduce-motion setting: `\"reduced\"` when the user asked for less animation, `\"full\"` when they did not, `\"unknown\"` when nobody asked the OS (`KUI_MOTION_*` in C, unknown 0). Spelled as what the user wants rather than as a `reduceMotion` boolean, because the third reading has no place in a boolean. Nothing a view declared is shortened for it — a view that honours it does so where it declares one; the one animation the core starts on its own, a wheel notch's glide (ADR 0050), jumps instead.",
     },
     EnvField {
         name: "system.locale",

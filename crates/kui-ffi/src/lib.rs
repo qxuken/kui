@@ -1017,6 +1017,26 @@ pub extern "C" fn kui_set_diagnostics(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
+/// Whether a wheel's notch glides on a scroll container (ADR 0050): on
+/// by default; off, a notch jumps on the next frame. The system's reduced
+/// motion jumps either way.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_smooth_wheel(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_smooth_wheel(on);
+        }
+    });
+}
+
+/// That switch, read back; true for a null context, the default.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_smooth_wheel(ptr: *mut KuiCtx) -> bool {
+    guard(true, || {
+        unsafe { ctx(ptr) }.is_none_or(|c| c.core().smooth_wheel())
+    })
+}
+
 /// Turns the core's devtools panel on or off: the event stream, the
 /// runtime's facts and the tree, drawn by the core beside the host's tree
 /// (where [`kui_set_devtools_dock`] says). Its controls and its

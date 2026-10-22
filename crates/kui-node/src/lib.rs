@@ -866,6 +866,19 @@ impl Ctx {
         });
     }
 
+    /// A wheel's notches, in lines (+y = scroll up), as part of a scroll
+    /// gesture: latched as `scrollGesture` is, at 40 px a line, and on a
+    /// scroll container a whole notch glides toward a target further
+    /// notches move (ADR 0050) — `advance` the clock to see it land. A
+    /// fraction of a line is applied as it comes.
+    #[napi]
+    pub fn wheel(&mut self, lx: f64, ly: f64, begins: bool) {
+        self.input(InputEvent::Wheel {
+            lines: Vec2::new(lx as f32, ly as f32),
+            begins,
+        });
+    }
+
     /// Committed text input (typing, paste); routed to the focused editor.
     #[napi]
     pub fn text(&mut self, text: String) {
@@ -3172,6 +3185,21 @@ macro_rules! core_methods {
             #[napi]
             pub fn set_diagnostics(&mut self, on: bool) {
                 self.$core().set_diagnostics(on);
+            }
+
+            /// Whether a wheel's notch glides on a scroll container (ADR
+            /// 0050): on by default; off, a notch jumps on the next frame.
+            /// The system's reduced motion jumps either way. `runWindowed`
+            /// takes it for the whole app as `smoothWheel`.
+            #[napi]
+            pub fn set_smooth_wheel(&mut self, on: bool) {
+                self.$core().set_smooth_wheel(on);
+            }
+
+            /// That switch, read back.
+            #[napi]
+            pub fn smooth_wheel(&mut self) -> bool {
+                self.$core().smooth_wheel()
             }
 
             /// Every warning the core has raised so far, drained or not,

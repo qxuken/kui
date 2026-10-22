@@ -201,7 +201,9 @@ impl FrameCause {
             InputEvent::CursorLeft => Self::POINTER_LEAVE,
             InputEvent::MouseDown { .. } | InputEvent::MouseUp { .. } => Self::BUTTON,
             InputEvent::ForceClick(_) => Self::BUTTON,
-            InputEvent::Scroll(_) | InputEvent::ScrollGesture { .. } => Self::WHEEL,
+            InputEvent::Scroll(_) | InputEvent::ScrollGesture { .. } | InputEvent::Wheel { .. } => {
+                Self::WHEEL
+            }
             InputEvent::Key(..) | InputEvent::KeyDown(_) | InputEvent::KeyUp(_) => Self::KEY,
             InputEvent::Modifiers(_) => Self::MODIFIERS,
             InputEvent::Text(_) | InputEvent::Commit(_) | InputEvent::Paste { .. } => Self::TEXT,

@@ -243,6 +243,9 @@ impl DynShell<'_> {
         let mut core = Core::new_in(&self.session);
         core.set_diagnostics(self.diagnostics);
         core.set_subpixel_text(self.subpixel);
+        // The app's input feel, not one window's (ADR 0050): as the main
+        // window has it.
+        core.set_smooth_wheel(self.panes.first().is_none_or(|p| p.core.smooth_wheel()));
         core.env.window.id = id;
         self.push_pane(
             event_loop, id, config, owner, chrome, core, window, renderer, applied,

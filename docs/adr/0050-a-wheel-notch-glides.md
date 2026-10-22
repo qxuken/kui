@@ -1,11 +1,13 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-23
 ---
 
 # A wheel notch glides
 
-> **Proposed 2026-10-23; backlog F182.** Raised by the user from
+> **Accepted and built 2026-10-23; backlog F182.** What the building
+> changed is at the end, under [*What the building
+> changed*](#what-the-building-changed). Raised by the user from
 > Windows: a mouse wheel there scrolls in hard 40 px steps, where a
 > macOS trackpad scrolls smoothly. The steps are not Windows' alone. A
 > notch is a step on every platform, a plain mouse on macOS included;
@@ -232,3 +234,39 @@ frame will draw. Two things keep it from serving a wheel:
 - **A notch on a handler.** It is not smoothed, and the event does not
   say it was a notch. An app that wants to know asks for that
   separately.
+
+## What the building changed
+
+- **Each notch gives the spring its own speed** (decision 3). A
+  critically damped spring started from rest moved 14% of a notch on
+  the first frame: a soft start that read as lag. Each notch now also
+  adds `ω` times the travel it added to the target to the velocity,
+  which turns its own share into an exact ease-out, `1 - e^(-ωt)`,
+  while a notch landing mid-glide still adds to the speed there is.
+  The response is 0.21 s. Measured at 60 Hz: 37% of a notch on the
+  first frame, nine tenths by 100 ms, and landed on the target by the
+  eleventh frame, once within half a pixel and under 20 px/s.
+- **The first step is one nominal frame** (1/60 s). The store's clock
+  is whatever the last frame or input stamped, which may be long ago;
+  stepping from it would land most of a notch on the first frame.
+- **Per event, not per axis** (decision 2). An event glides when any
+  axis it moves is a whole line, or a glide is already running on that
+  container; otherwise it is applied as pixels are. The glide chases
+  the target on both axes, so a fraction on the other axis rides it.
+- **A glide needs a laid-out container and a clock.** A key no layout
+  has resolved yet, or a store no driver gave a clock, takes a notch as
+  `scroll_by` always did.
+- **Node's `smoothWheel`** is applied by the loop to whichever surface
+  it drives, a `Ctx` or a `KuiWindow`. A window opened after the main
+  window copies the main core's switch (`windows.rs`). That covers the
+  runner, `kui_run` and Node's window alike.
+- **The C round calls every new door.** `abi_parity`'s
+  every-entry-point check refused the three C functions until
+  `examples/c/tools/surface.c` called them; it now turns the switch off
+  and checks a notch's jump on the card.
+- **Seen by hand on macOS** with line-unit wheel events posted through
+  the HID tap (a plain mouse's kind, which winit reported as
+  `LineDelta(0, ±n)` with no phase), recorded at 60 fps. A 3-line notch
+  moved the `virtual_list` example's rows on every frame, fast and then
+  settling, and landed 120 px down. Windows and Linux are not run here;
+  the per-backend list in Context is still from reading.

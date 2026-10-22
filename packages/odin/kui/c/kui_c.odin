@@ -1104,6 +1104,7 @@ foreign lib {
 	input_mouse_button :: proc(ctx: ^Ctx, down: bool, button: u32, clicks: u32) ---
 	input_scroll :: proc(ctx: ^Ctx, dx: f32, dy: f32) ---
 	input_scroll_gesture :: proc(ctx: ^Ctx, dx: f32, dy: f32, begins: bool) ---
+	input_wheel :: proc(ctx: ^Ctx, lx: f32, ly: f32, begins: bool) ---
 	input_text :: proc(ctx: ^Ctx, text: string) ---
 	input_commit :: proc(ctx: ^Ctx, text: string) ---
 	input_paste :: proc(ctx: ^Ctx, text: string, marks: u32) ---
@@ -1308,6 +1309,8 @@ foreign lib {
 	ime_rect :: proc(ctx: ^Ctx, out: ^CaretRect) -> bool ---
 	take_warnings :: proc(ctx: ^Ctx, out: [^]Warning, cap: uint) -> uint ---
 	set_diagnostics :: proc(ctx: ^Ctx, on: bool) ---
+	set_smooth_wheel :: proc(ctx: ^Ctx, on: bool) ---
+	smooth_wheel :: proc(ctx: ^Ctx) -> bool ---
 	set_devtools :: proc(ctx: ^Ctx, on: bool) ---
 	set_devtools_dock :: proc(ctx: ^Ctx, dock: string) -> bool ---
 	devtools :: proc(ctx: ^Ctx) -> bool ---

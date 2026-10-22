@@ -2244,6 +2244,13 @@ void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
  * event loop that can tell one swipe from the next (kui_run's runner
  * begins one after a 200 ms pause). */
 void kui_input_scroll_gesture(KuiCtx *ctx, float dx, float dy, bool begins);
+/* A wheel's notches, in lines (+y = scroll up), as part of a scroll
+ * gesture, latched as kui_input_scroll_gesture is at 40 px a line. On a
+ * scroll container a whole notch glides toward a target further notches
+ * move, rather than jumping (ADR 0050), unless kui_set_smooth_wheel turned
+ * that off or the system asks for reduced motion; a fraction of a line is
+ * applied as it comes. What kui_run sends for a mouse wheel. */
+void kui_input_wheel(KuiCtx *ctx, float lx, float ly, bool begins);
 void kui_input_text(KuiCtx *ctx, KuiStr text);   /* typing/paste -> focused editor */
 /* Text an IME committed at the end of a composition: a focused editor takes
  * it as kui_input_text would; otherwise the focused on_key sink hears a
@@ -3948,6 +3955,12 @@ size_t kui_take_warnings(KuiCtx *ctx, KuiWarning *out, size_t cap);
 /* A standalone context starts with the checks OFF — a development build
  * turns them on; off costs nothing per frame. */
 void kui_set_diagnostics(KuiCtx *ctx, bool on);
+/* -- Input feel ------------------------------------------------------------ */
+/* Whether a wheel's notch glides on a scroll container (ADR 0050): on by
+ * default; off, a notch jumps on the next frame. The system's reduced
+ * motion jumps either way. */
+void kui_set_smooth_wheel(KuiCtx *ctx, bool on);
+bool kui_smooth_wheel(KuiCtx *ctx);
 /* -- Devtools --------------- */
 /* The core's devtools panel: the event stream, the runtime's facts and the
  * tree, drawn by the core beside the host's tree in the main window and

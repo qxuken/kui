@@ -123,10 +123,75 @@ struct Entry {
     /// it runs — as does `geometry`, so a view slicing rows during the
     /// leg slices by the place this frame will draw.
     smooth: Option<(Vec2, f64, crate::anim::Transition)>,
+    /// A wheel's glide (ADR 0050): the drawn place (`laid`) chasing the
+    /// target (`offset`) every notch moves. Never beside `smooth`: a
+    /// notch ends a leg and a programmatic write ends a glide.
+    glide: Option<Glide>,
     /// The frame a layout last resolved this key as a scroll container
     /// — unlike `last_declared`, which a write also stamps. What
     /// `take_resliced` asks before it compares a read with a layout.
     laid_frame: u64,
+}
+
+/// A glide's spring: how fast the drawn place is moving, and the clock it
+/// was last stepped at — `None` until the first layout after the notch
+/// that started it, which steps it one nominal frame ([`GLIDE_FIRST_DT`])
+/// whenever the notch came.
+#[derive(Clone, Copy, Debug)]
+struct Glide {
+    velocity: Vec2,
+    last: Option<f64>,
+}
+
+/// The glide's response time, in SwiftUI's parametrisation (the spring's
+/// period undamped). Critically damped, and every notch adding `ω` times
+/// its own travel to the speed ([`glide_omega`]), each notch's share
+/// eases out exactly — `1 - e^(-ωt)`, fast first and settling — and a
+/// 40 px notch is within half a pixel of its target in about 150 ms. A
+/// notch landing mid-glide adds to the speed there is rather than
+/// starting from rest (ADR 0050, decision 3).
+const GLIDE_RESPONSE: f64 = 0.21;
+
+/// The glide's angular frequency, from [`GLIDE_RESPONSE`].
+fn glide_omega() -> f64 {
+    std::f64::consts::TAU / GLIDE_RESPONSE
+}
+/// The step a glide's first layout takes. The store's clock is the last
+/// frame's when a notch arrives, which may be minutes old; stepping from
+/// it would land most of the notch on the first frame.
+const GLIDE_FIRST_DT: f64 = 1.0 / 60.0;
+
+/// The glide stepped from `last` to `now` toward `to`: the drawn place,
+/// the velocity, and whether it has settled — within half a pixel and
+/// nearly still, where it lands on the target exactly so that a settled
+/// view is never a subpixel off. Semi-implicit Euler at the animation
+/// store's step, as its springs are.
+fn glide_step(at: Vec2, g: Glide, to: Vec2, now: f64) -> (Vec2, Vec2, bool) {
+    use crate::anim::{MAX_FRAME_DT, SPRING_STEP};
+    let dt = match g.last {
+        None => GLIDE_FIRST_DT,
+        Some(last) => (now - last).clamp(0.0, MAX_FRAME_DT),
+    };
+    let omega = glide_omega();
+    let (k, c) = ((omega * omega) as f32, (2.0 * omega) as f32);
+    let steps = (dt / SPRING_STEP).ceil().max(1.0);
+    let h = (dt / steps) as f32;
+    let (mut p, mut v) = (at, g.velocity);
+    for _ in 0..steps as usize {
+        v.x += (-k * (p.x - to.x) - c * v.x) * h;
+        v.y += (-k * (p.y - to.y) - c * v.y) * h;
+        p.x += v.x * h;
+        p.y += v.y * h;
+    }
+    let settled = (p.x - to.x).abs() < 0.5
+        && (p.y - to.y).abs() < 0.5
+        && v.x.abs() < 20.0
+        && v.y.abs() < 20.0;
+    if settled {
+        (to, Vec2::ZERO, true)
+    } else {
+        (p, v, false)
+    }
 }
 
 /// How many *undeclared* scroll entries the store keeps before the longest
@@ -224,7 +289,11 @@ impl ScrollStore {
     /// notch the frame has not drawn, and that notch must add up.
     pub(crate) fn standing(&self, key: Key) -> Vec2 {
         self.entries.get(&key).map_or(Vec2::ZERO, |e| {
-            if e.smooth.is_some() { e.laid } else { e.offset }
+            if e.smooth.is_some() || e.glide.is_some() {
+                e.laid
+            } else {
+                e.offset
+            }
         })
     }
 
@@ -290,12 +359,15 @@ impl ScrollStore {
         // rather than a frame behind with a blank band on every frame of
         // a long glide.
         let clamp = |v: Vec2| Vec2::new(v.x.clamp(0.0, max_offset.x), v.y.clamp(0.0, max_offset.y));
-        let offset = match (e.smooth, self.now) {
-            (Some((from, start, t)), Some(now)) => {
+        // A glide the same way: stepped to the coming layout's clock, as
+        // `resolve` will step it.
+        let offset = match (e.smooth, e.glide, self.now) {
+            (_, Some(g), Some(now)) => glide_step(clamp(e.laid), g, clamp(e.offset), now).0,
+            (Some((from, start, t)), _, Some(now)) => {
                 sample((clamp(from), start, t), clamp(e.offset), now).0
             }
-            (Some(_), None) => clamp(e.laid),
-            (None, _) => clamp(e.offset),
+            (Some(_), _, None) | (_, Some(_), None) => clamp(e.laid),
+            (None, None, _) => clamp(e.offset),
         };
         if let Ok(mut reads) = self.reads.try_borrow_mut() {
             reads.push((key, Size::new(rect.w, rect.h), offset));
@@ -384,13 +456,58 @@ impl ScrollStore {
         // reveal meant. Taking the leg's place ends the leg; a
         // programmatic ask starts a new one from there at the next
         // layout, and a second delta before then adds up as it did.
-        if e.smooth.take().is_some() {
+        // A glide the same: a trackpad, a thumb or the autoscroll taking
+        // over goes on from where the content is (ADR 0050, decision 5).
+        let leg = e.smooth.take().is_some();
+        if e.glide.take().is_some() || leg {
             e.offset = e.laid;
         }
         e.offset.x += delta.x;
         e.offset.y += delta.y;
         // An offset written between two frames counts as a declaration: it
         // is usually a `set_scroll` at a key this frame is about to build.
+        e.last_declared = frame_no;
+    }
+
+    /// A wheel's delta (ADR 0050): `whole` when it is at least a notch on
+    /// an axis it moves. A whole notch glides — added to the target,
+    /// clamped to the travel, the drawn place chasing it from where it
+    /// is — and so does any delta while a glide runs, so a fraction does
+    /// not jump the content back. A fraction otherwise, a key no layout
+    /// has resolved, and a store with no clock (a driver that shows no
+    /// animation) take it as [`Self::scroll_by`] does.
+    pub(crate) fn wheel_by(&mut self, key: Key, delta: Vec2, whole: bool) {
+        let frame_no = self.frame_no;
+        let glides = self.now.is_some()
+            && self
+                .entries
+                .get(&key)
+                .is_some_and(|e| e.geom.is_some() && (whole || e.glide.is_some()));
+        if !glides {
+            return self.scroll_by(key, delta);
+        }
+        let e = self.entries.entry(key).or_default();
+        let Some((_, _, max)) = e.geom else { return };
+        e.asked_smooth = false;
+        if e.smooth.take().is_some() {
+            e.offset = e.laid;
+        }
+        let g = e.glide.get_or_insert(Glide {
+            velocity: Vec2::ZERO,
+            last: None,
+        });
+        // Clamped now, not at the next layout: a notch past the end is
+        // travel a reversed wheel would have to undo before anything
+        // moved.
+        let from = Vec2::new(e.offset.x.clamp(0.0, max.x), e.offset.y.clamp(0.0, max.y));
+        e.offset.x = (from.x + delta.x).clamp(0.0, max.x);
+        e.offset.y = (from.y + delta.y).clamp(0.0, max.y);
+        // The speed that makes this notch's own share ease out (see
+        // `GLIDE_RESPONSE`): what the target moved, so a notch the end
+        // swallowed adds none.
+        let omega = glide_omega() as f32;
+        g.velocity.x += omega * (e.offset.x - from.x);
+        g.velocity.y += omega * (e.offset.y - from.y);
         e.last_declared = frame_no;
     }
 
@@ -420,6 +537,9 @@ impl ScrollStore {
         if !smooth {
             e.smooth = None;
         }
+        // A programmatic write ends a glide: an eased one starts its leg
+        // from the drawn place at the next layout (ADR 0050, decision 5).
+        e.glide = None;
         e.offset = offset;
     }
 
@@ -500,6 +620,27 @@ impl ScrollStore {
         // programmatic one — then it starts where the last frame left it
         // and eases to the offset over the leg.
         e.laid_frame = frame_no;
+        // A wheel's glide, whatever the container's transition says: its
+        // target clamped to the travel this layout found, so content that
+        // shrank under it lands at its new end.
+        if let (Some(g), Some(now)) = (e.glide, now) {
+            let clamp = |v: Vec2| {
+                Vec2::new(
+                    v.x.clamp(0.0, max.x.max(0.0)),
+                    v.y.clamp(0.0, max.y.max(0.0)),
+                )
+            };
+            let (at, velocity, settled) = glide_step(clamp(e.laid), g, e.offset, now);
+            e.glide = (!settled).then_some(Glide {
+                velocity,
+                last: Some(now),
+            });
+            if !settled && !self.owing.contains(&key) {
+                self.owing.push(key);
+            }
+            e.laid = at;
+            return at;
+        }
         let drawn = match (smooth, now) {
             (Some(t), Some(now)) if t.duration_ms > 0.0 => {
                 if std::mem::take(&mut e.asked_smooth) && e.laid != e.offset {

@@ -21,7 +21,8 @@ impl Core {
             | InputEvent::MouseDown { .. }
             | InputEvent::MouseUp { .. }
             | InputEvent::Scroll(_)
-            | InputEvent::ScrollGesture { .. } => "pointer",
+            | InputEvent::ScrollGesture { .. }
+            | InputEvent::Wheel { .. } => "pointer",
             InputEvent::Access(_) => "assistive",
             InputEvent::Key(..)
             | InputEvent::KeyDown(_)
@@ -392,9 +393,16 @@ impl Core {
             // region under it (backlog DX13), and a gesture keeps the
             // targets it started with (backlog F107, `mod gesture`): a
             // bare `Scroll` is a gesture of its own.
-            InputEvent::Scroll(delta) => self.route_scroll(delta, true, &mut out),
+            InputEvent::Scroll(delta) => self.route_scroll(delta, true, None, &mut out),
             InputEvent::ScrollGesture { delta, begins } => {
-                self.route_scroll(delta, begins, &mut out)
+                self.route_scroll(delta, begins, None, &mut out)
+            }
+            // Notches (ADR 0050): whole when a moving axis is at least a
+            // line, which is what may glide.
+            InputEvent::Wheel { lines, begins } => {
+                let whole = lines.x.abs() >= 1.0 || lines.y.abs() >= 1.0;
+                let delta = Vec2::new(Core::lines_to_px(lines.x), Core::lines_to_px(lines.y));
+                self.route_scroll(delta, begins, Some(whole), &mut out)
             }
             InputEvent::Text(s) => {
                 if let Some(key) = self.edit.focused() {

@@ -75,8 +75,15 @@ impl ScrollRegion {
 impl Core {
     /// Routes one wheel delta: to the targets the gesture under way
     /// latched, or — for the gesture's first event, or an axis it first
-    /// moves on — to the ones picked under the pointer now.
-    pub(crate) fn route_scroll(&mut self, delta: Vec2, begins: bool, out: &mut Vec<UiEvent>) {
+    /// moves on — to the ones picked under the pointer now. `wheel` is a
+    /// notch's, `Some(whole)` (ADR 0050); `None` for pixels.
+    pub(crate) fn route_scroll(
+        &mut self,
+        delta: Vec2,
+        begins: bool,
+        wheel: Option<bool>,
+        out: &mut Vec<UiEvent>,
+    ) {
         if begins {
             self.scroll_latch = ScrollLatch {
                 held: self.interaction.modifiers().bits(),
@@ -93,14 +100,14 @@ impl Core {
             // One target for both: one event on a handler, as the whole
             // delta always was.
             (Some(a), Some(b)) if a.key == b.key && a.handler == b.handler => {
-                self.scroll_into(a, delta, out)
+                self.scroll_into(a, delta, wheel, out)
             }
             (a, b) => {
                 if let Some(a) = a {
-                    self.scroll_into(a, Vec2::new(delta.x, 0.0), out);
+                    self.scroll_into(a, Vec2::new(delta.x, 0.0), wheel, out);
                 }
                 if let Some(b) = b {
-                    self.scroll_into(b, Vec2::new(0.0, delta.y), out);
+                    self.scroll_into(b, Vec2::new(0.0, delta.y), wheel, out);
                 }
             }
         }
@@ -214,8 +221,14 @@ impl Core {
     }
 
     /// Moves `r` by `delta`: an event on a handler, the offset on a
-    /// container.
-    fn scroll_into(&mut self, r: ScrollRegion, delta: Vec2, out: &mut Vec<UiEvent>) {
+    /// container — a notch's glides there (ADR 0050).
+    fn scroll_into(
+        &mut self,
+        r: ScrollRegion,
+        delta: Vec2,
+        wheel: Option<bool>,
+        out: &mut Vec<UiEvent>,
+    ) {
         if r.handler {
             let p = self.interaction.cursor().unwrap_or(Vec2::ZERO);
             if let Some(mut ev) = self.scroll_event(r.key, p, delta) {
@@ -230,7 +243,11 @@ impl Core {
         } else {
             // Wheel up (positive y) reveals earlier content: offset
             // decreases.
-            self.scroll.scroll_by(r.key, Vec2::new(-delta.x, -delta.y));
+            let d = Vec2::new(-delta.x, -delta.y);
+            match wheel {
+                Some(whole) if self.glides_wheel() => self.scroll.wheel_by(r.key, d, whole),
+                _ => self.scroll.scroll_by(r.key, d),
+            }
         }
     }
 }

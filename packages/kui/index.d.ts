@@ -2245,6 +2245,11 @@ export interface WindowOptions {
   /** Whether the core runs the checks at all. Default: on unless
    *  `NODE_ENV` is `production`, so a shipped app pays and prints nothing. */
   diagnostics?: boolean;
+  /** `false` makes a mouse wheel's notch jump on the next frame instead of
+   *  gliding toward its place (ADR 0050), in every window of the app.
+   *  Default on; the system's reduced motion jumps either way. A trackpad
+   *  is unaffected. */
+  smoothWheel?: boolean;
 }
 
 /** The binary-frame protocol tables the addon exports: the stream's version,
@@ -2607,6 +2612,14 @@ export declare class Ctx {
    * swipe gets, for a headless test. `scroll` is a gesture of its own.
    */
   scrollGesture(dx: number, dy: number, begins: boolean): void
+  /**
+   * A wheel's notches, in lines (+y = scroll up), as part of a scroll
+   * gesture: latched as `scrollGesture` is, at 40 px a line, and on a
+   * scroll container a whole notch glides toward a target further
+   * notches move (ADR 0050) — `advance` the clock to see it land. A
+   * fraction of a line is applied as it comes.
+   */
+  wheel(lx: number, ly: number, begins: boolean): void
   /** Committed text input (typing, paste); routed to the focused editor. */
   text(text: string): void
   /**
@@ -3184,6 +3197,15 @@ export declare class Ctx {
    * turn them off under `NODE_ENV=production`.
    */
   setDiagnostics(on: boolean): void
+  /**
+   * Whether a wheel's notch glides on a scroll container (ADR
+   * 0050): on by default; off, a notch jumps on the next frame.
+   * The system's reduced motion jumps either way. `runWindowed`
+   * takes it for the whole app as `smoothWheel`.
+   */
+  setSmoothWheel(on: boolean): void
+  /** That switch, read back. */
+  smoothWheel(): boolean
   /**
    * Every warning the core has raised so far, drained or not,
    * oldest first — the log `warnings()` leaves behind, for a
@@ -4530,6 +4552,15 @@ export declare class KuiWindow {
    * turn them off under `NODE_ENV=production`.
    */
   setDiagnostics(on: boolean): void
+  /**
+   * Whether a wheel's notch glides on a scroll container (ADR
+   * 0050): on by default; off, a notch jumps on the next frame.
+   * The system's reduced motion jumps either way. `runWindowed`
+   * takes it for the whole app as `smoothWheel`.
+   */
+  setSmoothWheel(on: boolean): void
+  /** That switch, read back. */
+  smoothWheel(): boolean
   /**
    * Every warning the core has raised so far, drained or not,
    * oldest first — the log `warnings()` leaves behind, for a
@@ -5881,6 +5912,9 @@ export declare function createApp<M, A = AppMsg, E = never>(
     /** Whether the core runs the checks at all; default on unless
      *  `NODE_ENV` is `production`. */
     diagnostics?: boolean;
+    /** `false`: a wheel's notch (`app.ctx.wheel`) jumps rather than glides
+     *  (ADR 0050). Default on. */
+    smoothWheel?: boolean;
     /** What the loop's clock reads before the first `advance` — the origin
      *  `tick.msg(now)` counts from. Default `Date.now()`; pin it to make a
      *  ticking app's assertions exact. */

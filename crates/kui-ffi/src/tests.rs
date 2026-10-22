@@ -4454,3 +4454,69 @@ mod window_events_headless {
         kui_ctx_free(ctx);
     }
 }
+
+#[cfg(test)]
+mod wheel_headless {
+    use super::*;
+
+    /// A wheel's notches through C (ADR 0050): `kui_input_wheel` takes
+    /// lines and a notch glides to its 40 px over the clock;
+    /// `kui_set_smooth_wheel(false)` makes the next one jump, and
+    /// `kui_smooth_wheel` reads the switch back — true for no context.
+    #[test]
+    fn a_notch_glides_and_the_switch_reads_back() {
+        let ctx = kui_ctx_new();
+        assert!(kui_smooth_wheel(std::ptr::null_mut()));
+        assert!(kui_smooth_wheel(ctx), "on by default");
+        let mut t = 0.0;
+        let frame = |ctx: *mut KuiCtx, t: f64| -> f32 {
+            kui_set_time(ctx, t);
+            kui_frame_begin(ctx, 300.0, 200.0, 1.0);
+            let mut list = unsafe { std::mem::zeroed::<KuiSpec>() };
+            list.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            list.height = KuiSizing {
+                tag: 2,
+                value: 200.0,
+            };
+            list.overflow = 4; // KUI_SCROLL_Y
+            let key = kui_open_keyed(ctx, ks("list"), &list, std::ptr::null_mut());
+            let mut tall = unsafe { std::mem::zeroed::<KuiSpec>() };
+            tall.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            tall.height = KuiSizing {
+                tag: 2,
+                value: 2000.0,
+            };
+            kui_open(ctx, &tall, std::ptr::null_mut());
+            kui_close(ctx);
+            kui_close(ctx);
+            kui_frame_finish(ctx);
+            let mut g = KuiScrollGeometry::default();
+            assert!(kui_scroll_geometry(ctx, key, &mut g));
+            g.offset_y
+        };
+        frame(ctx, t);
+        frame(ctx, t);
+        kui_input_cursor(ctx, 150.0, 100.0);
+        kui_input_wheel(ctx, 0.0, -1.0, true);
+        t += 1.0 / 60.0;
+        let first = frame(ctx, t);
+        assert!(first > 0.0 && first < 40.0, "part-way: {first}");
+        for _ in 0..30 {
+            t += 1.0 / 60.0;
+            frame(ctx, t);
+        }
+        assert_eq!(frame(ctx, t), 40.0, "lands on the notch");
+        kui_set_smooth_wheel(ctx, false);
+        assert!(!kui_smooth_wheel(ctx));
+        kui_input_wheel(ctx, 0.0, -1.0, true);
+        t += 1.0 / 60.0;
+        assert_eq!(frame(ctx, t), 80.0, "a jump");
+        kui_ctx_free(ctx);
+    }
+}

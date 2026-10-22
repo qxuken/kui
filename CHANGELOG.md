@@ -30,6 +30,45 @@ was the first bare bump to break an app in five releases).
   hovered leaf inside a departing box takes its hint with the hover,
   where alpha.63 drew the first in full and faded the second with the
   ghost (backlog RG162).
+- Under the native runner a mouse wheel's notch glides to its place,
+  most of the way in a tenth of a second and landed in under two,
+  where it jumped 40 px on the next frame; a view reading a container's offset the frame after a notch
+  reads it mid-glide. `Launcher::smooth_wheel(false)`, `smoothWheel:
+  false` to `runWindowed` or `kui_set_smooth_wheel(ctx, false)` brings
+  the jump back (ADR 0050, backlog F182). A trackpad, and every door
+  that feeds pixels (`scroll`, `scrollGesture`, `kui_input_scroll*`,
+  `InputEvent::Scroll`), are unchanged.
+
+### Added
+
+- **A wheel's notch glides** (ADR 0050, backlog F182). A notch was a
+  hard 40 px step on every platform — any mouse wheel on Windows and
+  Linux, a plain mouse on macOS — while a trackpad's pixel stream
+  looked smooth only because the OS smoothed it. A notch is now an
+  input of its own, `InputEvent::Wheel { lines, begins }` (C
+  `kui_input_wheel`, Odin `input_wheel`, Node `ctx.wheel`, in lines;
+  routed and latched as `ScrollGesture` is), which the native runner
+  sends for winit's `LineDelta`. On a scroll container a whole notch
+  moves a target, clamped to the travel, and the drawn offset chases it
+  on a critically damped spring that each notch gives the speed its own
+  share eases out at: about a third of the way on the first frame,
+  nine tenths in a tenth of a second, landed exactly in under two
+  tenths; and a notch landing
+  mid-glide adds to the speed there is, so a spun wheel speeds up
+  rather than stepping and a reversed one turns. A fraction of a line
+  — a precision touchpad on Windows, a high-resolution wheel — is
+  applied as it comes, or joins a glide under way. A list whose glide
+  is headed for its end hands the next gesture to the scroller around
+  it at once. A trackpad's pixels, the scrollbar's thumb, the drag
+  autoscroll, an assistive technology's scroll and a `set_scroll` take
+  the content from where it is drawn. An `onScroll` handler hears the
+  notch's pixels, unsmoothed. On by default; `Core::set_smooth_wheel`
+  (`kui_set_smooth_wheel`, `setSmoothWheel`, Odin `set_smooth_wheel`,
+  read back by `smooth_wheel`) turns it off, the launcher's
+  `smooth_wheel` and Node's `smoothWheel` for every window of the app.
+  The system's reduced motion makes a notch jump either way — the
+  first animation the core starts that no view declared, so the first
+  the core shortens for it.
 
 ### Fixed
 
@@ -41,6 +80,12 @@ was the first bare bump to break an app in five releases).
   ghost. A leaf's hint follows the box's rule now. A hint the app
   places itself with `widgets::tooltip` is still its content and fades
   with the box it is in, ghost included (backlog RG162).
+
+**What you can delete.**
+
+- An `onScroll` handler on a scroll container that caught the wheel
+  only to call `set_scroll` with an easing of its own, so a mouse did
+  not step.
 
 ## 0.1.0-alpha.63 (2026-10-22)
 

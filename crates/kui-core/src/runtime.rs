@@ -546,6 +546,8 @@ pub struct Core {
     line_carry: Option<(Key, f32)>,
     /// The targets the scroll gesture under way latched, per axis.
     scroll_latch: gesture::ScrollLatch,
+    /// Whether a wheel's notch glides on a scroll container (ADR 0050).
+    smooth_wheel: bool,
     sel_ords: Vec<u32>,
     sel_ends: Option<crate::select::Ends>,
     /// Per-node innermost enclosing selection scope — the key of the
@@ -1252,6 +1254,7 @@ impl Core {
             last_frame_time: None,
             line_carry: None,
             scroll_latch: Default::default(),
+            smooth_wheel: true,
             sel_ords: Vec::new(),
             sel_ends: None,
             scopes: Vec::new(),
@@ -1559,6 +1562,29 @@ impl Core {
     /// Wheel line-deltas (e.g. winit's LineDelta) to logical px.
     pub fn lines_to_px(lines: f32) -> f32 {
         lines * SCROLL_LINE_PX
+    }
+
+    /// Whether a wheel's notch glides on a scroll container
+    /// ([`InputEvent::Wheel`], ADR 0050): on by default; off, a notch
+    /// jumps its 40 px on the next frame, as pixels do. The app's input
+    /// feel rather than a view's, so the native launcher's `smooth_wheel`
+    /// sets it on every window. The system's reduced motion jumps
+    /// whatever this says.
+    pub fn set_smooth_wheel(&mut self, on: bool) {
+        self.smooth_wheel = on;
+    }
+
+    /// That switch, read back. Not whether a notch glides now: the
+    /// system's reduced motion overrides it.
+    pub fn smooth_wheel(&self) -> bool {
+        self.smooth_wheel
+    }
+
+    /// Whether a notch glides now: the switch, and no reduced motion —
+    /// the one animation the core starts that no view declared, so no
+    /// view can honour the setting for it (ADR 0050, decision 8).
+    pub(crate) fn glides_wheel(&self) -> bool {
+        self.smooth_wheel && !self.env.system.motion.is_reduced()
     }
 
     /// Rasterizes outline glyphs as LCD subpixel coverage
