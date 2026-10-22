@@ -441,10 +441,17 @@ jobs:
       # what uses every app-facing type (messages, events, props), and
       # examples/node/tools/types.tsx is the one written for that. Running
       # them is the headless round's, below.
+      #
+      # `--ignore-scripts`: the one install script here is esbuild's, which
+      # runs the binary it has just written to check its version and swaps
+      # it in for the JS shim, and in the docker runner that spawn can find
+      # the file still open for writing - the alpha.60 tag's `check` died on
+      # it with ETXTBSY. Without it `bin/esbuild` stays the shim, which runs
+      # the same binary from @esbuild/<platform>; nothing else here has one.
       - name: Node examples typecheck
         run: |
           cd examples/node
-          npm ci
+          npm ci --ignore-scripts
           npm run typecheck
 
       # Every example with a self-check, run with `--headless` and judged
