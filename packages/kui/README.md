@@ -319,7 +319,7 @@ pointing into the other three.
   `{ key: { … } }` (the same goes for every handler), so a root sink needs
   no inert message in the app's union.
 - **An event arrives as the message its handler declared**
-  ([ADR 0047](docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)):
+  ([ADR 0047](../../docs/adr/0047-an-event-arrives-as-the-message-its-handler-declared.md)):
   `onDrag={{ kind: 'pan' }}` hears `{ kind: 'pan', drag: { phase, x, y, dx,
   dy, parent } }` — your message plus one field named for the event — and
   `ev.event` says which event it was. Every payload a node sends is a map:
@@ -333,7 +333,7 @@ pointing into the other three.
   differs, so `value={model.title} onChange={{ kind: 'title' }}` keeps the
   field and the model one text.
 - **The window's own events are declared too**
-  ([ADR 0048](docs/adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)),
+  ([ADR 0048](../../docs/adr/0048-a-window-declares-the-messages-its-events-arrive-as.md)),
   where the window is: the root box's `windowEvents={{ onResize,
   onFocus, onSystemSettingsChange, onFonts, onModifiers, onOpen }}` (each
   a message, `onFocus` the window's keyboard, `onOpen` the documents the

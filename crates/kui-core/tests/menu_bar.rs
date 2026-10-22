@@ -268,6 +268,16 @@ fn the_platforms_bar_reports_a_choice_through_one_call() {
         "a row this build does not have does nothing"
     );
 
+    // A choice made while a second window is the one being driven says
+    // so, as a click there does: the platform's bar takes the way out an
+    // input's events take (it skipped the stamp until the alpha.60
+    // pre-tag pass).
+    core.env.window.id = kui_core::WindowId(7);
+    let events = core.activate_menu_bar_item(0, 2);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].window, kui_core::WindowId(7));
+    core.env.window.id = kui_core::WindowId::MAIN;
+
     // A bar that declares no `on_menu` has no message to post a choice as.
     core.declare_menu_bar(MenuBar::new(bar().menus));
     assert!(core.activate_menu_bar_item(0, 2).is_empty());

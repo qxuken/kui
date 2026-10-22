@@ -11,7 +11,7 @@ for development). A Rust project needs nothing but the dependency:
 
 ```toml
 # Cargo.toml
-kui-native = "0.1.0-alpha.59"  # `use kui_native::…`; `cargo add kui-native` writes it
+kui-native = "0.1.0-alpha.60"  # `use kui_native::…`; `cargo add kui-native` writes it
 ```
 
 crates.io has had them since 0.1.0-alpha.33; every earlier version is on
@@ -91,7 +91,18 @@ host the repository lives on:
   `publish`, which verifies the tag against the manifests and the
   changelog heading, runs the parity tests against the four shipped
   binaries, publishes the crates to crates.io in
-  dependency order and stages the npm package on npmjs. It needs two
+  dependency order and stages the npm package on npmjs. Each build leg
+  also packs `libkui_ffi` for its platform (`scripts/pack-ffi.nu`, from
+  the same target dir: the addon's tree is the library's but for 18
+  crates) and, off Windows, links and runs the C and Odin counters
+  against it shared and static; `packs`, beside `publish` and not in its
+  way, bundles the four into `kui-c-<version>.tar.gz` and
+  `kui-odin-<version>.tar.gz`, checks them again on linux-x64 and
+  attaches them and their `SHA256SUMS` to the tag's GitHub release,
+  creating it (a prerelease for an alpha). A failed `packs` is re-run on
+  its own; the release's assets are replaced. `workflow_dispatch` runs
+  the same without `publish` and without the release, leaving the
+  tarballs as the run's `release-packs` artifact. It needs two
   repository secrets: `CRATES_IO_TOKEN` (a crates.io API token with publish
   rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs granular access
   token for the `@qxuken` scope with "Read and write (stage only)").
@@ -165,7 +176,7 @@ installed it with `sudo` since. The step is finished
 from any machine, with the run's own prebuilds rather than a rebuild:
 
 ```bash
-gh run download <run-id> -R qxuken/kui -D packages/kui/prebuilds   # the four artifacts land in the prebuilds layout
+gh run download <run-id> -R qxuken/kui -D packages/kui/prebuilds -n linux-x64 -n linux-arm64 -n darwin-arm64 -n win32-x64   # the four prebuilds, in their layout (the run's kui-ffi-* packs are not npm's)
 cd packages/kui
 npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
 ```

@@ -315,10 +315,14 @@ impl Core {
     /// — a resize, its keyboard focus, a system setting, the fonts, the
     /// modifiers, the OS's documents — arrives as the message the last
     /// finished frame declared for it, and a frame that declares none, or
-    /// leaves a key out, hears none of those. Last writer wins.
+    /// leaves a key out, hears none of those. Last writer wins, and the
+    /// writer is who hears them: an extension's view that declares the
+    /// group (Lua's `window_events` on its root table) is answered, not
+    /// the host whose group it replaced.
     pub fn set_window_events(&mut self, events: WindowEvents) {
         self.taint_kept("it declared the window's events");
         self.window_events = (!events.is_empty()).then(|| Box::new(events));
+        self.window_events_origin = self.origin();
     }
 
     /// The `windowEvents` group in force: what the last finished frame

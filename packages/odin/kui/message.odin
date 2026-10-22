@@ -41,8 +41,11 @@ import c "c"
 //     lists, map[string]T a map, a pointer what it points at.
 //
 // Reading back, a kind matches a type or enum name with case and
-// underscores ignored, and a type's _Event suffix too, so "resize" is
-// Resize_Event (events.odin). A field missing from the payload
+// underscores ignored, and a type's _Event suffix too, so a message of
+// kind "resize" reads as Resize or Resize_Event. The core's own events
+// carry no kind: their data is a field of the message the handler
+// declared, which With_Resize and the rest (events.odin) spell out for a
+// variant to embed. A field missing from the payload
 // is left zero. Strings read from a payload are borrowed: valid until the next
 // poll, or for the callback a run hands the event to; clone one to keep it.
 

@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.60 (unreleased)
+## 0.1.0-alpha.60 (2026-10-22)
 
 **What breaks.**
 
@@ -43,8 +43,9 @@ was the first bare bump to break an app in five releases).
   `text` and setTextSelection a `select` on its `onKey` sink.
 - A menu's choice reaches only a node that declares `onMenu`
   (`menu: {role, item}`); the stock right-click menu posts nothing; the
-  menu bar's arrives as the `menuBar` element's own `onMenu`. The stock select and text input declare a
-  `Null` message by default and keep reporting.
+  menu bar's arrives as the `menuBar` element's own `onMenu`. The stock
+  select and text input declare a `Null` message by default and keep
+  reporting.
 - Every node event's payload is a map. A message that is not one — a
   bare `on_click("save")` — arrives as `{tag: "save"}`, with or without
   the event's data, and a `Null` one with no data as `{}`, where both
@@ -53,11 +54,21 @@ was the first bare bump to break an app in five releases).
   `click`.
 - Node: `CoreMsg` is gone, and so is the `RootMsg` that briefly took
   its place: `update` takes the app's own messages. The `*Msg` types
-  name a message carrying an event (`DragMsg<T> = T & WithDrag`).
+  name a message carrying an event (`DragMsg<T> = T & WithDrag`), so
+  `EditMsg`, `AccessMsg` and `FontsMsg` are gone and `ChangeMsg` is
+  `SliderChangeMsg`. `UiEvent.event` can be `'dispatch'`: a message the
+  app or an effect handler dispatched, which had no envelope at all.
 - Lua: `ev.event` names the event; `on_event` gets a table always, as
-  every payload is a map.
+  every payload is a map. A message's own `event` or `window` field wins
+  over the envelope's, and on a `window` event `ev.window` is its data,
+  `{phase, id?}`.
 - C: ABI 33 — `KuiSpec` gains `on_submit`, `on_cancel`, `on_boundary`,
-  `on_menu`, `on_selection_range`; `KuiEvent` gains `event`.
+  `on_menu`, `on_selection_range`; `KuiEvent` gains `event`. Plain
+  `kui_menu_bar` and `kui_window_declare` post nothing — a bar's choice
+  needs `kui_menu_bar_with`, a window's `opened`/`closed` and dismissal
+  `kui_window_declare_with` — and `kui_open_menu` on a node with no
+  `on_menu` posts nothing. `kui_text_input` reports a submit and a
+  cancel as `{}`, told apart by `KuiEvent.event`.
   Odin: the `*_Event` structs lose `tag`; `Changed_Event`,
   `Access_Event`, `Submit_Event`, `Cancel_Event` and `Change_Event` are
   gone. The frame protocol is v24.
@@ -70,14 +81,15 @@ was the first bare bump to break an app in five releases).
   (`window: {phase, id}`), a popup's dismissal as its `onDismiss`
   (`dismiss: {reason, id}`), and a menu bar's choice as its `onMenu`.
   Nothing that declares none hears it. `name` is gone from the `window`
-  and `dismiss` data. `UiEvent::root` and `UiEvent::is_root` are gone.
+  and `dismiss` data. `NodeSpec::windows` holds a `WindowLifecycle`
+  beside each entry's name and config.
 - Node: `activateMenuBarItem` / `activateMenuBarPath` answer `false`
   for a bar that declares no `onMenu`, since nothing is posted; the
   row's standard role is still performed.
-- Rust `kui::Event`: `WindowEvent` drops `name` and its `id` is an
-  `Option` (`None` for a focus change); `Dismiss.window` is the id
-  alone; `Event::System` holds a `SystemEnv`. `KeyMods::to_value` no
-  longer writes `kind`.
+- `KeyMods::to_value` and `KeyPress::to_value` no longer write `kind`.
+- `testing::kinds` (the `conformance` feature) is the envelope's event
+  name, where it was the payload's `kind`; `testing::messages` is the old
+  reading.
 - `schema::Kind::Tag` is `Kind::Handler`.
 - Rust: `EventSpec`'s eighteen handler fields are rows of a sorted list,
   read with an accessor of the same name (`spec.events().on_click()`,
@@ -126,7 +138,11 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   `text_input_with`).
 - **`kui::Event`** with `UiEvent::split::<Msg>()` and `UiEvent::read()`:
   the message and the event, one variant per kind with its data, for one
-  `match` — `(Some(Msg::Pan), Event::Drag(d)) => …`.
+  `match` — `(Some(Msg::Pan), Event::Drag(d)) => …`. `EventKind` is
+  `UiEvent::event`'s type, `UiEvent::is(kind)` asks it, and `EventField`
+  names the field each event's data rides under.
+- `widgets::select_items_with`, the stock select over menu items with
+  its messages.
 - **The derive's arriving twin**: `#[message(on = drag)]` on a variant
   makes `#[derive(Message)]` emit `MsgIn` too, whose variant carries the
   event's data (`MsgIn::Pan { drag }`), for `ev.message::<MsgIn>()` in a
@@ -153,7 +169,9 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   on the root table, C `kui_root_with` with a `KuiWindowEvents`, Odin
   `root_with`. Read from the last finished frame; what arrives before
   the first (a launch's documents) is held for it. On any other node
-  the group is ignored and `window-events-off-root` says so.
+  the group is ignored and `window-events-off-root` says so. The last
+  group declared wins, and whoever declared it hears it: a Lua slot's
+  `window_events` reaches the script, not the host.
 - **A window's lifecycle messages**: `onWindow` and `onDismiss` on a
   `windows` entry — Rust `ui.window_with(name, config,
   WindowLifecycle::default().on_window(..).on_dismiss(..))`
@@ -171,6 +189,16 @@ the menu bar on its element. `kind` is the app's alone, and Node's
 - The scene corpus's `window-events` scene, with two steps,
   `viewport W H` and `focused 0|1`, in every adapter.
 - `GLOSSARY.md`, the words the API is described in.
+- **C and Odin tarballs on every GitHub release**: `kui-c-<version>.tar.gz`
+  (`include/kui.h`) and `kui-odin-<version>.tar.gz` (the `kui` package),
+  each with `libkui_ffi` for linux-x64 and linux-arm64 (glibc 2.28 or
+  newer), darwin-arm64 and win32-x64, shared and static, a directory a
+  kind (`lib/<platform>/shared`, `lib/<platform>/static` with
+  `link.txt`), a README.md with the link lines and `SHA256SUMS`. Each
+  platform is built beside its Node prebuild, from the same target dir,
+  and, off Windows, the C and Odin counters are linked against both
+  kinds and run before it is packed (`scripts/pack-ffi.nu bundle` and
+  `verify`; `pack-ffi.nu --zig` is the Linux runners' build).
 
 ### Fixed
 
@@ -190,7 +218,6 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   pointer was over the text that slid there; it now waits until the
   pointer leaves the click slop of the press, as a caret drag has since
   alpha.57 (backlog F173, from kawoosh's terminal).
-
 - A reader's increment or decrement nudges only a `slider` role; it
   reached any enabled node.
 - A reader's `setValue` on an editor is a recorded edit: it undoes in one
@@ -216,6 +243,10 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   ended the app, release builds included, and a value the app declared
   back from the `change` it reported was not the text the editor held
   (backlog FZ11, found by the `events` fuzz target).
+- A choice from the platform's menu bar (`activate_menu_bar_item` /
+  `_path`, the macOS bar) says which window it was made in and which
+  slot drew the bar, is listed in the devtools' events tab, and raises
+  `message-field-taken`, as a choice from the drawn bar always did.
 
 ### Changed
 
@@ -226,6 +257,12 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   `odin.nu gen`), then `set-version.nu`. Each step can be left out by
   name (`--skip odin,ci`), and every one runs before it reports, so one
   run lists all that is wrong. `docs/releasing.md` has it.
+- CI checks the Odin binding on Odin dev-2026-10, where it pinned
+  dev-2026-09; the binding still builds on dev-2026-09.
+- GitHub's release workflow uses `actions/checkout@v7`, `cache@v6`,
+  `upload-artifact@v7` and `download-artifact@v8`, which run on Node 24:
+  the v4s ran on Node 20, which GitHub deprecated and warned about on
+  every job.
 
 **What you can delete.**
 
@@ -240,6 +277,46 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   a core one.
 - An app-side `access` handler that turned a slider's nudge into a
   value: the slider's `onChange` does the arithmetic.
+
+### Native verification
+
+Two pre-tag passes on 2026-10-22 over the round since alpha.59 — ADRs
+0047 and 0048, F173 — one on the Windows machine and under WSL, one on
+the Mac (backlog, "From the alpha.60 pre-tag pass").
+
+**Windows and Linux** (WSL): CI's `check` in order on both, the windowed
+round on both, the bench guard against alpha.59 clean, and ten minutes
+of every fuzz target at once on eight cores, which found FZ10 (an arc
+past an f32 at one scale) in the `path` target; the other five ran
+clean. It also found CI's Odin step red on main: a spec literal
+dev-2026-09 refuses, which the Mac's newer local Odin had taken.
+
+**macOS** (Apple silicon, macOS 27): CI's `check` step by step —
+fmt, clippy, the book, the conformance report, the C round, the Node
+addon under `KUI_CONFORMANCE_REQUIRED=1`, gen, the examples' typecheck,
+the headless round — and `nu scripts/test.nu --node` on the tagged
+tree: **2449 tests over 170 Rust suites and Node's**. The Odin leg
+(`gen --check`, `check`, `test`, `slots`) on the dev-2026-10 release CI
+now pins. `cargo audit` clean. The windowed round with Node's: 55
+examples on both bases, 132 windows. The accessibility audit: **106 of
+106**, after the example's own tag reading was fixed (it read 95). The
+bench guard against alpha.59: the guarded rows −5.2% to +0.2%, stream,
+cells and long_line flat; `benches/editing.rs`, which the guard does not
+read, compared by hand — a keystroke into 100 000 lines 1.38–1.40 ms
+against alpha.59's 1.37–1.40, after RG156 (4.3 ms before it). Three
+read-only reviewers over the diff found the rest of RG156.
+
+**The C and Odin tarballs**, before the release workflow first builds
+them: linux-x64 and linux-arm64 packed in Docker through cargo-zigbuild
+(and linux-arm64 again through `pack-ffi.nu --zig`, the Linux runners'
+command, to the same link line and glibc floor), darwin-arm64 natively,
+bundled, and `pack-ffi.nu verify` over both tarballs — the counter linked
+shared and static and run `--headless` — on the Mac (C and Odin) and in
+clean Debian 12 containers for both Linux arches (C and Odin, Odin
+dev-2026-10); the C counter, both kinds, also on Debian 10, whose glibc
+is the 2.28 the packs claim. 113 MB a tarball for three platforms;
+win32-x64 is built only on the release workflow's Windows runner and
+is not linked there, so its pack has run nowhere yet.
 
 ## 0.1.0-alpha.59 (2026-10-19)
 

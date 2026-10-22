@@ -29,7 +29,7 @@ which writes the one line a project needs:
 
 ```toml
 [dependencies]
-kui-native = "0.1.0-alpha.59"
+kui-native = "0.1.0-alpha.60"
 ```
 
 Every release so far is an alpha. A requirement like `"0.1.0-alpha.34"`
@@ -47,6 +47,13 @@ XDG desktop portal; without one on the session bus, every dialog answers
 as if cancelled.
 
 The first build takes a few minutes: it compiles a GPU renderer.
+
+From C or Odin there is nothing to build: each release on
+[GitHub](https://github.com/qxuken/kui/releases) carries
+`kui-c-<version>.tar.gz` (kui.h) and `kui-odin-<version>.tar.gz` (the
+Odin package), each with `libkui_ffi` for linux-x64, linux-arm64,
+darwin-arm64 and win32-x64, shared and static, and a README.md with the
+link lines.
 
 ## Hello, window
 

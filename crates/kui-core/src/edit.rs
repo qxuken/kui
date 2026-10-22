@@ -1196,9 +1196,17 @@ impl EditStore {
         // differ: held while an input method composes, so the preedit
         // stays and the value lands on the first declaration after the
         // commit. Whether the user edited since the last declaration is
-        // asked once, here, whatever the options.
-        let fresh = std::mem::take(&mut state.fresh_edit);
-        if opts.value && state.preedit.is_none() && state.take_value(declared, fresh, fs) {
+        // asked once, here, whatever the options — but a value held for a
+        // composition keeps the question for the declaration that applies
+        // it: a commit and a new composition before one frame would
+        // otherwise lose the commit's claim on its correction.
+        let held = opts.value && state.preedit.is_some();
+        let fresh = if held {
+            state.fresh_edit
+        } else {
+            std::mem::take(&mut state.fresh_edit)
+        };
+        if opts.value && !held && state.take_value(declared, fresh, fs) {
             self.touch_caret(key);
         }
         // `autofocus` is the core's decision (it owns the one focus).

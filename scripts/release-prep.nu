@@ -19,8 +19,9 @@
 # The steps, each skippable by name with --skip (said in the summary, so a
 # skip is a choice and not an accident):
 #
-#   ci     the last completed Forgejo `check` on main passed (alpha.37 was
-#          tagged on a main that had been red for days). Needs
+#   ci     the last completed Forgejo `check` on main or a release tag
+#          passed (alpha.37 was tagged on a main that had been red for
+#          days). Needs
 #          $env.DRYDOCK9_TOKEN - `source ~/.local.nu` first.
 #   fmt    cargo fmt --all
 #   book   nu scripts/book-examples.nu (the book's Examples part)
@@ -66,10 +67,10 @@ def ci-on-main [] {
     let url = $"($HOST)/api/v1/repos/qxuken/kui/actions/tasks?limit=50"
     let runs = (http get --headers [Authorization $"token ($token)"] $url | get workflow_runs)
     let last = ($runs
-        | where {|t| $t.name == "check" and ($t.head_branch == "main" or $t.head_branch starts-with "v") and $t.status in [success failure] }
+        | where {|t| $t.name == "check" and ($t.head_branch == "main" or $t.head_branch =~ '^v\d') and $t.status in [success failure] }
         | get -o 0)
     if $last == null {
-        error make {msg: "no finished `check` on main among the last 50 Forgejo tasks"}
+        error make {msg: "no finished `check` on main or a release tag among the last 50 Forgejo tasks"}
     }
     let on = if $last.head_branch == "main" { "main" } else { $last.head_branch }
     let sha = ($last.head_sha | str substring 0..7)
@@ -113,7 +114,7 @@ def main [
     # Every step runs even after one fails, so one run says all there is.
     let steps = [
         [name what run];
-        [ci "CI on main" { ci-on-main }]
+        [ci "CI on main or the last tag" { ci-on-main }]
         [fmt "cargo fmt" { must cargo fmt --all }]
         [book "the book's Examples part" { must $nu.current-exe scripts/book-examples.nu }]
         [node "npm run gen (jsx-runtime.d.ts, index.d.ts, docs/props.md)" {

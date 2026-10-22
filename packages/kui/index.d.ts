@@ -1238,8 +1238,9 @@ export type WarningCode =
    *  declaration reopens a window only when it *starts*, and this one never
    *  stopped. The first version of every multi-window app does this — it
    *  declares the window unconditionally — and from outside it looks like
-   *  `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
-   *  event, stop declaring the name, and declare it again to reopen. */
+   *  `windows` being ignored. Handle the entry's `onWindow` message (its
+   *  `window: {phase: "closed", id}`), stop declaring the name, and declare it
+   *  again to reopen. */
   | 'window-declared-while-closed'
   /** A window declared with a `KUI_WINDOW_KIND_*` this build does not have —
    *  `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the two there
@@ -1452,8 +1453,10 @@ export interface UiEvent<A = AppMsg> {
    *  data in the field of the same name (`drag`, `change`, …) where it
    *  has any, so a plain click and a submit on one map message both
    *  arrive as that map. `'tick'` is the loop's own clock (`tick` in the
-   *  loop config), which no node declared. */
-  event: EventName | 'tick';
+   *  loop config), and `'dispatch'` a message the app handed the loop
+   *  itself (`app.dispatch`, an effect handler's `dispatch`): no node
+   *  declared either, and `key` is `''`. */
+  event: EventName | 'tick' | 'dispatch';
   /** The message as it arrives: always a map — a bare declared message
    *  under `tag` (`Arrived<A>`). A window's own events are messages its
    *  root, its `windows` entry or its `<menuBar>` declared (ADR 0048). */

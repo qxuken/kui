@@ -700,6 +700,7 @@ impl Core {
         // What the window's own events are read against until the next
         // frame finishes (ADR 0048).
         self.window_events_seen = self.window_events.take();
+        self.window_events_seen_origin = self.window_events_origin;
         self.finished_any = true;
         // The frame's modal scope, and the focus it moves: emission reads
         // it (everything outside is inert) and so does the Tab ring.

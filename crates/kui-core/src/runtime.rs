@@ -233,6 +233,13 @@ pub struct Core {
     /// arrives as the message the frame before it declared.
     window_events: Option<Box<crate::window::WindowEvents>>,
     window_events_seen: Option<Box<crate::window::WindowEvents>>,
+    /// Who declared each of the two, and so who hears the events they
+    /// name — the host, or the extension whose view declared the group,
+    /// as the menu bar's origin is. A fact is noticed by the core, not by
+    /// a node anyone filled, so the declaration is the only place its
+    /// origin can come from.
+    window_events_origin: OriginId,
+    window_events_seen_origin: OriginId,
     /// Whether any frame has finished: before one has, no root has
     /// declared anything, and a window fact is held rather than dropped —
     /// the documents a launcher hands over before the first frame
@@ -1090,6 +1097,8 @@ impl Core {
             window_title: None,
             window_events: None,
             window_events_seen: None,
+            window_events_origin: OriginId::HOST,
+            window_events_seen_origin: OriginId::HOST,
             finished_any: false,
             always_on_top: false,
             secure_input: false,

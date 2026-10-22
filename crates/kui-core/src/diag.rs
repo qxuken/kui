@@ -319,8 +319,9 @@ warnings! {
     /// declaration reopens a window only when it *starts*, and this one never
     /// stopped. The first version of every multi-window app does this — it
     /// declares the window unconditionally — and from outside it looks like
-    /// `windows` being ignored. Handle the `{kind:"window", phase:"closed"}`
-    /// event, stop declaring the name, and declare it again to reopen.
+    /// `windows` being ignored. Handle the entry's `onWindow` message (its
+    /// `window: {phase: "closed", id}`), stop declaring the name, and
+    /// declare it again to reopen.
     pub const WINDOW_DECLARED_WHILE_CLOSED: &str = "window-declared-while-closed";
     /// A window declared with a `KUI_WINDOW_KIND_*` this build does not
     /// have — `KUI_WINDOW_KIND_NORMAL` and `KUI_WINDOW_KIND_POPUP` are the
@@ -815,9 +816,9 @@ pub fn window_declared_while_closed(name: &str) -> Warning {
         key: Key::ROOT.str(WINDOW_DECLARED_WHILE_CLOSED).str(name),
         message: format!(
             "window `{name}` is still declared after the user closed it, so it stays closed: a \
-             declaration reopens a window only when it starts — handle the \
-             `{{kind:\"window\", phase:\"closed\"}}` event, stop declaring `{name}`, and declare \
-             it again to reopen"
+             declaration reopens a window only when it starts — handle the entry's `onWindow` \
+             message (`window: {{phase: \"closed\"}}`), stop declaring `{name}`, and declare it \
+             again to reopen"
         ),
     }
 }

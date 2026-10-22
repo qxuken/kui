@@ -152,7 +152,9 @@
 //!   that is no event.
 //! - `click` is for a node that can say more than that it was clicked (a
 //!   `cells` grid, a sink's `line` rows): a plain button's click carries
-//!   no `click` field, and its message needs no `on`.
+//!   no `click` field, and its message needs no `on`. Nor does a grid's
+//!   click from Enter, Space or a screen reader, which has no point to
+//!   say: its twin does not decode, and `ev.message::<Msg>()` reads it.
 //!
 //! A message declared on the wrong handler — `Msg::Pan` on `on_click` —
 //! arrives without its field and does not decode as the twin (its

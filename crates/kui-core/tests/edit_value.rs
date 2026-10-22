@@ -240,6 +240,31 @@ fn a_value_waits_for_the_composition_and_lands_at_its_commit() {
     assert_eq!(text(&core, key), "");
 }
 
+/// A commit, then a composition begun before the next frame — what
+/// continuous typing through an input method is — then the composition
+/// abandoned: the value the model declared for the commit lands on the
+/// frame after, and is still the commit's correction, undone with it.
+#[test]
+fn a_value_held_past_a_second_composition_still_joins_the_commit() {
+    let mut core = Core::new();
+    let o = opts();
+    let key = frame(&mut core, "", &o);
+    core.handle_input(InputEvent::Preedit("か".into(), Some((3, 3))));
+    core.handle_input(InputEvent::Commit("か".into()));
+    core.handle_input(InputEvent::Preedit("き".into(), Some((3, 3))));
+    frame(&mut core, "カ", &o);
+    assert_eq!(text(&core, key), "か", "held for the composition");
+    core.handle_input(InputEvent::Preedit(String::new(), None));
+    frame(&mut core, "カ", &o);
+    assert_eq!(text(&core, key), "カ");
+    press(&mut core, EditKey::Undo);
+    assert_eq!(
+        text(&core, key),
+        "",
+        "the commit and its correction, one step"
+    );
+}
+
 #[test]
 fn a_secure_editors_value_is_its_secret() {
     let mut core = Core::new();

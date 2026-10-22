@@ -198,7 +198,8 @@ pub(crate) struct WindowMessages {
 }
 
 /// What one diff of the declared set decided; the core turns each into a
-/// `WindowCommand`, a `{kind:"window"}` event and, sometimes, a warning.
+/// `WindowCommand`, a `window` event (the entry's `onWindow` message)
+/// and, sometimes, a warning.
 pub(crate) enum WindowChange {
     Opened {
         id: WindowId,

@@ -921,3 +921,71 @@ fn a_label_asked_for_inside_a_fill_is_that_fills_own_node() {
         "and no ambiguity, nor a label without its node"
     );
 }
+
+/// A window's own events arrive at whoever declared the `windowEvents`
+/// group (ADR 0048): Lua, filling a slot, declares it on its root table,
+/// and before the group carried its origin the core answered the host —
+/// which then lost its own group to the guest's and was handed a message
+/// it never wrote.
+#[test]
+fn a_window_event_reaches_the_extension_that_declared_the_group() {
+    struct Declares {
+        heard: Rc<RefCell<Vec<Value>>>,
+    }
+    impl Extension for Declares {
+        fn name(&self) -> &str {
+            "pane"
+        }
+        fn slots(&self) -> &[String] {
+            std::slice::from_ref(Box::leak(Box::new("main".to_owned())))
+        }
+        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+            ui.window_events(kui_core::WindowEvents::default().on_resize("pane-resized"));
+            ui.leaf_keyed("box", cell());
+            Ok(())
+        }
+        fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
+            self.heard.borrow_mut().push(ev.payload.clone());
+            Vec::new()
+        }
+    }
+    let heard = Rc::new(RefCell::new(Vec::new()));
+    let mut core = Core::new();
+    let mut exts = load(vec![Box::new(Declares {
+        heard: heard.clone(),
+    })]);
+    let frame = |core: &mut Core, exts: &mut Extensions, w: f32, guest: bool| {
+        let mut ui = core.frame_with(Size::new(w, 100.0), 1.0, exts);
+        ui.window_events(kui_core::WindowEvents::default().on_resize("host-resized"));
+        ui.configure_root(NodeSpec::row().fill());
+        if guest {
+            ui.slot("pane/main");
+        }
+        ui.finish();
+    };
+    let routed = |core: &mut Core, exts: &mut Extensions| {
+        let mut host = Vec::new();
+        exts.route(core.take_pending_events(), |ev| host.push(ev));
+        host
+    };
+
+    frame(&mut core, &mut exts, 600.0, true);
+    routed(&mut core, &mut exts);
+    frame(&mut core, &mut exts, 700.0, true);
+    let host = routed(&mut core, &mut exts);
+    assert!(host.is_empty(), "the host's group was replaced: {host:?}");
+    let got = heard.borrow_mut().drain(..).collect::<Vec<_>>();
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].get_str("tag"), Some("pane-resized"));
+
+    // A frame that leaves the guest out: the host's group is the one in
+    // force, and the host hears it.
+    frame(&mut core, &mut exts, 600.0, false);
+    routed(&mut core, &mut exts);
+    frame(&mut core, &mut exts, 800.0, false);
+    let host = routed(&mut core, &mut exts);
+    assert_eq!(host.len(), 1, "{host:?}");
+    assert_eq!(host[0].payload.get_str("tag"), Some("host-resized"));
+    assert_eq!(host[0].origin, OriginId::HOST);
+    assert!(heard.borrow().is_empty());
+}

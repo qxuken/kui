@@ -698,10 +698,11 @@ an optional `id` the choice posts back, an accelerator to draw, `enabled`,
 `checked`, and a `role`: the standard roles (`copy`, `cut`, `paste`,
 `selectAll`, `lookUp`) the core performs itself, handing the clipboard half
 to the host as a `MenuAction`, and `custom` is the app's own. Either way
-choosing a row is one event carrying `role` and `item` — `{kind:"menu",
-role, item}` on the root from the bar, and from a context menu the
-`on_menu` message of the node it was opened on, with `menu: {role, item}`
-— so an app wires Save once and gets it in both places.
+choosing a row is one event carrying `role` and `item` — the bar's own
+`onMenu` message from the bar, and from a context menu the `on_menu`
+message of the node it was opened on, each with `menu: {role, item}`
+(ADR 0048; a bar that declares no `onMenu` posts nothing) — so an app
+wires Save once and gets it in both places.
 
 Where they are drawn is the platform's business and not the app's. A host
 says what it owns — `set_native_menus` for the context menu (macOS's
