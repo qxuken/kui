@@ -22,7 +22,9 @@ kui-native.workspace = true
 kui-ffi.workspace = true
 napi = { version = "3", default-features = false, features = ["napi8", "serde-json"] }
 napi-derive = "3"
-serde_json = "1"
+# `unbounded_depth`: a message deeper than serde's 128 levels failed the
+# frame; `binary.rs` bounds it itself, at a depth it names (backlog RG139).
+serde_json = { version = "1", features = ["unbounded_depth"] }
 
 [features]
 # The windowed runner honours `KUI_SMOKE_FRAMES` in a dev build and, in a

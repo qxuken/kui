@@ -155,18 +155,15 @@ texture upload's second copy),
 DX16 from the DX sweep (declined with a condition), and RG121 from the
 round after alpha.40 — what RG76, RG113 and RG118 left, each with its
 reason (F103's skipped half, RG76, RG113 and RG118 themselves were built
-on 2026-10-07 and are in the archive), and RG126 from the alpha.41
-pre-tag pass (a warm cell grid 3 to 5% slower, bisected to one commit
-and not yet explained); RG127 and RG128, from the Windows and Linux
+on 2026-10-07 and are in the archive); RG126 from the alpha.41
+pre-tag pass (a warm cell grid slower since one commit: the emitter
+inlined into the paint loop) was built on 2026-10-22, after the alpha.60
+tag, and is in the archive; RG127 and RG128, from the Windows and Linux
 round after alpha.41, were built the day they were filed and are in the
-archive; and RG139 from the regression and smoke round after RG127 (what
-it left: Node integers that wrap, errors that name nothing, a payload's
-depth, a teardown callback's re-entry, a grid's unbounded size — RG129–
-RG138, its other ten, were built the day they were filed and are in the
-archive); and RG145 from the alpha.42 pre-tag pass (what it left:
-`pack-ffi.nu`'s container legs on a rootful Linux host, RG135's
-offsets beside the run, the docs guard's gaps, Odin's latent ones — RG140–RG144 were built the day
-they were filed and are in the archive); RG146–RG150, from the alpha.43
+archive; RG139 from the regression and smoke round after RG127 and
+RG145 from the alpha.42 pre-tag pass (what each left) were built on
+2026-10-22, after the alpha.60 tag, and are in the archive, as RG129–
+RG138 and RG140–RG144 were the day they were filed; RG146–RG150, from the alpha.43
 pre-tag pass and what it left, were built the day they were filed and
 are in the archive, as were RG151 and RG152 from berainder and RG153
 from the alpha.44 pre-tag pass, and RG154 — what that pass left: the
@@ -2688,34 +2685,14 @@ move (RG123), a C `fragment` whose tooltip was never drawn (RG124), and
 the docs saying `imeOff` stops dead keys everywhere and five prebuilds
 (RG125). The dash review's one other find, a hairline pattern's
 solid-or-dashed verdict flipping at the closing width, is RG121's. The
-bench guard was green; one unguarded row moved, and is RG126, open.
+bench guard was green; one unguarded row moved, and is RG126, built
+2026-10-22 and in the archive.
 Sound by probe: a leaf's hint in a scroller, a modal, a virtual row and
 over a full-window polygon, its key, the access tree and the devtools
 tab's float; the dash against an independent capsule-union oracle over
 seven patterns and forty offsets; edits that move a long line's tab
 cuts; the measure copies' sweep; F103's deadline in every path; and
 F125 across windows, focus loss and an open preedit.
-
-### `.` RG126 — A warm cell grid reads 3 to 5% slower since a grid tells its family's glyphs by name
-
-`cells_200x50_warm`, unguarded, read **+6.0% (±1.4%)** against the
-alpha.40 tag in the pre-tag pass, +3.8% against alpha.40 with F125
-merged; `streaming` and `as_text_nodes` within their noise. Bisected by
-building the `cells` bench at seven commits of the round and running the
-binaries alternately, twice: flat (53.6–54.5 µs) through `644040b`, then
-**56.1–57.0 µs from `6394559`** — RG118's grid change, `StyleTable::own`
-(a face id per variant) for `family: String` and a family-name check in
-`shape_cell` — and flat after. A warm frame never reaches the changed
-code: every cell is a table read in `lookup`, the miss path is where the
-check lives. Moving that miss out of line (`#[cold]`, `#[inline(never)]`)
-brought `streaming` back to the base and left `warm` where it was, so it
-was not kept. About 3 µs on a 10,000-cell frame, well inside the 0.2 ms
-warm gate the grid was built to. On Windows (Ryzen 9 9950X3D, the
-2026-10-07 round after alpha.41) the same comparison reads `warm` **+2.1%
-(±4.8%)**, 39.5 → 40.4 µs, inside its noise, and `streaming` −3.6%: the
-Mac's read is not this machine's. **Wants:** an xctrace sample of the
-warm loop at `6394559^` and `6394559` (the C41 recipe: leaf addresses →
-objdump) before anything is changed.
 
 ## From the Windows and Linux round after alpha.41 (2026-10-07)
 
@@ -2785,7 +2762,7 @@ process (RG136); `measureText` inside a devtools tab breaking the frame
 (RG137); and a Node message not coming back as sent (RG138). With them:
 2070 tests on Windows and 1852 on Linux, the C round, the 57 scenes,
 Node 215 of 215 on Linux, the headless round and the Odin binding, all
-green. RG139 is what the round left.
+green. RG139 is what the round left, built 2026-10-22 and in the archive.
 
 Read sound: a list's unselected rows carry no `selected` (so UIA gives
 them Invoke where the selected one has SelectionItem) by decision — the
@@ -2797,37 +2774,6 @@ the titlebar its title. Theirs, not ours: `accesskit_atspi_common` 0.21
 maps no expanded state at all, so under AT-SPI a disclosure reads as a
 plain push button whose click works (`Advanced` opens) but which never
 says it is expandable or expanded — every AccessKit app on Linux.
-
-### `.` RG139 — What the round after RG127 left
-
-- **Node integers wrap.** napi's `u32` turns -1 into 4294967295:
-  `new RowHeights(-1, 20).length` is 4294967295 and `RowHeights(1e12, 20)`
-  3567587328 (`rows.rs`), `setLen(-1)` the same, and a `preedit` cursor of
-  `[-1, 1.5]` reaches a sink as `[4294967295, 1]`; by reading,
-  `mouse(true, -1)` is 255 clicks and `activateMenuItem(-1)` closes the
-  menu. The frame path refuses the same numbers with an error
-  (`binary.rs`). **Wants:** the doors to take `f64` / `i64` and refuse
-  what is not a count. **Built 2026-10-22**, after the alpha.60 tag: every
-  door that read a `u32` from JavaScript takes an `f64` through `count`,
-  which refuses anything but a whole number from 0 to `u32::MAX` by the
-  door's and the argument's name (`test.mjs`, "a count from JavaScript
-  that is not one"); the types are unchanged.
-- **Node errors that name nothing.** A number where a string is wanted
-  (`key: 5`, the root's `title: 42`, `<edit initial={5}>`) throws Node's
-  own "The \"src\" argument must be of type string"; `addImage(0, 0,
-  Buffer.alloc(0))` says it wants 0 bytes and got 0; `play(id, {volume:
-  NaN})` says serde could not convert a number. `encoder.js` promises
-  messages that name the element or the prop.
-- **A Node message nested past ~128 levels** fails the frame (serde's
-  recursion limit); Lua and C have none.
-- **A `KuiWindow.onTeardown` callback** runs inside `pump(&mut self)`, so
-  one that calls the window is a second `&mut`; the docs only ask it not
-  to. Read, not run (it needs a window).
-- **`kui_cells` sizes its buffer `rows * cols`** with no bound
-  (`cells.rs`): `u32::MAX` each is a capacity-overflow panic the guard
-  turns into a missing node; a grid big enough to fail the allocation
-  without overflowing aborts. **Wants:** a bound, and a warning past it —
-  which bound is the decision.
 
 ## From the alpha.42 pre-tag pass (2026-10-07)
 
@@ -2860,65 +2806,7 @@ is one AXValue, no AXDescription, nothing read twice), RG130 (only
 `accesskit_windows` sends Expand and Collapse), RG136's floor on every
 shaping buffer. The docs audit's corrections went into the changelog,
 the README, `examples/README.md`, `pack-ffi.nu` and kui.h the same day.
-RG145 is what the pass left.
-
-### `.` RG145 — What the alpha.42 pre-tag pass left
-
-- **`pack-ffi.nu`'s Docker Windows leg has run, and three things still
-  read wrong in it.** It ran on 2026-10-07 from Windows, through Docker
-  Desktop, with the two zigbuild legs. MSVC linked a C host against the
-  xwin pack's DLL and against its static archive with `link.txt`'s
-  libraries, and both ran, as did the native Windows pack and both Linux
-  x64 packs under gcc. The arm64 pack was read: AArch64, 272 `kui_*`
-  exported, glibc 2.28. That run found three things, fixed the same day:
-  a CRLF checkout shipped a CRLF `kui.h`, the closing table read
-  "Couldn't fit table into 1 columns!" when stdout was not a terminal,
-  and a `docker` that could not be spawned (Docker Desktop's CLI mount
-  in a WSL distro without its integration fails with EIO) stopped the
-  script where it should have skipped the container legs. What it could
-  not reach is below. On a Linux host with rootful Docker the container
-  copies the import libraries into `imports/` as root, and the user's
-  `rm -rf` of the staging directory then fails before the tarball is
-  written, and again at the next run's start. With `--no-runner` on a
-  fresh registry volume the `cp` of `windows_x86_64_msvc-<v>/lib/*.lib`
-  matches nothing — only the runner's dependencies download that crate —
-  and fails where the native leg's `glob` tolerates it. And every checkout
-  shares the `kui-pack-target` volume at `/src`, so a pack from one
-  worktree can find another's newer build fresh and ship its library
-  beside this one's `kui.h`. **Wants:** `--user`, a tolerant copy, a
-  volume per checkout. Smaller: `SHA256SUMS`
-  lists older versions' tarballs, a `--no-runner` pack overwrites a full
-  one of the same name, and bsdtar's xattrs warn under GNU tar.
-  **Built 2026-10-22**, after the alpha.60 tag: a target volume per
-  checkout (`target-volume`, named for its path), the staged copies
-  `chown`ed back to the caller, the import libraries copied where the
-  build fetched them, `SHA256SUMS` over this version's tarballs, a
-  `-no-runner` pack name, and (in the alpha.60 round itself) tarballs
-  written without xattrs. Not run on a rootful Linux Docker or with
-  `--no-runner` on Windows; read, and the macOS legs run.
-- **RG135 left the offsets beside the run.** `KuiAccessNode.caret`,
-  `selection_start` and `selection_end` still carry a custom editor's
-  byte inside a character; only the run's `focus` and `anchor` are
-  floored to its start. The kui-native bridge reads those, so nothing
-  draws wrong; a host that slices `value` at `caret` panics in Rust or
-  Odin.
-- **The docs guard has gaps** (`crates/kui-core/tests/docs.rs`): a
-  heading marked `` `x` `` (T1, T4, E1, E2 in the archive) is never
-  checked for uniqueness; a howto citation without the word "backlog"
-  before it, or of an id that exists nowhere, passes; and the index's
-  anchors into the archive are not checked — nine are broken today (DX6,
-  DX9, DX10, DX15, DX22, F115, RG62, RG72, RG109), each dropping an
-  underscore, all broken at alpha.41 too.
-- **Odin, latent or docs.** `check_events` matches a payload's fields by
-  a normalised name and the decoder by the exact one, so a camelCase key
-  would pass generation and decode as zero (every payload is snake_case
-  today); `kui/c` declares a context pointer followed by a `size_t` as
-  `[^]Ctx` (`count_param`), the same ABI but not the C type it claims to
-  keep; `doors.odin` promises `image_pixels`'s bytes until the image
-  changes, where kui.h promises them until the next call; and a headless
-  host that drives `frame` itself is never told to `free_all` the temp
-  allocator each frame, which only `run` and the extension entry points
-  do.
+RG145 is what the pass left, built 2026-10-22 and in the archive.
 
 ## From the alpha.43 pre-tag pass (2026-10-08)
 
@@ -4293,15 +4181,15 @@ move.
 
 - `.` **DX5** — [The node verbs had holes, and four doc comments sat on the wrong method](backlog/closed-2026-09.md#-dx5--the-node-verbs-had-holes-and-four-doc-comments-sat-on-the-wrong-method--done-2026-09-27) — done (2026-09-27)
 
-- `!` **DX6** — [A Rust view's `apply_tooltip` never floated its hint](backlog/closed-2026-09.md#-dx6--a-rust-views-applytooltip-never-floated-its-hint--done-2026-09-27) — done (2026-09-27)
+- `!` **DX6** — [A Rust view's `apply_tooltip` never floated its hint](backlog/closed-2026-09.md#-dx6--a-rust-views-apply_tooltip-never-floated-its-hint--done-2026-09-27) — done (2026-09-27)
 
 - `.` **DX7** — [The core's own event fields are untyped](backlog/closed-2026-09.md#-dx7--the-cores-own-event-fields-are-untyped--done-2026-09-27) — done (2026-09-27)
 
 - `.` **DX8** — [A key made from a label and an index is a `format!`, and indexes collide by hand](backlog/closed-2026-09.md#-dx8--a-key-made-from-a-label-and-an-index-is-a-format-and-indexes-collide-by-hand--done-2026-09-27) — done (2026-09-27)
 
-- `.` **DX9** — [`App::on_event` has no context, so every effect waits a frame](backlog/closed-2026-09.md#-dx9--apponevent-has-no-context-so-every-effect-waits-a-frame--done-2026-09-27) — done (2026-09-27)
+- `.` **DX9** — [`App::on_event` has no context, so every effect waits a frame](backlog/closed-2026-09.md#-dx9--appon_event-has-no-context-so-every-effect-waits-a-frame--done-2026-09-27) — done (2026-09-27)
 
-- `.` **DX10** — [A click on any `on_click` node takes keyboard focus](backlog/closed-2026-09.md#-dx10--a-click-on-any-onclick-node-takes-keyboard-focus--done-2026-09-27) — done (2026-09-27)
+- `.` **DX10** — [A click on any `on_click` node takes keyboard focus](backlog/closed-2026-09.md#-dx10--a-click-on-any-on_click-node-takes-keyboard-focus--done-2026-09-27) — done (2026-09-27)
 
 - `.` **DX11** — [No test driver an app can use, and kui's own tests bypass `testing`](backlog/closed-2026-09.md#-dx11--no-test-driver-an-app-can-use-and-kuis-own-tests-bypass-testing--done-2026-09-27) — done (2026-09-27)
 
@@ -4311,7 +4199,7 @@ move.
 
 - `.` **DX14** — [A paste answer cannot be told from typing](backlog/closed-2026-09.md#-dx14--a-paste-answer-cannot-be-told-from-typing--done-2026-09-27) — done (2026-09-27)
 
-- `.` **DX15** — [Lua's `reveal` and `set_scroll` by a label not yet declared fail](backlog/closed-2026-09.md#-dx15--luas-reveal-and-setscroll-by-a-label-not-yet-declared-fail--done-2026-09-27) — done (2026-09-27)
+- `.` **DX15** — [Lua's `reveal` and `set_scroll` by a label not yet declared fail](backlog/closed-2026-09.md#-dx15--luas-reveal-and-set_scroll-by-a-label-not-yet-declared-fail--done-2026-09-27) — done (2026-09-27)
 
 - `.` **DX17** — [A font cannot be named by its family](backlog/closed-2026-09.md#-dx17--a-font-cannot-be-named-by-its-family--done-2026-09-27) — done (2026-09-27)
 
@@ -4323,7 +4211,7 @@ move.
 
 - `.` **DX21** — [A table has no grid rules](backlog/closed-2026-09.md#-dx21--a-table-has-no-grid-rules--done-2026-09-27) — done (2026-09-27)
 
-- `.` **DX22** — [`splitter`, `reveal_row` and a list's row spec are Rust's alone](backlog/closed-2026-09.md#-dx22--splitter-revealrow-and-a-lists-row-spec-are-rusts-alone--done-2026-09-27) — done (2026-09-27)
+- `.` **DX22** — [`splitter`, `reveal_row` and a list's row spec are Rust's alone](backlog/closed-2026-09.md#-dx22--splitter-reveal_row-and-a-lists-row-spec-are-rusts-alone--done-2026-09-27) — done (2026-09-27)
 
 - `.` **DX23** — [A pane of more than 512 nodes cannot fade out](backlog/closed-2026-09.md#-dx23--a-pane-of-more-than-512-nodes-cannot-fade-out--done-2026-09-27) — done (2026-09-27)
 
@@ -4408,7 +4296,7 @@ move.
 
 **From the kawoosh Russian-backtick report (2026-10-01)** — F115, filed and built the same day
 
-- `!` **F115** — [A non-Latin layout's ASCII wins over the key: macOS Russian's `]` on the key printed `` ` `` is `]`](backlog/closed-2026-09.md#-f115--a-non-latin-layouts-ascii-wins-over-the-key-macos-russians--on-the-key-printed--is---done-2026-10-01) — done (2026-10-01) — `LayoutScript` (`Latin`, `NonLatin`) and `KeyPress::from_layout_in`: on a non-Latin layout every key's `code` is the US key at `physical`, its ASCII too; the runner asks macOS (ASCII-capable) and Windows (the letter keys), elsewhere the letter keys typed; `KUI_KLAYOUT_NONLATIN`, Node's `layout`; ADR 0002 decision 11 amended
+- `!` **F115** — [A non-Latin layout's ASCII wins over the key: macOS Russian's `]` on the key printed `` ` `` is `]`](backlog/closed-2026-09.md#-f115--a-non-latin-layouts-ascii-wins-over-the-key-macos-russians--on-the-key-printed----is---done-2026-10-01) — done (2026-10-01) — `LayoutScript` (`Latin`, `NonLatin`) and `KeyPress::from_layout_in`: on a non-Latin layout every key's `code` is the US key at `physical`, its ASCII too; the runner asks macOS (ASCII-capable) and Windows (the letter keys), elsewhere the letter keys typed; `KUI_KLAYOUT_NONLATIN`, Node's `layout`; ADR 0002 decision 11 amended
 
 **From the kawoosh overflow hunt (2026-09-30)** — F114, filed and built the same day
 
@@ -4519,7 +4407,7 @@ move.
 
 - `!` **RG61** — [A wheel event during a build read the half-built tree by index and panicked](backlog/closed-2026-09.md#-rg61--a-wheel-event-during-a-build-read-the-half-built-tree-by-index-and-panicked--done-2026-09-28) — done (2026-09-28)
 
-- `!` **RG62** — [`set_scroll` for the offset an ease is already going to restarts the ease, so `reveal_row` every frame holds an eased list still](backlog/closed-2026-09.md#-rg62--setscroll-for-the-offset-an-ease-is-already-going-to-restarts-the-ease-so-revealrow-every-frame-holds-an-eased-list-still--done-2026-09-28) — done (2026-09-28)
+- `!` **RG62** — [`set_scroll` for the offset an ease is already going to restarts the ease, so `reveal_row` every frame holds an eased list still](backlog/closed-2026-09.md#-rg62--set_scroll-for-the-offset-an-ease-is-already-going-to-restarts-the-ease-so-reveal_row-every-frame-holds-an-eased-list-still--done-2026-09-28) — done (2026-09-28)
 
 - `.` **RG63** — [The atlas page DX26 keeps for one frame lived until the next frame began](backlog/closed-2026-09.md#-rg63--the-atlas-page-dx26-keeps-for-one-frame-lived-until-the-next-frame-began--done-2026-09-28) — done (2026-09-28)
 
@@ -4539,7 +4427,7 @@ move.
 
 - `.` **RG71** — [Copying a rich break-spaces text copies plain text](backlog/closed-2026-09.md#-rg71--copying-a-rich-break-spaces-text-copies-plain-text--done-2026-09-28) — done (2026-09-28)
 
-- `.` **RG72** — [Two identical word texts at different widths answer text_hit and caret_rect from the width drawn last](backlog/closed-2026-09.md#-rg72--two-identical-word-texts-at-different-widths-answer-texthit-and-caretrect-from-the-width-drawn-last--done-2026-09-28) — done (2026-09-28)
+- `.` **RG72** — [Two identical word texts at different widths answer text_hit and caret_rect from the width drawn last](backlog/closed-2026-09.md#-rg72--two-identical-word-texts-at-different-widths-answer-text_hit-and-caret_rect-from-the-width-drawn-last--done-2026-09-28) — done (2026-09-28)
 
 - `.` **RG73** — [A wheel that reports pixel deltas never ends its gesture when the pointer moves](backlog/closed-2026-09.md#-rg73--a-wheel-that-reports-pixel-deltas-never-ends-its-gesture-when-the-pointer-moves--done-2026-09-28) — done (2026-09-28)
 
@@ -4619,7 +4507,7 @@ move.
 
 - `.` **RG108** — [A fill with no area painted a hairline: a progress ring at 0 showed a tick](backlog/closed-2026-09.md#-rg108--a-fill-with-no-area-painted-a-hairline-a-progress-ring-at-0-showed-a-tick--done-2026-10-05) — done (2026-10-05)
 
-- `.` **RG109** — [C's `kui_path`, `kui_path_d`, `kui_polygon` and `kui_polyline` leaked their payloads on every early return, and dropped them with a NULL spec](backlog/closed-2026-09.md#-rg109--cs-kuipath-kuipathd-kuipolygon-and-kuipolyline-leaked-their-payloads-on-every-early-return-and-dropped-them-with-a-null-spec--done-2026-10-05) — done (2026-10-05)
+- `.` **RG109** — [C's `kui_path`, `kui_path_d`, `kui_polygon` and `kui_polyline` leaked their payloads on every early return, and dropped them with a NULL spec](backlog/closed-2026-09.md#-rg109--cs-kui_path-kui_path_d-kui_polygon-and-kui_polyline-leaked-their-payloads-on-every-early-return-and-dropped-them-with-a-null-spec--done-2026-10-05) — done (2026-10-05)
 
 - `.` **RG110** — [A flat-form op code that is not a whole number read as a move](backlog/closed-2026-09.md#-rg110--a-flat-form-op-code-that-is-not-a-whole-number-read-as-a-move--done-2026-10-05) — done (2026-10-05)
 
@@ -4833,7 +4721,7 @@ move.
 
 **From Carnet's folder round (2026-10-10)** — F159–F161, filed and built the same day
 
-- `~` **F159** — [⌘⌫ in a field deletes one character](backlog/closed-2026-09.md#-f159--in-a-field-deletes-one-character--done-2026-10-10) — done (2026-10-10) — Backspace and Delete under the primary modifier take the line on a Mac and a word elsewhere
+- `~` **F159** — [⌘⌫ in a field deletes one character](backlog/closed-2026-09.md#-f159---in-a-field-deletes-one-character--done-2026-10-10) — done (2026-10-10) — Backspace and Delete under the primary modifier take the line on a Mac and a word elsewhere
 
 - `~` **F160** — [Escape lets go of an editor and says nothing](backlog/closed-2026-09.md#-f160--escape-lets-go-of-an-editor-and-says-nothing--done-2026-10-10) — done (2026-10-10) — `cancel` on the editor, then the blur
 
@@ -4920,3 +4808,9 @@ move.
 **From the alpha.60 fuzz hour (2026-10-22)** — FZ11, filed and built the same day
 
 - `!` **FZ11** — [A reader's `replaceSelectedText` goes into an editor raw](backlog/closed-2026-09.md#-fz11--a-readers-replaceselectedtext-goes-into-an-editor-raw--done-2026-10-22) — done (2026-10-22) — `replace_selection` keeps what `typed` keeps: no line break in a field, no bidi paragraph end for the shaper to panic on (FZ6's, in a release build), and a value declared back from its `change` is the text it holds
+
+**After the alpha.60 tag (2026-10-22)** — RG126, RG139 and RG145, open since alpha.41 and alpha.42, built the same day
+
+- `.` **RG126** — [A warm cell grid reads 3 to 5% slower since a grid tells its family's glyphs by name](backlog/closed-2026-09.md#-rg126--a-warm-cell-grid-reads-3-to-5-slower-since-a-grid-tells-its-familys-glyphs-by-name--done-2026-10-22) — done (2026-10-22)
+- `.` **RG139** — [What the round after RG127 left](backlog/closed-2026-09.md#-rg139--what-the-round-after-rg127-left--done-2026-10-22) — done (2026-10-22)
+- `.` **RG145** — [What the alpha.42 pre-tag pass left](backlog/closed-2026-09.md#-rg145--what-the-alpha42-pre-tag-pass-left--done-2026-10-22) — done (2026-10-22)

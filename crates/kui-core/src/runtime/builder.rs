@@ -1008,6 +1008,19 @@ impl Core {
         // A grid is a picture the app redraws, not a spec to journal.
         self.taint_kept("it drew a cells grid");
         self.prepare_spec(key, &mut spec);
+        let (rows, cols) = crate::cells::bounded(grid.rows, grid.cols);
+        if (rows, cols) != (grid.rows, grid.cols) {
+            self.warn(crate::diag::cells_too_large(
+                key,
+                (grid.rows, grid.cols),
+                (rows, cols),
+            ));
+        }
+        let grid = &crate::cells::CellGrid {
+            rows,
+            cols,
+            ..*grid
+        };
         let cid = self.cells.add(key, grid);
         self.push_leaf(key, spec, NodeContent::Cells(cid));
     }

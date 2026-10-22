@@ -195,6 +195,28 @@ fn howto_cites_no_closed_entry_and_every_anchor_lands() {
         closed.len()
     );
 
+    // A cited id names an entry, open or archived: a typo, or an id the
+    // backlog never had, cited a gap nobody can look up (backlog RG145).
+    let mut known = headed_ids(&read("BACKLOG.md"));
+    known.extend(headed_ids(&read("backlog/closed-2026-09.md")));
+    let nowhere: Vec<_> = cited(&page)
+        .into_iter()
+        .filter(|(id, _)| {
+            !known
+                .iter()
+                .any(|k| k == id || k.starts_with(&format!("{id}(")))
+        })
+        .collect();
+    assert!(
+        nowhere.is_empty(),
+        "howto.md cites backlog ids no entry has:\n{}",
+        nowhere
+            .iter()
+            .map(|(id, line)| format!("  {id} — {line}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
     let stale: Vec<_> = cited(&page)
         .into_iter()
         .filter(|(id, _)| closed.iter().any(|c| c == id))
@@ -259,8 +281,15 @@ fn headed_ids(page: &str) -> Vec<String> {
         .filter_map(|l| l.strip_prefix("### "))
         .filter_map(|l| {
             // `` `!` F25 — `` or `F25 — `: the id is the first id-shaped
-            // token followed by the em dash.
-            let l = l.trim_start_matches(['`', '!', '~', '.', ' ']);
+            // token followed by the em dash. The mark is whatever sits
+            // between the backticks: trimming the four marks this knew
+            // skipped every `` `x` `` heading, so T1, T4, E1 and E2 were
+            // never checked (backlog RG145).
+            let l = match l.strip_prefix('`') {
+                Some(rest) => &rest[rest.find('`')? + 1..],
+                None => l,
+            };
+            let l = l.trim_start();
             let id = id_at(l.as_bytes(), 0)?;
             l[id.len()..].starts_with(" — ").then(|| id.to_string())
         })
@@ -306,4 +335,42 @@ fn a_backlog_id_names_one_entry() {
         .filter(|id| !seen.insert(id.as_str()))
         .collect();
     assert!(dup.is_empty(), "the closed index lists twice: {dup:?}");
+}
+
+/// Every link from the open list into the archive lands on a heading
+/// there (backlog RG145): nine did not, each anchor dropping an
+/// underscore GitHub keeps, and nothing said so.
+#[test]
+fn every_link_into_the_archive_lands() {
+    let open = read("BACKLOG.md");
+    let archive = read("backlog/closed-2026-09.md");
+    let headings: std::collections::BTreeSet<String> = archive
+        .lines()
+        .filter_map(|l| l.strip_prefix('#'))
+        .map(|l| anchor(l.trim_start_matches('#')))
+        .collect();
+    let needle = "backlog/closed-2026-09.md#";
+    let mut missing = Vec::new();
+    let mut links = 0;
+    for line in open.lines() {
+        for (at, _) in line.match_indices(needle) {
+            let rest = &line[at + needle.len()..];
+            let end = rest.find(')').unwrap_or(rest.len());
+            let want = &rest[..end];
+            links += 1;
+            if !headings.contains(want) {
+                missing.push(format!("  #{want}"));
+            }
+        }
+    }
+    assert!(
+        links > 100,
+        "found {links} links into the archive — the format moved"
+    );
+    assert!(
+        missing.is_empty(),
+        "{} links into the archive land on no heading:\n{}",
+        missing.len(),
+        missing.join("\n")
+    );
 }

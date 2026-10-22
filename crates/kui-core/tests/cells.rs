@@ -731,3 +731,37 @@ fn a_grid_click_takes_the_app_s_click_field_and_says_so() {
         "{codes:?}"
     );
 }
+
+/// A grid past `MAX_CELLS` draws the rows that fit and says so, where
+/// `rows * cols` overflowed or asked for gigabytes (backlog RG139).
+#[test]
+fn a_grid_past_the_bound_draws_what_fits_and_warns() {
+    let mut core = Core::new();
+    // A key each: a warning is raised once per node.
+    for (label, rows, cols) in [
+        ("a", usize::MAX, 2),
+        ("b", 4096, 4096),
+        ("c", 1, usize::MAX),
+    ] {
+        let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.cells_keyed(
+            label,
+            &CellGrid {
+                rows,
+                cols,
+                cells: &[],
+                style: mono(),
+                cursor: None,
+                origin_line: 0,
+            },
+            NodeSpec::default(),
+        );
+        ui.finish();
+        let codes: Vec<_> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert!(
+            codes.contains(&kui_core::diag::CELLS_TOO_LARGE),
+            "{rows} x {cols}: {codes:?}"
+        );
+    }
+}

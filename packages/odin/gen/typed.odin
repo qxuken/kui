@@ -1336,9 +1336,12 @@ check_events :: proc(g: ^Gen) {
 				fail("%s must hold the one field %s (the schema's), not %v", with, ev.field, fields)
 			}
 		}
+		// By the exact name, as the decoder reads a payload: a camelCase
+		// key passed a match with case and underscores set aside, and
+		// decoded as zero (backlog RG145).
 		for want in payload_fields(ev.payload) {
 			found := false
-			for h in have do if norm(h) == norm(want) do found = true
+			for h in have do if h == want do found = true
 			if !found do fail("%v has no field for the schema's %q (payload %s)", names, want, ev.payload)
 		}
 	}

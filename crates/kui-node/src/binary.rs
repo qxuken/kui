@@ -435,10 +435,59 @@ fn opt_f32(r: &mut Reader<'_>) -> Result<Option<f32>> {
     Ok(declared.then_some(v))
 }
 
+/// How deep a message may nest. serde's own limit, 128, failed the whole
+/// frame over one message nested past it, where Lua and C take any depth
+/// a stack holds (backlog RG139); this is far past any message an app
+/// writes and well inside a native thread's stack, and past it the error
+/// says so rather than "recursion limit exceeded".
+pub(crate) const MESSAGE_DEPTH: usize = 1024;
+
 fn payload(s: &str) -> Result<kui_core::Value> {
     let s = well_formed(s);
-    let json: Json = serde_json::from_str(&s).map_err(|e| err(format!("bad payload JSON: {e}")))?;
+    let depth = nesting(&s);
+    if depth > MESSAGE_DEPTH {
+        return Err(err(format!(
+            "a message nested {depth} levels deep: kui takes {MESSAGE_DEPTH}"
+        )));
+    }
+    let mut de = serde_json::Deserializer::from_str(&s);
+    de.disable_recursion_limit();
+    let mut values = de.into_iter::<Json>();
+    let json = match (values.next(), values.next()) {
+        (Some(Ok(json)), None) => json,
+        (Some(Err(e)), _) => return Err(err(format!("bad payload JSON: {e}"))),
+        _ => return Err(err("bad payload JSON: not one value")),
+    };
     Ok(value_of(&json))
+}
+
+/// The deepest `[` / `{` nesting in a JSON text, strings aside: a byte
+/// scan before the recursive parse, so the bound is checked before any
+/// stack is spent on it.
+fn nesting(s: &str) -> usize {
+    let (mut depth, mut deepest) = (0usize, 0usize);
+    let (mut in_string, mut escaped) = (false, false);
+    for b in s.bytes() {
+        if in_string {
+            match b {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'[' | b'{' => {
+                depth += 1;
+                deepest = deepest.max(depth);
+            }
+            b']' | b'}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    deepest
 }
 
 /// `s` with every lone surrogate escape `JSON.stringify` writes (a string

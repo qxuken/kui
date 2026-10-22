@@ -1888,6 +1888,30 @@ struct TreeApp {
     teardown_error: Option<napi::Error>,
 }
 
+thread_local! {
+    /// Set while a window's `onTeardown` callback runs, inside the `pump`
+    /// that saw the window go: a callback that calls the window back is a
+    /// second `&mut` of a window the pump still holds (backlog RG139).
+    /// The window's own doors refuse then, and the shared ones reach a
+    /// detached core rather than the runner's.
+    static TEARING_DOWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn tearing_down() -> bool {
+    TEARING_DOWN.with(std::cell::Cell::get)
+}
+
+/// What a window door answers from inside `onTeardown`.
+fn refuse_in_teardown(door: &str) -> Result<()> {
+    if tearing_down() {
+        return Err(err(format!(
+            "{door}: the window is going for good and onTeardown is running; \
+             it saves and returns, and does not call the window"
+        )));
+    }
+    Ok(())
+}
+
 impl kui_native::App for TreeApp {
     /// The window going for good, to JS: once, synchronously,
     /// inside the pump it happened in — the close button's, a `close()`'s,
@@ -1900,7 +1924,10 @@ impl kui_native::App for TreeApp {
             return;
         };
         let env = napi::Env::from_raw(env);
-        match f.borrow_back(&env).and_then(|f| f.call(())) {
+        TEARING_DOWN.with(|t| t.set(true));
+        let called = f.borrow_back(&env).and_then(|f| f.call(()));
+        TEARING_DOWN.with(|t| t.set(false));
+        match called {
             Ok(Null) => {}
             Err(e) => self.teardown_error = Some(e),
         }
@@ -1945,6 +1972,10 @@ enum WindowRef {
 #[napi]
 pub struct KuiWindow {
     runner: kui_native::PumpRunner<TreeApp>,
+    /// What the shared doors reach from inside `onTeardown`, made the first
+    /// time one is called there: a core of its own and its events, so the
+    /// runner's, which the pump in flight holds, are not touched.
+    detached: Option<Box<(Core, Vec<UiEvent>)>>,
     /// The window every per-window door addresses (`useWindow`): the
     /// main window until `runWindowed` aims the surface at the window
     /// whose view or event it is handing to the app.
@@ -2166,6 +2197,7 @@ impl KuiWindow {
             .map_err(|e| err(format!("failed to open window: {e}")))?;
         Ok(KuiWindow {
             runner,
+            detached: None,
             addressed: kui_core::WindowId::MAIN,
         })
     }
@@ -2183,11 +2215,14 @@ impl KuiWindow {
     /// asked about. Resources, `windows()`, `pump` and
     /// `pollEvents` are the session's and unaffected.
     #[napi(ts_args_type = "window?: string | number")]
-    pub fn use_window(&mut self, window: Option<Either<String, f64>>) -> bool {
-        self.address(window.map(|w| match w {
-            Either::A(name) => WindowRef::Name(name),
-            Either::B(id) => WindowRef::Id(id as u32),
-        }))
+    pub fn use_window(&mut self, window: Option<Either<String, f64>>) -> Result<bool> {
+        refuse_in_teardown("useWindow")?;
+        let window = match window {
+            Some(Either::A(name)) => Some(WindowRef::Name(name)),
+            Some(Either::B(id)) => Some(WindowRef::Id(count(id, "useWindow: window")?)),
+            None => None,
+        };
+        Ok(self.address(window))
     }
 
     /// `setView` with a flat binary instruction stream (see `Ctx::frame_binary`).
@@ -2213,6 +2248,7 @@ impl KuiWindow {
     /// window has closed.
     #[napi]
     pub fn pump(&mut self, env: Env) -> Result<bool> {
+        refuse_in_teardown("pump")?;
         self.runner.app_mut().env = Some(env.raw());
         let alive = self.runner.pump();
         self.after_pump(alive)
@@ -2241,10 +2277,13 @@ impl KuiWindow {
     /// after it runs, not even `process.on('exit')` — so this is the only
     /// thing an app runs on ⌘Q. `runWindowed` registers its config's
     /// `teardown(model)` here; a driver of its own does the same. The
-    /// window is gone by then: the callback saves and returns, and does
-    /// not call the window's doors. The last registration wins.
+    /// window is gone by then: the callback saves and returns. A window
+    /// door it calls anyway throws, and a shared one (`editText`,
+    /// `pollEvents`, …) reads a blank core instead of the closing window's,
+    /// which the pump in flight still holds. The last registration wins.
     #[napi(ts_args_type = "callback: () => void")]
     pub fn on_teardown(&mut self, callback: Function<'_, (), Null>) -> Result<()> {
+        refuse_in_teardown("onTeardown")?;
         self.runner.app_mut().teardown = Some(callback.create_ref()?);
         Ok(())
     }
@@ -2274,6 +2313,7 @@ impl KuiWindow {
     /// is both cheaper and safer — which is what `runWindowed` does.
     #[napi]
     pub fn pump_until(&mut self, env: Env, timeout_ms: f64) -> Result<bool> {
+        refuse_in_teardown("pumpUntil")?;
         // Clamped, not just checked: `Duration::from_secs_f64` panics on a
         // large finite value rather than saturating, so a caller spelling
         // "forever" as `Number.MAX_VALUE` would take the process with it.
@@ -2349,8 +2389,10 @@ impl KuiWindow {
 
     /// Asks the window to close; the next pump returns false.
     #[napi]
-    pub fn close(&mut self) {
+    pub fn close(&mut self) -> Result<()> {
+        refuse_in_teardown("close")?;
         self.runner.request_exit();
+        Ok(())
     }
 }
 
@@ -2629,7 +2671,7 @@ macro_rules! core_methods {
             /// A window plays it on its own device at once; headless nothing
             /// sounds and the command queues for `audioCommands()`.
             #[napi(ts_args_type = "sound: string, opts?: PlayOptions")]
-            pub fn play(&mut self, sound: String, opts: Option<Json>) -> Result<f64> {
+            pub fn play(&mut self, sound: String, opts: Option<Object>) -> Result<f64> {
                 let id = play_impl(self.$core(), &sound, opts.as_ref())?;
                 self.$audio();
                 Ok(id)
@@ -4437,6 +4479,9 @@ impl KuiWindow {
     /// addressed one is not open (it closed, or has not opened yet),
     /// which `useWindow` reported at the time.
     fn core_mut(&mut self) -> &mut Core {
+        if tearing_down() {
+            return &mut self.detached().0;
+        }
         let id = if self.runner.core_mut_of(self.addressed).is_some() {
             self.addressed
         } else {
@@ -4465,7 +4510,16 @@ impl KuiWindow {
     }
 
     fn events_mut(&mut self) -> &mut Vec<UiEvent> {
+        if tearing_down() {
+            return &mut self.detached().1;
+        }
         &mut self.runner.app_mut().events
+    }
+
+    /// The core the shared doors reach from inside `onTeardown`.
+    fn detached(&mut self) -> &mut (Core, Vec<UiEvent>) {
+        self.detached
+            .get_or_insert_with(|| Box::new((Core::new(), Vec::new())))
     }
 
     /// Through the runner's own list, for the same reason a headless
@@ -4476,16 +4530,24 @@ impl KuiWindow {
     /// queued during a `pump` was routed on the way in and is already in
     /// `events_mut`; it does not pass through here.)
     fn take_events(&mut self, events: Vec<UiEvent>) {
+        if tearing_down() {
+            self.detached().1.extend(events);
+            return;
+        }
         self.runner
             .route_events(events, |app, ev, _| app.events.push(ev));
     }
 
     fn request_redraw(&mut self) {
-        self.runner.request_redraw();
+        if !tearing_down() {
+            self.runner.request_redraw();
+        }
     }
 
     fn flush_audio(&mut self) {
-        self.runner.flush_audio();
+        if !tearing_down() {
+            self.runner.flush_audio();
+        }
     }
 }
 
@@ -4654,17 +4716,30 @@ fn audio_spec_of(
 
 /// `play(sound, {volume, loop, fadeIn, tag})`; the playback id as a JS
 /// number (a small counter, exact).
-fn play_impl(core: &mut Core, sound: &str, opts: Option<&Json>) -> Result<f64> {
-    let o = opts.and_then(Json::as_object).unwrap_or(empty_props());
+/// `play`'s options, read off the JS object rather than through JSON:
+/// JSON has no NaN, so `{volume: NaN}` failed in napi's conversion with
+/// serde's "could not convert number", naming no option (backlog RG139).
+fn play_impl(core: &mut Core, sound: &str, opts: Option<&Object>) -> Result<f64> {
     let mut po = PlayOptions::default();
-    if let Some(v) = o.get("volume").and_then(Json::as_f64) {
-        po.volume = v as f32;
+    if let Some(o) = opts {
+        let number = |name: &str| -> Result<Option<f32>> {
+            match o.get::<f64>(name)? {
+                Some(v) if v.is_finite() => Ok(Some(v as f32)),
+                Some(v) => Err(err(format!(
+                    "play: {name} must be a finite number, got {v}"
+                ))),
+                None => Ok(None),
+            }
+        };
+        if let Some(v) = number("volume")? {
+            po.volume = v;
+        }
+        if let Some(v) = number("fadeIn")? {
+            po.fade_in_ms = v;
+        }
+        po.looped = o.get::<bool>("loop")?.unwrap_or(false);
+        po.tag = o.get::<Json>("tag")?.as_ref().map(value_of);
     }
-    po.looped = bool_prop(o, "loop");
-    if let Some(v) = o.get("fadeIn").and_then(Json::as_f64) {
-        po.fade_in_ms = v as f32;
-    }
-    po.tag = o.get("tag").map(value_of);
     Ok(core.play(SoundId::from_ffi(parse_u64(sound)?), po).0 as f64)
 }
 
@@ -4709,27 +4784,34 @@ fn update_image_impl(
     height: u32,
     rgba: &[u8],
 ) -> Result<()> {
-    let expected = (width as usize) * (height as usize) * 4;
-    if width == 0 || height == 0 || rgba.len() != expected {
-        return Err(err(format!(
-            "rgba must be width*height*4 = {expected} bytes, got {}",
-            rgba.len()
-        )));
-    }
+    image_bytes("updateImage", width, height, rgba)?;
     // Into a buffer the core recycles, not a fresh `to_vec` a frame
     // (backlog W20).
     core.update_image_with(id, width, height, |px| px.copy_from_slice(rgba));
     Ok(())
 }
 
-fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Result<String> {
-    let expected = (width as usize) * (height as usize) * 4;
-    if width == 0 || height == 0 || rgba.len() != expected {
+/// An image's size and bytes, checked before either door takes them. A
+/// size of nothing said so: "rgba must be width*height*4 = 0 bytes, got 0"
+/// refused a buffer that was exactly that (backlog RG139).
+fn image_bytes(door: &str, width: u32, height: u32, rgba: &[u8]) -> Result<()> {
+    if width == 0 || height == 0 {
         return Err(err(format!(
-            "rgba must be width*height*4 = {expected} bytes, got {}",
+            "{door}: an image is at least 1x1 pixels, not {width}x{height}"
+        )));
+    }
+    let expected = (width as usize) * (height as usize) * 4;
+    if rgba.len() != expected {
+        return Err(err(format!(
+            "{door}: rgba must be width*height*4 = {expected} bytes for {width}x{height}, got {}",
             rgba.len()
         )));
     }
+    Ok(())
+}
+
+fn add_image_impl(core: &mut Core, width: u32, height: u32, rgba: &[u8]) -> Result<String> {
+    image_bytes("addImage", width, height, rgba)?;
     let id = core.resources.add_image(width, height, rgba.to_vec());
     Ok(format!("{:016x}", id.to_ffi()))
 }
@@ -5285,5 +5367,28 @@ mod readback_payloads {
             Json::from("start"),
             "the row's own keys still camelise"
         );
+    }
+}
+
+#[cfg(test)]
+mod teardown_guard_tests {
+    use super::*;
+
+    /// The guard a window's doors take while `onTeardown` runs (backlog
+    /// RG139): refused there and only there. A window cannot open in a
+    /// test, so this pins the guard, not a callback calling one.
+    #[test]
+    fn a_door_is_refused_while_teardown_runs_and_only_then() {
+        assert!(refuse_in_teardown("pump").is_ok());
+        TEARING_DOWN.with(|t| t.set(true));
+        let refused = refuse_in_teardown("pump");
+        TEARING_DOWN.with(|t| t.set(false));
+        let e = refused.expect_err("refused inside a teardown");
+        assert!(
+            e.reason.contains("pump: the window is going for good"),
+            "{}",
+            e.reason
+        );
+        assert!(refuse_in_teardown("pump").is_ok());
     }
 }

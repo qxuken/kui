@@ -4,6 +4,9 @@
 // Spec, KUI_GROW -> GROW), and KuiStr is Odin's string.
 package kui_c
 
+// -- link: the release's Odin tarball carries libkui_ffi beside this file,
+// and scripts/pack-ffi.nu's bundle writes its own block here, from this
+// line to the end marker, linking those (static, or -define:KUI_SHARED=true).
 // The library to link: kui_ffi from the system search path by default,
 // which -extra-linker-flags:"-L<dir>" (/LIBPATH:<dir> on Windows) points at
 // a build. On Windows that is kui_ffi.dll's import library, kui_ffi.dll.lib:
@@ -29,6 +32,7 @@ when KUI_PLUGIN && ODIN_OS == .Darwin {
 } else {
 	foreign import lib { KUI_LIB }
 }
+// -- end link
 
 Str :: string
 
@@ -1133,7 +1137,7 @@ foreign lib {
 	note_frame_cause :: proc(ctx: ^Ctx, cause: u32) ---
 	frame_unchanged :: proc(ctx: ^Ctx) -> i32 ---
 	set_subpixel_text :: proc(ctx: ^Ctx, on: bool) ---
-	set_text_cache_budget :: proc(ctx: [^]Ctx, bytes: uint) ---
+	set_text_cache_budget :: proc(ctx: ^Ctx, bytes: uint) ---
 	text_cache_bytes :: proc(ctx: ^Ctx) -> uint ---
 	env_set_window :: proc(ctx: ^Ctx, window: u32, custom_chrome: bool, maximized: bool, fullscreen: bool, controls_w: f32, controls_h: f32) ---
 	take_window_command :: proc(ctx: ^Ctx, out: ^WindowCommand) -> bool ---
@@ -1258,12 +1262,12 @@ foreign lib {
 	menu_bar_with :: proc(ctx: ^Ctx, menus: [^]Menu, count: uint, on_menu: ^Value) -> bool ---
 	set_native_menu_bar :: proc(ctx: ^Ctx, on: bool) ---
 	menu_bar_menu_count :: proc(ctx: ^Ctx, revision: ^u64) -> uint ---
-	menu_bar_menu :: proc(ctx: [^]Ctx, menu: uint, label: ^string, enabled: ^bool) -> uint ---
-	menu_bar_item :: proc(ctx: [^]Ctx, menu: uint, item: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
-	activate_menu_bar_item :: proc(ctx: [^]Ctx, menu: uint, item: uint) -> bool ---
-	menu_bar_submenu_count :: proc(ctx: [^]Ctx, menu: uint, path: [^]uint, depth: uint) -> uint ---
-	menu_bar_item_path :: proc(ctx: [^]Ctx, menu: uint, path: [^]uint, depth: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
-	activate_menu_bar_path :: proc(ctx: [^]Ctx, menu: uint, path: [^]uint, depth: uint) -> bool ---
+	menu_bar_menu :: proc(ctx: ^Ctx, menu: uint, label: ^string, enabled: ^bool) -> uint ---
+	menu_bar_item :: proc(ctx: ^Ctx, menu: uint, item: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
+	activate_menu_bar_item :: proc(ctx: ^Ctx, menu: uint, item: uint) -> bool ---
+	menu_bar_submenu_count :: proc(ctx: ^Ctx, menu: uint, path: [^]uint, depth: uint) -> uint ---
+	menu_bar_item_path :: proc(ctx: ^Ctx, menu: uint, path: [^]uint, depth: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
+	activate_menu_bar_path :: proc(ctx: ^Ctx, menu: uint, path: [^]uint, depth: uint) -> bool ---
 	selection_text :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	selection_html :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	selection_ends :: proc(ctx: ^Ctx, anchor_index: ^i64, anchor_byte: ^uint, focus_index: ^i64, focus_byte: ^uint) -> bool ---
@@ -1278,8 +1282,8 @@ foreign lib {
 	awaiting_paste :: proc(ctx: ^Ctx) -> bool ---
 	set_native_menus :: proc(ctx: ^Ctx, on: bool) ---
 	menu_item_count :: proc(ctx: ^Ctx, target: ^u64, x: ^f32, y: ^f32) -> uint ---
-	menu_item :: proc(ctx: [^]Ctx, item: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
-	activate_menu_item :: proc(ctx: [^]Ctx, index: uint) -> bool ---
+	menu_item :: proc(ctx: ^Ctx, item: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
+	activate_menu_item :: proc(ctx: ^Ctx, index: uint) -> bool ---
 	menu_submenu_count :: proc(ctx: ^Ctx, path: [^]uint, depth: uint) -> uint ---
 	menu_item_path :: proc(ctx: ^Ctx, path: [^]uint, depth: uint, label: ^string, accel: ^string, role: ^u32, flags: ^u32) -> bool ---
 	activate_menu_path :: proc(ctx: ^Ctx, path: [^]uint, depth: uint) -> bool ---
@@ -1288,7 +1292,7 @@ foreign lib {
 	request_files :: proc(ctx: ^Ctx, dialog: ^FileDialog, tag: ^Value) -> bool ---
 	awaiting_files :: proc(ctx: ^Ctx) -> bool ---
 	take_file_request :: proc(ctx: ^Ctx, mode: ^u32, multiple: ^bool, title: ^string, directory: ^string, file_name: ^string, filter_count: ^uint) -> bool ---
-	file_request_filter :: proc(ctx: [^]Ctx, i: uint, name: ^string, extensions: ^string) -> bool ---
+	file_request_filter :: proc(ctx: ^Ctx, i: uint, name: ^string, extensions: ^string) -> bool ---
 	input_files :: proc(ctx: ^Ctx, paths: [^]string, count: uint) ---
 	caret_rect :: proc(ctx: ^Ctx, key: u64, byte: uint, out: ^CaretRect) -> bool ---
 	ime_rect :: proc(ctx: ^Ctx, out: ^CaretRect) -> bool ---

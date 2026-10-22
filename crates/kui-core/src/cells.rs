@@ -171,6 +171,24 @@ pub struct CellGrid<'a> {
     pub origin_line: u64,
 }
 
+/// The most cells one grid takes: a 2048 x 2048 screen, far past any
+/// terminal's, and a `Cell` buffer under 100 MB. `rows * cols` had no
+/// bound, so C's two `u32`s overflowed it or asked the allocator for more
+/// than it has (backlog RG139).
+pub const MAX_CELLS: usize = 1 << 22;
+
+/// `(rows, cols)` cut to [`MAX_CELLS`]: the columns first, to a row's
+/// worth, then as many whole rows as fit — the top of the screen.
+pub(crate) fn bounded(rows: usize, cols: usize) -> (usize, usize) {
+    match rows.checked_mul(cols) {
+        Some(n) if n <= MAX_CELLS => (rows, cols),
+        _ => {
+            let cols = cols.min(MAX_CELLS);
+            (rows.min(MAX_CELLS / cols.max(1)), cols)
+        }
+    }
+}
+
 /// Index into the frame's grid list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CellsId(pub u32);
@@ -466,7 +484,14 @@ impl CellStore {
     /// Emits the grid at `origin` (logical) inside `clip` (physical).
     // The column index is the geometry (`col × cell_w`) as much as the
     // subscript, so the range loops stay.
+    //
+    // Out of line: inlined into `Painter::paint_leaf` — which LLVM began
+    // doing when RG118's change left `lookup` smaller — the warm 200x50
+    // grid read 61 µs → 79 µs on an M3 Pro, the same work in the caller's
+    // registers (backlog RG126; the C41 recipe, a sample's top-of-stack
+    // naming `paint_leaf` where it had named `emit`).
     #[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+    #[inline(never)]
     pub(crate) fn emit(
         &mut self,
         id: CellsId,

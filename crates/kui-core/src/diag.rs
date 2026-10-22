@@ -361,6 +361,12 @@ warnings! {
     /// the model the value is read from (ADR 0047, decision 8).
     pub const EDIT_VALUE_WITHOUT_HANDLER: &str = "edit-value-without-handler";
 
+    /// A `cells` grid declared more cells than one grid takes —
+    /// `cells::MAX_CELLS`, 4,194,304, a 2048 x 2048 screen — so it draws
+    /// the rows that fit and no more: `rows * cols` from a driver's
+    /// arithmetic (a `u32` each in C) overflowed or asked for gigabytes.
+    pub const CELLS_TOO_LARGE: &str = "cells-too-large";
+
     /// A handler's message has a field named for the event it arrives as —
     /// `{kind: "k", key: "a"}` declared as an `onKey` message — and the
     /// event's data replaced it, so the app's own value never reaches it
@@ -691,6 +697,22 @@ pub(crate) fn slider_without_handler(key: Key) -> Warning {
                   with the message the change arrives as, and the value it carries as \
                   `valueNow`"
             .to_string(),
+    }
+}
+
+/// The [`CELLS_TOO_LARGE`] warning for one grid, keyed by it.
+pub(crate) fn cells_too_large(key: Key, asked: (usize, usize), drawn: (usize, usize)) -> Warning {
+    Warning {
+        code: CELLS_TOO_LARGE,
+        key,
+        message: format!(
+            "a cells grid of {} x {} is more than the {} cells one grid takes; it draws {} x {}",
+            asked.0,
+            asked.1,
+            crate::cells::MAX_CELLS,
+            drawn.0,
+            drawn.1
+        ),
     }
 }
 

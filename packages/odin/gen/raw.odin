@@ -26,6 +26,9 @@ emit_raw :: proc(m: ^C_Model, out_dir, layout_path: string) {
 // Spec, KUI_GROW -> GROW), and KuiStr is Odin's string.
 package kui_c
 
+// -- link: the release's Odin tarball carries libkui_ffi beside this file,
+// and scripts/pack-ffi.nu's bundle writes its own block here, from this
+// line to the end marker, linking those (static, or -define:KUI_SHARED=true).
 // The library to link: kui_ffi from the system search path by default,
 // which -extra-linker-flags:"-L<dir>" (/LIBPATH:<dir> on Windows) points at
 // a build. On Windows that is kui_ffi.dll's import library, kui_ffi.dll.lib:
@@ -51,6 +54,7 @@ when KUI_PLUGIN && ODIN_OS == .Darwin {
 } else {
 	foreign import lib { KUI_LIB }
 }
+// -- end link
 
 Str :: string
 `)
@@ -163,9 +167,13 @@ runs_into_count :: proc(params: []Param) -> bool {
 	return count_param(params) >= 0
 }
 
-// Where the count of the array starting params[0] is, or -1.
+// Where the count of the array starting params[0] is, or -1. The
+// context is never an array, whatever follows it: `KuiCtx *ctx, size_t
+// index` was `[^]Ctx`, the same ABI and not the C type it claims to keep
+// (backlog RG145).
 count_param :: proc(params: []Param) -> int {
 	if !strings.has_suffix(params[0].type, "*") do return -1
+	if strings.trim_space(strings.trim_suffix(params[0].type, "*")) == "KuiCtx" do return -1
 	for p, i in params[1:] {
 		if p.type == params[0].type do continue
 		return i + 1 if p.type == "size_t" else -1

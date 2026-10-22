@@ -7,7 +7,8 @@ import c "c"
 // because the header says something in prose that the types do not.
 
 // The pixels behind an image handle, for a renderer meeting a texture quad:
-// RGBA, w * h * 4 bytes, borrowed until the image is updated or removed.
+// RGBA, w * h * 4 bytes, borrowed until the next image_pixels call, as
+// kui.h says (it promised them until the image changed; backlog RG145).
 // Rust: Core::image_pixels.
 image_pixels :: proc(ui: ^Ui, id: Image) -> (w, h: u32, rgba: []u8, ok: bool) {
 	p: [^]u8

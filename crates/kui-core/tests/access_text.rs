@@ -334,7 +334,22 @@ fn a_custom_caret_inside_a_character_lands_before_it() {
             (node.runs[run].key, character),
             "caret at byte {caret}"
         );
+        // The flat offsets are places in the value as well: a host slices
+        // `value` at them (backlog RG145).
+        let value = node.value.as_deref().unwrap();
+        let flat = node.caret.expect("a flat caret");
+        assert!(value.is_char_boundary(flat), "caret {caret} -> {flat}");
     }
+    // And a selection's ends.
+    let sink = custom_frame(&mut core, &["éé"], (0, 3), Some((0, 1)));
+    let tree = core.access_tree().clone();
+    let node = tree.get(sink).unwrap();
+    let value = node.value.as_deref().unwrap();
+    let (a, b) = node.selection.expect("a selection");
+    assert!(
+        value.is_char_boundary(a) && value.is_char_boundary(b),
+        "{a}..{b} in {value:?}"
+    );
 }
 
 #[test]

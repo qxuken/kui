@@ -75,6 +75,16 @@ run :: proc(
 // below; events come out of poll_event, which a for loop drains:
 //
 //     for ev in kui.poll_event(ui) { on_event(&state, ev) }
+//
+// The view's builders and an event's decoding allocate on
+// context.temp_allocator. run and the extension entry points free it after
+// every view and every event; a loop of your own does it once a turn,
+// after the frame and the events it drained, or it grows for the life of
+// the program (backlog RG145):
+//
+//     kui.frame(ui, &state, view)
+//     for ev in kui.poll_event(ui) { on_event(&state, ev) }
+//     free_all(context.temp_allocator)
 
 // A context of your own (nil when the library's ABI differs); free it with
 // free_ui. Hand it to run to open a window with what was registered on it.

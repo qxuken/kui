@@ -9432,3 +9432,32 @@ test('a count from JavaScript that is not one is refused by name, not wrapped (R
   assert.throws(() => animationAt([0.1], -1, 0), /animationAt: loops: -1/);
   assert.equal(animationAt([0.1, 0.1], 0, 0.15).index, 1);
 });
+
+test('a wrong type, an empty image, a NaN volume and a deep message say what they are (RG139)', () => {
+  const ctx = new Ctx();
+  // A number key is its spelling, as jsx() makes one; a number where a
+  // string goes names the element and the prop, not TextEncoder's `src`.
+  ctx.frame(100, 100, 1, box({}, [box({ width: 10, height: 10 }, [], 5)]));
+  assert.ok(ctx.keyOf('5'), 'the key 5 is the label "5"');
+  assert.throws(() => ctx.frame(100, 100, 1, box({ title: 42 }, [])), /<box> title must be a string, got 42/);
+  assert.throws(() => ctx.addImage(0, 0, Buffer.alloc(0)), /addImage: an image is at least 1x1 pixels, not 0x0/);
+  assert.throws(() => ctx.addImage(2, 2, Buffer.alloc(3)), /addImage: rgba must be width\*height\*4 = 16 bytes for 2x2, got 3/);
+  const snd = ctx.addSound(Buffer.from('RIFF....WAVE'));
+  assert.throws(() => ctx.play(snd, { volume: NaN }), /play: volume must be a finite number, got NaN/);
+  assert.throws(() => ctx.play(snd, { fadeIn: Infinity }), /play: fadeIn/);
+  ctx.play(snd, { volume: 0.5, tag: { k: 1 } });
+  // Past serde's 128 levels a message still arrives; past kui's bound the
+  // error says how deep it was.
+  const nest = (n) => { let m = { kind: 'leaf' }; for (let i = 0; i < n; i++) m = { kind: 'n', in: m }; return m; };
+  const deep = nest(300);
+  ctx.frame(100, 100, 1, box({}, [box({ width: 50, height: 50, onClick: deep }, [], 'deep')]));
+  ctx.cursor(10, 10);
+  ctx.mouse(true);
+  ctx.mouse(false);
+  const evs = ctx.pollEvents();
+  assert.deepEqual(evs.find((e) => e.event === 'click').payload, deep);
+  assert.throws(
+    () => ctx.frame(100, 100, 1, box({}, [box({ onClick: nest(2000) }, [], 'deeper')])),
+    /a message nested 2001 levels deep: kui takes 1024/,
+  );
+});

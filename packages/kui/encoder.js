@@ -153,12 +153,26 @@ export function createEncoder(P) {
     f = next;
   }
 
+  // The element and the prop being written, for an error that says where
+  // (backlog RG139): a number where a string goes reached TextEncoder,
+  // whose message — `The "src" argument must be of type string` — named
+  // nothing of the app's.
+  let curTag = '';
+  let curProp = '';
+
+  // A key label: a number is its spelling, as `jsx()` makes one.
+  const keyText = (k) => (typeof k === 'number' && Number.isFinite(k) ? String(k) : k);
+
   // Writes a (offset, len) string ref; null/undefined = absent.
   function strRef(s) {
     if (s == null) {
       f[fi++] = -1;
       f[fi++] = 0;
       return;
+    }
+    if (typeof s !== 'string') {
+      const where = `<${curTag || '?'}>${curProp ? ` ${curProp}` : ''}`;
+      throw new TypeError(`${where} must be a string, got ${typeof s === 'object' ? JSON.stringify(s) : String(s)}`);
     }
     for (;;) {
       const r = textEncoder.encodeInto(s, u.subarray(ui));
@@ -439,7 +453,8 @@ export function createEncoder(P) {
     }
     if (key != null && !isRoot) {
       f[fi++] = PR.key.id;
-      strRef(key);
+      curProp = 'key';
+      strRef(keyText(key));
       n++;
     }
     let pad, padX, padY, padL, padR, padT, padB;
@@ -448,6 +463,7 @@ export function createEncoder(P) {
     for (const k in p) {
       // Enough for the widest single stanza (float writes 12 slots).
       reserve(16);
+      curProp = k;
       const v = p[k];
       if (v === undefined) continue;
       if (admit !== undefined && !admit.has(k)) continue;
@@ -821,6 +837,7 @@ export function createEncoder(P) {
   }
 
   function children(node) {
+    curProp = '';
     if (node == null || typeof node === 'boolean') return;
     if (typeof node === 'string' || typeof node === 'number') {
       // Bare text child: a default-styled text node.
@@ -848,6 +865,8 @@ export function createEncoder(P) {
       children(el.children);
       return;
     }
+    curTag = typeof el.type === 'string' ? el.type : '?';
+    curProp = '';
     const p = el.props ?? {};
     checkProps(el.type, p);
     reserve(96);
@@ -972,7 +991,7 @@ export function createEncoder(P) {
       case 'button':
         f[fi++] = OP.button;
         strRef(collectText(el.children, ''));
-        strRef(el.key);
+        strRef(keyText(el.key));
         strRef(p.onClick != null ? JSON.stringify(p.onClick) : null);
         // The access rows the stock button admits, and only those: the
         // decoder reads them over `widgets::button_spec`, so the button
@@ -989,7 +1008,7 @@ export function createEncoder(P) {
         f[fi++] = OP.toggle;
         f[fi++] = TOGGLE_KIND[el.type];
         strRef(collectText(el.children, ''));
-        strRef(el.key);
+        strRef(keyText(el.key));
         strRef(p.onClick != null ? JSON.stringify(p.onClick) : null);
         props(p, null, false, TOGGLE_ROWS);
         return;
@@ -1002,7 +1021,7 @@ export function createEncoder(P) {
         if (label == null) throw new Error('<slider> needs a label (its accessible name)');
         f[fi++] = OP.slider;
         strRef(String(label));
-        strRef(el.key);
+        strRef(keyText(el.key));
         props(p, null, false, SLIDER_ROWS);
         return;
       }

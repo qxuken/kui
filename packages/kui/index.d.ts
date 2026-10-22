@@ -1274,6 +1274,11 @@ export type WarningCode =
    *  declare `onChange` and store the `change`'s text in the model the value is
    *  read from (ADR 0047, decision 8). */
   | 'edit-value-without-handler'
+  /** A `cells` grid declared more cells than one grid takes —
+   *  `cells::MAX_CELLS`, 4,194,304, a 2048 x 2048 screen — so it draws the rows
+   *  that fit and no more: `rows * cols` from a driver's arithmetic (a `u32`
+   *  each in C) overflowed or asked for gigabytes. */
+  | 'cells-too-large'
   /** A handler's message has a field named for the event it arrives as —
    *  `{kind: "k", key: "a"}` declared as an `onKey` message — and the event's
    *  data replaced it, so the app's own value never reaches it (ADR 0047,
@@ -4046,8 +4051,10 @@ export declare class KuiWindow {
    * after it runs, not even `process.on('exit')` — so this is the only
    * thing an app runs on ⌘Q. `runWindowed` registers its config's
    * `teardown(model)` here; a driver of its own does the same. The
-   * window is gone by then: the callback saves and returns, and does
-   * not call the window's doors. The last registration wins.
+   * window is gone by then: the callback saves and returns. A window
+   * door it calls anyway throws, and a shared one (`editText`,
+   * `pollEvents`, …) reads a blank core instead of the closing window's,
+   * which the pump in flight still holds. The last registration wins.
    */
   onTeardown(callback: () => void): void
   /**

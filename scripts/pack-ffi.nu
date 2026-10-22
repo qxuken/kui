@@ -414,14 +414,22 @@ def "main bundle" [
     let tarballs = [c odin] | each {|kind|
         let name = $"kui-($kind)-($v)"
         let dir = $rel | path join $name
-        for p in $have {
-            lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)") ($dir | path join lib $p)
-        }
         if $kind == "c" {
+            for p in $have {
+                lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)") ($dir | path join lib $p)
+            }
             mkdir ($dir | path join include)
             cp ($OUT | path join $"kui-ffi-($v)-($have | first)" include kui.h) ($dir | path join include)
         } else {
+            # The libraries inside the package, beside the file that links
+            # them, as vendor:raylib carries its own: `import "kui"` is the
+            # whole of using the pack, and the package travels with them.
+            mkdir $dir
             cp -r ($ROOT | path join packages odin kui) $dir
+            for p in $have {
+                lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)") ($dir | path join kui c lib $p)
+            }
+            link-the-pack ($dir | path join kui c) $have
         }
         cp ($ROOT | path join LICENSE) $dir
         readme $kind $v $have | save -f ($dir | path join README.md)
@@ -452,6 +460,96 @@ def lay-out-libs [pack: string, dst: string] {
     cp ($pack | path join BUILD.txt) $dst
 }
 
+# The Odin pack's link block: kui_c.odin's own, between its markers,
+# replaced by one that names the libraries under kui/c/lib/ for each
+# platform packed, with what each platform's link.txt says a static link
+# needs. Static unless -define:KUI_SHARED=true.
+def link-the-pack [c_dir: string, platforms: list<string>] {
+    let file = $c_dir | path join kui_c.odin
+    let text = open --raw $file
+    let start = "// -- link:"
+    let end = "// -- end link"
+    let a = $text | str index-of $start
+    let b = $text | str index-of $end
+    if $a < 0 or $b < 0 {
+        error make { msg: $"($file) has no link markers; regenerate it with odin.nu gen" }
+    }
+    let when_of = {
+        "linux-x64": "ODIN_OS == .Linux && ODIN_ARCH == .amd64"
+        "linux-arm64": "ODIN_OS == .Linux && ODIN_ARCH == .arm64"
+        "darwin-arm64": "ODIN_OS == .Darwin && ODIN_ARCH == .arm64"
+        "win32-x64": "ODIN_OS == .Windows && ODIN_ARCH == .amd64"
+    }
+    let branches = $platforms | each {|p|
+        let lib = $"lib/($p)"
+        let static_dir = $c_dir | path join lib $p static
+        let link = open ($static_dir | path join link.txt) | lines | where {|l| not ($l | str starts-with "#") and ($l | str trim) != "" } | get -o 0 | default "" | split row " " | where {|t| $t != "" }
+        let windows = $p | str starts-with "win32"
+        # rustc's line as Odin imports: `-framework X` a framework, `-lX` a
+        # system library, a `.lib` the pack carries by its path and any
+        # other by name; a `/flag` rides in extra_linker_flags.
+        mut imports = []
+        mut flags = ["/NODEFAULTLIB:libcmt"]
+        mut i = 0
+        while $i < ($link | length) {
+            let t = $link | get $i
+            if $t == "-framework" {
+                $imports = ($imports | append $"system:($link | get ($i + 1)).framework")
+                $i = $i + 2
+                continue
+            }
+            if ($t | str starts-with "-l") {
+                $imports = ($imports | append $"system:($t | str substring 2..)")
+            } else if ($t | str ends-with ".lib") {
+                if ($static_dir | path join $t | path exists) {
+                    $imports = ($imports | append $"($lib)/static/($t)")
+                } else {
+                    $imports = ($imports | append $"system:($t)")
+                }
+            } else if $windows and ($t | str starts-with "/") {
+                $flags = ($flags | append $t)
+            }
+            $i = $i + 1
+        }
+        let imports = $imports | uniq
+        let quoted = {|xs: list<string>| $xs | each {|x| $"\t\t\t\"($x)\"," } | str join "\n" }
+        let shared = if $windows { [$"($lib)/shared/kui_ffi.dll.lib"] } else if ($p | str starts-with "darwin") { [$"($lib)/shared/libkui_ffi.dylib"] } else { [$"($lib)/shared/libkui_ffi.so"] }
+        let static = [$"($lib)/static/(if $windows { 'kui_ffi.lib' } else { 'libkui_ffi.a' })" ...$imports]
+        let attr = if $windows { $"\t\t@\(extra_linker_flags=\"($flags | uniq | str join ' ')\")\n" } else { "" }
+        $"} else when ($when_of | get $p) {
+\twhen KUI_SHARED {
+\t\tforeign import lib {
+(do $quoted $shared)
+\t\t}
+\t} else {
+($attr)\t\tforeign import lib {
+(do $quoted $static)
+\t\t}
+\t}
+"
+    }
+    let block = $"// -- link: this pack's own, written by scripts/pack-ffi.nu's bundle. It
+// links libkui_ffi from lib/<platform>/ beside this file: the static
+// library by default, so a program needs nothing beside it, or with
+// -define:KUI_SHARED=true the shared one, which the program then finds
+// at run time \(an rpath, or the library beside it). A platform the pack
+// does not carry falls back to KUI_LIB, as the repository's file does.
+KUI_SHARED :: #config\(KUI_SHARED, false)
+KUI_LIB :: #config\(KUI_LIB, "system:kui_ffi.dll.lib" when ODIN_OS == .Windows else "system:kui_ffi")
+KUI_PLUGIN :: #config\(KUI_PLUGIN, false)
+
+when KUI_PLUGIN && ODIN_OS == .Darwin {
+\tforeign import lib "system:System"
+} else when KUI_PLUGIN && ODIN_OS != .Windows {
+\tforeign import lib "system:c"
+($branches | str join '')} else {
+\tforeign import lib { KUI_LIB }
+}
+"
+    let out = ($text | str substring 0..<$a) + $block + ($text | str substring $b..)
+    $out | save -f --raw $file
+}
+
 # README.md of a release tarball: what is in it and the link lines, for
 # the platforms it holds.
 def readme [kind: string, v: string, platforms: list<string>] {
@@ -473,22 +571,24 @@ MSVC: `cl /std:c11 /I include app.c /link /LIBPATH:lib\\win32-x64\\shared kui_ff
 and for the static one `kui_ffi.lib`, link.txt's last line and `/NODEFAULTLIB:libcmt`
 from `lib\\win32-x64\\static`."
     } else {
-        $"Import the package as a collection \(`-collection:kui=<this directory>` and
-`import \"kui:kui\"`; Odin takes no absolute import path), or by a path
-relative to your source, and point the linker at a platform's kind:
+        $"Copy `kui/` into your project, or point a collection at this directory,
+and import it — `import kui \"kui:kui\"` with `-collection:kui=<this
+directory>`, or by a path relative to your source; Odin takes no absolute
+import path. That is all: `kui/c/kui_c.odin` links libkui_ffi from
+`kui/c/lib/<platform>/` itself, as vendor:raylib links its own, the
+static library by default, so the program needs nothing beside it:
 
 ```sh
-# dynamic
-odin build app -extra-linker-flags:\"-Llib/<platform>/shared -Wl,-rpath,<absolute>/lib/<platform>/shared\"
-# static: link.txt's last line is what the archive needs besides itself
-odin build app -extra-linker-flags:\"-Llib/<platform>/static $\(tail -1 lib/<platform>/static/link.txt)\"
+odin build app -collection:kui=<this directory>
+# the shared library instead, found at run time through an rpath \(on
+# Windows, copy kui/c/lib/win32-x64/shared/kui_ffi.dll beside the program)
+odin build app -collection:kui=<this directory> -define:KUI_SHARED=true \\
+  -extra-linker-flags:\"-Wl,-rpath,<absolute>/kui/c/lib/<platform>/shared\"
 ```
 
-On Windows the dynamic link is the default \(`kui_ffi.dll.lib`; copy
-`kui_ffi.dll` beside the program); the static one is
-`-define:KUI_LIB=system:kui_ffi.lib`, link.txt's last line and
-`/NODEFAULTLIB:libcmt`, from `lib\\win32-x64\\static`. The package's own
-documentation is `kui/README.md` in the repository, packages/odin/README.md."
+`-define:KUI_LIB=<name>` links a library of your own instead, on a
+platform the pack does not carry. The package's own documentation is
+packages/odin/README.md in the repository."
     }
     $"# kui ($kind) ($v)
 
@@ -528,7 +628,8 @@ def "main verify" [
     mkdir $work
     tar -xzf $tarball -C $work
     let root = $work | path join $name
-    let lib = $root | path join lib $p
+    # The Odin pack carries its libraries inside the package.
+    let lib = if $kind == "odin" { $root | path join kui c lib $p } else { $root | path join lib $p }
     if not ($lib | path exists) {
         error make { msg: $"($name) has no libraries for ($p)" }
     }
@@ -550,10 +651,13 @@ def "main verify" [
                 | str replace 'import kui "../../../packages/odin/kui"' 'import kui "kuipack:kui"'
                 | save -f --raw $src
             let odin = $env.ODIN? | default "odin"
-            let flags = if $how == "shared" { [$"-L($rpath)" $"-Wl,-rpath,($rpath)"] } else { [$"-L($lib | path join static)" ...$link_line] }
-            # As a collection, which is how the tarball's README says to
-            # import it: Odin takes no absolute import path.
-            run-or-fail $"odin, ($how)" $odin build $src -file $"-collection:kuipack=($root)" $"-out:($exe)" $"-extra-linker-flags:($flags | str join ' ')"
+            # Nothing but the import: the pack's kui_c.odin names its own
+            # libraries, as vendor:raylib does. The shared build is told to
+            # be one, and where to find the library when it runs. Imported
+            # as a collection, as the tarball's README says: Odin takes no
+            # absolute import path.
+            let flags = if $how == "shared" { ["-define:KUI_SHARED=true" $"-extra-linker-flags:-Wl,-rpath,($rpath)"] } else { [] }
+            run-or-fail $"odin, ($how)" $odin build $src -file $"-collection:kuipack=($root)" $"-out:($exe)" ...$flags
         }
         let r = do { ^$exe --headless } | complete
         if $r.exit_code != 0 {

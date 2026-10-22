@@ -1568,11 +1568,16 @@ fn custom_editor(tree: &Tree, src: &Sources<'_>, i: usize, node: &mut AccessNode
             clip_runs(&mut node.runs[at..], clip_of(src, l));
             run_no += 1;
         }
+        // The app's byte offsets, each a place in the line: one inside a
+        // character is the character's start, as `text_pos` reads it (RG135),
+        // so the flat `caret` and `selection` below are places in `value`
+        // too — a host slicing `value` at them panicked (backlog RG145).
+        let place = |b: u32| line_text.floor_char_boundary((b as usize).min(line_text.len()));
         if let Some(c) = tree.specs[l].access().caret {
-            caret = Some((ln, (c as usize).min(line_text.len())));
+            caret = Some((ln, place(c)));
         }
         if let Some(a) = tree.specs[l].access().selection_anchor {
-            anchor = Some((ln, (a as usize).min(line_text.len())));
+            anchor = Some((ln, place(a)));
         }
         if ln > 0 {
             value.push('\n');

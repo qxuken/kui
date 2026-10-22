@@ -40,12 +40,38 @@ was the first bare bump to break an app in five releases).
   event's data. A grid's or a line row's click into a message with its
   own `click` field replaces it and raises `message-field-taken`, where
   the pointer's fields were added to the app's map (backlog RG157).
+- A `cells` grid past `cells::MAX_CELLS` (4,194,304 cells, a 2048 x 2048
+  screen) draws the rows that fit and raises the new `cells-too-large`
+  warning, where `rows * cols` overflowed or asked the allocator for
+  gigabytes (backlog RG139). `WarningCode` gains the code.
+- Node: a non-string where a string prop goes throws `<box> title must
+  be a string, got 42` (the element and the prop), where it threw
+  TextEncoder's `The "src" argument must be of type string`; a number
+  `key` on the plain-call API is its spelling, as `jsx()` already made
+  one. `addImage` / `updateImage` of 0x0 say an image is at least 1x1,
+  and `play` refuses a `volume` or `fadeIn` that is not finite by name,
+  where it failed in serde. `KuiWindow`'s `close` and `useWindow` return
+  through `Result` (the types are unchanged) (backlog RG139).
+- The Odin binding's `kui/c` takes the context as `^Ctx` in the ten
+  functions it typed `[^]Ctx` (a context followed by a `size_t`): the
+  same ABI, the C type it claims to keep (backlog RG145).
 
 A message named its own fields, and the core read one of them as its
 own whenever the event had nothing to write there; the flag that says
 the core wrote the field is what both readings now ask.
 
 ### Added
+
+- **The Odin tarball links itself**: `kui-odin-<version>.tar.gz` carries
+  `libkui_ffi` inside the package, under `kui/c/lib/<platform>/`, and
+  its `kui_c.odin` names those libraries per platform the way
+  `vendor:raylib` does — the static library and the system libraries its
+  `link.txt` lists by default, or the shared one with
+  `-define:KUI_SHARED=true` — so `import kui "kui:kui"` with a collection
+  is all a program needs, no `-extra-linker-flags`. The repository's
+  `kui_c.odin` keeps `KUI_LIB`; the bundle writes the pack's block
+  between markers the generator emits. `pack-ffi.nu verify` builds the
+  Odin counter that way, static with no flags at all.
 
 - **Lua's `on_event(ev, at)`**: the envelope alone as a second argument
   — `at.event`, `at.node_key`, `at.window`, and `at.slot` and `at.from`
@@ -68,6 +94,34 @@ the core wrote the field is what both readings now ask.
   `--no-runner` pack is `kui-ffi-<version>-<platform>-no-runner`, where it
   overwrote the full pack of its platform. The volume before this one,
   `kui-pack-target`, can go.
+
+- A Node message nested past serde's 128 levels arrives; past
+  `MESSAGE_DEPTH`, 1024, the frame's error says how deep it was, where
+  every message deeper than 128 failed the frame with "recursion limit
+  exceeded" (backlog RG139). Lua and C take any depth.
+- A `KuiWindow`'s `onTeardown` that calls the window back: its own doors
+  (`pump`, `pumpUntil`, `close`, `useWindow`, `onTeardown`) throw, and a
+  shared door reads a blank core, where each was a second `&mut` of the
+  window the pump in flight holds (backlog RG139).
+- A custom editor's `KuiAccessNode.caret`, `selection_start` and
+  `selection_end` are places in `value`, the start of a character an
+  app's byte offset falls inside, as `focus` and `anchor` were since
+  RG135: a host slicing `value` at them panicked (backlog RG145).
+- `docs/BACKLOG.md`'s ten links into the archive that landed on no
+  heading land (each dropped an underscore, or a hyphen around `⌫`), and
+  the docs test now checks every such link, the uniqueness of a heading
+  marked `` `x` ``, and that every id `howto.md` cites exists (backlog
+  RG145).
+- The Odin generator matches an event's payload fields by their exact
+  name, as the decoder reads them, so a camelCase key fails generation
+  where it decoded as zero; `doors.odin`'s `image_pixels` promises its
+  bytes until the next call, as kui.h does; and `run.odin` says a loop of
+  your own frees `context.temp_allocator` once a turn (backlog RG145).
+
+- A warm `cells` grid draws 13% faster (200x50: 78 µs to 68 on an M3
+  Pro, streaming 85 to 74): since alpha.41 its emitter had been inlined
+  into the paint loop, which ran the same work 29% slower than it does as
+  a function of its own (backlog RG126).
 
 ### Changed
 

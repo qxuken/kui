@@ -70,19 +70,26 @@ has no rpath. Outside this repository, pass your own
 ## Linking a prebuilt library
 
 Outside this repository there is no cargo build to link. Each release on
-GitHub carries `kui-odin-<version>.tar.gz`: this package as `kui/`, and
-`libkui_ffi` for linux-x64, linux-arm64, darwin-arm64 and win32-x64 under
-`lib/<platform>/shared/` and `lib/<platform>/static/` (with `link.txt`, the
-system libraries a static link needs), so a kind is a directory:
+GitHub carries `kui-odin-<version>.tar.gz`: this package as `kui/`, with
+`libkui_ffi` for linux-x64, linux-arm64, darwin-arm64 and win32-x64 inside
+it, under `kui/c/lib/<platform>/{shared,static}/`, and a `kui/c/kui_c.odin`
+that links them itself, the way `vendor:raylib` links its own. Importing
+the package is all a program does:
 
 ```sh
-odin build app -extra-linker-flags:"-L$ODIN_PACK/lib/linux-x64/shared -Wl,-rpath,$ODIN_PACK/lib/linux-x64/shared"
-odin build app -extra-linker-flags:"-L$ODIN_PACK/lib/linux-x64/static $(tail -1 $ODIN_PACK/lib/linux-x64/static/link.txt)"
+odin build app -collection:kui=$ODIN_PACK          # import kui "kui:kui": static, nothing beside the program
+odin build app -collection:kui=$ODIN_PACK -define:KUI_SHARED=true \
+  -extra-linker-flags:"-Wl,-rpath,$ODIN_PACK/kui/c/lib/linux-x64/shared"   # the shared library, found at run time
 ```
 
-Every release's four platforms are checked as packed, by
-`nu scripts/pack-ffi.nu verify`: the counter built against each kind and
-run `--headless`, on Linux and macOS. To build the library yourself
+The static build is the default and takes the system libraries its
+`link.txt` lists (ALSA's `asound` on Linux, the frameworks on macOS); on a
+platform the pack does not carry, `KUI_LIB` applies as it does here.
+
+The Linux and macOS packs are checked as packed, by `nu scripts/pack-ffi.nu
+verify` on each release's runners: the counter built against each kind,
+the static one with no flags at all, and run `--headless`. The Windows
+pack is built there and not yet run. To build the library yourself
 instead, `nu scripts/pack-ffi.nu` writes one platform's pack,
 `target/pack/kui-ffi-<version>-<platform>/`, with `include/kui.h`, the
 dynamic and static library together in `lib/`, and `link.txt`:
