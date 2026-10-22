@@ -1277,11 +1277,13 @@ export function createEncoder(P) {
         // cursor names a cell to paint under its glyph.
         // A count of 0 — `rows = Math.floor(roomH / lineH)` in a pane
         // shorter than a line — is an empty grid, declared under its key
-        // like any other; only a missing or negative count is refused
-        // (backlog RG160).
-        if (!(p.rows >= 0 && p.cols >= 0)) throw new Error('<cells> needs rows and cols');
-        const rows = p.rows | 0;
-        const cols = p.cols | 0;
+        // like any other; only a count left out (or not a number) is
+        // refused (backlog RG160). A count reads as Lua's does: floored,
+        // below 0 or NaN as 0, capped where the stream's slot is.
+        const count = (v) => (typeof v !== 'number' ? null : v > 0 ? Math.min(Math.floor(v), 0xffffffff) : 0);
+        const rows = count(p.rows);
+        const cols = count(p.cols);
+        if (rows == null || cols == null) throw new Error('<cells> needs rows and cols');
         const n = rows * cols;
         const cells = p.cells ?? (n === 0 ? [] : null);
         const per = cells != null && cells.length === n * 5 ? 5 : 4;

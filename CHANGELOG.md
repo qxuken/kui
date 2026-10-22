@@ -27,8 +27,8 @@ was the first bare bump to break an app in five releases).
 
 - A box's `tooltip` stays down while the pointer is over a descendant
   floated against something other than the box — a dialog or a toast
-  on the viewport, a popover anchored to another node by key — where
-  alpha.62 showed it there (backlog RG160).
+  on the viewport, a popover anchored to another node by key — that
+  takes the pointer, where alpha.62 showed it there (backlog RG160).
 - A box at `opacity: 0` floats no hint, and a departing box's ghost
   carries none: alpha.62 drew the first in full and faded the second
   with the box.
@@ -44,7 +44,9 @@ was the first bare bump to break an app in five releases).
   `7`, `0.4` — where it printed `{:.0} px`.
 - A `cells` grid of 0 rows or 0 columns is an empty grid declared under
   its key in Lua, Node and C: Lua and Node refused it and failed the
-  frame, C declared no node. A click on it carries no `cell`.
+  frame, C declared no node. A click on it carries no `cell`. Node
+  reads a count as Lua does, a negative or NaN one as 0, where it
+  refused it.
 - macOS: the windows' `icon` (`Launcher::icon`, Node's `icon` in
   `WindowOptions`, `kui_set_icon`, Odin's `set_icon`) is the app's Dock
   and ⌘Tab icon while it runs, where alpha.62 ignored it — unless the
@@ -59,12 +61,13 @@ was the first bare bump to break an app in five releases).
   ⌘Tab, Node's or the generic one. The pixels are now the app's icon
   (`NSApp.applicationIconImage`), set when the first window opens and
   kept until the process ends. A bundle whose `Info.plist` names an icon
-  (`CFBundleIconFile` or `CFBundleIconName`) keeps its own, the way a
-  Windows icon resource wins over the pixels: an `.icns` has a frame for
-  each size, and it is what the Finder shows. The name under the tile
-  and in the menu bar stays the executable's — no process call changes
-  it; only a bundle does. Pass 512 or 1024 px with the margin a macOS
-  icon leaves around its shape, or it is drawn edge to edge in the tile.
+  (`CFBundleIconFile` or `CFBundleIconName`, not empty) keeps its own,
+  the way a Windows icon resource wins over the pixels: an `.icns` has a
+  frame for each size, and it is what the Finder shows. The name under
+  the tile and in the menu bar stays the executable's — no process call
+  changes it; only a bundle does. The pixels are read as sRGB, as the
+  window's are. Pass 512 or 1024 px with the margin a macOS icon leaves
+  around its shape, or it is drawn edge to edge in the tile.
 
 ### Fixed
 
@@ -76,7 +79,10 @@ was the first bare bump to break an app in five releases).
   is placed somewhere else, and the pointer over it, or over anything
   in it, is not over the box; one floated against the box — a badge, a
   menu below a trigger — still is, as a positioned child is under a
-  browser's `title` (backlog RG160).
+  browser's `title`. The float has to take the pointer — a hover style
+  or an event — for the pointer to be over it: a toast
+  of bare text lets it through to the box, as it does a `hoverBg`
+  (backlog RG160).
 - A box at `opacity: 0` — laid out but not shown, or at the first frame
   of an `enter` from 0 — floated its hint in full over nothing, since
   F178 takes the hint's opacity from the box's parent. It floats none.
@@ -91,7 +97,8 @@ was the first bare bump to break an app in five releases).
   selection survive the pane growing back; a count left out is still
   refused. Node refused one the same way, and C declared no node at
   all, so the key and its focus went with it; both declare the empty
-  grid now. A click on an empty grid named cell (0, 0), clamped to a
+  grid now, and Node reads a count as Lua does — floored, a negative or
+  NaN one as 0, a `null` one left out. A click on an empty grid named cell (0, 0), clamped to a
   grid that has none, which an app indexing its screen by it read past;
   it names no cell.
 - Node: a family token declared under the name of a colour or length
@@ -115,6 +122,35 @@ was the first bare bump to break an app in five releases).
   there only so a short pane did not fail the frame.
 - A `tooltip` moved off a component, or an `if open` hint guard, kept
   only so the component's hint did not show over its own dialog.
+
+### Native verification
+
+One pre-tag pass on 2026-10-22 over the round since alpha.62 — RG161,
+F181 — on the Mac (backlog, "From the alpha.63 pre-tag pass").
+
+**macOS** (Apple silicon, macOS 27): CI's `check` step by step — fmt,
+clippy, the book, the conformance report, the C round, the Odin leg
+(`gen --check`, `check`, `test`, `slots`) on dev-2026-10, CI's pin, the
+Node addon under `KUI_CONFORMANCE_REQUIRED=1`, gen, the examples'
+typecheck, the headless round — and `nu scripts/test.nu --node` on the
+tagged tree: **2509 tests over 172 Rust suites and Node's**. `cargo
+audit` clean. The windowed round with Node's: 55 examples on both
+bases, 132 windows. The accessibility audit: **106 of 106**. The bench
+guard against alpha.62 on `frame`, `stream`, `cells`, `long_line` and
+`editing`: the guarded rows −3.7% to +2.5%, and every row of the five
+within its noise. Two read-only reviewers over the diff raised three
+things fixed before the tag and folded into F181's and RG161's entries
+above — an empty icon name in a bundle's `Info.plist`, the Dock bitmap's
+colour space, Node's reading of a negative or `null` grid count — and
+one changelog line that promised more than the hover model gives. What
+they raised that wants a decision is RG162.
+
+**The C and Odin tarballs**: darwin-arm64 packed natively, bundled, and
+`pack-ffi.nu verify` over both — the counter linked shared and static
+and run headless, C and Odin, on the Mac. Nothing in the round touched
+the packing; the Linux and Windows packs are as alpha.62's, which
+GitHub's release run built. The Dock icon itself was seen on this Mac
+when F181 was built; the pass did not look at it again by hand.
 
 ## 0.1.0-alpha.62 (2026-10-22)
 

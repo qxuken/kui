@@ -3071,6 +3071,47 @@ each ran in 0.3–2.8 s against the 10 s it is allowed. `decode`'s two slow
 units are animated WebPs with canvases just under the 512 MiB ceiling, as
 in the alpha.56 round.
 
+## From the alpha.63 pre-tag pass (2026-10-22)
+
+The round since alpha.62 — RG161, F181 — on the Mac: CI's `check` in
+order (2259 Rust tests in 171 suites; the C round; the Odin leg on
+dev-2026-10, CI's pin; Node with the corpus required, 250 tests; gen;
+the typecheck; the headless round), `cargo audit`, the windowed smoke
+with Node's (55 examples on both bases, 132 windows), the accessibility
+audit (106 of 106), the bench guard against alpha.62 on five bench
+files (the guarded rows −3.7% to +2.5%, every row within its noise),
+and two read-only reviewers — F181's AppKit code, RG161's core and
+bindings — each claim checked by reading before it was acted on. Green
+as found. Three of what the reviewers raised were fixed before the tag
+and folded into the entries they fix, since neither had shipped: a
+bundle whose `Info.plist` carries `CFBundleIconFile` as an empty string
+kept the generic icon over the launcher's pixels (an empty name names
+none now), the Dock's bitmap was tagged device RGB and drawn
+unmanaged on a wide-gamut display (sRGB now), and Node refused a
+negative or NaN grid count where Lua reads it as 0 rows, and took a
+`null` one where Lua refuses it (Node reads a count as Lua does now).
+RG161's changelog line said a toast over a tooltip box puts the hint
+down; it does when the toast takes the pointer, and says so now. RG162
+is what is left.
+
+### `.` RG162 — What the alpha.63 pre-tag pass left
+
+Read, not reproduced as a defect an app meets:
+
+- **A leaf's hint ignores the leaf's opacity.** RG161 floats no hint
+  under a box at `opacity: 0` and none in an exit ghost, keyed on the
+  hint flag `hover_hint` sets. `leaf_hint` (an image, a `cells` grid,
+  an editor, a `line`) opens its hint beside the leaf, under the leaf's
+  parent, without the flag, so a hovered leaf at 0 — or at the first
+  frame of an `enter` from 0 — floats its hint in full, and a hovered
+  leaf inside a departing box fades its hint with the ghost. The
+  changelog promises the rule for a box only; extending it needs the
+  hint to know its leaf's opacity in the live pass and the ghost pass.
+- **App-drawn hints fade with a ghost.** `widgets::tooltip` and
+  `tooltip_with` set no hint flag either; they are not hover-gated, so
+  fading with the departing box is probably right. Recorded so a
+  later round decides it rather than finds it.
+
 ## From the alpha.62 pre-tag pass (2026-10-22)
 
 The round since alpha.61 — F178, F179, T6 with ADR 0049, F180 — on the

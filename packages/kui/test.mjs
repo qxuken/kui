@@ -1513,6 +1513,11 @@ test('a cells grid of no rows is an empty grid under its key, and a click on it 
   assert.equal(hit?.kind, 'hit', 'the click is the grid\'s');
   assert.equal(hit?.click?.cell, undefined, 'and names no cell an empty grid has');
   assert.throws(() => ctx.frame(400, 200, 1, root({}, [el('cells', { ...mono, cols: 11 }, [], 'term')])), /needs rows and cols/);
+  // Read as Lua reads a count: a negative or NaN one is 0 rows, a null
+  // one is left out.
+  for (const rows of [-1, NaN, 0.5]) ctx.frame(400, 200, 1, view(rows));
+  assert.deepEqual(ctx.warnings(), []);
+  assert.throws(() => ctx.frame(400, 200, 1, view(null)), /needs rows and cols/);
 });
 
 // A `selectable` grid selects in cells, and the click count picks the

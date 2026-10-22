@@ -238,10 +238,23 @@ fn bundle_has_icon() -> bool {
     use objc2_foundation::{NSBundle, NSString};
     let bundle = NSBundle::mainBundle();
     ["CFBundleIconFile", "CFBundleIconName"].iter().any(|key| {
-        bundle
-            .objectForInfoDictionaryKey(&NSString::from_str(key))
-            .is_some()
+        names_an_icon(
+            bundle
+                .objectForInfoDictionaryKey(&NSString::from_str(key))
+                .as_deref(),
+        )
     })
+}
+
+/// Whether an `Info.plist` value names an icon: a string with something
+/// in it. Older Xcode templates and hand-written wrappers carry the key
+/// with an empty string, which names nothing, and the pixels go up.
+#[cfg(target_os = "macos")]
+fn names_an_icon(value: Option<&objc2::runtime::AnyObject>) -> bool {
+    use objc2_foundation::NSString;
+    value
+        .and_then(|v| v.downcast_ref::<NSString>())
+        .is_some_and(|s| s.length() > 0)
 }
 
 /// `px` as `NSApp.applicationIconImage`, which the Dock scales to its
@@ -257,12 +270,14 @@ fn set_dock_icon(px: &DockPixels) {
     unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
 }
 
-/// `px` as an image of one bitmap rep, as many points as it has pixels;
-/// `None` when AppKit will not make the rep.
+/// `px` as an image of one bitmap rep, as many points as it has pixels,
+/// tagged sRGB; `None` when AppKit will not make the rep.
 #[cfg(target_os = "macos")]
 fn dock_image(px: &DockPixels) -> Option<objc2::rc::Retained<objc2_app_kit::NSImage>> {
     use objc2::AllocAnyThread;
-    use objc2_app_kit::{NSBitmapFormat, NSBitmapImageRep, NSDeviceRGBColorSpace, NSImage};
+    use objc2_app_kit::{
+        NSBitmapFormat, NSBitmapImageRep, NSColorSpace, NSDeviceRGBColorSpace, NSImage,
+    };
     use objc2_foundation::NSSize;
     let (w, h) = (px.width as isize, px.height as isize);
     // SAFETY: no planes, so AppKit allocates the buffer itself — four
@@ -291,6 +306,12 @@ fn dock_image(px: &DockPixels) -> Option<objc2::rc::Retained<objc2_app_kit::NSIm
     // SAFETY: the rep's own buffer, `bytesPerRow * h` bytes — the length
     // of the launcher's pixels, which `from_rgba` checked.
     unsafe { std::ptr::copy_nonoverlapping(px.rgba.as_ptr(), data, px.rgba.len()) };
+    // Device RGB is drawn unmanaged, so a wide-gamut display saturated the
+    // tile past the same pixels in the window; they are sRGB, as on the
+    // other platforms. The retag keeps the bytes and changes the label.
+    let rep = rep
+        .bitmapImageRepByRetaggingWithColorSpace(&NSColorSpace::sRGBColorSpace())
+        .unwrap_or(rep);
     let image = NSImage::initWithSize(
         NSImage::alloc(),
         NSSize::new(px.width as f64, px.height as f64),
@@ -392,12 +413,22 @@ mod tests {
 
     /// On macOS the pixels are the app's Dock icon (backlog F181): kept
     /// whole beside winit's icon, and made into an image of that many
-    /// points whose one rep holds them byte for byte, straight alpha. A
-    /// test binary is no bundle, so it names no icon to keep instead.
+    /// points whose one rep holds them byte for byte, straight alpha,
+    /// tagged sRGB. A test binary is no bundle, so it names no icon to
+    /// keep instead, and an empty name names none either.
     #[cfg(target_os = "macos")]
     #[test]
     fn the_pixels_are_the_dock_s_icon_on_macos() {
-        use objc2_app_kit::NSBitmapImageRep;
+        use objc2_app_kit::{NSBitmapImageRep, NSColorSpace};
+        use objc2_foundation::{NSArray, NSString};
+        fn names(v: &objc2::runtime::AnyObject) -> bool {
+            names_an_icon(Some(v))
+        }
+        assert!(!names_an_icon(None));
+        assert!(!names(&NSString::from_str("")));
+        assert!(!names(&NSArray::<NSString>::new()));
+        assert!(names(&NSString::from_str("AppIcon")));
+
         let rgba: Vec<u8> = (0..3 * 2 * 4).map(|i| (i * 10) as u8).collect();
         let set = AppIcon::new(Some(from_rgba(rgba.clone(), 3, 2).unwrap()), None);
         let px = set.dock.as_ref().expect("the dock's pixels");
@@ -415,6 +446,7 @@ mod tests {
             .downcast::<NSBitmapImageRep>()
             .unwrap();
         assert_eq!((rep.pixelsWide(), rep.pixelsHigh()), (3, 2));
+        assert_eq!(rep.colorSpace(), NSColorSpace::sRGBColorSpace());
         // SAFETY: the rep's buffer, 3 × 2 pixels of four bytes, unpadded
         // (`dock_image` refuses a rep that pads its rows).
         let bytes = unsafe { std::slice::from_raw_parts(rep.bitmapData(), rgba.len()) };
