@@ -512,13 +512,39 @@ impl Tokens {
     /// Picks every family token's face: the first name of its list that
     /// is a stock family or that `register` turns into a handle. Answers
     /// the tokens nothing matched, for the caller to raise. What the core
-    /// runs when the table is declared and when the session's fonts move.
+    /// runs when the session's fonts move.
     pub fn pick_families(
         &mut self,
+        register: impl FnMut(&str) -> Option<crate::resources::FontId>,
+    ) -> Vec<(String, Vec<String>)> {
+        self.pick_families_over(None, register)
+    }
+
+    /// [`Self::pick_families`] for a table declared over `prev`, picked
+    /// against the same fonts: a token whose name and list `prev` holds
+    /// takes `prev`'s pick, and only a new or changed list asks
+    /// `register`. A table set every frame — Lua's `env.set_tokens` in a
+    /// view, a C host's `kui_tokens_set` per frame — costs no font query
+    /// once its lists are picked (backlog RG159).
+    pub fn pick_families_over(
+        &mut self,
+        prev: Option<&Tokens>,
         mut register: impl FnMut(&str) -> Option<crate::resources::FontId>,
     ) -> Vec<(String, Vec<String>)> {
         let mut missed = Vec::new();
         for (name, tok) in &mut self.families {
+            let kept = prev
+                .and_then(|p| p.families.iter().find(|(n, _)| n == name))
+                .map(|(_, t)| t)
+                .filter(|t| t.names == tok.names);
+            if let Some(kept) = kept {
+                tok.pick = kept.pick;
+                tok.family = kept.family;
+                if tok.pick.is_none() {
+                    missed.push((name.clone(), tok.names.clone()));
+                }
+                continue;
+            }
             tok.pick = None;
             tok.family = FontFamily::Sans;
             for (i, n) in tok.names.iter().enumerate() {
@@ -1055,6 +1081,38 @@ mod tests {
         assert!(is_role("border_strong"));
         assert!(is_role("borderStrong"));
         assert!(is_role("controlPadX"));
+    }
+
+    /// A table declared over the last one with the same lists takes its
+    /// picks without a font query; a changed list is queried again
+    /// (backlog RG159).
+    #[test]
+    fn a_redeclared_family_list_keeps_its_pick() {
+        let id = crate::resources::FontId::from_ffi(7);
+        let asked = std::cell::RefCell::new(Vec::<String>::new());
+        let register = |n: &str| {
+            asked.borrow_mut().push(n.to_string());
+            (n == "Fira").then_some(id)
+        };
+        let mut first = Tokens::new()
+            .family("code", ["Iosevka", "Fira"])
+            .family("ui", ["Nope"]);
+        let missed = first.pick_families(register);
+        assert_eq!(missed.len(), 1, "`ui` matched nothing");
+        assert_eq!(*asked.borrow(), ["Iosevka", "Fira", "Nope"]);
+
+        asked.borrow_mut().clear();
+        let mut again = Tokens::new()
+            .family("code", ["Iosevka", "Fira"])
+            .family("ui", ["Nope"]);
+        let missed = again.pick_families_over(Some(&first), register);
+        assert!(asked.borrow().is_empty(), "no query for an unchanged list");
+        assert_eq!(missed.len(), 1, "a miss is still a miss");
+        assert_eq!(again.families[0].1.family, FontFamily::Custom(id));
+
+        let mut changed = Tokens::new().family("code", ["Fira"]);
+        changed.pick_families_over(Some(&first), register);
+        assert_eq!(*asked.borrow(), ["Fira"], "a changed list is picked again");
     }
 
     #[test]

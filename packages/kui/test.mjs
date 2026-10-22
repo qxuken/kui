@@ -8243,6 +8243,19 @@ test('a role takes the same $ spelling, and a declared role name is refused with
   assert.deepEqual(ctx.warnings().filter((w) => w.code === 'unknown-token'), []);
 });
 
+test('a role name in snake_case is refused as the camelCase one is, and shifts no index', () => {
+  const ctx = new Ctx();
+  ctx.setInspect(true);
+  // The core refuses both spellings; the encoder counted only camelCase as
+  // a role, so `gap` took the slot after the one the core gave it.
+  ctx.setTokens({ colors: { border_strong: '#ff0000', peach: '#ffcc99' }, lengths: { disabled_opacity: 0.4, gap: 5 } });
+  ctx.frame(320, 240, 1, root({}, [box({ width: 20, height: 20, bg: '$peach', padL: '$gap' }, [], 'p')]));
+  const p = ctx.nodes().find((n) => n.label === 'p');
+  assert.equal(p.bg, 0xffcc99ff, 'the colour after the refused name');
+  assert.equal(p.padding.l, 5, 'the length after the refused name');
+  assert.deepEqual(ctx.warnings().map((w) => w.code), ['reserved-token', 'reserved-token']);
+});
+
 test('a $name nothing declared, or of the other kind, is dropped and warned about once', () => {
   const ctx = new Ctx();
   ctx.setInspect(true);

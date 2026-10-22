@@ -418,7 +418,8 @@ An unknown appearance takes the **dark** base — not a guess about the
 user, but exactly what kui painted before this table existed, which is
 what makes following the OS safe as the default rather than an opt-in.
 Beside the roles ride \`appearance\` (which base this came from) and
-\`disabled_opacity\` / \`disabledOpacity\` (a multiplier, not a colour).
+\`disabled_opacity\` / \`disabledOpacity\` (a multiplier, not a colour,
+which any number prop takes as \`$disabledOpacity\`, ADR 0049).
 
 ${tableOf(
   ['role', 'Node', 'dark', 'light', 'description'],

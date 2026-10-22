@@ -243,7 +243,8 @@ and font families by token — was built with its ADR the day it was
 filed, after the alpha.61 tag, and is in the archive; and F180, from
 kawoosh's mlua 0.12.2 audit — a fraction where kui-lua reads a whole
 number — was built the day it was filed, after the alpha.61 tag, and is
-in the archive.
+in the archive; and RG159, from the alpha.62 pre-tag pass, was built the
+day it was filed, before the tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3063,6 +3064,71 @@ each ran in 0.3–2.8 s against the 10 s it is allowed. `decode`'s two slow
 units are animated WebPs with canvases just under the 512 MiB ceiling, as
 in the alpha.56 round.
 
+## From the alpha.62 pre-tag pass (2026-10-22)
+
+The round since alpha.61 — F178, F179, T6 with ADR 0049, F180 — on the
+Mac: CI's `check` in order (the Rust tests; the C round; the Odin leg
+on dev-2026-10, CI's pin; Node with the corpus required; gen; the
+typecheck; the headless round), `cargo audit`, the windowed smoke with
+Node's (55 examples on both bases), the accessibility audit (106 of
+106), the bench guard against alpha.61, and three read-only reviewers
+— the core, the bindings, the docs — each claim checked by reading
+before it was acted on. Green as found. RG159 is what the reviewers
+found — F179's second hint over a stock control, F178 missing the
+toggles and the slider, four overflows F180 opened in kui-lua and a
+handle that wrapped, Node's encoder counting a snake_case role, a
+family table re-picked every frame, the docs — **built 2026-10-22**,
+the day it was filed, before the tag, and in the archive. RG160 is
+what they raised that is a decision or a cost, not a defect anything
+reached.
+
+### `.` RG160 — What the alpha.62 pre-tag pass left
+
+Each of these was read and none was reproduced as a defect an app
+meets; each wants a decision more than a fix.
+
+- **A departing box's hint fades with the box again.** F178 skips the
+  box's own opacity for its hint in the live pass; the exit ghost
+  (`emit.rs`, the ghost replay) multiplies straight down, so a hovered,
+  dimmed card with a `tooltip` and an `exit` drops its hint to the
+  card's opacity times the fade for the exit's length. The ghost root's
+  eased opacity carries the box's own dimming and the fade together, so
+  "what the box inherited" has no clean value there: decide whether a
+  ghost's hint fades with the exit from full, or hides.
+- **A box at `opacity: 0` shows a hint in full.** F178 takes the hint's
+  opacity from the box's parent, and hit-testing ignores opacity, so an
+  invisible but laid-out box — or one at the first frame of `enter: {
+  opacity: 0 }` — floats a readable hint over nothing. A leaf's hint
+  always did. Clamp the hint to 0 under a box at 0, or document it.
+- **F179's subtree is the tree's, not the screen's.** `hint_shows`
+  scans every key pushed since the box opened, so a viewport float, a
+  dialog or a popover declared inside a tooltip box (`if open {
+  dialog(..) }` inside the component) shows the box's hint while the
+  pointer is over the dialog. A browser's `title` does the same for
+  DOM descendants; stopping the scan at a layer root (`opens_layer`)
+  is the other answer.
+- **An unbalanced extension fill leaves hints behind.** `fills.rs`
+  cuts the stack back after a fill that raised `unbalanced_extension`
+  but leaves `hints`; since F179 records every `tooltip` box, hovered
+  or not, a leftover entry deeper than the stack keeps the outer boxes'
+  hints from popping until the stack grows back to it.
+- **A kept fill keeps its family pick.** ADR 0045's journal notes
+  Theme and Metrics reads but not a family token's, so a Node or Lua
+  kept fill that lowered `family="$code"` replays the face it was kept
+  with after a font load moves the pick, until something else runs it.
+- **Token edges between the bindings.** An empty family list is
+  refused by Node and Lua and accepted by Rust, C (a NULL `names` with
+  a count included) and Odin as a token that is always sans; a family
+  token that takes a colour's or length's name moves the core's
+  `by_name` but not the JS encoder's map, so `bg="$code"` paints in
+  Node from the orphaned slot; the devtools print a length token as
+  `{:.0} px`, so a `fade: 0.4` an `opacity` takes reads "0 px".
+- **A Lua grid of 0 rows fails the view.** F180 makes `rows = room_h /
+  line_h` the rows that fit, and a window shorter than one line makes
+  that 0, which `cells` refuses ("needs rows and cols"); an empty grid
+  or a warning matches the floor. F180's archive entry also left open
+  which way Node goes for a count (Lua floors, Node refuses).
+
 ## From the alpha.61 pre-tag pass (2026-10-22)
 
 The round since alpha.60 — F176, F177, RG121, RG126, RG139, RG145,
@@ -4895,3 +4961,7 @@ move.
 **From kawoosh's mlua 0.12.2 audit (2026-10-22)** — F180, filed and built the same day
 
 - `~` **F180** — [kui-lua refuses a fraction where it reads a whole number, but not everywhere](backlog/closed-2026-09.md#-f180--kui-lua-refuses-a-fraction-where-it-reads-a-whole-number-but-not-everywhere--done-2026-10-22) — done (2026-10-22) — a count, position, index, byte or line floored as `index` is (`measure`), a handle whole or refused by name (`handle`), a run's colours as every colour number; the `cells` buffer cut to `MAX_CELLS`
+
+**From the alpha.62 pre-tag pass (2026-10-22)** — RG159, filed and built the same day; RG160, what it left, open
+
+- `.` **RG159** — [What the alpha.62 pre-tag pass found](backlog/closed-2026-09.md#-rg159--what-the-alpha62-pre-tag-pass-found--done-2026-10-22) — done (2026-10-22) — F179's second hint over a stock control, F178's toggles and slider, four overflows and a wrapping handle in kui-lua, Node's snake_case roles, a family table re-picked every frame, the docs

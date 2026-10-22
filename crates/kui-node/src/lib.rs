@@ -3061,11 +3061,13 @@ macro_rules! core_methods {
                 Ok(())
             }
 
-            /// Declare the app's named colours and lengths: `{ colors:
-            /// { peach: '#ffcc99', ink: { light, dark } }, lengths: {
-            /// sideW: 132 } }`. Replaces the table whole, so an app whose
-            /// lengths change with a viewport tier declares again on
-            /// `resize`. A name a theme or metrics role owns is dropped
+            /// Declare the app's named colours, lengths and families:
+            /// `{ colors: { peach: '#ffcc99', ink: { light, dark } },
+            /// lengths: { sideW: 132 }, families: { code: ['JetBrains
+            /// Mono', 'mono'] } }`. Replaces the table whole, so an app
+            /// whose lengths change with a viewport tier declares again
+            /// on `resize`. A name a theme, metrics or number role owns,
+            /// or a family token named for a stock family, is dropped
             /// with a `reserved-token` warning. A colour may be a
             /// recipe over an earlier one: `{ from: 'peach',
             /// ops: [['lift', 0.3]] }`, dropped with `unknown-token` when
@@ -3073,7 +3075,7 @@ macro_rules! core_methods {
             /// as `'$peach'` — `defineTokens` types the names. The raw
             /// addon door; `index.js` wraps it to keep the encoder's map
             /// in step, so call `setTokens` and not this.
-            #[napi(ts_args_type = "tokens: { colors: [string, unknown][], lengths: [string, number][] }")]
+            #[napi(ts_args_type = "tokens: { colors: [string, unknown][], lengths: [string, number][], families?: [string, string | string[]][] }")]
             pub fn set_tokens_raw(&mut self, tokens: Json) -> Result<()> {
                 let t = tokens_from_json(&tokens)?;
                 self.$core().set_tokens(t);

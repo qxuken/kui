@@ -5316,13 +5316,14 @@ export interface Ctx {
    *  0×0 until the first frame, so a headless `init` had nothing to build
    *  from. */
   size(): WindowSize;
-  /** Declare the app's named colours and lengths (ADR 0027): `{ colors:
-   *  { peach: '#ffcc99', ink: { light, dark } }, lengths: { sideW: 132 } }`
+  /** Declare the app's named colours, lengths and families (ADR 0027,
+   *  ADR 0049): `{ colors: { peach: '#ffcc99', ink: { light, dark } },
+   *  lengths: { sideW: 132 }, families: { code: ['JetBrains Mono', 'mono'] } }`
    *  — the object `defineTokens` typed. Replaces the table whole, so an
    *  app whose lengths change with a viewport tier declares again on
-   *  `resize`. Reference one in any colour or length prop as `T.peach`;
-   *  a name nothing declared raises `unknown-token` and the slot keeps
-   *  its default. */
+   *  `resize`. Reference one in any colour or number prop as `T.peach`,
+   *  a family in a text's `family` as `T.code`; a name nothing declared
+   *  raises `unknown-token` and the slot keeps its default. */
   setTokens(tokens: TokenDeclaration): void;
   /** What `content` measures under `style` as one `<text>` would lay out —
    *  logical px, and the line count — capped to `maxWidth` when given. The

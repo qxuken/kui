@@ -87,6 +87,14 @@ export function createEncoder(P) {
   const ROLE_TOKENS = new Map();
   (P.tokenRoles?.colors ?? []).forEach((name, i) => ROLE_TOKENS.set(name, { kind: 'color', index: i }));
   (P.tokenRoles?.lengths ?? []).forEach((name, i) => ROLE_TOKENS.set(name, { kind: 'length', index: i }));
+  // The core takes a role under either spelling (`border_strong`,
+  // `borderStrong`), so the encoder does too: a snake name it did not know
+  // as a role took an index in `setTokens` the core never gave it, and
+  // every token declared after it read the next one's slot (backlog RG159).
+  for (const [name, role] of [...ROLE_TOKENS]) {
+    const snake = name.replace(/[A-Z0-9]/g, (c) => '_' + c.toLowerCase());
+    if (snake !== name) ROLE_TOKENS.set(snake, role);
+  }
   const COLOR_ROLES = (P.tokenRoles?.colors ?? []).length;
   const LENGTH_ROLES = (P.tokenRoles?.lengths ?? []).length;
   let tokens = null;

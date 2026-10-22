@@ -270,8 +270,13 @@ pub fn tooltip(ui: &mut Ui<'_>, text: &str) {
 }
 
 /// [`tooltip`] chrome around arbitrary content (legends, shortcut hints, …).
+///
+/// Drawn inside a box that declared [`NodeSpec::tooltip`], it is the
+/// innermost hint and the box's own stays down, as a nested `tooltip`
+/// prop's would.
 pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
     let spec = tooltip_spec(ui);
+    ui.core().note_floated_hint();
     ui.with(spec, content);
 }
 
@@ -288,6 +293,7 @@ pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
     let mut spec = tooltip_spec(ui).role(crate::access::Role::None);
     // Faded by the box's ancestors, not by the box (backlog F178).
     spec.access_mut().hint = true;
+    ui.core().note_floated_hint();
     ui.text_in(spec, text, TextStyle::new(size));
 }
 
@@ -306,6 +312,7 @@ pub(crate) fn leaf_hint(ui: &mut Ui<'_>, leaf: Key, text: &str) {
     if let Some(float) = spec.layout.float.as_mut() {
         float.anchor = crate::spec::FloatAnchor::Node(leaf);
     }
+    ui.core().note_floated_hint();
     ui.core().open_key(leaf.str("tooltip"), spec);
     ui.text(text, TextStyle::new(size));
     ui.close();
@@ -875,6 +882,17 @@ fn own_hint(spec: &mut NodeSpec, hint: Option<&str>) {
     }
 }
 
+/// A widget's `hint` as its description, unless the spec declared one:
+/// [`hover_hint`] floats the hint out of the access tree, so the
+/// description is where a reader hears it (the button's rule, which the
+/// toggles and the slider took with RG159).
+fn described(spec: NodeSpec, hint: Option<&str>) -> NodeSpec {
+    match hint {
+        Some(hint) if spec.access().description.is_none() => spec.apply_tooltip(hint),
+        _ => spec,
+    }
+}
+
 fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hint: Option<&str>) {
     let theme = ui.theme();
     // `accent` asks for the whole family, not just the background the
@@ -911,10 +929,7 @@ fn button_body(ui: &mut Ui<'_>, ident: Ident<'_>, text: &str, spec: NodeSpec, hi
     // heard only as the description: a caller that passed one without
     // `apply_tooltip` on the spec still has it said. A declared
     // description stands, as it does over the prop.
-    let mut spec = match hint {
-        Some(hint) if spec.access().description.is_none() => spec.apply_tooltip(hint),
-        _ => spec,
-    };
+    let mut spec = described(spec, hint);
     own_hint(&mut spec, hint);
     // Whatever the background ended up being: white on the stock blue as
     // it has always been, black on an accent light enough to need it.
@@ -1063,7 +1078,7 @@ pub fn toggle_with(
     let on = ax.checked || mixed;
     let disabled = spec.disabled;
     let hovered = !disabled && ui.is_hovered(node);
-    let mut spec = spec.role(kind.role());
+    let mut spec = described(spec.role(kind.role()), hint);
     own_hint(&mut spec, hint);
     if disabled {
         let o = spec.style.opacity * t.disabled_opacity;
@@ -1149,7 +1164,7 @@ pub fn toggle_with(
         if let Some(hint) = hint
             && ui.is_hovered(node)
         {
-            tooltip(ui, hint);
+            hover_hint(ui, hint);
         }
     })
 }
@@ -1278,7 +1293,7 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
     });
     let named = ax.label.is_some();
     let disabled = spec.disabled;
-    let mut spec = spec.role(Role::Slider);
+    let mut spec = described(spec.role(Role::Slider), hint);
     own_hint(&mut spec, hint);
     if !named {
         spec = spec.label(label);
@@ -1322,7 +1337,7 @@ pub fn slider_with(ui: &mut Ui<'_>, label: &str, spec: NodeSpec, hint: Option<&s
         if let Some(hint) = hint
             && ui.is_hovered(node)
         {
-            tooltip(ui, hint);
+            hover_hint(ui, hint);
         }
     })
 }

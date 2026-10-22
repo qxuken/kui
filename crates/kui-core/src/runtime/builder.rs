@@ -697,7 +697,6 @@ impl Core {
         else {
             return;
         };
-        self.floated_hint = self.tree.len() as u32;
         self.pause_keeping();
         crate::widgets::leaf_hint(&mut Ui::wrap(self), key, &tip);
         self.resume_keeping();
@@ -769,7 +768,6 @@ impl Core {
         {
             let (_, key, hint) = self.hints.pop().unwrap();
             if self.hint_shows(key) {
-                self.floated_hint = self.tree.len() as u32;
                 // The core's own nodes, not the fill's (ADR 0045).
                 self.pause_keeping();
                 crate::widgets::hover_hint(&mut Ui::wrap(self), &hint);
@@ -807,6 +805,16 @@ impl Core {
         self.interaction
             .hovered()
             .is_some_and(|h| self.tree.keys[at as usize + 1..].contains(&h))
+    }
+
+    /// Notes that a hint floats at the next node pushed, so every box with
+    /// a `tooltip` that encloses it keeps its own down (`hint_shows`). The
+    /// hint helpers call it, not their callers: a stock button, toggle or
+    /// slider floats its own hint from inside its body, and a box around
+    /// one floated a second hint over it until the helper said so
+    /// (backlog RG159).
+    pub(crate) fn note_floated_hint(&mut self) {
+        self.floated_hint = self.tree.len() as u32;
     }
 
     /// Records the hover hint of the node just opened (the top of the

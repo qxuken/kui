@@ -16,7 +16,8 @@ Tooltips, menus and dialogs are floats.
 ```
 
 `.tooltip(text)` is enough. The node tracks its own hover, and kui
-floats the text below it while hovered. Near the bottom of the window
+floats the text below it while the pointer is over it or over anything
+inside it; with tooltips nested, the innermost one shows. Near the bottom of the window
 it flips above, so it never hangs off the edge. The same text is what a
 screen reader says after the node's name.
 

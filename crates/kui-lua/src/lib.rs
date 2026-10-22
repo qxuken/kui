@@ -1559,9 +1559,9 @@ fn env_table<'scope, 'env: 'scope>(
     t.set(
         "set_window_size",
         scope.create_function(move |_, (window, w, h): (mlua::Value, f32, f32)| {
-            let window = handle_arg(&window, "set_window_size: window")?;
+            let window = window_arg(&window, "set_window_size: window")?;
             ui.borrow_mut()
-                .set_window_size(kui_core::WindowId(window as u32), kui_core::Size::new(w, h));
+                .set_window_size(kui_core::WindowId(window), kui_core::Size::new(w, h));
             Ok(())
         })?,
     )?;
@@ -1581,9 +1581,8 @@ fn env_table<'scope, 'env: 'scope>(
     t.set(
         "focus_window",
         scope.create_function(move |_, window: mlua::Value| {
-            let window = handle_arg(&window, "focus_window: window")?;
-            ui.borrow_mut()
-                .focus_window(kui_core::WindowId(window as u32));
+            let window = window_arg(&window, "focus_window: window")?;
+            ui.borrow_mut().focus_window(kui_core::WindowId(window));
             Ok(())
         })?,
     )?;
@@ -2124,10 +2123,8 @@ fn open_fragment(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     };
     let (p, _) = node_props(ui, t, false, element_of("fragment"))?;
     let frag = kui_core::FragmentRef {
-        id: kui_core::FragmentId::from_ffi(id as u64),
-        image: image
-            .filter(|i| *i != 0)
-            .map(|i| kui_core::ImageId::from_ffi(i as u64)),
+        id: kui_core::FragmentId::from_ffi(id),
+        image: image.filter(|i| *i != 0).map(kui_core::ImageId::from_ffi),
     };
     ui.core().open_from(p, Content::Fragment(frag, &params));
     Ok(())
@@ -2227,7 +2224,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 sampling: kui_core::Sampling::ALL[named("sampling", &sampling_names)?],
                 fit: kui_core::ImageFit::ALL[named("fit", &fit_names)?],
             };
-            ui.image_with(kui_core::ImageId::from_ffi(id as u64), opts, spec);
+            ui.image_with(kui_core::ImageId::from_ffi(id), opts, spec);
             Ok(())
         }
         "polygon" => {
@@ -2370,15 +2367,29 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // and a `rows = math.huge` is a warning, not an allocation.
             let n = rows.saturating_mul(cols).min(kui_core::cells::MAX_CELLS);
             let mut cells = vec![kui_core::Cell::new(' ', default_fg, 0); n];
+            // Row `r` of the buffer, from its first cell to the buffer's
+            // end, or `None` once the row starts past it. A row is found
+            // by a checked multiply and a cell inside it by indexing the
+            // slice, so `cols = math.huge` (a `usize::MAX`) cuts the rows
+            // past the first instead of overflowing `r * cols + c` into a
+            // panic, or in a release build into a wrong cell.
+            fn row_of(
+                cells: &mut [kui_core::Cell],
+                r: usize,
+                cols: usize,
+            ) -> Option<&mut [kui_core::Cell]> {
+                cells.get_mut(r.checked_mul(cols)?..)
+            }
             if let Some(lines) = t.get::<Option<Table>>("lines")? {
                 for (r, line) in lines.sequence_values::<String>().enumerate() {
                     if r >= rows {
                         break;
                     }
-                    for (c, ch) in line?.chars().take(cols).enumerate() {
-                        let Some(cell) = cells.get_mut(r * cols + c) else {
-                            break;
-                        };
+                    let line = line?;
+                    let Some(row) = row_of(&mut cells, r, cols) else {
+                        break;
+                    };
+                    for (cell, ch) in row.iter_mut().zip(line.chars().take(cols)) {
                         cell.ch = ch;
                     }
                 }
@@ -2408,10 +2419,11 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                     if row >= rows {
                         continue;
                     }
-                    for c in col..col.saturating_add(len).min(cols) {
-                        let Some(cell) = cells.get_mut(row * cols + c) else {
-                            break;
-                        };
+                    let Some(line) = row_of(&mut cells, row, cols) else {
+                        continue;
+                    };
+                    let end = col.saturating_add(len).min(cols);
+                    for cell in line.iter_mut().take(end).skip(col) {
                         if fg != 0 {
                             cell.fg = fg;
                         }
@@ -2449,8 +2461,12 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 }
                 None => None,
             };
-            // The absolute line row 0 is; 0 when the app says nothing.
-            let origin_line = measure_at(t, "origin_line", "cells origin_line")?.unwrap_or(0);
+            // The absolute line row 0 is; 0 when the app says nothing. No
+            // later than `MAX_ORIGIN_LINE`, so `math.huge` (a `u64::MAX`)
+            // is a line the core can add its rows to.
+            let origin_line = measure_at(t, "origin_line", "cells origin_line")?
+                .unwrap_or(0)
+                .min(MAX_ORIGIN_LINE);
             let grid = kui_core::CellGrid {
                 rows,
                 cols,
@@ -2467,7 +2483,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
             // to scripts as a plain integer, like images.
             let src = handle_at(t, "src", "audio src")?
                 .ok_or_else(|| bad("audio needs a src, the handle the host added the sound as"))?;
-            let mut spec = kui_core::AudioSpec::new(kui_core::SoundId::from_ffi(src as u64));
+            let mut spec = kui_core::AudioSpec::new(kui_core::SoundId::from_ffi(src));
             if let Some(v) = t.get::<Option<f32>>("volume")? {
                 spec = spec.volume(v);
             }
@@ -3643,6 +3659,15 @@ fn measure(v: &mlua::Value) -> Option<u64> {
     }
 }
 
+/// The latest line a grid's row 0 can be. The core adds a row to its
+/// `origin_line` unchecked — to draw a selection, to read one back, to
+/// select all — and keeps at most [`kui_core::cells::MAX_CELLS`] rows, so
+/// a line no later than this leaves every row's line inside `i64`, which
+/// is also the widest a line read back into Lua (`cell_selection`) stays
+/// an integer. A measure saturates `math.huge` to `u64::MAX`, and the
+/// row added to that overflowed.
+const MAX_ORIGIN_LINE: u64 = i64::MAX as u64 - kui_core::cells::MAX_CELLS as u64;
+
 /// A [`measure`] as a `usize`, saturating where that is narrower.
 fn to_usize(n: u64) -> usize {
     usize::try_from(n).unwrap_or(usize::MAX)
@@ -3675,12 +3700,23 @@ fn measure_at(t: &Table, k: impl mlua::IntoLua, what: &str) -> mlua::Result<Opti
 /// for a value that is no number, for the caller to name. Node keys are
 /// not read here: a key is a 64-bit hash no float holds, so a float key
 /// is already a wrong one and stays refused.
-fn handle(v: &mlua::Value, what: &str) -> mlua::Result<Option<i64>> {
+///
+/// kui gives out no negative handle, so a negative one, an integer's or
+/// a float's, is refused the same way: cast to the `u64` the core takes,
+/// `-1` named the last sound there is room for, not none. A handle
+/// narrower than that (a window's) is range-checked by its own reader,
+/// [`window_arg`].
+fn handle(v: &mlua::Value, what: &str) -> mlua::Result<Option<u64>> {
     match *v {
-        mlua::Value::Integer(i) => Ok(Some(i)),
+        mlua::Value::Integer(i) if i >= 0 => Ok(Some(i as u64)),
         // The range keeps a huge float from saturating into a handle
         // that happens to exist; `fract` is NaN for an infinity.
-        mlua::Value::Number(n) if n.fract() == 0.0 && n.abs() < 2f64.powi(63) => Ok(Some(n as i64)),
+        mlua::Value::Number(n) if n.fract() == 0.0 && (0.0..2f64.powi(63)).contains(&n) => {
+            Ok(Some(n as u64))
+        }
+        mlua::Value::Integer(i) => Err(bad(format!(
+            "{what} is a handle, a whole number as kui gave it out, not {i}"
+        ))),
         mlua::Value::Number(n) => Err(bad(format!(
             "{what} is a handle, a whole number as kui gave it out, not {n}"
         ))),
@@ -3688,9 +3724,21 @@ fn handle(v: &mlua::Value, what: &str) -> mlua::Result<Option<i64>> {
     }
 }
 
+/// A window's [`handle_arg`]: a `u32`, as `WindowId` is, so a handle past
+/// one is refused naming `what` where `as u32` wrapped it — `4294967297`
+/// focused window 1.
+fn window_arg(v: &mlua::Value, what: &str) -> mlua::Result<u32> {
+    let h = handle_arg(v, what)?;
+    u32::try_from(h).map_err(|_| {
+        bad(format!(
+            "{what} is a window handle, a whole number as kui gave it out, not {h}"
+        ))
+    })
+}
+
 /// A [`handle`] argument or field, refused naming `what` when it is no
 /// number.
-fn handle_arg(v: &mlua::Value, what: &str) -> mlua::Result<i64> {
+fn handle_arg(v: &mlua::Value, what: &str) -> mlua::Result<u64> {
     handle(v, what)?.ok_or_else(|| {
         bad(format!(
             "{what} must be a handle (integer), not {}",
@@ -3700,7 +3748,7 @@ fn handle_arg(v: &mlua::Value, what: &str) -> mlua::Result<i64> {
 }
 
 /// `t[k]` as a [`handle_arg`], `None` when absent.
-fn handle_at(t: &Table, k: &str, what: &str) -> mlua::Result<Option<i64>> {
+fn handle_at(t: &Table, k: &str, what: &str) -> mlua::Result<Option<u64>> {
     match t.get::<mlua::Value>(k)? {
         mlua::Value::Nil => Ok(None),
         v => handle_arg(&v, what).map(Some),
@@ -3792,7 +3840,7 @@ fn parse_value(kind: &Kind, v: &mlua::Value, refs: &mut Refs<'_>) -> mlua::Resul
             Parsed::Family(refs.family(&s.to_str()?))
         }
         Kind::Resource => match handle(v, "a resource")? {
-            Some(n) => Parsed::Resource(n as u64),
+            Some(n) => Parsed::Resource(n),
             None => return Err(bad("expected a resource handle (integer)")),
         },
         // A `$name` in a stop resolves through the same refs as a prop's
@@ -7995,6 +8043,231 @@ mod tests {
         ui.finish();
         let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
         assert_eq!(codes, [kui_core::diag::CELLS_TOO_LARGE]);
+    }
+
+    /// `cols = math.huge` is a `usize::MAX`, and the cell a line or a run
+    /// lands on was `row * cols + col`: past the first row that overflowed,
+    /// a panic in a debug build and a wrong cell in a release one. The
+    /// rows past the buffer are cut as the core cuts them, and a run past
+    /// it — a huge column, a huge length, a row the buffer never reaches
+    /// — paints nothing.
+    #[test]
+    fn a_grid_with_a_huge_cols_is_cut_without_overflowing() {
+        let mut ext = LuaExtension::from_source(
+            "wide",
+            r#"
+                function view(env)
+                  return column { cells { key = "term", rows = 3, cols = math.huge,
+                    size = 14, family = "mono", lines = { "top", "middle", "bottom" },
+                    runs = { { 0, 1, math.huge, 0xff0000ff },
+                             { 1, 2, 3, 0x00ff00ff },
+                             { 2, math.huge, math.huge, 0x0000ffff } },
+                    cursor_at = { 2, math.huge } } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_diagnostics(true);
+        let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+        ui.set_origin(OriginId(1));
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+        let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
+        assert_eq!(codes, [kui_core::diag::CELLS_TOO_LARGE]);
+    }
+
+    /// `origin_line = math.huge` saturates to `u64::MAX`, and the core adds
+    /// a row to the origin unchecked to draw a selection and to read one
+    /// back. The binding holds the origin to `MAX_ORIGIN_LINE`, so a
+    /// selected grid there draws, and its lines read back as the integers
+    /// they are.
+    #[test]
+    fn a_selected_grid_at_a_huge_origin_line_draws_and_reads_back() {
+        let mut ext = LuaExtension::from_source(
+            "far",
+            r#"
+                frames = 0
+                function view(env)
+                  frames = frames + 1
+                  if frames == 2 then picked = env.select_all_in("term") end
+                  sel = env.cell_selection()
+                  return column { cells { key = "term", rows = 2, cols = 12,
+                    size = 14, family = "mono", line_height = 20,
+                    origin_line = math.huge, selectable = true,
+                    lines = { "hello world", "bye there" } } }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+            core.output();
+        };
+        for _ in 0..3 {
+            frame(&mut core, &mut ext);
+        }
+        let g = ext.lua.globals();
+        assert!(g.get::<bool>("picked").unwrap(), "the grid is a scope");
+        let line = |end: &str| -> i64 {
+            let sel: Table = g.get("sel").unwrap();
+            sel.get::<Table>(end).unwrap().get("line").unwrap()
+        };
+        assert_eq!(line("anchor"), MAX_ORIGIN_LINE as i64);
+        assert_eq!(line("focus"), MAX_ORIGIN_LINE as i64 + 1);
+
+        // A triple click selects a row by its absolute line, the core
+        // adding the row to the origin again.
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(10.0, 30.0)));
+        core.handle_input(InputEvent::MouseDown {
+            button: kui_core::MouseButton::Primary,
+            clicks: 3,
+        });
+        core.handle_input(InputEvent::MouseUp {
+            button: kui_core::MouseButton::Primary,
+        });
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        assert_eq!(line("anchor"), MAX_ORIGIN_LINE as i64 + 1);
+    }
+
+    /// A row count is a measure, so `row_heights(math.huge)` was a
+    /// `usize::MAX` and the core's `vec!` of that many heights panicked on
+    /// its capacity. A count past `MAX_ROWS` is refused by name, at the
+    /// constructor and at `set_len`; one inside it, fraction and all, is
+    /// floored as before.
+    #[test]
+    fn a_row_count_past_what_a_list_holds_is_refused_by_name() {
+        let run = |src: &str| -> Result<(), String> {
+            let ext = LuaExtension::from_source("rows", src).map_err(|e| e.to_string())?;
+            ext.lua.load("check()").exec().map_err(|e| e.to_string())
+        };
+        assert_eq!(
+            run(
+                "function check() local h = row_heights(10.5, 20) h:set_len(12.5) \
+                 assert(h:len() == 12) end"
+            ),
+            Ok(())
+        );
+        for (src, named) in [
+            (
+                "function check() row_heights(math.huge, 20) end",
+                "row_heights: rows",
+            ),
+            (
+                "function check() row_heights(2^32, 20) end",
+                "row_heights: rows",
+            ),
+            (
+                "function check() row_heights(10, 20):set_len(math.huge) end",
+                "set_len: rows",
+            ),
+        ] {
+            let err = run(src).unwrap_err();
+            assert!(err.contains(named), "{src}: {err}");
+        }
+    }
+
+    /// `list`'s `overscan` is a measure, and the core adds it to a row
+    /// index unchecked: `math.huge` overflowed there. Held to the row
+    /// count, it builds every row, which is what an overscan that large
+    /// asks for.
+    #[test]
+    fn a_huge_overscan_builds_every_row_without_overflowing() {
+        let mut ext = LuaExtension::from_source(
+            "overscan",
+            r#"
+                heights = row_heights(50, 20)
+                built = 0
+                function view(env)
+                  built = 0
+                  return column { key = "list", width = 200, height = 60,
+                    list(env, { key = "rows", heights = heights, width = "grow",
+                                height = "grow", overscan = math.huge },
+                      function(i, width) return 20 end,
+                      function(i) built = built + 1 return text("row " .. i) end) }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        for _ in 0..2 {
+            let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        }
+        let built: i64 = ext.lua.globals().get("built").unwrap();
+        assert_eq!(built, 50, "every row, the overscan held to the count");
+    }
+
+    /// kui gives out no negative handle and no window past a `u32`, so
+    /// both are refused by name, an integer's as a float's: `as u32` wrapped
+    /// `4294967297` to window 1 and `-1` to `u32::MAX`, and a negative
+    /// sound or image cast to `u64` named a handle near the top.
+    #[test]
+    fn a_handle_out_of_its_range_is_refused_by_name() {
+        let view = |body: &str| -> Result<(), String> {
+            let src = format!("function view(env) {body} end");
+            let mut ext = LuaExtension::from_source("handles", &src).unwrap();
+            let mut core = Core::new();
+            let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
+            ui.set_origin(OriginId(1));
+            let r = ext.view(&Slot::root(), &mut ui).map_err(|e| e.to_string());
+            ui.finish();
+            r
+        };
+        for (body, named) in [
+            (
+                "env.focus_window(4294967297) return column {}",
+                "focus_window: window",
+            ),
+            (
+                "env.focus_window(4294967297.0) return column {}",
+                "focus_window: window",
+            ),
+            (
+                "env.focus_window(-1) return column {}",
+                "focus_window: window",
+            ),
+            (
+                "env.set_window_size(-1.0, 300, 200) return column {}",
+                "set_window_size: window",
+            ),
+            (
+                "env.set_window_size(math.maxinteger, 300, 200) return column {}",
+                "set_window_size: window",
+            ),
+            ("return column { audio { src = -1 } }", "audio src"),
+            ("return column { audio { src = -2.0 } }", "audio src"),
+            (
+                "return column { image { id = -3, width = 10, height = 10 } }",
+                "image id",
+            ),
+            ("return column { fragment { id = -4 } }", "fragment id"),
+            (
+                "return column { fragment { id = 4, image = -1 } }",
+                "fragment image",
+            ),
+            (
+                "return column { row { click_sound = -2, on_click = 'x', text('a') } }",
+                "click_sound",
+            ),
+        ] {
+            let err = view(body).unwrap_err();
+            assert!(err.contains(named), "{body}: {err}");
+        }
+        // The top of each range is still a handle.
+        for body in [
+            "env.focus_window(4294967295) return column {}",
+            "return column { audio { src = math.maxinteger } }",
+        ] {
+            assert_eq!(view(body), Ok(()), "{body}");
+        }
     }
 
     /// A `selectable` grid selects in cells, and the click count picks the

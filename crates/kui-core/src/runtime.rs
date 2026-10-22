@@ -958,7 +958,13 @@ impl Core {
             };
             self.diag.raise(w);
         }
-        let missed = tokens.pick_families(|n| self.session.register_family(n));
+        // The previous table's picks stand while the fonts they were made
+        // against have not moved; a move re-picks every table at the next
+        // frame's start anyway (`repick_families`).
+        let prev = (self.session.state().fonts_rev == self.families_picked_rev)
+            .then(|| self.tokens.get(&self.origin))
+            .flatten();
+        let missed = tokens.pick_families_over(prev, |n| self.session.register_family(n));
         self.warn_unpicked_families(missed);
         self.tokens.insert(self.origin, tokens);
     }

@@ -312,7 +312,7 @@ CUSTOM_RULES :: []Custom_Rule {
 	{"border", "spec", "border_w: f32,\n\tborder_color: Color", "out.border_w, out.border_color = s.border_w, s.border_color", "The border's width, and its colour."},
 	{"overflow", "spec", "overflow: Overflow", "out.overflow = transmute(u32)s.overflow", "{.Clip}, {.Scroll_X}, {.Scroll_Y}: what overflows the box is cut, or scrolls."},
 	{"float", "spec", "float: Float", "lower_float(s.float, out)", "Out of flow: placed against the parent or the viewport (float_preset fills one by name)."},
-	{"tooltip", "spec", "tooltip: string", "out.tooltip = s.tooltip", "A hint floated below the node while it is hovered, and its accessible description."},
+	{"tooltip", "spec", "tooltip: string", "out.tooltip = s.tooltip", "A hint floated below the node while the pointer is over it or anything inside it (the innermost tooltip wins), and its accessible description."},
 	{"key", "spec", "key: string", "", "A stable key (kui_open_keyed): what transitions, focus and layout events follow; a node with on_drag, on_key or on_hover needs one."},
 	{"index", "spec", "index: Maybe(u64)", "", "A virtual list row's index (kui_open_indexed), a namespace apart from `key`."},
 	{"keyFocus", "spec", "key_focus: bool", "", "Declare this node keyboard-focused this frame (kui_set_key_focus), edge-triggered."},

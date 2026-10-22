@@ -25,11 +25,33 @@ fn row(i: &Value, what: &str) -> mlua::Result<usize> {
     crate::measure_arg(i, what)
 }
 
+/// The most rows a list holds: what Node's `count` reads a row count up
+/// to, and the most the core's unmeasured-row tally (a `u32` prefix sum)
+/// counts. A row count is a measure, so `math.huge` saturates to
+/// `usize::MAX`, and `RowHeights` asked the allocator for that many
+/// heights and panicked on the capacity.
+const MAX_ROWS: usize = u32::MAX as usize;
+
+/// A list's row count — [`row`], refused naming `what` past [`MAX_ROWS`]
+/// rather than cut to it: a cut count still allocates a height a row, and
+/// a list that long is a mistake to report, not a screen to draw the top
+/// of as a grid past `MAX_CELLS` is.
+fn row_count(v: &Value, what: &str) -> mlua::Result<usize> {
+    let n = row(v, what)?;
+    if n > MAX_ROWS {
+        return Err(mlua::Error::runtime(format!(
+            "{what} must be at most {MAX_ROWS}, not {}",
+            v.to_string()?
+        )));
+    }
+    Ok(n)
+}
+
 impl UserData for LuaRowHeights {
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
         m.add_method("len", |_, this, ()| Ok(this.inner.len()));
         m.add_method_mut("set_len", |_, this, rows: Value| {
-            this.inner.set_len(row(&rows, "set_len: rows")?);
+            this.inner.set_len(row_count(&rows, "set_len: rows")?);
             Ok(())
         });
         m.add_method_mut("clear", |_, this, ()| {
@@ -55,7 +77,12 @@ impl UserData for LuaRowHeights {
 
         // The three steps `list` drives. Not for a script to call.
         m.add_method_mut("slice_begin", |lua, this, reading: Table| {
-            let slice = this.inner.slice(parse_reading(&reading)?);
+            let mut reading = parse_reading(&reading)?;
+            // Overscan past the row count builds every row already, and
+            // the core adds it to a row index unchecked: `overscan =
+            // math.huge` (a `usize::MAX`) overflowed there.
+            reading.overscan = reading.overscan.min(this.inner.len());
+            let slice = this.inner.slice(reading);
             this.pending = slice.unmeasured(&this.inner);
             let width = slice.width();
             this.slice = Some(slice);
@@ -161,7 +188,10 @@ pub(crate) fn register(lua: &Lua) -> mlua::Result<()> {
         "row_heights",
         lua.create_function(|_, (rows, estimate): (Value, Option<f32>)| {
             Ok(LuaRowHeights {
-                inner: RowHeights::new(row(&rows, "row_heights: rows")?, estimate.unwrap_or(20.0)),
+                inner: RowHeights::new(
+                    row_count(&rows, "row_heights: rows")?,
+                    estimate.unwrap_or(20.0),
+                ),
                 slice: None,
                 pending: Vec::new(),
             })

@@ -7,7 +7,7 @@
 
 use kui_core::schema::PropsOut;
 use kui_core::testing::hover;
-use kui_core::{Color, Content, Core, NodeSpec, QuadKind, Rect, Size, Vec2};
+use kui_core::{Color, Content, Core, NodeSpec, QuadKind, Rect, Size, Vec2, widgets};
 
 const VIEW: Size = Size { w: 400.0, h: 300.0 };
 
@@ -139,4 +139,48 @@ fn a_leafs_tooltip_inside_a_box_wins_over_the_boxs() {
     let over_box = at(&mut core, Vec2::new(80.0, 50.0), &child);
     assert_eq!(over_box.len(), 1, "one hint: {over_box:?}");
     assert_eq!(over_box[0].y, 66.0, "the box's, below it: {over_box:?}");
+}
+
+/// A stock button, checkbox or slider with a hint of its own floats that
+/// hint from inside its body, not through the prop; over it, its hint
+/// and not the box's as well (backlog RG159: the box's floated too, since
+/// only the prop's path said a hint had).
+#[test]
+fn a_stock_controls_own_hint_is_the_innermost() {
+    let kids: [(&str, &dyn Fn(&mut kui_core::Ui<'_>)); 3] = [
+        ("button", &|ui| {
+            let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("go");
+            widgets::button_with(ui, "go", "Go", spec, Some("inner"));
+        }),
+        ("checkbox", &|ui| {
+            let spec = NodeSpec::row().on_click("tick");
+            widgets::toggle_with(
+                ui,
+                widgets::Toggle::Checkbox,
+                "tick",
+                "Tick",
+                spec,
+                Some("inner"),
+            );
+        }),
+        ("slider", &|ui| {
+            let spec = widgets::slider_spec(&ui.metrics())
+                .width(60.0)
+                .value_now(0.5)
+                .value_min(0.0)
+                .value_max(1.0)
+                .on_change("v");
+            widgets::slider_with(ui, "v", spec, Some("inner"));
+        }),
+    ];
+    for (name, child) in kids {
+        let mut core = Core::new();
+        frame(&mut core, child);
+        let over_child = at(&mut core, Vec2::new(14.0, 14.0), child);
+        assert_eq!(over_child.len(), 1, "{name}: one hint: {over_child:?}");
+        assert_ne!(
+            over_child[0].y, 66.0,
+            "{name}: the control's, not the box's: {over_child:?}"
+        );
+    }
 }

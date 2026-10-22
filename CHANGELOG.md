@@ -32,6 +32,11 @@ was the first bare bump to break an app in five releases).
   the box, where it showed only while the box itself was the hovered
   node: over a child button, a field or a row with a `hoverBg` it was
   hidden, and now it shows (backlog F179).
+- A stock checkbox, radio, switch or slider given a `hint` hears it as
+  its accessible description, as the stock button does, unless the spec
+  declared one; the hint it floats is out of the access tree. It was
+  content, read beside the control and, under one named from its
+  content, part of its name while the pointer was over it.
 - Rust: `AccessSpec` gains `hint`, so a struct literal of it without
   `..` needs the field.
 - Rust: `TokenKind` gains `Family` and `TokenRef` gains `Family(u16)`,
@@ -55,6 +60,10 @@ was the first bare bump to break an app in five releases).
   and `row_heights` always read one; a string there (`rows = "7"`),
   which mlua coerced, is refused, as `index` always refused one
   (backlog F180).
+- Lua: a handle below 0, or past what its kind holds (a window id past
+  a `u32`), is refused by name, where it wrapped: `env.focus_window(-1)`
+  was window 4294967295 and `4294967297` was window 1. `row_heights`
+  and `heights:set_len` refuse a count past 4294967295 by name.
 
 ### Added
 
@@ -95,15 +104,19 @@ was the first bare bump to break an app in five releases).
   (an `image`, a `path`, an `edit`), floated beside the leaf, was drawn
   in full. The hint now takes the opacity the box inherited and not the
   box's own, on a box and a leaf alike; a panel fading around the box
-  still fades the hint with it. A `widgets::tooltip` the view places
-  itself is content and fades as before (backlog F178).
+  still fades the hint with it. A stock checkbox, radio, switch or
+  slider's own `hint`, which a disabled one keeps so it can say why,
+  is drawn the same way. A `widgets::tooltip` the view places itself is
+  content and fades as before (backlog F178).
 - A box's `tooltip` went away while the pointer was over a child that
   tracks the pointer — a button, a field, a row with a `hoverBg` or an
   `onClick` — since that child, not the box, was the hovered node; it
   showed only over the box's bare background. It now shows while the
   pointer is over the box or anything inside it, as a browser's `title`
   does, and with tooltips nested the innermost one under the pointer is
-  the one shown. The same in every binding (backlog F179).
+  the one shown — a stock button's, toggle's or slider's own `hint` and
+  a `widgets::tooltip` the view floats included. The same in every
+  binding (backlog F179).
 - Lua: a number where kui reads a whole one raised for a fraction under
   mlua 0.12.2 (0.12.1 cut it), and Lua 5.5's `/` always yields a float,
   so a terminal grid sized `rows = room_h / line_h` failed the frame on
@@ -122,7 +135,17 @@ was the first bare bump to break an app in five releases).
   `cells` grid's buffer is cut to the cells the core draws
   (`MAX_CELLS`, with its `cells-too-large` warning), where `rows *
   cols` was allocated first, so `rows = math.huge` warns rather than
-  aborts (backlog F180).
+  aborts; `cols = math.huge` is cut the same way, an `origin_line` is
+  held where a row added to it still fits, `list`'s `overscan` to the
+  row count, and `row_heights` refuses a count past 4294967295, so no
+  floored `math.huge` overflows the core (backlog F180).
+- Node: a token declared under a role's snake_case name
+  (`disabled_opacity`, `border_strong`) is refused by the core, as the
+  camelCase one is, but the encoder counted only the camelCase spelling
+  as a role, so it gave the refused name an index and every token
+  declared after it in the same table read the next one's slot. The
+  encoder now knows both spellings, and resolves `'$border_strong'` as
+  the core does.
 
 **What you can delete.**
 

@@ -150,7 +150,9 @@ warnings! {
     /// node not declared at all.
     pub const LABEL_WITHOUT_NODE: &str = "label-without-node";
     /// A text's `family` named a family no installed or loaded font has,
-    /// so it shaped as sans. `sans`, `serif` and `mono` are
+    /// so it shaped as sans; or a family token's fallback list matched
+    /// nothing, so a text naming the token shapes as sans and the message
+    /// names the token (ADR 0049). `sans`, `serif` and `mono` are
     /// kui's own; any other name is matched as `addSystemFont` matches it,
     /// and `systemFonts()` lists the names a machine has.
     pub const UNKNOWN_FAMILY: &str = "unknown-family";
@@ -421,15 +423,16 @@ warnings! {
     /// `"ns/root"` after the host's view. Declare the slot, or drop the name
     /// from the extension's list.
     pub const UNKNOWN_SLOT: &str = "unknown-slot";
-    /// A colour or length prop named a token — `bg = "$peach"` — that
-    /// nothing declared and that is no theme or metrics role, or named one
-    /// of the other kind (a length in a colour slot). The slot is left at
+    /// A colour, length or family prop named a token — `bg = "$peach"` —
+    /// that nothing declared and that is no theme, metrics or number role,
+    /// or named one of another kind (a length in a colour slot). The slot is left at
     /// the row's default, as if the prop had not been written — no `bg`,
     /// a fit width, the theme's foreground for a text's `color` — never an
     /// explicit transparent or zero, which would hide the node a typo was
     /// on; the same in every binding and in every place a `$name` can go,
     /// a keyframe stop and an entrance included, and what
-    /// `ui.token_color` / `token_length` answer `None` for in Rust. Raised
+    /// `ui.token_color` / `token_length` / `token_family` answer `None`
+    /// for in Rust. Raised
     /// by the binding that lowered the reference, through
     /// `Core::warn_unknown_token`, once per name, since the name is gone
     /// by the time the frame is a tree. Also
@@ -438,10 +441,12 @@ warnings! {
     /// token declared before it and no theme role: that token is dropped,
     /// the message names both, and the rest of the table lands.
     pub const UNKNOWN_TOKEN: &str = "unknown-token";
-    /// A declared token took a theme or metrics role's name (`surface`,
-    /// `radius`) and was dropped: the roles are the corpus's contract and
-    /// `$surface` always means the theme's, so an app cannot shadow one.
-    /// Rename the token.
+    /// A declared token took a theme, metrics or number role's name
+    /// (`surface`, `radius`, `disabledOpacity`) under either spelling, or
+    /// a family token took a stock family's (`sans`, `serif`, `mono`), and
+    /// was dropped: the roles are the corpus's contract and `$surface`
+    /// always means the theme's, so an app cannot shadow one. Rename the
+    /// token.
     pub const RESERVED_TOKEN: &str = "reserved-token";
     /// A slot name declared twice in one frame. The second declaration was
     /// ignored: a fill is keyed by the slot's full name, so two fills of one

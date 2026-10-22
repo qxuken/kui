@@ -128,3 +128,48 @@ fn an_apps_own_tooltip_fades_with_its_box() {
     let a = hint_alpha(&mut core);
     assert!(close(a, 0.4), "the box's opacity: {a:?}");
 }
+
+/// A disabled checkbox and slider are dimmed by the theme's
+/// `disabled_opacity` and keep their hover, so a hint can say why; the
+/// hint is not dimmed with them, as a disabled button's is not (backlog
+/// RG159: the toggles and the slider floated theirs as content).
+#[test]
+fn a_disabled_toggles_and_sliders_hint_is_not_dimmed() {
+    let kids: [(&str, &dyn Fn(&mut kui_core::Ui<'_>)); 2] = [
+        ("checkbox", &|ui| {
+            let spec = NodeSpec::row().on_click("tick").disabled(true);
+            widgets::toggle_with(
+                ui,
+                widgets::Toggle::Checkbox,
+                "tick",
+                "Tick",
+                spec,
+                Some("why"),
+            );
+        }),
+        ("slider", &|ui| {
+            let spec = widgets::slider_spec(&ui.metrics())
+                .width(60.0)
+                .value_now(0.5)
+                .value_min(0.0)
+                .value_max(1.0)
+                .on_change("v")
+                .disabled(true);
+            widgets::slider_with(ui, "v", spec, Some("why"));
+        }),
+    ];
+    for (name, child) in kids {
+        let mut core = Core::new();
+        let frame = |core: &mut Core| {
+            let mut ui = core.frame(VIEW, 1.0);
+            child(&mut ui);
+            ui.finish();
+        };
+        frame(&mut core);
+        hover(&mut core, Vec2::new(4.0, 4.0));
+        frame(&mut core);
+        frame(&mut core);
+        let a = hint_alpha(&mut core);
+        assert!(close(a, 1.0), "{name}: the hint is not dimmed: {a:?}");
+    }
+}

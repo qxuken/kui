@@ -122,7 +122,8 @@ names typed, so `T.peech` does not compile; the roles take the same spelling
 `reserved-token`; a name nothing declared raises `unknown-token` once and the
 slot keeps its default. The devtools list the tokens with their swatches and
 print a token's name after the value it painted. C declares and reads
-(`kui_token_color` / `kui_token_length`); its props carry no reference.
+(`kui_token_color` / `kui_token_length` / `kui_tokens_families` /
+`kui_token_family`); its props carry no reference.
 A length token is any number, so it fits every number prop, and the theme's
 `disabledOpacity` is a role among them (`$disabledOpacity`); a **family
 token** is a fallback list of font families, the first that resolves picked
