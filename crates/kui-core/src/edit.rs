@@ -1472,8 +1472,6 @@ impl EditStore {
         self.touch_caret(key);
     }
 
-    /// Types `text` over the selection (or at the caret), as one undo
-    /// step; true when the content changed.
     /// Replaces the whole text with `text` as one recorded edit, as if the
     /// user had selected all and typed it: what assistive technology's
     /// `setValue` on an editor does, so a reader's edit undoes in one step
@@ -1507,15 +1505,24 @@ impl EditStore {
         true
     }
 
+    /// Types `text` over the selection (or at the caret), as one undo
+    /// step; true when the content changed. What a reader's
+    /// `replaceSelectedText` does, so it goes in as typing goes in: what
+    /// [`typed`] drops is dropped. It went in raw (backlog FZ11), so a
+    /// reader put in what no keystroke, paste or declared value can - a
+    /// line break in a field, and the bidi paragraph ends `one_paragraph`
+    /// keeps from the shaper (FZ6) - and a value declared back from the
+    /// `change` it reported was then not the text the editor held.
     pub fn replace_selection(&mut self, key: Key, text: &str, fs: &mut FontSystem) -> bool {
         let Some(s) = self.states.get_mut(&key) else {
             return false;
         };
         s.abandon_preedit();
+        let text: String = text.chars().filter_map(|c| typed(c, s.multiline)).collect();
         if text.is_empty() && s.editor.selection_bounds().is_none() {
             return false;
         }
-        s.insert_recorded(text);
+        s.insert_recorded(&text);
         s.editor.shape_as_needed(fs, false);
         s.version += 1;
         s.invalidate_measurements();

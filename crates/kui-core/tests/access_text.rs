@@ -113,6 +113,50 @@ fn a_long_line_wraps_into_runs_and_splits_past_the_character_cap() {
     assert!(node.runs.iter().all(|r| r.char_positions[0] == 0.0));
 }
 
+/// A reader's `replaceSelectedText` goes in as typing does (backlog FZ11,
+/// from the alpha.60 fuzz round): it went in raw, so it put in what no
+/// keystroke, paste or declared value can - a line break in a field, a
+/// bidi paragraph end (FZ6) - and the value an app declared back from
+/// the `change` it reported was then not the text the editor held: `\u{1d}`
+/// declared, `\u{1f}` held, as a declared value's paragraph ends are.
+#[test]
+fn a_readers_typing_goes_in_as_typing_does() {
+    let mut core = Core::new();
+    let field = |core: &mut Core, value: &str| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill().pad(10.0));
+        let key = ui.text_edit_value(
+            "field",
+            value,
+            &EditOptions {
+                autofocus: true,
+                ..Default::default()
+            },
+            NodeSpec::row()
+                .width(300.0)
+                .label("Field")
+                .on_change(Value::Null),
+        );
+        ui.finish();
+        key
+    };
+    let key = field(&mut core, "");
+    let evs = core.handle_input(InputEvent::Access(
+        AccessRequest::new(key, AccessAction::ReplaceSelectedText)
+            .with_value("a\u{1d}b\nc\u{1e}\u{5d0}"),
+    ));
+    let changed = evs[0].data().and_then(|d| d.get_str("text")).unwrap();
+    assert_eq!(changed, "abc\u{5d0}", "what typing drops is dropped");
+    // The app declares back what it heard, and the editor holds it.
+    field(&mut core, changed.to_string().as_str());
+    assert_eq!(core.edit_text(key).as_deref(), Some("abc\u{5d0}"));
+    // Nothing a field takes: no change.
+    let evs = core.handle_input(InputEvent::Access(
+        AccessRequest::new(key, AccessAction::ReplaceSelectedText).with_value("\u{1d}\n"),
+    ));
+    assert!(evs.is_empty());
+}
+
 #[test]
 fn selection_requests_move_the_caret_and_type_over_it() {
     let mut core = Core::new();

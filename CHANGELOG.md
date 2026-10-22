@@ -236,6 +236,13 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   debug build, undefined behaviour in the rasterizer in a release one.
   The rasterizer now measures the outline it is handed, not only the
   logical one (backlog FZ10, found by the `path` fuzz target).
+- A screen reader's "replace selected text" on an editor goes in as
+  typing does: a control, a line break in a single-line field and the
+  bidi paragraph ends are dropped. It went in as it came, so one request
+  carrying `\u{1e}` before right-to-left text panicked the shaper and
+  ended the app, release builds included, and a value the app declared
+  back from the `change` it reported was not the text the editor held
+  (backlog FZ11, found by the `events` fuzz target).
 - A choice from the platform's menu bar (`activate_menu_bar_item` /
   `_path`, the macOS bar) says which window it was made in and which
   slot drew the bar, is listed in the devtools' events tab, and raises

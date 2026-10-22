@@ -3158,6 +3158,19 @@ before the tag.
   does not check `live`, so a stale driver report for a window the user
   closed and the app still declares delivers its `on_dismiss`.
 
+## From the alpha.60 fuzz hour (2026-10-22)
+
+An hour of every target on the round with FZ10 in, under WSL on four
+cores at the lowest priority — quiet enough to keep the fans down, six
+fuzzers sharing four cores. The `events` target found one defect ten
+times over: FZ11, a reader's `replaceSelectedText` inserted raw, so its
+text could panic the shaper — **built 2026-10-22**, the day it was
+filed, and in the archive. The hour's timeouts
+(five `path`, three `scenes`, one `decode`) were the shared cores: alone,
+each ran in 0.3–2.8 s against the 10 s it is allowed. `decode`'s two slow
+units are animated WebPs with canvases just under the 512 MiB ceiling, as
+in the alpha.56 round.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -4916,3 +4929,7 @@ move.
 **From the alpha.60 pre-tag pass (2026-10-22)** — RG156, filed and built the same day; RG157, what it left, open
 
 - `~` **RG156** — [A Lua slot's `window_events` took the host's, and a keystroke copied the document for nobody](backlog/closed-2026-09.md#-rg156--a-lua-slots-window_events-took-the-hosts-and-a-keystroke-copied-the-document-for-nobody--done-2026-10-22) — done (2026-10-22) — the group's origin kept with it, the editor's text copied only for a declared `on_change` (100k lines 4.3 → 1.4 ms), the platform bar's choice through `outbound`, a held value keeps its commit's claim, Node's `'dispatch'` envelope, the accessibility example's tags (AX audit 95 → 106 of 106), the docs and the changelog
+
+**From the alpha.60 fuzz hour (2026-10-22)** — FZ11, filed and built the same day
+
+- `!` **FZ11** — [A reader's `replaceSelectedText` goes into an editor raw](backlog/closed-2026-09.md#-fz11--a-readers-replaceselectedtext-goes-into-an-editor-raw--done-2026-10-22) — done (2026-10-22) — `replace_selection` keeps what `typed` keeps: no line break in a field, no bidi paragraph end for the shaper to panic on (FZ6's, in a release build), and a value declared back from its `change` is the text it holds
