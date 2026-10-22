@@ -138,8 +138,11 @@ env:
   NU_VERSION: "0.116.0"
   # The Odin the binding (packages/odin) is generated and checked with: an
   # odin-lang release tag, whose Linux build is one self-contained binary
-  # beside its core library.
-  ODIN_VERSION: "dev-2026-09"
+  # beside its core library. Moved with the compiler the binding is
+  # written on: dev-2026-09 to dev-2026-10 for alpha.60, after a local
+  # build newer than the pin took a spec literal the pin refused and only
+  # CI said so.
+  ODIN_VERSION: "dev-2026-10"
 
 jobs:
   # Answers one question - does this commit still need checking? - and is

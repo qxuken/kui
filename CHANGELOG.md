@@ -240,6 +240,8 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   `odin.nu gen`), then `set-version.nu`. Each step can be left out by
   name (`--skip odin,ci`), and every one runs before it reports, so one
   run lists all that is wrong. `docs/releasing.md` has it.
+- CI checks the Odin binding on Odin dev-2026-10, where it pinned
+  dev-2026-09; the binding still builds on dev-2026-09.
 
 **What you can delete.**
 

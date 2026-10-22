@@ -57,8 +57,10 @@ nu scripts/odin.nu slots                    # the extension contract across Odin
 ```
 
 `odin` comes from PATH, or set `ODIN` (and `ODIN_ROOT` to its directory
-if your environment points it at another Odin). The binding needs Odin
-dev-2026-09, CI's pin; dev-2026-04 rejects `run`'s `teardown = nil`. The
+if your environment points it at another Odin). The binding is checked
+on Odin dev-2026-10, CI's pin, and builds on dev-2026-09; dev-2026-04
+rejects `run`'s `teardown = nil`. A compiler newer than the pin can take
+what the pin refuses, so check on the pin before pushing. The
 examples link `kui_ffi` as a system library with `-L` and an rpath into
 `target/<profile>`; on Windows with `/LIBPATH` and `kui_ffi.dll.lib`, and
 odin.nu copies `kui_ffi.dll` into `target/odin` beside them, since Windows
