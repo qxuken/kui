@@ -598,8 +598,8 @@ Spec :: struct {
 	index: Maybe(u64),
 	// How many rows this virtual list has, built or not (kui_row_count).
 	row_count: Maybe(u64),
-	// A hint floated below the node while it is hovered, and its accessible
-	// description.
+	// A hint floated below the node while the pointer is over it or anything
+	// inside it (the innermost tooltip wins), and its accessible description.
 	tooltip: string,
 	// Horizontal size: px | "fit" | "grow" | "N%" | a size expression —
 	// `"clamp(400px, 80%, 1000px)"`, `"min(720px, 100%)"`, `"max(50%, 300)"`,
