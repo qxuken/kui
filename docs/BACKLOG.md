@@ -233,7 +233,9 @@ was filed, after the alpha.60 tag, and is in the archive; and F177, from
 carnet's alpha.60 migration — a password field kui kept after its form
 closed — was built the day it was filed, after the alpha.60 tag, and is
 in the archive; and RG158, from the alpha.61 pre-tag pass, was built the
-day it was filed, before the tag, and is in the archive.
+day it was filed, before the tag, and is in the archive; and F178, from
+a question about a dimmed box's tooltip, was built the day it was filed,
+after the alpha.61 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1818,6 +1820,14 @@ carnet's copy, which it cleared with a `forget_passwords` of its own —
 and behind it kui's copy, kept for the undeclared-editor budget like any
 draft, which nothing could see. One entry, F177, **built 2026-10-22**,
 the day it was filed, and in the archive.
+
+## From the tooltip opacity question (2026-10-22)
+
+The user asked whether a box with a `tooltip` and an `opacity` should
+draw its hint at that opacity too. It did, by the rule that opacity
+multiplies down the tree, floats included — and a leaf's hint, floated
+beside the leaf rather than in it, did not. One entry, F178, **built
+2026-10-22**, the day it was filed, and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4843,3 +4853,7 @@ move.
 **From the alpha.61 pre-tag pass (2026-10-22)** — RG158, filed and built the same day
 
 - `.` **RG158** — [What the alpha.61 pre-tag pass found](backlog/closed-2026-09.md#-rg158--what-the-alpha61-pre-tag-pass-found--done-2026-10-22) — done (2026-10-22) — F176's walk out of a press's own selection scope, F177's shown password, the macOS stamp and the replay journal copying a password, a Windows Odin plugin linking kui statically, the docs
+
+**From the tooltip opacity question (2026-10-22)** — F178, filed and built the same day
+
+- `~` **F178** — [A box's tooltip fades with the box](backlog/closed-2026-09.md#-f178--a-boxs-tooltip-fades-with-the-box--done-2026-10-22) — done (2026-10-22) — the hint the core floats under a box (`AccessSpec::hint`) takes the opacity of the box's parent, as a leaf's always did

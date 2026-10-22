@@ -418,7 +418,12 @@ recorded under [adr/](adr); this page is their consequences for an app.
   still lays out, still takes clicks and is still read out (CSS's rule for
   `opacity: 0`, and the one that makes fading a live panel usable). It eases
   with `transition`, so `enter={{ opacity: 0 }}` fades a whole panel in, and
-  `exit={{ opacity: 0 }}` fades it back out.
+  `exit={{ opacity: 0 }}` fades it back out. One float is let off: the hint
+  the core floats under a hovered node for its `tooltip` takes the opacity
+  of the node's parent, not the node's own, so a dimmed box still has a hint
+  that can be read while a fading panel takes its hints with it (backlog
+  F178). A `tooltip` the view places itself is content, and fades as
+  content does.
   `shadowColor` + `shadowBlur` / `shadowX` / `shadowY` / `shadowSpread` cast
   one drop shadow behind a node: the core emits the shape already offset,
   spread and inflated, and the shader softens the same SDF it uses for

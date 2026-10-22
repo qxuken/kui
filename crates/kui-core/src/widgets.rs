@@ -285,7 +285,9 @@ pub fn tooltip_with(ui: &mut Ui<'_>, content: impl FnOnce(&mut Ui<'_>)) {
 /// it is drawn with no description behind it.
 pub(crate) fn hover_hint(ui: &mut Ui<'_>, text: &str) {
     let size = ui.metrics().hint_text;
-    let spec = tooltip_spec(ui).role(crate::access::Role::None);
+    let mut spec = tooltip_spec(ui).role(crate::access::Role::None);
+    // Faded by the box's ancestors, not by the box (backlog F178).
+    spec.access_mut().hint = true;
     ui.text_in(spec, text, TextStyle::new(size));
 }
 

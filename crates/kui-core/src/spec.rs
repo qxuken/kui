@@ -1448,6 +1448,14 @@ pub struct AccessSpec {
     /// which is how a binding asks it of a leaf (`PropsOut::for_leaf`,
     /// backlog RG113).
     pub tooltip: bool,
+    /// This node is the hint the core floats as the last child of a
+    /// hovered box (`widgets::hover_hint`: the `tooltip` prop's, a stock
+    /// button's), so it fades with the box's ancestors and not with the
+    /// box: a dimmed box still has a hint that can be read, as a leaf,
+    /// whose hint floats beside it, always had (backlog F178). Set by
+    /// the core; an app's own `widgets::tooltip` is content it placed
+    /// and fades with the box it is in.
+    pub hint: bool,
     /// When the text inside this node changes, a reader reads the change
     /// without being asked (ARIA's `aria-live`). Off by default; a node
     /// that declares it is semantic, so a plain box marked live is not
@@ -1475,6 +1483,7 @@ impl AccessSpec {
         selection_anchor: None,
         caret_solid: false,
         tooltip: false,
+        hint: false,
         live: Live::Off,
     };
 }

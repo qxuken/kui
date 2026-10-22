@@ -21,6 +21,33 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.62 (unreleased)
+
+**What breaks.**
+
+- The hint a `tooltip` floats under a box is drawn at the opacity of the
+  box's parent, not the box's own: a box at `opacity: 0.4` had a hint at
+  0.4 (backlog F178).
+- Rust: `AccessSpec` gains `hint`, so a struct literal of it without
+  `..` needs the field.
+
+### Fixed
+
+- A box's `tooltip` faded with the box: the core floats the hint as the
+  box's last child, and opacity multiplies down the tree, so a dimmed
+  box — a card faded to say it is unavailable, a stock button at its
+  `disabledOpacity` — had a hint as faint as itself, where a leaf's
+  (an `image`, a `path`, an `edit`), floated beside the leaf, was drawn
+  in full. The hint now takes the opacity the box inherited and not the
+  box's own, on a box and a leaf alike; a panel fading around the box
+  still fades the hint with it. A `widgets::tooltip` the view places
+  itself is content and fades as before (backlog F178).
+
+**What you can delete.**
+
+- An `opacity` moved off a box with a `tooltip` and onto its children,
+  or a hint drawn by hand outside the box, to keep the hint readable.
+
 ## 0.1.0-alpha.61 (2026-10-22)
 
 **What breaks.**

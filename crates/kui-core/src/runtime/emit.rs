@@ -1051,14 +1051,23 @@ impl Core {
             }
             let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
             // Opacity multiplies down the tree, floats included: a tooltip
-            // inside a fading panel fades with it.
+            // inside a fading panel fades with it. The hint the core
+            // floats under a hovered box skips the box itself and takes
+            // what the box inherited, as a leaf's hint, floated beside
+            // the leaf, does: a dimmed box keeps a readable hint (F178).
             let opacity = if !any_opacity {
                 1.0
             } else {
-                let inherited = if parent == NIL {
+                let from =
+                    if self.tree.any_hint && parent != NIL && self.tree.specs[i].access().hint {
+                        self.tree.parent[parent as usize]
+                    } else {
+                        parent
+                    };
+                let inherited = if from == NIL {
                     1.0
                 } else {
-                    self.opacity[parent as usize]
+                    self.opacity[from as usize]
                 };
                 let o = inherited * self.tree.specs[i].style.opacity;
                 self.opacity[i] = o;

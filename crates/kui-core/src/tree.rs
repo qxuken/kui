@@ -225,6 +225,9 @@ pub struct Tree {
     pub any_rounded_clip: bool,
     /// Whether any node fades (`opacity` below one).
     pub any_opacity: bool,
+    /// Whether any node is a hover hint the core floated under a box
+    /// (`AccessSpec::hint`): its opacity is read past the box only then.
+    pub any_hint: bool,
     /// Whether any node declares `modal`.
     pub any_modal: bool,
     /// Whether any node declares `focus_region`.
@@ -359,6 +362,7 @@ impl Tree {
         self.any_clip = false;
         self.any_rounded_clip = false;
         self.any_opacity = false;
+        self.any_hint = false;
         self.any_modal = false;
         self.any_region = false;
         self.any_slide = false;
@@ -423,6 +427,7 @@ impl Tree {
         }
         if let Some(a) = spec.access.as_deref() {
             self.any_line |= a.role == Some(crate::access::Role::Line);
+            self.any_hint |= a.hint;
         }
         if spec.layout.clips() {
             self.any_clip = true;
