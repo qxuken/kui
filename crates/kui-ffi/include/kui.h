@@ -632,7 +632,11 @@ enum {
  * cut, no composition, no undo history, read as KUI_ROLE_PASSWORD_INPUT
  * with the bullets as its value, and kui_secure_input_get and
  * kui_ime_off_get answer true while it has focus. kui_edit_text still
- * reads the text. Declared without SECURE on a later frame, the same
+ * reads the text. A frame that does not declare it forgets it, its text
+ * zeroed (an ordinary editor's draft is kept while hidden), so a form
+ * opened again starts empty; the text the app was handed, by an
+ * on_change or kui_edit_text, is the app's to clear. Declared without
+ * SECURE on a later frame, the same
  * editor shows its text again (a "show password" toggle); MULTILINE is
  * ignored with it. */
 enum {

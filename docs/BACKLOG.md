@@ -229,7 +229,10 @@ is in the archive; and F173, from kawoosh's terminal — a click in a pane
 a strip scrolls into view — was built the day it was filed, after the
 alpha.59 tag, and is in the archive; and F176, from kawoosh's hex pane
 — a press on a draggable node's hover-lit child — was built the day it
-was filed, after the alpha.60 tag, and is in the archive.
+was filed, after the alpha.60 tag, and is in the archive; and F177, from
+carnet's alpha.60 migration — a password field kui kept after its form
+closed — was built the day it was filed, after the alpha.60 tag, and is
+in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -1805,6 +1808,15 @@ for every event surface of the alpha.60 move found the bar dragging
 from its empty track and never from its thumb — on alpha.58 as well.
 One entry, F176, **built 2026-10-22**, the day it was filed, and in the
 archive.
+
+## From carnet's alpha.60 migration (2026-10-22)
+
+Moving carnet onto ADR 0047's `value`, its review found a sign-in
+password that came back when the form reopened: the field showed
+carnet's copy, which it cleared with a `forget_passwords` of its own —
+and behind it kui's copy, kept for the undeclared-editor budget like any
+draft, which nothing could see. One entry, F177, **built 2026-10-22**,
+the day it was filed, and in the archive.
 
 ## From the traffic-lights question (2026-10-09)
 
@@ -4804,3 +4816,7 @@ move.
 **From kawoosh's hex scrollbar (2026-10-22)** — F176, filed and built the same day
 
 - `~` **F176** — [A press on a draggable node's child that claims nothing drags nothing](backlog/closed-2026-09.md#-f176--a-press-on-a-draggable-nodes-child-that-claims-nothing-drags-nothing--done-2026-10-22) — done (2026-10-22) — `enclosing_drag` resolved at the press, as `on_button`'s owner is: the nearest live `on_drag` above a region with no claim of its own, ending at the first node that has one; the `drag-through` scene
+
+**From carnet's alpha.60 migration (2026-10-22)** — F177, filed and built the same day
+
+- `~` **F177** — [kui keeps a password field's text after its form is gone](backlog/closed-2026-09.md#-f177--kui-keeps-a-password-fields-text-after-its-form-is-gone--done-2026-10-22) — done (2026-10-22) — a secure editor forgotten on the first frame that does not declare it, its text in a `Secret` zeroed on drop, replace and growth

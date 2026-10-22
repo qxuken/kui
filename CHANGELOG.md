@@ -52,6 +52,13 @@ was the first bare bump to break an app in five releases).
   and `play` refuses a `volume` or `fadeIn` that is not finite by name,
   where it failed in serde. `KuiWindow`'s `close` and `useWindow` return
   through `Result` (the types are unchanged) (backlog RG139).
+- A `secure` editor a frame does not declare is forgotten on that frame,
+  its text zeroed; it was kept for the undeclared-editor budget, as an
+  ordinary draft is, so a sign-in form closed and opened again showed
+  the password, and kui held it for the life of the app (backlog F177,
+  from carnet). A form opened again starts empty, or at the `value` it
+  declares; a field hidden for a frame mid-typing loses what was typed
+  unless the app declares it as `value`.
 - C: ABI 34. `KUI_TURNED`, OR'd into `kui_path`'s and `kui_path_d`'s
   `fill_rule`, says the path turns, so a `rotate` of 0 is declared and
   keeps the swept box (backlog RG121); no struct moved, and a library
@@ -181,6 +188,11 @@ the core wrote the field is what both readings now ask.
   `npm audit` are clean.
 
 **What you can delete.**
+
+- A `setEditText(key, '')` on a password field a form stops showing —
+  carnet's `forget_passwords` — to wipe kui's copy: kui forgets the field
+  and zeroes its text itself. Clearing the app's own copy is still the
+  app's.
 
 - A Lua message's field renamed away from `event` or `node_key` so
   `on_event` could see the envelope's: `at` has it.

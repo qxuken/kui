@@ -694,6 +694,9 @@ impl Core {
                 }
             });
         }
+        // A password field the frame did not declare is not kept for the
+        // budget an ordinary draft is (backlog F177).
+        self.edit.forget_undeclared_secrets();
         // The declared window set, diffed against the session's: a frame
         // that declared a new name queues its `Open` here.
         self.sync_windows();

@@ -243,3 +243,53 @@ fn a_secure_editor_is_a_field() {
         Some(Role::PasswordInput)
     );
 }
+
+/// A frame with no password field: the form closed.
+fn closed(core: &mut Core) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0));
+    ui.finish();
+}
+
+/// A secure editor the frame does not declare is forgotten that frame,
+/// not kept for the undeclared-editor budget an ordinary draft is
+/// (backlog F177): carnet's sign-in form, closed with a password typed in
+/// it and opened again, showed the password, and kui held it for as long
+/// as the app ran.
+#[test]
+fn a_password_field_left_undeclared_is_forgotten() {
+    let mut core = Core::new();
+    let key = frame(&mut core, "", true);
+    for ch in "hunter2".chars() {
+        core.handle_input(InputEvent::Text(ch.to_string()));
+    }
+    frame(&mut core, "", true);
+    assert_eq!(core.edit_text(key).as_deref(), Some("hunter2"));
+
+    closed(&mut core);
+    assert_eq!(core.edit_text(key), None, "the state went with the form");
+    assert!(!core.edit.is_secure(key));
+    // A keystroke the focus still points at reaches no state.
+    core.handle_input(InputEvent::Text("x".into()));
+
+    frame(&mut core, "", true);
+    assert_eq!(
+        core.edit_text(key).as_deref(),
+        Some(""),
+        "opened again, empty"
+    );
+}
+
+/// The contrast: an ordinary field keeps its draft while it is hidden, as
+/// it always has.
+#[test]
+fn an_ordinary_field_left_undeclared_keeps_its_draft() {
+    let mut core = Core::new();
+    let key = frame(&mut core, "", false);
+    for ch in "draft".chars() {
+        core.handle_input(InputEvent::Text(ch.to_string()));
+    }
+    closed(&mut core);
+    frame(&mut core, "", false);
+    assert_eq!(core.edit_text(key).as_deref(), Some("draft"));
+}

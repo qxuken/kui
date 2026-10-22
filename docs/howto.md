@@ -1363,6 +1363,13 @@ nothing to undo when focus leaves it. Read the password with
 `editText(key)` as from any editor; never mirror it into your model
 except where you need it.
 
+kui forgets the field on the first frame that does not declare it, and
+zeroes the text it held: a sign-in form closed and opened again starts
+empty, with no `setEditText` to wipe it first. An ordinary field keeps
+its draft while it is hidden; a password field does not. What kui handed
+you — each `change`'s text and `editText`'s answer — is your copy, and
+yours to clear when the form goes.
+
 A "show password" eye is the same editor declared with `secure` off
 while the eye is open: the text is drawn again, the caret where it was,
 and declared on again it is masked, its history gone with it. The

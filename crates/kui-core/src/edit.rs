@@ -102,6 +102,11 @@ pub struct EditOptions {
     /// the caret where it was; on again, it masks it. A secure editor is
     /// a field: `multiline` is ignored, and ⌥← ⌥→ (Ctrl elsewhere) and a
     /// double click take the whole text, there being no words to show.
+    /// A frame that does not declare it forgets it, its text zeroed, where
+    /// an ordinary editor's draft is kept while it is hidden: a form
+    /// closed and opened again starts empty, or at the `value` it declares
+    /// (backlog F177). The text the app was handed — each `change`'s, and
+    /// `edit_text`'s answer — is the app's copy, and the app's to clear.
     pub secure: bool,
     /// The text `text_edit` is given is the editor's value, not its seed
     /// (ADR 0047, decision 8): on every frame it differs from the
@@ -191,7 +196,7 @@ pub(crate) struct EditState {
     /// A secure editor's text (`EditOptions::secure`), whose buffer holds
     /// a [`SECURE_BULLET`] per grapheme of it. `None` for any other: the
     /// buffer is the text.
-    secret: Option<String>,
+    secret: Option<Secret>,
     /// `EditOptions::placeholder`, shaped in a buffer of its own at the
     /// editor's metrics, beside the `metrics_rev` it was shaped at.
     placeholder: Option<(String, u32, Buffer)>,
@@ -253,6 +258,72 @@ pub(crate) struct EditState {
 /// few KB and one holding a long line about 22 KB, so a full budget is a
 /// few MB.
 pub const MAX_UNDECLARED_EDITS: usize = 256;
+
+/// A secure editor's text: the one copy kui keeps of it, zeroed when it is
+/// dropped or replaced, and grown into a fresh allocation with the old one
+/// zeroed, so a password does not linger in memory kui has let go of
+/// (backlog F177). What it cannot reach is what left it on purpose — the
+/// `change` message's text and `edit_text`'s answer are the app's copies —
+/// and what the allocator or the input method made of the bytes before
+/// kui held them.
+pub(crate) struct Secret(String);
+
+impl Secret {
+    /// Takes `text`, which is kui's own temporary: copied into room for
+    /// growth, and the temporary zeroed.
+    fn new(mut text: String) -> Self {
+        let mut own = String::with_capacity(text.len().max(32).next_power_of_two());
+        own.push_str(&text);
+        wipe(&mut text);
+        Secret(own)
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// `String::replace_range`, growing into a fresh allocation — and the
+    /// old one zeroed — rather than letting the allocator move the bytes.
+    fn replace_range(&mut self, range: std::ops::Range<usize>, text: &str) {
+        let need = self.0.len() - (range.end - range.start) + text.len();
+        if need > self.0.capacity() {
+            let mut grown = String::with_capacity(need.next_power_of_two());
+            grown.push_str(&self.0);
+            wipe(&mut std::mem::replace(&mut self.0, grown));
+        }
+        self.0.replace_range(range, text);
+    }
+
+    /// The text, for a secure editor shown again: the editor's own text
+    /// from now on.
+    fn into_string(mut self) -> String {
+        std::mem::take(&mut self.0)
+    }
+}
+
+impl Drop for Secret {
+    fn drop(&mut self) {
+        wipe(&mut self.0);
+    }
+}
+
+/// Zeroes all of `s`'s allocation — the spare capacity too, which a
+/// shrinking edit left the old bytes in — through volatile writes the
+/// optimizer may not drop for a buffer about to be freed.
+fn wipe(s: &mut String) {
+    let cap = s.capacity();
+    // SAFETY: the bytes are made all zero, which is valid UTF-8, and the
+    // length is then cleared; every write is inside the allocation.
+    unsafe {
+        let v = s.as_mut_vec();
+        let p = v.as_mut_ptr();
+        for i in 0..cap {
+            std::ptr::write_volatile(p.add(i), 0);
+        }
+        v.set_len(0);
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+}
 
 const UNDO_CAP: usize = 1000;
 /// Max bytes one coalesced op absorbs before a new unit starts.
@@ -529,12 +600,12 @@ impl EditState {
         let caret = self.editor.cursor();
         let (a, z) = self.editor.selection_bounds().unwrap_or((caret, caret));
         let (a, z) = (
-            grapheme_start(secret, a.index / BULLET_LEN),
-            grapheme_start(secret, z.index / BULLET_LEN),
+            grapheme_start(secret.as_str(), a.index / BULLET_LEN),
+            grapheme_start(secret.as_str(), z.index / BULLET_LEN),
         );
         secret.replace_range(a..z, &text);
-        let at = graphemes_before(secret, a + text.len());
-        let n = graphemes(secret);
+        let at = graphemes_before(secret.as_str(), a + text.len());
+        let n = graphemes(secret.as_str());
         self.set_bullets(n);
         self.editor
             .set_cursor(Cursor::new(0, at.min(n) * BULLET_LEN));
@@ -574,10 +645,14 @@ impl EditState {
                 (admitted(&text, false).into_owned(), before)
             });
             let shown = bullets(graphemes(&text));
-            self.secret = Some(text);
+            self.secret = Some(Secret::new(text));
             (shown, before * BULLET_LEN)
         } else {
-            let text = self.secret.take().unwrap_or_default();
+            let text = self
+                .secret
+                .take()
+                .map(Secret::into_string)
+                .unwrap_or_default();
             let at = grapheme_start(&text, caret.index / BULLET_LEN);
             (text, at)
         };
@@ -732,14 +807,14 @@ impl EditState {
     /// graphemes the splice rules move them to. Unrecorded, as every
     /// secure edit is.
     fn take_secret_value(&mut self, value: &str) -> bool {
-        let Some(secret) = self.secret.as_ref() else {
+        let Some(secret) = self.secret.as_ref().map(Secret::as_str) else {
             return false;
         };
         if secret == value {
             return false;
         }
         let value = admitted(value, false);
-        if *secret == *value {
+        if secret == &*value {
             return false;
         }
         let span = splice_span(secret, &value);
@@ -761,7 +836,7 @@ impl EditState {
         if let Some(a) = anchor_at.filter(|a| !same_pos(*a, caret_at)) {
             self.editor.set_selection(Selection::Normal(a));
         }
-        self.secret = Some(value.into_owned());
+        self.secret = Some(Secret::new(value.into_owned()));
         self.redo.clear();
         self.version += 1;
         self.invalidate_measurements();
@@ -815,6 +890,10 @@ pub struct EditStore {
     blink_visible: bool,
     /// The frame being built, stamped onto every state `declare` touches.
     frame_no: u64,
+    /// Whether a secure editor has been declared since the last frame that
+    /// had none: what makes [`EditStore::forget_undeclared_secrets`] walk
+    /// the store, so an app with no password field pays one test a frame.
+    any_secure: bool,
 }
 
 impl Default for EditStore {
@@ -829,6 +908,7 @@ impl Default for EditStore {
             caret_stamp: 0,
             blink_visible: true,
             frame_no: 0,
+            any_secure: false,
         }
     }
 }
@@ -1002,6 +1082,46 @@ impl EditStore {
         }
     }
 
+    /// Drops every secure editor the frame being finished did not declare,
+    /// its text zeroed with it (backlog F177). An undeclared editor is
+    /// otherwise kept for the budget — a draft survives a field hidden for
+    /// a while — but a password kept is a password an app that closed its
+    /// form never meant to keep: carnet's sign-in form showed it again on
+    /// reopening, and nothing it could see said kui still held it.
+    ///
+    /// The focused key stays the store's: the core keeps focus on a node
+    /// that went away (a dock toggled off lands where the user was), and a
+    /// field that comes back is focused again, empty, with no state for a
+    /// keystroke in between to reach. A drag on it is let go.
+    pub(crate) fn forget_undeclared_secrets(&mut self) {
+        if !self.any_secure {
+            return;
+        }
+        let frame = self.frame_no;
+        let mut gone: Vec<Key> = Vec::new();
+        let mut any = false;
+        self.states.retain(|k, s| {
+            if s.secret.is_none() {
+                return true;
+            }
+            if s.last_declared == frame {
+                any = true;
+                return true;
+            }
+            gone.push(*k);
+            false
+        });
+        self.any_secure = any;
+        for k in gone {
+            if self.dragging.is_some_and(|(d, _)| d == k) {
+                self.dragging = None;
+            }
+            if self.caret_moved == Some(k) {
+                self.caret_moved = None;
+            }
+        }
+    }
+
     /// Drops the oldest undeclared states down to the budget. `declared_at`
     /// is the frame that just ended: a state stamped with it is declared.
     fn evict(&mut self, declared_at: u64) {
@@ -1068,9 +1188,9 @@ impl EditStore {
             let mut buffer = Buffer::new(fs, metrics);
             buffer.set_size(None, None);
             let text = admitted(initial, multiline);
-            let secret = opts.secure.then(|| text.to_string());
+            let secret = opts.secure.then(|| Secret::new(text.to_string()));
             let shown = match &secret {
-                Some(s) => bullets(graphemes(s)).into(),
+                Some(s) => bullets(graphemes(s.as_str())).into(),
                 None => text,
             };
             buffer.set_text(
@@ -1125,6 +1245,7 @@ impl EditStore {
             }
         });
         state.last_declared = frame_no;
+        self.any_secure |= opts.secure;
         state.autofocus = opts.autofocus;
         state.origin = origin;
         state.multiline = multiline;
@@ -1248,7 +1369,7 @@ impl EditStore {
     pub fn text(&self, key: Key) -> Option<String> {
         let s = self.states.get(&key)?;
         if let Some(secret) = &s.secret {
-            return Some(secret.clone());
+            return Some(secret.as_str().to_string());
         }
         Some(s.editor.with_buffer(|b| {
             let mut text = buffer_text(b);
@@ -1281,8 +1402,8 @@ impl EditStore {
         let text = admitted(text, s.multiline);
         let text = match &mut s.secret {
             Some(secret) => {
-                *secret = text.into_owned();
-                bullets(graphemes(secret)).into()
+                *secret = Secret::new(text.into_owned());
+                bullets(graphemes(secret.as_str())).into()
             }
             None => text,
         };
@@ -1486,11 +1607,13 @@ impl EditStore {
         };
         s.abandon_preedit();
         let text = admitted(text, s.multiline);
-        let now = match &s.secret {
-            Some(secret) => secret.clone(),
-            None => s.editor.with_buffer(buffer_text),
+        // Compared in place: a copy of a secret would be one kui does not
+        // zero.
+        let same = match &s.secret {
+            Some(secret) => secret.as_str() == &*text,
+            None => s.editor.with_buffer(buffer_text) == *text,
         };
-        if now == *text {
+        if same {
             return false;
         }
         s.coalesce = None;
@@ -2529,5 +2652,40 @@ fn cursor_in(text: &str, at: usize) -> Cursor {
     match head.rfind('\n') {
         Some(i) => Cursor::new(head.bytes().filter(|b| *b == b'\n').count(), at - i - 1),
         None => Cursor::new(0, at),
+    }
+}
+
+#[cfg(test)]
+mod secret_tests {
+    use super::{Secret, wipe};
+
+    /// `wipe` zeroes the whole allocation, the spare capacity a shrinking
+    /// edit left the old bytes in as well as the text (backlog F177).
+    #[test]
+    fn a_wipe_zeroes_the_allocation_and_not_only_the_text() {
+        let mut s = String::with_capacity(64);
+        s.push_str("correct horse battery staple");
+        s.truncate(7);
+        let (ptr, cap) = (s.as_ptr(), s.capacity());
+        wipe(&mut s);
+        assert!(s.is_empty());
+        assert_eq!(s.capacity(), cap, "the allocation is the same one");
+        // SAFETY: every byte of the allocation was written by `wipe`.
+        let bytes = unsafe { std::slice::from_raw_parts(ptr, cap) };
+        assert!(bytes.iter().all(|&b| b == 0), "{bytes:?}");
+    }
+
+    /// An edit that outgrows the room moves the text to a fresh
+    /// allocation, and the text reads as `String::replace_range`'s would.
+    #[test]
+    fn a_secret_edits_as_a_string_does() {
+        let mut secret = Secret::new("hunter".to_string());
+        secret.replace_range(6..6, "2");
+        assert_eq!(secret.as_str(), "hunter2");
+        let long = "x".repeat(100);
+        secret.replace_range(0..1, &long);
+        assert_eq!(secret.as_str().len(), 106);
+        assert!(secret.as_str().ends_with("unter2"));
+        assert_eq!(secret.into_string().len(), 106);
     }
 }
