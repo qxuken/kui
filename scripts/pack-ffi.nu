@@ -48,18 +48,20 @@
 # The release ships two tarballs over every platform's pack, which
 # `bundle` writes to target/pack/release/ with their SHA256SUMS:
 #
-#   kui-c-<version>/      include/kui.h
-#   kui-odin-<version>/   kui/, the Odin package (packages/odin/kui)
-#     and in both:        lib/<platform>/shared/  libkui_ffi.so / .dylib, or
-#                                                 kui_ffi.dll + kui_ffi.dll.lib
-#                         lib/<platform>/static/  libkui_ffi.a, or kui_ffi.lib
-#                                                 and windows-targets' .libs,
-#                                                 link.txt
-#                         lib/<platform>/BUILD.txt, README.md, LICENSE
+#   kui-c-<version>/      include/kui.h, lib/<platform>/
+#   kui-odin-<version>/   kui/, the Odin package (packages/odin/kui), with
+#                         the same libraries under kui/c/lib/<platform>/
+#     where <platform>/ is: shared/  libkui_ffi.so / .dylib, or
+#                                    kui_ffi.dll + kui_ffi.dll.lib
+#                           static/  libkui_ffi.a, or kui_ffi.lib and
+#                                    windows-targets' .libs, link.txt
+#                           BUILD.txt
+#     and in both:        README.md, LICENSE
 #
 # A kind to a directory, so `-L lib/<platform>/static -lkui_ffi` is the
 # static link and the same line with `shared` the dynamic one: a linker
-# handed a directory holding both takes the shared library. `verify`
+# handed a directory holding both takes the shared library. The Odin
+# pack's kui_c.odin names its own copy, static unless KUI_SHARED. `verify`
 # builds examples/c/apps/counter.c (from the C tarball) or
 # examples/odin/apps/counter.odin (from the Odin one) against each kind
 # for this machine's platform, as a user outside this repository would,
@@ -516,8 +518,11 @@ def link-the-pack [c_dir: string, platforms: list<string>] {
         let shared = if $windows { [$"($lib)/shared/kui_ffi.dll.lib"] } else if ($p | str starts-with "darwin") { [$"($lib)/shared/libkui_ffi.dylib"] } else { [$"($lib)/shared/libkui_ffi.so"] }
         let static = [$"($lib)/static/(if $windows { 'kui_ffi.lib' } else { 'libkui_ffi.a' })" ...$imports]
         let attr = if $windows { $"\t\t@\(extra_linker_flags=\"($flags | uniq | str join ' ')\")\n" } else { "" }
+        # A plugin reaches a branch on Windows only, where it imports from
+        # the host's kui_ffi.dll as a program does: the shared library,
+        # never a private static copy of kui.
         $"} else when ($when_of | get $p) {
-\twhen KUI_SHARED {
+\twhen KUI_SHARED || KUI_PLUGIN {
 \t\tforeign import lib {
 (do $quoted $shared)
 \t\t}
@@ -532,7 +537,8 @@ def link-the-pack [c_dir: string, platforms: list<string>] {
 // links libkui_ffi from lib/<platform>/ beside this file: the static
 // library by default, so a program needs nothing beside it, or with
 // -define:KUI_SHARED=true the shared one, which the program then finds
-// at run time \(an rpath, or the library beside it). A platform the pack
+// at run time \(an rpath, or the library beside it); a Windows plugin
+// \(-define:KUI_PLUGIN=true) always links the shared one. A platform the pack
 // does not carry falls back to KUI_LIB, as the repository's file does.
 KUI_SHARED :: #config\(KUI_SHARED, false)
 KUI_LIB :: #config\(KUI_LIB, "system:kui_ffi.dll.lib" when ODIN_OS == .Windows else "system:kui_ffi")

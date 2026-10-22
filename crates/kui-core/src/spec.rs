@@ -943,7 +943,12 @@ pub enum Handler {
     /// drag, and cursor motion until release emits `UiEvent`s as this
     /// message with `drag: {phase="start"|"move"|"end", x, y, dx, dy,
     /// parent}` in it. A drag past the click slop
-    /// suppresses the node's `on_click`, so both can coexist.
+    /// suppresses the node's `on_click`, so both can coexist. A press on
+    /// a child that does nothing with a press itself — one that only
+    /// lights up under the pointer — drags the nearest enclosing `on_drag`
+    /// node; the walk stops at a clickable, a key sink, window chrome, a
+    /// slider, the modal boundary and the selection scope the press is in
+    /// (backlog F176).
     Drag,
     /// Marks this node as a key sink: while it holds key focus, key
     /// presses arrive as `UiEvent`s on it as this message with

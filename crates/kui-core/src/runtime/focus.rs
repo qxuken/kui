@@ -675,6 +675,11 @@ impl Core {
     /// selection scope `scope` the press is in: past that, the press is
     /// the scope's drag-select.
     pub(crate) fn enclosing_drag(&self, i: usize, scope: Option<Key>) -> Option<usize> {
+        // A press on the scope's own region (its text has none) is
+        // already in it.
+        if scope == Some(self.tree.keys[i]) {
+            return None;
+        }
         let mut n = self.tree.parent[i];
         while n != crate::tree::NIL {
             let j = n as usize;

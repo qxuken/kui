@@ -1877,7 +1877,14 @@ impl Core {
     /// Current text of an editor by key.
     pub fn edit_text(&self, key: Key) -> Option<String> {
         let t = self.edit.text(key);
-        self.note_read(|| replay::Read::EditText(key, t.clone()));
+        // A password is not copied into a kept slot's journal, where
+        // nothing zeroes it (backlog F177): a slot that reads one runs
+        // again rather than replay.
+        if self.edit.is_secure(key) {
+            self.note_read(|| replay::Read::Opaque);
+        } else {
+            self.note_read(|| replay::Read::EditText(key, t.clone()));
+        }
         t
     }
 

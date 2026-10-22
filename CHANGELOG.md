@@ -53,7 +53,8 @@ was the first bare bump to break an app in five releases).
   where it failed in serde. `KuiWindow`'s `close` and `useWindow` return
   through `Result` (the types are unchanged) (backlog RG139).
 - A `secure` editor a frame does not declare is forgotten on that frame,
-  its text zeroed; it was kept for the undeclared-editor budget, as an
+  its text zeroed — one shown again with a "show password" toggle too,
+  since it was declared `secure`; it was kept for the undeclared-editor budget, as an
   ordinary draft is, so a sign-in form closed and opened again showed
   the password, and kui held it for the life of the app (backlog F177,
   from carnet). A form opened again starts empty, or at the `value` it
@@ -74,6 +75,13 @@ was the first bare bump to break an app in five releases).
   only declares `hoverBg`, `hoverable`, `onHover` or a `cursor` — starts
   the drag of the nearest enclosing `onDrag` node, where it started
   nothing (backlog F176).
+- The Odin tarball's libraries moved from `lib/<platform>/` to
+  `kui/c/lib/<platform>/`, and its `kui_c.odin` links them itself,
+  statically unless `-define:KUI_SHARED=true`: an alpha.60 build line
+  that passed `-extra-linker-flags:"-L$ODIN_PACK/lib/…"` names a
+  directory that is gone.
+- Lua: an `on_event` that already declared a second parameter, or takes
+  `...`, receives the envelope there (backlog RG157).
 
 A message named its own fields, and the core read one of them as its
 own whenever the event had nothing to write there; the flag that says
@@ -87,7 +95,9 @@ the core wrote the field is what both readings now ask.
   `vendor:raylib` does — the static library and the system libraries its
   `link.txt` lists by default, or the shared one with
   `-define:KUI_SHARED=true` — so `import kui "kui:kui"` with a collection
-  is all a program needs, no `-extra-linker-flags`. The repository's
+  is all a program needs, no `-extra-linker-flags`. A Windows plugin
+  (`-define:KUI_PLUGIN=true`) links the shared one, importing from the
+  host's `kui_ffi.dll`. The repository's
   `kui_c.odin` keeps `KUI_LIB`; the bundle writes the pack's block
   between markers the generator emits. `pack-ffi.nu verify` builds the
   Odin counter that way, static with no flags at all.
@@ -97,7 +107,8 @@ the core wrote the field is what both readings now ask.
   where they apply — which no message can hide. In the first argument a
   message's own `event` or `node_key` field keeps its value, so a
   message with either hid what happened and where (backlog RG157). A
-  script that names one argument is unchanged.
+  script that names one argument is unchanged; one that names two, or
+  takes `...`, gets the envelope there.
 
 ### Fixed
 
@@ -115,6 +126,13 @@ the core wrote the field is what both readings now ask.
   pane). **What you can delete:** a drag handler declared again on
   every lit child of a draggable node, or a bar's thumb drawn as a
   sibling float so that the press finds the track.
+- A screen reader's "replace selected text" on an editor goes in as
+  typing does: a control, a line break in a single-line field and the
+  bidi paragraph ends are dropped. It went in as it came, so one request
+  carrying `\u{1e}` before right-to-left text panicked the shaper and
+  ended the app, release builds included, and a value the app declared
+  back from the `change` it reported was not the text the editor held
+  (backlog FZ11, found by the `events` fuzz target).
 - A dismissal a driver reports for a window the user closed, while the
   app still declares it, posts nothing; it delivered the entry's
   `onDismiss` about a window that was gone (backlog RG157).
@@ -127,7 +145,6 @@ the core wrote the field is what both readings now ask.
   `--no-runner` pack is `kui-ffi-<version>-<platform>-no-runner`, where it
   overwrote the full pack of its platform. The volume before this one,
   `kui-pack-target`, can go.
-
 - A Node message nested past serde's 128 levels arrives; past
   `MESSAGE_DEPTH`, 1024, the frame's error says how deep it was, where
   every message deeper than 128 failed the frame with "recursion limit
@@ -150,7 +167,6 @@ the core wrote the field is what both readings now ask.
   where it decoded as zero; `doors.odin`'s `image_pixels` promises its
   bytes until the next call, as kui.h does; and `run.odin` says a loop of
   your own frees `context.temp_allocator` once a turn (backlog RG145).
-
 - A C spinner — `kui_path` with a `rotate` passing through exactly 0 and
   no pivot — keeps its box at 0 with `KUI_TURNED`; it had the tight box
   for that frame, where JSX's and Lua's turn of 0 has the swept square
@@ -175,7 +191,6 @@ the core wrote the field is what both readings now ask.
   100k lines, the 100k one into an editor that declares `on_change`, and
   the 100k edit alone, the half RG156 tripled (backlog RG157). It printed a
   table of its own, which the guard could not read.
-
 - Dependencies, each release two weeks old or more: `mlua` 0.12.2 (with
   `mlua-sys` 0.13), `glam`, `objc2`, `either`, `arbitrary`,
   `async-recursion`, `lazy_static`, `napi-build` and `toml_datetime` in
@@ -193,7 +208,9 @@ the core wrote the field is what both readings now ask.
   carnet's `forget_passwords` — to wipe kui's copy: kui forgets the field
   and zeroes its text itself. Clearing the app's own copy is still the
   app's.
-
+- The Odin build's `-extra-linker-flags` (the `-L` to the pack's
+  `lib/<platform>/` and its `link.txt` line): the pack's `kui_c.odin`
+  links the library itself.
 - A Lua message's field renamed away from `event` or `node_key` so
   `on_event` could see the envelope's: `at` has it.
 - A Node guard that checked a row count or an index was a whole,
@@ -414,13 +431,6 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   debug build, undefined behaviour in the rasterizer in a release one.
   The rasterizer now measures the outline it is handed, not only the
   logical one (backlog FZ10, found by the `path` fuzz target).
-- A screen reader's "replace selected text" on an editor goes in as
-  typing does: a control, a line break in a single-line field and the
-  bidi paragraph ends are dropped. It went in as it came, so one request
-  carrying `\u{1e}` before right-to-left text panicked the shaper and
-  ended the app, release builds included, and a value the app declared
-  back from the `change` it reported was not the text the editor held
-  (backlog FZ11, found by the `events` fuzz target).
 - A choice from the platform's menu bar (`activate_menu_bar_item` /
   `_path`, the macOS bar) says which window it was made in and which
   slot drew the bar, is listed in the devtools' events tab, and raises

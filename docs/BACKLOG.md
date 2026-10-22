@@ -232,7 +232,8 @@ alpha.59 tag, and is in the archive; and F176, from kawoosh's hex pane
 was filed, after the alpha.60 tag, and is in the archive; and F177, from
 carnet's alpha.60 migration — a password field kui kept after its form
 closed — was built the day it was filed, after the alpha.60 tag, and is
-in the archive.
+in the archive; and RG158, from the alpha.61 pre-tag pass, was built the
+day it was filed, before the tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3042,6 +3043,24 @@ each ran in 0.3–2.8 s against the 10 s it is allowed. `decode`'s two slow
 units are animated WebPs with canvases just under the 512 MiB ceiling, as
 in the alpha.56 round.
 
+## From the alpha.61 pre-tag pass (2026-10-22)
+
+The round since alpha.60 — F176, F177, RG121, RG126, RG139, RG145,
+RG157, FZ11, the C and Odin tarballs, the dependencies — on the Mac:
+CI's `check` in order (2225 Rust tests in 169 suites; the C round; the
+Odin leg on dev-2026-10, CI's pin; Node with the corpus required; gen;
+the typecheck; the headless round), `cargo audit`, the windowed smoke
+with Node's (55 examples on both bases, 132 windows), the accessibility
+audit (106 of 106), the bench guard against alpha.60 on every bench
+file (the guarded rows −1.0% to +2.4%; a warm cell grid −11.8%,
+RG126), and three read-only reviewers — the core, the bindings, the docs — each claim checked by
+reading before it was acted on. Green as found. One entry, RG158, is
+what the reviewers found — F176's walk climbing out of the selection
+scope a press on selectable text is in, F177 keeping a password shown
+with a toggle, two copies of a password nothing zeroed, a Windows Odin
+plugin linking kui statically, and the docs — **built 2026-10-22**, the
+day it was filed, before the tag, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -4820,3 +4839,7 @@ move.
 **From carnet's alpha.60 migration (2026-10-22)** — F177, filed and built the same day
 
 - `~` **F177** — [kui keeps a password field's text after its form is gone](backlog/closed-2026-09.md#-f177--kui-keeps-a-password-fields-text-after-its-form-is-gone--done-2026-10-22) — done (2026-10-22) — a secure editor forgotten on the first frame that does not declare it, its text in a `Secret` zeroed on drop, replace and growth
+
+**From the alpha.61 pre-tag pass (2026-10-22)** — RG158, filed and built the same day
+
+- `.` **RG158** — [What the alpha.61 pre-tag pass found](backlog/closed-2026-09.md#-rg158--what-the-alpha61-pre-tag-pass-found--done-2026-10-22) — done (2026-10-22) — F176's walk out of a press's own selection scope, F177's shown password, the macOS stamp and the replay journal copying a password, a Windows Odin plugin linking kui statically, the docs

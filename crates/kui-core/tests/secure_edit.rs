@@ -293,3 +293,23 @@ fn an_ordinary_field_left_undeclared_keeps_its_draft() {
     frame(&mut core, "", false);
     assert_eq!(core.edit_text(key).as_deref(), Some("draft"));
 }
+
+/// A password shown with a "show password" toggle when the form closes
+/// is still a password: the field was declared `secure`, so it is
+/// forgotten undeclared as a masked one is, where it was kept as an
+/// ordinary draft and came back, masked, on reopening.
+#[test]
+fn a_shown_password_left_undeclared_is_forgotten() {
+    let mut core = Core::new();
+    let key = frame(&mut core, "", true);
+    for ch in "hunter2".chars() {
+        core.handle_input(InputEvent::Text(ch.to_string()));
+    }
+    frame(&mut core, "", false);
+    assert_eq!(core.edit_text(key).as_deref(), Some("hunter2"));
+
+    closed(&mut core);
+    assert_eq!(core.edit_text(key), None, "the state went with the form");
+    frame(&mut core, "", true);
+    assert_eq!(core.edit_text(key).as_deref(), Some(""));
+}

@@ -655,3 +655,52 @@ fn a_disabled_owner_is_walked_past() {
         .collect();
     assert_eq!(drags, ["outer", "outer", "outer"]);
 }
+
+/// A press in a `selectable` scope inside a draggable card is the
+/// scope's drag-select, not the card's drag: the walk up does not climb
+/// out of the scope the press is in — on the scope's own region (its
+/// text has none) as from a hover-lit child inside it.
+#[test]
+fn a_press_in_a_selectable_scope_selects_and_does_not_drag() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.with_keyed(
+            "card",
+            NodeSpec::column().size(300.0, 200.0).on_drag("card"),
+            |ui| {
+                ui.with_keyed(
+                    "prose",
+                    NodeSpec::column().grow_width().selectable(),
+                    |ui| {
+                        ui.text("one two three", kui_core::TextStyle::new(16.0));
+                        ui.leaf_keyed("lit", hover_thumb().size(20.0, 20.0));
+                    },
+                );
+            },
+        );
+        ui.finish();
+    };
+    frame(&mut core);
+    frame(&mut core);
+
+    for (from, to) in [(2.0, 100.0), (30.0, 5.0)] {
+        let evs: Vec<UiEvent> = [
+            InputEvent::CursorMoved(Vec2::new(2.0, from)),
+            InputEvent::mouse_down(1),
+            InputEvent::CursorMoved(Vec2::new(to, 8.0)),
+            InputEvent::mouse_up(),
+        ]
+        .into_iter()
+        .flat_map(|ev| core.handle_input(ev))
+        .collect();
+        assert!(phases(&evs).is_empty(), "the card stays put: {evs:?}");
+        assert!(
+            core.selection_text().is_some_and(|t| !t.is_empty()),
+            "pressed at y {from}: {:?}",
+            core.selection_text()
+        );
+        core.clear_selection();
+    }
+}

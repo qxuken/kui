@@ -197,6 +197,10 @@ pub(crate) struct EditState {
     /// a [`SECURE_BULLET`] per grapheme of it. `None` for any other: the
     /// buffer is the text.
     secret: Option<Secret>,
+    /// Whether the editor was ever declared `secure`: a password shown
+    /// again ("show password") is still a password, and the sweep at the
+    /// end of a frame forgets it when undeclared as it does a masked one.
+    was_secure: bool,
     /// `EditOptions::placeholder`, shaped in a buffer of its own at the
     /// editor's metrics, beside the `metrics_rev` it was shaped at.
     placeholder: Option<(String, u32, Buffer)>,
@@ -646,6 +650,7 @@ impl EditState {
             });
             let shown = bullets(graphemes(&text));
             self.secret = Some(Secret::new(text));
+            self.was_secure = true;
             (shown, before * BULLET_LEN)
         } else {
             let text = self
@@ -1101,7 +1106,7 @@ impl EditStore {
         let mut gone: Vec<Key> = Vec::new();
         let mut any = false;
         self.states.retain(|k, s| {
-            if s.secret.is_none() {
+            if s.secret.is_none() && !s.was_secure {
                 return true;
             }
             if s.last_declared == frame {
@@ -1224,6 +1229,7 @@ impl EditStore {
                 accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline,
                 keep_tab: opts.keep_tab,
+                was_secure: secret.is_some(),
                 secret,
                 placeholder: None,
                 folds: false,
@@ -1245,7 +1251,7 @@ impl EditStore {
             }
         });
         state.last_declared = frame_no;
-        self.any_secure |= opts.secure;
+        self.any_secure |= opts.secure || state.was_secure;
         state.autofocus = opts.autofocus;
         state.origin = origin;
         state.multiline = multiline;

@@ -197,10 +197,21 @@ pub fn stamp(window: &Window, core: &Core) {
             return;
         }
         facts.from = from;
-        let Some(text) = core.edit.text(key) else {
-            return;
+        // A secure editor's offsets are in its bullets, one UTF-16 unit
+        // each, and its text is not copied out to count them (backlog
+        // F177: kui zeroes what it holds of a password).
+        let text = if core.edit.is_secure(key) {
+            None
+        } else {
+            let Some(text) = core.edit.text(key) else {
+                return;
+            };
+            Some(text)
         };
-        let utf16 = |byte: usize| text.get(..byte).map_or(0, |t| t.encode_utf16().count());
+        let utf16 = |byte: usize| match &text {
+            Some(text) => text.get(..byte).map_or(0, |t| t.encode_utf16().count()),
+            None => byte / kui_core::SECURE_BULLET.len_utf8(),
+        };
         match selection {
             Some((a, z)) => {
                 facts.caret = utf16(a);
