@@ -127,6 +127,12 @@ was the first bare bump to break an app in five releases).
   ghost. A leaf's hint follows the box's rule now. A hint the app
   places itself with `widgets::tooltip` is still its content and fades
   with the box it is in, ghost included (backlog RG162).
+- A wrapped text of 4096 bytes or more with no line breaks — a minified
+  bundle, a long JSON cookie — drew a row the scroll view's bottom edge
+  cut through only up to its first glyph whose ink starts below that
+  edge: a `.` or a `,` under the `0` before it, so the half-shown row
+  ended mid-row and the rest appeared as it scrolled in. The row draws
+  every glyph that reaches into the view now (backlog RG163).
 
 **What you can delete.**
 

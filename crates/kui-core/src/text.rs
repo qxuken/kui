@@ -3253,16 +3253,19 @@ fn emit_entry_rows(
         let dx = if r == 0 { head_x } else { 0.0 } - rows[r].x;
         let x = ox + g.x + dx;
         let y = oy + g.y + r as f32 * line_h;
-        // Rows only go down: past the clip's bottom nothing comes back.
+        // Rows only go down: past the clip's bottom nothing comes back
+        // once a row starts below it. A glyph's ink does not say so — a
+        // `.` starts lower than the `0` after it, so a row the clip cuts
+        // through would end at its first such glyph.
+        if oy + r as f32 * line_h >= vis.y + vis.h {
+            break;
+        }
         // Both edges are inclusive, as the x test's are: a glyph whose ink
         // ends exactly at the clip's top or starts exactly at its bottom
         // has no pixel inside it, and which glyph that is depends on the
         // face the machine resolved `Mono` to (the alpha.12 Windows round
         // saw two, after C32 moved the face).
-        if y >= vis.y + vis.h {
-            break;
-        }
-        if y + g.h <= vis.y || x >= vis.x + vis.w || x + g.w <= vis.x {
+        if y >= vis.y + vis.h || y + g.h <= vis.y || x >= vis.x + vis.w || x + g.w <= vis.x {
             continue;
         }
         out.push(Quad {
