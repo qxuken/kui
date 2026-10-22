@@ -688,3 +688,34 @@ fn a_dashed_line_of_no_length_is_a_dot() {
             .collect::<Vec<_>>()
     );
 }
+
+/// The pixel floor reads a pattern the same on either side of the width
+/// that closes one of its gaps (backlog RG121): `0.2, 0.2, 1, 0.5` was
+/// solid at 0.399 px, its first gap seen as a thousandth of a pixel and
+/// averaged in, and 32 dashes at 0.4, where that gap closes and its pair
+/// merges.
+#[test]
+fn the_floor_does_not_flip_at_the_width_that_closes_a_gap() {
+    let dash = kui_core::Dash {
+        pattern: [0.2, 0.2, 1.0, 0.5],
+        offset: 0.0,
+    };
+    let line = [Vec2::new(0.0, 0.0), Vec2::new(60.0, 0.0)];
+    let count = |w: f32| -> Option<usize> {
+        let cut = dash.cut(w)?;
+        let mut n = 0;
+        cut.marks(&line, 1.0, |_, _| n += 1).then_some(n)
+    };
+    let (open, closed) = (count(0.399), count(0.4));
+    assert!(closed.is_some(), "dashed once the gap closes");
+    // A hair narrower the near-empty pair is still its own dot, a
+    // thousandth of a pixel from the next mark, so the count doubles; the
+    // verdict is what jumped, and it holds.
+    assert!(
+        open.is_some(),
+        "and a hair narrower too: {open:?} against {closed:?}"
+    );
+    // A pattern of equal gaps reads as it did: its pairs averaged.
+    let even = kui_core::Dash::new(0.3, 0.3).cut(0.1).unwrap();
+    assert!(even.finer_than(1.0), "0.6 a pair, under a pixel: solid");
+}

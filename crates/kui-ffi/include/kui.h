@@ -381,8 +381,13 @@ extern "C" {
  * (kui_menu_bar_with), three new functions - and as nothing where it
  * declared none. Recompile, and move each handler from the payload's
  * kind to KuiEvent.event and the message's own fields.
+ *
+ * ABI 34: KUI_TURNED, OR'd into kui_path's and kui_path_d's fill_rule, says
+ * the path turns, so a rotate of 0 is declared and keeps the swept box
+ * (backlog RG121). No struct moved; a library before 34 would read the
+ * bit as a fill rule.
  */
-#define KUI_ABI_VERSION 33u
+#define KUI_ABI_VERSION 34u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -3535,6 +3540,12 @@ enum { KUI_PATH_MOVE = 0, KUI_PATH_LINE = 1, KUI_PATH_QUAD = 2, KUI_PATH_CUBIC =
        KUI_PATH_ARC = 4, KUI_PATH_CLOSE = 5 };
 /* How a path's inside is decided: SVG's default, or the polygon's rule. */
 enum { KUI_FILL_NONZERO = 0, KUI_FILL_EVENODD = 1 };
+/* OR'd into kui_path's and kui_path_d's fill_rule (ABI 34): the path turns,
+ * so `rotate` is declared even when it is 0 and the path is boxed by the
+ * square its turn sweeps on every frame. Without it a rotate of 0 with a
+ * NULL pivot is no turn, the tight box - so a spinner passing through
+ * exactly 0 changed box for that frame (backlog RG121). */
+enum { KUI_TURNED = 0x100 };
 /* Any outline - a pie wedge with a round arc, a map's region, an icon - as
  * `count` floats at `ops` in the flat op form (kui_path_parse makes it from
  * SVG path data): filled with spec->bg by fill_rule and, when width > 0,
@@ -3556,7 +3567,8 @@ enum { KUI_FILL_NONZERO = 0, KUI_FILL_EVENODD = 1 };
  * (docs/adr/0041-a-mask-turns-about-its-centre.md): the path is boxed by the
  * square the turn sweeps, rasterized once upright, and its quads carry the
  * angle in KuiQuad.blur. 0 and NULL are no turn, the tight box; a path that
- * turns through 0 names its pivot so its box does not change there. dash
+ * turns through 0 ORs KUI_TURNED into fill_rule (or names its pivot) so its
+ * box does not change there. dash
  * cuts the stroke as kui_polyline's does - five floats, NULL for none -
  * restarting at every subpath; it is part of the stroke's mask, and one
  * whose offset changes every frame is a path that changes every frame. label

@@ -52,6 +52,14 @@ was the first bare bump to break an app in five releases).
   and `play` refuses a `volume` or `fadeIn` that is not finite by name,
   where it failed in serde. `KuiWindow`'s `close` and `useWindow` return
   through `Result` (the types are unchanged) (backlog RG139).
+- C: ABI 34. `KUI_TURNED`, OR'd into `kui_path`'s and `kui_path_d`'s
+  `fill_rule`, says the path turns, so a `rotate` of 0 is declared and
+  keeps the swept box (backlog RG121); no struct moved, and a library
+  before 34 would read the bit as a fill rule. Recompile. Odin: `c.TURNED`
+  in the `Fill_Rule` argument, `Fill_Rule(u32(Fill_Rule.Evenodd) |
+  c.TURNED)`.
+- `line::Cut` gains `width`, the stroke width it was cut for, which the
+  pixel floor reads its seen gaps by.
 - The Odin binding's `kui/c` takes the context as `^Ctx` in the ten
   functions it typed `[^]Ctx` (a context followed by a `size_t`): the
   same ABI, the C type it claims to keep (backlog RG145).
@@ -118,6 +126,18 @@ the core wrote the field is what both readings now ask.
   bytes until the next call, as kui.h does; and `run.odin` says a loop of
   your own frees `context.temp_allocator` once a turn (backlog RG145).
 
+- A C spinner — `kui_path` with a `rotate` passing through exactly 0 and
+  no pivot — keeps its box at 0 with `KUI_TURNED`; it had the tight box
+  for that frame, where JSX's and Lua's turn of 0 has the swept square
+  (backlog RG121).
+- A `cells` grid's combining mark from a fallback face sits at its own
+  bearing, over the base before it, as the family's own marks do; it was
+  centred, half a cell to the right (backlog RG121). A grid that composes
+  a base and its marks into one cell is still not built.
+- A sub-pixel dash pattern reads solid or dashed the same on both sides
+  of the width that closes one of its gaps: the pixel floor counts a
+  period's gaps by how much of each is seen, so `0.2, 0.2, 1, 0.5` is
+  dashed at 0.399 px as at 0.4, where it was solid (backlog RG121).
 - A warm `cells` grid draws 13% faster (200x50: 78 µs to 68 on an M3
   Pro, streaming 85 to 74): since alpha.41 its emitter had been inlined
   into the paint loop, which ran the same work 29% slower than it does as

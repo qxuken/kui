@@ -826,7 +826,7 @@ fn shape_cell(
                 };
             }
         }
-        dx = ((span - g.advance) / 2.0).round().max(0.0);
+        dx = fallback_dx(span, g.advance);
     }
     let slot = raster_glyph(g.key, fs, raster, atlas)?;
     Some(CellGlyph {
@@ -837,6 +837,19 @@ fn shape_cell(
         uv: [slot.x, slot.y, slot.w, slot.h],
         kind: glyph_kind(&slot),
     })
+}
+
+/// Where a fallback face's glyph sits in its cell, past its own bearing:
+/// centred in the span it covers — but a glyph of no advance, a combining
+/// mark, at its own bearing from the cell's edge, as the family's own
+/// marks are. Centred it sat half a cell right of the base it marks
+/// (backlog RG121), where at its bearing a mark the app placed straight
+/// after its base, as a terminal does, lands over it.
+pub(crate) fn fallback_dx(span: f32, advance: f32) -> f32 {
+    if advance <= 0.5 {
+        return 0.0;
+    }
+    ((span - advance) / 2.0).round().max(0.0)
 }
 
 /// The generic monospaced family, in place of the style's.
@@ -908,4 +921,23 @@ fn shape_one(
         y: physical.y,
         line_y: run.line_y,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fallback_dx;
+
+    /// A fallback's glyph is centred in the span it covers, but a mark —
+    /// no advance — sits at its own bearing, over the base before it
+    /// (backlog RG121): centred it was half a cell right of it.
+    #[test]
+    fn a_fallback_mark_sits_at_its_bearing_and_a_glyph_is_centred() {
+        assert_eq!(fallback_dx(16.0, 0.0), 0.0, "a combining mark");
+        assert_eq!(fallback_dx(16.0, 10.0), 3.0, "a narrow glyph, centred");
+        assert_eq!(
+            fallback_dx(16.0, 20.0),
+            0.0,
+            "a wide one is not pushed left"
+        );
+    }
 }

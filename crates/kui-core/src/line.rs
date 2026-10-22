@@ -121,6 +121,9 @@ impl Default for Dash {
 pub struct Cut {
     pub lens: [f32; 4],
     pub offset: f32,
+    /// The stroke width it was cut for, in the same units: a gap is seen
+    /// as its centre-line length less this, the two marks' caps.
+    pub width: f32,
 }
 
 impl Cut {
@@ -130,8 +133,23 @@ impl Cut {
 
     /// Whether a mark and its gap come to less than `min` together, on
     /// average: a pattern that fine reads as a tint, and is drawn solid.
+    /// The average is over the gaps a period shows, weighed by how much
+    /// of each is seen: `1 + r` of them, `r` the smaller seen gap over the
+    /// larger — two for a pattern of equal gaps, as it always read, and
+    /// nearer one as a gap closes, until it is the merged pair the closed
+    /// pattern is. So the verdict does not jump at the width that closes
+    /// a gap: `0.2, 0.2, 1, 0.5` read solid at 0.399 px, its first gap a
+    /// thousandth of a pixel averaged in whole, and 32 dashes at 0.4
+    /// (backlog RG121).
     pub fn finer_than(&self, min: f32) -> bool {
-        let pair = self.period() * 0.5;
+        let [_, g0, _, g1] = self.lens;
+        let (s0, s1) = ((g0 - self.width).max(0.0), (g1 - self.width).max(0.0));
+        let r = if s0.max(s1) > 0.0 {
+            s0.min(s1) / s0.max(s1)
+        } else {
+            1.0
+        };
+        let pair = self.period() / (1.0 + r);
         pair.is_nan() || pair < min
     }
 
@@ -252,6 +270,7 @@ impl Dash {
         Some(Cut {
             lens,
             offset: (self.offset - from).rem_euclid(period),
+            width: w,
         })
     }
 }

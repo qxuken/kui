@@ -152,10 +152,10 @@ were built the day they were filed; the "thousands of spans" the report
 blamed measured as a factor of 1.5 and not the cause), the "theirs, not ours" lists the field reports left
 behind, W21 from the Windows–Mac bench comparison of 2026-09-26 (the
 texture upload's second copy),
-DX16 from the DX sweep (declined with a condition), and RG121 from the
-round after alpha.40 — what RG76, RG113 and RG118 left, each with its
-reason (F103's skipped half, RG76, RG113 and RG118 themselves were built
-on 2026-10-07 and are in the archive); RG126 from the alpha.41
+DX16 from the DX sweep (declined with a condition); RG121 from the
+round after alpha.40 — what RG76, RG113 and RG118 left — was built on
+2026-10-22, after the alpha.60 tag, and is in the archive, as F103's
+skipped half, RG76, RG113 and RG118 themselves were on 2026-10-07; RG126 from the alpha.41
 pre-tag pass (a warm cell grid slower since one commit: the emitter
 inlined into the paint loop) was built on 2026-10-22, after the alpha.60
 tag, and is in the archive; RG127 and RG128, from the Windows and Linux
@@ -2637,36 +2637,10 @@ Windows. The C clamp of `step open` to eight paths is the one
 
 F103's skipped half, RG76, RG113 and RG118 were built on 2026-10-07,
 asked for together ("let's build F103 and RG series"), and are in the
-archive. RG121 holds what three of them left, each with its reason; its
+archive. RG121 held what three of them left, built 2026-10-22 and in the
+archive; its
 third bullet, a click on a line-placed tab, was built as RG122 in the
 alpha.41 pre-tag pass.
-
-### `.` RG121 — What RG76, RG113 and RG118 left
-
-- **`rotate = 0` with no pivot is two boxes in C** (RG113's second
-  half). No turn in C is the tight box, since C's zero is also its
-  undeclared, and a turn of 0 in JSX and Lua is the swept square, so a C
-  spinner passing through exactly 0 with no pivot changes box for that
-  frame. Every fix that keeps the ABI is unclean (a negative zero, a NaN
-  sentinel, a hidden per-key hysteresis — RG113's outcome says why), and
-  the header's answer, name the pivot, stands. **Wants:** a `turned`
-  flag or argument on `kui_path`/`kui_path_d` the next time the ABI moves
-  for another reason.
-- **A fallback glyph of no advance is centred** (RG118's second item). A
-  lone combining mark from a fallback face sits half a cell right; its own
-  bearing from the cell's left edge would put it over the previous cell,
-  right only when the app placed it straight after its base, and its own
-  cell stays blank either way. **Wants:** a grid that composes a base and
-  its marks into one cell — when a grid asks.
-- **A hairline dash-dot pattern flips between solid and dashed at the
-  width that closes one of its gaps** (RG118's dash, from the alpha.41
-  pre-tag review). A closed gap is written as the merged pair twice, so
-  the pixel floor (`finer_than`) reads the merged period, where one hair
-  narrower it reads the average of a seen pair and a near-empty one: `0.2,
-  0.2, 1, 0.5` is drawn solid at 0.399 px and 32 dashes at 0.4. Below a
-  pixel the two read alike, and the merged verdict is the right one.
-  **Wants:** the floor to pass over a pair whose seen gap is none — when
-  a sub-pixel dashed stroke whose width animates asks.
 
 ## From the alpha.41 pre-tag pass (2026-10-07)
 
@@ -4809,8 +4783,9 @@ move.
 
 - `!` **FZ11** — [A reader's `replaceSelectedText` goes into an editor raw](backlog/closed-2026-09.md#-fz11--a-readers-replaceselectedtext-goes-into-an-editor-raw--done-2026-10-22) — done (2026-10-22) — `replace_selection` keeps what `typed` keeps: no line break in a field, no bidi paragraph end for the shaper to panic on (FZ6's, in a release build), and a value declared back from its `change` is the text it holds
 
-**After the alpha.60 tag (2026-10-22)** — RG126, RG139 and RG145, open since alpha.41 and alpha.42, built the same day
+**After the alpha.60 tag (2026-10-22)** — RG121, RG126, RG139 and RG145, open since alpha.40, alpha.41 and alpha.42, built the same day
 
 - `.` **RG126** — [A warm cell grid reads 3 to 5% slower since a grid tells its family's glyphs by name](backlog/closed-2026-09.md#-rg126--a-warm-cell-grid-reads-3-to-5-slower-since-a-grid-tells-its-familys-glyphs-by-name--done-2026-10-22) — done (2026-10-22)
 - `.` **RG139** — [What the round after RG127 left](backlog/closed-2026-09.md#-rg139--what-the-round-after-rg127-left--done-2026-10-22) — done (2026-10-22)
 - `.` **RG145** — [What the alpha.42 pre-tag pass left](backlog/closed-2026-09.md#-rg145--what-the-alpha42-pre-tag-pass-left--done-2026-10-22) — done (2026-10-22)
+- `.` **RG121** — [What RG76, RG113 and RG118 left](backlog/closed-2026-09.md#-rg121--what-rg76-rg113-and-rg118-left--done-2026-10-22) — done (2026-10-22)

@@ -179,7 +179,11 @@
 ///   messages `kui_root_with` declares in a new `KuiWindowEvents`, a
 ///   declared window's lifecycle as `kui_window_declare_with`'s and a
 ///   menu-bar choice as `kui_menu_bar_with`'s, three new functions.
-pub const KUI_ABI_VERSION: u32 = 33;
+/// - ABI 34: `KUI_TURNED`, a bit in `kui_path`'s and `kui_path_d`'s
+///   `fill_rule`: the path turns, so a `rotate` of 0 is declared (backlog
+///   RG121). No struct moved; an older library would read the bit as a
+///   fill rule.
+pub const KUI_ABI_VERSION: u32 = 34;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

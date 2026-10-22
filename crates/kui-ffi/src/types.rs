@@ -2505,6 +2505,11 @@ pub const KUI_EDIT_SECURE: u32 = 1 << 4;
 /// keystroke (`edit-value-without-handler`).
 pub const KUI_EDIT_VALUE: u32 = 1 << 5;
 
+/// OR'd into `kui_path`'s and `kui_path_d`'s `fill_rule`: the path turns,
+/// so a `rotate` of 0 is declared and keeps the swept box (ABI 34, backlog
+/// RG121).
+pub const KUI_TURNED: u32 = 0x100;
+
 /// `KUI_MOD_*`: the editing modifiers `kui_input_key` takes — extend the
 /// selection, move by word, move by document.
 pub const KUI_MOD_SHIFT: u32 = 1 << 0;

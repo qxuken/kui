@@ -3108,6 +3108,7 @@ impl Painter<'_> {
                                 crate::line::Cut {
                                     lens: cut.lens.map(|l| l * scale),
                                     offset: cut.offset * scale,
+                                    width: cut.width * scale,
                                 },
                             ),
                             None => crate::path::MaskPaint::Stroke(stroke_w * scale),

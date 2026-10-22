@@ -332,7 +332,7 @@ pub extern "C" fn kui_path(
             return;
         }
         let floats = unsafe { std::slice::from_raw_parts(ops, count) };
-        let rule = kui_core::FillRule::from_index(fill_rule as usize);
+        let rule = kui_core::FillRule::from_index((fill_rule & !KUI_TURNED) as usize);
         let stroke = (width > 0.0).then(|| {
             let color = if color == 0 {
                 c.core().theme().fg
@@ -341,7 +341,7 @@ pub extern "C" fn kui_path(
             };
             kui_core::Stroke::new(width, color).dashed(unsafe { dash_of(dash) })
         });
-        let turn = unsafe { turn_of(rotate, pivot) };
+        let turn = unsafe { turn_of(rotate, pivot, fill_rule & KUI_TURNED != 0) };
         match opt_str(label) {
             Some(label) => c
                 .core()
@@ -371,16 +371,18 @@ unsafe fn dash_of(dash: *const f32) -> kui_core::Dash {
 /// A path's turn as C spells it: `rotate` in turns and `pivot`, two
 /// floats in the path's own coordinates or NULL for the centre of its
 /// box. No turn at all — the tight box, the binned mask — is `rotate` 0
-/// with a NULL `pivot`, so a path that turns through 0 names its pivot.
+/// with a NULL `pivot` and no `turned`: C's zero is also its undeclared,
+/// so a path that turns through 0 says so with `KUI_TURNED` in its
+/// `fill_rule`, or names its pivot (backlog RG121).
 ///
 /// # Safety
 /// `pivot` is NULL or points at two floats.
-unsafe fn turn_of(rotate: f32, pivot: *const f32) -> Option<kui_core::Turn> {
+unsafe fn turn_of(rotate: f32, pivot: *const f32, turned: bool) -> Option<kui_core::Turn> {
     let pivot = (!pivot.is_null()).then(|| {
         let p = unsafe { std::slice::from_raw_parts(pivot, 2) };
         kui_core::Vec2::new(p[0], p[1])
     });
-    (rotate != 0.0 || pivot.is_some()).then_some(kui_core::Turn {
+    (turned || rotate != 0.0 || pivot.is_some()).then_some(kui_core::Turn {
         turns: rotate,
         pivot,
     })
@@ -414,8 +416,8 @@ pub extern "C" fn kui_path_d(
             return;
         };
         let d = kstr(d);
-        let turn = unsafe { turn_of(rotate, pivot) };
-        let rule = kui_core::FillRule::from_index(fill_rule as usize);
+        let turn = unsafe { turn_of(rotate, pivot, fill_rule & KUI_TURNED != 0) };
+        let rule = kui_core::FillRule::from_index((fill_rule & !KUI_TURNED) as usize);
         let stroke = (width > 0.0).then(|| {
             let color = if color == 0 {
                 c.core().theme().fg
@@ -1352,3 +1354,21 @@ const _: () = {
     assert!(std::mem::size_of::<KuiQuad>() == std::mem::size_of::<kui_core::Quad>());
     assert!(std::mem::size_of::<KuiClip>() == std::mem::size_of::<kui_core::Clip>());
 };
+
+#[cfg(test)]
+mod turn_tests {
+    use super::*;
+
+    /// C's zero is also its undeclared, so `KUI_TURNED` is how a path
+    /// that turns through 0 keeps its turn, and the swept box with it
+    /// (backlog RG121); the fill rule reads past the bit.
+    #[test]
+    fn a_turned_path_at_zero_is_a_turn_and_its_rule_reads_past_the_bit() {
+        let none = unsafe { turn_of(0.0, std::ptr::null(), false) };
+        assert!(none.is_none(), "0 and NULL: no turn");
+        let at_zero = unsafe { turn_of(0.0, std::ptr::null(), true) };
+        assert_eq!(at_zero.map(|t| (t.turns, t.pivot)), Some((0.0, None)));
+        let rule = kui_core::FillRule::from_index(((1 | KUI_TURNED) & !KUI_TURNED) as usize);
+        assert_eq!(rule, kui_core::FillRule::EvenOdd);
+    }
+}

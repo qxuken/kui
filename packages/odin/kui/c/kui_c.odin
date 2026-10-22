@@ -42,7 +42,7 @@ Value :: struct {}
 ReplySink :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 33
+ABI_VERSION :: 34
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -458,6 +458,8 @@ PATH_CLOSE :: 5
 
 FILL_NONZERO :: 0
 FILL_EVENODD :: 1
+
+TURNED :: 256
 
 COPY_READY :: 0
 COPY_ASKED :: 1
