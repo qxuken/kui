@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.60 (unreleased)
+## 0.1.0-alpha.60 (2026-10-22)
 
 **What breaks.**
 
@@ -202,9 +202,6 @@ the menu bar on its element. `kind` is the app's alone, and Node's
 
 ### Fixed
 
-
-### Fixed
-
 - `docs/props.md` lists `Launcher::app_id`'s doors. alpha.59 added the
   `schema::DOORS` row without regenerating the page, which is what
   failed the tag's Forgejo `check`, so that release reached crates.io
@@ -273,6 +270,46 @@ the menu bar on its element. `kind` is the app's alone, and Node's
   a core one.
 - An app-side `access` handler that turned a slider's nudge into a
   value: the slider's `onChange` does the arithmetic.
+
+### Native verification
+
+Two pre-tag passes on 2026-10-22 over the round since alpha.59 — ADRs
+0047 and 0048, F173 — one on the Windows machine and under WSL, one on
+the Mac (backlog, "From the alpha.60 pre-tag pass").
+
+**Windows and Linux** (WSL): CI's `check` in order on both, the windowed
+round on both, the bench guard against alpha.59 clean, and ten minutes
+of every fuzz target at once on eight cores, which found FZ10 (an arc
+past an f32 at one scale) in the `path` target; the other five ran
+clean. It also found CI's Odin step red on main: a spec literal
+dev-2026-09 refuses, which the Mac's newer local Odin had taken.
+
+**macOS** (Apple silicon, macOS 27): CI's `check` step by step —
+fmt, clippy, the book, the conformance report, the C round, the Node
+addon under `KUI_CONFORMANCE_REQUIRED=1`, gen, the examples' typecheck,
+the headless round — and `nu scripts/test.nu --node` on the tagged
+tree: **2449 tests over 170 Rust suites and Node's**. The Odin leg
+(`gen --check`, `check`, `test`, `slots`) on the dev-2026-10 release CI
+now pins. `cargo audit` clean. The windowed round with Node's: 55
+examples on both bases, 132 windows. The accessibility audit: **106 of
+106**, after the example's own tag reading was fixed (it read 95). The
+bench guard against alpha.59: the guarded rows −5.2% to +0.2%, stream,
+cells and long_line flat; `benches/editing.rs`, which the guard does not
+read, compared by hand — a keystroke into 100 000 lines 1.38–1.40 ms
+against alpha.59's 1.37–1.40, after RG156 (4.3 ms before it). Three
+read-only reviewers over the diff found the rest of RG156.
+
+**The C and Odin tarballs**, before the release workflow first builds
+them: linux-x64 and linux-arm64 packed in Docker through cargo-zigbuild
+(and linux-arm64 again through `pack-ffi.nu --zig`, the Linux runners'
+command, to the same link line and glibc floor), darwin-arm64 natively,
+bundled, and `pack-ffi.nu verify` over both tarballs — the counter linked
+shared and static and run `--headless` — on the Mac (C and Odin) and in
+clean Debian 12 containers for both Linux arches (C and Odin, Odin
+dev-2026-10); the C counter, both kinds, also on Debian 10, whose glibc
+is the 2.28 the packs claim. 113 MB a tarball for three platforms;
+win32-x64 is built only on the release workflow's Windows runner and
+is not linked there, so its pack has run nowhere yet.
 
 ## 0.1.0-alpha.59 (2026-10-19)
 
