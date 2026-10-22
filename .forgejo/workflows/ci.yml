@@ -141,7 +141,8 @@ env:
   # beside its core library. Moved with the compiler the binding is
   # written on: dev-2026-09 to dev-2026-10 for alpha.60, after a local
   # build newer than the pin took a spec literal the pin refused and only
-  # CI said so.
+  # CI said so. .github/workflows/release.yml verifies the release's Odin
+  # pack with the same one; move both together.
   ODIN_VERSION: "dev-2026-10"
 
 jobs:

@@ -189,6 +189,19 @@ the menu bar on its element. `kind` is the app's alone, and Node's
 - The scene corpus's `window-events` scene, with two steps,
   `viewport W H` and `focused 0|1`, in every adapter.
 - `GLOSSARY.md`, the words the API is described in.
+- **C and Odin tarballs on every GitHub release**: `kui-c-<version>.tar.gz`
+  (`include/kui.h`) and `kui-odin-<version>.tar.gz` (the `kui` package),
+  each with `libkui_ffi` for linux-x64 and linux-arm64 (glibc 2.28 or
+  newer), darwin-arm64 and win32-x64, shared and static, a directory a
+  kind (`lib/<platform>/shared`, `lib/<platform>/static` with
+  `link.txt`), a README.md with the link lines and `SHA256SUMS`. Each
+  platform is built beside its Node prebuild, from the same target dir,
+  and, off Windows, the C and Odin counters are linked against both
+  kinds and run before it is packed (`scripts/pack-ffi.nu bundle` and
+  `verify`; `pack-ffi.nu --zig` is the Linux runners' build).
+
+### Fixed
+
 
 ### Fixed
 

@@ -1,10 +1,19 @@
 # GitHub Actions: the public release. Pushing a `v*` tag runs
 #
-#   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, win32-x64) ──┐
+#   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, win32-x64) ──┬── packs
 #           └──────────────────────────────────────────────────────────┴── publish
 #
 # and `publish` puts the crates on crates.io and stages the npm package on
-# npmjs. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
+# npmjs, while `packs` attaches the C and Odin tarballs to the tag's GitHub
+# release: kui-c-<version>.tar.gz and kui-odin-<version>.tar.gz, each with
+# libkui_ffi for all four platforms, shared and static (the layout is
+# scripts/pack-ffi.nu's). The two are siblings on purpose: a tag cannot be
+# moved once crates.io holds its version, so a pack that fails must not
+# hold the publish back, and a re-run of `packs` alone finishes it.
+#
+# `workflow_dispatch` runs everything but the two publishing steps, so the
+# builds and the packs can be tried on a branch without a tag; the packs
+# are then the run's `release-packs` artifact. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
 # of a release: it checks the same commit in full (the C round, the Node
 # parity tests, the scene corpus, the book) and publishes the crates to the
 # Forgejo cargo registry once crates.io holds them. The npm package reaches
@@ -36,6 +45,7 @@ name: release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -49,6 +59,9 @@ env:
   # The Nushell the scripts are written against (scripts/*.nu), pinned like
   # every other tool here and in the Forgejo workflow.
   NU_VERSION: "0.116.0"
+  # The Odin the packs' Odin half is verified with: the Forgejo workflow's
+  # pin (.forgejo/workflows/ci.yml), moved with it.
+  ODIN_VERSION: "dev-2026-10"
   CARGO_ZIGBUILD_VERSION: "0.23.3"
   ZIGLANG_VERSION: "0.16.0"
 
@@ -103,6 +116,11 @@ jobs:
 
   build:
     needs: check
+    # The addon and libkui_ffi are built in one job, into one target dir:
+    # the library reuses nearly all of the addon's tree. Measured on an M3
+    # Pro, cold, 2026-10-22: the addon 180 crates in 47 s, the library
+    # after it 18 more in 25 s. pack-ffi.nu's stripped debug info costs
+    # nothing there, since cargo applies `strip` when it links.
     strategy:
       fail-fast: true
       matrix:
@@ -188,8 +206,160 @@ jobs:
           path: packages/kui/prebuilds/${{ matrix.prebuild }}/kui_node.node
           if-no-files-found: error
 
+      # The C library, beside the addon and from the same target dir:
+      # scripts/pack-ffi.nu builds this platform natively (through
+      # cargo-zigbuild at glibc 2.28 on Linux, as the addon is) and lays
+      # it out in target/pack/kui-ffi-<version>-<platform>/.
+      - name: Install nu
+        shell: bash
+        run: |
+          set -eu
+          case "$RUNNER_OS" in
+            Linux)   triple="$(uname -m)-unknown-linux-gnu"; ext=tar.gz ;;
+            macOS)   triple=aarch64-apple-darwin; ext=tar.gz ;;
+            Windows) triple=x86_64-pc-windows-msvc; ext=zip ;;
+          esac
+          dir="nu-${NU_VERSION}-${triple}"
+          mkdir -p "$RUNNER_TEMP/nu"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/nu.$ext" \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.${ext}"
+          if [ "$ext" = zip ]; then
+            unzip -q -j "$RUNNER_TEMP/nu.zip" '*nu.exe' -d "$RUNNER_TEMP/nu"
+          else
+            tar -xzf "$RUNNER_TEMP/nu.tar.gz" -C "$RUNNER_TEMP/nu" --strip-components=1 "${dir}/nu"
+          fi
+          echo "$RUNNER_TEMP/nu" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/nu/nu" --version
+
+      - name: Pack libkui_ffi
+        shell: bash
+        run: |
+          set -eu
+          zig=
+          [ "$RUNNER_OS" = Linux ] && zig=--zig
+          nu scripts/pack-ffi.nu --platforms "${{ matrix.prebuild }}" $zig
+
+      # The pack linked and run on the platform it is for, as a user would
+      # take it out of the release: the C counter and the Odin one, each
+      # against the shared library and the static one, each --headless.
+      # Not on Windows, which has no cc (pack-ffi.nu's `verify` says so).
+      - name: Install Odin
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          case "$RUNNER_OS-$(uname -m)" in
+            Linux-x86_64)  asset=odin-linux-amd64 ;;
+            Linux-aarch64) asset=odin-linux-arm64 ;;
+            macOS-arm64)   asset=odin-macos-arm64 ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/odin"
+          curl -fL --retry 3 \
+            "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/${asset}-${ODIN_VERSION}.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP/odin" --strip-components=1
+          echo "ODIN=$RUNNER_TEMP/odin/odin" >> "$GITHUB_ENV"
+          echo "ODIN_ROOT=$RUNNER_TEMP/odin" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/odin/odin" version
+
+      - name: Verify the pack
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          nu scripts/pack-ffi.nu bundle --partial
+          for t in target/pack/release/kui-*.tar.gz; do
+            nu scripts/pack-ffi.nu verify "$t"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kui-ffi-${{ matrix.prebuild }}
+          path: target/pack/kui-ffi-*-${{ matrix.prebuild }}.tar.gz
+          if-no-files-found: error
+          # Already a tarball; zipping it again buys nothing.
+          compression-level: 0
+
+  # The four platforms' packs into the two release tarballs, checked once
+  # more as shipped (linux-x64, on this runner), and attached to the tag's
+  # GitHub release. Not in `publish`'s way: see the top of this file.
+  packs:
+    needs: build
+    runs-on: ubuntu-24.04
+    # The one job that writes to the repository: creating the release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install nu
+        run: |
+          set -eu
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
+
+      - name: Install Odin and ALSA
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev
+          mkdir -p "$RUNNER_TEMP/odin"
+          curl -fL --retry 3 \
+            "https://github.com/odin-lang/Odin/releases/download/${ODIN_VERSION}/odin-linux-amd64-${ODIN_VERSION}.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP/odin" --strip-components=1
+          echo "ODIN=$RUNNER_TEMP/odin/odin" >> "$GITHUB_ENV"
+          echo "ODIN_ROOT=$RUNNER_TEMP/odin" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: kui-ffi-*
+          path: target/pack
+          merge-multiple: true
+
+      - name: Bundle
+        run: |
+          set -eu
+          cd target/pack
+          for t in kui-ffi-*.tar.gz; do tar -xzf "$t"; done
+          cd ../..
+          nu scripts/pack-ffi.nu bundle
+          for t in target/pack/release/kui-*.tar.gz; do
+            nu scripts/pack-ffi.nu verify "$t"
+          done
+          ls -l target/pack/release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-packs
+          path: target/pack/release/
+          if-no-files-found: error
+          compression-level: 0
+
+      # Created here if the tag has no release yet, else the assets are
+      # replaced, so a re-run of this job finishes what a failed one began.
+      - name: GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag="$GITHUB_REF_NAME"
+          files=(target/pack/release/*)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            pre=
+            case "$tag" in *-*) pre=--prerelease ;; esac
+            gh release create "$tag" "${files[@]}" --verify-tag $pre --title "$tag" \
+              --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The C and Odin tarballs hold libkui_ffi for linux-x64, linux-arm64, darwin-arm64 and win32-x64, shared and static; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui)."
+          fi
+
   publish:
     needs: [check, build]
+    # Only a tag publishes; a manual run stops at the builds and the packs.
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     env:
       # cargo reads crates.io's token from CARGO_REGISTRY_TOKEN.
@@ -240,10 +410,12 @@ jobs:
       - name: Tag matches the manifests
         run: nu scripts/check-version.nu "${GITHUB_REF_NAME#v}"
 
-      # Without `name`, every artifact of the run lands in <path>/<artifact
-      # name>/, which is exactly the prebuilds layout.
+      # Every artifact the pattern matches lands in <path>/<artifact
+      # name>/, which is exactly the prebuilds layout. The pattern is what
+      # keeps the kui-ffi-* packs out: prebuilds/ is in the npm package.
       - uses: actions/download-artifact@v8
         with:
+          pattern: '{linux,darwin,win32}-*'
           path: packages/kui/prebuilds
 
       # No target dir exists in this job, so native.cjs must find the addon

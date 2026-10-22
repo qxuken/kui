@@ -7,6 +7,9 @@
 #   nu scripts/pack-ffi.nu --platforms linux-x64,darwin-arm64
 #   nu scripts/pack-ffi.nu --accept-msvc-license   Windows too (see below)
 #   nu scripts/pack-ffi.nu --no-runner             without the windowed runner (kui_run)
+#   nu scripts/pack-ffi.nu --platforms linux-x64 --zig   this Linux machine's own, at glibc 2.28
+#   nu scripts/pack-ffi.nu bundle [--partial]      the release's two tarballs, from the packs
+#   nu scripts/pack-ffi.nu verify <tarball>        link and run a counter against one
 #
 # What lands in target/pack/, per platform:
 #
@@ -37,6 +40,29 @@
 #
 # On a Linux machine its own arch is that native build, against the
 # machine's glibc rather than 2.28; BUILD.txt says the floor each .so has.
+# `--zig` builds it through cargo-zigbuild at 2.28 instead, natively —
+# what the release workflow does on its Linux runners, each building its
+# own platform (.github/workflows/release.yml).
+#
+# The release ships two tarballs over every platform's pack, which
+# `bundle` writes to target/pack/release/ with their SHA256SUMS:
+#
+#   kui-c-<version>/      include/kui.h
+#   kui-odin-<version>/   kui/, the Odin package (packages/odin/kui)
+#     and in both:        lib/<platform>/shared/  libkui_ffi.so / .dylib, or
+#                                                 kui_ffi.dll + kui_ffi.dll.lib
+#                         lib/<platform>/static/  libkui_ffi.a, or kui_ffi.lib
+#                                                 and windows-targets' .libs,
+#                                                 link.txt
+#                         lib/<platform>/BUILD.txt, README.md, LICENSE
+#
+# A kind to a directory, so `-L lib/<platform>/static -lkui_ffi` is the
+# static link and the same line with `shared` the dynamic one: a linker
+# handed a directory holding both takes the shared library. `verify`
+# builds examples/c/apps/counter.c (from the C tarball) or
+# examples/odin/apps/counter.odin (from the Odin one) against each kind
+# for this machine's platform, as a user outside this repository would,
+# and runs it `--headless`; Linux and macOS, since Windows has no `cc`.
 #
 # Windows asks for --accept-msvc-license: the CRT and SDK xwin downloads are
 # Microsoft's, under Microsoft's license, and building the platform means
@@ -83,6 +109,7 @@ def main [
     --platforms: string # which to build, comma-separated; default every one this machine can
     --accept-msvc-license # build win32-x64, accepting Microsoft's license for the CRT and SDK
     --no-runner # leave out the windowed runner (kui_run, kui_run_with): a library for a host with its own window
+    --zig # build this Linux machine's own platform through cargo-zigbuild, at glibc 2.28
 ] {
     let host = host-platform
     # `try` as well as `complete`: a docker that cannot be spawned at all
@@ -127,11 +154,11 @@ def main [
     let built = $todo | each {|row|
         print $"== ($row.platform) \(($row.target), ($row.how))"
         let note = if $row.how == "native" {
-            build-native $row.target $features
+            build-native $row.target $features ($zig and ($row.builder == "zigbuild"))
         } else {
             build-docker $row.target $row.builder $features
         }
-        stage $row $note $feature_note
+        stage ($row | update how {|r| if $r.how == "native" and $zig and $r.builder == "zigbuild" { "native, cargo-zigbuild" } else { $r.how } }) $note $feature_note
     }
 
     # Over every tarball here, not only this run's: a run of one platform
@@ -151,17 +178,25 @@ def rustc-args [target: string, features: list<string>] {
     [-p kui-ffi --lib --release --locked --target $target ...$features --crate-type "cdylib,staticlib" -- --print native-static-libs]
 }
 
-def build-native [target: string, features: list<string>] {
+def build-native [target: string, features: list<string>, zig: bool] {
     cd $ROOT
     with-env { CARGO_PROFILE_RELEASE_STRIP: debuginfo } {
-        let r = do { cargo rustc ...(rustc-args $target $features) } | complete
+        # The `.2.28` suffix is the glibc zig links against; the output
+        # still lands in target/<triple>/release.
+        let r = if $zig {
+            do { cargo-zigbuild rustc ...(rustc-args $"($target).2.28" $features) } | complete
+        } else {
+            do { cargo rustc ...(rustc-args $target $features) } | complete
+        }
         if $r.exit_code != 0 {
             print -e $r.stderr
             error make { msg: $"the ($target) build failed" }
         }
         let registry = $env.CARGO_HOME? | default ($nu.home-dir | path join .cargo) | path join registry src
         let extra = import-lib-dirs $target | each {|d| glob ($registry | path join "*" $d | str replace -a '\' '/') } | flatten
-        { dir: ($ROOT | path join target $target release), log: $r.stderr, toolchain: (rustc --version), extra: $extra }
+        # Where cargo put it: CARGO_TARGET_DIR when the environment sets one.
+        let target_dir = $env.CARGO_TARGET_DIR? | default ($ROOT | path join target)
+        { dir: ($target_dir | path join $target release), log: $r.stderr, toolchain: (rustc --version), extra: $extra }
     }
 }
 
@@ -179,8 +214,12 @@ def import-lib-dirs [target: string] {
 
 # Every tool the container legs need, built once into an image whose tag
 # names the versions, so a changed pin builds a new one.
+# The Rust is the host's stable, so a newer toolchain on the host is a new
+# image too: an image built once kept alpha.41's cargo until alpha.60, which
+# refused a manifest the host's own cargo had long taken.
 def image-tag [] {
-    $"kui-pack-ffi:zb($CARGO_ZIGBUILD_VERSION)-zig($ZIGLANG_VERSION)-xwin($CARGO_XWIN_VERSION)"
+    let rust = rustc --version | split row " " | get 1
+    $"kui-pack-ffi:zb($CARGO_ZIGBUILD_VERSION)-zig($ZIGLANG_VERSION)-xwin($CARGO_XWIN_VERSION)-rust($rust)"
 }
 
 def build-image [] {
@@ -196,11 +235,12 @@ RUN dpkg --add-architecture amd64 && dpkg --add-architecture arm64 \\
  && apt-get install -y --no-install-recommends python3-pip pkg-config clang lld llvm \\
       libasound2-dev:amd64 libasound2-dev:arm64 \\
  && rm -rf /var/lib/apt/lists/*
+RUN rustup toolchain install ((rustc --version | split row ' ' | get 1)) --profile minimal && rustup default ((rustc --version | split row ' ' | get 1))
 RUN pip3 install --break-system-packages cargo-zigbuild==($CARGO_ZIGBUILD_VERSION) ziglang==($ZIGLANG_VERSION)
 RUN rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc
 RUN cargo install cargo-xwin --locked --version ($CARGO_XWIN_VERSION)
 "
-    $dockerfile | docker build -t $tag -
+    $dockerfile | docker build --pull -t $tag -
 }
 
 # A leg in the container: the checkout read-only, the target dir and the
@@ -296,7 +336,7 @@ def stage [row: record, built: record, feature_note: string] {
     [
         $"kui-ffi (version), ($row.platform)"
         $"target: ($row.target)"
-        $"built: ($row.how), (if $row.how == 'native' { 'cargo' } else { $row.builder })"
+        $"built: ($row.how)(if $row.how == 'native' { ', cargo' } else if $row.how == 'docker' { $', ($row.builder)' } else { '' })"
         $"features: ($feature_note)"
         $"toolchain: ($built.toolchain)"
         $"ABI: (open ($ROOT | path join crates kui-ffi include kui.h) | parse -r '#define KUI_ABI_VERSION (?<v>\d+)u' | get 0.v); a host checks kui_abi_version against it"
@@ -304,7 +344,7 @@ def stage [row: record, built: record, feature_note: string] {
     ] | str join "\n" | save -f ($dir | path join BUILD.txt)
     if ($built.dir | str ends-with $".build-($row.target)") { rm -rf $built.dir }
     cd $OUT
-    tar -czf $"($name).tar.gz" $name
+    tar-gz $name
     $"($name).tar.gz"
 }
 
@@ -326,4 +366,198 @@ def sha256sum-of [file: string] {
         shasum -a 256 $file | split row " " | first
     }
     $"($sum)  ($file)"
+}
+
+# The release's two tarballs (see the top of this file), from the
+# per-platform packs `main` left in target/pack/ — in the release
+# workflow, the four its build legs uploaded.
+def "main bundle" [
+    --partial # bundle the platforms that are packed; without it all four must be
+] {
+    let v = version
+    let all = $PLATFORMS | get platform
+    let have = $all | where {|p| $OUT | path join $"kui-ffi-($v)-($p)" | path exists }
+    let missing = $all | where {|p| $p not-in $have }
+    if ($have | is-empty) {
+        error make { msg: $"no kui-ffi-($v)-<platform> pack in ($OUT); run pack-ffi.nu first" }
+    }
+    if ($missing | is-not-empty) {
+        if not $partial {
+            error make { msg: $"no pack for ($missing | str join ', ') in ($OUT); pack them, or pass --partial" }
+        }
+        print -e $"bundling without ($missing | str join ', ')"
+    }
+    let rel = $OUT | path join release
+    rm -rf $rel
+    mkdir $rel
+    let tarballs = [c odin] | each {|kind|
+        let name = $"kui-($kind)-($v)"
+        let dir = $rel | path join $name
+        for p in $have {
+            lay-out-libs ($OUT | path join $"kui-ffi-($v)-($p)") ($dir | path join lib $p)
+        }
+        if $kind == "c" {
+            mkdir ($dir | path join include)
+            cp ($OUT | path join $"kui-ffi-($v)-($have | first)" include kui.h) ($dir | path join include)
+        } else {
+            cp -r ($ROOT | path join packages odin kui) $dir
+        }
+        cp ($ROOT | path join LICENSE) $dir
+        readme $kind $v $have | save -f ($dir | path join README.md)
+        cd $rel
+        tar-gz $name
+        rm -rf $name
+        $"($name).tar.gz"
+    }
+    cd $rel
+    $tarballs | each {|t| sha256sum-of $t } | str join "\n" | save -f SHA256SUMS
+    print ($tarballs | wrap tarball | insert size {|r| ls $r.tarball | get 0.size } | table --width 100)
+    print $"in ($rel)"
+}
+
+# One platform's pack, split by kind: shared/ the library a program loads
+# (with its import library on Windows), static/ the archive with
+# link.txt and what link.txt names that no system has.
+def lay-out-libs [pack: string, dst: string] {
+    let shared = $dst | path join shared
+    let static = $dst | path join static
+    mkdir $shared $static
+    for f in (ls ($pack | path join lib) | get name) {
+        let base = $f | path basename
+        let to = if $base in [libkui_ffi.so libkui_ffi.dylib kui_ffi.dll kui_ffi.dll.lib] { $shared } else { $static }
+        cp $f $to
+    }
+    cp ($pack | path join link.txt) $static
+    cp ($pack | path join BUILD.txt) $dst
+}
+
+# README.md of a release tarball: what is in it and the link lines, for
+# the platforms it holds.
+def readme [kind: string, v: string, platforms: list<string>] {
+    let what = if $kind == "c" {
+        "the C library: `include/kui.h`, and `libkui_ffi` for each platform"
+    } else {
+        "the Odin binding: the `kui` package, and `libkui_ffi` for each platform it links"
+    }
+    let use = if $kind == "c" {
+        $"```sh
+# dynamic: found at run time through the rpath \(on Windows, kui_ffi.dll beside the program)
+cc -std=c11 -I include app.c -L lib/<platform>/shared -lkui_ffi -Wl,-rpath,'$ORIGIN/lib/<platform>/shared' -o app
+# static: link.txt's last line is what the archive needs besides itself
+cc -std=c11 -I include app.c -L lib/<platform>/static -lkui_ffi $\(tail -1 lib/<platform>/static/link.txt) -o app
+```
+
+On macOS the rpath is `@executable_path/...` rather than `$ORIGIN/...`. With
+MSVC: `cl /std:c11 /I include app.c /link /LIBPATH:lib\\win32-x64\\shared kui_ffi.dll.lib`,
+and for the static one `kui_ffi.lib`, link.txt's last line and `/NODEFAULTLIB:libcmt`
+from `lib\\win32-x64\\static`."
+    } else {
+        $"Import the package as a collection \(`-collection:kui=<this directory>` and
+`import \"kui:kui\"`; Odin takes no absolute import path), or by a path
+relative to your source, and point the linker at a platform's kind:
+
+```sh
+# dynamic
+odin build app -extra-linker-flags:\"-Llib/<platform>/shared -Wl,-rpath,<absolute>/lib/<platform>/shared\"
+# static: link.txt's last line is what the archive needs besides itself
+odin build app -extra-linker-flags:\"-Llib/<platform>/static $\(tail -1 lib/<platform>/static/link.txt)\"
+```
+
+On Windows the dynamic link is the default \(`kui_ffi.dll.lib`; copy
+`kui_ffi.dll` beside the program); the static one is
+`-define:KUI_LIB=system:kui_ffi.lib`, link.txt's last line and
+`/NODEFAULTLIB:libcmt`, from `lib\\win32-x64\\static`. The package's own
+documentation is `kui/README.md` in the repository, packages/odin/README.md."
+    }
+    $"# kui ($kind) ($v)
+
+This is ($what), as kui's release builds it:
+default features, so `kui_run` \(the windowed runner) is in. Each
+platform's `BUILD.txt` names the target, the toolchain and, on Linux, the
+glibc it needs \(2.28 or newer).
+
+Platforms: ($platforms | str join ', ').
+
+($use)
+
+kui.h's `KUI_ABI_VERSION` is what this library answers from
+`kui_abi_version\(\)`; a program built against another header refuses it.
+"
+}
+
+# Links the counter against a release tarball for one platform, the
+# shared kind and then the static one, and runs each `--headless`: the
+# check that what the release ships links and works outside this
+# repository. C needs `cc` (or $env.CC); Odin needs odin on PATH or ODIN.
+def "main verify" [
+    tarball: string # a kui-c-<version>.tar.gz or kui-odin-<version>.tar.gz
+    --platform: string # whose libraries to link; default: this machine's
+] {
+    let p = $platform | default (host-platform)
+    if ($p | str starts-with "win32") {
+        error make { msg: "verify links with cc or odin's own linker line, on Linux and macOS; Windows is not checked" }
+    }
+    let tarball = $tarball | path expand
+    let name = $tarball | path basename | str replace ".tar.gz" ""
+    let kind = if ($name | str starts-with "kui-c-") { "c" } else if ($name | str starts-with "kui-odin-") { "odin" } else {
+        error make { msg: $"($name) is neither kui-c-<version> nor kui-odin-<version>" }
+    }
+    let work = $OUT | path join $"verify-($kind)-($p)"
+    rm -rf $work
+    mkdir $work
+    tar -xzf $tarball -C $work
+    let root = $work | path join $name
+    let lib = $root | path join lib $p
+    if not ($lib | path exists) {
+        error make { msg: $"($name) has no libraries for ($p)" }
+    }
+    let link_line = open ($lib | path join static link.txt) | lines | where {|l| not ($l | str starts-with "#") and ($l | str trim) != "" } | get -o 0 | default "" | split row " " | where {|a| $a != "" }
+    let rpath = $lib | path join shared
+    let results = [shared static] | each {|how|
+        let exe = $work | path join $"counter-($how)"
+        if $kind == "c" {
+            mkdir ($work | path join src apps)
+            cp ($ROOT | path join examples c common.h) ($work | path join src)
+            cp ($ROOT | path join examples c apps counter.c) ($work | path join src apps)
+            let cc = $env.CC? | default "cc"
+            let extra = if $how == "shared" { [$"-Wl,-rpath,($rpath)"] } else { $link_line }
+            run-or-fail $"cc, ($how)" $cc -std=c11 -I ($root | path join include) ($work | path join src apps counter.c) -L ($lib | path join $how) -lkui_ffi ...$extra -o $exe
+        } else {
+            let src = $work | path join src counter.odin
+            mkdir ($work | path join src)
+            open --raw ($ROOT | path join examples odin apps counter.odin)
+                | str replace 'import kui "../../../packages/odin/kui"' 'import kui "kuipack:kui"'
+                | save -f --raw $src
+            let odin = $env.ODIN? | default "odin"
+            let flags = if $how == "shared" { [$"-L($rpath)" $"-Wl,-rpath,($rpath)"] } else { [$"-L($lib | path join static)" ...$link_line] }
+            # As a collection, which is how the tarball's README says to
+            # import it: Odin takes no absolute import path.
+            run-or-fail $"odin, ($how)" $odin build $src -file $"-collection:kuipack=($root)" $"-out:($exe)" $"-extra-linker-flags:($flags | str join ' ')"
+        }
+        let r = do { ^$exe --headless } | complete
+        if $r.exit_code != 0 {
+            print -e $r.stdout $r.stderr
+            error make { msg: $"the ($kind) counter linked ($how) exited ($r.exit_code)" }
+        }
+        { kind: $kind, platform: $p, link: $how, size: (ls $exe | get 0.size), run: ($r.stdout | lines | last) }
+    }
+    print ($results | table --width 100)
+}
+
+def --wrapped run-or-fail [what: string, cmd: string, ...args] {
+    let r = do { ^$cmd ...$args } | complete
+    if $r.exit_code != 0 {
+        print -e $r.stdout $r.stderr
+        error make { msg: $"($what) failed: ($cmd) ($args | str join ' ')" }
+    }
+}
+
+# <dir>.tar.gz, with nothing in it but the files: macOS's tar adds its
+# extended attributes (com.apple.provenance on every file a download
+# touched) and AppleDouble `._` files, and GNU tar warns about each one it
+# meets on the way out. `--no-xattrs` is bsdtar's and GNU tar's both.
+def tar-gz [dir: string] {
+    with-env { COPYFILE_DISABLE: "1" } {
+        tar --no-xattrs -czf $"($dir).tar.gz" $dir
+    }
 }

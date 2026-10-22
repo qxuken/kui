@@ -69,10 +69,23 @@ has no rpath. Outside this repository, pass your own
 
 ## Linking a prebuilt library
 
-Outside this repository there is no cargo build to link. Use
-`nu scripts/pack-ffi.nu`, which writes `target/pack/kui-ffi-<version>-<platform>/`
-with `include/kui.h`, the dynamic and static library in `lib/`, and
-`link.txt`, the system libraries a static link needs:
+Outside this repository there is no cargo build to link. Each release on
+GitHub carries `kui-odin-<version>.tar.gz`: this package as `kui/`, and
+`libkui_ffi` for linux-x64, linux-arm64, darwin-arm64 and win32-x64 under
+`lib/<platform>/shared/` and `lib/<platform>/static/` (with `link.txt`, the
+system libraries a static link needs), so a kind is a directory:
+
+```sh
+odin build app -extra-linker-flags:"-L$ODIN_PACK/lib/linux-x64/shared -Wl,-rpath,$ODIN_PACK/lib/linux-x64/shared"
+odin build app -extra-linker-flags:"-L$ODIN_PACK/lib/linux-x64/static $(tail -1 $ODIN_PACK/lib/linux-x64/static/link.txt)"
+```
+
+Every release's four platforms are checked as packed, by
+`nu scripts/pack-ffi.nu verify`: the counter built against each kind and
+run `--headless`, on Linux and macOS. To build the library yourself
+instead, `nu scripts/pack-ffi.nu` writes one platform's pack,
+`target/pack/kui-ffi-<version>-<platform>/`, with `include/kui.h`, the
+dynamic and static library together in `lib/`, and `link.txt`:
 
 ```sh
 # dynamic: libkui_ffi beside the program, found by rpath
