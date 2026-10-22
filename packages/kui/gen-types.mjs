@@ -669,6 +669,11 @@ const menuBlock = [
 //
 // This file only lays the defs out. It refuses a kind it has never seen
 // rather than dropping it silently, which is the whole point of the exercise.
+// It refuses an entry it has seen already too: napi appends to the file, so
+// two builds of the addon writing it at once leave the surface in it twice,
+// and d5c2d000 checked in an index.d.ts declaring `Ctx` and `KuiWindow` twice
+// each. An item is one entry per name; a class may have several `impl`
+// blocks, so an `impl` repeats only when its whole line does.
 
 // Method lines arrive with one leading space and JSDoc lines with none, so
 // that `/**`, ` * …` and ` */` land aligned under a two-space indent. A blank
@@ -682,8 +687,17 @@ const indent = (def) =>
 const classes = new Map();
 const parts = [];
 let members = 0;
+const seen = new Set();
 for (const line of defsSrc.trim().split('\n')) {
   const item = JSON.parse(line);
+  const key = item.kind === 'impl' ? line : `${item.kind} ${item.name}`;
+  if (seen.has(key)) {
+    throw new Error(
+      `the napi type defs list ${item.kind} ${item.name} twice - two builds of kui-node wrote ` +
+        `target/napi-type-defs/kui-node at once; delete it and run \`npm run gen\` again, which rebuilds it`,
+    );
+  }
+  seen.add(key);
   if (item.kind === 'fn') {
     parts.push({ text: `${item.js_doc}export declare ${item.def}` });
     members += 1;
