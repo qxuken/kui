@@ -312,6 +312,9 @@ pub(crate) fn leaf_hint(ui: &mut Ui<'_>, leaf: Key, text: &str) {
     if let Some(float) = spec.layout.float.as_mut() {
         float.anchor = crate::spec::FloatAnchor::Node(leaf);
     }
+    // The core's hint, as a box's is: none under a leaf at 0, none in a
+    // ghost (backlog RG162). It already fades with the leaf's parent.
+    spec.access_mut().hint = true;
     ui.core().note_floated_hint();
     ui.core().open_key(leaf.str("tooltip"), spec);
     ui.text(text, TextStyle::new(size));

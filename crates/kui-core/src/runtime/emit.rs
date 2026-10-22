@@ -820,6 +820,20 @@ impl Core {
         Some((range, self.theme.selection))
     }
 
+    /// The leaf the hint at `i` floats beside, when it is a leaf's
+    /// (`widgets::leaf_hint`): anchored to the leaf by key and pushed
+    /// right after it, so the leaf is the node before it in preorder.
+    /// `None` for a box's hint, the box's last child. Out of the walk:
+    /// only a hint reaches it.
+    #[cold]
+    #[inline(never)]
+    fn leaf_of_hint(&self, i: usize) -> Option<u32> {
+        let crate::spec::FloatAnchor::Node(leaf) = self.tree.specs[i].layout.float?.anchor else {
+            return None;
+        };
+        (i > 0 && self.tree.keys[i - 1] == leaf).then(|| i as u32 - 1)
+    }
+
     /// The innermost selection scope node `i` is inside, if any. Empty on
     /// every frame that declares no `selectable` at all, where the map is
     /// not even sized.
@@ -1056,17 +1070,22 @@ impl Core {
             // what the box inherited, as a leaf's hint, floated beside
             // the leaf, does: a dimmed box keeps a readable hint (F178).
             // A box at 0 is not there to explain, and its hint is not
-            // drawn either (backlog RG160).
+            // drawn either (backlog RG160); nor is a leaf's (RG162).
             let opacity = if !any_opacity {
                 1.0
             } else {
                 let hint = self.tree.any_hint && parent != NIL && self.tree.specs[i].access().hint;
-                let from = if hint {
-                    self.tree.parent[parent as usize]
+                // The node the hint explains: a box's hint is its last
+                // child, a leaf's the node pushed right after it.
+                let (from, explained) = if !hint {
+                    (parent, parent)
+                } else if let Some(leaf) = self.leaf_of_hint(i) {
+                    (parent, leaf)
                 } else {
-                    parent
+                    (self.tree.parent[parent as usize], parent)
                 };
-                let inherited = if hint && self.tree.specs[parent as usize].style.opacity <= 0.0 {
+                let inherited = if hint && self.tree.specs[explained as usize].style.opacity <= 0.0
+                {
                     0.0
                 } else if from == NIL {
                     1.0
@@ -1743,10 +1762,11 @@ impl Core {
             } else {
                 self.ghost_opacity[node.parent as usize]
             };
-            // The hint the core floated under a hovered box leaves with
-            // the hover: a departing box is under no pointer, and its
-            // hint, faded from full or from the box's own opacity, would
-            // be a hint for something already going (backlog RG160).
+            // The hint the core floated under a hovered box, or beside a
+            // hovered leaf, leaves with the hover: a departing node is
+            // under no pointer, and its hint, faded from full or from the
+            // node's own opacity, would be a hint for something already
+            // going (backlog RG160, RG162).
             let opacity = if node.parent != NIL && node.spec.access().hint {
                 0.0
             } else {

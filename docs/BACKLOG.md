@@ -251,7 +251,10 @@ a Lua grid of no rows — was built the day it was filed, after the
 alpha.62 tag, and is in the archive; and F181, from the Cookie Mapping
 Builder's question about its Dock icon — the launcher's icon as the
 app's on macOS, for an app that is no bundle — was built the day it was
-filed, after the alpha.62 tag, and is in the archive.
+filed, after the alpha.62 tag, and is in the archive; and RG162, from
+the alpha.63 pre-tag pass — a leaf's hint under the box's opacity rule
+— was built the day it was filed, after the alpha.63 tag, and is in the
+archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3092,25 +3095,9 @@ negative or NaN grid count where Lua reads it as 0 rows, and took a
 `null` one where Lua refuses it (Node reads a count as Lua does now).
 RG161's changelog line said a toast over a tooltip box puts the hint
 down; it does when the toast takes the pointer, and says so now. RG162
-is what is left.
-
-### `.` RG162 — What the alpha.63 pre-tag pass left
-
-Read, not reproduced as a defect an app meets:
-
-- **A leaf's hint ignores the leaf's opacity.** RG161 floats no hint
-  under a box at `opacity: 0` and none in an exit ghost, keyed on the
-  hint flag `hover_hint` sets. `leaf_hint` (an image, a `cells` grid,
-  an editor, a `line`) opens its hint beside the leaf, under the leaf's
-  parent, without the flag, so a hovered leaf at 0 — or at the first
-  frame of an `enter` from 0 — floats its hint in full, and a hovered
-  leaf inside a departing box fades its hint with the ghost. The
-  changelog promises the rule for a box only; extending it needs the
-  hint to know its leaf's opacity in the live pass and the ghost pass.
-- **App-drawn hints fade with a ghost.** `widgets::tooltip` and
-  `tooltip_with` set no hint flag either; they are not hover-gated, so
-  fading with the departing box is probably right. Recorded so a
-  later round decides it rather than finds it.
+is what was left — a leaf's hint outside the box rule, app-drawn hints
+in a ghost — **built 2026-10-22**, the day it was filed, after the
+alpha.63 tag, and in the archive.
 
 ## From the alpha.62 pre-tag pass (2026-10-22)
 
@@ -4994,3 +4981,7 @@ move.
 **From the Cookie Mapping Builder's Dock icon (2026-10-22)** — F181, filed and built the same day
 
 - `~` **F181** — [The launcher's icon is nothing on macOS, so an unbundled app shows its executable's in the Dock](backlog/closed-2026-09.md#-f181--the-launchers-icon-is-nothing-on-macos-so-an-unbundled-app-shows-its-executables-in-the-dock--done-2026-10-22) — done (2026-10-22) — the pixels as `NSApp.applicationIconImage` once the first window is open, unless the main bundle's `Info.plist` names an icon; no name option, since nothing a process calls renames it
+
+**From the alpha.63 pre-tag pass (2026-10-22)** — RG162, what it left, built the same day after the tag
+
+- `.` **RG162** — [What the alpha.63 pre-tag pass left](backlog/closed-2026-09.md#-rg162--what-the-alpha63-pre-tag-pass-left--done-2026-10-22) — done (2026-10-22) — a leaf's hint carries the core's hint flag: none under a leaf at 0 (the leaf is the node before its hint), none in a ghost; app-drawn hints stay content

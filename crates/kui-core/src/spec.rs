@@ -1452,9 +1452,12 @@ pub struct AccessSpec {
     /// hovered box (`widgets::hover_hint`: the `tooltip` prop's, a stock
     /// button's), so it fades with the box's ancestors and not with the
     /// box: a dimmed box still has a hint that can be read, as a leaf,
-    /// whose hint floats beside it, always had (backlog F178). Set by
-    /// the core; an app's own `widgets::tooltip` is content it placed
-    /// and fades with the box it is in.
+    /// whose hint floats beside it, always had (backlog F178) — or the
+    /// one it floats beside a hovered leaf (`widgets::leaf_hint`). Either
+    /// is not drawn under a node at opacity 0 or in an exit ghost
+    /// (backlog RG160, RG162). Set by the core; an app's own
+    /// `widgets::tooltip` is content it placed and fades with the box it
+    /// is in, ghost included.
     pub hint: bool,
     /// When the text inside this node changes, a reader reads the change
     /// without being asked (ARIA's `aria-live`). Off by default; a node

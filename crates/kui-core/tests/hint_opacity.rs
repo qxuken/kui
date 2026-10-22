@@ -253,3 +253,68 @@ fn a_departing_boxs_tooltip_leaves_with_the_hover() {
     let a = hint_alpha(&mut core);
     assert!(hidden(a), "and its hint is gone: {a:?}");
 }
+
+/// A leaf's tooltip, floated beside the leaf.
+fn polygon_leaf(ui: &mut kui_core::Ui<'_>, opacity: f32) {
+    let pts = [
+        Vec2::new(0.0, 0.0),
+        Vec2::new(100.0, 0.0),
+        Vec2::new(100.0, 40.0),
+        Vec2::new(0.0, 40.0),
+    ];
+    let mut p = PropsOut::new();
+    p.spec = NodeSpec::column().opacity(opacity);
+    p.key = Some("leaf".into());
+    p.apply_tooltip("a hint");
+    ui.core().open_from(p, Content::Polygon(&pts));
+}
+
+/// A leaf at opacity 0 is no more there to explain than a box is: its
+/// hint, floated beside it, is not drawn either (backlog RG162).
+#[test]
+fn an_invisible_leafs_tooltip_is_not_drawn() {
+    let mut core = Core::new();
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(VIEW, 1.0);
+        polygon_leaf(&mut ui, 0.0);
+        ui.finish();
+    };
+    frame(&mut core);
+    hover(&mut core, Vec2::new(50.0, 20.0));
+    frame(&mut core);
+    frame(&mut core);
+    let a = hint_alpha(&mut core);
+    assert!(hidden(a), "no hint over an invisible leaf: {a:?}");
+}
+
+/// A hovered leaf inside a box removed with an `exit`: the leaf's hint
+/// leaves with the hover, as the box's own does (backlog RG162).
+#[test]
+fn a_departing_leafs_tooltip_leaves_with_the_hover() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    let card = |core: &mut Core, shown: bool| {
+        let mut ui = core.frame(VIEW, 1.0);
+        if shown {
+            ui.with_keyed(
+                "card",
+                NodeSpec::column()
+                    .size(100.0, 40.0)
+                    .exit(kui_core::Enter::default().opacity(0.0)),
+                |ui| polygon_leaf(ui, 1.0),
+            );
+        }
+        ui.finish();
+    };
+    card(&mut core, true);
+    hover(&mut core, Vec2::new(50.0, 20.0));
+    card(&mut core, true);
+    card(&mut core, true);
+    assert!(close(hint_alpha(&mut core), 1.0), "the live hint, in full");
+    core.set_time(0.05);
+    card(&mut core, false);
+    core.set_time(0.1);
+    card(&mut core, false);
+    let a = hint_alpha(&mut core);
+    assert!(hidden(a), "and its hint is gone: {a:?}");
+}

@@ -21,6 +21,27 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.64 (unreleased)
+
+**What breaks.**
+
+- A leaf's `tooltip` — an image's, a `cells` grid's, an editor's, a
+  `line`'s — is not drawn while the leaf is at `opacity: 0`, and a
+  hovered leaf inside a departing box takes its hint with the hover,
+  where alpha.63 drew the first in full and faded the second with the
+  ghost (backlog RG162).
+
+### Fixed
+
+- alpha.63 floated no hint under a box at `opacity: 0` and none in an
+  exit ghost, but a leaf's hint, floated beside the leaf rather than
+  inside it, took neither: a hovered leaf at 0, or at the first frame
+  of an `enter` from 0, floated its hint in full over nothing, and a
+  hovered leaf in a box removed with an `exit` faded its hint with the
+  ghost. A leaf's hint follows the box's rule now. A hint the app
+  places itself with `widgets::tooltip` is still its content and fades
+  with the box it is in, ghost included (backlog RG162).
+
 ## 0.1.0-alpha.63 (2026-10-22)
 
 **What breaks.**
