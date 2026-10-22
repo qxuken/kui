@@ -8,6 +8,9 @@ use kui_core::schema::PropsOut;
 use kui_core::testing::hover;
 use kui_core::{Color, Content, Core, NodeSpec, QuadKind, Size, Vec2, widgets};
 
+/// A view a case builds.
+type Child = dyn Fn(&mut kui_core::Ui<'_>);
+
 const VIEW: Size = Size { w: 400.0, h: 300.0 };
 
 /// The hint's background on the wire, as a share of the theme's `raised`
@@ -135,7 +138,7 @@ fn an_apps_own_tooltip_fades_with_its_box() {
 /// RG159: the toggles and the slider floated theirs as content).
 #[test]
 fn a_disabled_toggles_and_sliders_hint_is_not_dimmed() {
-    let kids: [(&str, &dyn Fn(&mut kui_core::Ui<'_>)); 2] = [
+    let kids: [(&str, &Child); 2] = [
         ("checkbox", &|ui| {
             let spec = NodeSpec::row().on_click("tick").disabled(true);
             widgets::toggle_with(

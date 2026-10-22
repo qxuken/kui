@@ -9,6 +9,9 @@ use kui_core::schema::PropsOut;
 use kui_core::testing::hover;
 use kui_core::{Color, Content, Core, NodeSpec, QuadKind, Rect, Size, Vec2, widgets};
 
+/// A view a case builds.
+type Child = dyn Fn(&mut kui_core::Ui<'_>);
+
 const VIEW: Size = Size { w: 400.0, h: 300.0 };
 
 /// Every hint's background on the wire: the solid quads in the theme's
@@ -147,7 +150,7 @@ fn a_leafs_tooltip_inside_a_box_wins_over_the_boxs() {
 /// only the prop's path said a hint had).
 #[test]
 fn a_stock_controls_own_hint_is_the_innermost() {
-    let kids: [(&str, &dyn Fn(&mut kui_core::Ui<'_>)); 3] = [
+    let kids: [(&str, &Child); 3] = [
         ("button", &|ui| {
             let spec = widgets::button_spec(&ui.theme(), &ui.metrics()).on_click("go");
             widgets::button_with(ui, "go", "Go", spec, Some("inner"));
