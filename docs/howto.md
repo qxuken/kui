@@ -2247,7 +2247,7 @@ that core's renderer: it uploads the atlas and clears its `dirty` flag,
 as `render` does on a window.
 
 [ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
-[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-2026-10-24)
 
 ## Test it
 
@@ -2429,7 +2429,7 @@ grayscale text; a window's follows its device's subpixel text unless
 it.
 
 [ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
-[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-2026-10-24)
 
 ### How do I record a transition as an animated PNG or a GIF?
 
@@ -2467,7 +2467,7 @@ None)`; C: `kui_animation_encoder_new(KUI_ENCODE_PNG, w, h, 0)`, `_add`,
 `kui.animation_encoder_new(.Png, w, h)`.
 
 [ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
-[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-2026-10-24)
 
 ### How does an app save a screenshot or a recording of its own window?
 
@@ -2530,7 +2530,7 @@ so record APNG unless only a GIF will do. A machine with no GPU answers
 is the three buttons.
 
 [ADR 0055](adr/0055-an-app-asks-for-its-window-as-a-file.md) ·
-[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-2026-10-24)
 
 ### How do I trade smoothness for latency, or the other way?
 

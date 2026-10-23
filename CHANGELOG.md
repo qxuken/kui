@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.66 (unreleased)
+## 0.1.0-alpha.66 (2026-10-24)
 
 **What breaks.**
 
@@ -330,6 +330,46 @@ own that ignores those fields draws the shadow as before; kui.h's
   `record_to` ask the runner, which does it after the frame is drawn.
 - A copy of kui-wgpu's renderer, or a hidden window, kept only to draw a
   frame into a texture your own device composites.
+
+### Native verification
+
+One pre-tag pass on 2026-10-23/24 on the Windows machine and its WSL,
+over everything since alpha.65.
+
+**Windows** (11 Pro, RTX 5080 at 240 Hz, 150%): CI's `check` step by
+step — fmt, clippy, the conformance report, the C round, the Odin leg
+(`check`, `test`, `slots`) on dev-2026-09, the Node addon under
+`KUI_CONFORMANCE_REQUIRED=1`, the examples' typecheck, the headless
+round — and `nu scripts/test.nu --node` on the tagged tree: **2605
+tests over 183 Rust suites and Node's**. The pass found one defect:
+Node's slot test faulted in `kui_ffi.dll`, two copies of the library
+disagreeing on `KuiCtx`'s layout (fixed before the tag; it never
+shipped). The windowed round with Node's: 56 examples on both bases.
+kui-wgpu's and kui-native's GPU tests (opacity groups, captures, the
+backdrop blur) on the RTX under both DX12 and Vulkan, with
+`KUI_REQUIRE_GPU` set so none skipped. The capture example driven
+through UI Automation: the saved PNG and the copied picture match a
+screen grab of the window, the clipboard holds PNG and DIBv5 with the
+right channel order and alpha, and a five-second recording kept 1182
+frames at the display's 240 Hz; stopping early by the toggle wrote a
+2.0 s one. `release-prep.nu` read every generated file current on this
+checkout, the first time on Windows (the LF pin above). The bench guard
+against alpha.65 on `frame`: no guarded row more than 10% slower.
+
+**Linux** (WSL Ubuntu 24.04, lavapipe as CI draws, under
+`KUI_REQUIRE_GPU=llvmpipe`): `release-prep.nu`, fmt, clippy, the
+workspace tests, the book, the C round and conformance, the Odin leg
+with `gen --check`, the Node tests and gen, the typecheck, the headless
+round, the lockfile check and `cargo audit --deny warnings`, all
+clean; the windowed round on X11, 56 examples on both bases. Fuzzing:
+30 minutes of all seven targets at once on eight cores, about 72
+million inputs, no crash, hang or OOM, besides the fuzz hour in the
+backlog that found FZ12 and FZ13.
+
+Not verified natively this release: anything on a Mac. RG168 and C54's
+edge resize were confirmed on macOS 26.6.2 while they were built, C53's
+memory figures and the clipboard picture on the macOS pasteboard were
+measured on the M3 Pro then; the accessibility audit was not run.
 
 ## 0.1.0-alpha.65 (2026-10-23)
 
