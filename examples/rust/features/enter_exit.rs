@@ -20,23 +20,25 @@
 //!     and a handful of cards is nowhere near the store's budget. A list
 //!     that dropped a thousand rows would be, and would say so.
 //!
-//! Expiry needs a clock the core doesn't have, so the app keeps its own
-//! `Instant`s and asks for the next frame while any toast is still due to
-//! go. With none left it stops asking — and the window keeps drawing anyway
-//! until the last exit finishes, because a departing subtree is mid-flight
-//! and `animating()` says so.
+//! Expiry reads the frame clock (`ui.now()`): a toast is born at the
+//! first frame that draws it, and the view asks for a frame at the
+//! earliest toast's deadline (`ui.request_frame_at`), so nothing is drawn
+//! in between for its sake. With none left it asks for nothing — and the
+//! window keeps drawing anyway until the last exit finishes, because a
+//! departing subtree is mid-flight and `animating()` says so. On the frame
+//! clock a headless recording, which steps the clock, sees the toasts
+//! expire when the clock says rather than when the wall does.
 //!
 //! Run: cargo run -p kui-native --example enter_exit
 
-use std::time::{Duration, Instant};
-
-use kui_devtools::Example;
+use kui_devtools::{Cue, Example, Recording};
 use kui_native::{
     Align, App, Color, Easing, Enter, FloatConfig, NodeSpec, Sizing, TextStyle, Ui, UiEvent, Value,
     widgets,
 };
 
-const LIFETIME: Duration = Duration::from_millis(3200);
+/// How long a toast stays, in the frame clock's seconds.
+const LIFETIME: f64 = 3.2;
 
 /// The same color with nothing behind it — what a toast fades up from.
 fn clear(c: Color) -> Color {
@@ -49,7 +51,9 @@ struct Toast {
     /// its tween to the one that shuffled into its place.
     id: u64,
     text: String,
-    born: Instant,
+    /// When the first frame that drew it began (`ui.now()`): `None`
+    /// until then, since an event handler has no frame clock to read.
+    born: Option<f64>,
 }
 
 #[derive(Default)]
@@ -153,12 +157,15 @@ impl Toasts {
 impl App for Toasts {
     fn view(&mut self, ui: &mut Ui<'_>) {
         let t = ui.theme();
-        let now = Instant::now();
+        let now = ui.now();
         self.toasts
-            .retain(|t| now.duration_since(t.born) < LIFETIME);
+            .retain(|t| t.born.is_none_or(|born| now - born < LIFETIME));
+        for t in &mut self.toasts {
+            t.born.get_or_insert(now);
+        }
         // Nothing else would wake the window on a toast's own deadline.
-        if !self.toasts.is_empty() {
-            ui.request_frame();
+        if let Some(first) = self.toasts.iter().filter_map(|t| t.born).reduce(f64::min) {
+            ui.request_frame_at(first + LIFETIME);
         }
 
         // The container both floats anchor to (`FloatConfig::parent`), so
@@ -202,7 +209,7 @@ impl App for Toasts {
                 self.toasts.push(Toast {
                     id: self.next_id,
                     text: format!("Saved change #{}", self.sent),
-                    born: Instant::now(),
+                    born: None,
                 });
             }
             Some("panel") => self.panel = !self.panel,
@@ -212,6 +219,20 @@ impl App for Toasts {
     }
 }
 
-impl Example for Toasts {}
+impl Example for Toasts {
+    /// Three toasts a half second apart, the panel in and out, and the
+    /// stack cleared before any expires.
+    const RECORDING: Option<Recording> = Some(Recording {
+        secs: 4.0,
+        cues: &[
+            (0.2, Cue::Click("notify")),
+            (0.7, Cue::Click("notify")),
+            (1.2, Cue::Click("notify")),
+            (1.7, Cue::Click("toggle panel")),
+            (2.6, Cue::Click("toggle panel")),
+            (3.1, Cue::Click("clear")),
+        ],
+    });
+}
 
 kui_devtools::main!(Toasts::default());

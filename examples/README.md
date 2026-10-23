@@ -81,7 +81,11 @@ full|reduced` pins what `env.system.motion` reads over the OS's setting,
 which is how an animation's reduced-motion branch is looked at on a
 machine whose owner did not ask for it; `--size WxH` the example's area;
 `--key CHORD` respells the chord into the dock (`f12`, `mod+shift+d`) for
-an example whose own keymap wants `Ctrl+Shift+I`. The chords are the core's, `Ctrl+Shift+<letter>` on every
+an example whose own keymap wants `Ctrl+Shift+I`; `--shot PNG` draws the
+settled frame headlessly and saves it, and `--record FILE` plays the
+example's `Example::RECORDING` (clicks on a stepped clock) and saves it as
+a GIF or an animated PNG, both light unless `--dark` and with grayscale
+text, which is what the book's Examples part shows. The chords are the core's, `Ctrl+Shift+<letter>` on every
 platform: `T` cycles the base (the app's own → light → dark), `A` the
 accent, `M` toggles native menus (the popups *and* the bar — on macOS
 that is how the drawn bar is seen), `D` moves the panel (left → right →
