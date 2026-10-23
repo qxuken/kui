@@ -294,6 +294,15 @@ own that ignores those fields draws the shadow as before; kui.h's
   bookworm) offers dual-source blending, so the per-channel text path
   is the one CI draws, and no pixel assertion needed loosening.
 
+- The repository pins its line endings to LF (`.gitattributes`, `*
+  text=auto eol=lf`), so a Windows clone with `core.autocrlf=true` no
+  longer checks every text file out as CRLF, where the generators write
+  LF and `release-prep.nu` then read every generated file as stale. No
+  file in the repository changed; a clone made before keeps its CRLF
+  files until they are checked out again. `odin.nu gen` writes
+  `layout.odin` as LF on Windows too, and `gen --check` names a file
+  that differs by its line ends alone as such.
+
 **What you can delete.**
 
 - A `screencapture` of the window's id, or another tool outside the
