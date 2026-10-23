@@ -49,6 +49,22 @@ fn run(
 }
 ```
 
+## Without a window
+
+A host that draws on a device of its own (a game engine, a 3D panel) opens a renderer with no surface and hands it a texture each frame; a test reads a frame back as straight RGBA.
+
+```rust,no_run
+use kui_wgpu::{Gpu, Renderer, wgpu};
+
+fn shot(core: &mut kui_core::Core) -> Result<kui_wgpu::Capture, Box<dyn std::error::Error>> {
+    let gpu = pollster::block_on(Gpu::windowless())?;
+    let mut renderer = Renderer::windowless(&gpu, wgpu::TextureFormat::Rgba8Unorm)?;
+    let (list, atlas) = core.output();
+    // Or each frame: renderer.render_to(list, atlas, &host_texture)?
+    Ok(renderer.capture(list, atlas)?)
+}
+```
+
 ## Where it fits
 
 | Crate | What it is |

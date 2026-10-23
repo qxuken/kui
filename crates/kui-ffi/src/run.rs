@@ -466,8 +466,82 @@ pub extern "C" fn kui_animation_at(
     })
 }
 
-/// Frees what `kui_decode_image` or `kui_decode_animation` returned; NULL
-/// is nothing. Only those pointers: the length is kept just before them.
+/// The context's last finished frame as pixels (backlog C55):
+/// `kui_native::capture`, drawn again on the process's windowless device
+/// and read back as straight RGBA, `*width * *height * 4` bytes row by row
+/// from the top left. Free with `kui_pixels_free`. NULL, with the reason on
+/// stderr and both sides 0, for a context with no finished frame, a frame
+/// past the device's largest texture, or no GPU adapter.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_capture(ptr: *mut KuiCtx, width: *mut u32, height: *mut u32) -> *mut u8 {
+    guard(std::ptr::null_mut(), || {
+        let put = |w: u32, h: u32| unsafe {
+            if !width.is_null() {
+                *width = w;
+            }
+            if !height.is_null() {
+                *height = h;
+            }
+        };
+        put(0, 0);
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return std::ptr::null_mut();
+        };
+        match kui_native::capture(c.core()) {
+            Ok(p) => {
+                put(p.width, p.height);
+                hand_out(&p.rgba, &[]).0
+            }
+            Err(why) => {
+                eprintln!("kui: kui_capture: {why}");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Straight RGBA, `width * height * 4` bytes, to PNG bytes (`*len` of
+/// them) with the runner's encoder at its fast setting:
+/// `kui_native::encode_png`. Free with `kui_pixels_free`. NULL, with the
+/// reason on stderr and `*len` 0, for a size of zero or NULL pixels.
+/// `rgba`, when not NULL, points at `width * height * 4` readable bytes.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_encode_png(
+    rgba: *const u8,
+    width: u32,
+    height: u32,
+    len: *mut usize,
+) -> *mut u8 {
+    guard(std::ptr::null_mut(), || {
+        let put = |n: usize| unsafe {
+            if !len.is_null() {
+                *len = n;
+            }
+        };
+        put(0);
+        let n = width as usize * height as usize * 4;
+        if rgba.is_null() || n == 0 {
+            eprintln!("kui: kui_encode_png: {width}x{height} with no pixels");
+            return std::ptr::null_mut();
+        }
+        // SAFETY: the caller's promise, width * height * 4 bytes.
+        let px = unsafe { std::slice::from_raw_parts(rgba, n) };
+        match kui_native::encode_png(width, height, px) {
+            Ok(bytes) => {
+                put(bytes.len());
+                hand_out(&bytes, &[]).0
+            }
+            Err(why) => {
+                eprintln!("kui: kui_encode_png: {why}");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Frees what `kui_decode_image`, `kui_decode_animation`, `kui_capture` or
+/// `kui_encode_png` returned; NULL is nothing. Only those pointers: the
+/// length is kept just before them.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_pixels_free(pixels: *mut u8) {
     guard((), || {
@@ -524,5 +598,44 @@ mod tests {
                 .unwrap_err()
                 .contains("1 to 65535")
         );
+    }
+
+    /// `kui_capture` on a standalone context (backlog C55): the finished
+    /// frame in physical px, straight RGBA, freed by `kui_pixels_free`;
+    /// NULL and zero sides before any frame. Skipped, saying so, where the
+    /// machine has no GPU adapter.
+    #[test]
+    fn a_capture_is_the_finished_frame_as_pixels() {
+        let ctx = kui_ctx_new();
+        let (mut w, mut h) = (7u32, 7u32);
+        assert!(kui_capture(ctx, &mut w, &mut h).is_null(), "no frame yet");
+        assert_eq!((w, h), (0, 0));
+
+        kui_frame_begin(ctx, 20.0, 10.0, 2.0);
+        // SAFETY: an all-zero KuiSpec is the default of every field.
+        let mut root: KuiSpec = unsafe { std::mem::zeroed() };
+        root.bg = 0xff0000ff;
+        root.width = KuiSizing {
+            tag: 2,
+            value: 20.0,
+        };
+        root.height = KuiSizing {
+            tag: 2,
+            value: 10.0,
+        };
+        kui_root(ctx, &root);
+        kui_frame_finish(ctx);
+        let px = kui_capture(ctx, &mut w, &mut h);
+        if px.is_null() {
+            eprintln!("skipped: no capture (no GPU adapter?), see stderr");
+            kui_ctx_free(ctx);
+            return;
+        }
+        assert_eq!((w, h), (40, 20), "20x10 at 2x");
+        // SAFETY: kui_capture handed out w * h * 4 bytes.
+        let rgba = unsafe { std::slice::from_raw_parts(px, (w * h * 4) as usize) };
+        assert_eq!(&rgba[(10 * 40 + 20) * 4..][..4], &[255, 0, 0, 255]);
+        kui_pixels_free(px);
+        kui_ctx_free(ctx);
     }
 }

@@ -1693,6 +1693,22 @@ pub const DOORS: &[Door] = &[
         doc: "Which frame of an animation a moment shows and when the next is due: what `update_image` and `request_frame_at` take to play a GIF on the frame clock.",
     },
     Door {
+        rust: "kui_native::capture",
+        c: Is("kui_capture"),
+        odin: Is("capture"),
+        node: Is("capture"),
+        lua: No(GUEST),
+        doc: "The last finished frame as pixels (backlog C55): drawn again from the core's draw list on a GPU device of the process's own, with no window, and read back as straight RGBA in physical px over the theme's `bg` — a window's core or a headless one alike, between frames. What a window shows, less what the OS draws behind a translucent one. C's frees with `kui_pixels_free`.",
+    },
+    Door {
+        rust: "kui_native::encode_png",
+        c: Is("kui_encode_png"),
+        odin: Is("encode_png"),
+        node: Is("kui.encodePng"),
+        lua: No(GUEST),
+        doc: "Straight RGBA to PNG bytes with the runner's encoder at its fast setting — a capture or a decoded image kept as a file, by a test or a probe with no encoder of its own; C's frees with `kui_pixels_free`.",
+    },
+    Door {
         rust: "App::teardown",
         c: Is("kui_on_teardown"),
         odin: As("the `teardown` procedure `kui.run` takes"),
@@ -1731,7 +1747,8 @@ mod tests {
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
-        let decode = read(root.join("../../kui-native/src/decode.rs"));
+        let decode = read(root.join("../../kui-native/src/decode.rs"))
+            + &read(root.join("../../kui-native/src/capture.rs"));
         // The `App` trait's body: a method of it is a callback the app
         // writes, spelled `fn name(` and public by being the trait's.
         let app_trait = launcher

@@ -164,6 +164,28 @@ headless :: proc() -> bool {
 	if _, still := s.menu.?; still do return fail("escape did not dismiss the menu")
 	fmt.println("escape dismissed the menu")
 
+	// The last frame as pixels (backlog C55), drawn again on a GPU device of
+	// the process's own; a machine with no GPU adapter (a CI container) has
+	// none, and says so on stderr.
+	if cw, ch, shot, shot_ok := kui.capture(ui); shot_ok {
+		defer delete(shot)
+		if cw != 800 || ch != 600 || shot[3] != 255 do return fail("capture")
+		fmt.printfln("captured the last frame: %dx%d", cw, ch)
+	} else {
+		fmt.println("no GPU adapter: capture had nothing to draw on")
+	}
+
+	// Pixels to a PNG and back through the runner's own codec, which a test
+	// keeping a capture as a file needs no library for.
+	two := []u8{255, 0, 0, 255, 0, 0, 255, 128}
+	png, png_ok := kui.encode_png(2, 1, two)
+	defer delete(png)
+	if !png_ok || png[1] != 'P' do return fail("encode_png")
+	pw, ph, again, again_ok := kui.decode_image(png)
+	defer delete(again)
+	if !again_ok || pw != 2 || ph != 1 || again[7] != 128 || again[6] != 255 do return fail("encode_png round trip")
+	fmt.println("encoded two pixels as a PNG and read them back")
+
 	// And a message with fields survives the round trip through the core.
 	round_trip() or_return
 

@@ -103,6 +103,8 @@
 //!   lists, tables and menus.
 //! - [`UiEvent`]: what `on_event` receives, with the readers on it.
 //! - [`testing`]: a headless driver for an `App`, for `cargo test`.
+//! - [`capture`]: a core's finished frame as RGBA pixels, a window's or a
+//!   headless one's.
 //! - From kui-core: [`theme`], [`anim`] (transitions and springs),
 //!   [`window`] (several windows), [`message`] and [`Value`] (the payload
 //!   behind a message), [`Core`] (one window's runtime, for hosts and
@@ -153,10 +155,13 @@ pub mod audio;
 mod axis_lock;
 /// What shows through the window: a blur, a tint, the desktop, or nothing.
 mod backdrop;
+mod capture;
+pub use capture::{Capture, capture};
 mod clipboard;
 mod decode;
 pub use decode::{
-    Animation, AnimationFrame, MAX_ANIMATION_BYTES, Pixels, Showing, decode_animation, decode_image,
+    Animation, AnimationFrame, MAX_ANIMATION_BYTES, Pixels, Showing, decode_animation,
+    decode_image, encode_png,
 };
 mod dialogs;
 /// The wallpaper a `Tinted` backdrop draws where the OS has no material.

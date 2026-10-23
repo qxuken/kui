@@ -8,7 +8,7 @@ import { createEncoder } from './encoder.js';
 
 export const {
   Ctx, KuiWindow, RowHeights, quadStride, clipStride, protocol,
-  decodeImage, decodeAnimation, animationAt,
+  decodeImage, decodeAnimation, animationAt, encodePng,
 } = native;
 export { createEncoder };
 

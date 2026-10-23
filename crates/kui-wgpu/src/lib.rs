@@ -7,9 +7,9 @@
 //! when you are writing your own runner: you already have a window, or an
 //! event loop, that `kui-native` does not fit.
 //!
-//! A [`Renderer`] owns the swapchain of one window and a GPU copy of the
-//! core's glyph atlas, kept in step with the atlas it is handed each
-//! frame. Rounded rectangles, borders, shadows, glyphs and images are all
+//! A [`Renderer`] owns the swapchain of one window — or none, drawing
+//! into textures a host hands it — and a GPU copy of the core's glyph
+//! atlas, kept in step with the atlas it is handed each frame. Rounded rectangles, borders, shadows, glyphs and images are all
 //! instances of the same quad, so an ordinary frame is one draw call;
 //! only a texture-backed image or a custom fragment shader splits it.
 //! Several windows share one device through [`Gpu`].
@@ -73,6 +73,12 @@
 //! - [`Renderer::subpixel_text`]: what to pass to `Core::set_subpixel_text`.
 //! - [`Gpu`]: the device, queue and adapter that windows share;
 //!   [`Renderer::new_in`] opens a second window on it.
+//! - [`Renderer::windowless`] on [`Gpu::windowless`] or a host's own
+//!   [`Gpu`]: no window; [`Renderer::render_to`] draws a frame into a
+//!   texture the host owns, for a host compositing kui with content of
+//!   its own (backlog C55).
+//! - [`Renderer::capture`]: a frame read back as straight RGBA
+//!   ([`Capture`]), what a test or a screenshot wants.
 //! - [`RenderError`]: what each failed frame asks the runner to do next.
 //! - [`DEFAULT_FRAME_LATENCY`] and [`Renderer::set_frame_latency`]: how
 //!   many frames may queue ahead of the one on screen.
@@ -387,6 +393,71 @@ impl Gpu {
         options: GpuOptions,
     ) -> Result<(Self, wgpu::Surface<'static>), Box<dyn std::error::Error>> {
         report_faults();
+        let instance = Self::new_instance(options);
+        let surface = instance.create_surface(target)?;
+        let gpu = Self::open(instance, Some(&surface), options).await?;
+        Ok((gpu, surface))
+    }
+
+    /// Opens a device with no window to present to, for
+    /// [`Renderer::windowless`]: a host that draws kui into textures of its
+    /// own, a test, or [`Renderer::capture`] in a process with no window
+    /// (backlog C55).
+    ///
+    /// The adapter is wgpu's default with no surface to be compatible
+    /// with, on the backends [`Gpu::new`] would use. Fails where there is
+    /// no adapter at all — a CI container with no GPU and no software
+    /// Vulkan, say.
+    pub async fn windowless() -> Result<Self, Box<dyn std::error::Error>> {
+        report_faults();
+        let options = GpuOptions::default();
+        Self::open(Self::new_instance(options), None, options).await
+    }
+
+    /// A `Gpu` over a device the host opened itself — a game engine's —
+    /// so a [`Renderer::windowless`] on it draws into the host's textures
+    /// ([`Renderer::render_to`]) and kui's frames share its queue.
+    ///
+    /// What kui would have asked of the device it reads from the device:
+    /// per-channel blending where `DUAL_SOURCE_BLENDING` is enabled (pass
+    /// [`Renderer::subpixel_text`] on to the core), mapped frame buffers
+    /// on Metal where `MAPPABLE_PRIMARY_BUFFERS` is. kui sets no error
+    /// handler and no lost callback on it, which are the host's, so
+    /// [`Gpu::lost`] stays false: a host that hears its device go makes a
+    /// new `Gpu` with the new one.
+    pub fn from_parts(
+        instance: wgpu::Instance,
+        adapter: wgpu::Adapter,
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+    ) -> Self {
+        let features = device.features();
+        let mapped_frames = adapter.get_info().backend == wgpu::Backend::Metal
+            && features.contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS)
+            && std::env::var("KUI_MAPPED_FRAMES").as_deref() != Ok("0");
+        Self(std::sync::Arc::new(GpuInner {
+            instance,
+            adapter,
+            device,
+            queue,
+            options: GpuOptions::default(),
+            alpha: !cfg!(windows),
+            dual_source: features.contains(wgpu::Features::DUAL_SOURCE_BLENDING),
+            mapped_frames,
+            fragment_pipelines: Default::default(),
+            textures: Default::default(),
+            lost: Default::default(),
+        }))
+    }
+
+    /// Whether a device opened with `options` presents through a
+    /// DirectComposition visual ([`see_through_by_visual`]).
+    fn by_visual(options: GpuOptions) -> bool {
+        cfg!(windows) && options.transparent && see_through_by_visual()
+    }
+
+    /// The instance a device opened with `options` lives on.
+    fn new_instance(options: GpuOptions) -> wgpu::Instance {
         // Every backend the build has, as wgpu defaults — but on Windows
         // D3D12 alone unless `WGPU_BACKEND` names another. An instance
         // keeps every backend it enumerated alive for as long as it lives,
@@ -403,7 +474,7 @@ impl Gpu {
         // takes premultiplied alpha. Only when asked, and only where the
         // runner made the window for it: `see_through_by_visual` decides
         // both, from `WGPU_BACKEND` and `WGPU_DX12_PRESENTATION_SYSTEM`.
-        let by_visual = cfg!(windows) && options.transparent && see_through_by_visual();
+        let by_visual = Self::by_visual(options);
         if cfg!(windows) {
             if std::env::var("WGPU_BACKEND").is_err() {
                 desc.backends = wgpu::Backends::DX12;
@@ -418,11 +489,20 @@ impl Gpu {
         if by_visual {
             desc.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
         }
-        let instance = wgpu::Instance::new(desc);
-        let surface = instance.create_surface(target)?;
+        wgpu::Instance::new(desc)
+    }
+
+    /// The adapter and device on `instance`, able to present to `surface`
+    /// when there is one.
+    async fn open(
+        instance: wgpu::Instance,
+        surface: Option<&wgpu::Surface<'static>>,
+        options: GpuOptions,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let by_visual = Self::by_visual(options);
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                compatible_surface: Some(&surface),
+                compatible_surface: surface,
                 ..Default::default()
             })
             .await?;
@@ -467,7 +547,7 @@ impl Gpu {
                 }
             }
         });
-        let gpu = Self(std::sync::Arc::new(GpuInner {
+        Ok(Self(std::sync::Arc::new(GpuInner {
             instance,
             adapter,
             device,
@@ -479,8 +559,7 @@ impl Gpu {
             fragment_pipelines: Default::default(),
             textures: Default::default(),
             lost,
-        }));
-        Ok((gpu, surface))
+        })))
     }
 
     /// Whether the device is gone (a driver update or a GPU reset took it).
@@ -773,7 +852,11 @@ impl std::fmt::Debug for Gpu {
 /// changes size. The crate root has the whole sequence.
 pub struct Renderer {
     gpu: Gpu,
-    surface: wgpu::Surface<'static>,
+    /// The window's surface; `None` for a [`Renderer::windowless`] one,
+    /// which draws only into textures it is handed.
+    surface: Option<wgpu::Surface<'static>>,
+    /// The surface's configuration — or, windowless, the format the
+    /// pipelines were built for and the size of the last target drawn.
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     /// What frames draw from: one slot written by `write_buffer`, or on a
@@ -1152,7 +1235,9 @@ impl Renderer {
         let frames = frames.max(1);
         if self.config.desired_maximum_frame_latency != frames {
             self.config.desired_maximum_frame_latency = frames;
-            self.surface.configure(self.gpu.device(), &self.config);
+            if let Some(s) = &self.surface {
+                s.configure(self.gpu.device(), &self.config);
+            }
         }
     }
 
@@ -1169,8 +1254,6 @@ impl Renderer {
         transparent: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let device = gpu.device();
-        let dual_source = gpu.dual_source();
-
         let caps = surface.get_capabilities(gpu.adapter());
         let format = caps
             .formats
@@ -1208,6 +1291,60 @@ impl Renderer {
         if let Some(err) = pollster::block_on(scope.pop()) {
             return Err(format!("configuring the surface: {err}").into());
         }
+        Ok(Self::assemble(gpu, Some(surface), config))
+    }
+
+    /// A renderer with no window: it draws into textures it is handed
+    /// ([`Renderer::render_to`]) and reads frames back
+    /// ([`Renderer::capture`]), never presents (backlog C55). For a host
+    /// that composites kui with content of its own on its own device — a
+    /// game engine, a 3D panel — and for pixels with no window at all,
+    /// on a device from [`Gpu::windowless`].
+    ///
+    /// `format` is what every target must be: a non-sRGB one, as a
+    /// window's surface is, so a colour lands as the byte it names;
+    /// [`Renderer::capture`] reads `Rgba8Unorm` and `Bgra8Unorm`. Fails
+    /// for a format the device cannot render to and blend.
+    pub fn windowless(
+        gpu: &Gpu,
+        format: wgpu::TextureFormat,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let caps = gpu.adapter().get_texture_format_features(format);
+        if !caps
+            .allowed_usages
+            .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+            || !caps
+                .flags
+                .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE)
+        {
+            return Err(
+                format!("{format:?} is not a format this device renders to and blends").into(),
+            );
+        }
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: 1,
+            height: 1,
+            present_mode: wgpu::PresentMode::AutoVsync,
+            alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+            color_space: wgpu::SurfaceColorSpace::Auto,
+            view_formats: vec![],
+            desired_maximum_frame_latency: DEFAULT_FRAME_LATENCY,
+        };
+        Ok(Self::assemble(gpu.clone(), None, config))
+    }
+
+    /// Everything but the surface: the pipelines for `config.format`, the
+    /// atlas, the samplers and the first frame slot.
+    fn assemble(
+        gpu: Gpu,
+        surface: Option<wgpu::Surface<'static>>,
+        config: wgpu::SurfaceConfiguration,
+    ) -> Self {
+        let device = gpu.device();
+        let dual_source = gpu.dual_source();
+        let format = config.format;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kui"),
@@ -1376,7 +1513,7 @@ impl Renderer {
             16,
         );
 
-        Ok(Self {
+        Self {
             gpu,
             surface,
             config,
@@ -1404,7 +1541,7 @@ impl Renderer {
             backdrop_pipes: None,
             backdrop: backdrop::Targets::default(),
             blurs: Vec::new(),
-        })
+        }
     }
 
     /// Draws `rgba` (`width` by `height` pixels, four bytes each, row by
@@ -1606,10 +1743,21 @@ impl Renderer {
         let max = self.gpu.device().limits().max_texture_dimension_2d;
         self.config.width = width.clamp(1, max);
         self.config.height = height.clamp(1, max);
-        self.surface.configure(self.gpu.device(), &self.config);
+        if let Some(s) = &self.surface {
+            s.configure(self.gpu.device(), &self.config);
+        }
     }
 
-    fn sync_atlas(&mut self, atlas: &mut GlyphAtlas) {
+    /// The format every target this renderer draws into must be: the
+    /// surface's, or the one [`Renderer::windowless`] was given.
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.config.format
+    }
+
+    /// Uploads the atlas page when it changed since this renderer last
+    /// did, or whenever `force` says it cannot tell. Leaves `dirty` to the
+    /// caller: only the renderer that owns the core's atlas clears it.
+    fn sync_atlas(&mut self, atlas: &GlyphAtlas, force: bool) {
         if atlas.size != self.atlas_size {
             self.atlas_size = atlas.size;
             self.atlas_tex = create_atlas_texture(self.gpu.device(), atlas.size);
@@ -1627,7 +1775,7 @@ impl Renderer {
             }
             self.atlas_epoch = u64::MAX;
         }
-        if atlas.dirty || self.atlas_epoch != atlas.epoch {
+        if force || atlas.dirty || self.atlas_epoch != atlas.epoch {
             self.gpu.queue().write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.atlas_tex,
@@ -1647,7 +1795,6 @@ impl Renderer {
                     depth_or_array_layers: 1,
                 },
             );
-            atlas.dirty = false;
             self.atlas_epoch = atlas.epoch;
         }
     }
@@ -1903,7 +2050,9 @@ impl Renderer {
     /// work.
     ///
     /// Fails without presenting when the surface or the device cannot
-    /// take the frame; each [`RenderError`] says what to do next.
+    /// take the frame; each [`RenderError`] says what to do next. A
+    /// [`Renderer::windowless`] one has nothing to present to and returns
+    /// [`RenderError::Skip`], drawing nothing.
     pub fn render(
         &mut self,
         dl: &DisplayList,
@@ -1914,8 +2063,226 @@ impl Renderer {
         if self.gpu.lost() {
             return Err(RenderError::DeviceLost);
         }
-        self.sync_atlas(atlas);
+        if self.surface.is_none() {
+            return Err(RenderError::Skip);
+        }
+        self.sync_atlas(atlas, false);
+        atlas.dirty = false;
+        let prep = self.prepare(dl);
 
+        // Acquiring the swapchain image is where vsync backpressure blocks;
+        // report it separately so latency graphs show pacing vs work.
+        let t_wait = std::time::Instant::now();
+        let surface = self.surface.as_ref().expect("checked above");
+        let frame = match surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(f)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Err(RenderError::Skip);
+            }
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                return Err(RenderError::Reconfigure);
+            }
+            // The acquire's error went to the device's error handler; if
+            // it was the device itself, the lost callback has run by now.
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(if self.gpu.lost() {
+                    RenderError::DeviceLost
+                } else {
+                    RenderError::Validation
+                });
+            }
+        };
+        let vsync_wait_ms = t_wait.elapsed().as_secs_f32() * 1e3;
+        let surface_view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .gpu
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
+        self.draw(&mut encoder, dl, &prep, &surface_view);
+        self.submit(encoder.finish());
+        self.gpu.queue().present(frame);
+        Ok(RenderReport { vsync_wait_ms })
+    }
+
+    /// Draws one frame into `target`, a texture the host owns, and submits
+    /// it; nothing is presented (backlog C55). What a host compositing kui
+    /// with its own content calls each frame in place of
+    /// [`Renderer::render`], on a [`Renderer::windowless`] renderer on its
+    /// own [`Gpu`]. A window's renderer can draw into one too.
+    ///
+    /// The target must be [`Renderer::format`] and have
+    /// `RENDER_ATTACHMENT` usage; its size is the frame's, in physical
+    /// pixels, and should be the list's viewport. It is cleared to
+    /// [`Renderer::clear_color`] and holds premultiplied colour. The atlas
+    /// is uploaded when it changed and its `dirty` flag cleared, as
+    /// [`Renderer::render`] does, so this is the renderer for that core.
+    ///
+    /// [`RenderError::Validation`] for a target of another format or
+    /// without the usage, [`RenderError::DeviceLost`] on a dead device.
+    pub fn render_to(
+        &mut self,
+        dl: &DisplayList,
+        atlas: &mut GlyphAtlas,
+        target: &wgpu::Texture,
+    ) -> Result<(), RenderError> {
+        if self.gpu.lost() {
+            return Err(RenderError::DeviceLost);
+        }
+        if target.format() != self.config.format
+            || !target
+                .usage()
+                .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+        {
+            return Err(RenderError::Validation);
+        }
+        self.config.width = target.width();
+        self.config.height = target.height();
+        self.sync_atlas(atlas, false);
+        atlas.dirty = false;
+        let prep = self.prepare(dl);
+        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .gpu
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
+        self.draw(&mut encoder, dl, &prep, &view);
+        self.submit(encoder.finish());
+        Ok(())
+    }
+
+    /// Draws `dl` into a texture of its own, the viewport's size, and
+    /// reads it back: the frame as the screen would show it, cleared to
+    /// [`Renderer::clear_color`] (backlog C55).
+    ///
+    /// The pixels come back as RGBA, four bytes each, row by row from the
+    /// top left, alpha not premultiplied — what `add_image` and
+    /// `decode_image` use, so a capture can be shown again as an image.
+    /// A `Bgra8Unorm` renderer's are swizzled.
+    ///
+    /// Takes the atlas without clearing its `dirty` flag and uploads it
+    /// whole every time, so a renderer that is not the core's own — a
+    /// windowless one beside a window's — leaves the window's renderer
+    /// the changes it has not drawn yet. Waits for the GPU.
+    ///
+    /// [`RenderError::Validation`] for a list with no viewport, larger
+    /// than the device's largest texture, a format other than
+    /// `Rgba8Unorm` or `Bgra8Unorm`, or a draw the device refused;
+    /// [`RenderError::DeviceLost`] on a dead device.
+    pub fn capture(
+        &mut self,
+        dl: &DisplayList,
+        atlas: &GlyphAtlas,
+    ) -> Result<Capture, RenderError> {
+        if self.gpu.lost() {
+            return Err(RenderError::DeviceLost);
+        }
+        let format = self.config.format;
+        let bgra = match format {
+            wgpu::TextureFormat::Rgba8Unorm => false,
+            wgpu::TextureFormat::Bgra8Unorm => true,
+            _ => return Err(RenderError::Validation),
+        };
+        let (w, h) = (
+            dl.viewport.w.round().max(0.0) as u32,
+            dl.viewport.h.round().max(0.0) as u32,
+        );
+        let max = self.gpu.device().limits().max_texture_dimension_2d;
+        if w == 0 || h == 0 || w > max || h > max {
+            return Err(RenderError::Validation);
+        }
+        let device = self.gpu.device().clone();
+        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let target = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("kui.capture"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let bpr = (w * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("kui.capture"),
+            size: bpr as u64 * h as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.config.width = w;
+        self.config.height = h;
+        self.sync_atlas(atlas, true);
+        let prep = self.prepare(dl);
+        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
+        self.draw(&mut encoder, dl, &prep, &view);
+        encoder.copy_texture_to_buffer(
+            target.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buf,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bpr),
+                    rows_per_image: Some(h),
+                },
+            },
+            target.size(),
+        );
+        self.submit(encoder.finish());
+        let slice = buf.slice(..);
+        let mapped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        slice.map_async(wgpu::MapMode::Read, {
+            let mapped = mapped.clone();
+            move |r| mapped.store(r.is_ok(), std::sync::atomic::Ordering::Release)
+        });
+        let _ = device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        });
+        if pollster::block_on(scope.pop()).is_some() {
+            return Err(if self.gpu.lost() {
+                RenderError::DeviceLost
+            } else {
+                RenderError::Validation
+            });
+        }
+        if !mapped.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(if self.gpu.lost() {
+                RenderError::DeviceLost
+            } else {
+                RenderError::Validation
+            });
+        }
+        let data = slice
+            .get_mapped_range()
+            .map_err(|_| RenderError::Validation)?;
+        let mut rgba = Vec::with_capacity(w as usize * h as usize * 4);
+        for row in data.chunks(bpr as usize).take(h as usize) {
+            rgba.extend_from_slice(&row[..w as usize * 4]);
+        }
+        drop(data);
+        buf.unmap();
+        straighten(&mut rgba, bgra);
+        Ok(Capture {
+            width: w,
+            height: h,
+            rgba,
+        })
+    }
+
+    /// The CPU half of a frame: the instances, the blurs, the globals and
+    /// fragment parameters written where the draw reads them, the
+    /// texture-backed images' bind groups and the fragments' pipelines.
+    /// The atlas is the caller's to sync first.
+    fn prepare(&mut self, dl: &DisplayList) -> Prepared {
         self.instances.clear();
         let mut any_backdrop = false;
         self.instances.extend(dl.quads.iter().map(|q| {
@@ -2034,37 +2401,26 @@ impl Renderer {
                 ));
             }
         }
+        Prepared {
+            texture_binds,
+            fragment_pipelines,
+        }
+    }
 
-        // Acquiring the swapchain image is where vsync backpressure blocks;
-        // report it separately so latency graphs show pacing vs work.
-        let t_wait = std::time::Instant::now();
-        let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(f)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return Err(RenderError::Skip);
-            }
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                return Err(RenderError::Reconfigure);
-            }
-            // The acquire's error went to the device's error handler; if
-            // it was the device itself, the lost callback has run by now.
-            wgpu::CurrentSurfaceTexture::Validation => {
-                return Err(if self.gpu.lost() {
-                    RenderError::DeviceLost
-                } else {
-                    RenderError::Validation
-                });
-            }
-        };
-        let vsync_wait_ms = t_wait.elapsed().as_secs_f32() * 1e3;
-        let surface_view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .gpu
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("kui") });
+    /// The GPU half of a frame: its passes into `surface_view` — the
+    /// surface's image, or a texture a host or a capture handed in — over
+    /// what [`Renderer::prepare`] wrote.
+    fn draw(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        dl: &DisplayList,
+        prep: &Prepared,
+        surface_view: &wgpu::TextureView,
+    ) {
+        let Prepared {
+            texture_binds,
+            fragment_pipelines,
+        } = prep;
         // A frame that blurs draws into the offscreen copy, so what it has
         // drawn can be read back, and breaks its pass at each blur
         // (backlog F129); one that does not draws to the surface in one
@@ -2074,7 +2430,7 @@ impl Renderer {
             (Some(p), Some((f, s)), true) => Some((p, f, s)),
             _ => None,
         };
-        let target = offscreen.map_or(&surface_view, |(_, f, _)| &f.view);
+        let target = offscreen.map_or(surface_view, |(_, f, _)| &f.view);
         let end = self.instances.len() as u32;
         let mut start = 0u32;
         let mut next = 0usize;
@@ -2123,15 +2479,15 @@ impl Renderer {
                     &mut pass,
                     dl,
                     start..stop,
-                    &fragment_pipelines,
-                    &texture_binds,
+                    fragment_pipelines,
+                    texture_binds,
                 );
             }
             let (Some(b), Some((pipes, frame, scratch))) = (self.blurs.get(next), offscreen) else {
                 break;
             };
             let slot = next as u32 * self.uniform_align;
-            backdrop::record(&mut encoder, pipes, frame, scratch, b, slot);
+            backdrop::record(encoder, pipes, frame, scratch, b, slot);
             start = b.quad + 1;
             next += 1;
         }
@@ -2139,7 +2495,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("kui.backdrop.blit"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &surface_view,
+                    view: surface_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -2156,7 +2512,11 @@ impl Renderer {
             pass.set_bind_group(0, &frame.blit, &[0]);
             pass.draw(0..3, 0..1);
         }
-        let commands = encoder.finish();
+    }
+
+    /// Submits a frame's commands, its frame slot unmapped around them
+    /// on a device with mapped frames.
+    fn submit(&mut self, commands: wgpu::CommandBuffer) {
         let mapped = self.gpu.0.mapped_frames;
         let slot = &self.slots[self.slot];
         if mapped {
@@ -2175,8 +2535,42 @@ impl Renderer {
                 }
             });
         }
-        self.gpu.queue().present(frame);
-        Ok(RenderReport { vsync_wait_ms })
+    }
+}
+
+/// What [`Renderer::prepare`] leaves the draw: per texture draw, the
+/// image whose bind group it uses (`None` draws nothing), and per
+/// fragment draw, its pipeline.
+struct Prepared {
+    texture_binds: Vec<Option<u64>>,
+    fragment_pipelines: Vec<wgpu::RenderPipeline>,
+}
+
+/// A frame read back by [`Renderer::capture`]: `width` by `height` pixels
+/// in physical px, RGBA, four bytes each, row by row from the top left,
+/// alpha not premultiplied.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Capture {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// Premultiplied pixels, as a target holds them, to straight RGBA:
+/// swizzled from BGRA when `bgra`, each colour divided by its alpha where
+/// the alpha is neither 0 nor 255. A frame over an opaque clear is all
+/// 255, and only the swizzle costs anything.
+fn straighten(px: &mut [u8], bgra: bool) {
+    for p in px.as_chunks_mut::<4>().0 {
+        if bgra {
+            p.swap(0, 2);
+        }
+        let a = p[3] as u32;
+        if a != 0 && a != 255 {
+            for c in &mut p[..3] {
+                *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
     }
 }
 

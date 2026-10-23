@@ -4421,8 +4421,24 @@ uint8_t *kui_decode_animation(const uint8_t *bytes, size_t len, uint32_t *width,
  * this, kui_update_image when the index moved, and asks for the next. */
 uint32_t kui_animation_at(const double *delays, uint32_t count, uint32_t loops, double elapsed,
                           double *next);
-/* Frees what kui_decode_image or kui_decode_animation returned; NULL is
- * nothing. Only those pointers. */
+/* The context's last finished frame as pixels (backlog C55): drawn again
+ * from its draw list on a GPU device of the process's own, with no window,
+ * and read back - *width x *height physical pixels, four bytes each (RGBA),
+ * row by row from the top left, alpha not premultiplied, over the theme's
+ * bg; what a window shows, less what the OS draws behind a translucent one.
+ * Between frames: a standalone context after kui_frame_finish. The first
+ * call opens the device (tens of ms). Free with kui_pixels_free. NULL, with
+ * the reason on stderr and both sides 0, for a context with no finished
+ * frame, a frame past the device's largest texture, or no GPU adapter. */
+uint8_t *kui_capture(KuiCtx *ctx, uint32_t *width, uint32_t *height);
+/* Straight RGBA - width x height pixels, four bytes each, what
+ * kui_capture and kui_decode_image hand out - to PNG bytes, *len of them,
+ * with the runner's encoder at its fast setting: a capture kept as a file.
+ * Free with kui_pixels_free. NULL, with the reason on stderr and *len 0,
+ * for a size of zero or NULL pixels. */
+uint8_t *kui_encode_png(const uint8_t *rgba, uint32_t width, uint32_t height, size_t *len);
+/* Frees what kui_decode_image, kui_decode_animation, kui_capture or
+ * kui_encode_png returned; NULL is nothing. Only those pointers. */
 void kui_pixels_free(uint8_t *pixels);
 
 /* What kui_run's window opens as: the chrome, the antialiasing and the

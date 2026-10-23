@@ -57,6 +57,15 @@ a 120 Hz frame and ten thousand is the wrong tool; it cannot read what is
 behind it (a `backdropBlur` box drawn over it can blur it), sample anything
 but its own parameters, run a second pass, or hit-test per pixel — its edge is its box, like everything
 else here.
+A frame can be read back as pixels (`capture`,
+[ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md)) by drawing it
+again on a device with no window, so a capture is what the window shows
+less what the OS draws behind a translucent one (the material, the
+desktop, kui's wallpaper ground), it costs a draw and a readback each
+time rather than nothing, and a machine with no GPU adapter has none.
+kui-wgpu draws into a host's texture as well as a window
+(`Renderer::render_to`), on its own device or the host's
+(`Gpu::from_parts`), whose loss the host reports by making another.
 Transitions cover sizing, colors, radius, opacity, shadows, position (`slide`,
 `enter`) and departure (`exit`) — a node the view stops declaring is copied out
 of the last frame that had it and replayed frozen, in its place and inert

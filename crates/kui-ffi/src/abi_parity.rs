@@ -1354,7 +1354,7 @@ fn every_entry_point_is_pinned() {
             }
         }
     }
-    // The runner's nine are pinned only in a build that has them.
+    // The runner's eleven are pinned only in a build that has them.
     let runner = [
         "kui_run",
         "kui_run_with",
@@ -1364,6 +1364,8 @@ fn every_entry_point_is_pinned() {
         "kui_decode_image",
         "kui_decode_animation",
         "kui_animation_at",
+        "kui_capture",
+        "kui_encode_png",
         "kui_pixels_free",
     ];
     let mut expected = declared.clone();

@@ -274,6 +274,52 @@ static int headless(void) {
     }
     printf("escape dismissed the menu\n");
 
+    /* The last frame as pixels (backlog C55), drawn again on a GPU device
+     * of the process's own. A context that never finished a frame has
+     * none; a machine with no GPU adapter (a CI container) has no pixels
+     * for either, and says so on stderr. */
+    uint32_t cw = 7, ch = 7;
+    KuiCtx *blank = kui_ctx_new();
+    uint8_t *none = kui_capture(blank, &cw, &ch);
+    kui_ctx_free(blank);
+    if (none || cw || ch) {
+        fprintf(stderr, "FAIL: kui_capture of a context with no frame\n");
+        kui_pixels_free(none);
+        kui_ctx_free(ctx);
+        return 1;
+    }
+    uint8_t *shot = kui_capture(ctx, &cw, &ch);
+    if (shot) {
+        if (cw != 800 || ch != 600 || shot[3] != 255) {
+            fprintf(stderr, "FAIL: kui_capture: %ux%u, alpha %u\n", cw, ch, shot[3]);
+            kui_pixels_free(shot);
+            kui_ctx_free(ctx);
+            return 1;
+        }
+        printf("captured the last frame: %ux%u\n", cw, ch);
+    } else {
+        printf("no GPU adapter: kui_capture had nothing to draw on\n");
+    }
+    kui_pixels_free(shot);
+
+    /* Pixels to a PNG and back through the runner's own codec, which a
+     * test keeping a capture as a file needs no library for. */
+    static const uint8_t two[] = {255, 0, 0, 255, 0, 0, 255, 128};
+    size_t png_len = 0;
+    uint8_t *png = kui_encode_png(two, 2, 1, &png_len);
+    uint32_t pw = 0, ph = 0;
+    uint8_t *again = png ? kui_decode_image(png, png_len, &pw, &ph) : NULL;
+    int png_ok = png && png_len > 8 && png[1] == 'P' && again && pw == 2 && ph == 1 &&
+                 memcmp(again, two, sizeof two) == 0;
+    kui_pixels_free(again);
+    kui_pixels_free(png);
+    if (!png_ok || kui_encode_png(NULL, 2, 1, &png_len) || png_len) {
+        fprintf(stderr, "FAIL: kui_encode_png\n");
+        kui_ctx_free(ctx);
+        return 1;
+    }
+    printf("encoded two pixels as a PNG and read them back\n");
+
     kui_ctx_free(ctx);
     if (state.count != 1) {
         fprintf(stderr, "FAIL: expected count 1\n");

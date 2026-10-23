@@ -1798,6 +1798,17 @@ pub struct DecodedImage {
     pub rgba: Buffer,
 }
 
+/// A finished frame as pixels (`capture`): `width` by `height` physical
+/// pixels, four bytes each (RGBA), row by row from the top left, alpha not
+/// premultiplied — what `addImage` takes — and the scale it was drawn at.
+#[napi(object)]
+pub struct Capture {
+    pub width: u32,
+    pub height: u32,
+    pub scale: f64,
+    pub rgba: Buffer,
+}
+
 /// Every frame of an animated image (`decodeAnimation`), each the whole
 /// canvas, with the seconds each shows and how many times the sequence
 /// plays (absent: for ever).
@@ -1832,6 +1843,19 @@ pub fn decode_image(bytes: Buffer) -> Result<DecodedImage> {
         height: p.height,
         rgba: p.rgba.into(),
     })
+}
+
+/// Encodes straight RGBA — `width` by `height` pixels, four bytes each,
+/// what `capture()` and `decodeImage` hand out — as PNG bytes with the
+/// runner's encoder at its fast setting, so a test or a probe keeps a
+/// capture as a file with no image package: `writeFileSync('shot.png',
+/// encodePng(s.width, s.height, s.rgba))`. Throws, naming why, for a size
+/// of zero or pixels that are not that size.
+#[napi]
+pub fn encode_png(width: u32, height: u32, rgba: Buffer) -> Result<Buffer> {
+    kui_native::encode_png(width, height, &rgba)
+        .map(Buffer::from)
+        .map_err(|e| napi::Error::from_reason(format!("encodePng: {e}")))
 }
 
 /// Decodes every frame of an animated GIF, PNG (APNG) or WebP, each the
@@ -2892,6 +2916,27 @@ macro_rules! core_methods {
             #[napi(ts_return_type = "FrameStats")]
             pub fn stats(&mut self) -> Json {
                 stats_json(self.$core())
+            }
+
+            /// The last finished frame as pixels (backlog C55): drawn again
+            /// from its draw list on a GPU device of the process's own, with
+            /// no window, and read back over the theme's `bg`. A window
+            /// answers with what its last pump drew — what it shows, less
+            /// what the OS draws behind a translucent one — so a smoke test
+            /// can check the pixels the shipping driver painted; a headless
+            /// `Ctx` with its last `frame`. The first call opens the device
+            /// (tens of ms). Throws, naming why, before any frame or on a
+            /// machine with no GPU adapter.
+            #[napi]
+            pub fn capture(&mut self) -> Result<Capture> {
+                let c = kui_native::capture(self.$core())
+                    .map_err(|e| napi::Error::from_reason(format!("capture: {e}")))?;
+                Ok(Capture {
+                    width: c.width,
+                    height: c.height,
+                    scale: c.scale as f64,
+                    rgba: c.rgba.into(),
+                })
             }
 
             /// Raw quads for the finished frame, `quadStride()` bytes each,

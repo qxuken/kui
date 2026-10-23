@@ -14,7 +14,7 @@ import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as pkg from './index.js';
-import { Ctx, KuiWindow, RowHeights, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, RowHeights, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, encodePng, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -1869,6 +1869,47 @@ test('decodeImage and decodeAnimation read a GIF, and animationAt plays it', () 
   const id = ctx.addImage(gif.width, gif.height, gif.frames[0]);
   assert.match(id, /^[0-9a-f]{16}$/);
   assert.throws(() => decodeImage(Buffer.from('not an image')), /decodeImage: not an image/);
+});
+
+// The last finished frame as pixels (backlog C55): drawn again on the
+// process's windowless GPU device, in physical px, straight RGBA. A machine
+// with no GPU adapter (a CI container) throws saying so, and the test says
+// it skipped.
+test('capture reads the finished frame back as RGBA in physical px', (t) => {
+  const ctx = new Ctx();
+  assert.throws(() => ctx.capture(), /capture: no finished frame/);
+  ctx.frame(40, 20, 2, box({ width: 40, height: 20, bg: '#ff0000' }, [box({ width: 10, height: 20, bg: '#0000ff' })]));
+  let shot;
+  try {
+    shot = ctx.capture();
+  } catch (e) {
+    if (/no GPU/.test(e.message)) return t.skip(e.message);
+    throw e;
+  }
+  assert.equal(shot.width, 80);
+  assert.equal(shot.height, 40);
+  assert.equal(shot.scale, 2);
+  assert.equal(shot.rgba.length, 80 * 40 * 4);
+  const at = (x, y) => [...shot.rgba.subarray((y * 80 + x) * 4, (y * 80 + x) * 4 + 4)];
+  assert.deepEqual(at(5, 20), [0, 0, 255, 255], 'the blue child, 10 logical px wide');
+  assert.deepEqual(at(60, 20), [255, 0, 0, 255], 'the red root around it');
+  // And back in as an image, which is the shape it is in.
+  assert.match(ctx.addImage(shot.width, shot.height, shot.rgba), /^[0-9a-f]{16}$/);
+  // And out as a PNG, through the runner's own encoder.
+  const png = encodePng(shot.width, shot.height, shot.rgba);
+  assert.equal(png.subarray(1, 4).toString(), 'PNG');
+  const back = decodeImage(png);
+  assert.deepEqual([back.width, back.height], [80, 40]);
+  assert.ok(back.rgba.equals(shot.rgba), 'the same pixels both ways');
+});
+
+test('encodePng writes straight RGBA as a PNG, and refuses pixels of another size', () => {
+  const two = Buffer.from([255, 0, 0, 255, 0, 0, 255, 128]);
+  const back = decodeImage(encodePng(2, 1, two));
+  assert.deepEqual([back.width, back.height], [2, 1]);
+  assert.deepEqual([...back.rgba], [...two], 'alpha kept, not premultiplied');
+  assert.throws(() => encodePng(2, 2, two), /encodePng: 2x2 RGBA is 16 bytes, not 8/);
+  assert.throws(() => encodePng(0, 1, Buffer.alloc(0)), /encodePng: a PNG is at least one pixel/);
 });
 
 // A lookup by accessible name (backlog F137): the `label` prop or a

@@ -49,6 +49,33 @@ decode_image :: proc(bytes: []u8) -> (w, h: u32, rgba: []u8, ok: bool) {
 	return w, h, slice.clone(p[:int(w) * int(h) * 4]), true
 }
 
+// The last finished frame as pixels (backlog C55): drawn again on a GPU
+// device of the process's own, with no window, and read back as straight
+// RGBA in physical px, copied into the context allocator: delete(rgba) when
+// done. Between frames. ok is false, the reason on stderr, before any
+// frame, or on a machine with no GPU adapter.
+// Rust: kui_native::capture.
+capture :: proc(ui: ^Ui) -> (w, h: u32, rgba: []u8, ok: bool) {
+	p := c.capture(ui, &w, &h)
+	if p == nil do return 0, 0, nil, false
+	defer c.pixels_free(p)
+	return w, h, slice.clone(p[:int(w) * int(h) * 4]), true
+}
+
+// Straight RGBA, w * h * 4 bytes (what capture and decode_image hand out),
+// as PNG bytes with the runner's encoder at its fast setting, copied into
+// the context allocator: delete(png) when done. ok is false, the reason on
+// stderr, for a size of zero or pixels that are not that size.
+// Rust: kui_native::encode_png.
+encode_png :: proc(w, h: u32, rgba: []u8) -> (png: []u8, ok: bool) {
+	if len(rgba) != int(w) * int(h) * 4 do return nil, false
+	n: uint
+	p := c.encode_png(raw_data(rgba), w, h, &n)
+	if p == nil do return nil, false
+	defer c.pixels_free(p)
+	return slice.clone(p[:n]), true
+}
+
 // Every frame of an animated GIF, PNG (APNG) or WebP, each the whole canvas,
 // with the seconds each shows; loops is how many times it plays, 0 for ever.
 // Copied into the context allocator: animation_free when done.

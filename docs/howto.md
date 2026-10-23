@@ -2223,6 +2223,32 @@ run's `user`; nothing after `kui_run` runs under ⌘Q either.
 
 [alpha.16](../CHANGELOG.md#010-alpha16-2026-09-20)
 
+### How do I draw kui into a texture my own engine composites?
+
+A host with a wgpu device of its own — a game engine, a 3D panel, a
+runner that puts kui beside its own content — opens a renderer with no
+window on its `Gpu` and hands it a texture each frame. The texture is
+the renderer's format with `RENDER_ATTACHMENT` usage, the frame's size
+in physical px. It comes back cleared to `clear_color` and holding
+premultiplied colour, ready to sample:
+
+```rust
+let mut renderer = Renderer::windowless(&gpu, wgpu::TextureFormat::Rgba8Unorm)?;
+core.set_subpixel_text(renderer.subpixel_text());
+// each frame
+let (list, atlas) = core.output();
+renderer.render_to(list, atlas, &texture)?;
+```
+
+`gpu` is `Gpu::from_parts(instance, adapter, device, queue)` over the
+engine's own device, so kui's texture is one the engine samples with no
+copy, or `Gpu::windowless()` when kui may open its own. `render_to` is
+that core's renderer: it uploads the atlas and clears its `dirty` flag,
+as `render` does on a window.
+
+[ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
+
 ## Test it
 
 ### How do I get the settled frame instead of frame 0 of a transition?
@@ -2363,6 +2389,45 @@ const mine = decodeQuads(win.quads()).filter((q) =>
 [`access` input](props.md#doors) ·
 [alpha.8](../CHANGELOG.md#010-alpha8-2026-09-07) ·
 [alpha.19 `### Added`](../CHANGELOG.md#010-alpha19-2026-09-26)
+
+### How do I check the pixels a frame drew?
+
+`capture()` draws the last finished frame again on a GPU device of the
+process's own and hands the pixels back: `{width, height, scale, rgba}`,
+physical px, straight RGBA, row by row from the top left, over the
+theme's `bg`. It works on a headless `Ctx` after `frame()` and on a
+`KuiWindow` between pumps, where it is the frame the shipping driver
+painted:
+
+```ts
+ctx.frame(40, 20, 2, view(model));
+const shot = ctx.capture();
+const at = (x, y) => [...shot.rgba.subarray((y * shot.width + x) * 4, (y * shot.width + x) * 4 + 4)];
+assert.deepEqual(at(5, 20), [0, 0, 255, 255]);
+```
+
+To keep it as a file, `encodePng(shot.width, shot.height, shot.rgba)`
+returns PNG bytes from the runner's own encoder, so a failing test can
+write what it saw with no image package:
+
+```ts
+writeFileSync('target/shot.png', encodePng(shot.width, shot.height, shot.rgba));
+```
+
+Rust: `kui_native::capture(&drive.core)` and `kui_native::encode_png`;
+C: `kui_capture(ctx, &w, &h)` and `kui_encode_png`, each freed with
+`kui_pixels_free`; Odin: `kui.capture(ui)` and `kui.encode_png`. The first capture
+in a process opens the device (40–100 ms); later ones are about 10 ms
+for a 3456×2234 frame. A machine with no GPU adapter — a CI container
+with no software Vulkan — fails it, saying so, and a test there skips
+rather than fails. What the OS draws behind a translucent window, and
+the wallpaper kui draws for it, are not in it. A headless core draws
+grayscale text; a window's follows its device's subpixel text unless
+`textAa` pins it, so a test comparing whole images across machines pins
+it.
+
+[ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
 
 ### How do I trade smoothness for latency, or the other way?
 

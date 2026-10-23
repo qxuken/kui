@@ -1864,6 +1864,16 @@ impl Core {
         (&self.display, &mut self.atlas)
     }
 
+    /// The finished frame's draw data for a reader that is not the core's
+    /// renderer — a capture (backlog C55): nothing is marked read, so the
+    /// handles the frame dropped still reach the renderer that draws it,
+    /// and the atlas's `dirty` flag is left to that renderer. Between
+    /// frames; while one builds, the list is the one `begin_frame`
+    /// emptied.
+    pub fn drawn(&self) -> (&DisplayList, &GlyphAtlas) {
+        (&self.display, &self.atlas)
+    }
+
     /// Begins a frame without handing out a [`Ui`]: what [`Core::frame`]
     /// calls first. A binding that drives the builder methods on the core
     /// directly starts here and ends with `Ui::wrap(core).finish()`.

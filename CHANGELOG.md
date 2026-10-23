@@ -61,6 +61,39 @@ dropping the gesture and activating the window does, at the price of
 the one-press resize from another app, which wants AppKit's loop
 running the whole time under a pump (backlog C54).
 
+### Added
+
+- **A frame as pixels** (backlog C55, [ADR
+  0054](docs/adr/0054-a-frame-is-drawn-again-to-be-read.md)):
+  `kui_native::capture(&core)`, `capture()` on Node's `Ctx` and
+  `KuiWindow`, `kui_capture` in C (freed with `kui_pixels_free`) and
+  `capture` in Odin. The core's last finished frame is drawn again from
+  its draw list on a GPU device of the process's own, with no window,
+  and read back as straight RGBA in physical px over the theme's `bg`,
+  the shape `addImage` takes, with the scale it was drawn at. A
+  window's core captures what the window shows, less what the OS draws
+  behind a translucent one; a headless core captures the same way,
+  which is what a test wants. The first capture opens the device and
+  builds the pipelines (about 40–100 ms on an M3 Pro); a 3456×2234
+  frame after that takes about 10 ms. Lua has none: reading back is the
+  host's.
+- **kui-wgpu draws without a window**: `Gpu::windowless()`, or
+  `Gpu::from_parts(instance, adapter, device, queue)` over a device the
+  host opened itself, `Renderer::windowless(&gpu, format)`, `Renderer::render_to(list,
+  atlas, &texture)` for a host that composites kui into a texture of
+  its own each frame, `Renderer::capture(list, &atlas)` returning a
+  `Capture`, and `Renderer::format()`. A windowless renderer's `render`
+  returns `RenderError::Skip`.
+- `kui_native::encode_png(width, height, &rgba)`, `kui.encodePng` in
+  Node, `kui_encode_png` in C (freed with `kui_pixels_free`) and
+  `encode_png` in Odin: straight RGBA to PNG bytes with the runner's own
+  encoder (the `image` crate it already links), at its fast setting —
+  about 12 ms for a text-heavy 3456×2234 capture — so a test or a probe
+  keeps a capture as a file with no image library of its own.
+- `Core::drawn()`: the finished frame's list and atlas for a reader
+  that is not the core's renderer, marking nothing read and leaving the
+  atlas's `dirty` flag alone.
+
 ### Fixed
 
 - A devtools panel closed with its close button comes back when the app
@@ -79,6 +112,16 @@ running the whole time under a pump (backlog C54).
 - On macOS 26 a Node app's window no longer sticks to the pointer, or
   hangs, after a click on its edge from another app (above; backlog
   RG168).
+
+**What you can delete.**
+
+- A `screencapture` of the window's id, or another tool outside the
+  process, kept only to see the pixels a test's frame drew; `capture()`
+  hands them back, headless too.
+- A PNG package (`pngjs`, `sharp`, a crate, libpng) kept only to write a
+  test's or a probe's pixels to a file; `encodePng` does it.
+- A copy of kui-wgpu's renderer, or a hidden window, kept only to draw a
+  frame into a texture your own device composites.
 
 ## 0.1.0-alpha.65 (2026-10-23)
 
