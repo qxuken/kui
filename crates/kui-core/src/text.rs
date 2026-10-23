@@ -36,6 +36,21 @@ pub(crate) struct Raster {
     /// the driver from what its renderer can blend; see
     /// `Core::set_subpixel_text`.
     pub(crate) subpixel: bool,
+    /// Run the face's hinting program: [`hints_at`] the window's scale.
+    pub(crate) hint: bool,
+}
+
+/// Whether glyphs are hinted at `scale`: never on macOS, and elsewhere only
+/// below 1.5×. Hinting snaps each glyph to the pixel grid by the face's own
+/// program, glyph by glyph, and a face whose program does not treat every
+/// glyph alike snaps one flat top up and the next down: in Helvetica
+/// Neue `п` and `н`, `a` and `c`, landed a whole row apart in one word at
+/// 2× (backlog RG166). At a low-resolution scale the snap is what keeps a
+/// stem one pixel wide, and Windows' and Linux's own text is hinted; at
+/// 2× there is no coarse grid to fit, and macOS draws nothing hinted at
+/// any scale, so an app there is drawn as the system's text is.
+pub(crate) fn hints_at(scale: f32) -> bool {
+    !cfg!(target_os = "macos") && scale < 1.5
 }
 
 impl Raster {
@@ -44,6 +59,7 @@ impl Raster {
             ctx: swash::scale::ScaleContext::new(),
             axes: FxHashMap::default(),
             subpixel: false,
+            hint: hints_at(1.0),
         }
     }
 
@@ -98,7 +114,8 @@ impl Raster {
         // cap's tens of thousands of px skrifa's interpreter overflows it,
         // a panic in a debug build and wrapped points in a release one
         // (backlog FZ8). Past it, the outline as drawn.
-        let hint = !key.flags.contains(CacheKeyFlags::DISABLE_HINTING) && size <= LARGE_GLYPH;
+        let hint =
+            self.hint && !key.flags.contains(CacheKeyFlags::DISABLE_HINTING) && size <= LARGE_GLYPH;
         let mut scaler = self.ctx.builder(swash_font).size(size).hint(hint);
         if let Some(at) = at {
             scaler = scaler.normalized_coords(
@@ -1627,6 +1644,15 @@ impl TextSystem {
 
     pub(crate) fn subpixel(&self) -> bool {
         self.raster.subpixel
+    }
+
+    /// Turns hinting on or off ([`hints_at`]). Returns whether it changed:
+    /// the atlas keys a glyph by its size and not by this, so the caller
+    /// resets it.
+    pub(crate) fn set_hint(&mut self, on: bool) -> bool {
+        let changed = self.raster.hint != on;
+        self.raster.hint = on;
+        changed
     }
 
     /// Switches outline rasterization between alpha masks and LCD subpixel

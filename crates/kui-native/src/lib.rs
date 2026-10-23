@@ -2529,6 +2529,11 @@ impl DynShell<'_> {
         if pane.id == WindowId::MAIN
             && let Some((mw, mh)) = *min_size
         {
+            // And the pane hears the floor, so a drag stops where the app
+            // would go under it rather than asking for a wider window
+            // (backlog RG167).
+            pane.core
+                .set_app_min_size(kui_core::geom::Size::new(mw as f32, mh as f32));
             let inset = pane.core.devtools_inset();
             let want = clamp_size((mw + inset.w as f64, mh + inset.h as f64), None, *max_size);
             if pane.applied_min != Some(want) {

@@ -1437,6 +1437,46 @@ fn node_info_carries_the_layer_and_the_picker_reads_it() {
 /// The header has a button per placement, and a docked pane's inner edge
 /// is a handle: dragged, the pane follows the pointer on its axis, and the
 /// app's area is what is left.
+/// A driver makes the app's declared minimum plus the pane the window's
+/// own (`devtools_inset`). A pane dragged past what that minimum leaves
+/// asked for a wider window, the window grew, the pane could grow again,
+/// and a drag to the far edge grew the window off the screen (backlog
+/// RG167). With the minimum heard, the drag stops where the app would go
+/// under it, and the window the driver asks for is the one it has.
+#[test]
+fn a_dragged_pane_never_asks_for_a_wider_window() {
+    let mut core = on();
+    core.set_inspect(true);
+    let app_min = Size::new(VIEWPORT.w - 400.0, 100.0);
+    core.set_app_min_size(app_min);
+    let right = core.key_of("kui-devtools/dock:right").unwrap();
+    access_click(&mut core, right);
+    // The driver's loop: a frame at the window's width, then the window
+    // grown to the minimum it would set from the inset.
+    let mut vw = VIEWPORT.w;
+    let frame_at = |core: &mut Core, vw: f32| {
+        let mut ui = core.frame(Size::new(vw, VIEWPORT.h), 1.0);
+        view(&mut ui, None);
+        ui.finish();
+    };
+    frame_at(&mut core, vw);
+    frame_at(&mut core, vw);
+    for _ in 0..5 {
+        let k = core.key_of("kui-devtools/resize").unwrap();
+        let r = node(&core, k).rect;
+        let at = Vec2::new(r.x + r.w / 2.0, r.y + r.h / 2.0);
+        core.handle_input(InputEvent::CursorMoved(at));
+        core.handle_input(InputEvent::mouse_down(1));
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(0.0, at.y)));
+        core.handle_input(InputEvent::mouse_up());
+        frame_at(&mut core, vw);
+        frame_at(&mut core, vw);
+        vw = vw.max(app_min.w + core.devtools_inset().w);
+    }
+    assert_eq!(vw, VIEWPORT.w, "the window was never asked to grow");
+    assert_eq!(core.devtools_inset().w, VIEWPORT.w - app_min.w);
+}
+
 #[test]
 fn the_placement_buttons_and_the_resize_handle() {
     let mut core = on();

@@ -327,6 +327,9 @@ pub(crate) struct State {
     /// strip's height — as the handle last left it.
     side_w: f32,
     bottom_h: f32,
+    /// The smallest the app's own area may be, as the driver declared it
+    /// to the OS ([`Core::set_app_min_size`]): what a docked pane leaves.
+    app_min: Size,
     tab: Tab,
     // The overrides. `None` leaves the app's own.
     base: Option<Appearance>,
@@ -423,6 +426,7 @@ impl Default for State {
             dock: Dock::default(),
             side_w: DOCK_SIDE_W,
             bottom_h: DOCK_BOTTOM_H,
+            app_min: Size::ZERO,
             tab: Tab::default(),
             base: None,
             accent: None,
@@ -1299,6 +1303,17 @@ impl Core {
         self.dt_area
     }
 
+    /// The smallest the app's own area may be, as the driver declared it
+    /// to the OS — the launcher's `min_size`. A docked pane dragged wider
+    /// stops where it would leave the app less, so the minimum the driver
+    /// builds from [`Self::devtools_inset`] is never wider than the window
+    /// the drag is in: past it, each frame asked the OS for a wider
+    /// window, which let the pane grow, which asked again (backlog RG167).
+    /// Zero, the default, leaves the panel's own floor for the app.
+    pub fn set_app_min_size(&mut self, size: Size) {
+        self.session.state().devtools.app_min = size;
+    }
+
     /// What a docked pane takes off the main window, in the axis it
     /// takes it: the side column's width as `(w, 0)`, the bottom strip's
     /// height as `(0, h)`, and zero with the panel off, in a window of
@@ -1342,15 +1357,15 @@ impl Core {
         }
         match d.dock {
             Dock::Left => {
-                let w = pane_w(d.side_w, viewport.w);
+                let w = d.pane_w(viewport.w);
                 Rect::new(w, 0.0, (viewport.w - w).max(0.0), viewport.h)
             }
             Dock::Right => {
-                let w = pane_w(d.side_w, viewport.w);
+                let w = d.pane_w(viewport.w);
                 Rect::new(0.0, 0.0, (viewport.w - w).max(0.0), viewport.h)
             }
             Dock::Bottom => {
-                let h = pane_h(d.bottom_h, viewport.h);
+                let h = d.pane_h(viewport.h);
                 Rect::new(0.0, 0.0, viewport.w, (viewport.h - h).max(0.0))
             }
             _ => window,
@@ -1938,9 +1953,18 @@ impl Core {
             let mut s = self.session.state();
             let d = &mut s.devtools;
             match d.dock {
-                Dock::Left => d.side_w = pane_w(p.x, vp.w),
-                Dock::Right => d.side_w = pane_w(vp.w - p.x, vp.w),
-                Dock::Bottom => d.bottom_h = pane_h(vp.h - p.y, vp.h),
+                Dock::Left => {
+                    d.side_w = p.x;
+                    d.side_w = d.pane_w(vp.w);
+                }
+                Dock::Right => {
+                    d.side_w = vp.w - p.x;
+                    d.side_w = d.pane_w(vp.w);
+                }
+                Dock::Bottom => {
+                    d.bottom_h = vp.h - p.y;
+                    d.bottom_h = d.pane_h(vp.h);
+                }
                 _ => {}
             }
         }
@@ -2320,17 +2344,27 @@ pub(crate) fn lines(v: &Value) -> u16 {
     count(v).min(u16::MAX as usize) as u16
 }
 
-/// A side pane's width for a window `vw` wide: what the handle left,
-/// within the pane's floor and what the app needs — the floor winning
-/// when the window has room for neither.
-fn pane_w(side_w: f32, vw: f32) -> f32 {
-    side_w.min((vw - APP_MIN).max(SIDE_MIN_W)).max(SIDE_MIN_W)
-}
+impl State {
+    /// A side pane's width for a window `vw` wide: what the handle left,
+    /// within the pane's floor and what the app needs — the app's declared
+    /// minimum, or [`APP_MIN`] — the floor winning when the window has room
+    /// for neither. The driver puts the pane on top of the app's minimum
+    /// as the window's own (`devtools_inset`), so a pane the app's minimum
+    /// did not hold back asked for a wider window, which let it grow, which
+    /// asked again: a drag past it grew the window off the screen (backlog
+    /// RG167).
+    fn pane_w(&self, vw: f32) -> f32 {
+        let app = self.app_min.w.max(APP_MIN);
+        self.side_w.min((vw - app).max(SIDE_MIN_W)).max(SIDE_MIN_W)
+    }
 
-fn pane_h(bottom_h: f32, vh: f32) -> f32 {
-    bottom_h
-        .min((vh - APP_MIN).max(BOTTOM_MIN_H))
-        .max(BOTTOM_MIN_H)
+    /// [`Self::pane_w`] for the bottom strip.
+    fn pane_h(&self, vh: f32) -> f32 {
+        let app = self.app_min.h.max(APP_MIN);
+        self.bottom_h
+            .min((vh - app).max(BOTTOM_MIN_H))
+            .max(BOTTOM_MIN_H)
+    }
 }
 
 /// Where a build is drawing the panel.

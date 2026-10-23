@@ -33,13 +33,13 @@ pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: 
             let vp = st.facts.viewport;
             let spec = if dock.is_side() {
                 NodeSpec::row()
-                    .width(super::pane_w(st.side_w, vp.w))
+                    .width(st.pane_w(vp.w))
                     .min_width(super::SIDE_MIN_W)
                     .grow_height()
             } else {
                 NodeSpec::column()
                     .grow_width()
-                    .height(super::pane_h(st.bottom_h, vp.h))
+                    .height(st.pane_h(vp.h))
                     .min_height(super::BOTTOM_MIN_H)
             }
             // A Tab ring of its own that the app's never enters, and a

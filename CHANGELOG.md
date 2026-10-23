@@ -34,6 +34,10 @@ was the first bare bump to break an app in five releases).
 - The devtools tree's and events' rows that are not selected or open
   have no background, and the tree's unfocused list no border, where
   each painted the list's `sunken` again (backlog RG165).
+- Glyphs are no longer hinted on macOS, at any scale, nor at 1.5× and
+  up anywhere: every glyph's bitmap differs from alpha.64's by up to a
+  pixel in height, and an app's pixel snapshots of text change. At 1×
+  on Windows and Linux text is hinted as before (backlog RG166).
 
 A theme built from an app's design tokens can hold translucent colours —
 a `sunken` of white at 10%, an overlay token, reads as a well in a dark
@@ -44,17 +48,40 @@ came out white at 60%, a pale slab in a dark panel. And a list painted
 second coat was invisible; translucent, it doubled, and the devtools'
 tree and events were a flat grey.
 
+Hinting fits each glyph to the pixel grid by the face's own program,
+glyph by glyph, and a program that does not treat every glyph alike
+snaps one flat top up and the next one down: at 2× in Helvetica Neue,
+`п` sat a pixel above `н` in «Запущенные», and `a` beside `c` in
+`accordion`, at 11 and 12 px. macOS draws none of its own text hinted,
+and at 2× there is no coarse grid to fit; at 1× elsewhere the snap is
+what keeps a stem one pixel wide, and the platform's own text is hinted
+too. A window that moves between a 1× and a 2× display draws its glyphs
+again.
+
 ### Added
 
 - `Color::faded(f)`: the colour with its alpha scaled by `f`, for a
   tint of a colour that may be translucent already; `with_alpha` still
   sets it outright (backlog RG165).
 
+- `Core::set_app_min_size`: the app's declared minimum, for a driver
+  to hand the core, so a docked devtools pane leaves at least that
+  much; the native runner passes its `min_size` (backlog RG167).
+
 ### Fixed
 
 - A translucent theme colour tinted or layered by the core's own chrome
   — the latency graph, the stats overlay, the devtools panel — keeps
   its alpha (above; backlog RG165).
+- Letters of one height share a row at 2× and on macOS: hinting put
+  some flat tops a pixel above their neighbours (above; backlog RG166).
+- Dragging a docked devtools pane wider than the app's minimum window
+  size leaves grows the pane no further. The runner sets the window's
+  minimum to the app's plus the pane, and the pane stopped only where it
+  would leave the app 160 px, so a drag past the app's minimum asked
+  for a wider window, the OS grew it, the pane could widen again, and a
+  drag to the far edge grew the window off the screen within a second
+  (backlog RG167).
 
 ## 0.1.0-alpha.64 (2026-10-23)
 

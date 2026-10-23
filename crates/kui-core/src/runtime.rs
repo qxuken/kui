@@ -2015,6 +2015,11 @@ impl Core {
         // because a removal can land between frames, after the list was
         // cleared, and through a window that never draws again.
         self.sync_dropped();
+        // A window moved to a scale hinted otherwise draws every glyph
+        // again: the atlas keys a glyph by its size, not by its hinting.
+        if self.text.set_hint(crate::text::hints_at(scale)) {
+            self.atlas.clear();
+        }
         // Before anything is emitted: the one point where the atlas may
         // empty its page — one the last frame extended, or one about to
         // fill — without a quad sampling what it dropped (F99).

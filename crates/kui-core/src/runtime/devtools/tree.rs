@@ -820,10 +820,7 @@ fn inspector(
 /// picker covers, and what the outlines are drawn within.
 fn app_area(st: &State, dock: Dock) -> Rect {
     let vp = st.facts.viewport;
-    let (w, h) = (
-        super::pane_w(st.side_w, vp.w),
-        super::pane_h(st.bottom_h, vp.h),
-    );
+    let (w, h) = (st.pane_w(vp.w), st.pane_h(vp.h));
     match dock {
         Dock::Left => Rect::new(w, 0.0, (vp.w - w).max(0.0), vp.h),
         Dock::Right => Rect::new(0.0, 0.0, (vp.w - w).max(0.0), vp.h),
