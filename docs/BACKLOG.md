@@ -280,7 +280,10 @@ was filed, after the alpha.64 tag, and is in the archive; and RG166
 and RG167, from the same window — hinting that set two letters of one
 height a pixel apart, and a docked pane's drag that grew the window off
 the screen — were built the day they were filed, after the alpha.64
-tag, and are in the archive.
+tag, and are in the archive; and F188, from the same app's F12 toggle —
+a panel closed by its button never coming back when turned on — was
+built the day it was filed, after the alpha.65 tag, and is in the
+archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day

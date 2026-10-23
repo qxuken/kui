@@ -21,6 +21,31 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.66 (unreleased)
+
+**What breaks.**
+
+- `setDevtools(true)` (`Core::set_devtools(true)`, `kui_set_devtools`)
+  on a panel hidden by its close button, or by `setDevtoolsDock('off')`,
+  shows it again, where it was; alpha.65 left it hidden, since the
+  panel was on already. The `Ctrl+Shift+I` chord, a pick and a declared
+  devtools tab bring a hidden panel back where it was too, where they
+  put it on the right (backlog F188).
+
+The close button hides the panel and leaves it on, so its chords can
+bring it back, and `devtools()` stays true. An app's toggle on
+`devtools()` turned off a panel the user had closed, and the press
+after turned on a panel still hidden: it never came back. Turning on a
+hidden panel now shows it. A toggle reads whether the panel shows as
+`devtools() && devtoolsDock() !== 'off'`, or it takes two presses after
+a close.
+
+### Fixed
+
+- A devtools panel closed with its close button comes back when the app
+  turns it on, and every way back puts it where it was (above; backlog
+  F188).
+
 ## 0.1.0-alpha.65 (2026-10-23)
 
 **What breaks.**

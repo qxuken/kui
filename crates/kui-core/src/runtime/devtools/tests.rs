@@ -1571,6 +1571,50 @@ fn the_placement_buttons_and_the_resize_handle() {
     assert_eq!(Dock::parse("side"), Some(Dock::Right));
 }
 
+/// The header's close button hides the panel and leaves it on, so an
+/// app's toggle read `devtools()` as true, turned it off, and the press
+/// after turned on a panel still hidden: it never came back. Turning a
+/// hidden panel on brings it back, where it was — and so does the chord,
+/// which put it on the right whatever it had been moved to (backlog F188).
+#[test]
+fn a_closed_panel_comes_back_where_it_was() {
+    let mut core = on();
+    let left = core.key_of("kui-devtools/dock:left").unwrap();
+    access_click(&mut core, left);
+    frame(&mut core);
+    let close = core.key_of("kui-devtools/dock:off").unwrap();
+    access_click(&mut core, close);
+    frame(&mut core);
+    assert_eq!(core.devtools_dock(), Dock::Off);
+    assert!(
+        core.devtools(),
+        "closed is hidden, not off: the chords stay"
+    );
+    core.set_devtools(true);
+    assert_eq!(
+        core.devtools_dock(),
+        Dock::Left,
+        "turned on, it shows where it was"
+    );
+    frame(&mut core);
+    assert!(
+        core.key_of("kui-devtools/dock:off").is_some(),
+        "and is drawn"
+    );
+
+    // The chord brings it back there too.
+    let close = core.key_of("kui-devtools/dock:off").unwrap();
+    access_click(&mut core, close);
+    frame(&mut core);
+    core.handle_input(chord('I'));
+    assert_eq!(core.devtools_dock(), Dock::Left);
+
+    // Off, then on: where it was, as before.
+    core.set_devtools(false);
+    core.set_devtools(true);
+    assert_eq!(core.devtools_dock(), Dock::Left);
+}
+
 /// The host's viewport is what the dock leaves (ADR 0024): `viewport()`
 /// says so, a dock coming, moving or being dragged is a `resize`, the
 /// host's viewport floats resolve against it, and under a left dock the

@@ -323,6 +323,9 @@ pub(crate) struct Facts {
 pub(crate) struct State {
     pub(crate) on: bool,
     pub(crate) dock: Dock,
+    /// Where the panel was when it was last hidden ([`Self::place`]):
+    /// where [`Self::unhide`] brings it back.
+    shown: Dock,
     /// The docked pane's extent — a side column's width, the bottom
     /// strip's height — as the handle last left it.
     side_w: f32,
@@ -424,6 +427,7 @@ impl Default for State {
         State {
             on: false,
             dock: Dock::default(),
+            shown: Dock::default(),
             side_w: DOCK_SIDE_W,
             bottom_h: DOCK_BOTTOM_H,
             app_min: Size::ZERO,
@@ -493,6 +497,23 @@ impl State {
             }
         }
         s
+    }
+
+    /// Puts the panel at `dock`; hiding it (`Off`) remembers where it was.
+    fn place(&mut self, dock: Dock) {
+        if dock == Dock::Off && self.dock != Dock::Off {
+            self.shown = self.dock;
+        }
+        self.dock = dock;
+    }
+
+    /// A hidden panel comes back where it was hidden from — the right,
+    /// if it was hidden before it ever showed — where every way back put
+    /// it on the right, whatever the user had moved it to (backlog F188).
+    fn unhide(&mut self) {
+        if self.dock == Dock::Off {
+            self.dock = self.shown;
+        }
     }
 
     fn base_name(&self) -> &'static str {
@@ -624,7 +645,7 @@ impl State {
                 self.note(format!("menus: {}", self.menus_name()));
             }
             "dock" => {
-                self.dock = self.dock.next();
+                self.place(self.dock.next());
                 self.pick = false;
                 self.note(format!("dock: {}", self.dock.name()));
             }
@@ -632,7 +653,7 @@ impl State {
                 // Nothing to enter with the panel hidden: it comes back
                 // first, docked.
                 Dock::Off => {
-                    self.dock = Dock::Right;
+                    self.unhide();
                     self.toggle_region = true;
                 }
                 Dock::Window => self.focus_window = true,
@@ -664,9 +685,7 @@ impl State {
                 self.pick_keep_tab = false;
                 if self.pick {
                     self.show(Tab::Tree);
-                    if self.dock == Dock::Off {
-                        self.dock = Dock::Right;
-                    }
+                    self.unhide();
                     // Picking happens in the main window; raised from
                     // the panel's own, the keyboard (for Escape) and the
                     // pointer are both in the wrong one.
@@ -709,7 +728,7 @@ impl State {
                 } else if let Some(dock) = other.strip_prefix("dock:").and_then(Dock::parse) {
                     // One of the header's placement buttons.
                     if dock != self.dock {
-                        self.dock = dock;
+                        self.place(dock);
                         self.pick = false;
                         self.note(format!("dock: {}", dock.name()));
                     }
@@ -1021,12 +1040,21 @@ impl Core {
     /// live in every window. `KUI_DEVTOOLS=1` in the environment is the
     /// same call made by nobody; `KUI_DEVTOOLS=bottom` (or `left`,
     /// `right`, `window`, `off`) also says where.
+    ///
+    /// The header's close button hides the panel (`Dock::Off`) and leaves
+    /// it on, so its chords bring it back; turning on a panel that is
+    /// hidden so brings it back too, where it was. An app's own toggle
+    /// asked to turn on a closed panel and drew nothing — `devtools()`
+    /// was still true, so the next press turned it off (backlog F188).
     pub fn set_devtools(&mut self, on: bool) {
         // Built without the panel: the door stays and does nothing.
         if !cfg!(feature = "devtools") {
             return;
         }
         let mut s = self.session.state();
+        if on {
+            s.devtools.unhide();
+        }
         if s.devtools.on == on {
             return;
         }
@@ -1059,7 +1087,7 @@ impl Core {
 
     /// Where the panel sits; `Ctrl+Shift+D` moves it from there.
     pub fn set_devtools_dock(&mut self, dock: Dock) {
-        self.session.state().devtools.dock = dock;
+        self.session.state().devtools.place(dock);
     }
 
     pub fn devtools_dock(&self) -> Dock {
@@ -1157,9 +1185,7 @@ impl Core {
                 if !on_tab {
                     d.show(Tab::Tree);
                 }
-                if d.dock == Dock::Off {
-                    d.dock = Dock::Right;
-                }
+                d.unhide();
             }
             on && d.dock == Dock::Window
         };
@@ -1206,9 +1232,7 @@ impl Core {
                     d.lists(name)
                 }
             };
-            if d.dock == Dock::Off {
-                d.dock = Dock::Right;
-            }
+            d.unhide();
             listed
         };
         self.devtools_redraw_others();
@@ -1991,7 +2015,7 @@ impl Core {
             // takes it away, and the close that follows is our own).
             let mut s = self.session.state();
             if s.devtools.dock == Dock::Window {
-                s.devtools.dock = Dock::Off;
+                s.devtools.place(Dock::Off);
                 s.devtools.pick = false;
                 s.devtools.note("dock: off (window closed)");
             }
