@@ -163,7 +163,10 @@ own that ignores those fields draws the shadow as before; kui.h's
     before it, and gives a frame too short for the format (1 ms for PNG,
     20 ms for GIF) to the next. A GIF frame that turns a pixel clear is
     written whole on a cleared canvas, since a GIF's clear pixel shows
-    the one under it (backlog FZ12). Thirty retina frames of a card sliding
+    the one under it (backlog FZ12), and a frame held past what one
+    delay holds (65.5 s in an APNG, 655 s in a GIF) as frames that
+    change nothing, so a recording left alone keeps its time, up to 4.6
+    hours a frame in an APNG (backlog FZ13). Thirty retina frames of a card sliding
     over a page: about 12 ms a frame to capture and add, 15 ms to finish
     an 804 KB APNG, 393 ms for a 283 KB GIF.
 - **An app keeps its own window as a file** (backlog C56, [ADR

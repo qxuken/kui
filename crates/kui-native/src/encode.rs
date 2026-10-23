@@ -127,6 +127,7 @@ pub struct AnimationEncoder {
 
 /// One kept frame: the rectangle it changed, its pixels there, and how
 /// long it shows.
+#[derive(Clone)]
 struct Patch {
     x: u32,
     y: u32,
@@ -229,24 +230,26 @@ impl AnimationEncoder {
         match self.format {
             AnimationEncoding::Png => {
                 let delays = ticks(&self.kept, 1000.0, 1);
+                let (kept, delays) = held(std::mem::take(&mut self.kept), &delays);
                 write_apng(
                     &mut out,
                     self.width,
                     self.height,
                     self.loops,
-                    &self.kept,
+                    &kept,
                     &delays,
                 )
                 .map_err(|e| format!("encoding an animated PNG: {e}"))?;
             }
             AnimationEncoding::Gif => {
                 let delays = ticks(&self.kept, 100.0, 2);
+                let (kept, delays) = held(std::mem::take(&mut self.kept), &delays);
                 write_gif(
                     &mut out,
                     self.width,
                     self.height,
                     Some(self.loops),
-                    &self.kept,
+                    &kept,
                     &delays,
                 )?;
             }
@@ -343,19 +346,80 @@ fn changed(a: &[u8], b: &[u8], w: u32) -> Option<(u32, u32, u32, u32)> {
     ys.map(|(y0, y1)| (x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32))
 }
 
+/// How many frames of the format's longest one frame may be written as
+/// (see [`held`]): 256, so a frame shows for up to 4.6 hours in an
+/// animated PNG and 46 in a GIF, and what is past that is cut.
+const MOST_PARTS: u32 = 256;
+
 /// Each frame's time in `per_sec` units, rounded on the running total so
-/// the sum keeps to the frames' own, and never under `least`.
-fn ticks(kept: &[Patch], per_sec: f64, least: u16) -> Vec<u16> {
+/// the sum keeps to the frames' own, never under `least`, and at most
+/// [`MOST_PARTS`] of the longest a 16-bit delay holds — a time cut there
+/// is cut, not given to the frame after.
+fn ticks(kept: &[Patch], per_sec: f64, least: u16) -> Vec<u32> {
+    let longest = i64::from(MOST_PARTS * u32::from(u16::MAX));
     let (mut t, mut at) = (0.0, 0i64);
     kept.iter()
         .map(|p| {
             t += p.secs;
             let end = (t * per_sec).round() as i64;
-            let d = (end - at).clamp(least as i64, u16::MAX as i64);
-            at += d;
-            d as u16
+            let d = (end - at).clamp(i64::from(least), longest);
+            at = if end - at > longest { end } else { at + d };
+            d as u32
         })
         .collect()
+}
+
+/// The frames as written, and their delays in a format's 16 bits. A
+/// frame whose time is past what one delay holds — 65.5 s in an
+/// animated PNG, 655 s in a GIF, as a recording of a UI left alone
+/// folds its unchanged frames into one — is written as itself and then
+/// frames that change nothing, one pixel set to what it is, its time
+/// shared evenly among them so none is under the format's least (backlog
+/// FZ13). A GIF frame cleared once shown is repeated whole instead, the
+/// last of it cleared. One frame is a still, whose time is no matter.
+fn held(kept: Vec<Patch>, delays: &[u32]) -> (Vec<Patch>, Vec<u16>) {
+    let max = u32::from(u16::MAX);
+    if kept.len() < 2 {
+        let delays = delays.iter().map(|&d| d.min(max) as u16).collect();
+        return (kept, delays);
+    }
+    let mut out = Vec::with_capacity(kept.len());
+    let mut times = Vec::with_capacity(kept.len());
+    // The canvas's first pixel: what a frame that changes nothing sets.
+    let mut origin = [0u8; 4];
+    for (mut p, &d) in kept.into_iter().zip(delays) {
+        if (p.x, p.y) == (0, 0) {
+            origin.copy_from_slice(&p.rgba[..4]);
+        }
+        let parts = d.div_ceil(max).max(1);
+        for i in 0..parts {
+            times.push((d / parts + u32::from(i < d % parts)) as u16);
+        }
+        if parts == 1 {
+            out.push(p);
+            continue;
+        }
+        let clear = std::mem::take(&mut p.clear_after);
+        let hold = if clear {
+            p.clone()
+        } else {
+            Patch {
+                x: 0,
+                y: 0,
+                w: 1,
+                h: 1,
+                rgba: origin.to_vec(),
+                secs: 0.0,
+                clear_after: false,
+            }
+        };
+        out.push(p);
+        out.extend((1..parts).map(|_| hold.clone()));
+        if let Some(last) = out.last_mut() {
+            last.clear_after = clear;
+        }
+    }
+    (out, times)
 }
 
 fn write_apng(
@@ -608,6 +672,39 @@ mod tests {
             let back = decode_animation(&a.finish().unwrap()).unwrap();
             let frames: Vec<&[u8]> = back.frames.iter().map(|f| &f.rgba[..]).collect();
             assert_eq!(frames, [&red[..], &holed, &painted], "{format:?}");
+        }
+    }
+
+    /// A frame left on screen past what a delay holds — 65.5 s in an
+    /// animated PNG, 655 s in a GIF, here folded from four frames that
+    /// changed nothing — is shown for all of it, as itself and then
+    /// frames that change nothing (backlog FZ13, found by the `encode`
+    /// fuzz target: the APNG lost five seconds).
+    #[test]
+    fn a_frame_shown_past_a_delay_keeps_its_time() {
+        let red = fill(3, 2, [255, 0, 0, 255]);
+        let mut blue = red.clone();
+        blue[20..24].copy_from_slice(&[0, 0, 255, 255]);
+        for (format, each) in [
+            (AnimationEncoding::Png, 20.0),
+            (AnimationEncoding::Gif, 200.0),
+        ] {
+            let mut a = AnimationEncoder::new(format, 3, 2, None).unwrap();
+            a.add(&red, 1.0).unwrap();
+            for _ in 0..4 {
+                a.add(&blue, each).unwrap();
+            }
+            a.add(&red, 1.0).unwrap();
+            let back = decode_animation(&a.finish().unwrap()).unwrap();
+            let total: f64 = back.frames.iter().map(|f| f.delay).sum();
+            assert!(
+                (total - (2.0 + 4.0 * each)).abs() < 0.011,
+                "{format:?}: {total}"
+            );
+            assert_eq!(back.frames.len(), 4, "{format:?}: the blue as two");
+            assert_eq!(back.frames[1].rgba, blue, "{format:?}");
+            assert_eq!(back.frames[2].rgba, blue, "{format:?}: nothing changed");
+            assert_eq!(back.frames[3].rgba, red, "{format:?}");
         }
     }
 

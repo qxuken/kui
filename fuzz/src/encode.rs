@@ -9,8 +9,9 @@
 //! where the picture holds 256 colours or fewer (the encoder quantizes
 //! only past them). An animated PNG reads back as the frames added, in
 //! order — a frame that changed nothing, or too short to show, folded
-//! away, the last always shown — every frame's time a millisecond or more
-//! and the whole the frames' own to the millisecond each.
+//! away, one shown past what a delay holds read back as more than one, the
+//! last always shown — every frame's time a millisecond or more and the
+//! whole the frames' own to the millisecond each.
 
 use arbitrary::{Arbitrary, Result, Unstructured};
 use kui_native::{
@@ -172,14 +173,9 @@ fn animation(input: &Input, w: u32, h: u32, first: Vec<u8>) {
     assert!(!added.is_empty(), "no frame encoded");
     let a = decode_animation(&bytes).unwrap_or_else(|e| panic!("a {format:?} reads back: {e}"));
     assert_eq!((a.width, a.height), (w, h), "a {format:?}'s size");
-    assert!(
-        a.frames.len() <= added.len(),
-        "{} frames read back from {} added",
-        a.frames.len(),
-        added.len()
-    );
     if format == AnimationEncoding::Gif {
-        // Each frame read back is one added, in order, as a GIF shows it.
+        // Each frame read back is one added, in order, as a GIF shows it;
+        // a frame shown long may read back as more than one.
         let mut from = 0;
         for (n, f) in a.frames.iter().enumerate() {
             let Some(i) = (from..added.len()).find(|&i| gif_like(&f.rgba, &added[i].0)) else {
@@ -192,7 +188,7 @@ fn animation(input: &Input, w: u32, h: u32, first: Vec<u8>) {
                     a.frames.len()
                 );
             };
-            from = i + 1;
+            from = i;
             assert!(f.delay >= 0.02, "GIF frame {n} shows for {} s", f.delay);
         }
         return;
@@ -211,7 +207,7 @@ fn animation(input: &Input, w: u32, h: u32, first: Vec<u8>) {
                 added.len()
             );
         };
-        from = i + 1;
+        from = i;
         assert!(
             f.delay >= 0.001 - 1e-9,
             "APNG frame {n} shows for {} s",
@@ -223,10 +219,10 @@ fn animation(input: &Input, w: u32, h: u32, first: Vec<u8>) {
         added.last().unwrap().0,
         "the last APNG frame is the last added"
     );
-    // The whole, to the millisecond a frame, while no frame's time is past
-    // what a delay of 65535 ms holds.
-    if added.iter().all(|(_, s)| *s < 65.0) {
-        let want: f64 = added.iter().map(|(_, s)| s).sum();
+    // The whole, to the millisecond a frame, while it is under the 4.6
+    // hours one frame may show for.
+    let want: f64 = added.iter().map(|(_, s)| s).sum();
+    if want < 16_000.0 {
         let got: f64 = a.frames.iter().map(|f| f.delay).sum();
         let slack = 0.001 * a.frames.len() as f64 + 0.0005;
         assert!(
