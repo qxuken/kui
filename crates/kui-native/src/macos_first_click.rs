@@ -215,9 +215,37 @@ impl Gesture {
         }
         // A resize resets the view's cursor rects to the app's cursor.
         if let Some(c) = &self.cursor {
-            c.set();
+            show(c);
         }
     }
+}
+
+/// The hot spot of the cursor the screen shows, which need not be this
+/// app's: deprecated for screen capture, and still the one way to ask.
+fn shown() -> Option<NSPoint> {
+    #[allow(deprecated)]
+    NSCursor::currentSystemCursor().map(|c| c.hotSpot())
+}
+
+/// Sets `c` so that the screen shows it. Over an inactive window's edge the
+/// window server draws its own resize cursor, which AppKit never set: its
+/// current cursor stays the arrow, `-[NSCursor set]` of the arrow is then
+/// no change to AppKit, and the screen kept the resize cursor until the
+/// content's cursor rect set one (macOS 26.6.2). So when the screen shows
+/// another cursor than `c` while AppKit believes `c` is current, another
+/// cursor is set first, which makes setting `c` a change. Cursors are told
+/// apart by hot spot, since AppKit hands out a new resize cursor each time.
+fn show(c: &NSCursor) {
+    let hot = c.hotSpot();
+    if shown().is_some_and(|h| h != hot) && NSCursor::currentCursor().hotSpot() == hot {
+        let cross = NSCursor::crosshairCursor();
+        if cross.hotSpot() == hot {
+            NSCursor::IBeamCursor().set();
+        } else {
+            cross.set();
+        }
+    }
+    c.set();
 }
 
 /// The cursor after a gesture, kui's until the next press. AppKit's own
@@ -281,7 +309,12 @@ impl Custody {
         }
         if self.zone != Some(zone) {
             if knobs.log {
-                eprintln!("kui edge resize: cursor {zone:?}");
+                let (app, screen) = (NSCursor::currentCursor().hotSpot(), shown());
+                eprintln!(
+                    "kui edge resize: cursor {zone:?} (hot spot: app's {:?}, shown {:?})",
+                    (app.x, app.y),
+                    screen.map(|h| (h.x, h.y)),
+                );
             }
             self.taken = false;
             self.dropped = false;
@@ -304,7 +337,7 @@ impl Custody {
             Zone::Outside => Some(NSCursor::arrowCursor()),
         };
         if let Some(c) = &self.want {
-            c.set();
+            show(c);
         }
         true
     }
@@ -340,10 +373,7 @@ impl Custody {
         // cursors are told apart by hot spot.
         let hot = want.hotSpot();
         let current = NSCursor::currentCursor().hotSpot();
-        // Deprecated for screen capture; still the one way to ask what the
-        // screen shows when it is not this app's cursor.
-        #[allow(deprecated)]
-        let shown = NSCursor::currentSystemCursor().map(|c| c.hotSpot());
+        let shown = shown();
         if current == hot && shown.is_none_or(|h| h == hot) {
             return;
         }
@@ -357,7 +387,7 @@ impl Custody {
             );
             self.taken = true;
         }
-        want.set();
+        show(want);
     }
 }
 
@@ -560,7 +590,7 @@ pub(crate) fn install(mtm: MainThreadMarker) {
                     )
                 });
             if let Some(c) = &cursor {
-                c.set();
+                show(c);
             }
             if knobs.log {
                 eprintln!(
