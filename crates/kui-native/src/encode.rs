@@ -195,6 +195,11 @@ impl AnimationEncoder {
         Ok(())
     }
 
+    /// The size every frame is: what [`Self::new`] was given.
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
     /// How many frames are kept so far, the one added last not counted:
     /// what the file will hold, less one.
     pub fn kept(&self) -> usize {

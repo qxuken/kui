@@ -26,6 +26,7 @@ import type {
   WithSliderChange,
   WithBoundary,
   WithSound,
+  WithCapture,
   WithDismiss,
   WithResize,
   WithWindow,

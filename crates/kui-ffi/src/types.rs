@@ -154,6 +154,10 @@ pub struct KuiCtx {
     /// and fills from `extensions` when it is not. Null on every other
     /// context: a standalone one, and an extension's own.
     pub(crate) host_ui: *mut c_void,
+    /// What `kui_serve_captures` serves a standalone context's captures
+    /// with (ADR 0055); a borrowed context's are the runner's.
+    #[cfg(feature = "runner")]
+    pub(crate) captures: kui_native::Captures,
 }
 
 impl KuiCtx {
@@ -225,6 +229,8 @@ impl KuiCtx {
             extensions: Default::default(),
             last_ext_error: String::new(),
             host_ui: std::ptr::null_mut(),
+            #[cfg(feature = "runner")]
+            captures: kui_native::Captures::new(),
         }
     }
 

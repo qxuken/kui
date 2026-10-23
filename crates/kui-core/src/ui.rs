@@ -625,6 +625,28 @@ impl<'a> Ui<'a> {
         self.core.request_frame_at(at);
     }
 
+    /// Asks for this frame, once drawn, written to `path` as a picture
+    /// (ADR 0055); see `Core::capture_to`.
+    #[track_caller]
+    pub fn capture_to(&mut self, path: impl Into<String>, message: Option<Value>) {
+        self.core.capture_to(path, message);
+    }
+
+    /// Asks for every frame drawn from this one on, written to `path` as
+    /// an animation when the recording stops (ADR 0055); see
+    /// `Core::record_to`.
+    #[track_caller]
+    pub fn record_to(&mut self, path: impl Into<String>, message: Option<Value>) {
+        self.core.record_to(path, message);
+    }
+
+    /// Ends the recording with this frame, its last (ADR 0055); see
+    /// `Core::stop_recording`.
+    #[track_caller]
+    pub fn stop_recording(&mut self) {
+        self.core.stop_recording();
+    }
+
     /// The frame clock in the driver's seconds (backlog F134); see
     /// `Core::now`. A view's deadlines read from it — a toast's expiry, a
     /// sequence's beats — so a test's `advance` moves them with the

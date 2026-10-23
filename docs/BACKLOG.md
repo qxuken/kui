@@ -291,7 +291,10 @@ filed, after the alpha.65 tag, and is in the archive; and C55, from a
 question about offscreen rendering — a frame drawn only to a window's
 surface, so no host could have kui draw into its texture and nothing
 could read a frame back — was built the day it was filed, with ADR 0054,
-after the alpha.65 tag, and is in the archive.
+after the alpha.65 tag, and is in the archive; and C56, from the
+question it left — a running app with no door to capture or record its
+own window — was built the day it was filed, with ADR 0055, and is in
+the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -334,7 +337,8 @@ with the alpha.12 tag. What is left is the three parked entries and C27
 2026-10-23 (resizing an inactive window in one gesture under a pump on
 macOS 26). C55, filed the same day — a renderer that draws into a
 texture the host owns, and `capture()` on top of it — was built the day
-it was filed, with ADR 0054, and is in the archive. C53, filed on
+it was filed, with ADR 0054, and is in the archive, and so was C56, an
+app's own window captured or recorded to a file (ADR 0055). C53, filed on
 2026-10-23 — what a repainting window holds on the GPU — was built the
 day it was filed and is in the archive.
 

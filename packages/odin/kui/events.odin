@@ -199,6 +199,18 @@ Sound_Event :: struct {
 	playback: Playback,
 }
 
+// A still or a recording the app asked for with capture_to / record_to,
+// written or not (ADR 0055), in the message the verb named.
+Capture_Event :: struct {
+	phase:   string, // "saved" | "failed"
+	path:    string,
+	width:   u32, // physical px
+	height:  u32,
+	frames:  u32, // 1 for a still; the frames drawn while recording
+	seconds: f64, // a recording's length; 0 for a still
+	error:   string, // why a "failed" one failed; "" when saved
+}
+
 Dismiss_Event :: struct {
 	reason: string, // "escape" | "outside"
 	id:     u32, // a popup window's, in its on_dismiss; 0 on a modal node
@@ -320,6 +332,10 @@ With_Boundary :: struct {
 
 With_Sound :: struct {
 	sound: Sound_Event,
+}
+
+With_Capture :: struct {
+	capture: Capture_Event,
 }
 
 With_Dismiss :: struct {

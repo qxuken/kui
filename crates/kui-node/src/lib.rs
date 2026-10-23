@@ -508,6 +508,9 @@ fn edit_key_of(name: &str) -> Result<EditKey> {
 pub struct Ctx {
     core: Core,
     events: Vec<UiEvent>,
+    /// What `serveCaptures` serves this context's captures with (ADR
+    /// 0055).
+    captures: kui_native::Captures,
     /// The extensions this context hosts, in origin order:
     /// what `addExtension` loads, what a `<slot>` fills from, and what an
     /// event whose origin is not the host's is delivered to.
@@ -522,6 +525,7 @@ impl Ctx {
         Ctx {
             core: Core::new(),
             events: Vec::new(),
+            captures: kui_native::Captures::new(),
             extensions: Default::default(),
         }
     }
@@ -1168,6 +1172,19 @@ impl Ctx {
                 })
                 .collect(),
         )
+    }
+
+    /// Serves what `captureTo`, `recordTo` and `stopRecording` asked,
+    /// against the last `frame` (ADR 0055), as a window's runner does after
+    /// each frame it draws: the files written, and a `capture` event in
+    /// `pollEvents` for each ask that named a message. On a machine with no
+    /// GPU adapter each answers `phase: 'failed'`, its `error` starting
+    /// "no GPU".
+    #[napi]
+    pub fn serve_captures(&mut self) {
+        self.captures.serve(&mut self.core);
+        let pending = self.core.take_pending_events();
+        self.take_events(pending);
     }
 
     /// A custom driver reports a playback finished on its own; a tagged
@@ -3023,6 +3040,42 @@ macro_rules! core_methods {
             #[napi(ts_return_type = "FrameStats")]
             pub fn stats(&mut self) -> Json {
                 stats_json(self.$core())
+            }
+
+            /// Asks for the next frame this window draws, written to `path`
+            /// as a picture (ADR 0055): `.png`, `.jpg` / `.jpeg` (quality 90,
+            /// alpha dropped), `.webp` (lossless) or `.gif`, by the
+            /// extension. `message` is what the `capture` event arrives as,
+            /// `capture: {phase: 'saved' | 'failed', path, width, height,
+            /// frames, seconds, error?}` in it; without one the file is
+            /// written and nothing is heard. A window's runner serves it after
+            /// the next frame it draws; a headless `Ctx` after
+            /// `serveCaptures()`.
+            #[napi(ts_args_type = "path: string, message?: unknown")]
+            pub fn capture_to(&mut self, path: String, message: Option<Json>) {
+                self.$core().capture_to(path, message.as_ref().map(value_of));
+                self.$redraw();
+            }
+
+            /// Asks for every frame this window draws from the next one on,
+            /// written to `path` as an animation when `stopRecording()` ends
+            /// it (ADR 0055): `.png` / `.apng` (an animated PNG) or `.gif`.
+            /// Each frame shows from when it was drawn until the next, on the
+            /// frame clock. `message` as `captureTo`'s, heard once the file is
+            /// written, with the frames drawn and the `seconds` it lasts. One
+            /// asked for while one runs fails, naming that one.
+            #[napi(ts_args_type = "path: string, message?: unknown")]
+            pub fn record_to(&mut self, path: String, message: Option<Json>) {
+                self.$core().record_to(path, message.as_ref().map(value_of));
+                self.$redraw();
+            }
+
+            /// Ends the recording with the next frame drawn, which it leaves
+            /// out, and has its file written. Nothing, with none running.
+            #[napi]
+            pub fn stop_recording(&mut self) {
+                self.$core().stop_recording();
+                self.$redraw();
             }
 
             /// The last finished frame as pixels (backlog C55): drawn again

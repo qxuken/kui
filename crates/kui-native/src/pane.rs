@@ -415,6 +415,10 @@ pub(crate) struct Pane {
     /// the window's first, and any after it that an occluded or timed-out
     /// acquire dropped. See the `Skip` arm of [`Shell::redraw`].
     pub(crate) retry: crate::retry::Retry,
+    /// The stills and the recording the app asked of this window (ADR
+    /// 0055), served after every frame it draws; a recording running when
+    /// the window goes is written as it drops.
+    pub(crate) captures: crate::Captures,
     /// Whether the last redraw this pane was asked for was let wait for
     /// the host's answer (`Launcher::deferred_events`). It is what bounds
     /// the wait to a single frame: never two in a row, so no stream of

@@ -4015,6 +4015,40 @@ set_app_id :: proc(id: string) {
 	c.set_app_id(id)
 }
 
+// Asks for the next frame the window draws, written to a path as a picture
+// — `.png`, `.jpg`, `.webp` or `.gif` by the extension — and answered
+// with a `capture` event in the message it names, the path in it and not the
+// pixels (ADR 0055): a screenshot row or a bug report's attachment.
+// Rust: Core::capture_to.
+capture_to :: proc(ui: ^Ui, path: string, message: any = nil) -> bool {
+	return c.capture_to(ui, path, to_value(message))
+}
+
+// Asks for every frame the window draws from the next one on, written to a
+// path as an animated PNG (`.png` / `.apng`) or GIF when the recording stops,
+// each frame shown until the next on the frame clock; answered as
+// `capture_to` is, with the frames and seconds (ADR 0055).
+// Rust: Core::record_to.
+record_to :: proc(ui: ^Ui, path: string, message: any = nil) -> bool {
+	return c.record_to(ui, path, to_value(message))
+}
+
+// Ends the window's recording with the next frame drawn, which it leaves out,
+// and has its file written (ADR 0055).
+// Rust: Core::stop_recording.
+stop_recording :: proc(ui: ^Ui) {
+	c.stop_recording(ui)
+}
+
+// A headless driver's turn after a frame (ADR 0055): the core's capture
+// commands served against the frame it finished — stills written, the
+// recording fed or finished — and a `capture` event pending for each that
+// named a message.
+// Rust: Captures::serve.
+serve_captures :: proc(ui: ^Ui) {
+	c.serve_captures(ui)
+}
+
 // kui_slot_name (kui.h).
 slot_name :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
 	ok = c.slot_name(ui, &out)

@@ -104,12 +104,37 @@ running the whole time under a pump (backlog C54).
     20 ms for GIF) to the next. Thirty retina frames of a card sliding
     over a page: about 12 ms a frame to capture and add, 15 ms to finish
     an 804 KB APNG, 393 ms for a 283 KB GIF.
+- **An app keeps its own window as a file** (backlog C56, [ADR
+  0055](docs/adr/0055-an-app-asks-for-its-window-as-a-file.md)):
+  `capture_to(path, message)`, `record_to(path, message)` and
+  `stop_recording()` on `Core` and `Ui` — `captureTo` / `recordTo` /
+  `stopRecording` on Node's `Ctx` and `KuiWindow`, `kui_capture_to` /
+  `kui_record_to` / `kui_stop_recording` in C, `capture_to` /
+  `record_to` / `stop_recording` in Odin. The runner serves the ask
+  after the next frame it draws, in every binding, drawing that frame
+  again as `capture` does, and answers with a new `capture` event in the
+  message the ask named: `capture: {phase: "saved" | "failed", path,
+  width, height, frames, seconds, error}`, the path and never the
+  pixels. The path's extension is the format: `.png`, `.jpg`, `.webp` or
+  `.gif` for a still, `.png` / `.apng` or `.gif` for a recording, whose
+  frames each show until the next on the frame clock. A headless driver
+  serves its own: `kui_native::Captures::serve(&mut core)`,
+  `ctx.serveCaptures()`, `kui_serve_captures(ctx)`, `serve_captures(ui)`;
+  `Core::take_capture_commands()` drains the asks as data for a test
+  with no GPU. Rust reads the answer as `Event::Capture(Captured)`, Odin
+  with `With_Capture`, Node with `WithCapture`.
+  `examples/rust/features/capture.rs` is a screenshot button and a
+  "Record 5 seconds" toggle. Lua has none: a guest's frames are the
+  host's.
 - `Core::drawn()`: the finished frame's list and atlas for a reader
   that is not the core's renderer, marking nothing read and leaving the
   atlas's `dirty` flag alone.
 
 ### Fixed
 
+- An example under `kui-devtools`' harness hears `on_event_with`, with
+  its window's core, in a window as it did in a headless drive; the
+  windowed harness called only `on_event`.
 - A devtools panel closed with its close button comes back when the app
   turns it on, and every way back puts it where it was (above; backlog
   F188).
@@ -135,6 +160,10 @@ running the whole time under a pump (backlog C54).
 - A PNG package (`pngjs`, `sharp`, a crate, libpng) kept only to write a
   test's or a probe's pixels to a file; `encodeImage` does it, and an
   `AnimationEncoder` records a sequence of them.
+- A recorder of the app's own — a capture per frame while a flag is on,
+  the time between frames, an `AnimationEncoder`, the file and its
+  errors — kept for a screenshot or a "record" button; `capture_to` and
+  `record_to` ask the runner, which does it after the frame is drawn.
 - A copy of kui-wgpu's renderer, or a hidden window, kept only to draw a
   frame into a texture your own device composites.
 

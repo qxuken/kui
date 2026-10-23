@@ -7,6 +7,7 @@ One cross-cutting behaviour, with exactly the widgets it touches.
 - [`audio`](features/audio.md)
 - [`backdrop`](features/backdrop.md)
 - [`backdrop_blur`](features/backdrop_blur.md)
+- [`capture`](features/capture.md)
 - [`clipboard`](features/clipboard.md)
 - [`decode`](features/decode.md)
 - [`devtools_tab`](features/devtools_tab.md)

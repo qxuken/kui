@@ -2593,6 +2593,13 @@ pub const EVENTS: &[EventDef] = &[
         doc: "A tagged playback (`play(id, { tag })` or `<audio tag>`) finished on its own — never when something stopped it. `phase: \"refused\"` instead when the device would not take the play at all (its 128 voices are all held, or the sound did not decode): that playback never starts and so never ends, so this is what arrives in place of the `ended` a view would otherwise wait forever for.",
     },
     EventDef {
+        kind: "capture",
+        handler: "`captureTo(path, message)`, `recordTo(path, message)`",
+        field: Some("capture"),
+        payload: "`capture: { phase: \"saved\" | \"failed\", path, width, height, frames, seconds, error? }` in the message the verb named",
+        doc: "A still or a recording the app asked the driver for was written to its path, or could not be (ADR 0055). `width` and `height` are physical px; `frames` is 1 for a still and the frames drawn while recording for a recording (one that changed nothing is folded into the one before in the file), `seconds` a recording's length; `error` says why a `failed` one failed — a directory that is not there, no GPU, an extension that names no format. The path's extension is the format: `.png`, `.jpg`, `.webp` or `.gif` for a still, `.png` / `.apng` or `.gif` for a recording. A verb with no message writes the file and is not heard.",
+    },
+    EventDef {
         kind: "dismiss",
         handler: "modal; a popup's `windows` entry `onDismiss`",
         field: Some("dismiss"),

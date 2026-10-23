@@ -272,6 +272,7 @@ headless = [
     "backdrop_blur",
     "transform",
     "decode",
+    "capture",
 ]
 
 [[example]]
@@ -366,6 +367,10 @@ path = "../../examples/rust/features/waker.rs"
 [[example]]
 name = "decode"
 path = "../../examples/rust/features/decode.rs"
+
+[[example]]
+name = "capture"
+path = "../../examples/rust/features/capture.rs"
 
 [[example]]
 name = "popup"

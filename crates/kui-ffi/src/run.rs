@@ -500,6 +500,73 @@ pub extern "C" fn kui_capture(ptr: *mut KuiCtx, width: *mut u32, height: *mut u3
     })
 }
 
+/// Asks for the next frame the context's window draws, written to `path`
+/// as a picture (ADR 0055): `kui_core::Core::capture_to`. The extension is
+/// the format: `.png`, `.jpg` / `.jpeg`, `.webp` or `.gif`. A non-NULL
+/// `message` (consumed) is what the `capture` event arrives as, with
+/// `capture: {phase, path, width, height, frames, seconds, error}` in it;
+/// NULL writes the file and says nothing. From a view, the frame that view
+/// builds. False for an empty path.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_capture_to(ptr: *mut KuiCtx, path: KuiStr, message: *mut KuiValue) -> bool {
+    guard(false, || {
+        let message = take_msg(message);
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, opt_str(path)) else {
+            return false;
+        };
+        c.core().capture_to(path.into_owned(), message);
+        true
+    })
+}
+
+/// Asks for every frame the context's window draws from the next one on,
+/// written to `path` as an animation when `kui_stop_recording` ends it
+/// (ADR 0055): `.png` / `.apng` or `.gif`. `message` as `kui_capture_to`'s.
+/// False for an empty path.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_record_to(ptr: *mut KuiCtx, path: KuiStr, message: *mut KuiValue) -> bool {
+    guard(false, || {
+        let message = take_msg(message);
+        let (Some(c), Some(path)) = (unsafe { ctx(ptr) }, opt_str(path)) else {
+            return false;
+        };
+        c.core().record_to(path.into_owned(), message);
+        true
+    })
+}
+
+/// Ends the recording with the next frame drawn and has its file written.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_stop_recording(ptr: *mut KuiCtx) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().stop_recording();
+        }
+    });
+}
+
+/// A standalone context's driver serves its captures after a frame
+/// (`kui_native::Captures::serve`): the stills written, the recording fed
+/// or finished, and a `capture` event for `kui_poll_event` for each that
+/// named a message. Under `kui_run` the runner serves its window's, and
+/// this does nothing for the context its view is handed.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_serve_captures(ptr: *mut KuiCtx) {
+    guard((), || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        if c._owned.is_none() {
+            return;
+        }
+        // SAFETY: an owned context's core is its own box, alive with it.
+        let core = unsafe { &mut *c.core };
+        c.captures.serve(core);
+        let pending = core.take_pending_events();
+        c.absorb(pending);
+    })
+}
+
 /// The encoder a `KUI_ENCODE_*` names, with JPEG's quality (0 is 90).
 fn image_encoding(format: u32, quality: u32) -> Option<kui_native::ImageEncoding> {
     use kui_native::ImageEncoding as E;
