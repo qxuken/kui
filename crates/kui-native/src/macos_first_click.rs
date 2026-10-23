@@ -215,37 +215,9 @@ impl Gesture {
         }
         // A resize resets the view's cursor rects to the app's cursor.
         if let Some(c) = &self.cursor {
-            show(c);
+            c.set();
         }
     }
-}
-
-/// The hot spot of the cursor the screen shows, which need not be this
-/// app's: deprecated for screen capture, and still the one way to ask.
-fn shown() -> Option<NSPoint> {
-    #[allow(deprecated)]
-    NSCursor::currentSystemCursor().map(|c| c.hotSpot())
-}
-
-/// Sets `c` so that the screen shows it. Over an inactive window's edge the
-/// window server draws its own resize cursor, which AppKit never set: its
-/// current cursor stays the arrow, `-[NSCursor set]` of the arrow is then
-/// no change to AppKit, and the screen kept the resize cursor until the
-/// content's cursor rect set one (macOS 26.6.2). So when the screen shows
-/// another cursor than `c` while AppKit believes `c` is current, another
-/// cursor is set first, which makes setting `c` a change. Cursors are told
-/// apart by hot spot, since AppKit hands out a new resize cursor each time.
-fn show(c: &NSCursor) {
-    let hot = c.hotSpot();
-    if shown().is_some_and(|h| h != hot) && NSCursor::currentCursor().hotSpot() == hot {
-        let cross = NSCursor::crosshairCursor();
-        if cross.hotSpot() == hot {
-            NSCursor::IBeamCursor().set();
-        } else {
-            cross.set();
-        }
-    }
-    c.set();
 }
 
 /// The cursor after a gesture, kui's until the next press. AppKit's own
@@ -256,149 +228,51 @@ fn show(c: &NSCursor) {
 /// arrow set at the release stayed on the edge, through the native resize
 /// the next press started (macOS 26.6.2). So every move until then picks
 /// it: the resize cursor on the band, the arrow outside, and over the
-/// content the view's cursor rects rebuilt, which is the app's cursor. On
-/// macOS 26.6.2 the resize cursor came back after the arrow set outside,
-/// until the pointer entered the content: something in AppKit set it again
-/// while dispatching the same move, after the monitor ran. So AppKit's
-/// cursor updates are dropped while the pointer is on the band or outside,
-/// where the cursor is kui's alone, and the pumps after a move look again
-/// ([`after_pump`]) and set it again if the cursor shown is not the one
-/// picked. Over another of the app's windows the custody ends: that cursor
-/// is the window's.
+/// content the view's cursor rects rebuilt, which is the app's cursor.
 struct Custody {
     window: Retained<NSWindow>,
     zone: Option<Zone>,
-    /// The cursor picked; none over the content, which is the app's.
-    want: Option<Retained<NSCursor>>,
-    /// Pumps left to look again after the last move.
-    checks: u8,
-    /// This zone's override was logged.
-    taken: bool,
-    /// This zone's dropped cursor update was logged.
-    dropped: bool,
-    log: bool,
 }
 
 impl Custody {
-    /// Puts the cursor right for where `e` has the pointer; false when
-    /// the pointer is over another of the app's windows, which ends it.
-    fn follow(&mut self, e: &NSEvent, mtm: MainThreadMarker, knobs: Knobs, cursors: bool) -> bool {
+    /// Puts the cursor right for where `e` has the pointer.
+    fn follow(&mut self, e: &NSEvent, mtm: MainThreadMarker, knobs: Knobs, cursors: bool) {
         // The window server's space is the primary screen's, flipped.
         let Some(primary) = NSScreen::screens(mtm).firstObject() else {
-            return true;
+            return;
         };
         let p = pointer(e);
-        let screen = NSPoint::new(p.x, primary.frame().size.height - p.y);
         let f = self.window.frame();
-        let (x, y) = (screen.x - f.origin.x, screen.y - f.origin.y);
+        let (x, y) = (
+            p.x - f.origin.x,
+            primary.frame().size.height - p.y - f.origin.y,
+        );
         if !x.is_finite() || !y.is_finite() {
-            return true;
+            return;
         }
         let zone = zone(x, y, f.size.width, f.size.height);
-        if zone == Zone::Outside {
-            let n = NSWindow::windowNumberAtPoint_belowWindowWithWindowNumber(screen, 0, mtm);
-            let other = NSApplication::sharedApplication(mtm)
-                .windowWithWindowNumber(n)
-                .is_some_and(|w| w.windowNumber() != self.window.windowNumber());
-            if other {
-                if knobs.log {
-                    eprintln!("kui edge resize: cursor handed to another window");
-                }
-                return false;
-            }
-        }
-        if self.zone != Some(zone) {
-            if knobs.log {
-                let (app, screen) = (NSCursor::currentCursor().hotSpot(), shown());
-                eprintln!(
-                    "kui edge resize: cursor {zone:?} (hot spot: app's {:?}, shown {:?})",
-                    (app.x, app.y),
-                    screen.map(|h| (h.x, h.y)),
-                );
-            }
-            self.taken = false;
-            self.dropped = false;
+        if knobs.log && self.zone != Some(zone) {
+            eprintln!("kui edge resize: cursor {zone:?}");
         }
         self.zone = Some(zone);
-        self.checks = 4;
-        self.want = match zone {
-            Zone::Edge(s) => position(s).filter(|_| cursors).map(|p| {
-                NSCursor::frameResizeCursorFromPosition_inDirections(
-                    p,
-                    NSCursorFrameResizeDirections::All,
-                )
-            }),
+        match zone {
+            Zone::Edge(s) => {
+                if let Some(p) = position(s).filter(|_| cursors) {
+                    NSCursor::frameResizeCursorFromPosition_inDirections(
+                        p,
+                        NSCursorFrameResizeDirections::All,
+                    )
+                    .set();
+                }
+            }
             Zone::Content => {
                 if let Some(view) = self.window.contentView() {
                     self.window.invalidateCursorRectsForView(&view);
                 }
-                None
             }
-            Zone::Outside => Some(NSCursor::arrowCursor()),
-        };
-        if let Some(c) = &self.want {
-            show(c);
+            Zone::Outside => NSCursor::arrowCursor().set(),
         }
-        true
     }
-
-    /// Whether AppKit's cursor update `e` is dropped: on the band and
-    /// outside, where the cursor is kui's.
-    fn drops_update(&mut self) -> bool {
-        if !matches!(self.zone, Some(Zone::Edge(_) | Zone::Outside)) {
-            return false;
-        }
-        if self.log && !self.dropped {
-            eprintln!(
-                "kui edge resize: AppKit's cursor update dropped on {:?}",
-                self.zone
-            );
-            self.dropped = true;
-        }
-        true
-    }
-
-    /// After a pump: sets the picked cursor again if something else set
-    /// another since. Told apart by hot spot, which is enough for the arrow
-    /// against a resize cursor, the case seen.
-    fn hold(&mut self) {
-        if self.checks == 0 {
-            return;
-        }
-        self.checks -= 1;
-        let Some(want) = &self.want else {
-            return;
-        };
-        // AppKit hands out a new resize cursor each time it is asked, so
-        // cursors are told apart by hot spot.
-        let hot = want.hotSpot();
-        let current = NSCursor::currentCursor().hotSpot();
-        let shown = shown();
-        if current == hot && shown.is_none_or(|h| h == hot) {
-            return;
-        }
-        if self.log && !self.taken {
-            eprintln!(
-                "kui edge resize: cursor taken over {:?} (app's hot spot {:?}, shown {:?}, ours {:?}); set again",
-                self.zone,
-                (current.x, current.y),
-                shown.map(|h| (h.x, h.y)),
-                (hot.x, hot.y),
-            );
-            self.taken = true;
-        }
-        show(want);
-    }
-}
-
-/// Called by the pumped runner after each pump, once AppKit has dispatched
-/// what it took: keeps the cursor a gesture left (see [`Custody`]).
-pub(crate) fn after_pump() {
-    CUSTODY.with(|c| {
-        if let Some(c) = &mut *c.borrow_mut() {
-            c.hold();
-        }
-    });
 }
 
 /// Where `e` has the pointer, in the window server's space (origin top
@@ -465,22 +339,13 @@ pub(crate) fn install(mtm: MainThreadMarker) {
                 NSEventType::MouseMoved => {
                     CUSTODY.with(|c| {
                         let mut c = c.borrow_mut();
-                        let keep = NSApplication::sharedApplication(mtm).isActive()
-                            && c.as_mut().is_some_and(|c| c.follow(e, mtm, knobs, cursors));
-                        if !keep {
+                        if !NSApplication::sharedApplication(mtm).isActive() {
                             *c = None;
+                        } else if let Some(c) = &mut *c {
+                            c.follow(e, mtm, knobs, cursors);
                         }
                     });
                     return ev.as_ptr();
-                }
-                NSEventType::CursorUpdate => {
-                    let drop = CUSTODY
-                        .with(|c| c.borrow_mut().as_mut().is_some_and(Custody::drops_update));
-                    return if drop {
-                        std::ptr::null_mut()
-                    } else {
-                        ev.as_ptr()
-                    };
                 }
                 NSEventType::RightMouseDown | NSEventType::OtherMouseDown => {
                     CUSTODY.with(|c| *c.borrow_mut() = None);
@@ -511,15 +376,9 @@ pub(crate) fn install(mtm: MainThreadMarker) {
                         let mut c = Custody {
                             window: g.window.clone(),
                             zone: None,
-                            want: None,
-                            checks: 0,
-                            taken: false,
-                            dropped: false,
-                            log: knobs.log,
                         };
-                        if c.follow(e, mtm, knobs, cursors) {
-                            CUSTODY.with(|slot| *slot.borrow_mut() = Some(c));
-                        }
+                        c.follow(e, mtm, knobs, cursors);
+                        CUSTODY.with(|slot| *slot.borrow_mut() = Some(c));
                     }
                     if knobs.log {
                         let f = g.window.frame();
@@ -590,7 +449,7 @@ pub(crate) fn install(mtm: MainThreadMarker) {
                     )
                 });
             if let Some(c) = &cursor {
-                show(c);
+                c.set();
             }
             if knobs.log {
                 eprintln!(
@@ -622,8 +481,7 @@ pub(crate) fn install(mtm: MainThreadMarker) {
                     | NSEventMask::LeftMouseUp
                     | NSEventMask::MouseMoved
                     | NSEventMask::RightMouseDown
-                    | NSEventMask::OtherMouseDown
-                    | NSEventMask::CursorUpdate,
+                    | NSEventMask::OtherMouseDown,
                 &handler,
             )
         };
@@ -774,22 +632,12 @@ mod tests {
         let (w, h) = (600.0, 432.0);
         // What an active window resized from on macOS 27, and what it did not.
         for x in [-2.0, 0.0, 2.0] {
-            assert_eq!(
-                zone(x, 200.0, w, h),
-                Zone::Edge(s(true, false, false, false)),
-                "{x}"
-            );
+            assert_eq!(zone(x, 200.0, w, h), Zone::Edge(s(true, false, false, false)), "{x}");
         }
         assert_eq!(zone(4.0, 200.0, w, h), Zone::Content);
         assert_eq!(zone(-4.0, 200.0, w, h), Zone::Outside);
-        assert_eq!(
-            zone(12.0, 2.0, w, h),
-            Zone::Edge(s(true, false, true, false))
-        );
-        assert_eq!(
-            zone(16.0, 2.0, w, h),
-            Zone::Edge(s(false, false, true, false))
-        );
+        assert_eq!(zone(12.0, 2.0, w, h), Zone::Edge(s(true, false, true, false)));
+        assert_eq!(zone(16.0, 2.0, w, h), Zone::Edge(s(false, false, true, false)));
         // An edge press grabs well inside the band; the cursor after it does not.
         assert_eq!(sides(8.0, 200.0, w, h), s(true, false, false, false));
         assert_eq!(zone(8.0, 200.0, w, h), Zone::Content);
