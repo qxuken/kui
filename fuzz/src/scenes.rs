@@ -25,8 +25,8 @@ use kui_core::input::{
     EditKey, KeyCode, KeyLocation, KeyLocks, KeyMods, KeyPress, Mods, MouseButton,
 };
 use kui_core::{
-    ClipboardMarks, Core, DismissReason, EditOptions, InputEvent, Key, NodeSpec, Size, TextStyle,
-    Ui, Vec2, WindowId,
+    ClipboardMarks, Core, DismissReason, EditOptions, InputEvent, Key, NodeSpec, QuadKind, Size,
+    TextStyle, Ui, Vec2, WindowId,
 };
 
 use crate::reuse::{self, Kept};
@@ -272,6 +272,7 @@ impl Driver<'_> {
             let _ = self.core.access_tree();
         }
         let finite = self.finite;
+        let groups = self.core.opacity_groups();
         let (list, _) = self.core.output();
         if let Some(t) = self.trace.as_deref_mut() {
             // Not the handles: a kept session's fixtures are not a new
@@ -296,6 +297,40 @@ impl Driver<'_> {
                 );
             }
         }
+        // What the renderer draws a group by: every one closed and nested,
+        // its markers naming each other over one picture of some size,
+        // faded by a fade; none with the switch off.
+        let mut open = Vec::new();
+        for (i, q) in list.quads.iter().enumerate() {
+            match q.kind {
+                QuadKind::GroupBegin | QuadKind::GroupEnd if !groups => {
+                    panic!("a group marker with groups off: {q:?}")
+                }
+                QuadKind::GroupBegin => open.push(i),
+                QuadKind::GroupEnd => {
+                    let b = open.pop().expect("a group ends that never began");
+                    let begin = &list.quads[b];
+                    assert_eq!(
+                        (begin.uv[0] as usize, q.uv[0] as usize),
+                        (i, b),
+                        "the markers at {b} and {i} name other ends"
+                    );
+                    assert!(
+                        begin.rect == q.rect && q.rect.w > 0.0 && q.rect.h > 0.0,
+                        "a group's picture is {:?} / {:?}",
+                        begin.rect,
+                        q.rect
+                    );
+                    assert!(
+                        q.color.a > 0.0 && q.color.a <= 1.0,
+                        "a group faded by {}",
+                        q.color.a
+                    );
+                }
+                _ => {}
+            }
+        }
+        assert!(open.is_empty(), "{} groups never end", open.len());
         if let Some(k) = self.edit {
             assert!(self.core.edit_text(k).is_some(), "the editor lost its text");
         }
