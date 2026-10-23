@@ -198,6 +198,17 @@ own that ignores those fields draws the shadow as before; kui.h's
 
 ### Changed
 
+- `cargo audit --deny warnings` is clean again over two advisories that
+  landed on main's dependencies after alpha.65: tokio 1.53.1 →
+  1.53.3 (RUSTSEC-2026-0386, `AsyncFd::new` unsound; in the lockfile
+  only through `wasm-bindgen-futures`, which no target kui ships
+  compiles), and clipboard-win 5.4.1 → 5.4.3, which arboard reads the
+  Windows clipboard through: 5.4.1 and every version before it were
+  yanked for reading HTML off the clipboard by a size the clipboard
+  gave and nobody checked, which 5.4.3 bounds. Both inside the two
+  weeks the lockfile otherwise waits, for the fixes; 5.4.3's diff is
+  that bound, a 5 ms retry sleep and doc comments.
+
 - CI's `check` job draws on a GPU: Mesa's software Vulkan (lavapipe,
   Debian's `mesa-vulkan-drivers` and `libvulkan1`) under
   `WGPU_BACKEND=vulkan`, so the capture tests in kui-wgpu, kui-native,
