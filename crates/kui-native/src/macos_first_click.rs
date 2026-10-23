@@ -21,10 +21,13 @@
 //! back into the queue after activation instead was tried and did not end
 //! AppKit's resize.
 
+use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::sync::Once;
+use std::time::{Duration, Instant};
 
 use objc2::MainThreadMarker;
+use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSEvent, NSEventMask, NSEventType, NSWindowStyleMask};
 
 /// How far inside the window's frame a press still counts as its edge, in
@@ -37,6 +40,52 @@ pub(crate) const EDGE: f64 = 12.0;
 /// window `w` × `h` is on its edge: within [`EDGE`] of any side, or outside.
 pub(crate) fn on_edge(x: f64, y: f64, w: f64, h: f64) -> bool {
     x < EDGE || y < EDGE || x > w - EDGE || y > h - EDGE
+}
+
+thread_local! {
+    /// The press the monitor held back, and when, until the app is active.
+    static HELD: RefCell<Option<(Retained<NSEvent>, Instant)>> = const { RefCell::new(None) };
+}
+
+/// How long a held press waits for the activation before it is let go.
+const WAIT: Duration = Duration::from_millis(500);
+
+fn note(what: std::fmt::Arguments<'_>) {
+    if std::env::var_os("KUI_FIRST_CLICK_LOG").is_some() {
+        eprintln!("kui first-click: {what}");
+    }
+}
+
+/// After a pump: once the app is active, the held press goes back to AppKit
+/// if the button is still down — the window is active now, so AppKit starts
+/// the resize at once and the drag in progress resizes, one gesture as
+/// anywhere else — and is let go if it came up, which is the release the
+/// delayed path missed.
+pub(crate) fn after_pump(mtm: MainThreadMarker) {
+    let Some((press, at)) = HELD.with(|h| h.borrow_mut().take()) else {
+        return;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    if !app.isActive() {
+        if at.elapsed() < WAIT {
+            HELD.with(|h| *h.borrow_mut() = Some((press, at)));
+        } else {
+            note(format_args!("let a press go: the app never became active"));
+        }
+        return;
+    }
+    if NSEvent::pressedMouseButtons() & 1 != 0 {
+        app.postEvent_atStart(&press, true);
+        note(format_args!(
+            "replayed the press {:.0} ms on, button down",
+            at.elapsed().as_secs_f64() * 1000.0
+        ));
+    } else {
+        note(format_args!(
+            "dropped the press {:.0} ms on, button up",
+            at.elapsed().as_secs_f64() * 1000.0
+        ));
+    }
 }
 
 /// Installs the monitor once per process, on macOS 26 and earlier; from the
@@ -76,6 +125,11 @@ pub(crate) fn install(mtm: MainThreadMarker) {
             #[allow(deprecated)]
             app.activateIgnoringOtherApps(true);
             window.makeKeyAndOrderFront(None);
+            // SAFETY: a live event, retained to be posted again later.
+            if let Some(press) = unsafe { Retained::retain(ev.as_ptr()) } {
+                HELD.with(|h| *h.borrow_mut() = Some((press, Instant::now())));
+            }
+            note(format_args!("held an edge press at {:.0},{:.0}", p.x, p.y));
             std::ptr::null_mut()
         });
         // SAFETY: the handler returns the event it was given, or nil to drop
