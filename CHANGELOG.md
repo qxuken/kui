@@ -34,9 +34,10 @@ was the first bare bump to break an app in five releases).
 - On macOS 26 and earlier, under the Node driver or any host that pumps
   the runner (`PumpRunner`, `KuiWindow.pump`), a left press on the edge
   of a window whose app is not active brings the window forward and
-  does not start a resize; the next press resizes. alpha.65 started a
-  resize that often stuck (below). The native runner, a press anywhere
-  else, and macOS 27 are unchanged (backlog RG168).
+  does not start a resize: the press, its drags and its release never
+  reach AppKit or the app, and the next press resizes. alpha.65 started
+  a resize that often stuck (below). The native runner, a press
+  anywhere else, and macOS 27 are unchanged (backlog RG168).
 
 The close button hides the panel and leaves it on, so its chords can
 bring it back, and `devtools()` stays true. An app's toggle on
@@ -54,9 +55,11 @@ click's release came before the activation did: the resize that
 followed waited for a release that had already come, the window
 followed the pointer until the next click, and a press held and let go
 outside the window hung the process inside AppKit, deaf to ⌘Q. Posting
-a release back after activation did not end it; dropping the press and
-activating the window does, at the price of the one-press resize from
-another app.
+a release back after activation did not end it, and neither did handing
+the press back once the app was active with the button still down;
+dropping the gesture and activating the window does, at the price of
+the one-press resize from another app, which wants AppKit's loop
+running the whole time under a pump (backlog C54).
 
 ### Fixed
 

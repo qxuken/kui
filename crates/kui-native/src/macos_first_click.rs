@@ -14,13 +14,21 @@
 //! activates in time and resizes on the first press, as Finder does.
 //!
 //! So under a pump, on macOS 26 and earlier, such a press only activates the
-//! app: the monitor below drops it and brings the window forward, and the
-//! drag or release that follows reaches the window as an ordinary event. The
-//! second press resizes. A press anywhere else, a press while the app is
-//! active, and every press on macOS 27 go on as before. Posting a release
-//! back into the queue after activation instead was tried and did not end
-//! AppKit's resize.
+//! app: the monitor below drops it, and the drags and the release of the
+//! same gesture with it, and brings the window forward. The second press
+//! resizes. Letting the rest of the gesture through made it a drag across
+//! the app, under the app's cursor, where the user meant a resize. A press
+//! anywhere else, a press while the app is active, and every press on
+//! macOS 27 go on as before.
+//!
+//! Tried on macOS 26.6.2 and not enough: posting a release back into the
+//! queue after activation (the resize ignored it), and handing the dropped
+//! press back to AppKit once the app was active with the button still down,
+//! 2–6 ms on (the resize stuck and hung as before). Resizing in one gesture
+//! from another app wants AppKit's loop running the whole time under a pump
+//! (backlog C54).
 
+use std::cell::Cell;
 use std::ptr::NonNull;
 use std::sync::Once;
 
@@ -39,6 +47,12 @@ pub(crate) fn on_edge(x: f64, y: f64, w: f64, h: f64) -> bool {
     x < EDGE || y < EDGE || x > w - EDGE || y > h - EDGE
 }
 
+thread_local! {
+    /// A dropped press's gesture is still down: its drags and its release
+    /// are dropped too.
+    static SWALLOWING: Cell<bool> = const { Cell::new(false) };
+}
+
 /// Installs the monitor once per process, on macOS 26 and earlier; from the
 /// pumped runner only, since a native run loop never has the gap.
 pub(crate) fn install(mtm: MainThreadMarker) {
@@ -53,8 +67,15 @@ pub(crate) fn install(mtm: MainThreadMarker) {
         let handler = block2::RcBlock::new(move |ev: NonNull<NSEvent>| -> *mut NSEvent {
             // SAFETY: AppKit hands the monitor a live event.
             let e = unsafe { ev.as_ref() };
-            if e.r#type() != NSEventType::LeftMouseDown {
-                return ev.as_ptr();
+            match e.r#type() {
+                NSEventType::LeftMouseDown => SWALLOWING.with(|s| s.set(false)),
+                NSEventType::LeftMouseDragged if SWALLOWING.with(Cell::get) => {
+                    return std::ptr::null_mut();
+                }
+                NSEventType::LeftMouseUp if SWALLOWING.with(|s| s.replace(false)) => {
+                    return std::ptr::null_mut();
+                }
+                _ => return ev.as_ptr(),
             }
             let app = NSApplication::sharedApplication(mtm);
             if app.isActive() {
@@ -76,13 +97,16 @@ pub(crate) fn install(mtm: MainThreadMarker) {
             #[allow(deprecated)]
             app.activateIgnoringOtherApps(true);
             window.makeKeyAndOrderFront(None);
+            SWALLOWING.with(|s| s.set(true));
             std::ptr::null_mut()
         });
         // SAFETY: the handler returns the event it was given, or nil to drop
         // it, as the monitor's contract asks; it lives for the process.
         let monitor = unsafe {
             NSEvent::addLocalMonitorForEventsMatchingMask_handler(
-                NSEventMask::LeftMouseDown,
+                NSEventMask::LeftMouseDown
+                    | NSEventMask::LeftMouseDragged
+                    | NSEventMask::LeftMouseUp,
                 &handler,
             )
         };
