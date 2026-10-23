@@ -695,7 +695,10 @@ impl Core {
         rgba: impl Into<std::sync::Arc<[u8]>>,
     ) -> bool {
         let rgba = rgba.into();
-        if width == 0 || height == 0 || rgba.len() as u64 != u64::from(width) * u64::from(height) * 4 {
+        if width == 0
+            || height == 0
+            || rgba.len() as u64 != u64::from(width) * u64::from(height) * 4
+        {
             return false;
         }
         self.menu_actions

@@ -159,7 +159,10 @@ impl Targets {
                 *slot = None;
                 continue;
             }
-            if slot.as_ref().is_some_and(|t| t.size.0 >= w && t.size.1 >= h) {
+            if slot
+                .as_ref()
+                .is_some_and(|t| t.size.0 >= w && t.size.1 >= h)
+            {
                 continue;
             }
             let have = slot.as_ref().map_or((0, 0), |t| t.size);
@@ -234,11 +237,18 @@ mod tests {
         ];
         let mut plans = Vec::new();
         plan(&quads, &mut plans);
-        let got: Vec<(u32, u32, u32, u32)> =
-            plans.iter().map(|p| (p.begin, p.end, p.depth, p.parent)).collect();
+        let got: Vec<(u32, u32, u32, u32)> = plans
+            .iter()
+            .map(|p| (p.begin, p.end, p.depth, p.parent))
+            .collect();
         assert_eq!(
             got,
-            vec![(2, 4, 1, 2), (5, 7, 1, 2), (0, 8, 0, FRAME), (9, 10, 0, FRAME)]
+            vec![
+                (2, 4, 1, 2),
+                (5, 7, 1, 2),
+                (0, 8, 0, FRAME),
+                (9, 10, 0, FRAME)
+            ]
         );
         let sizes = pack(&mut plans, 64, 8192).expect("fits");
         // Depth 1 in texture 1, side by side; depth 0 in texture 0.
@@ -258,7 +268,10 @@ mod tests {
             .collect();
         let mut plans = Vec::new();
         plan(&quads, &mut plans);
-        assert!(pack(&mut plans, 100, 250).is_none(), "three rows of 100 in 250");
+        assert!(
+            pack(&mut plans, 100, 250).is_none(),
+            "three rows of 100 in 250"
+        );
         assert!(pack(&mut plans, 100, 300).is_some());
     }
 }

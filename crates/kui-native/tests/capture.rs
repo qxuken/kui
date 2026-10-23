@@ -161,8 +161,18 @@ fn a_copy_asked_for_is_the_next_frame_queued_for_the_clipboard() {
         assert!(actions.is_empty(), "nothing copied when the capture failed");
         return;
     };
-    assert_eq!((c.path.as_str(), c.width, c.height, c.frames), ("", 60, 40, 1));
-    let [kui_native::MenuAction::SetClipboardImage { width, height, rgba }] = &actions[..] else {
+    assert_eq!(
+        (c.path.as_str(), c.width, c.height, c.frames),
+        ("", 60, 40, 1)
+    );
+    let [
+        kui_native::MenuAction::SetClipboardImage {
+            width,
+            height,
+            rgba,
+        },
+    ] = &actions[..]
+    else {
         panic!("one picture for the clipboard, not {actions:?}");
     };
     assert_eq!((*width, *height), (60, 40));

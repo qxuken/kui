@@ -74,10 +74,9 @@ impl Core {
         }
         if self.tree.specs[i].style.opacity < 1.0 {
             let begin = self.display.quads.len() as u32;
-            self.display.quads.push(marker(
-                QuadKind::GroupBegin,
-                (opacity / outer).min(1.0),
-            ));
+            self.display
+                .quads
+                .push(marker(QuadKind::GroupBegin, (opacity / outer).min(1.0)));
             self.groups.push(OpenGroup {
                 root: i as u32,
                 end: self.tree.subtree_end(i) as u32,

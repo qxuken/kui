@@ -13,7 +13,10 @@ use std::time::Instant;
 use kui_core::{Color, Core, NodeSpec, Size, TextStyle};
 use kui_wgpu::{Gpu, Renderer, wgpu};
 
-const VIEW: Size = Size { w: 1728.0, h: 1117.0 };
+const VIEW: Size = Size {
+    w: 1728.0,
+    h: 1117.0,
+};
 
 fn frame(core: &mut Core, n: usize) {
     let cols = (n as f32).sqrt().ceil() as usize;
@@ -46,8 +49,15 @@ fn median(mut v: Vec<f64>) -> f64 {
 
 fn main() {
     let counts: Vec<usize> = {
-        let asked: Vec<usize> = std::env::args().skip(1).filter_map(|s| s.parse().ok()).collect();
-        if asked.is_empty() { vec![10, 100, 1000] } else { asked }
+        let asked: Vec<usize> = std::env::args()
+            .skip(1)
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        if asked.is_empty() {
+            vec![10, 100, 1000]
+        } else {
+            asked
+        }
     };
     let gpu = pollster::block_on(Gpu::windowless()).expect("an adapter");
     eprintln!("adapter: {}", gpu.adapter().get_info().name);

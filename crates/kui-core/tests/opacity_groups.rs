@@ -44,7 +44,9 @@ fn off_by_default_every_quad_fades_on_its_own() {
     assert!(!core.opacity_groups());
     let qs = frame(&mut core, |ui| card(ui, 0.5));
     assert!(
-        !kinds(&qs).iter().any(|k| matches!(k, QuadKind::GroupBegin | QuadKind::GroupEnd)),
+        !kinds(&qs)
+            .iter()
+            .any(|k| matches!(k, QuadKind::GroupBegin | QuadKind::GroupEnd)),
         "no markers for a renderer that did not ask"
     );
     assert!(qs.iter().all(|q| q.color.a <= 0.5 + 1e-6), "faded per quad");
@@ -54,11 +56,21 @@ fn off_by_default_every_quad_fades_on_its_own() {
 fn a_faded_subtree_is_one_group_faded_once() {
     let mut core = grouping();
     let qs = frame(&mut core, |ui| card(ui, 0.5));
-    let b = qs.iter().position(|q| q.kind == QuadKind::GroupBegin).expect("a begin");
-    let e = qs.iter().position(|q| q.kind == QuadKind::GroupEnd).expect("an end");
+    let b = qs
+        .iter()
+        .position(|q| q.kind == QuadKind::GroupBegin)
+        .expect("a begin");
+    let e = qs
+        .iter()
+        .position(|q| q.kind == QuadKind::GroupEnd)
+        .expect("an end");
     assert!(b < e);
     assert_eq!((b, e), (0, qs.len() - 1), "around the card and its label");
-    assert_eq!((qs[b].uv[0], qs[e].uv[0]), (e as u32, b as u32), "each names the other");
+    assert_eq!(
+        (qs[b].uv[0], qs[e].uv[0]),
+        (e as u32, b as u32),
+        "each names the other"
+    );
     assert_eq!(qs[e].color.a, 0.5, "the fade, once");
     assert_eq!(qs[b].color.a, 0.5);
     // Inside, nothing of the card's fade: the fill and the glyphs are
@@ -79,18 +91,30 @@ fn a_group_of_one_thing_is_undone_into_its_fade() {
     let qs = frame(&mut core, |ui| {
         ui.leaf_keyed(
             "one",
-            NodeSpec::column().size(40.0, 20.0).bg(Color::WHITE).opacity(0.4),
+            NodeSpec::column()
+                .size(40.0, 20.0)
+                .bg(Color::WHITE)
+                .opacity(0.4),
         );
     });
     assert!(
-        !kinds(&qs).iter().any(|k| matches!(k, QuadKind::GroupBegin | QuadKind::GroupEnd)),
+        !kinds(&qs)
+            .iter()
+            .any(|k| matches!(k, QuadKind::GroupBegin | QuadKind::GroupEnd)),
         "one quad fades the same on its own"
     );
     let drawn: Vec<&Quad> = qs.iter().filter(|q| q.rect.w > 0.0).collect();
     assert_eq!(drawn.len(), 1);
-    assert!((drawn[0].color.a - 0.4).abs() < 1e-6, "the fade back on the quad");
+    assert!(
+        (drawn[0].color.a - 0.4).abs() < 1e-6,
+        "the fade back on the quad"
+    );
     // The markers are left as nothing at all.
-    assert!(qs.iter().filter(|q| q.rect.w <= 0.0).all(|q| q.color.a == 0.0));
+    assert!(
+        qs.iter()
+            .filter(|q| q.rect.w <= 0.0)
+            .all(|q| q.color.a == 0.0)
+    );
 }
 
 #[test]
@@ -99,7 +123,10 @@ fn a_group_inside_a_group_carries_its_own_fade_relative_to_the_outer() {
     let qs = frame(&mut core, |ui| {
         ui.with_keyed(
             "panel",
-            NodeSpec::column().pad(4.0).bg(Color::hex(0xeeeeeeff)).opacity(0.5),
+            NodeSpec::column()
+                .pad(4.0)
+                .bg(Color::hex(0xeeeeeeff))
+                .opacity(0.5),
             |ui| card(ui, 0.8),
         );
     });
@@ -111,11 +138,24 @@ fn a_group_inside_a_group_carries_its_own_fade_relative_to_the_outer() {
         .collect();
     assert_eq!(ends.len(), 2, "the panel's and the card's");
     let (inner, outer) = (ends[0], ends[1]);
-    assert!((qs[inner].color.a - 0.8).abs() < 1e-6, "the card's own, not 0.4");
+    assert!(
+        (qs[inner].color.a - 0.8).abs() < 1e-6,
+        "the card's own, not 0.4"
+    );
     assert_eq!(qs[outer].color.a, 0.5);
-    assert!(qs[outer].rect.w >= qs[inner].rect.w, "the outer holds the inner");
-    for q in qs.iter().filter(|q| !matches!(q.kind, QuadKind::GroupBegin | QuadKind::GroupEnd)) {
-        assert_eq!(q.color.a, 1.0, "{:?}: each picture fades it, not the quad", q.kind);
+    assert!(
+        qs[outer].rect.w >= qs[inner].rect.w,
+        "the outer holds the inner"
+    );
+    for q in qs
+        .iter()
+        .filter(|q| !matches!(q.kind, QuadKind::GroupBegin | QuadKind::GroupEnd))
+    {
+        assert_eq!(
+            q.color.a, 1.0,
+            "{:?}: each picture fades it, not the quad",
+            q.kind
+        );
     }
 }
 
@@ -125,19 +165,28 @@ fn a_node_inside_a_group_fades_by_what_lies_between_it_and_the_group() {
     let qs = frame(&mut core, |ui| {
         ui.with_keyed(
             "panel",
-            NodeSpec::column().pad(4.0).bg(Color::hex(0xeeeeeeff)).opacity(0.5),
+            NodeSpec::column()
+                .pad(4.0)
+                .bg(Color::hex(0xeeeeeeff))
+                .opacity(0.5),
             |ui| {
                 // A child at 0.5 of one quad: no group of its own, faded
                 // by its own 0.5 inside the panel's picture, not 0.25.
                 ui.leaf_keyed(
                     "dot",
-                    NodeSpec::column().size(10.0, 10.0).bg(Color::BLACK).opacity(0.5),
+                    NodeSpec::column()
+                        .size(10.0, 10.0)
+                        .bg(Color::BLACK)
+                        .opacity(0.5),
                 );
                 ui.leaf_keyed("bar", NodeSpec::column().size(40.0, 4.0).bg(Color::BLACK));
             },
         );
     });
-    assert_eq!(qs.iter().filter(|q| q.kind == QuadKind::GroupEnd).count(), 1);
+    assert_eq!(
+        qs.iter().filter(|q| q.kind == QuadKind::GroupEnd).count(),
+        1
+    );
     let solids: Vec<f32> = qs
         .iter()
         .filter(|q| q.kind == QuadKind::Solid && q.rect.w > 0.0)
@@ -152,7 +201,10 @@ fn a_float_under_a_faded_node_fades_on_its_own_outside_the_group() {
     let qs = frame(&mut core, |ui| {
         ui.with_keyed(
             "card",
-            NodeSpec::column().size(80.0, 30.0).bg(Color::BLACK).opacity(0.5),
+            NodeSpec::column()
+                .size(80.0, 30.0)
+                .bg(Color::BLACK)
+                .opacity(0.5),
             |ui| {
                 ui.leaf(NodeSpec::column().size(20.0, 10.0).bg(Color::WHITE));
                 ui.leaf_keyed(
@@ -165,13 +217,19 @@ fn a_float_under_a_faded_node_fades_on_its_own_outside_the_group() {
             },
         );
     });
-    let e = qs.iter().position(|q| q.kind == QuadKind::GroupEnd).expect("the card's group");
+    let e = qs
+        .iter()
+        .position(|q| q.kind == QuadKind::GroupEnd)
+        .expect("the card's group");
     let tip = qs
         .iter()
         .position(|q| q.color.r == 1.0 && q.color.g == 0.0 && q.kind == QuadKind::Solid)
         .expect("the float");
     assert!(tip > e, "the float's layer paints after the group");
-    assert_eq!(qs[tip].color.a, 0.5, "faded by the whole of its opacity, per quad");
+    assert_eq!(
+        qs[tip].color.a, 0.5,
+        "faded by the whole of its opacity, per quad"
+    );
 }
 
 #[test]
@@ -189,10 +247,15 @@ fn a_backdrop_blur_inside_undoes_the_group() {
         );
     });
     assert!(
-        !kinds(&qs).iter().any(|k| matches!(k, QuadKind::GroupBegin | QuadKind::GroupEnd)),
+        !kinds(&qs)
+            .iter()
+            .any(|k| matches!(k, QuadKind::GroupBegin | QuadKind::GroupEnd)),
         "a picture of its own has no frame under it to blur"
     );
-    let b = qs.iter().find(|q| q.kind == QuadKind::Backdrop).expect("the blur");
+    let b = qs
+        .iter()
+        .find(|q| q.kind == QuadKind::Backdrop)
+        .expect("the blur");
     assert_eq!(b.color.a, 0.5, "faded as before");
 }
 
@@ -202,9 +265,15 @@ fn a_disabled_stock_button_is_a_group() {
     let qs = frame(&mut core, |ui| {
         widgets::button_with(ui, "go", "Go", NodeSpec::default().disabled(true), None);
     });
-    let e = qs.iter().position(|q| q.kind == QuadKind::GroupEnd).expect("a group");
+    let e = qs
+        .iter()
+        .position(|q| q.kind == QuadKind::GroupEnd)
+        .expect("a group");
     let o = core.theme().disabled_opacity;
-    assert!((qs[e].color.a - o).abs() < 1e-6, "faded by the theme's disabled opacity");
+    assert!(
+        (qs[e].color.a - o).abs() < 1e-6,
+        "faded by the theme's disabled opacity"
+    );
 }
 
 #[test]

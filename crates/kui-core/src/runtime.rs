@@ -63,10 +63,10 @@ pub mod devtools;
 mod dispatch;
 mod emit;
 mod fills;
-mod groups;
 mod focus;
 pub mod follow;
 mod gesture;
+mod groups;
 pub mod inspect;
 mod menu_api;
 /// A slot replayed by its host (ADR 0045).

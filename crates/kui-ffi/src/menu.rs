@@ -406,7 +406,10 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
             y: at.y,
             width,
             height,
-            rgba: c.menu_image.as_ref().map_or(std::ptr::null(), |px| px.as_ptr()),
+            rgba: c
+                .menu_image
+                .as_ref()
+                .map_or(std::ptr::null(), |px| px.as_ptr()),
         };
         write_out(out, written)
     })

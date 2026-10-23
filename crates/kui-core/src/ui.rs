@@ -770,7 +770,12 @@ impl<'a> Ui<'a> {
 
     /// Puts a picture on the system clipboard; see
     /// `Core::set_clipboard_image`.
-    pub fn set_clipboard_image(&mut self, width: u32, height: u32, rgba: impl Into<std::sync::Arc<[u8]>>) -> bool {
+    pub fn set_clipboard_image(
+        &mut self,
+        width: u32,
+        height: u32,
+        rgba: impl Into<std::sync::Arc<[u8]>>,
+    ) -> bool {
         self.core.set_clipboard_image(width, height, rgba)
     }
 

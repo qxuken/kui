@@ -21,7 +21,10 @@ fn gpu() -> Option<Gpu> {
                 && !want.is_empty()
                 && want != "1"
             {
-                assert!(name.contains(&want), "KUI_REQUIRE_GPU={want}, but the adapter is {name}");
+                assert!(
+                    name.contains(&want),
+                    "KUI_REQUIRE_GPU={want}, but the adapter is {name}"
+                );
             }
             Some(g)
         }
@@ -62,7 +65,12 @@ impl Scene {
 
     fn build(self, core: &mut Core) {
         let mut ui = core.frame(VIEW, 2.0);
-        ui.configure_root(NodeSpec::column().fill().pad(10.0).bg(Color::hex(0xf0e8d8ff)));
+        ui.configure_root(
+            NodeSpec::column()
+                .fill()
+                .pad(10.0)
+                .bg(Color::hex(0xf0e8d8ff)),
+        );
         let card = |ui: &mut kui_core::Ui<'_>| {
             let mut spec = NodeSpec::row()
                 .gap(6.0)
@@ -96,7 +104,10 @@ impl Scene {
             Some(o) => {
                 ui.with_keyed(
                     "panel",
-                    NodeSpec::column().pad(6.0).bg(Color::hex(0xc8d8f0ff)).opacity(o),
+                    NodeSpec::column()
+                        .pad(6.0)
+                        .bg(Color::hex(0xc8d8f0ff))
+                        .opacity(o),
                     holder,
                 );
             }
@@ -142,7 +153,12 @@ fn mix(under: &[u8], over: &[u8], a: f32) -> Vec<u8> {
 /// The largest difference of any channel, and how many pixels differ by
 /// more than `by`.
 fn off(a: &[u8], b: &[u8], by: u8) -> (u8, usize) {
-    let worst = a.iter().zip(b).map(|(&x, &y)| x.abs_diff(y)).max().unwrap_or(0);
+    let worst = a
+        .iter()
+        .zip(b)
+        .map(|(&x, &y)| x.abs_diff(y))
+        .max()
+        .unwrap_or(0);
     let many = a
         .chunks(4)
         .zip(b.chunks(4))
@@ -153,11 +169,21 @@ fn off(a: &[u8], b: &[u8], by: u8) -> (u8, usize) {
 
 /// Checks `scene` at `a` against the reference, grouped within `tol` and
 /// per quad well outside it.
-fn against_reference(shots: &mut Shots, scene: Scene, without: Scene, with: Scene, a: f32, tol: u8) {
+fn against_reference(
+    shots: &mut Shots,
+    scene: Scene,
+    without: Scene,
+    with: Scene,
+    a: f32,
+    tol: u8,
+) {
     let reference = mix(&shots.shot(without, true), &shots.shot(with, true), a);
     let grouped = shots.shot(scene, true);
     let (worst, many) = off(&grouped, &reference, tol);
-    assert!(many == 0, "grouped: {many} pixels off by more than {tol}, worst {worst}");
+    assert!(
+        many == 0,
+        "grouped: {many} pixels off by more than {tol}, worst {worst}"
+    );
     // A white label on the dark card, each faded on its own, misses the
     // picture by a(1 - a) of the contrast between them, 223 levels.
     let expect = (a * (1.0 - a) * 223.0 * 0.8) as u8;
@@ -173,7 +199,14 @@ fn a_faded_card_and_its_label_fade_as_one_picture() {
     let Some(gpu) = gpu() else { return };
     let mut shots = Shots::new(gpu);
     for a in [0.5, 0.25, 0.8] {
-        against_reference(&mut shots, Scene::card(a), Scene::card(0.0), Scene::card(1.0), a, 2);
+        against_reference(
+            &mut shots,
+            Scene::card(a),
+            Scene::card(0.0),
+            Scene::card(1.0),
+            a,
+            2,
+        );
     }
 }
 
