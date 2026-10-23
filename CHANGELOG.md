@@ -31,6 +31,12 @@ was the first bare bump to break an app in five releases).
   panel was on already. The `Ctrl+Shift+I` chord, a pick and a declared
   devtools tab bring a hidden panel back where it was too, where they
   put it on the right (backlog F188).
+- On macOS 26 and earlier, under the Node driver or any host that pumps
+  the runner (`PumpRunner`, `KuiWindow.pump`), a left press on the edge
+  of a window whose app is not active brings the window forward and
+  does not start a resize; the next press resizes. alpha.65 started a
+  resize that often stuck (below). The native runner, a press anywhere
+  else, and macOS 27 are unchanged (backlog RG168).
 
 The close button hides the panel and leaves it on, so its chords can
 bring it back, and `devtools()` stays true. An app's toggle on
@@ -39,6 +45,18 @@ after turned on a panel still hidden: it never came back. Turning on a
 hidden panel now shows it. A toggle reads whether the panel shows as
 `devtools() && devtoolsDock() !== 'off'`, or it takes two presses after
 a close.
+
+A press on the resize edge of an inactive window goes to AppKit's
+delayed first-click path, which waits 78–230 ms for the activation to
+come back and only then starts the resize. A pumped runner runs AppKit
+a slice at a time and leaves it between, and on macOS 26 a quick
+click's release came before the activation did: the resize that
+followed waited for a release that had already come, the window
+followed the pointer until the next click, and a press held and let go
+outside the window hung the process inside AppKit, deaf to ⌘Q. Posting
+a release back after activation did not end it; dropping the press and
+activating the window does, at the price of the one-press resize from
+another app.
 
 ### Fixed
 
@@ -55,6 +73,9 @@ a close.
   1.12 to 0.56 ms a frame in `render`. `KUI_MAPPED_FRAMES=0` keeps the
   copy. A frame drawing a texture-backed image or a backdrop blur still
   copies those draws' parameters.
+- On macOS 26 a Node app's window no longer sticks to the pointer, or
+  hangs, after a click on its edge from another app (above; backlog
+  RG168).
 
 ## 0.1.0-alpha.65 (2026-10-23)
 

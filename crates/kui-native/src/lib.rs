@@ -172,6 +172,9 @@ mod macos_chrome;
 /// Files dragged in from the Finder, with where they are.
 #[cfg(target_os = "macos")]
 mod macos_drop;
+/// The first press on a pumped window's edge on macOS 26 (backlog RG168).
+#[cfg(target_os = "macos")]
+mod macos_first_click;
 #[cfg(target_os = "macos")]
 mod macos_force;
 /// A non-activating window that refuses to become key (the popup flick).
@@ -1298,6 +1301,12 @@ impl PumpState {
         event_loop.set_control_flow(ControlFlow::Wait);
         shell.pumped = true;
         shell.attach(&event_loop);
+        // A pump leaves AppKit's run loop between slices, which its
+        // first-click resize on macOS 26 cannot take (backlog RG168).
+        #[cfg(target_os = "macos")]
+        if let Some(mtm) = objc2::MainThreadMarker::new() {
+            macos_first_click::install(mtm);
+        }
         // First pump delivers `resumed`, creating the window + renderer —
         // or, on a loop taken back from an earlier runner, `about_to_wait`
         // does, since winit's init events came and went with the first.

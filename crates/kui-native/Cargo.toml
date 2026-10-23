@@ -121,7 +121,10 @@ wayland-protocols-plasma = { version = "0.3", features = ["client"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+# The first-press monitor's handler (`macos_first_click`, backlog RG168).
+block2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "block2",
     "std",
     "objc2-core-foundation",
     "NSAccessibility",

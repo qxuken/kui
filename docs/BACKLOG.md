@@ -284,7 +284,10 @@ built the day it was filed, after the alpha.65 tag, and is in the
 archive; and C53, from the same Builder's memory — a repainting window
 holding ~190 MB of GPU memory, ~75 MB of it the blit its per-frame
 buffer writes kept awake — was built the day it was filed, after the
-alpha.65 tag, and is in the archive.
+alpha.65 tag, and is in the archive; and RG168, from the same Builder on
+a macOS 26 machine — a click on a pumped window's edge from another app
+sticking the resize, or hanging the process — was built the day it was
+filed, after the alpha.65 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day

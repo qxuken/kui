@@ -1624,6 +1624,7 @@ dependencies = [
  "accesskit",
  "accesskit_winit",
  "arboard",
+ "block2 0.6.2",
  "gif",
  "image",
  "kira",
