@@ -5173,6 +5173,10 @@ move.
 
 - `~` **C55** — [A frame can only be drawn to a window's surface: no texture a host owns, and no `capture()`](backlog/closed-2026-09.md#-c55--a-frame-can-only-be-drawn-to-a-windows-surface-no-texture-a-host-owns-and-no-capture--done-2026-10-23) — done (2026-10-23) — kui-wgpu draws without a window (`Gpu::windowless`, `Gpu::from_parts`, `Renderer::windowless`, `render_to`) and reads a frame back (`Renderer::capture`); `kui_native::capture` on a process-wide windowless renderer through `Core::drawn`, with `kui_capture`, Odin's `capture` and Node's `capture()`; `encode_image` and `AnimationEncoder` in four bindings to keep one, or a recording, as a file
 
+**From the question C55 left (2026-10-23)** — C56, filed and built the same day, with ADR 0055
+
+- `~` **C56** — [A running app cannot capture or record its own window](backlog/closed-2026-09.md#-c56--a-running-app-cannot-capture-or-record-its-own-window--done-2026-10-23) — done (2026-10-23) — the app asks the driver to keep its window as a file: a still, or a recording to an animated PNG or GIF stopped by another ask, answered by a `capture` event
+
 **From the group-opacity measurement (2026-10-23)** — V10, filed and built the same day; V11 open
 
 - `!` **V10** — [A node's shadow is drawn under it, and shows through it when translucent or faded](backlog/closed-2026-09.md#-v10--a-nodes-shadow-is-drawn-under-it-and-shows-through-it-when-translucent-or-faded--done-2026-10-23) — done (2026-10-23) — the shadow quad carries the node's own box in its `uv` (`Quad::shadow_knockout`) and the shader leaves the shadow out where the box covers, as CSS does; a faded card is the card faded whole but for its antialiased edge
