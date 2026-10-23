@@ -1,0 +1,7 @@
+# Every text file is LF, in the repository and in every checkout, whatever
+# core.autocrlf says. The generators (cargo fmt, npm run gen, odin.nu gen,
+# set-version.nu) write LF, so a Windows checkout converted to CRLF read
+# every generated file as stale, and a test splitting a file it read on
+# "\n" kept a "\r" on each line. Git tells binary files (the book's
+# pictures) apart on its own; fuzz/.gitattributes marks the fuzz inputs.
+* text=auto eol=lf
