@@ -147,7 +147,17 @@ own that ignores those fields draws the shadow as before; kui.h's
   `ctx.serveCaptures()`, `kui_serve_captures(ctx)`, `serve_captures(ui)`;
   `Core::take_capture_commands()` drains the asks as data for a test
   with no GPU. Rust reads the answer as `Event::Capture(Captured)`, Odin
-  with `With_Capture`, Node with `WithCapture`.
+  with `With_Capture`, Node with `WithCapture`. A window writes a
+  recording on a thread of its own: the frame is drawn again and its
+  readback submitted on the loop's thread (about 0.6 ms a 1720×1200 frame
+  at 60 Hz), and waited for, encoded and written on the recording's, so a
+  window records at its display's refresh; a headless driver keeps the
+  work on its own thread, its answers pending when `serve` returns
+  (`Captures::write_on_thread` chooses).
+- `kui_wgpu::Renderer::capture_begin` and `PendingCapture::wait`:
+  `capture` in two halves, the second for any thread. `GlyphAtlas::rev`
+  and `GlyphAtlas::id`, which a renderer that is not the atlas's own
+  reads to tell whether its copy is current.
   `examples/rust/features/capture.rs` is a screenshot button and a
   "Record 5 seconds" toggle. Lua has none: a guest's frames are the
   host's.

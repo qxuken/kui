@@ -89,9 +89,19 @@ fn main() {
     for q in bare.quads.iter_mut().filter(|q| q.kind == QuadKind::Shadow) {
         q.uv = [0.0, 0.0, q.rect.w, q.rect.h].map(f32::to_bits);
     }
-    let shadows = list.quads.iter().filter(|q| q.kind == QuadKind::Shadow).count();
-    println!("\n{shadows} shadows of {} quads, 3456x2234\n", list.quads.len());
-    println!("{:>12} {:>10} {:>10} {:>11}", "", "cpu_med", "cpu_best", "gpu_frame");
+    let shadows = list
+        .quads
+        .iter()
+        .filter(|q| q.kind == QuadKind::Shadow)
+        .count();
+    println!(
+        "\n{shadows} shadows of {} quads, 3456x2234\n",
+        list.quads.len()
+    );
+    println!(
+        "{:>12} {:>10} {:>10} {:>11}",
+        "", "cpu_med", "cpu_best", "gpu_frame"
+    );
     for (name, dl) in [("knocked out", &list), ("not", &bare)] {
         for _ in 0..30 {
             r.render_to(dl, atlas, &target).unwrap();

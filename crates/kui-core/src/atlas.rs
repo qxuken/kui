@@ -119,6 +119,15 @@ pub struct GlyphAtlas {
     pub pixels: Vec<u8>,
     /// Set when pixels changed since the renderer last consumed them.
     pub dirty: bool,
+    /// Bumped with every change to `pixels`, as `dirty` is set: what a
+    /// renderer that is not the core's own — a capture, which must leave
+    /// `dirty` to the window's renderer — compares to tell whether its
+    /// copy is current (backlog C56).
+    pub rev: u64,
+    /// Unique to this atlas in the process, so a renderer that is shown
+    /// several cores' atlases — the process's one capture renderer — does
+    /// not take one's `epoch` and `rev` for another's.
+    id: u64,
     /// Bumped whenever the page is replaced — reset, or resized — so
     /// renderers re-upload it whole and caches that stamped it re-look
     /// their slots up. A resize keeps every slot where it was.
@@ -210,6 +219,11 @@ impl GlyphAtlas {
             size,
             pixels: vec![0; (size * size * 4) as usize],
             dirty: false,
+            rev: 0,
+            id: {
+                static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            },
             epoch: 0,
             stamp: 0,
             map: FxHashMap::default(),
@@ -408,6 +422,7 @@ impl GlyphAtlas {
         self.epoch += 1;
         self.stamp += 1;
         self.dirty = true;
+        self.rev += 1;
         self.frames_since_reset = 0;
         self.turned = false;
         self.refused.clear();
@@ -431,6 +446,7 @@ impl GlyphAtlas {
         self.epoch += 1;
         self.stamp += 1;
         self.dirty = true;
+        self.rev += 1;
     }
 
     /// Alloc with room made: on a full page, extend it (see the type's
@@ -520,6 +536,7 @@ impl GlyphAtlas {
                 .copy_from_slice(&data[src..src + (w as usize) * 4]);
         }
         self.dirty = true;
+        self.rev += 1;
     }
 
     /// A glyph the page held before `begin_frame` emptied it, its texels
@@ -806,6 +823,13 @@ impl GlyphAtlas {
 /// The texels a `w × h` item takes of the page, its padding included.
 fn texels(w: u32, h: u32) -> u64 {
     u64::from(w + 1) * u64::from(h + 1)
+}
+
+impl GlyphAtlas {
+    /// This atlas's id in the process: no other atlas has it.
+    pub fn id(&self) -> u64 {
+        self.id
+    }
 }
 
 impl Default for GlyphAtlas {

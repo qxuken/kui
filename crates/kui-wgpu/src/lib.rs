@@ -78,7 +78,9 @@
 //!   texture the host owns, for a host compositing kui with content of
 //!   its own (backlog C55).
 //! - [`Renderer::capture`]: a frame read back as straight RGBA
-//!   ([`Capture`]), what a test or a screenshot wants.
+//!   ([`Capture`]), what a test or a screenshot wants; in two halves,
+//!   [`Renderer::capture_begin`] and [`PendingCapture::wait`], for a
+//!   recording that waits on another thread.
 //! - [`RenderError`]: what each failed frame asks the runner to do next.
 //! - [`DEFAULT_FRAME_LATENCY`] and [`Renderer::set_frame_latency`]: how
 //!   many frames may queue ahead of the one on screen.
@@ -885,6 +887,15 @@ pub struct Renderer {
     atlas_tex: wgpu::Texture,
     atlas_size: u32,
     atlas_epoch: u64,
+    /// The atlas's `rev` the texture holds, for a renderer that does not
+    /// own the atlas's `dirty` flag ([`Renderer::capture`]).
+    atlas_rev: u64,
+    /// Whose atlas that is ([`GlyphAtlas::id`]).
+    atlas_id: u64,
+    /// The texture the last capture drew into, kept for the next one of
+    /// its size: a recording captures every frame, and the GPU orders the
+    /// next frame's draw after the last one's copy out of it.
+    capture_target: Option<wgpu::Texture>,
     instances: Vec<Instance>,
     /// What a fragment pipeline is built against: kui's vertex stage and
     /// the two-group layout. Built once per renderer, handed to the
@@ -1535,6 +1546,9 @@ impl Renderer {
             atlas_tex,
             atlas_size,
             atlas_epoch: u64::MAX,
+            atlas_rev: 0,
+            atlas_id: 0,
+            capture_target: None,
             instances: Vec::new(),
             fragment_layouts,
             fragment_bind_layout,
@@ -1764,9 +1778,11 @@ impl Renderer {
     }
 
     /// Uploads the atlas page when it changed since this renderer last
-    /// did, or whenever `force` says it cannot tell. Leaves `dirty` to the
-    /// caller: only the renderer that owns the core's atlas clears it.
-    fn sync_atlas(&mut self, atlas: &GlyphAtlas, force: bool) {
+    /// did: by its `dirty` flag for the renderer that `owns` it (the
+    /// core's, which clears the flag after), and by its `rev` for one that
+    /// does not and must leave the flag alone, a capture's. Leaves `dirty`
+    /// to the caller.
+    fn sync_atlas(&mut self, atlas: &GlyphAtlas, owns: bool) {
         if atlas.size != self.atlas_size {
             self.atlas_size = atlas.size;
             self.atlas_tex = create_atlas_texture(self.gpu.device(), atlas.size);
@@ -1784,7 +1800,12 @@ impl Renderer {
             }
             self.atlas_epoch = u64::MAX;
         }
-        if force || atlas.dirty || self.atlas_epoch != atlas.epoch {
+        let changed = if owns {
+            atlas.dirty
+        } else {
+            atlas.id() != self.atlas_id || atlas.rev != self.atlas_rev
+        };
+        if changed || self.atlas_epoch != atlas.epoch {
             self.gpu.queue().write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.atlas_tex,
@@ -1805,6 +1826,8 @@ impl Renderer {
                 },
             );
             self.atlas_epoch = atlas.epoch;
+            self.atlas_rev = atlas.rev;
+            self.atlas_id = atlas.id();
         }
     }
 
@@ -2075,7 +2098,7 @@ impl Renderer {
         if self.surface.is_none() {
             return Err(RenderError::Skip);
         }
-        self.sync_atlas(atlas, false);
+        self.sync_atlas(atlas, true);
         atlas.dirty = false;
         let prep = self.prepare(dl);
 
@@ -2149,7 +2172,7 @@ impl Renderer {
         }
         self.config.width = target.width();
         self.config.height = target.height();
-        self.sync_atlas(atlas, false);
+        self.sync_atlas(atlas, true);
         atlas.dirty = false;
         let prep = self.prepare(dl);
         let view = target.create_view(&wgpu::TextureViewDescriptor::default());
@@ -2171,10 +2194,13 @@ impl Renderer {
     /// `decode_image` use, so a capture can be shown again as an image.
     /// A `Bgra8Unorm` renderer's are swizzled.
     ///
-    /// Takes the atlas without clearing its `dirty` flag and uploads it
-    /// whole every time, so a renderer that is not the core's own — a
-    /// windowless one beside a window's — leaves the window's renderer
-    /// the changes it has not drawn yet. Waits for the GPU.
+    /// Takes the atlas without clearing its `dirty` flag — uploading it
+    /// when its id, `epoch` or `rev` say this renderer's copy is not
+    /// current — so a renderer that is not the core's own, a windowless
+    /// one beside a window's, leaves the window's renderer the changes it
+    /// has not drawn yet. Waits for the GPU:
+    /// [`Renderer::capture_begin`] then [`PendingCapture::wait`], which a
+    /// caller that should not wait splits across threads.
     ///
     /// [`RenderError::Validation`] for a list with no viewport, larger
     /// than the device's largest texture, a format other than
@@ -2185,6 +2211,23 @@ impl Renderer {
         dl: &DisplayList,
         atlas: &GlyphAtlas,
     ) -> Result<Capture, RenderError> {
+        self.capture_begin(dl, atlas)?.wait()
+    }
+
+    /// [`Renderer::capture`]'s first half: the frame drawn and its
+    /// readback submitted, and nothing waited for. The pixels are the
+    /// [`PendingCapture`]'s, which any thread may wait on, so a recording
+    /// draws each frame on the thread that has the core and leaves the
+    /// GPU's wait and the copy out to another (backlog C56). About half a
+    /// millisecond of CPU at 3456 by 2234, where the whole capture is ten.
+    ///
+    /// The same errors as [`Renderer::capture`], for what can be known at
+    /// the submit.
+    pub fn capture_begin(
+        &mut self,
+        dl: &DisplayList,
+        atlas: &GlyphAtlas,
+    ) -> Result<PendingCapture, RenderError> {
         if self.gpu.lost() {
             return Err(RenderError::DeviceLost);
         }
@@ -2204,20 +2247,23 @@ impl Renderer {
         }
         let device = self.gpu.device().clone();
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let target = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("kui.capture"),
-            size: wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let target = match self.capture_target.take() {
+            Some(t) if (t.width(), t.height()) == (w, h) => t,
+            _ => device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("kui.capture"),
+                size: wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            }),
+        };
         let bpr = (w * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("kui.capture"),
@@ -2227,7 +2273,7 @@ impl Renderer {
         });
         self.config.width = w;
         self.config.height = h;
-        self.sync_atlas(atlas, true);
+        self.sync_atlas(atlas, false);
         let prep = self.prepare(dl);
         let view = target.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder =
@@ -2246,16 +2292,8 @@ impl Renderer {
             target.size(),
         );
         self.submit(encoder.finish());
-        let slice = buf.slice(..);
-        let mapped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        slice.map_async(wgpu::MapMode::Read, {
-            let mapped = mapped.clone();
-            move |r| mapped.store(r.is_ok(), std::sync::atomic::Ordering::Release)
-        });
-        let _ = device.poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: None,
-        });
+        self.capture_target = Some(target);
+        // What the device refused is known by the submit.
         if pollster::block_on(scope.pop()).is_some() {
             return Err(if self.gpu.lost() {
                 RenderError::DeviceLost
@@ -2263,27 +2301,22 @@ impl Renderer {
                 RenderError::Validation
             });
         }
-        if !mapped.load(std::sync::atomic::Ordering::Acquire) {
-            return Err(if self.gpu.lost() {
-                RenderError::DeviceLost
-            } else {
-                RenderError::Validation
-            });
-        }
-        let data = slice
-            .get_mapped_range()
-            .map_err(|_| RenderError::Validation)?;
-        let mut rgba = Vec::with_capacity(w as usize * h as usize * 4);
-        for row in data.chunks(bpr as usize).take(h as usize) {
-            rgba.extend_from_slice(&row[..w as usize * 4]);
-        }
-        drop(data);
-        buf.unmap();
-        straighten(&mut rgba, bgra);
-        Ok(Capture {
+        let mapped = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(MAP_PENDING));
+        buf.slice(..).map_async(wgpu::MapMode::Read, {
+            let mapped = mapped.clone();
+            move |r| {
+                let state = if r.is_ok() { MAP_DONE } else { MAP_FAILED };
+                mapped.store(state, std::sync::atomic::Ordering::Release);
+            }
+        });
+        Ok(PendingCapture {
+            gpu: self.gpu.clone(),
+            buf,
+            mapped,
             width: w,
             height: h,
-            rgba,
+            bpr,
+            bgra,
         })
     }
 
@@ -2544,6 +2577,73 @@ impl Renderer {
                 }
             });
         }
+    }
+}
+
+// Waited on from a recording's thread (kui-native's `Captures`).
+const _: fn() = || {
+    fn send<T: Send>() {}
+    send::<PendingCapture>();
+};
+
+const MAP_PENDING: u8 = 0;
+const MAP_DONE: u8 = 1;
+const MAP_FAILED: u8 = 2;
+
+/// A frame [`Renderer::capture_begin`] drew and asked back, on its way:
+/// [`PendingCapture::wait`] has the pixels. `Send`, so the wait and the
+/// copy out may be another thread's.
+pub struct PendingCapture {
+    gpu: Gpu,
+    buf: wgpu::Buffer,
+    mapped: std::sync::Arc<std::sync::atomic::AtomicU8>,
+    width: u32,
+    height: u32,
+    bpr: u32,
+    bgra: bool,
+}
+
+impl PendingCapture {
+    /// Waits for the GPU and copies the frame out, as [`Renderer::capture`]
+    /// returns it. [`RenderError::DeviceLost`] when the device went before
+    /// it was done, [`RenderError::Validation`] when the readback failed.
+    pub fn wait(self) -> Result<Capture, RenderError> {
+        let device = self.gpu.device();
+        let failed = |gpu: &Gpu| {
+            if gpu.lost() {
+                RenderError::DeviceLost
+            } else {
+                RenderError::Validation
+            }
+        };
+        if self.mapped.load(std::sync::atomic::Ordering::Acquire) == MAP_PENDING {
+            let _ = device.poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            });
+        }
+        if self.mapped.load(std::sync::atomic::Ordering::Acquire) != MAP_DONE {
+            return Err(failed(&self.gpu));
+        }
+        let (w, h) = (self.width as usize, self.height as usize);
+        let mut rgba = Vec::with_capacity(w * h * 4);
+        {
+            let data = self
+                .buf
+                .slice(..)
+                .get_mapped_range()
+                .map_err(|_| failed(&self.gpu))?;
+            for row in data.chunks(self.bpr as usize).take(h) {
+                rgba.extend_from_slice(&row[..w * 4]);
+            }
+        }
+        self.buf.unmap();
+        straighten(&mut rgba, self.bgra);
+        Ok(Capture {
+            width: self.width,
+            height: self.height,
+            rgba,
+        })
     }
 }
 

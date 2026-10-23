@@ -226,3 +226,79 @@ fn what_cannot_be_written_fails_saying_why() {
     captures.serve(&mut core);
     assert!(answers(&mut core).is_empty());
 }
+
+/// The runner's mode: a recording written on a thread of its own. The
+/// serving thread only draws and submits each frame; the answer comes on
+/// a later serve, after the thread has asked for a frame, and the file is
+/// the one the serving thread would have written.
+#[test]
+fn a_recording_on_its_own_thread_writes_the_same_file_and_wakes_for_its_answer() {
+    let mut core = Core::new();
+    let mut captures = Captures::new();
+    let wakes = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    captures.write_on_thread({
+        let wakes = wakes.clone();
+        move || {
+            wakes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    });
+    let path = scratch("thread.apng");
+    core.set_time(1.0);
+    let mut ui = core.frame(Size::new(30.0, 20.0), 2.0);
+    ui.record_to(path.clone(), Some(Value::str("rec")));
+    ui.finish();
+    captures.serve(&mut core);
+    if kui_native::capture(&core).is_err_and(|e| e.starts_with("no GPU")) {
+        eprintln!("skipped: no GPU adapter");
+        return;
+    }
+    assert!(captures.recording());
+    frame_at(&mut core, 1.25, 0.0);
+    captures.serve(&mut core);
+    frame_at(&mut core, 1.5, 4.0);
+    captures.serve(&mut core);
+    core.stop_recording();
+    frame_at(&mut core, 2.0, 8.0);
+    captures.serve(&mut core);
+    assert!(!captures.recording(), "stopped, though still writing");
+    // The answer comes once the thread has written the file.
+    let mut got = answers(&mut core);
+    let start = std::time::Instant::now();
+    while got.is_empty() && start.elapsed() < std::time::Duration::from_secs(20) {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        captures.serve(&mut core);
+        got = answers(&mut core);
+    }
+    assert_eq!(got.len(), 1);
+    assert!(
+        wakes.load(std::sync::atomic::Ordering::SeqCst) >= 1,
+        "it asked for the frame"
+    );
+    let c = saved(&got[0]).expect("written");
+    assert_eq!((c.width, c.height, c.frames, c.seconds), (60, 40, 3, 1.0));
+    let anim = kui_native::decode_animation(&std::fs::read(&path).unwrap()).unwrap();
+    let delays: Vec<f64> = anim.frames.iter().map(|f| f.delay).collect();
+    assert_eq!(delays, [0.25, 0.25, 0.5]);
+}
+
+/// A window that goes mid-recording on a thread still leaves the file,
+/// whole, by the time its captures are dropped.
+#[test]
+fn a_recording_on_a_thread_is_written_when_its_window_goes() {
+    let mut core = Core::new();
+    let mut captures = Captures::new();
+    captures.write_on_thread(|| {});
+    let path = scratch("dropped.gif");
+    let _ = std::fs::remove_file(&path);
+    core.record_to(path.clone(), None);
+    frame_at(&mut core, 0.0, 0.0);
+    captures.serve(&mut core);
+    if !captures.recording() {
+        return; // no GPU: the failure was said on stderr
+    }
+    frame_at(&mut core, 0.1, 4.0);
+    captures.serve(&mut core);
+    drop(captures);
+    let anim = kui_native::decode_animation(&std::fs::read(&path).expect("written")).unwrap();
+    assert_eq!(anim.frames.len(), 2);
+}

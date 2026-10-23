@@ -216,3 +216,40 @@ about 12 ms to encode, an APNG's finish 15 ms and a GIF's 393 ms. At
   GPU), Node's `captureTo and recordTo write the frames and answer with
   the path`, and the `capture` example's headless drive, which checks the
   asks as data with no GPU.
+
+## Amendment: a recording is written on a thread (2026-10-23)
+
+Decision 7 kept everything on the thread that serves, and the first
+measurement made the cost plain: a debug build's window drew about 26
+frames a second while it recorded, every frame waiting for the GPU's
+readback and the copy out. A recording now runs on a thread of its own
+in every window the runner opens:
+
+- The serving thread draws each frame again and submits its readback,
+  and waits for nothing (`kui_wgpu::Renderer::capture_begin`, about
+  0.1 ms at 1720×1200). The pending frame goes through a queue of four
+  to the recording's thread, which waits for it, copies it out, adds it
+  to the encoder, and at the stop writes the file and wakes the loop;
+  the `capture` answer goes out with the frame that wake brings.
+- `Captures::write_on_thread(wake)` turns it on; the runner calls it
+  with its `Waker`. A headless driver — Node's `Ctx.serveCaptures`, C's
+  `kui_serve_captures`, a test — keeps the serving thread, so every
+  answer is pending when `serve` returns, as before. Stills stay on the
+  serving thread in both.
+- The capture renderer no longer uploads the whole glyph atlas page for
+  every capture: `GlyphAtlas::rev` moves with each change to its pixels,
+  and the renderer keeps the page it uploaded while the atlas's id,
+  `epoch` and `rev` are the ones it uploaded from. The id is what keeps a
+  renderer shown several windows' atlases — the process's one capture
+  renderer — from taking one for another.
+- A window that goes mid-recording still leaves a whole file: dropping
+  its `Captures` waits for the thread.
+
+Measured (M3 Pro, release): recording a 1720×1200 frame at a 60 Hz pace,
+`serve` takes 0.59 ms a frame (1.3 ms at worst) on the serving thread
+where it took 6.5 ms (20–27 ms at worst); a Node window recording itself
+for 3 s through `recordTo` kept 359 frames — 119 a second, its
+display's refresh — and answered 45 ms after the stop. This replaces the
+considered option "Writing on a thread" above, whose objection (a
+headless serve would have to wait) is met by keeping headless drivers
+on the serving thread.

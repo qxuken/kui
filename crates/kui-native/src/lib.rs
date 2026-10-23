@@ -2411,6 +2411,7 @@ impl DynShell<'_> {
             pinned_system,
             audio,
             pretended_loss,
+            proxy,
             ..
         } = self;
         let pane = &mut panes[i];
@@ -2689,6 +2690,16 @@ impl DynShell<'_> {
         // just finished, drawn again on the process's capture device, so
         // it does not matter whether this one reached the screen. Its
         // `capture` events go out with the frame's others (`after_frame`).
+        // A recording is written on a thread of its own, so recording a
+        // window costs it a draw and a submit a frame, not a wait for the
+        // GPU and the encode; the thread wakes the loop when the file is
+        // written, for the frame that answers.
+        if !pane.captures.writes_on_thread()
+            && let Some(p) = proxy.as_ref()
+        {
+            let waker = Waker(p.clone());
+            pane.captures.write_on_thread(move || waker.wake());
+        }
         pane.captures.serve(&mut pane.core);
 
         pane.core.stats.push(FrameSample {

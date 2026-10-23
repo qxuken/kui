@@ -49,6 +49,39 @@ static RENDERER: std::sync::Mutex<Option<kui_wgpu::Renderer>> = std::sync::Mutex
 /// adapter (a container with no software Vulkan); after a lost device
 /// the next capture opens a new one.
 pub fn capture(core: &Core) -> Result<Capture, String> {
+    capture_begin(core)?.wait()
+}
+
+/// A frame [`capture_begin`] drew and asked back, not yet waited for:
+/// the GPU's wait and the copy out are [`PendingFrame::wait`]'s, on
+/// whichever thread calls it.
+pub(crate) struct PendingFrame {
+    pending: kui_wgpu::PendingCapture,
+    scale: f32,
+}
+
+impl PendingFrame {
+    pub(crate) fn wait(self) -> Result<Capture, String> {
+        match self.pending.wait() {
+            Ok(c) => Ok(Capture {
+                width: c.width,
+                height: c.height,
+                scale: self.scale,
+                rgba: c.rgba,
+            }),
+            // The next capture finds the device lost and opens another.
+            Err(kui_wgpu::RenderError::DeviceLost) => {
+                Err("the GPU device was lost; the next capture opens another".into())
+            }
+            Err(_) => Err("the GPU could not read the frame back".into()),
+        }
+    }
+}
+
+/// [`capture`]'s first half, on the thread that has the core: the frame
+/// drawn on the process's capture device and its readback submitted,
+/// about half a millisecond, with nothing waited for.
+pub(crate) fn capture_begin(core: &Core) -> Result<PendingFrame, String> {
     let (dl, atlas) = core.drawn();
     if dl.viewport.w < 1.0 || dl.viewport.h < 1.0 {
         return Err("no finished frame to capture".into());
@@ -73,12 +106,10 @@ pub fn capture(core: &Core) -> Result<Capture, String> {
         b: bg.b as f64,
         a: bg.a as f64,
     };
-    match r.capture(dl, atlas) {
-        Ok(c) => Ok(Capture {
-            width: c.width,
-            height: c.height,
+    match r.capture_begin(dl, atlas) {
+        Ok(pending) => Ok(PendingFrame {
+            pending,
             scale: dl.scale,
-            rgba: c.rgba,
         }),
         Err(kui_wgpu::RenderError::DeviceLost) => {
             *slot = None;
@@ -116,13 +147,25 @@ pub fn capture(core: &Core) -> Result<Capture, String> {
 /// let events = core.take_pending_events();
 /// ```
 ///
-/// The work is done on the thread that serves: the capture (about 10 ms
-/// at 3456 by 2234, 2 ms at 800 by 600), a still's encode (12 ms for a
+/// By default the work is done on the thread that serves, and every
+/// answer is pending when `serve` returns: the capture (about 10 ms at
+/// 3456 by 2234, 2 ms at 800 by 600), a still's encode (12 ms for a
 /// retina PNG), a recorded frame's add (2 ms), and a recording's finish
-/// (15 ms for a retina APNG, 0.4 s for a GIF).
+/// (15 ms for a retina APNG, 0.4 s for a GIF). [`Captures::write_on_thread`]
+/// moves a recording to a thread of its own, as the runner does for every
+/// window: the serving thread only draws each frame again and submits
+/// it (about half a millisecond), and the recording's answer comes on a
+/// later serve, the thread having asked for the frame that brings it.
 #[derive(Default)]
 pub struct Captures {
     recording: Option<Recording>,
+    /// A recording written on its own thread, running.
+    worker: Option<Worker>,
+    /// Stopped recordings whose threads are still writing.
+    finishing: Vec<Worker>,
+    /// What asks for a frame once a thread has written a recording:
+    /// `Some` puts recordings on threads.
+    wake: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
 }
 
 struct Recording {
@@ -138,15 +181,59 @@ struct Recording {
     seconds: f64,
 }
 
+/// What a written recording reports: its size, frames and seconds.
+struct Written {
+    width: u32,
+    height: u32,
+    frames: u32,
+    seconds: f64,
+}
+
+/// A recording on a thread of its own: the frames go to it as they are
+/// drawn, and what came of it comes back once it is written.
+struct Worker {
+    path: String,
+    message: Option<kui_core::Value>,
+    /// Dropped to tell the thread the window went.
+    jobs: Option<std::sync::mpsc::SyncSender<Job>>,
+    done: std::sync::mpsc::Receiver<Result<Written, String>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+enum Job {
+    /// A frame drawn at a moment of the frame clock, its pixels on the way.
+    Frame(PendingFrame, f64),
+    /// The recording stops at a moment: the last frame shows until then.
+    Stop(f64),
+}
+
+/// How many frames may wait for a recording's thread before the serving
+/// thread waits for it in turn: each holds a frame's readback (30 MB at
+/// retina), and a thread that keeps up never lets two pile up.
+const QUEUED_FRAMES: usize = 4;
+
 impl Captures {
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Writes recordings on threads of their own from here on (see the
+    /// type's docs), `wake` asking for the frame that brings a written
+    /// recording's answer back — `Waker::wake`, for the runner. Stills
+    /// stay on the serving thread.
+    pub fn write_on_thread(&mut self, wake: impl Fn() + Send + Sync + 'static) {
+        self.wake = Some(std::sync::Arc::new(wake));
+    }
+
+    /// Whether [`Captures::write_on_thread`] was called.
+    pub fn writes_on_thread(&self) -> bool {
+        self.wake.is_some()
+    }
+
     /// Whether a recording is running: what a driver that draws only on
     /// change may read to keep drawing for one.
     pub fn recording(&self) -> bool {
-        self.recording.is_some()
+        self.recording.is_some() || self.worker.is_some()
     }
 
     /// A driver's turn after a frame is drawn: drains the core's capture
@@ -155,10 +242,12 @@ impl Captures {
     /// until now, one asked for starts with this frame, and a stop
     /// writes the file without it. What was written, or why not, is a
     /// `capture` event pending on the core for each ask that named a
-    /// message.
+    /// message — at once, or on a later turn for a recording written on
+    /// its own thread.
     pub fn serve(&mut self, core: &mut Core) {
+        self.collect(core);
         let cmds = core.take_capture_commands();
-        if cmds.is_empty() && self.recording.is_none() {
+        if cmds.is_empty() && !self.recording() {
             return;
         }
         let now = core.now();
@@ -175,6 +264,7 @@ impl Captures {
                 hold = true;
             }
         }
+        hold |= self.worker.is_some();
         for cmd in cmds {
             match cmd {
                 kui_core::CaptureCommand::Still { path, message } => {
@@ -191,25 +281,23 @@ impl Captures {
                     }
                 }
                 kui_core::CaptureCommand::Record { path, message } => {
-                    if let Some(r) = &self.recording {
-                        let why = format!("already recording to {:?}", r.path);
+                    let running = self
+                        .recording
+                        .as_ref()
+                        .map(|r| &r.path)
+                        .or(self.worker.as_ref().map(|w| &w.path));
+                    if let Some(running) = running {
+                        let why = format!("already recording to {running:?}");
                         fail(core, message, &path, why);
                         continue;
                     }
                     match kui_core::CaptureFormat::of_recording(&path) {
                         Ok(f) => {
-                            self.recording = Some(Recording {
-                                path,
-                                message,
-                                format: match f {
-                                    kui_core::CaptureFormat::Gif => crate::AnimationEncoding::Gif,
-                                    _ => crate::AnimationEncoding::Png,
-                                },
-                                encoder: None,
-                                held: None,
-                                frames: 0,
-                                seconds: 0.0,
-                            });
+                            let r = Recording::new(path, message, f);
+                            match &self.wake {
+                                Some(wake) => self.worker = Some(Worker::spawn(r, wake.clone())),
+                                None => self.recording = Some(r),
+                            }
                             hold = true;
                         }
                         Err(why) => fail(core, message, &path, why),
@@ -218,7 +306,18 @@ impl Captures {
                 kui_core::CaptureCommand::Stop => {
                     if let Some(r) = self.recording.take() {
                         hold = false;
-                        r.finish(core);
+                        let (message, path) = (r.message.clone(), r.path.clone());
+                        match r.write(now) {
+                            Ok(w) => {
+                                saved(core, message, &path, w.width, w.height, w.frames, w.seconds)
+                            }
+                            Err(why) => fail(core, message, &path, why),
+                        }
+                    }
+                    if let Some(mut w) = self.worker.take() {
+                        hold = false;
+                        w.send(Job::Stop(now));
+                        self.finishing.push(w);
                     }
                 }
             }
@@ -233,31 +332,152 @@ impl Captures {
                 fail(core, r.message, &r.path, why);
             }
         }
+        if hold && let Some(w) = self.worker.as_mut() {
+            match capture_begin(core) {
+                Ok(frame) => w.send(Job::Frame(frame, now)),
+                Err(why) => {
+                    let w = self.worker.take().expect("running");
+                    fail(core, w.message.clone(), &w.path, why);
+                }
+            }
+        }
+    }
+
+    /// The answers of recordings whose threads have finished: written, or
+    /// stopped by a failure while still running.
+    fn collect(&mut self, core: &mut Core) {
+        let mut i = 0;
+        while i < self.finishing.len() {
+            match self.finishing[i].done.try_recv() {
+                Err(std::sync::mpsc::TryRecvError::Empty) => i += 1,
+                got => {
+                    let mut w = self.finishing.remove(i);
+                    w.answer(core, got.ok());
+                }
+            }
+        }
+        if let Some(w) = &self.worker
+            && let Ok(got) = w.done.try_recv()
+        {
+            let mut w = self.worker.take().expect("running");
+            w.answer(core, Some(got));
+        }
     }
 }
 
 impl Drop for Captures {
     /// A recording still running when its window goes is written, its
     /// last frame shown for as long as it was on screen; its core went
-    /// with the window, so nothing hears it.
+    /// with the window, so nothing hears it. A thread still writing one
+    /// is waited for, so the file is whole when the process ends.
     fn drop(&mut self) {
-        let Some(mut r) = self.recording.take() else {
-            return;
-        };
-        if let Some((px, _, at)) = r.held.take()
-            && let Some(enc) = r.encoder.as_mut()
+        if let Some(r) = self.recording.take()
+            && let Err(e) = r.write_dropped()
         {
-            let _ = enc.add(&px, at.elapsed().as_secs_f64());
+            eprintln!("kui: writing the recording: {e}");
         }
-        if let Some(Ok(bytes)) = r.encoder.take().map(crate::AnimationEncoder::finish)
-            && let Err(e) = std::fs::write(&r.path, bytes)
+        for mut w in self
+            .worker
+            .take()
+            .into_iter()
+            .chain(self.finishing.drain(..))
         {
-            eprintln!("kui: writing the recording {:?}: {e}", r.path);
+            w.jobs = None;
+            if let Some(t) = w.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+}
+
+impl Worker {
+    fn spawn(r: Recording, wake: std::sync::Arc<dyn Fn() + Send + Sync>) -> Self {
+        let (jobs, rx) = std::sync::mpsc::sync_channel(QUEUED_FRAMES);
+        let (tx, done) = std::sync::mpsc::channel();
+        let (path, message) = (r.path.clone(), r.message.clone());
+        let thread = std::thread::Builder::new()
+            .name("kui-recording".into())
+            .spawn(move || {
+                let _ = tx.send(r.record(rx));
+                wake();
+            })
+            .ok();
+        Self {
+            path,
+            message,
+            jobs: Some(jobs),
+            done,
+            thread,
+        }
+    }
+
+    /// Hands the thread a job; one that has stopped (it failed) is heard
+    /// at the next collect.
+    fn send(&mut self, job: Job) {
+        if let Some(jobs) = &self.jobs
+            && jobs.send(job).is_err()
+        {
+            self.jobs = None;
+        }
+    }
+
+    /// Joins the thread and says what came of the recording; `None` when
+    /// the thread ended without a word (it panicked).
+    fn answer(&mut self, core: &mut Core, got: Option<Result<Written, String>>) {
+        self.jobs = None;
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+        let got =
+            got.unwrap_or_else(|| Err("the recording's thread ended without writing it".into()));
+        match got {
+            Ok(w) => saved(
+                core,
+                self.message.take(),
+                &self.path,
+                w.width,
+                w.height,
+                w.frames,
+                w.seconds,
+            ),
+            Err(why) => fail(core, self.message.take(), &self.path, why),
         }
     }
 }
 
 impl Recording {
+    fn new(path: String, message: Option<kui_core::Value>, f: kui_core::CaptureFormat) -> Self {
+        Self {
+            path,
+            message,
+            format: match f {
+                kui_core::CaptureFormat::Gif => crate::AnimationEncoding::Gif,
+                _ => crate::AnimationEncoding::Png,
+            },
+            encoder: None,
+            held: None,
+            frames: 0,
+            seconds: 0.0,
+        }
+    }
+
+    /// A recording's thread: each frame shows the one before until it was
+    /// drawn, is waited for and held; a stop writes the file. A window
+    /// that went with the recording running (the jobs ending) writes it as
+    /// a dropped one does.
+    fn record(mut self, jobs: std::sync::mpsc::Receiver<Job>) -> Result<Written, String> {
+        for job in jobs {
+            match job {
+                Job::Frame(frame, at) => {
+                    self.show_held(at)?;
+                    self.hold(frame.wait()?, at)?;
+                }
+                Job::Stop(at) => return self.write(at),
+            }
+        }
+        self.write_dropped()
+    }
+
     /// The held frame shown until `now`.
     fn show_held(&mut self, now: f64) -> Result<(), String> {
         let Some((px, at, _)) = self.held.take() else {
@@ -297,32 +517,39 @@ impl Recording {
         Ok(())
     }
 
-    /// Writes the file, without the frame drawn at the stop, and says so.
-    fn finish(mut self, core: &mut Core) {
-        let now = core.now();
-        let done = self.show_held(now).and_then(|()| {
-            let enc = self
-                .encoder
-                .take()
-                .ok_or_else(|| "no frame was drawn while recording".to_string())?;
-            let (w, h) = enc.size();
-            let bytes = enc.finish()?;
-            std::fs::write(&self.path, bytes)
-                .map_err(|e| format!("writing {:?}: {e}", self.path))?;
-            Ok((w, h))
-        });
-        match done {
-            Ok((w, h)) => saved(
-                core,
-                self.message,
-                &self.path,
-                w,
-                h,
-                self.frames,
-                self.seconds,
-            ),
-            Err(why) => fail(core, self.message, &self.path, why),
+    /// Writes the file, without the frame drawn at the stop at `now`.
+    fn write(mut self, now: f64) -> Result<Written, String> {
+        self.show_held(now)?;
+        self.write_file()
+    }
+
+    /// Writes the file of a recording whose window went: its last frame
+    /// shown for as long as it was on screen, by the wall's clock.
+    fn write_dropped(mut self) -> Result<Written, String> {
+        if let Some((px, _, at)) = self.held.take()
+            && let Some(enc) = self.encoder.as_mut()
+        {
+            let secs = at.elapsed().as_secs_f64();
+            enc.add(&px, secs)?;
+            self.seconds += secs;
         }
+        self.write_file()
+    }
+
+    fn write_file(mut self) -> Result<Written, String> {
+        let enc = self
+            .encoder
+            .take()
+            .ok_or_else(|| "no frame was drawn while recording".to_string())?;
+        let (width, height) = enc.size();
+        let bytes = enc.finish()?;
+        std::fs::write(&self.path, bytes).map_err(|e| format!("writing {:?}: {e}", self.path))?;
+        Ok(Written {
+            width,
+            height,
+            frames: self.frames,
+            seconds: self.seconds,
+        })
     }
 }
 

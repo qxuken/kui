@@ -262,3 +262,43 @@ fn a_host_s_own_device_takes_a_windowless_renderer() {
     r.render_to(dl, atlas, &target)
         .expect("into the host's texture");
 }
+
+/// One renderer shown several cores' atlases in turn — the process's
+/// capture renderer is — uploads a page when it is another atlas, or the
+/// same one changed, and only then: each capture is the frame a fresh
+/// renderer draws.
+#[test]
+fn a_shared_capture_renderer_follows_each_core_s_atlas() {
+    let Some(gpu) = gpu() else { return };
+    let words = |core: &mut Core, text: &str| {
+        let mut ui = core.frame(Size::new(120.0, 30.0), 2.0);
+        ui.configure_root(NodeSpec::column().fill().bg(Color::hex(0xffffffff)));
+        ui.text(text, TextStyle::new(14.0));
+        ui.finish();
+    };
+    let fresh = |core: &mut Core| {
+        let mut r = Renderer::windowless(&gpu, wgpu::TextureFormat::Rgba8Unorm).unwrap();
+        let (dl, atlas) = core.output();
+        r.capture(dl, atlas).unwrap().rgba
+    };
+    let mut shared = Renderer::windowless(&gpu, wgpu::TextureFormat::Rgba8Unorm).unwrap();
+    let (mut a, mut b) = (Core::new(), Core::new());
+    words(&mut a, "abc");
+    words(&mut b, "xyz");
+    for (core, what) in [(&mut a, "a"), (&mut b, "b")] {
+        let (dl, atlas) = core.output();
+        let got = shared.capture(dl, atlas).unwrap().rgba;
+        assert!(
+            got == fresh(core),
+            "{what}: the shared renderer drew another atlas"
+        );
+    }
+    // The same core, its page grown by new glyphs since the last capture.
+    words(&mut a, "abc qrs");
+    let (dl, atlas) = a.output();
+    let got = shared.capture(dl, atlas).unwrap().rgba;
+    assert!(
+        got == fresh(&mut a),
+        "the shared renderer kept a stale page"
+    );
+}
