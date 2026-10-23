@@ -67,6 +67,19 @@ was the first bare bump to break an app in five releases).
   `SetClipboardImage`, which an exhaustive `match` names. Node's
   `takeMenuActions()` can hand out `{kind: 'setClipboardImage', width,
   height}`.
+- A wheel's notch glides longer and starts softer: nine tenths of the
+  way by 170 ms and landed by about 280 ms, where alpha.65 was nine
+  tenths there by 100 ms and landed by 180. A view or a test that reads
+  a container's offset a few frames after a notch reads less of it
+  ([ADR 0050](docs/adr/0050-a-wheel-notch-glides.md), amended).
+
+Notches a hand turns slowly, 150–250 ms apart, each started at full
+speed and had stopped by the next, so the page jerked forward and
+halted once a notch: two notches 150 ms apart went from half a pixel a
+frame to fifteen. Each notch now gives the spring 60% of that speed,
+on a 0.30 s response where it was 0.21 s. The first frame is still each
+notch's fastest, and the same pair goes from 1.3 px a frame to 8.8. A
+fast spin trails its target by under a notch, as before.
 
 The close button hides the panel and leaves it on, so its chords can
 bring it back, and `devtools()` stays true. An app's toggle on

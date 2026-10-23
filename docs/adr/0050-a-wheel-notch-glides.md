@@ -7,7 +7,9 @@ date: 2026-10-23
 
 > **Accepted and built 2026-10-23; backlog F182.** What the building
 > changed is at the end, under [*What the building
-> changed*](#what-the-building-changed). Raised by the user from
+> changed*](#what-the-building-changed), and the glide was retuned on
+> 2026-10-24 ([amendment](#amended-2026-10-24-a-slower-hands-notches-run-into-each-other)).
+> Raised by the user from
 > Windows: a mouse wheel there scrolls in hard 40 px steps, where a
 > macOS trackpad scrolls smoothly. The steps are not Windows' alone. A
 > notch is a step on every platform, a plain mouse on macOS included;
@@ -270,3 +272,29 @@ frame will draw. Two things keep it from serving a wheel:
   moved the `virtual_list` example's rows on every frame, fast and then
   settling, and landed 120 px down. Windows and Linux are not run here;
   the per-backend list in Context is still from reading.
+
+## Amended 2026-10-24: a slower hand's notches run into each other
+
+Raised by the user from Carnet: notches turned slowly were jumpy. At a
+0.21 s response with a whole kick, a notch was landed by 180 ms. Its
+speed fell from 15 px a frame to under one by the ninth frame, so
+notches 150–250 ms apart each found the page stopped. Each one lurched
+off at full speed and halted again.
+
+- **Each notch gives `GLIDE_KICK` (0.6) of the pure ease-out's speed**,
+  and the response is 0.30 s. A notch's share still eases out, its
+  first frame the fastest. At 60 Hz that is 7.8 px of a 40 px notch on
+  the first frame (was 14.8), nine tenths by 170 ms (was 100) and
+  landed by about 280 ms (was 180). Two notches 150 ms apart go from
+  1.3 px a frame to 8.8, where they went from 0.5 to 15.1. At 250 ms
+  apart they go from 0.3 to 8.0, where the old glide had been still
+  for four frames. A spin of ten notches a second trails its target by
+  about 27 px, under a notch (was 13).
+- No kick at all, a spring from rest, was the soft start the building
+  rejected as lag. A whole kick on a slower response alone keeps the
+  hard start and still stops before a 250 ms gap ends. The two numbers
+  were picked by simulating the step at 60 Hz, not by eye on a device.
+- `notches_turned_slowly_run_into_each_other` (`wheel_glide.rs`) holds
+  the 150 ms case: the glide is still moving at least a pixel a frame
+  when the second notch comes, and that notch's first frame is under
+  eight times the last one before it.

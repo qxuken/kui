@@ -144,13 +144,23 @@ struct Glide {
 }
 
 /// The glide's response time, in SwiftUI's parametrisation (the spring's
-/// period undamped). Critically damped, and every notch adding `ω` times
-/// its own travel to the speed ([`glide_omega`]), each notch's share
-/// eases out exactly — `1 - e^(-ωt)`, fast first and settling — and a
-/// 40 px notch is within half a pixel of its target in about 150 ms. A
-/// notch landing mid-glide adds to the speed there is rather than
-/// starting from rest (ADR 0050, decision 3).
-const GLIDE_RESPONSE: f64 = 0.21;
+/// period undamped). Critically damped, with every notch adding
+/// [`GLIDE_KICK`] of `ω` times its own travel to the speed
+/// ([`glide_omega`]): each notch's share eases out, fastest on its first
+/// frame, and a 40 px notch is nine tenths there by 170 ms and within
+/// half a pixel by about 280 ms. A notch landing mid-glide adds to the
+/// speed there is rather than starting from rest (ADR 0050, decision 3),
+/// and notches a slow hand turns 150–250 ms apart find the last one
+/// still moving, where at 0.21 s and a whole kick it had stopped and the
+/// next lurched off at full speed.
+const GLIDE_RESPONSE: f64 = 0.30;
+
+/// How much of the speed that would make a notch's share a pure ease-out,
+/// `1 - e^(-ωt)`, the notch gives the spring. A whole kick starts each
+/// notch at its top speed and stops it short; none starts it from rest,
+/// which reads as lag. Between, the start is still the fastest frame and
+/// the tail is long enough to meet the next notch.
+const GLIDE_KICK: f32 = 0.6;
 
 /// The glide's angular frequency, from [`GLIDE_RESPONSE`].
 fn glide_omega() -> f64 {
@@ -503,9 +513,9 @@ impl ScrollStore {
         e.offset.x = (from.x + delta.x).clamp(0.0, max.x);
         e.offset.y = (from.y + delta.y).clamp(0.0, max.y);
         // The speed that makes this notch's own share ease out (see
-        // `GLIDE_RESPONSE`): what the target moved, so a notch the end
+        // `GLIDE_KICK`): what the target moved, so a notch the end
         // swallowed adds none.
-        let omega = glide_omega() as f32;
+        let omega = GLIDE_KICK * glide_omega() as f32;
         g.velocity.x += omega * (e.offset.x - from.x);
         g.velocity.y += omega * (e.offset.y - from.y);
         e.last_declared = frame_no;

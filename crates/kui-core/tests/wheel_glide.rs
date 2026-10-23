@@ -74,19 +74,42 @@ fn a_notch_glides_to_its_target() {
     wheel(&mut core, 0.0, -1.0, true);
     assert_eq!(core.scroll_offset(key), Vec2::new(0.0, 40.0), "the target");
     let first = tick(&mut core, &mut t, key);
-    assert!(
-        first > 12.0 && first < 40.0,
-        "part-way, fast first: {first}"
-    );
+    assert!(first > 6.0 && first < 40.0, "part-way, fast first: {first}");
     assert!(gliding(&core), "the glide owes the next frame");
     let seen = settle(&mut core, &mut t, key);
+    assert!(
+        seen[0] - first < first,
+        "the first frame is the fastest: {seen:?}"
+    );
     assert_eq!(*seen.last().unwrap(), 40.0, "lands exactly: {seen:?}");
     assert!(
         seen.windows(2).all(|w| w[1] >= w[0]),
         "never back: {seen:?}"
     );
     let frames = seen.len() + 1;
-    assert!(frames <= 15, "about 150 ms, not {frames} frames: {seen:?}");
+    assert!(frames <= 20, "about 300 ms, not {frames} frames: {seen:?}");
+}
+
+/// Two notches a slow hand turns 150 ms apart: the first is still moving
+/// when the second comes, so the content does not stop and lurch off.
+#[test]
+fn notches_turned_slowly_run_into_each_other() {
+    let (mut core, key) = setup();
+    let mut t = 0.0;
+    let mut seen = vec![0.0];
+    wheel(&mut core, 0.0, -1.0, true);
+    for _ in 0..9 {
+        seen.push(tick(&mut core, &mut t, key));
+    }
+    let slowest = seen[seen.len() - 1] - seen[seen.len() - 2];
+    wheel(&mut core, 0.0, -1.0, false);
+    let fastest = tick(&mut core, &mut t, key) - seen[seen.len() - 1];
+    assert!(slowest >= 1.0, "still moving at 150 ms: {seen:?}");
+    assert!(
+        fastest < 8.0 * slowest,
+        "the second notch picks up a moving glide: {slowest} then {fastest}"
+    );
+    assert_eq!(*settle(&mut core, &mut t, key).last().unwrap(), 80.0);
 }
 
 /// Ten notches 100 ms apart: the drawn place never stalls between them
