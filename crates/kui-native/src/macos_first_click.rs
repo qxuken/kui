@@ -43,7 +43,7 @@ use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSApplication, NSCursor, NSCursorFrameResizeDirections, NSCursorFrameResizePosition, NSEvent,
-    NSEventMask, NSEventType, NSWindow, NSWindowStyleMask,
+    NSEventMask, NSEventType, NSScreen, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
@@ -76,13 +76,19 @@ pub(crate) struct Sides {
 /// within [`EDGE`] of, and the side across the corner too when it is within
 /// [`CORNER`] of that one. A press on no edge grabs nothing.
 pub(crate) fn sides(x: f64, y: f64, w: f64, h: f64) -> Sides {
+    grab(x, y, w, h, EDGE, CORNER)
+}
+
+/// The sides within `edge` of `x`, `y`, and across the corner within
+/// `corner`.
+fn grab(x: f64, y: f64, w: f64, h: f64, edge: f64, corner: f64) -> Sides {
     let near = |reach: f64| Sides {
         left: x < reach,
         right: x > w - reach && x >= reach,
         bottom: y < reach,
         top: y > h - reach && y >= reach,
     };
-    let (edge, corner) = (near(EDGE), near(CORNER));
+    let (edge, corner) = (near(edge), near(corner));
     let horizontal = edge.left || edge.right;
     let vertical = edge.bottom || edge.top;
     Sides {
@@ -123,6 +129,35 @@ pub(crate) fn resized(
         y = origin.y + size.height - h;
     }
     NSRect::new(NSPoint::new(x, y), NSSize::new(w, h))
+}
+
+/// How far either side of an edge an active window's own resize takes a
+/// press, in points, and how far along an edge from a corner it takes the
+/// corner: measured on macOS 27, where 2 in or out resized and 4 did not,
+/// and 12 from a corner took the corner and 16 the edge alone.
+pub(crate) const BAND: f64 = 3.5;
+pub(crate) const BAND_CORNER: f64 = 14.0;
+
+/// Where the pointer is over a window once a gesture is over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Zone {
+    /// On the band AppKit's own resize takes, these sides.
+    Edge(Sides),
+    Content,
+    Outside,
+}
+
+/// Where `x`, `y` (window coordinates) is over a window `w` × `h`.
+pub(crate) fn zone(x: f64, y: f64, w: f64, h: f64) -> Zone {
+    if x < -BAND || y < -BAND || x > w + BAND || y > h + BAND {
+        return Zone::Outside;
+    }
+    let s = grab(x, y, w, h, BAND, BAND_CORNER);
+    if s != Sides::default() {
+        Zone::Edge(s)
+    } else {
+        Zone::Content
+    }
 }
 
 /// The cursor AppKit shows over the grabbed sides.
@@ -183,20 +218,59 @@ impl Gesture {
             c.set();
         }
     }
+}
 
-    /// Hands the cursor back when the gesture ends. Nothing else would:
-    /// AppKit applies a cursor rect's cursor only as the pointer crosses
-    /// into it, so the resize cursor stayed until the pointer next entered
-    /// the content, and for good when the release was outside the window.
-    /// The arrow, then the view's rects rebuilt, which puts the app's own
-    /// cursor back if the pointer is over the content.
-    fn release(&self) {
-        if self.cursor.is_none() {
+/// The cursor after a gesture, kui's until the next press. AppKit's own
+/// cursor for the window's edge and the app's for its content are kept by
+/// tracking areas that change the cursor only as the pointer crosses into
+/// them, and the window became active with the pointer already inside: the
+/// resize cursor stayed over the content and outside the window, and an
+/// arrow set at the release stayed on the edge, through the native resize
+/// the next press started (macOS 26.6.2). So every move until then picks
+/// it: the resize cursor on the band, the arrow outside, and over the
+/// content the view's cursor rects rebuilt, which is the app's cursor.
+struct Custody {
+    window: Retained<NSWindow>,
+    zone: Option<Zone>,
+}
+
+impl Custody {
+    /// Puts the cursor right for where `e` has the pointer.
+    fn follow(&mut self, e: &NSEvent, mtm: MainThreadMarker, knobs: Knobs, cursors: bool) {
+        // The window server's space is the primary screen's, flipped.
+        let Some(primary) = NSScreen::screens(mtm).firstObject() else {
+            return;
+        };
+        let p = pointer(e);
+        let f = self.window.frame();
+        let (x, y) = (
+            p.x - f.origin.x,
+            primary.frame().size.height - p.y - f.origin.y,
+        );
+        if !x.is_finite() || !y.is_finite() {
             return;
         }
-        NSCursor::arrowCursor().set();
-        if let Some(view) = self.window.contentView() {
-            self.window.invalidateCursorRectsForView(&view);
+        let zone = zone(x, y, f.size.width, f.size.height);
+        if knobs.log && self.zone != Some(zone) {
+            eprintln!("kui edge resize: cursor {zone:?}");
+        }
+        self.zone = Some(zone);
+        match zone {
+            Zone::Edge(s) => {
+                if let Some(p) = position(s).filter(|_| cursors) {
+                    NSCursor::frameResizeCursorFromPosition_inDirections(
+                        p,
+                        NSCursorFrameResizeDirections::All,
+                    )
+                    .set();
+                }
+            }
+            Zone::Content => {
+                if let Some(view) = self.window.contentView() {
+                    self.window.invalidateCursorRectsForView(&view);
+                }
+            }
+            Zone::Outside => NSCursor::arrowCursor().set(),
         }
     }
 }
@@ -240,6 +314,8 @@ thread_local! {
     /// A dropped press's gesture is still down: its drags and its release
     /// are dropped too, and resize its window unless `off`.
     static GESTURE: RefCell<Option<Gesture>> = const { RefCell::new(None) };
+    /// A gesture's window whose cursor kui keeps until the next press.
+    static CUSTODY: RefCell<Option<Custody>> = const { RefCell::new(None) };
 }
 
 /// Installs the monitor once per process, on macOS 26 and earlier; from the
@@ -260,10 +336,24 @@ pub(crate) fn install(mtm: MainThreadMarker) {
             // SAFETY: AppKit hands the monitor a live event.
             let e = unsafe { ev.as_ref() };
             match e.r#type() {
+                NSEventType::MouseMoved => {
+                    CUSTODY.with(|c| {
+                        let mut c = c.borrow_mut();
+                        if !NSApplication::sharedApplication(mtm).isActive() {
+                            *c = None;
+                        } else if let Some(c) = &mut *c {
+                            c.follow(e, mtm, knobs, cursors);
+                        }
+                    });
+                    return ev.as_ptr();
+                }
+                NSEventType::RightMouseDown | NSEventType::OtherMouseDown => {
+                    CUSTODY.with(|c| *c.borrow_mut() = None);
+                    return ev.as_ptr();
+                }
                 NSEventType::LeftMouseDown => {
-                    if let Some(g) = GESTURE.with(|g| g.borrow_mut().take()) {
-                        g.release();
-                    }
+                    CUSTODY.with(|c| *c.borrow_mut() = None);
+                    GESTURE.with(|g| *g.borrow_mut() = None);
                 }
                 NSEventType::LeftMouseDragged => {
                     return GESTURE.with(|g| match &mut *g.borrow_mut() {
@@ -283,8 +373,13 @@ pub(crate) fn install(mtm: MainThreadMarker) {
                     };
                     if !knobs.off {
                         g.follow(e);
+                        let mut c = Custody {
+                            window: g.window.clone(),
+                            zone: None,
+                        };
+                        c.follow(e, mtm, knobs, cursors);
+                        CUSTODY.with(|slot| *slot.borrow_mut() = Some(c));
                     }
-                    g.release();
                     if knobs.log {
                         let f = g.window.frame();
                         eprintln!(
@@ -383,7 +478,10 @@ pub(crate) fn install(mtm: MainThreadMarker) {
             NSEvent::addLocalMonitorForEventsMatchingMask_handler(
                 NSEventMask::LeftMouseDown
                     | NSEventMask::LeftMouseDragged
-                    | NSEventMask::LeftMouseUp,
+                    | NSEventMask::LeftMouseUp
+                    | NSEventMask::MouseMoved
+                    | NSEventMask::RightMouseDown
+                    | NSEventMask::OtherMouseDown,
                 &handler,
             )
         };
@@ -527,6 +625,22 @@ mod tests {
             1000.0,
         );
         assert_eq!(f, rect(100.0, 200.0, 1100.0, 800.0));
+    }
+
+    #[test]
+    fn after_a_gesture_the_band_is_appkits() {
+        let (w, h) = (600.0, 432.0);
+        // What an active window resized from on macOS 27, and what it did not.
+        for x in [-2.0, 0.0, 2.0] {
+            assert_eq!(zone(x, 200.0, w, h), Zone::Edge(s(true, false, false, false)), "{x}");
+        }
+        assert_eq!(zone(4.0, 200.0, w, h), Zone::Content);
+        assert_eq!(zone(-4.0, 200.0, w, h), Zone::Outside);
+        assert_eq!(zone(12.0, 2.0, w, h), Zone::Edge(s(true, false, true, false)));
+        assert_eq!(zone(16.0, 2.0, w, h), Zone::Edge(s(false, false, true, false)));
+        // An edge press grabs well inside the band; the cursor after it does not.
+        assert_eq!(sides(8.0, 200.0, w, h), s(true, false, false, false));
+        assert_eq!(zone(8.0, 200.0, w, h), Zone::Content);
     }
 
     #[test]
