@@ -1873,8 +1873,9 @@ test('decodeImage and decodeAnimation read a GIF, and animationAt plays it', () 
 
 // The last finished frame as pixels (backlog C55): drawn again on the
 // process's windowless GPU device, in physical px, straight RGBA. A machine
-// with no GPU adapter (a CI container) throws saying so, and the test says
-// it skipped.
+// with no GPU adapter throws saying so, and the test says it skipped -
+// unless KUI_REQUIRE_GPU is set, as CI sets it over Mesa's software
+// Vulkan, where the throw is a failure.
 test('capture reads the finished frame back as RGBA in physical px', (t) => {
   const ctx = new Ctx();
   assert.throws(() => ctx.capture(), /capture: no finished frame/);
@@ -1883,7 +1884,7 @@ test('capture reads the finished frame back as RGBA in physical px', (t) => {
   try {
     shot = ctx.capture();
   } catch (e) {
-    if (/no GPU/.test(e.message)) return t.skip(e.message);
+    if (/no GPU/.test(e.message) && !process.env.KUI_REQUIRE_GPU) return t.skip(e.message);
     throw e;
   }
   assert.equal(shot.width, 80);
@@ -1929,7 +1930,7 @@ test('an AnimationEncoder records frames and decodeAnimation plays them back', (
   try {
     first = ctx.capture();
   } catch (e) {
-    if (/no GPU/.test(e.message)) return t.skip(e.message);
+    if (/no GPU/.test(e.message) && !process.env.KUI_REQUIRE_GPU) return t.skip(e.message);
     throw e;
   }
   for (const format of ['png', 'gif']) {

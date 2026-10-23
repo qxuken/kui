@@ -740,7 +740,8 @@ mod tests {
     const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
     /// A device and the pipelines, or `None`, saying so, where the machine
-    /// has no adapter.
+    /// has no adapter — a failure instead where `KUI_REQUIRE_GPU` is set,
+    /// as CI sets it over software Vulkan (tests/capture.rs).
     struct Rig {
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -756,6 +757,10 @@ mod tests {
             let Ok(adapter) = pollster::block_on(
                 instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
             ) else {
+                assert!(
+                    std::env::var_os("KUI_REQUIRE_GPU").is_none_or(|v| v.is_empty()),
+                    "KUI_REQUIRE_GPU is set, but there is no adapter"
+                );
                 eprintln!("no adapter: the backdrop blur is not drawn here");
                 return None;
             };

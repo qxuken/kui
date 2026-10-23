@@ -752,7 +752,8 @@ mod tests {
     /// `kui_capture` on a standalone context (backlog C55): the finished
     /// frame in physical px, straight RGBA, freed by `kui_pixels_free`;
     /// NULL and zero sides before any frame. Skipped, saying so, where the
-    /// machine has no GPU adapter.
+    /// machine has no GPU adapter, unless `KUI_REQUIRE_GPU` is set, as CI
+    /// sets it over Mesa's software Vulkan.
     #[test]
     fn a_capture_is_the_finished_frame_as_pixels() {
         let ctx = kui_ctx_new();
@@ -776,6 +777,10 @@ mod tests {
         kui_frame_finish(ctx);
         let px = kui_capture(ctx, &mut w, &mut h);
         if px.is_null() {
+            assert!(
+                std::env::var_os("KUI_REQUIRE_GPU").is_none_or(|v| v.is_empty()),
+                "KUI_REQUIRE_GPU is set, but kui_capture drew nothing (see stderr)"
+            );
             eprintln!("skipped: no capture (no GPU adapter?), see stderr");
             kui_ctx_free(ctx);
             return;

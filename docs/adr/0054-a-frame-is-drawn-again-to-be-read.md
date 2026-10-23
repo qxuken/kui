@@ -154,9 +154,11 @@ no window opens in 12–28 ms. None of it is a reason not to.
   wait for an idle GPU, and the 30 MB copied into fresh memory.
 - A machine with no GPU adapter has no capture. Each door fails saying
   so: Rust and Node with a message starting "no GPU", and C and Odin
-  with NULL / `ok = false`. CI's docker runner is one, so the C and
-  Odin counters print that they had nothing to draw on, and the tests
-  skip. Software Vulkan (lavapipe) would give it one; untried.
+  with NULL / `ok = false`, and the tests skip, saying so. CI's docker
+  runner has no GPU, so its `check` job installs Mesa's software Vulkan
+  (lavapipe, `mesa-vulkan-drivers`) and sets `KUI_REQUIRE_GPU=llvmpipe`,
+  under which a missing adapter, or one of another name, fails the
+  tests and the C and Odin counters rather than skipping them.
 - Subpixel text follows the device. A headless core draws grayscale, and
   a window's follows its device unless `textAa` pins it. So a test
   comparing images across machines pins it.
