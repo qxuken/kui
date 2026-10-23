@@ -203,10 +203,18 @@ fn submenu_row(mtm: MainThreadMarker, item: &MenuItem, sub: &NSMenu) -> Retained
 fn hint(item: &MenuItem) -> Option<&str> {
     let text = item.accel_text().filter(|t| !t.is_empty())?;
     let bound = kui_core::Accel::parse(text)
-        .filter(|a| a.mods.any())
+        .filter(bindable)
         .and_then(|a| a.key_equivalent())
         .is_some_and(|k| !k.is_empty());
     (!bound).then_some(text)
+}
+
+/// Whether a row's accelerator binds: one with a modifier, or a bare
+/// function key — F12 typed into a field is no text, so a row bound to it
+/// takes nothing from the field (backlog F187). A bare letter or Enter
+/// would fire on every press of the key.
+fn bindable(a: &kui_core::Accel) -> bool {
+    a.mods.any() || matches!(a.code, kui_core::KeyCode::F(_))
 }
 
 /// Where a menu's hints end: one right-aligned tab stop for every row
@@ -323,7 +331,7 @@ fn menu_row(
     let accel = item
         .accel_text()
         .and_then(kui_core::Accel::parse)
-        .filter(|a| a.mods.any());
+        .filter(bindable);
     let key = accel
         .as_ref()
         .and_then(|a| a.key_equivalent())

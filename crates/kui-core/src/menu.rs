@@ -1000,10 +1000,15 @@ impl Accel {
     }
 
     /// The key equivalent an `NSMenuItem` takes: the character, lowercased
-    /// (AppKit reads an uppercase one as Shift being held), or `None` for a
-    /// key AppKit spells with a function-key code this does not carry.
+    /// (AppKit reads an uppercase one as Shift being held), a function
+    /// key's `NSF1FunctionKey`-based character, or `None` for a key AppKit
+    /// spells with a function-key code this does not carry.
     pub fn key_equivalent(&self) -> Option<String> {
         match self.code {
+            // `NSF1FunctionKey` is U+F704 and F2–F35 follow it.
+            crate::input::KeyCode::F(n @ 1..=35) => {
+                char::from_u32(0xF704 + u32::from(n) - 1).map(String::from)
+            }
             crate::input::KeyCode::Char(c) => Some(c.to_lowercase().to_string()),
             crate::input::KeyCode::Space => Some(" ".into()),
             crate::input::KeyCode::Enter => Some("\r".into()),
@@ -1262,6 +1267,20 @@ mod tests {
         assert!(Accel::parse("shift+scrolllock").is_none());
         assert!(Accel::parse("s+s").is_none());
         assert!(Accel::parse("").is_none());
+    }
+
+    #[test]
+    fn a_function_key_is_a_key_equivalent() {
+        // A bare F-key binds on a macOS menu row (backlog F187): AppKit's
+        // own character for it, which no layout types.
+        assert_eq!(
+            Accel::parse("f12").unwrap().key_equivalent().as_deref(),
+            Some("\u{F70F}")
+        );
+        assert_eq!(
+            Accel::parse("f1").unwrap().key_equivalent().as_deref(),
+            Some("\u{F704}")
+        );
     }
 
     #[test]

@@ -268,7 +268,10 @@ the same cut in every other text, found when RG163 did not end it in
 the app, was built the day it was filed and is in the archive; and F186, from
 kawoosh's diagram pane — the floats under a node stacked in tree order
 — was built the day it was filed, with ADR 0053, after the alpha.63
-tag, and is in the archive; and RG165, from the Cookie Mapping
+tag, and is in the archive; and F187, from the Cookie Mapping
+Builder's F12 developer-tools row — a bare function key on a macOS
+menu row bound, not only drawn — was built the day it was filed, after
+the alpha.64 tag, and is in the archive; and RG165, from the same
 Builder's devtools under its tui theme — a translucent theme colour
 tinted by replacement and stacked by repetition — was built the day it
 was filed, after the alpha.64 tag, and is in the archive; and RG166

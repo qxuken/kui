@@ -25,6 +25,10 @@ was the first bare bump to break an app in five releases).
 
 **What breaks.**
 
+- On macOS a menu row whose `accel` is a bare function key — `"f12"`,
+  `"f5"` — binds it: the key chooses the row, where alpha.64 drew
+  `F12` beside the row and bound nothing, so the press reached the
+  focused node (backlog F187).
 - The latency graph's backdrop, the stats overlay's background and
   border, its `?` badge, and the devtools panel's icons and tree
   highlights take their theme colour's own alpha times the fade they
@@ -38,6 +42,17 @@ was the first bare bump to break an app in five releases).
   up anywhere: every glyph's bitmap differs from alpha.64's by up to a
   pixel in height, and an app's pixel snapshots of text change. At 1×
   on Windows and Linux text is hinted as before (backlog RG166).
+
+A row's accelerator binds on macOS only with a modifier, since AppKit
+fires a bare key equivalent on every press of the key, and a row bound
+to `"a"` would eat every `a` typed into a field. A function key types no
+text, so the rule kept a developer-tools row on F12, or a reload on F5,
+from binding for nothing: the row showed its key and the key did not
+choose it. A bare function key binds now, as a key equivalent AppKit
+spells with its own character for the key; a letter, Enter or any other
+bare key is still drawn and not bound. An app that declared a bare
+function key as a hint only and handled the press in an `onKey` sink
+gets the row's message instead.
 
 A theme built from an app's design tokens can hold translucent colours —
 a `sunken` of white at 10%, an overlay token, reads as a well in a dark
@@ -70,6 +85,7 @@ again.
 
 ### Fixed
 
+- A macOS menu row's bare function key binds (above; backlog F187).
 - A translucent theme colour tinted or layered by the core's own chrome
   — the latency graph, the stats overlay, the devtools panel — keeps
   its alpha (above; backlog RG165).
