@@ -134,6 +134,24 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
 // Half-width of every SDF edge ramp, in physical px.
 const AA: f32 = 0.75;
 
+// How much of the pixel at `local` a box of `size` with `radii` covers,
+// `d` its signed distance. A square-cornered box covers a pixel by the
+// area of it inside the rect, so one on whole pixels is solid to its edge
+// and two that share an edge add up to one there. The SDF ramp left a
+// rect's outermost pixels at 93%, and every join of two rects — a
+// selection's spans and rows, a list's bands — was a 2 px seam of what
+// lay under them. A rounded one ramps its SDF over AA.
+fn box_coverage(local: vec2<f32>, size: vec2<f32>, radii: vec4<f32>, d: f32) -> f32 {
+    let lo = max(local - vec2<f32>(0.5, 0.5), vec2<f32>(0.0, 0.0));
+    let hi = min(local + vec2<f32>(0.5, 0.5), size);
+    let area = clamp(hi - lo, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+    return select(
+        1.0 - smoothstep(-AA, AA, d),
+        area.x * area.y,
+        all(radii <= vec4<f32>(0.0)),
+    );
+}
+
 // Signed distance to a box with one radius per corner. `p` is centered
 // (y down), `radii` is tl, tr, br, bl; each is clamped to the half extents
 // so oversized radii degrade to a pill, never a fold.
@@ -248,24 +266,26 @@ fn shade(in: VsOut) -> Shaded {
         let sh = max(in.size * 0.5 - vec2<f32>(blur, blur), vec2<f32>(0.0, 0.0));
         let sd = sd_rounded_box(in.local - half, sh, in.radii);
         let ramp = max(blur, AA);
-        let a = in.color.a * (1.0 - smoothstep(-ramp, ramp, sd));
+        var a = in.color.a * (1.0 - smoothstep(-ramp, ramp, sd));
+        // The node's own box knocked out, as CSS's box-shadow is: `seg`
+        // holds its insets from this quad (left, top, right, bottom) and
+        // `border_color` its radii. Covered exactly as the node's
+        // background covers a pixel, so what the background leaves
+        // uncovered at its edge is what the shadow fills, and a
+        // translucent or faded node shows what is under it, not its
+        // shadow. A knock-out of no size knocks nothing out.
+        let ko = in.seg;
+        let ksize = in.size - ko.xy - ko.zw;
+        if ksize.x > 0.0 && ksize.y > 0.0 {
+            let kl = in.local - ko.xy;
+            let kd = sd_rounded_box(kl - ksize * 0.5, ksize * 0.5, in.border_color);
+            a *= 1.0 - box_coverage(kl, ksize, in.border_color, kd);
+        }
         return Shaded(in.color.rgb, vec3<f32>(a * inside));
     }
 
     let d = sd_rounded_box(in.local - half, half, in.radii);
-    // A square-cornered quad covers a pixel by the area of it inside the
-    // rect, so one on whole pixels is solid to its edge and two that share
-    // an edge add up to one there. The SDF ramp left a rect's outermost
-    // pixels at 93%, and every join of two rects — a selection's spans and
-    // rows, a list's bands — was a 2 px seam of what lay under them.
-    let lo = max(in.local - vec2<f32>(0.5, 0.5), vec2<f32>(0.0, 0.0));
-    let hi = min(in.local + vec2<f32>(0.5, 0.5), in.size);
-    let area = clamp(hi - lo, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
-    let coverage = select(
-        1.0 - smoothstep(-AA, AA, d),
-        area.x * area.y,
-        all(in.radii <= vec4<f32>(0.0)),
-    );
+    let coverage = box_coverage(in.local, in.size, in.radii, d);
 
     if kind == 3u {
         // Registered image tinted by color (white = as-is). Both samplers

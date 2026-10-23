@@ -57,6 +57,31 @@ pub fn quad_coverage(q: &kui_core::Quad, x: f32, y: f32) -> f32 {
     1.0 - smoothstep(-AA, AA, d)
 }
 
+/// `shade`'s knock-out for a shadow quad (kind 5) at the fragment centred
+/// on (`x`, `y`): the factor its coverage is multiplied by, one less the
+/// node's own box's coverage there (`box_coverage` over the box the quad
+/// carries). One where it carries none.
+pub fn knockout(q: &kui_core::Quad, x: f32, y: f32) -> f32 {
+    let Some((n, radii)) = q.shadow_knockout() else {
+        return 1.0;
+    };
+    if n.w <= 0.0 || n.h <= 0.0 {
+        return 1.0;
+    }
+    let local = [x - n.x, y - n.y];
+    if radii.iter().all(|v| *v <= 0.0) {
+        let span = |i: usize, size: f32| {
+            let lo = (local[i] - 0.5).max(0.0);
+            let hi = (local[i] + 0.5).min(size);
+            (hi - lo).clamp(0.0, 1.0)
+        };
+        return 1.0 - span(0, n.w) * span(1, n.h);
+    }
+    let half = [n.w * 0.5, n.h * 0.5];
+    let d = sd_rounded_box([local[0] - half[0], local[1] - half[1]], half, radii);
+    smoothstep(-AA, AA, d)
+}
+
 pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)

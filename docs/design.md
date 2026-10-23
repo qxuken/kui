@@ -435,8 +435,10 @@ recorded under [adr/](adr); this page is their consequences for an app.
   spread and inflated, and the shader softens the same SDF it uses for
   rounded rects, so a shadow is one more quad in the same draw call rather
   than a blur pass. The color is the switch — nothing draws without one.
-  Outer shadows only, one per node, and the shape is not knocked out of the
-  middle, so a translucent background shows its own shadow through itself.
+  Outer shadows only, one per node, and none under the node itself: the
+  node's box is knocked out of its shadow, as CSS's `box-shadow` is, so a
+  translucent background, or a card its `opacity` fades, shows what lies
+  under it and not its own shadow.
   Both are decided in [ADR 0005](adr/0005-the-paint-vocabulary.md),
   which also says why there are no gradient *props*.
 - **A fragment is a box a WGSL function paints.** What ADR 0005 declined to

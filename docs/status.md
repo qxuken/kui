@@ -17,8 +17,11 @@ on the box's unit square, rasterized once into the atlas and drawn as an
 image quad, so it does not tween, a hard stop is soft, and there is no
 conic one and none on a `path`, a `line` or a text — those are a
 fragment's. There are no inset or
-multiple shadows, and the single shadow is not knocked out of the middle of
-the shape, so a translucent background shows it through. A stroke takes a `dash` (marks and gaps as seen, the pattern kept along
+multiple shadows. The single shadow is not drawn under its node, so a
+translucent or faded node shows what is under it; but a faded subtree is
+still faded piece by piece, so what overlaps inside it — a label on its
+button, two overlapping avatars — blends twice where an offscreen layer
+would blend it once (backlog V11). A stroke takes a `dash` (marks and gaps as seen, the pattern kept along
 the whole stroke; backlog V2) on a `line` and on a `path`. There are **no
 arrowhead caps**: a line is segments and nothing else, a
 translucent polyline double-blends where its caps overlap at a join, and its

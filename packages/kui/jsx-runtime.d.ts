@@ -517,7 +517,7 @@ export interface GeneratedSpecProps {
   selectionAnchor?: LengthProp;
   /** Drop-shadow blur radius (logical px): the edge ramps over this distance and reaches this far past the shape. 0 = a hard edge. */
   shadowBlur?: LengthProp;
-  /** Drop-shadow color; nothing else about a shadow draws without it. On its own it is a hard shadow exactly behind the node — add `shadowBlur` / `shadowY` to lift it. Outer shadows only, and the shape is not knocked out of the middle, so a translucent background shows it through. */
+  /** Drop-shadow color; nothing else about a shadow draws without it. On its own it is a hard shadow exactly behind the node — add `shadowBlur` / `shadowY` to lift it. Outer shadows only, and none under the node itself: a translucent or faded node shows what is under it, not its own shadow, as CSS's `box-shadow` does. */
   shadowColor?: ColorProp;
   /** Grows (or, negative, shrinks) the drop shadow's shape before blurring (logical px). */
   shadowSpread?: LengthProp;

@@ -702,7 +702,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_SHADOW_COLOR,
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.shadow_color(c)),
-        doc: "Drop-shadow color; nothing else about a shadow draws without it. On its own it is a hard shadow exactly behind the node — add `shadowBlur` / `shadowY` to lift it. Outer shadows only, and the shape is not knocked out of the middle, so a translucent background shows it through.",
+        doc: "Drop-shadow color; nothing else about a shadow draws without it. On its own it is a hard shadow exactly behind the node — add `shadowBlur` / `shadowY` to lift it. Outer shadows only, and none under the node itself: a translucent or faded node shows what is under it, not its own shadow, as CSS's `box-shadow` does.",
     },
     PropDef {
         name: "shadowBlur",

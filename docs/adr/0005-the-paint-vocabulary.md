@@ -125,6 +125,14 @@ box out of its own shadow, and a translucent background here shows the
 shadow through itself. Each of those is a note in the doc comment, not a
 silent surprise.
 
+> **Amended 2026-10-23 (backlog V10):** the shape *is* knocked out now.
+> The shadow quad carries the node's own box in its `uv`, and the shader
+> multiplies the shadow by one less the box's coverage, so a translucent
+> background no longer shows its own shadow, and a card faded by its group
+> opacity no longer turns grey with the shadow under it — which measured
+> as up to 50 levels over most of a faded card's body. Still one quad and
+> one pass; a renderer that ignores `uv` draws the shadow as before.
+
 ### Gradients: out of scope for v0
 
 > **Superseded by [ADR 0042](0042-a-gradient-is-an-image-the-core-paints.md)

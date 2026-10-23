@@ -814,9 +814,10 @@ impl Default for VisualStyle {
 /// forms.
 ///
 /// It draws whenever `color` is visible, so `shadowColor` alone is a hard
-/// shadow sitting exactly behind the node. The shape is not knocked out of
-/// the middle the way CSS knocks it out, so a translucent background shows
-/// the shadow through itself.
+/// shadow sitting exactly behind the node. The node's own box is knocked
+/// out of it, as CSS knocks it out: under a translucent background, or
+/// through the node's group opacity, what shows is what lies under the
+/// node, not its shadow.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Shadow {
     pub color: Color,

@@ -2707,9 +2707,8 @@ impl Painter<'_> {
         {
             // Where layout put it, or on whole pixels when it asked
             // (`pixelSnap`), from the same numbers a text's backgrounds are.
-            let px = rect.scaled(scale);
             self.display.quads.push(Quad {
-                rect: if style.pixel_snap { px.on_pixels() } else { px },
+                rect: rect_px(rect, scale, style.pixel_snap),
                 color: style.bg,
                 border_color: style.border_color,
                 radius: style.radius.map(|r| r * scale),
@@ -3493,7 +3492,7 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, sc
         (rect.w + 2.0 * sh.spread).max(0.0),
         (rect.h + 2.0 * sh.spread).max(0.0),
     );
-    let rect = if style.pixel_snap {
+    let shadow = if style.pixel_snap {
         // Snapped with its box, so it stays under it; the blur around it.
         let s = shape.scaled(scale).on_pixels();
         let b = blur * scale;
@@ -3506,8 +3505,13 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, sc
             (shape.h + 2.0 * blur) * scale,
         )
     };
+    // The node's own box, where its background is drawn (`paint_box`),
+    // knocked out of the shadow so a translucent or faded node shows what
+    // is under it rather than its shadow, as CSS's `box-shadow` does.
+    let node = rect_px(rect, scale, style.pixel_snap);
+    let uv = Quad::shadow_knockout_uv(shadow, node, style.radius.map(|r| r.max(0.0) * scale));
     Quad {
-        rect,
+        rect: shadow,
         color: sh.color,
         border_color: Color::TRANSPARENT,
         radius: style.radius.map(|r| (r + sh.spread).max(0.0) * scale),
@@ -3515,8 +3519,15 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, sc
         blur: blur * scale,
         kind: QuadKind::Shadow,
         clip: clip_id,
-        uv: [0; 4],
+        uv,
     }
+}
+
+/// A box's rect in physical px as its background is drawn: scaled, and
+/// on whole pixels when it asked (`pixelSnap`).
+fn rect_px(rect: Rect, scale: f32, snap: bool) -> Rect {
+    let px = rect.scaled(scale);
+    if snap { px.on_pixels() } else { px }
 }
 
 /// A node's `backdrop_blur` (backlog F129): one [`QuadKind::Backdrop`]

@@ -608,8 +608,8 @@ pub struct KuiSpec {
     /// 0xRRGGBBAA drop-shadow color; 0 = no shadow, and nothing else here
     /// draws without it. The shadow is the node's rounded rect moved by
     /// `shadow_x`/`shadow_y`, grown by `shadow_spread` and blurred over
-    /// `shadow_blur`, painted behind the node. Outer shadows only, and the
-    /// shape is not knocked out of the middle.
+    /// `shadow_blur`, painted behind the node. Outer shadows only; the
+    /// node's own box is knocked out of it.
     pub shadow_color: u32,
     /// Blur radius (logical px): the edge ramps over this distance and
     /// reaches this far past the shape. 0 = a hard edge.

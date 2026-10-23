@@ -38,6 +38,12 @@ was the first bare bump to break an app in five releases).
   reach AppKit or the app, and the next press resizes. alpha.65 started
   a resize that often stuck (below). The native runner, a press
   anywhere else, and macOS 27 are unchanged (backlog RG168).
+- A node's drop shadow (`shadowColor`, `Shadow`, `shadow_color`) is no
+  longer drawn under the node itself, as CSS's `box-shadow` is not. A
+  node with a translucent `bg`, or one faded by `opacity` — a card
+  fading in or out — shows what lies under it where alpha.65 showed its
+  own shadow, so it reads lighter. The shadow outside the node is
+  unchanged (backlog V10).
 
 The close button hides the panel and leaves it on, so its chords can
 bring it back, and `devtools()` stays true. An app's toggle on
@@ -60,6 +66,19 @@ the press back once the app was active with the button still down;
 dropping the gesture and activating the window does, at the price of
 the one-press resize from another app, which wants AppKit's loop
 running the whole time under a pump (backlog C54).
+
+A node's group `opacity` multiplies into every quad its subtree draws,
+and its shadow is one of them, drawn first, under the node. Faded, the
+node let its faded shadow through: a white card at 50% over a light
+page came out grey, up to 50 levels off the card faded as a whole over
+most of its body. The shadow quad now carries the node's own rounded
+box (`Quad::shadow_knockout`, in its `uv`) and is not drawn there, so
+the same card is within rounding of the card faded whole, but for a
+few levels on its one-pixel antialiased edge. A translucent `bg` was
+the same case without the fade. A node that relied on its own shadow
+to darken a translucent fill sets a darker fill. A renderer of a host's
+own that ignores the shadow's `uv` draws it as before; kui.h's
+`KUI_QUAD_SHADOW` says how to read it.
 
 ### Added
 
@@ -126,12 +145,18 @@ running the whole time under a pump (backlog C54).
 - On macOS 26 a Node app's window no longer sticks to the pointer, or
   hangs, after a click on its edge from another app (above; backlog
   RG168).
+- A card fading in or out with a drop shadow no longer turns grey with
+  its shadow showing through it, and a translucent card no longer shows
+  its own shadow (above; backlog V10).
 
 **What you can delete.**
 
 - A `screencapture` of the window's id, or another tool outside the
   process, kept only to see the pixels a test's frame drew; `capture()`
   hands them back, headless too.
+- A shadow dropped for the length of an `enter` or `exit` fade, or an
+  opaque `bg` given to a card that wanted to be translucent, kept only
+  so the card's own shadow did not show through it.
 - A PNG package (`pngjs`, `sharp`, a crate, libpng) kept only to write a
   test's or a probe's pixels to a file; `encodeImage` does it, and an
   `AnimationEncoder` records a sequence of them.

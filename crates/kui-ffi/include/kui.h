@@ -540,8 +540,14 @@ enum {
  * per-channel / dual-source blending; else use the atlas alpha as a mask).
  * Only produced after kui_set_subpixel_text(ctx, true). */
 /* KUI_QUAD_SHADOW: `color` fills a rounded rect inset from the quad by
-   `blur` on every side, its edge ramped over `blur` px; ignores uv,
-   border_color and border_w. */
+   `blur` on every side, its edge ramped over `blur` px, except under the
+   node's own box, which `uv` carries in sixteenths of a pixel: words 0
+   and 1 its insets from the quad (left | top << 16, right | bottom << 16,
+   each a signed 16-bit half), words 2 and 3 its radii (tl | tr << 16,
+   br | bl << 16, 15 bits each), and bit 15 of word 2 set when there is
+   one. Multiply the shadow by one less the box's own coverage there; a
+   renderer that ignores it draws the shadow whole under the node.
+   Ignores border_color and border_w. */
 /* KUI_QUAD_SEGMENT: a round-capped stroke between two endpoints. `uv` holds
  * them as float bits - x0, y0, x1, y1 in physical px, memcpy each uint32_t
  * into a float - `border_w` is the stroke width and `color` the stroke; the
@@ -1010,8 +1016,9 @@ typedef struct KuiSpec {
      * shadow_color behind the node (CSS box-shadow without the inset and
      * multi-shadow forms). 0xRRGGBBAA with 0 = no shadow: nothing else here
      * draws without a color, and a color on its own is a hard shadow
-     * exactly behind the node. Outer shadows only, and the shape is not
-     * knocked out of the middle, so a translucent bg shows it through.
+     * exactly behind the node. Outer shadows only; the node's own box is
+     * knocked out of it, so a translucent or faded node shows what is
+     * under it, not its shadow.
      * All four numbers are logical px and ease with transition_ms. */
     uint32_t shadow_color;
     float shadow_blur;

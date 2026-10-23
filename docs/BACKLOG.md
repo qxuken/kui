@@ -128,7 +128,9 @@ archive. Nothing was renumbered in any of those moves, and nothing ever is.
 What is left here: one parked heading — C12, waiting for a view that
 wants it (C13 and C14 beside it were built on 2026-09-25, asked for by
 the second bake-off) — C27 with its measurements (an idle pumped
-window's cost, where every way out was worse than the cost), V3–V8 from
+window's cost, where every way out was worse than the cost), V11 from
+the group-opacity measurement of 2026-10-23 (a faded subtree blended
+piece by piece where a layer would blend it once), V3–V8 from
 the canvas question of 2026-09-11 (four waiting for a view, two declined
 with a condition — V1, the one with an order attached, was built the
 round after, on 2026-09-11, and V2, `dash`, on 2026-10-05), W16 from the alpha.12 pre-tag round (the
@@ -291,7 +293,12 @@ filed, after the alpha.65 tag, and is in the archive; and C55, from a
 question about offscreen rendering — a frame drawn only to a window's
 surface, so no host could have kui draw into its texture and nothing
 could read a frame back — was built the day it was filed, with ADR 0054,
-after the alpha.65 tag, and is in the archive.
+after the alpha.65 tag, and is in the archive; and V10, from a
+measurement of group opacity against the exact result — a node's shadow
+drawn under the node, showing through it when translucent or faded — was
+built the day it was filed, after the alpha.65 tag, and is in the
+archive, while V11 beside it — the rest of the fade's error, which wants
+an offscreen layer — is open below.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3282,6 +3289,84 @@ reordered it, and that threw its node state away. One entry, F186, with
 [ADR 0053](adr/0053-floats-under-a-node-paint-in-tree-order.md),
 **built 2026-10-23**, the day it was filed, and in the archive.
 
+## From the group-opacity measurement (2026-10-23)
+
+Asked to look at group opacity through offscreen layers. With
+`capture` (C55) the exact result of fading a subtree needs no layer to
+compute: over a backdrop `B` a group `L` faded by `α` is
+`α·L + B·(1 − α·L.a)`, which is the frame with the subtree opaque and
+the frame without it mixed by `α`. Against that, at 50%, 360×200 logical
+at 2× (the script, `seams.mjs`, was in the session's scratchpad; the
+numbers are what matters):
+
+| subtree | pixels off by >16 levels | worst |
+| --- | --- | --- |
+| a card: shadow, white fill, border, two texts, a button | 78,988 of 151,630 | 50 |
+| the same card without its shadow | 383 of 105,024 | 44 |
+| four overlapping avatars with white rings | 7,754 of 44,380 | 46 |
+| a dark button with a white label | 1,424 of 27,892 | 54 |
+
+The card's error was its shadow, under it and faded with it: V10,
+**built 2026-10-23**, the day it was filed, and in the archive (after
+it the card reads as the card without a shadow does). What is left is
+V11.
+
+### `.` V11 — A faded subtree blends piece by piece: a label on its own fill washes out, overlaps blend twice
+
+**Filed 2026-10-23, open.** `opacity` multiplies into every quad a
+subtree draws (`emit.rs`'s `fade`), so wherever two of them overlap —
+a label on its button, a child box on its card, two overlapping
+avatars — the one on top blends over the one under it already faded,
+and what is under the subtree shows through both. A dark button's white
+label at 50% came out grey on grey; overlapping circles show a lens
+where they meet. The worst case is not a transition: every stock
+control that is disabled fades its whole subtree by the theme's
+`disabled_opacity` (0.5) for as long as it is disabled
+(`widgets.rs`), so every disabled button's label is the washed-out one.
+
+**How a layer would go,** from reading the emitter and the renderer:
+
+- A subtree's in-flow quads are one contiguous run of its float
+  layer's, in tree order, `overSiblings` and ghosts inside it; nested
+  floats are emitted with their own layer, later.
+- The core emits a begin and an end marker around the run (the
+  `Backdrop` kind is the precedent): the fade, the run's bounds and its
+  clip. The run's quads are left unfaded. Behind a core switch the
+  renderer turns on when it draws layers (as `set_subpixel_text` is),
+  so a host's own renderer sees today's quads.
+- kui-wgpu draws every layer of a frame before the main pass, into one
+  shared texture, each placed by moving its instances on the CPU (no
+  shader change), and draws each into the frame as an image quad,
+  through the texture-backed image path it has. Measured in C55's
+  bench: a layer drawn first costs ~5–12 µs of GPU and ~15 µs of
+  encoding; one that breaks the main pass instead costs twice that.
+- Not needed, and not made: at full opacity; for a subtree of one
+  quad; for quads that do not overlap. In practice almost every faded
+  subtree of more than one quad overlaps, since text lies on its own
+  background.
+- In a layer, subpixel text falls back to grayscale (a second, single-
+  source pipeline): LCD coverage needs the colour behind it, which a
+  transparent layer does not have. A `backdropBlur` inside a faded
+  subtree keeps today's per-quad fade at first. A nested float stays
+  faded per quad, as the float layer it is.
+- Memory: the layer's bounds, ~1.7 MB for a 440×240 card at 2×, only
+  on frames that draw one. Ten disabled buttons on screen: about
+  0.2–0.3 ms a drawn frame, nothing on an idle window.
+
+Prior art splits the same way: Flutter avoids `saveLayer` where it can
+prove the layer unneeded, Android lets a view say it has no overlapping
+rendering, Chromium makes a render surface only when it must, and Core
+Animation has `allowsGroupOpacity`.
+
+**Condition:** a view that wants it — a disabled control whose label
+must stay legible, a fade of overlapping pieces that has to look right
+— or the stock controls' disabled look itself, which is reason enough
+to build it unasked.
+
+**Evidence.** The measurement above, 2026-10-23.
+
+**Wants:** a subtree faded as one picture.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5111,3 +5196,7 @@ move.
 **From a question about offscreen rendering (2026-10-23)** — C55, filed and built the same day, with ADR 0054
 
 - `~` **C55** — [A frame can only be drawn to a window's surface: no texture a host owns, and no `capture()`](backlog/closed-2026-09.md#-c55--a-frame-can-only-be-drawn-to-a-windows-surface-no-texture-a-host-owns-and-no-capture--done-2026-10-23) — done (2026-10-23) — kui-wgpu draws without a window (`Gpu::windowless`, `Gpu::from_parts`, `Renderer::windowless`, `render_to`) and reads a frame back (`Renderer::capture`); `kui_native::capture` on a process-wide windowless renderer through `Core::drawn`, with `kui_capture`, Odin's `capture` and Node's `capture()`; `encode_image` and `AnimationEncoder` in four bindings to keep one, or a recording, as a file
+
+**From the group-opacity measurement (2026-10-23)** — V10, filed and built the same day; V11 open
+
+- `!` **V10** — [A node's shadow is drawn under it, and shows through it when translucent or faded](backlog/closed-2026-09.md#-v10--a-nodes-shadow-is-drawn-under-it-and-shows-through-it-when-translucent-or-faded--done-2026-10-23) — done (2026-10-23) — the shadow quad carries the node's own box in its `uv` (`Quad::shadow_knockout`) and the shader leaves the shadow out where the box covers, as CSS does; a faded card is the card faded whole but for its antialiased edge
