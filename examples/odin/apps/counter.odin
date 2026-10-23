@@ -181,7 +181,7 @@ headless :: proc() -> bool {
 		if cw != 800 || ch != 600 || shot[3] != 255 do return fail("capture")
 		fmt.printfln("captured the last frame: %dx%d", cw, ch)
 	} else {
-		if v, found := os.lookup_env("KUI_REQUIRE_GPU", context.temp_allocator); found && v != "" {
+		if need, asked := os.lookup_env("KUI_REQUIRE_GPU", context.temp_allocator); asked && need != "" {
 			return fail("KUI_REQUIRE_GPU is set, but capture drew nothing")
 		}
 		fmt.println("no GPU adapter: capture had nothing to draw on")
