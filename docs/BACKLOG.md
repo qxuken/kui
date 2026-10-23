@@ -3356,6 +3356,49 @@ The test is written — carets of `]] b` in order after `א k]] א`, in the
 same window and in another; red on the cache — and goes in with the
 fix as `crates/kui-core/tests/shaped_direction.rs`.
 
+**The upstream fix, tried** (2026-10-24, on a copy of cosmic-text 0.19.0
+under a `[patch.crates-io]` that was not kept). Two lines: a field in
+the key, set where the key is made.
+
+```diff
+ // src/shape_run_cache.rs
+ pub struct ShapeRunKey {
+     pub text: String,
+     pub default_attrs: AttrsOwned,
+     pub attrs_spans: Vec<(Range<usize>, AttrsOwned)>,
++    pub rtl: bool,
+ }
+ // src/shape.rs, shape_run_cached
+         attrs_spans: Vec::new(),
++        rtl: span_rtl,
+     };
+```
+
+With it the test is green, and `KUI_FUZZ_CORPUS=1 cargo test --release
+-p kui-fuzz --test reuse` passes over the hour's whole corpus (10 708
+`events` runs, 23 152 `scenes`): all 516 runs that read differently on
+a kept session were this bug, and nothing else in a kept session leaks.
+It costs nothing measured: the four bench files above, 64 of 74 rows
+within 3% and the rest −7.6% to +7.0% both ways; the one row past +5%,
+`keystroke_100k_lines`, read 3.86 and 3.87 ms on the patch and 3.97 and
+3.93 ms without it, run back to back. `ShapeRunKey`'s fields are
+public, so the field is an addition to its API (a minor release under
+cosmic-text's 0.x).
+
+**For a fix in kui**, the places that hand cosmic-text attributes:
+plain text (`text.rs`, `buffer.set_text` in the shaping of a text
+entry), rich text (`set_rich_text`, where each span's index is already
+its `metadata` and is read back as `g.metadata.min(last)`), the editor
+(`edit.rs`: `set_text` and the buffers it builds, and the lines
+cosmic-text's own `Editor` edits in place), the cell grid
+(`cells.rs`) and the drop cap (`initial.rs`).
+
+**Bisecting** which earlier input changed a kept session's run: each
+candidate sequence on a thread of its own, since `reuse::set_fresh`
+leaves the kept session in its slot (its doc says so now). The input
+that changed `00765b43…` was one alone of the seventeen before it,
+`001d0fed…`, whose text began `ޢ]k`.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After

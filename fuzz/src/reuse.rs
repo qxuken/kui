@@ -55,6 +55,12 @@ thread_local! {
 
 /// A new session for every input on this thread (`on`), or kept sessions
 /// (the default). For `tests/reuse.rs`, which runs inputs both ways.
+///
+/// Turning it on leaves a kept session where it is, for the next input
+/// run with it off: it is no way to start a sequence on a new session.
+/// A sequence that must — bisecting which earlier input changed a kept
+/// session's run (backlog FZ14) — goes on a thread of its own, whose
+/// slot starts empty.
 pub fn set_fresh(on: bool) {
     FRESH.with(|f| f.set(on));
 }
