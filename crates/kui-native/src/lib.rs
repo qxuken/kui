@@ -1335,6 +1335,8 @@ impl PumpState {
         };
         self.pumps += 1;
         self.alive = pump_once(event_loop, shell);
+        #[cfg(target_os = "macos")]
+        macos_first_click::after_pump();
         self.tally(shell);
         if !self.alive {
             self.retire(shell);
@@ -1379,6 +1381,8 @@ impl PumpState {
             PumpStatus::Continue => !shell.exit_requested,
             PumpStatus::Exit(_) => false,
         };
+        #[cfg(target_os = "macos")]
+        macos_first_click::after_pump();
         self.tally(shell);
         if !self.alive {
             self.retire(shell);
