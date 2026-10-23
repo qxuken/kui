@@ -6,7 +6,8 @@
 # minutes of CPU per target that find something or nothing, and a finding
 # is a backlog item to read, minimize and fix - not a red commit. What a
 # run once found is kept under fuzz/regressions/ and replayed on stable by
-# `cargo test --workspace`, so ci.yml's `check` holds every fixed crash
+# `cargo test --workspace`, so every test run - a release round, GitHub's
+# `check` on a tag, ci.yml's when it is started - holds every fixed crash
 # fixed without a fuzzer in it (fuzz/Cargo.toml, scripts/fuzz.nu). Run this
 # after work on a parser, a decoder or encoder, the Node wire or the input and edit
 # paths, and before a release when there is an hour to spare.

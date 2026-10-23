@@ -303,6 +303,16 @@ own that ignores those fields draws the shadow as before; kui.h's
   `layout.odin` as LF on Windows too, and `gen --check` names a file
   that differs by its line ends alone as such.
 
+- Forgejo's `ci` workflow (`check`, and `publish`, the crates to the
+  drydock9 registry) and its `smoke` workflow run by hand only (Actions
+  → Run workflow), where they ran on every push to main and every tag;
+  `publish` runs when started on a `v*` tag with its `publish` box
+  ticked, after `check`. The book and the advisories keep their own
+  triggers, and GitHub's release pipeline is unchanged. With no check
+  on main left to ask, `release-prep.nu` drops its `ci` step (`--skip
+  ci` is now an unknown step), and the tag goes out with a plain `git
+  push origin main <tag>`.
+
 **What you can delete.**
 
 - A `screencapture` of the window's id, or another tool outside the

@@ -14,9 +14,10 @@
 # `workflow_dispatch` runs everything but the two publishing steps, so the
 # builds and the packs can be tried on a branch without a tag; the packs
 # are then the run's `release-packs` artifact. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
-# of a release: it checks the same commit in full (the C round, the Node
-# parity tests, the scene corpus, the book) and publishes the crates to the
-# Forgejo cargo registry once crates.io holds them. The npm package reaches
+# of a release, started by hand since alpha.66: it checks the tag in full
+# (the C round, the Node parity tests, the scene corpus, the book) and
+# publishes the crates to the Forgejo cargo registry once crates.io holds
+# them. The npm package reaches
 # the Forgejo npm registry by hand (scripts/release-local.nu; see
 # docs/releasing.md).
 #

@@ -21,7 +21,8 @@
 #
 #   nu scripts/book-examples.nu           rewrite the pages and the SUMMARY part
 #   nu scripts/book-examples.nu --check   fail, with the diff, if a rerun would
-#                                         change anything (ci.yml's `check` runs it)
+#                                         change anything (ci.yml's `check` runs it;
+#                                         release-prep.nu runs the rewrite)
 #   nu scripts/book-examples.nu pictures  draw every picture again from scratch,
 #                                         then rewrite the pages (needs a GPU)
 

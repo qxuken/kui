@@ -50,23 +50,26 @@ wants the version it tested writes that version exactly (`"@qxuken/kui":
 way, and without one a range reinstalls as whatever is newest.
 
 To cut a release: `nu scripts/release-prep.nu 0.1.0-alpha.2`, on any of the
-machines. It refuses a dirty tree, checks that the last finished Forgejo
-`check` on main or a tag passed, reruns every generator a CI step diffs
+machines. It refuses a dirty tree, reruns every generator a CI step diffs
 (`cargo fmt`, the book's Examples part, `npm run gen` for the two `.d.ts`
 files and `docs/props.md`, `odin.nu gen`) and stops, with the regenerated
 files left in the tree to commit, if any of them changes anything.
 alpha.59 is why: a `schema::DOORS` row went out without its
 `docs/props.md` line, Forgejo's `check` on the tag failed on the diff,
 and its `publish` never ran while GitHub's had already put the version
-on crates.io. `--skip ci,odin` leaves steps out by name (a machine with
-no Odin, a main whose run has not finished), and the summary says so;
+on crates.io. `--skip odin` leaves steps out by name (a machine with
+no Odin), and the summary says so;
 without a version it runs the checks alone. Then it runs
 `scripts/set-version.nu` (workspace version, the `kui-*` dependency
 requirements, package.json and the changelog's open `(unreleased)`
 heading move together — registries refuse a version that already
 exists), which it requires to read `## <version> (unreleased)` first,
-and prints what is left. Then commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag
-in one go: `git push --atomic origin main v0.1.0-alpha.2`. `origin` is
+and prints what is left. Nothing checks main between releases any more
+(Forgejo's `check` is started by hand since alpha.66, and GitHub's runs on
+a tag), so the round on the release machines — the tests, the C, Odin and
+Node rounds, the smoke rounds, below — is what a tag stands on. Then
+commit, `git tag v0.1.0-alpha.2`, then push the branch and the tag:
+`git push origin main v0.1.0-alpha.2`. `origin` is
 Forgejo, and its push mirror carries both refs to GitHub — but do not
 count on the mirror to start GitHub's pipeline. Push the tag there by
 name as well: `git push github main v0.1.0-alpha.2`. The one time a tag
@@ -75,13 +78,12 @@ same day as alpha.35) the tag was there and no workflow ran for it,
 while the next tag, pushed by name, started its run within seconds; and
 the mirror syncs on its own schedule in any case. Forgejo is the source:
 a ref `origin` does not hold is the mirror's to overwrite, so push the
-same commit and tag to both and nothing else to `github`. The order the
-two pipelines start in does not matter: Forgejo's `publish` waits for
-crates.io. The next release's
+same commit and tag to both and nothing else to `github`. The next release's
 `## <version> (unreleased)` heading is opened by hand; the script only dates
 the open one, and a tag whose top heading is missing, stale or still says
-unreleased fails the release. The tag then runs two pipelines, one on each
-host the repository lives on:
+unreleased fails the release. A release has two pipelines, one on each
+host the repository lives on; the tag starts GitHub's, and Forgejo's is
+started by hand:
 
 - **GitHub**, [release.yml](../.github/workflows/release.yml): `check`
   (fmt, clippy, the workspace tests), then one addon build per platform on
@@ -106,7 +108,8 @@ host the repository lives on:
   repository secrets: `CRATES_IO_TOKEN` (a crates.io API token with publish
   rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs granular access
   token for the `@qxuken` scope with "Read and write (stage only)").
-- **Forgejo**, [ci.yml](../.forgejo/workflows/ci.yml): `check` in full (the
+- **Forgejo**, [ci.yml](../.forgejo/workflows/ci.yml), by hand: Actions →
+  ci → Run workflow on the tag, with `publish` ticked. `check` in full (the
   C round, the Odin binding, the Node parity tests, the scene corpus, the
   book), then
   `publish`, which waits for crates.io to list the version (the Forgejo
@@ -115,6 +118,10 @@ host the repository lives on:
   re-run finishes the job) and publishes the crates to the Forgejo cargo
   registry. It needs one repository secret, `PACKAGES_TOKEN` (a Forgejo
   personal access token with `write:packages`), and the one docker runner.
+  Started on anything but a tag, or with `publish` unticked, it is
+  `check` alone. Until alpha.66 both jobs ran on every push to main and
+  every tag; `scripts/release-local.nu` publishes any crate drydock9 is
+  missing as well, so either way finishes this half.
 
 Neither pipeline publishes the npm package to the Forgejo npm registry; that
 is done by hand, below.
@@ -218,8 +225,9 @@ the release build and never executed by it — and neither of those two files
 carries a test, so the headless suite pins the data they hand the platform, not
 the platform's acceptance of it. Two optional jobs, `smoke-macos` and
 `smoke-windows`, build and run `cargo test --workspace` natively against the
-real SDK; both are gated on the repository variables `SMOKE_MACOS` /
-`SMOKE_WINDOWS` and skip unless a runner with the matching label is registered.
+real SDK; both are started by hand (since alpha.66, as `ci.yml` is), are
+gated on the repository variables `SMOKE_MACOS` / `SMOKE_WINDOWS`, and
+skip unless a runner with the matching label is registered.
 They live in their own workflow, [smoke.yml](../.forgejo/workflows/smoke.yml),
 for the reason `audit` does: they share nothing with what makes `check`
 expensive and are on no release path — and a job whose runner label matches
@@ -253,34 +261,16 @@ The fuzz targets ([fuzz/](../fuzz/README.md)) are on no release path
 either, and nothing runs them unasked: the `fuzz` workflow
 ([fuzz.yml](../.forgejo/workflows/fuzz.yml)) is started by hand, and
 `nu scripts/fuzz.nu all` is the same run on a workstation. What they
-once found is replayed by `check` on every commit (`fuzz/regressions/`,
-under `cargo test --workspace`). Before a tag that touched a parser,
+once found is replayed by every test run (`fuzz/regressions/`, under
+`cargo test --workspace`). Before a tag that touched a parser,
 the image decoder, the Node wire, paths or the input and edit paths,
 an hour of it is worth having: the first round found seven defects the
 headless suite passed through, six of them a crash or an allocation a
 host could not stop (backlog FZ1–FZ7).
 
-Pushing the tag does not check the commit twice. The push to main and the push
-of the tag that names it share a concurrency group keyed by the commit, and
-only the tag run may cancel — so it takes over a `check` already running for
-that commit, and in the other order (the tag handled first) the main run is
-stood down by ci.yml's `gate` job instead of running a second one. With a
-single runner that is the difference between one `check` and two before
-anything is published. It needs Forgejo v14 or newer for the `concurrency`
-block; the trade is that a run on main is no longer cancelled when a newer
-commit is pushed to main, since the group is the commit rather than the branch.
-
-The two refs go in one `--atomic` push for the same reason. Either order ends
-with one `check`, but pushing main first and the tag a minute later means the
-run the tag cancels has spent that minute compiling; sent together, the loser
-is cancelled — or stood down by `gate`, which answers in about three seconds —
-before it has done any work. Not `--follow-tags`: it pushes annotated tags
+Name both refs in the push. Not `--follow-tags`: it pushes annotated tags
 only, and the tags here are lightweight, so it would push main and silently
-leave the tag behind. Name both refs.
-
-What that looks like afterwards: the tag's run is the one that checks, builds
-and publishes, and the run for the same commit on main ends as **cancelled**,
-or as a three-second `gate` with `check` skipped. Both are the success case.
+leave the tag behind.
 
 Before tagging, run the macOS accessibility audit by hand:
 

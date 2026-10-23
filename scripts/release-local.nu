@@ -5,8 +5,9 @@
 #
 # Since alpha.34 the two pipelines split a release between them - GitHub's
 # (.github/workflows/release.yml) publishes the crates to crates.io and
-# stages the npm package on npmjs, Forgejo's (.forgejo/workflows/ci.yml)
-# publishes the crates to drydock9 - and neither publishes the npm package
+# stages the npm package on npmjs, Forgejo's (.forgejo/workflows/ci.yml,
+# started by hand since alpha.66) publishes the crates to drydock9 - and
+# neither publishes the npm package
 # to the Forgejo npm registry. That is this script's regular job now: run
 # it after both pipelines have finished, and it skips every crate the
 # registries already hold and publishes the npm package. It remains the

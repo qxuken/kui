@@ -1,37 +1,27 @@
-# Forgejo Actions. `check` runs once per commit on every push and pull
-# request; pushing a `v*` tag additionally runs `publish` after it:
+# Forgejo Actions, by hand only (workflow_dispatch): `check` on the ref it
+# is started from, and with `publish` ticked on a `v*` tag, `publish` after
+# it:
 #
-#   gate ── check ── publish   (the kui-* crates, to this Forgejo's cargo registry)
+#   check ── publish   (the kui-* crates, to this Forgejo's cargo registry)
+#
+# Until alpha.66 both ran on every push to main and every tag. They stopped
+# when the release rounds on the workstations (docs/releasing.md) had been
+# the check that mattered for a while, and the one docker runner's `check`
+# was a half-hour queue behind every push that the round had already
+# covered. The book (book.yml) and the advisories (audit.yml) still run on
+# their own triggers.
 #
 # A release has two halves. The public one is GitHub's
-# (.github/workflows/release.yml, on the same tag): it builds the npm
-# package's native addon on each platform, publishes the crates to crates.io
-# and stages the npm package on npmjs. This half publishes the same crates
-# to the Forgejo cargo registry (`drydock9` in .cargo/config.toml), once
+# (.github/workflows/release.yml, on the tag): it builds the npm package's
+# native addon on each platform, publishes the crates to crates.io and
+# stages the npm package on npmjs. This half publishes the same crates to
+# the Forgejo cargo registry (`drydock9` in .cargo/config.toml), once
 # crates.io holds them - the Forgejo copies name crates.io for their kui-*
-# dependencies, so their verify builds cannot run before it does. The npm
-# package reaches the Forgejo npm registry by hand, through
-# scripts/release-local.nu (docs/releasing.md).
-#
-# A release tag is cut at a commit that is already on main, so the same
-# commit arrives twice: once as a push to main and once as the push of the
-# tag. Both would run `check`, and on a single runner the second one is a
-# queue nobody is waiting for. The `concurrency` block below puts both runs
-# in one group keyed by the commit, and lets only the tag run cancel -
-# whichever order the two push events are handled in, the tag run is the one
-# that survives, because it is the only one that can also publish. When the
-# tag event is handled first the main run is not cancelled but blocked
-# behind it, and running `check` over a commit the tag run has just checked
-# would be the same waste, so the `gate` job stands that run down instead.
-# Between them the two cover both orders, and a tagged commit is checked
-# exactly once.
-#
-# Keying the group by commit rather than by branch is what makes the tag
-# run's cancel safe: it can only ever cancel a run that is about its own
-# commit. The price is that declaring a group replaces Forgejo's default
-# for a branch, which cancels a run when a newer commit is pushed to the
-# same branch - two quick pushes to main now both run to the end. Pull
-# requests keep that behaviour, since their group is the pull request.
+# dependencies, so their verify builds cannot run before it does - and is
+# now started by hand, as the npm package's Forgejo copy always was
+# (scripts/release-local.nu, which also publishes any crate drydock9 is
+# missing). Started on a tag with `publish` ticked, the run checks the tag
+# and then publishes; on anything else `publish` is skipped.
 #
 # Native runs on real hardware are not here either. `smoke-macos` and
 # `smoke-windows` live in .forgejo/workflows/smoke.yml, because they need
@@ -79,8 +69,8 @@
 #   * one runner labelled `docker`;
 #   * crates.io holding the version, which the GitHub release workflow
 #     provides; `publish` waits for it (up to its timeout) rather than
-#     failing, since the two pipelines start from the same tag push and
-#     GitHub's builds take longer than `check` does.
+#     failing, so a run started right after the tag push, while GitHub's
+#     builds are still going, finishes on its own.
 #
 # Worth saying plainly: nothing in this workflow runs on Windows or macOS.
 # The GitHub release workflow compiles the addon on each of them, but it
@@ -105,23 +95,12 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
-
-# One group per commit, so the push to main and the push of the tag that
-# names it do not both run `check`; see the note above. Only a tag run
-# cancels what is already in its group - a push to main waits for a tag run
-# at the same commit instead of killing the release, and `gate` then stands
-# it down. Pull requests group by the pull request and cancel, which is what
-# Forgejo does for them anyway. The prefix keeps this group distinct from
-# smoke.yml's: groups are per repository, not per workflow. Forgejo has read
-# this block since v14.0 (January 2026); on anything older only `gate`
-# speaks, and the two runs go back to queueing behind each other.
-concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') }}
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: After `check`, publish the crates to drydock9 (a v* tag only, once crates.io has them)
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -147,69 +126,7 @@ env:
   ODIN_VERSION: "dev-2026-10"
 
 jobs:
-  # Answers one question - does this commit still need checking? - and is
-  # the only job `check` waits for. A push to main whose commit already
-  # carries a `v*` tag is stood down here: that tag's own run does the
-  # checking, and this run only exists because the tag was pushed after the
-  # branch (or was handled first and blocked this one on the concurrency
-  # group above). Everything else - a pull request, a push to main with no
-  # tag on it, the tag run itself - runs.
-  #
-  # It costs a container start on every run - three seconds, measured
-  # 2026-09-07 - which is the price of not having `check` decide for itself:
-  # the decision has to be made before the expensive steps, and a step-level
-  # guard would have to be repeated on every step below it. No checkout: one `ls-remote` answers it, and the
-  # question is about the remote's tags rather than the workspace's. If the
-  # lookup cannot be made at all the answer is yes, check - a run that
-  # checks twice is better than a commit that is never checked.
-  gate:
-    runs-on: docker
-    container:
-      image: node:24-bookworm
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-    steps:
-      - name: Does this commit still need checking
-        id: decide
-        env:
-          # Read access to this repository is all the lookup needs, and the
-          # instance does not answer anonymously. Passed through git's
-          # config env vars rather than in the URL so the token stays out of
-          # the process arguments.
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: http.extraheader
-          GIT_CONFIG_VALUE_0: "Authorization: token ${{ secrets.GITHUB_TOKEN }}"
-        run: |
-          set -eu
-          tagged=
-          case "$GITHUB_REF" in
-            refs/tags/*) ;;
-            *)
-              if tags=$(git ls-remote --tags \
-                    "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" 'refs/tags/v*'); then
-                # A lightweight tag lists the commit directly; an annotated
-                # one lists the tag object and a peeled `^{}` line with the
-                # commit. Matching column one covers both. An `if`, not a
-                # `&&`: under `set -e` a grep that matches nothing would end
-                # the job, and a failed gate skips `check`.
-                if printf '%s\n' "$tags" | grep -q "^${GITHUB_SHA}[[:space:]]"; then
-                  tagged=yes
-                fi
-              else
-                echo "could not list tags; checking this commit anyway"
-              fi
-              ;;
-          esac
-          if [ -n "$tagged" ]; then
-            echo "${GITHUB_SHA} carries a v* tag - that tag's own run checks it"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
-
   check:
-    needs: gate
-    if: needs.gate.outputs.run == 'true'
     runs-on: docker
     container:
       image: node:24-bookworm
@@ -293,11 +210,8 @@ jobs:
       # what a cache this size is supposed to cost; the difference is not
       # the runner, it is the 9 GB.
       #
-      # A pull request gets nothing back for the save half: it restores
-      # what the last push to main left, and its next push restores exactly
-      # that again. So a pull request reads the cache and stops there, and
-      # a push - main, or the tag that names the same commit - is what
-      # writes one back.
+      # Every run, started by hand, restores what the last one left and
+      # writes one back when Cargo.lock moved.
       - name: Restore cargo cache
         id: cargo-cache
         uses: actions/cache/restore@v4
@@ -518,7 +432,7 @@ jobs:
           '
 
       # Everything above this line is a check; everything below is the
-      # cache write, and it runs on a push only (see the restore step).
+      # cache write.
       #
       # The prune is what keeps the entry from growing without limit. The
       # cache is restored through `restore-keys`, so the target dir a run
@@ -539,7 +453,7 @@ jobs:
       # run after it a cold build that saves a pruned entry; the old
       # entries age out on their own.
       - name: Prune the target dir
-        if: github.event_name == 'push' && steps.cargo-cache.outputs.cache-hit != 'true'
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
         run: nu scripts/prune-target.nu
 
       # `cache-hit` is the exact key, not the `restore-keys` prefix: when
@@ -547,7 +461,7 @@ jobs:
       # one that would be written, and actions/cache/save refuses to
       # overwrite it anyway.
       - name: Save cargo cache
-        if: github.event_name == 'push' && steps.cargo-cache.outputs.cache-hit != 'true'
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -561,7 +475,9 @@ jobs:
   # registry, after crates.io has them (see the top of this file).
   publish:
     needs: check
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Ticked by hand, on a tag. An input reads as a boolean or, on some
+    # Forgejo versions, as the string; both are taken.
+    if: startsWith(github.ref, 'refs/tags/v') && (inputs.publish == true || inputs.publish == 'true')
     runs-on: docker
     container:
       image: node:24-bookworm

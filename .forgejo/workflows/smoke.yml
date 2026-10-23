@@ -27,7 +27,7 @@
 #
 # Still additive and non-blocking: neither job appears in `publish`'s
 # `needs` in ci.yml, and neither can fail a run (`continue-on-error`), so
-# the cross-compiled release path is exactly what it was.
+# the release path is exactly what it was.
 #
 # They are gated on a repository variable as well, not on `runs-on` alone,
 # so a run makes no queue entry at all on an instance without the hardware.
@@ -59,22 +59,9 @@
 # which needs no permission grant and no human.
 name: smoke
 
+# By hand only, as ci.yml is since alpha.66: on the ref it is started from.
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
   workflow_dispatch:
-
-# The same grouping ci.yml uses, and for the same reason: a release tag is
-# pushed at a commit that is already on main, and one group per commit keeps
-# the tag run from smoking the same commit a second time. Only the tag run
-# cancels, so a push to main can never kill a release. The prefix matters -
-# concurrency groups are per repository, not per workflow, and sharing one
-# with ci.yml would have these jobs and `check` cancelling each other.
-concurrency:
-  group: smoke-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') }}
 
 env:
   CARGO_TERM_COLOR: always
