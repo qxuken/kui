@@ -125,6 +125,9 @@ fn core(cli: &Cli) -> Core {
         ..Default::default()
     });
     core.set_subpixel_text(false);
+    // As a window draws a faded subtree: one picture, faded once (ADR
+    // 0056).
+    core.set_opacity_groups(true);
     core
 }
 

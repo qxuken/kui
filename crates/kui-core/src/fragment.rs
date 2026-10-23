@@ -249,6 +249,7 @@ fn kui_fs_fragment(
     @location(10) pre: vec2<f32>,
     @location(11) inner: vec4<f32>,
     @location(12) inner_radii: vec4<f32>,
+    @location(13) screen: vec2<f32>,
 ) -> @location(0) vec4<f32> {
     var kui_in: FragmentIn;
     kui_in.local = local;
@@ -275,8 +276,10 @@ fn kui_fs_fragment(
         all(radii <= vec4<f32>(0.0)),
     );
 
-    // The inherited clip, in framebuffer space, rounded when rounded.
-    let kui_p = frag_pos.xy;
+    // The inherited clip, in the frame's space, rounded when rounded:
+    // the fragment's place in the frame, which in a group's pass is not
+    // where it lands (ADR 0056).
+    let kui_p = screen;
     var kui_inside: f32;
     if all(clip_radii <= vec4<f32>(0.0)) {
         kui_inside = f32(

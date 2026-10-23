@@ -410,6 +410,9 @@ extern "C" {
  * for the clipboard, which kui_set_clipboard_image and
  * kui_capture_to_clipboard queue (ADR 0055). Recompile; a host that
  * drains menu actions puts the picture on its clipboard or drops it.
+ * With it, moving no struct: KUI_QUAD_GROUP_BEGIN and KUI_QUAD_GROUP_END,
+ * a faded subtree drawn as one picture, after kui_set_opacity_groups
+ * (ADR 0056).
  */
 #define KUI_ABI_VERSION 37u
 uint32_t kui_abi_version(void);
@@ -588,10 +591,21 @@ enum {
  * shape. Emitted just before the node's own quads, so what the node
  * paints lies over the blur. A renderer that cannot read its target
  * draws nothing for it. ABI 26. */
+/* KUI_QUAD_GROUP_BEGIN / KUI_QUAD_GROUP_END: a faded subtree drawn as one
+ * picture (ADR 0056), only after kui_set_opacity_groups(ctx, true). The
+ * quads between the two are drawn into a picture of their own, over
+ * nothing, with none of the group's fade; the end marker then draws that
+ * picture into whatever holds it - the frame, or the group around it -
+ * at `color.a`, the group's fade. Both carry the group's bounds in
+ * `rect` (whole physical px inside the viewport) and its fade in
+ * `color.a`; `uv[0]` is the other marker's index. The end's clip is the
+ * entry that clips nothing: what the group drew was clipped as it was
+ * drawn. Groups nest. A renderer drawing them draws glyphs inside a group
+ * as alpha masks. ABI 37. */
 enum { KUI_QUAD_SOLID = 0, KUI_QUAD_GLYPH_MASK = 1, KUI_QUAD_GLYPH_COLOR = 2,
        KUI_QUAD_IMAGE = 3, KUI_QUAD_GLYPH_SUBPIXEL = 4, KUI_QUAD_SHADOW = 5,
        KUI_QUAD_SEGMENT = 6, KUI_QUAD_FRAGMENT = 7, KUI_QUAD_TEXTURE = 8,
-       KUI_QUAD_BACKDROP = 9 };
+       KUI_QUAD_BACKDROP = 9, KUI_QUAD_GROUP_BEGIN = 10, KUI_QUAD_GROUP_END = 11 };
 /* How an image's texels are read between pixels (kui_image_with) */
 enum { KUI_SAMPLING_LINEAR = 0, KUI_SAMPLING_NEAREST = 1 };
 /* How an image's pixels meet its box (kui_image_with): stretched, the
@@ -1010,8 +1024,10 @@ typedef struct KuiSpec {
     /* Group opacity: with opacity_set non-zero, `opacity` (0..1) fades this
      * node and its whole subtree. The bit exists so 0 stays expressible —
      * without it, a zeroed struct could not tell "opaque" from "invisible".
-     * It is a per-quad alpha multiply, not an offscreen composite, so
-     * overlapping pieces of one subtree show their seams through the fade.
+     * Under kui_run, or after kui_set_opacity_groups, the subtree is drawn
+     * as one picture and faded once (ADR 0056), so a label on its own fill
+     * and overlapping pieces fade as one; otherwise every quad carries the
+     * fade, and overlapping pieces show their seams through it.
      * Layout, hit-testing and the access tree are untouched: an invisible
      * subtree still takes clicks, exactly like CSS opacity: 0. Eases with
      * transition_ms, and enter.opacity fades a panel in. */
@@ -2896,6 +2912,14 @@ int32_t kui_frame_unchanged(KuiCtx *ctx);
  * instead of alpha masks. Only turn it on if your renderer blends per
  * channel. Flipping it re-rasterizes every glyph. */
 void kui_set_subpixel_text(KuiCtx *ctx, bool on);
+/* Draw a faded subtree as one picture (ADR 0056): a node whose own
+ * opacity is under 1 has its subtree's quads emitted between a
+ * KUI_QUAD_GROUP_BEGIN and a KUI_QUAD_GROUP_END, unfaded by it, the end
+ * carrying its fade, so a label on its own fill and two overlapping
+ * pieces fade as one. kui_run turns it on; turn it on for a renderer of
+ * your own once it draws groups, or leave it off and every quad of a
+ * faded subtree carries its fade, as before. Off by default. ABI 37. */
+void kui_set_opacity_groups(KuiCtx *ctx, bool on);
 /* Byte budget for the shaped-text cache: every text a frame draws is shaped
  * once and kept; past this many (estimated) bytes the least recently drawn
  * entries go at the start of the next frame, never what the last frame

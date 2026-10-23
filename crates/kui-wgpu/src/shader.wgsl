@@ -33,8 +33,8 @@ struct Instance {
     // about the quad's centre, which only a path's quads set), border_w (also the stroke width of a segment, and the
     // sampling flag of an image: 1 = nearest), kind (0 solid / 1 mask
     // glyph / 2 color glyph / 3 image / 4 subpixel glyph / 5 shadow /
-    // 6 segment; a texture quad arrives as 3 with its own texture bound),
-    // unused
+    // 6 segment / 8 a group's picture; a texture quad arrives as 3 with
+    // its own texture bound), unused
     @location(4) params: vec4<f32>,
     // atlas texels: x, y, w, h — or, for a segment, its two endpoints in
     // physical px: x0, y0, x1, y1 (the Rust side decodes the bits)
@@ -76,6 +76,11 @@ struct VsOut {
     @location(10) pre: vec2<f32>,
     @location(11) inner: vec4<f32>,
     @location(12) inner_radii: vec4<f32>,
+    // The fragment's place in the frame, physical px: where `frag_pos`
+    // is in the frame's own pass, and where it is not in a group's,
+    // whose viewport moves the group onto its place in a texture (ADR
+    // 0056). What the clip is tested against. Affine, so exact.
+    @location(13) screen: vec2<f32>,
 };
 
 @vertex
@@ -128,6 +133,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Instance) -> VsOut {
     out.pre = pre;
     out.inner = inst.inner;
     out.inner_radii = inst.inner_radii;
+    out.screen = px;
     return out;
 }
 
@@ -184,10 +190,10 @@ struct Shaded {
 };
 
 fn shade(in: VsOut) -> Shaded {
-    // frag_pos is framebuffer coords (physical px, y down) — same space as
-    // clip. Clip via coverage (not discard) to keep texture sampling in
-    // uniform control flow.
-    let p = in.frag_pos.xy;
+    // The fragment in the frame (physical px, y down) — same space as
+    // clip, in a group's pass as in the frame's. Clip via coverage (not
+    // discard) to keep texture sampling in uniform control flow.
+    let p = in.screen;
     var inside: f32;
     if all(in.clip_radii <= vec4<f32>(0.0)) {
         inside = f32(
@@ -238,6 +244,16 @@ fn shade(in: VsOut) -> Shaded {
         // LCD subpixel glyph: the atlas holds one coverage per channel.
         let t = textureSample(atlas_tex, atlas_smp, in.uv);
         return Shaded(in.color.rgb, t.rgb * in.color.a * inside);
+    }
+
+    if kind == 8u {
+        // A group's picture (ADR 0056): the texels its pass drew, found
+        // `seg.xy` from this pixel's place in the frame. They are
+        // premultiplied (drawn over nothing), so straightened here for
+        // the blend, and faded once by `color.a`.
+        let t = textureLoad(atlas_tex, vec2<i32>(floor(in.screen + in.seg.xy)), 0);
+        let rgb = min(t.rgb / max(t.a, 1e-6), vec3<f32>(1.0));
+        return Shaded(rgb, vec3<f32>(t.a * in.color.a * inside));
     }
 
     if kind == 6u {

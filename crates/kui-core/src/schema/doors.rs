@@ -1610,6 +1610,14 @@ pub const DOORS: &[Door] = &[
         doc: "LCD subpixel coverage for outline glyphs, for a renderer that blends per channel.",
     },
     Door {
+        rust: "Core::set_opacity_groups",
+        c: Is("kui_set_opacity_groups"),
+        odin: Is("set_opacity_groups"),
+        node: Is("setOpacityGroups"),
+        lua: No(GUEST),
+        doc: "A faded subtree drawn as one picture, faded once (ADR 0056): its quads between group markers, unfaded by it. The runner turns it on for its windows; a headless driver turns it on to capture what a window shows, and a host drawing the quads itself once it draws groups.",
+    },
+    Door {
         rust: "Core::take_audio_commands",
         c: Is("kui_take_audio_commands"),
         odin: Is("take_audio_commands"),

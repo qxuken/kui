@@ -912,6 +912,11 @@ impl Core {
         let any_clip = self.tree.any_clip || any_transform;
         let any_rounded_clip = self.tree.any_rounded_clip;
         let any_opacity = self.tree.any_opacity;
+        // A faded subtree drawn as one picture (ADR 0056): only where the
+        // renderer asked for it and the frame fades something.
+        let grouping = self.opacity_groups && any_opacity;
+        self.groups.clear();
+        self.group_spans.clear();
         let any_float = self.tree.any_float;
         // Read once: every per-node selection check below is behind it.
         let any_selectable = self.tree.any_selectable;
@@ -1210,13 +1215,22 @@ impl Core {
             if any_over_siblings && i < over_until {
                 continue; // inside a deferred subtree: painted with it
             }
+            // The groups this node is outside of end before anything is
+            // painted for it.
+            if grouping {
+                self.groups_settle(i);
+            }
             // A departing subtree painted just under this node last time
             // goes first, so it stays under it.
             if any_ghost && replay.may_precede(self.tree.keys[i]) {
                 let key = self.tree.keys[i];
+                let from = self.display.quads.len();
                 replay.paint(At::UnderInFlow(key), |g, play| {
                     self.emit_ghost(g, play, scale)
                 });
+                if grouping {
+                    self.groups_ghost(from);
+                }
             }
             if any_over_siblings && parent != NIL && self.tree.specs[i].over_siblings {
                 waiting.push(Deferred {
@@ -1259,6 +1273,11 @@ impl Core {
                 }
                 continue;
             }
+            let opacity = if grouping {
+                self.groups_enter(i, opacity)
+            } else {
+                opacity
+            };
             let paint = Paint {
                 clip_rect,
                 clip_id,
@@ -1280,6 +1299,9 @@ impl Core {
             };
             self.flush_over_siblings(self.tree.len(), &mut waiting, NIL, &mut w);
             self.text.order_places(places_from);
+        }
+        if grouping {
+            self.groups_close_all();
         }
 
         if any_ghost {
@@ -1341,11 +1363,18 @@ impl Core {
                     if self.float_root[i] != r {
                         continue; // a nested float: its own layer, later
                     }
+                    if grouping {
+                        self.groups_settle(i);
+                    }
                     if any_ghost && replay.may_precede(self.tree.keys[i]) {
                         let key = self.tree.keys[i];
+                        let from = self.display.quads.len();
                         replay.paint(At::UnderInLayer(key), |g, play| {
                             self.emit_ghost(g, play, scale)
                         });
+                        if grouping {
+                            self.groups_ghost(from);
+                        }
                     }
                     let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
                     let (clip_rect, cull_rect) = match self.clips.get(i) {
@@ -1360,6 +1389,11 @@ impl Core {
                     if visible.w <= 0.0 || visible.h <= 0.0 {
                         continue;
                     }
+                    let opacity = if grouping {
+                        self.groups_enter(i, opacity)
+                    } else {
+                        opacity
+                    };
                     let paint = Paint {
                         clip_rect,
                         clip_id,
@@ -1367,6 +1401,9 @@ impl Core {
                         opacity,
                     };
                     self.emit_node(i, rect, paint, &mut hits, &mut scroll_regions);
+                }
+                if grouping {
+                    self.groups_close_all();
                 }
                 if any_ghost {
                     replay.paint(At::LayerEnd(root_key), |g, play| {
@@ -1411,6 +1448,10 @@ impl Core {
             if let Some(source) = sess.resources.fragment(id).cloned() {
                 crate::join::shape(&mut self.display, &joins, id, &source, scale);
             }
+        }
+        // Each group's bounds, from what it drew in its final shape.
+        if grouping {
+            self.finish_groups();
         }
 
         let shapes = std::mem::take(&mut self.hit_shapes);
@@ -1497,6 +1538,10 @@ impl Core {
                 continue; // a nested float: its own layer
             }
             let key = self.tree.keys[j];
+            let grouping = self.opacity_groups && self.tree.any_opacity;
+            if grouping {
+                self.groups_settle(j);
+            }
             if w.any_ghost && (j != root || ghost_root) && w.replay.may_precede(key) {
                 let at = if layer == NIL {
                     At::UnderInFlow(key)
@@ -1504,8 +1549,12 @@ impl Core {
                     At::UnderInLayer(key)
                 };
                 let scale = w.scale;
+                let from = self.display.quads.len();
                 w.replay
                     .paint(at, |g, play| self.emit_ghost(g, play, scale));
+                if grouping {
+                    self.groups_ghost(from);
+                }
             }
             if j != root && self.tree.specs[j].over_siblings {
                 let parent = self.tree.parent[j];
@@ -1563,6 +1612,11 @@ impl Core {
             }
             return;
         }
+        let opacity = if self.opacity_groups && self.tree.any_opacity {
+            self.groups_enter(i, opacity)
+        } else {
+            opacity
+        };
         let paint = Paint {
             clip_rect,
             clip_id,

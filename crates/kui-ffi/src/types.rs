@@ -610,9 +610,9 @@ pub struct KuiSpec {
     /// means "not set", so a fully transparent subtree stays expressible).
     pub opacity_set: u32,
     /// Group opacity 0..1 with `opacity_set`: fades this node and its whole
-    /// subtree. A per-quad alpha multiply, not an offscreen composite, so
-    /// overlapping pieces of one subtree show their seams through the fade;
-    /// layout, hit-testing and the access tree are untouched. Eases with
+    /// subtree: drawn as one picture and faded once under `kui_run` or
+    /// after `kui_set_opacity_groups` (ADR 0056), a fade on every quad
+    /// otherwise; layout, hit-testing and the access tree are untouched. Eases with
     /// `transition_ms`.
     pub opacity: f32,
     /// 0xRRGGBBAA drop-shadow color; 0 = no shadow, and nothing else here

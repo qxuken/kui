@@ -2988,6 +2988,9 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             .take()
             .expect("the main core is built once, by the launcher");
         core.set_subpixel_text(self.subpixel);
+        // A kui-wgpu renderer draws a faded subtree as one picture (ADR
+        // 0056).
+        core.set_opacity_groups(true);
         core.env.window.id = WindowId::MAIN;
         self.push_pane(
             event_loop,

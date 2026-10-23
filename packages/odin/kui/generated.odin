@@ -559,6 +559,8 @@ Quad_Kind :: enum u32 {
 	Fragment = 7, // KUI_QUAD_FRAGMENT
 	Texture = 8, // KUI_QUAD_TEXTURE
 	Backdrop = 9, // KUI_QUAD_BACKDROP
+	Group_Begin = 10, // KUI_QUAD_GROUP_BEGIN
+	Group_End = 11, // KUI_QUAD_GROUP_END
 }
 
 Fragment_Image :: enum u32 {
@@ -641,7 +643,11 @@ Spec :: struct {
 	// Corner radius for all four corners (logical px); the per-corner props
 	// override it when listed after it.
 	radius: f32,
-	// Group opacity 0..1 (default 1): fades this node and its whole subtree.
+	// Group opacity 0..1 (default 1): fades this node and its whole subtree,
+	// drawn as one picture and faded once in a window (ADR 0056), so a label on
+	// its own fill and overlapping pieces fade as one; a renderer that draws the
+	// quads itself without groups fades each quad, and overlapping pieces show
+	// their seams.
 	opacity: Maybe(f32),
 	// Paint this node's background, border, shadow and fragment with each edge on
 	// a whole physical pixel: `x` and `x + width` rounded on their own, from
@@ -2513,6 +2519,13 @@ frame_unchanged :: proc(ui: ^Ui) -> i32 {
 // Rust: Core::set_subpixel_text.
 set_subpixel_text :: proc(ui: ^Ui, on: bool) {
 	c.set_subpixel_text(ui, on)
+}
+
+// A faded subtree drawn as one picture, faded once (ADR 0056): its quads
+// between group markers, unfaded by it.
+// Rust: Core::set_opacity_groups.
+set_opacity_groups :: proc(ui: ^Ui, on: bool) {
+	c.set_opacity_groups(ui, on)
 }
 
 // The shaped-text cache's byte budget (backlog C16).

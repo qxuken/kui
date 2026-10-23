@@ -89,6 +89,8 @@ QUAD_SEGMENT :: 6
 QUAD_FRAGMENT :: 7
 QUAD_TEXTURE :: 8
 QUAD_BACKDROP :: 9
+QUAD_GROUP_BEGIN :: 10
+QUAD_GROUP_END :: 11
 
 SAMPLING_LINEAR :: 0
 SAMPLING_NEAREST :: 1
@@ -1160,6 +1162,7 @@ foreign lib {
 	note_frame_cause :: proc(ctx: ^Ctx, cause: u32) ---
 	frame_unchanged :: proc(ctx: ^Ctx) -> i32 ---
 	set_subpixel_text :: proc(ctx: ^Ctx, on: bool) ---
+	set_opacity_groups :: proc(ctx: ^Ctx, on: bool) ---
 	set_text_cache_budget :: proc(ctx: ^Ctx, bytes: uint) ---
 	text_cache_bytes :: proc(ctx: ^Ctx) -> uint ---
 	env_set_window :: proc(ctx: ^Ctx, window: u32, custom_chrome: bool, maximized: bool, fullscreen: bool, controls_w: f32, controls_h: f32) ---

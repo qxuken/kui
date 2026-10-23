@@ -948,6 +948,19 @@ pub extern "C" fn kui_set_subpixel_text(ptr: *mut KuiCtx, on: bool) {
     });
 }
 
+/// Draws a faded subtree as one picture (ADR 0056): its quads between a
+/// `KUI_QUAD_GROUP_BEGIN` and a `KUI_QUAD_GROUP_END`, unfaded by it, the
+/// end carrying the fade — `Core::set_opacity_groups`. `kui_run` turns it
+/// on; a host drawing the quads itself turns it on once it draws groups.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_opacity_groups(ptr: *mut KuiCtx, on: bool) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_opacity_groups(on);
+        }
+    });
+}
+
 /// Byte budget for the shaped-text cache: past it the least recently drawn
 /// entries are evicted at the start of the next frame, never what the last
 /// frame drew. Default 64 MB (`DEFAULT_TEXT_CACHE_BYTES`).

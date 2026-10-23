@@ -63,6 +63,7 @@ pub mod devtools;
 mod dispatch;
 mod emit;
 mod fills;
+mod groups;
 mod focus;
 pub mod follow;
 mod gesture;
@@ -437,6 +438,13 @@ pub struct Core {
     /// rebuilt each finish_frame and only materialized when something
     /// actually fades.
     opacity: Vec<f32>,
+    /// Whether a faded subtree is drawn as one picture (ADR 0056): the
+    /// renderer's switch, off for a host that draws the quads itself.
+    opacity_groups: bool,
+    /// The groups open while the walk emits, innermost last, and the ones
+    /// it closed this frame, inner before outer, for `finish_groups`.
+    groups: Vec<groups::OpenGroup>,
+    group_spans: Vec<groups::Span>,
     /// Per node, the layer it paints in: the index of its nearest floating
     /// ancestor-or-self, `NIL` in flow. Only filled on a frame
     /// that floats something.
@@ -1241,6 +1249,9 @@ impl Core {
             clips: Vec::new(),
             clip_ids: Vec::new(),
             opacity: Vec::new(),
+            opacity_groups: false,
+            groups: Vec::new(),
+            group_spans: Vec::new(),
             float_root: Vec::new(),
             float_stack: Vec::new(),
             float_groups: Vec::new(),
@@ -1632,6 +1643,27 @@ impl Core {
 
     pub fn subpixel_text(&self) -> bool {
         self.text.subpixel()
+    }
+
+    /// Draws a faded subtree as one picture, faded once (backlog V11,
+    /// ADR 0056): a node whose own `opacity` is under 1 has the quads of
+    /// its subtree emitted between a [`QuadKind::GroupBegin`] and a
+    /// [`QuadKind::GroupEnd`] with no fade of its own, and the end marker
+    /// carries it. A label on its own fill no longer washes into the
+    /// fill, and two overlapping pieces show no seam. Drivers turn it on
+    /// for a renderer that draws groups — every kui-wgpu one does — and a
+    /// host that draws the quads itself leaves it off and keeps the fade
+    /// on every quad. Off by default.
+    ///
+    /// [`QuadKind::GroupBegin`]: crate::QuadKind::GroupBegin
+    /// [`QuadKind::GroupEnd`]: crate::QuadKind::GroupEnd
+    pub fn set_opacity_groups(&mut self, on: bool) {
+        self.opacity_groups = on;
+    }
+
+    /// That switch, read back.
+    pub fn opacity_groups(&self) -> bool {
+        self.opacity_groups
     }
 
     /// The byte budget for the shaped-text cache: every

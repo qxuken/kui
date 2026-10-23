@@ -3418,6 +3418,19 @@ macro_rules! core_methods {
                 self.$core().smooth_wheel()
             }
 
+            /// Draws a faded subtree as one picture, faded once (ADR
+            /// 0056): a node whose own `opacity` is under 1 has its
+            /// subtree's quads between a group's begin and end markers
+            /// (kinds 10 and 11), unfaded by it, the end carrying the
+            /// fade, so a label on its own fill no longer washes into it.
+            /// A window has it on; a headless `Ctx` has it off, every
+            /// quad of a faded subtree carrying its fade, and turns it on
+            /// for `capture()` to show what a window shows.
+            #[napi]
+            pub fn set_opacity_groups(&mut self, on: bool) {
+                self.$core().set_opacity_groups(on);
+            }
+
             /// Every warning the core has raised so far, drained or not,
             /// oldest first — the log `warnings()` leaves behind, for a
             /// reader that is not the driver (a devtools stream).

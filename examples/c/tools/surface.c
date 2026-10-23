@@ -1576,6 +1576,35 @@ static int surface(void) {
     kui_image_remove(ui, k.image);
     kui_ctx_free(ui);
 
+    /* A faded subtree as one picture (ADR 0056): on a context of its own,
+     * a card at half opacity holding two boxes comes out between a begin
+     * and an end marker, unfaded inside, the end carrying the fade. */
+    {
+        KuiCtx *g = kui_ctx_new();
+        kui_set_opacity_groups(g, true);
+        kui_frame_begin(g, 200, 100, 1.0f);
+        KuiSpec card = {.width = {KUI_FIXED, 80}, .height = {KUI_FIXED, 40},
+                        .bg = 0x202020ff, .opacity_set = 1, .opacity = 0.5f};
+        KuiSpec dot = {.width = {KUI_FIXED, 10}, .height = {KUI_FIXED, 10}, .bg = 0xffffffff};
+        kui_open(g, &card, NULL);
+        kui_open(g, &dot, NULL);
+        kui_close(g);
+        kui_close(g);
+        kui_frame_finish(g);
+        KuiDrawData gd = KUI_DRAW_DATA_INIT;
+        kui_draw_data(g, &gd);
+        int begins = 0, ends = 0, faded = 0;
+        for (size_t i = 0; i < gd.quad_count; i++) {
+            const KuiQuad *q = &gd.quads[i];
+            if (q->kind == KUI_QUAD_GROUP_BEGIN) begins++;
+            else if (q->kind == KUI_QUAD_GROUP_END) ends += q->color[3] == 0.5f && q->uv[0] < i;
+            else if (q->color[3] < 1.0f) faded++;
+        }
+        check(begins == 1 && ends == 1 && faded == 0,
+              "kui_set_opacity_groups: one group, faded once at its end");
+        kui_ctx_free(g);
+    }
+
     printf("surface: %zu access nodes, %zu editor runs, %zu quads, %d events\n",
            total, run_count, dd.quad_count, events);
     if (fails) {

@@ -197,7 +197,10 @@
 /// - ABI 37: `width`, `height` and `rgba` appended to `KuiMenuAction` (64
 ///   bytes on 64-bit, from 48) for `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE`,
 ///   a picture for the clipboard, which `kui_set_clipboard_image` and
-///   `kui_capture_to_clipboard` queue (ADR 0055).
+///   `kui_capture_to_clipboard` queue (ADR 0055). With it, moving no
+///   struct: `KUI_QUAD_GROUP_BEGIN` and `KUI_QUAD_GROUP_END`, a faded
+///   subtree drawn as one picture, after `kui_set_opacity_groups` (ADR
+///   0056).
 pub const KUI_ABI_VERSION: u32 = 37;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

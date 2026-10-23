@@ -688,7 +688,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_OPACITY,
         kind: Kind::F32,
         apply: Apply::SpecF32(|s, v| s.opacity(v)),
-        doc: "Group opacity 0..1 (default 1): fades this node and its whole subtree. A per-quad alpha multiply rather than an offscreen composite, so overlapping pieces of one subtree show their seams through the fade. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in. A node's `tooltip` fades with the node's ancestors and not with the node, so a dimmed box keeps a hint that can be read (backlog F178).",
+        doc: "Group opacity 0..1 (default 1): fades this node and its whole subtree, drawn as one picture and faded once in a window (ADR 0056), so a label on its own fill and overlapping pieces fade as one; a renderer that draws the quads itself without groups fades each quad, and overlapping pieces show their seams. Layout, hit-testing and the access tree are untouched; eases with `transition`, and `enter: { opacity: 0 }` fades a panel in. A node's `tooltip` fades with the node's ancestors and not with the node, so a dimmed box keeps a hint that can be read (backlog F178).",
     },
     PropDef {
         name: "pixelSnap",

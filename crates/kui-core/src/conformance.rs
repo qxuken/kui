@@ -7090,6 +7090,8 @@ pub fn drive(
     let clips = &dl.clips;
     let mut kinds = [0usize; 10];
     for q in quads.iter() {
+        // The conformance driver asks for no groups, so its frames carry
+        // no markers; the line stays the ten kinds every binding prints.
         kinds[match q.kind {
             QuadKind::Solid => 0,
             QuadKind::GlyphMask => 1,
@@ -7101,6 +7103,7 @@ pub fn drive(
             QuadKind::Fragment => 7,
             QuadKind::Texture => 8,
             QuadKind::Backdrop => 9,
+            QuadKind::GroupBegin | QuadKind::GroupEnd => continue,
         }] += 1;
     }
     Output {

@@ -127,12 +127,30 @@ pub enum QuadKind {
     /// the CPU raster, anything predating the kind — draws nothing, which
     /// leaves the node over an unblurred backdrop.
     Backdrop,
+    /// Where a faded subtree starts being drawn as one picture (backlog
+    /// V11, [ADR 0056](../../docs/adr/0056-a-faded-subtree-is-drawn-as-one-picture.md)):
+    /// the quads from here to the matching [`QuadKind::GroupEnd`] are
+    /// drawn into a picture of their own, with no fade of the group's, and
+    /// the picture is drawn at the end marker faded once, so a label on
+    /// its own fill and two overlapping pieces fade as one. `uv[0]` is the
+    /// end marker's index; `rect`, `color.a` and `clip` are the end's.
+    /// Draws nothing itself. Only a core whose renderer asked for groups
+    /// (`Core::set_opacity_groups`) emits it; one that did not fades every
+    /// quad of a faded subtree on its own, as kui always has.
+    GroupBegin,
+    /// Where a group ends, and its picture is drawn: `rect` the group's
+    /// bounds in physical px (whole pixels, inside the viewport), `color.a`
+    /// its opacity — relative to the group around it, when it is inside
+    /// one — and `uv[0]` the begin marker's index. `clip` is the entry
+    /// that clips nothing: what the group drew was clipped as it was drawn.
+    GroupEnd,
 }
 
 impl QuadKind {
-    /// Every kind, in discriminant order — what the conformance report's
-    /// `kinds` line counts and the C header's `KUI_QUAD_*` mirror.
-    pub const ALL: [QuadKind; 10] = [
+    /// Every kind, in discriminant order — what the C header's
+    /// `KUI_QUAD_*` mirror. The conformance report's `kinds` line counts
+    /// the first ten: its driver asks for no groups.
+    pub const ALL: [QuadKind; 12] = [
         QuadKind::Solid,
         QuadKind::GlyphMask,
         QuadKind::GlyphColor,
@@ -143,6 +161,8 @@ impl QuadKind {
         QuadKind::Fragment,
         QuadKind::Texture,
         QuadKind::Backdrop,
+        QuadKind::GroupBegin,
+        QuadKind::GroupEnd,
     ];
 }
 

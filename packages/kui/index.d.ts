@@ -3297,6 +3297,17 @@ export declare class Ctx {
   /** That switch, read back. */
   smoothWheel(): boolean
   /**
+   * Draws a faded subtree as one picture, faded once (ADR
+   * 0056): a node whose own `opacity` is under 1 has its
+   * subtree's quads between a group's begin and end markers
+   * (kinds 10 and 11), unfaded by it, the end carrying the
+   * fade, so a label on its own fill no longer washes into it.
+   * A window has it on; a headless `Ctx` has it off, every
+   * quad of a faded subtree carrying its fade, and turns it on
+   * for `capture()` to show what a window shows.
+   */
+  setOpacityGroups(on: boolean): void
+  /**
    * Every warning the core has raised so far, drained or not,
    * oldest first — the log `warnings()` leaves behind, for a
    * reader that is not the driver (a devtools stream).
@@ -4778,6 +4789,17 @@ export declare class KuiWindow {
   /** That switch, read back. */
   smoothWheel(): boolean
   /**
+   * Draws a faded subtree as one picture, faded once (ADR
+   * 0056): a node whose own `opacity` is under 1 has its
+   * subtree's quads between a group's begin and end markers
+   * (kinds 10 and 11), unfaded by it, the end carrying the
+   * fade, so a label on its own fill no longer washes into it.
+   * A window has it on; a headless `Ctx` has it off, every
+   * quad of a faded subtree carrying its fade, and turns it on
+   * for `capture()` to show what a window shows.
+   */
+  setOpacityGroups(on: boolean): void
+  /**
    * Every warning the core has raised so far, drained or not,
    * oldest first — the log `warnings()` leaves behind, for a
    * reader that is not the driver (a devtools stream).
@@ -5808,8 +5830,11 @@ export interface Quad {
    *  the rect is inflated past the shape being blurred. 0 otherwise. */
   blur: number;
   /** 0 solid, 1 mask glyph, 2 color glyph, 3 image, 4 subpixel glyph,
-   *  5 shadow, 6 segment, 7 fragment, 8 texture — `QuadKind` in the core
-   *  and `KUI_QUAD_*` in `include/kui.h`, in the same order. A fragment
+   *  5 shadow, 6 segment, 7 fragment, 8 texture, 9 backdrop, 10 and 11 a
+   *  group's begin and end (`setOpacityGroups`, ADR 0056) — `QuadKind` in
+   *  the core and `KUI_QUAD_*` in `include/kui.h`, in the same order. A
+   *  group's markers carry its bounds and its fade in `color[3]`, and
+   *  `uv[0]` the other marker's index. A fragment
    *  quad's `uv[0]` indexes `fragmentDraws()`, a texture quad's
    *  `textureDraws()`; on both image kinds `borderW` is the `sampling`
    *  flag (1 = nearest). */

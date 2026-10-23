@@ -333,7 +333,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         "KUI_QUAD_SOLID", "KUI_QUAD_GLYPH_MASK", "KUI_QUAD_GLYPH_COLOR",
         "KUI_QUAD_IMAGE", "KUI_QUAD_GLYPH_SUBPIXEL", "KUI_QUAD_SHADOW",
         "KUI_QUAD_SEGMENT", "KUI_QUAD_FRAGMENT", "KUI_QUAD_TEXTURE",
-        "KUI_QUAD_BACKDROP",
+        "KUI_QUAD_BACKDROP", "KUI_QUAD_GROUP_BEGIN", "KUI_QUAD_GROUP_END",
     ]);
     abi_enum!(o, kui_core::Sampling::ALL, 0 => [
         "KUI_SAMPLING_LINEAR", "KUI_SAMPLING_NEAREST",

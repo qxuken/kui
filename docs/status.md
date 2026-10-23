@@ -18,10 +18,9 @@ image quad, so it does not tween, a hard stop is soft, and there is no
 conic one and none on a `path`, a `line` or a text — those are a
 fragment's. There are no inset or
 multiple shadows. The single shadow is not drawn under its node, so a
-translucent or faded node shows what is under it; but a faded subtree is
-still faded piece by piece, so what overlaps inside it — a label on its
-button, two overlapping avatars — blends twice where an offscreen layer
-would blend it once (backlog V11). A stroke takes a `dash` (marks and gaps as seen, the pattern kept along
+translucent or faded node shows what is under it, and a faded subtree
+is drawn as one picture and faded once, so a label on its button and
+two overlapping avatars fade as a browser fades them (ADR 0056). A stroke takes a `dash` (marks and gaps as seen, the pattern kept along
 the whole stroke; backlog V2) on a `line` and on a `path`. There are **no
 arrowhead caps**: a line is segments and nothing else, a
 translucent polyline double-blends where its caps overlap at a join, and its
@@ -50,9 +49,9 @@ than it is is drawn from a level the core halves it to
 one level per quad and no trilinear blend, so a size animated across a
 power of two steps in sharpness there. A raster the app made — a frame of video, a plot, a
 page — is an `image` whose pixels it replaces; there is no drawing-command
-canvas and no callback over the GPU. Opacity is a per-quad
-alpha multiply rather than an offscreen composite, so overlapping pieces of one
-faded subtree show their seams. There is no z-index: floats stack in the order they open, siblings in tree
+canvas and no callback over the GPU. A faded subtree is drawn as one
+picture and faded once (ADR 0056); a float under it fades on its own, and a
+host renderer that has not asked for groups fades each quad. There is no z-index: floats stack in the order they open, siblings in tree
 order, `overSiblings` puts one sibling over the rest, and `floatsInOrder`
 stacks the floats under a node in tree order, as a drawing's items.
 A fragment is one draw call of its own, so a hundred of them is about 0.7% of

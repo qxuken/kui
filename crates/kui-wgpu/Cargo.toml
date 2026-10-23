@@ -49,3 +49,8 @@ harness = false
 [[bench]]
 name = "shadows"
 harness = false
+
+# What drawing faded subtrees as pictures costs (ADR 0056): a table, not divan.
+[[bench]]
+name = "groups"
+harness = false

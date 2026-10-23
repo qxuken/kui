@@ -595,6 +595,8 @@ package kui_c
 #assert(QUAD_FRAGMENT == 7)
 #assert(QUAD_TEXTURE == 8)
 #assert(QUAD_BACKDROP == 9)
+#assert(QUAD_GROUP_BEGIN == 10)
+#assert(QUAD_GROUP_END == 11)
 #assert(SAMPLING_LINEAR == 0)
 #assert(SAMPLING_NEAREST == 1)
 #assert(FIT_FILL == 0)

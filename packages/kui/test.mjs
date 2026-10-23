@@ -1992,6 +1992,28 @@ test('captureTo and recordTo write the frames and answer with the path', (t) => 
   assert.equal(back.loops, undefined, 'played for ever');
 });
 
+// A faded subtree as one picture (ADR 0056): off on a headless Ctx, so
+// every quad carries the fade; on, the subtree comes out between a
+// group's markers (kinds 10 and 11), unfaded inside, the end carrying it.
+test('setOpacityGroups brackets a faded subtree as one group', () => {
+  const ctx = new Ctx();
+  const view = box({ width: 80, height: 40, bg: '#202020', opacity: 0.5 }, [
+    box({ width: 10, height: 10, bg: '#ffffff' }),
+  ]);
+  ctx.frame(200, 100, 1, view);
+  let qs = decodeQuads(ctx.quads());
+  assert.ok(qs.every((q) => q.kind < 10 && q.color[3] <= 0.5), 'per quad by default');
+  ctx.setOpacityGroups(true);
+  ctx.frame(200, 100, 1, view);
+  qs = decodeQuads(ctx.quads());
+  assert.deepEqual(qs.map((q) => q.kind), [10, 0, 0, 11]);
+  const end = qs[3];
+  assert.equal(end.color[3], 0.5);
+  assert.equal(end.uv[0], 0, 'the end names its begin');
+  assert.deepEqual([end.x, end.y, end.w, end.h], [0, 0, 80, 40]);
+  assert.ok(qs.slice(1, 3).every((q) => q.color[3] === 1), 'unfaded inside');
+});
+
 // "Copy screenshot": the next frame, queued for the clipboard as a menu
 // action a window applies, answered with an empty path.
 test('captureToClipboard queues the next frame for the clipboard', (t) => {

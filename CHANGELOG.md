@@ -45,6 +45,20 @@ was the first bare bump to break an app in five releases).
   fading in or out — shows what lies under it where alpha.65 showed its
   own shadow, so it reads lighter. The shadow outside the node is
   unchanged (backlog V10).
+- In a window, a node faded by `opacity` — every disabled stock control
+  among them — is drawn with its subtree as one picture and the picture
+  faded once, as a browser fades it: a label sits on its own fill and
+  fades with it, and overlapping pieces show no seam. alpha.65 faded
+  each piece on its own, so the fill showed through the glyphs of its
+  own label; on a page darker than a control's fill, a disabled label
+  now reads a little dimmer than it did. Text inside a faded subtree is
+  grayscale where the window draws subpixel text. A float under a faded
+  node (a tooltip, a menu) still fades on its own. A headless driver and
+  a host drawing the quads itself see alpha.65's quads until they ask
+  (`set_opacity_groups`, below; backlog V11, [ADR
+  0056](docs/adr/0056-a-faded-subtree-is-drawn-as-one-picture.md)).
+- Rust: `QuadKind` has two variants more, `GroupBegin` and `GroupEnd`,
+  which an exhaustive `match` names; `QuadKind::ALL` has twelve.
 - C: `KuiMenuAction` appends `width`, `height` and `rgba` for a new
   kind, `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE`, and grows to 64 bytes on
   64-bit; `KUI_ABI_VERSION` is 37. Recompile; a host that drains menu
@@ -162,6 +176,18 @@ own that ignores those fields draws the shadow as before; kui.h's
   window records at its display's refresh; a headless driver keeps the
   work on its own thread, its answers pending when `serve` returns
   (`Captures::write_on_thread` chooses).
+- **A faded subtree drawn as one picture** (backlog V11, [ADR
+  0056](docs/adr/0056-a-faded-subtree-is-drawn-as-one-picture.md)):
+  `Core::set_opacity_groups(true)` — `setOpacityGroups` in Node,
+  `kui_set_opacity_groups` in C, `set_opacity_groups` in Odin — brackets
+  the quads of a node whose own `opacity` is under 1 between a
+  `GroupBegin` and a `GroupEnd` (`KUI_QUAD_GROUP_BEGIN` = 10,
+  `KUI_QUAD_GROUP_END` = 11), unfaded by it, the end carrying its
+  bounds and its fade. A group of one thing drawn, or holding a
+  backdrop blur, is left as the fade per quad. kui-wgpu draws each group
+  into a texture before the frame and the picture into the frame; the
+  runner turns it on for every window, the book's pictures for theirs.
+  `benches/groups.rs` in kui-wgpu prints what it costs.
 - **A picture on the clipboard**: `set_clipboard_image(width, height,
   rgba)` on `Core` and `Ui` — `setClipboardImage` in Node,
   `kui_set_clipboard_image` in C, `set_clipboard_image` in Odin — queues

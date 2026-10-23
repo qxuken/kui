@@ -773,12 +773,13 @@ pub struct VisualStyle {
     /// builders (`radius_tl`, ...) override one — later calls win, like CSS
     /// `border-radius` followed by `border-top-left-radius`.
     pub radius: [f32; 4],
-    /// Group opacity, 0..=1 and 1 by default: multiplied into the alpha of
-    /// every quad this node and its subtree emit, and into every
-    /// descendant's own opacity. This is the *cheap* group opacity — a
-    /// per-quad alpha multiply, not an offscreen composite — so a subtree
-    /// whose own pieces overlap shows its seams through the fade where a
-    /// compositing implementation would not. Nothing else changes: an
+    /// Group opacity, 0..=1 and 1 by default: fades this node and its
+    /// subtree. With `Core::set_opacity_groups` on — a runner's window —
+    /// the subtree is drawn as one picture and the picture faded once
+    /// (ADR 0056), so a label on its own fill and overlapping pieces fade
+    /// as one; off, it is multiplied into the alpha of every quad the
+    /// subtree emits, and overlapping pieces show their seams through the
+    /// fade. Nothing else changes: an
     /// invisible subtree still lays out, still takes clicks and is still
     /// read by assistive technology, exactly like CSS `opacity: 0`.
     pub opacity: f32,

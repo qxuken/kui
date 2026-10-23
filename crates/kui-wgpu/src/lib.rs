@@ -101,6 +101,7 @@
 pub use wgpu;
 
 mod backdrop;
+mod groups;
 
 use kui_core::atlas::GlyphAtlas;
 use kui_core::{Clip, DisplayList, Quad, QuadKind};
@@ -178,6 +179,11 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
         // `backdrop` blurs what is under it. A solid with no colour, so
         // one a frame did not plan a blur for draws nothing in a run.
         QuadKind::Backdrop => 0.0,
+        // Where a group's run starts: nothing to draw (ADR 0056).
+        QuadKind::GroupBegin => 0.0,
+        // A group's picture, its place in the texture written into `uv`
+        // once the frame's groups are placed (`plan_groups`).
+        QuadKind::GroupEnd => 8.0,
     };
     // `uv` is atlas texels on every kind but two: a segment carries its
     // endpoints there as f32 bits, and a texture quad an index into the
@@ -209,7 +215,7 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
             q.uv[3] as f32,
         ]
     };
-    if q.kind == QuadKind::Backdrop {
+    if matches!(q.kind, QuadKind::Backdrop | QuadKind::GroupBegin) {
         return Instance {
             pos: [q.rect.x, q.rect.y],
             size: [0.0, 0.0],
@@ -837,6 +843,43 @@ const INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
     9 => Float32x4, 10 => Float32x4, 11 => Float32x4,
 ];
 
+/// The quad pipeline over `module` — the shader with per-channel blending
+/// or without — into `format`, blended by `blend`.
+fn quad_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    module: &wgpu::ShaderModule,
+    format: wgpu::TextureFormat,
+    blend: wgpu::BlendState,
+) -> wgpu::RenderPipeline {
+    let instance_attrs = INSTANCE_ATTRS;
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("kui.quads"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[Some(instance_buffer_layout(&instance_attrs))],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(blend),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
 fn instance_buffer_layout(attrs: &[wgpu::VertexAttribute]) -> wgpu::VertexBufferLayout<'_> {
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Instance>() as u64,
@@ -927,6 +970,20 @@ pub struct Renderer {
     backdrop: backdrop::Targets,
     /// The frame's blurs, in paint order.
     blurs: Vec<backdrop::Blur>,
+    /// The frame's groups (ADR 0056), inner before outer, each placed in
+    /// one of `group_targets`; empty on a frame that draws none.
+    groups: Vec<groups::Plan>,
+    /// The groups each group draws, and the frame's, by `groups` index:
+    /// `group_kids[group_kids_at[p]..group_kids_at[p + 1]]` for plan `p`,
+    /// the frame's last.
+    group_kids: Vec<u32>,
+    group_kids_at: Vec<u32>,
+    group_targets: groups::Targets,
+    /// The pipeline a group is drawn with on a device that blends per
+    /// channel: the single-source one, since a picture over nothing has
+    /// no colour behind a glyph to split coverage against. Made the first
+    /// time a frame draws a group; elsewhere `pipeline` is that already.
+    group_pipeline: Option<wgpu::RenderPipeline>,
 }
 
 /// The picture under a frame: its texture, the part of it the window
@@ -1437,32 +1494,7 @@ impl Renderer {
             immediate_size: 0,
         });
 
-        let instance_attrs = INSTANCE_ATTRS;
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("kui.quads"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(instance_buffer_layout(&instance_attrs))],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(blend),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = quad_pipeline(device, &pipeline_layout, &shader, format, blend);
 
         let atlas_size = kui_core::atlas::ATLAS_SIZE;
         let atlas_tex = create_atlas_texture(device, atlas_size);
@@ -1563,6 +1595,11 @@ impl Renderer {
             ground: None,
             backdrop_pipes: None,
             backdrop: backdrop::Targets::default(),
+            groups: Vec::new(),
+            group_kids: Vec::new(),
+            group_kids_at: Vec::new(),
+            group_targets: groups::Targets::default(),
+            group_pipeline: None,
             blurs: Vec::new(),
         }
     }
@@ -1983,6 +2020,205 @@ impl Renderer {
         self.gpu.queue().write_buffer(&pipes.params, 0, &bytes);
     }
 
+    /// Plans the frame's groups (ADR 0056): each placed in one of the two
+    /// textures, its picture's place written into its end marker's
+    /// instance, the textures fitted, and the group pipeline made the
+    /// first time a device that blends per channel draws one. `any` is
+    /// whether the list has a begin marker, noticed while the instances
+    /// were written, so a frame without one scans nothing and drops the
+    /// textures.
+    ///
+    /// Groups too many for a texture the device can make are drawn as
+    /// they would be with groups off: each one's fade folded into the
+    /// instances of its run.
+    fn plan_groups(&mut self, dl: &DisplayList, any: bool) {
+        self.groups.clear();
+        if !any {
+            self.group_targets.clear();
+            return;
+        }
+        groups::plan(&dl.quads, &mut self.groups);
+        let device = self.gpu.device();
+        let max = device.limits().max_texture_dimension_2d;
+        let width = dl.viewport.w.ceil() as u32;
+        let Some(sizes) = groups::pack(&mut self.groups, width, max) else {
+            fold_groups(&dl.quads, &mut self.instances);
+            self.groups.clear();
+            self.group_targets.clear();
+            return;
+        };
+        self.group_targets
+            .fit(device, self.config.format, sizes, max);
+        for p in &self.groups {
+            let at = p.offset();
+            self.instances[p.end as usize].uv = [at[0], at[1], 0.0, 0.0];
+        }
+        // Each group's children, then the frame's, as runs of one list.
+        let n = self.groups.len();
+        let mut order: Vec<u32> = (0..n as u32).collect();
+        let parent = |i: u32| match self.groups[i as usize].parent {
+            groups::FRAME => n as u32,
+            p => p,
+        };
+        order.sort_by_key(|&i| (parent(i), self.groups[i as usize].begin));
+        self.group_kids_at.clear();
+        self.group_kids_at.resize(n + 2, 0);
+        for &i in &order {
+            self.group_kids_at[parent(i) as usize + 1] += 1;
+        }
+        for k in 1..self.group_kids_at.len() {
+            self.group_kids_at[k] += self.group_kids_at[k - 1];
+        }
+        self.group_kids = order;
+        if self.gpu.dual_source() && self.group_pipeline.is_none() {
+            let device = self.gpu.device();
+            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("kui.groups"),
+                source: wgpu::ShaderSource::Wgsl(
+                    preprocess_shader(include_str!("shader.wgsl"), false).into(),
+                ),
+            });
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("kui.groups"),
+                bind_group_layouts: &[Some(&self.bind_layout)],
+                immediate_size: 0,
+            });
+            self.group_pipeline = Some(quad_pipeline(
+                device,
+                &layout,
+                &shader,
+                self.config.format,
+                wgpu::BlendState::ALPHA_BLENDING,
+            ));
+        }
+    }
+
+    /// The groups drawn into plan `p`'s picture, or the frame's for
+    /// [`groups::FRAME`], in paint order.
+    fn group_kids(&self, p: u32) -> &[u32] {
+        if self.groups.is_empty() {
+            return &[];
+        }
+        let i = if p == groups::FRAME {
+            self.groups.len()
+        } else {
+            p as usize
+        };
+        let (from, to) = (self.group_kids_at[i], self.group_kids_at[i + 1]);
+        &self.group_kids[from as usize..to as usize]
+    }
+
+    /// Draws `range` into `pass` as [`Self::draw_quads`] does, except that
+    /// each group of `parent`'s inside it is its picture, drawn at its end
+    /// marker in place of its run.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_span(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        dl: &DisplayList,
+        range: std::ops::Range<u32>,
+        parent: u32,
+        pipeline: &wgpu::RenderPipeline,
+        prep: &Prepared,
+        pictures: &[Option<wgpu::BindGroup>; 2],
+    ) {
+        let mut at = range.start;
+        for &k in self.group_kids(parent) {
+            let g = &self.groups[k as usize];
+            if g.begin < range.start || g.end >= range.end {
+                continue;
+            }
+            self.draw_quads(
+                pass,
+                dl,
+                at..g.begin,
+                pipeline,
+                &prep.fragment_pipelines,
+                &prep.texture_binds,
+            );
+            if let Some(bind) = &pictures[g.tex()] {
+                let frame = &self.slots[self.slot];
+                pass.set_vertex_buffer(0, frame.buf.slice(frame.instances_at..));
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, bind, &[]);
+                pass.draw(0..6, g.end..g.end + 1);
+            }
+            at = g.end + 1;
+        }
+        self.draw_quads(
+            pass,
+            dl,
+            at..range.end,
+            pipeline,
+            &prep.fragment_pipelines,
+            &prep.texture_binds,
+        );
+    }
+
+    /// Draws every group's picture into its texture, deepest first: one
+    /// pass per depth, each group through a viewport that moves its
+    /// bounds onto its place, cut to that place.
+    fn draw_groups(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        dl: &DisplayList,
+        prep: &Prepared,
+        pictures: &[Option<wgpu::BindGroup>; 2],
+    ) {
+        let Some(deepest) = self.groups.iter().map(|g| g.depth).max() else {
+            return;
+        };
+        let pipeline = self.group_pipeline.as_ref().unwrap_or(&self.pipeline);
+        let (vw, vh) = (dl.viewport.w.max(1.0), dl.viewport.h.max(1.0));
+        let mut cleared = [false; 2];
+        for depth in (0..=deepest).rev() {
+            let t = (depth % 2) as usize;
+            let Some(view) = self.group_targets.view(t) else {
+                continue;
+            };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("kui.groups"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        // Once a frame: the groups drawn into it two
+                        // depths apart keep each other's places.
+                        load: if cleared[t] {
+                            wgpu::LoadOp::Load
+                        } else {
+                            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                        },
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            cleared[t] = true;
+            for (i, g) in self.groups.iter().enumerate() {
+                if g.depth != depth || g.w == 0 || g.h == 0 {
+                    continue;
+                }
+                let [ox, oy] = g.offset();
+                pass.set_viewport(ox, oy, vw, vh, 0.0, 1.0);
+                pass.set_scissor_rect(g.at.0, g.at.1, g.w, g.h);
+                self.draw_span(
+                    &mut pass,
+                    dl,
+                    g.begin + 1..g.end,
+                    i as u32,
+                    pipeline,
+                    prep,
+                    pictures,
+                );
+            }
+        }
+    }
+
     /// Draws the instances in `range` into `pass`: in one instanced draw,
     /// or — where a fragment or a texture-backed image interrupts the run
     /// — the run before it with the über-pipeline, then that one quad with
@@ -1994,6 +2230,7 @@ impl Renderer {
         pass: &mut wgpu::RenderPass<'_>,
         dl: &DisplayList,
         range: std::ops::Range<u32>,
+        pipeline: &wgpu::RenderPipeline,
         fragment_pipelines: &[wgpu::RenderPipeline],
         texture_binds: &[Option<u64>],
     ) {
@@ -2005,7 +2242,7 @@ impl Renderer {
         if fragment_pipelines.is_empty() && texture_binds.is_empty() {
             // The whole run in one instanced draw, as a frame has always
             // been. Nothing below runs.
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &frame.bind, &[]);
             pass.draw(0..6, range);
             return;
@@ -2019,7 +2256,7 @@ impl Renderer {
             }
             if i > run_start {
                 if !on_quads {
-                    pass.set_pipeline(&self.pipeline);
+                    pass.set_pipeline(pipeline);
                     pass.set_bind_group(0, &frame.bind, &[]);
                     on_quads = true;
                 }
@@ -2032,7 +2269,7 @@ impl Renderer {
                 if let Some(Some(id)) = texture_binds.get(slot)
                     && let Some(b) = self.texture_binds.get(id)
                 {
-                    pass.set_pipeline(&self.pipeline);
+                    pass.set_pipeline(pipeline);
                     pass.set_bind_group(0, &b.bind, &[]);
                     on_quads = false;
                     pass.draw(0..6, i..i + 1);
@@ -2064,7 +2301,7 @@ impl Renderer {
         }
         if range.end > run_start {
             if !on_quads {
-                pass.set_pipeline(&self.pipeline);
+                pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, &frame.bind, &[]);
             }
             pass.draw(0..6, run_start..range.end);
@@ -2327,11 +2564,14 @@ impl Renderer {
     fn prepare(&mut self, dl: &DisplayList) -> Prepared {
         self.instances.clear();
         let mut any_backdrop = false;
+        let mut any_group = false;
         self.instances.extend(dl.quads.iter().map(|q| {
             any_backdrop |= q.kind == QuadKind::Backdrop;
+            any_group |= q.kind == QuadKind::GroupBegin;
             instance_of(q, &dl.clips, &dl.textures)
         }));
         self.plan_backdrops(dl, any_backdrop);
+        self.plan_groups(dl, any_group);
         let globals = Globals {
             viewport: [dl.viewport.w.max(1.0), dl.viewport.h.max(1.0)],
             atlas_size: [self.atlas_size as f32, self.atlas_size as f32],
@@ -2459,10 +2699,26 @@ impl Renderer {
         prep: &Prepared,
         surface_view: &wgpu::TextureView,
     ) {
-        let Prepared {
-            texture_binds,
-            fragment_pipelines,
-        } = prep;
+        // The groups' pictures first, each pass reading only the
+        // pictures one depth deeper (ADR 0056), bound in the atlas's place
+        // with this frame's globals.
+        let pictures: [Option<wgpu::BindGroup>; 2] = if self.groups.is_empty() {
+            [None, None]
+        } else {
+            let frame = &self.slots[self.slot];
+            [0, 1].map(|t| {
+                self.group_targets.view(t).map(|view| {
+                    create_bind_group(
+                        self.gpu.device(),
+                        &self.bind_layout,
+                        &globals_binding(&frame.buf),
+                        view,
+                        &self.samplers,
+                    )
+                })
+            })
+        };
+        self.draw_groups(encoder, dl, prep, &pictures);
         // A frame that blurs draws into the offscreen copy, so what it has
         // drawn can be read back, and breaks its pass at each blur
         // (backlog F129); one that does not draws to the surface in one
@@ -2517,12 +2773,14 @@ impl Renderer {
                     backdrop::composite(&mut pass, pipes, scratch, b, slot);
                     pass.set_scissor_rect(0, 0, frame.size.0, frame.size.1);
                 }
-                self.draw_quads(
+                self.draw_span(
                     &mut pass,
                     dl,
                     start..stop,
-                    fragment_pipelines,
-                    texture_binds,
+                    groups::FRAME,
+                    &self.pipeline,
+                    prep,
+                    &pictures,
                 );
             }
             let (Some(b), Some((pipes, frame, scratch))) = (self.blurs.get(next), offscreen) else {
@@ -2685,6 +2943,34 @@ fn straighten(px: &mut [u8], bgra: bool) {
 
 /// The `textures` entry a fragment draw reads its image from, if its
 /// image has a texture of its own.
+/// Every group's fade folded into the instances of its run, and its
+/// picture drawn as nothing: the frame as it would be with groups off,
+/// for groups too many for the device's textures.
+fn fold_groups(quads: &[Quad], instances: &mut [Instance]) {
+    let mut fades: Vec<f32> = Vec::new();
+    let mut k = 1.0f32;
+    for (q, inst) in quads.iter().zip(instances) {
+        match q.kind {
+            QuadKind::GroupBegin => {
+                fades.push(q.color.a);
+                k *= q.color.a;
+            }
+            QuadKind::GroupEnd => {
+                fades.pop();
+                k = fades.iter().product();
+                inst.size = [0.0, 0.0];
+            }
+            // A shadow carries its knock-out's radius in the border's
+            // alpha.
+            QuadKind::Shadow => inst.color[3] *= k,
+            _ => {
+                inst.color[3] *= k;
+                inst.border_color[3] *= k;
+            }
+        }
+    }
+}
+
 fn draw_image_texture(draw: &kui_core::FragmentDraw) -> Option<usize> {
     match draw.image {
         kui_core::FragmentImage::Texture { index, .. } => Some(index as usize),

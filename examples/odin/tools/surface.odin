@@ -316,6 +316,8 @@ surface :: proc() -> bool {
 	kui.env_set_audio(ui, .Open, 2)
 	kui.env_set_audio(ui, kui.Audio_Device(99), 0)
 	kui.set_subpixel_text(ui, false)
+	// Quads as a host renderer without groups reads them (ADR 0056).
+	kui.set_opacity_groups(ui, false)
 
 	// Measurement works before the first frame.
 	body := kui.Text_Style {
