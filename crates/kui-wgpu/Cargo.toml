@@ -44,3 +44,8 @@ harness = false
 [[bench]]
 name = "offscreen"
 harness = false
+
+# What a shadow costs the renderer with its node knocked out (V10). Prints a table.
+[[bench]]
+name = "shadows"
+harness = false
