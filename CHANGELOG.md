@@ -21,6 +21,30 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.65 (unreleased)
+
+**What breaks.**
+
+- On macOS a menu row whose `accel` is a bare function key — `"f12"`,
+  `"f5"` — binds it: the key chooses the row, where alpha.64 drew
+  `F12` beside the row and bound nothing, so the press reached the
+  focused node (backlog F187).
+
+A row's accelerator binds on macOS only with a modifier, since AppKit
+fires a bare key equivalent on every press of the key, and a row bound
+to `"a"` would eat every `a` typed into a field. A function key types no
+text, so the rule kept a developer-tools row on F12, or a reload on F5,
+from binding for nothing: the row showed its key and the key did not
+choose it. A bare function key binds now, as a key equivalent AppKit
+spells with its own character for the key; a letter, Enter or any other
+bare key is still drawn and not bound. An app that declared a bare
+function key as a hint only and handled the press in an `onKey` sink
+gets the row's message instead.
+
+### Fixed
+
+- A macOS menu row's bare function key binds (above; backlog F187).
+
 ## 0.1.0-alpha.64 (2026-10-23)
 
 **What breaks.**
