@@ -128,7 +128,9 @@ archive. Nothing was renumbered in any of those moves, and nothing ever is.
 What is left here: one parked heading — C12, waiting for a view that
 wants it (C13 and C14 beside it were built on 2026-09-25, asked for by
 the second bake-off) — C27 with its measurements (an idle pumped
-window's cost, where every way out was worse than the cost), V3–V8 from
+window's cost, where every way out was worse than the cost), C55 from
+an offscreen-rendering question of 2026-10-23 (a frame drawn only to a
+window's surface: no texture a host owns, no `capture()`), V3–V8 from
 the canvas question of 2026-09-11 (four waiting for a view, two declined
 with a condition — V1, the one with an order attached, was built the
 round after, on 2026-09-11, and V2, `dash`, on 2026-10-05), W16 from the alpha.12 pre-tag round (the
@@ -328,7 +330,8 @@ and went to
 with the alpha.12 tag. What is left is the three parked entries and C27
 (C13 and C14 of the three built on 2026-09-25), C54, filed open on
 2026-10-23 (resizing an inactive window in one gesture under a pump on
-macOS 26). C53, filed on
+macOS 26), and C55, filed open the same day (a renderer that draws into
+a texture the host owns, and `capture()` on top of it). C53, filed on
 2026-10-23 — what a repainting window holds on the GPU — was built the
 day it was filed and is in the archive.
 
@@ -450,6 +453,97 @@ embeds Node — now with a correctness bug on its side of the scale, not
 only an idle 3%. Or the window server's own resize for the edge, if
 AppKit offers one an app can start; nothing found yet. Until then the
 second press is the cost.
+
+### `~` C55 — A frame can only be drawn to a window's surface: no texture a host owns, and no `capture()`
+
+**Filed 2026-10-23, open,** from a question about offscreen rendering:
+how cheap it is, and what kui would use it for. `Renderer::render`
+acquires the swapchain image itself and draws into it, and the surface
+is configured `RENDER_ATTACHMENT` only, so nothing can read back a frame
+kui drew. The one offscreen target is the backdrop blur's (F129), private
+to the frames that blur. Two things follow:
+
+- **Nothing checks the shipping renderer's pixels.** F19 put `capture()`
+  off "until a smoke test needs pixels". Since then, paint has been
+  checked by `screencapture` of a window id, CGEvent probes and a
+  state gallery screenshotted by hand (the regression passes, F182's
+  `screencapture -v`, the Cookie Mapping Builder's redesign). The GPU
+  tests in kui-wgpu are CPU transcriptions of the WGSL
+  (`tests/*_coverage.rs`), plus the backdrop's one readback test.
+- **A host with its own wgpu device cannot have kui draw into its
+  texture.** A game engine, a 3D panel, or a runner that composites
+  kui with its own content has to give kui a window.
+
+**Measured** with `crates/kui-wgpu/benches/offscreen.rs` (`cargo bench -p
+kui-wgpu --bench offscreen`), which draws with this crate's
+`shader.wgsl` into textures the surface's size: M3 Pro, Metal, AC power,
+three runs within ±10%. GPU ms a frame with the queue saturated, at
+3456×2234 (the display's native size) unless a row says otherwise.
+
+| | cost |
+| --- | --- |
+| a whole 1k–10k-quad frame drawn offscreen, then blitted to the surface | +0.12–0.24 ms over drawing it to the surface (+20–34%), and 29.5 MB; at 1080p +0.03–0.07 ms, at 5K +0.25–0.37 ms and 56 MB |
+| the blit alone; `copy_texture_to_texture` instead | 0.15–0.25 ms; the same |
+| one frame back on the CPU: draw, copy to a buffer, map, wait | ~1.1–1.2 ms (draw and wait alone ~0.9) |
+| the rows unpadded into a `Vec` | ~0.6 ms (1080p 0.16, 5K 1.2) |
+| every frame captured through a ring of three mapped buffers | ~1.1 ms a frame (1080p 0.35, 5K 2.1): 60 fps recording fits |
+| a PNG of it, `png` 0.18's `Fast` | 6.6 ms for 384 KB (a synthetic grid; real UI encodes larger and slower) |
+| making a target: texture and view; first use | 30–45 µs; 0.35 ms (small) to 1.1 ms (here) to 2 ms (5K) |
+| a device with no window: instance, adapter, device | 12–28 ms, pipelines not counted |
+
+Readback is this cheap because Apple Silicon's memory is shared. A
+discrete GPU pays the copy over PCIe plus the wait, which was not
+measured.
+
+**Do.** One change in kui-wgpu, then the doors.
+
+1. **A texture target.** Split `render` into acquiring the surface and
+   drawing a list into a given view and size, which the draw already
+   does: the backdrop path targets `frame.view`. Add a `Renderer`
+   with no surface (on a `Gpu`, a size and a format) for a host that
+   owns the texture, and for tests that open a device with no window.
+   Document that the output is premultiplied, in the target's format.
+2. **`capture()` on top of it.** On demand, draw the window's last
+   display list again into an offscreen target the surface's size,
+   read it back, and return `{width, height, scale, pixels}` as RGBA8.
+   It does not add `COPY_SRC` to the swapchain, which would cost every
+   frame for a rare capture, and which Metal's `framebufferOnly`
+   discourages. Doors as the rest: Rust on the window, Node
+   `win.capture()`, Lua, C (`kui_capture`, a new function, no struct
+   moves) and Odin. A headless `Ctx` or `Core` has no GPU, so it
+   captures through the windowless renderer of (1) or not at all.
+
+Then the smoke and regression passes can assert pixels, and the book
+and README screenshots can come from the examples instead of by hand.
+CI's docker runner has no GPU: a pixel test there needs lavapipe, which
+is untried. Subpixel text depends on the device, so a snapshot test
+should render grayscale text.
+
+**Not in it,** measured by the same bench and filed as nothing until a
+view asks:
+
+- **Group opacity in a layer, without the seams** `docs/status.md`
+  admits. A 640×400 px layer drawn before the main pass and composited
+  at 50% costs ~5–12 µs of GPU and ~15 µs of encoding CPU a layer. The
+  same layer met mid-list, with the main pass ended and resumed around
+  it, costs ~20–35 µs and ~30 µs: 64 layers ran 5.7 ms against 4.2.
+  So layers want hoisting before the main pass. The backdrop path
+  breaks its pass because a blur reads what is under it; a layer does
+  not need to.
+- **A cached layer** in place of redrawing what it holds: compositing a
+  full-viewport texture is 0.16–0.37 ms against 0.64 ms to redraw 1k
+  quads and 2.1 ms to redraw 200k. kui's GPU frame is mostly fill, the
+  core's CPU frame costs more (`docs/performance.md`), and an idle
+  window draws nothing. The GPU half alone saves ~0.4 ms an animated
+  frame.
+
+**Evidence.** The question of 2026-10-23 and the bench above. F19's
+deferral, and the pomodoro's wish 4 it quoted: "`win.capture()`
+returning pixels … would let the smoke test cover the driver that
+ships rather than the one that is convenient."
+
+**Wants:** the pixels of a frame the shipping renderer drew, and kui
+drawing into a texture its host owns.
 
 ## From two alpha.7 field reports (2026-09-07)
 

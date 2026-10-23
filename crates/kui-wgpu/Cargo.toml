@@ -31,9 +31,16 @@ windows = { version = "0.62", features = [
 ] }
 
 [dev-dependencies]
+# The offscreen bench's PNG timing.
+png = "0.18"
 
 # Not a divan bench: it drives a GPU and prints a table. See its module doc
 # and `docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`.
 [[bench]]
 name = "split"
+harness = false
+
+# Research: what offscreen targets, layers and readback cost. Prints tables.
+[[bench]]
+name = "offscreen"
 harness = false

@@ -1665,6 +1665,7 @@ version = "0.1.0-alpha.65"
 dependencies = [
  "bytemuck",
  "kui-core",
+ "png",
  "pollster 1.0.1",
  "wgpu",
  "windows",
