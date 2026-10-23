@@ -102,15 +102,27 @@ def "main gen" [--check] {
     cargo run -q -p kui-core --example schema-dump -- $schema
     ^(odin) run ($PKG | path join gen) $"-out:($OUT | path join (exe gen))" -- $ast $header $schema $kui_dir $layout_c
     clang -std=c11 $"-I($header | path dirname)" $layout_c -o $layout_exe
-    ^$layout_exe | save -f ($kui_dir | path join c layout.odin)
+    # LF, as .gitattributes keeps every checkout: the layout program's
+    # text-mode stdout writes CRLF on Windows.
+    let lf = {|t| $t | str replace -a "\r\n" "\n" }
+    let layout = ^$layout_exe | complete
+    if $layout.exit_code != 0 {
+        error make { msg: $"the layout program failed: ($layout.stderr)" }
+    }
+    do $lf $layout.stdout | save -f --raw ($kui_dir | path join c layout.odin)
     if $check {
-        # Line ends aside: a Windows checkout has CRLF, gen writes LF, and
-        # the layout program's text-mode stdout writes CRLF on Windows.
-        let lf = {|t| $t | str replace -a "\r\n" "\n" }
-        let stale = $before | where {|b| (do $lf (open --raw $b.path)) != (do $lf $b.text) } | get path
+        let after = $before | each {|b| $b | insert now (open --raw $b.path) }
         $before | each {|b| $b.text | save -f --raw $b.path } | ignore
+        let stale = $after | where {|b| $b.now != $b.text }
         if not ($stale | is-empty) {
-            print -e $"the Odin binding is stale: run nu scripts/odin.nu gen \(($stale | path relative-to $ROOT | str join ', '))"
+            let names = $stale | get path | path relative-to $ROOT | str join ', '
+            # A file that differs by its line ends alone is a checkout made
+            # before .gitattributes pinned LF, not a stale binding.
+            if ($stale | all {|b| (do $lf $b.now) == (do $lf $b.text) }) {
+                print -e $"the Odin binding differs only in line ends \(($names)): this checkout has CRLF from before .gitattributes pinned LF; check those files out again"
+            } else {
+                print -e $"the Odin binding is stale: run nu scripts/odin.nu gen \(($names))"
+            }
             exit 1
         }
         print "the Odin binding is current"
