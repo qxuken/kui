@@ -228,7 +228,13 @@ fn row(ui: &mut Ui<'_>, t: &Theme, e: &Entry, open: bool) {
         NodeSpec::column()
             .fill()
             .radius(3.0)
-            .bg(if open { t.raised } else { t.sunken })
+            // Closed, the list's own `sunken` shows through: painting it
+            // again stacks a translucent theme's (backlog RG165).
+            .bg(if open {
+                t.raised
+            } else {
+                crate::color::Color::TRANSPARENT
+            })
             .hover_bg(if open { t.raised } else { t.hover })
             .on_click(action(format!("row:{}", e.seq)))
             .label(summary(e).as_str())

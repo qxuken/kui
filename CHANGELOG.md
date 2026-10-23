@@ -21,6 +21,41 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.65 (unreleased)
+
+**What breaks.**
+
+- The latency graph's backdrop, the stats overlay's background and
+  border, its `?` badge, and the devtools panel's icons and tree
+  highlights take their theme colour's own alpha times the fade they
+  ask for, where they set the alpha outright: a translucent theme colour
+  paints fainter than in alpha.64, an opaque one exactly as before
+  (backlog RG165).
+- The devtools tree's and events' rows that are not selected or open
+  have no background, and the tree's unfocused list no border, where
+  each painted the list's `sunken` again (backlog RG165).
+
+A theme built from an app's design tokens can hold translucent colours —
+a `sunken` of white at 10%, an overlay token, reads as a well in a dark
+UI. The core tinted a theme colour with `with_alpha`, which replaced
+that 10% with the tint's own figure: the latency graph's 60% backdrop
+came out white at 60%, a pale slab in a dark panel. And a list painted
+`sunken` behind rows painted `sunken` again, a coat a row: opaque, the
+second coat was invisible; translucent, it doubled, and the devtools'
+tree and events were a flat grey.
+
+### Added
+
+- `Color::faded(f)`: the colour with its alpha scaled by `f`, for a
+  tint of a colour that may be translucent already; `with_alpha` still
+  sets it outright (backlog RG165).
+
+### Fixed
+
+- A translucent theme colour tinted or layered by the core's own chrome
+  — the latency graph, the stats overlay, the devtools panel — keeps
+  its alpha (above; backlog RG165).
+
 ## 0.1.0-alpha.64 (2026-10-23)
 
 **What breaks.**

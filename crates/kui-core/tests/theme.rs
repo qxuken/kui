@@ -221,3 +221,71 @@ fn the_cores_own_chrome_follows_the_theme_as_well() {
     assert!(Theme::dark().scrollbar.r > 0.5);
     assert!(Theme::light().scrollbar.r < 0.5);
 }
+
+/// A tint the core takes of a theme colour scales the colour's own alpha,
+/// so a theme built from translucent tokens is tinted, not replaced: a
+/// `sunken` of white at 10% under the latency graph is white at 6%, where
+/// it was white at 60% — a pale slab in a dark panel (backlog RG165). An
+/// opaque one paints as it always did.
+#[test]
+fn a_tint_of_a_translucent_theme_colour_keeps_its_alpha() {
+    let graph = |sunken: Color| {
+        let mut core = Core::new();
+        core.set_theme_source(ThemeSource::Pinned(Theme {
+            sunken,
+            ..Theme::dark()
+        }));
+        let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        widgets::latency_graph(&mut ui);
+        ui.finish();
+        let (list, _) = core.output();
+        let alphas: Vec<f32> = list
+            .quads
+            .iter()
+            .filter(|q| q.kind == kui_core::QuadKind::Solid)
+            .filter(|q| (q.color.r, q.color.g, q.color.b) == (sunken.r, sunken.g, sunken.b))
+            .map(|q| q.color.a)
+            .collect();
+        alphas
+    };
+    let wash = graph(Color::rgba8(0xff, 0xff, 0xff, 0x1a));
+    assert_eq!(wash.len(), 1, "{wash:?}");
+    assert!((wash[0] - 0.1 * 0.6).abs() < 0.005, "{wash:?}");
+    let opaque = graph(Theme::dark().sunken);
+    assert_eq!(opaque, vec![0.6]);
+}
+
+/// The devtools' lists paint `sunken` once: a row that is not selected
+/// or open shows the list through it, and the unfocused list has no ring
+/// of its colour. Each row painting the list's colour again stacked a
+/// translucent `sunken` into a pale slab under the tree and the events
+/// (backlog RG165).
+#[test]
+fn the_devtools_lists_paint_a_translucent_sunken_once() {
+    let wash = Color::rgba8(0xff, 0xff, 0xff, 0x1a);
+    for tab in ["tree", "events"] {
+        let mut core = Core::new();
+        core.set_theme_source(ThemeSource::Pinned(Theme {
+            sunken: wash,
+            ..Theme::dark()
+        }));
+        core.set_devtools(true);
+        assert!(core.set_devtools_tab(tab));
+        for _ in 0..3 {
+            let mut ui = core.frame(Size::new(900.0, 600.0), 1.0);
+            ui.configure_root(NodeSpec::column().fill());
+            for i in 0..20 {
+                widgets::label(&mut ui, &format!("row {i}"));
+            }
+            ui.finish();
+        }
+        let (list, _) = core.output();
+        let coats = list
+            .quads
+            .iter()
+            .filter(|q| q.color == wash || q.border_color == wash)
+            .count();
+        assert!(coats <= 3, "{tab}: {coats} quads paint the list's colour");
+    }
+}

@@ -75,8 +75,19 @@ impl Color {
         Self::rgba8((v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8, v as u8)
     }
 
+    /// This colour at alpha `a`, whatever its own was.
     pub fn with_alpha(mut self, a: f32) -> Self {
         self.a = a;
+        self
+    }
+
+    /// This colour with its alpha scaled by `f`: a tint of a colour that
+    /// may be translucent already, as a theme's often is. A theme's
+    /// `sunken` of `#ffffff1a` at 0.6 is white at 6% — at
+    /// [`with_alpha`](Self::with_alpha)`(0.6)` it was white at 60%, a pale
+    /// slab in a dark panel (backlog RG165).
+    pub fn faded(mut self, f: f32) -> Self {
+        self.a *= f;
         self
     }
 

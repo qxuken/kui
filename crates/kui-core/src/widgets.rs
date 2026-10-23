@@ -85,9 +85,9 @@ pub fn latency_hud_at(ui: &mut Ui<'_>, x: Align, y: Align) {
                     .offset(dx, dy),
             )
             .pad(10.0)
-            .bg(t.bg.with_alpha(0.71))
+            .bg(t.bg.faded(0.71))
             .radius(8.0)
-            .border(1.0, t.border_strong.with_alpha(0.5)),
+            .border(1.0, t.border_strong.faded(0.5)),
         latency_graph,
     );
 }
@@ -165,10 +165,9 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                 // showcase — in the default bottom-right HUD the tooltip has no
                 // room below or to the right, so it flips above and slides left.
                 let badge = ui.child_key("kui:latency-legend");
-                let badge_bg =
-                    theme
-                        .muted
-                        .with_alpha(if ui.is_hovered(badge) { 0.31 } else { 0.16 });
+                let badge_bg = theme
+                    .muted
+                    .faded(if ui.is_hovered(badge) { 0.31 } else { 0.16 });
                 ui.with_keyed(
                     "kui:latency-legend",
                     NodeSpec::column()
@@ -215,7 +214,7 @@ pub fn latency_graph(ui: &mut Ui<'_>) {
                     .gap(1.0)
                     .main_align(Align::End)
                     .cross_align(Align::End)
-                    .bg(theme.sunken.with_alpha(0.6))
+                    .bg(theme.sunken.faded(0.6))
                     .radius(3.0)
                     .clip(),
                 |ui| {

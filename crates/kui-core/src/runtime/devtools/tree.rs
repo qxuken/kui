@@ -313,7 +313,16 @@ pub(super) fn tree_tab(
             .on_key(action("tree-key"))
             .role(crate::access::Role::List)
             .label("nodes")
-            .border(1.0, if list_focused { t.focus_ring } else { t.sunken }),
+            // Unfocused, no ring: the list's own colour again would be a
+            // second coat of a translucent `sunken` (backlog RG165).
+            .border(
+                1.0,
+                if list_focused {
+                    t.focus_ring
+                } else {
+                    Color::TRANSPARENT
+                },
+            ),
         count,
         ROW_H,
         |ui, i| {
@@ -333,7 +342,14 @@ pub(super) fn tree_tab(
                     .fill()
                     .pad_xy(4.0, 0.0)
                     .radius(3.0)
-                    .bg(if on { t.accent_soft } else { t.sunken })
+                    // A row that is not selected shows the list through it:
+                    // the list's `sunken` again stacks a translucent theme's
+                    // into a slab (backlog RG165).
+                    .bg(if on {
+                        t.accent_soft
+                    } else {
+                        Color::TRANSPARENT
+                    })
                     .hover_bg(if on { t.accent_soft } else { t.hover })
                     .border(1.0, if at { t.focus_ring } else { Color::TRANSPARENT })
                     .cross_align(Align::Center)
@@ -888,7 +904,7 @@ pub(super) fn overlays(
                         .offset(area.x, area.y),
                 )
                 .size(area.w.max(1.0), area.h.max(1.0))
-                .bg(t.accent.with_alpha(0.04))
+                .bg(t.accent.faded(0.04))
                 .hoverable()
                 .cursor(crate::cursor::CursorShape::Pointer)
                 .on_click(action("picked"))
@@ -946,9 +962,9 @@ pub(super) fn overlays(
                 .size(n.rect.w.max(1.0), n.rect.h.max(1.0))
                 .border(
                     if strong { 2.0 } else { 1.0 },
-                    t.fg.with_alpha(if strong { 0.9 } else { 0.5 }),
+                    t.fg.faded(if strong { 0.9 } else { 0.5 }),
                 )
-                .bg(t.accent.with_alpha(if strong { 0.10 } else { 0.05 }))
+                .bg(t.accent.faded(if strong { 0.10 } else { 0.05 }))
                 .role(crate::access::Role::None),
         );
     }

@@ -576,12 +576,7 @@ fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, radio: Option<b
             .apply_tooltip(hint),
         |ui| {
             let color = if on { t.accent } else { t.muted };
-            icons::draw(
-                ui,
-                glyph,
-                color,
-                color.with_alpha(if on { 0.9 } else { 0.3 }),
-            );
+            icons::draw(ui, glyph, color, color.faded(if on { 0.9 } else { 0.3 }));
             if ui.is_hovered(key) {
                 widgets::hover_hint(ui, hint);
             }
@@ -657,7 +652,7 @@ pub(super) fn small_button_iconed(
             .apply_tooltip(hint),
         |ui| {
             let color = if on { t.accent } else { t.fg };
-            icons::draw(ui, glyph, color, color.with_alpha(0.35));
+            icons::draw(ui, glyph, color, color.faded(0.35));
             ui.text(text, TextStyle::new(10.0).color(color));
             if ui.is_hovered(key) {
                 widgets::hover_hint(ui, hint);
