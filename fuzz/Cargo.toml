@@ -20,7 +20,8 @@ cargo-fuzz = true
 # C++ or links a binary without a `main`.
 [dependencies]
 kui-core = { workspace = true, features = ["conformance"] }
-# The image decoder (`kui_native::decode_image`); the rest of the runner is
+# The image decoder and encoder (`kui_native::decode_image`,
+# `encode_image`); the rest of the runner is
 # compiled but never called. No audio, dialogs or AccessKit: nothing here
 # opens a device.
 kui-native = { workspace = true, default-features = false }
@@ -77,6 +78,14 @@ required-features = ["libfuzzer"]
 [[bin]]
 name = "decode"
 path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]
+
+[[bin]]
+name = "encode"
+path = "fuzz_targets/encode.rs"
 test = false
 doc = false
 bench = false

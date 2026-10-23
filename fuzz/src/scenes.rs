@@ -1,7 +1,8 @@
 //! The core as a host drives it: a view built every frame, and between
 //! frames whatever a driver can hand over — pointer, wheel, keys, text,
 //! IME, paste, files, assistive requests, a resize, the clock, the OS
-//! closing or dismissing a window, the appearance flipping.
+//! closing or dismissing a window, the appearance flipping — with a
+//! faded subtree drawn as one group or faded per quad (ADR 0056).
 //!
 //! The view is one of the conformance corpus's scenes
 //! (`kui_core::conformance::SCENES`, every element and prop the bindings
@@ -64,7 +65,8 @@ enum Action {
     Down(Button, u8),
     Up(Button),
     Scroll(Coord, Coord),
-    Gesture(Coord, Coord, bool),
+    /// A delta in a scroll gesture: pixels, or a wheel's notches.
+    Gesture(Coord, Coord, Gesture),
     Text(String),
     Commit(String),
     Paste(String, u8),
@@ -94,6 +96,9 @@ enum Action {
     Resize(u16, u16, u8),
     /// The clock moving on, in ms.
     Time(u16),
+    /// The scene's phase from the low two bits, and from the next one
+    /// whether a faded subtree is drawn as one group from here on
+    /// (`Core::set_opacity_groups`, ADR 0056).
     Phase(u8),
     Appearance(u8),
     WindowClosed(u8),
@@ -103,6 +108,14 @@ enum Action {
     /// A frame with nothing new: transitions and exits run.
     Frame,
 }
+
+/// A gesture's byte: bit 0 whether it begins one (a `bool` as it was
+/// read), bit 7 whether the delta is a wheel's, in lines at 40 px each
+/// (ADR 0050, a notch gliding on a scroll container). Read from bits a
+/// `bool` left unused, so what was kept before reads as it did but where
+/// that bit was set.
+#[derive(Arbitrary, Debug, Clone, Copy)]
+struct Gesture(u8);
 
 #[derive(Arbitrary, Debug, Clone, Copy)]
 enum Button {
@@ -327,12 +340,17 @@ impl Driver<'_> {
                 let p = self.point(*x, *y);
                 self.input(InputEvent::Scroll(p));
             }
-            Action::Gesture(x, y, begins) => {
+            Action::Gesture(x, y, Gesture(bits)) => {
                 let delta = self.point(*x, *y);
-                self.input(InputEvent::ScrollGesture {
-                    delta,
-                    begins: *begins,
-                });
+                let begins = bits & 1 != 0;
+                if bits & 0x80 != 0 {
+                    self.input(InputEvent::Wheel {
+                        lines: Vec2::new(delta.x / 40.0, delta.y / 40.0),
+                        begins,
+                    });
+                } else {
+                    self.input(InputEvent::ScrollGesture { delta, begins });
+                }
             }
             Action::Text(s) => self.input(InputEvent::Text(s.clone())),
             Action::Commit(s) => self.input(InputEvent::Commit(s.clone())),
@@ -418,7 +436,10 @@ impl Driver<'_> {
                 self.now += f64::from(*ms) / 1000.0;
                 self.core.set_time(self.now);
             }
-            Action::Phase(p) => self.phase = u32::from(p % 4),
+            Action::Phase(p) => {
+                self.phase = u32::from(p % 4);
+                self.core.set_opacity_groups(p & 4 != 0);
+            }
             Action::Appearance(a) => {
                 let all = kui_core::Appearance::ALL;
                 let system = kui_core::SystemEnv {

@@ -8,7 +8,7 @@
 # run once found is kept under fuzz/regressions/ and replayed on stable by
 # `cargo test --workspace`, so ci.yml's `check` holds every fixed crash
 # fixed without a fuzzer in it (fuzz/Cargo.toml, scripts/fuzz.nu). Run this
-# after work on a parser, a decoder, the Node wire or the input and edit
+# after work on a parser, a decoder or encoder, the Node wire or the input and edit
 # paths, and before a release when there is an hour to spare.
 #
 # A run is `nu scripts/fuzz.nu` with the inputs below, the same script a
@@ -39,7 +39,7 @@ on:
         description: Seconds per target
         default: "600"
       targets:
-        description: Targets, space-separated (parsers values path scenes decode); empty for all
+        description: Targets, space-separated (parsers values path scenes decode events encode); empty for all
         default: ""
       jobs:
         description: libFuzzer workers per target (each a process of up to ~1 GB)
