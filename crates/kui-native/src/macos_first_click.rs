@@ -22,17 +22,25 @@
 //! app, and no resize of AppKit's is left waiting for a release (C54).
 //! RG168 only activated, and the second press resized. A press anywhere
 //! else, a press while the app is active, and every press on macOS 27 go
-//! on as before.
+//! on as before. Until the next press the cursor is kui's too
+//! ([`Custody`]).
 //!
 //! Tried on macOS 26.6.2 and not enough: posting a release back into the
 //! queue after activation (the resize ignored it), and handing the dropped
 //! press back to AppKit once the app was active with the button still down,
 //! 2–6 ms on (the resize stuck and hung as before).
 //!
+//! Left so on macOS 26.6.2: after a release outside the window the resize
+//! cursor stays until the pointer enters the content. kui sets the arrow
+//! there and the screen keeps the resize cursor; dropping AppKit's cursor
+//! updates, setting the arrow again after every pump and setting another
+//! cursor first so the arrow's set is a change all left it as it was.
+//!
 //! `KUI_EDGE_RESIZE` takes a comma list, read once: `force` installs the
 //! monitor on macOS 27 too, so the resize can be tried where the bug is
 //! not; `off` only activates, as RG168 did; `log` writes each gesture's
-//! press, drag count and release to stderr.
+//! press, drag count and release, and the cursor's zone as it changes, to
+//! stderr.
 
 use std::cell::RefCell;
 use std::ptr::NonNull;
@@ -224,11 +232,12 @@ impl Gesture {
 /// cursor for the window's edge and the app's for its content are kept by
 /// tracking areas that change the cursor only as the pointer crosses into
 /// them, and the window became active with the pointer already inside: the
-/// resize cursor stayed over the content and outside the window, and an
-/// arrow set at the release stayed on the edge, through the native resize
-/// the next press started (macOS 26.6.2). So every move until then picks
-/// it: the resize cursor on the band, the arrow outside, and over the
-/// content the view's cursor rects rebuilt, which is the app's cursor.
+/// resize cursor stayed over the content, and an arrow set at the release
+/// stayed on the edge, through the native resize the next press started
+/// (macOS 26.6.2). So every move until then picks it: the resize cursor on
+/// the band, the arrow outside, and over the content the view's cursor
+/// rects rebuilt, which is the app's cursor. Outside the window macOS 26
+/// keeps the resize cursor anyway (the module's last paragraph but one).
 struct Custody {
     window: Retained<NSWindow>,
     zone: Option<Zone>,
@@ -632,12 +641,22 @@ mod tests {
         let (w, h) = (600.0, 432.0);
         // What an active window resized from on macOS 27, and what it did not.
         for x in [-2.0, 0.0, 2.0] {
-            assert_eq!(zone(x, 200.0, w, h), Zone::Edge(s(true, false, false, false)), "{x}");
+            assert_eq!(
+                zone(x, 200.0, w, h),
+                Zone::Edge(s(true, false, false, false)),
+                "{x}"
+            );
         }
         assert_eq!(zone(4.0, 200.0, w, h), Zone::Content);
         assert_eq!(zone(-4.0, 200.0, w, h), Zone::Outside);
-        assert_eq!(zone(12.0, 2.0, w, h), Zone::Edge(s(true, false, true, false)));
-        assert_eq!(zone(16.0, 2.0, w, h), Zone::Edge(s(false, false, true, false)));
+        assert_eq!(
+            zone(12.0, 2.0, w, h),
+            Zone::Edge(s(true, false, true, false))
+        );
+        assert_eq!(
+            zone(16.0, 2.0, w, h),
+            Zone::Edge(s(false, false, true, false))
+        );
         // An edge press grabs well inside the band; the cursor after it does not.
         assert_eq!(sides(8.0, 200.0, w, h), s(true, false, false, false));
         assert_eq!(zone(8.0, 200.0, w, h), Zone::Content);

@@ -33,11 +33,12 @@ was the first bare bump to break an app in five releases).
   put it on the right (backlog F188).
 - On macOS 26 and earlier, under the Node driver or any host that pumps
   the runner (`PumpRunner`, `KuiWindow.pump`), a left press on the edge
-  of a window whose app is not active brings the window forward and
-  does not start a resize: the press, its drags and its release never
-  reach AppKit or the app, and the next press resizes. alpha.65 started
-  a resize that often stuck (below). The native runner, a press
-  anywhere else, and macOS 27 are unchanged (backlog RG168).
+  of a window whose app is not active is resized by kui, not AppKit:
+  the press, its drags and its release never reach AppKit or the app,
+  the window comes forward, and its sides follow the pointer in that
+  gesture. alpha.65 started a resize that often stuck (below). The
+  native runner, a press anywhere else, and macOS 27 are unchanged
+  (backlog RG168, C54).
 
 The close button hides the panel and leaves it on, so its chords can
 bring it back, and `devtools()` stays true. An app's toggle on
@@ -57,9 +58,12 @@ followed the pointer until the next click, and a press held and let go
 outside the window hung the process inside AppKit, deaf to ⌘Q. Posting
 a release back after activation did not end it, and neither did handing
 the press back once the app was active with the button still down;
-dropping the gesture and activating the window does, at the price of
-the one-press resize from another app, which wants AppKit's loop
-running the whole time under a pump (backlog C54).
+dropping the gesture and activating the window does, and kui resizes
+the window from the dropped drags itself, within its min and max sizes
+and under the menu bar, so a press from another app still resizes in
+one gesture (backlog C54). `KUI_EDGE_RESIZE=off` only activates, and
+the second press resizes. On macOS 26 the resize cursor can stay after
+such a gesture ends outside the window, until the pointer enters it.
 
 ### Fixed
 

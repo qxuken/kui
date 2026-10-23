@@ -287,7 +287,8 @@ buffer writes kept awake — was built the day it was filed, after the
 alpha.65 tag, and is in the archive; and RG168, from the same Builder on
 a macOS 26 machine — a click on a pumped window's edge from another app
 sticking the resize, or hanging the process — was built the day it was
-filed, after the alpha.65 tag, and is in the archive.
+filed, after the alpha.65 tag, and is in the archive, as is C54, which
+it filed — the same press resizing in that one gesture.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -326,11 +327,11 @@ corpus adapter disagreeing with the reference when a scene runs alone —
 and went to
 [the archive](backlog/closed-2026-09.md#core-capability-c30-and-c31-2026-09-12)
 with the alpha.12 tag. What is left is the three parked entries and C27
-(C13 and C14 of the three built on 2026-09-25), C54, filed open on
-2026-10-23 (resizing an inactive window in one gesture under a pump on
-macOS 26). C53, filed on
-2026-10-23 — what a repainting window holds on the GPU — was built the
-day it was filed and is in the archive.
+(C13 and C14 of the three built on 2026-09-25). C53, filed on
+2026-10-23 — what a repainting window holds on the GPU — and C54, filed
+the same day — resizing an inactive window in one gesture under a pump
+on macOS 26 — were built the day they were filed and are in the
+archive.
 
 ### `.` C12 — Wrapping a column
 
@@ -421,35 +422,6 @@ best of the three.** `idlePumpMs` is a real dial — 8 ms is 34 ms a click and
   Node. That is Electron's shape and it is not worth an idle 3%.
 - **Nobody minding.** The most likely, and the reason this is parked rather
   than open. A Rust window idles at 0.00%; a Node one at ~3% with a knob.
-
-### `~` C54 — Under a pump on macOS 26, an inactive window cannot be resized in one gesture
-
-**Filed 2026-10-23, open,** from RG168. On macOS 26 a press on the edge
-of an inactive window goes to AppKit's delayed first-click path, which
-waits 78–230 ms for the activation and then starts the resize. Under a
-pump — the Node driver, which runs AppKit a slice at a time and sleeps
-in libuv between — that resize started after a quick release and stuck,
-or hung the process; RG168 drops such a press and only activates the
-window, so the user presses again to resize, where Finder, Kawoosh (the
-native runner) and macOS 27 resize on the first press.
-
-What did not help, on the work Mac (macOS 26.6.2), every probe kept on
-`claude/pump-press-probe`: keeping AppKit running inside the pump while
-the button is down (no pump ran during the press); waiting up to 25 ms
-in AppKit per pump while inactive (activation still took 78–230 ms; the
-stuck resize ended at the next click instead of hanging); always
-(worse); posting a release after activation (ignored); handing the
-press back once the app was active with the button down (every bug
-back).
-
-**What would move it.** AppKit's loop running the whole time, as the
-native runner's does: the "owning the loop" option C27 measured and set
-aside — `[NSApp run]` on the main thread with libuv driven from it, which
-`runWindowed` cannot do from inside a JS callback, so a launcher that
-embeds Node — now with a correctness bug on its side of the scale, not
-only an idle 3%. Or the window server's own resize for the edge, if
-AppKit offers one an app can start; nothing found yet. Until then the
-second press is the cost.
 
 ## From two alpha.7 field reports (2026-09-07)
 
