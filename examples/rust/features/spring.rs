@@ -17,7 +17,7 @@
 //!
 //! Run: cargo run -p kui-native --example spring [-- --headless]
 
-use kui_devtools::{Drive, Example};
+use kui_devtools::{Cue, Drive, Example, Recording};
 use kui_native::widgets;
 use kui_native::{
     Align, App, Core, Easing, Event, FloatConfig, KeyMods, NodeSpec, Role, TextStyle, Ui, UiEvent,
@@ -195,6 +195,18 @@ impl App for Spring {
 }
 
 impl Example for Spring {
+    /// The bouncy preset, the stage clicked, and clicked twice more, the
+    /// second time mid-flight.
+    const RECORDING: Option<Recording> = Some(Recording {
+        secs: 3.2,
+        cues: &[
+            (0.2, Cue::Click("bouncy")),
+            (0.4, Cue::Click("stage")),
+            (1.5, Cue::Click("stage")),
+            (1.8, Cue::Click("stage")),
+        ],
+    });
+
     fn window(&self) -> kui_devtools::Window {
         kui_devtools::Window::default().size(520.0, 420.0)
     }

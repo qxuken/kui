@@ -107,6 +107,22 @@ running the whole time under a pump (backlog C54).
 - `Core::drawn()`: the finished frame's list and atlas for a reader
   that is not the core's renderer, marking nothing read and leaving the
   atlas's `dirty` flag alone.
+- **Pictures in the book's Examples part**: every example page under
+  `apps/`, `widgets/` and `features/` opens with the example as it
+  draws, made by the example itself through `capture` and the encoders
+  above. The harness every example runs inside takes `--shot PNG`, the
+  settled frame drawn headlessly at scale 2, and `--record FILE`, the
+  example's `Example::RECORDING` (clicks at times on a stepped clock,
+  25 frames a second) as a GIF or an animated PNG, both on the light
+  theme unless `--dark`, with kui's accent and grayscale text, so a
+  rerun draws the same bytes. `transition`, `spring`, `enter_exit` and
+  `transform` have recordings, and their pages show them as GIFs (an
+  APNG of `transition`'s cycles was 11 MB, the GIF 3 MB). `nu
+  scripts/book-examples.nu pictures` draws them all again from nothing
+  and needs a GPU; the pages and `--check` only read which pictures are
+  committed, so CI needs none. `enter_exit` expires its toasts on the
+  frame clock (`ui.now`, `ui.request_frame_at`), not `Instant`, so a
+  recording sees them go when its clock says.
 
 ### Fixed
 

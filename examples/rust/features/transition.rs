@@ -21,7 +21,7 @@
 //!
 //! Run: cargo run -p kui-native --example transition [-- --headless]
 
-use kui_devtools::{Drive, Example};
+use kui_devtools::{Cue, Drive, Example, Recording};
 use kui_native::{
     Align, App, Core, Easing, FloatConfig, Keyframe, NodeSpec, Repeat, Sizing, TextStyle, Ui,
     UiEvent, Value,
@@ -263,6 +263,18 @@ impl Example for Motion {
         ("click a lane", "race the easings"),
         ("click the stage", "slide the card"),
     ];
+    /// The bar filled, the racers off, the card across; then each back.
+    const RECORDING: Option<Recording> = Some(Recording {
+        secs: 3.6,
+        cues: &[
+            (0.3, Cue::Click("100%")),
+            (0.3, Cue::Click("lanes")),
+            (0.8, Cue::Click("stage")),
+            (1.8, Cue::Click("40%")),
+            (2.0, Cue::Click("lanes")),
+            (2.4, Cue::Click("stage")),
+        ],
+    });
 
     fn window(&self) -> kui_devtools::Window {
         kui_devtools::Window::default().size(520.0, 630.0)

@@ -11,9 +11,19 @@
 # the one place a reader of the site sees an example without opening the
 # repository.
 #
-#   nu scripts/book-examples.nu          rewrite the pages and the SUMMARY part
-#   nu scripts/book-examples.nu --check  fail, with the diff, if a rerun would
-#                                        change anything (ci.yml's `check` runs it)
+# A page also shows the example as it draws, when a picture of it is in
+# docs/book/src/img/examples/<kind>/: its recording (`<name>.gif`, from the
+# harness's `--record`) for an example whose subject is motion, else its
+# settled frame (`<name>.png`, from `--shot`). The pictures are drawn
+# headlessly by the example itself on a GPU (ADR 0054), which CI runners
+# have none of, so they are made here and committed; `--check` only reads
+# which exist.
+#
+#   nu scripts/book-examples.nu           rewrite the pages and the SUMMARY part
+#   nu scripts/book-examples.nu --check   fail, with the diff, if a rerun would
+#                                         change anything (ci.yml's `check` runs it)
+#   nu scripts/book-examples.nu pictures  draw every picture again from scratch,
+#                                         then rewrite the pages (needs a GPU)
 
 # One line each, from the kinds table in examples/README.md.
 const KINDS = {
@@ -23,6 +33,13 @@ const KINDS = {
     tools: "Registered as an example for want of a better slot, and not one: a corpus dump."
 }
 
+# The kinds whose examples run inside the harness and so can be drawn;
+# `tools/` print rather than draw.
+const PICTURED = [apps widgets features]
+
+# Where the pictures live, under the book's src.
+const IMG = "img/examples"
+
 # The examples of one kind, by name, sorted bytewise.
 def examples-of [kind: string] {
     ls $"examples/rust/($kind)"
@@ -30,6 +47,29 @@ def examples-of [kind: string] {
         | get name
         | each {|f| $f | path basename | str replace -r '\.rs$' '' }
         | sort
+}
+
+# The `<img>` for an example's picture under `src`, or nothing without
+# one. The width is the picture's in logical px — it is drawn at the
+# harness's scale of 2 — so the page shows it at the size the window does.
+def picture [src: string, kind: string, name: string] {
+    let gif = ($src | path join $IMG $kind $"($name).gif")
+    let png = ($src | path join $IMG $kind $"($name).png")
+    let found = if ($gif | path exists) {
+        # A GIF's logical screen width: two bytes, little-endian, at 6.
+        {file: $"($name).gif", px: (open --raw $gif | bytes at 6..<8 | into int --endian little), what: "its recording, played headlessly by `--record`"}
+    } else if ($png | path exists) {
+        # A PNG's IHDR width: four bytes, big-endian, at 16.
+        {file: $"($name).png", px: (open --raw $png | bytes at 16..<20 | into int --endian big), what: "its settled frame, drawn headlessly by `--shot`"}
+    } else {
+        return []
+    }
+    [
+        $"<img src=\"../../($IMG)/($kind)/($found.file)\" width=\"($found.px // 2)\" alt=\"($kind)/($name): ($found.what | str replace -a '`' '')\">"
+        ""
+        $"*The example as it draws: ($found.what).*"
+        ""
+    ]
 }
 
 # Lines joined with "\n" and ended by one, the way `echo` wrote them.
@@ -50,6 +90,12 @@ def generate [src: string] {
         "The comment at the top of each file says what it shows and how the"
         "repository runs it."
         ""
+        "The picture at the top of a page is the example drawing itself: its"
+        "harness renders it headlessly on the GPU with the light theme and"
+        "grayscale text and keeps the frame (`--shot`), or plays a few seconds"
+        "of clicks on a stepped clock and keeps each frame (`--record`), and"
+        "`nu scripts/book-examples.nu pictures` draws them all again."
+        ""
     ] | append ($KINDS | transpose kind blurb | each {|k| $"- [`($k.kind)/`]\(($k.kind).md\): ($k.blurb)" }))
     | save -f --raw ($out | path join index.md)
     for k in ($KINDS | transpose kind blurb) {
@@ -58,15 +104,16 @@ def generate [src: string] {
         text ([$"# `($k.kind)/`" "" $k.blurb ""] | append ($names | each {|n| $"- [`($n)`]\(($k.kind)/($n).md\)" }))
         | save -f --raw ($out | path join $"($k.kind).md")
         for n in $names {
-            text [
+            text ([
                 $"# `($k.kind)/($n).rs`"
                 ""
                 "<!-- Written by scripts/book-examples.nu; the source is included when the book is built. -->"
                 ""
+            ] | append (picture $src $k.kind $n) | append [
                 "```rust,noplayground"
                 $"{{#include ../../../../../examples/rust/($k.kind)/($n).rs}}"
                 "```"
-            ] | save -f --raw ($out | path join $k.kind $"($n).md")
+            ]) | save -f --raw ($out | path join $k.kind $"($n).md")
         }
     }
     # Everything above the part stays, its trailing blank lines dropped so
@@ -83,6 +130,37 @@ def generate [src: string] {
             | append (examples-of $kind | each {|n| $"  - [($n)]\(examples/($kind)/($n).md\)" })
         } | flatten))
     text ([$head] | append $part) | save -f --raw $summary
+}
+
+# Draws every harnessed example's picture again, from nothing: the
+# settled frame as `<name>.png`, and the recording as `<name>.gif` for an
+# example that declares one (`Example::RECORDING`). Then rewrites the
+# pages, so a picture added or gone shows on them.
+def "main pictures" [
+    --jobs: int = 4     # examples drawn at once
+] {
+    cd ($env.FILE_PWD | path dirname)
+    ^cargo build -p kui-native --examples
+    let bin = (^cargo metadata --format-version 1 --no-deps | from json | get target_directory | path join debug examples)
+    let img = ("docs/book/src" | path join $IMG)
+    rm -rf --permanent $img
+    let todo = ($PICTURED | each {|kind| examples-of $kind | each {|name| {kind: $kind, name: $name} } } | flatten)
+    for kind in $PICTURED { mkdir ($img | path join $kind) }
+    let failed = ($todo | par-each --threads $jobs {|j|
+        let dir = ($img | path join $j.kind)
+        let r = (^($bin | path join $j.name) --shot ($dir | path join $"($j.name).png") --record ($dir | path join $"($j.name).gif") | complete)
+        print -n $r.stdout
+        # A page shows the recording where there is one, so its still is
+        # not kept.
+        let gif = ($dir | path join $"($j.name).gif")
+        if ($gif | path exists) { rm ($dir | path join $"($j.name).png") }
+        if $r.exit_code != 0 { {example: $"($j.kind)/($j.name)", why: ($r.stderr | str trim)} }
+    } | compact)
+    generate docs/book/src
+    if ($failed | is-not-empty) {
+        print -e ($failed | table)
+        exit 1
+    }
 }
 
 def main [

@@ -19,6 +19,10 @@
 //! chords live and draws nothing, which is what the accessibility audit
 //! runs under.
 //!
+//! `--shot` and `--record` draw the example headlessly and keep it as a
+//! PNG, or an animated GIF or PNG ([`picture`]): the pictures in the book's
+//! Examples part.
+//!
 //! One `main` per example: `kui_devtools::main!(Counter::default())`.
 
 use kui_native::{
@@ -29,10 +33,12 @@ use kui_native::{
 mod drive;
 pub use drive::Drive;
 pub mod manifest;
+pub mod picture;
 /// Where the panel sits: the core's own placement.
 pub use kui_native::DevtoolsDock as Dock;
 /// The dock's extents, for the window the harness sizes around them.
 pub use kui_native::devtools::{DOCK_BOTTOM_H, DOCK_SIDE_W};
+pub use picture::{Cue, Recording};
 
 /// The window height a side dock needs to show all of itself, and the
 /// width a bottom one does: a smaller example's window is raised to it.
@@ -117,6 +123,10 @@ pub trait Example: App {
     /// does not refuse them: `(flag, what it does)`. The example reads
     /// them from `std::env::args()` itself.
     const FLAGS: &'static [(&'static str, &'static str)] = &[];
+    /// What `--record` plays, for an example whose subject is motion:
+    /// the cues that start it and how long to keep the clock running.
+    /// `None`, the default, records nothing.
+    const RECORDING: Option<Recording> = None;
 
     /// The window the example wants.
     fn window(&self) -> Window {
@@ -168,6 +178,11 @@ pub struct Cli {
     /// panel (`Core::set_devtools_key`), for an example whose own keymap
     /// wants `Ctrl+Shift+I`.
     pub key: Option<Accel>,
+    /// `--shot`: where the settled frame goes, as a PNG.
+    pub shot: Option<std::path::PathBuf>,
+    /// `--record`: where the example's [`Example::RECORDING`] goes, as a
+    /// GIF for a `.gif` path and an animated PNG otherwise.
+    pub record: Option<std::path::PathBuf>,
 }
 
 impl Cli {
@@ -232,6 +247,8 @@ impl Cli {
                         .ok_or_else(|| format!("--size: {v:?} is not WxH"))?;
                     cli.size = Some((w, h));
                 }
+                "--shot" => cli.shot = Some(value("a .png path")?.into()),
+                "--record" => cli.record = Some(value("a .png or .gif path")?.into()),
                 "-h" | "--help" => return Err(usage(name, flags)),
                 other if flags.iter().any(|(f, _)| *f == other) => {}
                 other if other.starts_with('-') => {
@@ -246,7 +263,7 @@ impl Cli {
 
 fn usage(name: &str, flags: &[(&str, &str)]) -> String {
     let mut s = format!(
-        "usage: {name} [--headless] [--dock side|bottom|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced] [--key CHORD] [--size WxH]"
+        "usage: {name} [--headless] [--dock side|bottom|off] [--light|--dark] [--accent #rrggbb] [--motion full|reduced] [--key CHORD] [--size WxH] [--shot PNG] [--record PNG|GIF]"
     );
     for (f, doc) in flags {
         s.push_str(&format!(" [{f}]"));
@@ -261,6 +278,11 @@ fn usage(name: &str, flags: &[(&str, &str)]) -> String {
         "  --key CHORD      the chord into the dock, instead of Ctrl+Shift+I (f12, mod+shift+d)\n",
     );
     s.push_str("  --size WxH       the example's area, logical px (the dock is added)\n");
+    s.push_str(
+        "  --shot PNG       draw the settled frame headlessly, light unless --dark, and save it\n",
+    );
+    s.push_str("  --record FILE    play the example's recording headlessly and save it, a GIF for .gif, else an APNG;\n");
+    s.push_str("                   an example with none writes nothing and says so\n");
     if !flags.is_empty() {
         s.push('\n');
         for (f, doc) in flags {
@@ -302,6 +324,9 @@ pub fn run<E: Example>(name: &str, example: E) {
 
 /// [`run`] with the command line already parsed; returns the exit code.
 pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
+    if cli.shot.is_some() || cli.record.is_some() {
+        return pictures(name, &mut example, &cli);
+    }
     if cli.headless {
         let mut core = Core::new();
         core.set_diagnostics(true);
@@ -374,6 +399,31 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
             1
         }
     }
+}
+
+/// `--shot` and `--record`, in that order when both are given; returns
+/// the exit code: 0 when every file asked for was written, or there was
+/// no recording to write, 1 when one failed.
+fn pictures<E: Example>(name: &str, example: &mut E, cli: &Cli) -> i32 {
+    if let Some(path) = &cli.shot {
+        if let Err(e) = picture::shot(example, cli, path) {
+            eprintln!("{name}: --shot: {e}");
+            return 1;
+        }
+        println!("{name}: {}", path.display());
+    }
+    if let Some(path) = &cli.record {
+        let Some(recording) = E::RECORDING else {
+            println!("{name}: no recording");
+            return 0;
+        };
+        if let Err(e) = picture::record(example, cli, recording, path) {
+            eprintln!("{name}: --record: {e}");
+            return 1;
+        }
+        println!("{name}: {}", path.display());
+    }
+    0
 }
 
 /// `fn main` for an example: `kui_devtools::main!(Counter::default());`.
@@ -492,6 +542,9 @@ mod tests {
                 "--motion=reduced",
                 "--key",
                 "f12",
+                "--shot=a.png",
+                "--record",
+                "b.png",
                 "--mine",
             ]
             .map(String::from),
@@ -505,6 +558,8 @@ mod tests {
         assert_eq!(cli.size, Some((300.0, 200.0)));
         assert_eq!(cli.motion, Some(MotionPref::Reduced));
         assert_eq!(cli.key.map(|k| k.spelling()), Some("f12".into()));
+        assert_eq!(cli.shot.as_deref(), Some(std::path::Path::new("a.png")));
+        assert_eq!(cli.record.as_deref(), Some(std::path::Path::new("b.png")));
         assert!(Cli::parse("x", ["--key", "f99"].map(String::from), &[]).is_err());
         // `unknown` is a reading, not a pin: the flag takes the two answers.
         assert!(Cli::parse("x", ["--motion", "unknown"].map(String::from), &[]).is_err());

@@ -8,6 +8,12 @@ which is not published): in your own project, take the view and the
 The comment at the top of each file says what it shows and how the
 repository runs it.
 
+The picture at the top of a page is the example drawing itself: its
+harness renders it headlessly on the GPU with the light theme and
+grayscale text and keeps the frame (`--shot`), or plays a few seconds
+of clicks on a stepped clock and keeps each frame (`--record`), and
+`nu scripts/book-examples.nu pictures` draws them all again.
+
 - [`apps/`](apps.md): How it composes: an app owning its state, keymap or pane tree, touching whatever it needs.
 - [`widgets/`](widgets.md): One element or one stock widget, in every state it has.
 - [`features/`](features.md): One cross-cutting behaviour, with exactly the widgets it touches.
