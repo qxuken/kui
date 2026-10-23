@@ -1,5 +1,5 @@
 //! The first press on a pumped window's edge, on macOS 26 and earlier
-//! (backlog RG168).
+//! (backlog RG168, C54).
 //!
 //! A press on the resize edge of a window whose app is not active goes to
 //! AppKit's delayed first-click path: `-[NSWindow _handleMouseDownEvent:
@@ -13,27 +13,39 @@
 //! inside AppKit for good, ⌘Q included. Measured on macOS 26.6.2; macOS 27
 //! activates in time and resizes on the first press, as Finder does.
 //!
-//! So under a pump, on macOS 26 and earlier, such a press only activates the
-//! app: the monitor below drops it, and the drags and the release of the
-//! same gesture with it, and brings the window forward. The second press
-//! resizes. Letting the rest of the gesture through made it a drag across
-//! the app, under the app's cursor, where the user meant a resize. A press
-//! anywhere else, a press while the app is active, and every press on
-//! macOS 27 go on as before.
+//! So under a pump, on macOS 26 and earlier, AppKit never sees such a
+//! press: the monitor below drops it, and the drags and the release of the
+//! same gesture with it, activates the app, brings the window forward, and
+//! resizes the window itself from the dropped drags — the sides the press
+//! landed on follow the pointer, inside the window's min and max sizes and
+//! under the menu bar — so the gesture resizes as it would in a native
+//! app, and no resize of AppKit's is left waiting for a release (C54).
+//! RG168 only activated, and the second press resized. A press anywhere
+//! else, a press while the app is active, and every press on macOS 27 go
+//! on as before.
 //!
 //! Tried on macOS 26.6.2 and not enough: posting a release back into the
 //! queue after activation (the resize ignored it), and handing the dropped
 //! press back to AppKit once the app was active with the button still down,
-//! 2–6 ms on (the resize stuck and hung as before). Resizing in one gesture
-//! from another app wants AppKit's loop running the whole time under a pump
-//! (backlog C54).
+//! 2–6 ms on (the resize stuck and hung as before).
+//!
+//! `KUI_EDGE_RESIZE` takes a comma list, read once: `force` installs the
+//! monitor on macOS 27 too, so the resize can be tried where the bug is
+//! not; `off` only activates, as RG168 did; `log` writes each gesture's
+//! press, drag count and release to stderr.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::sync::Once;
+use std::time::Instant;
 
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSApplication, NSEvent, NSEventMask, NSEventType, NSWindowStyleMask};
+use objc2::rc::Retained;
+use objc2_app_kit::{
+    NSApplication, NSCursor, NSCursorFrameResizeDirections, NSCursorFrameResizePosition, NSEvent,
+    NSEventMask, NSEventType, NSWindow, NSWindowStyleMask,
+};
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 /// How far inside the window's frame a press still counts as its edge, in
 /// points: AppKit's resize band reaches a few points in along an edge and
@@ -41,38 +53,229 @@ use objc2_app_kit::{NSApplication, NSEvent, NSEventMask, NSEventType, NSWindowSt
 /// within eleven.
 pub(crate) const EDGE: f64 = 12.0;
 
+/// How far along an edge from a corner a press on that edge still takes the
+/// corner, in points: AppKit's corner zone is 19 on a side.
+pub(crate) const CORNER: f64 = 19.0;
+
 /// Whether a press at `x`, `y` (window coordinates, origin bottom left) on a
 /// window `w` × `h` is on its edge: within [`EDGE`] of any side, or outside.
 pub(crate) fn on_edge(x: f64, y: f64, w: f64, h: f64) -> bool {
     x < EDGE || y < EDGE || x > w - EDGE || y > h - EDGE
 }
 
+/// The sides of a window a press on its edge moves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Sides {
+    pub left: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub top: bool,
+}
+
+/// The sides a press at `x`, `y` on a window `w` × `h` grabs: the side it is
+/// within [`EDGE`] of, and the side across the corner too when it is within
+/// [`CORNER`] of that one. A press on no edge grabs nothing.
+pub(crate) fn sides(x: f64, y: f64, w: f64, h: f64) -> Sides {
+    let near = |reach: f64| Sides {
+        left: x < reach,
+        right: x > w - reach && x >= reach,
+        bottom: y < reach,
+        top: y > h - reach && y >= reach,
+    };
+    let (edge, corner) = (near(EDGE), near(CORNER));
+    let horizontal = edge.left || edge.right;
+    let vertical = edge.bottom || edge.top;
+    Sides {
+        left: edge.left || (vertical && corner.left),
+        right: edge.right || (vertical && corner.right),
+        bottom: edge.bottom || (horizontal && corner.bottom),
+        top: edge.top || (horizontal && corner.top),
+    }
+}
+
+/// The frame `start` (screen coordinates, origin bottom left) becomes when
+/// the pointer has moved `dx`, `dy` since the press that grabbed `sides`:
+/// each grabbed side moves with it and the one across stays put, the size
+/// kept within `min` and `max`, and the top no higher than `top_limit`.
+pub(crate) fn resized(
+    start: NSRect,
+    sides: Sides,
+    dx: f64,
+    dy: f64,
+    min: NSSize,
+    max: NSSize,
+    top_limit: f64,
+) -> NSRect {
+    let clamp = |v: f64, lo: f64, hi: f64| v.min(hi).max(lo);
+    let NSRect { origin, size } = start;
+    let (mut x, mut y, mut w, mut h) = (origin.x, origin.y, size.width, size.height);
+    if sides.right {
+        w = clamp(size.width + dx, min.width, max.width);
+    } else if sides.left {
+        w = clamp(size.width - dx, min.width, max.width);
+        x = origin.x + size.width - w;
+    }
+    if sides.top {
+        let hi = max.height.min(top_limit - origin.y);
+        h = clamp(size.height + dy, min.height, hi.max(min.height));
+    } else if sides.bottom {
+        h = clamp(size.height - dy, min.height, max.height);
+        y = origin.y + size.height - h;
+    }
+    NSRect::new(NSPoint::new(x, y), NSSize::new(w, h))
+}
+
+/// The cursor AppKit shows over the grabbed sides.
+fn position(s: Sides) -> Option<NSCursorFrameResizePosition> {
+    use NSCursorFrameResizePosition as P;
+    Some(match (s.left, s.right, s.bottom, s.top) {
+        (true, _, true, _) => P::BottomLeft,
+        (true, _, _, true) => P::TopLeft,
+        (_, true, true, _) => P::BottomRight,
+        (_, true, _, true) => P::TopRight,
+        (true, ..) => P::Left,
+        (_, true, ..) => P::Right,
+        (_, _, true, _) => P::Bottom,
+        (_, _, _, true) => P::Top,
+        _ => return None,
+    })
+}
+
+/// A dropped press's gesture, still down: its drags resize `window` and its
+/// release ends it.
+struct Gesture {
+    window: Retained<NSWindow>,
+    sides: Sides,
+    frame: NSRect,
+    /// The press's [`pointer`].
+    mouse: NSPoint,
+    min: NSSize,
+    max: NSSize,
+    top_limit: f64,
+    cursor: Option<Retained<NSCursor>>,
+    at: Instant,
+    drags: u32,
+}
+
+impl Gesture {
+    /// Moves the grabbed sides to where `e` has the pointer.
+    fn follow(&self, e: &NSEvent) {
+        let now = pointer(e);
+        let (dx, dy) = (now.x - self.mouse.x, self.mouse.y - now.y);
+        // A posted event can carry any point; a frame AppKit refuses throws.
+        if !dx.is_finite() || !dy.is_finite() {
+            return;
+        }
+        let frame = resized(
+            self.frame,
+            self.sides,
+            dx,
+            dy,
+            self.min,
+            self.max,
+            self.top_limit,
+        );
+        if frame != self.window.frame() {
+            self.window.setFrame_display(frame, true);
+        }
+        // A resize resets the view's cursor rects to the app's cursor.
+        if let Some(c) = &self.cursor {
+            c.set();
+        }
+    }
+}
+
+/// Where `e` has the pointer, in the window server's space (origin top
+/// left): its own CGEvent's location, which moves with the event, where
+/// `+[NSEvent mouseLocation]` (the fallback, flipped) lagged posted drags
+/// by a few of them.
+fn pointer(e: &NSEvent) -> NSPoint {
+    match e.CGEvent() {
+        Some(cg) => {
+            let p = objc2_core_graphics::CGEvent::location(Some(&cg));
+            NSPoint::new(p.x, p.y)
+        }
+        None => {
+            let p = NSEvent::mouseLocation();
+            NSPoint::new(p.x, -p.y)
+        }
+    }
+}
+
+/// What `KUI_EDGE_RESIZE` asked for.
+#[derive(Clone, Copy, Default)]
+struct Knobs {
+    force: bool,
+    off: bool,
+    log: bool,
+}
+
+fn knobs() -> Knobs {
+    let v = std::env::var("KUI_EDGE_RESIZE").unwrap_or_default();
+    let has = |w: &str| v.split(',').any(|p| p.trim() == w);
+    Knobs {
+        force: has("force"),
+        off: has("off"),
+        log: has("log"),
+    }
+}
+
 thread_local! {
     /// A dropped press's gesture is still down: its drags and its release
-    /// are dropped too.
-    static SWALLOWING: Cell<bool> = const { Cell::new(false) };
+    /// are dropped too, and resize its window unless `off`.
+    static GESTURE: RefCell<Option<Gesture>> = const { RefCell::new(None) };
 }
 
 /// Installs the monitor once per process, on macOS 26 and earlier; from the
 /// pumped runner only, since a native run loop never has the gap.
 pub(crate) fn install(mtm: MainThreadMarker) {
     static ONCE: Once = Once::new();
+    let knobs = knobs();
     let major = objc2_foundation::NSProcessInfo::processInfo()
         .operatingSystemVersion()
         .majorVersion;
-    if major >= 27 {
+    if major >= 27 && !knobs.force {
         return;
     }
+    // `frameResizeCursorFromPosition:inDirections:` is macOS 15's.
+    let cursors = major >= 15;
     ONCE.call_once(|| {
         let handler = block2::RcBlock::new(move |ev: NonNull<NSEvent>| -> *mut NSEvent {
             // SAFETY: AppKit hands the monitor a live event.
             let e = unsafe { ev.as_ref() };
             match e.r#type() {
-                NSEventType::LeftMouseDown => SWALLOWING.with(|s| s.set(false)),
-                NSEventType::LeftMouseDragged if SWALLOWING.with(Cell::get) => {
-                    return std::ptr::null_mut();
+                NSEventType::LeftMouseDown => GESTURE.with(|g| *g.borrow_mut() = None),
+                NSEventType::LeftMouseDragged => {
+                    return GESTURE.with(|g| match &mut *g.borrow_mut() {
+                        Some(g) => {
+                            g.drags += 1;
+                            if !knobs.off {
+                                g.follow(e);
+                            }
+                            std::ptr::null_mut()
+                        }
+                        None => ev.as_ptr(),
+                    });
                 }
-                NSEventType::LeftMouseUp if SWALLOWING.with(|s| s.replace(false)) => {
+                NSEventType::LeftMouseUp => {
+                    let Some(g) = GESTURE.with(|g| g.borrow_mut().take()) else {
+                        return ev.as_ptr();
+                    };
+                    if !knobs.off {
+                        g.follow(e);
+                    }
+                    if knobs.log {
+                        let f = g.window.frame();
+                        eprintln!(
+                            "kui edge resize: released after {} ms, {} drags, {}x{} at {},{}",
+                            g.at.elapsed().as_millis(),
+                            g.drags,
+                            f.size.width,
+                            f.size.height,
+                            f.origin.x,
+                            f.origin.y,
+                        );
+                    }
                     return std::ptr::null_mut();
                 }
                 _ => return ev.as_ptr(),
@@ -90,14 +293,67 @@ pub(crate) fn install(mtm: MainThreadMarker) {
             {
                 return ev.as_ptr();
             }
-            let (p, size) = (e.locationInWindow(), window.frame().size);
+            let (p, frame) = (e.locationInWindow(), window.frame());
+            let size = frame.size;
             if !on_edge(p.x, p.y, size.width, size.height) {
                 return ev.as_ptr();
             }
             #[allow(deprecated)]
             app.activateIgnoringOtherApps(true);
             window.makeKeyAndOrderFront(None);
-            SWALLOWING.with(|s| s.set(true));
+            let sides = sides(p.x, p.y, size.width, size.height);
+            // winit keeps the app's min and max as the content's; the frame's
+            // own are AppKit's defaults unless something set them.
+            let content = window.contentRectForFrameRect(frame).size;
+            let (bw, bh) = (size.width - content.width, size.height - content.height);
+            let (cmin, cmax) = (window.contentMinSize(), window.contentMaxSize());
+            let (fmin, fmax) = (window.minSize(), window.maxSize());
+            let min = NSSize::new(
+                fmin.width.max(cmin.width + bw),
+                fmin.height.max(cmin.height + bh),
+            );
+            let max = NSSize::new(
+                fmax.width.min(cmax.width + bw).max(min.width),
+                fmax.height.min(cmax.height + bh).max(min.height),
+            );
+            let top_limit = window
+                .screen()
+                .map_or(f64::INFINITY, |s| {
+                    let v = s.visibleFrame();
+                    v.origin.y + v.size.height
+                })
+                .max(frame.origin.y + size.height);
+            let cursor = (cursors && !knobs.off)
+                .then(|| position(sides))
+                .flatten()
+                .map(|p| {
+                    NSCursor::frameResizeCursorFromPosition_inDirections(
+                        p,
+                        NSCursorFrameResizeDirections::All,
+                    )
+                });
+            if let Some(c) = &cursor {
+                c.set();
+            }
+            if knobs.log {
+                eprintln!(
+                    "kui edge resize: press at {},{} on {}x{}, {sides:?}",
+                    p.x, p.y, size.width, size.height
+                );
+            }
+            let gesture = Gesture {
+                window,
+                sides,
+                frame,
+                mouse: pointer(e),
+                min,
+                max,
+                top_limit,
+                cursor,
+                at: Instant::now(),
+                drags: 0,
+            };
+            GESTURE.with(|g| *g.borrow_mut() = Some(gesture));
             std::ptr::null_mut()
         });
         // SAFETY: the handler returns the event it was given, or nil to drop
@@ -140,5 +396,124 @@ mod tests {
         for (x, y) in [(942.0, 62.0), (866.0, 268.0), (550.0, 390.0), (13.0, 13.0)] {
             assert!(!on_edge(x, y, w, h), "{x},{y}");
         }
+    }
+
+    fn s(left: bool, right: bool, bottom: bool, top: bool) -> Sides {
+        Sides {
+            left,
+            right,
+            bottom,
+            top,
+        }
+    }
+
+    #[test]
+    fn a_press_grabs_its_side_and_the_corner_near_it() {
+        let (w, h) = (1100.0, 780.0);
+        // The work Mac's presses: corners, and the bottom edge away from one.
+        assert_eq!(sides(1096.0, -1.0, w, h), s(false, true, true, false));
+        assert_eq!(sides(1101.0, 11.0, w, h), s(false, true, true, false));
+        assert_eq!(sides(1066.0, 4.0, w, h), s(false, false, true, false));
+        assert_eq!(sides(979.0, 8.0, w, h), s(false, false, true, false));
+        // Within the corner's reach along an edge, the corner.
+        assert_eq!(sides(1085.0, 4.0, w, h), s(false, true, true, false));
+        assert_eq!(sides(4.0, 765.0, w, h), s(true, false, false, true));
+        // Mid-edge, the one side; outside the frame still counts.
+        assert_eq!(sides(-2.0, 400.0, w, h), s(true, false, false, false));
+        assert_eq!(sides(600.0, 776.0, w, h), s(false, false, false, true));
+        assert_eq!(sides(550.0, 390.0, w, h), Sides::default());
+    }
+
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
+        NSRect::new(NSPoint::new(x, y), NSSize::new(w, h))
+    }
+
+    const MIN: NSSize = NSSize::new(720.0, 560.0);
+    const MAX: NSSize = NSSize::new(f64::MAX, f64::MAX);
+
+    #[test]
+    fn the_grabbed_sides_follow_and_the_others_stay() {
+        let start = rect(100.0, 200.0, 1100.0, 780.0);
+        // Bottom right, dragged out and down: wider, taller, top left fixed.
+        let f = resized(
+            start,
+            s(false, true, true, false),
+            50.0,
+            -30.0,
+            MIN,
+            MAX,
+            2000.0,
+        );
+        assert_eq!(f, rect(100.0, 170.0, 1150.0, 810.0));
+        // Left, dragged right: narrower, right side fixed.
+        let f = resized(
+            start,
+            s(true, false, false, false),
+            40.0,
+            99.0,
+            MIN,
+            MAX,
+            2000.0,
+        );
+        assert_eq!(f, rect(140.0, 200.0, 1060.0, 780.0));
+        // Top, dragged up.
+        let f = resized(
+            start,
+            s(false, false, false, true),
+            99.0,
+            20.0,
+            MIN,
+            MAX,
+            2000.0,
+        );
+        assert_eq!(f, rect(100.0, 200.0, 1100.0, 800.0));
+    }
+
+    #[test]
+    fn the_size_stays_within_min_and_max_and_under_the_menu_bar() {
+        let start = rect(100.0, 200.0, 1100.0, 780.0);
+        // Past the min from the bottom left: the top right corner holds.
+        let f = resized(
+            start,
+            s(true, false, true, false),
+            900.0,
+            900.0,
+            MIN,
+            MAX,
+            2000.0,
+        );
+        assert_eq!(f, rect(480.0, 420.0, 720.0, 560.0));
+        // Past the max.
+        let max = NSSize::new(1200.0, 900.0);
+        let f = resized(
+            start,
+            s(false, true, false, true),
+            500.0,
+            500.0,
+            MIN,
+            max,
+            2000.0,
+        );
+        assert_eq!(f, rect(100.0, 200.0, 1200.0, 900.0));
+        // The top stops at the visible frame's.
+        let f = resized(
+            start,
+            s(false, false, false, true),
+            0.0,
+            500.0,
+            MIN,
+            MAX,
+            1000.0,
+        );
+        assert_eq!(f, rect(100.0, 200.0, 1100.0, 800.0));
+    }
+
+    #[test]
+    fn each_grab_has_its_cursor() {
+        use NSCursorFrameResizePosition as P;
+        assert_eq!(position(s(false, true, true, false)), Some(P::BottomRight));
+        assert_eq!(position(s(true, false, false, true)), Some(P::TopLeft));
+        assert_eq!(position(s(false, false, true, false)), Some(P::Bottom));
+        assert_eq!(position(Sides::default()), None);
     }
 }
