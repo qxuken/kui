@@ -183,6 +183,22 @@ impl Gesture {
             c.set();
         }
     }
+
+    /// Hands the cursor back when the gesture ends. Nothing else would:
+    /// AppKit applies a cursor rect's cursor only as the pointer crosses
+    /// into it, so the resize cursor stayed until the pointer next entered
+    /// the content, and for good when the release was outside the window.
+    /// The arrow, then the view's rects rebuilt, which puts the app's own
+    /// cursor back if the pointer is over the content.
+    fn release(&self) {
+        if self.cursor.is_none() {
+            return;
+        }
+        NSCursor::arrowCursor().set();
+        if let Some(view) = self.window.contentView() {
+            self.window.invalidateCursorRectsForView(&view);
+        }
+    }
 }
 
 /// Where `e` has the pointer, in the window server's space (origin top
@@ -244,7 +260,11 @@ pub(crate) fn install(mtm: MainThreadMarker) {
             // SAFETY: AppKit hands the monitor a live event.
             let e = unsafe { ev.as_ref() };
             match e.r#type() {
-                NSEventType::LeftMouseDown => GESTURE.with(|g| *g.borrow_mut() = None),
+                NSEventType::LeftMouseDown => {
+                    if let Some(g) = GESTURE.with(|g| g.borrow_mut().take()) {
+                        g.release();
+                    }
+                }
                 NSEventType::LeftMouseDragged => {
                     return GESTURE.with(|g| match &mut *g.borrow_mut() {
                         Some(g) => {
@@ -264,6 +284,7 @@ pub(crate) fn install(mtm: MainThreadMarker) {
                     if !knobs.off {
                         g.follow(e);
                     }
+                    g.release();
                     if knobs.log {
                         let f = g.window.frame();
                         eprintln!(
