@@ -309,6 +309,62 @@ static int headless(void) {
     }
     kui_pixels_free(shot);
 
+    /* What an app asks the driver to keep of its window (ADR 0055): a
+     * still, and a recording that runs for half a second of the frame
+     * clock, served after each frame the way kui_run serves a window's and
+     * answered as a capture event in the message each named. With no GPU
+     * adapter both answer "failed", with the reason in `error`. */
+    {
+        const char *tmp = getenv("TMPDIR");
+        if (!tmp || !*tmp) tmp = getenv("TEMP");
+        if (!tmp || !*tmp) tmp = ".";
+        char still[1024], movie[1024];
+        snprintf(still, sizeof still, "%s/kui-counter-shot.png", tmp);
+        snprintf(movie, sizeof movie, "%s/kui-counter-rec.apng", tmp);
+        int asked = kui_capture_to(ctx, KUI_STR(still), kui_value_str(KUI_STR("shot"))) &&
+                    kui_record_to(ctx, KUI_STR(movie), kui_value_str(KUI_STR("rec"))) &&
+                    !kui_capture_to(ctx, KUI_STR(""), NULL);
+        kui_set_time(ctx, 1.0);
+        kui_frame_begin(ctx, 800, 600, 1.0f);
+        view(&state, ctx);
+        kui_frame_finish(ctx);
+        kui_serve_captures(ctx);
+        kui_stop_recording(ctx);
+        kui_set_time(ctx, 1.5);
+        kui_frame_begin(ctx, 800, 600, 1.0f);
+        view(&state, ctx);
+        kui_frame_finish(ctx);
+        kui_serve_captures(ctx);
+        int saved = 0, failed = 0, right = 1;
+        while (kui_poll_event(ctx, &ev)) {
+            if (!ev_is(&ev, "capture")) {
+                apply_event(&state, &ev);
+                continue;
+            }
+            KuiStr name = {0}, phase = {0};
+            ev_message(&ev, &name);
+            kui_value_as_str(kui_value_get(ev_data(&ev), KUI_STR("phase")), &phase);
+            if (kui_str_eq(phase, "failed")) {
+                failed++;
+                continue;
+            }
+            saved++;
+            double w = data_num(&ev, "width"), frames = data_num(&ev, "frames"), secs = -1;
+            kui_value_as_float(kui_value_get(ev_data(&ev), KUI_STR("seconds")), &secs);
+            if (kui_str_eq(name, "shot")) right &= w == 800 && frames == 1;
+            else right &= kui_str_eq(name, "rec") && w == 800 && frames == 1 && fabs(secs - 0.5) < 1e-9;
+        }
+        if (!asked || saved + failed != 2 || (saved && failed) || !right) {
+            fprintf(stderr, "FAIL: kui_capture_to / kui_record_to: %d saved, %d failed\n", saved, failed);
+            kui_ctx_free(ctx);
+            return 1;
+        }
+        if (saved) printf("kept the window as %s and %s\n", still, movie);
+        else printf("no GPU adapter: kui_serve_captures answered both as failed\n");
+        remove(still);
+        remove(movie);
+    }
+
     /* Pixels to a file's bytes and back through the runner's own codecs,
      * which a test keeping a capture as a file needs no library for: two
      * pixels as a PNG, then a three-frame GIF whose middle frame repeats

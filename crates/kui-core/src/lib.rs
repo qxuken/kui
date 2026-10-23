@@ -102,6 +102,7 @@ pub mod anim;
 pub mod atlas;
 pub mod audio;
 pub mod calc;
+pub mod captures;
 pub mod cells;
 pub mod color;
 pub(crate) mod composite;
@@ -167,6 +168,7 @@ pub use access::{
 pub use anim::{Bounce, Easing, MAX_BOUNCE, Repeat, Transition};
 pub use audio::{AudioCommand, AudioSpec, AudioStore, PlayOptions, PlaybackId, Why};
 pub use calc::{Calc, Expr as SizeExpr};
+pub use captures::{CaptureCommand, CaptureFormat};
 pub use cells::{Cell, CellGrid, CellStore, CellsId, CursorShape as CellCursor};
 pub use color::Color;
 pub use cursor::CursorShape;
@@ -180,11 +182,11 @@ pub use edit::{EditOptions, MAX_UNDECLARED_EDITS, SECURE_BULLET};
 pub use enter::Enter;
 pub use env::{Appearance, Assistive, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
 pub use event::{
-    Boundary, ButtonEvent, ButtonPhase, ChangePhase, Click, ContextMenu, Dismiss, Drag, DragPhase,
-    DropPhase, EditChange, Event, FileDrop, Files, Focus, FocusBy, FocusPhase, ForceClick, Hover,
-    HoverBy, HoverPhase, KeyEvent, Layout, LinePos, MenuChoice, Preedit, Resize, Scroll, Select,
-    SelectionRange, SliderChange, Sound, SoundPhase, Text, TextEdge, TextInput, WindowEvent,
-    WindowPhase,
+    Boundary, ButtonEvent, ButtonPhase, CapturePhase, Captured, ChangePhase, Click, ContextMenu,
+    Dismiss, Drag, DragPhase, DropPhase, EditChange, Event, FileDrop, Files, Focus, FocusBy,
+    FocusPhase, ForceClick, Hover, HoverBy, HoverPhase, KeyEvent, Layout, LinePos, MenuChoice,
+    Preedit, Resize, Scroll, Select, SelectionRange, SliderChange, Sound, SoundPhase, Text,
+    TextEdge, TextInput, WindowEvent, WindowPhase,
 };
 pub use fragment::{FragmentDrawId, FragmentList, FragmentRef};
 pub use geom::{Edges, Rect, Size, Transform, Vec2};

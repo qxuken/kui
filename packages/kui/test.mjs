@@ -1951,6 +1951,47 @@ test('an AnimationEncoder records frames and decodeAnimation plays them back', (
   assert.throws(() => new AnimationEncoder('webp', 2, 2), /AnimationEncoder: 'webp' is not 'png' or 'gif'/);
 });
 
+// What an app asks the driver to keep of its window (ADR 0055): a still
+// and a recording, served after each frame as a window's runner serves
+// them, each answered with a `capture` event in the message it named and
+// the path in it. With no GPU adapter both answer `failed`, and the test
+// says it skipped.
+test('captureTo and recordTo write the frames and answer with the path', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'kui-captures-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const ctx = new Ctx();
+  const view = (x) => box({ width: 40, height: 20, bg: '#000000' }, [box({ width: 10, height: 10, bg: '#00ff00', float: { anchor: 'parent', dx: x, dy: 5 } })]);
+  const still = join(dir, 'shot.png');
+  const movie = join(dir, 'rec.apng');
+  ctx.captureTo(still, { kind: 'shot' });
+  ctx.recordTo(movie, { kind: 'rec' });
+  ctx.captureTo(join(dir, 'quiet.bmp'));
+  ctx.setTime(1);
+  ctx.frame(40, 20, 1, view(0));
+  ctx.serveCaptures();
+  ctx.setTime(1.25);
+  ctx.frame(40, 20, 1, view(10));
+  ctx.serveCaptures();
+  ctx.stopRecording();
+  ctx.setTime(1.75);
+  ctx.frame(40, 20, 1, view(20));
+  ctx.serveCaptures();
+  const got = ctx.pollEvents().filter((e) => e.event === 'capture');
+  assert.deepEqual(got.map((e) => e.payload.kind), ['shot', 'rec'], 'only the asks that named a message');
+  const failed = got.find((e) => e.payload.capture.phase === 'failed');
+  if (failed) {
+    assert.match(failed.message.capture.error, /^no GPU/);
+    return t.skip(failed.message.capture.error);
+  }
+  const [shot, rec] = got.map((e) => e.payload.capture);
+  assert.deepEqual(shot, { phase: 'saved', path: still, width: 40, height: 20, frames: 1, seconds: 0 });
+  assert.deepEqual(decodeImage(readFileSync(still)).width, 40);
+  assert.deepEqual([rec.frames, rec.seconds], [2, 0.75]);
+  const back = decodeAnimation(readFileSync(movie));
+  assert.deepEqual(back.delays, [0.25, 0.5], 'each frame until the next; the one at the stop left out');
+  assert.equal(back.loops, undefined, 'played for ever');
+});
+
 // A lookup by accessible name (backlog F137): the `label` prop or a
 // button's text, where keyOf reads the key label.
 test('keyNamed finds a node by the name a reader hears', () => {

@@ -2456,9 +2456,10 @@ nothing adds its time to the one before, so a mostly still UI records
 small. Thirty retina frames of a card sliding over a page took about 12
 ms a frame to capture and add, and 15 ms to finish as an 804 KB APNG.
 
-A real window records too, a capture between pumps, but each capture
-takes its milliseconds out of the pump, so it is a rough clip rather
-than an exact one.
+A real window records with `recordTo` (next how-to), which the runner
+serves after every frame it draws; each capture takes its milliseconds
+out of that frame, so it is a clip of what was on screen rather than an
+exact one.
 
 Rust: `kui_native::AnimationEncoder::new(AnimationEncoding::Png, w, h,
 None)`; C: `kui_animation_encoder_new(KUI_ENCODE_PNG, w, h, 0)`, `_add`,
@@ -2466,6 +2467,58 @@ None)`; C: `kui_animation_encoder_new(KUI_ENCODE_PNG, w, h, 0)`, `_add`,
 `kui.animation_encoder_new(.Png, w, h)`.
 
 [ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
+
+### How does an app save a screenshot or a recording of its own window?
+
+Ask the core, and the runner does it after the next frame it draws:
+`captureTo(path, message)` for a picture, `recordTo(path, message)` to
+start a recording and `stopRecording()` to end it. The path's extension
+is the format — `.png`, `.jpg`, `.webp` or `.gif` for a picture, `.png`
+/ `.apng` (an animated PNG) or `.gif` for a recording — and the answer is
+a `capture` event in the message you named, with the path, not the
+pixels: `capture: {phase: 'saved' | 'failed', path, width, height,
+frames, seconds, error}`. That is the whole of a "Save screenshot" menu
+row or a bug report's attachment:
+
+```rust
+fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+    match ev.split::<Msg>() {
+        (Some(Msg::Shot), _) => core.capture_to("/tmp/shot.png", Some(Msg::Saved.into())),
+        (Some(Msg::Saved), Event::Capture(c)) => self.attach(c.path),
+        _ => {}
+    }
+}
+```
+
+A "record 5 seconds" toggle is `record_to`, then `request_frame_at(now +
+5.0)`, and `stop_recording()` from the view that runs then. Each frame
+shows from when it was drawn until the next on the frame clock, and the
+runner draws only when something changes, so an idle stretch is one
+frame held. The frame drawn at the stop is left out. One recording runs
+at a time per window; a window that closes while recording has its file
+written and nothing hears it.
+
+The same three verbs in every binding: Node `win.captureTo(path, msg)`,
+`recordTo`, `stopRecording` (on a `KuiWindow` from `update` or an
+effect, served by the runner; on a headless `Ctx` call
+`ctx.serveCaptures()` after `frame()`); C `kui_capture_to(ctx, path,
+msg)`, `kui_record_to`, `kui_stop_recording` from a view under
+`kui_run` (a standalone context calls `kui_serve_captures(ctx)` after
+`kui_frame_finish`); Odin `kui.capture_to(ui, path, Msg{})` and the rest;
+Rust `Core::capture_to` from `on_event_with` or `Ui::capture_to` from the
+view, and `kui_native::Captures::serve(&mut core)` for a headless core.
+Lua has none: the host keeps a guest's frames.
+
+The work is done on the thread that draws: about 25 ms of a frame for a
+retina PNG, and while recording each frame's capture, so a 1720×1200
+window recorded at about 26 frames a second on an M3 Pro. Finishing an
+APNG is milliseconds and a retina GIF about 0.4 s, so record APNG
+unless only a GIF will do. A machine with no GPU answers `failed`, its
+`error` starting "no GPU". `examples/rust/features/capture.rs` is the
+two buttons.
+
+[ADR 0055](adr/0055-an-app-asks-for-its-window-as-a-file.md) ·
 [alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
 
 ### How do I trade smoothness for latency, or the other way?

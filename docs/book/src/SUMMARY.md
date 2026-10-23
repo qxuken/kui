@@ -49,6 +49,7 @@
   - [audio](examples/features/audio.md)
   - [backdrop](examples/features/backdrop.md)
   - [backdrop_blur](examples/features/backdrop_blur.md)
+  - [capture](examples/features/capture.md)
   - [clipboard](examples/features/clipboard.md)
   - [decode](examples/features/decode.md)
   - [devtools_tab](examples/features/devtools_tab.md)

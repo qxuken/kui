@@ -427,6 +427,20 @@ const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
         ],
     ),
     (
+        "kui.CaptureEvent",
+        "capture",
+        "kui.WithCapture",
+        &[
+            ("phase", true, "\"saved\"|\"failed\""),
+            ("path", true, "string"),
+            ("width", true, "integer"),
+            ("height", true, "integer"),
+            ("frames", true, "integer"),
+            ("seconds", true, "number"),
+            ("error", false, "string"),
+        ],
+    ),
+    (
         "kui.DismissEvent",
         "dismiss",
         "kui.WithDismiss",

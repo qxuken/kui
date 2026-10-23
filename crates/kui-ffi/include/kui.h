@@ -4438,6 +4438,34 @@ uint32_t kui_animation_at(const double *delays, uint32_t count, uint32_t loops, 
  * the reason on stderr and both sides 0, for a context with no finished
  * frame, a frame past the device's largest texture, or no GPU adapter. */
 uint8_t *kui_capture(KuiCtx *ctx, uint32_t *width, uint32_t *height);
+/* Asks for the next frame the context's window draws, written to path as a
+ * picture (ADR 0055); the extension is the format: .png, .jpg / .jpeg
+ * (quality 90, alpha dropped), .webp (lossless) or .gif. A non-NULL
+ * message (consumed) is what the "capture" event arrives as, with
+ * capture:{phase="saved"|"failed", path, width, height, frames, seconds,
+ * error} in it; NULL writes the file and says nothing. Called from a view,
+ * the frame is the one that view builds; between frames it asks for one.
+ * Under kui_run the runner serves it after the frame is drawn; a host
+ * driving a standalone context calls kui_serve_captures after each frame.
+ * False for an empty path. */
+bool kui_capture_to(KuiCtx *ctx, KuiStr path, KuiValue *message);
+/* Asks for every frame the window draws from the next one on, written to
+ * path as an animation when kui_stop_recording ends it: .png / .apng (an
+ * animated PNG) or .gif, playing for ever, each frame shown from when it
+ * was drawn until the next on the frame clock. message as
+ * kui_capture_to's, heard once the file is written, with the frames drawn
+ * and its seconds. One asked for while one runs fails, naming that one. */
+bool kui_record_to(KuiCtx *ctx, KuiStr path, KuiValue *message);
+/* Ends the recording with the next frame drawn, which it leaves out, and
+ * has the file written. Nothing, with none running. */
+void kui_stop_recording(KuiCtx *ctx);
+/* A standalone context's driver serves what kui_capture_to, kui_record_to
+ * and kui_stop_recording asked, against the frame kui_frame_finish ended:
+ * files written, and a capture event for kui_poll_event for each that
+ * named a message (phase "failed", error "no GPU ...", on a machine with
+ * none). Does nothing for the context kui_run's view is handed: the
+ * runner serves its window's. */
+void kui_serve_captures(KuiCtx *ctx);
 /* What kui_encode_image writes, and of them PNG (an animated PNG) and GIF
  * what kui_animation_encoder_new writes. */
 enum { KUI_ENCODE_PNG = 0, KUI_ENCODE_JPEG = 1, KUI_ENCODE_WEBP = 2, KUI_ENCODE_GIF = 3 };

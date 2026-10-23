@@ -1405,6 +1405,10 @@ foreign lib {
 	decode_animation :: proc(bytes: [^]u8, len: uint, width: ^u32, height: ^u32, count: ^u32, loops: ^u32, delays: ^[^]f64) -> [^]u8 ---
 	animation_at :: proc(delays: [^]f64, count: u32, loops: u32, elapsed: f64, next: ^f64) -> u32 ---
 	capture :: proc(ctx: ^Ctx, width: ^u32, height: ^u32) -> [^]u8 ---
+	capture_to :: proc(ctx: ^Ctx, path: string, message: ^Value) -> bool ---
+	record_to :: proc(ctx: ^Ctx, path: string, message: ^Value) -> bool ---
+	stop_recording :: proc(ctx: ^Ctx) ---
+	serve_captures :: proc(ctx: ^Ctx) ---
 	encode_image :: proc(format: u32, rgba: [^]u8, width: u32, height: u32, quality: u32, len: ^uint) -> [^]u8 ---
 	animation_encoder_new :: proc(format: u32, width: u32, height: u32, loops: u32) -> ^AnimationEncoder ---
 	animation_encoder_add :: proc(enc: ^AnimationEncoder, rgba: [^]u8, seconds: f64) -> bool ---

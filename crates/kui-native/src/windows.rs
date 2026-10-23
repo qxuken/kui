@@ -507,6 +507,7 @@ impl DynShell<'_> {
             appearance,
             handed_back: false,
             retry: crate::retry::Retry::new(std::time::Instant::now()),
+            captures: crate::Captures::new(),
             deferred_frame: false,
             cause: crate::pane::Causes::new(FrameCause::FIRST),
             pacer,

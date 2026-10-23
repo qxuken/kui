@@ -515,6 +515,23 @@ fn read_sound(p: &Value) -> Option<Sound> {
     })
 }
 
+fn read_captured(p: &Value) -> Option<Captured> {
+    let count = |k| p.get_int(k).and_then(|n| u32::try_from(n).ok());
+    Some(Captured {
+        phase: match p.get_str("phase")? {
+            "saved" => CapturePhase::Saved,
+            "failed" => CapturePhase::Failed,
+            _ => return None,
+        },
+        path: p.get_str("path")?.to_string(),
+        width: count("width")?,
+        height: count("height")?,
+        frames: count("frames")?,
+        seconds: p.get_float("seconds")?,
+        error: p.get_str("error").map(str::to_string),
+    })
+}
+
 fn read_dismiss(p: &Value) -> Option<Dismiss> {
     Some(Dismiss {
         reason: match p.get_str("reason")? {
@@ -712,6 +729,29 @@ pub struct Sound {
     pub playback: crate::audio::PlaybackId,
 }
 
+/// Whether a [`Captured`]'s file was written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CapturePhase {
+    Saved,
+    Failed,
+}
+
+/// A `capture` (ADR 0055): a still or a recording the app asked for with
+/// `capture_to` / `record_to`, written to `path` or not, in the message
+/// the verb named. `width` and `height` are physical px, `frames` 1 for a
+/// still and what the file holds for a recording, `seconds` a recording's
+/// length (0 for a still), and `error` the reason a `Failed` one gives.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Captured {
+    pub phase: CapturePhase,
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+    pub frames: u32,
+    pub seconds: f64,
+    pub error: Option<String>,
+}
+
 /// A `dismiss`: the user asked a surface to go away. A popup window's
 /// carries its id, and its name is its `onDismiss` message's to say; a
 /// `modal` node's carries neither.
@@ -782,6 +822,7 @@ pub enum Event {
     Cancel,
     Boundary(Boundary),
     Sound(Sound),
+    Capture(Captured),
     Dismiss(Dismiss),
     Reply,
     Unread(EventKind),
@@ -872,6 +913,7 @@ impl UiEvent {
             EventKind::Cancel => Event::Cancel,
             EventKind::Boundary => Event::Boundary(read_boundary(p)?),
             EventKind::Sound => Event::Sound(read_sound(p)?),
+            EventKind::Capture => Event::Capture(read_captured(p)?),
             EventKind::Dismiss => Event::Dismiss(read_dismiss(p)?),
             EventKind::Reply => Event::Reply,
         })
@@ -1179,6 +1221,25 @@ fn write_sound(s: Sound) -> Value {
     ])
 }
 
+fn write_captured(c: Captured) -> Value {
+    let phase = match c.phase {
+        CapturePhase::Saved => "saved",
+        CapturePhase::Failed => "failed",
+    };
+    let mut f = vec![
+        ("phase", Value::str(phase)),
+        ("path", Value::Str(c.path)),
+        ("width", int(c.width)),
+        ("height", int(c.height)),
+        ("frames", int(c.frames)),
+        ("seconds", Value::Float(c.seconds)),
+    ];
+    if let Some(e) = c.error {
+        f.push(("error", Value::Str(e)));
+    }
+    Value::map(f)
+}
+
 fn write_dismiss(d: Dismiss) -> Value {
     let mut f = vec![("reason", Value::str(d.reason.as_str()))];
     if let Some(id) = d.window {
@@ -1321,6 +1382,7 @@ event_fields! {
     SliderChange => Change "change", read_slider_change, write_slider_change;
     Boundary => Boundary "boundary", read_boundary, write_boundary;
     Sound => Sound "sound", read_sound, write_sound;
+    Captured => Capture "capture", read_captured, write_captured;
     Dismiss => Dismiss "dismiss", read_dismiss, write_dismiss;
     Open => Open "open", read_open, write_open;
     Resize => Resize "resize", read_resize, write_resize;

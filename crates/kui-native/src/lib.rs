@@ -156,7 +156,7 @@ mod axis_lock;
 /// What shows through the window: a blur, a tint, the desktop, or nothing.
 mod backdrop;
 mod capture;
-pub use capture::{Capture, capture};
+pub use capture::{Capture, Captures, capture};
 mod clipboard;
 mod decode;
 pub use decode::{
@@ -2685,6 +2685,11 @@ impl DynShell<'_> {
         }
         pane.awaits_device |= reopen;
         let render_ms = (t_render.elapsed().as_secs_f32() * 1e3 - wait_ms).max(0.0);
+        // What the app asked to keep of the window (ADR 0055): the frame
+        // just finished, drawn again on the process's capture device, so
+        // it does not matter whether this one reached the screen. Its
+        // `capture` events go out with the frame's others (`after_frame`).
+        pane.captures.serve(&mut pane.core);
 
         pane.core.stats.push(FrameSample {
             input_ms: 0.0,

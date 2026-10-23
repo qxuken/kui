@@ -1502,6 +1502,9 @@ pub enum EventKind {
     Cancel,
     Boundary,
     Sound,
+    /// A capture or a recording the app asked for was written, or could
+    /// not be (ADR 0055).
+    Capture,
     Dismiss,
     /// An extension's message to whoever placed its slot (ADR 0014): the
     /// payload is the message as the extension sent it.
@@ -1539,6 +1542,7 @@ impl EventKind {
         EventKind::Cancel,
         EventKind::Boundary,
         EventKind::Sound,
+        EventKind::Capture,
         EventKind::Dismiss,
         EventKind::Reply,
     ];
@@ -1575,6 +1579,7 @@ impl EventKind {
             EventKind::Cancel => "cancel",
             EventKind::Boundary => "boundary",
             EventKind::Sound => "sound",
+            EventKind::Capture => "capture",
             EventKind::Dismiss => "dismiss",
             EventKind::Reply => "reply",
         }

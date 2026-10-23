@@ -430,6 +430,22 @@ export interface SoundEvent {
   playback: number;
 }
 
+/** A still or a recording the app asked for with `captureTo` /
+ *  `recordTo` was written to `path`, or could not be (ADR 0055). `width`
+ *  and `height` are physical px; `frames` is 1 for a still and the frames
+ *  drawn while recording for a recording, `seconds` its length (0 for a
+ *  still); `error` says why a `failed` one failed — a directory that is
+ *  not there, no GPU, an extension that names no format. */
+export interface CaptureEvent {
+  phase: 'saved' | 'failed';
+  path: string;
+  width: number;
+  height: number;
+  frames: number;
+  seconds: number;
+  error?: string;
+}
+
 /** A surface was asked to go away: Escape, or a press that landed
  *  outside it. The core closes nothing — stop declaring the surface (or
  *  ask first). On a `modal` node only the modal in effect hears it; a
@@ -577,6 +593,10 @@ export interface WithBoundary {
 /** The `sound` field, on a playback's message. */
 export interface WithSound {
   sound: SoundEvent;
+}
+/** The `capture` field, on the message `captureTo` or `recordTo` named. */
+export interface WithCapture {
+  capture: CaptureEvent;
 }
 /** The `dismiss` field, on a `modal` message or a popup's `onDismiss`. */
 export interface WithDismiss {
@@ -795,7 +815,8 @@ export type EventName =
   | 'selectionrange' | 'contextmenu' | 'menu' | 'forceclick' | 'button'
   | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
   | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
-  | 'submit' | 'cancel' | 'boundary' | 'sound' | 'dismiss' | 'reply';
+  | 'submit' | 'cancel' | 'boundary' | 'sound' | 'capture' | 'dismiss'
+  | 'reply';
 // -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character
@@ -2746,6 +2767,15 @@ export declare class Ctx {
    */
   announcements(): Announcement[]
   /**
+   * Serves what `captureTo`, `recordTo` and `stopRecording` asked,
+   * against the last `frame` (ADR 0055), as a window's runner does after
+   * each frame it draws: the files written, and a `capture` event in
+   * `pollEvents` for each ask that named a message. On a machine with no
+   * GPU adapter each answers `phase: 'failed'`, its `error` starting
+   * "no GPU".
+   */
+  serveCaptures(): void
+  /**
    * A custom driver reports a playback finished on its own; a tagged
    * one becomes a `sound` event in `pollEvents`.
    */
@@ -3041,6 +3071,33 @@ export declare class Ctx {
   textCacheBytes(): number
   /** Summary of the last frame's display list. */
   stats(): FrameStats
+  /**
+   * Asks for the next frame this window draws, written to `path`
+   * as a picture (ADR 0055): `.png`, `.jpg` / `.jpeg` (quality 90,
+   * alpha dropped), `.webp` (lossless) or `.gif`, by the
+   * extension. `message` is what the `capture` event arrives as,
+   * `capture: {phase: 'saved' | 'failed', path, width, height,
+   * frames, seconds, error?}` in it; without one the file is
+   * written and nothing is heard. A window's runner serves it after
+   * the next frame it draws; a headless `Ctx` after
+   * `serveCaptures()`.
+   */
+  captureTo(path: string, message?: unknown): void
+  /**
+   * Asks for every frame this window draws from the next one on,
+   * written to `path` as an animation when `stopRecording()` ends
+   * it (ADR 0055): `.png` / `.apng` (an animated PNG) or `.gif`.
+   * Each frame shows from when it was drawn until the next, on the
+   * frame clock. `message` as `captureTo`'s, heard once the file is
+   * written, with the frames drawn and the `seconds` it lasts. One
+   * asked for while one runs fails, naming that one.
+   */
+  recordTo(path: string, message?: unknown): void
+  /**
+   * Ends the recording with the next frame drawn, which it leaves
+   * out, and has its file written. Nothing, with none running.
+   */
+  stopRecording(): void
   /**
    * The last finished frame as pixels (backlog C55): drawn again
    * from its draw list on a GPU device of the process's own, with
@@ -4477,6 +4534,33 @@ export declare class KuiWindow {
   textCacheBytes(): number
   /** Summary of the last frame's display list. */
   stats(): FrameStats
+  /**
+   * Asks for the next frame this window draws, written to `path`
+   * as a picture (ADR 0055): `.png`, `.jpg` / `.jpeg` (quality 90,
+   * alpha dropped), `.webp` (lossless) or `.gif`, by the
+   * extension. `message` is what the `capture` event arrives as,
+   * `capture: {phase: 'saved' | 'failed', path, width, height,
+   * frames, seconds, error?}` in it; without one the file is
+   * written and nothing is heard. A window's runner serves it after
+   * the next frame it draws; a headless `Ctx` after
+   * `serveCaptures()`.
+   */
+  captureTo(path: string, message?: unknown): void
+  /**
+   * Asks for every frame this window draws from the next one on,
+   * written to `path` as an animation when `stopRecording()` ends
+   * it (ADR 0055): `.png` / `.apng` (an animated PNG) or `.gif`.
+   * Each frame shows from when it was drawn until the next, on the
+   * frame clock. `message` as `captureTo`'s, heard once the file is
+   * written, with the frames drawn and the `seconds` it lasts. One
+   * asked for while one runs fails, naming that one.
+   */
+  recordTo(path: string, message?: unknown): void
+  /**
+   * Ends the recording with the next frame drawn, which it leaves
+   * out, and has its file written. Nothing, with none running.
+   */
+  stopRecording(): void
   /**
    * The last finished frame as pixels (backlog C55): drawn again
    * from its draw list on a GPU device of the process's own, with

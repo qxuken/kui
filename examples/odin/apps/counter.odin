@@ -36,6 +36,14 @@ Card :: struct {
 Menu :: struct {
 	using _: kui.With_Dismiss, // the menu's dismiss: why
 }
+// What the headless drive asked the driver to keep, answered as these with
+// capture = {phase, path, width, height, frames, seconds, error} in them.
+Shot :: struct {
+	using _: kui.With_Capture,
+}
+Rec :: struct {
+	using _: kui.With_Capture,
+}
 
 Msg :: union {
 	Inc,
@@ -177,6 +185,50 @@ headless :: proc() -> bool {
 			return fail("KUI_REQUIRE_GPU is set, but capture drew nothing")
 		}
 		fmt.println("no GPU adapter: capture had nothing to draw on")
+	}
+
+	// What an app asks the driver to keep of its window (ADR 0055): a still,
+	// and a recording that runs for half a second of the frame clock, served
+	// after each frame the way run serves a window's and answered as a
+	// capture event in the message each named. With no GPU adapter both
+	// answer "failed", the reason in error.
+	{
+		tmp, _ := os.temp_directory(context.temp_allocator)
+		still := fmt.tprintf("%s/kui-odin-counter-shot.png", tmp)
+		movie := fmt.tprintf("%s/kui-odin-counter-rec.apng", tmp)
+		defer os.remove(still)
+		defer os.remove(movie)
+		if !kui.capture_to(ui, still, Shot{}) || !kui.record_to(ui, movie, Rec{}) || kui.capture_to(ui, "") {
+			return fail("capture_to / record_to refused a path")
+		}
+		kui.set_time(ui, 1.0)
+		kui.frame(ui, &s, view)
+		kui.serve_captures(ui)
+		kui.stop_recording(ui)
+		kui.set_time(ui, 1.5)
+		kui.frame(ui, &s, view)
+		kui.serve_captures(ui)
+		saved, failed := 0, 0
+		for ev in kui.poll_event(ui) {
+			got: kui.Capture_Event
+			if shot, ok := kui.message(ev, Shot); ok {
+				got = shot.capture
+				if got.phase == "saved" && (got.width != 800 || got.frames != 1) do return fail("capture_to's still")
+			} else if rec, rec_ok := kui.message(ev, Rec); rec_ok {
+				got = rec.capture
+				if got.phase == "saved" && (got.width != 800 || got.frames != 1 || abs(got.seconds - 0.5) > 1e-9) {
+					return fail("record_to's recording")
+				}
+			} else {
+				on_event(&s, ev)
+				continue
+			}
+			if got.phase == "saved" do saved += 1
+			else do failed += 1
+		}
+		if saved + failed != 2 || (saved > 0 && failed > 0) do return fail("serve_captures answered wrong")
+		if saved > 0 do fmt.printfln("kept the window as %s and %s", still, movie)
+		else do fmt.println("no GPU adapter: serve_captures answered both as failed")
 	}
 
 	// Pixels to a file's bytes and back through the runner's own codecs,

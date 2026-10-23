@@ -54,6 +54,7 @@ use crate::window::{WindowConfig, WindowEvents, WindowId, WindowLifecycle};
 // `impl Core` continues in these, one concern per file (each opens with
 // what it holds). Children of this module, so the fields stay private.
 mod builder;
+mod capture_api;
 pub use builder::Content;
 pub use replay::SlotFill;
 pub mod cause;
@@ -627,6 +628,9 @@ pub struct Core {
     /// — a changed viewport becoming a `resize`. Drained alongside the
     /// interaction's pending queue.
     pending: Vec<UiEvent>,
+    /// The captures and recordings asked for since a driver last served
+    /// them (ADR 0055): `capture_to`, `record_to`, `stop_recording`.
+    capture_commands: Vec<crate::captures::CaptureCommand>,
     /// Whether any frame has begun yet: the first one establishes the
     /// viewport instead of resizing it.
     framed: bool,
@@ -1302,6 +1306,7 @@ impl Core {
             sink_caret_solid: false,
             sink_caret_stamp: 0,
             pending: Vec::new(),
+            capture_commands: Vec::new(),
             framed: false,
             system_seen: SystemEnv::default(),
             system_fonts_seen: 0,

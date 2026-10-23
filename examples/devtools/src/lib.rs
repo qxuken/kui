@@ -489,6 +489,10 @@ impl<E: Example> App for Harness<E> {
         self.example.on_event(ev);
     }
 
+    fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+        self.example.on_event_with(ev, core);
+    }
+
     fn setup(&mut self, waker: Waker) {
         self.example.setup(waker);
     }

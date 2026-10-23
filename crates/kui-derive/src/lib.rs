@@ -291,6 +291,7 @@ const EVENTS: &[(&str, &str, &str)] = &[
     ("slider_change", "change", "SliderChange"),
     ("boundary", "boundary", "Boundary"),
     ("sound", "sound", "Sound"),
+    ("capture", "capture", "Captured"),
     ("dismiss", "dismiss", "Dismiss"),
     ("open", "open", "Open"),
     ("resize", "resize", "Resize"),

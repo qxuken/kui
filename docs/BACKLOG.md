@@ -294,7 +294,10 @@ it filed — the same press resizing in that one gesture; and C55, from a
 question about offscreen rendering — a frame drawn only to a window's
 surface, so no host could have kui draw into its texture and nothing
 could read a frame back — was built the day it was filed, with ADR 0054,
-after the alpha.65 tag, and is in the archive; and V10, from a
+after the alpha.65 tag, and is in the archive; and C56, from the
+question it left — a running app with no door to capture or record its
+own window — was built the day it was filed, with ADR 0055, and is in
+the archive; and V10, from a
 measurement of group opacity against the exact result — a node's shadow
 drawn under the node, showing through it when translucent or faded — was
 built the day it was filed, after the alpha.65 tag, and is in the
@@ -344,7 +347,8 @@ the same day — resizing an inactive window in one gesture under a pump
 on macOS 26 — were built the day they were filed and are in the
 archive. C55, filed the same day — a renderer that draws into a
 texture the host owns, and `capture()` on top of it — was built the day
-it was filed, with ADR 0054, and is in the archive.
+it was filed, with ADR 0054, and is in the archive, and so was C56, an
+app's own window captured or recorded to a file (ADR 0055).
 
 ### `.` C12 — Wrapping a column
 

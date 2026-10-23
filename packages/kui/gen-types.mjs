@@ -97,6 +97,7 @@ const WITH = {
   cancel: null,
   boundary: 'WithBoundary',
   sound: 'WithSound',
+  capture: 'WithCapture',
   dismiss: 'WithDismiss',
   // A window's own events (ADR 0048): the root's `windowEvents` keys and a
   // `windows` entry's `onWindow`, typed in index.d.ts beside the rest.
