@@ -276,8 +276,9 @@ static int headless(void) {
 
     /* The last frame as pixels (backlog C55), drawn again on a GPU device
      * of the process's own. A context that never finished a frame has
-     * none; a machine with no GPU adapter (a CI container) has no pixels
-     * for either, and says so on stderr. */
+     * none; a machine with no GPU adapter has no pixels for either, and
+     * says so on stderr - a failure where KUI_REQUIRE_GPU is set, as CI
+     * sets it over Mesa's software Vulkan. */
     uint32_t cw = 7, ch = 7;
     KuiCtx *blank = kui_ctx_new();
     uint8_t *none = kui_capture(blank, &cw, &ch);
@@ -298,6 +299,12 @@ static int headless(void) {
         }
         printf("captured the last frame: %ux%u\n", cw, ch);
     } else {
+        const char *require = getenv("KUI_REQUIRE_GPU");
+        if (require && *require) {
+            fprintf(stderr, "FAIL: KUI_REQUIRE_GPU is set, but kui_capture drew nothing\n");
+            kui_ctx_free(ctx);
+            return 1;
+        }
         printf("no GPU adapter: kui_capture had nothing to draw on\n");
     }
     kui_pixels_free(shot);

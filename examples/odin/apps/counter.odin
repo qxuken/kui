@@ -165,13 +165,17 @@ headless :: proc() -> bool {
 	fmt.println("escape dismissed the menu")
 
 	// The last frame as pixels (backlog C55), drawn again on a GPU device of
-	// the process's own; a machine with no GPU adapter (a CI container) has
-	// none, and says so on stderr.
+	// the process's own; a machine with no GPU adapter has none, and says so
+	// on stderr - a failure where KUI_REQUIRE_GPU is set, as CI sets it over
+	// Mesa's software Vulkan.
 	if cw, ch, shot, shot_ok := kui.capture(ui); shot_ok {
 		defer delete(shot)
 		if cw != 800 || ch != 600 || shot[3] != 255 do return fail("capture")
 		fmt.printfln("captured the last frame: %dx%d", cw, ch)
 	} else {
+		if v, found := os.lookup_env("KUI_REQUIRE_GPU", context.temp_allocator); found && v != "" {
+			return fail("KUI_REQUIRE_GPU is set, but capture drew nothing")
+		}
 		fmt.println("no GPU adapter: capture had nothing to draw on")
 	}
 

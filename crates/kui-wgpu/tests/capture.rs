@@ -8,12 +8,38 @@ use kui_wgpu::{Gpu, RenderError, Renderer, wgpu};
 
 fn gpu() -> Option<Gpu> {
     match pollster::block_on(Gpu::windowless()) {
-        Ok(g) => Some(g),
+        Ok(g) => {
+            required(g.adapter());
+            Some(g)
+        }
         Err(e) => {
-            eprintln!("skipped: no adapter ({e})");
+            skip(&format!("no adapter ({e})"));
             None
         }
     }
+}
+
+/// What `KUI_REQUIRE_GPU` asks of the adapter a test found: a name
+/// containing its value, unless that is `1`.
+fn required(adapter: &wgpu::Adapter) {
+    let name = adapter.get_info().name;
+    if let Ok(want) = std::env::var("KUI_REQUIRE_GPU")
+        && !want.is_empty()
+        && want != "1"
+    {
+        assert!(
+            name.contains(&want),
+            "KUI_REQUIRE_GPU={want}, but the adapter is {name}"
+        );
+    }
+}
+
+/// A skip, saying why, or a failure where `KUI_REQUIRE_GPU` is set.
+fn skip(why: &str) {
+    if std::env::var_os("KUI_REQUIRE_GPU").is_some_and(|v| !v.is_empty()) {
+        panic!("KUI_REQUIRE_GPU is set, but {why}");
+    }
+    eprintln!("skipped: {why}");
 }
 
 /// A 40x30 frame at scale 2: a blue root padded 5, a red 10x10 box in
@@ -213,9 +239,10 @@ fn a_host_s_own_device_takes_a_windowless_renderer() {
     let Ok(adapter) =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
     else {
-        eprintln!("skipped: no adapter");
+        skip("no adapter");
         return;
     };
+    required(&adapter);
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .expect("a device");

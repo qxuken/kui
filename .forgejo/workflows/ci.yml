@@ -68,7 +68,8 @@
 # actions/checkout and actions/cache are JavaScript actions and the runner
 # execs `node` inside the job container to run them, so the image has to
 # ship Node. Rust comes from rustup; the only other system additions are a
-# font (the text tests measure real glyphs) and zstd (actions/cache falls
+# font (the text tests measure real glyphs), Mesa's software Vulkan (the
+# GPU tests draw on it - see `check`'s env) and zstd (actions/cache falls
 # back to single-core gzip without it - see `Install system deps` in
 # `check`).
 #
@@ -212,6 +213,20 @@ jobs:
     runs-on: docker
     container:
       image: node:24-bookworm
+    # The runner has no GPU, so every test that draws (the captures of
+    # ADR 0054, the backdrop blur, the C and Odin counters' last frame)
+    # draws on lavapipe, Mesa's software Vulkan, installed below. Those
+    # tests skip where there is no adapter, and a skip is green, so here
+    # KUI_REQUIRE_GPU turns a missing adapter into a failure, and its
+    # value is the name the adapter must have (kui-wgpu's
+    # tests/capture.rs checks it): a runner that lost the driver, or a
+    # wgpu that took another adapter, goes red instead of quietly
+    # covering nothing. WGPU_BACKEND keeps wgpu off GL, which the image
+    # has no driver for anyway. lavapipe offers dual-source blending, so
+    # the per-channel (subpixel) text path is the one drawn here.
+    env:
+      WGPU_BACKEND: vulkan
+      KUI_REQUIRE_GPU: llvmpipe
     steps:
       - uses: actions/checkout@v4
 
@@ -252,8 +267,16 @@ jobs:
           # lands misses every existing entry and builds cold - and that
           # miss is also what resets the dir the prune step below then
           # keeps bounded.
+          #
+          # mesa-vulkan-drivers is lavapipe, the device the GPU tests draw
+          # on (see the job's env), and libvulkan1 the loader wgpu opens it
+          # through. Its Wayland probe prints "XDG_RUNTIME_DIR is invalid"
+          # for every device a test opens unless the dir exists; an empty
+          # one quiets it, and nothing connects to it.
           apt-get install -y --no-install-recommends fonts-dejavu-core ca-certificates curl \
-            pkg-config libasound2-dev zstd
+            pkg-config libasound2-dev zstd mesa-vulkan-drivers libvulkan1
+          mkdir -p -m 700 /tmp/xdg
+          echo "XDG_RUNTIME_DIR=/tmp/xdg" >> "$GITHUB_ENV"
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
             --default-toolchain stable -c rustfmt -c clippy
           echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"

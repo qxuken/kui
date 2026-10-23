@@ -153,6 +153,20 @@ own that ignores the shadow's `uv` draws it as before; kui.h's
   its shadow showing through it, and a translucent card no longer shows
   its own shadow (above; backlog V10).
 
+### Changed
+
+- CI's `check` job draws on a GPU: Mesa's software Vulkan (lavapipe,
+  Debian's `mesa-vulkan-drivers` and `libvulkan1`) under
+  `WGPU_BACKEND=vulkan`, so the capture tests in kui-wgpu, kui-native,
+  kui-ffi and Node, the backdrop blur's, and the C and Odin counters'
+  last frame run there instead of skipping for want of an adapter. With
+  `KUI_REQUIRE_GPU` set (CI sets it to `llvmpipe`) a missing adapter is
+  a failure in each of them, and kui-wgpu's tests also fail on an
+  adapter whose name does not contain the value (`1` takes any);
+  unset, they skip as before, saying so. lavapipe (Mesa 22.3 on
+  bookworm) offers dual-source blending, so the per-channel text path
+  is the one CI draws, and no pixel assertion needed loosening.
+
 **What you can delete.**
 
 - A `screencapture` of the window's id, or another tool outside the

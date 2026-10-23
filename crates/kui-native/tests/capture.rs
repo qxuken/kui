@@ -1,6 +1,8 @@
 //! `kui_native::capture` (backlog C55): a core's finished frame as RGBA,
 //! drawn again on the process's windowless device. A headless core here,
-//! the way a test captures; skipped, saying so, where there is no adapter.
+//! the way a test captures; skipped, saying so, where there is no adapter,
+//! and failed there where `KUI_REQUIRE_GPU` is set, as CI sets it over
+//! Mesa's software Vulkan.
 
 use kui_native::{Color, Core, NodeSpec, Size, capture};
 
@@ -10,6 +12,10 @@ fn shot(core: &Core) -> Option<kui_native::Capture> {
     match capture(core) {
         Ok(c) => Some(c),
         Err(e) if e.starts_with("no GPU") => {
+            assert!(
+                std::env::var_os("KUI_REQUIRE_GPU").is_none_or(|v| v.is_empty()),
+                "KUI_REQUIRE_GPU is set, but {e}"
+            );
             eprintln!("skipped: {e}");
             None
         }
