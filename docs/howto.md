@@ -2510,13 +2510,24 @@ Rust `Core::capture_to` from `on_event_with` or `Ui::capture_to` from the
 view, and `kui_native::Captures::serve(&mut core)` for a headless core.
 Lua has none: the host keeps a guest's frames.
 
-The work is done on the thread that draws: about 25 ms of a frame for a
-retina PNG, and while recording each frame's capture, so a 1720×1200
-window recorded at about 26 frames a second on an M3 Pro. Finishing an
-APNG is milliseconds and a retina GIF about 0.4 s, so record APNG
-unless only a GIF will do. A machine with no GPU answers `failed`, its
-`error` starting "no GPU". `examples/rust/features/capture.rs` is the
-two buttons.
+"Copy screenshot" is a fourth: `captureToClipboard(msg)` (Rust
+`capture_to_clipboard`, C `kui_capture_to_clipboard`, Odin
+`kui.capture_to_clipboard`) puts the next frame on the clipboard as a
+picture and answers the same way, `path` empty. Pixels you already hold
+— a `capture()`, a `decodeImage` — go with `setClipboardImage(width,
+height, rgba)`. Both are menu actions like a Copy's text: the runner
+writes the picture as the platform's image type; a C host driving its
+own window reads it from `KuiMenuAction`'s `width`, `height` and `rgba`.
+
+A still is drawn again and written on the thread that draws: about
+25 ms of a frame for a retina PNG. A window's recording draws each frame
+again there too, about 0.6 ms at 1720×1200, and waits for it, encodes
+and writes on a thread of its own, so the window records at its
+display's refresh; a headless `serveCaptures` does it all on its own
+thread. Finishing an APNG is milliseconds and a retina GIF about 0.4 s,
+so record APNG unless only a GIF will do. A machine with no GPU answers
+`failed`, its `error` starting "no GPU". `examples/rust/features/capture.rs`
+is the three buttons.
 
 [ADR 0055](adr/0055-an-app-asks-for-its-window-as-a-file.md) ·
 [alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)

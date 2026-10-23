@@ -398,6 +398,7 @@ BYTE_LENGTHS :: [][2]string {
 	{"kui_image_add.rgba", "int(w) * int(h) * 4"},
 	{"kui_image_update.rgba", "int(w) * int(h) * 4"},
 	{"kui_set_icon.rgba", "int(width) * int(height) * 4"},
+	{"kui_set_clipboard_image.rgba", "int(width) * int(height) * 4"},
 }
 
 // Doors that open a node the caller closes: generated with

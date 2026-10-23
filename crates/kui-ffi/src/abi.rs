@@ -194,7 +194,11 @@
 /// - ABI 36: `floats_in_order` added to `KuiSpec` in the tail padding
 ///   after `reveal_on_hover` (still 800 bytes on 64-bit): the floats under
 ///   the node paint in tree order (ADR 0053).
-pub const KUI_ABI_VERSION: u32 = 36;
+/// - ABI 37: `width`, `height` and `rgba` appended to `KuiMenuAction` (64
+///   bytes on 64-bit, from 48) for `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE`,
+///   a picture for the clipboard, which `kui_set_clipboard_image` and
+///   `kui_capture_to_clipboard` queue (ADR 0055).
+pub const KUI_ABI_VERSION: u32 = 37;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

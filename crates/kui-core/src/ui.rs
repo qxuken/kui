@@ -640,6 +640,13 @@ impl<'a> Ui<'a> {
         self.core.record_to(path, message);
     }
 
+    /// Asks for this frame, once drawn, put on the system clipboard as a
+    /// picture (ADR 0055); see `Core::capture_to_clipboard`.
+    #[track_caller]
+    pub fn capture_to_clipboard(&mut self, message: Option<Value>) {
+        self.core.capture_to_clipboard(message);
+    }
+
     /// Ends the recording with this frame, its last (ADR 0055); see
     /// `Core::stop_recording`.
     #[track_caller]
@@ -759,6 +766,12 @@ impl<'a> Ui<'a> {
     /// Puts text on the system clipboard; see `Core::set_clipboard`.
     pub fn set_clipboard(&mut self, text: impl Into<String>, html: Option<String>) {
         self.core.set_clipboard(text, html);
+    }
+
+    /// Puts a picture on the system clipboard; see
+    /// `Core::set_clipboard_image`.
+    pub fn set_clipboard_image(&mut self, width: u32, height: u32, rgba: impl Into<std::sync::Arc<[u8]>>) -> bool {
+        self.core.set_clipboard_image(width, height, rgba)
     }
 
     /// Puts a secret on the system clipboard marked concealed and

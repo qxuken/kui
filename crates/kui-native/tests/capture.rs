@@ -143,6 +143,32 @@ fn a_still_asked_for_is_the_next_frame_written_and_answered() {
     assert!(answers(&mut core).is_empty());
 }
 
+/// "Copy screenshot": the next frame, queued for the clipboard as a menu
+/// action the host applies — the runner with arboard — and answered with
+/// an empty path.
+#[test]
+fn a_copy_asked_for_is_the_next_frame_queued_for_the_clipboard() {
+    let mut core = Core::new();
+    let mut captures = Captures::new();
+    core.capture_to_clipboard(Some(Value::str("copy")));
+    frame_at(&mut core, 0.0, 0.0);
+    captures.serve(&mut core);
+    let got = answers(&mut core);
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].0, Value::str("copy"));
+    let actions = core.take_menu_actions();
+    let Some(c) = saved(&got[0]) else {
+        assert!(actions.is_empty(), "nothing copied when the capture failed");
+        return;
+    };
+    assert_eq!((c.path.as_str(), c.width, c.height, c.frames), ("", 60, 40, 1));
+    let [kui_native::MenuAction::SetClipboardImage { width, height, rgba }] = &actions[..] else {
+        panic!("one picture for the clipboard, not {actions:?}");
+    };
+    assert_eq!((*width, *height), (60, 40));
+    assert_eq!(&rgba[(15 * 60 + 12) * 4..][..4], [0, 255, 0, 255]);
+}
+
 #[test]
 fn a_recording_shows_each_frame_until_the_next_on_the_frame_clock() {
     let mut core = Core::new();

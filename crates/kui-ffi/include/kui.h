@@ -404,8 +404,14 @@ extern "C" {
  * moves: the floats under the node paint in tree order, the last declared
  * on top (docs/adr/0053-floats-under-a-node-paint-in-tree-order.md).
  * Recompile; zeroed, the floats stack in the order they opened as they did.
+ *
+ * ABI 37 appends width, height and rgba to KuiMenuAction (its 64-bit size
+ * goes from 48 to 64) for KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE, a picture
+ * for the clipboard, which kui_set_clipboard_image and
+ * kui_capture_to_clipboard queue (ADR 0055). Recompile; a host that
+ * drains menu actions puts the picture on its clipboard or drops it.
  */
-#define KUI_ABI_VERSION 36u
+#define KUI_ABI_VERSION 37u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1802,6 +1808,12 @@ enum {
      * secret. A host that does not know this kind drops the copy, which
      * for a secret is the safe way to fail. */
     KUI_MENU_ACTION_SET_CLIPBOARD_SECRET = 3,
+    /* A picture for the clipboard (kui_set_clipboard_image,
+     * kui_capture_to_clipboard): `width` x `height` straight RGBA at
+     * `rgba`, borrowed until the next kui_take_menu_action. Put it on the
+     * clipboard as the platform's image type; a host that cannot drops
+     * it. ABI 37. */
+    KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE = 4,
 };
 
 /* kui_input_paste's markers: what the pasteboard said about the text a
@@ -1833,6 +1845,13 @@ typedef struct KuiMenuAction {
      * Zero for every other kind. */
     float x;
     float y;
+    /* KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE only: the picture, `width` x
+     * `height` straight RGBA, four bytes a pixel, row by row from the top
+     * left, borrowed until the next kui_take_menu_action. Zero and NULL
+     * for every other kind. ABI 37. */
+    uint32_t width;
+    uint32_t height;
+    const uint8_t *rgba;
 } KuiMenuAction;
 #define KUI_MENU_ACTION_INIT ((KuiMenuAction){ .size = sizeof(KuiMenuAction) })
 
@@ -3891,6 +3910,12 @@ void kui_set_clipboard(KuiCtx *ctx, KuiStr text, KuiStr html);
  * concealed and transient, so no clipboard manager shows or keeps it.
  * Under kui_run the runner does. */
 void kui_set_clipboard_secret(KuiCtx *ctx, KuiStr text);
+/* A picture for the clipboard - `width` x `height` straight RGBA, what
+ * kui_capture and kui_decode_image hand out, copied - queued as a
+ * KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE: "Copy image". Under kui_run the
+ * runner writes it as the platform's image type. False, and nothing
+ * queued, for NULL pixels or a size of zero. ABI 37. */
+bool kui_set_clipboard_image(KuiCtx *ctx, const uint8_t *rgba, uint32_t width, uint32_t height);
 /* kui_request_paste's answer is kui_input_paste - the text and the
  * pasteboard's KUI_PASTE_* markers - or kui_input_commit, a paste nothing
  * marked. */
@@ -4449,6 +4474,11 @@ uint8_t *kui_capture(KuiCtx *ctx, uint32_t *width, uint32_t *height);
  * driving a standalone context calls kui_serve_captures after each frame.
  * False for an empty path. */
 bool kui_capture_to(KuiCtx *ctx, KuiStr path, KuiValue *message);
+/* Asks for the next frame drawn, put on the clipboard as a picture - "Copy
+ * screenshot" (ADR 0055): served as kui_capture_to is, queued as a
+ * KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE, and answered in `message` with
+ * capture:{phase, path:"", width, height, frames:1}. ABI 37. */
+bool kui_capture_to_clipboard(KuiCtx *ctx, KuiValue *message);
 /* Asks for every frame the window draws from the next one on, written to
  * path as an animation when kui_stop_recording ends it: .png / .apng (an
  * animated PNG) or .gif, playing for ever, each frame shown from when it

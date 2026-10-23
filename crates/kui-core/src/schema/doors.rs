@@ -817,6 +817,14 @@ pub const DOORS: &[Door] = &[
         doc: "Posts a secret for the clipboard, which the host writes marked concealed and transient the way a password manager does, so no clipboard manager shows or keeps it (backlog F84).",
     },
     Door {
+        rust: "Ui::set_clipboard_image",
+        c: Is("kui_set_clipboard_image"),
+        odin: Is("set_clipboard_image"),
+        node: Is("setClipboardImage"),
+        lua: No("a script holds no pixels: capturing and decoding are the host's"),
+        doc: "Posts a picture for the clipboard — straight RGBA, a capture or a decoded image — which the host writes as the platform's image type: \"Copy image\" (ADR 0055).",
+    },
+    Door {
         rust: "Ui::request_paste",
         c: Is("kui_request_paste"),
         odin: Is("request_paste"),
@@ -1739,6 +1747,14 @@ pub const DOORS: &[Door] = &[
         node: Is("captureTo"),
         lua: No(GUEST),
         doc: "Asks for the next frame the window draws, written to a path as a picture — `.png`, `.jpg`, `.webp` or `.gif` by the extension — and answered with a `capture` event in the message it names, the path in it and not the pixels (ADR 0055): a screenshot row or a bug report's attachment. The runner serves it after the frame is drawn, in every binding; a headless driver with `Captures::serve`. From a view, the frame that view builds.",
+    },
+    Door {
+        rust: "Core::capture_to_clipboard",
+        c: Is("kui_capture_to_clipboard"),
+        odin: Is("capture_to_clipboard"),
+        node: Is("captureToClipboard"),
+        lua: No(GUEST),
+        doc: "Asks for the next frame the window draws, put on the clipboard as a picture — \"Copy screenshot\" — and answered as `capture_to` is, with an empty path (ADR 0055).",
     },
     Door {
         rust: "Core::record_to",

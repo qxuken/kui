@@ -41,6 +41,19 @@ impl Core {
         });
     }
 
+    /// Asks for the next frame this window draws, put on the system
+    /// clipboard as a picture — "Copy screenshot". The driver captures it
+    /// as [`Self::capture_to`] does and queues it as a
+    /// [`MenuAction::SetClipboardImage`](crate::menu::MenuAction::SetClipboardImage)
+    /// (which the runner applies, and a host draining
+    /// [`Self::take_menu_actions`] applies itself), then answers in
+    /// `message` with `capture: {phase: "saved", path: "", width, height,
+    /// frames: 1}`, or `"failed"` with an `error`.
+    #[track_caller]
+    pub fn capture_to_clipboard(&mut self, message: Option<Value>) {
+        self.ask_capture(CaptureCommand::Clipboard { message });
+    }
+
     /// Ends this window's recording with the next frame drawn, which is
     /// its last, and has its file written. Nothing, with none running.
     #[track_caller]

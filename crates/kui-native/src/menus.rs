@@ -245,6 +245,13 @@ impl DynShell<'_> {
                 MenuAction::SetClipboardSecret { text } => {
                     crate::clipboard::set_secret(self.clipboard.as_mut(), text);
                 }
+                MenuAction::SetClipboardImage {
+                    width,
+                    height,
+                    rgba,
+                } => {
+                    set_clipboard_image(self.clipboard.as_mut(), width, height, &rgba);
+                }
                 MenuAction::Paste => {
                     // Every ask is answered, an empty clipboard with an
                     // empty paste: the answer is what clears the core's

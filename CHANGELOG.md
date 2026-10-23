@@ -45,6 +45,14 @@ was the first bare bump to break an app in five releases).
   fading in or out — shows what lies under it where alpha.65 showed its
   own shadow, so it reads lighter. The shadow outside the node is
   unchanged (backlog V10).
+- C: `KuiMenuAction` appends `width`, `height` and `rgba` for a new
+  kind, `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE`, and grows to 64 bytes on
+  64-bit; `KUI_ABI_VERSION` is 37. Recompile; a host that drains menu
+  actions puts the picture on its clipboard, or drops a kind it does not
+  know as before. Rust: `MenuAction` has a variant more,
+  `SetClipboardImage`, which an exhaustive `match` names. Node's
+  `takeMenuActions()` can hand out `{kind: 'setClipboardImage', width,
+  height}`.
 
 The close button hides the panel and leaves it on, so its chords can
 bring it back, and `devtools()` stays true. An app's toggle on
@@ -154,6 +162,17 @@ own that ignores those fields draws the shadow as before; kui.h's
   window records at its display's refresh; a headless driver keeps the
   work on its own thread, its answers pending when `serve` returns
   (`Captures::write_on_thread` chooses).
+- **A picture on the clipboard**: `set_clipboard_image(width, height,
+  rgba)` on `Core` and `Ui` — `setClipboardImage` in Node,
+  `kui_set_clipboard_image` in C, `set_clipboard_image` in Odin — queues
+  straight RGBA (a capture, a decoded image) for the clipboard, which the
+  runner writes as the platform's image type: "Copy image". And
+  `capture_to_clipboard(message)` — `captureToClipboard`,
+  `kui_capture_to_clipboard`, `capture_to_clipboard` — is "Copy
+  screenshot": the next frame drawn, served as `capture_to` is, queued
+  for the clipboard, and answered with a `capture` event whose `path` is
+  empty (ADR 0055). A headless host drains the picture with the other
+  menu actions. `examples/rust/features/capture.rs` has the button.
 - `kui_wgpu::Renderer::capture_begin` and `PendingCapture::wait`:
   `capture` in two halves, the second for any thread. `GlyphAtlas::rev`
   and `GlyphAtlas::id`, which a renderer that is not the atlas's own

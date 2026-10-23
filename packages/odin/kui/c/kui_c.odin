@@ -43,7 +43,7 @@ ReplySink :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 36
+ABI_VERSION :: 37
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -359,6 +359,7 @@ MENU_ACTION_SET_CLIPBOARD :: 0
 MENU_ACTION_PASTE :: 1
 MENU_ACTION_LOOK_UP :: 2
 MENU_ACTION_SET_CLIPBOARD_SECRET :: 3
+MENU_ACTION_SET_CLIPBOARD_IMAGE :: 4
 
 PASTE_CONCEALED :: 1
 PASTE_TRANSIENT :: 2
@@ -778,6 +779,9 @@ MenuAction :: struct {
 	html: string,
 	x: f32,
 	y: f32,
+	width: u32,
+	height: u32,
+	rgba: [^]u8,
 }
 
 TextHit :: struct {
@@ -1299,6 +1303,7 @@ foreign lib {
 	answer_selection_range :: proc(ctx: ^Ctx, text: string) -> bool ---
 	set_clipboard :: proc(ctx: ^Ctx, text: string, html: string) ---
 	set_clipboard_secret :: proc(ctx: ^Ctx, text: string) ---
+	set_clipboard_image :: proc(ctx: ^Ctx, rgba: [^]u8, width: u32, height: u32) -> bool ---
 	request_paste :: proc(ctx: ^Ctx) ---
 	awaiting_paste :: proc(ctx: ^Ctx) -> bool ---
 	set_native_menus :: proc(ctx: ^Ctx, on: bool) ---
@@ -1406,6 +1411,7 @@ foreign lib {
 	animation_at :: proc(delays: [^]f64, count: u32, loops: u32, elapsed: f64, next: ^f64) -> u32 ---
 	capture :: proc(ctx: ^Ctx, width: ^u32, height: ^u32) -> [^]u8 ---
 	capture_to :: proc(ctx: ^Ctx, path: string, message: ^Value) -> bool ---
+	capture_to_clipboard :: proc(ctx: ^Ctx, message: ^Value) -> bool ---
 	record_to :: proc(ctx: ^Ctx, path: string, message: ^Value) -> bool ---
 	stop_recording :: proc(ctx: ^Ctx) ---
 	serve_captures :: proc(ctx: ^Ctx) ---

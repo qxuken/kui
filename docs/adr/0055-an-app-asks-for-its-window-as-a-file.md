@@ -253,3 +253,26 @@ display's refresh — and answered 45 ms after the stop. This replaces the
 considered option "Writing on a thread" above, whose objection (a
 headless serve would have to wait) is met by keeping headless drivers
 on the serving thread.
+
+## Amendment: a capture to the clipboard (2026-10-23)
+
+"Copy screenshot" is the third ask beside a still and a recording, and
+the clipboard is the host's here as it is for text (backlog C33): the
+core works out what to copy and hands it over as a menu action.
+
+- `MenuAction::SetClipboardImage { width, height, rgba }` is a picture
+  for the clipboard, straight RGBA, shared rather than copied on its way
+  out. `set_clipboard_image(width, height, rgba)` queues one from pixels
+  the app holds — a capture, a decoded image — and refuses bytes that
+  are not the size's.
+- `capture_to_clipboard(message)` asks for the next frame drawn,
+  served as a still is, its picture queued as that action, and answered
+  with a `capture` event whose `path` is empty: an app reads the same
+  answer whichever ask it made.
+- The runner writes the picture with arboard's `set_image`, which on
+  macOS hands AppKit a TIFF that the pasteboard offers as PNG, JPEG and
+  the rest. A C host reads it from `KuiMenuAction`'s new `width`,
+  `height` and `rgba`, borrowed until its next `kui_take_menu_action`
+  (ABI 37); Node's `takeMenuActions()` reports the size and not the
+  pixels, which a headless host already holds or captures. Lua gets no
+  door: a script holds no pixels.

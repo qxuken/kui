@@ -44,6 +44,9 @@ Shot :: struct {
 Rec :: struct {
 	using _: kui.With_Capture,
 }
+Copy :: struct {
+	using _: kui.With_Capture,
+}
 
 Msg :: union {
 	Inc,
@@ -188,18 +191,18 @@ headless :: proc() -> bool {
 	}
 
 	// What an app asks the driver to keep of its window (ADR 0055): a still,
-	// and a recording that runs for half a second of the frame clock, served
-	// after each frame the way run serves a window's and answered as a
-	// capture event in the message each named. With no GPU adapter both
-	// answer "failed", the reason in error.
+	// a copy on the clipboard, and a recording that runs for half a second of
+	// the frame clock, served after each frame the way run serves a window's
+	// and answered as a capture event in the message each named. With no GPU
+	// adapter all three answer "failed", the reason in error.
 	{
 		tmp, _ := os.temp_directory(context.temp_allocator)
 		still := fmt.tprintf("%s/kui-odin-counter-shot.png", tmp)
 		movie := fmt.tprintf("%s/kui-odin-counter-rec.apng", tmp)
 		defer os.remove(still)
 		defer os.remove(movie)
-		if !kui.capture_to(ui, still, Shot{}) || !kui.record_to(ui, movie, Rec{}) || kui.capture_to(ui, "") {
-			return fail("capture_to / record_to refused a path")
+		if !kui.capture_to(ui, still, Shot{}) || !kui.capture_to_clipboard(ui, Copy{}) || !kui.record_to(ui, movie, Rec{}) || kui.capture_to(ui, "") {
+			return fail("capture_to / capture_to_clipboard / record_to refused")
 		}
 		kui.set_time(ui, 1.0)
 		kui.frame(ui, &s, view)
@@ -214,6 +217,9 @@ headless :: proc() -> bool {
 			if shot, ok := kui.message(ev, Shot); ok {
 				got = shot.capture
 				if got.phase == "saved" && (got.width != 800 || got.frames != 1) do return fail("capture_to's still")
+			} else if copy, copy_ok := kui.message(ev, Copy); copy_ok {
+				got = copy.capture
+				if got.phase == "saved" && (got.width != 800 || got.path != "") do return fail("capture_to_clipboard's copy")
 			} else if rec, rec_ok := kui.message(ev, Rec); rec_ok {
 				got = rec.capture
 				if got.phase == "saved" && (got.width != 800 || got.frames != 1 || abs(got.seconds - 0.5) > 1e-9) {
@@ -226,9 +232,17 @@ headless :: proc() -> bool {
 			if got.phase == "saved" do saved += 1
 			else do failed += 1
 		}
-		if saved + failed != 2 || (saved > 0 && failed > 0) do return fail("serve_captures answered wrong")
-		if saved > 0 do fmt.printfln("kept the window as %s and %s", still, movie)
-		else do fmt.println("no GPU adapter: serve_captures answered both as failed")
+		if saved + failed != 3 || (saved > 0 && failed > 0) do return fail("serve_captures answered wrong")
+		// The copy is a menu action for the host, as a menu's Copy is: under
+		// run the runner puts it on the clipboard.
+		if saved > 0 {
+			image := false
+			for a in kui.take_menu_action(ui) {
+				if a.kind == .Set_Clipboard_Image do image = a.width == 800 && a.height == 600 && a.rgba[3] == 255
+			}
+			if !image do return fail("capture_to_clipboard queued no picture")
+			fmt.printfln("kept the window as %s and %s, and on the clipboard", still, movie)
+		} else do fmt.println("no GPU adapter: serve_captures answered all three as failed")
 	}
 
 	// Pixels to a file's bytes and back through the runner's own codecs,

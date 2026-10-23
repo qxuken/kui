@@ -2005,6 +2005,12 @@ mod queries_headless {
 
         kui_set_clipboard(ctx, ks("yanked"), ks(""));
         kui_set_clipboard_secret(ctx, ks("hunter2"));
+        // A picture, copied: two pixels, red then blue. Nothing for no
+        // pixels or no size.
+        let px = [255u8, 0, 0, 255, 0, 0, 255, 255];
+        assert!(!kui_set_clipboard_image(ctx, std::ptr::null(), 2, 1));
+        assert!(!kui_set_clipboard_image(ctx, px.as_ptr(), 0, 1));
+        assert!(kui_set_clipboard_image(ctx, px.as_ptr(), 2, 1));
         kui_request_paste(ctx);
         let mut action = KuiMenuAction {
             size: std::mem::size_of::<KuiMenuAction>() as u32,
@@ -2020,8 +2026,17 @@ mod queries_headless {
         assert_eq!(action.kind, KUI_MENU_ACTION_SET_CLIPBOARD_SECRET);
         assert_eq!(kstr(action.text).as_ref(), "hunter2");
         assert_eq!(action.html.len, 0);
+        assert_eq!((action.width, action.height), (0, 0));
+        assert!(action.rgba.is_null());
+        // The picture, borrowed until the next take.
+        assert!(kui_take_menu_action(ctx, &mut action));
+        assert_eq!(action.kind, KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE);
+        assert_eq!((action.width, action.height), (2, 1));
+        assert_eq!(unsafe { std::slice::from_raw_parts(action.rgba, 8) }, &px);
+        assert_eq!(action.text.len, 0);
         assert!(kui_take_menu_action(ctx, &mut action));
         assert_eq!(action.kind, KUI_MENU_ACTION_PASTE);
+        assert!(action.rgba.is_null());
         assert!(!kui_take_menu_action(ctx, &mut action));
 
         // The host answers the paste with a commit; the sink hears it.

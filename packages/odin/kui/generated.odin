@@ -465,6 +465,7 @@ Menu_Action_Kind :: enum u32 {
 	Paste = 1, // KUI_MENU_ACTION_PASTE
 	Look_Up = 2, // KUI_MENU_ACTION_LOOK_UP
 	Set_Clipboard_Secret = 3, // KUI_MENU_ACTION_SET_CLIPBOARD_SECRET
+	Set_Clipboard_Image = 4, // KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE
 }
 
 Copy_Answer :: enum u32 {
@@ -1830,6 +1831,9 @@ Menu_Action :: struct {
 	html: string,
 	x: f32,
 	y: f32,
+	width: u32,
+	height: u32,
+	rgba: [^]u8,
 }
 
 menu_action_to_c :: proc(v: Menu_Action, scratch: ^Scratch) -> (out: c.MenuAction) {
@@ -1839,6 +1843,9 @@ menu_action_to_c :: proc(v: Menu_Action, scratch: ^Scratch) -> (out: c.MenuActio
 	out.html = v.html
 	out.x = v.x
 	out.y = v.y
+	out.width = v.width
+	out.height = v.height
+	out.rgba = v.rgba
 	_ = scratch
 	return
 }
@@ -1849,6 +1856,9 @@ menu_action_from_c :: proc(v: c.MenuAction) -> (out: Menu_Action) {
 	out.html = v.html
 	out.x = v.x
 	out.y = v.y
+	out.width = v.width
+	out.height = v.height
+	out.rgba = v.rgba
 	return
 }
 
@@ -3533,6 +3543,15 @@ set_clipboard_secret :: proc(ui: ^Ui, text: string) {
 	c.set_clipboard_secret(ui, text)
 }
 
+// Posts a picture for the clipboard — straight RGBA, a capture or a decoded
+// image — which the host writes as the platform's image type: "Copy image"
+// (ADR 0055).
+// Rust: Ui::set_clipboard_image.
+set_clipboard_image :: proc(ui: ^Ui, rgba: []u8, width: u32, height: u32) -> bool {
+	assert(rgba == nil || len(rgba) >= int(width) * int(height) * 4, "set_clipboard_image: rgba holds fewer bytes than int(width) * int(height) * 4")
+	return c.set_clipboard_image(ui, raw_data(rgba), width, height)
+}
+
 // A key sink's own Ctrl-V: the clipboard comes back as a commit, marked
 // `concealed` / `transient` when the pasteboard said so (backlog F84).
 // Rust: Ui::request_paste.
@@ -4022,6 +4041,14 @@ set_app_id :: proc(id: string) {
 // Rust: Core::capture_to.
 capture_to :: proc(ui: ^Ui, path: string, message: any = nil) -> bool {
 	return c.capture_to(ui, path, to_value(message))
+}
+
+// Asks for the next frame the window draws, put on the clipboard as a picture
+// — "Copy screenshot" — and answered as `capture_to` is, with an empty
+// path (ADR 0055).
+// Rust: Core::capture_to_clipboard.
+capture_to_clipboard :: proc(ui: ^Ui, message: any = nil) -> bool {
+	return c.capture_to_clipboard(ui, to_value(message))
 }
 
 // Asks for every frame the window draws from the next one on, written to a

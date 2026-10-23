@@ -280,6 +280,22 @@ impl Captures {
                         Err(why) => fail(core, message, &path, why),
                     }
                 }
+                kui_core::CaptureCommand::Clipboard { message } => {
+                    // Queued for the driver to apply with its clipboard,
+                    // as a copy of text is: the runner after the frame, a
+                    // headless host from its own drain.
+                    match shot.get_or_insert_with(|| capture(core)) {
+                        Ok(c) => {
+                            let (w, h, rgba) = (c.width, c.height, c.rgba.clone());
+                            core.set_clipboard_image(w, h, rgba);
+                            saved(core, message, "", w, h, 1, 0.0);
+                        }
+                        Err(why) => {
+                            let why = why.clone();
+                            fail(core, message, "", why);
+                        }
+                    }
+                }
                 kui_core::CaptureCommand::Record { path, message } => {
                     let running = self
                         .recording

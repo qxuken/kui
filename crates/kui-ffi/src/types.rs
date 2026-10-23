@@ -85,6 +85,9 @@ pub struct KuiCtx {
     pub(crate) menu_actions: VecDeque<kui_core::MenuAction>,
     pub(crate) menu_text: String,
     pub(crate) menu_html: String,
+    /// The picture the last `kui_take_menu_action` handed out, kept for
+    /// its borrow.
+    pub(crate) menu_image: Option<std::sync::Arc<[u8]>>,
     /// The label most recently read back by `kui_menu_bar_menu`,
     /// `kui_menu_bar_item` or `kui_menu_item`, and the accelerator beside
     /// it: their own, so reading a menu leaves a taken action's `text`
@@ -217,6 +220,7 @@ impl KuiCtx {
             file_filter_text: String::new(),
             devtools_tab: String::new(),
             menu_html: String::new(),
+            menu_image: None,
             selection_text: String::new(),
             selection_html: String::new(),
             font_families: Vec::new(),
@@ -2344,6 +2348,12 @@ pub struct KuiMenuAction {
     /// px. Zero for every other kind.
     pub x: f32,
     pub y: f32,
+    /// `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE` only: the picture, `width`
+    /// by `height` straight RGBA, borrowed until the next
+    /// `kui_take_menu_action`. Zero and NULL for every other kind.
+    pub width: u32,
+    pub height: u32,
+    pub rgba: *const u8,
 }
 
 impl Default for KuiMenuAction {
@@ -2361,6 +2371,9 @@ impl Default for KuiMenuAction {
             },
             x: 0.0,
             y: 0.0,
+            width: 0,
+            height: 0,
+            rgba: std::ptr::null(),
         }
     }
 }
@@ -2615,6 +2628,8 @@ pub const KUI_MENU_ACTION_LOOK_UP: u32 = 2;
 /// (`kui_set_clipboard_secret`). A host that does not know the kind drops
 /// the copy, which for a secret is the safe way to fail.
 pub const KUI_MENU_ACTION_SET_CLIPBOARD_SECRET: u32 = 3;
+/// `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE`: a picture for the clipboard.
+pub const KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE: u32 = 4;
 
 /// `KUI_PASTE_*`: the pasteboard's markers on a paste's answer
 /// (`kui_input_paste`).

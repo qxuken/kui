@@ -519,6 +519,23 @@ pub extern "C" fn kui_capture_to(ptr: *mut KuiCtx, path: KuiStr, message: *mut K
     })
 }
 
+/// Asks for the next frame the context's window draws, put on the
+/// clipboard as a picture — "Copy screenshot" (ADR 0055):
+/// `Core::capture_to_clipboard`. Served as `kui_capture_to` is, queued
+/// as a `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE`, and answered in `message`
+/// with an empty `path`.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_capture_to_clipboard(ptr: *mut KuiCtx, message: *mut KuiValue) -> bool {
+    guard(false, || {
+        let message = take_msg(message);
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        c.core().capture_to_clipboard(message);
+        true
+    })
+}
+
 /// Asks for every frame the context's window draws from the next one on,
 /// written to `path` as an animation when `kui_stop_recording` ends it
 /// (ADR 0055): `.png` / `.apng` or `.gif`. `message` as `kui_capture_to`'s.

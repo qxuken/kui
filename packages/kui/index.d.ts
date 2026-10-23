@@ -1041,6 +1041,10 @@ export type MenuAction =
   /** A secret to write marked concealed and transient, the way a password
    *  manager does (`setClipboardSecret`, backlog F84). */
   | { kind: 'setClipboardSecret'; text: string }
+  /** A picture for the clipboard (`setClipboardImage`,
+   *  `captureToClipboard`), by its size: a window writes it itself, and a
+   *  headless host holds the pixels it asked with or `capture()`s them. */
+  | { kind: 'setClipboardImage'; width: number; height: number }
   | { kind: 'paste' }
   | { kind: 'lookUp'; text: string; x: number; y: number };
 
@@ -3084,6 +3088,14 @@ export declare class Ctx {
    */
   captureTo(path: string, message?: unknown): void
   /**
+   * Asks for the next frame this window draws, put on the
+   * clipboard as a picture — "Copy screenshot" (ADR 0055) —
+   * served and answered as `captureTo` is, the `capture` event's
+   * `path` empty. A headless `Ctx` queues the picture for
+   * `takeMenuActions()` after `serveCaptures()`.
+   */
+  captureToClipboard(message?: unknown): void
+  /**
    * Asks for every frame this window draws from the next one on,
    * written to `path` as an animation when `stopRecording()` ends
    * it (ADR 0055): `.png` / `.apng` (an animated PNG) or `.gif`.
@@ -3799,6 +3811,16 @@ export declare class Ctx {
    * `{kind:"setClipboardSecret", text}`.
    */
   setClipboardSecret(text: string): void
+  /**
+   * Puts a picture on the system clipboard — `width` by `height`
+   * straight RGBA, what `capture()` and `decodeImage` hand out,
+   * copied — as the platform's image type: "Copy image". A
+   * window writes it at its next drain; a headless `Ctx` hands it
+   * out through `takeMenuActions()` as `{kind:"setClipboardImage",
+   * width, height}`. False, and nothing queued, when `rgba` is
+   * not `width * height * 4` bytes or the size is zero.
+   */
+  setClipboardImage(width: number, height: number, rgba: Uint8Array): boolean
   /**
    * Asks for what is on the clipboard — the action a menu's
    * Paste queues. A window reads the clipboard and hands the
@@ -4547,6 +4569,14 @@ export declare class KuiWindow {
    */
   captureTo(path: string, message?: unknown): void
   /**
+   * Asks for the next frame this window draws, put on the
+   * clipboard as a picture — "Copy screenshot" (ADR 0055) —
+   * served and answered as `captureTo` is, the `capture` event's
+   * `path` empty. A headless `Ctx` queues the picture for
+   * `takeMenuActions()` after `serveCaptures()`.
+   */
+  captureToClipboard(message?: unknown): void
+  /**
    * Asks for every frame this window draws from the next one on,
    * written to `path` as an animation when `stopRecording()` ends
    * it (ADR 0055): `.png` / `.apng` (an animated PNG) or `.gif`.
@@ -5262,6 +5292,16 @@ export declare class KuiWindow {
    * `{kind:"setClipboardSecret", text}`.
    */
   setClipboardSecret(text: string): void
+  /**
+   * Puts a picture on the system clipboard — `width` by `height`
+   * straight RGBA, what `capture()` and `decodeImage` hand out,
+   * copied — as the platform's image type: "Copy image". A
+   * window writes it at its next drain; a headless `Ctx` hands it
+   * out through `takeMenuActions()` as `{kind:"setClipboardImage",
+   * width, height}`. False, and nothing queued, when `rgba` is
+   * not `width * height * 4` bytes or the size is zero.
+   */
+  setClipboardImage(width: number, height: number, rgba: Uint8Array): boolean
   /**
    * Asks for what is on the clipboard — the action a menu's
    * Paste queues. A window reads the clipboard and hands the

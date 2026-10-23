@@ -3057,6 +3057,17 @@ macro_rules! core_methods {
                 self.$redraw();
             }
 
+            /// Asks for the next frame this window draws, put on the
+            /// clipboard as a picture — "Copy screenshot" (ADR 0055) —
+            /// served and answered as `captureTo` is, the `capture` event's
+            /// `path` empty. A headless `Ctx` queues the picture for
+            /// `takeMenuActions()` after `serveCaptures()`.
+            #[napi(ts_args_type = "message?: unknown")]
+            pub fn capture_to_clipboard(&mut self, message: Option<Json>) {
+                self.$core().capture_to_clipboard(message.as_ref().map(value_of));
+                self.$redraw();
+            }
+
             /// Asks for every frame this window draws from the next one on,
             /// written to `path` as an animation when `stopRecording()` ends
             /// it (ADR 0055): `.png` / `.apng` (an animated PNG) or `.gif`.
@@ -4203,6 +4214,13 @@ macro_rules! core_methods {
                                 o.insert("kind".into(), Json::from("setClipboardSecret"));
                                 o.insert("text".into(), Json::from(text));
                             }
+                            // The picture's size and not its pixels: the
+                            // pixels were the app's, or a `capture()` away.
+                            kui_core::MenuAction::SetClipboardImage { width, height, .. } => {
+                                o.insert("kind".into(), Json::from("setClipboardImage"));
+                                o.insert("width".into(), Json::from(width));
+                                o.insert("height".into(), Json::from(height));
+                            }
                             kui_core::MenuAction::Paste => {
                                 o.insert("kind".into(), Json::from("paste"));
                             }
@@ -4241,6 +4259,18 @@ macro_rules! core_methods {
             #[napi]
             pub fn set_clipboard_secret(&mut self, text: String) {
                 self.$core().set_clipboard_secret(text);
+            }
+
+            /// Puts a picture on the system clipboard — `width` by `height`
+            /// straight RGBA, what `capture()` and `decodeImage` hand out,
+            /// copied — as the platform's image type: "Copy image". A
+            /// window writes it at its next drain; a headless `Ctx` hands it
+            /// out through `takeMenuActions()` as `{kind:"setClipboardImage",
+            /// width, height}`. False, and nothing queued, when `rgba` is
+            /// not `width * height * 4` bytes or the size is zero.
+            #[napi]
+            pub fn set_clipboard_image(&mut self, width: u32, height: u32, rgba: Uint8Array) -> bool {
+                self.$core().set_clipboard_image(width, height, &rgba[..])
             }
 
             /// Asks for what is on the clipboard — the action a menu's

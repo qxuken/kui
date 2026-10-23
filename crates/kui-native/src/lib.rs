@@ -1196,6 +1196,27 @@ fn set_clipboard(clipboard: Option<&mut arboard::Clipboard>, text: String, html:
     }
 }
 
+/// Puts a picture on the system clipboard (`Core::set_clipboard_image`,
+/// `capture_to_clipboard`): arboard writes it as the platform's image
+/// type — a PNG and TIFF on the macOS pasteboard, a DIB on Windows, a
+/// `image/png` offer on Linux — which every app that pastes images reads.
+fn set_clipboard_image(
+    clipboard: Option<&mut arboard::Clipboard>,
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+) {
+    let Some(cb) = clipboard else { return };
+    let image = arboard::ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: std::borrow::Cow::Borrowed(rgba),
+    };
+    if let Err(e) = cb.set_image(image) {
+        eprintln!("kui: putting a {width}x{height} picture on the clipboard: {e}");
+    }
+}
+
 fn input_completes(ev: &InputEvent) -> bool {
     match ev {
         InputEvent::MouseDown { .. }

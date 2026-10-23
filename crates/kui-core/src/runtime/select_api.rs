@@ -681,6 +681,32 @@ impl Core {
             });
     }
 
+    /// Puts a picture on the system clipboard: `width` by `height` straight
+    /// RGBA, four bytes a pixel, row by row from the top left — what
+    /// `kui_native::capture` and `decode_image` hand out — queued as
+    /// [`MenuAction::SetClipboardImage`](crate::menu::MenuAction::SetClipboardImage)
+    /// for the host to apply, as text is. "Copy image" in a viewer;
+    /// "Copy screenshot" is `capture_to_clipboard`. False, and nothing
+    /// queued, for a size of zero or pixels that are not that size.
+    pub fn set_clipboard_image(
+        &mut self,
+        width: u32,
+        height: u32,
+        rgba: impl Into<std::sync::Arc<[u8]>>,
+    ) -> bool {
+        let rgba = rgba.into();
+        if width == 0 || height == 0 || rgba.len() as u64 != u64::from(width) * u64::from(height) * 4 {
+            return false;
+        }
+        self.menu_actions
+            .push(crate::menu::MenuAction::SetClipboardImage {
+                width,
+                height,
+                rgba,
+            });
+        true
+    }
+
     /// Puts a secret on the system clipboard the way a password manager
     /// does — queued as `MenuAction::SetClipboardSecret`,
     /// which the runner writes marked concealed and transient, so a

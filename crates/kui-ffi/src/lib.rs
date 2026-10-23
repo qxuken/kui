@@ -282,6 +282,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             menu_accel: String::new(),
             copy_text: String::new(),
             menu_html: String::new(),
+            menu_image: None,
             devtools_key: String::new(),
             file_request: None,
             file_filter_text: String::new(),

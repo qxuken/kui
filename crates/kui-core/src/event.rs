@@ -738,7 +738,8 @@ pub enum CapturePhase {
 
 /// A `capture` (ADR 0055): a still or a recording the app asked for with
 /// `capture_to` / `record_to`, written to `path` or not, in the message
-/// the verb named. `width` and `height` are physical px, `frames` 1 for a
+/// the verb named — or a frame `capture_to_clipboard` put on the
+/// clipboard, whose `path` is empty. `width` and `height` are physical px, `frames` 1 for a
 /// still and what the file holds for a recording, `seconds` a recording's
 /// length (0 for a still), and `error` the reason a `Failed` one gives.
 #[derive(Clone, Debug, PartialEq)]

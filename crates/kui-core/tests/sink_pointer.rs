@@ -504,6 +504,20 @@ fn a_paste_carries_the_pasteboards_markers_to_the_sink() {
             text: "s3cret".into()
         }]
     );
+    // A picture is too, and only one whose bytes are its size.
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    assert!(!ui.set_clipboard_image(2, 1, vec![0u8; 4]), "too few bytes");
+    assert!(!ui.set_clipboard_image(0, 0, Vec::new()), "no size");
+    assert!(ui.set_clipboard_image(1, 1, vec![9u8, 8, 7, 255]));
+    ui.finish();
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![MenuAction::SetClipboardImage {
+            width: 1,
+            height: 1,
+            rgba: vec![9u8, 8, 7, 255].into()
+        }]
+    );
     // And the bits the C ABI spells them in round-trip.
     for bits in 0..4 {
         assert_eq!(ClipboardMarks::from_bits(bits).bits(), bits);

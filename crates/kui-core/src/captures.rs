@@ -24,6 +24,9 @@ pub enum CaptureCommand {
     },
     /// Ends the recording with the next frame drawn.
     Stop,
+    /// The next frame drawn, put on the clipboard as a picture: a
+    /// [`crate::menu::MenuAction::SetClipboardImage`] the driver applies.
+    Clipboard { message: Option<Value> },
 }
 
 /// What a path's extension says a capture is written as: the one rule

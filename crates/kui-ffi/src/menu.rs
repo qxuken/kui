@@ -270,6 +270,33 @@ pub extern "C" fn kui_set_clipboard_secret(ptr: *mut KuiCtx, text: KuiStr) {
     });
 }
 
+/// Puts a picture on the system clipboard — `width` by `height` straight
+/// RGBA, copied — as a `KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE` the host
+/// drains and writes as the platform's image type: `Core::set_clipboard_image`.
+/// Under `kui_run` the runner writes it. False, and nothing queued, for
+/// NULL pixels or a size of zero. `rgba`, when not NULL, points at
+/// `width * height * 4` readable bytes.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_clipboard_image(
+    ptr: *mut KuiCtx,
+    rgba: *const u8,
+    width: u32,
+    height: u32,
+) -> bool {
+    guard(false, || {
+        let n = width as usize * height as usize * 4;
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        if rgba.is_null() || n == 0 {
+            return false;
+        }
+        // SAFETY: the caller's promise, width * height * 4 bytes.
+        let px = unsafe { std::slice::from_raw_parts(rgba, n) };
+        c.core().set_clipboard_image(width, height, px)
+    })
+}
+
 /// Asks for what is on the clipboard, as a `KUI_MENU_ACTION_PASTE` the
 /// host drains and answers with [`kui_input_paste`] (the text and the
 /// pasteboard's `KUI_PASTE_*` markers) or [`kui_input_commit`]: a focused
@@ -335,6 +362,7 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
             return false;
         };
         let mut at = kui_core::Vec2::new(0.0, 0.0);
+        let mut image = None;
         let (kind, text, html) = match action {
             kui_core::MenuAction::SetClipboard { text, html } => {
                 (KUI_MENU_ACTION_SET_CLIPBOARD, text, html)
@@ -350,9 +378,19 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
                 at = point;
                 (KUI_MENU_ACTION_LOOK_UP, text, None)
             }
+            kui_core::MenuAction::SetClipboardImage {
+                width,
+                height,
+                rgba,
+            } => {
+                image = Some((width, height, rgba));
+                (KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE, String::new(), None)
+            }
         };
         c.menu_text = text;
         c.menu_html = html.unwrap_or_default();
+        let (width, height) = image.as_ref().map_or((0, 0), |(w, h, _)| (*w, *h));
+        c.menu_image = image.map(|(_, _, px)| px);
         let written = KuiMenuAction {
             size: std::mem::size_of::<KuiMenuAction>() as u32,
             kind,
@@ -366,6 +404,9 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
             },
             x: at.x,
             y: at.y,
+            width,
+            height,
+            rgba: c.menu_image.as_ref().map_or(std::ptr::null(), |px| px.as_ptr()),
         };
         write_out(out, written)
     })

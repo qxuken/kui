@@ -1,6 +1,7 @@
 //! An app keeping its own window as a file (ADR 0055): a "Save a
-//! screenshot" button and a "Record 5 seconds" toggle beside a spinner.
-//! The click's handler asks the core — `capture_to` for a PNG,
+//! screenshot" button, a "Copy screenshot" one and a "Record 5 seconds"
+//! toggle beside a spinner. The click's handler asks the core —
+//! `capture_to` for a PNG, `capture_to_clipboard` for the clipboard,
 //! `record_to` for an animated PNG, `stop_recording` to end one early —
 //! and the runner serves the ask after the next frame it draws, drawing
 //! that frame again on a GPU device of its own. What comes back is a
@@ -21,6 +22,7 @@ use kui_native::{
 #[derive(Message, Clone, Debug, PartialEq)]
 enum Msg {
     Shot,
+    Copy,
     Record,
     /// What a still's `capture` event arrives as.
     Saved,
@@ -74,6 +76,7 @@ impl App for Keeper {
                 );
                 ui.with(NodeSpec::row().gap(8.0), |ui| {
                     widgets::button(ui, "Save a screenshot", Msg::Shot);
+                    widgets::button(ui, "Copy screenshot", Msg::Copy);
                     let record = if self.until.is_some() {
                         "Stop recording"
                     } else {
@@ -98,6 +101,7 @@ impl App for Keeper {
                 let path = self.path(&format!("kui-capture-{}.png", self.shots));
                 core.capture_to(path, Some(Msg::Saved.into()));
             }
+            (Some(Msg::Copy), _) => core.capture_to_clipboard(Some(Msg::Saved.into())),
             (Some(Msg::Record), _) if self.until.is_some() => {
                 core.stop_recording();
                 self.until = None;
@@ -115,6 +119,9 @@ impl App for Keeper {
                         "{} frames, {:.1} s, {}x{}: {}",
                         c.frames, c.seconds, c.width, c.height, c.path
                     ),
+                    CapturePhase::Saved if c.path.is_empty() => {
+                        format!("{}x{}: on the clipboard", c.width, c.height)
+                    }
                     CapturePhase::Saved => format!("{}x{}: {}", c.width, c.height, c.path),
                     CapturePhase::Failed => {
                         format!("not written: {}", c.error.unwrap_or_default())
@@ -150,6 +157,13 @@ impl Example for Keeper {
         )?;
         let owed = d.core.animating();
         d.check(owed, "and for the frame it is served after")?;
+        let copy = d.key_named("Copy screenshot").ok_or("no copy button")?;
+        d.click_key(self, copy);
+        let asked = d.core.take_capture_commands();
+        d.check(
+            matches!(&asked[..], [CaptureCommand::Clipboard { message: Some(_) }]),
+            "the copy button asks for the clipboard",
+        )?;
         let record = d.key_named("Record 5 seconds").ok_or("no record button")?;
         d.click_key(self, record);
         let asked = d.core.take_capture_commands();

@@ -1992,6 +1992,23 @@ test('captureTo and recordTo write the frames and answer with the path', (t) => 
   assert.equal(back.loops, undefined, 'played for ever');
 });
 
+// "Copy screenshot": the next frame, queued for the clipboard as a menu
+// action a window applies, answered with an empty path.
+test('captureToClipboard queues the next frame for the clipboard', (t) => {
+  const ctx = new Ctx();
+  ctx.captureToClipboard({ kind: 'copy' });
+  ctx.frame(40, 20, 1, box({ width: 40, height: 20, bg: '#000000' }));
+  ctx.serveCaptures();
+  const [got] = ctx.pollEvents().filter((e) => e.event === 'capture');
+  assert.equal(got.payload.kind, 'copy');
+  if (got.payload.capture.phase === 'failed') {
+    assert.deepEqual(ctx.takeMenuActions(), [], 'nothing copied');
+    return t.skip(got.payload.capture.error);
+  }
+  assert.deepEqual(got.payload.capture, { phase: 'saved', path: '', width: 40, height: 20, frames: 1, seconds: 0 });
+  assert.deepEqual(ctx.takeMenuActions(), [{ kind: 'setClipboardImage', width: 40, height: 20 }]);
+});
+
 // A lookup by accessible name (backlog F137): the `label` prop or a
 // button's text, where keyOf reads the key label.
 test('keyNamed finds a node by the name a reader hears', () => {
@@ -2159,9 +2176,13 @@ test('a press in a sink names the line, the byte and the click count, and the si
   // concealed and transient; a paste the pasteboard marked comes back
   // with its markers, only those set (backlog F84).
   ctx.setClipboardSecret('hunter2');
+  // A picture goes out by its size; only one whose bytes are that size.
+  assert.equal(ctx.setClipboardImage(2, 1, new Uint8Array(4)), false);
+  assert.equal(ctx.setClipboardImage(1, 1, new Uint8Array([9, 8, 7, 255])), true);
   ctx.requestPaste();
   assert.deepEqual(ctx.takeMenuActions(), [
     { kind: 'setClipboardSecret', text: 'hunter2' },
+    { kind: 'setClipboardImage', width: 1, height: 1 },
     { kind: 'paste' },
   ]);
   ctx.paste('s3cret', { concealed: true, transient: true });

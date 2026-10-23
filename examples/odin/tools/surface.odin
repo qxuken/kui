@@ -1128,6 +1128,14 @@ surface :: proc() -> bool {
 		)
 		act, ok = kui.take_menu_action(ui)
 		check(ok && act.kind == .Paste, "request_paste queues the ask")
+		px := []u8{255, 0, 0, 255, 0, 0, 255, 255}
+		check(!kui.set_clipboard_image(ui, px, 0, 1), "no picture of no size")
+		check(kui.set_clipboard_image(ui, px, 2, 1), "set_clipboard_image takes two pixels")
+		act, ok = kui.take_menu_action(ui)
+		check(
+			ok && act.kind == .Set_Clipboard_Image && act.width == 2 && act.height == 1 && act.rgba[4] == 0 && act.rgba[6] == 255,
+			"the picture, borrowed until the next take",
+		)
 		_, ok = kui.take_menu_action(ui)
 		check(!ok, "drained, and the second ask was dropped")
 		check(kui.awaiting_paste(ui), "still out until answered")

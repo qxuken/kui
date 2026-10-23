@@ -455,6 +455,7 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_MENU_ACTION_PASTE,
             KUI_MENU_ACTION_LOOK_UP,
             KUI_MENU_ACTION_SET_CLIPBOARD_SECRET,
+            KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE,
             KUI_PASTE_CONCEALED,
             KUI_PASTE_TRANSIENT,
             KUI_BUTTONS_SECONDARY,
@@ -636,6 +637,9 @@ fn asserts() -> (String, Vec<&'static str>) {
         html: KuiStr => "KuiStr",
             x: f32 => "float",
         y: f32 => "float",
+        width: u32 => "uint32_t",
+        height: u32 => "uint32_t",
+        rgba: *const u8 => "const uint8_t *",
     });
     abi_out_struct!(o, KuiMenuAction);
 

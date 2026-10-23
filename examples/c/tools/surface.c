@@ -1315,6 +1315,13 @@ static int surface(void) {
         check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_SET_CLIPBOARD_SECRET
                   && has(act.text, "hunter2") && act.html.len == 0,
               "kui_set_clipboard_secret queues the secret alone");
+        /* A picture, copied, and borrowed back until the next take. */
+        const uint8_t px[8] = {255, 0, 0, 255, 0, 0, 255, 255};
+        check(!kui_set_clipboard_image(ui, px, 0, 1), "no picture of no size");
+        check(kui_set_clipboard_image(ui, px, 2, 1), "kui_set_clipboard_image takes two pixels");
+        check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE
+                  && act.width == 2 && act.height == 1 && act.rgba && act.rgba[6] == 255,
+              "the picture comes out as its own kind");
         kui_request_paste(ui);
         check(kui_take_menu_action(ui, &act) && act.kind == KUI_MENU_ACTION_PASTE, "asked again");
         kui_input_paste(ui, KUI_STR("s3cret"), KUI_PASTE_CONCEALED | KUI_PASTE_TRANSIENT);

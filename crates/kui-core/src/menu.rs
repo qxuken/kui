@@ -691,6 +691,16 @@ pub enum MenuAction {
         /// under the last line while the panel shows the first.
         at: crate::geom::Vec2,
     },
+    /// Put this picture on the system clipboard: `width` by `height`
+    /// straight RGBA, four bytes a pixel, row by row from the top left.
+    /// Queued by `Core::set_clipboard_image` and by a driver serving
+    /// `Core::capture_to_clipboard`, never by a menu row. Shared, so a
+    /// host that copies it out of the queue copies a pointer.
+    SetClipboardImage {
+        width: u32,
+        height: u32,
+        rgba: std::sync::Arc<[u8]>,
+    },
 }
 
 // -- The application menu bar -----------------------------------------------
