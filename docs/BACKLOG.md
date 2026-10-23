@@ -3300,7 +3300,61 @@ encoders (C55) and reads them back through the decoder. `encode` found
 FZ12 in its third minute: a GIF frame could not turn a pixel clear —
 and, ten minutes later, FZ13: a frame held past what a delay holds was
 cut to it — both **built 2026-10-24**, the day they were filed, and in
-the archive.
+the archive. Nothing else crashed, hung or ran out of memory: in the
+hour `parsers` ran 7.5 million inputs, `values` 7.8 million, `path`
+1.3 million, `decode` 409 000, `events` 555 000, and `scenes` 485 000
+on the glide as it was and 307 000 in 45 minutes on ADR 0050's
+amendment (`39a30400`), which landed on main mid-hour; `encode` 4.7
+million in its last 40 minutes, after FZ13's fix. `decode`'s two slow
+units were animated WebPs with 4 × 16.7 million canvases, about 256 MiB
+a frame, 7 and 12 s each alone under ASan against its 60 s.
+
+The hour's corpus then failed `tests/reuse.rs` (`KUI_FUZZ_CORPUS=1`):
+514 of 10 708 `events` runs and 2 of 23 152 `scenes` runs read
+differently on a kept session than on a new one. That is FZ14, open: a
+word shaped right to left is handed back for the same word left to
+right, by a cache in cosmic-text that every window of a session shares.
+
+### `.` FZ14 — A word shaped right to left comes back for the same word left to right
+
+**Found.** The alpha.66 fuzz hour's corpus, under `tests/reuse.rs`: on
+a kept session an `events` field of `]]` and tabs had its carets in
+reverse, the second `]` left of the first. Bisected to one earlier
+input, a field that began `ޢ]k` (Thaana, right to left), and then to
+cosmic-text alone: with `shape-run-cache` on (the workspace turns it
+on), `ShapeRunKey` is a run's text, default attributes and attribute
+spans, and not `span_rtl`, so whichever direction a run was shaped in
+first is what every later shaping of that text gets. A run of neutrals
+only — brackets, punctuation, symbols — is laid out right to left when
+it sits in a right-to-left span: `"א k]] א"` shapes `]] ` mirrored and
+reversed, and after it `"]] b"` draws `[[ b` with its carets backwards,
+in that window or any other of the session; `"א k)) א"` then `)) b`
+the same. A run with a strong letter has one direction wherever it is
+and is safe. Older than alpha.66: the cache has been on since the
+editor's first commit (`f189ab4f`). cosmic-text 0.19.0 is the newest
+release, and its main branch has the same key (checked 2026-10-24).
+
+**Measured.** Turning the feature off is correct and too dear (M3 Pro,
+AC power, `cargo bench -p kui-core`, medians): a keystroke in 500 lines
+184 µs → 1.24 ms, in 10k lines 317 µs → 1.38 ms, an edit to a 100k-byte
+line 1.28 → 11.7 ms, `edit_value_field_splice` 5.2 → 808 µs,
+`stream_50x200_log` 24 → 169 ms; 50 of 74 rows within 3%.
+
+**Do.** One of, or both:
+
+- **Upstream**: a run's direction in cosmic-text's key (`span_rtl` in
+  `ShapeRunKey`), and the workspace on the release that has it.
+- **In kui**: a right-to-left byte range of a text marked in its
+  attributes' `metadata` — a bit above the span index rich text keeps
+  there, masked where glyphs are read back — from `unicode-bidi`'s
+  levels, for a text with any right-to-left character and none for the
+  rest. Every place that hands cosmic-text attributes would mark it:
+  plain and rich text, the editors after each edit cosmic-text applies
+  in place, the cell grid, drop caps.
+
+The test is written — carets of `]] b` in order after `א k]] א`, in the
+same window and in another; red on the cache — and goes in with the
+fix as `crates/kui-core/tests/shaped_direction.rs`.
 
 ## After alpha.58
 
@@ -5141,7 +5195,8 @@ move.
 - `!` **V10** — [A node's shadow is drawn under it, and shows through it when translucent or faded](backlog/closed-2026-09.md#-v10--a-nodes-shadow-is-drawn-under-it-and-shows-through-it-when-translucent-or-faded--done-2026-10-23) — done (2026-10-23) — the shadow quad carries the node's own box in the fields it had no use for (`Quad::shadow_knockout`) and the shader leaves the shadow out where the box covers, as CSS does; a faded card is the card faded whole but for its antialiased edge
 - `.` **V11** — [A faded subtree blends piece by piece: a label on its own fill washes out, overlaps blend twice](backlog/closed-2026-09.md#-v11--a-faded-subtree-blends-piece-by-piece-a-label-on-its-own-fill-washes-out-overlaps-blend-twice--done-2026-10-23) — done (2026-10-23) — a node whose own `opacity` is under 1 draws its subtree into a picture of its own, faded once (ADR 0056): `Core::set_opacity_groups`, on in every window, group markers in the display list, two shared textures in kui-wgpu
 
-**From the alpha.66 fuzz hour (2026-10-24)** — FZ12 and FZ13, filed and built the same day
+**From the alpha.66 fuzz hour (2026-10-24)** — FZ12 and FZ13, filed and built the same day; FZ14 open
 
 - `.` **FZ12** — [A recorded GIF cannot turn a pixel clear](backlog/closed-2026-09.md#-fz12--a-recorded-gif-cannot-turn-a-pixel-clear--done-2026-10-24) — done (2026-10-24) — a frame that clears a pixel is written whole on a canvas the frame before clears once shown (`DisposalMethod::Background`); found by the new `encode` target
 - `.` **FZ13** — [A recorded frame held past what a delay holds loses the rest of its time](backlog/closed-2026-09.md#-fz13--a-recorded-frame-held-past-what-a-delay-holds-loses-the-rest-of-its-time--done-2026-10-24) — done (2026-10-24) — written as itself and then frames that change nothing, the time shared among them, up to 256 of them; found by the `encode` target
+- `.` **FZ14** — [A word shaped right to left comes back for the same word left to right](#-fz14--a-word-shaped-right-to-left-comes-back-for-the-same-word-left-to-right) — open — cosmic-text's shape-run cache keys a run without its direction; found by the hour's corpus under `tests/reuse.rs`
