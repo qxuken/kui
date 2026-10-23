@@ -63,7 +63,9 @@ jobs:
 
       # `--fail-with-body` so a refused challenge fails the job with the
       # server's reason (it names the TXT values it saw and the digest it
-      # wanted), rather than a bare status code.
+      # wanted), rather than a bare status code. The health check prints its
+      # reason too: a git-pages `main` build once answered every `/.*` path
+      # with a 500 after a good upload, and only the body said why.
       - name: Upload
         run: |
           set -eu
@@ -75,4 +77,4 @@ jobs:
             --data-binary @/tmp/book.tgz \
             "$PAGES_URL"
           echo
-          curl -fsS -H "Authorization: Pages $PAGES_TOKEN" "${PAGES_URL}.git-pages/health"
+          curl --fail-with-body -sS -H "Authorization: Pages $PAGES_TOKEN" "${PAGES_URL}.git-pages/health"
