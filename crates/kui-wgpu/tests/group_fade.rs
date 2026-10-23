@@ -35,7 +35,12 @@ fn renderer() -> Option<Renderer> {
 fn shot(r: &mut Renderer, opacity: f32, bg: Color, shadow: bool) -> Capture {
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 120.0), 2.0);
-    ui.configure_root(NodeSpec::column().fill().pad(30.0).bg(Color::hex(0xf2efe6ff)));
+    ui.configure_root(
+        NodeSpec::column()
+            .fill()
+            .pad(30.0)
+            .bg(Color::hex(0xf2efe6ff)),
+    );
     let mut card = NodeSpec::column()
         .size(120.0, 60.0)
         .bg(bg)
@@ -59,7 +64,11 @@ fn shot(r: &mut Renderer, opacity: f32, bg: Color, shadow: bool) -> Capture {
 
 /// The most any channel of any pixel of `a` differs from `b`.
 fn max_diff(a: &[u8], b: &[u8]) -> u8 {
-    a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0)
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| x.abs_diff(*y))
+        .max()
+        .unwrap_or(0)
 }
 
 #[test]
@@ -90,7 +99,10 @@ fn a_faded_card_with_a_shadow_is_the_card_faded_whole() {
             over += usize::from(m > 2);
         }
         let ring = 2 * (240 + 120) + 64;
-        assert!(worst <= 6, "at {alpha}: {worst} levels off the card faded whole");
+        assert!(
+            worst <= 6,
+            "at {alpha}: {worst} levels off the card faded whole"
+        );
         assert!(
             over <= ring,
             "at {alpha}: {over} pixels more than 2 levels off, more than its edge ({ring}); {w} wide"
@@ -116,5 +128,8 @@ fn a_translucent_card_does_not_show_its_own_shadow() {
     }
     // And below the card, the shadow is still there.
     let at = |c: &Capture, x: usize, y: usize| c.rgba[(y * w + x) * 4];
-    assert!(at(&with, 180, 192) + 20 < at(&without, 180, 192), "a shadow under the card");
+    assert!(
+        at(&with, 180, 192) + 20 < at(&without, 180, 192),
+        "a shadow under the card"
+    );
 }

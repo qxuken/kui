@@ -541,13 +541,13 @@ enum {
  * Only produced after kui_set_subpixel_text(ctx, true). */
 /* KUI_QUAD_SHADOW: `color` fills a rounded rect inset from the quad by
    `blur` on every side, its edge ramped over `blur` px, except under the
-   node's own box, which `uv` carries in sixteenths of a pixel: words 0
-   and 1 its insets from the quad (left | top << 16, right | bottom << 16,
-   each a signed 16-bit half), words 2 and 3 its radii (tl | tr << 16,
-   br | bl << 16, 15 bits each), and bit 15 of word 2 set when there is
-   one. Multiply the shadow by one less the box's own coverage there; a
-   renderer that ignores it draws the shadow whole under the node.
-   Ignores border_color and border_w. */
+   node's own box, carried in the fields a shadow has no other use for:
+   `uv` its insets from the quad as float bits (left, top, right, bottom,
+   physical px; memcpy each uint32_t into a float, as a segment's ends),
+   and its radii tl, tr, br in border_color's r, g, b and bl in border_w
+   (border_color's alpha is 0). Multiply the shadow by one less the box's
+   own coverage there; a renderer that ignores them draws the shadow whole
+   under the node. */
 /* KUI_QUAD_SEGMENT: a round-capped stroke between two endpoints. `uv` holds
  * them as float bits - x0, y0, x1, y1 in physical px, memcpy each uint32_t
  * into a float - `border_w` is the stroke width and `color` the stroke; the

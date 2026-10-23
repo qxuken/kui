@@ -3508,14 +3508,22 @@ fn shadow_quad(style: &crate::spec::VisualStyle, rect: Rect, clip_id: ClipId, sc
     // The node's own box, where its background is drawn (`paint_box`),
     // knocked out of the shadow so a translucent or faded node shows what
     // is under it rather than its shadow, as CSS's `box-shadow` does.
+    // Its rect as insets in `uv`, its radii in the two colour and width
+    // fields a shadow does not otherwise use (`Quad::shadow_knockout`).
     let node = rect_px(rect, scale, style.pixel_snap);
-    let uv = Quad::shadow_knockout_uv(shadow, node, style.radius.map(|r| r.max(0.0) * scale));
+    let uv = Quad::shadow_knockout_uv(shadow, node);
+    let [tl, tr, br, bl] = style.radius.map(|r| r.max(0.0) * scale);
     Quad {
         rect: shadow,
         color: sh.color,
-        border_color: Color::TRANSPARENT,
+        border_color: Color {
+            r: tl,
+            g: tr,
+            b: br,
+            a: 0.0,
+        },
         radius: style.radius.map(|r| (r + sh.spread).max(0.0) * scale),
-        border_w: 0.0,
+        border_w: bl,
         blur: blur * scale,
         kind: QuadKind::Shadow,
         clip: clip_id,

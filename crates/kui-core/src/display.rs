@@ -71,13 +71,13 @@ pub enum QuadKind {
     /// `blur` on every side, its edge ramped over `blur` px. The core
     /// emits it just before the node's own quads, already offset and
     /// spread, so a backend only has to soften the SDF it already
-    /// computes. `uv` carries the node's own rounded rect, which the
-    /// shadow is not drawn under, as CSS's `box-shadow` is not
+    /// computes. `uv`, `border_color` (but its alpha, zero) and
+    /// `border_w` carry the node's own rounded rect, which the shadow is
+    /// not drawn under, as CSS's `box-shadow` is not
     /// ([`Quad::shadow_knockout`]): through a translucent node, or one its
     /// group opacity fades, what shows is what lies under the node, not
-    /// its shadow. A backend that ignores it draws the shadow whole
-    /// beneath the node, as kui did before. Ignores `border_color` and
-    /// `border_w`.
+    /// its shadow. A backend that ignores them draws the shadow whole
+    /// beneath the node, as kui did before.
     Shadow,
     /// A round-capped stroke between two endpoints.
     /// `uv` holds the endpoints
@@ -207,79 +207,42 @@ impl Quad {
 
     /// A [`QuadKind::Shadow`]'s knock-out: the node's own rect (physical
     /// px, where its background is drawn) and corner radii (tl, tr, br,
-    /// bl), which the shadow is not drawn under. `None` for a shadow that
-    /// carries none — `uv` all zero — or any other kind's quad.
+    /// bl), which the shadow is not drawn under. `None` for any other
+    /// kind's quad.
     ///
-    /// Packed in `uv` as sixteenths of a pixel: the rect as its insets
-    /// from this quad's `rect` (left and top in word 0, right and bottom
-    /// in word 1, each a signed 16-bit half), the radii unsigned 15-bit
-    /// halves of words 2 and 3, and bit 15 of word 2 set to say there is
-    /// one. So the shape is exact to 1/16 px within 2048 px of the
-    /// shadow's edge, with radii up to 2048 px.
+    /// Carried in the fields a shadow has no other use for, as they are
+    /// and with no packing — the emitter pays it for every shadowed node:
+    /// `uv` is the rect's insets from this quad's `rect` as `f32` bits
+    /// (left, top, right, bottom, the way a segment carries its ends), and
+    /// the radii are `border_color`'s r, g and b and `border_w`.
+    /// `border_color.a` stays zero, so a group opacity's fade, which scales
+    /// only alphas, leaves them alone.
     pub fn shadow_knockout(&self) -> Option<(Rect, [f32; 4])> {
-        if self.kind != QuadKind::Shadow || self.uv[2] & 0x8000 == 0 {
+        if self.kind != QuadKind::Shadow {
             return None;
         }
-        let signed = |w: u32, hi: bool| {
-            let half = if hi { w >> 16 } else { w & 0xffff };
-            half as u16 as i16 as f32 / 16.0
-        };
-        let radius = |w: u32, hi: bool| {
-            let half = if hi { w >> 16 } else { w & 0xffff };
-            (half & 0x7fff) as f32 / 16.0
-        };
-        let [l, t] = [signed(self.uv[0], false), signed(self.uv[0], true)];
-        let [r, b] = [signed(self.uv[1], false), signed(self.uv[1], true)];
+        let [l, t, r, b] = self.uv.map(f32::from_bits);
         let rect = Rect::new(
             self.rect.x + l,
             self.rect.y + t,
             self.rect.w - l - r,
             self.rect.h - t - b,
         );
-        let radii = [
-            radius(self.uv[2], false),
-            radius(self.uv[2], true),
-            radius(self.uv[3], false),
-            radius(self.uv[3], true),
-        ];
-        Some((rect, radii))
+        let c = self.border_color;
+        Some((rect, [c.r, c.g, c.b, self.border_w]))
     }
 
     /// The `uv` a shadow drawn as `shadow` carries to knock `node` (its
-    /// rect, physical px) and its `radii` out of it — all zero, no
-    /// knock-out, where an inset or a radius is past what sixteenths of
-    /// a pixel in 16 bits hold.
-    pub fn shadow_knockout_uv(shadow: Rect, node: Rect, radii: [f32; 4]) -> [u32; 4] {
-        let insets = [
+    /// rect, physical px) out of it: the insets, as `f32` bits. The radii
+    /// ride in `border_color` and `border_w` ([`Quad::shadow_knockout`]).
+    pub fn shadow_knockout_uv(shadow: Rect, node: Rect) -> [u32; 4] {
+        [
             node.x - shadow.x,
             node.y - shadow.y,
             (shadow.x + shadow.w) - (node.x + node.w),
             (shadow.y + shadow.h) - (node.y + node.h),
-        ];
-        let fixed = |v: f32, lo: f32, hi: f32| {
-            let s = (v * 16.0).round();
-            (s.is_finite() && s >= lo && s <= hi).then_some(s as i32)
-        };
-        let mut i = [0u32; 4];
-        for (k, v) in insets.into_iter().enumerate() {
-            let Some(s) = fixed(v, i16::MIN as f32, i16::MAX as f32) else {
-                return [0; 4];
-            };
-            i[k] = s as i16 as u16 as u32;
-        }
-        let mut r = [0u32; 4];
-        for (k, v) in radii.into_iter().enumerate() {
-            let Some(s) = fixed(v.max(0.0), 0.0, 0x7fff as f32) else {
-                return [0; 4];
-            };
-            r[k] = s as u32;
-        }
-        [
-            i[0] | i[1] << 16,
-            i[2] | i[3] << 16,
-            r[0] | 0x8000 | r[1] << 16,
-            r[2] | r[3] << 16,
         ]
+        .map(f32::to_bits)
     }
 }
 

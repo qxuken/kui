@@ -76,12 +76,14 @@ and its shadow is one of them, drawn first, under the node. Faded, the
 node let its faded shadow through: a white card at 50% over a light
 page came out grey, up to 50 levels off the card faded as a whole over
 most of its body. The shadow quad now carries the node's own rounded
-box (`Quad::shadow_knockout`, in its `uv`) and is not drawn there, so
+box (`Quad::shadow_knockout`: its insets in `uv`, its radii in
+`border_color` and `border_w`, fields a shadow had no use for) and is
+not drawn there, so
 the same card is within rounding of the card faded whole, but for a
 few levels on its one-pixel antialiased edge. A translucent `bg` was
 the same case without the fade. A node that relied on its own shadow
 to darken a translucent fill sets a darker fill. A renderer of a host's
-own that ignores the shadow's `uv` draws it as before; kui.h's
+own that ignores those fields draws the shadow as before; kui.h's
 `KUI_QUAD_SHADOW` says how to read it.
 
 ### Added

@@ -126,12 +126,13 @@ shadow through itself. Each of those is a note in the doc comment, not a
 silent surprise.
 
 > **Amended 2026-10-23 (backlog V10):** the shape *is* knocked out now.
-> The shadow quad carries the node's own box in its `uv`, and the shader
+> The shadow quad carries the node's own box in the fields it had no use
+> for (its insets in `uv`, its radii in `border_color` and `border_w`), and the shader
 > multiplies the shadow by one less the box's coverage, so a translucent
 > background no longer shows its own shadow, and a card faded by its group
 > opacity no longer turns grey with the shadow under it — which measured
 > as up to 50 levels over most of a faded card's body. Still one quad and
-> one pass; a renderer that ignores `uv` draws the shadow as before.
+> one pass; a renderer that ignores those fields draws the shadow as before.
 
 ### Gradients: out of scope for v0
 

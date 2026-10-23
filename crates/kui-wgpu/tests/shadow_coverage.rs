@@ -98,15 +98,15 @@ fn a_hard_shadow_is_the_shape_itself() {
     assert!(coverage(&q, 60.0, 19.0) == 0.0, "and nothing above it");
 }
 
-/// The knock-out the core packs is the card's own box: the background's
-/// rect and radii, to the sixteenth of a pixel it is packed in.
+/// The knock-out the core carries is the card's own box: the background's
+/// rect and radii, as the background has them.
 #[test]
 fn the_knockout_is_the_node_s_own_box() {
     let q = blurred();
     let (n, radii) = q.shadow_knockout().expect("a box's shadow carries one");
     assert_eq!((n.x, n.y, n.w, n.h), (20.0, 20.0, 80.0, 40.0));
     assert_eq!(radii, [6.0; 4]);
-    // At 1.5x, off the sixteenth grid: within it.
+    // At 1.5x, off any grid: the same floats.
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(200.0, 100.0), 1.5);
     ui.configure_root(NodeSpec::column().pad(20.3));
@@ -128,10 +128,7 @@ fn the_knockout_is_the_node_s_own_box() {
         (n.w, bg.rect.w),
         (n.h, bg.rect.h),
     ] {
-        assert!(
-            (a - b).abs() <= 1.0 / 32.0,
-            "{a} against the background's {b}"
-        );
+        assert!((a - b).abs() <= 1e-4, "{a} against the background's {b}");
     }
     assert_eq!(radii, bg.radius);
 }

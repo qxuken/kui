@@ -5179,4 +5179,4 @@ move.
 
 **From the group-opacity measurement (2026-10-23)** — V10, filed and built the same day; V11 open
 
-- `!` **V10** — [A node's shadow is drawn under it, and shows through it when translucent or faded](backlog/closed-2026-09.md#-v10--a-nodes-shadow-is-drawn-under-it-and-shows-through-it-when-translucent-or-faded--done-2026-10-23) — done (2026-10-23) — the shadow quad carries the node's own box in its `uv` (`Quad::shadow_knockout`) and the shader leaves the shadow out where the box covers, as CSS does; a faded card is the card faded whole but for its antialiased edge
+- `!` **V10** — [A node's shadow is drawn under it, and shows through it when translucent or faded](backlog/closed-2026-09.md#-v10--a-nodes-shadow-is-drawn-under-it-and-shows-through-it-when-translucent-or-faded--done-2026-10-23) — done (2026-10-23) — the shadow quad carries the node's own box in the fields it had no use for (`Quad::shadow_knockout`) and the shader leaves the shadow out where the box covers, as CSS does; a faded card is the card faded whole but for its antialiased edge

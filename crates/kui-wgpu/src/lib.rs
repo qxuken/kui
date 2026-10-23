@@ -189,12 +189,13 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
     let uv = if q.kind == QuadKind::Segment {
         q.segment_ends()
     } else if q.kind == QuadKind::Shadow {
-        // The node's own box, knocked out of its shadow: its insets in
-        // `uv` and its radii in `border_color`, which a shadow has no use
-        // for (`shade`, kind 5).
-        let (insets, radii) = shadow_knockout(q);
-        border_color = radii;
-        insets
+        // The node's own box, knocked out of its shadow (`shade`, kind 5):
+        // its insets are `uv`'s float bits as a segment's ends are, and its
+        // radii `border_color`'s rgb and `border_w`, the bottom-left one
+        // moved into the alpha the shader reads them from
+        // (`Quad::shadow_knockout`).
+        border_color[3] = q.border_w;
+        q.segment_ends()
     } else if q.kind == QuadKind::Texture {
         let uv = textures.get(q.uv[0] as usize).map_or([0; 4], |t| t.uv);
         [uv[0] as f32, uv[1] as f32, uv[2] as f32, uv[3] as f32]
@@ -240,26 +241,6 @@ fn instance_of(q: &Quad, clips: &[Clip], textures: &[kui_core::display::TextureD
         ],
         inner: [clip.inner.x, clip.inner.y, clip.inner.w, clip.inner.h],
         inner_radii: clip.inner_radius,
-    }
-}
-
-/// A shadow's knock-out as the shader reads it: the node's insets from
-/// the shadow quad (left, top, right, bottom) and its radii. One that
-/// carries none is the whole quad inset to nothing, which knocks nothing
-/// out. Out of line: `instance_of` runs for every quad of a frame.
-#[inline(never)]
-fn shadow_knockout(q: &Quad) -> ([f32; 4], [f32; 4]) {
-    match q.shadow_knockout() {
-        Some((n, radii)) => (
-            [
-                n.x - q.rect.x,
-                n.y - q.rect.y,
-                (q.rect.x + q.rect.w) - (n.x + n.w),
-                (q.rect.y + q.rect.h) - (n.y + n.h),
-            ],
-            radii,
-        ),
-        None => ([0.0, 0.0, q.rect.w, q.rect.h], [0.0; 4]),
     }
 }
 

@@ -60,7 +60,7 @@ pub fn quad_coverage(q: &kui_core::Quad, x: f32, y: f32) -> f32 {
 /// `shade`'s knock-out for a shadow quad (kind 5) at the fragment centred
 /// on (`x`, `y`): the factor its coverage is multiplied by, one less the
 /// node's own box's coverage there (`box_coverage` over the box the quad
-/// carries). One where it carries none.
+/// carries). One for a box of no size.
 pub fn knockout(q: &kui_core::Quad, x: f32, y: f32) -> f32 {
     let Some((n, radii)) = q.shadow_knockout() else {
         return 1.0;
