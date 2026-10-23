@@ -181,6 +181,21 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSImage",
     "NSImageRep",
     "NSBitmapImageRep",
+    # The first edge press from another app, resized by kui itself (`mod
+    # macos_first_click`, backlog C54): the frame resize cursor, and the
+    # screen's visible frame the top edge stops at, and the pointer read off
+    # each drag's own CGEvent.
+    "NSCursor",
+    "NSScreen",
+    "objc2-core-graphics",
+] }
+# Where each of those drags is: `CGEventGetLocation`, which moves with the
+# event where `+[NSEvent mouseLocation]` lagged posted drags. The version
+# winit already builds.
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+    "std",
+    "CGEvent",
+    "CGEventTypes",
 ] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = [
     "std",
