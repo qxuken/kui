@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.64 (unreleased)
+## 0.1.0-alpha.64 (2026-10-23)
 
 **What breaks.**
 
@@ -38,12 +38,14 @@ was the first bare bump to break an app in five releases).
   the jump back (ADR 0050, backlog F182). A trackpad, and every door
   that feeds pixels (`scroll`, `scrollGesture`, `kui_input_scroll*`,
   `InputEvent::Scroll`), are unchanged.
-- C: `KuiSpec` appends `reveal_on_hover` and grows to 800 bytes on
-  64-bit; `KUI_ABI_VERSION` is 35. Recompile; a zeroed field is a node
-  drawn as before (ADR 0051).
-- C: `KuiSpec` takes `floats_in_order` in the tail padding after
-  `reveal_on_hover`, still 800 bytes on 64-bit; `KUI_ABI_VERSION` is
-  36. Recompile; a zeroed field stacks floats as before (ADR 0053).
+- A wrapped text's row that a scroll view's bottom edge cuts through
+  draws every glyph reaching into the view, where alpha.63 drew it only
+  up to its first glyph whose ink starts below the edge (backlog RG163,
+  RG164).
+- C: `KuiSpec` appends `reveal_on_hover` and, in the tail padding after
+  it, `floats_in_order`, and grows to 800 bytes on 64-bit;
+  `KUI_ABI_VERSION` is 36. Recompile; zeroed fields draw and stack a
+  node as before (ADR 0051, ADR 0053).
 - Rust: `MenuBar` has a third public field, `standard_menus`, and
   `InteractSpec` a `reveal_on_hover`; a struct literal of either names
   it or ends in `..Default::default()` (`MenuBar::new` and the builders
@@ -104,7 +106,6 @@ was the first bare bump to break an app in five releases).
   popup declared under the canvas is one of its floats and paints by
   its place; declare it outside. The hover hint of a `tooltip` is the
   core's and goes over the items.
-
 - **A wheel's notch glides** (ADR 0050, backlog F182). A notch was a
   hard 40 px step on every platform — any mouse wheel on Windows and
   Linux, a plain mouse on macOS — while a trackpad's pixel stream
@@ -144,18 +145,14 @@ was the first bare bump to break an app in five releases).
   ghost. A leaf's hint follows the box's rule now. A hint the app
   places itself with `widgets::tooltip` is still its content and fades
   with the box it is in, ghost included (backlog RG162).
-- A wrapped text of 4096 bytes or more with no line breaks — a minified
-  bundle, a long JSON cookie — drew a row the scroll view's bottom edge
-  cut through only up to its first glyph whose ink starts below that
-  edge: a `.` or a `,` under the `0` before it, so the half-shown row
-  ended mid-row and the rest appeared as it scrolled in. The row draws
-  every glyph that reaches into the view now (backlog RG163).
-- Any wrapped text did the same, long or not: a scroll view cutting
-  through a row of a paragraph, a log or a code block drew that row only
-  up to its first glyph whose ink starts below the view's edge, and the
-  rest of the row appeared once it scrolled further in. A text stopped
-  drawing at its first glyph below the clip; it stops at its first line
-  below it now (backlog RG164).
+- A wrapped text's row that a scroll view's bottom edge cut through — in
+  a paragraph, a log, a code block, a minified bundle of 4096 bytes or
+  more with no line breaks — drew only up to its first glyph whose ink
+  starts below that edge: a `.` or a `,` under the `0` before it, so the
+  half-shown row ended mid-row and the rest appeared as it scrolled in.
+  A text stopped drawing at its first glyph below the clip; it stops at
+  its first line below it now, and the row draws every glyph that
+  reaches into the view (backlog RG163, RG164).
 
 **What you can delete.**
 
