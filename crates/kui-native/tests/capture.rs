@@ -98,6 +98,10 @@ fn answers(core: &mut Core) -> Vec<(Value, Captured)> {
 fn saved(a: &(Value, Captured)) -> Option<&Captured> {
     match (&a.1.phase, &a.1.error) {
         (CapturePhase::Failed, Some(e)) if e.starts_with("no GPU") => {
+            assert!(
+                std::env::var_os("KUI_REQUIRE_GPU").is_none_or(|v| v.is_empty()),
+                "KUI_REQUIRE_GPU is set, but {e}"
+            );
             eprintln!("skipped: {e}");
             None
         }
@@ -190,7 +194,11 @@ fn a_recording_shows_each_frame_until_the_next_on_the_frame_clock() {
     ui.record_to(path.clone(), Some(Value::str("rec")));
     ui.finish();
     captures.serve(&mut core);
-    assert!(answers(&mut core).iter().all(|a| saved(a).is_some()));
+    // Nothing to answer yet, or, with no GPU, the skip: `saved` panics
+    // on any other answer.
+    for a in &answers(&mut core) {
+        let _ = saved(a);
+    }
     if !captures.recording() {
         return; // no GPU: the failure above was the skip
     }

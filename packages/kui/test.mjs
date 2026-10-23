@@ -1955,7 +1955,7 @@ test('an AnimationEncoder records frames and decodeAnimation plays them back', (
 // and a recording, served after each frame as a window's runner serves
 // them, each answered with a `capture` event in the message it named and
 // the path in it. With no GPU adapter both answer `failed`, and the test
-// says it skipped.
+// says it skipped - unless KUI_REQUIRE_GPU is set, as for `capture` above.
 test('captureTo and recordTo write the frames and answer with the path', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'kui-captures-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -1980,8 +1980,10 @@ test('captureTo and recordTo write the frames and answer with the path', (t) => 
   assert.deepEqual(got.map((e) => e.payload.kind), ['shot', 'rec'], 'only the asks that named a message');
   const failed = got.find((e) => e.payload.capture.phase === 'failed');
   if (failed) {
-    assert.match(failed.message.capture.error, /^no GPU/);
-    return t.skip(failed.message.capture.error);
+    const why = failed.payload.capture.error;
+    assert.match(why, /^no GPU/);
+    assert.ok(!process.env.KUI_REQUIRE_GPU, `KUI_REQUIRE_GPU is set, but ${why}`);
+    return t.skip(why);
   }
   const [shot, rec] = got.map((e) => e.payload.capture);
   assert.deepEqual(shot, { phase: 'saved', path: still, width: 40, height: 20, frames: 1, seconds: 0 });
@@ -2024,8 +2026,11 @@ test('captureToClipboard queues the next frame for the clipboard', (t) => {
   const [got] = ctx.pollEvents().filter((e) => e.event === 'capture');
   assert.equal(got.payload.kind, 'copy');
   if (got.payload.capture.phase === 'failed') {
+    const why = got.payload.capture.error;
+    assert.match(why, /^no GPU/);
+    assert.ok(!process.env.KUI_REQUIRE_GPU, `KUI_REQUIRE_GPU is set, but ${why}`);
     assert.deepEqual(ctx.takeMenuActions(), [], 'nothing copied');
-    return t.skip(got.payload.capture.error);
+    return t.skip(why);
   }
   assert.deepEqual(got.payload.capture, { phase: 'saved', path: '', width: 40, height: 20, frames: 1, seconds: 0 });
   assert.deepEqual(ctx.takeMenuActions(), [{ kind: 'setClipboardImage', width: 40, height: 20 }]);
