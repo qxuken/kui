@@ -84,6 +84,7 @@ pub fn encode_image(
                 h: height,
                 rgba: rgba.to_vec(),
                 secs: 0.0,
+                clear_after: false,
             };
             write_gif(&mut out, width, height, None, &[whole], &[0])?;
             Ok(())
@@ -103,6 +104,12 @@ pub fn encode_image(
 /// GIF) gives its time to the next frame and is not shown. So a recording
 /// holds two whole frames and the changed parts, and a UI that changes a
 /// corner costs a corner.
+///
+/// A GIF frame that clears a pixel the one before showed is kept whole,
+/// and so is the frame before it, which is cleared once it has shown: a
+/// GIF's transparent pixel shows what is under it, so a pixel can go
+/// back to clear only on a cleared canvas (backlog FZ12). A recording of
+/// an opaque window never pays it.
 ///
 /// A headless recording is exact: frame, [`crate::capture`], `add` it for
 /// the step, move the clock by the step, again.
@@ -127,6 +134,10 @@ struct Patch {
     h: u32,
     rgba: Vec<u8>,
     secs: f64,
+    /// Whether the canvas is cleared once it has shown, for a GIF frame
+    /// after which a pixel goes back to clear: what a GIF calls disposing
+    /// to the background.
+    clear_after: bool,
 }
 
 /// A GIF frame's least time: 2 hundredths. Browsers show 1 (and 0) as 10.
@@ -255,6 +266,7 @@ impl AnimationEncoder {
                 h,
                 rgba: px.clone(),
                 secs,
+                clear_after: false,
             });
             self.shown = px;
             return;
@@ -265,6 +277,27 @@ impl AnimationEncoder {
             }
             return;
         };
+        if self.format == AnimationEncoding::Gif && clears(&self.shown, &px) {
+            // The frame before, whole and then cleared, and this one whole
+            // on the cleared canvas.
+            let shown = std::mem::take(&mut self.shown);
+            if let Some(last) = self.kept.last_mut() {
+                (last.x, last.y, last.w, last.h) = (0, 0, w, h);
+                last.rgba = shown;
+                last.clear_after = true;
+            }
+            self.kept.push(Patch {
+                x: 0,
+                y: 0,
+                w,
+                h,
+                rgba: px.clone(),
+                secs,
+                clear_after: false,
+            });
+            self.shown = px;
+            return;
+        }
         let row = w as usize * 4;
         let mut rgba = Vec::with_capacity(cw as usize * ch as usize * 4);
         for r in y..y + ch {
@@ -278,9 +311,16 @@ impl AnimationEncoder {
             h: ch,
             rgba,
             secs,
+            clear_after: false,
         });
         self.shown = px;
     }
+}
+
+/// Whether `b` is clear at a pixel where `a` is not.
+fn clears(a: &[u8], b: &[u8]) -> bool {
+    let (pa, pb) = (a.as_chunks::<4>().0, b.as_chunks::<4>().0);
+    pa.iter().zip(pb).any(|(p, q)| p[3] != 0 && q[3] == 0)
 }
 
 /// The smallest rectangle `b` differs from `a` in, `w` pixels a row:
@@ -374,7 +414,11 @@ fn write_gif(
         let mut px = p.rgba.clone();
         let mut f = gif::Frame::from_rgba_speed(p.w as u16, p.h as u16, &mut px, 10);
         (f.left, f.top, f.delay) = (p.x as u16, p.y as u16, d);
-        f.dispose = gif::DisposalMethod::Keep;
+        f.dispose = if p.clear_after {
+            gif::DisposalMethod::Background
+        } else {
+            gif::DisposalMethod::Keep
+        };
         e.write_frame(&f).map_err(err)?;
     }
     Ok(())
@@ -534,6 +578,37 @@ mod tests {
         assert!((total - 1.0).abs() < 0.011, "{total}");
         assert!(back.frames.iter().all(|f| f.delay >= 0.02));
         assert_eq!(back.loops, None, "for ever");
+    }
+
+    /// A pixel that goes back to clear in a later frame reads back clear
+    /// in both formats: a GIF draws that frame whole on a cleared canvas
+    /// (backlog FZ12, found by the `encode` fuzz target), and a frame
+    /// that only paints keeps its rectangle.
+    #[test]
+    fn a_pixel_cleared_in_a_later_frame_reads_back_clear() {
+        let red = fill(4, 2, [255, 0, 0, 255]);
+        let mut holed = red.clone();
+        holed[4..8].copy_from_slice(&[0, 0, 0, 0]);
+        let mut painted = holed.clone();
+        painted[28..32].copy_from_slice(&[0, 0, 255, 255]);
+        for format in [AnimationEncoding::Png, AnimationEncoding::Gif] {
+            let mut a = AnimationEncoder::new(format, 4, 2, None).unwrap();
+            for px in [&red, &holed, &painted] {
+                a.add(px, 0.1).unwrap();
+            }
+            if format == AnimationEncoding::Gif {
+                assert_eq!(a.kept[0].rgba.len(), 4 * 2 * 4, "the red whole");
+                assert!(a.kept[0].clear_after, "the red cleared once shown");
+                assert_eq!(
+                    a.kept[1].rgba.len(),
+                    4 * 2 * 4,
+                    "the hole on a clear canvas"
+                );
+            }
+            let back = decode_animation(&a.finish().unwrap()).unwrap();
+            let frames: Vec<&[u8]> = back.frames.iter().map(|f| &f.rgba[..]).collect();
+            assert_eq!(frames, [&red[..], &holed, &painted], "{format:?}");
+        }
     }
 
     #[test]

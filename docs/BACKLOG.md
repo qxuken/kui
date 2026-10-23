@@ -3288,6 +3288,18 @@ error, what overlaps inside a faded subtree, was V11, **built
 0056](adr/0056-a-faded-subtree-is-drawn-as-one-picture.md), the day it
 was filed, and in the archive.
 
+## From the alpha.66 fuzz hour (2026-10-24)
+
+An hour of every target on the Mac's twelve cores at a low priority,
+after two additions to what they reach: `scenes` sends a wheel's
+notches (`InputEvent::Wheel`, ADR 0050's glide) and turns opacity
+groups (ADR 0056) on and off, from bits of bytes it read and left
+unused, so every kept input replays as it did; and a seventh target,
+`encode`, writes fuzzed pixels and frame times through the capture
+encoders (C55) and reads them back through the decoder. `encode` found
+FZ12 in its third minute: a GIF frame could not turn a pixel clear —
+**built 2026-10-24**, the day it was filed, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5126,3 +5138,7 @@ move.
 
 - `!` **V10** — [A node's shadow is drawn under it, and shows through it when translucent or faded](backlog/closed-2026-09.md#-v10--a-nodes-shadow-is-drawn-under-it-and-shows-through-it-when-translucent-or-faded--done-2026-10-23) — done (2026-10-23) — the shadow quad carries the node's own box in the fields it had no use for (`Quad::shadow_knockout`) and the shader leaves the shadow out where the box covers, as CSS does; a faded card is the card faded whole but for its antialiased edge
 - `.` **V11** — [A faded subtree blends piece by piece: a label on its own fill washes out, overlaps blend twice](backlog/closed-2026-09.md#-v11--a-faded-subtree-blends-piece-by-piece-a-label-on-its-own-fill-washes-out-overlaps-blend-twice--done-2026-10-23) — done (2026-10-23) — a node whose own `opacity` is under 1 draws its subtree into a picture of its own, faded once (ADR 0056): `Core::set_opacity_groups`, on in every window, group markers in the display list, two shared textures in kui-wgpu
+
+**From the alpha.66 fuzz hour (2026-10-24)** — FZ12, filed and built the same day
+
+- `.` **FZ12** — [A recorded GIF cannot turn a pixel clear](backlog/closed-2026-09.md#-fz12--a-recorded-gif-cannot-turn-a-pixel-clear--done-2026-10-24) — done (2026-10-24) — a frame that clears a pixel is written whole on a canvas the frame before clears once shown (`DisposalMethod::Background`); found by the new `encode` target
