@@ -2406,17 +2406,19 @@ const at = (x, y) => [...shot.rgba.subarray((y * shot.width + x) * 4, (y * shot.
 assert.deepEqual(at(5, 20), [0, 0, 255, 255]);
 ```
 
-To keep it as a file, `encodePng(shot.width, shot.height, shot.rgba)`
-returns PNG bytes from the runner's own encoder, so a failing test can
-write what it saw with no image package:
+To keep it as a file, `encodeImage('png', shot.width, shot.height,
+shot.rgba)` returns PNG bytes from the runner's own encoder (`'jpeg'`,
+`'webp'` and `'gif'` too), so a failing test can write what it saw with
+no image package:
 
 ```ts
-writeFileSync('target/shot.png', encodePng(shot.width, shot.height, shot.rgba));
+writeFileSync('target/shot.png', encodeImage('png', shot.width, shot.height, shot.rgba));
 ```
 
-Rust: `kui_native::capture(&drive.core)` and `kui_native::encode_png`;
-C: `kui_capture(ctx, &w, &h)` and `kui_encode_png`, each freed with
-`kui_pixels_free`; Odin: `kui.capture(ui)` and `kui.encode_png`. The first capture
+Rust: `kui_native::capture(&drive.core)` and `kui_native::encode_image`;
+C: `kui_capture(ctx, &w, &h)` and `kui_encode_image(KUI_ENCODE_PNG, …)`,
+each freed with `kui_pixels_free`; Odin: `kui.capture(ui)` and
+`kui.encode_image(.Png, …)`. The first capture
 in a process opens the device (40–100 ms); later ones are about 10 ms
 for a 3456×2234 frame. A machine with no GPU adapter — a CI container
 with no software Vulkan — fails it, saying so, and a test there skips
@@ -2425,6 +2427,43 @@ the wallpaper kui draws for it, are not in it. A headless core draws
 grayscale text; a window's follows its device's subpixel text unless
 `textAa` pins it, so a test comparing whole images across machines pins
 it.
+
+[ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
+[alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)
+
+### How do I record a transition as an animated PNG or a GIF?
+
+Headless, on a stepped clock: frame, capture, add the capture for the
+step, move the clock, again. Every frame is the one the clock says, and
+none is dropped however long a capture takes. An `AnimationEncoder`
+writes the file a frame at a time:
+
+```ts
+const enc = new AnimationEncoder('png', 800 * 2, 600 * 2, { loops: 0 });
+for (let i = 0; i <= 30; i += 1) {
+  ctx.setTime(i / 60);
+  ctx.frame(800, 600, 2, view(model));
+  enc.add(ctx.capture().rgba, 1 / 60);
+}
+writeFileSync('target/slide.png', enc.finish());
+```
+
+`'png'` is an animated PNG, every colour exact; `'gif'` is 256 colours,
+smaller and slower to finish, and shows a frame for at least 20 ms, so
+at 60 fps every other frame gives its time to the next. The encoder
+keeps only the rectangle each frame changed, and a frame that changed
+nothing adds its time to the one before, so a mostly still UI records
+small. Thirty retina frames of a card sliding over a page took about 12
+ms a frame to capture and add, and 15 ms to finish as an 804 KB APNG.
+
+A real window records too, a capture between pumps, but each capture
+takes its milliseconds out of the pump, so it is a rough clip rather
+than an exact one.
+
+Rust: `kui_native::AnimationEncoder::new(AnimationEncoding::Png, w, h,
+None)`; C: `kui_animation_encoder_new(KUI_ENCODE_PNG, w, h, 0)`, `_add`,
+`_finish` (freed with `kui_pixels_free`) or `_free`; Odin:
+`kui.animation_encoder_new(.Png, w, h)`.
 
 [ADR 0054](adr/0054-a-frame-is-drawn-again-to-be-read.md) ·
 [alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-unreleased)

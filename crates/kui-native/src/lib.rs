@@ -160,10 +160,11 @@ pub use capture::{Capture, capture};
 mod clipboard;
 mod decode;
 pub use decode::{
-    Animation, AnimationFrame, MAX_ANIMATION_BYTES, Pixels, Showing, decode_animation,
-    decode_image, encode_png,
+    Animation, AnimationFrame, MAX_ANIMATION_BYTES, Pixels, Showing, decode_animation, decode_image,
 };
 mod dialogs;
+mod encode;
+pub use encode::{AnimationEncoder, AnimationEncoding, ImageEncoding, encode_image};
 /// The wallpaper a `Tinted` backdrop draws where the OS has no material.
 mod ground;
 mod icon;

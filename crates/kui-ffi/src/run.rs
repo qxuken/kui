@@ -500,16 +500,37 @@ pub extern "C" fn kui_capture(ptr: *mut KuiCtx, width: *mut u32, height: *mut u3
     })
 }
 
-/// Straight RGBA, `width * height * 4` bytes, to PNG bytes (`*len` of
-/// them) with the runner's encoder at its fast setting:
-/// `kui_native::encode_png`. Free with `kui_pixels_free`. NULL, with the
-/// reason on stderr and `*len` 0, for a size of zero or NULL pixels.
-/// `rgba`, when not NULL, points at `width * height * 4` readable bytes.
+/// The encoder a `KUI_ENCODE_*` names, with JPEG's quality (0 is 90).
+fn image_encoding(format: u32, quality: u32) -> Option<kui_native::ImageEncoding> {
+    use kui_native::ImageEncoding as E;
+    Some(match format {
+        KUI_ENCODE_PNG => E::Png,
+        KUI_ENCODE_JPEG => E::Jpeg {
+            quality: if quality == 0 {
+                90
+            } else {
+                quality.min(100) as u8
+            },
+        },
+        KUI_ENCODE_WEBP => E::WebP,
+        KUI_ENCODE_GIF => E::Gif,
+        _ => return None,
+    })
+}
+
+/// Straight RGBA, `width * height * 4` bytes, as a file's bytes (`*len` of
+/// them) in the format a `KUI_ENCODE_*` names: `kui_native::encode_image`.
+/// Free with `kui_pixels_free`. NULL, with the reason on stderr and `*len`
+/// 0, for a format not listed, a size of zero, NULL pixels, or a GIF past
+/// 65535 pixels a side. `rgba`, when not NULL, points at
+/// `width * height * 4` readable bytes.
 #[unsafe(no_mangle)]
-pub extern "C" fn kui_encode_png(
+pub extern "C" fn kui_encode_image(
+    format: u32,
     rgba: *const u8,
     width: u32,
     height: u32,
+    quality: u32,
     len: *mut usize,
 ) -> *mut u8 {
     guard(std::ptr::null_mut(), || {
@@ -519,28 +540,156 @@ pub extern "C" fn kui_encode_png(
             }
         };
         put(0);
+        let Some(encoding) = image_encoding(format, quality) else {
+            eprintln!("kui: kui_encode_image: {format} is no KUI_ENCODE_*");
+            return std::ptr::null_mut();
+        };
         let n = width as usize * height as usize * 4;
         if rgba.is_null() || n == 0 {
-            eprintln!("kui: kui_encode_png: {width}x{height} with no pixels");
+            eprintln!("kui: kui_encode_image: {width}x{height} with no pixels");
             return std::ptr::null_mut();
         }
         // SAFETY: the caller's promise, width * height * 4 bytes.
         let px = unsafe { std::slice::from_raw_parts(rgba, n) };
-        match kui_native::encode_png(width, height, px) {
+        match kui_native::encode_image(encoding, width, height, px) {
             Ok(bytes) => {
                 put(bytes.len());
                 hand_out(&bytes, &[]).0
             }
             Err(why) => {
-                eprintln!("kui: kui_encode_png: {why}");
+                eprintln!("kui: kui_encode_image: {why}");
                 std::ptr::null_mut()
             }
         }
     })
 }
 
-/// Frees what `kui_decode_image`, `kui_decode_animation`, `kui_capture` or
-/// `kui_encode_png` returned; NULL is nothing. Only those pointers: the
+/// An animated PNG or GIF written a frame at a time: the handle
+/// `kui_animation_encoder_new` hands out, and `_finish` or `_free` takes
+/// back.
+pub struct KuiAnimationEncoder {
+    enc: kui_native::AnimationEncoder,
+    /// Bytes a frame: `width * height * 4`.
+    frame: usize,
+}
+
+/// `kui_native::AnimationEncoder::new`: `KUI_ENCODE_PNG` (an animated PNG)
+/// or `KUI_ENCODE_GIF`, frames of `width` by `height`, played `loops`
+/// times, 0 for ever. NULL, with the reason on stderr, for another format
+/// or a size the encoder cannot hold.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_animation_encoder_new(
+    format: u32,
+    width: u32,
+    height: u32,
+    loops: u32,
+) -> *mut KuiAnimationEncoder {
+    guard(std::ptr::null_mut(), || {
+        let encoding = match format {
+            KUI_ENCODE_PNG => kui_native::AnimationEncoding::Png,
+            KUI_ENCODE_GIF => kui_native::AnimationEncoding::Gif,
+            _ => {
+                eprintln!(
+                    "kui: kui_animation_encoder_new: {format} is not KUI_ENCODE_PNG or KUI_ENCODE_GIF"
+                );
+                return std::ptr::null_mut();
+            }
+        };
+        match kui_native::AnimationEncoder::new(
+            encoding,
+            width,
+            height,
+            (loops != 0).then_some(loops),
+        ) {
+            Ok(enc) => Box::into_raw(Box::new(KuiAnimationEncoder {
+                enc,
+                frame: width as usize * height as usize * 4,
+            })),
+            Err(why) => {
+                eprintln!("kui: kui_animation_encoder_new: {why}");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Adds a frame, the whole canvas, that shows for `seconds`. False, with
+/// the reason on stderr, for a NULL encoder or pixels, or a time that is
+/// negative or not finite. `rgba`, when not NULL, points at a frame's
+/// bytes.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_animation_encoder_add(
+    enc: *mut KuiAnimationEncoder,
+    rgba: *const u8,
+    seconds: f64,
+) -> bool {
+    guard(false, || {
+        // SAFETY: a handle `_new` made and `_finish` / `_free` did not take.
+        let Some(e) = (unsafe { enc.as_mut() }) else {
+            return false;
+        };
+        if rgba.is_null() {
+            eprintln!("kui: kui_animation_encoder_add: NULL pixels");
+            return false;
+        }
+        // SAFETY: the caller's promise, a frame's bytes.
+        let px = unsafe { std::slice::from_raw_parts(rgba, e.frame) };
+        match e.enc.add(px, seconds) {
+            Ok(()) => true,
+            Err(why) => {
+                eprintln!("kui: kui_animation_encoder_add: {why}");
+                false
+            }
+        }
+    })
+}
+
+/// The file's bytes, `*len` of them, freed with `kui_pixels_free`; the
+/// encoder is gone either way. NULL, with the reason on stderr and `*len`
+/// 0, when no frame was added.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_animation_encoder_finish(
+    enc: *mut KuiAnimationEncoder,
+    len: *mut usize,
+) -> *mut u8 {
+    guard(std::ptr::null_mut(), || {
+        let put = |n: usize| unsafe {
+            if !len.is_null() {
+                *len = n;
+            }
+        };
+        put(0);
+        if enc.is_null() {
+            return std::ptr::null_mut();
+        }
+        // SAFETY: a handle `_new` made, taken back once.
+        let e = unsafe { Box::from_raw(enc) };
+        match e.enc.finish() {
+            Ok(bytes) => {
+                put(bytes.len());
+                hand_out(&bytes, &[]).0
+            }
+            Err(why) => {
+                eprintln!("kui: kui_animation_encoder_finish: {why}");
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Drops an encoder without writing it; NULL is nothing.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_animation_encoder_free(enc: *mut KuiAnimationEncoder) {
+    guard((), || {
+        if !enc.is_null() {
+            // SAFETY: a handle `_new` made, taken back once.
+            drop(unsafe { Box::from_raw(enc) });
+        }
+    });
+}
+
+/// Frees what `kui_decode_image`, `kui_decode_animation`, `kui_capture`,
+/// `kui_encode_image` or `kui_animation_encoder_finish` returned; NULL is nothing. Only those pointers: the
 /// length is kept just before them.
 #[unsafe(no_mangle)]
 pub extern "C" fn kui_pixels_free(pixels: *mut u8) {

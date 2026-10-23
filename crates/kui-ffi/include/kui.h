@@ -4431,14 +4431,41 @@ uint32_t kui_animation_at(const double *delays, uint32_t count, uint32_t loops, 
  * the reason on stderr and both sides 0, for a context with no finished
  * frame, a frame past the device's largest texture, or no GPU adapter. */
 uint8_t *kui_capture(KuiCtx *ctx, uint32_t *width, uint32_t *height);
+/* What kui_encode_image writes, and of them PNG (an animated PNG) and GIF
+ * what kui_animation_encoder_new writes. */
+enum { KUI_ENCODE_PNG = 0, KUI_ENCODE_JPEG = 1, KUI_ENCODE_WEBP = 2, KUI_ENCODE_GIF = 3 };
 /* Straight RGBA - width x height pixels, four bytes each, what
- * kui_capture and kui_decode_image hand out - to PNG bytes, *len of them,
- * with the runner's encoder at its fast setting: a capture kept as a file.
- * Free with kui_pixels_free. NULL, with the reason on stderr and *len 0,
- * for a size of zero or NULL pixels. */
-uint8_t *kui_encode_png(const uint8_t *rgba, uint32_t width, uint32_t height, size_t *len);
-/* Frees what kui_decode_image, kui_decode_animation, kui_capture or
- * kui_encode_png returned; NULL is nothing. Only those pointers. */
+ * kui_capture and kui_decode_image hand out - as a file's bytes, *len of
+ * them, with the runner's encoder: a capture kept as a file. PNG lossless
+ * at the fast setting; JPEG at quality 1-100 (0 is 90), alpha dropped;
+ * WebP lossless; GIF in 256 colours, a pixel opaque or transparent. Free
+ * with kui_pixels_free. NULL, with the reason on stderr and *len 0, for a
+ * format not listed, a size of zero, NULL pixels, or a GIF past 65535
+ * pixels a side. */
+uint8_t *kui_encode_image(uint32_t format, const uint8_t *rgba, uint32_t width, uint32_t height,
+                          uint32_t quality, size_t *len);
+/* An animated PNG or GIF written a frame at a time (ADR 0054): each frame
+ * the whole width x height canvas as straight RGBA, of which the encoder
+ * keeps the rectangle that changed; a frame that changed nothing adds its
+ * time to the one before, and one shorter than the format shows (1 ms for
+ * PNG, 20 ms for GIF) gives its time to the next. loops is how many times
+ * it plays, 0 for ever. NULL, with the reason on stderr, for a format
+ * other than KUI_ENCODE_PNG or KUI_ENCODE_GIF or a size it cannot hold. */
+typedef struct KuiAnimationEncoder KuiAnimationEncoder;
+KuiAnimationEncoder *kui_animation_encoder_new(uint32_t format, uint32_t width, uint32_t height,
+                                               uint32_t loops);
+/* Adds a frame that shows for `seconds`. False, with the reason on stderr,
+ * for NULL pixels or a time that is negative or not finite. */
+bool kui_animation_encoder_add(KuiAnimationEncoder *enc, const uint8_t *rgba, double seconds);
+/* The file's bytes, *len of them, freed with kui_pixels_free; the encoder
+ * is gone either way. NULL, with the reason on stderr and *len 0, when no
+ * frame was added. */
+uint8_t *kui_animation_encoder_finish(KuiAnimationEncoder *enc, size_t *len);
+/* Drops an encoder without writing it; NULL is nothing. */
+void kui_animation_encoder_free(KuiAnimationEncoder *enc);
+/* Frees what kui_decode_image, kui_decode_animation, kui_capture,
+ * kui_encode_image or kui_animation_encoder_finish returned; NULL is
+ * nothing. Only those pointers. */
 void kui_pixels_free(uint8_t *pixels);
 
 /* What kui_run's window opens as: the chrome, the antialiasing and the

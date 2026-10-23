@@ -40,6 +40,7 @@ Str :: string
 Ctx :: struct {}
 Value :: struct {}
 ReplySink :: struct {}
+AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
 ABI_VERSION :: 36
@@ -468,6 +469,11 @@ COPY_NOTHING :: 2
 FILE_DIALOG_OPEN :: 0
 FILE_DIALOG_SAVE :: 1
 FILE_DIALOG_FOLDER :: 2
+
+ENCODE_PNG :: 0
+ENCODE_JPEG :: 1
+ENCODE_WEBP :: 2
+ENCODE_GIF :: 3
 
 CHROME_NATIVE :: 0
 CHROME_CUSTOM :: 1
@@ -1399,7 +1405,11 @@ foreign lib {
 	decode_animation :: proc(bytes: [^]u8, len: uint, width: ^u32, height: ^u32, count: ^u32, loops: ^u32, delays: ^[^]f64) -> [^]u8 ---
 	animation_at :: proc(delays: [^]f64, count: u32, loops: u32, elapsed: f64, next: ^f64) -> u32 ---
 	capture :: proc(ctx: ^Ctx, width: ^u32, height: ^u32) -> [^]u8 ---
-	encode_png :: proc(rgba: [^]u8, width: u32, height: u32, len: ^uint) -> [^]u8 ---
+	encode_image :: proc(format: u32, rgba: [^]u8, width: u32, height: u32, quality: u32, len: ^uint) -> [^]u8 ---
+	animation_encoder_new :: proc(format: u32, width: u32, height: u32, loops: u32) -> ^AnimationEncoder ---
+	animation_encoder_add :: proc(enc: ^AnimationEncoder, rgba: [^]u8, seconds: f64) -> bool ---
+	animation_encoder_finish :: proc(enc: ^AnimationEncoder, len: ^uint) -> [^]u8 ---
+	animation_encoder_free :: proc(enc: ^AnimationEncoder) ---
 	pixels_free :: proc(pixels: [^]u8) ---
 	run_with :: proc(ctx: ^Ctx, title: string, config: ^RunConfig, view: ViewFn, on_event: EventFn, user: rawptr) -> bool ---
 	slot_name :: proc(ctx: ^Ctx, out: ^string) -> bool ---

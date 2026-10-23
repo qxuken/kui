@@ -302,23 +302,40 @@ static int headless(void) {
     }
     kui_pixels_free(shot);
 
-    /* Pixels to a PNG and back through the runner's own codec, which a
-     * test keeping a capture as a file needs no library for. */
+    /* Pixels to a file's bytes and back through the runner's own codecs,
+     * which a test keeping a capture as a file needs no library for: two
+     * pixels as a PNG, then a three-frame GIF whose middle frame repeats
+     * the first and folds into its time. */
     static const uint8_t two[] = {255, 0, 0, 255, 0, 0, 255, 128};
     size_t png_len = 0;
-    uint8_t *png = kui_encode_png(two, 2, 1, &png_len);
+    uint8_t *png = kui_encode_image(KUI_ENCODE_PNG, two, 2, 1, 0, &png_len);
     uint32_t pw = 0, ph = 0;
     uint8_t *again = png ? kui_decode_image(png, png_len, &pw, &ph) : NULL;
     int png_ok = png && png_len > 8 && png[1] == 'P' && again && pw == 2 && ph == 1 &&
                  memcmp(again, two, sizeof two) == 0;
     kui_pixels_free(again);
     kui_pixels_free(png);
-    if (!png_ok || kui_encode_png(NULL, 2, 1, &png_len) || png_len) {
-        fprintf(stderr, "FAIL: kui_encode_png\n");
+    static const uint8_t red[] = {255, 0, 0, 255, 255, 0, 0, 255}, blue[] = {0, 0, 255, 255, 0, 0, 255, 255};
+    KuiAnimationEncoder *enc = kui_animation_encoder_new(KUI_ENCODE_GIF, 2, 1, 0);
+    int added = enc && kui_animation_encoder_add(enc, red, 0.1) && kui_animation_encoder_add(enc, red, 0.1) &&
+                kui_animation_encoder_add(enc, blue, 0.3);
+    size_t gif_len = 0;
+    uint8_t *gif_out = enc ? kui_animation_encoder_finish(enc, &gif_len) : NULL;
+    uint32_t gw = 0, gh = 0, gcount = 0, gloops = 7;
+    const double *gdelays = NULL;
+    uint8_t *gframes = gif_out ? kui_decode_animation(gif_out, gif_len, &gw, &gh, &gcount, &gloops, &gdelays) : NULL;
+    int gif_ok = added && gframes && gcount == 2 && gloops == 0 && fabs(gdelays[0] - 0.2) < 1e-9 &&
+                 gframes[2 * 4 + 2] == 255;
+    kui_pixels_free(gframes);
+    kui_pixels_free(gif_out);
+    kui_animation_encoder_free(kui_animation_encoder_new(KUI_ENCODE_PNG, 2, 1, 0));
+    if (!png_ok || !gif_ok || kui_encode_image(KUI_ENCODE_PNG, NULL, 2, 1, 0, &png_len) || png_len ||
+        kui_animation_encoder_new(KUI_ENCODE_JPEG, 2, 1, 0)) {
+        fprintf(stderr, "FAIL: kui_encode_image / kui_animation_encoder_*\n");
         kui_ctx_free(ctx);
         return 1;
     }
-    printf("encoded two pixels as a PNG and read them back\n");
+    printf("encoded a PNG and a GIF animation and read them back\n");
 
     kui_ctx_free(ctx);
     if (state.count != 1) {

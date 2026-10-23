@@ -1845,17 +1845,124 @@ pub fn decode_image(bytes: Buffer) -> Result<DecodedImage> {
     })
 }
 
+/// What `encodeImage` takes beside the pixels: `quality` for a JPEG, 1 to
+/// 100 (absent: 90).
+#[napi(object)]
+pub struct EncodeOptions {
+    pub quality: Option<u32>,
+}
+
 /// Encodes straight RGBA — `width` by `height` pixels, four bytes each,
-/// what `capture()` and `decodeImage` hand out — as PNG bytes with the
-/// runner's encoder at its fast setting, so a test or a probe keeps a
-/// capture as a file with no image package: `writeFileSync('shot.png',
-/// encodePng(s.width, s.height, s.rgba))`. Throws, naming why, for a size
-/// of zero or pixels that are not that size.
-#[napi]
-pub fn encode_png(width: u32, height: u32, rgba: Buffer) -> Result<Buffer> {
-    kui_native::encode_png(width, height, &rgba)
+/// what `capture()` and `decodeImage` hand out — as a file's bytes with
+/// the runner's encoders (ADR 0054), so a test or a probe keeps a capture
+/// with no image package: `writeFileSync('shot.png', encodeImage('png',
+/// s.width, s.height, s.rgba))`. `png` is lossless at the fast setting,
+/// `jpeg` lossy at `quality` with alpha dropped, `webp` lossless, `gif` 256
+/// colours. Throws, naming why, for another format, a size of zero or
+/// pixels that are not that size.
+#[napi(
+    ts_args_type = "format: 'png' | 'jpeg' | 'webp' | 'gif', width: number, height: number, rgba: Buffer, options?: EncodeOptions"
+)]
+pub fn encode_image(
+    format: String,
+    width: u32,
+    height: u32,
+    rgba: Buffer,
+    options: Option<EncodeOptions>,
+) -> Result<Buffer> {
+    use kui_native::ImageEncoding as E;
+    let err = |e: String| napi::Error::from_reason(format!("encodeImage: {e}"));
+    let encoding = match format.as_str() {
+        "png" => E::Png,
+        "jpeg" => E::Jpeg {
+            quality: options
+                .and_then(|o| o.quality)
+                .map_or(90, |q| q.clamp(1, 100) as u8),
+        },
+        "webp" => E::WebP,
+        "gif" => E::Gif,
+        other => {
+            return Err(err(format!(
+                "'{other}' is not 'png', 'jpeg', 'webp' or 'gif'"
+            )));
+        }
+    };
+    kui_native::encode_image(encoding, width, height, &rgba)
         .map(Buffer::from)
-        .map_err(|e| napi::Error::from_reason(format!("encodePng: {e}")))
+        .map_err(err)
+}
+
+/// What an `AnimationEncoder` takes beside its size: `loops`, how many
+/// times it plays (absent or 0: for ever).
+#[napi(object)]
+pub struct AnimationEncoderOptions {
+    pub loops: Option<u32>,
+}
+
+/// An animated PNG or GIF written a frame at a time (ADR 0054): `add`
+/// each frame — the whole canvas, straight RGBA, a `capture()`'s `rgba` —
+/// with the seconds it shows, then `finish` for the file's bytes. It keeps
+/// only the rectangle each frame changed, folds a frame that changed
+/// nothing into the time of the one before, and gives a frame too short
+/// for the format (1 ms for `png`, 20 ms for `gif`) to the next, so a
+/// recording at retina size holds two whole frames and the changes.
+#[napi]
+pub struct AnimationEncoder {
+    inner: Option<kui_native::AnimationEncoder>,
+}
+
+#[napi]
+impl AnimationEncoder {
+    /// An encoder for `width` by `height` frames as `png` (an animated PNG,
+    /// every colour exact) or `gif` (256 colours). Throws, naming why, for
+    /// another format or a size it cannot hold.
+    #[napi(
+        constructor,
+        ts_args_type = "format: 'png' | 'gif', width: number, height: number, options?: AnimationEncoderOptions"
+    )]
+    pub fn new(
+        format: String,
+        width: u32,
+        height: u32,
+        options: Option<AnimationEncoderOptions>,
+    ) -> Result<Self> {
+        let err = |e: String| napi::Error::from_reason(format!("AnimationEncoder: {e}"));
+        let encoding = match format.as_str() {
+            "png" => kui_native::AnimationEncoding::Png,
+            "gif" => kui_native::AnimationEncoding::Gif,
+            other => return Err(err(format!("'{other}' is not 'png' or 'gif'"))),
+        };
+        let loops = options.and_then(|o| o.loops).filter(|&n| n != 0);
+        let inner =
+            kui_native::AnimationEncoder::new(encoding, width, height, loops).map_err(err)?;
+        Ok(Self { inner: Some(inner) })
+    }
+
+    /// Adds a frame that shows for `seconds`. Throws, naming why, for
+    /// pixels that are not a frame's size, a time that is negative or not
+    /// finite, or an encoder already finished.
+    #[napi]
+    pub fn add(&mut self, rgba: Buffer, seconds: f64) -> Result<()> {
+        let enc = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| napi::Error::from_reason("add: the encoder is finished"))?;
+        enc.add(&rgba, seconds)
+            .map_err(|e| napi::Error::from_reason(format!("add: {e}")))
+    }
+
+    /// The file's bytes; the encoder is spent. Throws, naming why, with no
+    /// frame added or when it was finished already.
+    #[napi]
+    pub fn finish(&mut self) -> Result<Buffer> {
+        let enc = self
+            .inner
+            .take()
+            .ok_or_else(|| napi::Error::from_reason("finish: the encoder is finished"))?;
+        enc.finish()
+            .map(Buffer::from)
+            .map_err(|e| napi::Error::from_reason(format!("finish: {e}")))
+    }
 }
 
 /// Decodes every frame of an animated GIF, PNG (APNG) or WebP, each the

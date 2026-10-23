@@ -14,7 +14,7 @@ import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as pkg from './index.js';
-import { Ctx, KuiWindow, RowHeights, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, encodePng, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, RowHeights, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, encodeImage, AnimationEncoder, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -1896,20 +1896,58 @@ test('capture reads the finished frame back as RGBA in physical px', (t) => {
   // And back in as an image, which is the shape it is in.
   assert.match(ctx.addImage(shot.width, shot.height, shot.rgba), /^[0-9a-f]{16}$/);
   // And out as a PNG, through the runner's own encoder.
-  const png = encodePng(shot.width, shot.height, shot.rgba);
+  const png = encodeImage('png', shot.width, shot.height, shot.rgba);
   assert.equal(png.subarray(1, 4).toString(), 'PNG');
   const back = decodeImage(png);
   assert.deepEqual([back.width, back.height], [80, 40]);
   assert.ok(back.rgba.equals(shot.rgba), 'the same pixels both ways');
 });
 
-test('encodePng writes straight RGBA as a PNG, and refuses pixels of another size', () => {
+test('encodeImage writes PNG, WebP, JPEG and GIF, and refuses what it cannot write', () => {
   const two = Buffer.from([255, 0, 0, 255, 0, 0, 255, 128]);
-  const back = decodeImage(encodePng(2, 1, two));
-  assert.deepEqual([back.width, back.height], [2, 1]);
-  assert.deepEqual([...back.rgba], [...two], 'alpha kept, not premultiplied');
-  assert.throws(() => encodePng(2, 2, two), /encodePng: 2x2 RGBA is 16 bytes, not 8/);
-  assert.throws(() => encodePng(0, 1, Buffer.alloc(0)), /encodePng: a PNG is at least one pixel/);
+  for (const format of ['png', 'webp']) {
+    const back = decodeImage(encodeImage(format, 2, 1, two));
+    assert.deepEqual([...back.rgba], [...two], `${format}: lossless, alpha kept, not premultiplied`);
+  }
+  const flat = Buffer.alloc(16 * 16 * 4);
+  for (let i = 0; i < flat.length; i += 4) flat.set([200, 40, 90, 255], i);
+  const jpeg = decodeImage(encodeImage('jpeg', 16, 16, flat, { quality: 95 }));
+  assert.ok(Math.abs(jpeg.rgba[0] - 200) <= 3 && Math.abs(jpeg.rgba[2] - 90) <= 3, 'close');
+  assert.deepEqual([...decodeImage(encodeImage('gif', 16, 16, flat)).rgba.subarray(0, 3)], [200, 40, 90]);
+  assert.throws(() => encodeImage('png', 2, 2, two), /encodeImage: 2x2 RGBA is 16 bytes, not 8/);
+  assert.throws(() => encodeImage('bmp', 2, 1, two), /encodeImage: 'bmp' is not 'png', 'jpeg', 'webp' or 'gif'/);
+});
+
+// A recording (ADR 0054): headless frames on a stepped clock, each
+// captured and added for the step. The encoder keeps what changed, folds
+// a repeat into the time before, and the file plays back whole.
+test('an AnimationEncoder records frames and decodeAnimation plays them back', (t) => {
+  const ctx = new Ctx();
+  const view = (x) => box({ width: 40, height: 20, bg: '#000000' }, [box({ width: 10, height: 10, bg: '#00ff00', float: { anchor: 'parent', dx: x, dy: 5 } })]);
+  ctx.frame(40, 20, 1, view(0));
+  let first;
+  try {
+    first = ctx.capture();
+  } catch (e) {
+    if (/no GPU/.test(e.message)) return t.skip(e.message);
+    throw e;
+  }
+  for (const format of ['png', 'gif']) {
+    const enc = new AnimationEncoder(format, first.width, first.height, { loops: 1 });
+    for (const x of [0, 0, 10, 20]) {
+      ctx.frame(40, 20, 1, view(x));
+      enc.add(ctx.capture().rgba, 0.05);
+    }
+    const back = decodeAnimation(enc.finish());
+    assert.equal(back.frames.length, 3, `${format}: the repeat folded in`);
+    assert.deepEqual(back.delays, [0.1, 0.05, 0.05], format);
+    assert.equal(back.loops, 1, format);
+    const px = (f, x, y) => [...back.frames[f].subarray((y * 40 + x) * 4, (y * 40 + x) * 4 + 4)];
+    assert.deepEqual(px(2, 25, 10), [0, 255, 0, 255], `${format}: the square where it went`);
+    assert.deepEqual(px(2, 5, 10), [0, 0, 0, 255], `${format}: and gone from where it was`);
+    assert.throws(() => enc.finish(), /finish: the encoder is finished/);
+  }
+  assert.throws(() => new AnimationEncoder('webp', 2, 2), /AnimationEncoder: 'webp' is not 'png' or 'gif'/);
 });
 
 // A lookup by accessible name (backlog F137): the `label` prop or a

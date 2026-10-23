@@ -142,7 +142,10 @@ c_type! {
     ViewFn => "KuiViewFn",
 }
 #[cfg(feature = "runner")]
-c_type! { EventFn => "KuiEventFn", TeardownFn => "KuiTeardownFn" }
+c_type! {
+    EventFn => "KuiEventFn", TeardownFn => "KuiTeardownFn",
+    crate::run::KuiAnimationEncoder => "KuiAnimationEncoder",
+}
 impl<T: CType> CType for *mut T {
     fn c() -> String {
         format!("{} *", T::c())
@@ -518,6 +521,10 @@ fn asserts() -> (String, Vec<&'static str>) {
             KUI_TEXT_AA_AUTO,
             KUI_TEXT_AA_GRAYSCALE,
             KUI_TEXT_AA_SUBPIXEL,
+            KUI_ENCODE_PNG,
+            KUI_ENCODE_JPEG,
+            KUI_ENCODE_WEBP,
+            KUI_ENCODE_GIF,
             KUI_DIAG_DEFAULT,
             KUI_DIAG_ON,
             KUI_DIAG_OFF,
@@ -1354,7 +1361,7 @@ fn every_entry_point_is_pinned() {
             }
         }
     }
-    // The runner's eleven are pinned only in a build that has them.
+    // The runner's fifteen are pinned only in a build that has them.
     let runner = [
         "kui_run",
         "kui_run_with",
@@ -1365,7 +1372,11 @@ fn every_entry_point_is_pinned() {
         "kui_decode_animation",
         "kui_animation_at",
         "kui_capture",
-        "kui_encode_png",
+        "kui_encode_image",
+        "kui_animation_encoder_new",
+        "kui_animation_encoder_add",
+        "kui_animation_encoder_finish",
+        "kui_animation_encoder_free",
         "kui_pixels_free",
     ];
     let mut expected = declared.clone();

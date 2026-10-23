@@ -80,14 +80,32 @@ no window opens in 12–28 ms. None of it is a reason not to.
    scale, rgba}`. Lua has none, for the reason every reading-back row
    gives (`GUEST`). It is a new function in C, with no struct moved, so
    the ABI does not change.
-7. **A PNG encoder beside the decoder.** `kui_native::encode_png(width,
-   height, &rgba)` writes straight RGBA as PNG through the `image` crate
-   the runner already links for `decode_image`, at its fast setting:
-   about 12 ms and 1.2 MB for a text-heavy 3456×2234 capture. Doors:
-   `kui_encode_png` in C (freed with `kui_pixels_free`), `encode_png` in
-   Odin, `kui.encodePng` in Node, `GUEST` in Lua. A test or a probe keeps
-   what it saw as a file with no image library of its own; Node has
-   none built in.
+7. **An encoder beside the decoder, for stills and recordings.** With
+   the crates the runner already links for `decode_image` (`image`, and
+   the `png` and `gif` it builds), so a test or a probe keeps what it saw
+   as a file with no image library of its own; Node has none built in.
+   - `kui_native::encode_image(format, width, height, &rgba)`: PNG
+     (lossless, the fast setting: about 12 ms and 1.2 MB for a
+     text-heavy 3456×2234 capture), JPEG (a quality, alpha dropped),
+     WebP (lossless: there is no lossy encoder in the tree) or GIF (256
+     colours).
+   - `kui_native::AnimationEncoder`: an animated PNG or GIF written a
+     frame at a time, `add(rgba, seconds)` then `finish()`. A frame is
+     the whole canvas, but what is kept is the rectangle it changed over
+     the frame kept before (both formats draw a frame over the last at an
+     offset), a frame that changed nothing adds its time to that one,
+     and a frame shorter than the format shows (1 ms for PNG, 20 ms for
+     GIF, which browsers slow below) gives its time to the next. So a
+     recording holds two whole frames and the changes, where a list of
+     frames handed over at the end would be 30 MB a retina frame; and
+     APNG must know its frame count before it writes, which holding the
+     changes until `finish` gives it. Animated WebP has no encoder in
+     the tree.
+   - Doors: `kui_encode_image` with `KUI_ENCODE_*` and the four
+     `kui_animation_encoder_*` (an opaque handle) in C, the pixels freed
+     with `kui_pixels_free`; `encode_image` and `animation_encoder_*` in
+     Odin; `kui.encodeImage` and the class `kui.AnimationEncoder` in Node;
+     `GUEST` in Lua. New functions, no struct moved, so no ABI change.
 
 ## Considered options
 
@@ -154,7 +172,17 @@ no window opens in 12–28 ms. None of it is a reason not to.
   `a_capture_is_the_finished_frame_as_pixels`, by Node's `capture reads
   the finished frame back as RGBA in physical px`, and by the C and
   Odin counters' headless drives, which also hold `kui_capture` to
-  `every_entry_point_is_called`. The encoder by kui-native's
-  `a_png_encoded_decodes_to_the_same_pixels`, Node's `encodePng` test,
-  and the C and Odin counters, which encode two pixels and decode them
-  back.
+  `every_entry_point_is_called`. The encoders by kui-native's
+  `encode::tests` (each still format back through the decoder, the
+  refusals, an animation keeping its rectangle and folding a repeat in
+  both formats, a GIF at 60 fps showing every other frame for the same
+  total, one frame a still PNG), Node's `encodeImage` and
+  `AnimationEncoder` tests (the second a headless recording), and the C
+  and Odin counters, which encode a PNG and a GIF animation and decode
+  them back.
+- Recording costs little beside the capture. Thirty frames of a card
+  sliding over a page of text, 800×600: 2.3 ms a frame to capture, 0.1
+  ms to add, 2 ms to finish a 230 KB APNG or 38 ms a 99 KB GIF. At
+  3456×2234: 10 ms to capture, 1.7 ms to add, 15 ms to finish an 804 KB
+  APNG or 393 ms a 283 KB GIF, the GIF's being its 256-colour
+  quantizing.

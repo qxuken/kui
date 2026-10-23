@@ -1804,6 +1804,15 @@ pub const KUI_TEXT_AA_AUTO: u32 = 0;
 pub const KUI_TEXT_AA_GRAYSCALE: u32 = 1;
 /// `KUI_TEXT_AA_SUBPIXEL`.
 pub const KUI_TEXT_AA_SUBPIXEL: u32 = 2;
+/// `KUI_ENCODE_PNG`: what `kui_encode_image` and
+/// `kui_animation_encoder_new` write (an animated PNG for the second).
+pub const KUI_ENCODE_PNG: u32 = 0;
+/// `KUI_ENCODE_JPEG`: `kui_encode_image` alone.
+pub const KUI_ENCODE_JPEG: u32 = 1;
+/// `KUI_ENCODE_WEBP`: lossless; `kui_encode_image` alone.
+pub const KUI_ENCODE_WEBP: u32 = 2;
+/// `KUI_ENCODE_GIF`.
+pub const KUI_ENCODE_GIF: u32 = 3;
 /// `KUI_DIAG_DEFAULT`: the build's — on in debug, off in release.
 pub const KUI_DIAG_DEFAULT: u32 = 0;
 /// `KUI_DIAG_ON`.

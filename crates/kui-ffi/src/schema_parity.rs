@@ -972,6 +972,9 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             // What frees the decoder's pixels: C's half of a Rust `Vec`
             // going out of scope, so no verb.
             "kui_pixels_free",
+            // An animation encoder dropped unwritten: C's half of a Rust
+            // `AnimationEncoder` going out of scope, likewise.
+            "kui_animation_encoder_free",
         ];
         name.starts_with("kui_value_")
             // A size expression's builders make values, as `kui_value_*`

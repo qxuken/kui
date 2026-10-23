@@ -175,16 +175,33 @@ headless :: proc() -> bool {
 		fmt.println("no GPU adapter: capture had nothing to draw on")
 	}
 
-	// Pixels to a PNG and back through the runner's own codec, which a test
-	// keeping a capture as a file needs no library for.
+	// Pixels to a file's bytes and back through the runner's own codecs,
+	// which a test keeping a capture as a file needs no library for: two
+	// pixels as a PNG, then a three-frame GIF whose middle frame repeats the
+	// first and folds into its time.
 	two := []u8{255, 0, 0, 255, 0, 0, 255, 128}
-	png, png_ok := kui.encode_png(2, 1, two)
+	png, png_ok := kui.encode_image(.Png, 2, 1, two)
 	defer delete(png)
-	if !png_ok || png[1] != 'P' do return fail("encode_png")
+	if !png_ok || png[1] != 'P' do return fail("encode_image")
 	pw, ph, again, again_ok := kui.decode_image(png)
 	defer delete(again)
-	if !again_ok || pw != 2 || ph != 1 || again[7] != 128 || again[6] != 255 do return fail("encode_png round trip")
-	fmt.println("encoded two pixels as a PNG and read them back")
+	if !again_ok || pw != 2 || ph != 1 || again[7] != 128 || again[6] != 255 do return fail("encode_image round trip")
+	red := []u8{255, 0, 0, 255, 255, 0, 0, 255}
+	blue := []u8{0, 0, 255, 255, 0, 0, 255, 255}
+	enc, enc_ok := kui.animation_encoder_new(.Gif, 2, 1)
+	if !enc_ok do return fail("animation_encoder_new")
+	if !kui.animation_encoder_add(enc, red, 0.1) || !kui.animation_encoder_add(enc, red, 0.1) || !kui.animation_encoder_add(enc, blue, 0.3) {
+		kui.animation_encoder_free(enc)
+		return fail("animation_encoder_add")
+	}
+	gif_bytes, gif_ok := kui.animation_encoder_finish(enc)
+	defer delete(gif_bytes)
+	played, played_ok := kui.decode_animation(gif_bytes)
+	defer kui.animation_free(played)
+	if !gif_ok || !played_ok || len(played.frames) != 2 || abs(played.delays[0] - 0.2) > 1e-9 || played.frames[1][2] != 255 {
+		return fail("animation_encoder round trip")
+	}
+	fmt.println("encoded a PNG and a GIF animation and read them back")
 
 	// And a message with fields survives the round trip through the core.
 	round_trip() or_return

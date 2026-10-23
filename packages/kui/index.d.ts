@@ -4054,14 +4054,61 @@ export interface AnimationShowing {
 export declare function decodeImage(bytes: Buffer): DecodedImage
 
 /**
- * Encodes straight RGBA — `width` by `height` pixels, four bytes each,
- * what `capture()` and `decodeImage` hand out — as PNG bytes with the
- * runner's encoder at its fast setting, so a test or a probe keeps a
- * capture as a file with no image package: `writeFileSync('shot.png',
- * encodePng(s.width, s.height, s.rgba))`. Throws, naming why, for a size
- * of zero or pixels that are not that size.
+ * What `encodeImage` takes beside the pixels: `quality` for a JPEG, 1 to
+ * 100 (absent: 90).
  */
-export declare function encodePng(width: number, height: number, rgba: Buffer): Buffer
+export interface EncodeOptions {
+  quality?: number
+}
+
+/**
+ * Encodes straight RGBA — `width` by `height` pixels, four bytes each,
+ * what `capture()` and `decodeImage` hand out — as a file's bytes with
+ * the runner's encoders (ADR 0054), so a test or a probe keeps a capture
+ * with no image package: `writeFileSync('shot.png', encodeImage('png',
+ * s.width, s.height, s.rgba))`. `png` is lossless at the fast setting,
+ * `jpeg` lossy at `quality` with alpha dropped, `webp` lossless, `gif` 256
+ * colours. Throws, naming why, for another format, a size of zero or
+ * pixels that are not that size.
+ */
+export declare function encodeImage(format: 'png' | 'jpeg' | 'webp' | 'gif', width: number, height: number, rgba: Buffer, options?: EncodeOptions): Buffer
+
+/**
+ * What an `AnimationEncoder` takes beside its size: `loops`, how many
+ * times it plays (absent or 0: for ever).
+ */
+export interface AnimationEncoderOptions {
+  loops?: number
+}
+
+/**
+ * An animated PNG or GIF written a frame at a time (ADR 0054): `add`
+ * each frame — the whole canvas, straight RGBA, a `capture()`'s `rgba` —
+ * with the seconds it shows, then `finish` for the file's bytes. It keeps
+ * only the rectangle each frame changed, folds a frame that changed
+ * nothing into the time of the one before, and gives a frame too short
+ * for the format (1 ms for `png`, 20 ms for `gif`) to the next, so a
+ * recording at retina size holds two whole frames and the changes.
+ */
+export declare class AnimationEncoder {
+  /**
+   * An encoder for `width` by `height` frames as `png` (an animated PNG,
+   * every colour exact) or `gif` (256 colours). Throws, naming why, for
+   * another format or a size it cannot hold.
+   */
+  constructor(format: 'png' | 'gif', width: number, height: number, options?: AnimationEncoderOptions)
+  /**
+   * Adds a frame that shows for `seconds`. Throws, naming why, for
+   * pixels that are not a frame's size, a time that is negative or not
+   * finite, or an encoder already finished.
+   */
+  add(rgba: Buffer, seconds: number): void
+  /**
+   * The file's bytes; the encoder is spent. Throws, naming why, with no
+   * frame added or when it was finished already.
+   */
+  finish(): Buffer
+}
 
 /**
  * Decodes every frame of an animated GIF, PNG (APNG) or WebP, each the

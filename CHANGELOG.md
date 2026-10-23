@@ -84,12 +84,26 @@ running the whole time under a pump (backlog C54).
   its own each frame, `Renderer::capture(list, &atlas)` returning a
   `Capture`, and `Renderer::format()`. A windowless renderer's `render`
   returns `RenderError::Skip`.
-- `kui_native::encode_png(width, height, &rgba)`, `kui.encodePng` in
-  Node, `kui_encode_png` in C (freed with `kui_pixels_free`) and
-  `encode_png` in Odin: straight RGBA to PNG bytes with the runner's own
-  encoder (the `image` crate it already links), at its fast setting —
-  about 12 ms for a text-heavy 3456×2234 capture — so a test or a probe
-  keeps a capture as a file with no image library of its own.
+- **The runner encodes as well as decodes** (ADR 0054, decision 7), with
+  the crates it already links, so a test or a probe keeps what it saw as
+  a file with no image library of its own:
+  - `kui_native::encode_image(format, width, height, &rgba)` —
+    `encodeImage('png' | 'jpeg' | 'webp' | 'gif', w, h, rgba, {quality})`
+    in Node, `kui_encode_image(KUI_ENCODE_*, …)` in C (freed with
+    `kui_pixels_free`), `encode_image(.Png, …)` in Odin. PNG is lossless
+    at the fast setting (about 12 ms for a text-heavy 3456×2234
+    capture), JPEG lossy with the alpha dropped, WebP lossless, GIF 256
+    colours.
+  - `kui_native::AnimationEncoder` — `new AnimationEncoder('png' | 'gif',
+    w, h, {loops})` with `add(rgba, seconds)` and `finish()` in Node,
+    `kui_animation_encoder_new` / `_add` / `_finish` / `_free` in C,
+    `animation_encoder_*` in Odin: an animated PNG or GIF written a frame
+    at a time, a recording of captures. It keeps only the rectangle each
+    frame changed, folds a frame that changed nothing into the time
+    before it, and gives a frame too short for the format (1 ms for PNG,
+    20 ms for GIF) to the next. Thirty retina frames of a card sliding
+    over a page: about 12 ms a frame to capture and add, 15 ms to finish
+    an 804 KB APNG, 393 ms for a 283 KB GIF.
 - `Core::drawn()`: the finished frame's list and atlas for a reader
   that is not the core's renderer, marking nothing read and leaving the
   atlas's `dirty` flag alone.
@@ -119,7 +133,8 @@ running the whole time under a pump (backlog C54).
   process, kept only to see the pixels a test's frame drew; `capture()`
   hands them back, headless too.
 - A PNG package (`pngjs`, `sharp`, a crate, libpng) kept only to write a
-  test's or a probe's pixels to a file; `encodePng` does it.
+  test's or a probe's pixels to a file; `encodeImage` does it, and an
+  `AnimationEncoder` records a sequence of them.
 - A copy of kui-wgpu's renderer, or a hidden window, kept only to draw a
   frame into a texture your own device composites.
 

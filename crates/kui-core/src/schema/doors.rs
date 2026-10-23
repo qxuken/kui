@@ -1701,12 +1701,36 @@ pub const DOORS: &[Door] = &[
         doc: "The last finished frame as pixels (backlog C55): drawn again from the core's draw list on a GPU device of the process's own, with no window, and read back as straight RGBA in physical px over the theme's `bg` — a window's core or a headless one alike, between frames. What a window shows, less what the OS draws behind a translucent one. C's frees with `kui_pixels_free`.",
     },
     Door {
-        rust: "kui_native::encode_png",
-        c: Is("kui_encode_png"),
-        odin: Is("encode_png"),
-        node: Is("kui.encodePng"),
+        rust: "kui_native::encode_image",
+        c: Is("kui_encode_image"),
+        odin: Is("encode_image"),
+        node: Is("kui.encodeImage"),
         lua: No(GUEST),
-        doc: "Straight RGBA to PNG bytes with the runner's encoder at its fast setting — a capture or a decoded image kept as a file, by a test or a probe with no encoder of its own; C's frees with `kui_pixels_free`.",
+        doc: "Straight RGBA as a file's bytes with the runner's encoders: PNG (lossless, fast), JPEG (a quality; alpha dropped), WebP (lossless) or GIF (256 colours) — a capture or a decoded image kept as a file by a test or a probe with no encoder of its own (ADR 0054). C's frees with `kui_pixels_free`.",
+    },
+    Door {
+        rust: "AnimationEncoder::new",
+        c: Is("kui_animation_encoder_new"),
+        odin: Is("animation_encoder_new"),
+        node: Is("kui.AnimationEncoder"),
+        lua: No(GUEST),
+        doc: "An animated PNG or GIF written a frame at a time, played a number of times or for ever: a recording of captures. It keeps the rectangle each frame changed, folds a frame that changed nothing into the time of the one before, and gives a frame too short for the format (1 ms for PNG, 20 ms for GIF) to the next. C's `kui_animation_encoder_free` drops one unwritten.",
+    },
+    Door {
+        rust: "AnimationEncoder::add",
+        c: Is("kui_animation_encoder_add"),
+        odin: Is("animation_encoder_add"),
+        node: As("`add` on a `kui.AnimationEncoder`"),
+        lua: No(GUEST),
+        doc: "A frame — the whole canvas, straight RGBA — and the seconds it shows.",
+    },
+    Door {
+        rust: "AnimationEncoder::finish",
+        c: Is("kui_animation_encoder_finish"),
+        odin: Is("animation_encoder_finish"),
+        node: As("`finish` on a `kui.AnimationEncoder`"),
+        lua: No(GUEST),
+        doc: "The file's bytes; the encoder is spent. C's frees with `kui_pixels_free`.",
     },
     Door {
         rust: "App::teardown",
@@ -1748,7 +1772,8 @@ mod tests {
         let tokens = read(root.join("tokens.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
-            + &read(root.join("../../kui-native/src/capture.rs"));
+            + &read(root.join("../../kui-native/src/capture.rs"))
+            + &read(root.join("../../kui-native/src/encode.rs"));
         // The `App` trait's body: a method of it is a callback the app
         // writes, spelled `fn name(` and public by being the trait's.
         let app_trait = launcher
@@ -1763,7 +1788,7 @@ mod tests {
                 "SharedResources" => &session,
                 "Tokens" => &tokens,
                 "Launcher" => &launcher,
-                "kui_native" | "Animation" => &decode,
+                "kui_native" | "Animation" | "AnimationEncoder" => &decode,
                 "App" => app_trait,
                 other => panic!("{}: {other} is not a prefix the table knows", d.rust),
             };
