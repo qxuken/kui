@@ -45,6 +45,16 @@ a close.
 - A devtools panel closed with its close button comes back when the app
   turns it on, and every way back puts it where it was (above; backlog
   F188).
+- On macOS a repainting window holds ~75 MB less GPU memory and spends
+  about half as long in `Renderer::render`: a frame's instances,
+  globals and fragment parameters are written into mapped buffers the
+  GPU reads in place, where `write_buffer` copied them in every frame
+  and the copy kept Metal's blit engine, ~70 MB of it, awake for as
+  long as frames came (backlog C53). The `waker` example went from 191
+  to 115 MB of graphics memory and from 271 to 194 MB of footprint,
+  1.12 to 0.56 ms a frame in `render`. `KUI_MAPPED_FRAMES=0` keeps the
+  copy. A frame drawing a texture-backed image or a backdrop blur still
+  copies those draws' parameters.
 
 ## 0.1.0-alpha.65 (2026-10-23)
 

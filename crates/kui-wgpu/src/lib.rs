@@ -252,6 +252,9 @@ struct GpuInner {
     /// through a composition visual ([`see_through_by_visual`]).
     alpha: bool,
     dual_source: bool,
+    /// Whether a frame's instances and globals are written into mapped
+    /// buffers rather than copied in by `write_buffer` ([`FrameSlot`]).
+    mapped_frames: bool,
     /// One pipeline per registered fragment per surface format, built the
     /// first time a frame draws it (about 0.2 ms, paid once) and shared by
     /// every window on this device, dropped when a frame's list says the
@@ -432,13 +435,21 @@ impl Gpu {
         let dual_source = adapter
             .features()
             .contains(wgpu::Features::DUAL_SOURCE_BLENDING);
+        // A frame's instances and globals written straight into memory the
+        // GPU reads (backlog C53), on Metal: every Apple GPU shares memory
+        // with the CPU, and `write_buffer`'s copy wakes the blit engine,
+        // which holds ~70 MB for as long as frames keep coming.
+        let mapped_frames = adapter.get_info().backend == wgpu::Backend::Metal
+            && adapter
+                .features()
+                .contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS)
+            && std::env::var("KUI_MAPPED_FRAMES").as_deref() != Ok("0");
+        let mut required_features = wgpu::Features::empty();
+        required_features.set(wgpu::Features::DUAL_SOURCE_BLENDING, dual_source);
+        required_features.set(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS, mapped_frames);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                required_features: if dual_source {
-                    wgpu::Features::DUAL_SOURCE_BLENDING
-                } else {
-                    wgpu::Features::empty()
-                },
+                required_features,
                 ..Default::default()
             })
             .await?;
@@ -464,6 +475,7 @@ impl Gpu {
             options,
             alpha,
             dual_source,
+            mapped_frames,
             fragment_pipelines: Default::default(),
             textures: Default::default(),
             lost,
@@ -764,8 +776,11 @@ pub struct Renderer {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
-    globals_buf: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
+    /// What frames draw from: one slot written by `write_buffer`, or on a
+    /// device with mapped frames a ring of them (backlog C53).
+    slots: Vec<FrameSlot>,
+    /// The slot this frame writes and draws.
+    slot: usize,
     bind_layout: wgpu::BindGroupLayout,
     /// The two samplers every group-0 bind group carries: linear at
     /// binding 2, nearest at 3.
@@ -778,18 +793,13 @@ pub struct Renderer {
     atlas_tex: wgpu::Texture,
     atlas_size: u32,
     atlas_epoch: u64,
-    instance_buf: wgpu::Buffer,
-    instance_cap: usize,
     instances: Vec<Instance>,
     /// What a fragment pipeline is built against: kui's vertex stage and
     /// the two-group layout. Built once per renderer, handed to the
     /// device's shared cache.
     fragment_layouts: FragmentLayouts,
-    /// One slot per fragment this frame, each padded to the device's
-    /// dynamic-offset alignment.
-    fragment_params_buf: wgpu::Buffer,
-    fragment_params_cap: usize,
-    fragment_bind: wgpu::BindGroup,
+    /// Group 1 of a fragment pipeline: its parameter slot in the frame
+    /// slot's buffer, picked by dynamic offset.
     fragment_bind_layout: wgpu::BindGroupLayout,
     /// The alignment slots are padded to; `dynamic_offset` steps by it.
     uniform_align: u32,
@@ -824,6 +834,106 @@ struct Ground {
     uv: wgpu::Buffer,
     /// Kept for the bind group, which holds a view of it.
     _texture: wgpu::Texture,
+}
+
+/// What one frame draws from, in one buffer: the globals at offset 0,
+/// one parameter slot per fragment from [`FRAGMENTS_AT`], the instances
+/// after those; group 0 naming the globals and the atlas, and group 1
+/// naming the fragment slots.
+///
+/// On a device with mapped frames (backlog C53) a renderer keeps a ring of
+/// these. A slot is written while it is mapped, unmapped for the submit
+/// that draws it and asked to map again right after; the poll or submit
+/// that finds the GPU done with it runs the callback and the slot is
+/// ready again — the next frame's, on an M3 Pro drawing 10k quads at 120 Hz,
+/// so a ring is mostly one slot. Nothing is copied, so a steady frame
+/// wakes no blit. Elsewhere there is one slot, written by
+/// `write_buffer`.
+struct FrameSlot {
+    buf: wgpu::Buffer,
+    /// How many instances fit, and how many fragment slots.
+    cap: usize,
+    frag_cap: usize,
+    /// Where the instances start: past the fragment slots.
+    instances_at: u64,
+    bind: wgpu::BindGroup,
+    frag_bind: wgpu::BindGroup,
+    /// Mapped and not in flight: set by the map callback, cleared at the
+    /// unmap.
+    ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Where a frame slot's fragment parameters start: past the globals, at
+/// the uniform offset alignment wgpu holds every device to.
+const FRAGMENTS_AT: u64 = 256;
+
+/// How many frame slots a ring grows to before a frame waits for one: a
+/// frame is in flight for at most the surface's latency (three), and a
+/// slot comes back a poll after that.
+const MAX_FRAME_SLOTS: usize = 6;
+
+/// What making a frame slot takes from its renderer.
+struct SlotKit<'a> {
+    device: &'a wgpu::Device,
+    mapped: bool,
+    layout: &'a wgpu::BindGroupLayout,
+    frag_layout: &'a wgpu::BindGroupLayout,
+    atlas: &'a wgpu::Texture,
+    samplers: &'a Samplers,
+    /// The fragment slots' stride: the dynamic-offset alignment.
+    align: u32,
+}
+
+impl FrameSlot {
+    /// A slot for `cap` instances and `frag_cap` fragments: mapped and
+    /// ready on a mapped device, copied into elsewhere.
+    fn new(kit: &SlotKit<'_>, cap: usize, frag_cap: usize) -> Self {
+        let frag_cap = frag_cap.max(1);
+        let instances_at = FRAGMENTS_AT + (frag_cap * kit.align as usize) as u64;
+        let buf = kit.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("kui.frame"),
+            size: instances_at + (cap * std::mem::size_of::<Instance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::UNIFORM
+                | if kit.mapped {
+                    wgpu::BufferUsages::MAP_WRITE
+                } else {
+                    wgpu::BufferUsages::COPY_DST
+                },
+            mapped_at_creation: kit.mapped,
+        });
+        let atlas = kit.atlas.create_view(&Default::default());
+        let bind = create_bind_group(
+            kit.device,
+            kit.layout,
+            &globals_binding(&buf),
+            &atlas,
+            kit.samplers,
+        );
+        let frag_bind = create_fragment_bind_group(kit.device, kit.frag_layout, &buf);
+        Self {
+            buf,
+            cap,
+            frag_cap,
+            instances_at,
+            bind,
+            frag_bind,
+            ready: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(kit.mapped)),
+        }
+    }
+
+    fn ready(&self) -> bool {
+        self.ready.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+/// A frame slot's globals, as group 0's binding 0 takes them.
+fn globals_binding(buf: &wgpu::Buffer) -> wgpu::BufferBinding<'_> {
+    wgpu::BufferBinding {
+        buffer: buf,
+        offset: 0,
+        size: std::num::NonZeroU64::new(std::mem::size_of::<Globals>() as u64),
+    }
 }
 
 /// The ground's shader: one quad over the viewport, sampling the part of
@@ -1197,13 +1307,6 @@ impl Renderer {
             cache: None,
         });
 
-        let globals_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("kui.globals"),
-            size: std::mem::size_of::<Globals>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
         let atlas_size = kui_core::atlas::ATLAS_SIZE;
         let atlas_tex = create_atlas_texture(device, atlas_size);
         let samplers = Samplers {
@@ -1220,18 +1323,12 @@ impl Renderer {
                 ..Default::default()
             }),
         };
-        let atlas_view = atlas_tex.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group =
-            create_bind_group(device, &bind_layout, &globals_buf, &atlas_view, &samplers);
 
-        let instance_cap = 4096;
-        let instance_buf = create_instance_buffer(device, instance_cap);
-
-        // Fragments: one uniform slot per draw, picked by dynamic offset,
-        // and the layout their pipelines are built against. All of it is
-        // built whether or not a frame ever draws one — a bind group
-        // layout and an empty buffer, not a pipeline, which is the part
-        // that costs and is built on first sight.
+        // Fragments: one uniform slot per draw in the frame slot, picked by
+        // dynamic offset, and the layout their pipelines are built
+        // against. All of it is built whether or not a frame ever draws
+        // one — a bind group layout and sixteen slots, not a pipeline,
+        // which is the part that costs and is built on first sight.
         let fragment_bind_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("kui.fragment.params"),
@@ -1264,32 +1361,36 @@ impl Renderer {
         // reporting the smaller 64 — which DX12 does — then gave 64-byte slots
         // and a validation error on the frame's second fragment.
         let uniform_align = device.limits().min_uniform_buffer_offset_alignment;
-        let fragment_params_cap = 16;
-        let fragment_params_buf =
-            create_fragment_params_buffer(device, fragment_params_cap, uniform_align);
-        let fragment_bind =
-            create_fragment_bind_group(device, &fragment_bind_layout, &fragment_params_buf);
+        let slot = FrameSlot::new(
+            &SlotKit {
+                device,
+                mapped: gpu.0.mapped_frames,
+                layout: &bind_layout,
+                frag_layout: &fragment_bind_layout,
+                atlas: &atlas_tex,
+                samplers: &samplers,
+                align: uniform_align,
+            },
+            // A ring may hold several; each grows to what its frames need.
+            if gpu.0.mapped_frames { 1024 } else { 4096 },
+            16,
+        );
 
         Ok(Self {
             gpu,
             surface,
             config,
             pipeline,
-            globals_buf,
-            bind_group,
+            slots: vec![slot],
+            slot: 0,
             bind_layout,
             samplers,
             texture_binds: Default::default(),
             atlas_tex,
             atlas_size,
             atlas_epoch: u64::MAX,
-            instance_buf,
-            instance_cap,
             instances: Vec::new(),
             fragment_layouts,
-            fragment_params_buf,
-            fragment_params_cap,
-            fragment_bind,
             fragment_bind_layout,
             uniform_align,
             fragment_bytes: Vec::new(),
@@ -1515,13 +1616,15 @@ impl Renderer {
             let view = self
                 .atlas_tex
                 .create_view(&wgpu::TextureViewDescriptor::default());
-            self.bind_group = create_bind_group(
-                self.gpu.device(),
-                &self.bind_layout,
-                &self.globals_buf,
-                &view,
-                &self.samplers,
-            );
+            for slot in &mut self.slots {
+                slot.bind = create_bind_group(
+                    self.gpu.device(),
+                    &self.bind_layout,
+                    &globals_binding(&slot.buf),
+                    &view,
+                    &self.samplers,
+                );
+            }
             self.atlas_epoch = u64::MAX;
         }
         if atlas.dirty || self.atlas_epoch != atlas.epoch {
@@ -1547,6 +1650,107 @@ impl Renderer {
             atlas.dirty = false;
             self.atlas_epoch = atlas.epoch;
         }
+    }
+
+    /// Puts the frame's instances, fragment parameters (`fragment_bytes`)
+    /// and `globals` where its draw reads them.
+    ///
+    /// On a device with mapped frames: picks a ready slot from the ring —
+    /// polling once when none is, adding one while the ring is short,
+    /// waiting on the GPU when it is full — grows it if the frame does not
+    /// fit, and writes into its mapping; [`Renderer::render`] unmaps it
+    /// just before the submit, so a frame that never submits leaves it
+    /// ready. Elsewhere: `write_buffer` into the one slot.
+    fn write_frame(&mut self, globals: &Globals) {
+        let need = self.instances.len();
+        let frags = self.fragment_bytes.len() / self.uniform_align as usize;
+        let kit = SlotKit {
+            device: self.gpu.device(),
+            mapped: self.gpu.0.mapped_frames,
+            layout: &self.bind_layout,
+            frag_layout: &self.fragment_bind_layout,
+            atlas: &self.atlas_tex,
+            samplers: &self.samplers,
+            align: self.uniform_align,
+        };
+        let grown = |slot: &FrameSlot| {
+            FrameSlot::new(
+                &kit,
+                slot.cap.max(need.next_power_of_two()),
+                slot.frag_cap.max(frags.next_power_of_two()),
+            )
+        };
+        if !kit.mapped {
+            let slot = &mut self.slots[0];
+            if need > slot.cap || frags > slot.frag_cap {
+                *slot = grown(slot);
+            }
+            let queue = self.gpu.queue();
+            if need > 0 {
+                queue.write_buffer(
+                    &slot.buf,
+                    slot.instances_at,
+                    bytemuck::cast_slice(&self.instances),
+                );
+            }
+            if frags > 0 {
+                queue.write_buffer(&slot.buf, FRAGMENTS_AT, &self.fragment_bytes);
+            }
+            queue.write_buffer(&slot.buf, 0, bytemuck::bytes_of(globals));
+            return;
+        }
+        let find = |slots: &[FrameSlot], from: usize| {
+            (0..slots.len())
+                .map(|i| (from + i) % slots.len())
+                .find(|&i| slots[i].ready())
+        };
+        let from = (self.slot + 1) % self.slots.len();
+        let mut found = find(&self.slots, from);
+        if found.is_none() {
+            let _ = kit.device.poll(wgpu::PollType::Poll);
+            found = find(&self.slots, from);
+        }
+        if found.is_none() && self.slots.len() >= MAX_FRAME_SLOTS {
+            let _ = kit.device.poll(wgpu::PollType::wait_indefinitely());
+            found = find(&self.slots, from);
+        }
+        let i = found.unwrap_or_else(|| {
+            // As large as the largest in the ring, so a new one does not
+            // grow again a frame later.
+            let largest = self
+                .slots
+                .iter()
+                .max_by_key(|s| s.cap)
+                .expect("a ring is never empty");
+            self.slots.push(grown(largest));
+            self.slots.len() - 1
+        });
+        self.slot = i;
+        let slot = &mut self.slots[i];
+        if need > slot.cap || frags > slot.frag_cap {
+            // The old buffer goes mapped and unused; dropping it is all
+            // it needs.
+            *slot = grown(slot);
+        }
+        let mut view = match slot.buf.get_mapped_range_mut(..) {
+            Ok(view) => view,
+            // Not mapped after all (a device going away refuses maps):
+            // a new one is, from creation.
+            Err(_) => {
+                *slot = grown(slot);
+                slot.buf
+                    .get_mapped_range_mut(..)
+                    .expect("a buffer mapped at creation is mapped")
+            }
+        };
+        view.slice(..std::mem::size_of::<Globals>())
+            .copy_from_slice(bytemuck::bytes_of(globals));
+        let at = FRAGMENTS_AT as usize;
+        view.slice(at..at + self.fragment_bytes.len())
+            .copy_from_slice(&self.fragment_bytes);
+        let at = slot.instances_at as usize;
+        let bytes: &[u8] = bytemuck::cast_slice(&self.instances);
+        view.slice(at..at + bytes.len()).copy_from_slice(bytes);
     }
 
     /// Plans the frame's backdrop blurs (backlog F129), and makes or drops
@@ -1617,12 +1821,13 @@ impl Renderer {
         if range.is_empty() {
             return;
         }
-        pass.set_vertex_buffer(0, self.instance_buf.slice(..));
+        let frame = &self.slots[self.slot];
+        pass.set_vertex_buffer(0, frame.buf.slice(frame.instances_at..));
         if fragment_pipelines.is_empty() && texture_binds.is_empty() {
             // The whole run in one instanced draw, as a frame has always
             // been. Nothing below runs.
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.set_bind_group(0, &frame.bind, &[]);
             pass.draw(0..6, range);
             return;
         }
@@ -1636,7 +1841,7 @@ impl Renderer {
             if i > run_start {
                 if !on_quads {
                     pass.set_pipeline(&self.pipeline);
-                    pass.set_bind_group(0, &self.bind_group, &[]);
+                    pass.set_bind_group(0, &frame.bind, &[]);
                     on_quads = true;
                 }
                 pass.draw(0..6, run_start..i);
@@ -1667,12 +1872,12 @@ impl Renderer {
                         .copied()
                         .flatten()
                         .and_then(|id| self.texture_binds.get(&id))
-                        .map_or(&self.bind_group, |b| &b.bind),
-                    None => &self.bind_group,
+                        .map_or(&frame.bind, |b| &b.bind),
+                    None => &frame.bind,
                 };
                 pass.set_pipeline(pipeline);
                 pass.set_bind_group(0, group0, &[]);
-                pass.set_bind_group(1, &self.fragment_bind, &[slot as u32 * self.uniform_align]);
+                pass.set_bind_group(1, &frame.frag_bind, &[slot as u32 * self.uniform_align]);
                 on_quads = false;
                 pass.draw(0..6, i..i + 1);
             }
@@ -1681,7 +1886,7 @@ impl Renderer {
         if range.end > run_start {
             if !on_quads {
                 pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.bind_group, &[]);
+                pass.set_bind_group(0, &frame.bind, &[]);
             }
             pass.draw(0..6, run_start..range.end);
         }
@@ -1718,17 +1923,6 @@ impl Renderer {
             instance_of(q, &dl.clips, &dl.textures)
         }));
         self.plan_backdrops(dl, any_backdrop);
-        if self.instances.len() > self.instance_cap {
-            self.instance_cap = self.instances.len().next_power_of_two();
-            self.instance_buf = create_instance_buffer(self.gpu.device(), self.instance_cap);
-        }
-        if !self.instances.is_empty() {
-            self.gpu.queue().write_buffer(
-                &self.instance_buf,
-                0,
-                bytemuck::cast_slice(&self.instances),
-            );
-        }
         let globals = Globals {
             viewport: [dl.viewport.w.max(1.0), dl.viewport.h.max(1.0)],
             atlas_size: [self.atlas_size as f32, self.atlas_size as f32],
@@ -1736,9 +1930,22 @@ impl Renderer {
             scale: dl.scale,
             _pad: [0.0; 2],
         };
-        self.gpu
-            .queue()
-            .write_buffer(&self.globals_buf, 0, bytemuck::bytes_of(&globals));
+        self.fragment_bytes.clear();
+        if !dl.fragments.is_empty() {
+            let align = self.uniform_align as usize;
+            self.fragment_bytes.resize(dl.fragments.len() * align, 0);
+            for (i, draw) in dl.fragments.iter().enumerate() {
+                let uv = draw.image.uv();
+                let slot = FragmentParams {
+                    params: draw.params,
+                    image: [uv[0] as f32, uv[1] as f32, uv[2] as f32, uv[3] as f32],
+                };
+                let at = i * align;
+                self.fragment_bytes[at..at + std::mem::size_of::<FragmentParams>()]
+                    .copy_from_slice(bytemuck::bytes_of(&slot));
+            }
+        }
+        self.write_frame(&globals);
 
         // Texture-backed images: drop what the core
         // removed, upload what moved, and give each one drawn this frame
@@ -1787,7 +1994,7 @@ impl Renderer {
                     let bind = create_bind_group(
                         device,
                         &self.bind_layout,
-                        &globals_buf,
+                        &globals_buf.as_entire_buffer_binding(),
                         &texture.view,
                         &self.samplers,
                     );
@@ -1812,40 +2019,11 @@ impl Renderer {
             }
         }
 
-        // Each fragment's parameters into its own slot, and its pipeline
-        // built if this device has not seen the handle before. Both are
-        // skipped whole on a frame that draws no fragment.
+        // Each fragment's pipeline built if this device has not seen the
+        // handle before (its parameters went into the frame slot with the
+        // instances). Skipped whole on a frame that draws no fragment.
         let mut fragment_pipelines: Vec<wgpu::RenderPipeline> = Vec::new();
         if !dl.fragments.is_empty() {
-            let align = self.uniform_align as usize;
-            if dl.fragments.len() > self.fragment_params_cap {
-                self.fragment_params_cap = dl.fragments.len().next_power_of_two();
-                self.fragment_params_buf = create_fragment_params_buffer(
-                    self.gpu.device(),
-                    self.fragment_params_cap,
-                    self.uniform_align,
-                );
-                self.fragment_bind = create_fragment_bind_group(
-                    self.gpu.device(),
-                    &self.fragment_bind_layout,
-                    &self.fragment_params_buf,
-                );
-            }
-            self.fragment_bytes.clear();
-            self.fragment_bytes.resize(dl.fragments.len() * align, 0);
-            for (i, draw) in dl.fragments.iter().enumerate() {
-                let uv = draw.image.uv();
-                let slot = FragmentParams {
-                    params: draw.params,
-                    image: [uv[0] as f32, uv[1] as f32, uv[2] as f32, uv[3] as f32],
-                };
-                let at = i * align;
-                self.fragment_bytes[at..at + std::mem::size_of::<FragmentParams>()]
-                    .copy_from_slice(bytemuck::bytes_of(&slot));
-            }
-            self.gpu
-                .queue()
-                .write_buffer(&self.fragment_params_buf, 0, &self.fragment_bytes);
             fragment_pipelines.reserve(dl.fragments.len());
             for (draw, source) in dl.fragments.iter().zip(&dl.fragment_sources) {
                 fragment_pipelines.push(self.gpu.fragment_pipeline(
@@ -1978,7 +2156,25 @@ impl Renderer {
             pass.set_bind_group(0, &frame.blit, &[0]);
             pass.draw(0..3, 0..1);
         }
-        self.gpu.queue().submit([encoder.finish()]);
+        let commands = encoder.finish();
+        let mapped = self.gpu.0.mapped_frames;
+        let slot = &self.slots[self.slot];
+        if mapped {
+            slot.ready
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+            slot.buf.unmap();
+        }
+        self.gpu.queue().submit([commands]);
+        if mapped {
+            // Back to the CPU once the GPU is done with it, which the next
+            // frame's poll or a later submit notices.
+            let ready = slot.ready.clone();
+            slot.buf.map_async(wgpu::MapMode::Write, .., move |r| {
+                if r.is_ok() {
+                    ready.store(true, std::sync::atomic::Ordering::Release);
+                }
+            });
+        }
         self.gpu.queue().present(frame);
         Ok(RenderReport { vsync_wait_ms })
     }
@@ -2057,7 +2253,7 @@ fn create_atlas_texture(device: &wgpu::Device, size: u32) -> wgpu::Texture {
 fn create_bind_group(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
-    globals: &wgpu::Buffer,
+    globals: &wgpu::BufferBinding<'_>,
     view: &wgpu::TextureView,
     samplers: &Samplers,
 ) -> wgpu::BindGroup {
@@ -2067,7 +2263,7 @@ fn create_bind_group(
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: globals.as_entire_binding(),
+                resource: wgpu::BindingResource::Buffer(globals.clone()),
             },
             wgpu::BindGroupEntry {
                 binding: 1,
@@ -2085,24 +2281,6 @@ fn create_bind_group(
     })
 }
 
-fn create_instance_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("kui.instances"),
-        size: (cap * std::mem::size_of::<Instance>()) as u64,
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    })
-}
-
-fn create_fragment_params_buffer(device: &wgpu::Device, cap: usize, align: u32) -> wgpu::Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("kui.fragment.params"),
-        size: (cap.max(1) * align as usize) as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    })
-}
-
 fn create_fragment_bind_group(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
@@ -2115,7 +2293,7 @@ fn create_fragment_bind_group(
             binding: 0,
             resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                 buffer: buf,
-                offset: 0,
+                offset: FRAGMENTS_AT,
                 size: std::num::NonZeroU64::new(std::mem::size_of::<FragmentParams>() as u64),
             }),
         }],

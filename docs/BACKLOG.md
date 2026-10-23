@@ -128,9 +128,7 @@ archive. Nothing was renumbered in any of those moves, and nothing ever is.
 What is left here: one parked heading — C12, waiting for a view that
 wants it (C13 and C14 beside it were built on 2026-09-25, asked for by
 the second bake-off) — C27 with its measurements (an idle pumped
-window's cost, where every way out was worse than the cost), C53 from
-the Cookie Mapping Builder's measurements of 2026-10-23 (a repainting
-window's GPU memory, ~75 MB of it the frame's two buffer writes), V3–V8 from
+window's cost, where every way out was worse than the cost), V3–V8 from
 the canvas question of 2026-09-11 (four waiting for a view, two declined
 with a condition — V1, the one with an order attached, was built the
 round after, on 2026-09-11, and V2, `dash`, on 2026-10-05), W16 from the alpha.12 pre-tag round (the
@@ -283,7 +281,10 @@ the screen — were built the day they were filed, after the alpha.64
 tag, and are in the archive; and F188, from the same app's F12 toggle —
 a panel closed by its button never coming back when turned on — was
 built the day it was filed, after the alpha.65 tag, and is in the
-archive.
+archive; and C53, from the same Builder's memory — a repainting window
+holding ~190 MB of GPU memory, ~75 MB of it the blit its per-frame
+buffer writes kept awake — was built the day it was filed, after the
+alpha.65 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -322,8 +323,9 @@ corpus adapter disagreeing with the reference when a scene runs alone —
 and went to
 [the archive](backlog/closed-2026-09.md#core-capability-c30-and-c31-2026-09-12)
 with the alpha.12 tag. What is left is the three parked entries and C27
-(C13 and C14 of the three built on 2026-09-25), and C53, filed open on
-2026-10-23: what a repainting window holds on the GPU.
+(C13 and C14 of the three built on 2026-09-25). C53, filed on
+2026-10-23 — what a repainting window holds on the GPU — was built the
+day it was filed and is in the archive.
 
 ### `.` C12 — Wrapping a column
 
@@ -414,68 +416,6 @@ best of the three.** `idlePumpMs` is a real dial — 8 ms is 34 ms a click and
   Node. That is Electron's shape and it is not worth an idle 3%.
 - **Nobody minding.** The most likely, and the reason this is parked rather
   than open. A Rust window idles at 0.00%; a Node one at ~3% with a knob.
-
-### `~` C53 — A repainting window holds ~190 MB of GPU memory, ~75 MB of it its per-frame blits
-
-**Filed 2026-10-23, open.** The Cookie Mapping Builder's footprint
-levelled off near 400 MB while its builds streamed; 190 MB of it was
-"Owned physical footprint (unmapped) (graphics)" in `footprint -p`.
-Taken apart on alpha.65 (`c8a51635`), M-series, macOS 27.0.1, with a
-one-line Node window (`EVERY` ms between dispatches) and a plain Swift
-`CAMetalLayer` window for the comparison (both in the session's
-scratchpad; the numbers are what matters):
-
-| window | graphics | footprint |
-|---|---|---|
-| kui, never repaints after its first frames | 42 MB | 79 MB |
-| kui, repaints every 200 ms | 190 MB (60 regions) | 271 MB |
-| kui, every 1000 ms | 158 MB | 275 MB |
-| kui, 400×300, every 200 ms | 190 MB | 245 MB |
-| kui, every 200 ms, stopped at 3 s, read at 12 s | 34 MB | 84 MB |
-| kui, repainting, `write_buffer` skipped after frame 3 (probe) | 130 MB | 194 MB |
-| plain Metal, clears and presents every 200 ms | 107 MB (37) | — |
-| plain Metal, + a pipeline draw | 105 MB (37) | — |
-| plain Metal, + one 1.2 KB staging-buffer blit a frame | 177 MB (55) | — |
-
-- **Most of it is the Metal driver's, and it is not held.** Any window
-  presenting frames holds ~105 MB while it does, whatever it draws and
-  at any size, and gives it back within a second of stopping (sampled
-  each second: 190 MB from the first second of repainting, 6 MB one
-  second after the last frame). Frame latency 1, 2 or 3
-  (`KUI_FRAME_LATENCY`) and `maximumDrawableCount` 2 or 3 change
-  nothing; the drawables themselves are the separate `IOSurface` line
-  (27 MB at 1100×780@2). Not kui's to fix.
-- **~60–75 MB of it is the blit engine, which every kui frame wakes.**
-  `Renderer::render` puts the instances and the globals on the GPU with
-  `Queue::write_buffer`: a staging buffer and a copy, a blit, on every
-  frame, however few bytes (the minimal window: 1–1.2 KB of instances,
-  32 B of globals). A plain Metal window that does one such blit a frame
-  holds 177 MB where it held 107, the blit in its own command buffer or
-  in the frame's alike; kui with the two writes skipped after the third
-  frame (a probe, not a fix: it redraws stale data) holds 130 MB where it
-  held 190. What remains over plain Metal, ~25 MB, is wgpu's own.
-- **Not the atlas.** A window whose text never changes uploads the atlas
-  once and still holds 190 MB; device polling after submit
-  (`PollType::Poll`) frees nothing. On the way: `sync_atlas` uploads the
-  whole page (4 MB at 1024²) on any frame that added a glyph — 20 of the
-  minimal window's first 38 frames, as its frame number grew — where the
-  rows the frame wrote would do. That is bandwidth, not memory, and is
-  worth fixing beside this.
-
-**What would move it.** On a unified-memory GPU (every Apple one) the
-frame's bytes need no copy: wgpu's `MAPPABLE_PRIMARY_BUFFERS` lets a
-vertex or uniform buffer be `MAP_WRITE`, so a ring of instance and
-globals buffers, one per frame in flight, written while mapped and
-unmapped before the submit, takes the blit out of a steady frame. The
-cost is the mapping: `map_async` answers through a device poll, so the
-ring has to be far enough ahead that a frame never waits on one, and a
-backend without the feature (or a discrete GPU, where mapped writes are
-slow reads for the GPU) keeps `write_buffer`. A repainting window would
-then sit near plain Metal's ~105–130 MB instead of 190, a ~75 MB cut in
-the footprint (271 → 194 MB in the probe); an idle one is unchanged
-(the driver already gave its set back). Measure the frame cost beside
-it — a mapped write is a CPU write into memory the GPU reads, and the
-bench guard rows are where a regression would show.
 
 ## From two alpha.7 field reports (2026-09-07)
 
