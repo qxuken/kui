@@ -578,7 +578,9 @@ pub extern "C" fn kui_serve_captures(ptr: *mut KuiCtx) {
         }
         // SAFETY: an owned context's core is its own box, alive with it.
         let core = unsafe { &mut *c.core };
-        c.captures.serve(core);
+        c.captures
+            .get_or_insert_with(|| Box::new(kui_native::Captures::new()))
+            .serve(core);
         let pending = core.take_pending_events();
         c.absorb(pending);
     })

@@ -4535,3 +4535,21 @@ mod wheel_headless {
         kui_ctx_free(ctx);
     }
 }
+
+/// On Windows a plugin's `kui_ffi.dll` and the host's own copy of this
+/// library are handed the same contexts, and the Node addon's copy is
+/// built without the runner, so `KuiCtx` must be laid out alike in every
+/// build: no field of it under a `cfg`. `captures` was, and the Node
+/// addon's slot test read a stray `Appearance` and faulted on Windows.
+#[test]
+fn a_context_has_no_field_only_some_builds_have() {
+    let src = include_str!("types.rs");
+    let start = src.find("pub struct KuiCtx {").expect("KuiCtx in types.rs");
+    let end = start + src[start..].find("\n}").expect("its closing brace");
+    let body = &src[start..end];
+    let gated: Vec<&str> = body
+        .lines()
+        .filter(|l| l.trim_start().starts_with("#[cfg("))
+        .collect();
+    assert!(gated.is_empty(), "fields of KuiCtx under a cfg: {gated:?}");
+}

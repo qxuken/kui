@@ -299,8 +299,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             extensions: Default::default(),
             last_ext_error: String::new(),
             host_ui: std::ptr::null_mut(),
-            #[cfg(feature = "runner")]
-            captures: kui_native::Captures::new(),
+            captures: None,
         }))
     })
 }

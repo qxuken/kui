@@ -29,6 +29,9 @@ pub(crate) type TeardownFn = extern "C" fn(user: *mut c_void);
 /// plugin's `kui_ext_view` borrows the runner's frame instead and is valid
 /// for that call only; the builder entry points work the same on both,
 /// while input, polling and draw data belong to the owning side.
+///
+/// No field is under a `cfg`: another copy of this library, built with
+/// other features, may be handed the same context (see [`Self::captures`]).
 pub struct KuiCtx {
     pub(crate) core: *mut Core,
     /// Keep-alive for standalone contexts; never read directly.
@@ -158,10 +161,24 @@ pub struct KuiCtx {
     /// context: a standalone one, and an extension's own.
     pub(crate) host_ui: *mut c_void,
     /// What `kui_serve_captures` serves a standalone context's captures
-    /// with (ADR 0055); a borrowed context's are the runner's.
-    #[cfg(feature = "runner")]
-    pub(crate) captures: kui_native::Captures,
+    /// with (ADR 0055), made by its first call; a borrowed context's are
+    /// the runner's. Here and a pointer in every build, runner or not:
+    /// on Windows two copies of this library share a context — a
+    /// plugin's `kui_ffi.dll` and the host's own, which in the Node addon
+    /// has no runner — and a field one copy lacks moves the others under
+    /// the other copy (the Node addon's slot test faulted on Windows when
+    /// this was a `kui_native::Captures` under the feature).
+    #[cfg_attr(not(feature = "runner"), allow(dead_code))]
+    pub(crate) captures: Option<Box<CtxCaptures>>,
 }
+
+/// What a context keeps its captures in: the runner's server, or nothing
+/// in a build without the runner, boxed either way so [`KuiCtx`] is laid
+/// out alike in both.
+#[cfg(feature = "runner")]
+pub(crate) type CtxCaptures = kui_native::Captures;
+#[cfg(not(feature = "runner"))]
+pub(crate) type CtxCaptures = ();
 
 impl KuiCtx {
     pub(crate) fn core(&mut self) -> &mut Core {
@@ -233,8 +250,7 @@ impl KuiCtx {
             extensions: Default::default(),
             last_ext_error: String::new(),
             host_ui: std::ptr::null_mut(),
-            #[cfg(feature = "runner")]
-            captures: kui_native::Captures::new(),
+            captures: None,
         }
     }
 
