@@ -49,6 +49,11 @@ headless = ["lua_panel"]
 name = "bench"
 path = "../../examples/lua/tools/bench.rs"
 
+# Writes packages/lua's type files (`nu scripts/gen.nu` runs it).
+[[example]]
+name = "lua-types"
+path = "../../examples/lua/tools/types.rs"
+
 [[example]]
 name = "lua_panel"
 path = "../../examples/lua/features/slots/panel.rs"

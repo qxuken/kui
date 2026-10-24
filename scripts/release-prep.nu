@@ -22,14 +22,9 @@
 # release is the check, with what this prints at the end.
 #
 # The steps, each skippable by name with --skip (said in the summary, so a
-# skip is a choice and not an accident):
-#
-#   fmt    cargo fmt --all
-#   book   nu scripts/book-examples.nu (the book's Examples part)
-#   node   npm run gen in packages/kui: jsx-runtime.d.ts, index.d.ts and
-#          docs/props.md, from the schema and the addon's #[napi] surface
-#   odin   nu scripts/odin.nu gen: packages/odin from kui.h and the schema
-#          (needs odin, or ODIN, and clang)
+# skip is a choice and not an accident): `fmt` (cargo fmt --all), then the
+# generators, which nu scripts/gen.nu runs and lists — `lua`, `node`,
+# `odin` (needs odin, or ODIN, and clang) and `book`.
 #
 # Then, given a version: the changelog's top heading must already read
 # `## <version> (unreleased)` - the one heading set-version dates, and a
@@ -39,7 +34,7 @@
 # printed at the end; docs/releasing.md has the why of each.
 
 const ROOT = path self | path dirname | path dirname
-const STEPS = [fmt book node odin]
+const STEPS = [fmt lua node odin book]
 
 def --wrapped must [cmd: string, ...args] {
     ^$cmd ...$args
@@ -57,7 +52,7 @@ def changed [] {
 
 def main [
     version?: string  # the version to release; without it, the checks alone
-    --skip: string = ""  # steps to leave out, comma-separated: fmt,book,node,odin
+    --skip: string = ""  # steps to leave out, comma-separated: fmt,lua,node,odin,book
 ] {
     cd $ROOT
     let skip = $skip | split row "," | str trim | where {|s| $s != "" }
@@ -82,32 +77,23 @@ def main [
         }
     }
 
-    # Every step runs even after one fails, so one run says all there is.
-    let steps = [
-        [name what run];
-        [fmt "cargo fmt" { must cargo fmt --all }]
-        [book "the book's Examples part" { must $nu.current-exe scripts/book-examples.nu }]
-        [node "npm run gen (jsx-runtime.d.ts, index.d.ts, docs/props.md)" {
-            # A napi-type-defs file left from an earlier build gets appended
-            # to, not rewritten, and index.d.ts then has every addon member
-            # twice; without one, gen-types.mjs forces the build that writes it.
-            rm -rf target/napi-type-defs
-            cd packages/kui
-            must npm run gen
-        }]
-        [odin "the Odin binding" {
-            let odin = $env.ODIN? | default "odin"
-            if (which $odin | is-empty) and not ($odin | path expand | path exists) {
-                error make {msg: "no odin on PATH: set ODIN to the compiler, or pass --skip odin"}
-            }
-            must $nu.current-exe scripts/odin.nu gen
-        }]
-    ]
+    # Both run even after one fails, so one run says all there is; gen.nu
+    # runs each of its own steps the same way and names the ones that failed.
     mut failed = []
-    for s in ($steps | where {|s| $s.name not-in $skip }) {
-        step $s.what
-        let ok = try { do $s.run; true } catch {|e| print -e $"($s.name) failed: ($e.msg)"; false }
-        if not $ok { $failed = ($failed | append $s.name) }
+    if "fmt" not-in $skip {
+        step "cargo fmt"
+        let ok = try { must cargo fmt --all; true } catch {|e| print -e $"fmt failed: ($e.msg)"; false }
+        if not $ok { $failed = ($failed | append fmt) }
+    }
+    let gen_skip = $skip | where {|s| $s != "fmt" }
+    let generators = $STEPS | where {|s| $s != "fmt" and $s not-in $gen_skip }
+    if ($generators | is-not-empty) {
+        step "the generators (scripts/gen.nu)"
+        let ok = try {
+            must $nu.current-exe scripts/gen.nu --skip ($gen_skip | str join ",")
+            true
+        } catch {|e| print -e $"gen failed: ($e.msg)"; false }
+        if not $ok { $failed = ($failed | append gen) }
     }
 
     let stale = changed

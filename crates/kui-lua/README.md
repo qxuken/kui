@@ -76,7 +76,7 @@ end
 
 `on_event(ev)` hears the message the node declared — `{ kind = "toggle", index = 1 }` here — with the event's data in one field named for the event (a drag's under `drag`, an edit's text under `change`), and the envelope beside it: `ev.event` (what happened: `"click"`, `"drag"`, `"change"`, …), `ev.node_key`, `ev.window` and `ev.slot`. A message's own field of one of those names keeps its value there, so the envelope also comes whole as the second argument, `on_event(ev, at)`: `at.event`, `at.node_key`, `at.window`, and `at.slot` and `at.from` where they apply.
 
-The crate docs list everything a script gets: the builders, the `env` facts and functions, the `slot` argument, the props shapes, `kui_lua::luals_meta()` for editor completion, and `kui_lua::teal_decls()` for a script written in [Teal](https://teal-language.org), typed Lua, checked by `tl check` and compiled by `tl gen` to the Lua this crate loads.
+The crate docs list everything a script gets: the builders, the `env` facts and functions, the `slot` argument, the props shapes, `kui_lua::luals_meta()` for editor completion, and `kui_lua::teal_decls()` for a script written in [Teal](https://teal-language.org), typed Lua, checked by `tl check` and compiled by `tl gen` to the Lua this crate loads. Both files are also in the repository, under [`packages/lua`](https://github.com/qxuken/kui/tree/main/packages/lua), to copy.
 
 ## Where it fits
 

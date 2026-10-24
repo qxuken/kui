@@ -322,7 +322,8 @@
 //!   from the schema.
 //! - [`teal_decls`]: the same as a `kui.d.tl` for Teal, so a view written
 //!   in Teal is checked by `tl check` and compiled by `tl gen` to the Lua
-//!   this crate loads.
+//!   this crate loads. Both files are committed under `packages/lua` in
+//!   the repository, for an author to copy.
 //! - [`lua_to_value`] / [`value_to_lua`]: the table <-> [`kui_core::Value`]
 //!   conversion events and replies go through.
 //! - [`parse_props`] and [`parse_tokens`]: the table readers, for a host that

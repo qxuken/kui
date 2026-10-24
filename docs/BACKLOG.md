@@ -5374,4 +5374,4 @@ move.
 
 **From the Teal question (2026-10-24)** — F194, filed and built the same day
 
-- `.` **F194** — [Nothing describes the Lua DSL to Teal: a typed script has `row`, `env` and every prop undeclared](backlog/closed-2026-09.md#-f194--nothing-describes-the-lua-dsl-to-teal-a-typed-script-has-row-env-and-every-prop-undeclared--done-2026-10-24) — done (2026-10-24) — `kui_lua::teal_decls()`: a `kui.d.tl` from `luals_meta()`'s tables in Teal's words, `env` a `kui.Env` record from `ENV_FIELDS` and `DOORS`; checked by Teal 0.24.8 itself in the tests
+- `.` **F194** — [Nothing describes the Lua DSL to Teal: a typed script has `row`, `env` and every prop undeclared](backlog/closed-2026-09.md#-f194--nothing-describes-the-lua-dsl-to-teal-a-typed-script-has-row-env-and-every-prop-undeclared--done-2026-10-24) — done (2026-10-24) — `kui_lua::teal_decls()`: a `kui.d.tl` from `luals_meta()`'s tables in Teal's words, `env` a `kui.Env` record from `ENV_FIELDS` and `DOORS`; checked by Teal 0.24.8 itself in the tests; both type files committed under `packages/lua`, and `scripts/gen.nu` runs every generator

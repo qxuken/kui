@@ -255,6 +255,7 @@ panel is three languages deep.
 |---|---|---|---|
 | [`features/slots/panel.rs`](lua/features/slots/panel.rs) + [`panel.lua`](lua/features/slots/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the slot filled, the title from the params, the reply on a toggle, clicks routed by origin | ✓ `lua_panel --headless` |
 | [`tools/bench.rs`](lua/tools/bench.rs) | `cargo run -p kui-lua --example bench --release` | Frontend-lowering shootout: the same ~900-node view from Rust and from Lua | |
+| [`tools/types.rs`](lua/tools/types.rs) | `cargo run -p kui-lua --example lua-types -- packages/lua` | Writes the Lua DSL's type files, `kui.lua` for lua-language-server and `kui.d.tl` for Teal, from the schema — what `nu scripts/gen.nu` commits under [`packages/lua`](../packages/lua) | |
 
 ## Node — [`node/`](node)
 

@@ -50,10 +50,11 @@ wants the version it tested writes that version exactly (`"@qxuken/kui":
 way, and without one a range reinstalls as whatever is newest.
 
 To cut a release: `nu scripts/release-prep.nu 0.1.0-alpha.2`, on any of the
-machines. It refuses a dirty tree, reruns every generator a CI step diffs
-(`cargo fmt`, the book's Examples part, `npm run gen` for the two `.d.ts`
-files and `docs/props.md`, `odin.nu gen`) and stops, with the regenerated
-files left in the tree to commit, if any of them changes anything.
+machines. It refuses a dirty tree, runs `cargo fmt` and every generator a
+check diffs (`nu scripts/gen.nu`: the Lua type files under `packages/lua`,
+`npm run gen` for the two `.d.ts` files and `docs/props.md`, `odin.nu gen`,
+the book's Examples part) and stops, with the regenerated files left in
+the tree to commit, if any of them changes anything.
 alpha.59 is why: a `schema::DOORS` row went out without its
 `docs/props.md` line, Forgejo's `check` on the tag failed on the diff,
 and its `publish` never ran while GitHub's had already put the version

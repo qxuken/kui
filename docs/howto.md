@@ -2703,7 +2703,8 @@ label no longer needs it: that is
 
 ### How do I get completion for the Lua views in my editor?
 
-Write `kui_lua::luals_meta()` into a directory and put the directory on
+Put [`packages/lua`](../packages/lua)'s `kui.lua` — or what
+`kui_lua::luals_meta()` returns, the same text — in a directory on
 lua-language-server's `workspace.library`. The file declares every
 prelude constructor with its doc and a `kui.Props` class of every prop,
 typed and documented from the schema, so `row {` completes its props
@@ -2715,8 +2716,9 @@ it again after an upgrade; it is generated, never edited.
 
 ### How do I type-check a Lua view, or write it in Teal?
 
-Write `kui_lua::teal_decls()` to `types/kui.d.tl` and name it the global
-environment in the project's `tlconfig.lua`:
+Copy [`packages/lua`](../packages/lua)'s `kui.d.tl` — or write what
+`kui_lua::teal_decls()` returns — to `types/kui.d.tl` and name it the
+global environment in the project's `tlconfig.lua`:
 
 ```lua
 return { include_dir = { "types" }, global_env_def = "kui" }
@@ -2744,7 +2746,7 @@ end
 
 `slot.params` is the host's own table, so what a view reads from it is
 cast too (`slot.params.title as string`). The file is checked against
-Teal 0.24.8; write it again after an upgrade.
+Teal 0.24.8; copy it again after an upgrade.
 
 [alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-unreleased)
 
