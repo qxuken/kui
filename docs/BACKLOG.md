@@ -3399,6 +3399,48 @@ leaves the kept session in its slot (its doc says so now). The input
 that changed `00765b43…` was one alone of the seventeen before it,
 `001d0fed…`, whose text began `ޢ]k`.
 
+## From kawoosh's screenshot commands (2026-10-24)
+
+kawoosh's `:screenshot` and `:screencast` are `capture_to` and
+`record_to` (ADR 0055), its corner message saying what the `capture`
+answer says. Checked on macOS, where the alpha.66 notes said capture had
+not been: every still format, an APNG and a GIF recording, the clipboard,
+a window behind others and one minimised, all answered and written. One
+entry, F189, open: the Rust docs say the opposite of the ADR about a
+recording's `frames`.
+
+### `.` F189 — A recording's `frames` is documented in Rust as what the file holds; it is the frames drawn
+
+**Found.** kawoosh's `:screencast` answered `20 frames, 1.8 s` for an
+APNG whose `acTL` says 3, and `7 frames, 1.1 s` for a GIF that holds 4.
+The count is `Recording::hold`'s, one a frame drawn
+(`kui-native/src/capture.rs`), and `AnimationEncoder` folds a frame that
+changes nothing into the one before and a frame too short to show into
+the next (`encode.rs`, `keep` and `add`); since FZ13 it also splits a
+frame held past what a delay holds into several. So the file can hold
+fewer frames than were drawn, or more. That is what ADR 0055 decided
+(§5: "`frames` 1 for a still and the frames drawn while recording for a
+recording (the file folds one that changed nothing into the one
+before)"), and what the C header (`kui_record_to`: "with the frames
+drawn") and Odin (`events.odin`, `Captured.frames`) say. Two Rust docs
+say the other thing:
+
+- `Captured` (`kui-core/src/event.rs`): "`frames` 1 for a still and
+  what the file holds for a recording";
+- `Core::record_to` (`kui-core/src/runtime/capture_api.rs`): "with the
+  `frames` it holds and its `seconds`".
+
+An app that trusts them reads the wrong number off the answer, as
+kawoosh's first note on it did.
+
+**Do.** The two docs say "the frames drawn while recording", as the ADR
+and the other bindings do, with the fold in a clause — the file may
+hold fewer (a frame that changed nothing joins the one before) or more
+(a long hold split, FZ13). Check `Ui::record_to`, Node's `index.d.ts`
+and the Lua docs for the same words. No behaviour changes: the frames
+drawn is the number an app can act on (how busy its window was), and
+what the file holds is the decoder's to say.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5243,3 +5285,7 @@ move.
 - `.` **FZ12** — [A recorded GIF cannot turn a pixel clear](backlog/closed-2026-09.md#-fz12--a-recorded-gif-cannot-turn-a-pixel-clear--done-2026-10-24) — done (2026-10-24) — a frame that clears a pixel is written whole on a canvas the frame before clears once shown (`DisposalMethod::Background`); found by the new `encode` target
 - `.` **FZ13** — [A recorded frame held past what a delay holds loses the rest of its time](backlog/closed-2026-09.md#-fz13--a-recorded-frame-held-past-what-a-delay-holds-loses-the-rest-of-its-time--done-2026-10-24) — done (2026-10-24) — written as itself and then frames that change nothing, the time shared among them, up to 256 of them; found by the `encode` target
 - `.` **FZ14** — [A word shaped right to left comes back for the same word left to right](#-fz14--a-word-shaped-right-to-left-comes-back-for-the-same-word-left-to-right) — open — cosmic-text's shape-run cache keys a run without its direction; found by the hour's corpus under `tests/reuse.rs`
+
+**From kawoosh's screenshot commands (2026-10-24)** — F189, open
+
+- `.` **F189** — [A recording's `frames` is documented in Rust as what the file holds; it is the frames drawn](#-f189--a-recordings-frames-is-documented-in-rust-as-what-the-file-holds-it-is-the-frames-drawn) — open — `Captured`'s and `Core::record_to`'s docs against ADR 0055 §5, the C header and Odin; found by kawoosh's `:screencast`
