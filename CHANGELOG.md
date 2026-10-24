@@ -61,6 +61,12 @@ a group still lights its members together.
   asked for was held for the next vsync, so only every other vsync drew.
   A frame asked for after a vsync that had nothing to draw now draws at
   once, as that vsync's frame (backlog RG170).
+- The keyboard focus ring is whole on a node whose ancestor clips at the
+  node's own edge — a full-height row in a card with `clip`, a field
+  filling a scroll box: it is drawn just inside the node's edge there,
+  where the ring 2 px outside lost the sides the clip cut. A node with
+  room keeps the ring outside, and one the clip cuts too keeps it cut
+  with it (backlog F191).
 
 **What you can delete.**
 
@@ -69,6 +75,8 @@ a group still lights its members together.
   Homebrew's Node.
 - `KUI_FRAME_PACING=0`, set only so a Rust or C app built with Xcode 27
   scrolled at the display's rate.
+- A margin or an inset wrapper kept only so a focused row's ring was not
+  cut off by the card that clips it.
 - A `hoverGroup` shared by a row and its clickable children, or an
   `onHover` on each child feeding a hovered flag back into the row's
   `bg`, kept only so a row stayed lit while the pointer was over them.

@@ -22,7 +22,9 @@ const SCROLLBAR_HOLD: f64 = 1.0;
 const SCROLLBAR_FADE: f64 = 0.25;
 /// The default focus ring:
 /// drawn this far outside the focused node, this thick, when focus is
-/// keyboard-visible and the node styles nothing itself.
+/// keyboard-visible and the node styles nothing itself — or just inside
+/// its edge, where a clip would cut the outside one off and leaves the
+/// node itself whole (`emit_focus_ring`).
 ///
 /// The *colour* is `theme.focus_ring`: the geometry is
 /// still not a prop and still not negotiable, but a ring that cannot be
@@ -2421,13 +2423,30 @@ impl Core {
             return;
         }
         let node = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
-        let rect = Rect::new(
+        let outside = Rect::new(
             node.x - FOCUS_RING_GAP,
             node.y - FOCUS_RING_GAP,
             node.w + 2.0 * FOCUS_RING_GAP,
             node.h + 2.0 * FOCUS_RING_GAP,
         );
         let clip = self.clips.get(i).copied().unwrap_or(Clip::NONE);
+        // The ring goes outside the node, where an ancestor that clips at
+        // the node's own edge — a card of full-height rows, a scroll box a
+        // row fills — cut it off on that side. A node shown whole there
+        // gets its ring just inside its edge instead; one the clip cuts
+        // too keeps the outside ring, cut as the node is (backlog F191).
+        let shown = clip.visible();
+        let covers = |outer: &Rect, inner: &Rect| {
+            inner.x >= outer.x - 0.01
+                && inner.y >= outer.y - 0.01
+                && inner.x + inner.w <= outer.x + outer.w + 0.01
+                && inner.y + inner.h <= outer.y + outer.h + 0.01
+        };
+        let (rect, gap) = if covers(&shown, &node) && !covers(&shown, &outside) {
+            (node, 0.0)
+        } else {
+            (outside, FOCUS_RING_GAP)
+        };
         // No entry means nothing clipped this frame, which is entry zero.
         let clip_id = self.clip_ids.get(i).copied().unwrap_or(NO_CLIP_ID);
         let visible = rect.intersect(&clip.visible());
@@ -2440,7 +2459,7 @@ impl Core {
             rect: rect.scaled(scale),
             color: Color::TRANSPARENT,
             border_color: ring,
-            radius: spec.style.radius.map(|r| (r + FOCUS_RING_GAP) * scale),
+            radius: spec.style.radius.map(|r| (r + gap) * scale),
             border_w: FOCUS_RING_W * scale,
             blur: 0.0,
             kind: QuadKind::Solid,

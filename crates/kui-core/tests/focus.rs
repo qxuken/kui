@@ -1344,3 +1344,61 @@ fn a_stroke_declared_before_an_in_flow_modal_is_not_content_over_it() {
         "a viewport-anchored stroke is a layer over it"
     );
 }
+
+/// The ring Tab draws around `pick`: the transparent quad with a border,
+/// in logical px (the frames here are at scale 1).
+fn ring_of(core: &mut Core) -> Option<kui_core::Rect> {
+    let (dl, _) = core.output();
+    dl.quads
+        .iter()
+        .find(|q| q.border_w > 0.0 && q.color.a == 0.0)
+        .map(|q| q.rect)
+}
+
+/// A clickable `pick`, 200×40, at (20, 20): alone, or filling a 240×40
+/// clipped card the way a list row fills its card.
+fn ring_frame(core: &mut Core, in_card: bool) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(20.0));
+    let pick = NodeSpec::column()
+        .size(200.0, 40.0)
+        .on_click("pick")
+        .focusable();
+    if in_card {
+        ui.with_keyed("card", NodeSpec::row().size(240.0, 40.0).clip(), |ui| {
+            ui.leaf_keyed("pick", pick);
+        });
+    } else {
+        ui.leaf_keyed("pick", pick);
+    }
+    ui.finish();
+}
+
+/// The ring sits 2 px outside the focused node, where it has room; where
+/// a clip at the node's own edge would cut that ring off — a card of
+/// full-height rows — it is drawn just inside the node's edge instead,
+/// whole (backlog F191).
+#[test]
+fn a_focus_ring_a_clip_would_cut_is_drawn_inside_the_node() {
+    let mut core = Core::new();
+    ring_frame(&mut core, false);
+    tab(&mut core, false);
+    ring_frame(&mut core, false);
+    let r = ring_of(&mut core).expect("a ring");
+    assert_eq!(
+        (r.x, r.y, r.w, r.h),
+        (18.0, 18.0, 204.0, 44.0),
+        "outside, with room"
+    );
+
+    let mut core = Core::new();
+    ring_frame(&mut core, true);
+    tab(&mut core, false);
+    ring_frame(&mut core, true);
+    let r = ring_of(&mut core).expect("a ring");
+    assert_eq!(
+        (r.x, r.y, r.w, r.h),
+        (20.0, 20.0, 200.0, 40.0),
+        "inside, in the card"
+    );
+}

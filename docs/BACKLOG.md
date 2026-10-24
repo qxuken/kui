@@ -313,7 +313,9 @@ nothing to draw just ahead of the redraw an event asked for, ~53 frames
 a second — built the same day; and F190, from the same Builder's rows —
 a `hoverBg` row going dark while the pointer crossed its checkbox, its
 field or its buttons — was built the day it was filed, after the
-alpha.66 tag, and is in the archive.
+alpha.66 tag, and is in the archive, as is F191 beside it — the focus
+ring of a row filling a clipped card cut off where the card clips —
+built the same day.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3449,7 +3451,10 @@ checkbox region, which fills most of the row. Not focus: the core lit a
 so the checkbox region, the version field and the buttons each turned
 their row off. One entry, F190 — `hoverBg` hovered over the node's
 subtree, as CSS `:hover` and a `revealOnHover` anchor are — **built
-2026-10-24**, the day it was filed, and in the archive.
+2026-10-24**, the day it was filed, and in the archive. The user's next
+screenshot showed the same rows' focus ring cut along the card's
+bottom: F191, **built 2026-10-24**, the day it was filed, and in the
+archive.
 
 ## After alpha.58
 
