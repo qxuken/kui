@@ -59,6 +59,33 @@ a group still lights its members together.
   rebuild, and overrides the feel the app opens with, in every binding;
   the `wheel_feel` example spells the line to copy.
 
+### Changed
+
+- **Five CPU loops run side by side or vectorized** (backlog C57). None
+  changes what is drawn or what an app reads.
+  - A text's cache key (`key::hash_bulk`, every text of 32 bytes or more,
+    every frame) hashes 64-byte blocks over eight chains folded into
+    one, where one chain waited on its multiply every eight bytes:
+    thirty-four chunked rows of 500k characters, steady, read **0.51
+    ms** a frame, from 2.76 (`long_rows_34x500k_steady`), and a 100k
+    line scrolled 6.7 µs from 21. The hash is not kept across versions;
+    `key::fnv`, and every digest on it, is untouched.
+  - A capture's readback (`capture()`, each recorded frame) straightens
+    sixteen pixels a step — swizzled and their alphas' least and most
+    read in one NEON pass on aarch64, as words elsewhere — and divides
+    by the alpha through a table only in a block that holds a
+    translucent one: a 2560×1664 frame, ~1.5 → ~0.4 ms opaque and ~5.1
+    → ~2.9 ms translucent throughout, on the recording's thread.
+  - A long line's cut searches each half window from the end it wants —
+    the tab by memchr, the last whitespace and grapheme boundary from
+    the back — where it walked every half forward for the last of
+    something: `long_line_100k_edit` 1.26 → 1.18 ms.
+  - The newline scan a text the cache has not seen pays reads 32 bytes
+    a step, ~5× as fast over a long one.
+  - A glyph's or a path's coverage lands in the atlas as white filled
+    once and its alphas written over it, 2–2.7× as fast as a push a
+    pixel.
+
 ### Fixed
 
 - On macOS a Node window scrolls at the display's rate again under a
