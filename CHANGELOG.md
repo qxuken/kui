@@ -38,7 +38,7 @@ was the first bare bump to break an app in five releases).
   name: `set_devtools_tab` reaches a declared tab of the name, exactly,
   before the panel's own.
 - The devtools' tree arrows select the row they land on, and Enter puts
-  the selection down rather than picking it (backlog F200).
+  the selection down rather than picking it (backlog F201).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -90,7 +90,7 @@ lua-language-server, and a new runner beside the window's.
   `kui.Env` record a Teal project kept in step with the crate docs.
 
 - **A recording of what happened, in frames and between them** (backlog
-  F198, [ADR 0058](docs/adr/0058-a-recording-is-a-timeline.md)). A
+  F199, [ADR 0058](docs/adr/0058-a-recording-is-a-timeline.md)). A
   core can record its window as a timeline in kui's own format,
   [`kui-trace`](crates/kui-trace): frames as intervals, with why each ran
   (`frame_cause`, and named causes — `wake: parser`,
@@ -128,7 +128,7 @@ lua-language-server, and a new runner beside the window's.
   `owed_by`, thread-local spans timed round an app's own systems and the
   tab that reads them, a named-wake ledger, and a per-frame log file — kawoosh's Frames and Perf tabs among them.
 
-- **A Perf tab in the devtools** (backlog F197, F198). Live, the
+- **A Perf tab in the devtools** (backlog F198, F199). Live, the
   recent frames by phase — handler, build, devtools, layout, emit,
   render, vsync's wait — against the frame budget, and the spans that
   cost the most. The record button keeps every frame (the newest 1800);
@@ -178,7 +178,7 @@ lua-language-server, and a new runner beside the window's.
 
 ### Changed
 
-- **The devtools light the app as a browser's do** (backlog F196). The
+- **The devtools light the app as a browser's do** (backlog F197). The
   tree tab highlights the node under a hovered row, a breadcrumb or the
   inspector's parent link — and the one under the picker — with its box
   model over the app (the content blue, the padding green, the border
@@ -189,7 +189,7 @@ lua-language-server, and a new runner beside the window's.
   values the node has. The rows draw a guide down each level, chevrons
   for the disclosures, and flags as chips; a text node's words read as a
   string. In a bottom dock the inspector sits beside the list.
-- **The devtools panel's frame** (backlog F196). The tabs and the
+- **The devtools panel's frame** (backlog F197). The tabs and the
   placement buttons share one strip, the open tab underlined, where a
   header above the tabs held the window's title and the frame counter
   and a narrow dock cut the title to "kawoosh — k…": both are rows of
@@ -200,7 +200,7 @@ lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* nothing — a look, not a door.
 - **The devtools tree by keyboard, the whole spec, and a range of a
-  recording** (backlog F200). The tree's arrows select as they walk, the
+  recording** (backlog F201). The tree's arrows select as they walk, the
   cursor's node lit in the app while the list has the keyboard, and a
   row clicked hands the keyboard to the list. The inspector reads the
   selected node's whole spec — its interaction, accessibility, motion,

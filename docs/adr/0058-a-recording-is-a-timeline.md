@@ -5,10 +5,10 @@ date: 2026-10-25
 
 # A recording is a timeline of what happened, in frames and between them
 
-> **Accepted and built (2026-10-25), all but `kui-perf`; backlog F198,
-> and F199 for the inspector, which waits on the kui tools design
+> **Accepted and built (2026-10-25), all but `kui-perf`; backlog F199,
+> and F200 for the inspector, which waits on the kui tools design
 > system (decision 13).** From the user,
-> after the devtools' Perf tab (F197), over one conversation: a bar of
+> after the devtools' Perf tab (F198), over one conversation: a bar of
 > the timeline should open into *why that frame lagged*; an app should
 > put its own measurements beside kui's — "instruments for
 > integration"; a recording should be kui's own format, from which
@@ -35,7 +35,7 @@ headless host); `Core::frame_cause` (why it ran, as kinds: a `wake`
 names no system); `Core::owed_by` under `set_frame_trace` (F111: who
 held an owed frame — a request by its source line, not what it was
 for); `Core::frame_unchanged` (it drew what the one before drew); and
-F197's Perf tab, which records those four per frame and draws a bar
+F198's Perf tab, which records those four per frame and draws a bar
 each.
 
 What none of them says:
@@ -79,7 +79,7 @@ Lua is a guest that wakes nothing.
    no allocation, no lock — and `Core::perf_measuring()` says which, so
    an app skips reading its own clocks too. The core's records and the
    driver's are behind the same flag. The frame trace (F111) is on while
-   measuring and put back as the app had it after, as F197 does.
+   measuring and put back as the app had it after, as F198 does.
 
 2. **The recording is a timeline, and kui's own format.** One clock —
    µs since the recording began, monotonic — and records placed on it,
@@ -170,7 +170,7 @@ Lua is a guest that wakes nothing.
    causes read `wake: tree-sitter`, `request: caret blink`.
 
 9. **A bar opens into the frame, and the frame says why it lagged.**
-   Above F197's detail:
+   Above F198's detail:
    - **The path from input to screen**: the input's arrival, its
      handler, the frame's begin, its end, its present — each leg's time,
      so "it felt slow" is a leg.
@@ -293,7 +293,7 @@ Lua is a guest that wakes nothing.
 
 ## Considered options
 
-- **Frames as the format's unit** (F197's model, kawoosh's): what a
+- **Frames as the format's unit** (F198's model, kawoosh's): what a
   frame holds is easy to draw, and the gaps — a late input, a busy
   thread, a handler's cost — have nowhere to go, so the format would
   change the day someone asks why a fast frame felt slow. Declined:
@@ -326,7 +326,7 @@ Lua is a guest that wakes nothing.
   format must be literals in the image; `tracing-oslog` does the
   encoding behind the feature.
 - **Measure always, cheaply**: a clock read is ~20 ns and a frame has a
-  few dozen spans — and the rule for F197 was that nothing regresses
+  few dozen spans — and the rule for F198 was that nothing regresses
   until it is used. Declined.
 - **A sampling profiler in kui**: Instruments' Time Profiler, `samply`
   and `perf` do it with symbols and better; the trace lines up with them
@@ -374,7 +374,7 @@ Lua is a guest that wakes nothing.
   and is left out of the verdict.
 - **Breaks.** None for an app that does not use it. `FrameRequest`
   keeps its shape (decision 8). The Perf tab grows sections; a declared
-  tab named `perf` keeps its name (F197).
+  tab named `perf` keeps its name (F198).
 - **Bindings.** Twelve rows in `DOORS`, pinned by each binding's test;
   `kui.h` gains the C doors and `KuiWaker` (new functions, no struct
   moved: no ABI bump), and the generated Odin package follows.
@@ -441,7 +441,7 @@ building settled that the decisions left open, or changed:
   JSON), speedscope and the Firefox Profiler, each showing the frames,
   the main thread's spans and the counters; the tests decode and parse
   each format themselves besides.
-- **Not built**: `kui-perf` (decision 13, now F199), the devtools read
+- **Not built**: `kui-perf` (decision 13, now F200), the devtools read
   door its tab form needs, and the panel's restyle in the design
   system's look.
 
