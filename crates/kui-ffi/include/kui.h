@@ -3429,6 +3429,20 @@ void kui_set_scroll(KuiCtx *ctx, uint64_t key, float x, float y);
  * height than their estimate, so the row under the pointer stays put. Call
  * it from the view, before kui_frame_finish. */
 void kui_shift_scroll(KuiCtx *ctx, uint64_t key, float drawn, float target);
+/* Scrolls the container `key` for a drag the host holds with the pointer at
+ * x,y, when the pointer is in the edge zone inside the rect rx,ry,rw,rh
+ * (usually the container's own, from kui_scroll_geometry) or past it, by
+ * kui_edge_scroll_feel: at once, not eased, faster the deeper and the longer
+ * it is held, and fully deep when pinned against the window's edge. True
+ * when it moved, writing how far to dx,dy (positive toward later content;
+ * either may be NULL) and asking for the next frame, so a pointer held
+ * still goes on scrolling; false out of the zones, at the container's end
+ * that way, or for a key that is no scroll container. Call it once a frame
+ * while the drag is held and place the drag's live end under the pointer
+ * after; not before the drag has left its press's click slop. kui's own
+ * caret drag and drag-select scroll by the same feel on their own. */
+bool kui_edge_scroll(KuiCtx *ctx, uint64_t key, float x, float y, float rx, float ry,
+                     float rw, float rh, float *dx, float *dy);
 /* Reads it back as the last layout clamped it — the number to persist and
  * restore. 0,0 for a node that never scrolled; either pointer may be NULL. */
 void kui_scroll_offset(KuiCtx *ctx, uint64_t key, float *x, float *y);
@@ -4086,6 +4100,24 @@ void kui_set_wheel_feel(KuiCtx *ctx, float line_px, float response, float kick);
 bool kui_set_wheel_preset(KuiCtx *ctx, KuiStr name);
 /* The feel, read back as clamped; any out pointer may be NULL. */
 void kui_wheel_feel(KuiCtx *ctx, float *line_px, float *response, float *kick);
+/* How a held drag scrolls a container at its edge (ADR 0029): the edge
+ * zone's depth (logical px, 60 by default), the speed at its edge (px/s,
+ * 500) along a curve (its exponent, 2), a ramp while held (ramp_secs 1.5 to
+ * ramp_max 6 times), a cap (px/s, 3000) and how far the pointer pulls back
+ * before the ramp starts again (px, 8). Clamped into what the step can use;
+ * a number that is not finite takes the standard one. kui's own caret drag
+ * and drag-select go by it, and so does kui_edge_scroll. */
+void kui_set_edge_scroll_feel(KuiCtx *ctx, float zone_px, float speed_px_s, float curve,
+                              float ramp_secs, float ramp_max, float cap_px_s,
+                              float pull_back_px);
+/* Sets it to a preset by name, slow to fast: "gentle", "standard" (the
+ * default), "brisk"; any case. False, and nothing changed, for any other
+ * name. */
+bool kui_set_edge_scroll_preset(KuiCtx *ctx, KuiStr name);
+/* The feel, read back as clamped; any out pointer may be NULL. */
+void kui_edge_scroll_feel(KuiCtx *ctx, float *zone_px, float *speed_px_s, float *curve,
+                          float *ramp_secs, float *ramp_max, float *cap_px_s,
+                          float *pull_back_px);
 /* -- Devtools --------------- */
 /* The core's devtools panel: the event stream, the runtime's facts and the
  * tree, drawn by the core beside the host's tree in the main window and

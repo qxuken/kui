@@ -2267,6 +2267,11 @@ impl KuiWindow {
         if let Some(v) = o.get("wheelFeel").filter(|v| !v.is_null()) {
             launcher = launcher.wheel_feel(wheel_feel_arg(v, kui_core::WheelFeel::STANDARD)?);
         }
+        // The edge scroll's feel the same way, under `KUI_EDGE_SCROLL`.
+        if let Some(v) = o.get("edgeScrollFeel").filter(|v| !v.is_null()) {
+            launcher = launcher
+                .edge_scroll_feel(edge_scroll_feel_arg(v, kui_core::EdgeScrollFeel::STANDARD)?);
+        }
         // The glyph antialiasing, the launcher's `text_aa`; `KUI_TEXT_AA`
         // in the environment still wins, for an A/B by hand.
         launcher = match o.get("textAa") {
@@ -3551,6 +3556,39 @@ macro_rules! core_methods {
                 })
             }
 
+            /// How a held drag scrolls a container at its edge — kui's own
+            /// caret drag and drag-select, and `edgeScroll`: a preset's
+            /// name, slow to fast `'gentle'`, `'standard'` (the default),
+            /// `'brisk'`; or `{ zonePx, speedPxS, curve, rampSecs,
+            /// rampMax, capPxS, pullBackPx }`, any left out kept as they
+            /// are — the edge zone's depth (60 px), the speed at its edge
+            /// (500 px/s) along a curve (its exponent, 2), the ramp while
+            /// held (to 6 times over 1.5 s), the cap (3000 px/s) and how
+            /// far a pull back restarts the ramp (8 px). Clamped.
+            /// `runWindowed` takes it for the whole app as
+            /// `edgeScrollFeel`.
+            #[napi(ts_args_type = "feel: EdgeScrollPreset | Partial<EdgeScrollFeel>")]
+            pub fn set_edge_scroll_feel(&mut self, feel: Json) -> Result<()> {
+                let feel = edge_scroll_feel_arg(&feel, self.$core().edge_scroll_feel())?;
+                self.$core().set_edge_scroll_feel(feel);
+                Ok(())
+            }
+
+            /// That feel, read back as clamped.
+            #[napi(ts_return_type = "EdgeScrollFeel")]
+            pub fn edge_scroll_feel(&mut self) -> Json {
+                let f = self.$core().edge_scroll_feel();
+                serde_json::json!({
+                    "zonePx": f.zone_px,
+                    "speedPxS": f.speed_px_s,
+                    "curve": f.curve,
+                    "rampSecs": f.ramp_secs,
+                    "rampMax": f.ramp_max,
+                    "capPxS": f.cap_px_s,
+                    "pullBackPx": f.pull_back_px,
+                })
+            }
+
             /// Draws a faded subtree as one picture, faded once (ADR
             /// 0056): a node whose own `opacity` is under 1 has its
             /// subtree's quads between a group's begin and end markers
@@ -4775,6 +4813,44 @@ macro_rules! core_methods {
                 }
             }
 
+            /// Scrolls the container `key` for a drag the app holds with
+            /// the pointer at `x`, `y`, when the pointer is in the edge
+            /// zone inside `rect` — usually the container's own
+            /// `scrollGeometry` — or past it, by `edgeScrollFeel`: at
+            /// once, faster the deeper and the longer it is held, fully
+            /// deep when pinned against the window's edge. Returns what it
+            /// moved, `{ x, y }` positive toward later content, and asks
+            /// for the next frame so a pointer held still goes on
+            /// scrolling; `null` out of the zones, at the end that way, or
+            /// for a key that is no scroll container. Call it once a frame
+            /// while the drag is held — from the view — and place the
+            /// drag's live end under the pointer after; not before the
+            /// drag has left its press's click slop. kui's own caret drag
+            /// and drag-select scroll by the same feel on their own.
+            #[napi(
+                ts_args_type = "key: string, x: number, y: number, rect: Rect",
+                ts_return_type = "{ x: number, y: number } | null"
+            )]
+            pub fn edge_scroll(
+                &mut self,
+                key: String,
+                x: f64,
+                y: f64,
+                rect: Json,
+            ) -> Result<Option<Json>> {
+                let rect = rect_arg(&rect, "edgeScroll()")?;
+                let Some(key) = resolve_query(self.$core(), &key) else {
+                    return Ok(None);
+                };
+                let moved = self
+                    .$core()
+                    .edge_scroll(key, Vec2::new(x as f32, y as f32), rect);
+                if moved.is_some() {
+                    self.$redraw();
+                }
+                Ok(moved.map(|d| serde_json::json!({ "x": d.x, "y": d.y })))
+            }
+
             // -- Windows ----------------------------------------------------
 
             /// The names of every window open right now, `"main"` first,
@@ -5092,6 +5168,56 @@ fn access_request(key: Key, action: &str, arg: Option<Json>) -> Result<kui_core:
 /// `{nodes: [...], focus, hash}`; see `AccessTree` in index.d.ts.
 fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
     readback(&tree.to_value(HEX))
+}
+
+/// A `{ x, y, w, h }` argument, every field a number.
+fn rect_arg(v: &Json, call: &str) -> Result<kui_core::Rect> {
+    let n = |k: &str| {
+        v.get(k)
+            .and_then(Json::as_f64)
+            .map(|n| n as f32)
+            .ok_or_else(|| err(format!("{call}: rect.{k} must be a number")))
+    };
+    Ok(kui_core::Rect::new(n("x")?, n("y")?, n("w")?, n("h")?))
+}
+
+/// `setEdgeScrollFeel`'s argument: a preset's name, or an object whose
+/// numbers replace `from`'s.
+fn edge_scroll_feel_arg(
+    v: &Json,
+    from: kui_core::EdgeScrollFeel,
+) -> Result<kui_core::EdgeScrollFeel> {
+    use kui_core::EdgeScrollFeel;
+    if let Some(name) = v.as_str() {
+        let names: Vec<_> = EdgeScrollFeel::PRESETS.iter().map(|(n, _)| *n).collect();
+        return EdgeScrollFeel::preset(name).ok_or_else(|| {
+            err(format!(
+                "setEdgeScrollFeel(): unknown preset {name:?}, not one of {}",
+                names.join(", ")
+            ))
+        });
+    }
+    let o = v
+        .as_object()
+        .ok_or_else(|| err("setEdgeScrollFeel() takes a preset's name or an object"))?;
+    let mut feel = from;
+    for (k, n) in o {
+        let n = n
+            .as_f64()
+            .ok_or_else(|| err(format!("setEdgeScrollFeel(): {k} must be a number")))?
+            as f32;
+        match k.as_str() {
+            "zonePx" => feel.zone_px = n,
+            "speedPxS" => feel.speed_px_s = n,
+            "curve" => feel.curve = n,
+            "rampSecs" => feel.ramp_secs = n,
+            "rampMax" => feel.ramp_max = n,
+            "capPxS" => feel.cap_px_s = n,
+            "pullBackPx" => feel.pull_back_px = n,
+            _ => return Err(err(format!("setEdgeScrollFeel(): unknown key {k:?}"))),
+        }
+    }
+    Ok(feel)
 }
 
 /// `setWheelFeel`'s argument: a preset's name, or an object whose

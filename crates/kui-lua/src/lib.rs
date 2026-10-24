@@ -205,7 +205,8 @@
 //!   instant on the timeline, `perf_measure(name, ms)` a span timed
 //!   elsewhere.
 //! - Scrolling: `reveal(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
-//!   `set_scroll(key, x, y)`, `shift_scroll(key, drawn, target)`.
+//!   `set_scroll(key, x, y)`, `shift_scroll(key, drawn, target)`,
+//!   `edge_scroll(key, x, y, rect)`.
 //! - Text and selection: `text_hit(key, x, y)`, `caret_rect(key, byte)`,
 //!   `selection_text()`, `selection_html()`, `selection_ends()`,
 //!   `cell_selection()`, `select_all_in(key)`, `clear_selection()`,
@@ -874,7 +875,8 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// value)` / `perf_mark(name)` / `perf_measure(name, ms)` /
 /// `perf_measuring()` and `request_frame_for(why)` (ADR 0058)
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
-/// `shift_scroll(key, drawn, target)` / `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
+/// `shift_scroll(key, drawn, target)` / `edge_scroll(key, x, y, rect)` /
+/// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
 /// `caret_rect(key, byte)`, the selection calls `selection_text()` /
 /// `selection_html()` (the same words with the formatting they declared) /
 /// `selection_ends()` (the anchor and the focus as row indices and
@@ -1620,6 +1622,36 @@ fn env_table<'scope, 'env: 'scope>(
             }
             Ok(())
         })?,
+    )?;
+    // A drag the script holds, near a container's edge (ADR 0029): the
+    // container scrolls at the edge scroll's feel for a pointer at x, y
+    // in the edge zone inside `rect` (`{x, y, w, h}`, usually the
+    // container's `scroll_geometry`), and the call returns what moved,
+    // `{x, y}`, asking for the next frame; nil out of the zones, at the
+    // end that way, or for a key nothing declared.
+    t.set(
+        "edge_scroll",
+        scope.create_function(
+            move |lua, (key, x, y, rect): (mlua::Value, f32, f32, Table)| {
+                let mut ui = ui.borrow_mut();
+                let Some(key) = key_query(&mut ui, key)? else {
+                    return Ok(None);
+                };
+                let rect = kui_core::Rect::new(
+                    rect.get("x")?,
+                    rect.get("y")?,
+                    rect.get("w")?,
+                    rect.get("h")?,
+                );
+                let Some(d) = ui.edge_scroll(key, kui_core::Vec2::new(x, y), rect) else {
+                    return Ok(None);
+                };
+                let r = lua.create_table()?;
+                r.set("x", d.x)?;
+                r.set("y", d.y)?;
+                Ok(Some(r))
+            },
+        )?,
     )?;
     // Window requests from the script: `env.set_window_size(window, w, h)`
     // and `env.focus_window(window)` queue commands the driver applies on
@@ -6858,6 +6890,65 @@ mod tests {
         );
         assert!(core.take_window_commands().is_empty());
         assert_eq!(core.viewport(), Size::new(400.0, 200.0));
+    }
+
+    /// A drag a script holds scrolls a container at its edge:
+    /// `env.edge_scroll` with the pointer in the edge zone inside the
+    /// container's own `scroll_geometry` moves it and returns how far;
+    /// in the middle it moves nothing and returns nil.
+    #[test]
+    fn a_script_scrolls_a_container_at_its_edge() {
+        let mut ext = LuaExtension::from_source(
+            "edge",
+            r#"
+                drag, moved = nil, nil
+                function view(env)
+                  local list = { key = "list", width = "grow", height = 200,
+                                 scroll_y = true }
+                  for i = 0, 19 do
+                    list[#list + 1] = row { width = "grow", height = 30 }
+                  end
+                  moved = nil
+                  local g = env.scroll_geometry(list_key)
+                  if drag and g then
+                    moved = env.edge_scroll(list_key, drag[1], drag[2], g)
+                  end
+                  return column(list)
+                end
+            "#,
+        )
+        .unwrap();
+        let list = Key::ROOT.str("list");
+        ext.lua.globals().set("list_key", list.0 as i64).unwrap();
+        let mut core = Core::new();
+        let frame = |core: &mut Core, ext: &mut LuaExtension| {
+            let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
+            ui.set_origin(OriginId(1));
+            ext.view(&Slot::root(), &mut ui).unwrap();
+            ui.finish();
+        };
+        frame(&mut core, &mut ext);
+        let at = |ext: &LuaExtension, y: f64| {
+            let t = ext.lua.create_table().unwrap();
+            t.set(1, 10.0).unwrap();
+            t.set(2, y).unwrap();
+            ext.lua.globals().set("drag", t).unwrap();
+        };
+        at(&ext, 100.0);
+        frame(&mut core, &mut ext);
+        assert!(
+            ext.lua
+                .globals()
+                .get::<Option<Table>>("moved")
+                .unwrap()
+                .is_none()
+        );
+        at(&ext, 199.0);
+        frame(&mut core, &mut ext);
+        let moved: Table = ext.lua.globals().get("moved").unwrap();
+        assert!(moved.get::<f32>("y").unwrap() > 0.0);
+        frame(&mut core, &mut ext);
+        assert!(core.scroll_offset(list).y > 0.0);
     }
 
     /// Scrolling from a script: `env.reveal` scrolls a row into view against

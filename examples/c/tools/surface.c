@@ -1180,6 +1180,23 @@ static int surface(void) {
         check(sy == want, "kui_input_wheel moves the card its feel's line");
         kui_set_wheel_feel(ui, 40, 0.30f, 0.6f);
         kui_set_smooth_wheel(ui, true);
+
+        /* The edge scroll (ADR 0029): the feel reads back, a preset sets
+         * it, and a drag held in the card's edge zone moves the card. */
+        float zone = 0, cap = 0;
+        kui_edge_scroll_feel(ui, &zone, NULL, NULL, NULL, NULL, &cap, NULL);
+        check(zone == 60 && cap == 3000, "kui_edge_scroll_feel: the standard feel by default");
+        check(kui_set_edge_scroll_preset(ui, KUI_STR("brisk")),
+              "kui_set_edge_scroll_preset takes a name");
+        check(!kui_set_edge_scroll_preset(ui, KUI_STR("turbo")), "and refuses one it does not know");
+        kui_set_edge_scroll_feel(ui, 60, 500, 2, 1.5f, 6, 3000, 8);
+        check(kui_scroll_geometry(ui, k.card, &geo), "the card's geometry");
+        bool up = geo.offset_y > 0;
+        float edge_dy = 0;
+        bool moved = kui_edge_scroll(ui, k.card, geo.x + 1, up ? geo.y + 1 : geo.y + geo.h - 1,
+                                     geo.x, geo.y, geo.w, geo.h, NULL, &edge_dy);
+        check(geo.max_offset_y <= 0 || (moved && (up ? edge_dy < 0 : edge_dy > 0)),
+              "kui_edge_scroll moves the card at its edge");
     }
 
     /* File dialogs (backlog C51): ask, drain as the host, answer, hear it. */

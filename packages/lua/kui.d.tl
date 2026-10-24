@@ -1413,6 +1413,8 @@ global type kui = record
     set_scroll: function(key: KeyRef, x: number, y: number)
     -- Moves a node's scroll by content that moved under it, with no ease: a variable-height list's anchor (backlog C46).
     shift_scroll: function(key: KeyRef, drawn: number, target: number)
+    -- Scrolls a node for a drag the app holds with the pointer in the edge zone inside a rect, by the edge scroll's feel; returns what moved and asks for the next frame while it moves (ADR 0029).
+    edge_scroll: function(key: KeyRef, x: number, y: number, rect: Rect): Point
     -- Scrolls whatever encloses a node until it is in view.
     reveal: function(key: KeyRef)
     -- The byte and line under a point in a node's text (backlog C18).

@@ -116,6 +116,7 @@ pub mod depart;
 pub mod diag;
 pub mod dialog;
 pub mod display;
+pub mod edge_scroll;
 pub mod edit;
 pub mod enter;
 pub mod env;
@@ -178,6 +179,7 @@ pub use dialog::{FileDialog, FileDialogMode, FileFilter};
 pub use display::{
     Clip, ClipId, DisplayList, FragmentDraw, FragmentImage, NO_CLIP, NO_CLIP_ID, Quad, QuadKind,
 };
+pub use edge_scroll::EdgeScrollFeel;
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS, SECURE_BULLET};
 pub use enter::Enter;
 pub use env::{Appearance, Assistive, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};

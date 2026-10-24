@@ -2896,6 +2896,19 @@ shift_scroll :: proc(ui: ^Ui, key: u64, drawn: f32, target: f32) {
 	c.shift_scroll(ui, key, drawn, target)
 }
 
+// Scrolls a node for a drag the app holds with the pointer in the edge zone
+// inside a rect, by the edge scroll's feel; returns what moved and asks for
+// the next frame while it moves (ADR 0029).
+// Rust: Ui::edge_scroll.
+edge_scroll :: proc(ui: ^Ui, key: u64, x: f32, y: f32, rx: f32, ry: f32, rw: f32, rh: f32) -> (dx: f32, dy: f32, ok: bool) {
+	c_dx: f32
+	c_dy: f32
+	ok = c.edge_scroll(ui, key, x, y, rx, ry, rw, rh, &c_dx, &c_dy)
+	dx = c_dx
+	dy = c_dy
+	return
+}
+
 // A scrolling node's offset.
 // Rust: Ui::scroll_offset.
 scroll_offset :: proc(ui: ^Ui, key: u64) -> (x: f32, y: f32) {
@@ -3772,6 +3785,41 @@ wheel_feel :: proc(ui: ^Ui) -> (line_px: f32, response: f32, kick: f32) {
 	line_px = c_line_px
 	response = c_response
 	kick = c_kick
+	return
+}
+
+// How a held drag scrolls a container at its edge (`EdgeScrollFeel`): the
+// zone's depth (60 px by default), the speed at its edge (500 px/s) along a
+// curve (2, quadratic), a ramp while held (6 times over 1.5 s), a cap (3000
+// px/s) and the pull-back that restarts the ramp (8 px).
+// Rust: Core::set_edge_scroll_feel.
+set_edge_scroll_feel :: proc(ui: ^Ui, zone_px: f32, speed_px_s: f32, curve: f32, ramp_secs: f32, ramp_max: f32, cap_px_s: f32, pull_back_px: f32) {
+	c.set_edge_scroll_feel(ui, zone_px, speed_px_s, curve, ramp_secs, ramp_max, cap_px_s, pull_back_px)
+}
+
+// kui_set_edge_scroll_preset (kui.h).
+set_edge_scroll_preset :: proc(ui: ^Ui, name: string) -> bool {
+	return c.set_edge_scroll_preset(ui, name)
+}
+
+// That feel, read back as clamped.
+// Rust: Core::edge_scroll_feel.
+edge_scroll_feel :: proc(ui: ^Ui) -> (zone_px: f32, speed_px_s: f32, curve: f32, ramp_secs: f32, ramp_max: f32, cap_px_s: f32, pull_back_px: f32) {
+	c_zone_px: f32
+	c_speed_px_s: f32
+	c_curve: f32
+	c_ramp_secs: f32
+	c_ramp_max: f32
+	c_cap_px_s: f32
+	c_pull_back_px: f32
+	c.edge_scroll_feel(ui, &c_zone_px, &c_speed_px_s, &c_curve, &c_ramp_secs, &c_ramp_max, &c_cap_px_s, &c_pull_back_px)
+	zone_px = c_zone_px
+	speed_px_s = c_speed_px_s
+	curve = c_curve
+	ramp_secs = c_ramp_secs
+	ramp_max = c_ramp_max
+	cap_px_s = c_cap_px_s
+	pull_back_px = c_pull_back_px
 	return
 }
 

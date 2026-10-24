@@ -6,15 +6,35 @@
 //! the anchor, and an `on_scroll` node hears the wheel — in lines on a
 //! `cells` grid, where a held drag past the edge arrives the same way.
 
-use kui_core::runtime::follow::{AUTOSCROLL_RATE, CLOCKLESS_FRAME};
+use kui_core::runtime::follow::CLOCKLESS_FRAME;
 use kui_core::testing::{press, release};
 use kui_core::{
-    Cell, CellGrid, Core, EditOptions, InputEvent, Key, KeyMods, NodeSpec, Size, TextStyle, Value,
-    Vec2,
+    Cell, CellGrid, Core, EdgeScrollFeel, EditOptions, InputEvent, Key, KeyMods, NodeSpec, Size,
+    TextStyle, Value, Vec2,
 };
 
 const ROW_H: f32 = 20.0;
 const VIEW_H: f32 = 60.0;
+
+/// A flat edge feel for counting steps: a 4 px zone, linear, no ramp —
+/// 10 px/s for each px past the zone's inner edge, 600 px/s at
+/// [`PAST`] past the container's, the 1000 cap 96 px past it. The feel
+/// itself has its own tests (`edge_scroll.rs`, below).
+fn flat(core: &mut Core) {
+    core.set_edge_scroll_feel(EdgeScrollFeel {
+        zone_px: 4.0,
+        speed_px_s: 4.0 * AUTOSCROLL_RATE,
+        curve: 1.0,
+        ramp_secs: 0.0,
+        ramp_max: 1.0,
+        cap_px_s: 1000.0,
+        pull_back_px: 8.0,
+    });
+}
+const AUTOSCROLL_RATE: f32 = 10.0;
+/// How far past a scroller's edge the pointer is held for 600 px/s at
+/// the [`flat`] feel: 60 px into its 4 px zone.
+const PAST: f32 = 56.0;
 
 fn style() -> TextStyle {
     TextStyle::new(14.0)
@@ -90,11 +110,12 @@ fn a_wheel_notch_under_a_held_press_moves_the_live_end() {
 #[test]
 fn a_press_held_past_the_edge_scrolls_at_a_rate_from_the_distance() {
     let mut core = Core::new();
+    flat(&mut core);
     let scope = list(&mut core);
     press(&mut core, Vec2::new(1.0, 6.0));
     // 60 px below the scroller's bottom edge: 600 px/s, 10 px a clockless
     // frame.
-    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + 60.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + PAST)));
     assert_eq!(
         core.selection_text().as_deref(),
         Some("row 0\nrow 1\nrow 2"),
@@ -143,11 +164,12 @@ fn a_press_held_past_the_edge_scrolls_at_a_rate_from_the_distance() {
 #[test]
 fn the_rate_is_the_clocks_when_there_is_one() {
     let mut core = Core::new();
+    flat(&mut core);
     let scope = list(&mut core);
     core.set_time(1.0);
     list(&mut core);
     press(&mut core, Vec2::new(1.0, 6.0));
-    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + 60.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + PAST)));
     // Time has not passed: no step.
     list(&mut core);
     assert_eq!(core.scroll_offset(scope).y, 0.0);
@@ -387,11 +409,12 @@ fn the_wheel_over_a_grid_is_whole_lines_with_the_fraction_carried() {
 #[test]
 fn a_drag_held_past_a_grids_edge_asks_the_app_for_lines_and_the_ends_survive() {
     let mut core = Core::new();
+    flat(&mut core);
     let key = grid(&mut core, 100);
     let h = cell_h(&mut core);
     // Press in row 0, drag 60 px below the grid: 10 px a clockless frame.
     press(&mut core, Vec2::new(4.0, 8.0));
-    core.handle_input(InputEvent::CursorMoved(Vec2::new(60.0, 3.0 * 17.0 + 60.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(60.0, 3.0 * 17.0 + PAST)));
     let sel = core.cell_selection().expect("a cell selection");
     assert_eq!((sel.anchor.line, sel.focus.line), (100, 102));
     let mut lines = 0i64;
@@ -471,13 +494,14 @@ fn document(core: &mut Core) -> Key {
 #[test]
 fn a_caret_drag_past_a_documents_scroller_moves_at_the_rate_not_the_pointer() {
     let mut core = Core::new();
+    flat(&mut core);
     let scroller = document(&mut core);
     press(&mut core, Vec2::new(1.0, 6.0));
     // 60 px below: one edge step a clockless frame, 10 px — not the 60
     // px the caret's reveal would jump the scroller by if it ran under a
     // pointer drag (the reveal is a keyboard motion's; decision 2's rate
     // is the drag's).
-    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + 60.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + PAST)));
     let step = 60.0 * AUTOSCROLL_RATE * CLOCKLESS_FRAME as f32;
     for n in 1..=3 {
         document(&mut core);
@@ -497,9 +521,10 @@ fn a_caret_drag_past_a_documents_scroller_moves_at_the_rate_not_the_pointer() {
 #[test]
 fn a_press_held_past_the_end_of_a_short_list_asks_for_nothing() {
     let mut core = Core::new();
+    flat(&mut core);
     let scope = list(&mut core);
     press(&mut core, Vec2::new(1.0, 6.0));
-    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + 60.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, VIEW_H + PAST)));
     for _ in 0..40 {
         list(&mut core);
     }

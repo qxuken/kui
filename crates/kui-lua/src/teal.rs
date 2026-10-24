@@ -129,6 +129,11 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
         "",
     ),
     (
+        "edge_scroll",
+        "key: KeyRef, x: number, y: number, rect: Rect",
+        "Point",
+    ),
+    (
         "set_window_size",
         "window: integer, w: number, h: number",
         "",

@@ -560,6 +560,14 @@ pub const DOORS: &[Door] = &[
         doc: "Moves a node's scroll by content that moved under it, with no ease: a variable-height list's anchor (backlog C46).",
     },
     Door {
+        rust: "Ui::edge_scroll",
+        c: Is("kui_edge_scroll"),
+        odin: Is("edge_scroll"),
+        node: Is("edgeScroll"),
+        lua: Is("edge_scroll"),
+        doc: "Scrolls a node for a drag the app holds with the pointer in the edge zone inside a rect, by the edge scroll's feel; returns what moved and asks for the next frame while it moves (ADR 0029).",
+    },
+    Door {
         rust: "Ui::reveal",
         c: Is("kui_reveal"),
         odin: Is("reveal"),
@@ -1272,6 +1280,30 @@ pub const DOORS: &[Door] = &[
         doc: "That feel, read back as clamped.",
     },
     Door {
+        rust: "Core::set_edge_scroll_feel",
+        c: Is("kui_set_edge_scroll_feel"),
+        odin: Is("set_edge_scroll_feel"),
+        node: Is("setEdgeScrollFeel"),
+        lua: No(GUEST),
+        doc: "How a held drag scrolls a container at its edge (`EdgeScrollFeel`): the zone's depth (60 px by default), the speed at its edge (500 px/s) along a curve (2, quadratic), a ramp while held (6 times over 1.5 s), a cap (3000 px/s) and the pull-back that restarts the ramp (8 px).",
+    },
+    Door {
+        rust: "EdgeScrollFeel::preset",
+        c: As("`kui_set_edge_scroll_preset`, which sets it"),
+        odin: As("`set_edge_scroll_preset`, which sets it"),
+        node: As("a name to `setEdgeScrollFeel`"),
+        lua: No(GUEST),
+        doc: "A feel by name, slow to fast: `gentle`, `standard` (the default), `brisk`.",
+    },
+    Door {
+        rust: "Core::edge_scroll_feel",
+        c: Is("kui_edge_scroll_feel"),
+        odin: Is("edge_scroll_feel"),
+        node: Is("edgeScrollFeel"),
+        lua: No(GUEST),
+        doc: "That feel, read back as clamped.",
+    },
+    Door {
         rust: "Core::take_warnings",
         c: Is("kui_take_warnings"),
         odin: Is("take_warnings"),
@@ -1967,7 +1999,8 @@ mod tests {
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs` (or an `impl Ui` under `runtime/`), `Core::` under `runtime/`, `SharedResources::`
     /// in `session.rs`, `Tokens::` in `tokens.rs`, `WheelFeel::` in
-    /// `scroll.rs`, `Launcher::` and `Waker::` in the
+    /// `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
+    /// `Waker::` in the
     /// `kui-native` crate, `kui_native::` and `Animation::` in its
     /// `decode.rs`, and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
@@ -1992,6 +2025,7 @@ mod tests {
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
         let scroll = read(root.join("scroll.rs"));
+        let edge = read(root.join("edge_scroll.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -2010,6 +2044,7 @@ mod tests {
                 "SharedResources" => &session,
                 "Tokens" => &tokens,
                 "WheelFeel" => &scroll,
+                "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,
                 "kui_native" | "Animation" | "AnimationEncoder" | "Captures" => &decode,
                 "App" => app_trait,
