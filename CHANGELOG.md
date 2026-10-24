@@ -23,8 +23,8 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.67 (unreleased)
 
-**What breaks.** Nothing: a fix to how often a pumped window says it is
-in use.
+**What breaks.** Nothing: two fixes to how fast a window scrolls in a
+process built against the macOS 27 SDK.
 
 ### Fixed
 
@@ -37,12 +37,24 @@ in use.
   every scroll event as an idle window and pumped at `idlePumpMs`. The
   official Node build, built against SDK 15, never saw it (backlog
   RG169).
+- On macOS a window run by `kui_native::run` or `Launcher::run` — every
+  Rust and C app — scrolls at the display's rate again when the binary
+  was built against the macOS 27 SDK, as today's Xcode builds it: ~110
+  frames a second on a 120 Hz screen under a trackpad, where it drew
+  ~57. Built against that SDK, AppKit hands the app an event in the
+  same turn of the run loop as the display link's tick, just ahead of
+  it, and the tick found nothing asked for yet; the frame the event
+  asked for was held for the next vsync, so only every other vsync drew.
+  A frame asked for after a vsync that had nothing to draw now draws at
+  once, as that vsync's frame (backlog RG170).
 
 **What you can delete.**
 
 - A lowered `idlePumpMs` or `quietMs`, or a pinned official Node build,
   kept only so a Node window did not stutter when scrolled under
   Homebrew's Node.
+- `KUI_FRAME_PACING=0`, set only so a Rust or C app built with Xcode 27
+  scrolled at the display's rate.
 
 ## 0.1.0-alpha.66 (2026-10-24)
 

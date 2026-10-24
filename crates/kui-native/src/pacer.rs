@@ -27,7 +27,22 @@
 //! idle window stays at no wake-ups. Where there is no link — an older
 //! macOS, another platform, a view the link will not attach to — every
 //! frame draws when asked, as before.
+//!
+//! A vsync whose tick found nothing asked for is not lost to a frame asked
+//! for after it: that frame draws at once, as the frame of that vsync, and
+//! the one asked for after it waits for the next (backlog RG170). In a
+//! process linked against the macOS 27 SDK, AppKit hands the app its input
+//! in the same turn of the run loop as the link's tick, just ahead of it —
+//! and the redraw an event asks for reaches the window only at that turn's
+//! end, after the tick has looked and found nothing. Held for the next
+//! tick, every frame of a scroll waited out a vsync it had arrived in time
+//! for, and only every other vsync drew: 53 frames a second on a 120 Hz
+//! display, against 98 for the same binary marked as built against SDK 15,
+//! and 99 since. A frame drawn that way keeps the link firing as a held
+//! one does; when it did not, the link paused under a scroll every third
+//! vsync and lost one starting again.
 
+use std::cell::Cell;
 use std::time::{Duration, Instant};
 
 /// A frame asked for within this long of the last present is part of a
@@ -46,26 +61,95 @@ const HELD_MAX: Duration = Duration::from_millis(50);
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const IDLE_TICKS: u32 = 3;
 
+/// What a tick of the link does.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Debug, PartialEq, Eq)]
+enum Tick {
+    /// Ask for the held frame; the redraw it brings draws.
+    Draw,
+    /// Nothing is held: keep firing.
+    Wait,
+    /// Nothing has been held for [`IDLE_TICKS`] vsyncs: pause.
+    Pause,
+}
+
+/// The link's side of pacing, kept apart from the link so the order its
+/// ticks and the redraws meet in can be tested without a display.
+// Driven only where there is a link (macOS); the tests drive it everywhere.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Default)]
+struct Beat {
+    /// A frame is held for the next vsync.
+    wanted: Cell<bool>,
+    /// The redraw in flight is the link's: draw it, do not hold it.
+    fired: Cell<bool>,
+    /// A tick found nothing held, and no frame has drawn since: the next
+    /// frame asked for is that vsync's (backlog RG170).
+    missed: Cell<bool>,
+    idle: Cell<u32>,
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+impl Beat {
+    /// The display's vsync.
+    fn tick(&self) -> Tick {
+        if self.wanted.take() {
+            self.idle.set(0);
+            self.fired.set(true);
+            return Tick::Draw;
+        }
+        self.missed.set(true);
+        let idle = self.idle.get() + 1;
+        self.idle.set(idle);
+        if idle >= IDLE_TICKS {
+            Tick::Pause
+        } else {
+            Tick::Wait
+        }
+    }
+
+    /// Whether a redraw draws now; `running` is whether it is part of a run
+    /// of frames ([`in_run`]). One that does not draw is held for the next
+    /// tick. Either way a frame of a run keeps the link firing — drawn on a
+    /// vsync the tick found empty, it is no less part of the run, and a
+    /// link that paused under it lost a vsync to starting again — so the
+    /// link must be running after a frame of a run.
+    fn admit(&self, running: bool) -> bool {
+        if running {
+            self.idle.set(0);
+        }
+        let draws = self.fired.take() || !running || self.missed.get();
+        if draws {
+            self.missed.set(false);
+        } else {
+            self.wanted.set(true);
+        }
+        draws
+    }
+
+    /// A held frame given up on: the redraw that draws it anyway is the
+    /// link's, as if it had fired.
+    fn give_up(&self) {
+        self.wanted.set(false);
+        self.fired.set(true);
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod link {
-    use super::IDLE_TICKS;
+    use super::{Beat, Tick};
     use objc2::rc::Retained;
     use objc2::runtime::{AnyObject, NSObject};
     use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
     use objc2_app_kit::NSView;
     use objc2_foundation::{NSObjectProtocol, NSRunLoop, NSRunLoopCommonModes};
     use objc2_quartz_core::CADisplayLink;
-    use std::cell::Cell;
     use std::sync::Arc;
     use winit::window::Window;
 
     /// What the link's target reads and writes, on the main thread.
     pub(super) struct State {
-        /// A frame is held for the next vsync.
-        pub(super) wanted: Cell<bool>,
-        /// The redraw in flight is the link's: draw it, do not hold it.
-        pub(super) fired: Cell<bool>,
-        idle: Cell<u32>,
+        pub(super) beat: Beat,
         window: Arc<Window>,
     }
 
@@ -80,16 +164,10 @@ mod link {
             #[unsafe(method(tick:))]
             fn tick(&self, link: &CADisplayLink) {
                 let s = self.ivars();
-                if s.wanted.take() {
-                    s.idle.set(0);
-                    s.fired.set(true);
-                    s.window.request_redraw();
-                } else {
-                    let idle = s.idle.get() + 1;
-                    s.idle.set(idle);
-                    if idle >= IDLE_TICKS {
-                        link.setPaused(true);
-                    }
+                match s.beat.tick() {
+                    Tick::Draw => s.window.request_redraw(),
+                    Tick::Wait => {}
+                    Tick::Pause => link.setPaused(true),
                 }
             }
         }
@@ -119,9 +197,7 @@ mod link {
                 return None;
             }
             let target = Target::alloc(mtm).set_ivars(State {
-                wanted: Cell::new(false),
-                fired: Cell::new(false),
-                idle: Cell::new(0),
+                beat: Beat::default(),
                 window: window.clone(),
             });
             let target: Retained<Target> = unsafe { msg_send![super(target), init] };
@@ -143,7 +219,6 @@ mod link {
         }
 
         pub(super) fn run(&self) {
-            self.state().idle.set(0);
             self.link.setPaused(false);
         }
     }
@@ -214,22 +289,21 @@ impl Pacer {
     /// Whether this redraw draws now. The link's own always does; one
     /// asked for from idle does, and so does one at a new surface size —
     /// a live resize wants its frame in the redraw AppKit asked for, or the
-    /// old one is stretched to the new bounds; one asked for while frames
-    /// run back to back is held for the next vsync, and the link is started
-    /// to bring it back. Without a link every redraw draws.
+    /// old one is stretched to the new bounds — and so does the first one
+    /// after a vsync that had nothing to draw (backlog RG170); one asked
+    /// for while frames run back to back is held for the next vsync, and
+    /// the link is started to bring it back. Without a link every redraw
+    /// draws.
     pub(crate) fn admit(&mut self, now: Instant, size: (u32, u32)) -> bool {
         #[cfg(target_os = "macos")]
         if let Some(link) = &self.link {
-            let s = link.state();
-            if s.fired.take() {
-                self.held_since = None;
-                return true;
-            }
             let running = in_run(self.last_present, self.last_size, now, size);
+            let draws = link.state().beat.admit(running);
             if running {
-                s.wanted.set(true);
-                self.held_since.get_or_insert(now);
                 link.run();
+            }
+            if !draws {
+                self.held_since.get_or_insert(now);
                 return false;
             }
         }
@@ -262,9 +336,7 @@ impl Pacer {
         if now >= at {
             #[cfg(target_os = "macos")]
             if let Some(link) = &self.link {
-                let s = link.state();
-                s.wanted.set(false);
-                s.fired.set(true);
+                link.state().beat.give_up();
             }
             self.held_since = None;
             return Some((at, true));
@@ -317,6 +389,67 @@ mod tests {
         let (_, due) = p.overdue(t0 + Duration::from_millis(60)).unwrap();
         assert!(due);
         assert!(!p.holding(), "let go once it is drawn anyway");
+    }
+
+    /// A frame of a run asked for before the vsync is held, and the tick
+    /// draws it: the order the pacer was built for, and the one AppKit
+    /// keeps for a process linked against an SDK before macOS 27.
+    #[test]
+    fn a_frame_asked_for_before_the_vsync_is_held_for_it() {
+        let b = Beat::default();
+        assert!(!b.admit(true), "held");
+        assert_eq!(b.tick(), Tick::Draw);
+        assert!(b.admit(true), "the link's redraw draws");
+        assert!(!b.admit(true), "and the next of the run is held again");
+    }
+
+    /// Linked against the macOS 27 SDK, AppKit hands over an event in the
+    /// tick's turn of the run loop, just ahead of it, and the redraw the
+    /// event asks for comes after the tick has found nothing held. That
+    /// frame is the vsync's own, drawn at once; held, it waited out a
+    /// vsync, and only every other one drew (backlog RG170).
+    #[test]
+    fn a_frame_asked_for_after_an_empty_vsync_draws_at_once() {
+        let b = Beat::default();
+        for _ in 0..4 {
+            assert_eq!(b.tick(), Tick::Wait, "nothing asked for yet");
+            assert!(b.admit(true), "that vsync's frame");
+            assert!(!b.admit(true), "one frame a vsync: the next is held");
+            assert_eq!(b.tick(), Tick::Draw);
+            assert!(b.admit(true));
+        }
+    }
+
+    /// A frame drawn from idle takes the empty vsync's place too, so the
+    /// one asked for after it in the same vsync is held.
+    #[test]
+    fn any_frame_drawn_answers_an_empty_vsync() {
+        let b = Beat::default();
+        assert_eq!(b.tick(), Tick::Wait);
+        assert!(b.admit(false), "from idle");
+        assert!(!b.admit(true), "held: the vsync has its frame");
+        b.give_up();
+        assert!(b.admit(true), "a held frame given up on draws");
+        assert!(!b.admit(true));
+    }
+
+    /// The link pauses once no frame of a run has been asked for in a few
+    /// vsyncs — and not while each vsync's frame is drawn on its empty
+    /// tick, which paused it mid-scroll, and the vsync it took to start
+    /// again was lost (backlog RG170).
+    #[test]
+    fn the_link_pauses_only_when_the_run_stops() {
+        let b = Beat::default();
+        for _ in 0..IDLE_TICKS * 2 {
+            assert_eq!(b.tick(), Tick::Wait);
+            assert!(b.admit(true));
+        }
+        for _ in 1..IDLE_TICKS {
+            assert_eq!(b.tick(), Tick::Wait);
+        }
+        assert_eq!(b.tick(), Tick::Pause);
+        assert!(b.admit(true), "the last vsync was empty: drawn at once");
+        assert_eq!(b.tick(), Tick::Wait, "counted from nothing again");
     }
 
     /// Without a link — any platform but macOS 14+, or pacing turned off —
