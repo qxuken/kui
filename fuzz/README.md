@@ -34,6 +34,11 @@ The `fuzz` workflow (`.forgejo/workflows/fuzz.yml`) runs the same script
 on the runner, by hand only, and carries each target's corpus from run
 to run.
 
+Several targets at once is several `run`s, each its own process. Stop
+one with Ctrl-C: killing the `nu` process alone leaves cargo-fuzz's
+libFuzzer process fuzzing on under it (`pkill -f fuzz/target/` stops
+those).
+
 A crash lands in `fuzz/artifacts/<target>/`. Minimize it into a
 regression named after the backlog item that fixes it:
 
@@ -57,7 +62,14 @@ the inputs before it, because a new session's font caches were nine
 tenths of an input's time (`src/reuse.rs` says what a kept session
 holds and when it is dropped). `tests/reuse.rs` checks that an input runs
 the same on a kept session as on a new one; `KUI_FUZZ_CORPUS=1 cargo
-test -p kui-fuzz --test reuse` checks a run's whole corpus too.
+test --release -p kui-fuzz --test reuse` checks a run's whole corpus
+too, and is worth running after every long run: a kept session that
+runs an input differently is a finding no target crashes on. The
+alpha.66 hour's corpus showed one that way — 516 of 33 860 runs — and
+it was a cache in cosmic-text that every window of a session shares
+(backlog FZ14). To find which earlier input changed a run, give each
+sequence a thread of its own: `reuse::set_fresh` does not empty the
+kept slot.
 
 The target binaries need libFuzzer, so they sit behind the `libfuzzer`
 feature, which only `scripts/fuzz.nu` turns on: a workspace build never

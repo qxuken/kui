@@ -263,10 +263,15 @@ either, and nothing runs them unasked: the `fuzz` workflow
 `nu scripts/fuzz.nu all` is the same run on a workstation. What they
 once found is replayed by every test run (`fuzz/regressions/`, under
 `cargo test --workspace`). Before a tag that touched a parser,
-the image decoder, the Node wire, paths or the input and edit paths,
-an hour of it is worth having: the first round found seven defects the
-headless suite passed through, six of them a crash or an allocation a
-host could not stop (backlog FZ1–FZ7).
+the image decoder or encoders, the Node wire, paths, text or the input
+and edit paths, an hour of it is worth having: the first round found
+seven defects the headless suite passed through, six of them a crash or
+an allocation a host could not stop (backlog FZ1–FZ7). After the hour,
+check what it grew on kept sessions (`KUI_FUZZ_CORPUS=1 cargo test
+--release -p kui-fuzz --test reuse`, about five minutes for an hour's
+corpus): an input that reads differently after others is a defect no
+fuzzer reports, and the alpha.66 hour's was a cache every window of a
+session shares (backlog FZ14).
 
 Name both refs in the push. Not `--follow-tags`: it pushes annotated tags
 only, and the tags here are lightweight, so it would push main and silently
