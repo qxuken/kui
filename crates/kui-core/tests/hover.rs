@@ -317,3 +317,91 @@ fn a_window_drag_strip_hears_hover() {
     assert_eq!(hover.data().and_then(|d| d.get_str("phase")), Some("enter"));
     assert_eq!(hover.payload.get_str("tag"), Some("strip"));
 }
+
+const ROW: kui_core::Color = kui_core::Color {
+    r: 0.1,
+    g: 0.1,
+    b: 0.1,
+    a: 1.0,
+};
+const ROW_LIT: kui_core::Color = kui_core::Color {
+    r: 0.2,
+    g: 0.2,
+    b: 0.2,
+    a: 1.0,
+};
+const BUTTON_LIT: kui_core::Color = kui_core::Color {
+    r: 0.4,
+    g: 0.4,
+    b: 0.6,
+    a: 1.0,
+};
+
+/// A 300×40 row with `hover_bg`, holding a clickable 150-wide region and a
+/// 40-wide button with its own `hover_bg` — a list row with its checkbox
+/// and an action, as Cookie Mapping draws one.
+fn row_frame(core: &mut Core) {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.with(NodeSpec::column(), |ui| {
+        ui.with_keyed(
+            "row",
+            NodeSpec::row()
+                .size(300.0, 40.0)
+                .bg(ROW)
+                .hover_bg(ROW_LIT)
+                .hoverable(),
+            |ui| {
+                ui.leaf_keyed(
+                    "pick",
+                    NodeSpec::column().size(150.0, 40.0).on_click("pick"),
+                );
+                ui.leaf_keyed(
+                    "button",
+                    NodeSpec::column()
+                        .size(40.0, 40.0)
+                        .hover_bg(BUTTON_LIT)
+                        .on_click("act"),
+                );
+            },
+        );
+    });
+    ui.finish();
+}
+
+fn quad_bg(core: &mut Core, w: f32) -> Option<kui_core::Color> {
+    let (dl, _) = core.output();
+    dl.quads.iter().find(|q| q.rect.w == w).map(|q| q.color)
+}
+
+/// A `hover_bg` node is hovered while the pointer is over it or anything
+/// inside it, as CSS `:hover` is: a row stays lit while the pointer crosses
+/// its clickable children, and a child's own `hover_bg` lights beside it.
+#[test]
+fn a_hover_bg_row_stays_lit_over_its_clickable_children() {
+    let mut core = Core::new();
+    let at = |core: &mut Core, x: f32| {
+        core.handle_input(InputEvent::CursorMoved(Vec2::new(x, 20.0)));
+        row_frame(core);
+        (quad_bg(core, 300.0), quad_bg(core, 40.0))
+    };
+    row_frame(&mut core);
+    assert_eq!(quad_bg(&mut core, 300.0), Some(ROW), "nothing hovered");
+    assert_eq!(
+        at(&mut core, 250.0).0,
+        Some(ROW_LIT),
+        "the row's own empty part"
+    );
+    assert_eq!(
+        at(&mut core, 50.0).0,
+        Some(ROW_LIT),
+        "over the clickable region inside it"
+    );
+    let (row, button) = at(&mut core, 170.0);
+    assert_eq!(row, Some(ROW_LIT), "over the button inside it");
+    assert_eq!(button, Some(BUTTON_LIT), "and the button lit too");
+    assert_eq!(
+        at(&mut core, 350.0).0,
+        Some(ROW),
+        "and dark once the pointer leaves"
+    );
+}

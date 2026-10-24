@@ -388,7 +388,7 @@ export interface GeneratedSpecProps {
   gradient?: GradientProp;
   /** Vertical size: px | "fit" | "grow" | "N%" | a size expression (see `width`). */
   height?: SizingProp;
-  /** Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
+  /** Background while the pointer is over the node or anything inside it, a clickable child included (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`. */
   hoverBg?: ColorProp;
   /** Nodes sharing a group name show hoverBg/pressedBg together (a split button, a multi-piece shape). */
   hoverGroup?: string;

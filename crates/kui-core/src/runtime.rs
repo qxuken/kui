@@ -479,6 +479,13 @@ pub struct Core {
     /// when that tree declared one, so a frame with none walks nothing.
     reveal_pointer: Vec<Key>,
     reveal_focus: Vec<Key>,
+    /// The keys from the node under the pointer up to the root in the
+    /// frame that finished: a `hover_bg` node lights while the pointer is
+    /// over it or anything inside it, as CSS `:hover` does and as a
+    /// `reveal_on_hover` anchor is hovered — so a row stays lit while the
+    /// pointer crosses its checkbox, its field or its buttons. Filled at
+    /// `begin_frame` every frame; it is as long as the tree is deep.
+    hover_chain: Vec<Key>,
     /// The context menu this window has open, the keys the stock renderer
     /// gave its rows (so their clicks can be told from the app's), and
     /// what choosing one left for the host to do.
@@ -1259,6 +1266,7 @@ impl Core {
             floated_hint: crate::tree::NIL,
             reveal_pointer: Vec::new(),
             reveal_focus: Vec::new(),
+            hover_chain: Vec::new(),
             menu: None,
             menu_actions: Vec::new(),
             menu_editor: None,

@@ -735,7 +735,8 @@ Spec :: struct {
 	// skipped by Tab, reported disabled to assistive technology; hover tracking
 	// stays so a `tooltip` can say why.
 	disabled: bool,
-	// Background while hovered (or while any node in its hoverGroup is); implies
+	// Background while the pointer is over the node or anything inside it, a
+	// clickable child included (or while any node in its hoverGroup is); implies
 	// hover tracking, eases with `transition`.
 	hover_bg: Color,
 	// A gradient painted over the node's `bg` and under its border and its

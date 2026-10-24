@@ -378,7 +378,9 @@ impl Core {
 
     /// Swaps in the hover / pressed / focus background the spec declares
     /// for the node's (or its group's) current state: pressed wins over
-    /// keyboard-visible focus wins over hover. A disabled node keeps its
+    /// keyboard-visible focus wins over hover. Hovered is the pointer over
+    /// the node or anything inside it (`hover_chain`); pressed stays the
+    /// node the press began on. A disabled node keeps its
     /// plain `bg`. Runs before easing so a `transition` tweens between
     /// the states.
     #[inline]
@@ -431,6 +433,7 @@ impl Core {
             || group.is_some_and(|g| self.interaction.is_group_pressed(g));
         let hovered = pressed
             || self.interaction.is_hovered(key)
+            || self.hover_chain.contains(&key)
             || group.is_some_and(|g| self.interaction.is_group_hovered(g));
         let focused = self.focus_visible && self.focus == Some(key);
         if pressed && let Some(c) = pressed_bg {
@@ -475,14 +478,13 @@ impl Core {
     /// hovered node, the pressed one and the focused one up to the root:
     /// what `revealed` reads the next frame's anchors against. The
     /// pointer's are the nodes the last hit test found in this very tree,
-    /// so a key there is found by its index here. Only when the frame
-    /// declared a `reveal_on_hover` node; otherwise the lists are emptied.
+    /// so a key there is found by its index here. The hovered node's chain
+    /// is taken every frame, for `hover_bg`; the rest only when the frame
+    /// declared a `reveal_on_hover` node, and are emptied otherwise.
     pub(crate) fn note_reveal_anchors(&mut self) {
         self.reveal_pointer.clear();
         self.reveal_focus.clear();
-        if !self.tree.any_reveal {
-            return;
-        }
+        self.hover_chain.clear();
         let tree = &self.tree;
         let up = |from: Option<Key>, out: &mut Vec<Key>| {
             let Some(mut n) = from.and_then(|k| tree.index_of(k)).map(|i| i as u32) else {
@@ -493,7 +495,11 @@ impl Core {
                 n = tree.parent[n as usize];
             }
         };
-        up(self.interaction.hovered(), &mut self.reveal_pointer);
+        up(self.interaction.hovered(), &mut self.hover_chain);
+        if !tree.any_reveal {
+            return;
+        }
+        self.reveal_pointer.extend_from_slice(&self.hover_chain);
         up(self.interaction.pressed_key(), &mut self.reveal_pointer);
         up(self.focus, &mut self.reveal_focus);
     }

@@ -870,7 +870,7 @@ pub const PROPS: &[PropDef] = &[
         id: P_HOVER_BG,
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.hover_bg(c)),
-        doc: "Background while hovered (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.",
+        doc: "Background while the pointer is over the node or anything inside it, a clickable child included (or while any node in its hoverGroup is); implies hover tracking, eases with `transition`.",
     },
     PropDef {
         name: "gradient",

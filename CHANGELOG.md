@@ -23,8 +23,22 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.67 (unreleased)
 
-**What breaks.** Nothing: two fixes to how fast a window scrolls in a
-process built against the macOS 27 SDK.
+**What breaks.**
+
+- `hoverBg` lights while the pointer is over the node or anything inside
+  it, a clickable child included; it lit only while the node itself was
+  the innermost thing under the pointer (backlog F190).
+
+A list row with `hoverBg` holding its checkbox, a field and its buttons
+went dark whenever the pointer crossed any of them — over most of the
+row, where the checkbox region filled it — and lit only in the gaps
+between. It now stays lit across them, as CSS `:hover` does and as a
+`revealOnHover` anchor already was hovered; a child's own `hoverBg`
+lights beside it. A view that wanted the old reading — a card that dims
+while a button inside it is hovered — keeps it with the child's
+`onHover` in the model. `pressedBg`, `onHover`, `isHovered` and
+`hoverGroup` are unchanged: a press is still on the node it began on, and
+a group still lights its members together.
 
 ### Fixed
 
@@ -55,6 +69,9 @@ process built against the macOS 27 SDK.
   Homebrew's Node.
 - `KUI_FRAME_PACING=0`, set only so a Rust or C app built with Xcode 27
   scrolled at the display's rate.
+- A `hoverGroup` shared by a row and its clickable children, or an
+  `onHover` on each child feeding a hovered flag back into the row's
+  `bg`, kept only so a row stayed lit while the pointer was over them.
 
 ## 0.1.0-alpha.66 (2026-10-24)
 
