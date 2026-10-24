@@ -445,26 +445,42 @@ pub(crate) fn script_after(tracked: LayoutScript, layout: KeyCode, at: KeyCode) 
     }
 }
 
-/// What a plain press types (`KeyPress::text`): the platform's composed
-/// text where it has any, else the layout's character, or a space for
-/// Space; nothing under a chord. Composed first, because a dead key that
-/// does not combine with the key after it types its accent with that
-/// key: `^ z` is `"^z"`, `^ space` and `´ space` the accent alone, while
-/// the logical key is the `z`, or the Space, it fell back to — and the
-/// editor inserts this text (backlog RG127). A control character is no
-/// text: Enter's `"\r"` and Tab's `"\t"` are keys to the editor.
+/// Whether a press types, and from what (`press_text`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Typing {
+    /// No modifier but Shift.
+    Plain,
+    /// Under a Mac's Option that composes (backlog F195): ⌥- types `–`,
+    /// ⌥⇧- `—`, ⌥m `µ`. Only what the platform composed, since the
+    /// logical key is then the unmodified one a chord reads (`-`).
+    Option,
+    /// Under Control, the platform key, an Option the window made Alt, or
+    /// Alt anywhere but a Mac, whose Alt composes nothing: nothing.
+    Chord,
+}
+
+/// What a press types (`KeyPress::text`): the platform's composed text
+/// where it has any, else, for a plain press, the layout's character, or
+/// a space for Space; nothing under a chord. Composed first, because a
+/// dead key that does not combine with the key after it types its accent
+/// with that key: `^ z` is `"^z"`, `^ space` and `´ space` the accent
+/// alone, while the logical key is the `z`, or the Space, it fell back to
+/// — and the editor inserts this text (backlog RG127). A control
+/// character is no text: Enter's `"\r"` and Tab's `"\t"` are keys to the
+/// editor.
 pub(crate) fn press_text(
     logical: &WinitKey,
     composed: Option<&str>,
-    plain: bool,
+    typing: Typing,
 ) -> Option<String> {
-    if !plain {
+    if typing == Typing::Chord {
         return None;
     }
     if let Some(text) = composed.filter(|t| t.chars().any(|c| !c.is_control())) {
         return Some(text.to_string());
     }
     match logical {
+        _ if typing == Typing::Option => None,
         WinitKey::Character(s) => Some(s.to_string()),
         WinitKey::Named(NamedKey::Space) => Some(" ".to_string()),
         _ => None,
@@ -703,7 +719,17 @@ impl DynShell<'_> {
             },
             _ => KeyCode::Unknown,
         };
-        let ktext = press_text(&logical, event.text.as_deref(), plain);
+        // A Mac's Option types unless the window made it Alt (backlog
+        // F195): an app's own editor on a key sink gets the `–` kui's
+        // editor inserts.
+        let typing = if plain {
+            Typing::Plain
+        } else if cfg!(target_os = "macos") && !kmods.ctrl && !kmods.super_key && !option_alt {
+            Typing::Option
+        } else {
+            Typing::Chord
+        };
+        let ktext = press_text(&logical, event.text.as_deref(), typing);
         // `KeyPress::from_layout` resolves the two into the code a keymap
         // binds against — the layout's key while it speaks ASCII, the
         // US-QWERTY key at that position as Shift prints it when it does
@@ -1112,21 +1138,45 @@ mod tests {
         let space = WinitKey::Named(NamedKey::Space);
         let text = |s: &str| Some(s.to_string());
         // `^ z`: the logical key falls back to `z`, the text is both.
-        assert_eq!(press_text(&ch("z"), Some("^z"), true), text("^z"));
+        assert_eq!(press_text(&ch("z"), Some("^z"), Typing::Plain), text("^z"));
         // `^ space` and `´ space`: Space, typing the accent.
-        assert_eq!(press_text(&space, Some("^"), true), text("^"));
-        assert_eq!(press_text(&space, Some("´"), true), text("´"));
+        assert_eq!(press_text(&space, Some("^"), Typing::Plain), text("^"));
+        assert_eq!(press_text(&space, Some("´"), Typing::Plain), text("´"));
         // `^ e`: the two agree.
-        assert_eq!(press_text(&ch("ê"), Some("ê"), true), text("ê"));
+        assert_eq!(press_text(&ch("ê"), Some("ê"), Typing::Plain), text("ê"));
         // No composed text: the layout's character, a space for Space.
-        assert_eq!(press_text(&ch("w"), None, true), text("w"));
-        assert_eq!(press_text(&space, None, true), text(" "));
+        assert_eq!(press_text(&ch("w"), None, Typing::Plain), text("w"));
+        assert_eq!(press_text(&space, None, Typing::Plain), text(" "));
         // A control character is a key's, not text; a dead key types
         // nothing yet; a chord types nothing at all.
         let enter = WinitKey::Named(NamedKey::Enter);
-        assert_eq!(press_text(&enter, Some("\r"), true), None);
-        assert_eq!(press_text(&WinitKey::Dead(Some('^')), None, true), None);
-        assert_eq!(press_text(&ch("z"), Some("^z"), false), None);
+        assert_eq!(press_text(&enter, Some("\r"), Typing::Plain), None);
+        assert_eq!(
+            press_text(&WinitKey::Dead(Some('^')), None, Typing::Plain),
+            None
+        );
+        assert_eq!(press_text(&ch("z"), Some("^z"), Typing::Chord), None);
+    }
+
+    /// A Mac's Option that composes types what it composed, beside the
+    /// unmodified key a chord reads (backlog F195): ⌥- is `-` typing `–`,
+    /// ⌥⇧- `—`. Nothing it did not compose — the logical key is the
+    /// chord's, not something typed — and no control character.
+    #[test]
+    fn a_composing_option_types_what_it_composed() {
+        let ch = |s: &str| WinitKey::Character(s.into());
+        let text = |s: &str| Some(s.to_string());
+        assert_eq!(press_text(&ch("-"), Some("–"), Typing::Option), text("–"));
+        assert_eq!(press_text(&ch("-"), Some("—"), Typing::Option), text("—"));
+        assert_eq!(press_text(&ch("m"), Some("µ"), Typing::Option), text("µ"));
+        assert_eq!(press_text(&ch("-"), None, Typing::Option), None);
+        let space = WinitKey::Named(NamedKey::Space);
+        assert_eq!(press_text(&space, None, Typing::Option), None);
+        let enter = WinitKey::Named(NamedKey::Enter);
+        assert_eq!(press_text(&enter, Some("\r"), Typing::Option), None);
+        // An Option the window made Alt is a chord: winit's text is then
+        // the unmodified character, which nobody typed.
+        assert_eq!(press_text(&ch("-"), Some("-"), Typing::Chord), None);
     }
 
     /// The record goes by where a key is, the bit by what it means

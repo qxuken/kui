@@ -1588,7 +1588,8 @@ Declare `optionAsAlt` on the root (Rust
 `ui.option_as_alt(OptionAsAlt::Left)`, Lua `option_as_alt = "left"` on
 the root table, C `kui_set_option_as_alt(ctx, KUI_OPTION_AS_ALT_LEFT)`)
 on every frame — from a setting, if your users choose. On a Mac, Option
-composes: ⌥m types `µ`, which still arrives as the chord `<A-m>`, but
+composes: ⌥m types `µ`, which still arrives as the chord `<A-m>` with
+`µ` as its `text` (so an editor of your own types it), but
 ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for
 the next key, and the press never arrives as a key at all. The Option
 key you name is Alt instead: those presses arrive as `<A-u>` and the

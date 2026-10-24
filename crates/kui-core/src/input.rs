@@ -1190,7 +1190,10 @@ pub struct KeyPress {
     pub physical: KeyCode,
     pub mods: KeyMods,
     /// What this press would insert, if anything — already resolved through
-    /// the keyboard layout. `None` for pure navigation and chords.
+    /// the keyboard layout. `None` for pure navigation and chords, but for
+    /// a Mac's Option while it composes: ⌥- is the chord on `-` and types
+    /// `–`, as it does in an editor (backlog F195). An Option the window
+    /// made Alt ([`OptionAsAlt`]) types nothing.
     pub text: Option<String>,
     /// Set when the press came from OS key repeat.
     pub repeat: bool,

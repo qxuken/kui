@@ -3520,6 +3520,16 @@ One entry, F194 — a `kui.d.tl` generated from the schema, the compiler
 the project's own — **built 2026-10-24**, the day it was filed, and in
 the archive.
 
+## From the em dash question (2026-10-25)
+
+The user asked whether an em dash works on `<A-->`. In a window on the
+U.S. layout, with ⌥- and ⌥⇧- posted to the process: kui's editor typed
+`–` and `—`, and a key sink heard the chord on `-` — `alt`, and `shift`
+for the second — with `text` null, under `optionAsAlt` or not, so an
+editor of an app's own could not type either. One entry, F195 — the
+press carries what a composing Option typed — **built 2026-10-25**, the
+day it was filed, and in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5385,3 +5395,6 @@ move.
 
 - `~` **C58** — [An app cannot run with no window: a `Waker` is only an event loop's](backlog/closed-2026-09.md#-c58--an-app-cannot-run-with-no-window-a-waker-is-only-an-event-loops--done-2026-10-24) — done (2026-10-24) — `Launcher::open_headless` → `HeadlessRunner`: the real clock, paced by wakes, input through `HeadlessInput` from any thread (all of it before the turn's frame), captures served, its own clipboard, no winit and no display; a `Waker` rings either
 
+**From the em dash question (2026-10-25)** — F195, filed and built the same day
+
+- `!` **F195** — [A key sink never hears what a Mac's Option types: ⌥- reaches it as the chord on `-` with no `–`](backlog/closed-2026-09.md#-f195--a-key-sink-never-hears-what-a-macs-option-types---reaches-it-as-the-chord-on---with-no---done-2026-10-25) — done (2026-10-25) — the macOS runner's `press_text` reads `Typing::Option`: under an Option that composes, a press carries what the platform composed (⌥- `–`, ⌥⇧- `—`, ⌥m `µ`) beside the chord, and nothing it did not compose; an Option `optionAsAlt` names, Control, ⌘, and Alt off a Mac stay chords with no text

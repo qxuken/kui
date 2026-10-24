@@ -23,9 +23,24 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.68 (unreleased)
 
-**What breaks.** Nothing: a fix to text at a size no screen shows, a
-declaration file for Teal beside the one for lua-language-server, and a
-new runner beside the window's.
+**What breaks.**
+
+- A key sink's press under a Mac's Option carries what the Option typed
+  in `text` — ⌥- `–`, ⌥⇧- `—`, ⌥m `µ` — where it carried null; under an
+  Option `optionAsAlt` names it is null as before (backlog F195).
+
+An editor that keeps its own text and hears keys through `onKey` could
+not type a dash, or anything else a Mac types with Option: the press
+arrived as the chord on `-` with no text, and the character went only to
+kui's own editor. It now arrives as both, so a sink that inserts a
+press's `text` types what TextEdit types. A sink that inserts `text`
+whenever there is some, and also binds the chord, now does both on one
+press — look the binding up first and insert only when none matched, or
+name that Option in `optionAsAlt`. Windows and Linux are unchanged:
+their Alt composes nothing. The rest of this release breaks nothing: a
+fix to text at a size no screen shows, a declaration file for Teal
+beside the one for lua-language-server, and a new runner beside the
+window's.
 
 ### Added
 
@@ -84,6 +99,14 @@ new runner beside the window's.
   photographed.
 
 ### Fixed
+
+- An editor of your own types ⌥- and every other character a Mac's Option
+  composes: a key sink's press carries it as `text` beside the chord its
+  `code` and `alt` spell, as kui's own editor inserts it (backlog F195,
+  and under **What breaks**).
+
+  *What you can delete:* a sink's own reading of ⌥ chords into the
+  characters a Mac types for them.
 
 - A line of text at a size far past any screen — a million pixels, a few
   thousand characters — lays out and draws, where a build with overflow
