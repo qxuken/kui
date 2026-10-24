@@ -615,7 +615,9 @@ fn a_slide_rides_the_scroll_rather_than_easing_after_it() {
     core.handle_input(kui_core::InputEvent::CursorMoved(kui_core::Vec2::new(
         200.0, 100.0,
     )));
-    core.handle_input(kui_core::InputEvent::Scroll(kui_core::Vec2::new(0.0, -60.0)));
+    core.handle_input(kui_core::InputEvent::Scroll(kui_core::Vec2::new(
+        0.0, -60.0,
+    )));
     core.set_time(0.0);
     assert_eq!(
         scrolled_slider_ys(&mut core, 100.0),
