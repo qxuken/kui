@@ -287,7 +287,23 @@ pub trait App {
 /// and harmless after the loop has ended (a wake nobody hears is dropped).
 /// An app gets one in [`App::setup`], a host from [`PumpRunner::waker`].
 #[derive(Clone)]
-pub struct Waker(WakeTarget);
+pub struct Waker {
+    target: WakeTarget,
+    /// What its wakes are named, in a recording (ADR 0058): `None` for
+    /// one handed out, the name [`Waker::named`] gave.
+    name: Option<Arc<str>>,
+}
+
+/// The names of the wakes rung since the loop last read them: a named
+/// waker's wake leaves its name here, and the loop hands each to the
+/// main window's core (`Core::note_wake`) as it handles the wake.
+static WAKE_NAMES: std::sync::Mutex<Vec<Arc<str>>> = std::sync::Mutex::new(Vec::new());
+
+/// The wake names left since the last call, for the loop that handles
+/// the wakes.
+pub(crate) fn take_wake_names() -> Vec<Arc<str>> {
+    std::mem::take(&mut *WAKE_NAMES.lock().unwrap_or_else(|e| e.into_inner()))
+}
 
 /// What a [`Waker`] rings: a window's event loop, or a runner with no
 /// window (`mod headless`).
@@ -299,11 +315,38 @@ enum WakeTarget {
 
 impl Waker {
     fn of(proxy: EventLoopProxy<access_bridge::UserEvent>) -> Self {
-        Waker(WakeTarget::Loop(proxy))
+        Waker {
+            target: WakeTarget::Loop(proxy),
+            name: None,
+        }
     }
 
     fn headless(signal: Arc<headless::Signal>) -> Self {
-        Waker(WakeTarget::Headless(signal))
+        Waker {
+            target: WakeTarget::Headless(signal),
+            name: None,
+        }
+    }
+
+    /// This waker under a name: its wakes read `wake: name` among the
+    /// next frame's causes in a recording (ADR 0058, decision 8), where a
+    /// plain one reads `wake`. A thread per system keeps one each:
+    /// `waker.named("parser")`, `waker.named("pty")`.
+    pub fn named(&self, name: &str) -> Waker {
+        Waker {
+            target: self.target.clone(),
+            name: Some(Arc::from(name)),
+        }
+    }
+
+    fn leave_name(&self) {
+        if let Some(n) = &self.name {
+            let mut names = WAKE_NAMES.lock().unwrap_or_else(|e| e.into_inner());
+            // A thread waking a thousand times a frame leaves one name.
+            if !names.iter().any(|x| x == n) {
+                names.push(n.clone());
+            }
+        }
     }
 
     /// Asks every window for a frame: the loop wakes, `view` runs and the
@@ -315,7 +358,8 @@ impl Waker {
     /// until it is back: where the platform delivers it no redraw, in a
     /// frame built and not drawn, at most four a second (backlog F169).
     pub fn wake(&self) {
-        match &self.0 {
+        self.leave_name();
+        match &self.target {
             WakeTarget::Loop(p) => {
                 let _ = p.send_event(access_bridge::UserEvent::Wake);
             }
@@ -329,7 +373,8 @@ impl Waker {
     /// From the view itself `Ui::request_frame_at`, on the frame clock,
     /// says the same thing without a `Waker`.
     pub fn wake_at(&self, at: std::time::Instant) {
-        match &self.0 {
+        self.leave_name();
+        match &self.target {
             WakeTarget::Loop(p) => {
                 let _ = p.send_event(access_bridge::UserEvent::WakeAt(at));
             }
@@ -1042,6 +1087,8 @@ impl Launcher {
         if windowed {
             core.devtools_from_env();
         }
+        // `KUI_PERF_TRACE=path` records the session to a file (ADR 0058).
+        core.perf_from_env();
         for f in std::mem::take(&mut self.setup_core) {
             f(&mut core);
         }
@@ -2156,6 +2203,10 @@ impl ApplicationHandler<access_bridge::UserEvent> for Handler<'_, '_> {
         self.0.resumed(event_loop);
     }
 
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
+        self.0.new_events(event_loop, cause);
+    }
+
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -2239,6 +2290,16 @@ impl DynShell<'_> {
         if !self.torn_down {
             self.torn_down = true;
             self.app.teardown();
+            // A recording to a file is written out: a process that ends
+            // from `exiting` never drops the core.
+            if let Some(core) = self
+                .panes
+                .first_mut()
+                .map(|p| &mut p.core)
+                .or(self.main_core.as_mut())
+            {
+                let _ = core.perf_flush();
+            }
         }
     }
 
@@ -2476,8 +2537,13 @@ impl DynShell<'_> {
         extensions.route(events, |ev| {
             reached_app = true;
             // Lent the core of the window the event came from (ADR 0036).
+            // Timed as `handler` in a recording (ADR 0058, decision 5).
             match window_core(panes, main_core, ev.window) {
-                Some(core) => app.on_event_with(ev, core),
+                Some(core) => {
+                    let span = core.span_begin(kui_core::kui_trace::analysis::HANDLER);
+                    app.on_event_with(ev, core);
+                    core.span_end(span);
+                }
                 None => app.on_event(ev),
             }
         });
@@ -2826,7 +2892,7 @@ impl DynShell<'_> {
         }
         pane.captures.serve(&mut pane.core);
 
-        pane.core.stats.push(FrameSample {
+        pane.core.push_frame_sample(FrameSample {
             input_ms: 0.0,
             view_ms,
             layout_ms,
@@ -3027,6 +3093,24 @@ enum AppliedBar {
 }
 
 impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
+    /// The loop woke, and why — in a recording (ADR 0058, decision 5).
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
+        use winit::event::StartCause;
+        let Some(core) = self.panes.first_mut().map(|p| &mut p.core) else {
+            return;
+        };
+        if !core.perf_measuring() {
+            return;
+        }
+        let by = match cause {
+            StartCause::ResumeTimeReached { .. } => "timer",
+            StartCause::WaitCancelled { .. } => "event",
+            StartCause::Poll => "poll",
+            StartCause::Init => "init",
+        };
+        core.note_loop(kui_core::LoopNote::Woke(by));
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if !self.panes.is_empty() || self.opened {
             return;
@@ -3117,6 +3201,22 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         event: WinitWindowEvent,
     ) {
         let Some(i) = self.pane_index(id) else { return };
+        // The OS events no input comes of, in a recording (ADR 0058,
+        // decision 5): what kept the loop awake without the app hearing.
+        if i == 0 && self.panes[0].core.perf_measuring() {
+            let os = match &event {
+                WinitWindowEvent::Moved(_) => Some("moved"),
+                WinitWindowEvent::Occluded(_) => Some("occluded"),
+                WinitWindowEvent::ThemeChanged(_) => Some("theme"),
+                WinitWindowEvent::ScaleFactorChanged { .. } => Some("scale"),
+                WinitWindowEvent::Resized(_) => Some("resized"),
+                WinitWindowEvent::Focused(_) => Some("focused"),
+                _ => None,
+            };
+            if let Some(kind) = os {
+                self.panes[0].core.note_loop(kui_core::LoopNote::Os(kind));
+            }
+        }
         // Everything but the redraw itself: a redraw is the *answer* to an
         // event, so counting it would make a frame its own reason for the
         // next one and an animation would report activity for ever.
@@ -3620,6 +3720,11 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         }
         self.saw_event = true;
         if matches!(event, access_bridge::UserEvent::Wake) {
+            // A named waker's wake reads by its name in the main window's
+            // recording (ADR 0058, decision 8).
+            for name in take_wake_names() {
+                self.core_mut().note_wake(&name);
+            }
             // Where a window cannot draw, its view runs all the same, at
             // the turn's end and drawn when it is back (`mod unseen`).
             for pane in &mut self.panes {
@@ -3887,6 +3992,12 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
             deadline = Some(now);
         }
         self.next_deadline = deadline;
+        // The loop goes to sleep, in a recording (ADR 0058, decision 5).
+        let for_ms = deadline.map(|d| d.saturating_duration_since(now).as_secs_f64() * 1e3);
+        if self.panes.first().is_some_and(|p| p.core.perf_measuring()) {
+            self.core_mut()
+                .note_loop(kui_core::LoopNote::Sleep { for_ms });
+        }
         event_loop.set_control_flow(match deadline {
             Some(d) => ControlFlow::WaitUntil(d),
             None => ControlFlow::Wait,

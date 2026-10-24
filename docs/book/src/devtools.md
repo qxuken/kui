@@ -29,22 +29,44 @@ is not where you think it is.
 row and its node lights up in the app the way a browser's devtools light
 an element: the content blue, the padding green, the border yellow, and
 a badge with its kind, name and size. Click a row to see its box model,
-its layout, its paint, its handlers and its state; the app is left alone
-while you read, unless the eye button keeps the selection lit. The
-picker (`Ctrl+Shift+P`, or the crosshair button) selects a node by
-pointing at it.
+its layout, its paint, its handlers and its state — every setting the
+node changed from its default, or all of them under *all fields*; the
+app is left alone while you read, unless the eye button keeps the
+selection lit. After a click the arrows walk the rows, selecting as they
+go, and ←→ fold them. The picker (`Ctrl+Shift+P`, or the crosshair
+button) selects a node by pointing at it.
 
-**perf** — what each frame costs: input, view, layout, render and the
-vsync wait, against your frame budget. Press record, use the app, press
-stop: every frame is kept with why it ran (a key, the pointer, a wake,
-an animation still owed), who held it (the node whose transition was
-mid-flight, the line that called `request_frame`) and whether it drew
-anything new. Click a bar to open its frame; click a holder to find its
-node in the tree. When your app won't go idle, this is the tab: the
-frames marked "drew nothing new" are the ones you can stop asking for.
-The camera saves a screenshot of the window and the film camera
-records it as a GIF, to the desktop (or `KUI_CAPTURE_DIR`), the path
-in the events tab.
+**perf** — what each frame costs and why it ran. Live, the recent
+frames by phase — your handlers, `build` (your view), the devtools,
+layout, emit, render, the vsync wait — against your frame budget. Press
+record, use the app, press stop: every frame is kept with why it ran (a
+key, the pointer, a wake, an animation still owed), who held it (the
+node whose transition was mid-flight, the line that called
+`request_frame`), whether it drew anything new, and what happened
+between it and the frame before. Click a bar and the frame says why it
+lagged — *late* (its input waited), *blocked* (the thread was busy
+outside kui), *slow* (and which span took the time), *waited* (wall time
+far over CPU time), *wasted* (it drew nothing new) or part of a *burn*
+(frames running with no input) — with the path from the input to the
+screen leg by leg and its spans as a flame chart; a span or a holder
+with a node lights it in the app. Drag across the bars, or click one and
+shift-click another, and the summary and the tables read just those
+frames. When your app won't go idle, this is
+the tab: the frames marked "drew nothing new" are the ones you can stop
+asking for, and the holders say who asked.
+
+Your own measurements land beside kui's: `ui.span("rows", |ui| …)`,
+`perf_count`, `perf_gauge`, `perf_mark`, `perf_measure` for work timed on
+another thread, `request_frame_for("caret blink")` and
+`waker.named("parser")` to say why a frame was asked for. They cost
+nothing until something records. *save trace* writes the recording as a
+`.kuitrace`; `KUI_PERF_TRACE=session.kuitrace` records a whole run to a
+file; `kui-trace convert` turns either into Perfetto's, Chrome's,
+speedscope's or the Firefox Profiler's format, and `kui-trace diff
+before.kuitrace after.kuitrace --fail-over 10%` fails a CI job when a
+change made things slower. The camera saves a screenshot of the window
+and the film camera records it as a GIF, to the desktop (or
+`KUI_CAPTURE_DIR`), the path in the events tab.
 
 ## Warnings
 

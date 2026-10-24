@@ -602,8 +602,13 @@ impl Core {
     /// warning. A driver with a bare `Core` finishes through
     /// `Ui::wrap(core).finish()`.
     pub(crate) fn finish_frame(&mut self) {
+        use kui_trace::{Origin, analysis};
+        let span = self.span_begin_as(analysis::LAYOUT, Origin::Kui);
         self.layout_frame();
+        self.span_end(span);
+        let span = self.span_begin_as(analysis::EMIT, Origin::Kui);
         self.emit_frame();
+        self.span_end(span);
         self.building = false;
         self.replay_finish_frame();
         self.submenu_frame_end();
@@ -620,6 +625,7 @@ impl Core {
         self.snapshot_nodes();
         self.devtools_after_frame();
         self.trace_finish_frame();
+        self.perf_frame_end();
         // Between frames the host is who talks to the core: a driver that
         // tagged the last nodes with an extension's origin by hand (rather
         // than through `fill`, which restores it) must not leave its

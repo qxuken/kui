@@ -332,67 +332,154 @@ pub(crate) struct Facts {
     cursor: Option<Vec2>,
 }
 
-/// How many frames a Perf recording keeps: the newest, a minute at 30
-/// frames a second, half one at 60.
-pub const PERF_CAP: usize = 1800;
-
-/// One frame the Perf tab recorded, from the main window's core: why it
-/// ran and who held it, read as it began; its phase times and whether it
-/// changed what is drawn, filled in once it has drawn.
-#[derive(Clone, Debug)]
-pub(crate) struct PerfFrame {
-    frame: u64,
-    /// The core's clock as the frame began, seconds.
-    t: f64,
-    cause: crate::runtime::cause::FrameCause,
-    /// The driver's timing of the frame (`Core::stats`): pushed after the
-    /// frame draws, so read as the next one begins. `None` from a driver
-    /// that pushes none (a C host, a headless drive), or a frame not
-    /// drawn.
-    sample: Option<crate::stats::FrameSample>,
-    /// The frame drew what the one before it drew (`Core::frame_unchanged`).
-    unchanged: Option<bool>,
-    /// The nodes the finished frame held, the panel's among them.
-    nodes: usize,
-    holders: Vec<PerfHolder>,
-    /// `stats.total` as the frame began: a total past it is this frame's
-    /// sample, pushed.
-    stats_total: u64,
-}
-
-/// Who held a recorded frame (`Core::owed_by`): what for, the node when
-/// there is one, and its name or the line that asked.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PerfHolder {
-    what: &'static str,
-    key: Option<Key>,
-    name: String,
-}
-
 /// A capture the panel asked for, for the main window's core to make:
-/// the window as drawn, the docked panel with it.
+/// the window as drawn, the docked panel with it — or the recording
+/// written out.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum CaptureAsk {
     Still(String),
     Record(String),
     Stop,
+    /// The recording, as a `.kuitrace` at this path.
+    Trace(String),
+}
+
+/// A recording read whole once it stopped (ADR 0058): the trace, its
+/// timeline and what the tab shows of it, worked out once rather than a
+/// frame at a time.
+pub(crate) struct PerfView {
+    pub(crate) trace: kui_trace::Trace,
+    pub(crate) tl: kui_trace::Timeline,
+    pub(crate) burns: Vec<kui_trace::analysis::Burn>,
+    pub(crate) spans: Vec<kui_trace::analysis::SpanStat>,
+    pub(crate) origins: Vec<(kui_trace::Origin, u64, u64)>,
+    pub(crate) gaps: kui_trace::analysis::Gaps,
+    pub(crate) counters: Vec<(kui_trace::NameId, f64, i64)>,
+    pub(crate) gauges: Vec<(kui_trace::NameId, f64, f64, f64)>,
+    /// Each frame's phases, by its index.
+    pub(crate) phases: Vec<kui_trace::analysis::Phases>,
+    /// Frames counted by cause, and by holder (what, name, node), the
+    /// most first.
+    pub(crate) causes: Vec<(kui_trace::NameId, usize)>,
+    pub(crate) holders: Vec<((kui_trace::NameId, kui_trace::NameId, u64), usize)>,
+    /// The frame budget the recording was made against, µs.
+    pub(crate) budget: u64,
+}
+
+impl PerfView {
+    pub(crate) fn of(trace: kui_trace::Trace, budget_ms: f32) -> PerfView {
+        use kui_trace::analysis;
+        let tl = trace.timeline();
+        let burns = analysis::burns(&tl, &trace);
+        let spans = analysis::by_span(&tl, &tl.spans);
+        let origins = analysis::by_origin(&tl, &tl.spans);
+        let gaps = analysis::gaps(&tl, &trace);
+        let counters = analysis::counters(&tl);
+        let gauges = analysis::gauges(&tl);
+        let budget = trace
+            .session
+            .as_ref()
+            .map_or(budget_ms, |s| s.budget_ms)
+            .max(1.0);
+        let phases = (0..tl.frames.len())
+            .map(|i| analysis::phases(&tl, i, &trace))
+            .collect();
+        let mut causes: rustc_hash::FxHashMap<kui_trace::NameId, usize> = Default::default();
+        let mut holders: rustc_hash::FxHashMap<(kui_trace::NameId, kui_trace::NameId, u64), usize> =
+            Default::default();
+        for f in &tl.frames {
+            for c in &f.causes {
+                *causes.entry(*c).or_default() += 1;
+            }
+            // A frame nobody here asked for counts under the empty name.
+            if f.causes.is_empty() {
+                *causes.entry(0).or_default() += 1;
+            }
+            for h in &f.holders {
+                *holders.entry((h.what, h.name, h.node)).or_default() += 1;
+            }
+        }
+        let mut causes: Vec<_> = causes.into_iter().collect();
+        causes.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut holders: Vec<_> = holders.into_iter().collect();
+        holders.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        PerfView {
+            trace,
+            tl,
+            burns,
+            spans,
+            origins,
+            gaps,
+            counters,
+            gauges,
+            phases,
+            causes,
+            holders,
+            budget: (budget * 1000.0) as u64,
+        }
+    }
+}
+
+impl PerfView {
+    /// Frames `first..=last` read whole on their own: the records from the
+    /// first one's gap to the last one's present, its holders by frame.
+    pub(crate) fn slice(&self, first: usize, last: usize) -> PerfView {
+        use kui_trace::Record;
+        let f0 = &self.tl.frames[first];
+        let f1 = &self.tl.frames[last];
+        let from = f0.gap_from;
+        let to = f1
+            .present
+            .map_or(f1.end_or_begin(), |p| p.t.max(f1.end_or_begin()))
+            + 1;
+        let frames: rustc_hash::FxHashSet<u64> = self.tl.frames[first..=last]
+            .iter()
+            .map(|f| f.frame)
+            .collect();
+        let records = self
+            .trace
+            .records
+            .iter()
+            .filter(|r| match (r.t(), r) {
+                (Some(t), _) => t >= from && t < to,
+                (None, Record::Holder { frame, .. }) => frames.contains(frame),
+                (None, _) => true,
+            })
+            .cloned()
+            .collect();
+        let trace = kui_trace::Trace {
+            session: self.trace.session.clone(),
+            names: self.trace.names.clone(),
+            tracks: self.trace.tracks.clone(),
+            records,
+        };
+        PerfView::of(trace, self.budget as f32 / 1000.0)
+    }
 }
 
 #[derive(Default)]
 pub(crate) struct Perf {
-    /// Frames are being kept.
+    /// The record button's ask, for the main window's core to apply.
+    want: Option<bool>,
+    /// The main core's recording, as it stood at its last frame.
     recording: bool,
-    frames: VecDeque<PerfFrame>,
-    /// How many fell off the front past [`PERF_CAP`].
-    dropped: u64,
-    /// The frame the detail shows, by number.
-    selected: Option<u64>,
+    /// The last recording, read whole.
+    view: Option<std::sync::Arc<PerfView>>,
+    /// The frame the detail shows: an index into the view's frames.
+    selected: Option<usize>,
+    /// The frames the summary and the tables read, first and last
+    /// inclusive: dragged across the bars or shift-clicked; `None` is the
+    /// whole recording.
+    range: Option<(usize, usize)>,
+    /// A drag across the bars: where it began and where it is, window px.
+    drag: Option<(f32, f32)>,
+    /// The drag let go: the next build keeps its range and forgets it.
+    drag_ended: bool,
+    /// The range read whole, for the range it was read for.
+    range_view: Option<((usize, usize), std::sync::Arc<PerfView>)>,
     /// The timeline scrolls to its newest frame on its next build: a
     /// recording just stopped.
     scroll_end: bool,
-    /// The core's frame trace before the recording turned it on, to put
-    /// back when it stops; `Some` while the recording holds it.
-    trace_was: Option<bool>,
     /// A screen recording the panel started is running.
     screen_recording: bool,
     asks: Vec<CaptureAsk>,
@@ -476,6 +563,13 @@ pub(crate) struct State {
     /// rows in hand: `up`, `down`, `left`, `right`, `home`, `end`,
     /// `pageup`, `pagedown`, `enter`, `space`.
     tree_key: Option<String>,
+    /// A row was clicked: the next tree build gives the list the keyboard.
+    focus_list: bool,
+    /// The node the last snapshot spelled out whole for the inspector.
+    detail_of: Option<Key>,
+    /// The inspector lists only the fields a node declares; off, every
+    /// field with its default.
+    changed_only: bool,
     /// The Perf tab: the frames recorded, the one looked at, and the
     /// captures asked for.
     perf: Perf,
@@ -551,6 +645,9 @@ impl Default for State {
             fold_all: false,
             tree_cursor: None,
             tree_key: None,
+            focus_list: false,
+            detail_of: None,
+            changed_only: true,
             perf: Perf::default(),
             facts: Facts::default(),
             nodes: Vec::new(),
@@ -788,25 +885,29 @@ impl State {
                 self.pick_hover = None;
             }
             "highlight" => self.highlight = !self.highlight,
+            "changed-only" => self.changed_only = !self.changed_only,
             "perf-record" => {
-                self.perf.recording = !self.perf.recording;
-                if self.perf.recording {
-                    self.perf.frames.clear();
-                    self.perf.dropped = 0;
+                let on = !self.perf.recording;
+                self.perf.want = Some(on);
+                self.perf.recording = on;
+                if on {
                     self.perf.selected = None;
-                } else {
-                    self.perf.scroll_end = true;
                 }
-                self.note(if self.perf.recording {
+                self.note(if on {
                     "perf: recording frames"
                 } else {
                     "perf: recording stopped"
                 });
             }
             "perf-clear" => {
-                self.perf.frames.clear();
-                self.perf.dropped = 0;
+                self.perf.view = None;
                 self.perf.selected = None;
+                self.perf.range = None;
+            }
+            "perf-range-clear" => self.perf.range = None,
+            "perf-save" => {
+                let path = capture_path("kuitrace");
+                self.perf.asks.push(CaptureAsk::Trace(path));
             }
             "screenshot" => {
                 let path = capture_path("png");
@@ -864,12 +965,16 @@ impl State {
                         self.note(format!("dock: {}", dock.name()));
                     }
                 } else if let Some(key) = other.strip_prefix("node:").and_then(parse_key) {
-                    // A tree row: select it, or unselect the selected one.
+                    // A tree row: select it, or unselect the selected one;
+                    // the list's cursor moves to it and the list takes the
+                    // keyboard, so the arrows go on from here.
                     self.selected = if self.selected == Some(key) {
                         None
                     } else {
                         Some(key)
                     };
+                    self.tree_cursor = Some(key);
+                    self.focus_list = true;
                 } else if let Some(key) = other.strip_prefix("goto:").and_then(parse_key) {
                     // The inspector's parent row or a breadcrumb: select
                     // and bring its row into view.
@@ -883,6 +988,14 @@ impl State {
                         self.expanded.insert(seq);
                     }
                     self.stream_dirty = true;
+                } else if let Some(n) = other
+                    .strip_prefix("perf-range:")
+                    .and_then(|n| n.parse::<usize>().ok())
+                {
+                    // A shift-click on a bar: the range from the frame
+                    // looked at to this one.
+                    let from = self.perf.selected.unwrap_or(n);
+                    self.perf.range = Some((from.min(n), from.max(n)));
                 } else if let Some(n) = other
                     .strip_prefix("perf-frame:")
                     .and_then(|n| n.parse().ok())
@@ -947,16 +1060,6 @@ impl State {
         } else if let Some(t) = self.tabs.get(i - Tab::ALL.len()) {
             self.custom = Some(t.name.clone());
         }
-    }
-}
-
-/// A source path's last two parts, `src/app.rs`: what names a line in a
-/// row a side dock is wide.
-fn short_path(path: &str) -> &str {
-    let mut cuts = path.rmatch_indices(['/', '\\']).map(|(i, _)| i);
-    match (cuts.next(), cuts.next()) {
-        (Some(_), Some(i)) => &path[i + 1..],
-        _ => path,
     }
 }
 
@@ -1762,7 +1865,7 @@ impl Core {
         if !main {
             return;
         }
-        self.perf_begin_frame();
+        self.perf_begin_frame(dock, shown);
         self.dt_inspect = want_inspect;
         if dock.docked() {
             self.dt_dock = Some(dock);
@@ -1921,6 +2024,15 @@ impl Core {
         }
     }
 
+    /// The node whose whole spec the snapshot spells out for the
+    /// inspector ([`crate::runtime::inspect::NodeInfo::detail`]): the
+    /// tree tab's selection, while the panel is on.
+    pub(crate) fn devtools_detail_key(&self) -> Option<Key> {
+        let s = self.session.state();
+        let d = &s.devtools;
+        if d.on { d.selected } else { None }
+    }
+
     /// Whether a `capture` answer with `message` is one the panel asked
     /// for: its marker, while one of its captures is unanswered. An app's
     /// message that happens to spell the same map is the app's whenever
@@ -1938,22 +2050,25 @@ impl Core {
         true
     }
 
-    /// The Perf tab's half of `begin_frame` in the main window, after the
-    /// trace has read why this frame runs: the frame before finished —
-    /// its phase times, pushed once it drew, and whether it changed
-    /// anything — and this one opened with its causes and holders. The
-    /// captures the panel asked for are made here too, from whichever
-    /// window asked, since only this core draws the app.
-    fn perf_begin_frame(&mut self) {
-        let (recording, holds, asks) = {
+    /// The Perf tab's half of `begin_frame` in the main window: the
+    /// record button applied to this core's recording, the recent frames
+    /// kept while the tab is on show here, a stopped recording read whole
+    /// for the tab, and the captures the panel asked for made — from
+    /// whichever window asked, since only this core draws the app.
+    fn perf_begin_frame(&mut self, dock: Dock, shown: Shown) {
+        let (want, asks, was, view) = {
             let mut s = self.session.state();
             let p = &mut s.devtools.perf;
             (
-                p.recording,
-                p.trace_was.is_some(),
+                p.want.take(),
                 std::mem::take(&mut p.asks),
+                p.recording,
+                p.view.clone(),
             )
         };
+        if let Some(on) = want {
+            self.set_perf_recording(on);
+        }
         for ask in asks {
             let marker = Some(action("captured"));
             match ask {
@@ -1966,81 +2081,59 @@ impl Core {
                     self.record_to(path, marker);
                 }
                 CaptureAsk::Stop => self.stop_recording(),
+                CaptureAsk::Trace(path) => {
+                    // The recording the tab shows, not what has been kept
+                    // since.
+                    let bytes = match &view {
+                        Some(v) => v.trace.to_bytes(),
+                        None => self.perf_trace(),
+                    };
+                    let note = match std::fs::write(&path, bytes) {
+                        Ok(()) => format!("trace saved: {path}"),
+                        Err(e) => format!("trace not saved: {path}: {e}"),
+                    };
+                    self.session.state().devtools.note(note);
+                }
             }
         }
-        // The trace is the recording's while it runs, and put back as the
-        // app had it after.
-        if recording && !holds {
-            let was = self.frame_trace();
-            self.session.state().devtools.perf.trace_was = Some(was);
-            self.set_frame_trace(true);
-        } else if !recording && holds {
-            let was = self.session.state().devtools.perf.trace_was.take();
-            self.set_frame_trace(was.unwrap_or(false));
-        }
-        if !recording {
-            return;
-        }
-        let unchanged = self.frame_unchanged();
-        let sample = self.stats.last();
-        let total = self.stats.total;
-        let by = self.owed_by();
-        let mut holders = Vec::new();
-        let named = |what: &'static str, h: &crate::runtime::cause::FrameHolder| PerfHolder {
-            what,
-            key: Some(h.key),
-            name: if h.slots.is_empty() {
-                h.name.clone()
-            } else {
-                format!("{} ({})", h.name, h.slots.join(" "))
-            },
-        };
-        for (what, list) in [
-            ("transition", &by.transitions),
-            ("cycle", &by.cycles),
-            ("exit", &by.departures),
-            ("scroll", &by.scrolls),
-            ("animate", &by.animate),
-        ] {
-            holders.extend(list.iter().map(|h| named(what, h)));
-        }
-        if let Some(h) = &by.autoscroll {
-            holders.push(named("autoscroll", h));
-        }
-        holders.extend(by.requests.iter().map(|r| PerfHolder {
-            what: "request",
-            key: None,
-            name: format!("{} · {}:{}", r.why, short_path(r.at.file()), r.at.line()),
-        }));
-        let frame = PerfFrame {
-            frame: self.frame_no,
-            t: self.now(),
-            cause: self.frame_cause(),
-            sample: None,
-            unchanged: None,
-            nodes: 0,
-            holders,
-            stats_total: total,
-        };
+        let now = self.perf_recording();
+        // The recent frames, kept while the tab shows its live view in
+        // this window — not under a recording it is showing, whose frames
+        // the live view's shorter ring would trim away.
+        self.perf_set_live(
+            dock.docked()
+                && shown == Shown::Builtin(Tab::Perf)
+                && view.is_none()
+                && !now
+                && want != Some(false),
+        );
+        let stopped = (was && !now) || want == Some(false);
+        let view = stopped.then(|| {
+            std::sync::Arc::new(PerfView::of(
+                self.perf_trace_read(),
+                self.env.frame_budget_ms(),
+            ))
+        });
         let mut s = self.session.state();
         let p = &mut s.devtools.perf;
-        if let Some(last) = p.frames.back_mut() {
-            if total > last.stats_total {
-                last.sample = sample;
-            }
-            last.unchanged = unchanged;
+        p.recording = now;
+        if let Some(v) = view {
+            p.view = Some(v);
+            p.selected = None;
+            p.scroll_end = true;
         }
-        if p.frames.len() >= PERF_CAP {
-            p.frames.pop_front();
-            p.dropped += 1;
-        }
-        p.frames.push_back(frame);
     }
 
     /// Opens the `kui-devtools` node under the current cursor and builds
     /// the panel — the dock, the outlines, the picker — inside it, with
     /// the session's state taken out for the length of the build.
     fn build_panel(&mut self, place: Place) {
+        let span = self.span_begin_as(kui_trace::analysis::DEVTOOLS, kui_trace::Origin::Kui);
+        self.build_panel_inner(place);
+        self.span_end(span);
+    }
+
+    fn build_panel_inner(&mut self, place: Place) {
         let saved_origin = self.origin;
         self.origin = OriginId::DEVTOOLS;
         // The facts the panel reads: this frame's, from this core, when it
@@ -2102,18 +2195,11 @@ impl Core {
         let tabs = std::mem::take(&mut self.dt_tabs);
         let raised = self.warnings_raised();
         let facts = self.collect_facts(self.devtools_key());
-        let nodes = self.tree.len();
         let mut s = self.session.state();
         let d = &mut s.devtools;
         d.frames = self.frame_no;
         d.facts = facts;
         d.tabs = tabs;
-        if d.perf.recording
-            && let Some(f) = d.perf.frames.back_mut()
-            && f.frame == self.frame_no
-        {
-            f.nodes = nodes;
-        }
         // The panel's own window draws the tree from a copy; docked, the
         // tab reads this core's list itself and the copy is not kept.
         // The first copy is what the panel's window is waiting for: it
@@ -2153,9 +2239,20 @@ impl Core {
         }
         // Warnings logged while popped out move the stream there too.
         wake_panel |= !new_warnings_empty && d.dock == Dock::Window;
+        // A new selection's spec rows are in this snapshot, and the
+        // inspector drew from the one before: it is drawn again.
+        let detail_owed = d.selected.is_some()
+            && d.detail_of != d.selected
+            && d.shown() == Shown::Builtin(Tab::Tree);
+        d.detail_of = d.selected;
+        wake_panel |= detail_owed && d.dock == Dock::Window;
+        let owe = detail_owed && d.dock != Dock::Window;
         drop(s);
         if wake_panel {
             self.devtools_redraw_others();
+        }
+        if owe {
+            self.owe_frame("devtools");
         }
     }
 
@@ -2206,6 +2303,15 @@ impl Core {
     /// One action, from a chord or a control, with what it asks of the
     /// core done after the state borrow ends.
     fn devtools_act(&mut self, what: &str) {
+        // A bar shift-clicked chooses a range rather than a frame.
+        let ranged;
+        let what = match what.strip_prefix("perf-frame:") {
+            Some(n) if self.modifiers().shift => {
+                ranged = format!("perf-range:{n}");
+                ranged.as_str()
+            }
+            _ => what,
+        };
         let (acted, focus_main) = {
             let mut s = self.session.state();
             let acted = s.devtools.act(what);
@@ -2293,6 +2399,24 @@ impl Core {
                     }
                     Some("own-window") => {
                         closed |= data.and_then(|d| d.get_str("phase")) == Some("closed");
+                    }
+                    Some("perf-drag") => {
+                        // A drag across the timeline's bars: the build
+                        // turns it into a range of frames.
+                        let x = data.and_then(|d| d.get("x")).and_then(Value::as_float);
+                        let phase = data.and_then(|d| d.get_str("phase"));
+                        if let Some(x) = x {
+                            let x = x as f32;
+                            let mut s = self.session.state();
+                            let p = &mut s.devtools.perf;
+                            match (phase, p.drag) {
+                                (Some("start"), _) | (_, None) => p.drag = Some((x, x)),
+                                (_, Some((x0, _))) => p.drag = Some((x0, x)),
+                            }
+                            if phase == Some("end") {
+                                p.drag_ended = true;
+                            }
+                        }
                     }
                     Some("resize") => {
                         let f = |k: &str| data.and_then(|d| d.get(k)).and_then(Value::as_float);

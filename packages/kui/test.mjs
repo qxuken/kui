@@ -9927,3 +9927,85 @@ test('a wrong type, an empty image, a NaN volume and a deep message say what the
     /a message nested 2001 levels deep: kui takes 1024/,
   );
 });
+
+// The recording (ADR 0058): off, every door is nothing and a span's id is
+// 0; recording, spans, counters, gauges, marks and measures land in the
+// `kui-trace` bytes `perfTrace()` hands out, names and all.
+test('the recording\'s doors reach perfTrace (ADR 0058)', () => {
+  const ctx = new Ctx();
+  const view = box({ pad: 4 }, [text('rows')]);
+  assert.equal(ctx.perfMeasuring(), false, 'nothing listens by default');
+  assert.equal(ctx.perfRecording(), false);
+  assert.equal(ctx.spanBegin('off'), 0, 'no span while off');
+  ctx.spanEnd(0);
+  ctx.setPerfRecording(true);
+  assert.equal(ctx.perfMeasuring(), true);
+  assert.equal(ctx.perfRecording(), true);
+  for (let i = 0; i < 3; i++) {
+    const outer = ctx.spanBegin('outer');
+    assert.ok(outer > 0, 'a span while recording');
+    const inner = ctx.spanBegin('inner');
+    assert.notEqual(inner, outer);
+    ctx.spanEnd(inner);
+    ctx.perfCount('rows', 12);
+    ctx.spanEnd(outer);
+    ctx.frame(200, 100, 1, view);
+  }
+  ctx.perfMeasure('parse', 2.5);
+  ctx.perfGauge('bytes', 4096);
+  ctx.perfMark('opened');
+  ctx.noteWake('socket');
+  ctx.requestFrameFor('blink');
+  ctx.frame(200, 100, 1, view);
+  ctx.setPerfRecording(false);
+  assert.equal(ctx.perfMeasuring(), false, 'stopped');
+  const trace = ctx.perfTrace();
+  assert.ok(Buffer.isBuffer(trace));
+  assert.equal(trace.subarray(0, 8).toString('latin1'), 'KUITRACE');
+  for (const name of ['outer', 'inner', 'rows', 'parse', 'bytes', 'opened', 'wake: socket', 'request: blink']) {
+    assert.ok(trace.includes(name), `the recording names ${name}`);
+  }
+  ctx.perfFlush(); // no file: nothing to write, and no throw
+});
+
+// `span(name, fn)` is the closure form on both classes: it returns what `fn`
+// returned, nests, and ends however `fn` leaves.
+test('span(name, fn) returns its value, nests and ends on a throw (ADR 0058)', () => {
+  assert.equal(typeof KuiWindow.prototype.span, 'function');
+  const ctx = new Ctx();
+  assert.equal(ctx.span('off', () => 7), 7, 'off, it only calls fn');
+  ctx.setPerfRecording(true);
+  const got = ctx.span('outer', () => ctx.span('inner', () => 'deep'));
+  assert.equal(got, 'deep');
+  assert.throws(() => ctx.span('throws', () => { throw new Error('boom'); }), /boom/);
+  // The throw's span ended: one begun now sits at the top, not inside it.
+  const after = ctx.spanBegin('after');
+  ctx.spanEnd(after);
+  ctx.frame(100, 100, 1, box({}));
+  ctx.setPerfRecording(false);
+  const trace = ctx.perfTrace();
+  for (const name of ['outer', 'inner', 'throws', 'after']) assert.ok(trace.includes(name), name);
+});
+
+// The loop times each call into `update` as a `handler` span while the
+// window is recorded, as the Rust runner times its app's (ADR 0058,
+// decision 5), and skips it otherwise.
+test('createApp wraps update in a handler span while recording (ADR 0058)', () => {
+  const app = createApp(
+    {
+      init: 0,
+      update: (m, msg) => (msg === 'inc' ? m + 1 : m),
+      view: (m) => box({}, [text(String(m))]),
+    },
+    { startTime: 0, width: 200, height: 100 },
+  );
+  app.render();
+  app.dispatch('inc');
+  app.advance(16);
+  assert.equal(app.ctx.perfTrace().includes('handler'), false, 'nothing recorded while off');
+  app.ctx.setPerfRecording(true);
+  app.dispatch('inc');
+  app.advance(16);
+  app.ctx.setPerfRecording(false);
+  assert.ok(app.ctx.perfTrace().includes('handler'), 'the update was a handler span');
+});

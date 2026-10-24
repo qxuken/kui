@@ -3910,6 +3910,86 @@ nodes :: proc(ui: ^Ui) -> Value {
 	return Value(c.nodes(ui))
 }
 
+// Whether anything is recorded — the Perf tab recording or on show,
+// `KUI_PERF_TRACE`, a `tracing` subscriber — so an app skips reading clocks
+// of its own for the recording's doors.
+// Rust: Core::perf_measuring.
+perf_measuring :: proc(ui: ^Ui) -> bool {
+	return c.perf_measuring(ui)
+}
+
+// Begins a span inside the one open now, recording the node the builder has
+// open; its id, 0 while nothing is recorded.
+// Rust: Core::span_begin.
+span_begin :: proc(ui: ^Ui, name: string) -> u32 {
+	return c.span_begin(ui, name)
+}
+
+// Ends the span an id names, and any opened inside it and left open; 0, or an
+// id with no begin, is nothing.
+// Rust: Core::span_end.
+span_end :: proc(ui: ^Ui, id: u32) {
+	c.span_end(ui, id)
+}
+
+// A span timed elsewhere — a parse on another thread, a job — of so many
+// ms, ending now, on the track named for it.
+// Rust: Core::perf_measure.
+perf_measure :: proc(ui: ^Ui, name: string, ms: f64) {
+	c.perf_measure(ui, name, ms)
+}
+
+// Adds to this frame's counter of that name.
+// Rust: Core::perf_count.
+perf_count :: proc(ui: ^Ui, name: string, n: i64) {
+	c.perf_count(ui, name, n)
+}
+
+// Sets a reading — a footprint, a buffer's bytes — held until set again.
+// Rust: Core::perf_gauge.
+perf_gauge :: proc(ui: ^Ui, name: string, value: f64) {
+	c.perf_gauge(ui, name, value)
+}
+
+// Puts an instant on the timeline: a file opened, a command run.
+// Rust: Core::perf_mark.
+perf_mark :: proc(ui: ^Ui, name: string) {
+	c.perf_mark(ui, name)
+}
+
+// Asks for a frame and names why: `owed_by` lists it under the name, and a
+// recording's causes read `request: why`.
+// Rust: Ui::request_frame_for.
+request_frame_for :: proc(ui: ^Ui, why: string) {
+	c.request_frame_for(ui, why)
+}
+
+// A wake by name reached the window: the next frame's causes read `wake:
+// name`.
+// Rust: Core::note_wake.
+note_wake :: proc(ui: ^Ui, name: string) {
+	c.note_wake(ui, name)
+}
+
+// Starts a recording, dropping what was kept, or stops one and keeps it —
+// the Perf tab's record button.
+// Rust: Core::set_perf_recording.
+set_perf_recording :: proc(ui: ^Ui, on: bool) {
+	c.set_perf_recording(ui, on)
+}
+
+// Whether a recording runs.
+// Rust: Core::perf_recording.
+perf_recording :: proc(ui: ^Ui) -> bool {
+	return c.perf_recording(ui)
+}
+
+// Writes out what the file `KUI_PERF_TRACE` names holds so far.
+// Rust: Core::perf_flush.
+perf_flush :: proc(ui: ^Ui) -> bool {
+	return c.perf_flush(ui)
+}
+
 // The access tree of the last finished frame (ADR 0001).
 // Rust: Core::access_tree.
 access_tree :: proc(ui: ^Ui) -> (out: []Access_Node) {

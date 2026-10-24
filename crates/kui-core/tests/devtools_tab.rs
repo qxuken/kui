@@ -698,7 +698,7 @@ fn a_declared_tab_named_as_the_panel_s_own_keeps_its_name() {
     let mut core = Core::new();
     core.set_devtools(true);
     core.set_devtools_dock(DevtoolsDock::Right);
-    let mut frame = |core: &mut Core, declare: bool| {
+    let frame = |core: &mut Core, declare: bool| {
         let mut ui = core.frame(VIEWPORT, 1.0);
         if declare {
             ui.devtools_tab_with("perf", "App perf", |ui| {

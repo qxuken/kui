@@ -139,6 +139,7 @@ c_type! {
     KuiRunConfig => "KuiRunConfig",
     KuiFileFilter => "KuiFileFilter", KuiFileDialog => "KuiFileDialog",
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
+    KuiWaker => "KuiWaker",
     ViewFn => "KuiViewFn",
 }
 #[cfg(feature = "runner")]
@@ -1345,6 +1346,7 @@ fn every_entry_point_is_pinned() {
         include_str!("frame.rs"),
         include_str!("input.rs"),
         include_str!("menu.rs"),
+        include_str!("perf.rs"),
         include_str!("resources.rs"),
         include_str!("run.rs"),
         include_str!("scrolling.rs"),

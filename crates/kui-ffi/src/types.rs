@@ -170,6 +170,15 @@ pub struct KuiCtx {
     /// this was a `kui_native::Captures` under the feature).
     #[cfg_attr(not(feature = "runner"), allow(dead_code))]
     pub(crate) captures: Option<Box<CtxCaptures>>,
+    /// The recording's bytes `kui_perf_trace` most recently handed out;
+    /// borrowed until the next call, like every other reading here.
+    pub(crate) perf_trace: Vec<u8>,
+    /// The runner's `kui_native::Waker`, erased, for `kui_waker` to clone:
+    /// set for the length of a `kui_run` view callback, as `host_ui` is,
+    /// and null on every other context (ADR 0058, decision 14). A pointer
+    /// in every build, for `captures`' reason.
+    #[cfg_attr(not(feature = "runner"), allow(dead_code))]
+    pub(crate) waker: *const c_void,
 }
 
 /// What a context keeps its captures in: the runner's server, or nothing
@@ -251,6 +260,8 @@ impl KuiCtx {
             last_ext_error: String::new(),
             host_ui: std::ptr::null_mut(),
             captures: None,
+            perf_trace: Vec::new(),
+            waker: std::ptr::null(),
         }
     }
 

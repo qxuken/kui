@@ -37,6 +37,8 @@ was the first bare bump to break an app in five releases).
   tab's, not the Facts tab's. An app's own tab named `perf` keeps its
   name: `set_devtools_tab` reaches a declared tab of the name, exactly,
   before the panel's own.
+- The devtools' tree arrows select the row they land on, and Enter puts
+  the selection down rather than picking it (backlog F200).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -87,31 +89,69 @@ lua-language-server, and a new runner beside the window's.
   *What you can delete:* a hand-written `.d.tl` for the prelude, and a
   `kui.Env` record a Teal project kept in step with the crate docs.
 
-- **A Perf tab in the devtools** (backlog F197). Live, the last frames'
-  cost by phase — input, view, layout, render, vsync's wait — as bars
-  against the frame budget, with the average, 95th percentile and worst.
-  The record button keeps every frame (the newest 1800) of the main
-  window, read by its core as the frame begins: why it ran
-  (`frame_cause`), who held it (`owed_by` — the node whose transition
-  was mid-flight, the line that called `request_frame`), its phase
-  times once the driver pushed them, and whether it drew what the frame
-  before drew (`frame_unchanged`). Stopped, the tab shows the recording
-  — frames over seconds, the work spread, how many went past the budget
-  and how many drew nothing new, frames counted by cause and by holder —
-  and a timeline whose bars open into their frame; a holder with a node
-  lights it in the app and selects it in the tree. While it records the
-  tab draws nothing that moves, so a docked panel never makes a frame
-  look changed. A camera saves a screenshot of the window and a film
-  camera records it as a GIF until pressed again (`capture_to` /
-  `record_to`), to `KUI_CAPTURE_DIR`, else the desktop, else the
-  temporary directory, the path noted in the events tab; the panel's
-  `capture` answers come back to the panel, never the app. Nothing of
-  it runs until it is used: with the panel off the frame is as it was,
-  and with it on and not recording the frame trace stays as the app set
-  it and no capture is asked.
+- **A recording of what happened, in frames and between them** (backlog
+  F198, [ADR 0058](docs/adr/0058-a-recording-is-a-timeline.md)). A
+  core can record its window as a timeline in kui's own format,
+  [`kui-trace`](crates/kui-trace): frames as intervals, with why each ran
+  (`frame_cause`, and named causes — `wake: parser`,
+  `request: caret blink`), who held it (`owed_by`), whether it drew
+  anything new (`frame_unchanged`) and the driver's present; nested spans
+  with their CPU time (unix) and the node the builder had open as they
+  began; inputs as they arrive (a run of pointer moves as one record),
+  events as they leave (kinds and keys, never payloads), frames asked
+  for, and the loop's sleeps and wakes. The core times itself — `build`,
+  `fill <namespace>` for each extension, `devtools`, `layout`, `emit`,
+  texts shaped and glyphs rasterized — so a C, Odin or headless host has
+  view and layout times with no `FrameSample` pushed; the runners add
+  the loop, a `handler` span round each call into the app, and the
+  present (`Core::push_frame_sample`, which also feeds the latency graph).
+  An app adds its own: `span_begin` / `span_end` and `Ui::span`,
+  `perf_count`, `perf_gauge`, `perf_mark`, `perf_measure` (work timed off
+  the main thread), `request_frame_for(why)`, `note_wake(name)` and
+  Rust's `Waker::named`; `perf_measuring()` says whether anyone listens.
+  The doors are in every binding, and C and Odin get a waker of their own
+  (`kui_waker` and its family) for a `kui_run` host whose data arrives on
+  a thread. Nothing is recorded until something listens — the devtools'
+  Perf tab recording or showing its live view, `KUI_PERF_TRACE`, or a
+  `tracing` subscriber under `kui-core`'s new `tracing` feature, which
+  enters every span as a `tracing` span for Tracy, Instruments
+  (`tracing-oslog`) or Perfetto live: off, every door is one test of a
+  flag. `KUI_PERF_TRACE=path` streams a session to `path`
+  (`.kuitrace`), or writes Chrome's, Perfetto's, speedscope's or the
+  Firefox Profiler's format at exit when the name says so;
+  `Core::perf_trace()` hands back the bytes. `kui-trace` reads them
+  with no kui: `kui-trace dump`, `stats`, `convert --to
+  chrome|perfetto|speedscope|firefox`, and `diff A B --fail-over 10%`,
+  which a CI job holds a scripted session's cost with.
 
-  *What you can delete:* a hand-rolled frame log built on `frame_cause`
-  and `owed_by` to find out why an app does not go idle.
+  *What you can delete:* a hand-rolled frame log on `frame_cause` and
+  `owed_by`, thread-local spans timed round an app's own systems and the
+  tab that reads them, a named-wake ledger, and a per-frame log file — kawoosh's Frames and Perf tabs among them.
+
+- **A Perf tab in the devtools** (backlog F197, F198). Live, the
+  recent frames by phase — handler, build, devtools, layout, emit,
+  render, vsync's wait — against the frame budget, and the spans that
+  cost the most. The record button keeps every frame (the newest 1800);
+  stopped, the tab reads the recording whole: frames over seconds, the
+  work spread, how many went past the budget, drew nothing new or were
+  part of a burn (30 frames or more, each within 100 ms, no input),
+  what the gaps between frames held (handlers, asleep, busy elsewhere),
+  frames counted by cause and by holder, the spans by name and by
+  origin, counters and gauges; a timeline whose bars open into their
+  frame, a burn banded under its bars. A frame opened says why it lagged
+  — *late* (its input waited for the frame), *blocked* (the thread busy
+  outside kui), *slow* (the phase and the span with the most self time),
+  *waited* (wall time far over CPU time), *wasted*, *burn* or *fine* —
+  with the path from its input to the screen leg by leg, its gap, its
+  spans as a flame chart (a span with a node lights it in the app and
+  selects it in the tree) and its causes, holders and counters. *save
+  trace* writes the recording as a `.kuitrace`. While it records the tab
+  draws nothing that moves, so a docked panel never makes a frame look
+  changed. A camera saves a screenshot of the window and a film camera
+  records it as a GIF until pressed again (`capture_to` / `record_to`),
+  to `KUI_CAPTURE_DIR`, else the desktop, else the temporary directory,
+  the path noted in the events tab; the panel's `capture` answers come
+  back to the panel, never the app.
 
 - **An app runs with no window** (backlog C58, [ADR
   0057](docs/adr/0057-an-app-runs-with-no-window.md)):
@@ -157,6 +197,18 @@ lua-language-server, and a new runner beside the window's.
   values cut by an ellipsis. Filters name themselves by a placeholder;
   the events tab's rows colour what an entry is apart from where it came
   from and what it carried.
+
+  *What you can delete:* nothing — a look, not a door.
+- **The devtools tree by keyboard, the whole spec, and a range of a
+  recording** (backlog F200). The tree's arrows select as they walk, the
+  cursor's node lit in the app while the list has the keyboard, and a
+  row clicked hands the keyboard to the list. The inspector reads the
+  selected node's whole spec — its interaction, accessibility, motion,
+  layout, paint and text settings — and shows the ones it sets until
+  **changed only** is switched to **all fields**. The Perf tab's bars
+  share the chart's width. Drag across a recording's bars, or click one
+  and shift-click another, and the summary and the tables read those
+  frames alone; **whole recording** goes back.
 
   *What you can delete:* nothing — a look, not a door.
 

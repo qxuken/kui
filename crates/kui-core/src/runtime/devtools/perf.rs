@@ -1,47 +1,65 @@
 //! The Perf tab: the window's frames as a browser's performance panel
-//! shows them. Live, the last [`crate::stats::STATS_CAPACITY`] frames'
-//! cost by phase against the frame budget. Recorded, every frame since
-//! the record
-//! button — why it ran, who held it, what each phase cost and whether it
-//! drew anything new — as a timeline of bars that open into the frame,
-//! and a summary of the whole. And the window captured: a screenshot, or
-//! a screen recording until it is stopped.
+//! shows them, read from the core's recording (ADR 0058).
 //!
-//! The recording itself is the main window's core's
-//! (`Core::perf_begin_frame`); this module only draws it. While it runs
-//! the tab draws nothing that changes from frame to frame, so the panel
-//! — docked, part of the window's picture — never makes a frame look
-//! changed that otherwise drew what the one before it drew.
+//! Live, while the tab is on show docked in the window it measures, the
+//! last frames by phase against the budget and the spans that cost the
+//! most. Recorded — from the record button to the stop — the whole
+//! timeline: a summary, frames counted by cause and by holder, a bar a
+//! frame with the runs of frames with no input marked under them, the
+//! spans grouped by name and by origin, what the gaps between frames held,
+//! counters and gauges; and a frame opened says why it lagged — its
+//! verdict, the path from its input to the screen, its gap, its spans as a
+//! flame chart. The recording saves as a `.kuitrace` for `kui-perf` and
+//! the adapters; the window is captured as a screenshot or a GIF.
+//!
+//! While it records the tab draws nothing that changes from frame to
+//! frame, so the panel — docked, part of the window's picture — never
+//! makes a frame look changed that otherwise drew what the one before it
+//! drew.
 
-use rustc_hash::FxHashMap;
+use std::sync::Arc;
+
+use kui_trace::analysis::{self, Phases, Verdict};
+use kui_trace::{LoopEvent, Origin, Track};
 
 use super::icons::Icon;
 use super::panel::{icon_button, section, small_button};
-use super::{PerfFrame, State, action};
+use super::{PerfView, Place, State, action};
 use crate::color::Color;
 use crate::key::Key;
-use crate::spec::{Align, FloatConfig, Min, NodeSpec, TextStyle};
-use crate::stats::FrameSample;
+use crate::spec::{Align, FloatConfig, Min, NodeSpec, Sizing, TextStyle};
 use crate::theme::Theme;
 use crate::ui::Ui;
 
-/// The phases' colours, the latency graph's.
-const INPUT: Color = Color {
+/// The phases' colours: the latency graph's, and two of their own.
+const HANDLER: Color = Color {
     r: 0.45,
     g: 0.85,
     b: 0.55,
     a: 1.0,
 };
-const VIEW: Color = Color {
+const BUILD: Color = Color {
     r: 0.28,
     g: 0.42,
     b: 0.88,
+    a: 1.0,
+};
+const DEVTOOLS: Color = Color {
+    r: 0.55,
+    g: 0.58,
+    b: 0.66,
     a: 1.0,
 };
 const LAYOUT: Color = Color {
     r: 0.60,
     g: 0.42,
     b: 0.88,
+    a: 1.0,
+};
+const EMIT: Color = Color {
+    r: 0.30,
+    g: 0.70,
+    b: 0.78,
     a: 1.0,
 };
 const RENDER: Color = Color {
@@ -56,31 +74,58 @@ const WAIT: Color = Color {
     b: 0.52,
     a: 0.45,
 };
-/// A frame that drew what the one before it drew: apart from every
-/// phase's colour and from the over-budget cap.
+/// A frame that drew what the one before it drew.
 const UNCHANGED: Color = Color {
     r: 0.93,
     g: 0.42,
     b: 0.78,
     a: 1.0,
 };
+/// The app's and the extensions' spans in the flame chart.
+const HOST: Color = Color {
+    r: 0.36,
+    g: 0.62,
+    b: 0.42,
+    a: 1.0,
+};
+const EXTENSION: Color = Color {
+    r: 0.74,
+    g: 0.52,
+    b: 0.30,
+    a: 1.0,
+};
 
-/// The chart's bars' area, logical px: twice the frame budget tall, the
-/// budget at half height.
+/// The chart's bars' area: twice the frame budget tall.
 const CHART_H: f32 = 64.0;
 const BAR_W: f32 = 4.0;
-/// The live strip's bars: thin enough that its frames fit a side dock.
 const LIVE_BAR_W: f32 = 2.0;
 
-/// One bar: the frame it stands for, its timing when the driver gave
-/// one, and whether it drew nothing new.
-struct Bar {
-    frame: u64,
-    sample: Option<FrameSample>,
-    unchanged: bool,
+fn ms(us: u64) -> String {
+    format!("{:.2}", us as f64 / 1000.0)
 }
 
-pub(super) fn perf_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
+fn phase_colors(p: &Phases) -> [(Color, u64); 7] {
+    [
+        (WAIT, p.wait),
+        (RENDER, p.render),
+        (EMIT, p.emit),
+        (LAYOUT, p.layout),
+        (DEVTOOLS, p.devtools),
+        (BUILD, p.build),
+        (HANDLER, p.handler),
+    ]
+}
+
+/// One bar of a chart.
+struct Bar {
+    phases: Phases,
+    unchanged: bool,
+    burn: bool,
+    /// Inside the range the summary reads.
+    in_range: bool,
+}
+
+pub(super) fn perf_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme, place: Place) {
     toolbar(ui, st, t);
     let mut hovered: Option<Key> = None;
     if st.perf.recording {
@@ -100,32 +145,55 @@ pub(super) fn perf_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
                 );
                 ui.text_in(
                     NodeSpec::row().max_width(280.0),
-                    "use the app, then stop to see each frame: why it ran, who held it, \
-                     what it cost. The panel holds still meanwhile, so it is not in what it \
-                     measures.",
+                    "use the app, then stop to see each frame and what happened between \
+                     them: why it ran, who held it, what it cost. The panel holds still \
+                     meanwhile, so it is not in what it measures.",
                     TextStyle::new(11.0).color(t.muted),
                 );
             },
         );
-    } else if st.perf.frames.is_empty() {
-        live(ui, t);
-    } else {
+    } else if let Some(view) = st.perf.view.clone() {
+        // A drag across the bars chooses a range; let go, it stays.
+        if let Some(r) = drag_range(ui, st, view.tl.frames.len()) {
+            st.perf.range = Some(r);
+        }
+        if std::mem::take(&mut st.perf.drag_ended) {
+            st.perf.drag = None;
+        }
+        // What the summary and the tables read: the range, read whole once
+        // for it, or the recording.
+        let range = st
+            .perf
+            .range
+            .filter(|(a, b)| a <= b && *b < view.tl.frames.len());
+        let stats = match range {
+            Some(r) => match &st.perf.range_view {
+                Some((cached, v)) if *cached == r => v.clone(),
+                _ => {
+                    let v = Arc::new(view.slice(r.0, r.1));
+                    st.perf.range_view = Some((r, v.clone()));
+                    v
+                }
+            },
+            None => view.clone(),
+        };
         ui.with(NodeSpec::column().fill().gap(10.0).scroll_y(), |ui| {
-            summary(ui, st, t, &mut hovered);
-            timeline(ui, st, t);
-            if let Some(f) = st
-                .perf
-                .selected
-                .and_then(|n| st.perf.frames.iter().find(|f| f.frame == n))
-            {
-                detail(ui, t, f, ui_budget(ui), &mut hovered);
-            } else {
-                ui.text(
-                    "click a bar to see that frame",
-                    TextStyle::new(11.0).color(t.faint),
-                );
+            summary(ui, t, &stats, range, &mut hovered);
+            let end = std::mem::take(&mut st.perf.scroll_end);
+            timeline(ui, t, &view, st.perf.selected, range, end);
+            match st.perf.selected.filter(|i| *i < view.tl.frames.len()) {
+                Some(i) => detail(ui, t, &view, i, &mut hovered),
+                None => {
+                    ui.text(
+                        "click a bar to see that frame",
+                        TextStyle::new(11.0).color(t.faint),
+                    );
+                }
             }
+            tables(ui, t, &stats, range.is_some());
         });
+    } else {
+        live(ui, t, place);
     }
     if st.hovered_row != hovered {
         st.hovered_row = hovered;
@@ -133,11 +201,7 @@ pub(super) fn perf_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
     }
 }
 
-fn ui_budget(ui: &Ui<'_>) -> f32 {
-    ui.env().frame_budget_ms()
-}
-
-/// Record and clear on the left, the window's captures on the right.
+/// Record, clear and save on the left, the window's captures on the right.
 fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     let p = &st.perf;
     ui.with(
@@ -156,10 +220,18 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 if p.recording {
                     "stop recording · see the frames kept"
                 } else {
-                    "record frames · why each ran, who held it, what it cost"
+                    "record frames · why each ran, who held it, what it cost, and what happened between them"
                 },
             );
-            if !p.recording && !p.frames.is_empty() {
+            if !p.recording && p.view.is_some() {
+                small_button(
+                    ui,
+                    t,
+                    "perf-save",
+                    "save trace",
+                    "save the recording as a .kuitrace · kui-perf opens it, kui-trace converts it",
+                    false,
+                );
                 small_button(
                     ui,
                     t,
@@ -194,30 +266,64 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     );
 }
 
-/// The last frames the driver timed, as bars against the budget, and
-/// their average, 95th percentile and worst.
-fn live(ui: &mut Ui<'_>, t: &Theme) {
-    let budget = ui_budget(ui);
-    let samples: Vec<FrameSample> = ui.core().stats.iter().collect();
-    let bars: Vec<Bar> = samples
-        .iter()
-        .enumerate()
-        .map(|(i, s)| Bar {
-            frame: i as u64,
-            sample: Some(*s),
-            unchanged: false,
-        })
-        .collect();
+/// The recent frames: the core's own recording of them while the tab is
+/// on show docked in the window it measures, the driver's timings
+/// otherwise.
+fn live(ui: &mut Ui<'_>, t: &Theme, place: Place) {
+    let budget = (ui.env().frame_budget_ms() * 1000.0) as u64;
+    let recorded = matches!(place, Place::Main(_)) && ui.core().perf_measuring();
+    let (bars, top) = if recorded {
+        let trace = ui.core().perf_trace_read();
+        let tl = trace.timeline();
+        let bars: Vec<Bar> = (0..tl.frames.len())
+            .map(|i| Bar {
+                phases: analysis::phases(&tl, i, &trace),
+                unchanged: false,
+                burn: false,
+                in_range: false,
+            })
+            .collect();
+        let top: Vec<(String, u64, u64)> = analysis::by_span(&tl, &tl.spans)
+            .into_iter()
+            .take(6)
+            .map(|s| (trace.name(s.name).to_string(), s.total, s.calls))
+            .collect();
+        (bars, top)
+    } else {
+        let bars = ui
+            .core()
+            .stats
+            .iter()
+            .map(|s| Bar {
+                phases: Phases {
+                    build: (s.view_ms * 1000.0) as u64,
+                    layout: (s.layout_ms * 1000.0) as u64,
+                    handler: (s.input_ms * 1000.0) as u64,
+                    render: (s.render_ms * 1000.0) as u64,
+                    wait: (s.wait_ms * 1000.0) as u64,
+                    ..Default::default()
+                },
+                unchanged: false,
+                burn: false,
+                in_range: false,
+            })
+            .collect();
+        (bars, Vec::new())
+    };
     ui.with(NodeSpec::column().fill().gap(10.0).scroll_y(), |ui| {
         section(ui, t, "live");
-        let works: Vec<f32> = samples.iter().map(FrameSample::work).collect();
+        let works: Vec<u64> = bars.iter().map(|b| b.phases.work()).collect();
+        let (avg, p95, max) = analysis::spread(&works);
         ui.text(
             &if works.is_empty() {
-                "no frame timings: this driver pushes none".to_string()
+                "no frames yet".to_string()
             } else {
                 format!(
-                    "work {} · budget {budget:.1} ms · last {} frames",
-                    spread(&works),
+                    "work avg {:.2} · p95 {} · max {} ms · budget {} ms · last {} frames",
+                    avg / 1000.0,
+                    ms(p95),
+                    ms(max),
+                    ms(budget),
                     works.len()
                 )
             },
@@ -225,27 +331,37 @@ fn live(ui: &mut Ui<'_>, t: &Theme) {
         );
         chart(ui, t, &bars, budget, None, false, false);
         legend(ui, t);
+        if !top.is_empty() {
+            section(ui, t, "spans · last frames");
+            ui.with(NodeSpec::table().grow_width().gap(2.0), |ui| {
+                for (name, total, calls) in &top {
+                    ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
+                        ui.text_in(
+                            NodeSpec::row().grow_width(),
+                            name,
+                            TextStyle::new(11.0).color(t.fg).mono().nowrap().ellipsis(),
+                        );
+                        ui.text(
+                            &format!("{} ms", ms(*total)),
+                            TextStyle::new(11.0).color(t.muted).mono().nowrap(),
+                        );
+                        ui.text(
+                            &format!("×{calls}"),
+                            TextStyle::new(11.0).color(t.faint).mono().nowrap(),
+                        );
+                    });
+                }
+            });
+        }
         ui.text_in(
             NodeSpec::row().grow_width().min_height(Min::FIT),
             &format!(
-                "record to keep every frame (the newest {}) with why it ran and who held it",
-                super::PERF_CAP
+                "record to keep every frame (the newest {}) with why it ran, who held it and what happened between frames",
+                crate::runtime::perf::RING_FRAMES
             ),
             TextStyle::new(11.0).color(t.faint),
         );
     });
-}
-
-/// `avg · p95 · max ms` of `v`.
-fn spread(v: &[f32]) -> String {
-    if v.is_empty() {
-        return "—".into();
-    }
-    let mut s = v.to_vec();
-    s.sort_by(f32::total_cmp);
-    let avg = s.iter().sum::<f32>() / s.len() as f32;
-    let p95 = s[((s.len() - 1) as f32 * 0.95).round() as usize];
-    format!("avg {avg:.2} · p95 {p95:.2} · max {:.2} ms", s[s.len() - 1])
 }
 
 /// The phases' key.
@@ -259,12 +375,15 @@ fn legend(ui: &mut Ui<'_>, t: &Theme) {
             .role(crate::access::Role::None),
         |ui| {
             for (c, name) in [
-                (INPUT, "input"),
-                (VIEW, "view"),
+                (HANDLER, "handler"),
+                (BUILD, "build"),
+                (DEVTOOLS, "devtools"),
                 (LAYOUT, "layout"),
+                (EMIT, "emit"),
                 (RENDER, "render"),
                 (WAIT, "vsync wait"),
                 (UNCHANGED, "drew nothing new"),
+                (t.warning, "burn"),
             ] {
                 ui.with(NodeSpec::row().gap(4.0).cross_align(Align::Center), |ui| {
                     ui.leaf(NodeSpec::row().size(8.0, 8.0).radius(2.0).bg(c));
@@ -276,20 +395,20 @@ fn legend(ui: &mut Ui<'_>, t: &Theme) {
 }
 
 /// The bars, oldest on the left, each its phases stacked from the bottom
-/// — vsync's wait faint on top — at [`CHART_H`] for twice `budget`, a
-/// bar past that capped in the danger colour; a frame that drew nothing
-/// new is marked under its bar. `pick` makes each a button that opens
-/// its frame, `selected` lit. The budget is a line across.
+/// at [`CHART_H`] for twice `budget` µs, one past that capped in the
+/// danger colour; under each, a mark for a frame that drew nothing new
+/// and a band under a burn. `pick` makes each a button opening its frame,
+/// `selected` lit. The budget is a line across.
 fn chart(
     ui: &mut Ui<'_>,
     t: &Theme,
     bars: &[Bar],
-    budget: f32,
-    selected: Option<u64>,
+    budget: u64,
+    selected: Option<usize>,
     pick: bool,
     to_end: bool,
 ) {
-    let per_ms = CHART_H / (budget * 2.0).max(1.0);
+    let per_us = CHART_H / (budget as f32 * 2.0).max(1.0);
     let (w, gap) = if pick {
         (BAR_W, 1.0)
     } else {
@@ -298,19 +417,18 @@ fn chart(
     ui.with(
         NodeSpec::column()
             .grow_width()
-            .height(CHART_H + 12.0)
+            .height(CHART_H + 14.0)
             .bg(t.sunken)
             .radius(6.0)
             .clip()
             .role(crate::access::Role::None),
         |ui| {
-            // The budget, at half height.
             ui.leaf(
                 NodeSpec::row()
                     .float(
                         FloatConfig::parent()
                             .inside(Align::Start, Align::Start)
-                            .offset(0.0, 4.0 + CHART_H - budget * per_ms),
+                            .offset(0.0, 4.0 + CHART_H - budget as f32 * per_us),
                     )
                     .grow_width()
                     .height(1.0)
@@ -318,17 +436,24 @@ fn chart(
             );
             let bars_key = ui.with_keyed(
                 "kui-devtools/perf-bars",
-                NodeSpec::row()
-                    .fill()
-                    .pad_xy(4.0, 4.0)
-                    .gap(gap)
-                    .main_align(Align::End)
-                    .cross_align(Align::End)
-                    .scroll_x()
-                    .scrollbar(crate::spec::ScrollbarMode::Auto),
+                {
+                    let row = NodeSpec::row()
+                        .fill()
+                        .pad_xy(4.0, 4.0)
+                        .gap(gap)
+                        .main_align(Align::End)
+                        .cross_align(Align::End)
+                        .scroll_x()
+                        .scrollbar(crate::spec::ScrollbarMode::Auto);
+                    if pick {
+                        row.on_drag(action("perf-drag"))
+                    } else {
+                        row
+                    }
+                },
                 |ui| {
-                    for b in bars {
-                        bar(ui, t, b, w, per_ms, selected == Some(b.frame), pick);
+                    for (i, b) in bars.iter().enumerate() {
+                        bar(ui, t, i, b, w, per_us, selected == Some(i), pick);
                     }
                 },
             );
@@ -341,318 +466,105 @@ fn chart(
     );
 }
 
-fn bar(ui: &mut Ui<'_>, t: &Theme, b: &Bar, w: f32, per_ms: f32, on: bool, pick: bool) {
+#[allow(clippy::too_many_arguments)]
+fn bar(ui: &mut Ui<'_>, t: &Theme, i: usize, b: &Bar, w: f32, per_us: f32, on: bool, pick: bool) {
+    // Each bar an equal share of the chart's width, `w` at the least: a
+    // short recording fills the chart, a long one scrolls.
     let mut spec = NodeSpec::column()
-        .width(w)
+        .grow_width()
+        .min_width(w)
         .grow_height()
         .main_align(Align::End)
         .radius(1.0)
         .bg(if on {
             t.accent_soft
+        } else if b.in_range {
+            t.accent_soft.faded(0.45)
         } else {
             Color::TRANSPARENT
         });
     if pick {
         spec = spec
             .hover_bg(if on { t.accent_soft } else { t.hover })
-            .on_click(action(format!("perf-frame:{}", b.frame)))
-            .label(format!("frame {}", b.frame).as_str());
+            .on_click(action(format!("perf-frame:{i}")))
+            // A bar takes the press, so the drag that reads a range
+            // starts on it as well as between bars.
+            .on_drag(action("perf-drag"))
+            .label(format!("frame {i}").as_str());
     }
     let body = |ui: &mut Ui<'_>| {
-        match b.sample {
-            Some(s) => {
-                // From the top down: what is drawn last sits lowest.
-                let over = s.work() * per_ms > CHART_H;
-                let mut left = CHART_H;
-                if over {
-                    ui.leaf(NodeSpec::row().width(w).height(3.0).bg(t.danger));
-                    left -= 3.0;
-                }
-                let mut seg = |ui: &mut Ui<'_>, ms: f32, c: Color| {
-                    let h = (ms * per_ms).min(left);
-                    if h >= 0.5 {
-                        ui.leaf(NodeSpec::row().width(w).height(h).bg(c));
-                        left -= h;
-                    }
-                };
-                seg(ui, s.wait_ms, WAIT);
-                seg(ui, s.render_ms, RENDER);
-                seg(ui, s.layout_ms, LAYOUT);
-                seg(ui, s.view_ms, VIEW);
-                seg(ui, s.input_ms, INPUT);
-            }
-            // No timing: a stub, so the frame is still there to open.
-            None => {
-                ui.leaf(NodeSpec::row().width(w).height(4.0).bg(t.faint));
+        let over = b.phases.work() as f32 * per_us > CHART_H;
+        let mut left = CHART_H;
+        if over {
+            ui.leaf(NodeSpec::row().grow_width().height(3.0).bg(t.danger));
+            left -= 3.0;
+        }
+        let mut any = false;
+        for (c, us) in phase_colors(&b.phases) {
+            let h = (us as f32 * per_us).min(left);
+            if h >= 0.5 {
+                ui.leaf(NodeSpec::row().grow_width().height(h).bg(c));
+                left -= h;
+                any = true;
             }
         }
-        ui.leaf(NodeSpec::row().width(w).height(2.0));
-        ui.leaf(NodeSpec::row().width(w).height(2.0).bg(if b.unchanged {
+        if !any {
+            ui.leaf(NodeSpec::row().grow_width().height(2.0).bg(t.faint));
+        }
+        ui.leaf(NodeSpec::row().grow_width().height(2.0));
+        ui.leaf(NodeSpec::row().grow_width().height(2.0).bg(if b.unchanged {
             UNCHANGED
+        } else {
+            Color::TRANSPARENT
+        }));
+        ui.leaf(NodeSpec::row().grow_width().height(2.0).bg(if b.burn {
+            t.warning
         } else {
             Color::TRANSPARENT
         }));
     };
     if pick {
-        ui.with_keyed(&format!("perf-bar:{}", b.frame), spec, body);
+        ui.with_keyed(&format!("perf-bar:{i}"), spec, body);
     } else {
         ui.with(spec.role(crate::access::Role::None), body);
     }
 }
 
-/// The recording as a whole: how many frames over how long, what their
-/// work spread was, how many drew nothing new, and — counted — why they
-/// ran and who held them, a holder with a node lighting it in the app
-/// while the pointer is on it and selecting it in the tree on a click.
-fn summary(ui: &mut Ui<'_>, st: &State, t: &Theme, hovered: &mut Option<Key>) {
-    let p = &st.perf;
-    let frames = &p.frames;
-    let n = frames.len();
-    let secs = match (frames.front(), frames.back()) {
-        (Some(a), Some(b)) => (b.t - a.t).max(0.0),
-        _ => 0.0,
+/// The frames a drag across the bars covers, by the bars' geometry as
+/// the last frame laid them out: `None` while there is no drag, or one
+/// shorter than a click's slop.
+fn drag_range(ui: &mut Ui<'_>, st: &State, n: usize) -> Option<(usize, usize)> {
+    let (x0, x1) = st.perf.drag?;
+    if n == 0 || (x1 - x0).abs() < 4.0 {
+        return None;
+    }
+    let key = ui.core().key_of("kui-devtools/perf-bars")?;
+    let g = ui.scroll_geometry(key)?;
+    let content = (g.rect.w + g.max_offset.x - 8.0).max(1.0);
+    let stride = content / n as f32;
+    let at = |x: f32| {
+        (((x - g.rect.x - 4.0 + g.offset.x) / stride)
+            .floor()
+            .max(0.0) as usize)
+            .min(n - 1)
     };
-    let works: Vec<f32> = frames
-        .iter()
-        .filter_map(|f| f.sample.map(|s| s.work()))
-        .collect();
-    let budget = ui_budget(ui);
-    let over = works.iter().filter(|w| **w > budget).count();
-    let unchanged = frames.iter().filter(|f| f.unchanged == Some(true)).count();
-    let mut causes: Vec<(&'static str, usize)> = Vec::new();
-    for f in frames {
-        for name in f.cause.names() {
-            match causes.iter_mut().find(|(c, _)| *c == name) {
-                Some((_, k)) => *k += 1,
-                None => causes.push((name, 1)),
-            }
-        }
-    }
-    let silent = frames.iter().filter(|f| f.cause.is_empty()).count();
-    if silent > 0 {
-        causes.push(("nobody", silent));
-    }
-    causes.sort_by_key(|c| std::cmp::Reverse(c.1));
-    let mut holders: FxHashMap<(&'static str, Option<Key>, &str), usize> = FxHashMap::default();
-    for f in frames {
-        for h in &f.holders {
-            *holders.entry((h.what, h.key, h.name.as_str())).or_default() += 1;
-        }
-    }
-    let mut holders: Vec<_> = holders.into_iter().collect();
-    holders.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.2.cmp(b.0.2)));
-    ui.with(
-        NodeSpec::column()
-            .grow_width()
-            .min_height(Min::FIT)
-            .gap(4.0),
-        |ui| {
-            section(ui, t, "recording");
-            let rate = if secs > 0.0 {
-                format!(" · {:.0}/s", (n.saturating_sub(1)) as f64 / secs)
-            } else {
-                String::new()
-            };
-            let dropped = if p.dropped > 0 {
-                format!(" (the newest; {} earlier dropped)", p.dropped)
-            } else {
-                String::new()
-            };
-            let rows = [
-                ("frames", format!("{n} over {secs:.2} s{rate}{dropped}")),
-                (
-                    "work",
-                    if works.is_empty() {
-                        "no timings: this driver pushes none".into()
-                    } else {
-                        spread(&works)
-                    },
-                ),
-                ("over budget", format!("{over} past {budget:.1} ms")),
-                (
-                    "unchanged",
-                    format!(
-                        "{unchanged} ({:.0}%) drew what the frame before drew",
-                        if n == 0 {
-                            0.0
-                        } else {
-                            unchanged as f32 * 100.0 / n as f32
-                        }
-                    ),
-                ),
-            ];
-            ui.with(
-                NodeSpec::table().grow_width().gap(2.0).pad_xy(2.0, 2.0),
-                |ui| {
-                    for (k, v) in rows {
-                        ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
-                            ui.text(k, TextStyle::new(11.0).color(t.muted).nowrap());
-                            ui.text_in(
-                                NodeSpec::row().grow_width(),
-                                &v,
-                                TextStyle::new(11.0).color(t.fg).mono().nowrap().ellipsis(),
-                            );
-                        });
-                    }
-                },
-            );
-            if !causes.is_empty() {
-                section(ui, t, "why frames ran");
-                chips(ui, t, causes.iter().map(|(c, k)| format!("{c} {k}")));
-            }
-            if !holders.is_empty() {
-                section(ui, t, "who held frames");
-                for ((what, key, name), count) in holders.iter().take(8) {
-                    holder_row(ui, t, what, *key, name, Some(*count), hovered);
-                }
-                if holders.len() > 8 {
-                    ui.text(
-                        &format!("and {} more", holders.len() - 8),
-                        TextStyle::new(10.0).color(t.faint),
-                    );
-                }
-            }
-        },
-    );
+    Some((at(x0.min(x1)), at(x0.max(x1))))
 }
 
-/// The timeline: one bar a frame, newest on the right, scrolled there.
-fn timeline(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
-    let bars: Vec<Bar> = st
-        .perf
-        .frames
-        .iter()
-        .map(|f| Bar {
-            frame: f.frame,
-            sample: f.sample,
-            unchanged: f.unchanged == Some(true),
-        })
-        .collect();
+/// A small table of `(name, value)` rows.
+fn pairs(ui: &mut Ui<'_>, t: &Theme, rows: &[(&str, String)]) {
     ui.with(
-        NodeSpec::column()
-            .grow_width()
-            .min_height(Min::FIT)
-            .gap(4.0),
+        NodeSpec::table().grow_width().gap(2.0).pad_xy(2.0, 2.0),
         |ui| {
-            section(ui, t, "frames");
-            let end = std::mem::take(&mut st.perf.scroll_end);
-            chart(ui, t, &bars, ui_budget(ui), st.perf.selected, true, end);
-            legend(ui, t);
-        },
-    );
-}
-
-/// One frame opened: its time, its phases, why it ran, whether it drew
-/// anything new, and who held it.
-fn detail(ui: &mut Ui<'_>, t: &Theme, f: &PerfFrame, budget: f32, hovered: &mut Option<Key>) {
-    ui.with(
-        NodeSpec::column()
-            .grow_width()
-            .min_height(Min::FIT)
-            .gap(6.0)
-            .pad(8.0)
-            .bg(t.raised)
-            .radius(6.0)
-            .border(1.0, t.border),
-        |ui| {
-            ui.with(
-                NodeSpec::row()
-                    .grow_width()
-                    .gap(6.0)
-                    .cross_align(Align::Center),
-                |ui| {
-                    ui.text(
-                        &format!("frame {}", f.frame),
-                        TextStyle::new(12.0).color(t.fg).mono().nowrap(),
-                    );
+            for (k, v) in rows {
+                ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
+                    ui.text(k, TextStyle::new(11.0).color(t.muted).nowrap());
                     ui.text_in(
                         NodeSpec::row().grow_width(),
-                        &format!("at {:.3} s · {} nodes", f.t, f.nodes),
-                        TextStyle::new(11.0)
-                            .color(t.muted)
-                            .mono()
-                            .nowrap()
-                            .ellipsis(),
+                        v,
+                        TextStyle::new(11.0).color(t.fg).mono().nowrap().ellipsis(),
                     );
-                    icon_button(
-                        ui,
-                        t,
-                        &format!("perf-frame:{}", f.frame),
-                        Icon::Close,
-                        None,
-                        "close the frame",
-                    );
-                },
-            );
-            match f.sample {
-                Some(s) => {
-                    ui.with(NodeSpec::table().grow_width().gap(2.0), |ui| {
-                        for (c, name, ms) in [
-                            (INPUT, "input", s.input_ms),
-                            (VIEW, "view", s.view_ms),
-                            (LAYOUT, "layout", s.layout_ms),
-                            (RENDER, "render", s.render_ms),
-                            (WAIT, "vsync wait", s.wait_ms),
-                        ] {
-                            ui.with(
-                                NodeSpec::row()
-                                    .grow_width()
-                                    .gap(6.0)
-                                    .cross_align(Align::Center),
-                                |ui| {
-                                    ui.leaf(NodeSpec::row().size(8.0, 8.0).radius(2.0).bg(c));
-                                    ui.text(name, TextStyle::new(11.0).color(t.muted).nowrap());
-                                    ui.text(
-                                        &format!("{ms:.2} ms"),
-                                        TextStyle::new(11.0).color(t.fg).mono().nowrap(),
-                                    );
-                                },
-                            );
-                        }
-                    });
-                    let work = s.work();
-                    ui.text(
-                        &format!(
-                            "work {work:.2} ms — {}",
-                            if work > budget {
-                                format!("past the {budget:.1} ms budget")
-                            } else {
-                                format!("{:.0}% of the budget", work * 100.0 / budget)
-                            }
-                        ),
-                        TextStyle::new(11.0)
-                            .color(if work > budget { t.danger } else { t.muted })
-                            .nowrap(),
-                    );
-                }
-                None => {
-                    ui.text(
-                        "no timing for this frame: not drawn, or the driver pushes none",
-                        TextStyle::new(11.0).color(t.faint),
-                    );
-                }
-            }
-            if f.unchanged == Some(true) {
-                ui.text_in(
-                    NodeSpec::row().grow_width().min_height(Min::FIT),
-                    "drew exactly what the frame before drew: nothing on screen changed",
-                    TextStyle::new(11.0).color(UNCHANGED),
-                );
-            }
-            section(ui, t, "why it ran");
-            if f.cause.is_empty() {
-                ui.text(
-                    "nobody here asked: the platform's own redraw",
-                    TextStyle::new(11.0).color(t.faint),
-                );
-            } else {
-                chips(ui, t, f.cause.names().map(str::to_string));
-            }
-            if !f.holders.is_empty() {
-                section(ui, t, "who held it");
-                for h in &f.holders {
-                    holder_row(ui, t, h.what, h.key, &h.name, None, hovered);
-                }
+                });
             }
         },
     );
@@ -679,6 +591,667 @@ fn chips(ui: &mut Ui<'_>, t: &Theme, items: impl Iterator<Item = String>) {
     );
 }
 
+fn cause_name(view: &PerfView, id: kui_trace::NameId) -> &str {
+    match view.trace.name(id) {
+        "" => "nobody",
+        n => n,
+    }
+}
+
+/// The recording as a whole, frames counted by cause and by holder.
+fn summary(
+    ui: &mut Ui<'_>,
+    t: &Theme,
+    view: &Arc<PerfView>,
+    range: Option<(usize, usize)>,
+    hovered: &mut Option<Key>,
+) {
+    let tl = &view.tl;
+    let n = tl.frames.len();
+    let secs = tl.end.saturating_sub(tl.start) as f64 / 1e6;
+    let works: Vec<u64> = view.phases.iter().map(Phases::work).collect();
+    let (avg, p95, max) = analysis::spread(&works);
+    let over = works.iter().filter(|w| **w > view.budget).count();
+    let unchanged = tl
+        .frames
+        .iter()
+        .filter(|f| f.unchanged == Some(true))
+        .count();
+    let burned: usize = view.burns.iter().map(|b| b.len()).sum();
+    let g = view.gaps;
+    let mut rows = vec![
+        (
+            "frames",
+            format!(
+                "{n} over {secs:.2} s{}",
+                if secs > 0.0 {
+                    format!(" · {:.0}/s", n.saturating_sub(1) as f64 / secs)
+                } else {
+                    String::new()
+                }
+            ),
+        ),
+        (
+            "work",
+            format!(
+                "avg {:.2} · p95 {} · max {} ms",
+                avg / 1000.0,
+                ms(p95),
+                ms(max)
+            ),
+        ),
+        ("over budget", format!("{over} past {} ms", ms(view.budget))),
+        (
+            "unchanged",
+            format!(
+                "{unchanged} ({:.0}%) drew what the frame before drew",
+                if n == 0 {
+                    0.0
+                } else {
+                    unchanged as f32 * 100.0 / n as f32
+                }
+            ),
+        ),
+        (
+            "burns",
+            format!(
+                "{} · {burned} frames with no input, each within 100 ms",
+                view.burns.len()
+            ),
+        ),
+    ];
+    if g.total > 0 {
+        rows.push((
+            "between frames",
+            if g.busy > 0 || g.asleep > 0 {
+                format!(
+                    "{} ms: handlers {} · asleep {} · busy elsewhere {}",
+                    ms(g.total),
+                    ms(g.handlers),
+                    ms(g.asleep),
+                    ms(g.busy)
+                )
+            } else {
+                format!("{} ms: handlers {}", ms(g.total), ms(g.handlers))
+            },
+        ));
+    }
+    ui.with(
+        NodeSpec::column()
+            .grow_width()
+            .min_height(Min::FIT)
+            .gap(4.0),
+        |ui| {
+            match range {
+                Some((a, b)) => {
+                    ui.with(
+                        NodeSpec::row()
+                            .grow_width()
+                            .gap(6.0)
+                            .cross_align(Align::Center),
+                        |ui| {
+                            ui.text_in(
+                                NodeSpec::row().grow_width(),
+                                &format!("range · frames {a}–{b} of the recording"),
+                                TextStyle::new(10.0).color(t.accent).bold().nowrap(),
+                            );
+                            small_button(
+                                ui,
+                                t,
+                                "perf-range-clear",
+                                "whole recording",
+                                "read the whole recording again",
+                                false,
+                            );
+                        },
+                    );
+                }
+                None => section(ui, t, "recording"),
+            }
+            pairs(ui, t, &rows);
+            if !view.causes.is_empty() {
+                section(ui, t, "why frames ran");
+                chips(
+                    ui,
+                    t,
+                    view.causes
+                        .iter()
+                        .take(16)
+                        .map(|(c, k)| format!("{} {k}", cause_name(view, *c))),
+                );
+            }
+            if !view.holders.is_empty() {
+                section(ui, t, "who held frames");
+                for ((what, name, node), count) in view.holders.iter().take(8) {
+                    holder_row(
+                        ui,
+                        t,
+                        view.trace.name(*what),
+                        *node,
+                        view.trace.name(*name),
+                        Some(*count),
+                        hovered,
+                    );
+                }
+            }
+        },
+    );
+}
+
+/// The timeline: a bar a frame, newest on the right, scrolled there once.
+fn timeline(
+    ui: &mut Ui<'_>,
+    t: &Theme,
+    view: &Arc<PerfView>,
+    selected: Option<usize>,
+    range: Option<(usize, usize)>,
+    to_end: bool,
+) {
+    let mut burn = vec![false; view.tl.frames.len()];
+    for b in &view.burns {
+        for x in &mut burn[b.first..=b.last] {
+            *x = true;
+        }
+    }
+    let bars: Vec<Bar> = view
+        .tl
+        .frames
+        .iter()
+        .enumerate()
+        .map(|(i, f)| Bar {
+            phases: view.phases[i],
+            unchanged: f.unchanged == Some(true),
+            burn: burn[i],
+            in_range: range.is_some_and(|(a, b)| (a..=b).contains(&i)),
+        })
+        .collect();
+    ui.with(
+        NodeSpec::column()
+            .grow_width()
+            .min_height(Min::FIT)
+            .gap(4.0),
+        |ui| {
+            section(ui, t, "frames");
+            chart(ui, t, &bars, view.budget, selected, true, to_end);
+            legend(ui, t);
+            if range.is_none() {
+                ui.text(
+                    "drag across the bars, or shift-click one, to read a range",
+                    TextStyle::new(10.0).color(t.faint),
+                );
+            }
+        },
+    );
+}
+
+fn verdict_line(view: &PerfView, i: usize, t: &Theme) -> (String, Color) {
+    let v = analysis::verdict(&view.tl, i, view.budget, &view.burns, &view.trace);
+    match v {
+        Verdict::Late { wait, slept } => (
+            format!(
+                "late — its input waited {} ms for this frame, the loop {}",
+                ms(wait),
+                if slept { "asleep through it" } else { "busy" }
+            ),
+            t.danger,
+        ),
+        Verdict::Blocked { busy } => (
+            format!(
+                "blocked — {} ms before it with no sleep: the thread was busy outside kui",
+                ms(busy)
+            ),
+            t.danger,
+        ),
+        Verdict::Slow {
+            work,
+            phase,
+            phase_us,
+            span,
+        } => (
+            format!(
+                "slow — {} ms of work, {} ms of it in {phase}{}",
+                ms(work),
+                ms(phase_us),
+                span.map_or(String::new(), |(n, us)| format!(
+                    "; most in `{}` ({} ms of its own)",
+                    view.trace.name(n),
+                    ms(us)
+                ))
+            ),
+            t.danger,
+        ),
+        Verdict::Waited { wall, cpu } => (
+            format!(
+                "waited — {} ms of wall time, {} ms on a CPU: a lock, a page read back in, \
+                 the core given away",
+                ms(wall),
+                ms(cpu)
+            ),
+            t.warning,
+        ),
+        Verdict::Wasted => (
+            "wasted — drew exactly what the frame before drew".to_string(),
+            UNCHANGED,
+        ),
+        Verdict::Burn { k, of } => (
+            format!("burn — frame {k} of {of} with no input between them"),
+            t.warning,
+        ),
+        Verdict::Fine { share } => (
+            format!("fine — {:.0}% of the budget", share * 100.0),
+            t.muted,
+        ),
+    }
+}
+
+/// One frame opened: why it lagged, its input's path, its phases, its
+/// gap, its spans, its causes and holders and counters.
+fn detail(ui: &mut Ui<'_>, t: &Theme, view: &Arc<PerfView>, i: usize, hovered: &mut Option<Key>) {
+    let tl = &view.tl;
+    let f = &tl.frames[i];
+    let name = |id| view.trace.name(id);
+    ui.with(
+        NodeSpec::column()
+            .grow_width()
+            .min_height(Min::FIT)
+            .gap(6.0)
+            .pad(8.0)
+            .bg(t.raised)
+            .radius(6.0)
+            .border(1.0, t.border),
+        |ui| {
+            ui.with(
+                NodeSpec::row()
+                    .grow_width()
+                    .gap(6.0)
+                    .cross_align(Align::Center),
+                |ui| {
+                    ui.text(
+                        &format!("frame {}", f.frame),
+                        TextStyle::new(12.0).color(t.fg).mono().nowrap(),
+                    );
+                    ui.text_in(
+                        NodeSpec::row().grow_width(),
+                        &format!(
+                            "at {:.3} s · {} nodes · gap {} ms",
+                            f.begin as f64 / 1e6,
+                            f.nodes,
+                            ms(f.begin.saturating_sub(f.gap_from))
+                        ),
+                        TextStyle::new(11.0)
+                            .color(t.muted)
+                            .mono()
+                            .nowrap()
+                            .ellipsis(),
+                    );
+                    icon_button(
+                        ui,
+                        t,
+                        &format!("perf-frame:{i}"),
+                        Icon::Close,
+                        None,
+                        "close the frame",
+                    );
+                },
+            );
+            let (line, color) = verdict_line(view, i, t);
+            ui.text_in(
+                NodeSpec::row().grow_width().min_height(Min::FIT),
+                &line,
+                TextStyle::new(11.0).color(color).bold(),
+            );
+            if let Some(path) = analysis::input_path(tl, i, &view.trace) {
+                section(ui, t, "input to screen");
+                chips(
+                    ui,
+                    t,
+                    std::iter::once(format!("{} {} ms", name(path.input.kind), ms(path.total())))
+                        .chain(
+                            path.legs()
+                                .into_iter()
+                                .map(|(what, us)| format!("{what} {}", ms(us))),
+                        ),
+                );
+            }
+            section(ui, t, "phases");
+            ui.with(NodeSpec::table().grow_width().gap(2.0), |ui| {
+                for ((pname, us), c) in view.phases[i]
+                    .named()
+                    .iter()
+                    .zip([HANDLER, BUILD, DEVTOOLS, LAYOUT, EMIT, RENDER, WAIT])
+                {
+                    if *us == 0 {
+                        continue;
+                    }
+                    ui.with(
+                        NodeSpec::row()
+                            .grow_width()
+                            .gap(6.0)
+                            .cross_align(Align::Center),
+                        |ui| {
+                            ui.leaf(NodeSpec::row().size(8.0, 8.0).radius(2.0).bg(c));
+                            ui.text(pname, TextStyle::new(11.0).color(t.muted).nowrap());
+                            ui.text(
+                                &format!("{} ms", ms(*us)),
+                                TextStyle::new(11.0).color(t.fg).mono().nowrap(),
+                            );
+                        },
+                    );
+                }
+            });
+            gap(ui, t, view, i);
+            flame(ui, t, view, i, hovered);
+            section(ui, t, "why it ran");
+            if f.causes.is_empty() {
+                ui.text(
+                    "nobody here asked: the platform's own redraw",
+                    TextStyle::new(11.0).color(t.faint),
+                );
+            } else {
+                chips(ui, t, f.causes.iter().map(|c| name(*c).to_string()));
+            }
+            if !f.holders.is_empty() {
+                section(ui, t, "who held it");
+                for h in &f.holders {
+                    holder_row(ui, t, name(h.what), h.node, name(h.name), None, hovered);
+                }
+            }
+            if !f.counters.is_empty() {
+                section(ui, t, "counters");
+                chips(
+                    ui,
+                    t,
+                    f.counters.iter().map(|(n, v)| format!("{} {v}", name(*n))),
+                );
+            }
+        },
+    );
+}
+
+/// What frame `i`'s gap held: inputs, events, wakes, requests, the loop,
+/// marks.
+fn gap(ui: &mut Ui<'_>, t: &Theme, view: &PerfView, i: usize) {
+    let tl = &view.tl;
+    let f = &tl.frames[i];
+    let (a, b) = (f.gap_from, f.begin.max(f.gap_from + 1));
+    let name = |id| view.trace.name(id);
+    let mut items: Vec<String> = Vec::new();
+    for inp in tl.inputs_in(a, b) {
+        items.push(if inp.count > 1 {
+            format!("{} ×{}", name(inp.kind), inp.count)
+        } else {
+            name(inp.kind).to_string()
+        });
+    }
+    for e in tl.events_in(a, b) {
+        items.push(format!("→ {}", name(e.kind)));
+    }
+    for (_, w) in tl.wakes_in(a, b) {
+        items.push(format!("wake {}", name(*w)));
+    }
+    for r in tl.requests_in(a, b) {
+        items.push(format!("request {}", name(r.why)));
+    }
+    let mut slept = 0u64;
+    let mut at: Option<u64> = None;
+    for (lt, e) in tl.loops_in(a, b) {
+        match e {
+            LoopEvent::Sleep { .. } => at = Some(*lt),
+            LoopEvent::Woke { by } => {
+                if let Some(s) = at.take() {
+                    slept += lt - s;
+                }
+                items.push(format!("woke by {}", name(*by)));
+            }
+            LoopEvent::Os { kind } => items.push(format!("os {}", name(*kind))),
+        }
+    }
+    if let Some(s) = at {
+        slept += b - s;
+    }
+    if slept > 0 {
+        items.push(format!("asleep {} ms", ms(slept)));
+    }
+    for m in tl.marks_in(a, b) {
+        items.push(format!("◆ {}", name(m.name)));
+    }
+    if items.is_empty() {
+        return;
+    }
+    section(ui, t, "between frames");
+    chips(ui, t, items.into_iter().take(40));
+}
+
+/// Frame `i`'s spans on the main track as a flame chart — a row per
+/// depth, each bar at its start and as long as it took over the frame
+/// and the handlers in its gap — a span with a node lighting it in the
+/// app under the pointer and selecting it in the tree on a click.
+fn flame(ui: &mut Ui<'_>, t: &Theme, view: &PerfView, i: usize, hovered: &mut Option<Key>) {
+    let tl = &view.tl;
+    let f = &tl.frames[i];
+    let end = f.end_or_begin().max(f.begin + 1);
+    let spans: Vec<&kui_trace::Span> = tl
+        .spans_in(f.gap_from, end)
+        .iter()
+        .filter(|s| s.track == Track::MAIN)
+        .filter(|s| s.start >= f.begin || view.trace.name(s.name) == analysis::HANDLER)
+        .collect();
+    if spans.is_empty() {
+        return;
+    }
+    let from = spans.iter().map(|s| s.start).min().unwrap_or(f.begin);
+    let len = end.saturating_sub(from).max(1) as f32;
+    // Depth by the parent chain, within what is drawn.
+    let mut depth: rustc_hash::FxHashMap<u32, usize> = Default::default();
+    let mut rows: Vec<Vec<&kui_trace::Span>> = Vec::new();
+    for s in &spans {
+        let d = depth.get(&s.parent).map_or(0, |d| d + 1);
+        depth.insert(s.id, d);
+        if rows.len() <= d {
+            rows.resize(d + 1, Vec::new());
+        }
+        rows[d].push(s);
+    }
+    section(ui, t, &format!("spans · {} ms", ms(end - from)));
+    ui.with(
+        NodeSpec::column()
+            .grow_width()
+            .min_height(Min::FIT)
+            .gap(1.0)
+            .role(crate::access::Role::None),
+        |ui| {
+            for row in rows.iter().take(12) {
+                ui.with(NodeSpec::row().grow_width().height(16.0), |ui| {
+                    let mut at = from;
+                    for s in row {
+                        if s.start > at {
+                            ui.leaf(
+                                NodeSpec::row()
+                                    .width(Sizing::Percent((s.start - at) as f32 / len))
+                                    .grow_height(),
+                            );
+                        }
+                        let w = (s.dur as f32 / len).clamp(0.0, 1.0);
+                        let color = match s.origin {
+                            Origin::Kui => match view.trace.name(s.name) {
+                                analysis::LAYOUT => LAYOUT,
+                                analysis::EMIT => EMIT,
+                                analysis::DEVTOOLS => DEVTOOLS,
+                                _ => BUILD,
+                            },
+                            Origin::Host => HOST,
+                            Origin::Extension(_) => EXTENSION,
+                        };
+                        let label = format!("perf-span:{}", s.id);
+                        let key = ui.child_key(&label);
+                        let node = (s.node != 0).then_some(Key(s.node));
+                        if ui.is_hovered(key) && node.is_some() {
+                            *hovered = node;
+                        }
+                        let hint = format!(
+                            "{} · {} ms, {} ms of its own{}",
+                            view.trace.name(s.name),
+                            ms(s.dur),
+                            ms(tl.self_us(s)),
+                            s.cpu
+                                .map_or(String::new(), |c| format!(" · {} ms on a CPU", ms(c)))
+                        );
+                        let mut spec = NodeSpec::row()
+                            .width(Sizing::Percent(w))
+                            .min_width(1.0)
+                            .grow_height()
+                            .pad_xy(3.0, 0.0)
+                            .radius(2.0)
+                            .bg(color.faded(0.85))
+                            .cross_align(Align::Center)
+                            .clip()
+                            .apply_tooltip(&hint)
+                            .hoverable();
+                        if let Some(k) = node {
+                            spec = spec
+                                .on_click(action(format!("goto:{:016x}", k.0)))
+                                .label(hint.as_str());
+                        } else {
+                            spec = spec.role(crate::access::Role::None);
+                        }
+                        ui.with_keyed(&label, spec, |ui| {
+                            ui.text(
+                                view.trace.name(s.name),
+                                TextStyle::new(10.0).color(t.fg).nowrap().ellipsis(),
+                            );
+                            if ui.is_hovered(key) {
+                                crate::widgets::hover_hint(ui, &hint);
+                            }
+                        });
+                        at = s.end().max(at);
+                    }
+                });
+            }
+        },
+    );
+}
+
+/// The spans by name and by origin, counters and gauges, and the burns.
+fn tables(ui: &mut Ui<'_>, t: &Theme, view: &Arc<PerfView>, ranged: bool) {
+    let frames = view.tl.frames.len().max(1) as f64;
+    let name = |id| view.trace.name(id);
+    if !view.spans.is_empty() {
+        section(
+            ui,
+            t,
+            if ranged {
+                "spans · ms over the range"
+            } else {
+                "spans · ms over the recording"
+            },
+        );
+        ui.with(NodeSpec::table().grow_width().gap(2.0), |ui| {
+            ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
+                for h in ["span", "calls", "per frame", "worst", "self", "cpu"] {
+                    ui.text(h, TextStyle::new(10.0).color(t.faint).nowrap());
+                }
+            });
+            for s in view.spans.iter().take(14) {
+                let origin = match s.origin {
+                    Origin::Extension(ns) => format!("{} · ", name(ns)),
+                    Origin::Kui | Origin::Host => String::new(),
+                };
+                ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
+                    ui.text_in(
+                        NodeSpec::row().grow_width(),
+                        &format!("{origin}{}", name(s.name)),
+                        TextStyle::new(11.0).color(t.fg).mono().nowrap().ellipsis(),
+                    );
+                    let cell = |ui: &mut Ui<'_>, v: String| {
+                        ui.text(&v, TextStyle::new(11.0).color(t.muted).mono().nowrap());
+                    };
+                    cell(ui, s.calls.to_string());
+                    cell(ui, format!("{:.3}", s.total as f64 / 1000.0 / frames));
+                    cell(ui, ms(s.worst));
+                    cell(ui, ms(s.self_total));
+                    cell(
+                        ui,
+                        s.cpu.map_or("—".to_string(), |c| {
+                            format!("{:.0}%", c as f64 * 100.0 / s.total.max(1) as f64)
+                        }),
+                    );
+                });
+            }
+        });
+    }
+    if !view.origins.is_empty() {
+        section(ui, t, "by origin · own time");
+        let rows: Vec<(String, String)> = view
+            .origins
+            .iter()
+            .map(|(o, us, n)| {
+                (
+                    match o {
+                        Origin::Kui => "kui".to_string(),
+                        Origin::Host => "the app".to_string(),
+                        Origin::Extension(ns) => name(*ns).to_string(),
+                    },
+                    format!("{} ms · {n} spans", ms(*us)),
+                )
+            })
+            .collect();
+        let refs: Vec<(&str, String)> = rows.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        pairs(ui, t, &refs);
+    }
+    if !view.counters.is_empty() {
+        section(ui, t, "counters · a frame");
+        let rows: Vec<(&str, String)> = view
+            .counters
+            .iter()
+            .map(|(n, avg, max)| (name(*n), format!("avg {avg:.2} · most {max}")))
+            .collect();
+        pairs(ui, t, &rows);
+    }
+    if !view.gauges.is_empty() {
+        section(ui, t, "gauges");
+        let rows: Vec<(&str, String)> = view
+            .gauges
+            .iter()
+            .map(|(n, last, lo, hi)| (name(*n), format!("{last} · least {lo} · most {hi}")))
+            .collect();
+        pairs(ui, t, &rows);
+    }
+    if !view.burns.is_empty() {
+        section(ui, t, "burns");
+        for b in view.burns.iter().take(10) {
+            let first = &view.tl.frames[b.first];
+            let last = &view.tl.frames[b.last];
+            let mut causes: Vec<&str> = view.tl.frames[b.first..=b.last]
+                .iter()
+                .flat_map(|f| f.causes.iter().map(|c| cause_name(view, *c)))
+                .collect();
+            causes.sort_unstable();
+            causes.dedup();
+            ui.text_in_keyed(
+                &format!("perf-burn:{}", b.first),
+                NodeSpec::row()
+                    .grow_width()
+                    .pad_xy(2.0, 1.0)
+                    .radius(3.0)
+                    .hover_bg(t.hover)
+                    .on_click(action(format!("perf-frame:{}", b.first)))
+                    .label(format!("burn of {} frames", b.len()).as_str()),
+                &format!(
+                    "{} frames over {} ms · {}",
+                    b.len(),
+                    ms(last.end_or_begin().saturating_sub(first.begin)),
+                    causes.join(", ")
+                ),
+                TextStyle::new(11.0)
+                    .color(t.warning)
+                    .mono()
+                    .nowrap()
+                    .ellipsis(),
+            );
+        }
+    }
+}
+
 /// A holder: what for, its name, how many frames when counted. One with
 /// a node goes to it in the tree on a click and lights it in the app
 /// while the pointer is on it.
@@ -686,7 +1259,7 @@ fn holder_row(
     ui: &mut Ui<'_>,
     t: &Theme,
     what: &str,
-    key: Option<Key>,
+    node: u64,
     name: &str,
     count: Option<usize>,
     hovered: &mut Option<Key>,
@@ -697,7 +1270,7 @@ fn holder_row(
             NodeSpec::row().grow_width(),
             name,
             TextStyle::new(11.0)
-                .color(if key.is_some() { t.accent } else { t.fg })
+                .color(if node != 0 { t.accent } else { t.fg })
                 .mono()
                 .nowrap()
                 .ellipsis(),
@@ -715,22 +1288,20 @@ fn holder_row(
         .pad_xy(2.0, 1.0)
         .radius(3.0)
         .cross_align(Align::Center);
-    match key {
-        Some(k) => {
-            let label = format!("perf-holder:{what}:{:016x}:{}", k.0, count.is_some());
-            if ui.is_hovered(ui.child_key(&label)) {
-                *hovered = Some(k);
-            }
-            ui.with_keyed(
-                &label,
-                spec.hover_bg(t.hover)
-                    .on_click(action(format!("goto:{:016x}", k.0)))
-                    .label(format!("{what} {name}").as_str()),
-                body,
-            );
+    if node != 0 {
+        let k = Key(node);
+        let label = format!("perf-holder:{what}:{node:016x}:{}", count.is_some());
+        if ui.is_hovered(ui.child_key(&label)) {
+            *hovered = Some(k);
         }
-        None => {
-            ui.with(spec, body);
-        }
+        ui.with_keyed(
+            &label,
+            spec.hover_bg(t.hover)
+                .on_click(action(format!("goto:{node:016x}")))
+                .label(format!("{what} {name}").as_str()),
+            body,
+        );
+    } else {
+        ui.with(spec, body);
     }
 }

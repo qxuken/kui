@@ -423,7 +423,33 @@ impl DynHeadless<'_> {
         if self.ended {
             return false;
         }
+        // The runner woke, and why — in a recording (ADR 0058, decision 5).
+        if self.core.perf_measuring() {
+            let by = if inbox.woken {
+                "wake"
+            } else if !inbox.asks.is_empty() {
+                "input"
+            } else {
+                "timer"
+            };
+            self.core.note_loop(kui_core::LoopNote::Woke(by));
+        }
+        let alive = self.turn_inner(inbox);
+        if alive && self.core.perf_measuring() {
+            let for_ms = self
+                .deadline()
+                .map(|d| d.saturating_duration_since(Instant::now()).as_secs_f64() * 1e3);
+            self.core.note_loop(kui_core::LoopNote::Sleep { for_ms });
+        }
+        alive
+    }
+
+    fn turn_inner(&mut self, inbox: Inbox) -> bool {
         if inbox.woken {
+            // A named waker's wake reads by its name (ADR 0058, decision 8).
+            for name in crate::take_wake_names() {
+                self.core.note_wake(&name);
+            }
             self.owe(FrameCause::WAKE);
         }
         for ask in inbox.asks {
@@ -520,7 +546,10 @@ impl DynHeadless<'_> {
         } = self;
         extensions.route(events, |ev| {
             reached = true;
+            // Timed as `handler` in a recording (ADR 0058, decision 5).
+            let span = core.span_begin(kui_core::kui_trace::analysis::HANDLER);
             app.on_event_with(ev, core);
+            core.span_end(span);
         });
         reached
     }
@@ -559,7 +588,7 @@ impl DynHeadless<'_> {
         let _ = self.core.output();
         let t_render = Instant::now();
         self.captures.serve(&mut self.core);
-        self.core.stats.push(FrameSample {
+        self.core.push_frame_sample(FrameSample {
             input_ms: 0.0,
             view_ms,
             layout_ms,
@@ -616,6 +645,7 @@ impl DynHeadless<'_> {
         if !self.torn_down {
             self.torn_down = true;
             self.app.teardown();
+            let _ = self.core.perf_flush();
         }
     }
 }

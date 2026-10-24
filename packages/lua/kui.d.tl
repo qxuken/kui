@@ -1465,6 +1465,20 @@ global type kui = record
     focus_window: function(window: integer)
     -- Declares the origin's colour and length tokens (ADR 0027).
     set_tokens: function(decl: any)
+    -- Runs a function inside a span of that name, on the timeline the Perf tab and a trace file show, and returns what it returned.
+    span: function(name: string, f: function(): any...): any...
+    -- A span timed elsewhere — a parse on another thread, a job — of so many ms, ending now, on the track named for it.
+    perf_measure: function(name: string, ms: number)
+    -- Adds to this frame's counter of that name.
+    perf_count: function(name: string, n: number)
+    -- Sets a reading — a footprint, a buffer's bytes — held until set again.
+    perf_gauge: function(name: string, value: number)
+    -- Puts an instant on the timeline: a file opened, a command run.
+    perf_mark: function(name: string)
+    -- Whether anything is recorded — the Perf tab recording or on show, `KUI_PERF_TRACE`, a `tracing` subscriber — so an app skips reading clocks of its own for the recording's doors.
+    perf_measuring: function(): boolean
+    -- Asks for a frame and names why: `owed_by` lists it under the name, and a recording's causes read `request: why`.
+    request_frame_for: function(why: string)
     -- Loads a plugin under a namespace; a `KuiWindow` takes its list at construction (`extensions`).
     add_extension: function(namespace: string, path: string): boolean, string
     -- What the last `slot_replay` of a name answered this frame, or the frame before while this one is being built: replayed, or why it was filled fresh (ADR 0045).

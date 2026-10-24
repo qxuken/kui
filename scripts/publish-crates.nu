@@ -21,7 +21,8 @@
 # as CI sets them, or `cargo login` / ~/.cargo/credentials.toml.
 
 # Dependency order: each crate's verify build needs the ones before it.
-const CRATES = [kui-derive kui-core kui-wgpu kui-native kui-lua kui-ffi]
+# kui-trace (ADR 0058) is before kui-core, which writes its format.
+const CRATES = [kui-derive kui-trace kui-core kui-wgpu kui-native kui-lua kui-ffi]
 
 const INDEX = {
     crates-io: "https://index.crates.io"

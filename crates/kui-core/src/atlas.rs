@@ -114,6 +114,9 @@ impl Prev {
 /// looks up is copied, so the page still holds that frame's set alone.
 /// `clear`, for a raster mode that changed, keeps nothing.
 pub struct GlyphAtlas {
+    /// Glyphs rasterized since the atlas was made — its misses — for the
+    /// recording's per-frame counter (ADR 0058, decision 4).
+    pub(crate) rasterized: u64,
     pub size: u32,
     /// RGBA, size*size*4.
     pub pixels: Vec<u8>,
@@ -216,6 +219,7 @@ impl GlyphAtlas {
 
     pub fn with_size(size: u32) -> Self {
         Self {
+            rasterized: 0,
             size,
             pixels: vec![0; (size * size * 4) as usize],
             dirty: false,
@@ -575,6 +579,7 @@ impl GlyphAtlas {
             self.map.insert(key, None);
             return None;
         };
+        self.rasterized += 1;
         let Some((x, y)) = self.alloc_or_make_room(glyph.w, glyph.h) else {
             self.refuse(Refusal::Glyph(key), glyph.w, glyph.h);
             self.map.insert(key, None);

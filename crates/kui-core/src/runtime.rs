@@ -69,6 +69,7 @@ mod gesture;
 mod groups;
 pub mod inspect;
 mod menu_api;
+pub mod perf;
 /// A slot replayed by its host (ADR 0045).
 pub(crate) mod replay;
 pub(crate) use menu_api::MenuSurface;
@@ -228,6 +229,8 @@ pub struct Core {
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
+    /// The recording (ADR 0058): nothing unless something listens.
+    pub(crate) perf: perf::Recorder,
     /// The `windowEvents` group this frame's root declared (ADR 0048),
     /// cleared each `begin_frame`, and the last finished frame's, which
     /// is what the window's own events are read against
@@ -1192,6 +1195,7 @@ impl Core {
             metrics: crate::metrics::Metrics::default(),
             platform_titlebar_h: None,
             window_title: None,
+            perf: perf::Recorder::default(),
             window_events: None,
             window_events_seen: None,
             window_events_origin: OriginId::HOST,
@@ -1952,6 +1956,7 @@ impl Core {
         // it are still whole: why this frame runs, and who held it
         // (backlog F111).
         self.trace_begin_frame();
+        self.perf_frame_start();
         // Against the finished frame, before anything below clears it: a
         // held drag re-places its live end where the last layout moved
         // the text under the pointer, and steps its scroller when the
@@ -2152,6 +2157,9 @@ impl Core {
         // forgets is not one the next frame was held by.
         self.trace_forget_requests();
         self.devtools_begin_frame();
+        // The frame begun, in the recording, and its `build` open: from
+        // here to `Ui::finish` is the host's view (ADR 0058).
+        self.perf_frame_begun();
     }
 }
 

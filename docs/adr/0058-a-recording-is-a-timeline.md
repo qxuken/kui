@@ -1,11 +1,13 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-25
 ---
 
 # A recording is a timeline of what happened, in frames and between them
 
-> **Proposed (2026-10-25); backlog F198. Not built.** From the user,
+> **Accepted and built (2026-10-25), all but `kui-perf`; backlog F198,
+> and F199 for the inspector, which waits on the kui tools design
+> system (decision 13).** From the user,
 > after the devtools' Perf tab (F197), over one conversation: a bar of
 > the timeline should open into *why that frame lagged*; an app should
 > put its own measurements beside kui's — "instruments for
@@ -13,8 +15,9 @@ date: 2026-10-25
 > Chrome's trace or any other is an adapter, read by an inspector that
 > need not live in the panel; what happens *between* frames should be
 > recorded too; the C and Odin bindings should have the waker Rust
-> has; and the inspector should be built with the kui tools design
-> system, whose trace waterfall it shares with the BFF testing tool. kawoosh built most of the first two for itself — a Frames tab
+> > has; and the inspector should be built with the kui tools design
+> system, whose trace waterfall it shares with the BFF testing tool.
+> kawoosh built most of the first two for itself — a Frames tab
 > (why each frame ran, the runs of frames with no input) and a Perf tab
 > (spans by phase, system, pane and plugin, their CPU time, the
 > process's memory), some 2,300 lines and a Lua profiler — and every app
@@ -381,3 +384,64 @@ Lua is a guest that wakes nothing.
   adapter has them), the process's memory read by kui itself
   (kawoosh reads footprint and resident per platform, and kui may adopt
   it as built-in gauges), and the inspector attaching live.
+
+## Amendment: what the building changed (2026-10-25)
+
+Built in one round: `crates/kui-trace` (the records, the codec, the
+timeline, the analysis, the four adapters, `diff`, the `kui-trace` CLI),
+`crates/kui-core/src/runtime/perf.rs` (the recorder and its doors), the
+runners' half in `kui-native` (the windowed runner and the headless one),
+the Perf tab on the timeline, and the doors in every binding. What the
+building settled that the decisions left open, or changed:
+
+- **A fill's span is the extension's, not kui's** (decision 4): `fill
+  <namespace>` is opened under origin `Extension(namespace)`, so the
+  recording's "by origin" puts an extension's cost under its name — the
+  question it is there to answer — rather than in kui's.
+- **The live view keeps the recent frames only while it is what the tab
+  shows** (decision 1). Under a stopped recording the tab shows, nothing
+  is kept: the live ring is shorter, and kept on it would trim the
+  recording away under *save trace*. *save trace* writes the recording
+  the tab shows, read whole once when it stopped (`PerfView`), not what
+  has been kept since.
+- **A counter is written only where it moved**, and averaged over every
+  frame of the recording, a frame with none counting 0 — a glyph
+  rasterized once in a hundred frames averages 0.01.
+- **The present is a door, not a reading of the stats ring**:
+  `Core::push_frame_sample` pushes the driver's `FrameSample` into
+  `stats` (the latency graph) and records the present for the frame just
+  finished. The runners call it where they pushed into `stats`.
+- **The loop's records**: the windowed runner notes a sleep with its
+  deadline in `about_to_wait`, a waking in winit's `new_events` (`timer`,
+  `event`, `poll`, `init`), and moved, occluded, theme, scale, resized
+  and focused as OS events; the headless runner notes its turns' wakes
+  (`wake`, `input`, `timer`) and sleeps.
+- **Named wakes** travel by a process-wide list a named waker leaves its
+  name in before it rings; the loop hands each name to the main window's
+  core as it handles the wake.
+- **A frame nobody asked for** counts under the empty cause name, which
+  the tab reads as "nobody".
+- **`KUI_PERF_TRACE`** streams only to a `.kuitrace`; a name an adapter
+  writes (`.json`, `.pftrace`, `.speedscope.json`, `.firefox.json`) is
+  kept in memory and written at exit or `perf_flush`.
+- **The Firefox Profiler's format** is its Gecko profile at version 31,
+  not the processed format, which is at version 76 and changes shape
+  often; the profiler upgrades a Gecko profile on import, and one with
+  markers and no samples imports.
+- **The core's own spans while the panel is docked** include `devtools`,
+  so the tab's live view shows the panel's cost apart from the app's —
+  in a debug build it is most of a frame.
+- **A counter is drawn as a step over its frame** by every adapter: its
+  value from the frame's begin, 0 from its end — every viewer holds a
+  counter's last value, so a counter written only where it moved read
+  as moving for ever after the first frame it did (found opening a
+  recording in Perfetto).
+- **Checked in the viewers**: a recording converted by `kui-trace
+  convert` opened in Perfetto's UI (v59.1, both the protobuf and Chrome's
+  JSON), speedscope and the Firefox Profiler, each showing the frames,
+  the main thread's spans and the counters; the tests decode and parse
+  each format themselves besides.
+- **Not built**: `kui-perf` (decision 13, now F199), the devtools read
+  door its tab form needs, and the panel's restyle in the design
+  system's look.
+

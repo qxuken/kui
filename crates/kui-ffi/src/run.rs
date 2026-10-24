@@ -11,6 +11,9 @@ struct CApp {
     on_event: Option<EventFn>,
     /// What `kui_on_teardown` set before the run, taken as the run began.
     teardown: Option<TeardownFn>,
+    /// The runner's waker from `setup`, lent to each view callback's
+    /// context for `kui_waker` to clone.
+    waker: Option<kui_native::Waker>,
 }
 
 /// The teardown callback `kui_on_teardown` set, for the next `kui_run` /
@@ -25,7 +28,16 @@ impl kui_native::App for CApp {
         // `Ui` is what carries the runner's extensions, so a `kui_slot`
         // from the callback fills in place the way a Rust host's does.
         let mut shim = KuiCtx::borrowing_in(ui);
+        shim.waker = self
+            .waker
+            .as_ref()
+            .map_or(std::ptr::null(), |w| std::ptr::from_ref(w).cast());
         (self.view)(self.user, &mut shim);
+    }
+
+    /// Keeps the runner's waker for `kui_waker` (ADR 0058, decision 14).
+    fn setup(&mut self, waker: kui_native::Waker) {
+        self.waker = Some(waker);
     }
 
     /// The window going for good, to the C host: once, with
@@ -263,6 +275,7 @@ pub extern "C" fn kui_run_with(
             view,
             on_event: Some(on_event),
             teardown: ON_TEARDOWN.lock().unwrap_or_else(|e| e.into_inner()).take(),
+            waker: None,
         };
         launcher.run(app).is_ok()
     })
@@ -798,6 +811,61 @@ pub extern "C" fn kui_pixels_free(pixels: *mut u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    extern "C" fn keep_waker(user: *mut c_void, ctx: *mut KuiCtx) {
+        // SAFETY: the test hands its slot as `user`.
+        let slot = unsafe { &mut *user.cast::<*mut KuiWaker>() };
+        if slot.is_null() {
+            *slot = kui_waker(ctx);
+        }
+    }
+
+    /// Under the runner a view callback's context hands out the runner's
+    /// waker (ADR 0058, decision 14), and a thread's named wake brings a
+    /// frame whose causes name it.
+    #[test]
+    fn a_run_hands_out_its_waker_and_a_named_wake_names_the_frame() {
+        let mut slot: *mut KuiWaker = std::ptr::null_mut();
+        let app = CApp {
+            user: std::ptr::from_mut(&mut slot).cast(),
+            view: keep_waker,
+            on_event: None,
+            teardown: None,
+            waker: None,
+        };
+        let mut runner = kui_native::app("waker").open_headless(app, 100.0, 60.0, 1.0);
+        runner.core_mut().set_perf_recording(true);
+        runner.turn();
+        assert!(!slot.is_null(), "the view's context had the runner's waker");
+        let other = kui_waker_clone(slot) as usize;
+        kui_waker_free(slot);
+        std::thread::spawn(move || {
+            let name = "pty";
+            let w = other as *mut KuiWaker;
+            kui_waker_wake_named(
+                w,
+                KuiStr {
+                    ptr: name.as_ptr(),
+                    len: name.len(),
+                },
+            );
+            kui_waker_free(w);
+        })
+        .join()
+        .unwrap();
+        let frames = runner.frames();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while runner.frames() == frames && std::time::Instant::now() < until {
+            runner.turn_until(until);
+        }
+        assert!(runner.frames() > frames, "the wake brought a frame");
+        let t = kui_core::kui_trace::Trace::from_bytes(&runner.core_mut().perf_trace()).unwrap();
+        let named = t.records.iter().any(|r| {
+            matches!(r, kui_core::kui_trace::Record::FrameBegin { causes, .. }
+                if causes.iter().any(|n| t.name(*n) == "wake: pty"))
+        });
+        assert!(named, "a frame's causes read `wake: pty`");
+    }
 
     #[test]
     fn an_icon_is_pixels_of_its_size_and_a_16_bit_resource() {

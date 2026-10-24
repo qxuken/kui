@@ -1067,6 +1067,28 @@ fn the_tree_tab_lists_the_app_and_outlines_what_is_picked() {
     assert!(access_click(&mut core, press_row).is_empty());
     assert_eq!(state(&core, |s| s.selected), Some(press));
     frame(&mut core);
+    // The click hands the keyboard to the list, its cursor on the row.
+    let list = core.key_of("kui-devtools/nodes").unwrap();
+    assert!(core.is_focused(list), "the arrows walk on from the click");
+    assert_eq!(state(&core, |s| s.tree_cursor), Some(press));
+    // The inspector reads the spec past the snapshot's columns — the
+    // button's cursor — and, changed only, leaves the rows the
+    // node leaves at their defaults out until asked.
+    let texts = |core: &Core| -> Vec<String> {
+        core.nodes().iter().filter_map(|n| n.text.clone()).collect()
+    };
+    frame(&mut core);
+    let shown = texts(&core);
+    assert!(shown.iter().any(|t| t == "cursor"), "{shown:?}");
+    assert!(
+        !shown.iter().any(|t| t == "aspect"),
+        "a default is left out"
+    );
+    core.devtools_act("changed-only");
+    frame(&mut core);
+    assert!(texts(&core).iter().any(|t| t == "aspect"), "all fields");
+    core.devtools_act("changed-only");
+    frame(&mut core);
     // A selection opens the inspector and leaves the app alone: what is
     // lit is what the pointer is on, until the eye holds the selection.
     assert!(
@@ -1127,8 +1149,8 @@ fn the_tree_tab_lists_the_app_and_outlines_what_is_picked() {
 }
 
 /// The tree's keyboard (backlog D1a): the list is one sink with a cursor
-/// of its own. Down walks the rows from the top, Enter selects the row the
-/// cursor is on, Left folds it (and then goes to its parent), Right
+/// of its own. Down walks the rows from the top and selects as it goes,
+/// Enter puts the selection down and picks it up again, Left folds it (and then goes to its parent), Right
 /// unfolds it, Home and End go to the ends, and the keys reach nobody
 /// else — the app under it hears nothing.
 #[test]
@@ -1167,11 +1189,15 @@ fn the_tree_walks_by_keyboard_through_the_list_s_own_cursor() {
     key(&mut core, KeyCode::Down);
     let third = state(&core, |s| s.tree_cursor).unwrap();
     assert_eq!(row_of(&mut core, third), Some(rows(&core)[2]));
-    // Enter selects it, as a click would, and the inspector opens.
-    assert_eq!(state(&core, |s| s.selected), None);
-    key(&mut core, KeyCode::Enter);
+    // The arrows select as they walk, as a browser's tree does, and the
+    // inspector follows; Enter puts the selection down and picks it up.
     assert_eq!(state(&core, |s| s.selected), Some(third));
     assert!(core.key_of("kui-devtools/inspector").is_some());
+    key(&mut core, KeyCode::Enter);
+    assert_eq!(state(&core, |s| s.selected), None);
+    assert_eq!(state(&core, |s| s.tree_cursor), Some(third));
+    key(&mut core, KeyCode::Enter);
+    assert_eq!(state(&core, |s| s.selected), Some(third));
     // Up to the app's column, Left folds it: its rows go and the cursor
     // stays on it; Left again goes to its parent; Right on the folded
     // column unfolds it.
@@ -2316,19 +2342,22 @@ fn the_panel_raises_no_warning_of_its_own() {
     assert!(warnings.is_empty(), "{warnings:#?}");
 }
 
-/// The Perf tab's recording: off, it keeps nothing and leaves the frame
-/// trace as the app had it; on, every frame is kept with why it ran, who
-/// held it, its phase times once the driver pushed them, and whether it
-/// drew what the frame before drew — an idle frame a `request_frame`
-/// asked for draws nothing new. Stopped, the trace goes back.
+/// The Perf tab's recording (ADR 0058): off, nothing is recorded and the
+/// frame trace is as the app had it; recording, every frame is kept as a
+/// timeline — its causes, the `request_frame` that held it, the core's
+/// own spans, the driver's present, whether it drew anything new, the
+/// input that arrived between frames and the event that left — and an
+/// idle frame a `request_frame` asked for draws nothing new. Stopped, the
+/// trace goes back and the tab reads the recording whole.
 #[test]
 fn the_perf_recording_keeps_each_frame_s_cause_holders_and_cost() {
+    use kui_trace::analysis;
     let busy = |core: &mut Core| {
         let mut ui = core.frame(VIEWPORT, 1.0);
         view(&mut ui, None);
         ui.request_frame();
         ui.finish();
-        core.stats.push(crate::stats::FrameSample {
+        core.push_frame_sample(crate::stats::FrameSample {
             view_ms: 1.0,
             layout_ms: 0.5,
             render_ms: 2.0,
@@ -2341,60 +2370,118 @@ fn the_perf_recording_keeps_each_frame_s_cause_holders_and_cost() {
     for _ in 0..3 {
         busy(&mut core);
     }
-    assert!(state(&core, |s| s.perf.frames.is_empty()), "not recording");
-    assert!(!core.frame_trace(), "and the trace untouched");
+    assert!(!core.perf_recording(), "not recording");
+    assert!(
+        core.perf_measuring(),
+        "the tab on show keeps the recent frames"
+    );
+    core.devtools_act("tab:events");
+    busy(&mut core);
+    busy(&mut core);
+    assert!(!core.perf_measuring(), "off with the tab");
+    assert!(!core.frame_trace(), "and the trace as the app had it");
+    core.devtools_act("tab:perf");
     core.devtools_act("perf-record");
-    for _ in 0..6 {
+    busy(&mut core);
+    assert!(core.perf_recording());
+    assert!(core.frame_trace(), "the recording holds the trace");
+    // An input and the event it makes, between two frames.
+    let press = core.key_of("press").unwrap();
+    let r = node(&core, press).rect;
+    click_at(&mut core, r.x + 2.0, r.y + 2.0);
+    for _ in 0..5 {
         busy(&mut core);
     }
-    assert!(core.frame_trace(), "the recording holds the trace");
-    let frames: Vec<PerfFrame> = state(&core, |s| s.perf.frames.iter().cloned().collect());
-    assert_eq!(frames.len(), 6);
-    let done = &frames[..5];
+    core.devtools_act("perf-record");
+    busy(&mut core);
+    assert!(!core.perf_recording());
+    let trace = core.perf_trace_read();
+    let tl = trace.timeline();
+    assert!(tl.frames.len() >= 6, "{}", tl.frames.len());
+    let done = &tl.frames[1..tl.frames.len() - 1];
     assert!(
         done.iter()
-            .all(|f| f.sample.is_some_and(|s| s.render_ms == 2.0)),
-        "each finished frame has its timing: {done:?}"
+            .all(|f| f.present.is_some_and(|p| p.render == 2000)),
+        "each frame drawn has its present"
     );
-    assert!(done.iter().all(|f| f.nodes > 0));
+    assert!(done.iter().all(|f| f.nodes > 0 && f.end.is_some()));
     assert!(
-        frames[1..]
-            .iter()
-            .all(|f| f.cause.contains(crate::runtime::cause::FrameCause::OWED)),
+        done.iter()
+            .all(|f| f.causes.iter().any(|c| trace.name(*c) == "owed")),
         "an owed frame says so"
     );
     assert!(
-        frames[1..].iter().all(|f| f
+        done.iter().all(|f| f
             .holders
             .iter()
-            .any(|h| h.what == "request" && h.name.starts_with("request_frame"))),
-        "and who owed it: {:?}",
-        frames[1].holders
+            .any(|h| trace.name(h.name).starts_with("request_frame"))),
+        "and who owed it"
+    );
+    for name in [
+        analysis::BUILD,
+        analysis::LAYOUT,
+        analysis::EMIT,
+        analysis::DEVTOOLS,
+    ] {
+        assert!(
+            tl.spans.iter().any(|s| trace.name(s.name) == name),
+            "the core's own `{name}` span"
+        );
+    }
+    assert!(
+        tl.inputs.iter().any(|i| trace.name(i.kind) == "button"),
+        "the press, as it arrived"
     );
     assert!(
-        done[2..].iter().all(|f| f.unchanged == Some(true)),
+        tl.events
+            .iter()
+            .any(|e| trace.name(e.kind) == "click" && e.node == press.0),
+        "the click, as it left"
+    );
+    assert!(
+        done.iter().skip(2).any(|f| f.unchanged == Some(true)),
         "an idle frame draws what the one before drew — the panel holds still: {:?}",
         done.iter().map(|f| f.unchanged).collect::<Vec<_>>()
     );
-    // Stopped: the trace goes back, the frames stay to be read.
-    core.devtools_act("perf-record");
-    busy(&mut core);
+    // Stopped: the trace goes back, the tab reads the recording whole.
     assert!(!core.frame_trace());
-    assert_eq!(state(&core, |s| s.perf.frames.len()), 6);
+    let frames = state(&core, |s| s.perf.view.as_ref().map(|v| v.tl.frames.len()));
+    assert_eq!(frames, Some(tl.frames.len()));
     busy(&mut core);
-    let bar = core
-        .key_of(&format!("perf-bar:{}", frames[3].frame))
-        .expect("a bar per frame");
+    let bar = core.key_of("perf-bar:3").expect("a bar per frame");
     access_click(&mut core, bar);
     busy(&mut core);
-    assert_eq!(state(&core, |s| s.perf.selected), Some(frames[3].frame));
+    assert_eq!(state(&core, |s| s.perf.selected), Some(3));
+    let texts: Vec<String> = core.nodes().iter().filter_map(|n| n.text.clone()).collect();
+    assert!(
+        texts.iter().any(|t| t.starts_with("wasted —")
+            || t.starts_with("burn —")
+            || t.starts_with("fine —")),
+        "the frame's verdict: {texts:?}"
+    );
+    // A range: shift-click another bar, and the summary and the tables
+    // read the frames between, the bars inside it lit.
+    core.devtools_act("perf-range:5");
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.perf.range), Some((3, 5)));
     let texts: Vec<String> = core.nodes().iter().filter_map(|n| n.text.clone()).collect();
     assert!(
         texts
             .iter()
-            .any(|t| t.starts_with("drew exactly what the frame before drew")),
+            .any(|t| t == "range · frames 3–5 of the recording"),
         "{texts:?}"
     );
+    let sliced = state(&core, |s| {
+        s.perf.range_view.as_ref().map(|(_, v)| v.tl.frames.len())
+    });
+    assert_eq!(sliced, Some(3), "the slice holds the range's frames");
+    assert!(texts.iter().any(|t| t == "whole recording"), "a way back");
+    core.devtools_act("perf-range-clear");
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.perf.range), None);
+    // The bytes read back as the same recording.
+    let back = kui_trace::Trace::from_bytes(&core.perf_trace()).unwrap();
+    assert_eq!(back.timeline().frames.len(), tl.frames.len());
     // An app that traced on its own keeps its trace through a recording.
     core.set_frame_trace(true);
     core.devtools_act("perf-record");
@@ -2402,6 +2489,88 @@ fn the_perf_recording_keeps_each_frame_s_cause_holders_and_cost() {
     core.devtools_act("perf-record");
     busy(&mut core);
     assert!(core.frame_trace(), "the app's own trace is put back on");
+}
+
+/// The doors an app records through: a span nests and carries the node
+/// the builder had open, a counter sums over its frame, a measure lands
+/// on its own track, a named request and a named wake read as causes —
+/// and with nothing listening every door is nothing.
+#[test]
+fn an_app_s_spans_counters_and_named_causes_reach_the_recording() {
+    let mut core = Core::new();
+    // Nothing listens: nothing is kept, and no id is handed out.
+    assert_eq!(core.span_begin("x"), crate::SpanId::NONE);
+    core.perf_count("rows", 3);
+    core.set_perf_recording(true);
+    let frame = |core: &mut Core| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        ui.with_keyed("pane", NodeSpec::column(), |ui| {
+            ui.span("rows", |ui| {
+                ui.span("one row", |ui| ui.text("hi", TextStyle::new(12.0)));
+            });
+        });
+        ui.core().perf_count("rows", 2);
+        ui.core().perf_count("rows", 3);
+        ui.request_frame_for("caret blink");
+        ui.finish();
+    };
+    frame(&mut core);
+    core.perf_measure("parse", 4.0);
+    core.perf_gauge("footprint", 1024.0);
+    core.perf_mark("opened");
+    core.note_wake("parser");
+    frame(&mut core);
+    frame(&mut core);
+    core.set_perf_recording(false);
+    let trace = core.perf_trace_read();
+    let tl = trace.timeline();
+    let rows = tl
+        .spans
+        .iter()
+        .find(|s| trace.name(s.name) == "rows")
+        .unwrap();
+    let one = tl
+        .spans
+        .iter()
+        .find(|s| trace.name(s.name) == "one row")
+        .unwrap();
+    assert_eq!(one.parent, rows.id, "nested");
+    assert_eq!(rows.node, core.key_of("pane").unwrap().0, "under the pane");
+    assert_eq!(rows.origin, kui_trace::Origin::Host);
+    let build = tl
+        .spans
+        .iter()
+        .find(|s| trace.name(s.name) == "build" && s.start <= rows.start)
+        .unwrap();
+    assert_eq!(rows.parent, build.id, "inside the frame's build");
+    let f = &tl.frames[0];
+    assert!(
+        f.counters
+            .iter()
+            .any(|(n, v)| trace.name(*n) == "rows" && *v == 5),
+        "a frame's counter sums: {:?}",
+        f.counters
+    );
+    let parse = tl
+        .spans
+        .iter()
+        .find(|s| trace.name(s.name) == "parse")
+        .unwrap();
+    assert_eq!(parse.dur, 4000);
+    assert_eq!(trace.track_name(parse.track), "parse");
+    assert_eq!(tl.gauges.len(), 1);
+    assert_eq!(tl.marks.len(), 1);
+    let second = &tl.frames[1];
+    let causes: Vec<&str> = second.causes.iter().map(|c| trace.name(*c)).collect();
+    assert!(causes.contains(&"wake: parser"), "{causes:?}");
+    assert!(causes.contains(&"request: caret blink"), "{causes:?}");
+    assert!(
+        second
+            .holders
+            .iter()
+            .any(|h| trace.name(h.name).starts_with("caret blink")),
+        "the request by its name in owed_by"
+    );
 }
 
 /// The panel's captures answer the panel: the ask reaches the main
@@ -2456,4 +2625,49 @@ fn the_panel_s_captures_answer_the_panel_and_an_app_s_the_app() {
     );
     let out = core.take_pending_events();
     assert!(out.iter().any(|e| e.is(EventKind::Capture)), "{out:?}");
+}
+
+/// A drag across a recording's bars reads a range: it starts on a bar
+/// (which takes the press for its click), and letting go is no click —
+/// the frame picked before stays picked.
+#[test]
+fn a_drag_across_the_bars_reads_a_range() {
+    let busy = |core: &mut Core| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui, None);
+        ui.request_frame();
+        ui.finish();
+    };
+    let mut core = on();
+    core.set_inspect(true);
+    core.devtools_act("tab:perf");
+    core.devtools_act("perf-record");
+    for _ in 0..30 {
+        busy(&mut core);
+    }
+    core.devtools_act("perf-record");
+    busy(&mut core);
+    busy(&mut core);
+    let (ka, kb) = (
+        core.key_of("perf-bar:20").unwrap(),
+        core.key_of("perf-bar:25").unwrap(),
+    );
+    let (a, b) = (node(&core, ka).rect, node(&core, kb).rect);
+    let y = a.y + a.h / 2.0;
+    click_at(&mut core, a.x + 2.0, y);
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.perf.selected), Some(20));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(a.x + 2.0, y)));
+    core.handle_input(InputEvent::mouse_down(1));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(a.x + 12.0, y)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(b.x + 2.0, y)));
+    core.handle_input(InputEvent::mouse_up());
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.perf.range), Some((20, 25)));
+    assert_eq!(state(&core, |s| s.perf.selected), Some(20), "no click");
+    assert_eq!(state(&core, |s| s.perf.drag), None, "the drag let go");
+    // Clear goes back to the whole recording.
+    core.devtools_act("perf-range-clear");
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.perf.range), None);
 }

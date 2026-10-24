@@ -1227,6 +1227,9 @@ pub struct TextSystem {
     /// Emission broke a long line into rows other than the ones layout
     /// used: the frame laid out on them is owed. Taken by [`Self::take_owed`].
     owed: bool,
+    /// Texts shaped since the core began — the cache's misses — for the
+    /// recording's per-frame counter (ADR 0058, decision 4).
+    pub(crate) shaped: u64,
 }
 
 /// A style's features in cosmic-text's terms. Empty stays empty, which is
@@ -1626,6 +1629,7 @@ impl TextSystem {
             scale: 1.0,
             frame_no: 0,
             owed: false,
+            shaped: 0,
         }
     }
 
@@ -1882,6 +1886,7 @@ impl TextSystem {
         let frame_no = self.frame_no;
         let scale = self.scale;
         if !self.entries.contains_key(&key) {
+            self.shaped += 1;
             let mut buffer = new_buffer(fs, style, scale);
             // At the family's regular (or its bold, F150), as a span or a
             // cell is: a family with no 400 face asked at 400 falls back
@@ -1912,6 +1917,12 @@ impl TextSystem {
             .expect("just inserted")
             .touch(frame_no);
         key
+    }
+
+    /// The colour one of this frame's texts is painted in, for the
+    /// devtools inspector.
+    pub(crate) fn frame_color(&self, id: TextId) -> Color {
+        self.frame[id.0 as usize].color
     }
 
     /// The content of one of this frame's texts (spans concatenated).

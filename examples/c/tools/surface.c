@@ -1573,6 +1573,42 @@ static int surface(void) {
         kui_ctx_free(why);
     }
 
+    /* The recording (ADR 0058), on a context of its own: off, a span's id
+     * is 0 and nothing is kept; recording, the spans and the rest land in
+     * kui-trace bytes. A standalone context has no waker - its host wakes
+     * its own loop - and the waker's calls take NULL as nothing. */
+    {
+        KuiCtx *rec = kui_ctx_new();
+        check(!kui_perf_measuring(rec) && !kui_perf_recording(rec), "kui_perf_measuring: nothing listens");
+        check(kui_span_begin(rec, KUI_STR("off")) == 0, "kui_span_begin: no span while off");
+        kui_set_perf_recording(rec, true);
+        check(kui_perf_measuring(rec) && kui_perf_recording(rec), "kui_set_perf_recording: on");
+        kui_note_wake(rec, KUI_STR("pty"));
+        kui_frame_begin(rec, 320, 240, 1);
+        uint32_t span = kui_span_begin(rec, KUI_STR("rows"));
+        check(span != 0, "a span while recording");
+        kui_perf_count(rec, KUI_STR("rows"), 12);
+        kui_span_end(rec, span);
+        kui_request_frame_for(rec, KUI_STR("blink"));
+        kui_frame_finish(rec);
+        kui_perf_measure(rec, KUI_STR("parse"), 1.5);
+        kui_perf_gauge(rec, KUI_STR("bytes"), 4096);
+        kui_perf_mark(rec, KUI_STR("opened"));
+        kui_set_perf_recording(rec, false);
+        size_t len = 0;
+        const uint8_t *trace = kui_perf_trace(rec, &len);
+        check(trace && len > 8 && memcmp(trace, "KUITRACE", 8) == 0, "kui_perf_trace: a recording's bytes");
+        check(kui_perf_flush(rec), "kui_perf_flush: no file is no failure");
+        KuiWaker *w = kui_waker(rec);
+        check(w == NULL, "kui_waker: none on a host's own loop");
+        kui_waker_wake(w);
+        kui_waker_wake_at(w, 5);
+        kui_waker_wake_named(w, KUI_STR("pty"));
+        check(kui_waker_clone(w) == NULL, "kui_waker_clone: NULL for NULL");
+        kui_waker_free(w);
+        kui_ctx_free(rec);
+    }
+
     /* A standalone context is nobody's slot. */
     {
         KuiStr name = {0};

@@ -4579,3 +4579,127 @@ fn a_context_has_no_field_only_some_builds_have() {
         .collect();
     assert!(gated.is_empty(), "fields of KuiCtx under a cfg: {gated:?}");
 }
+
+#[cfg(test)]
+mod perf_headless {
+    use super::*;
+    use kui_core::kui_trace::{Record, Trace};
+
+    fn frame(ctx: *mut KuiCtx) {
+        kui_frame_begin(ctx, 200.0, 100.0, 1.0);
+        let root: KuiSpec = unsafe { std::mem::zeroed() };
+        kui_root(ctx, &root);
+        let outer = kui_span_begin(ctx, ks("outer"));
+        let inner = kui_span_begin(ctx, ks("inner"));
+        kui_span_end(ctx, inner);
+        kui_span_end(ctx, outer);
+        kui_perf_count(ctx, ks("rows"), 3);
+        kui_perf_count(ctx, ks("rows"), 4);
+        kui_frame_finish(ctx);
+    }
+
+    /// The recording through C (ADR 0058): off, every door is nothing and
+    /// a span's id is 0; recording, the spans nest, a counter sums over
+    /// its frame, and `kui_perf_trace` hands out bytes `kui-trace` reads.
+    #[test]
+    fn spans_and_counters_reach_the_trace() {
+        let ctx = kui_ctx_new();
+        assert!(!kui_perf_measuring(ctx), "nothing listens by default");
+        assert!(!kui_perf_recording(ctx));
+        assert_eq!(kui_span_begin(ctx, ks("off")), 0, "no span while off");
+        kui_span_end(ctx, 0);
+
+        kui_set_perf_recording(ctx, true);
+        assert!(kui_perf_measuring(ctx) && kui_perf_recording(ctx));
+        frame(ctx);
+        kui_perf_measure(ctx, ks("parse"), 2.5);
+        kui_perf_gauge(ctx, ks("bytes"), 4096.0);
+        kui_perf_mark(ctx, ks("opened"));
+        kui_note_wake(ctx, ks("pty"));
+        kui_request_frame_for(ctx, ks("blink"));
+        frame(ctx);
+        kui_set_perf_recording(ctx, false);
+        assert!(!kui_perf_measuring(ctx), "stopped");
+
+        let mut len = 0usize;
+        let p = kui_perf_trace(ctx, &mut len);
+        assert!(!p.is_null() && len > 8);
+        let bytes = unsafe { std::slice::from_raw_parts(p, len) };
+        assert_eq!(&bytes[..8], b"KUITRACE");
+        let t = Trace::from_bytes(bytes).expect("a recording");
+        let span = |name: &str| {
+            t.records.iter().find_map(|r| match r {
+                Record::Span(s) if t.name(s.name) == name => Some(s.clone()),
+                _ => None,
+            })
+        };
+        let (outer, inner) = (span("outer").unwrap(), span("inner").unwrap());
+        assert_eq!(inner.parent, outer.id, "inner nests in outer");
+        assert!(span("parse").is_some_and(|s| s.dur == 2500), "a measure");
+        let rows: Vec<i64> = t
+            .records
+            .iter()
+            .filter_map(|r| match r {
+                Record::Counter { name, value, .. } if t.name(*name) == "rows" => Some(*value),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows, [7, 7], "summed per frame");
+        assert!(t.records.iter().any(
+            |r| matches!(r, Record::Gauge { name, value, .. } if t.name(*name) == "bytes" && *value == 4096.0)
+        ));
+        assert!(
+            t.records
+                .iter()
+                .any(|r| matches!(r, Record::Mark { name, .. } if t.name(*name) == "opened"))
+        );
+        assert!(
+            t.records
+                .iter()
+                .any(|r| matches!(r, Record::Wake { name, .. } if t.name(*name) == "pty"))
+        );
+        let causes: Vec<&str> = t
+            .records
+            .iter()
+            .filter_map(|r| match r {
+                Record::FrameBegin { causes, .. } => Some(causes),
+                _ => None,
+            })
+            .next_back()
+            .unwrap()
+            .iter()
+            .map(|n| t.name(*n))
+            .collect();
+        assert!(
+            causes.contains(&"wake: pty") && causes.contains(&"request: blink"),
+            "the second frame's named causes: {causes:?}"
+        );
+        // No file to flush is no failure.
+        assert!(kui_perf_flush(ctx));
+        kui_ctx_free(ctx);
+    }
+
+    /// A bad context answers the defaults, and a standalone one has no
+    /// waker: its host wakes its own loop (ADR 0058, decision 14). The
+    /// waker calls take NULL as nothing.
+    #[test]
+    fn a_standalone_context_has_no_waker() {
+        let null = std::ptr::null_mut();
+        assert!(!kui_perf_measuring(null));
+        assert_eq!(kui_span_begin(null, ks("x")), 0);
+        let mut len = 7usize;
+        assert!(kui_perf_trace(null, &mut len).is_null());
+        assert_eq!(len, 0);
+        assert!(!kui_perf_flush(null));
+        assert!(kui_waker(null).is_null());
+
+        let ctx = kui_ctx_new();
+        assert!(kui_waker(ctx).is_null(), "a host's own loop");
+        kui_waker_wake(std::ptr::null());
+        kui_waker_wake_at(std::ptr::null(), 5.0);
+        kui_waker_wake_named(std::ptr::null(), ks("pty"));
+        assert!(kui_waker_clone(std::ptr::null()).is_null());
+        kui_waker_free(std::ptr::null_mut());
+        kui_ctx_free(ctx);
+    }
+}

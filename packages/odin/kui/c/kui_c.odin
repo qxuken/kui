@@ -40,6 +40,7 @@ Str :: string
 Ctx :: struct {}
 Value :: struct {}
 ReplySink :: struct {}
+Waker :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
@@ -1353,6 +1354,25 @@ foreign lib {
 	set_devtools_legend :: proc(ctx: ^Ctx, keys: [^]string, what: [^]string, count: uint) ---
 	set_inspect :: proc(ctx: ^Ctx, on: bool) ---
 	nodes :: proc(ctx: ^Ctx) -> ^Value ---
+	perf_measuring :: proc(ctx: ^Ctx) -> bool ---
+	span_begin :: proc(ctx: ^Ctx, name: string) -> u32 ---
+	span_end :: proc(ctx: ^Ctx, id: u32) ---
+	perf_measure :: proc(ctx: ^Ctx, name: string, ms: f64) ---
+	perf_count :: proc(ctx: ^Ctx, name: string, n: i64) ---
+	perf_gauge :: proc(ctx: ^Ctx, name: string, value: f64) ---
+	perf_mark :: proc(ctx: ^Ctx, name: string) ---
+	request_frame_for :: proc(ctx: ^Ctx, why: string) ---
+	note_wake :: proc(ctx: ^Ctx, name: string) ---
+	set_perf_recording :: proc(ctx: ^Ctx, on: bool) ---
+	perf_recording :: proc(ctx: ^Ctx) -> bool ---
+	perf_trace :: proc(ctx: ^Ctx, len: ^uint) -> [^]u8 ---
+	perf_flush :: proc(ctx: ^Ctx) -> bool ---
+	waker :: proc(ctx: ^Ctx) -> ^Waker ---
+	waker_wake :: proc(w: ^Waker) ---
+	waker_wake_at :: proc(w: ^Waker, ms: f64) ---
+	waker_wake_named :: proc(w: ^Waker, name: string) ---
+	waker_clone :: proc(w: ^Waker) -> ^Waker ---
+	waker_free :: proc(w: ^Waker) ---
 	access_tree :: proc(ctx: ^Ctx, out: [^]AccessNode, cap: uint) -> uint ---
 	announce :: proc(ctx: ^Ctx, text: string, live: u32) ---
 	take_announcements :: proc(ctx: ^Ctx, out: [^]Announcement, cap: uint) -> uint ---

@@ -252,6 +252,22 @@ function caretInText(content, style, maxWidth, byte) {
 Ctx.prototype.caretInText = caretInText;
 KuiWindow.prototype.caretInText = caretInText;
 
+// `span(name, fn)`: runs `fn` inside a span named `name` on the recording's
+// timeline (ADR 0058) and returns what it returned — the closure form of
+// `spanBegin` / `spanEnd`, timed in the core so it nests with the core's own
+// spans. The span ends however `fn` leaves, a throw included. While nothing
+// is recorded the two calls are no-ops.
+function span(name, fn) {
+  const id = this.spanBegin(name);
+  try {
+    return fn();
+  } finally {
+    this.spanEnd(id);
+  }
+}
+Ctx.prototype.span = span;
+KuiWindow.prototype.span = span;
+
 // ---------------------------------------------------------------------------
 // One loop, two surfaces.
 //
@@ -550,12 +566,16 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // `update` with the surface aimed at the window the event came from —
   // a `change` from a second window's editor has `setEditText` seed that
   // editor — and at main for a message with no event behind it (a tick,
-  // an effect); aimed back at main after, whatever `update` did.
+  // an effect); aimed back at main after, whatever `update` did. While the
+  // window is recorded (ADR 0058) the call is a `handler` span, as the
+  // Rust runner times its app's; otherwise it costs one check.
   function updateFrom(msg, event) {
     surface.useWindow?.(event?.window ?? 0);
+    const span = surface.perfMeasuring?.() ? surface.spanBegin('handler') : 0;
     try {
       return update(model, msg, event, surface);
     } finally {
+      if (span) surface.spanEnd(span);
       surface.useWindow?.();
     }
   }

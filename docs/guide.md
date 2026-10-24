@@ -81,8 +81,15 @@ the node under the pointer over the app and an inspector for the one
 selected; the node under a hovered row or the picker is lit over the app
 with its box model, the selection only while the eye toggle is on) and
 **perf** (each frame's cost by phase against the budget; recorded, every
-frame with why it ran, who held it and whether it drew anything new, as
-a timeline; a screenshot and a GIF of the window). The panel's own clicks and its `Ctrl+Shift+<letter>` chords are
+frame and what happened between frames — why it ran, who held it,
+whether it drew anything new, its spans — as a timeline whose bars say
+why a frame lagged; a screenshot and a GIF of the window). The
+recording is kui's own format ([ADR 0058](adr/0058-a-recording-is-a-timeline.md),
+`kui-trace`): an app adds its own spans, counters, gauges and named
+causes through the `perf_*` doors in every binding, `KUI_PERF_TRACE=path`
+records a session to a file, and `kui-trace convert` / `diff` turn it
+into Perfetto's, Chrome's, speedscope's or the Firefox Profiler's format
+or compare two runs. The panel's own clicks and its `Ctrl+Shift+<letter>` chords are
 handled inside the core: nothing of it reaches `on_event` / `update`, the
 app's keys do not move for it, and off it costs one bool per frame.
 `Ctrl+Shift+I` moves the keyboard into the panel and back out (and brings

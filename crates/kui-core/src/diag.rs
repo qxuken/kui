@@ -474,6 +474,15 @@ warnings! {
     /// is left empty. An extension may host extensions (`Fill::add`), and
     /// may declare their slots — what it cannot do is be its own guest.
     pub const RECURSIVE_SLOT: &str = "recursive-slot";
+    /// `request_frame_for` was given more distinct names than a session
+    /// keeps (256): the rest are recorded as `request_frame`. A name per
+    /// call — a counter, an id — rather than per reason is the usual
+    /// cause. Raised once (ADR 0058, decision 8).
+    pub const PERF_NAMES_EXHAUSTED: &str = "perf-names-exhausted";
+    /// `KUI_PERF_TRACE` (or `perf_trace_to`) named a file that could not be
+    /// created: nothing is recorded to it. The message names the path and
+    /// the OS's reason (ADR 0058, decision 11).
+    pub const PERF_TRACE_FAILED: &str = "perf-trace-failed";
 
     /// The device refused a play: its voices are all held, or the sound
     /// did not decode. A released playback (`finish`) holds one of the
@@ -586,6 +595,27 @@ pub fn unbalanced_extension(slot: &str, slot_key: Key, open: usize) -> Warning {
              open; they were closed for it — it has an `open` without its `close`",
             if open == 1 { "" } else { "s" }
         ),
+    }
+}
+
+/// The [`PERF_NAMES_EXHAUSTED`] warning, once a session.
+pub fn perf_names_exhausted(max: usize) -> Warning {
+    Warning {
+        code: PERF_NAMES_EXHAUSTED,
+        key: Key::ROOT.str(PERF_NAMES_EXHAUSTED),
+        message: format!(
+            "request_frame_for was given more than {max} distinct names; the rest are \
+             recorded as request_frame — name the reason, not the call"
+        ),
+    }
+}
+
+/// The [`PERF_TRACE_FAILED`] warning for one path.
+pub fn perf_trace_failed(path: &str, err: &str) -> Warning {
+    Warning {
+        code: PERF_TRACE_FAILED,
+        key: Key::ROOT.str(PERF_TRACE_FAILED).str(path),
+        message: format!("could not record to {path:?}: {err}"),
     }
 }
 

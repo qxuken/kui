@@ -1563,6 +1563,7 @@ impl<'a> Ui<'a> {
     /// scope and its topmost float.
     pub fn finish(self) {
         let Ui { core, filler } = self;
+        core.perf_build_done();
         // Not in the devtools' own window: nothing the host or an
         // extension declares there is built.
         if let Some(filler) = filler {

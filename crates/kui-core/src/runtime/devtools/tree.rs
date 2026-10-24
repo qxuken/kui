@@ -5,7 +5,7 @@
 use rustc_hash::FxHashMap;
 
 use super::icons::{self, Icon};
-use super::panel::{filter_field, icon_button, section};
+use super::panel::{filter_field, icon_button, section, small_button};
 use super::{APP_KEY, DEVTOOLS_KEY, Dock, Place, State, action, fmt_value};
 use crate::color::Color;
 use crate::geom::{Rect, Vec2};
@@ -263,9 +263,11 @@ pub(super) fn tree_tab(
     // own, and a key it heard last frame moves that cursor over the rows
     // this build has — Up/Down by one, Home/End to the ends, PageUp/Down
     // by a screenful, Left folds the row (or goes to its parent), Right
-    // unfolds it (or goes to its first child), Enter and Space select it
-    // as a click would. A fold or an unfold changes the rows, so they are
-    // rebuilt after.
+    // unfolds it (or goes to its first child). The selection follows the
+    // cursor, as a browser's elements panel's does, so the inspector reads
+    // the row the arrows are on; Enter and Space toggle it, as a click
+    // does. A fold or an unfold changes the rows, so they are rebuilt
+    // after.
     let mut keep_in_view = None;
     if let Some(code) = st.tree_key.take() {
         let index: FxHashMap<Key, usize> =
@@ -327,6 +329,9 @@ pub(super) fn tree_tab(
         if next.is_some() {
             st.tree_cursor = next;
             keep_in_view = next;
+            if !matches!(code.as_str(), "enter" | "space") {
+                st.selected = next;
+            }
         }
         rows = self::rows(nodes, st);
     }
@@ -334,8 +339,6 @@ pub(super) fn tree_tab(
     let collapsed = &st.collapsed;
     let count = rows.len();
     let mut hovered_row: Option<Key> = None;
-    let list_key = ui.child_key("kui-devtools/nodes");
-    let list_focused = ui.is_focused(list_key);
     let cursor = st.tree_cursor;
     // A bottom dock is wide and short: the inspector goes beside the
     // list there, as a browser's does, rather than under it.
@@ -345,6 +348,14 @@ pub(super) fn tree_tab(
     } else {
         NodeSpec::column().fill().gap(8.0)
     });
+    // Read inside the wrapper the list opens in, where its key is.
+    let list_key = ui.child_key("kui-devtools/nodes");
+    // A row clicked: the keyboard goes to the list, so the arrows walk on
+    // from the row the pointer chose.
+    if std::mem::take(&mut st.focus_list) {
+        ui.focus(list_key);
+    }
+    let list_focused = ui.is_focused(list_key);
     let list = widgets::uniform_list(
         ui,
         "kui-devtools/nodes",
@@ -431,6 +442,11 @@ pub(super) fn tree_tab(
             ui.set_scroll(list, Vec2::new(0.0, bottom - view_h));
         }
     }
+    // The row the arrows are on is lit in the app as a hovered one is,
+    // while the list has the keyboard and the pointer is elsewhere.
+    if hovered_row.is_none() && list_focused {
+        hovered_row = cursor;
+    }
     if let Some(n) = selected.and_then(|k| nodes.iter().find(|n| n.key == k)) {
         hovered_row = inspector(ui, st, nodes, n, t, wide).or(hovered_row);
     } else {
@@ -444,7 +460,7 @@ pub(super) fn tree_tab(
         };
         ui.text_in(
             spec,
-            "select a node to inspect it · hover one to find it in the app",
+            "select a node to inspect it · hover one to find it in the app · ↑↓ walk the rows, ←→ fold them",
             TextStyle::new(11.0).color(t.faint),
         );
     }
@@ -834,6 +850,45 @@ fn inspector(
             ],
         ),
     ];
+    // Each row marked set or left at its default, and the rest of the
+    // spec (the snapshot's `detail`, kept for the selected node only)
+    // joined to the groups it belongs with: what *changed only* filters.
+    let default = |group: &str, k: &str, v: &str| {
+        v == "—"
+            || matches!(
+                (group, k, v),
+                ("box", "min", "fit × fit")
+                    | ("box", "max", "— × —")
+                    | ("layout", "padding", "0 0 0 0")
+                    | ("layout", "gap", "0")
+                    | ("layout", "align", "start · start")
+                    | ("paint", "bg", "none")
+                    | ("paint", "radius", "0")
+                    | ("paint", "opacity", "1.00")
+                    | ("node", "children", "0")
+            )
+    };
+    type Marked = Vec<(&'static str, String, Option<Key>, bool)>;
+    let mut groups: Vec<(&str, Marked)> = groups
+        .into_iter()
+        .map(|(g, rows)| {
+            let rows = rows
+                .into_iter()
+                .map(|(k, v, goto)| {
+                    let set = !default(g, k, &v);
+                    (k, v, goto, set)
+                })
+                .collect();
+            (g, rows)
+        })
+        .collect();
+    for d in &n.detail {
+        let row = (d.name, d.value.clone(), None, d.set);
+        match groups.iter_mut().find(|(g, _)| *g == d.group) {
+            Some((_, rows)) => rows.push(row),
+            None => groups.push((d.group, vec![row])),
+        }
+    }
     let mut hovered = None;
     let spec = if wide {
         NodeSpec::column()
@@ -875,6 +930,18 @@ fn inspector(
                     ui.text(
                         &format!("{}×{}", n.rect.w.round(), n.rect.h.round()),
                         TextStyle::new(11.0).color(t.muted).mono().nowrap(),
+                    );
+                    small_button(
+                        ui,
+                        t,
+                        "changed-only",
+                        if st.changed_only {
+                            "changed only"
+                        } else {
+                            "all fields"
+                        },
+                        "the fields the node declares, or every field with its default",
+                        st.changed_only,
                     );
                     icon_button(ui, t, "deselect", Icon::Close, None, "close the inspector");
                 },
@@ -932,7 +999,8 @@ fn inspector(
             for (group, rows) in groups {
                 let rows: Vec<_> = rows
                     .into_iter()
-                    .filter(|(k, v, _)| *k != "—" && v != "—")
+                    .filter(|(k, _, _, set)| *k != "—" && (*set || !st.changed_only))
+                    .map(|(k, v, goto, _)| (k, v, goto))
                     .collect();
                 if rows.is_empty() {
                     continue;

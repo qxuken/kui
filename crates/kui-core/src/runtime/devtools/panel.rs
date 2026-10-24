@@ -136,7 +136,7 @@ fn panel(
             });
         }
         Shown::Builtin(Tab::Events) => stream::events_tab(ui, st, t),
-        Shown::Builtin(Tab::Perf) => perf::perf_tab(ui, st, t),
+        Shown::Builtin(Tab::Perf) => perf::perf_tab(ui, st, t, place),
         Shown::Builtin(Tab::Tree) => tree::tree_tab(ui, st, nodes, t, place),
     }
     ui.close();

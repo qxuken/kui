@@ -1556,12 +1556,15 @@ dependencies = [
  "divan",
  "kui-core",
  "kui-derive",
+ "kui-trace",
+ "libc",
  "naga",
  "rustc-hash 2.1.3",
  "serde_json",
  "slotmap",
  "smallvec",
  "swash",
+ "tracing",
  "unicode-linebreak",
  "unicode-script",
  "unicode-segmentation",
@@ -1660,6 +1663,10 @@ dependencies = [
  "napi-derive",
  "serde_json",
 ]
+
+[[package]]
+name = "kui-trace"
+version = "0.1.0-alpha.67"
 
 [[package]]
 name = "kui-wgpu"
