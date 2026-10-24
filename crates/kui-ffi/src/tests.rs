@@ -4471,6 +4471,107 @@ mod window_events_headless {
 }
 
 #[cfg(test)]
+mod edge_scroll_headless {
+    use super::*;
+
+    /// The edge scroll through C (ADR 0029): the feel by preset and by
+    /// numbers, read back clamped; `kui_edge_scroll` moves a container
+    /// for a pointer in its edge zone at the feel's speed, and nothing
+    /// in its middle.
+    #[test]
+    fn the_feel_reads_back_and_a_held_drag_scrolls_at_the_edge() {
+        let ctx = kui_ctx_new();
+        let read = |ctx: *mut KuiCtx| {
+            let mut v = [0.0f32; 7];
+            let [a, b, c, d, e, f, g] = &mut v;
+            kui_edge_scroll_feel(ctx, a, b, c, d, e, f, g);
+            v
+        };
+        let standard = [60.0, 500.0, 2.0, 1.5, 6.0, 3000.0, 8.0];
+        assert_eq!(read(std::ptr::null_mut()), standard);
+        assert_eq!(read(ctx), standard, "standard by default");
+        assert!(kui_set_edge_scroll_preset(ctx, ks("Brisk")));
+        assert_eq!(read(ctx)[0], 48.0);
+        assert!(!kui_set_edge_scroll_preset(ctx, ks("turbo")));
+        assert!(!kui_set_edge_scroll_preset(
+            std::ptr::null_mut(),
+            ks("brisk")
+        ));
+        kui_set_edge_scroll_feel(ctx, 60.0, 500.0, f32::NAN, 1.5, 0.0, 3000.0, 8.0);
+        assert_eq!(read(ctx)[2..5], [2.0, 1.5, 1.0], "clamped");
+        kui_edge_scroll_feel(
+            ctx,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+
+        let frame = |ctx: *mut KuiCtx| -> u64 {
+            kui_frame_begin(ctx, 300.0, 400.0, 1.0);
+            let mut list = unsafe { std::mem::zeroed::<KuiSpec>() };
+            list.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            list.height = KuiSizing {
+                tag: 2,
+                value: 200.0,
+            };
+            list.overflow = 4; // KUI_SCROLL_Y
+            let key = kui_open_keyed(ctx, ks("list"), &list, std::ptr::null_mut());
+            let mut tall = unsafe { std::mem::zeroed::<KuiSpec>() };
+            tall.width = KuiSizing {
+                tag: 2,
+                value: 300.0,
+            };
+            tall.height = KuiSizing {
+                tag: 2,
+                value: 2000.0,
+            };
+            kui_open(ctx, &tall, std::ptr::null_mut());
+            kui_close(ctx);
+            kui_close(ctx);
+            kui_frame_finish(ctx);
+            key
+        };
+        let key = frame(ctx);
+        // No ramp: the speed at the edge, a clockless sixtieth.
+        kui_set_edge_scroll_feel(ctx, 60.0, 600.0, 2.0, 0.0, 1.0, 3000.0, 8.0);
+        let (mut dx, mut dy) = (-1.0, -1.0);
+        assert!(!kui_edge_scroll(
+            ctx, key, 150.0, 100.0, 0.0, 0.0, 300.0, 200.0, &mut dx, &mut dy
+        ));
+        assert_eq!(dy, -1.0, "untouched when nothing moved");
+        assert!(kui_edge_scroll(
+            ctx, key, 150.0, 199.0, 0.0, 0.0, 300.0, 200.0, &mut dx, &mut dy
+        ));
+        assert_eq!(dx, 0.0);
+        let want = 600.0 * (49.0f32 / 50.0).powi(2) / 60.0;
+        assert!((dy - want).abs() < 1e-3, "{dy} want {want}");
+        frame(ctx);
+        let mut g = KuiScrollGeometry::default();
+        assert!(kui_scroll_geometry(ctx, key, &mut g));
+        assert!((g.offset_y - want).abs() < 1e-3);
+        assert!(!kui_edge_scroll(
+            std::ptr::null_mut(),
+            key,
+            150.0,
+            199.0,
+            0.0,
+            0.0,
+            300.0,
+            200.0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut()
+        ));
+        kui_ctx_free(ctx);
+    }
+}
+
 mod wheel_headless {
     use super::*;
 

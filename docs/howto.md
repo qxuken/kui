@@ -578,21 +578,46 @@ the scroll you answer with. `examples/rust/widgets/cells.rs` does both.
 ### How does a selection follow the pointer past the edge?
 
 On its own. A press-drag in an `edit`, a `selectable` scope or a `cells`
-grid keeps following a held pointer after it leaves the scroller: the core
-scrolls the nearest scrolling ancestor toward the pointer at 10 px/s for
-every px past the edge (capped 100 px out, so 1000 px/s), and places the
-live end again whenever the layout under the pointer moves — that nudge, a
-wheel notch under the held press, a virtual list re-slicing its rows. A
-Shift-press keeps the anchor and moves the live end, in all three, by
-characters. Nothing to declare; a headless test sees the nudge as
-`scrollOffset` moving a frame at a time under `animating()` — ten px a
-frame with no clock, the clock's own share with one (`app.advance(ms)` in
-Node, `Drive::advance` in Rust). The wheel over any node that declares
-`onScroll` is its message instead, with `scroll: {x, y, dx, dy, lines}`
-in it, and the node takes it from the scroller above, on the axes its
-`scrollAxes` names; a gesture that began over it stays its own, and one
-that began over a scroller inside it at its limit comes to it; a `cells` grid
-gets its edge drag the same way, since its history is yours.
+grid keeps following a held pointer near the scroller's edge and past
+it: in an edge zone inside the nearest scrolling ancestor (60 px, or a
+quarter of a short one) the core scrolls it toward the pointer, slowly
+at the zone's inner edge, 500 px/s at the scroller's, faster still past
+it, and up to six times that the longer the pointer is held there,
+within a cap of 3000 px/s. A pointer pinned against the window's edge —
+a maximised window's bottom, where the monitor stops the hand — counts
+as all the way in. Easing back by more than 8 px slows it at once and
+starts the ramp again; a press that has not moved scrolls nothing. The
+core also places the live end again whenever the layout under the
+pointer moves — that nudge, a wheel notch under the held press, a
+virtual list re-slicing its rows. A Shift-press keeps the anchor and
+moves the live end, in all three, by characters. Nothing to declare; a
+headless test sees the nudge as `scrollOffset` moving a frame at a time
+under `animating()` — a sixtieth's step with no clock, the clock's own
+share with one (`app.advance(ms)` in Node, `Drive::advance` in Rust).
+The wheel over any node that declares `onScroll` is its message
+instead, with `scroll: {x, y, dx, dy, lines}` in it, and the node takes
+it from the scroller above, on the axes its `scrollAxes` names; a
+gesture that began over it stays its own, and one that began over a
+scroller inside it at its limit comes to it; a `cells` grid gets its
+edge drag the same way, since its history is yours.
+
+The numbers are the edge scroll's feel, the app's like the wheel's:
+presets `gentle`, `standard` (the default) and `brisk`, or
+`EdgeScrollFeel`'s seven numbers. `Launcher::edge_scroll_feel(
+EdgeScrollFeel::BRISK)`, `edgeScrollFeel: 'brisk'` to `runWindowed`,
+`kui_set_edge_scroll_preset(ctx, KUI_STR("brisk"))`; to try one without
+a rebuild, `KUI_EDGE_SCROLL=brisk` or `KUI_EDGE_SCROLL=72,600` (the
+numbers in the struct's order, the rest standard). The `edge_scroll`
+example tunes one by hand.
+
+A drag your app holds itself — a selection over your own text, a
+reorder — scrolls by the same feel with one call a frame while it is
+held: `ui.edge_scroll(key, pointer, rect)` (Node `ctx.edgeScroll(key,
+x, y, rect)`, C `kui_edge_scroll`, Lua `env.edge_scroll`), with `rect`
+the area whose edges scroll, usually `scroll_geometry(key).rect`. It
+moves the container at once, returns what moved, and asks for the next
+frame while it moves; place your drag's end under the pointer after.
+Only call it once your press has become a drag.
 
 [`onScroll` row](props.md#container-props) ·
 [`scroll` event](props.md#events) ·

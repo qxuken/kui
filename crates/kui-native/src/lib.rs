@@ -596,6 +596,18 @@ impl Launcher {
         self.setup_core(move |core| core.set_wheel_feel(feel))
     }
 
+    /// How a held drag scrolls a container at its edge — kui's own caret
+    /// drag and drag-select, and an app's through `Ui::edge_scroll`
+    /// ([`kui_core::EdgeScrollFeel`], `EdgeScrollFeel::BRISK` and the
+    /// other presets) — in every window the app opens. `KUI_EDGE_SCROLL`
+    /// in the environment, a preset's name or up to seven numbers in the
+    /// struct's order, overrides it for comparing without a rebuild.
+    /// Sugar for `setup_core(|c| c.set_edge_scroll_feel(feel))`; the
+    /// runner copies the main window's feel to every other.
+    pub fn edge_scroll_feel(self, feel: kui_core::EdgeScrollFeel) -> Self {
+        self.setup_core(move |core| core.set_edge_scroll_feel(feel))
+    }
+
     /// Respells the chord that moves the keyboard into the devtools panel
     /// and back, and brings a hidden panel back, from its default
     /// `Ctrl+Shift+I`: `Accel::parse("f12")`, `"mod+shift+d"`, any spelling
@@ -1049,6 +1061,9 @@ impl Launcher {
         // is there to try another feel in an app that set its own.
         if let Some(feel) = wheel_feel_from_env() {
             core.set_wheel_feel(feel);
+        }
+        if let Some(feel) = edge_scroll_feel_from_env() {
+            core.set_edge_scroll_feel(feel);
         }
         (diagnostics, session, core)
     }
@@ -1863,6 +1878,43 @@ fn parse_wheel_feel(s: &str) -> Option<kui_core::WheelFeel> {
         }),
         _ => None,
     }
+}
+
+/// The edge scroll feel `KUI_EDGE_SCROLL` asks for, for comparing
+/// without a rebuild: a preset's name (`brisk`), or up to seven numbers
+/// in `EdgeScrollFeel`'s order — `zone_px,speed_px_s,curve,ramp_secs,
+/// ramp_max,cap_px_s,pull_back_px` — any left out at the standard feel's
+/// (`72` or `72,600`). `None` when it is unset or reads as neither.
+fn edge_scroll_feel_from_env() -> Option<kui_core::EdgeScrollFeel> {
+    parse_edge_scroll_feel(&std::env::var("KUI_EDGE_SCROLL").ok()?)
+}
+
+fn parse_edge_scroll_feel(s: &str) -> Option<kui_core::EdgeScrollFeel> {
+    use kui_core::EdgeScrollFeel;
+    if let Some(feel) = EdgeScrollFeel::preset(s) {
+        return Some(feel);
+    }
+    let nums = s
+        .split(',')
+        .map(|n| n.trim().parse::<f32>().ok())
+        .collect::<Option<Vec<_>>>()?;
+    if nums.len() > 7 {
+        return None;
+    }
+    let mut f = EdgeScrollFeel::STANDARD;
+    let fields = [
+        &mut f.zone_px,
+        &mut f.speed_px_s,
+        &mut f.curve,
+        &mut f.ramp_secs,
+        &mut f.ramp_max,
+        &mut f.cap_px_s,
+        &mut f.pull_back_px,
+    ];
+    for (field, n) in fields.into_iter().zip(nums) {
+        *field = n;
+    }
+    Some(f)
 }
 
 /// The text antialiasing asked for: `KUI_TEXT_AA` if set, for quick A/B
@@ -3938,6 +3990,47 @@ mod tests {
         );
         for bad in ["", "turbo", "1,2,3,4", "56,fast"] {
             assert_eq!(parse_wheel_feel(bad), None, "{bad:?}");
+        }
+    }
+
+    /// `KUI_EDGE_SCROLL` reads a preset's name or up to seven numbers,
+    /// the rest at the standard feel's; anything else is nothing.
+    #[test]
+    fn kui_edge_scroll_reads_a_preset_or_numbers() {
+        use kui_core::EdgeScrollFeel;
+        let s = EdgeScrollFeel::STANDARD;
+        assert_eq!(parse_edge_scroll_feel("brisk"), Some(EdgeScrollFeel::BRISK));
+        assert_eq!(
+            parse_edge_scroll_feel(" GENTLE "),
+            Some(EdgeScrollFeel::GENTLE)
+        );
+        assert_eq!(
+            parse_edge_scroll_feel("72"),
+            Some(EdgeScrollFeel { zone_px: 72.0, ..s })
+        );
+        assert_eq!(
+            parse_edge_scroll_feel("72, 600, 1.5"),
+            Some(EdgeScrollFeel {
+                zone_px: 72.0,
+                speed_px_s: 600.0,
+                curve: 1.5,
+                ..s
+            })
+        );
+        assert_eq!(
+            parse_edge_scroll_feel("40,800,3,1,4,6000,12"),
+            Some(EdgeScrollFeel {
+                zone_px: 40.0,
+                speed_px_s: 800.0,
+                curve: 3.0,
+                ramp_secs: 1.0,
+                ramp_max: 4.0,
+                cap_px_s: 6000.0,
+                pull_back_px: 12.0,
+            })
+        );
+        for bad in ["", "turbo", "1,2,3,4,5,6,7,8", "60,fast"] {
+            assert_eq!(parse_edge_scroll_feel(bad), None, "{bad:?}");
         }
     }
 

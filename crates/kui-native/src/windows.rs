@@ -249,6 +249,7 @@ impl DynShell<'_> {
         core.set_smooth_wheel(self.panes.first().is_none_or(|p| p.core.smooth_wheel()));
         if let Some(main) = self.panes.first() {
             core.set_wheel_feel(main.core.wheel_feel());
+            core.set_edge_scroll_feel(main.core.edge_scroll_feel());
         }
         core.env.window.id = id;
         self.push_pane(

@@ -5,10 +5,11 @@
 //! pointer that did not: when the layout under the held pointer changes
 //! — a wheel notch, a scroller nudged, a virtual list re-sliced — the
 //! live end is placed again where the pointer is; and when
-//! the pointer is held past the scroller's edge, the core is what changes
-//! the layout, at a rate from how far past. Both run at the
-//! start of every frame against the frame that finished, so the frame
-//! being built paints the result.
+//! the pointer is held in the edge zone of the scroller or past it, the
+//! core is what changes the layout, at the edge scroll's feel
+//! (`EdgeScrollFeel`: the depth, how long it is held, a cap). Both run at
+//! the start of every frame against the frame that finished, so the
+//! frame being built paints the result.
 //!
 //! The scroller is found once, at the press: the nearest ancestor-or-self
 //! of the pressed node that scrolls, or that declared `on_scroll` — the
@@ -17,19 +18,16 @@
 //! decision 4).
 
 use super::*;
+use crate::edge_scroll::EdgeRamp;
 
-/// Past this many logical px beyond the edge the step stops speeding up.
-pub const AUTOSCROLL_REACH: f32 = 100.0;
-/// Logical px per second of scrolling, per logical px past the edge: 60
-/// px past is 600 px/s, the reach is 1000 px/s.
-pub const AUTOSCROLL_RATE: f32 = 10.0;
 /// The frame a core with no clock takes, in seconds — a sixtieth, so a
 /// headless drive steps by a knowable amount. A clockless core does not
 /// snap here: there is no end state to snap to.
 pub const CLOCKLESS_FRAME: f64 = 1.0 / 60.0;
-/// The longest frame the rate is applied over: a window that sat hidden
-/// for a second must not scroll a second's worth when it comes back.
-const MAX_FRAME: f64 = 0.1;
+/// The longest frame the edge scroll is applied over: a window that sat
+/// hidden for a second must not scroll a second's worth when it comes
+/// back.
+pub(crate) const MAX_FRAME: f64 = 0.1;
 
 /// What a held drag scrolls, and what its live end was last placed
 /// against.
@@ -55,14 +53,15 @@ impl Scroller {
 
 /// A held drag and what it follows: the pointer's last position, kept
 /// across a `CursorLeft` (a press dragged out of the window gets one on
-/// some platforms, and the drag is still held); the scroller; and
-/// whether the last frame stepped it, which is what asks for the next
-/// frame (`Core::animating`).
+/// some platforms, and the drag is still held); the scroller; whether
+/// the last frame stepped it, which is what asks for the next frame
+/// (`Core::animating`); and the edge scroll's ramp.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DragFollow {
     pub point: Vec2,
     pub scroller: Option<Scroller>,
     pub stepped: bool,
+    pub ramp: EdgeRamp,
 }
 
 impl Core {
@@ -74,6 +73,7 @@ impl Core {
             point,
             scroller,
             stepped: false,
+            ramp: EdgeRamp::default(),
         });
     }
 
@@ -237,8 +237,9 @@ impl Core {
 
     /// At the start of a frame, against the one that finished: re-places
     /// the live end if the scroller moved since it was last placed, then
-    /// steps the scroller if the pointer is held past its edge. Nothing
-    /// while no drag is held.
+    /// steps the scroller if the pointer is held in its edge zone or past
+    /// it. Nothing while no drag is held, and no step while the press is
+    /// still inside its click slop: a click near an edge scrolls nothing.
     pub(crate) fn follow_drag(&mut self) {
         let now = self.anim.time();
         let dt = match (now, self.last_frame_time) {
@@ -262,13 +263,17 @@ impl Core {
                 self.rehit(f.point);
                 f.scroller = Some(now);
             }
-            // 2. The pointer is past the edge: step the scroller.
-            if let Some(i) = self.tree.index_of(key) {
+            // 2. The pointer is in the edge zone: step the scroller.
+            let still = self.press_slop.is_some();
+            if let Some(i) = self.tree.index_of(key).filter(|_| !still) {
                 let rect = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+                let window = Rect::new(0.0, 0.0, self.viewport.w, self.viewport.h);
+                let feel = self.edge_feel;
                 f.stepped = match scroller {
                     Scroller::Container { .. } => {
                         let spec = self.tree.specs[i].layout;
-                        let delta = edge_step(rect, f.point, spec.scroll_x, spec.scroll_y, dt);
+                        let axes = (spec.scroll_x, spec.scroll_y);
+                        let delta = f.ramp.step(&feel, rect, window, f.point, axes, dt);
                         // A step the clamp would undo is no step: a
                         // scroller at its end under a held pointer is
                         // idle, not asking for frames until the release.
@@ -287,7 +292,7 @@ impl Core {
                         // A grid scrolls lines and has no columns to
                         // scroll to; any other handler hears both axes.
                         let grid = self.grid_line(key).is_some();
-                        let delta = edge_step(rect, f.point, !grid, true, dt);
+                        let delta = f.ramp.step(&feel, rect, window, f.point, (!grid, true), dt);
                         if delta != Vec2::ZERO {
                             // The event's delta is the wheel's: positive
                             // `dy` is earlier content, so a step toward
@@ -341,66 +346,5 @@ impl Core {
             ("lines", lines),
         ]);
         Some(UiEvent::declared(EventKind::Scroll, origin, key, tag, data))
-    }
-}
-
-/// How far a scroller steps this frame for a pointer at `p` against its
-/// `rect`: on each axis it scrolls, the distance past that edge (zero
-/// inside), capped at the reach, times the rate, times the frame. A
-/// positive step is toward later content, the sign `ScrollStore::scroll_by`
-/// takes.
-pub(crate) fn edge_step(rect: Rect, p: Vec2, x: bool, y: bool, dt: f32) -> Vec2 {
-    let past = |lo: f32, hi: f32, v: f32| -> f32 {
-        if v < lo {
-            -(lo - v).min(AUTOSCROLL_REACH)
-        } else if v > hi {
-            (v - hi).min(AUTOSCROLL_REACH)
-        } else {
-            0.0
-        }
-    };
-    let k = AUTOSCROLL_RATE * dt;
-    Vec2::new(
-        if x {
-            past(rect.x, rect.x + rect.w, p.x) * k
-        } else {
-            0.0
-        },
-        if y {
-            past(rect.y, rect.y + rect.h, p.y) * k
-        } else {
-            0.0
-        },
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_pointer_inside_steps_nothing() {
-        let r = Rect::new(10.0, 10.0, 100.0, 50.0);
-        assert_eq!(
-            edge_step(r, Vec2::new(50.0, 30.0), true, true, 1.0 / 60.0),
-            Vec2::ZERO
-        );
-    }
-
-    #[test]
-    fn the_step_is_proportional_capped_and_per_frame() {
-        let r = Rect::new(0.0, 0.0, 100.0, 100.0);
-        // 60 px below at a clockless frame: 600 px/s, 10 px a frame.
-        let s = edge_step(r, Vec2::new(50.0, 160.0), false, true, 1.0 / 60.0);
-        assert!((s.y - 10.0).abs() < 1e-4, "{s:?}");
-        assert_eq!(s.x, 0.0);
-        // 300 px above: capped at the reach, and toward earlier content.
-        let s = edge_step(r, Vec2::new(50.0, -300.0), false, true, 1.0 / 60.0);
-        assert!((s.y + AUTOSCROLL_REACH / 6.0).abs() < 1e-3, "{s:?}");
-        // An axis the scroller does not have steps nothing.
-        let s = edge_step(r, Vec2::new(160.0, 50.0), false, true, 1.0 / 60.0);
-        assert_eq!(s, Vec2::ZERO);
-        let s = edge_step(r, Vec2::new(160.0, 50.0), true, true, 1.0 / 60.0);
-        assert!((s.x - 10.0).abs() < 1e-4, "{s:?}");
     }
 }

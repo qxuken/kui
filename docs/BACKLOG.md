@@ -327,7 +327,11 @@ cache key's hash first — was built the day it was filed, after the
 alpha.66 tag, and is in the archive; and C58, from kawoosh's
 headless question — an app could not run with no window, a `Waker`
 being only an event loop's — was built the day it was filed, after the
-alpha.67 tag, with ADR 0057, and is in the archive.
+alpha.67 tag, with ADR 0057, and is in the archive; and F196, from
+Carnet's page selection — a held drag scrolling only by the distance
+past the edge, which a full-screen window has none of — was built the
+day it was filed, after the alpha.67 tag, with ADR 0029's amendment,
+and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3483,6 +3487,18 @@ it there; the racers trailed every wheel notch by 900 ms. One entry,
 F192 — a `slide` rides its container's scroll — **built 2026-10-24**,
 the day it was filed, and in the archive.
 
+## From Carnet's page selection (2026-10-25)
+
+Carnet's `drag_scroll` copied ADR 0029's rate — 10 px/s for each px
+past a 24 px band, capped at 1000 px/s 100 px past — and in a
+full-screen or maximised window the pointer stops at the monitor's
+edge, so it tops out near 240 px/s and selecting through a long
+document is painfully slow; kui's own drags, with no band, do not scroll
+a window-filling scroller at all. One entry, F196 — an edge-scroll
+feel, `EdgeScrollFeel`, shared by kui's drags and an app's through
+`Ui::edge_scroll` — **built 2026-10-25**, the day it was filed, and in
+the archive.
+
 ## From the user's wheel on Windows (2026-10-24)
 
 Trying the retuned glide, the user found the scroll could be a touch
@@ -5398,3 +5414,7 @@ move.
 **From the em dash question (2026-10-25)** — F195, filed and built the same day
 
 - `!` **F195** — [A key sink never hears what a Mac's Option types: ⌥- reaches it as the chord on `-` with no `–`](backlog/closed-2026-09.md#-f195--a-key-sink-never-hears-what-a-macs-option-types---reaches-it-as-the-chord-on---with-no---done-2026-10-25) — done (2026-10-25) — the macOS runner's `press_text` reads `Typing::Option`: under an Option that composes, a press carries what the platform composed (⌥- `–`, ⌥⇧- `—`, ⌥m `µ`) beside the chord, and nothing it did not compose; an Option `optionAsAlt` names, Control, ⌘, and Alt off a Mac stay chords with no text
+
+**From Carnet's page selection (2026-10-25)** — F196, filed and built the same day
+
+- `.` **F196** — [A held drag scrolls only by the distance past the edge, which a full-screen window has none of](backlog/closed-2026-09.md#-f196--a-held-drag-scrolls-only-by-the-distance-past-the-edge-which-a-full-screen-window-has-none-of--done-2026-10-25) — done (2026-10-25) — `EdgeScrollFeel { zone_px, speed_px_s, curve, ramp_secs, ramp_max, cap_px_s, pull_back_px }`: an edge zone inside the scroller on an ease-in curve, a ramp while held, a cap, the window's edge as full depth; presets `gentle`, `standard`, `brisk`; `Ui::edge_scroll` for an app's drag; doors in four bindings (the feel's Lua a guest), `KUI_EDGE_SCROLL` in the native runner

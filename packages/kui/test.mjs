@@ -2470,8 +2470,10 @@ test('a drag held past the edge scrolls, follows, and Shift extends from the anc
   ctx.frame(400, 300, 1, tree);
   ctx.frame(400, 300, 1, tree);
   assert.equal(ctx.selectionText(), 'row 0\nrow 1\nrow 2\nrow 3');
-  // Held 60 px below the list: 600 px/s, ten px a clockless frame.
-  ctx.cursor(200, 120);
+  // Held 56 px below the list at a flat feel — a 4 px zone, linear, no
+  // ramp, 10 px/s a px into it — so 600 px/s, ten px a clockless frame.
+  ctx.setEdgeScrollFeel({ zonePx: 4, speedPxS: 40, curve: 1, rampSecs: 0, rampMax: 1, capPxS: 1000 });
+  ctx.cursor(200, 116);
   for (let i = 0; i < 6; i++) ctx.frame(400, 300, 1, tree);
   assert.ok(ctx.animating(), 'a held pointer past the edge asks for frames');
   assert.equal(ctx.scrollOffset('list').y, 100);
@@ -2639,6 +2641,45 @@ test('wheel: a notch glides to its place, and jumps with smoothWheel off', () =>
   assert.equal(windowOptions({ wheelFeel: 'brisk' }).wheelFeel, 'brisk');
   const app = createApp({ init: () => 0, update: (m) => m, view: () => box({}) }, { wheelFeel: 'swift' });
   assert.equal(app.ctx.wheelFeel().linePx, 64);
+});
+
+// The edge scroll (ADR 0029, amended 2026-10-25): the feel by preset or
+// numbers, and `edgeScroll` moving a container for a drag the app holds
+// with the pointer in its edge zone, at the feel's speed, asking for the
+// next frame; nothing in the middle.
+test('edgeScroll: a drag held in the edge zone scrolls by the feel', () => {
+  const ctx = new Ctx();
+  const tree = box({ width: 'grow', height: 'grow' }, [
+    box({ width: 300, height: 200, scrollY: true }, [box({ width: 300, height: 2000 })], 'list'),
+  ]);
+  const frame = () => {
+    ctx.frame(300, 400, 1, tree);
+    return ctx.scrollGeometry('list').offset.y;
+  };
+  frame();
+  const near = (a, b) => Math.abs(a - b) < 1e-3;
+  const standard = ctx.edgeScrollFeel();
+  assert.ok(near(standard.zonePx, 60) && near(standard.speedPxS, 500) && near(standard.capPxS, 3000));
+  ctx.setEdgeScrollFeel('brisk');
+  assert.equal(ctx.edgeScrollFeel().zonePx, 48);
+  // No ramp, so the step is the curve's: 49 px into a 50 px zone (a
+  // quarter of the 200 px list), a clockless sixtieth.
+  ctx.setEdgeScrollFeel({ zonePx: 60, speedPxS: 600, rampMax: 1 });
+  const feel = ctx.edgeScrollFeel();
+  assert.ok(feel.rampMax === 1 && near(feel.capPxS, 4900), 'the rest kept');
+  const rect = { x: 0, y: 0, w: 300, h: 200 };
+  assert.equal(ctx.edgeScroll('list', 150, 100, rect), null, 'the middle moves nothing');
+  const moved = ctx.edgeScroll('list', 150, 199, rect);
+  const want = (600 * (49 / 50) ** 2) / 60;
+  assert.ok(moved && moved.x === 0 && near(moved.y, want), JSON.stringify(moved));
+  assert.ok(near(frame(), want), 'the next frame lays it out');
+  assert.equal(ctx.edgeScroll('nobody', 150, 199, rect), null);
+  assert.throws(() => ctx.edgeScroll('list', 0, 0, { x: 0 }), /rect.y must be a number/);
+  assert.throws(() => ctx.setEdgeScrollFeel('turbo'), /unknown preset "turbo"/);
+  assert.throws(() => ctx.setEdgeScrollFeel({ speed: 2 }), /unknown key "speed"/);
+  assert.equal(windowOptions({ edgeScrollFeel: 'brisk' }).edgeScrollFeel, 'brisk');
+  const app = createApp({ init: () => 0, update: (m) => m, view: () => box({}) }, { edgeScrollFeel: 'gentle' });
+  assert.equal(app.ctx.edgeScrollFeel().zonePx, 72);
 });
 
 // A point on the text a keyed node drew is a byte offset, and a byte

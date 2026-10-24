@@ -577,6 +577,13 @@ pub struct Core {
     scroll_latch: gesture::ScrollLatch,
     /// Whether a wheel's notch glides on a scroll container (ADR 0050).
     smooth_wheel: bool,
+    /// How a held drag scrolls a container at its edge (ADR 0029,
+    /// amended 2026-10-25), clamped.
+    edge_feel: crate::edge_scroll::EdgeScrollFeel,
+    /// The containers an app's own drag scrolled at their edge through
+    /// [`Core::edge_scroll`] this frame or the last: each one's ramp, the
+    /// clock it was last stepped at and the frame it was.
+    edge_ramps: Vec<(Key, crate::edge_scroll::EdgeRamp, Option<f64>, u64)>,
     sel_ords: Vec<u32>,
     sel_ends: Option<crate::select::Ends>,
     /// Per-node innermost enclosing selection scope — the key of the
@@ -1294,6 +1301,8 @@ impl Core {
             line_carry: None,
             scroll_latch: Default::default(),
             smooth_wheel: true,
+            edge_feel: crate::edge_scroll::EdgeScrollFeel::STANDARD,
+            edge_ramps: Vec::new(),
             sel_ords: Vec::new(),
             sel_ends: None,
             scopes: Vec::new(),
@@ -1633,6 +1642,30 @@ impl Core {
     /// That feel, read back as clamped.
     pub fn wheel_feel(&self) -> WheelFeel {
         self.scroll.wheel_feel()
+    }
+
+    /// How a held drag scrolls a container at its edge (ADR 0029,
+    /// amended 2026-10-25): how deep the zone inside the container is,
+    /// how fast at its edge and along what curve, how the speed ramps
+    /// while the pointer is held there, its cap, and how far a pull back
+    /// restarts the ramp. [`EdgeScrollFeel::STANDARD`] by default;
+    /// [`EdgeScrollFeel::preset`] names the others. The numbers are
+    /// clamped ([`EdgeScrollFeel::clamped`]). What kui's own caret drag
+    /// and drag-select go by, and an app's drag through
+    /// [`Core::edge_scroll`]. The app's input feel rather than a view's,
+    /// so the native launcher's `edge_scroll_feel` sets it on every
+    /// window.
+    ///
+    /// [`EdgeScrollFeel::STANDARD`]: crate::EdgeScrollFeel::STANDARD
+    /// [`EdgeScrollFeel::preset`]: crate::EdgeScrollFeel::preset
+    /// [`EdgeScrollFeel::clamped`]: crate::EdgeScrollFeel::clamped
+    pub fn set_edge_scroll_feel(&mut self, feel: crate::EdgeScrollFeel) {
+        self.edge_feel = feel.clamped();
+    }
+
+    /// That feel, read back as clamped.
+    pub fn edge_scroll_feel(&self) -> crate::EdgeScrollFeel {
+        self.edge_feel
     }
 
     /// Whether a wheel's notch glides on a scroll container

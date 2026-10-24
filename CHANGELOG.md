@@ -28,6 +28,12 @@ was the first bare bump to break an app in five releases).
 - A key sink's press under a Mac's Option carries what the Option typed
   in `text` — ⌥- `–`, ⌥⇧- `—`, ⌥m `µ` — where it carried null; under an
   Option `optionAsAlt` names it is null as before (backlog F195).
+- A held drag-select or caret drag scrolls its scroller from inside it:
+  in an edge zone about two lines deep, at a speed that ramps up while
+  the pointer is held there, where it scrolled only once the pointer was
+  past the edge, at 10 px/s a px past (backlog F196). Gone with it:
+  `runtime::follow::AUTOSCROLL_RATE`, `AUTOSCROLL_REACH` and the step
+  they made; `CLOCKLESS_FRAME` stays.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -37,10 +43,19 @@ press's `text` types what TextEdit types. A sink that inserts `text`
 whenever there is some, and also binds the chord, now does both on one
 press — look the binding up first and insert only when none matched, or
 name that Option in `optionAsAlt`. Windows and Linux are unchanged:
-their Alt composes nothing. The rest of this release breaks nothing: a
-fix to text at a size no screen shows, a declaration file for Teal
-beside the one for lua-language-server, and a new runner beside the
-window's.
+their Alt composes nothing.
+
+A drag that selects text now scrolls near the edge, not only past it. In a full-screen or
+maximised window the pointer stops at the monitor's edge, a pixel from
+the scroller's, so the old rate — set by the distance *past* the edge —
+had nothing to work with, and a window-filling list did not scroll at
+all. A test that drove a held drag past an edge and counted pixels
+counts different ones; set the old rate back for it with a flat feel,
+`EdgeScrollFeel { zone_px: 4.0, speed_px_s: 40.0, curve: 1.0, ramp_secs:
+0.0, ramp_max: 1.0, cap_px_s: 1000.0, .. }`, which is 10 px/s for each px
+into a 4 px zone. The rest of this release breaks nothing: a fix to text
+at a size no screen shows, a declaration file for Teal beside the one
+for lua-language-server, and a new runner beside the window's.
 
 ### Added
 
@@ -97,6 +112,42 @@ window's.
   frame, a clipboard stand-in — and the `setup` split in two to give it
   a waker; and a hidden window opened only to be driven and
   photographed.
+
+- **An edge-scroll feel, for kui's drags and an app's** (backlog F196,
+  [ADR 0029's
+  amendment](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md#amended-2026-10-25-an-edge-zone-a-ramp-and-the-windows-edge)):
+  a held drag in the edge zone inside a scroller — 60 px by default, a
+  quarter of a short one — scrolls it at a speed from how deep the
+  pointer is, along a quadratic curve (slow at the zone's inner edge,
+  500 px/s at the scroller's), times a ramp while it is held there (to 6
+  times over 1.5 s), within a cap (3000 px/s). A pointer pinned within
+  2 px of the window's edge is all the way in, so a full-screen window
+  scrolls as fast as any; past the scroller's edge in a smaller window
+  the speed goes on rising. Easing back by more than 8 px slows it at
+  once and starts the ramp again; leaving the zone stops it; a press
+  that has not left its click slop never scrolls. `EdgeScrollFeel {
+  zone_px, speed_px_s, curve, ramp_secs, ramp_max, cap_px_s,
+  pull_back_px }` with presets `gentle`, `standard` (the default) and
+  `brisk`: `Core::set_edge_scroll_feel` / `edge_scroll_feel` and
+  `EdgeScrollFeel::preset`; C `kui_set_edge_scroll_feel`,
+  `kui_set_edge_scroll_preset`, `kui_edge_scroll_feel`; Odin
+  `set_edge_scroll_feel`, `set_edge_scroll_preset`, `edge_scroll_feel`;
+  Node `setEdgeScrollFeel('brisk' | { zonePx, … })` and
+  `edgeScrollFeel()`, and `edgeScrollFeel` to `runWindowed` and
+  `createApp`; the launcher's `edge_scroll_feel`, copied to every
+  window. `KUI_EDGE_SCROLL=brisk` (or up to seven numbers,
+  `KUI_EDGE_SCROLL=72,600`) tries one without a rebuild and overrides
+  the app's. An app holding its own drag calls `Ui::edge_scroll(key,
+  pointer, rect)` once a frame — C `kui_edge_scroll`, Odin `edge_scroll`,
+  Node `edgeScroll`, Lua `env.edge_scroll` — and gets back what moved; it
+  asks for the next frame while it moves and keeps the ramp per
+  container. The `edge_scroll` example has a slider for each number and
+  a long text to drag-select through.
+
+  **What you can delete:** an app's own autoscroll for a drag it holds
+  — the band, the rate, the cap, the frame clock's delta, `shift_scroll`
+  by hand and the `request_frame` to keep it going — for one
+  `edge_scroll` call and placing the drag's end under the pointer after.
 
 ### Fixed
 

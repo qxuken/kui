@@ -2291,6 +2291,35 @@ export interface WindowOptions {
    *  so `KUI_WHEEL` in the environment overrides it, as `KUI_TEXT_AA`
    *  overrides `textAa`; `win.setWheelFeel` afterwards wins over both. */
   wheelFeel?: WheelPreset | Partial<WheelFeel>;
+  /** How a held drag scrolls a container at its edge, in every window of
+   *  the app: a preset's name (`'brisk'`) or the numbers to change from the
+   *  standard feel. Taken as the window opens, so `KUI_EDGE_SCROLL` in the
+   *  environment overrides it; `win.setEdgeScrollFeel` afterwards wins over
+   *  both. */
+  edgeScrollFeel?: EdgeScrollPreset | Partial<EdgeScrollFeel>;
+}
+
+/** An edge scroll feel by name, slow to fast; `'standard'` is the default. */
+export type EdgeScrollPreset = 'gentle' | 'standard' | 'brisk';
+
+/** How a held drag scrolls a container at its edge (ADR 0029): kui's own
+ *  caret drag and drag-select, and an app's through `edgeScroll`. */
+export interface EdgeScrollFeel {
+  /** How deep the edge zone inside a container is, logical px (60). */
+  zonePx: number;
+  /** The speed at full depth before the ramp, px/s (500): at the
+   *  container's edge, or pinned against the window's. */
+  speedPxS: number;
+  /** The curve's exponent from the zone's inner edge (2, quadratic). */
+  curve: number;
+  /** Seconds held in the zone to reach the ramp's top (1.5). */
+  rampSecs: number;
+  /** What the ramp multiplies the speed by at its top (6). */
+  rampMax: number;
+  /** The most it scrolls, px/s, after depth and ramp (3000). */
+  capPxS: number;
+  /** How far back toward the content restarts the ramp, px (8). */
+  pullBackPx: number;
 }
 
 /** A wheel feel by name, slow to fast; `'standard'` is the default. */
@@ -3333,6 +3362,22 @@ export declare class Ctx {
   /** That feel, read back as clamped. */
   wheelFeel(): WheelFeel
   /**
+   * How a held drag scrolls a container at its edge — kui's own
+   * caret drag and drag-select, and `edgeScroll`: a preset's
+   * name, slow to fast `'gentle'`, `'standard'` (the default),
+   * `'brisk'`; or `{ zonePx, speedPxS, curve, rampSecs,
+   * rampMax, capPxS, pullBackPx }`, any left out kept as they
+   * are — the edge zone's depth (60 px), the speed at its edge
+   * (500 px/s) along a curve (its exponent, 2), the ramp while
+   * held (to 6 times over 1.5 s), the cap (3000 px/s) and how
+   * far a pull back restarts the ramp (8 px). Clamped.
+   * `runWindowed` takes it for the whole app as
+   * `edgeScrollFeel`.
+   */
+  setEdgeScrollFeel(feel: EdgeScrollPreset | Partial<EdgeScrollFeel>): void
+  /** That feel, read back as clamped. */
+  edgeScrollFeel(): EdgeScrollFeel
+  /**
    * Draws a faded subtree as one picture, faded once (ADR
    * 0056): a node whose own `opacity` is under 1 has its
    * subtree's quads between a group's begin and end markers
@@ -4065,6 +4110,23 @@ export declare class Ctx {
    * frame, which has nothing to correct.
    */
   shiftScroll(key: string, drawn: number, target: number): void
+  /**
+   * Scrolls the container `key` for a drag the app holds with
+   * the pointer at `x`, `y`, when the pointer is in the edge
+   * zone inside `rect` — usually the container's own
+   * `scrollGeometry` — or past it, by `edgeScrollFeel`: at
+   * once, faster the deeper and the longer it is held, fully
+   * deep when pinned against the window's edge. Returns what it
+   * moved, `{ x, y }` positive toward later content, and asks
+   * for the next frame so a pointer held still goes on
+   * scrolling; `null` out of the zones, at the end that way, or
+   * for a key that is no scroll container. Call it once a frame
+   * while the drag is held — from the view — and place the
+   * drag's live end under the pointer after; not before the
+   * drag has left its press's click slop. kui's own caret drag
+   * and drag-select scroll by the same feel on their own.
+   */
+  edgeScroll(key: string, x: number, y: number, rect: Rect): { x: number, y: number } | null
   /**
    * The names of every window open right now, `"main"` first,
    * then in the order they opened — what a view's root
@@ -4838,6 +4900,22 @@ export declare class KuiWindow {
   /** That feel, read back as clamped. */
   wheelFeel(): WheelFeel
   /**
+   * How a held drag scrolls a container at its edge — kui's own
+   * caret drag and drag-select, and `edgeScroll`: a preset's
+   * name, slow to fast `'gentle'`, `'standard'` (the default),
+   * `'brisk'`; or `{ zonePx, speedPxS, curve, rampSecs,
+   * rampMax, capPxS, pullBackPx }`, any left out kept as they
+   * are — the edge zone's depth (60 px), the speed at its edge
+   * (500 px/s) along a curve (its exponent, 2), the ramp while
+   * held (to 6 times over 1.5 s), the cap (3000 px/s) and how
+   * far a pull back restarts the ramp (8 px). Clamped.
+   * `runWindowed` takes it for the whole app as
+   * `edgeScrollFeel`.
+   */
+  setEdgeScrollFeel(feel: EdgeScrollPreset | Partial<EdgeScrollFeel>): void
+  /** That feel, read back as clamped. */
+  edgeScrollFeel(): EdgeScrollFeel
+  /**
    * Draws a faded subtree as one picture, faded once (ADR
    * 0056): a node whose own `opacity` is under 1 has its
    * subtree's quads between a group's begin and end markers
@@ -5571,6 +5649,23 @@ export declare class KuiWindow {
    */
   shiftScroll(key: string, drawn: number, target: number): void
   /**
+   * Scrolls the container `key` for a drag the app holds with
+   * the pointer at `x`, `y`, when the pointer is in the edge
+   * zone inside `rect` — usually the container's own
+   * `scrollGeometry` — or past it, by `edgeScrollFeel`: at
+   * once, faster the deeper and the longer it is held, fully
+   * deep when pinned against the window's edge. Returns what it
+   * moved, `{ x, y }` positive toward later content, and asks
+   * for the next frame so a pointer held still goes on
+   * scrolling; `null` out of the zones, at the end that way, or
+   * for a key that is no scroll container. Call it once a frame
+   * while the drag is held — from the view — and place the
+   * drag's live end under the pointer after; not before the
+   * drag has left its press's click slop. kui's own caret drag
+   * and drag-select scroll by the same feel on their own.
+   */
+  edgeScroll(key: string, x: number, y: number, rect: Rect): { x: number, y: number } | null
+  /**
    * The names of every window open right now, `"main"` first,
    * then in the order they opened — what a view's root
    * `windows` declared and the diff has opened. `view(model,
@@ -6218,6 +6313,10 @@ export declare function createApp<M, A = AppMsg, E = never>(
     /** How a wheel's notch scrolls: a preset's name or the numbers to
      *  change (`app.ctx.setWheelFeel`). Default `'standard'`. */
     wheelFeel?: WheelPreset | Partial<WheelFeel>;
+    /** How a held drag scrolls a container at its edge: a preset's name or
+     *  the numbers to change (`app.ctx.setEdgeScrollFeel`). Default
+     *  `'standard'`. */
+    edgeScrollFeel?: EdgeScrollPreset | Partial<EdgeScrollFeel>;
     /** What the loop's clock reads before the first `advance` — the origin
      *  `tick.msg(now)` counts from. Default `Date.now()`; pin it to make a
      *  ticking app's assertions exact. */

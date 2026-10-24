@@ -1224,6 +1224,7 @@ foreign lib {
 	reveal :: proc(ctx: ^Ctx, key: u64) ---
 	set_scroll :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32) ---
 	shift_scroll :: proc(ctx: ^Ctx, key: u64, drawn: f32, target: f32) ---
+	edge_scroll :: proc(ctx: ^Ctx, key: u64, x: f32, y: f32, rx: f32, ry: f32, rw: f32, rh: f32, dx: ^f32, dy: ^f32) -> bool ---
 	scroll_offset :: proc(ctx: ^Ctx, key: u64, x: ^f32, y: ^f32) ---
 	layout_of :: proc(ctx: ^Ctx, key: u64, out: ^LayoutRect) -> bool ---
 	scroll_geometry :: proc(ctx: ^Ctx, key: u64, out: ^ScrollGeometry) -> bool ---
@@ -1332,6 +1333,9 @@ foreign lib {
 	set_wheel_feel :: proc(ctx: ^Ctx, line_px: f32, response: f32, kick: f32) ---
 	set_wheel_preset :: proc(ctx: ^Ctx, name: string) -> bool ---
 	wheel_feel :: proc(ctx: ^Ctx, line_px: ^f32, response: ^f32, kick: ^f32) ---
+	set_edge_scroll_feel :: proc(ctx: ^Ctx, zone_px: f32, speed_px_s: f32, curve: f32, ramp_secs: f32, ramp_max: f32, cap_px_s: f32, pull_back_px: f32) ---
+	set_edge_scroll_preset :: proc(ctx: ^Ctx, name: string) -> bool ---
+	edge_scroll_feel :: proc(ctx: ^Ctx, zone_px: ^f32, speed_px_s: ^f32, curve: ^f32, ramp_secs: ^f32, ramp_max: ^f32, cap_px_s: ^f32, pull_back_px: ^f32) ---
 	set_devtools :: proc(ctx: ^Ctx, on: bool) ---
 	set_devtools_dock :: proc(ctx: ^Ctx, dock: string) -> bool ---
 	devtools :: proc(ctx: ^Ctx) -> bool ---
