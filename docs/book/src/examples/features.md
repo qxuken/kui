@@ -26,3 +26,4 @@ One cross-cutting behaviour, with exactly the widgets it touches.
 - [`transform`](features/transform.md)
 - [`transition`](features/transition.md)
 - [`waker`](features/waker.md)
+- [`wheel_feel`](features/wheel_feel.md)

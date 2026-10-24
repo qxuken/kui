@@ -68,6 +68,7 @@
   - [transform](examples/features/transform.md)
   - [transition](examples/features/transition.md)
   - [waker](examples/features/waker.md)
+  - [wheel_feel](examples/features/wheel_feel.md)
 - [tools](examples/tools.md)
   - [conformance-dump](examples/tools/conformance-dump.md)
   - [schema-dump](examples/tools/schema-dump.md)
