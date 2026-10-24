@@ -67,6 +67,11 @@ a group still lights its members together.
   where the ring 2 px outside lost the sides the clip cut. A node with
   room keeps the ring outside, and one the clip cuts too keeps it cut
   with it (backlog F191).
+- A node with `slide` inside a scroll container moves with the content
+  when it scrolls, on the same frame, where it eased after it from where
+  it had sat on screen — every wheel notch trailed by the node's own
+  transition, each racer of the transition example on its own curve. A
+  move in the content still eases, scrolled or not (backlog F192).
 
 **What you can delete.**
 
@@ -77,6 +82,8 @@ a group still lights its members together.
   scrolled at the display's rate.
 - A margin or an inset wrapper kept only so a focused row's ring was not
   cut off by the card that clips it.
+- A `slide` dropped, or keyed to a flag, while its container scrolls,
+  kept only so the node did not trail the scroll.
 - A `hoverGroup` shared by a row and its clickable children, or an
   `onHover` on each child feeding a hovered flag back into the row's
   `bg`, kept only so a row stayed lit while the pointer was over them.

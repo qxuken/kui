@@ -1984,6 +1984,11 @@ impl Core {
     /// all their position ever eases. Preorder means a parent shifts before
     /// its children are visited, so nested sliders ease relative to an
     /// already-eased parent.
+    ///
+    /// The position eased is the one in the scroll containers' content,
+    /// not on screen: a scroll moves the content under the node and is not
+    /// the node moving, so it rides along on the frame the offset changes
+    /// rather than trailing it by the node's transition.
     fn ease_positions(&mut self) {
         for i in 0..self.tree.len() {
             let spec = &self.tree.specs[i];
@@ -1995,7 +2000,8 @@ impl Core {
                 continue;
             }
             let key = self.tree.keys[i];
-            let target = self.tree.pos[i];
+            let s = self.scrolled_by(i);
+            let target = Vec2::new(self.tree.pos[i].x + s.x, self.tree.pos[i].y + s.y);
             let from = enter.map(|e| [target.x + e.dx, target.y + e.dy, 0.0, 0.0]);
             let v = self.anim.drive(
                 key,
@@ -2019,6 +2025,49 @@ impl Core {
                 p.y += d.y;
             }
         }
+    }
+
+    /// How far up and left the scroll offsets this layout applied moved
+    /// node `i`: each scrolling ancestor's, as `layout::positions` shifted
+    /// its in-flow children by it. A parent float is placed against its
+    /// parent's box, which its parent's own offset does not move; a
+    /// viewport float is moved by none; a node-anchored one by whatever
+    /// moved its anchor.
+    fn scrolled_by(&self, i: usize) -> Vec2 {
+        let tree = &self.tree;
+        let mut by = Vec2::ZERO;
+        let mut c = i;
+        // Bounded: a node anchor that leads back into its own chain is a
+        // loop, and the walk is cut off rather than spun.
+        for _ in 0..tree.len() {
+            let float = tree.specs[c].layout.float;
+            let parent = match float.map(|f| f.anchor) {
+                Some(crate::spec::FloatAnchor::Viewport) => break,
+                Some(crate::spec::FloatAnchor::Node(k)) => match tree.index_of(k) {
+                    Some(a) => {
+                        c = a;
+                        continue;
+                    }
+                    None => break,
+                },
+                _ => tree.parent[c],
+            };
+            if parent == NIL {
+                break;
+            }
+            let p = parent as usize;
+            let l = &tree.specs[p].layout;
+            if float.is_none()
+                && (l.scroll_x || l.scroll_y)
+                && let Some(off) = self.scroll.laid_offset(tree.keys[p])
+            {
+                let off = off.snapped(self.scale);
+                by.x += off.x;
+                by.y += off.y;
+            }
+            c = p;
+        }
+        by
     }
 
     /// After the layout events: every node whose keyframe stops name a

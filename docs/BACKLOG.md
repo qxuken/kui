@@ -315,7 +315,9 @@ a `hoverBg` row going dark while the pointer crossed its checkbox, its
 field or its buttons — was built the day it was filed, after the
 alpha.66 tag, and is in the archive, as is F191 beside it — the focus
 ring of a row filling a clipped card cut off where the card clips —
-built the same day.
+built the same day; and F192, from the transition example — a `slide`
+node trailing its container's scroll by its own transition — was built
+the day it was filed, after the alpha.66 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3455,6 +3457,15 @@ subtree, as CSS `:hover` and a `revealOnHover` anchor are — **built
 screenshot showed the same rows' focus ring cut along the card's
 bottom: F191, **built 2026-10-24**, the day it was filed, and in the
 archive.
+
+## From the transition example's scroll (2026-10-24)
+
+The user scrolled the transition example and saw the racers and the
+sliding card fall out of their lanes and drift back, each on its own
+curve. `slide` eased the node's position on screen, and a scroll moves
+it there; the racers trailed every wheel notch by 900 ms. One entry,
+F192 — a `slide` rides its container's scroll — **built 2026-10-24**,
+the day it was filed, and in the archive.
 
 ## After alpha.58
 

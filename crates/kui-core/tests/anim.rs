@@ -563,6 +563,75 @@ fn a_sliding_float_glides_to_its_new_offset() {
     assert!(!core.animating());
 }
 
+/// A page that scrolls, holding a sliding node in flow and a sliding float
+/// inside a lane; returns the drawn y of each (their backgrounds are the
+/// two 20 px quads; the scrollbar's is narrower).
+fn scrolled_slider_ys(core: &mut Core, above: f32) -> (f32, f32) {
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed("page", NodeSpec::column().fill().scroll_y(), |ui| {
+        ui.leaf(NodeSpec::column().size(10.0, above));
+        ui.leaf_keyed(
+            "tile",
+            NodeSpec::column()
+                .size(20.0, 20.0)
+                .bg(Color::WHITE)
+                .transition_with(linear(100.0))
+                .slide(),
+        );
+        ui.with(NodeSpec::row().size(200.0, 20.0), |ui| {
+            ui.leaf_keyed(
+                "racer",
+                NodeSpec::column()
+                    .size(20.0, 20.0)
+                    .bg(Color::WHITE)
+                    .float(FloatConfig::parent())
+                    .transition_with(linear(100.0))
+                    .slide(),
+            );
+        });
+        ui.leaf(NodeSpec::column().size(10.0, 1000.0));
+    });
+    ui.finish();
+    let (dl, _) = core.output();
+    let ys: Vec<f32> = dl
+        .quads
+        .iter()
+        .filter(|q| q.rect.w == 20.0)
+        .map(|q| q.rect.y)
+        .collect();
+    (ys[0], ys[1])
+}
+
+/// Scrolling is not a move: a `slide` node rides its scroll container's
+/// content on the frame the offset changes, rather than easing after it
+/// from where it sat on screen — the transition example's racers and card
+/// trailed every wheel notch by their own durations, each on its own curve.
+#[test]
+fn a_slide_rides_the_scroll_rather_than_easing_after_it() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    assert_eq!(scrolled_slider_ys(&mut core, 100.0), (100.0, 120.0));
+    core.handle_input(kui_core::InputEvent::CursorMoved(kui_core::Vec2::new(
+        200.0, 100.0,
+    )));
+    core.handle_input(kui_core::InputEvent::Scroll(kui_core::Vec2::new(0.0, -60.0)));
+    core.set_time(0.0);
+    assert_eq!(
+        scrolled_slider_ys(&mut core, 100.0),
+        (40.0, 60.0),
+        "both move with the content at once"
+    );
+    assert!(!core.animating(), "and owe no frames for it");
+    // Scrolled, a move in the content still eases: 40 px further down,
+    // halfway there at half the transition.
+    core.set_time(0.0);
+    assert_eq!(scrolled_slider_ys(&mut core, 140.0), (40.0, 60.0));
+    assert!(core.animating());
+    core.set_time(0.05);
+    assert_eq!(scrolled_slider_ys(&mut core, 140.0), (60.0, 80.0));
+}
+
 #[test]
 fn enter_slides_a_node_in_on_first_sight() {
     let spec = || {
