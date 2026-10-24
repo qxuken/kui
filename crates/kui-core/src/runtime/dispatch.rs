@@ -398,10 +398,11 @@ impl Core {
                 self.route_scroll(delta, begins, None, &mut out)
             }
             // Notches (ADR 0050): whole when a moving axis is at least a
-            // line, which is what may glide.
+            // line, which is what may glide; as far as the feel's line.
             InputEvent::Wheel { lines, begins } => {
                 let whole = lines.x.abs() >= 1.0 || lines.y.abs() >= 1.0;
-                let delta = Vec2::new(Core::lines_to_px(lines.x), Core::lines_to_px(lines.y));
+                let px = self.wheel_feel().line_px;
+                let delta = Vec2::new(lines.x * px, lines.y * px);
                 self.route_scroll(delta, begins, Some(whole), &mut out)
             }
             InputEvent::Text(s) => {

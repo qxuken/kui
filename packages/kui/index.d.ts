@@ -2284,6 +2284,27 @@ export interface WindowOptions {
    *  Default on; the system's reduced motion jumps either way. A trackpad
    *  is unaffected. */
   smoothWheel?: boolean;
+  /** How a mouse wheel's notch scrolls, in every window of the app: a
+   *  preset's name (`'brisk'` is a touch faster than the default) or the
+   *  numbers to change (`win.setWheelFeel`). Set after the window opens,
+   *  so it wins over `KUI_WHEEL` in the environment. */
+  wheelFeel?: WheelPreset | Partial<WheelFeel>;
+}
+
+/** A wheel feel by name, slow to fast; `'standard'` is the default. */
+export type WheelPreset = 'gentle' | 'standard' | 'brisk' | 'swift';
+
+/** How a mouse wheel's notch scrolls (ADR 0050). */
+export interface WheelFeel {
+  /** How far one line of a wheel goes, in logical px (40). A plain mouse's
+   *  notch is one line; a fraction of a line goes its share. */
+  linePx: number;
+  /** The glide's response in seconds (0.30): shorter lands sooner. */
+  response: number;
+  /** How much of a pure ease-out's speed each notch gives the glide, 0 to
+   *  1 (0.6): more starts each notch harder and stops it sooner, less
+   *  starts it softer. */
+  kick: number;
 }
 
 /** The binary-frame protocol tables the addon exports: the stream's version,
@@ -3296,6 +3317,19 @@ export declare class Ctx {
   setSmoothWheel(on: boolean): void
   /** That switch, read back. */
   smoothWheel(): boolean
+  /**
+   * How a wheel's notch scrolls: a preset's name, slow to
+   * fast `'gentle'`, `'standard'` (the default), `'brisk'` (a
+   * touch faster), `'swift'`; or `{ linePx, response, kick }`,
+   * any left out kept as they are — how far a line goes in
+   * logical px (40), the glide's response in seconds (0.30)
+   * and its kick, 0 to 1 (0.6). Clamped into what the glide
+   * can use. Off, a notch still jumps its `linePx`.
+   * `runWindowed` takes it for the whole app as `wheelFeel`.
+   */
+  setWheelFeel(feel: WheelPreset | Partial<WheelFeel>): void
+  /** That feel, read back as clamped. */
+  wheelFeel(): WheelFeel
   /**
    * Draws a faded subtree as one picture, faded once (ADR
    * 0056): a node whose own `opacity` is under 1 has its
@@ -4789,6 +4823,19 @@ export declare class KuiWindow {
   /** That switch, read back. */
   smoothWheel(): boolean
   /**
+   * How a wheel's notch scrolls: a preset's name, slow to
+   * fast `'gentle'`, `'standard'` (the default), `'brisk'` (a
+   * touch faster), `'swift'`; or `{ linePx, response, kick }`,
+   * any left out kept as they are — how far a line goes in
+   * logical px (40), the glide's response in seconds (0.30)
+   * and its kick, 0 to 1 (0.6). Clamped into what the glide
+   * can use. Off, a notch still jumps its `linePx`.
+   * `runWindowed` takes it for the whole app as `wheelFeel`.
+   */
+  setWheelFeel(feel: WheelPreset | Partial<WheelFeel>): void
+  /** That feel, read back as clamped. */
+  wheelFeel(): WheelFeel
+  /**
    * Draws a faded subtree as one picture, faded once (ADR
    * 0056): a node whose own `opacity` is under 1 has its
    * subtree's quads between a group's begin and end markers
@@ -6166,6 +6213,9 @@ export declare function createApp<M, A = AppMsg, E = never>(
     /** `false`: a wheel's notch (`app.ctx.wheel`) jumps rather than glides
      *  (ADR 0050). Default on. */
     smoothWheel?: boolean;
+    /** How a wheel's notch scrolls: a preset's name or the numbers to
+     *  change (`app.ctx.setWheelFeel`). Default `'standard'`. */
+    wheelFeel?: WheelPreset | Partial<WheelFeel>;
     /** What the loop's clock reads before the first `advance` — the origin
      *  `tick.msg(now)` counts from. Default `Date.now()`; pin it to make a
      *  ticking app's assertions exact. */

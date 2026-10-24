@@ -1161,6 +1161,24 @@ static int surface(void) {
         kui_frame_finish(ui);
         kui_scroll_offset(ui, k.card, NULL, &sy);
         check(sy == want, "kui_input_wheel moves the card a notch");
+
+        /* The feel: a preset makes the next notch go its own line. */
+        float line = 0, response = 0, kick = 0;
+        kui_wheel_feel(ui, &line, &response, &kick);
+        check(line == 40 && kick > 0, "kui_wheel_feel: the standard feel by default");
+        check(kui_set_wheel_preset(ui, KUI_STR("swift")), "kui_set_wheel_preset takes a name");
+        check(!kui_set_wheel_preset(ui, KUI_STR("turbo")), "and refuses one it does not know");
+        kui_wheel_feel(ui, &line, NULL, NULL);
+        check(line == 64, "a swift notch is 64 px");
+        want = sy - 64 * way;
+        want = want < 0 ? 0 : want > geo.max_offset_y ? geo.max_offset_y : want;
+        kui_input_wheel(ui, 0, way, true);
+        kui_frame_begin(ui, 800, 600, 2.0f);
+        surface_view(&k, ui);
+        kui_frame_finish(ui);
+        kui_scroll_offset(ui, k.card, NULL, &sy);
+        check(sy == want, "kui_input_wheel moves the card its feel's line");
+        kui_set_wheel_feel(ui, 40, 0.30f, 0.6f);
         kui_set_smooth_wheel(ui, true);
     }
 

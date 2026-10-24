@@ -4532,6 +4532,32 @@ mod wheel_headless {
         kui_input_wheel(ctx, 0.0, -1.0, true);
         t += 1.0 / 60.0;
         assert_eq!(frame(ctx, t), 80.0, "a jump");
+
+        // The feel: a preset by name, its line the next notch's jump, the
+        // numbers read back; an unknown name changes nothing.
+        let read = |ctx: *mut KuiCtx| {
+            let (mut l, mut r, mut k) = (0.0, 0.0, 0.0);
+            kui_wheel_feel(ctx, &mut l, &mut r, &mut k);
+            (l, r, k)
+        };
+        assert_eq!(read(std::ptr::null_mut()), (40.0, 0.30, 0.6));
+        assert_eq!(read(ctx), (40.0, 0.30, 0.6), "standard by default");
+        assert!(kui_set_wheel_preset(ctx, ks("Brisk")));
+        assert_eq!(read(ctx), (48.0, 0.27, 0.6));
+        kui_input_wheel(ctx, 0.0, -1.0, true);
+        t += 1.0 / 60.0;
+        assert_eq!(frame(ctx, t), 128.0, "a brisk notch");
+        assert!(!kui_set_wheel_preset(ctx, ks("turbo")));
+        assert!(!kui_set_wheel_preset(std::ptr::null_mut(), ks("brisk")));
+        assert_eq!(read(ctx), (48.0, 0.27, 0.6), "unchanged");
+        kui_set_wheel_feel(ctx, 100.0, f32::NAN, 2.0);
+        assert_eq!(read(ctx), (100.0, 0.30, 1.0), "clamped");
+        kui_wheel_feel(
+            ctx,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
         kui_ctx_free(ctx);
     }
 }

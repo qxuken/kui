@@ -2616,6 +2616,23 @@ test('wheel: a notch glides to its place, and jumps with smoothWheel off', () =>
   ctx.wheel(0, -1, true);
   t += 1 / 60;
   assert.equal(frame(), 80, 'a jump');
+
+  // The feel: a preset by name, or the numbers to change; the next notch
+  // goes its line.
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  const standard = ctx.wheelFeel();
+  assert.ok(near(standard.linePx, 40) && near(standard.response, 0.3) && near(standard.kick, 0.6));
+  ctx.setWheelFeel('brisk');
+  assert.equal(ctx.wheelFeel().linePx, 48);
+  ctx.wheel(0, -1, true);
+  t += 1 / 60;
+  assert.equal(frame(), 128, 'a brisk notch');
+  ctx.setWheelFeel({ linePx: 100 });
+  const mixed = ctx.wheelFeel();
+  assert.ok(mixed.linePx === 100 && near(mixed.response, 0.27), 'the rest kept');
+  assert.throws(() => ctx.setWheelFeel('turbo'), /unknown preset "turbo"/);
+  assert.throws(() => ctx.setWheelFeel({ speed: 2 }), /unknown key "speed"/);
+  assert.equal(ctx.wheelFeel().linePx, 100, 'unchanged by a refusal');
 });
 
 // A point on the text a keyed node drew is a byte offset, and a byte

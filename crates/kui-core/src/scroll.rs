@@ -143,29 +143,122 @@ struct Glide {
     last: Option<f64>,
 }
 
-/// The glide's response time, in SwiftUI's parametrisation (the spring's
-/// period undamped). Critically damped, with every notch adding
-/// [`GLIDE_KICK`] of `ω` times its own travel to the speed
-/// ([`glide_omega`]): each notch's share eases out, fastest on its first
-/// frame, and a 40 px notch is nine tenths there by 170 ms and within
-/// half a pixel by about 280 ms. A notch landing mid-glide adds to the
-/// speed there is rather than starting from rest (ADR 0050, decision 3),
-/// and notches a slow hand turns 150–250 ms apart find the last one
-/// still moving, where at 0.21 s and a whole kick it had stopped and the
-/// next lurched off at full speed.
-const GLIDE_RESPONSE: f64 = 0.30;
-
-/// How much of the speed that would make a notch's share a pure ease-out,
-/// `1 - e^(-ωt)`, the notch gives the spring. A whole kick starts each
-/// notch at its top speed and stops it short; none starts it from rest,
-/// which reads as lag. Between, the start is still the fastest frame and
-/// the tail is long enough to meet the next notch.
-const GLIDE_KICK: f32 = 0.6;
-
-/// The glide's angular frequency, from [`GLIDE_RESPONSE`].
-fn glide_omega() -> f64 {
-    std::f64::consts::TAU / GLIDE_RESPONSE
+/// How a wheel's notch scrolls (ADR 0050, amended 2026-10-24): how far a
+/// line goes, and how the glide eases it there. The app's input feel
+/// rather than a view's, set with `Core::set_wheel_feel`; the native
+/// runner copies the main window's to every other, and `KUI_WHEEL` in
+/// the environment overrides it there for comparing without a rebuild.
+///
+/// [`WheelFeel::STANDARD`] is the default. The presets, from slow to
+/// fast, at 60 Hz for one notch:
+///
+/// | preset     | a notch | first frame | nine tenths | landed  |
+/// |------------|---------|-------------|-------------|---------|
+/// | `gentle`   | 40 px   | 6.5 px      | 183 ms      | 333 ms  |
+/// | `standard` | 40 px   | 7.8 px      | 167 ms      | 283 ms  |
+/// | `brisk`    | 48 px   | 10.2 px     | 150 ms      | 267 ms  |
+/// | `swift`    | 64 px   | 15.5 px     | 133 ms      | 267 ms  |
+///
+/// Every one keeps notches a slow hand turns 150 ms apart running into
+/// each other: the glide is still moving over a pixel a frame when the
+/// next one comes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WheelFeel {
+    /// How far one line of a wheel goes, in logical px. A plain mouse's
+    /// notch is one line on Windows, X11 and Wayland; on macOS it sends
+    /// lines too, as many as the system's acceleration makes it. Also what a fraction of a
+    /// line and an `on_scroll` handler's pixels are measured by, and what
+    /// a notch jumps when it does not glide.
+    pub line_px: f32,
+    /// The glide's response time in seconds, in SwiftUI's
+    /// parametrisation (the spring's period undamped). Critically
+    /// damped, so shorter lands sooner and never overshoots.
+    pub response: f32,
+    /// How much of the speed that would make a notch's share a pure
+    /// ease-out, `1 - e^(-ωt)`, the notch gives the spring, from 0 to 1.
+    /// A whole kick starts each notch at its top speed and stops it
+    /// short, so a slow hand's notches each lurch off and halt; none
+    /// starts it from rest, which reads as lag. Between, the start is
+    /// still the fastest frame and the tail is long enough to meet the
+    /// next notch.
+    pub kick: f32,
 }
+
+impl WheelFeel {
+    /// Softer than the default: the same 40 px a notch, eased a little
+    /// longer.
+    pub const GENTLE: Self = Self {
+        line_px: 40.0,
+        response: 0.34,
+        kick: 0.55,
+    };
+    /// The default. A notch is 40 px, nine tenths there by 167 ms and
+    /// within half a pixel by about 283 ms; at 0.21 s and a whole kick a
+    /// slow hand's notches had each stopped before the next and lurched
+    /// off at full speed (the 2026-10-24 amendment).
+    pub const STANDARD: Self = Self {
+        line_px: 40.0,
+        response: 0.30,
+        kick: 0.6,
+    };
+    /// A touch faster: a fifth further a notch, and quicker to land.
+    pub const BRISK: Self = Self {
+        line_px: 48.0,
+        response: 0.27,
+        kick: 0.6,
+    };
+    /// Faster still: 64 px a notch, landed as soon as `brisk` lands 48.
+    pub const SWIFT: Self = Self {
+        line_px: 64.0,
+        response: 0.24,
+        kick: 0.62,
+    };
+
+    /// The presets by name, slow to fast — what [`Self::preset`] reads,
+    /// and the names the bindings and `KUI_WHEEL` take.
+    pub const PRESETS: [(&'static str, Self); 4] = [
+        ("gentle", Self::GENTLE),
+        ("standard", Self::STANDARD),
+        ("brisk", Self::BRISK),
+        ("swift", Self::SWIFT),
+    ];
+
+    /// The preset called `name`, ignoring case; `None` for any other.
+    pub fn preset(name: &str) -> Option<Self> {
+        let name = name.trim();
+        Self::PRESETS
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|&(_, f)| f)
+    }
+
+    /// The feel with each number brought into what the glide can use: a
+    /// line from 1 to 1000 px, a response from 0.05 to 2 s, a kick from 0
+    /// to 1. A number that is not finite takes the standard one.
+    pub fn clamped(self) -> Self {
+        let pick = |v: f32, lo: f32, hi: f32, or: f32| {
+            if v.is_finite() { v.clamp(lo, hi) } else { or }
+        };
+        let s = Self::STANDARD;
+        Self {
+            line_px: pick(self.line_px, 1.0, 1000.0, s.line_px),
+            response: pick(self.response, 0.05, 2.0, s.response),
+            kick: pick(self.kick, 0.0, 1.0, s.kick),
+        }
+    }
+
+    /// The glide's angular frequency, from [`Self::response`].
+    fn omega(&self) -> f64 {
+        std::f64::consts::TAU / self.response as f64
+    }
+}
+
+impl Default for WheelFeel {
+    fn default() -> Self {
+        Self::STANDARD
+    }
+}
+
 /// The step a glide's first layout takes. The store's clock is the last
 /// frame's when a notch arrives, which may be minutes old; stepping from
 /// it would land most of the notch on the first frame.
@@ -175,14 +268,14 @@ const GLIDE_FIRST_DT: f64 = 1.0 / 60.0;
 /// the velocity, and whether it has settled — within half a pixel and
 /// nearly still, where it lands on the target exactly so that a settled
 /// view is never a subpixel off. Semi-implicit Euler at the animation
-/// store's step, as its springs are.
-fn glide_step(at: Vec2, g: Glide, to: Vec2, now: f64) -> (Vec2, Vec2, bool) {
+/// store's step, as its springs are. `omega` is the feel's
+/// ([`WheelFeel::omega`]).
+fn glide_step(at: Vec2, g: Glide, to: Vec2, now: f64, omega: f64) -> (Vec2, Vec2, bool) {
     use crate::anim::{MAX_FRAME_DT, SPRING_STEP};
     let dt = match g.last {
         None => GLIDE_FIRST_DT,
         Some(last) => (now - last).clamp(0.0, MAX_FRAME_DT),
     };
-    let omega = glide_omega();
     let (k, c) = ((omega * omega) as f32, (2.0 * omega) as f32);
     let steps = (dt / SPRING_STEP).ceil().max(1.0);
     let h = (dt / steps) as f32;
@@ -233,9 +326,21 @@ pub struct ScrollStore {
     /// ([`Self::resliced`]). Interior mutability because a read is a
     /// read.
     reads: std::cell::RefCell<Vec<(Key, Size, Vec2)>>,
+    /// How a wheel's notch goes ([`WheelFeel`]), clamped.
+    feel: WheelFeel,
 }
 
 impl ScrollStore {
+    /// How a wheel's notch goes; see [`WheelFeel`]. A glide under way
+    /// carries on at the new response from where it is.
+    pub(crate) fn set_wheel_feel(&mut self, feel: WheelFeel) {
+        self.feel = feel.clamped();
+    }
+
+    pub(crate) fn wheel_feel(&self) -> WheelFeel {
+        self.feel
+    }
+
     /// How many entries are retained, declared and undeclared together.
     pub fn len(&self) -> usize {
         self.entries.len()
@@ -372,7 +477,9 @@ impl ScrollStore {
         // A glide the same way: stepped to the coming layout's clock, as
         // `resolve` will step it.
         let offset = match (e.smooth, e.glide, self.now) {
-            (_, Some(g), Some(now)) => glide_step(clamp(e.laid), g, clamp(e.offset), now).0,
+            (_, Some(g), Some(now)) => {
+                glide_step(clamp(e.laid), g, clamp(e.offset), now, self.feel.omega()).0
+            }
             (Some((from, start, t)), _, Some(now)) => {
                 sample((clamp(from), start, t), clamp(e.offset), now).0
             }
@@ -488,6 +595,7 @@ impl ScrollStore {
     /// animation) take it as [`Self::scroll_by`] does.
     pub(crate) fn wheel_by(&mut self, key: Key, delta: Vec2, whole: bool) {
         let frame_no = self.frame_no;
+        let feel = self.feel;
         let glides = self.now.is_some()
             && self
                 .entries
@@ -512,10 +620,10 @@ impl ScrollStore {
         let from = Vec2::new(e.offset.x.clamp(0.0, max.x), e.offset.y.clamp(0.0, max.y));
         e.offset.x = (from.x + delta.x).clamp(0.0, max.x);
         e.offset.y = (from.y + delta.y).clamp(0.0, max.y);
-        // The speed that makes this notch's own share ease out (see
-        // `GLIDE_KICK`): what the target moved, so a notch the end
-        // swallowed adds none.
-        let omega = GLIDE_KICK * glide_omega() as f32;
+        // The speed that makes this notch's own share ease out, times the
+        // feel's kick (`WheelFeel::kick`): what the target moved, so a
+        // notch the end swallowed adds none.
+        let omega = feel.kick * feel.omega() as f32;
         g.velocity.x += omega * (e.offset.x - from.x);
         g.velocity.y += omega * (e.offset.y - from.y);
         e.last_declared = frame_no;
@@ -620,6 +728,7 @@ impl ScrollStore {
     ) -> Vec2 {
         let frame_no = self.frame_no;
         let now = self.now;
+        let omega = self.feel.omega();
         let e = self.entries.entry(key).or_default();
         e.last_declared = frame_no;
         e.geom = Some((rect, content, Vec2::new(max.x.max(0.0), max.y.max(0.0))));
@@ -640,7 +749,7 @@ impl ScrollStore {
                     v.y.clamp(0.0, max.y.max(0.0)),
                 )
             };
-            let (at, velocity, settled) = glide_step(clamp(e.laid), g, e.offset, now);
+            let (at, velocity, settled) = glide_step(clamp(e.laid), g, e.offset, now, omega);
             e.glide = (!settled).then_some(Glide {
                 velocity,
                 last: Some(now),

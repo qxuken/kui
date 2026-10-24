@@ -331,6 +331,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // The app's input feel (ADR 0050): the window copies it to every window
   // it opens after the main.
   if (opts.smoothWheel !== undefined) surface.setSmoothWheel(opts.smoothWheel);
+  if (opts.wheelFeel !== undefined) surface.setWheelFeel(opts.wheelFeel);
   const { show, open } = transport(surface, opts);
   let model;
   // Whether `teardown` has run: once, whichever end reaches it first — the

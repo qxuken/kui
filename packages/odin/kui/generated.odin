@@ -3750,6 +3750,31 @@ smooth_wheel :: proc(ui: ^Ui) -> bool {
 	return c.smooth_wheel(ui)
 }
 
+// How a wheel's notch scrolls (`WheelFeel`): how far a line goes (40 px by
+// default), the glide's response (0.30 s) and its kick (0.6).
+// Rust: Core::set_wheel_feel.
+set_wheel_feel :: proc(ui: ^Ui, line_px: f32, response: f32, kick: f32) {
+	c.set_wheel_feel(ui, line_px, response, kick)
+}
+
+// kui_set_wheel_preset (kui.h).
+set_wheel_preset :: proc(ui: ^Ui, name: string) -> bool {
+	return c.set_wheel_preset(ui, name)
+}
+
+// That feel, read back as clamped.
+// Rust: Core::wheel_feel.
+wheel_feel :: proc(ui: ^Ui) -> (line_px: f32, response: f32, kick: f32) {
+	c_line_px: f32
+	c_response: f32
+	c_kick: f32
+	c.wheel_feel(ui, &c_line_px, &c_response, &c_kick)
+	line_px = c_line_px
+	response = c_response
+	kick = c_kick
+	return
+}
+
 // Turns the devtools panel on.
 // Rust: Core::set_devtools.
 set_devtools :: proc(ui: ^Ui, on: bool) {

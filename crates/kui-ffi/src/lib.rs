@@ -1052,6 +1052,66 @@ pub extern "C" fn kui_smooth_wheel(ptr: *mut KuiCtx) -> bool {
     })
 }
 
+/// How a wheel's notch scrolls (`WheelFeel`): how far a line goes in
+/// logical px, the glide's response in seconds and its kick, from 0 to 1.
+/// Clamped into what the glide can use; a number that is not finite takes
+/// the standard one.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_wheel_feel(ptr: *mut KuiCtx, line_px: f32, response: f32, kick: f32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_wheel_feel(kui_core::WheelFeel {
+                line_px,
+                response,
+                kick,
+            });
+        }
+    });
+}
+
+/// Sets the feel to the preset called `name` (`gentle`, `standard`,
+/// `brisk`, `swift`, any case). False, and nothing changed, for any other
+/// name or a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_wheel_preset(ptr: *mut KuiCtx, name: KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(feel) = kui_core::WheelFeel::preset(&kstr(name)) else {
+            return false;
+        };
+        c.core().set_wheel_feel(feel);
+        true
+    })
+}
+
+/// The feel, read back as clamped; the standard one for a null context.
+/// Any out pointer may be NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_wheel_feel(
+    ptr: *mut KuiCtx,
+    line_px: *mut f32,
+    response: *mut f32,
+    kick: *mut f32,
+) {
+    guard((), || {
+        let f =
+            unsafe { ctx(ptr) }.map_or(kui_core::WheelFeel::STANDARD, |c| c.core().wheel_feel());
+        unsafe {
+            if let Some(o) = line_px.as_mut() {
+                *o = f.line_px;
+            }
+            if let Some(o) = response.as_mut() {
+                *o = f.response;
+            }
+            if let Some(o) = kick.as_mut() {
+                *o = f.kick;
+            }
+        }
+    });
+}
+
 /// Turns the core's devtools panel on or off: the event stream, the
 /// runtime's facts and the tree, drawn by the core beside the host's tree
 /// (where [`kui_set_devtools_dock`] says). Its controls and its

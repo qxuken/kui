@@ -247,6 +247,9 @@ impl DynShell<'_> {
         // The app's input feel, not one window's (ADR 0050): as the main
         // window has it.
         core.set_smooth_wheel(self.panes.first().is_none_or(|p| p.core.smooth_wheel()));
+        if let Some(main) = self.panes.first() {
+            core.set_wheel_feel(main.core.wheel_feel());
+        }
         core.env.window.id = id;
         self.push_pane(
             event_loop, id, config, owner, chrome, core, window, renderer, applied,

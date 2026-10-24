@@ -77,8 +77,9 @@ pub extern "C" fn kui_input_scroll_gesture(ptr: *mut KuiCtx, dx: f32, dy: f32, b
 }
 
 /// A wheel's notches, in lines (+y = scroll up), as part of a scroll
-/// gesture: latched as [`kui_input_scroll_gesture`] is, at 40 px a line,
-/// and on a scroll container a whole notch glides rather than jumping
+/// gesture: latched as [`kui_input_scroll_gesture`] is, at
+/// [`crate::kui_wheel_feel`]'s `line_px` a line (40 by default), and on a
+/// scroll container a whole notch glides rather than jumping
 /// (ADR 0050) unless [`crate::kui_set_smooth_wheel`] turned that off. A
 /// fraction of a line is applied as it comes. What `kui_run` sends for a
 /// mouse wheel.

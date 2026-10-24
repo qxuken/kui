@@ -1259,6 +1259,15 @@ off once: `Launcher::smooth_wheel(false)`, `smoothWheel: false` to
 `runWindowed`, `kui_set_smooth_wheel(ctx, false)`; the system's reduced
 motion makes them jump either way.
 
+How far a notch goes and how quickly it lands is the wheel feel, also
+the app's: a preset by name, slow to fast `gentle`, `standard` (the
+default, 40 px a notch), `brisk` (a touch faster, 48 px) and `swift`
+(64 px), or the numbers themselves — `line_px`, the glide's `response`
+in seconds and its `kick`. `Launcher::wheel_feel(WheelFeel::BRISK)`,
+`wheelFeel: 'brisk'` to `runWindowed`, `kui_set_wheel_preset(ctx,
+KUI_STR("brisk"))`. To try one without a rebuild, run the app with
+`KUI_WHEEL=brisk`, or `KUI_WHEEL=56,0.25,0.6` for numbers of your own.
+
 For the app's own moves, declare a `transition` on the scroll
 container. A `reveal` or a `set_scroll` then eases the offset over it —
 the ribbon a keyboard walks, a list a shortcut jumps to — while the
