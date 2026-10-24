@@ -30,7 +30,9 @@ impl Core {
     /// ever. A frame shows from the frame-clock time it was drawn until
     /// the next frame drawn, the last until the stop. The answer is a
     /// `capture` event in `message`, as [`Self::capture_to`]'s is, once the
-    /// file is written, with the `frames` it holds and its `seconds`. A
+    /// file is written, with the frames drawn while recording and its
+    /// `seconds` (the file folds a frame that changed nothing into the one
+    /// before, so it can hold fewer). A
     /// recording asked for while one runs fails, naming that one. A window
     /// that closes while recording has its file written and is not heard.
     #[track_caller]

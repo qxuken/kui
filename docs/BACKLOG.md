@@ -300,7 +300,11 @@ measurement of group opacity against the exact result — a node's shadow
 drawn under the node, showing through it when translucent or faded — was
 built the day it was filed, after the alpha.65 tag, and is in the
 archive, as is V11 beside it — the rest of the fade's error, a faded
-subtree drawn as one picture — built the same day with ADR 0056.
+subtree drawn as one picture — built the same day with ADR 0056; and
+F189, from kawoosh's screenshot commands — two Rust docs that called a
+recording's `frames` what the file holds, where it is the frames drawn
+— was built the day it was filed, after the alpha.66 tag, and is in the
+archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3399,6 +3403,17 @@ leaves the kept session in its slot (its doc says so now). The input
 that changed `00765b43…` was one alone of the seventeen before it,
 `001d0fed…`, whose text began `ޢ]k`.
 
+## From kawoosh's screenshot commands (2026-10-24)
+
+kawoosh's `:screenshot` and `:screencast` are `capture_to` and
+`record_to` (ADR 0055), its corner message saying what the `capture`
+answer says. Checked on macOS, where the alpha.66 notes said capture had
+not been: every still format, an APNG and a GIF recording, the clipboard,
+a window behind others and one minimised, all answered and written. One
+entry, F189 — the Rust docs said the opposite of the ADR about a
+recording's `frames` — **built 2026-10-24**, the day it was filed, and
+in the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5243,3 +5258,7 @@ move.
 - `.` **FZ12** — [A recorded GIF cannot turn a pixel clear](backlog/closed-2026-09.md#-fz12--a-recorded-gif-cannot-turn-a-pixel-clear--done-2026-10-24) — done (2026-10-24) — a frame that clears a pixel is written whole on a canvas the frame before clears once shown (`DisposalMethod::Background`); found by the new `encode` target
 - `.` **FZ13** — [A recorded frame held past what a delay holds loses the rest of its time](backlog/closed-2026-09.md#-fz13--a-recorded-frame-held-past-what-a-delay-holds-loses-the-rest-of-its-time--done-2026-10-24) — done (2026-10-24) — written as itself and then frames that change nothing, the time shared among them, up to 256 of them; found by the `encode` target
 - `.` **FZ14** — [A word shaped right to left comes back for the same word left to right](#-fz14--a-word-shaped-right-to-left-comes-back-for-the-same-word-left-to-right) — open — cosmic-text's shape-run cache keys a run without its direction; found by the hour's corpus under `tests/reuse.rs`
+
+**From kawoosh's screenshot commands (2026-10-24)** — F189, filed and built the same day
+
+- `.` **F189** — [A recording's `frames` is documented in Rust as what the file holds; it is the frames drawn](backlog/closed-2026-09.md#-f189--a-recordings-frames-is-documented-in-rust-as-what-the-file-holds-it-is-the-frames-drawn--done-2026-10-24) — done (2026-10-24) — `Captured`'s and `Core::record_to`'s docs say the frames drawn, as ADR 0055 §5, the C header, Odin, Node and `props.md` do, and that the file can hold fewer or more; found by kawoosh's `:screencast`
