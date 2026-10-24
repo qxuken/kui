@@ -177,6 +177,18 @@ impl Raster {
 /// fits an atlas page. Past it, too, a glyph is drawn unhinted (FZ8).
 const LARGE_GLYPH: f32 = 1024.0;
 
+/// A laid glyph's whole-pixel place and cache key, or `None` for one laid
+/// past where an `i32` reaches (backlog FZ15): a long line at a size far
+/// past any screen. cosmic-text's `SubpixelBin` saturates the position to
+/// `i32::MAX` and then adds one to it, which overflows; such a glyph is
+/// past any surface, so it is not drawn.
+pub(crate) fn physical(glyph: &cosmic_text::LayoutGlyph) -> Option<cosmic_text::PhysicalGlyph> {
+    const REACH: f32 = i32::MAX as f32;
+    let x = glyph.x + glyph.font_size * glyph.x_offset;
+    let y = glyph.y - glyph.font_size * glyph.y_offset;
+    (x.abs() < REACH && y.abs() < REACH).then(|| glyph.physical((0.0, 0.0), 1.0))
+}
+
 /// Rasterizes one glyph into the atlas (shared by static text and editors).
 pub(crate) fn raster_glyph(
     key: cosmic_text::CacheKey,
@@ -2361,6 +2373,10 @@ impl TextSystem {
         let line = self.long(key).expect("a long line");
         let mut starts = Vec::with_capacity(line.chunks.len() + 1);
         starts.push((0, 0.0));
+        // Rows counted to half what a `u32` holds (backlog FZ15): a long
+        // line at a size past any screen breaks into more, and a row is
+        // read back as `row + 1` and summed with another.
+        const ROW_CAP: u32 = u32::MAX / 2;
         let (mut row, mut x) = (0u32, 0.0f32);
         let rows: Vec<Vec<RowStart>> = line
             .chunks
@@ -2372,7 +2388,7 @@ impl TextSystem {
                     Some(e) => {
                         let text = &line.content[c.start..c.end];
                         let (rows, end) = break_rows(&e.buffer, text, line.wrap, w, x);
-                        row += rows.len() as u32 - 1;
+                        row = row.saturating_add(rows.len() as u32 - 1).min(ROW_CAP);
                         // A tab the line places ends the chunk where the
                         // unwrapped line puts it, as a whole run's tab is
                         // measured before its rows are broken (RG76).
@@ -2384,7 +2400,7 @@ impl TextSystem {
                             .width
                             .unwrap_or_else(|| (c.end - c.start) as f32 * line.avg);
                         let added = (est / w).floor();
-                        row += added as u32;
+                        row = row.saturating_add(added as u32).min(ROW_CAP);
                         x = est - added * w;
                         Vec::new()
                     }
@@ -3464,7 +3480,9 @@ fn build_templates(
                     build_decorations(&run, &places.parts, &entry.span_deco, fs, &mut entry.deco);
                 }
                 for (i, glyph) in run.glyphs.iter().enumerate() {
-                    let physical = glyph.physical((0.0, 0.0), 1.0);
+                    let Some(physical) = physical(glyph) else {
+                        continue;
+                    };
                     let Some(slot) = raster_glyph(physical.cache_key, fs, raster, atlas) else {
                         continue;
                     };

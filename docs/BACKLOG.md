@@ -3487,6 +3487,22 @@ presets and the default unchanged — **built 2026-10-24**, the day it was
 filed, and in the archive. Which preset becomes the default is the
 user's to say once they have tried them.
 
+## From the alpha.67 fuzz half hour (2026-10-24)
+
+Half an hour of every target at once on the Mac's twelve cores at a low
+priority, from the alpha.66 hour's corpus, after one addition: `scenes`
+repeats its editor scene's text past `LONG_LINE_BYTES` when the size
+byte's top bits ask (`size >= 192`), so the long-line code C42 and C57
+reshaped — chunks, cuts from the back — is reached at last; 512 bytes
+of input never got there. `scenes` found FZ15 while replaying the
+corpus, before its first new input: six kept inputs, read at the new
+bit, overflowed a glyph's place or a long line's row count at a 1e6 px
+font — **built 2026-10-24**, the day it was filed, and in the archive.
+On the fixed build `scenes` replayed the whole corpus clean and ran
+40 600 inputs in 20 minutes. Nothing else crashed, hung or ran out of
+memory: `parsers` ran 4.0 million inputs, `values` 4.2 million, `path`
+543 000, `decode` 173 000, `encode` 1.7 million and `events` 99 000.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5339,3 +5355,7 @@ move.
 **From the user's wheel on Windows (2026-10-24)** — F193, filed and built the same day
 
 - `.` **F193** — [A wheel's notch goes as far and lands as soon as one constant says; an app cannot choose](backlog/closed-2026-09.md#-f193--a-wheels-notch-goes-as-far-and-lands-as-soon-as-one-constant-says-an-app-cannot-choose--done-2026-10-24) — done (2026-10-24) — `WheelFeel { line_px, response, kick }` with presets `gentle`, `standard` (the default, unchanged), `brisk`, `swift`; `set_wheel_feel` in four bindings (Lua a guest), `KUI_WHEEL` in the native runner
+
+**From the alpha.67 fuzz half hour (2026-10-24)** — FZ15, filed and built the same day
+
+- `.` **FZ15** — [A long line at a size past any screen overflows a glyph's place and its row count](backlog/closed-2026-09.md#-fz15--a-long-line-at-a-size-past-any-screen-overflows-a-glyphs-place-and-its-row-count--done-2026-10-24) — done (2026-10-24) — a glyph laid past ±2³¹ px is not drawn (`text::physical`, ahead of cosmic-text's subpixel bin), a long line's row count held at half a `u32`; found by `scenes` once its editor scene reached a long line

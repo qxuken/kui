@@ -21,6 +21,19 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.68 (unreleased)
+
+**What breaks.** Nothing: a fix to text at a size no screen shows.
+
+### Fixed
+
+- A line of text at a size far past any screen — a million pixels, a few
+  thousand characters — lays out and draws, where a build with overflow
+  checks panicked and a release build wrapped: a glyph laid past where
+  an `i32` reaches is not drawn (cosmic-text added one to the position
+  it had saturated), and a wrapped long line's row count is held at half
+  a `u32` (backlog FZ15, found by the `scenes` fuzz target).
+
 ## 0.1.0-alpha.67 (2026-10-24)
 
 **What breaks.**

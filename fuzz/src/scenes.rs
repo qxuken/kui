@@ -25,8 +25,8 @@ use kui_core::input::{
     EditKey, KeyCode, KeyLocation, KeyLocks, KeyMods, KeyPress, Mods, MouseButton,
 };
 use kui_core::{
-    ClipboardMarks, Core, DismissReason, EditOptions, InputEvent, Key, NodeSpec, QuadKind, Size,
-    TextStyle, Ui, Vec2, WindowId,
+    ClipboardMarks, Core, DismissReason, EditOptions, InputEvent, Key, LONG_LINE_BYTES, NodeSpec,
+    QuadKind, Size, TextStyle, Ui, Vec2, WindowId,
 };
 
 use crate::reuse::{self, Kept};
@@ -508,12 +508,23 @@ impl Driver<'_> {
 fn editor(ui: &mut Ui<'_>, e: &Editor, phase: u32) -> Key {
     ui.configure_root(NodeSpec::column().fill().pad(8.0).gap(6.0));
     let size = SIZES[e.size as usize % SIZES.len()];
+    // A long line from the size byte's top bits, above the password's:
+    // the text repeated past `LONG_LINE_BYTES`, so both views shape it in
+    // chunks and cut it from the back (backlog C42, C57). A byte under 192
+    // reads as it always did.
+    let long;
+    let initial = if e.size >= 192 && !e.initial.is_empty() {
+        long = e.initial.repeat(LONG_LINE_BYTES / e.initial.len() + 2);
+        &long
+    } else {
+        &e.initial
+    };
     // The same string as a paragraph: shaped, wrapped and selectable
     // without an editor's caret in the way, its first letter dropped
     // through up to five lines by the size byte's bits [`SIZES`] leaves
     // (backlog FZ8) — none for every input kept before they were read.
     let drop = u32::from(e.size / SIZES.len() as u8 % 6);
-    ui.text(&e.initial, TextStyle::new(size).initial_letter(drop));
+    ui.text(initial, TextStyle::new(size).initial_letter(drop));
     // A password field, drawn as bullets, from the bits above those
     // (backlog F167): a size byte under 48 reads as it always did.
     let secure = e.size / (SIZES.len() as u8 * 6) % 2 == 1;
@@ -530,7 +541,7 @@ fn editor(ui: &mut Ui<'_>, e: &Editor, phase: u32) -> Key {
     } else {
         NodeSpec::row().width(f32::from(e.width)).pad(4.0)
     };
-    let key = ui.text_edit("field", &e.initial, &opts, spec);
+    let key = ui.text_edit("field", initial, &opts, spec);
     if phase > 0 {
         ui.text_edit("second", "", &opts, NodeSpec::row().grow_width());
     }

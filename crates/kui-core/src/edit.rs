@@ -2337,7 +2337,9 @@ impl EditStore {
         if empty && let Some((_, _, b)) = &s.placeholder {
             for run in b.layout_runs() {
                 for glyph in run.glyphs.iter() {
-                    let physical = glyph.physical((0.0, 0.0), 1.0);
+                    let Some(physical) = crate::text::physical(glyph) else {
+                        continue;
+                    };
                     let Some(slot) =
                         crate::text::raster_glyph(physical.cache_key, fs, raster, atlas)
                     else {
@@ -2451,7 +2453,9 @@ impl EditStore {
                 }
                 // Glyphs.
                 for glyph in run.glyphs.iter() {
-                    let physical = glyph.physical((0.0, 0.0), 1.0);
+                    let Some(physical) = crate::text::physical(glyph) else {
+                        continue;
+                    };
                     let Some(slot) =
                         crate::text::raster_glyph(physical.cache_key, fs, raster, atlas)
                     else {

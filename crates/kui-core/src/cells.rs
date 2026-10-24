@@ -911,7 +911,7 @@ fn shape_one(
     buffer.shape_until_scroll(fs, false);
     let run = buffer.layout_runs().next()?;
     let glyph = run.glyphs.first()?;
-    let physical = glyph.physical((0.0, 0.0), 1.0);
+    let physical = crate::text::physical(glyph)?;
     Some(Shaped {
         key: physical.cache_key,
         font: glyph.font_id,

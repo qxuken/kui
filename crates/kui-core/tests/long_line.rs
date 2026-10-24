@@ -4,7 +4,8 @@
 //! it lands in; and the two text queries answer through the chunks.
 
 use kui_core::{
-    Color, Core, Key, LONG_LINE_BYTES, NodeSpec, QuadKind, Size, Span, TextStyle, TextWrap, Vec2,
+    Color, Core, EditOptions, Key, LONG_LINE_BYTES, NodeSpec, QuadKind, Size, Span, TextStyle,
+    TextWrap, Vec2,
 };
 
 const LH: f32 = 18.0;
@@ -959,5 +960,59 @@ fn a_click_on_a_placed_tab_answers_the_side_it_is_on() {
                 text.len()
             );
         }
+    }
+}
+
+/// The quads a frame drew are finite.
+fn assert_finite(core: &mut Core, what: &str) {
+    let (dl, _) = core.output();
+    for q in &dl.quads {
+        let r = q.rect;
+        assert!(
+            [r.x, r.y, r.w, r.h].iter().all(|v| v.is_finite()),
+            "{what}: a quad at {r:?}"
+        );
+    }
+}
+
+/// A row of tabs past `LONG_LINE_BYTES` at a size far past any screen
+/// (backlog FZ15): its glyphs lie past where an `i32` reaches, and
+/// cosmic-text's subpixel bin added one to a position it had saturated
+/// at `i32::MAX`. Such a glyph is past any surface and is not drawn.
+#[test]
+fn glyphs_past_where_an_i32_reaches_are_not_drawn() {
+    let tabs = "\t".repeat(LONG_LINE_BYTES + 2);
+    let mut core = Core::new();
+    for drop in [0, 1] {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.text(&tabs, TextStyle::new(1.0e6).initial_letter(drop));
+        ui.finish();
+        assert_finite(&mut core, &format!("a drop of {drop}"));
+    }
+}
+
+/// A long line at a size far past any screen wrapped at a pixel (backlog
+/// FZ15) breaks into more rows than a `u32` counts; the count was summed
+/// unchecked. It is held at half a `u32`, so a row read back as `row + 1`
+/// does not overflow either.
+#[test]
+fn a_long_line_breaking_into_more_rows_than_a_u32_counts_lays_out() {
+    let text = line(LONG_LINE_BYTES * 4);
+    let mut core = Core::new();
+    for wrap in [TextWrap::Word, TextWrap::Glyph] {
+        let style = TextStyle::new(1.0e6).wrap(wrap);
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.text_in_keyed("row", NodeSpec::column().width(1.0), &text, style);
+        let opts = EditOptions {
+            style,
+            multiline: true,
+            wrap: true,
+            ..Default::default()
+        };
+        ui.text_edit("field", &text, &opts, NodeSpec::row().width(1.0));
+        ui.finish();
+        assert_finite(&mut core, &format!("{wrap:?}"));
     }
 }
