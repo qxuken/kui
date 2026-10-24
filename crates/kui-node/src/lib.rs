@@ -2262,6 +2262,11 @@ impl KuiWindow {
                 )));
             }
         };
+        // The wheel feel, the launcher's `wheel_feel`, so `KUI_WHEEL` in
+        // the environment still wins: a user's override over the app's.
+        if let Some(v) = o.get("wheelFeel").filter(|v| !v.is_null()) {
+            launcher = launcher.wheel_feel(wheel_feel_arg(v, kui_core::WheelFeel::STANDARD)?);
+        }
         // The glyph antialiasing, the launcher's `text_aa`; `KUI_TEXT_AA`
         // in the environment still wins, for an A/B by hand.
         launcher = match o.get("textAa") {
@@ -3416,6 +3421,32 @@ macro_rules! core_methods {
             #[napi]
             pub fn smooth_wheel(&mut self) -> bool {
                 self.$core().smooth_wheel()
+            }
+
+            /// How a wheel's notch scrolls: a preset's name, slow to
+            /// fast `'gentle'`, `'standard'` (the default), `'brisk'` (a
+            /// touch faster), `'swift'`; or `{ linePx, response, kick }`,
+            /// any left out kept as they are — how far a line goes in
+            /// logical px (40), the glide's response in seconds (0.30)
+            /// and its kick, 0 to 1 (0.6). Clamped into what the glide
+            /// can use. Off, a notch still jumps its `linePx`.
+            /// `runWindowed` takes it for the whole app as `wheelFeel`.
+            #[napi(ts_args_type = "feel: WheelPreset | Partial<WheelFeel>")]
+            pub fn set_wheel_feel(&mut self, feel: Json) -> Result<()> {
+                let feel = wheel_feel_arg(&feel, self.$core().wheel_feel())?;
+                self.$core().set_wheel_feel(feel);
+                Ok(())
+            }
+
+            /// That feel, read back as clamped.
+            #[napi(ts_return_type = "WheelFeel")]
+            pub fn wheel_feel(&mut self) -> Json {
+                let f = self.$core().wheel_feel();
+                serde_json::json!({
+                    "linePx": f.line_px,
+                    "response": f.response,
+                    "kick": f.kick,
+                })
             }
 
             /// Draws a faded subtree as one picture, faded once (ADR
@@ -4959,6 +4990,38 @@ fn access_request(key: Key, action: &str, arg: Option<Json>) -> Result<kui_core:
 /// `{nodes: [...], focus, hash}`; see `AccessTree` in index.d.ts.
 fn access_tree_json(tree: &kui_core::AccessTree) -> Json {
     readback(&tree.to_value(HEX))
+}
+
+/// `setWheelFeel`'s argument: a preset's name, or an object whose
+/// numbers replace `from`'s.
+fn wheel_feel_arg(v: &Json, from: kui_core::WheelFeel) -> Result<kui_core::WheelFeel> {
+    use kui_core::WheelFeel;
+    if let Some(name) = v.as_str() {
+        let names: Vec<_> = WheelFeel::PRESETS.iter().map(|(n, _)| *n).collect();
+        return WheelFeel::preset(name).ok_or_else(|| {
+            err(format!(
+                "setWheelFeel(): unknown preset {name:?}, not one of {}",
+                names.join(", ")
+            ))
+        });
+    }
+    let o = v
+        .as_object()
+        .ok_or_else(|| err("setWheelFeel() takes a preset's name or an object"))?;
+    let mut feel = from;
+    for (k, n) in o {
+        let n = n
+            .as_f64()
+            .ok_or_else(|| err(format!("setWheelFeel(): {k} must be a number")))?
+            as f32;
+        match k.as_str() {
+            "linePx" => feel.line_px = n,
+            "response" => feel.response = n,
+            "kick" => feel.kick = n,
+            _ => return Err(err(format!("setWheelFeel(): unknown key {k:?}"))),
+        }
+    }
+    Ok(feel)
 }
 
 fn warnings_json(warnings: Vec<kui_core::Warning>) -> Json {

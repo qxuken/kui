@@ -218,7 +218,7 @@ pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
 pub use runtime::{Content, Core, Extension, Owed, SlotFill};
-pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry};
+pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
 pub use session::{Session, SharedAudio, SharedResources};
 pub use slot::{

@@ -40,6 +40,25 @@ while a button inside it is hovered — keeps it with the child's
 `hoverGroup` are unchanged: a press is still on the node it began on, and
 a group still lights its members together.
 
+### Added
+
+- **A wheel feel to choose** (backlog F193, [ADR 0050's
+  amendment](docs/adr/0050-a-wheel-notch-glides.md#amended-2026-10-24-a-feel-the-app-chooses)):
+  how far a mouse wheel's notch goes and how quickly its glide lands,
+  for the whole app. Presets by name, slow to fast: `gentle`,
+  `standard` (the default, unchanged: 40 px a notch, landed by ~283
+  ms), `brisk` (a touch faster: 48 px, nine tenths there by 150 ms) and
+  `swift` (64 px); or the numbers, `WheelFeel { line_px, response, kick
+  }`. `Core::set_wheel_feel` / `Core::wheel_feel` and
+  `WheelFeel::preset`; C `kui_set_wheel_feel`, `kui_set_wheel_preset`,
+  `kui_wheel_feel`; Odin `set_wheel_feel`, `set_wheel_preset`,
+  `wheel_feel`; Node `setWheelFeel('brisk' | { linePx, response, kick
+  })` and `wheelFeel()`, and `wheelFeel` to `runWindowed` and
+  `createApp`; the launcher's `wheel_feel`. `KUI_WHEEL=brisk` (or
+  `KUI_WHEEL=56,0.25,0.6`) tries one in any native window without a
+  rebuild, and overrides the feel the app opens with, in every binding;
+  the `wheel_feel` example spells the line to copy.
+
 ### Fixed
 
 - On macOS a Node window scrolls at the display's rate again under a

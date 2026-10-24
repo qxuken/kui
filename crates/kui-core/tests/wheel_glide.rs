@@ -3,7 +3,9 @@
 //! drawn place chasing it with the speed it has, where pixels — a
 //! trackpad's — and a fraction of a line are applied as they come.
 
-use kui_core::{Core, InputEvent, Key, MotionPref, NodeSpec, Size, SystemEnv, UiEvent, Vec2};
+use kui_core::{
+    Core, InputEvent, Key, MotionPref, NodeSpec, Size, SystemEnv, UiEvent, Vec2, WheelFeel,
+};
 
 const VIEW: Size = Size { w: 300.0, h: 200.0 };
 const FRAME: f64 = 1.0 / 60.0;
@@ -325,4 +327,88 @@ fn a_handler_hears_the_pixels() {
         .and_then(|e| e.data()?.get_float("dy"))
         .unwrap();
     assert_eq!(dy, -40.0);
+}
+
+/// The presets go by name, any case, slow to fast; the standard one is
+/// the default.
+#[test]
+fn presets_go_by_name() {
+    assert_eq!(WheelFeel::default(), WheelFeel::STANDARD);
+    assert_eq!(Core::new().wheel_feel(), WheelFeel::STANDARD);
+    assert_eq!(WheelFeel::preset("brisk"), Some(WheelFeel::BRISK));
+    assert_eq!(WheelFeel::preset(" Swift "), Some(WheelFeel::SWIFT));
+    assert_eq!(WheelFeel::preset("turbo"), None);
+    let names: Vec<_> = WheelFeel::PRESETS.iter().map(|(n, _)| *n).collect();
+    assert_eq!(names, ["gentle", "standard", "brisk", "swift"]);
+}
+
+/// A feel's line is how far a notch goes: glided, jumped, and what a
+/// handler hears.
+#[test]
+fn a_notch_goes_the_feels_line() {
+    let (mut core, key) = setup();
+    let mut t = 0.0;
+    core.set_wheel_feel(WheelFeel::BRISK);
+    wheel(&mut core, 0.0, -1.0, true);
+    assert_eq!(core.scroll_offset(key).y, 48.0, "the target");
+    assert_eq!(*settle(&mut core, &mut t, key).last().unwrap(), 48.0);
+    core.set_smooth_wheel(false);
+    wheel(&mut core, 0.0, -1.0, true);
+    assert_eq!(tick(&mut core, &mut t, key), 96.0, "a jump of the same");
+    wheel(&mut core, 0.0, -0.5, true);
+    assert_eq!(tick(&mut core, &mut t, key), 120.0, "half a line is half");
+}
+
+/// Every preset lands a notch exactly, faster ones sooner off the mark,
+/// and each keeps a slow hand's notches 150 ms apart running into each
+/// other, as the standard one does
+/// (`notches_turned_slowly_run_into_each_other`).
+#[test]
+fn every_preset_glides_and_keeps_a_slow_hand_moving() {
+    let mut last_first = 0.0;
+    for (name, feel) in WheelFeel::PRESETS {
+        let (mut core, key) = setup();
+        core.set_wheel_feel(feel);
+        let mut t = 0.0;
+        let mut seen = vec![0.0];
+        wheel(&mut core, 0.0, -1.0, true);
+        for _ in 0..9 {
+            seen.push(tick(&mut core, &mut t, key));
+        }
+        let first = seen[1] / feel.line_px;
+        assert!(
+            first > last_first,
+            "{name} starts faster than the one before: {first}"
+        );
+        last_first = first;
+        let slowest = seen[9] - seen[8];
+        assert!(slowest >= 1.0, "{name} still moving at 150 ms: {seen:?}");
+        wheel(&mut core, 0.0, -1.0, false);
+        let seen = settle(&mut core, &mut t, key);
+        assert_eq!(
+            *seen.last().unwrap(),
+            2.0 * feel.line_px,
+            "{name}: {seen:?}"
+        );
+    }
+}
+
+/// Numbers the glide cannot use are brought into range, and one that is
+/// not a number takes the standard one.
+#[test]
+fn a_feel_is_clamped() {
+    let mut core = Core::new();
+    core.set_wheel_feel(WheelFeel {
+        line_px: f32::NAN,
+        response: 0.0,
+        kick: 3.0,
+    });
+    assert_eq!(
+        core.wheel_feel(),
+        WheelFeel {
+            line_px: 40.0,
+            response: 0.05,
+            kick: 1.0,
+        }
+    );
 }

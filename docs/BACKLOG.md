@@ -317,7 +317,10 @@ alpha.66 tag, and is in the archive, as is F191 beside it — the focus
 ring of a row filling a clipped card cut off where the card clips —
 built the same day; and F192, from the transition example — a `slide`
 node trailing its container's scroll by its own transition — was built
-the day it was filed, after the alpha.66 tag, and is in the archive.
+the day it was filed, after the alpha.66 tag, and is in the archive;
+and F193, from the user's wheel on Windows — a glide that could be a
+touch faster, with presets to choose from — was built the day it was
+filed, after the alpha.66 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3467,6 +3470,15 @@ it there; the racers trailed every wheel notch by 900 ms. One entry,
 F192 — a `slide` rides its container's scroll — **built 2026-10-24**,
 the day it was filed, and in the archive.
 
+## From the user's wheel on Windows (2026-10-24)
+
+Trying the retuned glide, the user found the scroll could be a touch
+faster, and asked for settings and presets to choose from rather than
+another retune. One entry, F193 — a wheel feel, `WheelFeel`, with four
+presets and the default unchanged — **built 2026-10-24**, the day it was
+filed, and in the archive. Which preset becomes the default is the
+user's to say once they have tried them.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5315,3 +5327,7 @@ move.
 **From kawoosh's screenshot commands (2026-10-24)** — F189, filed and built the same day
 
 - `.` **F189** — [A recording's `frames` is documented in Rust as what the file holds; it is the frames drawn](backlog/closed-2026-09.md#-f189--a-recordings-frames-is-documented-in-rust-as-what-the-file-holds-it-is-the-frames-drawn--done-2026-10-24) — done (2026-10-24) — `Captured`'s and `Core::record_to`'s docs say the frames drawn, as ADR 0055 §5, the C header, Odin, Node and `props.md` do, and that the file can hold fewer or more; found by kawoosh's `:screencast`
+
+**From the user's wheel on Windows (2026-10-24)** — F193, filed and built the same day
+
+- `.` **F193** — [A wheel's notch goes as far and lands as soon as one constant says; an app cannot choose](backlog/closed-2026-09.md#-f193--a-wheels-notch-goes-as-far-and-lands-as-soon-as-one-constant-says-an-app-cannot-choose--done-2026-10-24) — done (2026-10-24) — `WheelFeel { line_px, response, kick }` with presets `gentle`, `standard` (the default, unchanged), `brisk`, `swift`; `set_wheel_feel` in four bindings (Lua a guest), `KUI_WHEEL` in the native runner

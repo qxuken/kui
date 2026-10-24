@@ -8,7 +8,9 @@ date: 2026-10-23
 > **Accepted and built 2026-10-23; backlog F182.** What the building
 > changed is at the end, under [*What the building
 > changed*](#what-the-building-changed), and the glide was retuned on
-> 2026-10-24 ([amendment](#amended-2026-10-24-a-slower-hands-notches-run-into-each-other)).
+> 2026-10-24 ([amendment](#amended-2026-10-24-a-slower-hands-notches-run-into-each-other)),
+> then made a setting with presets the same day
+> ([amendment](#amended-2026-10-24-a-feel-the-app-chooses), backlog F193).
 > Raised by the user from
 > Windows: a mouse wheel there scrolls in hard 40 px steps, where a
 > macOS trackpad scrolls smoothly. The steps are not Windows' alone. A
@@ -298,3 +300,67 @@ off at full speed and halted again.
   the 150 ms case: the glide is still moving at least a pixel a frame
   when the second notch comes, and that notch's first frame is under
   eight times the last one before it.
+
+## Amended 2026-10-24: a feel the app chooses
+
+Raised by the user after trying the retuned glide on Windows: it could
+be a touch faster, and they wanted settings and presets to choose from
+rather than another retune (backlog F193). Decision 3's "a constant, not
+a prop" and Not done here's "a notch stays 40 px" give way to one
+setting, the app's like the switch.
+
+- **`WheelFeel { line_px, response, kick }`**, set by
+  `Core::set_wheel_feel` and read back by `Core::wheel_feel`: how far a
+  line goes (the 40 px that was `SCROLL_LINE_PX`), the glide's response
+  (`GLIDE_RESPONSE`) and its kick (`GLIDE_KICK`). The numbers are
+  clamped (a line 1–1000 px, a response 0.05–2 s, a kick 0–1; not a
+  number takes the standard one). The line applies whether the notch
+  glides or jumps, to a fraction of a line, and to the pixels an
+  `on_scroll` handler hears. `Core::lines_to_px` stays the standard 40,
+  for a host converting on its own.
+- **Four presets**, by name, slow to fast. `standard` is the default
+  and is the amendment above unchanged, so nothing an app does moves
+  under it.
+
+  | preset     | line  | response | kick | first frame | nine tenths | landed |
+  |------------|-------|----------|------|-------------|-------------|--------|
+  | `gentle`   | 40 px | 0.34 s   | 0.55 | 6.5 px      | 183 ms      | 333 ms |
+  | `standard` | 40 px | 0.30 s   | 0.6  | 7.8 px      | 167 ms      | 283 ms |
+  | `brisk`    | 48 px | 0.27 s   | 0.6  | 10.2 px     | 150 ms      | 267 ms |
+  | `swift`    | 64 px | 0.24 s   | 0.62 | 15.5 px     | 133 ms      | 267 ms |
+
+  Simulated at 60 Hz as the amendment above was. Speed comes mostly from
+  the line, not the spring: a shorter response alone stops each notch
+  sooner and brings back the slow hand's lurch. Every preset is still
+  moving 1.3–1.6 px a frame when a second notch comes 150 ms later.
+  `brisk` is the "touch faster" asked for. A Windows browser goes
+  further, about 100 px a notch at the system's three lines; reading
+  that setting is still not done here.
+- **Doors.** C `kui_set_wheel_feel(ctx, line_px, response, kick)`,
+  `kui_wheel_feel(ctx, &line_px, &response, &kick)` and
+  `kui_set_wheel_preset(ctx, name)` (new functions, no struct moves, no
+  ABI bump); Odin `set_wheel_feel`, `wheel_feel`, `set_wheel_preset`;
+  Node `setWheelFeel(name | { linePx, response, kick })`, partial
+  objects keeping the rest, and `wheelFeel()`; `wheelFeel` to
+  `runWindowed` and `createApp`. Lua `No(GUEST)`, as for the switch. The
+  launcher's `wheel_feel(feel)` is sugar for `setup_core`, and a window
+  opened after the main one copies the main core's feel.
+- **`KUI_WHEEL`** in the environment, a preset's name or
+  `line_px,response,kick` (trailing numbers may be left off), sets the
+  main core's feel when the native runner opens it, over the launcher's,
+  as `KUI_FRAME_LATENCY` is: to compare feels in an app without
+  rebuilding it, and for a user to override the feel an app ships
+  with. Every way an app sets its feel before the window opens is
+  under it: the launcher's `wheel_feel` and `setup_core`, a core handed
+  to `Launcher::core` (so C's `kui_set_wheel_feel` before `kui_run`),
+  and Node's `wheelFeel`, which goes to the window as a window option
+  as `textAa` does. Only a call while the app runs (a settings screen's
+  `set_wheel_feel`) changes it after.
+
+Tests: `wheel_glide.rs` (`presets_go_by_name`,
+`a_notch_goes_the_feels_line`,
+`every_preset_glides_and_keeps_a_slow_hand_moving`,
+`a_feel_is_clamped`), kui-ffi's `wheel_headless`, the C surface round,
+Node's wheel test, and kui-native's `kui_wheel_reads_a_preset_or_numbers`.
+Not yet felt by hand: which preset the user keeps, and whether
+`standard` should stay the default, is theirs to say after trying them.

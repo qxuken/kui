@@ -1248,6 +1248,30 @@ pub const DOORS: &[Door] = &[
         doc: "That switch, read back.",
     },
     Door {
+        rust: "Core::set_wheel_feel",
+        c: Is("kui_set_wheel_feel"),
+        odin: Is("set_wheel_feel"),
+        node: Is("setWheelFeel"),
+        lua: No(GUEST),
+        doc: "How a wheel's notch scrolls (`WheelFeel`): how far a line goes (40 px by default), the glide's response (0.30 s) and its kick (0.6). Off, a notch still jumps its line.",
+    },
+    Door {
+        rust: "WheelFeel::preset",
+        c: As("`kui_set_wheel_preset`, which sets it"),
+        odin: As("`set_wheel_preset`, which sets it"),
+        node: As("a name to `setWheelFeel`"),
+        lua: No(GUEST),
+        doc: "A feel by name, slow to fast: `gentle`, `standard` (the default), `brisk` (a touch faster), `swift`.",
+    },
+    Door {
+        rust: "Core::wheel_feel",
+        c: Is("kui_wheel_feel"),
+        odin: Is("wheel_feel"),
+        node: Is("wheelFeel"),
+        lua: No(GUEST),
+        doc: "That feel, read back as clamped.",
+    },
+    Door {
         rust: "Core::take_warnings",
         c: Is("kui_take_warnings"),
         odin: Is("take_warnings"),
@@ -1812,7 +1836,8 @@ mod tests {
 
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
     /// `Ui::` in `ui.rs`, `Core::` under `runtime/`, `SharedResources::`
-    /// in `session.rs`, `Tokens::` in `tokens.rs`, `Launcher::` in the
+    /// in `session.rs`, `Tokens::` in `tokens.rs`, `WheelFeel::` in
+    /// `scroll.rs`, `Launcher::` in the
     /// `kui-native` crate, `kui_native::` and `Animation::` in its
     /// `decode.rs`, and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
@@ -1834,6 +1859,7 @@ mod tests {
         let ui = read(root.join("ui.rs"));
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
+        let scroll = read(root.join("scroll.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -1851,6 +1877,7 @@ mod tests {
                 "Core" => &runtime,
                 "SharedResources" => &session,
                 "Tokens" => &tokens,
+                "WheelFeel" => &scroll,
                 "Launcher" => &launcher,
                 "kui_native" | "Animation" | "AnimationEncoder" | "Captures" => &decode,
                 "App" => app_trait,

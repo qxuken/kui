@@ -2321,7 +2321,8 @@ void kui_input_scroll(KuiCtx *ctx, float dx, float dy); /* +y = scroll up */
  * begins one after a 200 ms pause). */
 void kui_input_scroll_gesture(KuiCtx *ctx, float dx, float dy, bool begins);
 /* A wheel's notches, in lines (+y = scroll up), as part of a scroll
- * gesture, latched as kui_input_scroll_gesture is at 40 px a line. On a
+ * gesture, latched as kui_input_scroll_gesture is at kui_wheel_feel's
+ * line_px a line (40 by default). On a
  * scroll container a whole notch glides toward a target further notches
  * move, rather than jumping (ADR 0050), unless kui_set_smooth_wheel turned
  * that off or the system asks for reduced motion; a fraction of a line is
@@ -4066,6 +4067,17 @@ void kui_set_diagnostics(KuiCtx *ctx, bool on);
  * motion jumps either way. */
 void kui_set_smooth_wheel(KuiCtx *ctx, bool on);
 bool kui_smooth_wheel(KuiCtx *ctx);
+/* How a wheel's notch scrolls: how far a line goes (logical px, 40 by
+ * default), the glide's response (seconds, 0.30) and its kick (0..1, 0.6).
+ * Clamped into what the glide can use; a number that is not finite takes
+ * the standard one. Off, a notch still jumps its line_px. */
+void kui_set_wheel_feel(KuiCtx *ctx, float line_px, float response, float kick);
+/* Sets it to a preset by name, slow to fast: "gentle", "standard" (the
+ * default), "brisk" (a touch faster), "swift"; any case. False, and nothing
+ * changed, for any other name. */
+bool kui_set_wheel_preset(KuiCtx *ctx, KuiStr name);
+/* The feel, read back as clamped; any out pointer may be NULL. */
+void kui_wheel_feel(KuiCtx *ctx, float *line_px, float *response, float *kick);
 /* -- Devtools --------------- */
 /* The core's devtools panel: the event stream, the runtime's facts and the
  * tree, drawn by the core beside the host's tree in the main window and

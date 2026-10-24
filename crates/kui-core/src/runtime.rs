@@ -36,7 +36,7 @@ use crate::keyframes;
 use crate::layout::{self, TextMeasure};
 use crate::line::Stroke;
 use crate::resources::{FontId, Resources};
-use crate::scroll::ScrollStore;
+use crate::scroll::{ScrollStore, WheelFeel};
 use crate::session::{
     MAIN_WINDOW_NAME, Session, SharedAudio, SharedResources, WindowChange, WindowDecl,
     WindowMessages,
@@ -78,8 +78,8 @@ mod scrolling;
 mod select_api;
 mod windows;
 
-/// Wheel line-delta to logical px.
-const SCROLL_LINE_PX: f32 = 40.0;
+/// Wheel line-delta to logical px, at the standard feel.
+const SCROLL_LINE_PX: f32 = WheelFeel::STANDARD.line_px;
 
 /// What a `Core::focus_region` call asked to enter, held until the frame
 /// finishes: the main ring,
@@ -1611,9 +1611,28 @@ impl Core {
         self.diag.enabled
     }
 
-    /// Wheel line-deltas (e.g. winit's LineDelta) to logical px.
+    /// Wheel line-deltas (e.g. winit's LineDelta) to logical px, at the
+    /// standard feel's 40 px a line. A core's own feel may differ:
+    /// [`Core::wheel_feel`]'s `line_px` is what its notches go.
     pub fn lines_to_px(lines: f32) -> f32 {
         lines * SCROLL_LINE_PX
+    }
+
+    /// How a wheel's notch scrolls (ADR 0050): how far a line goes and
+    /// how its glide eases there. [`WheelFeel::STANDARD`] by default;
+    /// [`WheelFeel::preset`] names the others. The numbers are clamped
+    /// into what the glide can use ([`WheelFeel::clamped`]). The app's
+    /// input feel rather than a view's, so the native launcher's
+    /// `wheel_feel` sets it on every window. Whether a notch glides at
+    /// all is [`Core::set_smooth_wheel`]'s; off, a notch still jumps its
+    /// `line_px`.
+    pub fn set_wheel_feel(&mut self, feel: WheelFeel) {
+        self.scroll.set_wheel_feel(feel);
+    }
+
+    /// That feel, read back as clamped.
+    pub fn wheel_feel(&self) -> WheelFeel {
+        self.scroll.wheel_feel()
     }
 
     /// Whether a wheel's notch glides on a scroll container

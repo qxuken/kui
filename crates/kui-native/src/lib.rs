@@ -557,6 +557,17 @@ impl Launcher {
         self.setup_core(move |core| core.set_smooth_wheel(on))
     }
 
+    /// How a mouse wheel's notch scrolls: how far a line goes and how its
+    /// glide eases there ([`kui_core::WheelFeel`], `WheelFeel::BRISK` and
+    /// the other presets), in every window the app opens. `KUI_WHEEL` in
+    /// the environment, a preset's name or `line_px,response,kick`,
+    /// overrides it for comparing without a rebuild. Sugar for
+    /// `setup_core(|c| c.set_wheel_feel(feel))`; the runner copies the
+    /// main window's feel to every other.
+    pub fn wheel_feel(self, feel: kui_core::WheelFeel) -> Self {
+        self.setup_core(move |core| core.set_wheel_feel(feel))
+    }
+
     /// Respells the chord that moves the keyboard into the devtools panel
     /// and back, and brings a hidden panel back, from its default
     /// `Ctrl+Shift+I`: `Accel::parse("f12")`, `"mod+shift+d"`, any spelling
@@ -997,6 +1008,11 @@ impl Launcher {
         core.devtools_from_env();
         for f in std::mem::take(&mut self.setup_core) {
             f(&mut core);
+        }
+        // Over what the launcher was told, as `KUI_FRAME_LATENCY` is: it
+        // is there to try another feel in an app that set its own.
+        if let Some(feel) = wheel_feel_from_env() {
+            core.set_wheel_feel(feel);
         }
         (diagnostics, session, core)
     }
@@ -1777,6 +1793,40 @@ fn wanted_frame_latency(launcher: u32) -> u32 {
         .and_then(|v| v.trim().parse::<u32>().ok())
         .filter(|n| *n >= 1)
         .unwrap_or(launcher)
+}
+
+/// The wheel feel `KUI_WHEEL` asks for, for comparing without a rebuild:
+/// a preset's name (`brisk`), or `line_px,response,kick` with any
+/// trailing number left at the standard feel's (`56` or `56,0.25`).
+/// `None` when it is unset or reads as neither.
+fn wheel_feel_from_env() -> Option<kui_core::WheelFeel> {
+    parse_wheel_feel(&std::env::var("KUI_WHEEL").ok()?)
+}
+
+fn parse_wheel_feel(s: &str) -> Option<kui_core::WheelFeel> {
+    use kui_core::WheelFeel;
+    if let Some(feel) = WheelFeel::preset(s) {
+        return Some(feel);
+    }
+    let nums = s
+        .split(',')
+        .map(|n| n.trim().parse::<f32>().ok())
+        .collect::<Option<Vec<_>>>()?;
+    let s = WheelFeel::STANDARD;
+    match nums[..] {
+        [l] => Some(WheelFeel { line_px: l, ..s }),
+        [l, r] => Some(WheelFeel {
+            line_px: l,
+            response: r,
+            ..s
+        }),
+        [l, r, k] => Some(WheelFeel {
+            line_px: l,
+            response: r,
+            kick: k,
+        }),
+        _ => None,
+    }
 }
 
 /// The text antialiasing asked for: `KUI_TEXT_AA` if set, for quick A/B
@@ -3821,6 +3871,39 @@ fn lose_device_at() -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `KUI_WHEEL` reads a preset's name or up to three numbers, the rest
+    /// at the standard feel's; anything else is nothing.
+    #[test]
+    fn kui_wheel_reads_a_preset_or_numbers() {
+        use kui_core::WheelFeel;
+        let s = WheelFeel::STANDARD;
+        assert_eq!(parse_wheel_feel("brisk"), Some(WheelFeel::BRISK));
+        assert_eq!(parse_wheel_feel("SWIFT"), Some(WheelFeel::SWIFT));
+        assert_eq!(
+            parse_wheel_feel("56"),
+            Some(WheelFeel { line_px: 56.0, ..s })
+        );
+        assert_eq!(
+            parse_wheel_feel("56, 0.25"),
+            Some(WheelFeel {
+                line_px: 56.0,
+                response: 0.25,
+                ..s
+            })
+        );
+        assert_eq!(
+            parse_wheel_feel("56,0.25,0.7"),
+            Some(WheelFeel {
+                line_px: 56.0,
+                response: 0.25,
+                kick: 0.7,
+            })
+        );
+        for bad in ["", "turbo", "1,2,3,4", "56,fast"] {
+            assert_eq!(parse_wheel_feel(bad), None, "{bad:?}");
+        }
+    }
 
     struct Empty;
     impl App for Empty {
