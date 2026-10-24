@@ -43,7 +43,7 @@ serde_json = "1"
 # binary in the workspace lands in one flat target/debug/examples, so a
 # `panel` here would collide with kui-ffi's.
 [package.metadata.kui]
-headless = ["lua_panel"]
+headless = ["lua_panel", "lua_kit_spike"]
 
 [[example]]
 name = "bench"
@@ -57,6 +57,15 @@ path = "../../examples/lua/tools/types.rs"
 [[example]]
 name = "lua_panel"
 path = "../../examples/lua/features/slots/panel.rs"
+
+# Kit's M0 spike (addons/kit): its Teal components in a Rust host.
+[[example]]
+name = "lua_kit_spike"
+path = "../../examples/lua/features/kit/spike.rs"
+
+[[bench]]
+name = "kit"
+harness = false
 
 [[bench]]
 name = "sizes"

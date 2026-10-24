@@ -3579,6 +3579,69 @@ form needs. **Waits on** the design system's v1, its trace waterfall,
 and the core changes it rests on (a `.lua` extension in every host, a
 slot that carries the host's children, cheap instances).
 
+## From Kit's M0 spike (2026-10-25)
+
+Kit's M0 spike ([`addons/kit`](../addons/kit),
+[`M0.md`](../addons/kit/M0.md)) put twenty to two hundred small Lua
+components on a Rust host, one slot each, and measured what one more
+costs against kui's own button from Rust (`cargo bench -p kui-lua --bench
+kit`, the `buttons` rows at 0, 20 and 200; M3 Pro, AC power, medians, the
+slope between 0 and 200). A native button is 0.70 µs. A replayed slot
+whose host keeps its params is 1.03 µs, and 1.25 µs when the host builds
+them every frame. A fresh slot is 29.9 µs. Profiling 200 replayed slots
+(`--bench replay_only`) put the replay gap in core, not in Lua. Four
+entries, all for Kit's M2: what ADR B's cheap instances need besides a
+shared `env`. They are filed, not built. C59 to C61 are held for the
+draft ADRs in Kit's plan (a `.lua` extension in every host, components an
+extension provides, the runner) until those are accepted.
+
+### `.` C62 — Declaring a slot scans every slot declared so far, so n slots cost O(n²) a frame
+
+**Found.** `Core::begin_slot` (`runtime/fills.rs`) checks for
+`duplicate-slot` with `slot_labels.find(name)`, and `LabelIndex::find`
+walks every entry declared this frame comparing strings. It's the single
+hottest function in a frame of 200 replayed slots, with `memcmp` beside
+it, and the per-slot cost rises with the count: 0.86 µs a button from 0
+to 20, 1.05 µs from 20 to 200.
+
+**Do.** Keep the frame's slot names in a hash set beside the label index,
+cleared with it, so the check is one lookup. `slot_declared` reads the
+same set.
+
+### `.` C63 — A replayed fill is kept again every frame, and its specs are cloned to push
+
+**Found.** In the same profile, `Kept::insert` and `NodeSpec::clone` run
+once per replayed fill a frame: a replay takes the kept fill out
+(`take_replayable`), pushes clones of its journaled specs through the
+doors (`replay_op`), and inserts it back under its key.
+
+**Do.** Leave a replayed fill where it is and push its ops by reference;
+re-key it only when the slot's key moved. The journal stays the record of
+what the doors saw (ADR 0045, decision 3).
+
+### `.` C64 — Every replay compares the whole palette by value
+
+**Found.** `Theme::eq` runs once per replayed fill: the palette and the
+metrics are among the facts a kept fill read, compared by value (backlog
+F155), so 200 replayed slots compare the same `Theme` 200 times.
+
+**Do.** Give the resolved palette and metrics a generation number that
+moves when either changes. A replay then compares one integer, and the
+by-value comparison happens once a frame.
+
+### `.` C65 — A Lua fill builds its whole `env` before it draws: about 22 µs
+
+**Found.** A Kit fill that draws nothing costs about 22 µs (the `buttons`
+rows at 0: an empty toolbar against no toolbar). `LuaExtension::view`
+builds a fresh `env` every call, with about 48 scoped closures and the
+theme, metrics and token tables (`crates/kui-lua/src/lib.rs`), so a
+fresh slot is 43× a native button.
+
+**Do.** Build `env` once per extension per frame and share it across that
+extension's fills, with the per-fill facts (`slot`) passed beside it. This
+is ADR B's decision 4 in Kit's plan; the entry holds the measurement and
+the target: a fresh fill's fixed cost under 2 µs.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After

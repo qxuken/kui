@@ -271,6 +271,37 @@ for lua-language-server, and a new runner beside the window's.
   by hand and the `request_frame` to keep it going — for one
   `edge_scroll` call and placing the drag's end under the pointer after.
 
+- **Kit's M0 spike** ([`addons/kit`](addons/kit), findings in
+  [`M0.md`](addons/kit/M0.md); backlog C62–C65). Kit is a UI kit for kui,
+  written once in Teal and loaded as a Lua extension. M0 measures it before
+  the core changes it depends on are drafted as ADRs. It adds:
+    - a toolbar of buttons, a virtual table and a trace waterfall, written
+      in Teal against `packages/lua/kui.d.tl` and painted by the Ledger
+      skin from `$kit…` tokens with light and dark halves;
+    - `addons/kit/build.lua`, which type-checks and compiles them with the
+      Teal compiler kui-lua vendors (`--check` fails on stale Lua);
+    - a Rust host, `lua_kit_spike`, whose `--headless` check drives a
+      button, a row and a bar in both appearances. Each reaches the app as
+      its own `derive(Message)` value: the host passes its messages in the
+      params, and Kit replies with a copy that has the event's fields
+      merged in.
+  
+  Nothing in core changed. The waterfall's density levels bound its cost
+  by the window's width, not the bar count. `cargo bench -p kui-lua
+  --bench kit` holds the budgets, all met in Lua:
+    - a table of 100,000 rows scrolling at 1.26 ms a frame;
+    - 18,000 bars panning at 1.15 ms;
+    - each button placement's slope at 0, 20 and 200, against kui's own
+      button from Rust: 0.70 µs native, 1.03 µs as a replayed slot, 5.95 µs
+      built in Lua, 29.9 µs as a fresh slot.
+  
+  The four core costs that profiling a replay found are filed for Kit's
+  M2 as backlog C62–C65:
+    - `begin_slot`'s duplicate check is O(n²) a frame;
+    - a replay re-keeps its fill and clones its specs;
+    - a replay compares the whole `Theme`;
+    - a Lua fill's `env` costs 22 µs.
+
 ### Changed
 
 - **The devtools light the app as a browser's do** (backlog F197). The
