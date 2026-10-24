@@ -23,8 +23,9 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.68 (unreleased)
 
-**What breaks.** Nothing: a fix to text at a size no screen shows, and
-a declaration file for Teal beside the one for lua-language-server.
+**What breaks.** Nothing: a fix to text at a size no screen shows, a
+declaration file for Teal beside the one for lua-language-server, and a
+new runner beside the window's.
 
 ### Added
 
@@ -58,6 +59,29 @@ a declaration file for Teal beside the one for lua-language-server.
 
   *What you can delete:* a hand-written `.d.tl` for the prelude, and a
   `kui.Env` record a Teal project kept in step with the crate docs.
+
+- **An app runs with no window** (backlog C58, [ADR
+  0057](docs/adr/0057-an-app-runs-with-no-window.md)):
+  `kui_native::app("x").open_headless(app, w, h, scale)` is a
+  `HeadlessRunner` — the same `App`, on the real clock, its frames paced
+  by its wakes and drawn for nobody, and kept as files when it asks
+  (`capture_to`, `record_to`). `App::setup` gets a `Waker` that wakes it,
+  so the app's threads work unchanged. A host turns it (`turn`,
+  `turn_until`) or hands it the thread (`run`), and sends it input from
+  any thread through a `HeadlessInput` (`send`, `resize`, `focus`,
+  `set_clipboard`, `close`); everything sent before a turn is handled
+  before that turn's frame. It needs no display — no winit runs — and a
+  GPU only for a picture. It keeps a clipboard of its own and never
+  writes the user's, drops sounds, answers a file dialog with no files,
+  and reads only the `env.system` the launcher pinned, so a picture
+  taken on one machine is the one another takes. Rust only.
+
+  **What you can delete:** a second main loop beside `Launcher::run` for
+  running the app headless — a `Drive` stepped on the wall clock, a
+  condvar for the app's threads to ring, `Captures::serve` after each
+  frame, a clipboard stand-in — and the `setup` split in two to give it
+  a waker; and a hidden window opened only to be driven and
+  photographed.
 
 ### Fixed
 

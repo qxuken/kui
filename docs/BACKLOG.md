@@ -324,7 +324,10 @@ filed, after the alpha.66 tag, and is in the archive; and C57, from a
 search for loops SIMD could speed up — five CPU loops written so the
 compiler could not vectorize them or run them side by side, the text
 cache key's hash first — was built the day it was filed, after the
-alpha.66 tag, and is in the archive.
+alpha.66 tag, and is in the archive; and C58, from kawoosh's
+headless question — an app could not run with no window, a `Waker`
+being only an event loop's — was built the day it was filed, after the
+alpha.67 tag, with ADR 0057, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -374,7 +377,9 @@ app's own window captured or recorded to a file (ADR 0055). C57, filed
 on 2026-10-24 — five CPU loops shaped so the compiler could not
 vectorize them, the text cache key's hash, a capture's readback and
 three text scans — was built the day it was filed and is in the
-archive.
+archive. C58, filed the same day — an app run with no
+window, on the real clock and woken by its threads — was built the day
+it was filed, with ADR 0057, and is in the archive.
 
 ### `.` C12 — Wrapping a column
 
@@ -5375,3 +5380,8 @@ move.
 **From the Teal question (2026-10-24)** — F194, filed and built the same day
 
 - `.` **F194** — [Nothing describes the Lua DSL to Teal: a typed script has `row`, `env` and every prop undeclared](backlog/closed-2026-09.md#-f194--nothing-describes-the-lua-dsl-to-teal-a-typed-script-has-row-env-and-every-prop-undeclared--done-2026-10-24) — done (2026-10-24) — `kui_lua::teal_decls()`: a `kui.d.tl` from `luals_meta()`'s tables in Teal's words, `env` a `kui.Env` record from `ENV_FIELDS` and `DOORS`; checked by Teal 0.24.8 itself in the tests; both type files committed under `packages/lua`, and `scripts/gen.nu` runs every generator
+
+**From kawoosh's headless question (2026-10-24)** — C58, filed and built the same day, with ADR 0057
+
+- `~` **C58** — [An app cannot run with no window: a `Waker` is only an event loop's](backlog/closed-2026-09.md#-c58--an-app-cannot-run-with-no-window-a-waker-is-only-an-event-loops--done-2026-10-24) — done (2026-10-24) — `Launcher::open_headless` → `HeadlessRunner`: the real clock, paced by wakes, input through `HeadlessInput` from any thread (all of it before the turn's frame), captures served, its own clipboard, no winit and no display; a `Waker` rings either
+
