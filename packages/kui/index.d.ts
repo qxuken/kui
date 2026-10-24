@@ -2286,8 +2286,9 @@ export interface WindowOptions {
   smoothWheel?: boolean;
   /** How a mouse wheel's notch scrolls, in every window of the app: a
    *  preset's name (`'brisk'` is a touch faster than the default) or the
-   *  numbers to change (`win.setWheelFeel`). Set after the window opens,
-   *  so it wins over `KUI_WHEEL` in the environment. */
+   *  numbers to change from the standard feel. Taken as the window opens,
+   *  so `KUI_WHEEL` in the environment overrides it, as `KUI_TEXT_AA`
+   *  overrides `textAa`; `win.setWheelFeel` afterwards wins over both. */
   wheelFeel?: WheelPreset | Partial<WheelFeel>;
 }
 

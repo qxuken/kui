@@ -2262,6 +2262,11 @@ impl KuiWindow {
                 )));
             }
         };
+        // The wheel feel, the launcher's `wheel_feel`, so `KUI_WHEEL` in
+        // the environment still wins: a user's override over the app's.
+        if let Some(v) = o.get("wheelFeel").filter(|v| !v.is_null()) {
+            launcher = launcher.wheel_feel(wheel_feel_arg(v, kui_core::WheelFeel::STANDARD)?);
+        }
         // The glyph antialiasing, the launcher's `text_aa`; `KUI_TEXT_AA`
         // in the environment still wins, for an A/B by hand.
         launcher = match o.get("textAa") {

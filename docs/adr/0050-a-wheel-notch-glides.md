@@ -349,8 +349,13 @@ setting, the app's like the switch.
   `line_px,response,kick` (trailing numbers may be left off), sets the
   main core's feel when the native runner opens it, over the launcher's,
   as `KUI_FRAME_LATENCY` is: to compare feels in an app without
-  rebuilding it. A feel set after the window opens (Node's `wheelFeel`,
-  a later `set_wheel_feel`) wins over it.
+  rebuilding it, and for a user to override the feel an app ships
+  with. Every way an app sets its feel before the window opens is
+  under it: the launcher's `wheel_feel` and `setup_core`, a core handed
+  to `Launcher::core` (so C's `kui_set_wheel_feel` before `kui_run`),
+  and Node's `wheelFeel`, which goes to the window as a window option
+  as `textAa` does. Only a call while the app runs (a settings screen's
+  `set_wheel_feel`) changes it after.
 
 Tests: `wheel_glide.rs` (`presets_go_by_name`,
 `a_notch_goes_the_feels_line`,

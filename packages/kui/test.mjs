@@ -2633,6 +2633,12 @@ test('wheel: a notch glides to its place, and jumps with smoothWheel off', () =>
   assert.throws(() => ctx.setWheelFeel('turbo'), /unknown preset "turbo"/);
   assert.throws(() => ctx.setWheelFeel({ speed: 2 }), /unknown key "speed"/);
   assert.equal(ctx.wheelFeel().linePx, 100, 'unchanged by a refusal');
+
+  // `wheelFeel` to `runWindowed` goes to the window as it opens, under
+  // `KUI_WHEEL`; a headless app still takes it from the loop.
+  assert.equal(windowOptions({ wheelFeel: 'brisk' }).wheelFeel, 'brisk');
+  const app = createApp({ init: () => 0, update: (m) => m, view: () => box({}) }, { wheelFeel: 'swift' });
+  assert.equal(app.ctx.wheelFeel().linePx, 64);
 });
 
 // A point on the text a keyed node drew is a byte offset, and a byte

@@ -1266,7 +1266,11 @@ default, 40 px a notch), `brisk` (a touch faster, 48 px) and `swift`
 in seconds and its `kick`. `Launcher::wheel_feel(WheelFeel::BRISK)`,
 `wheelFeel: 'brisk'` to `runWindowed`, `kui_set_wheel_preset(ctx,
 KUI_STR("brisk"))`. To try one without a rebuild, run the app with
-`KUI_WHEEL=brisk`, or `KUI_WHEEL=56,0.25,0.6` for numbers of your own.
+`KUI_WHEEL=brisk`, or `KUI_WHEEL=56,0.25,0.6` for numbers of your own:
+it overrides the feel the app opens with, so a user who wants another
+can have it, and only the app's own settings screen, changing it while
+it runs, comes after. The `wheel_feel` example tunes one by hand and
+spells its line to copy.
 
 For the app's own moves, declare a `transition` on the scroll
 container. A `reveal` or a `set_scroll` then eases the offset over it —

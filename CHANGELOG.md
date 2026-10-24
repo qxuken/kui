@@ -56,7 +56,8 @@ a group still lights its members together.
   })` and `wheelFeel()`, and `wheelFeel` to `runWindowed` and
   `createApp`; the launcher's `wheel_feel`. `KUI_WHEEL=brisk` (or
   `KUI_WHEEL=56,0.25,0.6`) tries one in any native window without a
-  rebuild.
+  rebuild, and overrides the feel the app opens with, in every binding;
+  the `wheel_feel` example spells the line to copy.
 
 ### Fixed
 

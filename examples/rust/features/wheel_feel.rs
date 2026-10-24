@@ -9,7 +9,9 @@
 //! - a switch turns the glide off, where a notch jumps its line.
 //!
 //! Turn the wheel over the list on the right to feel it. The line under
-//! the sliders is the same feel as `KUI_WHEEL`, to run any app with it.
+//! the sliders is the same feel as `KUI_WHEEL` — a preset's name, or the
+//! three numbers — in a `selectable` scope, to copy and run any app with
+//! it: the variable wins over whatever feel the app opens with.
 //!
 //! The view holds no copy of the feel: it reads the core's, and the
 //! handler writes the core's (`App::on_event_with`), so `KUI_WHEEL=brisk`
@@ -34,6 +36,15 @@ struct WheelFeelDemo;
 /// The `{kind}` message every control here declares.
 fn message(kind: &str) -> Value {
     Value::map([("kind", Value::str(kind))])
+}
+
+/// `feel` as the `KUI_WHEEL` line that sets it: its preset's name when it
+/// is one, else its three numbers.
+fn env_line(feel: WheelFeel) -> String {
+    match preset_of(feel) {
+        Some(i) => format!("KUI_WHEEL={}", WheelFeel::PRESETS[i].0),
+        None => format!("KUI_WHEEL={},{},{}", feel.line_px, feel.response, feel.kick),
+    }
 }
 
 /// The preset `feel` is, by its index in [`WheelFeel::PRESETS`]; `None`
@@ -133,10 +144,19 @@ impl App for WheelFeelDemo {
                     widgets::switch(ui, "Glide", glides, message("glide"));
 
                     ui.leaf(NodeSpec::column().height(8.0));
-                    heading(ui, "the same feel for any app");
-                    ui.text(
-                        &format!("KUI_WHEEL={},{},{}", feel.line_px, feel.response, feel.kick),
-                        TextStyle::new(12.0).color(t.fg).mono(),
+                    heading(ui, "the same feel for any app — select it and copy");
+                    // A selectable scope: drag or triple-click, then
+                    // Ctrl+C (⌘C), as in any text the runner selects.
+                    ui.with_keyed(
+                        "env-line",
+                        NodeSpec::row()
+                            .pad_xy(8.0, 4.0)
+                            .radius(4.0)
+                            .bg(t.sunken)
+                            .selectable(),
+                        |ui| {
+                            ui.text(&env_line(feel), TextStyle::new(12.0).color(t.fg).mono());
+                        },
                     );
                     heading(
                         ui,
@@ -276,6 +296,15 @@ impl Example for WheelFeelDemo {
             d.core.wheel_feel() == WheelFeel::SWIFT,
             "the select's choice is the core's feel",
         )?;
+        // The env line selects as the line to paste into a shell.
+        let env = d.key_of("env-line").ok_or("no env line")?;
+        d.core.select_all_in(env);
+        d.frame(self);
+        let picked = d.core.selection_text().unwrap_or_default();
+        d.check(
+            picked == "KUI_WHEEL=swift",
+            &format!("the env line selects whole, a preset by name: {picked:?}"),
+        )?;
         d.move_to(self, over.x, over.y);
         let y = notch(&mut d, self);
         d.check(y == 104.0, &format!("a swift notch goes 64 px more: {y}"))?;
@@ -299,6 +328,13 @@ impl Example for WheelFeelDemo {
         d.check(
             preset_of(d.core.wheel_feel()).is_none(),
             "and the feel is no preset now",
+        )?;
+        d.check(
+            d.texts_under("env-line") == ["KUI_WHEEL=66,0.24,0.62"],
+            &format!(
+                "the env line spells the numbers: {:?}",
+                d.texts_under("env-line")
+            ),
         )?;
 
         // The switch off: the next notch is there on the next frame.
