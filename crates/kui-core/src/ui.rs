@@ -1505,6 +1505,14 @@ impl<'a> Ui<'a> {
         self.core.shift_scroll(key, drawn, target);
     }
 
+    /// Scrolls the container `key` for a drag the app holds, when the
+    /// pointer is in the edge zone inside `rect` or past it; see
+    /// [`Core::edge_scroll`]. Returns what it moved this frame.
+    #[track_caller]
+    pub fn edge_scroll(&mut self, key: Key, pointer: Vec2, rect: Rect) -> Option<Vec2> {
+        self.core.edge_scroll(key, pointer, rect)
+    }
+
     /// What the last layout resolved for a scroll container — its box, its
     /// content size and the clamped offset — so a view can build only the
     /// rows that fit and two spacers instead of ten thousand rows. `None`

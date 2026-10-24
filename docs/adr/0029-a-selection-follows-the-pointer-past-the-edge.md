@@ -183,6 +183,12 @@ right after a nudge lands where the pointer is and not a frame behind.
 
 ### 2. The core nudges the nearest scroller when the held pointer is past its edge, at a rate from the distance
 
+> **Amended 2026-10-25** (backlog F196): the rate below is replaced by
+> an edge zone inside the scroller, a ramp while held and a cap, with a
+> pointer pinned against the window's edge counted as fully deep — see
+> [*Amended 2026-10-25*](#amended-2026-10-25-an-edge-zone-a-ramp-and-the-windows-edge)
+> at the end. The rest of the decision stands.
+
 Every frame a drag-select is in flight, before layout: take the drag's
 scroller — the nearest ancestor-or-self of the scope, grid or editor
 node whose spec has `scroll_x` or `scroll_y`, found the way
@@ -541,3 +547,105 @@ and these things the draft could not know:
   new); a Shift-press does not remember a double-click's word grain
   (decision 3, declined as drafted); the `selection_range` ordering
   defect is a separate task.
+
+## Amended 2026-10-25: an edge zone, a ramp and the window's edge
+
+Raised by Carnet, which copied decision 2's rate for its own page drag
+(backlog F196). The rate counts only the distance *past* the edge. In a
+full-screen or maximised window the pointer stops at the monitor's
+edge, a pixel or two from the scroller's, so an app's band of 24 px
+inside the edge was all the depth there was: 240 px/s at most, and
+selecting through a long document was painfully slow. kui's own drags
+had it worse: no band, so a scroller filling the screen did not move at
+all under a pointer pinned to its bottom.
+
+- **`EdgeScrollFeel { zone_px, speed_px_s, curve, ramp_secs, ramp_max,
+  cap_px_s, pull_back_px }`** (`crates/kui-core/src/edge_scroll.rs`),
+  set by `Core::set_edge_scroll_feel` and read back by
+  `Core::edge_scroll_feel`, shaped like ADR 0050's `WheelFeel`: the
+  app's input feel, clamped, copied to every window the runner opens.
+  Per axis the scroller scrolls, every frame a drag is held:
+
+  ```
+  zone   = min(zone_px, a quarter of the scroller's extent)
+  depth  = how far the pointer is into the zone (0 at its inner edge,
+           zone at the scroller's edge, more past it); pinned within
+           2 px of the window's edge, at least zone
+  base   = speed_px_s × (depth / zone)^curve              inside
+         = speed_px_s × (1 + curve × (depth − zone) / zone) past
+  ramp   = 1 + (ramp_max − 1) × min(held / ramp_secs, 1)
+  step   = min(base × ramp, cap_px_s) × dt
+  ```
+
+  Past the edge the speed goes on along the curve's tangent, so in a
+  smaller window the distance past still adds speed, within the cap.
+  `held` is the time since the pointer entered the zone; pulling back
+  toward the content by more than `pull_back_px` from the deepest point
+  since then starts it again (the curve has already slowed the step at
+  once), and leaving the zones resets it. `dt` is decision 2's: the
+  frame clock's delta capped at 0.1 s, 1/60 with no clock, 0 for a
+  clock set and not advanced. Not eased: the store's `scroll_by`, as
+  before.
+- **A press inside its click slop never scrolls.** With a zone inside
+  the scroller a press near its edge is in the zone before it moves;
+  the step waits for `press_slop` to clear, the same gate F170/F173 put
+  on the live end.
+- **Three presets**, slow to fast; `standard` is the default.
+
+  | preset     | zone  | at the edge | curve | ramp        | cap       | pull back |
+  |------------|-------|-------------|-------|-------------|-----------|-----------|
+  | `gentle`   | 72 px | 360 px/s    | 2     | 5× in 2 s   | 1800 px/s | 8 px      |
+  | `standard` | 60 px | 500 px/s    | 2     | 6× in 1.5 s | 3000 px/s | 8 px      |
+  | `brisk`    | 48 px | 700 px/s    | 2     | 7× in 1 s   | 4900 px/s | 8 px      |
+
+  Why `standard`'s numbers: the zone is about two lines of body text,
+  as Carnet asked. 500 px/s at the edge is twice the 240 px/s a
+  full-screen window topped out at, and half the old cap, about 25
+  lines a second: fast, and still a speed a hand can stop on. The
+  quadratic curve puts the zone's middle at a quarter of that, 125 px/s,
+  and its inner third under 60 px/s, for walking a selection a line at
+  a time. Six times over a second and a half reaches 3000 px/s, three
+  screens a second of a 1000 px window, which is what holding still
+  should come to; the cap is exactly the ramp's top at full depth, so
+  only a pointer past the edge in a smaller window reaches it sooner.
+  The pull-back is 8 px, past a hand's tremor and a trackpad's jitter
+  (the click slop is 3), and short of any deliberate easing off.
+- **An app's own drag** — Carnet's page selection, a reorder, a file
+  dragged over a list — calls `Core::edge_scroll(key, pointer, rect) ->
+  Option<Vec2>` (and `Ui::edge_scroll`) once a frame while it holds the
+  drag: `rect` is the area whose edges scroll (usually the container's
+  `scroll_geometry` rect), the container moves at once by the same
+  step, the delta that moved comes back, and the next frame is asked
+  for while it moves. The ramp is kept per container while the calls
+  come every frame and starts again after a frame without one. Whether
+  a press is a drag yet is the app's to know, so the click slop is
+  its own. Doors: C `kui_edge_scroll`, Odin `edge_scroll`, Node
+  `edgeScroll(key, x, y, rect)`, Lua `env.edge_scroll(key, x, y, rect)`.
+- **Feel doors.** C `kui_set_edge_scroll_feel` (seven numbers),
+  `kui_edge_scroll_feel` (seven out pointers), `kui_set_edge_scroll_preset`
+  (new functions, no struct moves, no ABI bump); Odin
+  `set_edge_scroll_feel`, `edge_scroll_feel`, `set_edge_scroll_preset`;
+  Node `setEdgeScrollFeel(name | { zonePx, speedPxS, curve, rampSecs,
+  rampMax, capPxS, pullBackPx })` and `edgeScrollFeel()`, and
+  `edgeScrollFeel` to `runWindowed` (a window option) and `createApp`;
+  Lua `No(GUEST)`. The launcher's `edge_scroll_feel(feel)`, and
+  **`KUI_EDGE_SCROLL`** in the environment — a preset's name or up to
+  seven numbers in the struct's order, the rest standard — over every
+  way an app sets its feel before the window opens, as `KUI_WHEEL` is.
+- **`AUTOSCROLL_RATE` and `AUTOSCROLL_REACH` are gone** from
+  `runtime::follow`, and `edge_step` with them; `CLOCKLESS_FRAME`
+  stays.
+
+Tests: `edge_scroll.rs`'s unit tests (the curve, the tangent past the
+edge, pinned is full depth, the ramp and the cap, pull back and reset, a
+short scroller's still middle, clamping); `tests/edge_scroll.rs`, a
+headless caret drag on a window-filling scroller (the ramp from 500 to
+3000 px/s over 1.5 s and no further, pinned at the window's edge is full
+depth, a pull back past 8 px drops to the curve and restarts the ramp,
+leaving stops it, an unmoved press never scrolls, the content's ends
+stop it, and an app's drag through `Ui::edge_scroll`); `tests/follow.rs`
+on a flat feel that is the old rate; kui-ffi's `edge_scroll_headless`,
+the C surface round, Node's `edgeScroll` test, Lua's
+`a_script_scrolls_a_container_at_its_edge`, kui-native's
+`kui_edge_scroll_reads_a_preset_or_numbers`, and the `edge_scroll`
+example's self-check. Not yet felt by hand in a full-screen window.

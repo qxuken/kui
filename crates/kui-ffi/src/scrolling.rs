@@ -54,6 +54,54 @@ pub extern "C" fn kui_shift_scroll(ptr: *mut KuiCtx, key: u64, drawn: f32, targe
     });
 }
 
+/// Scrolls the container `key` for a drag the host holds with the
+/// pointer at `x`,`y`, when the pointer is in the edge zone inside the
+/// rect `rx`,`ry`,`rw`,`rh` (usually the container's own, from
+/// [`kui_scroll_geometry`]) or past it, by [`crate::kui_edge_scroll_feel`]:
+/// at once, not eased, faster the deeper and the longer it is held. True
+/// when it moved, writing how far to `dx`,`dy` (positive toward later
+/// content; either may be NULL) and asking for the next frame, so a
+/// pointer held still goes on scrolling; false out of the zones, at the
+/// container's end that way, or for a key that is no scroll container.
+/// Call it once a frame while the drag is held, from the view or between
+/// frames, and place the drag's live end under the pointer after; not
+/// before the drag has left its press's click slop.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_edge_scroll(
+    ptr: *mut KuiCtx,
+    key: u64,
+    x: f32,
+    y: f32,
+    rx: f32,
+    ry: f32,
+    rw: f32,
+    rh: f32,
+    dx: *mut f32,
+    dy: *mut f32,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(d) = c.core().edge_scroll(
+            Key(key),
+            kui_core::Vec2::new(x, y),
+            kui_core::Rect::new(rx, ry, rw, rh),
+        ) else {
+            return false;
+        };
+        unsafe {
+            if let Some(o) = dx.as_mut() {
+                *o = d.x;
+            }
+            if let Some(o) = dy.as_mut() {
+                *o = d.y;
+            }
+        }
+        true
+    })
+}
+
 /// Reads that offset back, as the last layout clamped it — the number to
 /// persist and hand to `kui_set_scroll` later. Writes 0,0 for a node that
 /// never scrolled; either out pointer may be NULL.

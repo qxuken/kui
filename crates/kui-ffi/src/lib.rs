@@ -1112,6 +1112,90 @@ pub extern "C" fn kui_wheel_feel(
     });
 }
 
+/// How a held drag scrolls a container at its edge (`EdgeScrollFeel`):
+/// the edge zone's depth in logical px, the speed at its edge in px a
+/// second along a curve (its exponent), the ramp while held (seconds, and
+/// the most it multiplies by), the cap in px a second, and how far the
+/// pointer pulls back before the ramp starts again. Clamped into what the
+/// step can use; a number that is not finite takes the standard one.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn kui_set_edge_scroll_feel(
+    ptr: *mut KuiCtx,
+    zone_px: f32,
+    speed_px_s: f32,
+    curve: f32,
+    ramp_secs: f32,
+    ramp_max: f32,
+    cap_px_s: f32,
+    pull_back_px: f32,
+) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            c.core().set_edge_scroll_feel(kui_core::EdgeScrollFeel {
+                zone_px,
+                speed_px_s,
+                curve,
+                ramp_secs,
+                ramp_max,
+                cap_px_s,
+                pull_back_px,
+            });
+        }
+    });
+}
+
+/// Sets the edge scroll's feel to the preset called `name` (`gentle`,
+/// `standard`, `brisk`, any case). False, and nothing changed, for any
+/// other name or a bad context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_set_edge_scroll_preset(ptr: *mut KuiCtx, name: KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(feel) = kui_core::EdgeScrollFeel::preset(&kstr(name)) else {
+            return false;
+        };
+        c.core().set_edge_scroll_feel(feel);
+        true
+    })
+}
+
+/// The edge scroll's feel, read back as clamped; the standard one for a
+/// null context. Any out pointer may be NULL.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn kui_edge_scroll_feel(
+    ptr: *mut KuiCtx,
+    zone_px: *mut f32,
+    speed_px_s: *mut f32,
+    curve: *mut f32,
+    ramp_secs: *mut f32,
+    ramp_max: *mut f32,
+    cap_px_s: *mut f32,
+    pull_back_px: *mut f32,
+) {
+    guard((), || {
+        let f = unsafe { ctx(ptr) }.map_or(kui_core::EdgeScrollFeel::STANDARD, |c| {
+            c.core().edge_scroll_feel()
+        });
+        for (out, v) in [
+            (zone_px, f.zone_px),
+            (speed_px_s, f.speed_px_s),
+            (curve, f.curve),
+            (ramp_secs, f.ramp_secs),
+            (ramp_max, f.ramp_max),
+            (cap_px_s, f.cap_px_s),
+            (pull_back_px, f.pull_back_px),
+        ] {
+            if let Some(o) = unsafe { out.as_mut() } {
+                *o = v;
+            }
+        }
+    });
+}
+
 /// Turns the core's devtools panel on or off: the event stream, the
 /// runtime's facts and the tree, drawn by the core beside the host's tree
 /// (where [`kui_set_devtools_dock`] says). Its controls and its

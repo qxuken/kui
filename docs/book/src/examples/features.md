@@ -13,6 +13,7 @@ One cross-cutting behaviour, with exactly the widgets it touches.
 - [`devtools_tab`](features/devtools_tab.md)
 - [`drag`](features/drag.md)
 - [`drop`](features/drop.md)
+- [`edge_scroll`](features/edge_scroll.md)
 - [`enter_exit`](features/enter_exit.md)
 - [`exit_budget`](features/exit_budget.md)
 - [`focus`](features/focus.md)

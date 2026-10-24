@@ -3213,8 +3213,9 @@ pub const SCENES: &[Scene] = &[
               the next half-line notch is the carried half made whole, and \
               the view answers each by moving `originLine` (the phase is \
               the app's answer). Then a press in the first row is held 60 \
-              px below the grid: each frame's step arrives as the lines it \
-              covers, the view answers again, and the selection's ends keep \
+              px below the grid, far past its edge zone, at the edge \
+              scroll's cap (ADR 0029's amendment): each frame's step \
+              arrives as the lines it covers, the view answers again, and the selection's ends keep \
               their absolute lines through it — the anchor on the line the \
               press took, the live end on the last row of the moved screen. \
               The event rows carry the lines, which is what pins the carry \
@@ -3249,15 +3250,16 @@ pub const SCENES: &[Scene] = &[
             glyphs_min: 18,
             access: &["0 window ||", "1 terminal term||hello world\nbrave\nbye"],
             // Two and a half lines, then the half made whole; then the
-            // held press: 10 px on the clockless frames (a fifth of a
-            // line and a half, carried), 60 px on each 100 ms step.
+            // held press at the standard feel's 3000 px/s cap: 50 px on
+            // each clockless frame (the fraction carried), 300 px on
+            // each 100 ms step.
             events: &[
                 "scroll term 2",
                 "scroll term 1",
-                "scroll term 0",
-                "scroll term 1",
+                "scroll term 2",
                 "scroll term 3",
-                "scroll term 3",
+                "scroll term 17",
+                "scroll term 16",
             ],
             announcements: &[],
             warnings: &[],

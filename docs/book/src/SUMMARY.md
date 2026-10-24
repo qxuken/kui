@@ -55,6 +55,7 @@
   - [devtools_tab](examples/features/devtools_tab.md)
   - [drag](examples/features/drag.md)
   - [drop](examples/features/drop.md)
+  - [edge_scroll](examples/features/edge_scroll.md)
   - [enter_exit](examples/features/enter_exit.md)
   - [exit_budget](examples/features/exit_budget.md)
   - [focus](examples/features/focus.md)

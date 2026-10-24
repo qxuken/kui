@@ -289,6 +289,7 @@ headless = [
     "decode",
     "capture",
     "wheel_feel",
+    "edge_scroll",
 ]
 
 [[example]]
@@ -455,6 +456,10 @@ path = "../../examples/rust/features/spring.rs"
 [[example]]
 name = "wheel_feel"
 path = "../../examples/rust/features/wheel_feel.rs"
+
+[[example]]
+name = "edge_scroll"
+path = "../../examples/rust/features/edge_scroll.rs"
 
 [[example]]
 name = "hover"

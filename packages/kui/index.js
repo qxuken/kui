@@ -334,6 +334,7 @@ function createLoop({ init, update, view, tick, windows, teardown }, opts, surfa
   // A window took its feel when it opened (`windowOptions`), where
   // `KUI_WHEEL` in the environment overrides it; set here it would win.
   if (opts.wheelFeel !== undefined && !(surface instanceof KuiWindow)) surface.setWheelFeel(opts.wheelFeel);
+  if (opts.edgeScrollFeel !== undefined && !(surface instanceof KuiWindow)) surface.setEdgeScrollFeel(opts.edgeScrollFeel);
   const { show, open } = transport(surface, opts);
   let model;
   // Whether `teardown` has run: once, whichever end reaches it first — the
@@ -1089,8 +1090,8 @@ runWindowed[PACE] = pacer;
  * is opened as a user who asked for less motion would see it.
  */
 export function windowOptions(opts = {}) {
-  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel } = opts;
-  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel };
+  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel } = opts;
+  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel };
 }
 
 /**
