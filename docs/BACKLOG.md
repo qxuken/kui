@@ -304,7 +304,11 @@ subtree drawn as one picture — built the same day with ADR 0056; and
 F189, from kawoosh's screenshot commands — two Rust docs that called a
 recording's `frames` what the file holds, where it is the frames drawn
 — was built the day it was filed, after the alpha.66 tag, and is in the
-archive.
+archive; and RG169, from the same Builder's scroll under Homebrew's
+Node — a pumped window built against the macOS 27 SDK reporting itself
+idle after every scroll event, ~25 frames a second — was built the day
+it was filed, after the alpha.66 tag, and is in the archive, and RG170,
+the native loop's half of it, is open below.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3413,6 +3417,43 @@ a window behind others and one minimised, all answered and written. One
 entry, F189 — the Rust docs said the opposite of the ADR about a
 recording's `frames` — **built 2026-10-24**, the day it was filed, and
 in the archive.
+
+## From Cookie Mapping's scroll under Homebrew's Node (2026-10-24)
+
+The Builder's list scrolled at ~25 frames a second on a 120 Hz Mac
+where Finder scrolled at ~94, with every frame cheap. Measured by hand
+with a listen-only event tap and a ScreenCaptureKit stream of the window
+that counted the frames whose pixels changed: the window started from
+the official Node build scrolled at 81–109, the same app under
+Homebrew's 26.10.0 at 18–29, and two `vtool` copies with only the SDK
+in the binary swapped settled it — Homebrew's marked 15.5 scrolled at
+100, the official one marked 27.0 at 26. The pump half, RG169, was
+**built 2026-10-24**, the day it was filed, and is in the archive. A
+spike that ran the native loop on the main thread with the app in a
+`worker_threads` Worker (branch `claude/native-loop-worker`, kept off
+main) found the other half, RG170, open below.
+
+### `!` RG170 — Built against the macOS 27 SDK, kui's own loop scrolls at ~46 frames a second
+
+**Filed** 2026-10-24 from the spike above. `Launcher::run` — the loop
+the Rust and C runners use, with no pump — scrolled a 240-row list at
+44–46 changed frames a second inside a `node` built against SDK 27
+(Homebrew's), and at 95 inside the official build (SDK 15), the same
+list that the fixed pump scrolled at 98. So a Rust app built with
+today's Xcode, kawoosh included, may scroll at half the display's rate;
+that is the first thing to check, with an example binary and a
+`vtool -set-build-version macos <min> 15.5` copy of it.
+
+What is known: a `sample` of the main thread while scrolling had it 91%
+in `mach_msg`, waiting, and ~5% in the frame, so nothing is slow; an
+NSEvent monitor (`KUI_DEBUG_EVENTS=1` on the spike branch) had SDK 27's
+scroll events reach the app 10–22 ms late on average and up to 41 ms,
+against 4–5 and 9.5 under SDK 15, under the pump before RG169;
+`NSEvent.mouseCoalescingEnabled = false` changed nothing (23 → 21); and
+a window animating with no input drew 121 frames a second under SDK 27,
+so neither the display's rate nor presenting is capped. Next: the same
+delay monitor under `Launcher::run`, then what a redraw waits for there
+(AppKit's display cycle, `drawRect:`, a drawable) when the SDK is 27.
 
 ## After alpha.58
 

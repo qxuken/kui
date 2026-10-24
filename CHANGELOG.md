@@ -21,6 +21,29 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
+## 0.1.0-alpha.67 (unreleased)
+
+**What breaks.** Nothing: a fix to how often a pumped window says it is
+in use.
+
+### Fixed
+
+- On macOS a Node window scrolls at the display's rate again under a
+  `node` built against the macOS 27 SDK — Homebrew's is: ~98 frames a
+  second on a 120 Hz screen, where it drew ~24. Built against that SDK,
+  AppKit draws the redraw an event asks for inside the pump that saw
+  it, a display frame later, and the runner's second turn of that pump
+  answered `nextDeadlineMs()` with nothing due, so `runWindowed` read
+  every scroll event as an idle window and pumped at `idlePumpMs`. The
+  official Node build, built against SDK 15, never saw it (backlog
+  RG169).
+
+**What you can delete.**
+
+- A lowered `idlePumpMs` or `quietMs`, or a pinned official Node build,
+  kept only so a Node window did not stutter when scrolled under
+  Homebrew's Node.
+
 ## 0.1.0-alpha.66 (2026-10-24)
 
 **What breaks.**

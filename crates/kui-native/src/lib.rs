@@ -1102,6 +1102,23 @@ impl DynShell<'_> {
         }
     }
 
+    /// Whether this turn of `about_to_wait` should report the window in use
+    /// (a deadline of now), marking `woke` for the pump runner to count.
+    /// A turn whose batch saw an event does. So does a later turn of the
+    /// same pump: built against the macOS 27 SDK, AppKit draws the redraw
+    /// an event asked for inside the pump that saw it, a display frame
+    /// later, and the loop waits again after it. That turn's batch is
+    /// empty, but `woke` — not yet taken by the runner — still says the
+    /// pump saw one; answering "nothing due" there told a driver after
+    /// every scroll event that the window was idle, and it backed off to
+    /// its idle gap, ~25 frames a second (backlog RG169). A loop that owns
+    /// itself never has `woke` taken, so only a pumped one keeps it.
+    fn take_woken(&mut self) -> bool {
+        let woken = std::mem::take(&mut self.saw_event) || (self.pumped && self.woke);
+        self.woke |= woken;
+        woken
+    }
+
     /// What a shell takes from the loop it runs on before the first
     /// event: the proxy, the app's waker, and the wakers of the platform
     /// paths no winit event carries.
@@ -3780,9 +3797,8 @@ impl ApplicationHandler<access_bridge::UserEvent> for DynShell<'_> {
         // shell wants pumping at once to present it — and a driver reading
         // this is also being told that the window is in use, which is the
         // one thing it cannot work out from the events *it* was handed.
-        if std::mem::take(&mut self.saw_event) {
+        if self.take_woken() {
             deadline = Some(now);
-            self.woke = true;
         }
         self.next_deadline = deadline;
         event_loop.set_control_flow(match deadline {
@@ -3915,6 +3931,50 @@ mod tests {
             runner.woken_pumps(),
             1,
             "and the quiet turns after it are quiet"
+        );
+    }
+
+    /// A pump that saw an event reports the window in use for every turn
+    /// it takes until the runner counts it (backlog RG169): built against
+    /// the macOS 27 SDK, AppKit draws the event's redraw inside the same
+    /// pump and the loop waits a second time, with nothing in that batch.
+    /// The turn after the count is quiet again, and a loop that owns itself
+    /// — whose `woke` nobody takes — is never kept awake by it.
+    #[test]
+    fn a_pump_that_saw_an_event_stays_woken_until_counted() {
+        let mut runner = PumpRunner {
+            state: PumpState {
+                event_loop: None,
+                alive: true,
+                pumps: 0,
+                woken_pumps: 0,
+            },
+            shell: std::mem::ManuallyDrop::new(super::app("t").diagnostics(false).shell(Empty)),
+        };
+        runner.shell_mut().pumped = true;
+        assert!(
+            !runner.shell_mut().take_woken(),
+            "a quiet turn reports nothing"
+        );
+        runner.shell_mut().saw_event = true;
+        assert!(
+            runner.shell_mut().take_woken(),
+            "the turn that saw the event"
+        );
+        assert!(
+            runner.shell_mut().take_woken(),
+            "and the turn after the redraw, in the same pump"
+        );
+        runner.state.tally(&mut **runner.shell);
+        assert_eq!(runner.woken_pumps(), 1, "counted once");
+        assert!(!runner.shell_mut().take_woken(), "the next pump is quiet");
+
+        let mut owned: Box<DynShell<'_>> = super::app("t").diagnostics(false).shell(Empty);
+        owned.saw_event = true;
+        assert!(owned.take_woken());
+        assert!(
+            !owned.take_woken(),
+            "a loop that owns itself is not kept awake"
         );
     }
 
