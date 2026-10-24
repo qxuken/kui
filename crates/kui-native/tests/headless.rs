@@ -26,7 +26,9 @@ struct Counter {
     seen: Vec<u32>,
     /// Set from a thread `setup` started.
     remote: Arc<AtomicU32>,
-    wake_thread: bool,
+    /// When given, `setup` starts a thread that waits for a word on it,
+    /// then sets `remote` and wakes the runner.
+    wake_thread: Option<std::sync::mpsc::Receiver<()>>,
     copy: Option<String>,
     close_at: Option<u32>,
     frame_at: Option<f64>,
@@ -76,12 +78,12 @@ impl App for Counter {
     }
 
     fn setup(&mut self, waker: kui_native::Waker) {
-        if !self.wake_thread {
+        let Some(go) = self.wake_thread.take() else {
             return;
-        }
+        };
         let remote = self.remote.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(30));
+            let _ = go.recv();
             remote.store(7, Ordering::SeqCst);
             waker.wake();
         });
@@ -163,16 +165,22 @@ fn input_sent_before_a_turn_is_all_handled_before_its_frame() {
 
 /// The waker `setup` was given wakes this runner: a thread's change is in
 /// the frame its wake brings, and `turn_until` parks until it comes.
+///
+/// The thread is told when to wake, after the turns before it: on a timer
+/// of its own, a loaded machine let one of those turns take the wake and
+/// draw the change, and the loop below waited for a second wake.
 #[test]
 fn a_wake_from_a_thread_setup_started_brings_a_frame() {
+    let (go, wait) = std::sync::mpsc::channel();
     let mut r = open(Counter {
-        wake_thread: true,
+        wake_thread: Some(wait),
         ..Default::default()
     });
     r.turn();
     r.turn();
     let before = r.frames();
     let t0 = Instant::now();
+    go.send(()).unwrap();
     let deadline = t0 + Duration::from_secs(5);
     while r.app_mut().remote.load(Ordering::SeqCst) == 0 || r.frames() == before {
         assert!(Instant::now() < deadline, "no wake within 5 s");
@@ -185,6 +193,25 @@ fn a_wake_from_a_thread_setup_started_brings_a_frame() {
             .iter()
             .any(|n| n.text.as_deref() == Some("0 added, 7 remote")),
         "the frame after the wake shows the thread's change"
+    );
+}
+
+/// A wake rung before `turn_until` parks is not lost: the park sees it and
+/// the turn draws, at once rather than at the deadline.
+#[test]
+fn a_wake_before_the_park_is_not_lost() {
+    let mut r = open(Counter::default());
+    r.turn();
+    r.turn();
+    assert!(r.idle());
+    let before = r.frames();
+    r.waker().wake();
+    let t0 = Instant::now();
+    assert!(r.turn_until(t0 + Duration::from_secs(5)));
+    assert_eq!(r.frames(), before + 1);
+    assert!(
+        t0.elapsed() < Duration::from_secs(2),
+        "parked past the wake"
     );
 }
 
