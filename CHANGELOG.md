@@ -21,7 +21,7 @@ listed under both (backlog F61, from the alpha.12 field reports: the list
 is what the release knows it broke, and a fix it did not think of as one
 was the first bare bump to break an app in five releases).
 
-## 0.1.0-alpha.67 (unreleased)
+## 0.1.0-alpha.67 (2026-10-24)
 
 **What breaks.**
 
@@ -140,6 +140,31 @@ a group still lights its members together.
 - A `hoverGroup` shared by a row and its clickable children, or an
   `onHover` on each child feeding a hovered flag back into the row's
   `bg`, kept only so a row stayed lit while the pointer was over them.
+
+### Native verification
+
+One pre-tag pass on 2026-10-24 on the Windows machine and its WSL, over
+everything since alpha.66, the two legs side by side.
+
+**Windows** (11 Pro, RTX 5080 at 240 Hz, 150%): clippy, the C round,
+`nu scripts/test.nu --node` — **2623 tests over 183 Rust suites and
+Node's**, again on the versioned tree — the headless round and the
+windowed round, 57 examples drawing 120 frames on both bases. C57's
+x86_64 timings and its bench guard against `3c8d111c` were taken on this
+machine the same day, while it was built.
+
+**Linux** (WSL Ubuntu 24.04, llvmpipe): CI's `check` in its order —
+`release-prep.nu` (every generated file current), fmt, clippy, the
+workspace tests and Node's (2618 over 182 suites), the conformance
+report, the C round, the Odin leg with `gen --check` (on dev-2026-09;
+CI pins dev-2026-10), the examples' typecheck and the headless round —
+all clean; the windowed round on X11. Fuzzing: five minutes of all seven
+targets at once on eight cores, about 11.9 million inputs, no crash,
+hang or OOM.
+
+Not verified natively this release: anything on a Mac, and the npm half
+of the release workflow, whose trusted publishing only the tag's own run
+can exercise.
 
 ## 0.1.0-alpha.66 (2026-10-24)
 
