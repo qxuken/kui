@@ -626,11 +626,7 @@ impl GlyphAtlas {
         let rgba = carried.unwrap_or_else(|| {
             let mask = coverage();
             debug_assert_eq!(mask.len(), (w * h) as usize);
-            let mut rgba = Vec::with_capacity(mask.len() * 4);
-            for &a in &mask {
-                rgba.extend_from_slice(&[255, 255, 255, a]);
-            }
-            rgba
+            white_mask(&mask)
         });
         self.blit(x, y, w, h, &rgba);
         let slot = GlyphSlot {
@@ -665,11 +661,7 @@ impl GlyphAtlas {
         self.get_or_insert_keyed(key, w, h, false, || {
             let mask = coverage();
             debug_assert_eq!(mask.len(), (w * h) as usize);
-            let mut rgba = Vec::with_capacity(mask.len() * 4);
-            for &a in &mask {
-                rgba.extend_from_slice(&[255, 255, 255, a]);
-            }
-            rgba
+            white_mask(&mask)
         })
     }
 
@@ -821,6 +813,18 @@ impl GlyphAtlas {
 }
 
 /// The texels a `w × h` item takes of the page, its padding included.
+/// Alpha coverage as the atlas holds it: white, the coverage in the
+/// alpha. Filled white and the alphas written over it, a loop the compiler
+/// vectorizes, where a four-byte push a pixel checked the capacity every
+/// pixel (backlog C57).
+pub(crate) fn white_mask(mask: &[u8]) -> Vec<u8> {
+    let mut rgba = vec![255u8; mask.len() * 4];
+    for (p, &a) in rgba.as_chunks_mut::<4>().0.iter_mut().zip(mask) {
+        p[3] = a;
+    }
+    rgba
+}
+
 fn texels(w: u32, h: u32) -> u64 {
     u64::from(w + 1) * u64::from(h + 1)
 }
@@ -841,6 +845,17 @@ impl Default for GlyphAtlas {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mask_lands_white_with_its_coverage_in_the_alpha() {
+        assert!(white_mask(&[]).is_empty());
+        let mask: Vec<u8> = (0..=255).collect();
+        let rgba = white_mask(&mask);
+        assert_eq!(rgba.len(), 256 * 4);
+        for (p, a) in rgba.as_chunks::<4>().0.iter().zip(mask) {
+            assert_eq!(*p, [255, 255, 255, a]);
+        }
+    }
 
     fn fake_key(i: u32) -> CacheKey {
         // CacheKey is plain data; construct distinct ones via glyph id.
