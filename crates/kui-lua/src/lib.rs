@@ -16,7 +16,8 @@
 //! the script's UI. The author of such a script wants to know what `view`
 //! is handed, which builders exist and which props a table takes; the
 //! reference below is for them, and [`luals_meta`] turns it into completion
-//! for lua-language-server.
+//! for lua-language-server, as [`teal_decls`] turns it into a declaration
+//! file for Teal, the typed Lua dialect.
 //!
 //! [kui-ffi]: https://crates.io/crates/kui-ffi
 //! [kui-node]: https://www.npmjs.com/package/@qxuken/kui
@@ -319,6 +320,9 @@
 //!   and [`LuaExtension::from_source`] load it.
 //! - [`luals_meta`]: a `---@meta` file for lua-language-server, generated
 //!   from the schema.
+//! - [`teal_decls`]: the same as a `kui.d.tl` for Teal, so a view written
+//!   in Teal is checked by `tl check` and compiled by `tl gen` to the Lua
+//!   this crate loads.
 //! - [`lua_to_value`] / [`value_to_lua`]: the table <-> [`kui_core::Value`]
 //!   conversion events and replies go through.
 //! - [`parse_props`] and [`parse_tokens`]: the table readers, for a host that
@@ -337,7 +341,9 @@ use mlua::{Lua, Table};
 
 mod meta;
 mod rows;
+mod teal;
 pub use meta::luals_meta;
+pub use teal::teal_decls;
 
 const PRELUDE: &str = include_str!("prelude.lua");
 

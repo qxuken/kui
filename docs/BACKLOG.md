@@ -3503,6 +3503,18 @@ On the fixed build `scenes` replayed the whole corpus clean and ran
 memory: `parsers` ran 4.0 million inputs, `values` 4.2 million, `path`
 543 000, `decode` 173 000, `encode` 1.7 million and `events` 99 000.
 
+## From the Teal question (2026-10-24)
+
+The user asked whether the Lua binding should take Teal, the typed Lua
+dialect, so a script could be type-checked while plain Lua keeps
+working. A prototype checked the crate docs' panel under Lua 5.5 and
+caught a misspelt prop that lua-language-server with `luals_meta()`
+passes; embedding the compiler was set aside — 650 KB, a pre-1.0
+syntax pinned into kui, and Lua 5.5 output on Teal's main branch only.
+One entry, F194 — a `kui.d.tl` generated from the schema, the compiler
+the project's own — **built 2026-10-24**, the day it was filed, and in
+the archive.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5359,3 +5371,7 @@ move.
 **From the alpha.67 fuzz half hour (2026-10-24)** — FZ15, filed and built the same day
 
 - `.` **FZ15** — [A long line at a size past any screen overflows a glyph's place and its row count](backlog/closed-2026-09.md#-fz15--a-long-line-at-a-size-past-any-screen-overflows-a-glyphs-place-and-its-row-count--done-2026-10-24) — done (2026-10-24) — a glyph laid past ±2³¹ px is not drawn (`text::physical`, ahead of cosmic-text's subpixel bin), a long line's row count held at half a `u32`; found by `scenes` once its editor scene reached a long line
+
+**From the Teal question (2026-10-24)** — F194, filed and built the same day
+
+- `.` **F194** — [Nothing describes the Lua DSL to Teal: a typed script has `row`, `env` and every prop undeclared](backlog/closed-2026-09.md#-f194--nothing-describes-the-lua-dsl-to-teal-a-typed-script-has-row-env-and-every-prop-undeclared--done-2026-10-24) — done (2026-10-24) — `kui_lua::teal_decls()`: a `kui.d.tl` from `luals_meta()`'s tables in Teal's words, `env` a `kui.Env` record from `ENV_FIELDS` and `DOORS`; checked by Teal 0.24.8 itself in the tests

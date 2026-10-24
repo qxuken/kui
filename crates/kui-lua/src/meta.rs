@@ -23,17 +23,17 @@ use crate::PRELUDE;
 /// stands for, and the strings its `string` member means — a bare
 /// `string` says less than the parser takes, so the tests sample these
 /// instead of any string.
-struct Alias {
-    name: &'static str,
-    doc: &'static str,
-    ty: &'static str,
+pub(crate) struct Alias {
+    pub(crate) name: &'static str,
+    pub(crate) doc: &'static str,
+    pub(crate) ty: &'static str,
     #[cfg_attr(not(test), allow(dead_code))]
-    strings: &'static [&'static str],
+    pub(crate) strings: &'static [&'static str],
 }
 
 /// `parse_color`, `length_of`, `parse_sizing` and the `Kind::Min` /
 /// `Kind::Max` arm of `parse_value`, in LuaLS's words.
-const ALIASES: &[Alias] = &[
+pub(crate) const ALIASES: &[Alias] = &[
     Alias {
         name: "kui.Color",
         doc: "A colour: `0xRRGGBBAA`, `\"#hex\"`, or a `\"$token\"` the host declared.",
@@ -82,7 +82,7 @@ const ALIASES: &[Alias] = &[
 /// not among them: the vendored build keeps it a name): a prop under
 /// one of these cannot be written `name = …` in a table constructor, so
 /// the file gives only the spelling `schema::LUA_ALIASES` has for it.
-const LUA_KEYWORDS: &[&str] = &[
+pub(crate) const LUA_KEYWORDS: &[&str] = &[
     "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
     "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
 ];
@@ -90,7 +90,7 @@ const LUA_KEYWORDS: &[&str] = &[
 /// What `uniform_list` reads off its `opts` beyond a container's
 /// props: each name, whether the prelude refuses to go on without it,
 /// its type and doc.
-const UNIFORM_LIST: &[(&str, bool, &str, &str)] = &[
+pub(crate) const UNIFORM_LIST: &[(&str, bool, &str, &str)] = &[
     (
         "key",
         true,
@@ -125,7 +125,7 @@ const UNIFORM_LIST: &[(&str, bool, &str, &str)] = &[
 
 /// What `list` reads off its `opts` beyond a container's props, as
 /// [`UNIFORM_LIST`] is for `uniform_list`.
-const LIST: &[(&str, bool, &str, &str)] = &[
+pub(crate) const LIST: &[(&str, bool, &str, &str)] = &[
     (
         "key",
         true,
@@ -149,7 +149,7 @@ const LIST: &[(&str, bool, &str, &str)] = &[
 /// `row_heights`' methods: what a script calls on the heights it keeps.
 /// The three `slice_*` steps are `list`'s and left out. A row or a count
 /// is a `number`, floored as `index` is (backlog F180).
-const ROW_HEIGHTS: &[(&str, &str, &str)] = &[
+pub(crate) const ROW_HEIGHTS: &[(&str, &str, &str)] = &[
     ("len", "", "integer"),
     ("set_len", "rows: number", "nil"),
     ("clear", "", "nil"),
@@ -164,11 +164,11 @@ const ROW_HEIGHTS: &[(&str, &str, &str)] = &[
 
 /// A class's fields: each one's name, whether it is always there, and
 /// its LuaLS type.
-type Fields = &'static [(&'static str, bool, &'static str)];
+pub(crate) type Fields = &'static [(&'static str, bool, &'static str)];
 
 /// A shape an event's data names more than once, as a class of its own:
 /// its name and its fields.
-const SHAPES: &[(&str, Fields)] = &[
+pub(crate) const SHAPES: &[(&str, Fields)] = &[
     (
         "kui.Rect",
         &[
@@ -198,7 +198,7 @@ const SHAPES: &[(&str, Fields)] = &[
 /// two, a slider's and an editor's; `submit` and `cancel` carry none and
 /// have no class. Held against `schema::EVENTS` by the tests: every field
 /// a row names is here, and every field here is a word of its row's doc.
-const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
+pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
     (
         "kui.ClickEvent",
         "click",
@@ -507,7 +507,7 @@ const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
 /// `kui.With…` class of what its message arrives with: `on_fonts` carries
 /// no data, so it has none. In `WindowEvents::KEYS` order, which the tests
 /// hold it to.
-const WINDOW_EVENTS: &[(&str, &str, &str)] = &[
+pub(crate) const WINDOW_EVENTS: &[(&str, &str, &str)] = &[
     (
         "on_resize",
         "kui.WithResize",
@@ -542,7 +542,7 @@ const WINDOW_EVENTS: &[(&str, &str, &str)] = &[
 
 /// A `windows` entry's keys as a table: what `WindowConfig::from_value`
 /// and `WindowLifecycle::from_entry` read, typed.
-const WINDOW_ENTRY: Fields = &[
+pub(crate) const WINDOW_ENTRY: Fields = &[
     ("name", true, "string"),
     ("kind", false, "\"normal\"|\"popup\""),
     ("width", false, "number"),
@@ -557,7 +557,7 @@ const WINDOW_ENTRY: Fields = &[
 /// `kui.With…` classes: `on_key` hears a key, a commit, a composition
 /// and a reader's selection (ADR 0047, decision 5). `update` tells them
 /// apart by which field the message has, or by `ev.event`.
-const WITH_UNIONS: &[(&str, &str, &[&str])] = &[(
+pub(crate) const WITH_UNIONS: &[(&str, &str, &[&str])] = &[(
     "kui.WithKeySink",
     "What an `on_key` sink hears: one of these fields, by `ev.event`.",
     &[
@@ -601,23 +601,13 @@ pub fn luals_meta() -> String {
     out.push_str("---A node: what a constructor returns and a view gives back.\n---@class kui.Node: kui.Props\n---@field type string\n\n");
 
     // An element's own props, on a class of its own.
-    let mut class_of: BTreeMap<&str, String> = BTreeMap::new();
-    for e in schema::ELEMENTS {
-        let class = format!("kui.{}", e.name);
-        if e.lua_own.is_empty() {
-            for ctor in constructors(e.lua) {
-                class_of.insert(ctor, "kui.Props".into());
-            }
-            continue;
-        }
-        let _ = writeln!(out, "---@class {class}: kui.Props");
+    let class_of = class_of();
+    for e in schema::ELEMENTS.iter().filter(|e| !e.lua_own.is_empty()) {
+        let _ = writeln!(out, "---@class kui.{}: kui.Props", e.name);
         for own in e.lua_own {
             field(&mut out, own, "any", e.doc);
         }
         out.push('\n');
-        for ctor in constructors(e.lua) {
-            class_of.insert(ctor, class.clone());
-        }
     }
 
     // `uniform_list`'s options: a container's props and its own.
@@ -652,41 +642,16 @@ pub fn luals_meta() -> String {
     // event's data and the field that carries it (ADR 0047).
     out.push_str(events_meta().as_str());
 
-    // The prelude's constructors, each with the comment above it. A
-    // table parameter is optional only where the body defaults or tests
-    // it before indexing it: `button(nil)` is an error in the prelude, so
-    // it is one where it is typed too.
+    // The prelude's constructors, each with the comment above it.
     for f in prelude_functions() {
         for line in f.doc.lines() {
             let _ = writeln!(out, "---{line}");
         }
-        let element = class_of.get(f.name.as_str()).cloned();
-        for p in &f.params {
-            let (opt, ty) = match p.as_str() {
-                "opts" if f.name == "uniform_list" => ("", "kui.UniformList".into()),
-                "opts" if f.name == "list" => ("", "kui.List".into()),
-                "measure" => ("", "fun(i: integer, width: number): number".into()),
-                "t" | "opts" => (
-                    if tolerates_nil(&f.body, p) { "?" } else { "" },
-                    element.as_deref().unwrap_or("kui.Props").to_string(),
-                ),
-                // Spans, or anything `tostring` makes the text of.
-                "s" => ("", "string|number|table".into()),
-                "env" => ("", "table".into()),
-                "row" => ("", "fun(i: integer): kui.Node".into()),
-                "key" => ("", "string|integer".into()),
-                "i" => ("", "integer".into()),
-                "row_h" => ("", "number".into()),
-                _ => ("", "any".into()),
-            };
+        let (params, ret) = signature(&f, &class_of);
+        for (p, optional, ty) in &params {
+            let opt = if *optional { "?" } else { "" };
             let _ = writeln!(out, "---@param {p}{opt} {ty}");
         }
-        // Most of the prelude builds a node; the two list readings answer.
-        let ret = match f.name.as_str() {
-            "reveal_row" => "boolean",
-            "rows_in_view" => "integer",
-            _ => "kui.Node",
-        };
         let _ = writeln!(
             out,
             "---@return {ret}\nfunction {}({}) end\n",
@@ -694,6 +659,85 @@ pub fn luals_meta() -> String {
             f.params.join(", ")
         );
     }
+    out
+}
+
+/// The class each constructor's table is: an element with props of its
+/// own has `kui.<element>`, every other one `kui.Props`.
+pub(crate) fn class_of() -> BTreeMap<&'static str, String> {
+    let mut class_of = BTreeMap::new();
+    for e in schema::ELEMENTS {
+        let class = if e.lua_own.is_empty() {
+            "kui.Props".to_string()
+        } else {
+            format!("kui.{}", e.name)
+        };
+        for ctor in constructors(e.lua) {
+            class_of.insert(ctor, class.clone());
+        }
+    }
+    class_of
+}
+
+/// A prelude function's parameters — each one's name, whether it takes
+/// nil, and its LuaLS type — and what it returns. A table parameter is
+/// optional only where the body defaults or tests it before indexing it:
+/// `button(nil)` is an error in the prelude, so it is one where it is
+/// typed too.
+pub(crate) fn signature(
+    f: &PreludeFn,
+    class_of: &BTreeMap<&str, String>,
+) -> (Vec<(String, bool, String)>, &'static str) {
+    let element = class_of.get(f.name.as_str());
+    let params = f
+        .params
+        .iter()
+        .map(|p| {
+            let (optional, ty) = match p.as_str() {
+                "opts" if f.name == "uniform_list" => (false, "kui.UniformList".into()),
+                "opts" if f.name == "list" => (false, "kui.List".into()),
+                "measure" => (false, "fun(i: integer, width: number): number".into()),
+                "t" | "opts" => (
+                    tolerates_nil(&f.body, p),
+                    element.map_or("kui.Props", String::as_str).to_string(),
+                ),
+                // Spans, or anything `tostring` makes the text of.
+                "s" => (false, "string|number|table".into()),
+                "env" => (false, "table".into()),
+                "row" => (false, "fun(i: integer): kui.Node".into()),
+                "key" => (false, "string|integer".into()),
+                "i" => (false, "integer".into()),
+                "row_h" => (false, "number".into()),
+                _ => (false, "any".into()),
+            };
+            (p.clone(), optional, ty)
+        })
+        .collect();
+    // Most of the prelude builds a node; the two list readings answer.
+    let ret = match f.name.as_str() {
+        "reveal_row" => "boolean",
+        "rows_in_view" => "integer",
+        _ => "kui.Node",
+    };
+    (params, ret)
+}
+
+/// `ty`'s union members, split at the top level only.
+pub(crate) fn members(ty: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0, 0);
+    for (i, c) in ty.char_indices() {
+        match c {
+            '{' | '(' => depth += 1,
+            '}' | ')' => depth -= 1,
+            '|' if depth == 0 => {
+                out.push(ty[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(ty[start..].trim());
     out
 }
 
@@ -793,7 +837,7 @@ fn events_meta() -> String {
 /// Every field of `kui.Props`: its Lua name, type and doc. A schema
 /// row under each name a Lua table can spell it by, a composite under
 /// each of its Lua names.
-fn props_fields() -> Vec<(&'static str, String, &'static str)> {
+pub(crate) fn props_fields() -> Vec<(&'static str, String, &'static str)> {
     let mut out = Vec::new();
     for p in schema::PROPS {
         for name in lua_names(p.snake_name()) {
@@ -901,13 +945,13 @@ fn constructors(lua: &str) -> Vec<&str> {
 }
 
 /// A global function the prelude defines.
-struct PreludeFn {
-    name: String,
-    params: Vec<String>,
+pub(crate) struct PreludeFn {
+    pub(crate) name: String,
+    pub(crate) params: Vec<String>,
     /// The comment block right above it.
-    doc: String,
+    pub(crate) doc: String,
     /// Its lines up to the `end` that closes it at the margin.
-    body: String,
+    pub(crate) body: String,
 }
 
 /// Whether a prelude function tolerates `p` being nil: it defaults it
@@ -917,7 +961,7 @@ fn tolerates_nil(body: &str, p: &str) -> bool {
 }
 
 /// Every global function the prelude defines, in its order.
-fn prelude_functions() -> Vec<PreludeFn> {
+pub(crate) fn prelude_functions() -> Vec<PreludeFn> {
     let mut out: Vec<PreludeFn> = Vec::new();
     let mut doc: Vec<&str> = Vec::new();
     let mut open = false;
@@ -958,8 +1002,40 @@ fn prelude_functions() -> Vec<PreludeFn> {
     out
 }
 
+/// A `{ a: T, b?: U }` shape's fields: name, whether required, type.
+pub(crate) fn shape(member: &str) -> Vec<(&str, bool, &str)> {
+    let inner = member.trim_start_matches('{').trim_end_matches('}');
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0, 0);
+    let mut fields = Vec::new();
+    for (i, c) in inner.char_indices() {
+        match c {
+            '{' | '(' => depth += 1,
+            '}' | ')' => depth -= 1,
+            ',' if depth == 0 => {
+                fields.push(&inner[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    fields.push(&inner[start..]);
+    for f in fields {
+        let Some((name, ty)) = f.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        let (name, required) = match name.strip_suffix('?') {
+            Some(n) => (n, false),
+            None => (name, true),
+        };
+        out.push((name, required, ty.trim()));
+    }
+    out
+}
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use mlua::{Lua, Table};
 
@@ -1231,7 +1307,7 @@ mod tests {
     /// `props` through the parser a view's tables go through, over a
     /// bare core: no tokens declared, so a `$name` misses (a warning, a
     /// default) rather than failing the parse.
-    fn parses(lua: &Lua, props: &str) -> Result<(), String> {
+    pub(crate) fn parses(lua: &Lua, props: &str) -> Result<(), String> {
         let t: Table = lua
             .load(format!("return {{ {props} }}"))
             .eval()
@@ -1251,7 +1327,7 @@ mod tests {
     /// The composites the root table carries and `parse_props` never
     /// reads: the parser takes anything under these, so neither
     /// direction below says anything about them.
-    const ROOT_ONLY: &[&str] = &[
+    pub(crate) const ROOT_ONLY: &[&str] = &[
         "window_title",
         "always_on_top",
         "secure_input",
@@ -1260,65 +1336,14 @@ mod tests {
         "windows",
     ];
 
-    /// `ty`'s union members, split at the top level only.
-    fn members(ty: &str) -> Vec<&str> {
-        let mut out = Vec::new();
-        let (mut depth, mut start) = (0, 0);
-        for (i, c) in ty.char_indices() {
-            match c {
-                '{' | '(' => depth += 1,
-                '}' | ')' => depth -= 1,
-                '|' if depth == 0 => {
-                    out.push(ty[start..i].trim());
-                    start = i + 1;
-                }
-                _ => {}
-            }
-        }
-        out.push(ty[start..].trim());
-        out
-    }
-
     fn alias(name: &str) -> Option<&'static Alias> {
         ALIASES.iter().find(|a| a.name == name)
-    }
-
-    /// A `{ a: T, b?: U }` shape's fields: name, whether required, type.
-    fn shape(member: &str) -> Vec<(&str, bool, &str)> {
-        let inner = member.trim_start_matches('{').trim_end_matches('}');
-        let mut out = Vec::new();
-        let (mut depth, mut start) = (0, 0);
-        let mut fields = Vec::new();
-        for (i, c) in inner.char_indices() {
-            match c {
-                '{' | '(' => depth += 1,
-                '}' | ')' => depth -= 1,
-                ',' if depth == 0 => {
-                    fields.push(&inner[start..i]);
-                    start = i + 1;
-                }
-                _ => {}
-            }
-        }
-        fields.push(&inner[start..]);
-        for f in fields {
-            let Some((name, ty)) = f.split_once(':') else {
-                continue;
-            };
-            let name = name.trim();
-            let (name, required) = match name.strip_suffix('?') {
-                Some(n) => (n, false),
-                None => (name, true),
-            };
-            out.push((name, required, ty.trim()));
-        }
-        out
     }
 
     /// A Lua value of every member of `ty` the parser can be asked
     /// about: literals and shapes from the type itself, `string` as the
     /// enclosing alias means it. `any`, `table` and functions give none.
-    fn samples(ty: &str, strings: &[&str]) -> Vec<String> {
+    pub(crate) fn samples(ty: &str, strings: &[&str]) -> Vec<String> {
         let mut out = Vec::new();
         for m in members(ty) {
             match m {
@@ -1394,7 +1419,7 @@ mod tests {
     }
 
     /// A probe value, and what a type has to have to admit it.
-    enum Probe {
+    pub(crate) enum Probe {
         Int,
         Float,
         Bool,
@@ -1402,7 +1427,7 @@ mod tests {
         Table(&'static [&'static str]),
     }
 
-    const PROBES: &[(&str, Probe)] = &[
+    pub(crate) const PROBES: &[(&str, Probe)] = &[
         ("3", Probe::Int),
         ("12.5", Probe::Float),
         ("false", Probe::Bool),

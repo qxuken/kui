@@ -2713,6 +2713,41 @@ it again after an upgrade; it is generated, never edited.
 [`props.md`](props.md) ·
 [alpha.17](../CHANGELOG.md#010-alpha17-2026-09-25)
 
+### How do I type-check a Lua view, or write it in Teal?
+
+Write `kui_lua::teal_decls()` to `types/kui.d.tl` and name it the global
+environment in the project's `tlconfig.lua`:
+
+```lua
+return { include_dir = { "types" }, global_env_def = "kui" }
+```
+
+A view in [Teal](https://teal-language.org) is then checked against
+every builder and prop — a misspelt prop, a wrong-typed value, a word no
+enum has, an `env` read that is not there — by `tl check view.tl`, and
+`tl gen view.tl` writes the `view.lua` the host loads with
+`LuaExtension::from_file`; kui runs plain Lua either way, so a project
+can mix typed and untyped scripts. `view` takes `env: kui.Env` and
+`slot: kui.Slot`. A message is a record that extends `kui.Event`, and
+the `kui.With…` field its event fills, cast from what `on_event` hears:
+
+```lua
+local record Pan is kui.Event, kui.WithDrag end
+
+global function on_event(ev: kui.Event): {string:any}
+  if ev.kind == "pan" then
+    local p = ev as Pan
+    if p.drag.phase == "start" then ... end
+  end
+end
+```
+
+`slot.params` is the host's own table, so what a view reads from it is
+cast too (`slot.params.title as string`). The file is checked against
+Teal 0.24.8; write it again after an upgrade.
+
+[alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-unreleased)
+
 ### How do I give my windows the app's icon?
 
 Tell the launcher, once, and every window it creates carries it:

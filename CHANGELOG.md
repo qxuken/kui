@@ -23,7 +23,34 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.68 (unreleased)
 
-**What breaks.** Nothing: a fix to text at a size no screen shows.
+**What breaks.** Nothing: a fix to text at a size no screen shows, and
+a declaration file for Teal beside the one for lua-language-server.
+
+### Added
+
+- **The Lua DSL described for Teal** (backlog F194). `kui_lua::teal_decls()`
+  returns a `kui.d.tl` for [Teal](https://teal-language.org), the typed
+  Lua dialect: saved where `tl` finds modules and named the global
+  environment (`global_env_def = "kui"` in `tlconfig.lua`), it lets
+  `tl check` type a view's tables — a misspelt prop, a boolean where a
+  colour goes, a word no enum has, a misspelt `env` read, an event phase
+  that does not exist — and `tl gen` write the plain Lua a
+  `LuaExtension` loads, so nothing of Teal runs in kui and a project
+  mixes typed and untyped scripts. It is `luals_meta()`'s file in Teal's
+  words, from the same tables: every builder and prop, the event classes
+  (an app's message is a record extending `kui.Event` and the
+  `kui.With…` field its event fills, cast from `ev`), and `env` typed as
+  `kui.Env` — its facts from `schema::ENV_FIELDS`, its palette, metrics
+  and tokens, and every call in `schema::DOORS`' Lua column — since Teal
+  will not index an untyped table. Tests check the file with Teal 0.24.8
+  itself: every value the parser reads for a prop, Teal takes; a typed
+  view compiles and its Lua runs. One gap is Teal's: a table against a
+  union of shapes (`width = { percent = 50 }`) is told apart at run time
+  only, so a shape no member has gets past `tl check` and the parser
+  refuses it as before.
+
+  *What you can delete:* a hand-written `.d.tl` for the prelude, and a
+  `kui.Env` record a Teal project kept in step with the crate docs.
 
 ### Fixed
 
