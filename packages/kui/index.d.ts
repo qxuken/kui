@@ -152,7 +152,8 @@ export interface DragEvent {
  *  `phase: 'up'`, when the sink also declares `keyUp`; without that flag a
  *  sink hears presses only, so a keymap runs each binding once. `code` is a
  *  character or a name ("left", "f5"), `text` what the press would insert
- *  (null for a chord, and on every release), `repeat` set when the OS
+ *  (null for a chord — but for a Mac's Option while it composes, ⌥- typing
+ *  "–" — and on every release), `repeat` set when the OS
  *  auto-repeated the press. A key only comes up where it went down: a release
  *  whose press the sink never got is dropped, and focus leaving while a key is
  *  held delivers the `up` first — so a held-key binding cannot be left stuck

@@ -167,6 +167,8 @@ mod encode;
 pub use encode::{AnimationEncoder, AnimationEncoding, ImageEncoding, encode_image};
 /// The wallpaper a `Tinted` backdrop draws where the OS has no material.
 mod ground;
+mod headless;
+pub use headless::{HeadlessInput, HeadlessRunner};
 mod icon;
 mod keys;
 /// A `Blur` backdrop asked of a Linux compositor.
@@ -285,9 +287,25 @@ pub trait App {
 /// and harmless after the loop has ended (a wake nobody hears is dropped).
 /// An app gets one in [`App::setup`], a host from [`PumpRunner::waker`].
 #[derive(Clone)]
-pub struct Waker(EventLoopProxy<access_bridge::UserEvent>);
+pub struct Waker(WakeTarget);
+
+/// What a [`Waker`] rings: a window's event loop, or a runner with no
+/// window (`mod headless`).
+#[derive(Clone)]
+enum WakeTarget {
+    Loop(EventLoopProxy<access_bridge::UserEvent>),
+    Headless(Arc<headless::Signal>),
+}
 
 impl Waker {
+    fn of(proxy: EventLoopProxy<access_bridge::UserEvent>) -> Self {
+        Waker(WakeTarget::Loop(proxy))
+    }
+
+    fn headless(signal: Arc<headless::Signal>) -> Self {
+        Waker(WakeTarget::Headless(signal))
+    }
+
     /// Asks every window for a frame: the loop wakes, `view` runs and the
     /// frame is drawn. Safe from any thread and at any rate, since wakes
     /// coalesce into the loop's next turn rather than queueing frames.
@@ -297,7 +315,12 @@ impl Waker {
     /// until it is back: where the platform delivers it no redraw, in a
     /// frame built and not drawn, at most four a second (backlog F169).
     pub fn wake(&self) {
-        let _ = self.0.send_event(access_bridge::UserEvent::Wake);
+        match &self.0 {
+            WakeTarget::Loop(p) => {
+                let _ = p.send_event(access_bridge::UserEvent::Wake);
+            }
+            WakeTarget::Headless(s) => s.wake(),
+        }
     }
 
     /// Asks every window for a frame at `at` (backlog F135): the loop
@@ -306,7 +329,12 @@ impl Waker {
     /// From the view itself `Ui::request_frame_at`, on the frame clock,
     /// says the same thing without a `Waker`.
     pub fn wake_at(&self, at: std::time::Instant) {
-        let _ = self.0.send_event(access_bridge::UserEvent::WakeAt(at));
+        match &self.0 {
+            WakeTarget::Loop(p) => {
+                let _ = p.send_event(access_bridge::UserEvent::WakeAt(at));
+            }
+            WakeTarget::Headless(s) => s.wake_at(at),
+        }
     }
 }
 
@@ -983,6 +1011,12 @@ impl Launcher {
     /// with the launcher's setup applied — the part of `shell` that does
     /// not need the app's type.
     fn main_core(&mut self) -> (bool, Session, Core) {
+        self.main_core_for(true)
+    }
+
+    /// [`Self::main_core`], `windowed` false for a runner with no window,
+    /// which `KUI_DEVTOOLS` does not reach: a run's pictures are the app's.
+    fn main_core_for(&mut self, windowed: bool) -> (bool, Session, Core) {
         // Before anything prints: a windows-subsystem app started from a
         // shell has no stdout until it takes its parent's, and the
         // diagnostics, the panics and `report_faults` are all worth
@@ -1005,7 +1039,9 @@ impl Launcher {
         // `KUI_DEVTOOLS=1` opens the panel for a program that never asked
         // (ADR 0024); read here, for a window, and never by a headless
         // core. What the launcher was told comes after, and wins.
-        core.devtools_from_env();
+        if windowed {
+            core.devtools_from_env();
+        }
         for f in std::mem::take(&mut self.setup_core) {
             f(&mut core);
         }
@@ -1140,28 +1176,28 @@ impl DynShell<'_> {
     /// paths no winit event carries.
     fn attach(&mut self, event_loop: &EventLoop<access_bridge::UserEvent>) {
         self.proxy = Some(event_loop.create_proxy());
-        self.app.setup(Waker(event_loop.create_proxy()));
+        self.app.setup(Waker::of(event_loop.create_proxy()));
         // A menu-bar item chosen by its ⌘-shortcut is the whole of the
         // event as far as winit is concerned — AppKit consumed the key —
         // so the bar rings the loop itself.
         #[cfg(target_os = "macos")]
         if let Some(bar) = &self.native_menu_bar {
-            bar.set_waker(Waker(event_loop.create_proxy()));
+            bar.set_waker(Waker::of(event_loop.create_proxy()));
         }
         // And so does an insert the platform makes from the palette or
         // dictation: no winit event carries it.
         #[cfg(target_os = "macos")]
-        macos_text_input::set_waker(Waker(event_loop.create_proxy()));
+        macos_text_input::set_waker(Waker::of(event_loop.create_proxy()));
         // And a file drag's position (ADR 0031), which winit's do not.
         #[cfg(target_os = "macos")]
-        macos_drop::set_waker(Waker(event_loop.create_proxy()));
+        macos_drop::set_waker(Waker::of(event_loop.create_proxy()));
         // And the documents the OS asks the app to open (backlog F124),
         // which winit's application delegate does not answer: installed
         // here, before `run_app` launches the app, since the launch-time
         // ones come inside `finishLaunching`.
         #[cfg(target_os = "macos")]
         {
-            macos_open::set_waker(Waker(event_loop.create_proxy()));
+            macos_open::set_waker(Waker::of(event_loop.create_proxy()));
             macos_open::install();
         }
         // And the installed fonts changing, which winit has no event for.
@@ -1448,9 +1484,9 @@ impl PumpState {
 
     fn waker(&self, shell: &DynShell<'_>) -> Waker {
         match &self.event_loop {
-            Some(event_loop) => Waker(event_loop.create_proxy()),
+            Some(event_loop) => Waker::of(event_loop.create_proxy()),
             // Retired: the proxy the shell kept still names the loop.
-            None => Waker(shell.proxy.clone().expect("a pump runner keeps its proxy")),
+            None => Waker::of(shell.proxy.clone().expect("a pump runner keeps its proxy")),
         }
     }
 }
@@ -2785,7 +2821,7 @@ impl DynShell<'_> {
         if !pane.captures.writes_on_thread()
             && let Some(p) = proxy.as_ref()
         {
-            let waker = Waker(p.clone());
+            let waker = Waker::of(p.clone());
             pane.captures.write_on_thread(move || waker.wake());
         }
         pane.captures.serve(&mut pane.core);

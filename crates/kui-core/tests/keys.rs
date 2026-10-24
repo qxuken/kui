@@ -462,6 +462,15 @@ fn the_second_channel_of_a_press_is_one_table() {
     assert_eq!(plain(KeyCode::Char('w')).edit_event(), None);
     assert_eq!(plain(KeyCode::F(5)).edit_event(), None);
     assert_eq!(plain(KeyCode::Insert).edit_event(), None);
+    // But a Mac's Option that composes types (backlog F195): ⌥- is the
+    // chord on `-`, and the editor inserts the `–` it carries.
+    let alt = KeyMods::NONE.with_alt();
+    assert_eq!(
+        KeyPress::new(KeyCode::Char('-'), alt)
+            .with_text("–")
+            .edit_event(),
+        Some(InputEvent::Text("–".to_string()))
+    );
 }
 
 /// A dead key that does not combine with the key after it types its

@@ -1588,7 +1588,8 @@ Declare `optionAsAlt` on the root (Rust
 `ui.option_as_alt(OptionAsAlt::Left)`, Lua `option_as_alt = "left"` on
 the root table, C `kui_set_option_as_alt(ctx, KUI_OPTION_AS_ALT_LEFT)`)
 on every frame — from a setting, if your users choose. On a Mac, Option
-composes: ⌥m types `µ`, which still arrives as the chord `<A-m>`, but
+composes: ⌥m types `µ`, which still arrives as the chord `<A-m>` with
+`µ` as its `text` (so an editor of your own types it), but
 ⌥u, ⌥e, ⌥i, ⌥n and ⌥` are dead keys that start an accent and wait for
 the next key, and the press never arrives as a key at all. The Option
 key you name is Alt instead: those presses arrive as `<A-u>` and the
@@ -2544,6 +2545,46 @@ is the three buttons.
 
 [ADR 0055](adr/0055-an-app-asks-for-its-window-as-a-file.md) ·
 [alpha.66 `### Added`](../CHANGELOG.md#010-alpha66-2026-10-24)
+
+### How do I run my app with no window?
+
+Open it headless: the same launcher, `open_headless` in place of `run`,
+and a size and scale for the frames it draws. The app runs on the real
+clock, its threads wake it through the `Waker` its `setup` was given,
+and it draws for nobody — and keeps a frame as a file when it asks, as
+a window does (previous how-to). No display is needed, so it runs over
+ssh or in a container; a capture needs a GPU.
+
+```rust
+let runner = kui_native::app("editor")
+    .core(core)
+    .open_headless(Editor::new(), 1100.0, 760.0, 2.0);
+let input = runner.input(); // Clone + Send: keys, clicks, resize, close
+std::thread::spawn(move || {
+    input.send(InputEvent::Text("hello".into()));
+    input.close();
+});
+runner.run(); // until the close; teardown has run
+```
+
+`run` parks between turns. To read the app between them, turn it
+yourself: `turn()` does what is owed and returns, `turn_until(deadline)`
+waits for something to do first, and `app_mut()`, `core_mut()`,
+`frames()` and `idle()` read what the turn left. Everything sent through
+`input()` before a turn is handled before that turn's frame, so a driver
+that sends keys and then asks the app something reads the frame after
+all of them.
+
+The run touches nothing of the desktop's: its clipboard is its own
+(`runner.clipboard()`, `input.set_clipboard`), sounds are dropped, a file
+dialog answers with no files, and `env.system` is what you pinned with
+`Launcher::system` — the OS is not asked, so the pictures are the same on
+every machine. While something animates it draws 60 frames a second;
+idle, it parks. For a test on a stepped clock, `testing::Drive` is still
+the tool: a headless run's timings are the machine's.
+
+[ADR 0057](adr/0057-an-app-runs-with-no-window.md) ·
+[alpha.68 `### Added`](../CHANGELOG.md#010-alpha68-unreleased)
 
 ### How do I trade smoothness for latency, or the other way?
 
