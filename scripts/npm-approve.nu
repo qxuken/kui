@@ -1,8 +1,10 @@
 #!/usr/bin/env nu
-# Makes a staged npm release live. The GitHub release workflow stages
-# `@qxuken/kui@<version>` on npmjs with a stage-only token
-# (.github/workflows/release.yml, "npm stage publish"); only a maintainer
-# with 2FA can approve it, which is this script:
+# Makes a staged npm release live. Since alpha.67 the GitHub release
+# workflow publishes `@qxuken/kui@<version>` on npmjs itself, through
+# trusted publishing, and applies the `latest` rule below the same way
+# (.github/workflows/release.yml, "npm publish"); a version staged by hand
+# (`npm stage publish`, docs/releasing.md's fallbacks) still waits for a
+# maintainer with 2FA to approve it, which is this script:
 #
 #   nu scripts/npm-approve.nu                  the version packages/kui/package.json names
 #   nu scripts/npm-approve.nu 0.1.0-alpha.35   that version (or @qxuken/kui@0.1.0-alpha.35)

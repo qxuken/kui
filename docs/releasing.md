@@ -93,7 +93,7 @@ started by hand:
   `publish`, which verifies the tag against the manifests and the
   changelog heading, runs the parity tests against the four shipped
   binaries, publishes the crates to crates.io in
-  dependency order and stages the npm package on npmjs. Each build leg
+  dependency order and publishes the npm package on npmjs. Each build leg
   also packs `libkui_ffi` for its platform (`scripts/pack-ffi.nu`, from
   the same target dir: the addon's tree is the library's but for 18
   crates) and, off Windows, links and runs the C and Odin counters
@@ -104,10 +104,9 @@ started by hand:
   creating it (a prerelease for an alpha). A failed `packs` is re-run on
   its own; the release's assets are replaced. `workflow_dispatch` runs
   the same without `publish` and without the release, leaving the
-  tarballs as the run's `release-packs` artifact. It needs two
-  repository secrets: `CRATES_IO_TOKEN` (a crates.io API token with publish
-  rights on the `kui-*` crates) and `NPM_TOKEN` (an npmjs granular access
-  token for the `@qxuken` scope with "Read and write (stage only)").
+  tarballs as the run's `release-packs` artifact. It needs one
+  repository secret, `CRATES_IO_TOKEN` (a crates.io API token with publish
+  rights on the `kui-*` crates); npmjs takes no secret (below).
 - **Forgejo**, [ci.yml](../.forgejo/workflows/ci.yml), by hand: Actions →
   ci → Run workflow on the tag, with `publish` ticked. `check` in full (the
   C round, the Odin binding, the Node parity tests, the scene corpus, the
@@ -126,12 +125,32 @@ started by hand:
 Neither pipeline publishes the npm package to the Forgejo npm registry; that
 is done by hand, below.
 
-The npmjs half is not finished by the runner, on purpose. A stage-only token
-can put a version on registry.npmjs.org only as a *staged* release, hidden
-until a maintainer with 2FA approves it; the GitHub job's last step stages
-`@qxuken/kui@<version>` under its dist-tag (`alpha` for a prerelease). One
-script makes it live, logged in on npmjs (`npm login`) with npm 11.15 or
-newer (`npm install -g npm@11`):
+The npmjs half is finished by the runner through trusted publishing, since
+alpha.67: `@qxuken/kui`'s settings on npmjs.com name GitHub Actions,
+`qxuken/kui` and `release.yml` as its trusted publisher, with "Allow npm
+publish" and "Allow npm dist-tag" ticked. The `publish` job holds
+`id-token: write`, npm trades GitHub's OIDC token for a publish token of
+its own, and `@qxuken/kui@<version>` goes live under its dist-tag (`alpha`
+for a prerelease) with provenance, then takes `latest` by the rule below.
+No token is stored anywhere, and nobody approves. What that needs and how
+it fails:
+
+- npm 11.21 or newer (11.5.1 publishes; moving a dist-tag over OIDC came
+  later) and Node 22.14 or newer; release.yml pins both.
+- `repository.url` in packages/kui/package.json must name the GitHub
+  repository, `https://github.com/qxuken/kui`.
+- npmjs does not check the trusted publisher when it is saved. A wrong
+  field shows only at publish time, as `ENEEDAUTH`; the fields cannot be
+  edited, only deleted and created again. A new one expires unless it
+  publishes within two days.
+- `npm stage list`/`approve` take no OIDC, so the job cannot see a stage:
+  a version staged by hand makes its publish fail until the stage is
+  approved or rejected.
+
+Until alpha.67 a stage-only `NPM_TOKEN` staged the version and a maintainer
+with 2FA approved it. That is still how a version staged by hand (the
+fallbacks below) goes live, logged in on npmjs (`npm login`) with npm 11.15
+or newer (`npm install -g npm@11`):
 
 ```bash
 nu scripts/npm-approve.nu              # the version package.json names; npmjs's approval opens in the browser
@@ -153,10 +172,9 @@ npm stage approve <stage-id> --otp <code> # publishes it; `npm stage reject <sta
 npm dist-tag add @qxuken/kui@<version> latest   # if `npm dist-tag ls` shows no `latest`, or an older one
 ```
 
-A staged version holds its semver slot, so a re-run of the job finds it
-staged and stops; rejecting it frees the slot.
+A staged version holds its semver slot; rejecting it frees the slot.
 
-What alpha.35, the first release cut this way, found out about that half:
+What alpha.35, the first release staged this way, found out about it:
 
 - `npm stage approve` does not ask for a code in the terminal. It prints an
   npmjs URL and waits for the approval in the browser, so run the script
@@ -188,9 +206,10 @@ cd packages/kui
 npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
 ```
 
-That stages with the maintainer's login instead of the runner's token,
+That stages with the maintainer's login instead of the runner's OIDC,
 which changes nothing about what is staged: the binaries are the ones the
-run's parity tests passed over. Then approve as above. To see where the
+run's parity tests passed over (only the provenance is missing). Then
+approve as above. To see where the
 other half stands, `gh run view <run-id> -R qxuken/kui` lists the GitHub
 jobs, and the Forgejo cargo registry answers per crate at
 `https://drydock9.qxuken.dev/api/v1/packages/qxuken/cargo/<crate>/<version>`.

@@ -85,6 +85,13 @@ a group still lights its members together.
   - A glyph's or a path's coverage lands in the atlas as white filled
     once and its alphas written over it, 2–2.7× as fast as a push a
     pixel.
+- **`@qxuken/kui` reaches npmjs live, with provenance.** The GitHub
+  release workflow publishes it through npm's trusted publishing (OIDC,
+  no stored token) and moves `latest` by the same rule
+  `scripts/npm-approve.nu` applies, where it staged the version with a
+  stage-only token for a maintainer to approve by hand. The `NPM_TOKEN`
+  secret is no longer read; `npm-approve.nu` stays for a version staged
+  by hand ([docs/releasing.md](docs/releasing.md)).
 
 ### Fixed
 

@@ -3,8 +3,8 @@
 #   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, win32-x64) ──┬── packs
 #           └──────────────────────────────────────────────────────────┴── publish
 #
-# and `publish` puts the crates on crates.io and stages the npm package on
-# npmjs, while `packs` attaches the C and Odin tarballs to the tag's GitHub
+# and `publish` puts the crates on crates.io and the npm package on npmjs,
+# while `packs` attaches the C and Odin tarballs to the tag's GitHub
 # release: kui-c-<version>.tar.gz and kui-odin-<version>.tar.gz, each with
 # libkui_ffi for all four platforms, shared and static (the layout is
 # scripts/pack-ffi.nu's). The two are siblings on purpose: a tag cannot be
@@ -37,10 +37,15 @@
 # Secrets:
 #   * CRATES_IO_TOKEN: a crates.io API token with publish-update on the
 #     kui-* crates (publish-new too, for a crate not yet there).
-#   * NPM_TOKEN: an npmjs granular access token for the @qxuken scope with
-#     "Read and write (stage only)". A stage-only token cannot publish, so the
-#     runner stages the version and a maintainer with 2FA approves it
-#     (`npm stage approve <id> --otp`); the publish job prints the commands.
+#
+# npmjs needs no secret: @qxuken/kui trusts this workflow as its publisher
+# (npmjs.com → the package's settings → Trusted Publisher: GitHub Actions,
+# qxuken/kui, release.yml, with "Allow npm publish" and "Allow npm
+# dist-tag"). The publish job asks GitHub for an OIDC token (`id-token:
+# write`) and npm trades it for a short-lived publish token, so a tag goes
+# live with no approval, and with provenance. Until alpha.67 a stage-only
+# NPM_TOKEN staged the version and a maintainer approved it by hand
+# (scripts/npm-approve.nu, still the way to finish a version staged by hand).
 name: release
 
 on:
@@ -65,6 +70,9 @@ env:
   ODIN_VERSION: "dev-2026-10"
   CARGO_ZIGBUILD_VERSION: "0.23.3"
   ZIGLANG_VERSION: "0.17.0"
+  # Trusted publishing wants npm 11.5.1 and Node 22.14; moving a dist-tag
+  # over it wants npm 11.21.0.
+  NPM_VERSION: "11.21.1"
 
 jobs:
   check:
@@ -362,13 +370,26 @@ jobs:
     # Only a tag publishes; a manual run stops at the builds and the packs.
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
+    # id-token is npm's trusted publishing: the OIDC token npmjs trades for
+    # a publish token. It is asked for here only, never workflow-wide.
+    permissions:
+      contents: read
+      id-token: write
     env:
       # cargo reads crates.io's token from CARGO_REGISTRY_TOKEN.
       CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       NPMJS_REGISTRY: https://registry.npmjs.org/
     steps:
       - uses: actions/checkout@v7
+
+      # Trusted publishing needs Node 22.14 or newer, which the image's own
+      # Node is not promised to be; setup-node's also installs into a
+      # prefix the runner owns, so `npm install -g` needs no sudo. No
+      # cache: nothing restored from one should reach a publish.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
 
       # The repository's scripts are Nushell; the release tarball runs on
       # the runner as it is.
@@ -390,7 +411,7 @@ jobs:
           rustup update --no-self-update stable
           rustup default stable
           test -n "$CARGO_REGISTRY_TOKEN" || { echo "CRATES_IO_TOKEN secret is not set" >&2; exit 1; }
-          test -n "$NPM_TOKEN" || { echo "NPM_TOKEN secret is not set" >&2; exit 1; }
+          npm install -g "npm@${NPM_VERSION}"
           node --version
           npm --version
 
@@ -437,69 +458,51 @@ jobs:
       - name: cargo publish (crates.io)
         run: nu scripts/publish-crates.nu crates-io
 
-      # The token is stage-only, so this step cannot publish. It stages the
-      # tarball on registry.npmjs.org under its dist-tag (`alpha` for a
-      # prerelease, `latest` for a plain version) and a maintainer with 2FA
-      # makes it live:
+      # Published live, through trusted publishing (see the top of this
+      # file): npm finds the OIDC environment itself, takes no token and
+      # attaches provenance. The version goes out under its dist-tag
+      # (`alpha` for a prerelease, `latest` for a plain version), then
+      # scripts/npm-approve.nu's `latest` rule: a prerelease also takes
+      # `latest` when it sorts highest among the versions npmjs holds, so a
+      # bare `npm install @qxuken/kui` resolves, and a stable release's
+      # `latest` is never taken back by an alpha after it. A re-run finds
+      # the version live and only settles the tag.
       #
-      #   npm stage list @qxuken/kui
-      #   npm stage approve <stage-id> --otp <code>
-      #
-      # Staging needs no 2FA and works for a package that does not exist yet,
-      # which is how the first version reaches npmjs. A staged version holds
-      # its semver slot (the same version cannot be staged twice) and its tag
-      # cannot change, so a re-run finds the version already staged or
-      # already live and does nothing. A stage-only token cannot move
-      # dist-tags either, so when a prerelease is the newest version and
-      # `latest` is missing, the maintainer sets it after approving.
-      # scripts/npm-approve.nu does both, and the step's output names it.
-      - name: npm stage publish (npmjs)
+      # A version staged by hand (`npm stage publish`, the fallback in
+      # docs/releasing.md) holds its slot and makes the publish fail: approve
+      # it (npm-approve.nu) or reject it. `npm stage list` cannot tell from
+      # here, since the stage commands take no OIDC.
+      - name: npm publish (npmjs)
         run: |
           set -eu
-          # `npm stage` arrived in npm 11.15 and the runner's image ships an
-          # older one. Its global prefix is /usr/local, root's, so the
-          # install needs sudo: without it alpha.35's run died here on
-          # EACCES, after the crates were on crates.io.
-          if ! npm stage --help >/dev/null 2>&1; then
-            sudo npm install -g npm@11
-            npm stage --help >/dev/null
-          fi
           ver=$(node -p 'require("./packages/kui/package.json").version')
           tag=latest
           case "$ver" in *-*) tag="${ver#*-}"; tag="${tag%%.*}";; esac
-          printf '%s:_authToken=%s\n' "${NPMJS_REGISTRY#https:}" "$NPM_TOKEN" >> "$HOME/.npmrc"
           cd packages/kui
           if [ "$(npm view "@qxuken/kui@$ver" version --registry "$NPMJS_REGISTRY" 2>/dev/null || true)" = "$ver" ]; then
             echo "@qxuken/kui@$ver is already live on npmjs"
+          else
+            npm publish --registry "$NPMJS_REGISTRY" --tag "$tag" --access public
+          fi
+          [ "$tag" = latest ] && exit 0
+          # Read off the dist-tags, not `npm view`'s cached packument, which
+          # can trail a publish by minutes (npm-approve.nu says how that
+          # was found); the new version is added to the list for the same
+          # reason.
+          latest=$(npm dist-tag ls @qxuken/kui --registry "$NPMJS_REGISTRY" | sed -n 's/^latest: //p')
+          if [ "$latest" = "$ver" ]; then
+            echo "latest is $ver already"
             exit 0
           fi
-          # Tolerated: a listing that errors (a package not yet on npmjs,
-          # say) means "nothing staged", and the publish below is the real test.
-          staged=$(npm stage list @qxuken/kui --json --registry "$NPMJS_REGISTRY" 2>/dev/null || echo '[]')
-          id=$(STAGED="$staged" VER="$ver" node -e '
-            const items = JSON.parse(process.env.STAGED);
-            const hit = (Array.isArray(items) ? items : []).find((i) => i.version === process.env.VER);
-            if (hit) process.stdout.write(String(hit.id));
+          versions=$(npm view @qxuken/kui versions --json --registry "$NPMJS_REGISTRY")
+          highest=$(VERSIONS="$versions" VER="$ver" NPM_ROOT="$(npm root -g)" node -e '
+            const semver = require(require.resolve("semver", { paths: [process.env.NPM_ROOT + "/npm/node_modules"] }));
+            const all = [].concat(JSON.parse(process.env.VERSIONS), process.env.VER).filter((v) => semver.valid(v));
+            process.stdout.write(all.sort(semver.rcompare)[0]);
           ')
-          if [ -n "$id" ]; then
-            echo "@qxuken/kui@$ver is already staged on npmjs as $id; approve it with"
-            echo "  npm stage approve $id --otp <code>"
+          if [ "$highest" != "$ver" ]; then
+            echo "latest left alone: $highest sorts above $ver (latest is ${latest:-unset})"
             exit 0
           fi
-          # Captured rather than piped through tee: without pipefail a pipe
-          # would report tee's exit status, not npm's.
-          out=$(npm stage publish --registry "$NPMJS_REGISTRY" --tag "$tag" --access public 2>&1) || {
-            printf '%s\n' "$out" >&2
-            exit 1
-          }
-          printf '%s\n' "$out"
-          id=$(printf '%s\n' "$out" | sed -n 's/.*staged with id \([^)]*\)).*/\1/p' | tail -1)
-          echo
-          echo "@qxuken/kui@$ver is staged on npmjs under the dist-tag '$tag'. To make it live:"
-          echo "  nu scripts/npm-approve.nu $ver     # approves it and sets 'latest' by CI's rule; prompts for the 2FA code"
-          echo "or by hand:"
-          echo "  npm stage view ${id:-<stage-id>}        # or: npm stage list @qxuken/kui"
-          echo "  npm stage approve ${id:-<stage-id>} --otp <code>"
-          if [ "$tag" != latest ]; then
-            echo "  npm dist-tag add @qxuken/kui@$ver latest   # if 'npm dist-tag ls' shows no 'latest', or one that sorts below $ver"
-          fi
+          npm dist-tag add "@qxuken/kui@$ver" latest --registry "$NPMJS_REGISTRY"
+          npm dist-tag ls @qxuken/kui --registry "$NPMJS_REGISTRY"
