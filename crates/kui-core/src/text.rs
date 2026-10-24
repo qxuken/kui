@@ -195,13 +195,7 @@ pub(crate) fn raster_glyph(
             return None;
         }
         let (data, is_color, subpixel) = match image.content {
-            SwashContent::Mask => {
-                let mut rgba = Vec::with_capacity(image.data.len() * 4);
-                for &a in image.data.iter() {
-                    rgba.extend_from_slice(&[255, 255, 255, a]);
-                }
-                (rgba, false, false)
-            }
+            SwashContent::Mask => (crate::atlas::white_mask(&image.data), false, false),
             SwashContent::Color => (image.data.to_vec(), true, false),
             SwashContent::SubpixelMask => {
                 // rgb carry the per-channel coverages; alpha (which zeno
@@ -1017,33 +1011,31 @@ fn chunk_ranges(content: &str) -> Vec<(usize, usize)> {
         } else if window_end == content.len() && !(off_stops && window[from..].contains('\t')) {
             window_end
         } else {
-            // One pass over the second half, noting its first and last
-            // tab and its last whitespace: a line re-cut on every edit
-            // (C19) must not walk each window twice.
-            let (mut first_tab, mut last_tab, mut space) = (None, None, None);
-            for (i, c) in window[from..].char_indices() {
-                if c.is_whitespace() {
-                    let end = from + i + c.len_utf8();
-                    space = Some(end);
-                    if c == '\t' {
-                        first_tab = first_tab.or(Some(end));
-                        last_tab = Some(end);
-                    }
-                }
-            }
-            let tab = if off_stops { first_tab } else { last_tab };
-            match tab.or(space) {
-                Some(i) => start + i,
+            // The second half searched for what ends the chunk, each from
+            // the end it is nearest: the tab by memchr, the last whitespace
+            // and the last grapheme boundary from the back, where prose has
+            // one within a word. A line re-cut on every edit (C19) walked
+            // every half whole, forwards, for the last of something
+            // (backlog C57).
+            let half = &window[from..];
+            let tab = match off_stops {
+                true => half.find('\t'),
+                false => half.rfind('\t'),
+            };
+            let space = || {
+                half.char_indices()
+                    .rev()
+                    .find(|(_, c)| c.is_whitespace())
+                    .map(|(i, c)| i + c.len_utf8() - 1)
+            };
+            match tab.or_else(space) {
+                Some(i) => start + from + i + 1,
                 None => {
                     // The last grapheme boundary at or before the window's end.
-                    let mut cut = 0usize;
-                    for (i, _) in window.grapheme_indices(true) {
-                        if i == 0 {
-                            continue;
-                        }
-                        cut = i;
+                    match window.grapheme_indices(true).next_back() {
+                        Some((cut, _)) if cut > 0 => start + cut,
+                        _ => window_end,
                     }
-                    if cut == 0 { window_end } else { start + cut }
                 }
             }
         };
@@ -3673,9 +3665,15 @@ fn could_be_long(len: usize, style: &TextStyle) -> bool {
 }
 
 /// Whether the content breaks lines of its own — a byte scan, since the
-/// `str` pattern search is per character.
+/// `str` pattern search is per character, 32 bytes a step with no exit
+/// inside one: a loop that can stop at any byte is a loop the compiler
+/// will not vectorize (backlog C57).
 fn has_line_break(content: &str) -> bool {
-    content.bytes().any(|b| b == b'\n' || b == b'\r')
+    let (blocks, rest) = content.as_bytes().as_chunks::<32>();
+    blocks.iter().any(|b| {
+        b.iter()
+            .fold(false, |any, &c| any | (c == b'\n') | (c == b'\r'))
+    }) || rest.iter().any(|&c| c == b'\n' || c == b'\r')
 }
 
 /// Whether the content holds a right-to-left character — a strong one of
@@ -5677,6 +5675,148 @@ mod unmeasurable_faces {
         assert_eq!(xs, [0.0, 7.0, 14.0]);
         for glyph in run.glyphs {
             glyph.physical((0.0, 0.0), 1.0);
+        }
+    }
+}
+
+/// The long-line scans searched from the end they are nearest (backlog
+/// C57) answer what the forward walks they replaced answered.
+#[cfg(test)]
+mod scans {
+    use super::*;
+
+    /// `chunk_ranges` as it was: every second half walked forwards for its
+    /// first and last tab and its last whitespace, and every window for
+    /// its last grapheme boundary.
+    fn chunk_ranges_forwards(content: &str) -> Vec<(usize, usize)> {
+        use unicode_segmentation::UnicodeSegmentation;
+        if content.len() < LONG_LINE_BYTES {
+            return vec![(0, content.len())];
+        }
+        let bytes = content.as_bytes();
+        let mut out = Vec::new();
+        let mut start = 0usize;
+        while start < content.len() {
+            let mut window_end = (start + CHUNK_BYTES).min(content.len());
+            while !content.is_char_boundary(window_end) {
+                window_end -= 1;
+            }
+            let window = &content[start..window_end];
+            let mut from = (CHUNK_BYTES / 2).min(window.len());
+            while !window.is_char_boundary(from) {
+                from += 1;
+            }
+            let off_stops = start > 0 && bytes[start - 1] != b'\t';
+            let early_tab = match off_stops {
+                true => window[..from].find('\t'),
+                false => None,
+            };
+            let end = if let Some(t) = early_tab {
+                start + t + 1
+            } else if window_end == content.len() && !(off_stops && window[from..].contains('\t')) {
+                window_end
+            } else {
+                let (mut first_tab, mut last_tab, mut space) = (None, None, None);
+                for (i, c) in window[from..].char_indices() {
+                    if c.is_whitespace() {
+                        let end = from + i + c.len_utf8();
+                        space = Some(end);
+                        if c == '\t' {
+                            first_tab = first_tab.or(Some(end));
+                            last_tab = Some(end);
+                        }
+                    }
+                }
+                let tab = if off_stops { first_tab } else { last_tab };
+                match tab.or(space) {
+                    Some(i) => start + i,
+                    None => {
+                        let mut cut = 0usize;
+                        for (i, _) in window.grapheme_indices(true) {
+                            if i == 0 {
+                                continue;
+                            }
+                            cut = i;
+                        }
+                        if cut == 0 { window_end } else { start + cut }
+                    }
+                }
+            };
+            out.push((start, end));
+            start = end;
+        }
+        out
+    }
+
+    /// A line of `len` bytes or more drawn from `pieces`, by a fixed
+    /// sequence so a failure names its seed.
+    fn line(seed: u64, len: usize, pieces: &[&str]) -> String {
+        let mut s = seed | 1;
+        let mut out = String::new();
+        while out.len() < len {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            out.push_str(pieces[(s % pieces.len() as u64) as usize]);
+        }
+        out
+    }
+
+    #[test]
+    fn a_long_line_is_cut_where_the_forward_walk_cut_it() {
+        let kinds: [&[&str]; 6] = [
+            // Prose, a space within a word or two.
+            &["lorem", "ipsum", " ", "dolor", " ", "sit", "amet,", " "],
+            // Code indented and aligned by tabs, on and off the stops.
+            &[
+                "\t",
+                "fn",
+                " ",
+                "x",
+                "\t\t",
+                "let",
+                "abcdefghijklmnopqrstuvwxyz0123456789",
+            ],
+            // Minified: no whitespace at all, the grapheme fallback.
+            &["{\"a\":1,", "\"bb\":[2,3],", "\"c\":\"d\"}", "é", "字"],
+            // Whitespace past ASCII: no-break, ideographic, em space.
+            &["слово", "\u{a0}", "漢字", "\u{3000}", "x", "\u{2003}"],
+            // Clusters a byte cut would split: combining marks, flags, ZWJ.
+            &["e\u{301}", "🇺🇦", "🇯🇵", "👩\u{200d}💻", "a", "\u{fe0f}"],
+            // A tab between long tab-free stretches, so chunks start off the stops.
+            &["\t", &"y".repeat(700), "z z", "🇺🇦"],
+        ];
+        for (k, pieces) in kinds.iter().enumerate() {
+            for seed in 0..12u64 {
+                let content = line(
+                    seed * 7919 + k as u64,
+                    LONG_LINE_BYTES * 3 + seed as usize * 97,
+                    pieces,
+                );
+                assert_eq!(
+                    chunk_ranges(&content),
+                    chunk_ranges_forwards(&content),
+                    "kind {k}, seed {seed}"
+                );
+            }
+        }
+    }
+
+    /// The block scan finds a break at every offset of a block and of the
+    /// tail after the last one, and none where there is none.
+    #[test]
+    fn a_line_break_is_found_at_every_offset() {
+        for len in [0, 1, 31, 32, 33, 64, 100] {
+            let plain = "a".repeat(len);
+            assert!(!has_line_break(&plain), "len {len}");
+            for at in 0..len {
+                for brk in ['\n', '\r'] {
+                    let mut s = plain.clone().into_bytes();
+                    s[at] = brk as u8;
+                    let s = String::from_utf8(s).unwrap();
+                    assert!(has_line_break(&s), "len {len}, at {at}, {brk:?}");
+                }
+            }
         }
     }
 }

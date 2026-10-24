@@ -44,16 +44,41 @@ pub fn fnv(mut h: u64, bytes: &[u8]) -> u64 {
 /// word hash's set-up costs more than the bytes.
 const BULK_MIN: usize = 32;
 
+/// Independent chains [`hash_bulk`] runs over a block of `8 × LANES`
+/// bytes. One chain waits on its multiply every word; eight keep the
+/// multipliers busy, which is the whole of the speed — a NEON lane has no
+/// 64-bit multiply, so this is instruction-level parallelism, not vectors
+/// (backlog C57).
+const LANES: usize = 8;
+
 /// A word-wide hash of `bytes` (eight a round where [`fnv`] takes one),
 /// for the bulk a text cache key is made of. Fx's round (rotate, xor,
 /// multiply) with the length mixed first and murmur's finalizer after, so
 /// a tail of zero bytes and a shorter text differ and every input bit
-/// reaches every output bit. Not a digest anything keeps across versions.
+/// reaches every output bit. Whole 64-byte blocks go through [`LANES`]
+/// chains, each seeded apart and folded into one by the same round; the
+/// words past the last block through that one. Not a digest anything
+/// keeps across versions.
 #[inline]
 pub fn hash_bulk(bytes: &[u8]) -> u64 {
     const K: u64 = 0x517c_c1b7_2722_0a95;
-    let mut h = FNV_OFFSET ^ (bytes.len() as u64).wrapping_mul(K);
-    let (words, tail) = bytes.as_chunks::<8>();
+    let seed = FNV_OFFSET ^ (bytes.len() as u64).wrapping_mul(K);
+    let (blocks, rest) = bytes.as_chunks::<{ 8 * LANES }>();
+    let mut h = seed;
+    if !blocks.is_empty() {
+        let mut lanes: [u64; LANES] = std::array::from_fn(|i| seed ^ i as u64);
+        for b in blocks {
+            let (w, _) = b.as_chunks::<8>();
+            for (l, w) in lanes.iter_mut().zip(w) {
+                *l = (l.rotate_left(5) ^ u64::from_le_bytes(*w)).wrapping_mul(K);
+            }
+        }
+        h = lanes[0];
+        for l in &lanes[1..] {
+            h = (h.rotate_left(5) ^ l).wrapping_mul(K);
+        }
+    }
+    let (words, tail) = rest.as_chunks::<8>();
     for w in words {
         h = (h.rotate_left(5) ^ u64::from_le_bytes(*w)).wrapping_mul(K);
     }
@@ -260,6 +285,31 @@ mod tests {
             mix_content(FNV_OFFSET, short),
             mix_content(FNV_OFFSET, long)
         );
+    }
+
+    /// The chains a block is split across (backlog C57) still see every
+    /// byte, and a word knows which chain it went to: a bit flipped in any
+    /// word of a block, two words of a block swapped, two blocks swapped
+    /// and a byte in the words after the last block all change the hash.
+    #[test]
+    fn the_bulk_hash_separates_every_word_of_a_block() {
+        let text: Vec<u8> = (0..200u8).map(|i| i.wrapping_mul(37)).collect();
+        let base = hash_bulk(&text);
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..text.len() {
+            let mut t = text.clone();
+            t[i] ^= 1;
+            assert!(seen.insert(hash_bulk(&t)), "byte {i}");
+        }
+        assert!(!seen.contains(&base));
+        let mut swapped = text.clone();
+        swapped.copy_within(0..8, 8);
+        swapped[..8].copy_from_slice(&text[8..16]);
+        assert_ne!(hash_bulk(&swapped), base);
+        let mut blocks = text.clone();
+        blocks[..64].copy_from_slice(&text[64..128]);
+        blocks[64..128].copy_from_slice(&text[..64]);
+        assert_ne!(hash_bulk(&blocks), base);
     }
 
     #[test]

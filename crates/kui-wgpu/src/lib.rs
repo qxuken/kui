@@ -2926,19 +2926,92 @@ pub struct Capture {
 /// Premultiplied pixels, as a target holds them, to straight RGBA:
 /// swizzled from BGRA when `bgra`, each colour divided by its alpha where
 /// the alpha is neither 0 nor 255. A frame over an opaque clear is all
-/// 255, and only the swizzle costs anything.
+/// 255, and only the swizzle costs anything: sixteen pixels at a time are
+/// swizzled and their alphas' least and most read in one pass, and only a
+/// block holding an alpha between is walked again to divide (backlog C57).
 fn straighten(px: &mut [u8], bgra: bool) {
-    for p in px.as_chunks_mut::<4>().0 {
+    let (blocks, rest) = px.as_chunks_mut::<64>();
+    for b in blocks {
+        let (least, most) = swizzle_block(b, bgra);
+        if least == 255 || most == 0 {
+            continue;
+        }
+        for p in b.as_chunks_mut::<4>().0 {
+            divide_by_alpha(p);
+        }
+    }
+    for p in rest.as_chunks_mut::<4>().0 {
         if bgra {
             p.swap(0, 2);
         }
-        let a = p[3] as u32;
-        if a != 0 && a != 255 {
-            for c in &mut p[..3] {
-                *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
-            }
+        divide_by_alpha(p);
+    }
+}
+
+/// Sixteen pixels swizzled from BGRA when `bgra`, and their least and
+/// most alpha. `vld4q` splits the block into one register a channel, so
+/// the swizzle is which register is stored where.
+#[cfg(target_arch = "aarch64")]
+fn swizzle_block(b: &mut [u8; 64], bgra: bool) -> (u8, u8) {
+    use std::arch::aarch64::*;
+    // SAFETY: NEON is part of every aarch64 target Rust supports, and the
+    // load and the store read and write exactly the block's 64 bytes.
+    unsafe {
+        let v = vld4q_u8(b.as_ptr());
+        if bgra {
+            vst4q_u8(b.as_mut_ptr(), uint8x16x4_t(v.2, v.1, v.0, v.3));
+        }
+        (vminvq_u8(v.3), vmaxvq_u8(v.3))
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+use swizzle_words as swizzle_block;
+
+/// Sixteen pixels swizzled from BGRA when `bgra`, and their least and
+/// most alpha — as words, which the compiler vectorizes. The block step
+/// off aarch64, and what the NEON one is tested against on it.
+#[cfg_attr(all(target_arch = "aarch64", not(test)), allow(dead_code))]
+fn swizzle_words(b: &mut [u8; 64], bgra: bool) -> (u8, u8) {
+    let (mut least, mut most) = (255u8, 0u8);
+    for p in b.as_chunks_mut::<4>().0 {
+        if bgra {
+            let v = u32::from_le_bytes(*p);
+            *p = ((v & 0xff00_ff00) | ((v >> 16) & 0xff) | ((v & 0xff) << 16)).to_le_bytes();
+        }
+        least = least.min(p[3]);
+        most = most.max(p[3]);
+    }
+    (least, most)
+}
+
+/// One straight pixel from a premultiplied one: each colour times 255
+/// over the alpha, rounded, where the alpha is neither 0 nor 255.
+#[inline(always)]
+fn divide_by_alpha(p: &mut [u8; 4]) {
+    let a = p[3];
+    if a != 0 && a != 255 {
+        let row = &unpremultiply()[a as usize];
+        for c in &mut p[..3] {
+            *c = row[*c as usize];
         }
     }
+}
+
+/// `(c × 255 + a / 2) / a`, at most 255, for every alpha `a` and colour
+/// `c`: the division [`straighten`] makes three times a translucent
+/// pixel, looked up. 64 KB, built the first time a capture holds one.
+fn unpremultiply() -> &'static [[u8; 256]; 256] {
+    static TABLE: std::sync::OnceLock<Box<[[u8; 256]; 256]>> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut t = Box::new([[0u8; 256]; 256]);
+        for a in 1..256u32 {
+            for c in 0..256u32 {
+                t[a as usize][c as usize] = ((c * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+        t
+    })
 }
 
 /// The `textures` entry a fragment draw reads its image from, if its
@@ -3309,6 +3382,50 @@ impl std::fmt::Write for FaultLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The block-at-a-time straightening (backlog C57) is the pixel-at-a-
+    /// time one it replaced, exactly: every alpha against every colour,
+    /// in blocks that are all opaque, all clear, mixed, and a tail short
+    /// of a block, swizzled or not.
+    #[test]
+    fn straightening_by_the_block_is_straightening_by_the_pixel() {
+        fn by_pixel(px: &mut [u8], bgra: bool) {
+            for p in px.as_chunks_mut::<4>().0 {
+                if bgra {
+                    p.swap(0, 2);
+                }
+                let a = p[3] as u32;
+                if a != 0 && a != 255 {
+                    for c in &mut p[..3] {
+                        *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
+                    }
+                }
+            }
+        }
+        let mut px = Vec::new();
+        for a in 0..256u32 {
+            for c in 0..256u32 {
+                px.extend_from_slice(&[c as u8, (255 - c) as u8, (c * 7) as u8, a as u8]);
+            }
+        }
+        px.extend((0..64).flat_map(|i| [i as u8, 2, 3, 255]));
+        px.extend((0..64).flat_map(|i| [i as u8, 2, 3, 0]));
+        px.extend((0..7).flat_map(|i| [i as u8, 200, 100, 128]));
+        for bgra in [false, true] {
+            let (mut want, mut got) = (px.clone(), px.clone());
+            by_pixel(&mut want, bgra);
+            straighten(&mut got, bgra);
+            assert!(want == got, "bgra {bgra}");
+        }
+        // The word step every other target takes is the one taken here.
+        for (i, block) in px.as_chunks::<64>().0.iter().enumerate() {
+            for bgra in [false, true] {
+                let (mut a, mut b) = (*block, *block);
+                assert_eq!(swizzle_block(&mut a, bgra), swizzle_words(&mut b, bgra));
+                assert!(a == b, "block {i}, bgra {bgra}");
+            }
+        }
+    }
 
     /// An opaque window keeps the mode it always had, `Opaque` — also on
     /// a composition swapchain, which lists `Auto` first and would have

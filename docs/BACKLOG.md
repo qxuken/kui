@@ -320,7 +320,11 @@ node trailing its container's scroll by its own transition — was built
 the day it was filed, after the alpha.66 tag, and is in the archive;
 and F193, from the user's wheel on Windows — a glide that could be a
 touch faster, with presets to choose from — was built the day it was
-filed, after the alpha.66 tag, and is in the archive.
+filed, after the alpha.66 tag, and is in the archive; and C57, from a
+search for loops SIMD could speed up — five CPU loops written so the
+compiler could not vectorize them or run them side by side, the text
+cache key's hash first — was built the day it was filed, after the
+alpha.66 tag, and is in the archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -366,7 +370,11 @@ on macOS 26 — were built the day they were filed and are in the
 archive. C55, filed the same day — a renderer that draws into a
 texture the host owns, and `capture()` on top of it — was built the day
 it was filed, with ADR 0054, and is in the archive, and so was C56, an
-app's own window captured or recorded to a file (ADR 0055).
+app's own window captured or recorded to a file (ADR 0055). C57, filed
+on 2026-10-24 — five CPU loops shaped so the compiler could not
+vectorize them, the text cache key's hash, a capture's readback and
+three text scans — was built the day it was filed and is in the
+archive.
 
 ### `.` C12 — Wrapping a column
 
