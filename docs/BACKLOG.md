@@ -300,7 +300,11 @@ measurement of group opacity against the exact result — a node's shadow
 drawn under the node, showing through it when translucent or faded — was
 built the day it was filed, after the alpha.65 tag, and is in the
 archive, as is V11 beside it — the rest of the fade's error, a faded
-subtree drawn as one picture — built the same day with ADR 0056.
+subtree drawn as one picture — built the same day with ADR 0056; and
+F189, from kawoosh's screenshot commands — two Rust docs that called a
+recording's `frames` what the file holds, where it is the frames drawn
+— was built the day it was filed, after the alpha.66 tag, and is in the
+archive.
 Everything else that has been filed has
 shipped, and the sections that follow keep only what they filed and
 where it went: F16–F23 from the two alpha.7 field reports closed the day
@@ -3406,40 +3410,9 @@ kawoosh's `:screenshot` and `:screencast` are `capture_to` and
 answer says. Checked on macOS, where the alpha.66 notes said capture had
 not been: every still format, an APNG and a GIF recording, the clipboard,
 a window behind others and one minimised, all answered and written. One
-entry, F189, open: the Rust docs say the opposite of the ADR about a
-recording's `frames`.
-
-### `.` F189 — A recording's `frames` is documented in Rust as what the file holds; it is the frames drawn
-
-**Found.** kawoosh's `:screencast` answered `20 frames, 1.8 s` for an
-APNG whose `acTL` says 3, and `7 frames, 1.1 s` for a GIF that holds 4.
-The count is `Recording::hold`'s, one a frame drawn
-(`kui-native/src/capture.rs`), and `AnimationEncoder` folds a frame that
-changes nothing into the one before and a frame too short to show into
-the next (`encode.rs`, `keep` and `add`); since FZ13 it also splits a
-frame held past what a delay holds into several. So the file can hold
-fewer frames than were drawn, or more. That is what ADR 0055 decided
-(§5: "`frames` 1 for a still and the frames drawn while recording for a
-recording (the file folds one that changed nothing into the one
-before)"), and what the C header (`kui_record_to`: "with the frames
-drawn") and Odin (`events.odin`, `Captured.frames`) say. Two Rust docs
-say the other thing:
-
-- `Captured` (`kui-core/src/event.rs`): "`frames` 1 for a still and
-  what the file holds for a recording";
-- `Core::record_to` (`kui-core/src/runtime/capture_api.rs`): "with the
-  `frames` it holds and its `seconds`".
-
-An app that trusts them reads the wrong number off the answer, as
-kawoosh's first note on it did.
-
-**Do.** The two docs say "the frames drawn while recording", as the ADR
-and the other bindings do, with the fold in a clause — the file may
-hold fewer (a frame that changed nothing joins the one before) or more
-(a long hold split, FZ13). Check `Ui::record_to`, Node's `index.d.ts`
-and the Lua docs for the same words. No behaviour changes: the frames
-drawn is the number an app can act on (how busy its window was), and
-what the file holds is the decoder's to say.
+entry, F189 — the Rust docs said the opposite of the ADR about a
+recording's `frames` — **built 2026-10-24**, the day it was filed, and
+in the archive.
 
 ## After alpha.58
 
@@ -5286,6 +5259,6 @@ move.
 - `.` **FZ13** — [A recorded frame held past what a delay holds loses the rest of its time](backlog/closed-2026-09.md#-fz13--a-recorded-frame-held-past-what-a-delay-holds-loses-the-rest-of-its-time--done-2026-10-24) — done (2026-10-24) — written as itself and then frames that change nothing, the time shared among them, up to 256 of them; found by the `encode` target
 - `.` **FZ14** — [A word shaped right to left comes back for the same word left to right](#-fz14--a-word-shaped-right-to-left-comes-back-for-the-same-word-left-to-right) — open — cosmic-text's shape-run cache keys a run without its direction; found by the hour's corpus under `tests/reuse.rs`
 
-**From kawoosh's screenshot commands (2026-10-24)** — F189, open
+**From kawoosh's screenshot commands (2026-10-24)** — F189, filed and built the same day
 
-- `.` **F189** — [A recording's `frames` is documented in Rust as what the file holds; it is the frames drawn](#-f189--a-recordings-frames-is-documented-in-rust-as-what-the-file-holds-it-is-the-frames-drawn) — open — `Captured`'s and `Core::record_to`'s docs against ADR 0055 §5, the C header and Odin; found by kawoosh's `:screencast`
+- `.` **F189** — [A recording's `frames` is documented in Rust as what the file holds; it is the frames drawn](backlog/closed-2026-09.md#-f189--a-recordings-frames-is-documented-in-rust-as-what-the-file-holds-it-is-the-frames-drawn--done-2026-10-24) — done (2026-10-24) — `Captured`'s and `Core::record_to`'s docs say the frames drawn, as ADR 0055 §5, the C header, Odin, Node and `props.md` do, and that the file can hold fewer or more; found by kawoosh's `:screencast`
