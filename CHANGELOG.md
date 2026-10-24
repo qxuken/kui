@@ -23,8 +23,23 @@ was the first bare bump to break an app in five releases).
 
 ## 0.1.0-alpha.68 (unreleased)
 
-**What breaks.** Nothing: a fix to text at a size no screen shows, and
-a declaration file for Teal beside the one for lua-language-server.
+**What breaks.**
+
+- The devtools' tree tab no longer outlines the selected node over the
+  app: `kui-devtools/outline-selected` is drawn only while the tab's
+  highlight toggle is on (`devtools_act("highlight")` in a test).
+- The devtools' tabs are four: `Ctrl+Shift+N` walks facts → events →
+  tree → **perf** → the declared tabs, so a test that counted presses to
+  reach a declared tab presses once more; the latency graph is the Perf
+  tab's, not the Facts tab's. An app's own tab named `perf` keeps its
+  name: `set_devtools_tab` reaches a declared tab of the name, exactly,
+  before the panel's own.
+
+Otherwise a fix to text at a size no screen shows, a declaration file for
+Teal beside the one for lua-language-server, and a pass over the devtools
+panel's look. A test that drove the panel and read a selection's outline
+is the one that notices; an app's own tree, keys and events are as they
+were.
 
 ### Added
 
@@ -58,6 +73,58 @@ a declaration file for Teal beside the one for lua-language-server.
 
   *What you can delete:* a hand-written `.d.tl` for the prelude, and a
   `kui.Env` record a Teal project kept in step with the crate docs.
+
+### Added
+
+- **A Perf tab in the devtools** (backlog F197). Live, the last frames'
+  cost by phase — input, view, layout, render, vsync's wait — as bars
+  against the frame budget, with the average, 95th percentile and worst.
+  The record button keeps every frame (the newest 1800) of the main
+  window, read by its core as the frame begins: why it ran
+  (`frame_cause`), who held it (`owed_by` — the node whose transition
+  was mid-flight, the line that called `request_frame`), its phase
+  times once the driver pushed them, and whether it drew what the frame
+  before drew (`frame_unchanged`). Stopped, the tab shows the recording
+  — frames over seconds, the work spread, how many went past the budget
+  and how many drew nothing new, frames counted by cause and by holder —
+  and a timeline whose bars open into their frame; a holder with a node
+  lights it in the app and selects it in the tree. While it records the
+  tab draws nothing that moves, so a docked panel never makes a frame
+  look changed. A camera saves a screenshot of the window and a film
+  camera records it as a GIF until pressed again (`capture_to` /
+  `record_to`), to `KUI_CAPTURE_DIR`, else the desktop, else the
+  temporary directory, the path noted in the events tab; the panel's
+  `capture` answers come back to the panel, never the app. Nothing of
+  it runs until it is used: with the panel off the frame is as it was,
+  and with it on and not recording the frame trace stays as the app set
+  it and no capture is asked.
+
+  *What you can delete:* a hand-rolled frame log built on `frame_cause`
+  and `owed_by` to find out why an app does not go idle.
+
+### Changed
+
+- **The devtools light the app as a browser's do** (backlog F196). The
+  tree tab highlights the node under a hovered row, a breadcrumb or the
+  inspector's parent link — and the one under the picker — with its box
+  model over the app (the content blue, the padding green, the border
+  yellow) and a badge with its kind, name and size. A selection only
+  opens the inspector and leaves the app as it is while its values are
+  read; the eye beside the picker keeps it outlined. The inspector opens
+  on the node's title, size and a box-model diagram, and lists only the
+  values the node has. The rows draw a guide down each level, chevrons
+  for the disclosures, and flags as chips; a text node's words read as a
+  string. In a bottom dock the inspector sits beside the list.
+- **The devtools panel's frame** (backlog F196). The tabs and the
+  placement buttons share one strip, the open tab underlined, where a
+  header above the tabs held the window's title and the frame counter
+  and a narrow dock cut the title to "kawoosh — k…": both are rows of
+  the Facts tab now, whose status block is in headed sections with long
+  values cut by an ellipsis. Filters name themselves by a placeholder;
+  the events tab's rows colour what an entry is apart from where it came
+  from and what it carried.
+
+  *What you can delete:* nothing — a look, not a door.
 
 ### Fixed
 

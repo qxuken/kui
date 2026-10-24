@@ -2,6 +2,7 @@
 //! the payload as data, and the one-line printing
 //! of a `Value` the rows and the inspector share.
 
+use super::icons::{self, Icon};
 #[cfg(test)]
 use super::lines;
 use super::panel::{filter_field, small_button};
@@ -94,24 +95,70 @@ fn summary(e: &Entry) -> String {
     }
 }
 
+/// The row's line in three parts, as the row paints them: what it is
+/// (the event's kind, `warning`, `note`) in its colour, who it came from,
+/// and the rest.
+fn parts(e: &Entry, t: &Theme) -> (String, crate::color::Color, String, String) {
+    let window = if e.window == WindowId::MAIN {
+        String::new()
+    } else {
+        format!("w{} ", e.window.0)
+    };
+    match e.kind {
+        EntryKind::Note => ("note".into(), t.faint, window, fmt_value(&e.payload)),
+        EntryKind::Warning => (
+            "warning".into(),
+            t.warning,
+            format!("{window}{}", e.payload.get_str("code").unwrap_or("")),
+            e.payload.get_str("message").unwrap_or("").to_string(),
+        ),
+        EntryKind::Event(event) => {
+            let who = match &e.label {
+                Some(l) => l.clone(),
+                None => format!("{:08x}", e.key.0 as u32),
+            };
+            let origin = if e.origin.0 == 0 {
+                String::new()
+            } else {
+                format!("ext{} ", e.origin.0)
+            };
+            (
+                event.name().to_string(),
+                t.accent,
+                format!("{window}{origin}{who}"),
+                fmt_value(&e.payload),
+            )
+        }
+    }
+}
+
 pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
-    // The toolbar: the count, the filter, and the three toggles.
+    // The toolbar: the filter, the count, and the three toggles.
     ui.with(
         NodeSpec::row()
             .grow_width()
             .min_height(Min::FIT)
             .cross_align(Align::Center)
-            .gap(6.0),
+            .gap(2.0),
         |ui| {
-            ui.text(
-                &format!("{} of {STREAM_CAP}", st.stream.len()),
-                TextStyle::new(11.0).color(t.muted).nowrap(),
-            );
-            let filter = filter_field(ui, t, "stream-filter", "filter");
+            let filter = filter_field(ui, t, "stream-filter", "filter events");
             if filter != st.stream_filter {
                 st.stream_filter = filter;
                 st.stream_dirty = true;
             }
+            let count = if st.stream_filter.is_empty() {
+                let n = st.stream.len();
+                format!("{n} {}", if n == 1 { "entry" } else { "entries" })
+            } else {
+                format!("{} of {}", st.rows.len(), st.stream.len())
+            };
+            ui.text_in(
+                NodeSpec::row()
+                    .pad_xy(6.0, 0.0)
+                    .apply_tooltip(&format!("the newest {STREAM_CAP} are kept")),
+                &count,
+                TextStyle::new(11.0).color(t.faint).nowrap(),
+            );
             small_button(
                 ui,
                 t,
@@ -169,7 +216,7 @@ pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
     if rows.is_empty() {
         ui.text_in_keyed(
             "kui-devtools/stream",
-            spec,
+            spec.center(),
             if stream.is_empty() {
                 "events arrive here as data"
             } else {
@@ -244,23 +291,29 @@ fn row(ui: &mut Ui<'_>, t: &Theme, e: &Entry, open: bool) {
                 NodeSpec::row()
                     .grow_width()
                     .height(ROW_H)
-                    .pad_xy(4.0, 0.0)
+                    .pad_xy(2.0, 0.0)
                     .gap(6.0)
                     .cross_align(Align::Center)
                     .clip(),
                 |ui| {
-                    ui.text(
-                        if open { "▾" } else { "▸" },
-                        TextStyle::new(10.0).color(t.faint),
+                    let glyph = if open {
+                        Icon::ChevronDown
+                    } else {
+                        Icon::ChevronRight
+                    };
+                    icons::draw(ui, glyph, t.faint, crate::color::Color::TRANSPARENT);
+                    ui.text_in(
+                        NodeSpec::row().min_width(28.0),
+                        &format!("{}", e.frame),
+                        TextStyle::new(10.0).color(t.faint).mono().nowrap(),
                     );
-                    ui.text(
-                        &format!("{:>4}", e.frame),
-                        TextStyle::new(11.0).color(t.faint).mono(),
-                    );
-                    ui.text(
-                        &summary(e),
-                        TextStyle::new(11.0).color(color).mono().nowrap(),
-                    );
+                    let (tag, tag_color, who, rest) = parts(e, t);
+                    let mono = |c| TextStyle::new(11.0).color(c).mono().nowrap();
+                    ui.text(&tag, mono(tag_color));
+                    if !who.is_empty() {
+                        ui.text(&who, mono(color).ellipsis());
+                    }
+                    ui.text(&rest, mono(t.muted).ellipsis());
                 },
             );
             if open {

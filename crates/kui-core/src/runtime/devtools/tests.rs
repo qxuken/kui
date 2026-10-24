@@ -1,5 +1,5 @@
 //! The panel in a bare core: where it is in the frame, what it takes back
-//! and what it hands on, and the three tabs' controls.
+//! and what it hands on, and the four tabs' controls.
 
 use super::*;
 use crate::access::{AccessAction, AccessRequest};
@@ -368,6 +368,7 @@ fn the_inspect_chord_is_the_app_s_to_respell() {
     // the door would see the default (a real window showed `^⇧I` over
     // an `F12` the chord already answered to).
     core.set_inspect(true);
+    core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     frame(&mut core);
@@ -1012,8 +1013,9 @@ fn the_dock_s_inset_is_what_a_driver_adds_to_the_minimum_size() {
 }
 
 /// The tree tab lists the app's nodes and not the panel's; a row's hover
-/// and click outline the node over the app, the click selects it and the
-/// inspector opens; the disclosure folds a subtree.
+/// lights its node over the app with its box model and a badge; a click
+/// selects it and the inspector opens, the app outlined only while the
+/// highlight toggle is on; the disclosure folds a subtree.
 #[test]
 fn the_tree_tab_lists_the_app_and_outlines_what_is_picked() {
     let mut core = on();
@@ -1056,21 +1058,48 @@ fn the_tree_tab_lists_the_app_and_outlines_what_is_picked() {
         .key_of("kui-devtools/outline-hover")
         .expect("the hovered row outlines its node");
     assert_eq!(node(&core, hover).rect.x, node(&core, press).rect.x);
+    assert!(
+        core.key_of("kui-devtools/outline-hover/content").is_some(),
+        "lit as a browser lights it: the content box"
+    );
+    assert!(core.key_of("kui-devtools/badge").is_some(), "and named");
     assert!(core.key_of("kui-devtools/outline-selected").is_none());
     assert!(access_click(&mut core, press_row).is_empty());
     assert_eq!(state(&core, |s| s.selected), Some(press));
     frame(&mut core);
+    // A selection opens the inspector and leaves the app alone: what is
+    // lit is what the pointer is on, until the eye holds the selection.
+    assert!(
+        core.key_of("kui-devtools/outline-selected").is_none(),
+        "a selection alone is not outlined"
+    );
+    core.devtools_act("highlight");
+    frame(&mut core);
     let outline = core
         .key_of("kui-devtools/outline-selected")
-        .expect("outlined");
+        .expect("outlined while the highlight is on");
     let (o, b) = (node(&core, outline), node(&core, press));
     assert_eq!(
         (o.rect.x, o.rect.y, o.rect.w),
         (b.rect.x, b.rect.y, b.rect.w)
     );
     assert!(core.key_of("kui-devtools/inspector").is_some());
-    // Fold the app's column: its rows go, the count on the row says so.
+    // The inspector's breadcrumb lights the ancestor under the pointer,
+    // as a row does.
     let column = b.parent.unwrap();
+    let crumb = core
+        .key_of(&format!("crumb:{:016x}", column.0))
+        .expect("the column is in the breadcrumb");
+    let c = node(&core, crumb).rect;
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        c.x + c.w / 2.0,
+        c.y + c.h / 2.0,
+    )));
+    frame(&mut core);
+    assert_eq!(state(&core, |s| s.hovered_row), Some(column));
+    let lit = core.key_of("kui-devtools/outline-hover").expect("lit");
+    assert_eq!(node(&core, lit).rect, node(&core, column).rect);
+    // Fold the app's column: its rows go, the count on the row says so.
     let fold = core
         .key_of(&format!("fold:{:016x}", column.0))
         .expect("the column's disclosure");
@@ -1214,7 +1243,11 @@ fn the_picker_finds_the_node_under_the_pointer() {
     assert_eq!(state(&core, |s| (s.selected, s.pick)), (Some(press), false));
     frame(&mut core);
     assert!(core.key_of("kui-devtools/picker").is_none());
-    assert!(core.key_of("kui-devtools/outline-selected").is_some());
+    assert!(
+        core.key_of("kui-devtools/outline-selected").is_none(),
+        "the pick is selected, and lit only while the highlight is on"
+    );
+    assert!(core.key_of("kui-devtools/inspector").is_some());
     // Escape leaves without picking — both halves of the press a driver
     // sends, so the editor channel's does not go on to the app.
     core.handle_input(chord('P'));
@@ -2044,7 +2077,9 @@ fn the_facts_list_the_tokens_and_the_inspector_names_a_painted_one() {
         view(&mut ui);
         ui.finish();
     }
-    // The panel opens on the events tab; `N` walks events → tree → facts.
+    // The panel opens on the events tab; `N` walks events → tree → perf
+    // → facts.
+    core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     for _ in 0..2 {
@@ -2257,7 +2292,7 @@ fn the_panel_raises_no_warning_of_its_own() {
     let mut core = on();
     for dock in [Dock::Left, Dock::Right, Dock::Bottom] {
         core.set_devtools_dock(dock);
-        for tab in ["facts", "events", "tree"] {
+        for tab in ["facts", "events", "tree", "perf"] {
             core.devtools_act(&format!("tab:{tab}"));
             settle(&mut core);
         }
@@ -2279,4 +2314,146 @@ fn the_panel_raises_no_warning_of_its_own() {
     assert!(panel.key_of("kui-devtools/dock:left").is_some());
     let warnings = panel.take_warnings();
     assert!(warnings.is_empty(), "{warnings:#?}");
+}
+
+/// The Perf tab's recording: off, it keeps nothing and leaves the frame
+/// trace as the app had it; on, every frame is kept with why it ran, who
+/// held it, its phase times once the driver pushed them, and whether it
+/// drew what the frame before drew — an idle frame a `request_frame`
+/// asked for draws nothing new. Stopped, the trace goes back.
+#[test]
+fn the_perf_recording_keeps_each_frame_s_cause_holders_and_cost() {
+    let busy = |core: &mut Core| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui, None);
+        ui.request_frame();
+        ui.finish();
+        core.stats.push(crate::stats::FrameSample {
+            view_ms: 1.0,
+            layout_ms: 0.5,
+            render_ms: 2.0,
+            ..Default::default()
+        });
+    };
+    let mut core = on();
+    core.set_inspect(true);
+    core.devtools_act("tab:perf");
+    for _ in 0..3 {
+        busy(&mut core);
+    }
+    assert!(state(&core, |s| s.perf.frames.is_empty()), "not recording");
+    assert!(!core.frame_trace(), "and the trace untouched");
+    core.devtools_act("perf-record");
+    for _ in 0..6 {
+        busy(&mut core);
+    }
+    assert!(core.frame_trace(), "the recording holds the trace");
+    let frames: Vec<PerfFrame> = state(&core, |s| s.perf.frames.iter().cloned().collect());
+    assert_eq!(frames.len(), 6);
+    let done = &frames[..5];
+    assert!(
+        done.iter()
+            .all(|f| f.sample.is_some_and(|s| s.render_ms == 2.0)),
+        "each finished frame has its timing: {done:?}"
+    );
+    assert!(done.iter().all(|f| f.nodes > 0));
+    assert!(
+        frames[1..]
+            .iter()
+            .all(|f| f.cause.contains(crate::runtime::cause::FrameCause::OWED)),
+        "an owed frame says so"
+    );
+    assert!(
+        frames[1..].iter().all(|f| f
+            .holders
+            .iter()
+            .any(|h| h.what == "request" && h.name.starts_with("request_frame"))),
+        "and who owed it: {:?}",
+        frames[1].holders
+    );
+    assert!(
+        done[2..].iter().all(|f| f.unchanged == Some(true)),
+        "an idle frame draws what the one before drew — the panel holds still: {:?}",
+        done.iter().map(|f| f.unchanged).collect::<Vec<_>>()
+    );
+    // Stopped: the trace goes back, the frames stay to be read.
+    core.devtools_act("perf-record");
+    busy(&mut core);
+    assert!(!core.frame_trace());
+    assert_eq!(state(&core, |s| s.perf.frames.len()), 6);
+    busy(&mut core);
+    let bar = core
+        .key_of(&format!("perf-bar:{}", frames[3].frame))
+        .expect("a bar per frame");
+    access_click(&mut core, bar);
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.perf.selected), Some(frames[3].frame));
+    let texts: Vec<String> = core.nodes().iter().filter_map(|n| n.text.clone()).collect();
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.starts_with("drew exactly what the frame before drew")),
+        "{texts:?}"
+    );
+    // An app that traced on its own keeps its trace through a recording.
+    core.set_frame_trace(true);
+    core.devtools_act("perf-record");
+    busy(&mut core);
+    core.devtools_act("perf-record");
+    busy(&mut core);
+    assert!(core.frame_trace(), "the app's own trace is put back on");
+}
+
+/// The panel's captures answer the panel: the ask reaches the main
+/// window's core, and its `capture` event goes into the stream as a note
+/// and never to the app — while an app's capture with the same message,
+/// asked with nothing of the panel's outstanding, is the app's.
+#[test]
+fn the_panel_s_captures_answer_the_panel_and_an_app_s_the_app() {
+    let mut core = on();
+    core.devtools_act("screenshot");
+    frame(&mut core);
+    let asks = core.take_capture_commands();
+    assert!(
+        matches!(&asks[..], [crate::CaptureCommand::Still { path, .. }] if path.ends_with(".png")),
+        "{asks:?}"
+    );
+    let crate::CaptureCommand::Still { path, message } = asks[0].clone() else {
+        unreachable!()
+    };
+    core.captured(
+        message.clone(),
+        crate::event::Captured {
+            phase: crate::event::CapturePhase::Saved,
+            path: path.clone(),
+            width: 10,
+            height: 10,
+            frames: 1,
+            seconds: 0.0,
+            error: None,
+        },
+    );
+    let out = core.take_pending_events();
+    assert!(out.iter().all(|e| !e.is(EventKind::Capture)), "{out:?}");
+    assert!(
+        state(&core, |s| s.stream.iter().any(
+            |e| fmt_value(&e.payload).contains(&format!("screenshot saved: {path}"))
+        )),
+        "the path is in the stream"
+    );
+    // The app's own, the same message: the app's.
+    core.captured(
+        message,
+        crate::event::Captured {
+            phase: crate::event::CapturePhase::Saved,
+            path: "a.png".into(),
+            width: 1,
+            height: 1,
+            frames: 1,
+            seconds: 0.0,
+            error: None,
+        },
+    );
+    let out = core.take_pending_events();
+    assert!(out.iter().any(|e| e.is(EventKind::Capture)), "{out:?}");
 }

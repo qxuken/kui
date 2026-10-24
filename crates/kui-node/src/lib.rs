@@ -3642,7 +3642,7 @@ macro_rules! core_methods {
             /// Shows the panel's tab named `name` from the app's side —
             /// what the strip's click and `Ctrl+Shift+N` do, for a command
             /// that jumps to the app's own tab. `name` is one
-            /// of the panel's own (`facts`, `events`, `tree`, in any case)
+            /// of the panel's own (`facts`, `events`, `tree`, `perf`, in any case)
             /// or a `<devtoolsTab>`'s, exactly as declared. A declared
             /// name the panel does not list
             /// yet is kept and shows once a frame declares it; the return

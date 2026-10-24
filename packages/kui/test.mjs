@@ -8047,7 +8047,8 @@ test('a devtoolsTab is lazy through its function child, and its content is the a
   assert.equal(ctx.devtoolsShownTab(), null);
   assert.ok(ctx.nodes().some((n) => n.label === 'kui-devtools/tab-custom:syntax'), 'the strip lists the tab');
   assert.ok(ctx.nodes().some((n) => n.label === 'kui-devtools/tab-custom:plug'), 'and the plugin\'s');
-  // N: tree, then Tree-sitter.
+  // N: tree, perf, then Tree-sitter.
+  ctx.keyDown('n', { ctrl: true, shift: true });
   ctx.keyDown('n', { ctrl: true, shift: true });
   ctx.keyDown('n', { ctrl: true, shift: true });
   assert.equal(ctx.devtoolsShownTab(), 'syntax', 'the reading the encoder takes');

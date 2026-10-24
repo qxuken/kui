@@ -3515,6 +3515,55 @@ One entry, F194 — a `kui.d.tl` generated from the schema, the compiler
 the project's own — **built 2026-10-24**, the day it was filed, and in
 the archive.
 
+## From the Perf tab (2026-10-25)
+
+The user, after F197 put a Perf tab in the devtools: a bar should open
+into why its frame lagged, and an app should be able to put its own
+measurements there; a recording should be kui's own format with
+adapters out, read by an inspector of its own; the time between frames
+should be in it; and C and Odin should have a waker. kawoosh built the
+first two for itself, over two tabs and some 2,300 lines. One entry,
+F198, with [ADR 0058](adr/0058-a-recording-is-a-timeline.md)
+proposed beside it and not built.
+
+### `~` F198 — A frame's time is one number a phase, the time between frames is not recorded, and an app cannot add its own
+
+**Found.** F197's frame detail says what each phase cost, why the frame
+ran and who held it — not where inside a phase the time went, whether
+the thread worked or waited for it, which frames were a run with no
+input, or what happened between frames: an input that waited for a
+sleeping or busy loop, a slow handler, idle work that draws nothing.
+kawoosh answers most of it for itself: thread-local spans summed by
+name and lapped by phase, system, pane and plugin, each lap's CPU time
+beside its wall time, a ledger that sums up a *burn* (30 frames or
+more, each within 100 ms, no input), named wakes and named frame
+requests, its process's memory, and two per-frame log files. A C, Odin
+or headless host records no phase times at all, since only the native
+runner and Node push `FrameSample`. Nothing of a recording leaves kui
+for Perfetto, Tracy or Instruments, and nothing reads one made where the
+panel is not. And C and Odin have no waker: a `kui_run` host whose data
+arrives on a thread redraws on a timer.
+
+**Do.** [ADR 0058](adr/0058-a-recording-is-a-timeline.md): nothing
+recorded unless the Perf tab records or shows, `KUI_PERF_TRACE` names a
+file, or a `tracing` subscriber listens; the recording a timeline in
+kui's own format (`kui-trace`: frames as intervals, spans with CPU time
+and the node they began under, inputs, events, handlers, wakes,
+requests, the loop's sleep and wake, presents, counters, gauges, marks;
+no payloads); the core's own spans and counters, so every host gets view
+and layout times; the drivers' loop records and `handler` spans; a
+frame's input-to-screen path, verdict (late, blocked, slow, waited,
+wasted, burn, fine), gap and flame chart; the recording grouped by span,
+origin, gap and burn; `.kuitrace` out (save, `Core::perf_trace`,
+`KUI_PERF_TRACE` streaming); adapters to Chrome, Perfetto, speedscope
+and the Firefox Profiler and `kui-trace diff` with a CI threshold;
+`tracing` under a feature; `kui-perf`, an inspector built on the kui
+tools design system — its timeline the design system's trace waterfall,
+shared with the BFF testing tool's inspector — as an app and as a
+devtools-tab extension, after the design system's v1; and `KuiWaker` for
+C and Odin, `Waker::named`, `noteWake` for Node. Twelve rows of `DOORS`.
+Then kawoosh's port, in its own session.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5375,3 +5424,12 @@ move.
 **From the Teal question (2026-10-24)** — F194, filed and built the same day
 
 - `.` **F194** — [Nothing describes the Lua DSL to Teal: a typed script has `row`, `env` and every prop undeclared](backlog/closed-2026-09.md#-f194--nothing-describes-the-lua-dsl-to-teal-a-typed-script-has-row-env-and-every-prop-undeclared--done-2026-10-24) — done (2026-10-24) — `kui_lua::teal_decls()`: a `kui.d.tl` from `luals_meta()`'s tables in Teal's words, `env` a `kui.Env` record from `ENV_FIELDS` and `DOORS`; checked by Teal 0.24.8 itself in the tests; both type files committed under `packages/lua`, and `scripts/gen.nu` runs every generator
+
+**From the user's devtools pass (2026-10-24)** — F196, filed and built the same day
+
+- `.` **F196** — [The devtools tree lights the selection for as long as it is selected, and the header cuts the title](backlog/closed-2026-09.md#-f196--the-devtools-tree-lights-the-selection-for-as-long-as-it-is-selected-and-the-header-cuts-the-title--done-2026-10-24) — done (2026-10-24) — hover and pick light a node with its box model and a badge, the selection only under the eye toggle; the inspector's box-model diagram and compact groups; tabs and placements in one strip, title and frame counter in Facts; Facts in sections, the events rows coloured
+- `.` **F197** — [The devtools show a frame's cost in a graph but not why it ran, who held it, or whether it drew anything](backlog/closed-2026-09.md#-f197--the-devtools-show-a-frames-cost-in-a-graph-but-not-why-it-ran-who-held-it-or-whether-it-drew-anything--done-2026-10-24) — done (2026-10-24) — a Perf tab: live phase bars against the budget; a recording of every frame with its cause, holders, timing and unchanged flag as a clickable timeline and a summary; a screenshot and a GIF of the window, answered to the panel
+
+**From the Perf tab (2026-10-25)** — F198, filed with ADR 0058 proposed
+
+- `~` **F198** — [A frame's time is one number a phase, the time between frames is not recorded, and an app cannot add its own](#-f198--a-frames-time-is-one-number-a-phase-the-time-between-frames-is-not-recorded-and-an-app-cannot-add-its-own) — open — [ADR 0058](adr/0058-a-recording-is-a-timeline.md) proposed: a timeline in kui's own format (`kui-trace`, adapters, diff), frames and the gaps between them, spans, counters, gauges and named causes, a frame's input-to-screen path and verdict, the `kui-perf` inspector on the kui tools design system, and a waker for C and Odin — none of it costing anything until asked for

@@ -4164,7 +4164,7 @@ void kui_set_devtools_pick(KuiCtx *ctx, bool on);
 bool kui_devtools_picking(KuiCtx *ctx);
 /* Shows the panel's tab named name from the host's side - what the strip's
  * click and Ctrl+Shift+N do, for a command that jumps to the host's own
- * tab: one of the panel's own ("facts", "events", "tree", in any case)
+ * tab: one of the panel's own ("facts", "events", "tree", "perf", in any case)
  * or a declared tab's, exactly as declared. A declared name the panel
  * does not list yet is kept and shows
  * once a frame declares it; the return says whether the panel lists it

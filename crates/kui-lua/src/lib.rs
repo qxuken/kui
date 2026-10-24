@@ -4558,14 +4558,15 @@ mod tests {
             1,
             "the tab with neither form warns once: {ws:?}"
         );
-        // Ctrl+Shift+N three times: tree, then Tree-sitter (the first
-        // declared tab).
+        // Ctrl+Shift+N three times: tree, perf, then Tree-sitter (the
+        // first declared tab).
         let chord = || {
             kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(
                 kui_core::KeyCode::Char('N'),
                 kui_core::KeyMods::NONE.with_ctrl().with_shift(),
             ))
         };
+        core.handle_input(chord());
         core.handle_input(chord());
         core.handle_input(chord());
         frame(&mut core, &mut ext);

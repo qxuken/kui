@@ -2,7 +2,7 @@
 //! strip and the tab in view, and the small controls every tab shares.
 
 use super::icons::{self, Icon};
-use super::{DEVTOOLS_KEY, Dock, Place, Shown, State, Tab, action, stream, tree};
+use super::{DEVTOOLS_KEY, Dock, Place, Shown, State, Tab, action, perf, stream, tree};
 use crate::color::Color;
 use crate::env::Appearance;
 use crate::menu::MenuItem;
@@ -17,7 +17,7 @@ use crate::widgets;
 /// The whole of what the panel declares in this window.
 pub(super) fn build(ui: &mut Ui<'_>, st: &mut State, nodes: &[NodeInfo], place: Place) {
     let t = ink(ui.theme());
-    if st.shown() != Shown::Builtin(Tab::Tree) {
+    if !matches!(st.shown(), Shown::Builtin(Tab::Tree | Tab::Perf)) {
         st.hovered_row = None;
     }
     match place {
@@ -118,26 +118,28 @@ fn panel(
     if matches!(docked, Some(Dock::Right | Dock::Bottom)) {
         handle(ui, t, docked.unwrap());
     }
-    ui.open(NodeSpec::column().fill().pad(10.0).gap(8.0).clip());
+    ui.open(NodeSpec::column().fill().clip());
+    // The strip across the top — the tabs, then the placements — and a
+    // hairline under it the whole width of the pane, as a browser's
+    // devtools draw theirs.
     fixed(ui, |ui| header(ui, st, t));
-    fixed(ui, |ui| tabs(ui, st, t));
+    ui.leaf(NodeSpec::row().grow_width().height(1.0).bg(t.border));
+    ui.open(NodeSpec::column().fill().pad(10.0).gap(8.0).clip());
     match st.shown() {
         Shown::Custom(i) => tab_body(ui, st, i, place),
         Shown::Builtin(Tab::Facts) => {
+            // The frame timing is the Perf tab's.
             ui.with(NodeSpec::column().fill().gap(10.0).scroll_y(), |ui| {
-                // The graph is this window's frame timing, which is
-                // the app's only where the dock shares its window.
-                if matches!(place, Place::Main(_)) {
-                    fixed(ui, widgets::latency_graph);
-                }
                 facts(ui, st, t);
                 fixed(ui, |ui| tokens(ui, st, t));
                 fixed(ui, |ui| legend(ui, st, t));
             });
         }
         Shown::Builtin(Tab::Events) => stream::events_tab(ui, st, t),
+        Shown::Builtin(Tab::Perf) => perf::perf_tab(ui, st, t),
         Shown::Builtin(Tab::Tree) => tree::tree_tab(ui, st, nodes, t, place),
     }
+    ui.close();
     if matches!(place, Place::Main(_)) {
         tree::overlays(ui, st, nodes, t, place);
     }
@@ -195,35 +197,30 @@ fn handle(ui: &mut Ui<'_>, t: &Theme, dock: Dock) {
     );
 }
 
-/// The title, the frame counter, and the placement buttons — one per
-/// place the panel can sit, the current one lit. The app-state toggles
-/// sit on the Facts rows they change.
+/// The strip across the top: the tabs on the left, and the placement
+/// buttons — one per place the panel can sit, the current one lit — with
+/// the close after them on the right. The window's title and the frame
+/// counter are rows of the Facts tab: the strip was where a narrow dock
+/// cut the title to "kawoosh — k…" to make room for them. The
+/// app-state toggles sit on the Facts rows they change.
 fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
         NodeSpec::row()
             .grow_width()
+            .pad_xy(4.0, 0.0)
             .cross_align(Align::Center)
-            .gap(6.0),
+            .gap(2.0),
         |ui| {
-            ui.text(
-                &st.facts.title,
-                TextStyle::new(13.0).color(t.fg).nowrap().ellipsis(),
-            );
-            let frames = match st.smoke_frames {
-                Some(n) => format!("{} / {n}", st.frames),
-                None => format!("{}", st.frames),
-            };
-            ui.text(&frames, TextStyle::new(11.0).color(t.faint).mono());
+            tabs(ui, st, t);
             // One radio per placement, the current one lit, in a group
             // so the four are one Tab stop the arrows walk (ADR 0007);
             // the same walk `Ctrl+Shift+D` makes, one press at a time.
             // Closing is not a placement, so it is a button after them:
             // an arrow never closes the panel.
-            ui.leaf(NodeSpec::row().grow_width());
             let walk = "Ctrl+Shift+D walks left → right → bottom → window → off";
             ui.with(
                 NodeSpec::row()
-                    .gap(6.0)
+                    .gap(2.0)
                     .cross_align(Align::Center)
                     .role(crate::access::Role::RadioGroup)
                     .label("Dock"),
@@ -259,18 +256,17 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     );
 }
 
-/// The tab strip. A tab is one unbreakable unit — its label never
-/// wraps inside it — and the row wraps whole tabs onto another line when
-/// a narrow dock cannot hold them all in one, so
-/// every tab stays in view and none is cut to "Synta / x".
+/// The tab strip, growing into the strip's leftover width. A tab is one
+/// unbreakable unit — its label never wraps inside it — and the row wraps
+/// whole tabs onto another line when a narrow dock cannot hold them all
+/// in one, so every tab stays in view and none is cut to "Synta / x".
+/// The one on show is underlined in the accent, the rest plain text.
 fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     ui.with(
         NodeSpec::row()
             .grow_width()
-            .gap(2.0)
-            .cross_gap(2.0)
             .wrap()
-            .cross_align(Align::Center)
+            .cross_align(Align::End)
             // One Tab stop, the arrows walking the tabs (ADR 0007).
             .role(crate::access::Role::TabList)
             .label("Devtools"),
@@ -294,61 +290,136 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             });
             for (id, label, which) in own.chain(declared) {
                 let on = which == shown;
-                ui.text_in_keyed(
+                ui.with_keyed(
                     &format!("kui-devtools/tab-{id}"),
-                    NodeSpec::row()
-                        .pad_xy(10.0, 4.0)
-                        .radius_top(5.0)
-                        .bg(if on { t.sunken } else { t.surface })
-                        .hover_bg(if on { t.sunken } else { t.hover })
+                    NodeSpec::column()
+                        .height(30.0)
+                        .hover_bg(t.hover)
                         .on_click(action(format!("tab:{id}")))
                         .role(crate::access::Role::Tab)
                         .selected(on)
                         .label(label.as_str())
                         .apply_tooltip("Ctrl+Shift+N · the next tab"),
-                    &label,
-                    TextStyle::new(11.0)
-                        .color(if on { t.fg } else { t.muted })
-                        .nowrap(),
+                    |ui| {
+                        ui.text_in(
+                            NodeSpec::row().grow_height().pad_xy(6.0, 0.0).center(),
+                            &label,
+                            TextStyle::new(11.0)
+                                .color(if on { t.fg } else { t.muted })
+                                .nowrap(),
+                        );
+                        ui.leaf(
+                            NodeSpec::row()
+                                .grow_width()
+                                .height(2.0)
+                                .radius_top(1.0)
+                                .bg(if on { t.accent } else { Color::TRANSPARENT }),
+                        );
+                    },
                 );
             }
         },
     );
 }
 
-/// The status block: the rows the main window's core wrote, as a table
-/// — the name column at its longest name, the value column
-/// growing. Three of the rows — `theme`, `accent`, `menus` — are what
+/// The status block's sections, by the names of the rows each holds, in
+/// the order they print. A row the core writes that no section names
+/// lands in a last one, so a new fact is never dropped on the floor.
+const SECTIONS: [(&str, &[&str]); 4] = [
+    (
+        "window",
+        &[
+            "title",
+            "window",
+            "viewport",
+            "keyboard",
+            "focus",
+            "region",
+            "modifiers",
+        ],
+    ),
+    ("theme", &["theme", "accent", "menus", "fonts"]),
+    ("system", &["appearance", "motion", "locale", "assistive"]),
+    ("runtime", &["frame", "nodes", "audio"]),
+];
+
+/// The status block: the rows the main window's core wrote, in sections,
+/// each a table — the name column at its longest name, the value column
+/// growing and cut with an ellipsis where the pane is narrower than it.
+/// The window's title and the frame counter come first, from the panel's
+/// own state. Three of the rows — `theme`, `accent`, `menus` — are what
 /// the panel can override, and each carries its select in a third
 /// column beside the fact it changes: the fact is what the app has, the
 /// select what the panel holds it to (`app` leaves the app's own). The
 /// chords (`Ctrl+Shift+T` / `A` / `M`) cycle the same choices.
 fn facts(ui: &mut Ui<'_>, st: &State, t: &Theme) {
-    ui.with(
-        NodeSpec::table().grow_width().min_height(Min::FIT).gap(3.0),
-        |ui| {
-            for (k, v) in &st.facts.rows {
-                ui.with(
-                    NodeSpec::row()
-                        .grow_width()
-                        .gap(8.0)
-                        .cross_align(Align::Center),
-                    |ui| {
-                        ui.text(k, TextStyle::new(11.0).color(t.muted));
-                        ui.text_in(
-                            NodeSpec::row().grow_width(),
-                            v,
-                            TextStyle::new(11.0).color(t.fg).mono().nowrap(),
+    let frames = match st.smoke_frames {
+        Some(n) => format!("{} / {n}", st.frames),
+        None => format!("{}", st.frames),
+    };
+    let mut rows: Vec<(&str, &str)> = vec![("title", st.facts.title.as_str())];
+    rows.push(("frame", frames.as_str()));
+    rows.extend(st.facts.rows.iter().map(|(k, v)| (*k, v.as_str())));
+    let named = |k: &str| SECTIONS.iter().any(|(_, names)| names.contains(&k));
+    let rest: Vec<&str> = rows.iter().map(|(k, _)| *k).filter(|k| !named(k)).collect();
+    let sections = SECTIONS
+        .iter()
+        .map(|(name, names)| (*name, names.to_vec()))
+        .chain((!rest.is_empty()).then_some(("other", rest)));
+    for (name, names) in sections {
+        fixed(ui, |ui| {
+            section(ui, t, name);
+            ui.with(
+                NodeSpec::table()
+                    .grow_width()
+                    .min_height(Min::FIT)
+                    .gap(3.0)
+                    .pad_xy(2.0, 4.0),
+                |ui| {
+                    for k in names {
+                        let Some((_, v)) = rows.iter().find(|(name, _)| *name == k) else {
+                            continue;
+                        };
+                        ui.with(
+                            NodeSpec::row()
+                                .grow_width()
+                                .gap(8.0)
+                                .cross_align(Align::Center),
+                            |ui| {
+                                ui.text(k, TextStyle::new(11.0).color(t.muted));
+                                ui.text_in(
+                                    NodeSpec::row().grow_width(),
+                                    v,
+                                    TextStyle::new(11.0).color(t.fg).mono().nowrap().ellipsis(),
+                                );
+                                match k {
+                                    "theme" => override_select(ui, st, "base"),
+                                    "accent" => override_select(ui, st, "accent"),
+                                    "menus" => override_select(ui, st, "menus"),
+                                    _ => {}
+                                }
+                            },
                         );
-                        match *k {
-                            "theme" => override_select(ui, st, "base"),
-                            "accent" => override_select(ui, st, "accent"),
-                            "menus" => override_select(ui, st, "menus"),
-                            _ => {}
-                        }
-                    },
-                );
-            }
+                    }
+                },
+            );
+        });
+    }
+}
+
+/// A section's heading: its name small and muted, and a hairline running
+/// on to the end of the row — what the Facts tab's blocks and the
+/// inspector's groups are each headed by.
+pub(super) fn section(ui: &mut Ui<'_>, t: &Theme, name: &str) {
+    ui.with(
+        NodeSpec::row()
+            .grow_width()
+            .gap(6.0)
+            .cross_align(Align::Center)
+            .role(crate::access::Role::None),
+        |ui| {
+            ui.text(name, TextStyle::new(10.0).color(t.muted).bold().nowrap());
+            ui.leaf(NodeSpec::row().grow_width().height(1.0).bg(t.border));
         },
     );
 }
@@ -438,21 +509,15 @@ fn tokens(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 } else {
                     format!("tokens · origin {}", tok.origin.0)
                 };
-                ui.text(&who, TextStyle::new(11.0).color(t.muted));
-                ui.open(NodeSpec::table().grow_width().gap(2.0));
+                section(ui, t, &who);
+                ui.open(NodeSpec::table().grow_width().gap(2.0).pad_xy(2.0, 4.0));
                 open = true;
             }
             ui.with(
                 NodeSpec::row()
                     .grow_width()
                     .gap(6.0)
-                    .cross_align(Align::Center)
-                    .padding(crate::geom::Edges {
-                        l: 8.0,
-                        r: 0.0,
-                        t: 0.0,
-                        b: 0.0,
-                    }),
+                    .cross_align(Align::Center),
                 |ui| {
                     // The swatch column: two samples for a colour whose
                     // halves differ, one for a colour, none for a length.
@@ -531,14 +596,18 @@ fn legend(ui: &mut Ui<'_>, st: &State, t: &Theme) {
     if st.legend.is_empty() {
         return;
     }
-    ui.with(NodeSpec::table().grow_width().gap(2.0), |ui| {
-        for (keys, what) in &st.legend {
-            ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
-                ui.text(keys, TextStyle::new(11.0).color(t.accent));
-                ui.text(what, TextStyle::new(11.0).color(t.muted));
-            });
-        }
-    });
+    section(ui, t, "keys");
+    ui.with(
+        NodeSpec::table().grow_width().gap(2.0).pad_xy(2.0, 4.0),
+        |ui| {
+            for (keys, what) in &st.legend {
+                ui.with(NodeSpec::row().grow_width().gap(8.0), |ui| {
+                    ui.text(keys, TextStyle::new(11.0).color(t.accent));
+                    ui.text(what, TextStyle::new(11.0).color(t.muted));
+                });
+            }
+        },
+    );
 }
 
 /// A section of the panel that keeps its height whatever the window's.
@@ -564,7 +633,7 @@ fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, radio: Option<b
     }
     ui.with_keyed(
         &label,
-        spec.size(22.0, 22.0)
+        spec.size(20.0, 20.0)
             .center()
             .radius(4.0)
             .bg(if on { t.accent_soft } else { t.surface })
@@ -584,8 +653,58 @@ fn icon_lit(ui: &mut Ui<'_>, t: &Theme, what: &str, glyph: Icon, radio: Option<b
     );
 }
 
-/// A control the size of the row it sits in: the panel's own, drawn off
-/// the palette, posting the action its chord posts. `on` paints it as a
+/// One of a toolbar's icon buttons, drawn as the header's are: `None` a
+/// plain button (fold every row), `Some(on)` a toggle that reads as a
+/// switch to assistive technology and is lit while set (the picker, the
+/// highlight of the selected node).
+pub(super) fn icon_button(
+    ui: &mut Ui<'_>,
+    t: &Theme,
+    what: &str,
+    glyph: Icon,
+    toggle: Option<bool>,
+    hint: &str,
+) {
+    let label = format!("kui-devtools/{what}");
+    let key = ui.child_key(&label);
+    let on = toggle == Some(true);
+    let mut spec = NodeSpec::row();
+    if let Some(on) = toggle {
+        spec = spec.role(crate::access::Role::Switch).checked(on);
+    }
+    ui.with_keyed(
+        &label,
+        spec.size(22.0, 22.0)
+            .center()
+            .radius(4.0)
+            .bg(if on {
+                t.accent_soft
+            } else {
+                Color::TRANSPARENT
+            })
+            .hover_bg(if on { t.accent_soft } else { t.hover })
+            .pressed_bg(t.pressed)
+            .on_click(action(what))
+            .cursor(crate::cursor::CursorShape::Pointer)
+            .label(hint.split(" · ").next().unwrap_or(what))
+            .apply_tooltip(hint),
+        |ui| {
+            let color = if on { t.accent } else { t.muted };
+            icons::draw(
+                ui,
+                glyph,
+                color,
+                if on { t.accent } else { Color::TRANSPARENT },
+            );
+            if ui.is_hovered(key) {
+                widgets::hover_hint(ui, hint);
+            }
+        },
+    );
+}
+
+/// A control the height of a toolbar: the panel's own, drawn off the
+/// palette, posting the action its chord posts. `on` paints it as a
 /// toggle that is set.
 pub(super) fn small_button(
     ui: &mut Ui<'_>,
@@ -600,12 +719,17 @@ pub(super) fn small_button(
     ui.with_keyed(
         &label,
         NodeSpec::row()
-            .pad_xy(7.0, 1.0)
+            .height(22.0)
+            .pad_xy(8.0, 0.0)
             .radius(4.0)
-            .bg(if on { t.accent_soft } else { t.raised })
+            .cross_align(Align::Center)
+            .bg(if on {
+                t.accent_soft
+            } else {
+                Color::TRANSPARENT
+            })
             .hover_bg(if on { t.accent_soft } else { t.hover })
             .pressed_bg(t.pressed)
-            .border(1.0, if on { t.accent } else { t.border })
             .on_click(action(what))
             .cursor(crate::cursor::CursorShape::Pointer)
             .label(text)
@@ -613,7 +737,9 @@ pub(super) fn small_button(
         |ui| {
             ui.text(
                 text,
-                TextStyle::new(10.0).color(if on { t.accent } else { t.fg }),
+                TextStyle::new(11.0)
+                    .color(if on { t.accent } else { t.muted })
+                    .nowrap(),
             );
             if ui.is_hovered(key) {
                 widgets::hover_hint(ui, hint);
@@ -622,62 +748,25 @@ pub(super) fn small_button(
     );
 }
 
-/// [`small_button`] with an icon before its text — the picker's
-/// crosshair. The icon is drawn small to sit on the text's line.
-pub(super) fn small_button_iconed(
-    ui: &mut Ui<'_>,
-    t: &Theme,
-    what: &str,
-    glyph: Icon,
-    text: &str,
-    hint: &str,
-    on: bool,
-) {
-    let label = format!("kui-devtools/{what}");
-    let key = ui.child_key(&label);
-    ui.with_keyed(
-        &label,
-        NodeSpec::row()
-            .pad_xy(6.0, 1.0)
-            .gap(3.0)
-            .radius(4.0)
-            .cross_align(Align::Center)
-            .bg(if on { t.accent_soft } else { t.raised })
-            .hover_bg(if on { t.accent_soft } else { t.hover })
-            .pressed_bg(t.pressed)
-            .border(1.0, if on { t.accent } else { t.border })
-            .on_click(action(what))
-            .cursor(crate::cursor::CursorShape::Pointer)
-            .label(text)
-            .apply_tooltip(hint),
-        |ui| {
-            let color = if on { t.accent } else { t.fg };
-            icons::draw(ui, glyph, color, color.faded(0.35));
-            ui.text(text, TextStyle::new(10.0).color(color));
-            if ui.is_hovered(key) {
-                widgets::hover_hint(ui, hint);
-            }
-        },
-    );
-}
-
-/// A one-line filter field, `name` beside it. Returns the text it holds.
+/// A one-line filter field that names itself by its placeholder.
+/// Returns the text it holds.
 pub(super) fn filter_field(ui: &mut Ui<'_>, t: &Theme, what: &str, name: &str) -> String {
     let label = format!("kui-devtools/{what}");
     let key = ui.child_key(&label);
     let focused = ui.is_focused(key);
-    ui.text(name, TextStyle::new(11.0).color(t.muted));
     ui.text_edit(
         &label,
         "",
         &crate::edit::EditOptions {
             style: TextStyle::new(11.0).mono(),
             multiline: false,
+            placeholder: Some(name.to_string()),
             ..Default::default()
         },
         NodeSpec::column()
             .grow_width()
-            .pad_xy(6.0, 1.0)
+            .min_width(60.0)
+            .pad_xy(8.0, 4.0)
             .bg(t.sunken)
             .radius(4.0)
             .border(1.0, if focused { t.accent } else { t.border })

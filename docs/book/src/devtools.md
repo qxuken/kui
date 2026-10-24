@@ -12,11 +12,11 @@ Or set `KUI_DEVTOOLS=1` and run any app. A panel opens beside the app,
 docked to the right. `Ctrl+Shift+D` moves it (left, right, bottom, its
 own window, off); `Ctrl+Shift+I` moves the keyboard into it and back.
 
-## Three tabs
+## Four tabs
 
 **facts** — what the runtime believes right now: the theme and where
 it came from, the window and its size, the focused node, the modifier
-keys, the node count, and a latency graph.
+keys, the node count.
 
 **events** — every event handed to your `on_event`, as it arrives: the
 frame number, the event, the node it came from, and the message it
@@ -25,10 +25,26 @@ learn. When a button does nothing, look here first: either the click
 arrived and your handler ignored it, or it never arrived and the button
 is not where you think it is.
 
-**tree** — the last frame's nodes, foldable, with a filter. Click a
-node to see its box, its layout, its paint, its handlers and its state.
-The picker (`Ctrl+Shift+P`, or the crosshair button) selects a node by
+**tree** — the last frame's nodes, foldable, with a filter. Hover a
+row and its node lights up in the app the way a browser's devtools light
+an element: the content blue, the padding green, the border yellow, and
+a badge with its kind, name and size. Click a row to see its box model,
+its layout, its paint, its handlers and its state; the app is left alone
+while you read, unless the eye button keeps the selection lit. The
+picker (`Ctrl+Shift+P`, or the crosshair button) selects a node by
 pointing at it.
+
+**perf** — what each frame costs: input, view, layout, render and the
+vsync wait, against your frame budget. Press record, use the app, press
+stop: every frame is kept with why it ran (a key, the pointer, a wake,
+an animation still owed), who held it (the node whose transition was
+mid-flight, the line that called `request_frame`) and whether it drew
+anything new. Click a bar to open its frame; click a holder to find its
+node in the tree. When your app won't go idle, this is the tab: the
+frames marked "drew nothing new" are the ones you can stop asking for.
+The camera saves a screenshot of the window and the film camera
+records it as a GIF, to the desktop (or `KUI_CAPTURE_DIR`), the path
+in the events tab.
 
 ## Warnings
 

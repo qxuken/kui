@@ -76,9 +76,16 @@ impl Core {
     pub fn captured(&mut self, message: Option<Value>, result: crate::event::Captured) {
         let Some(message) = message else { return };
         use crate::message::MessageField;
+        // A capture the devtools asked for answers the panel, never the
+        // app (its event is taken back on the way out).
+        let origin = if self.devtools_capture_answer(&message) {
+            OriginId::DEVTOOLS
+        } else {
+            OriginId::HOST
+        };
         self.pending.push(UiEvent::declared(
             crate::input::EventKind::Capture,
-            OriginId::HOST,
+            origin,
             Key::ROOT,
             Some(&message),
             result.to_value(),

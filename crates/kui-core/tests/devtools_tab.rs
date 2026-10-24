@@ -88,8 +88,9 @@ fn a_host_form_tab_is_lazy_and_lands_over_the_body() {
         "the strip lists the declared tab by its label"
     );
 
-    // N walks facts → events → tree → the declared tab.
+    // N walks facts → events → tree → perf → the declared tab.
     core.handle_input(chord('N')); // tree
+    core.handle_input(chord('N')); // perf
     core.handle_input(chord('N')); // Tree-sitter
     frame(&mut core, &built);
     assert_eq!(
@@ -177,6 +178,7 @@ fn a_host_form_tab_is_lazy_and_lands_over_the_body() {
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
     frame(&mut core, &built);
     assert!(rect_of(&core, "jump").is_some(), "back on show");
     core.set_devtools(false);
@@ -200,6 +202,7 @@ fn a_pick_raised_from_a_tab_lands_in_selected_and_keeps_the_tab() {
     core.set_inspect(true);
     frame(&mut core, &built);
     frame(&mut core, &built);
+    core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     frame(&mut core, &built);
@@ -348,10 +351,11 @@ fn a_tab_is_selected_from_the_app() {
     assert!(core.key_of("kui-devtools/tree-filter").is_some());
     // The chord moves on from the fallback as it would from the tab.
     core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
     assert_eq!(
         core.devtools_current_tab(),
         "syntax",
-        "N: tree, then the declared one"
+        "N: tree, perf, then the declared one"
     );
     // A hidden panel comes back docked.
     core.set_devtools_dock(DevtoolsDock::Off);
@@ -448,6 +452,7 @@ fn a_cancelled_tab_pick_and_a_stale_tab_leave_nothing_behind() {
     frame(&mut core, &built);
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
     frame(&mut core, &built);
     core.set_devtools_pick(true);
     frame(&mut core, &built);
@@ -472,13 +477,14 @@ fn a_cancelled_tab_pick_and_a_stale_tab_leave_nothing_behind() {
     frame(&mut core, &built);
     assert_eq!(core.devtools_selected(), Some(press));
     assert!(
-        core.key_of("kui-devtools/outline-selected").is_some(),
-        "and the tree tab outlines the pick, as before the tab feature"
+        core.key_of("kui-devtools/inspector").is_some(),
+        "and the tree tab inspects the pick, as before the tab feature"
     );
 
     // Back to the declared tab, then stop declaring it: the panel falls
     // back to the tree tab, and the app's closure is not run for the
     // name the panel still remembers.
+    core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     frame(&mut core, &built);
     assert!(core.key_of("kui-devtools/tab/syntax").is_some());
@@ -522,6 +528,7 @@ fn a_left_dock_mounts_the_host_form_too() {
     core.set_inspect(true);
     frame(&mut core, &built);
     frame(&mut core, &built);
+    core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
     frame(&mut core, &built);
@@ -652,6 +659,7 @@ fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
 
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
+    core.handle_input(chord('N'));
     frame_with(&mut core, &mut exts);
     assert_eq!(seen.borrow().len(), 1, "asked once the tab is on show");
     let (name, params) = seen.borrow()[0].clone();
@@ -679,4 +687,43 @@ fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
     assert_eq!(out.len(), 1, "one reply for the host: {out:?}");
     assert_eq!(out[0].event.name(), "reply");
     let _ = Key::ROOT;
+}
+
+/// An app's tab named as one of the panel's own — kawoosh's `perf`,
+/// declared before the panel had a Perf tab — is the one its name
+/// reaches: the panel's own stays on the strip beside it, and the name
+/// reaches the panel's again once the app stops declaring its own.
+#[test]
+fn a_declared_tab_named_as_the_panel_s_own_keeps_its_name() {
+    let mut core = Core::new();
+    core.set_devtools(true);
+    core.set_devtools_dock(DevtoolsDock::Right);
+    let mut frame = |core: &mut Core, declare: bool| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        if declare {
+            ui.devtools_tab_with("perf", "App perf", |ui| {
+                ui.text("the app's", TextStyle::new(12.0));
+            });
+        }
+        ui.finish();
+    };
+    frame(&mut core, true);
+    frame(&mut core, true);
+    assert!(core.set_devtools_tab("perf"), "listed");
+    frame(&mut core, true);
+    assert_eq!(
+        core.devtools_shown_tab().as_deref(),
+        Some("perf"),
+        "the app's"
+    );
+    assert!(
+        core.key_of("kui-devtools/tab-perf").is_some(),
+        "the panel's beside it"
+    );
+    frame(&mut core, false);
+    frame(&mut core, false);
+    core.set_devtools_tab("perf");
+    frame(&mut core, false);
+    assert_eq!(core.devtools_shown_tab(), None, "the panel's own now");
+    assert_eq!(core.devtools_current_tab(), "perf");
 }
