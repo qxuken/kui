@@ -214,10 +214,16 @@ pub struct Core {
     /// start of every frame. Read by the stock widgets, by the core's own
     /// chrome (ring, scrollbar, selection) and by any view that asks.
     theme: Theme,
+    /// Moves whenever the resolved palette comes out different from what
+    /// it was: what a kept fill's read of the palette is compared by, so a
+    /// replay compares one integer, not a palette (backlog C64).
+    theme_gen: u64,
     /// The sizes the stock widgets are built from: the
     /// palette's other axis, set by the app or
     /// [`Metrics::default`](crate::metrics::Metrics::default).
     metrics: crate::metrics::Metrics,
+    /// [`Self::theme_gen`] for the sizes.
+    metrics_gen: u64,
     /// The titlebar height the driver opened this window's strip at, over
     /// the platform's caption height ([`Core::set_platform_titlebar_h`]);
     /// `None` is the platform's.
@@ -228,6 +234,10 @@ pub struct Core {
     /// [`Core::token_lookup`], which puts the running origin's table over
     /// the host's.
     tokens: rustc_hash::FxHashMap<OriginId, crate::tokens::Tokens>,
+    /// Moves whenever any origin's token table is declared or re-picked:
+    /// what a binding that mirrors the tables (Lua's `env.tokens`) checks
+    /// before it builds them again.
+    tokens_rev: u64,
     /// Window title declared this frame (immediate-mode: cleared each
     /// `begin_frame`; the driver diffs and applies). None = leave as-is.
     window_title: Option<String>,
@@ -301,6 +311,10 @@ pub struct Core {
     /// frame; never compared to the last one, since a slot is a position
     /// and not a declaration the core diffs.
     slot_labels: LabelIndex,
+    /// The frame's slot names, hashed: what `begin_slot` and
+    /// `slot_declared` ask before they scan `slot_labels`, so n slots are
+    /// not n² string comparisons a frame (backlog C62).
+    slot_names_seen: rustc_hash::FxHashSet<u64>,
     /// A slot replayed by its host (ADR 0045, `runtime::replay`): the
     /// fill being kept, the ask for the next one to keep, what each slot
     /// kept between frames, and what `slot_replay` answered this frame.
@@ -852,16 +866,18 @@ impl Core {
     /// the facts the replay is checked against: a fill that drew from it
     /// runs again when it changes (backlog F155).
     pub fn theme(&self) -> &Theme {
-        self.note_read_once(replay::ONCE_THEME, || {
-            replay::Read::Theme(Box::new(self.theme))
-        });
+        self.note_read_once(replay::ONCE_THEME, || replay::Read::Theme(self.theme_gen));
         &self.theme
     }
 
     /// Re-resolve the palette from `env.system` now, rather than at the
     /// start of the next frame. What an env setter calls after writing.
     pub fn refresh_theme(&mut self) {
-        self.theme = self.theme_source.resolve(&self.env.system);
+        let theme = self.theme_source.resolve(&self.env.system);
+        if theme != self.theme {
+            self.theme = theme;
+            self.theme_gen += 1;
+        }
     }
 
     /// Writes what the user set in the OS and re-resolves the palette from
@@ -978,7 +994,7 @@ impl Core {
     /// being kept, as [`Self::theme`] is.
     pub fn metrics(&self) -> &crate::metrics::Metrics {
         self.note_read_once(replay::ONCE_METRICS, || {
-            replay::Read::Metrics(Box::new(self.metrics))
+            replay::Read::Metrics(self.metrics_gen)
         });
         &self.metrics
     }
@@ -1033,6 +1049,13 @@ impl Core {
         let missed = tokens.pick_families_over(prev, |n| self.session.register_family(n));
         self.warn_unpicked_families(missed);
         self.tokens.insert(self.origin, tokens);
+        self.tokens_rev += 1;
+    }
+
+    /// The token tables' revision: moves whenever one is declared or
+    /// re-picked, so a binding mirroring them knows when to read again.
+    pub fn tokens_rev(&self) -> u64 {
+        self.tokens_rev
     }
 
     /// Re-picks every origin's family tokens when the session's fonts
@@ -1048,6 +1071,7 @@ impl Core {
         for tokens in self.tokens.values_mut() {
             missed.extend(tokens.pick_families(|n| self.session.register_family(n)));
         }
+        self.tokens_rev += 1;
         self.warn_unpicked_families(missed);
         // A pick that registered a family moved the revision itself; the
         // one read after the picks is what they are of.
@@ -1115,11 +1139,9 @@ impl Core {
     /// what it answers into the spec, so a fill being kept that looks a
     /// name up has read both (ADR 0045, backlog F155).
     pub fn token_lookup(&self) -> crate::tokens::TokenLookup<'_> {
-        self.note_read_once(replay::ONCE_THEME, || {
-            replay::Read::Theme(Box::new(self.theme))
-        });
+        self.note_read_once(replay::ONCE_THEME, || replay::Read::Theme(self.theme_gen));
         self.note_read_once(replay::ONCE_METRICS, || {
-            replay::Read::Metrics(Box::new(self.metrics))
+            replay::Read::Metrics(self.metrics_gen)
         });
         let own = self.tokens.get(&self.origin);
         let host = if self.origin == OriginId::HOST {
@@ -1185,7 +1207,10 @@ impl Core {
         if metrics.titlebar_h == crate::metrics::Metrics::comfortable().titlebar_h {
             metrics.titlebar_h = self.platform_titlebar_h();
         }
-        self.metrics = metrics;
+        if metrics != self.metrics {
+            self.metrics = metrics;
+            self.metrics_gen += 1;
+        }
     }
 
     /// What the platform's caption height is for this window: `h` for a
@@ -1242,8 +1267,11 @@ impl Core {
             env: Env::default(),
             theme_source: ThemeSource::Derived,
             theme: Theme::default(),
+            theme_gen: 0,
             tokens: Default::default(),
+            tokens_rev: 0,
             metrics: crate::metrics::Metrics::default(),
+            metrics_gen: 0,
             platform_titlebar_h: None,
             window_title: None,
             perf: perf::Recorder::default(),
@@ -1264,6 +1292,7 @@ impl Core {
             key_labels: LabelIndex::default(),
             key_labels_last: LabelIndex::default(),
             slot_labels: LabelIndex::default(),
+            slot_names_seen: Default::default(),
             recording: None,
             keep_next: None,
             kept: Default::default(),
@@ -2128,6 +2157,7 @@ impl Core {
         self.key_labels.clear();
         // Slots are positions, not declarations to diff: one clear.
         self.slot_labels.clear();
+        self.slot_names_seen.clear();
         self.ns_depth = usize::MAX;
         self.building = true;
         // And the window declarations, which `finish_frame` diffs the same

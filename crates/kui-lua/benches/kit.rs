@@ -54,7 +54,7 @@ fn only(table: bool, waterfall: bool) -> Scene {
 /// 0 row, so what one instance costs is the slope, not the total over 20.
 #[divan::bench(
     consts = [0, 20, 200],
-    args = ["native", "one_fill", "slots", "slots_replayed", "slots_replayed_kept"]
+    args = ["native", "one_fill", "slots", "slots_replayed", "slots_replayed_kept", "components"]
 )]
 fn buttons<const N: usize>(bencher: divan::Bencher, how: &str) {
     let mut s = only(false, false);
@@ -64,8 +64,21 @@ fn buttons<const N: usize>(bencher: divan::Bencher, how: &str) {
         "one_fill" => Buttons::OneFill,
         "slots" => Buttons::Slots,
         "slots_replayed" => Buttons::SlotsReplayed,
+        "components" => Buttons::Components,
         _ => Buttons::SlotsReplayedKept,
     };
+    let (mut core, mut exts) = setup(&mut s);
+    bencher.bench_local(|| frame(&mut core, &mut s, &mut exts));
+}
+
+/// 200 components, replayed by default, and nothing else Kit fills fresh:
+/// the instance path alone, for a profiler (`--bench components_only`).
+#[divan::bench]
+fn components_only(bencher: divan::Bencher) {
+    let mut s = only(false, false);
+    s.n_buttons = 200;
+    s.buttons = Buttons::Components;
+    s.settings_replayed = true;
     let (mut core, mut exts) = setup(&mut s);
     bencher.bench_local(|| frame(&mut core, &mut s, &mut exts));
 }

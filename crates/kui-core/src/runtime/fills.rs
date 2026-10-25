@@ -50,7 +50,11 @@ impl Core {
         if self.tree.is_empty() {
             return None;
         }
-        if self.slot_labels.find(name).next().is_some() {
+        // A name not hashed this frame was not declared: one lookup, and
+        // the scan only for a hash seen before (a duplicate, or a
+        // collision).
+        let h = crate::key::hash_bulk(name.as_bytes());
+        if !self.slot_names_seen.insert(h) && self.slot_labels.find(name).next().is_some() {
             self.diag.raise(crate::diag::duplicate_slot(name));
             return None;
         }
@@ -65,7 +69,9 @@ impl Core {
     /// whether or not the panel mounted it, so a plugin whose only slot
     /// is a tab is quiet with the panel off.
     pub fn slot_declared(&self, name: &str) -> bool {
-        self.slot_labels.find(name).next().is_some() || self.devtools_tab_slot(name)
+        let h = crate::key::hash_bulk(name.as_bytes());
+        (self.slot_names_seen.contains(&h) && self.slot_labels.find(name).next().is_some())
+            || self.devtools_tab_slot(name)
     }
 
     /// Runs `f` as the fill of `slot` under `origin`: every node it opens

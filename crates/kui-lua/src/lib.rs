@@ -445,7 +445,12 @@ pub struct LuaExtension {
     /// order it asked for them. A `RefCell` because the loading happens
     /// inside `view`, where the script's own interpreter holds a shared
     /// borrow of everything else here.
-    loaded: std::cell::RefCell<Vec<Loaded>>,
+    loaded: std::rc::Rc<std::cell::RefCell<Vec<Loaded>>>,
+    /// The script's `env`, built once and shared by every fill (backlog
+    /// C65): its functions reach the frame being drawn through
+    /// [`CURRENT_FRAME`], and its facts are written again only when a fill
+    /// reads them different from the last.
+    env: std::cell::RefCell<Option<EnvCache>>,
     /// The full name of every slot this script has filled, by the slot's
     /// key — what `on_event` reads `ev.slot` off, since an event carries
     /// the key and the script thinks in the names it was handed.
@@ -576,6 +581,7 @@ impl LuaExtension {
             name,
             slots,
             loaded: Default::default(),
+            env: Default::default(),
             slot_names: Default::default(),
             components,
             dir: dir.map(|d| d.to_string_lossy().into()),
@@ -750,6 +756,50 @@ impl Extension for LuaExtension {
 }
 
 impl LuaExtension {
+    /// The script's `env` for a fill: built the first time, its facts,
+    /// palette, sizes and tokens written again when they read differently
+    /// from the last fill's — read every fill, so a fill being kept notes
+    /// them as it always did (ADR 0045).
+    fn env_for(&self, ui: &mut Ui<'_>) -> mlua::Result<Table> {
+        let facts = ui.env_facts();
+        let theme = ui.theme();
+        let metrics = ui.metrics();
+        let tokens_rev = ui.core().tokens_rev();
+        let mut cache = self.env.borrow_mut();
+        let c = match cache.as_mut() {
+            Some(c) => c,
+            None => {
+                let table = env_table(&self.lua, FrameUi, self.loaded.clone())?;
+                cache.insert(EnvCache {
+                    table,
+                    facts: None,
+                    theme: None,
+                    metrics: None,
+                    tokens_rev: u64::MAX,
+                })
+            }
+        };
+        if c.facts.as_ref() != Some(&facts) {
+            env_facts_into(&self.lua, &c.table, &facts)?;
+            c.facts = Some(facts);
+        }
+        if c.theme != Some(theme) {
+            env_theme_into(&self.lua, &c.table, &theme)?;
+            c.theme = Some(theme);
+            // Colour tokens resolve against the palette's base.
+            c.tokens_rev = u64::MAX;
+        }
+        if c.metrics != Some(metrics) {
+            env_metrics_into(&self.lua, &c.table, &metrics)?;
+            c.metrics = Some(metrics);
+        }
+        if c.tokens_rev != tokens_rev {
+            c.table.set("tokens", tokens_table(&self.lua, ui)?)?;
+            c.tokens_rev = tokens_rev;
+        }
+        Ok(c.table.clone())
+    }
+
     /// Draws one component instance: the script's `components[name]`
     /// called as `(env, props, inst)` and its tree built (ADR 0060).
     fn draw_component(&self, inst: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
@@ -788,38 +838,35 @@ impl LuaExtension {
         {
             ui.set_tokens(t.clone());
         }
-        // The env's query functions borrow the frame for the duration of
-        // view(); the returned table outlives the scope, the borrow does
-        // not. A RefCell because measurement shapes text (a mutable query)
-        // while the rest only read; Lua calls them one at a time.
+        // The env is the script's, built once; its facts are read again
+        // for this fill (and noted, for a fill being kept), and its
+        // functions reach this frame while the call runs.
+        let env = self.env_for(ui).map_err(|e| format!("env: {e}"))?;
         let root: Table = {
-            let frame = std::cell::RefCell::new(&mut *ui);
-            self.lua
-                .scope(|scope| {
-                    let env = env_table(&self.lua, scope, &frame, &self.loaded)?;
-                    if component {
-                        // `(env, props, inst)`: the props the host passed,
-                        // and the instance — its name, namespace and key.
-                        let props = match slot.params {
-                            Value::Null => self.lua.create_table()?,
-                            p => match value_to_lua(&self.lua, p)? {
-                                mlua::Value::Table(t) => t,
-                                _ => self.lua.create_table()?,
-                            },
-                        };
-                        slot_table.raw_remove("params")?;
-                        view.call((env, props, slot_table))
-                    } else {
-                        view.call((env, slot_table))
-                    }
-                })
-                .map_err(|e| {
-                    if component {
-                        format!("component {}(): {e}", slot.name)
-                    } else {
-                        format!("view(): {e}")
-                    }
-                })?
+            with_frame(ui, || -> mlua::Result<Table> {
+                if component {
+                    // `(env, props, inst)`: the props the host passed,
+                    // and the instance — its name, namespace and key.
+                    let props = match slot.params {
+                        Value::Null => self.lua.create_table()?,
+                        p => match value_to_lua(&self.lua, p)? {
+                            mlua::Value::Table(t) => t,
+                            _ => self.lua.create_table()?,
+                        },
+                    };
+                    slot_table.raw_remove("params")?;
+                    view.call((env, props, slot_table))
+                } else {
+                    view.call((env, slot_table))
+                }
+            })
+            .map_err(|e| {
+                if component {
+                    format!("component {}(): {e}", slot.name)
+                } else {
+                    format!("view(): {e}")
+                }
+            })?
         };
         if component {
             return self.build_root(&root, slot, ui);
@@ -1105,86 +1152,174 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// w, h)` / `focus_window(window)`, and the two calls of a script that
 /// hosts a plugin of its own: `add_extension(namespace, path)` and
 /// `extension_namespaces()`.
-fn env_table<'scope, 'env: 'scope>(
-    lua: &Lua,
-    scope: &'scope mlua::Scope<'scope, 'env>,
-    ui: &'env std::cell::RefCell<&'env mut Ui<'_>>,
-    loaded: &'env std::cell::RefCell<Vec<Loaded>>,
-) -> mlua::Result<Table> {
-    let (facts, theme, metrics) = {
-        let ui = ui.borrow();
-        (ui.env_facts(), ui.theme(), ui.metrics())
-    };
-    let t = lua.create_table()?;
-    // The tokens a script here sees this frame (ADR 0027): its own table
-    // over the host's, colours resolved for the appearance as
-    // `0xRRGGBBAA`, lengths in px — `env.tokens.colors.peach`. Roles are
-    // not listed; they are `env.theme` and `env.metrics`. Rebuilt by
-    // `env.set_tokens`, so a script reads back what it just declared.
-    t.set("tokens", tokens_table(lua, &ui.borrow())?)?;
-    // The facts, one row of `schema::ENV_FIELDS` at a time, read by the
-    // row's own getter and filed under its snake path (`system.appearance`
-    // is `env.system.appearance`). Lua's rule for a fact the host cannot
-    // tell is `refresh_hz`'s: no key rather than a nil-shaped one, so a
-    // `Null` reading is left out. Two facts, one letter apart, are both
-    // here: `focused` is the *window*'s keyboard, `focus` the focused
-    // *node*'s key — Lua cannot converge on Node's `focused()` for the
-    // latter because the former has been `focused` since env existed.
-    //
-    // The one deliberate divergence the table names: `window.native_controls`
-    // is a rect elsewhere and two numbers here, the keep-out extent of the
-    // OS-drawn controls (macOS traffic lights) at the window origin.
-    for row in kui_core::schema::ENV_FIELDS {
-        let value = (row.get)(&facts);
-        if value == Value::Null {
-            continue;
+/// The script's `env`: its functions, built once (backlog C65). Each reaches
+/// the frame being drawn through [`FrameUi`], so `env` is shared by every
+/// fill of the script and a function called outside one is an error rather
+/// than a dangling borrow. The facts, the palette, the sizes and the tokens
+/// are written by [`LuaExtension::env_for`] as they change.
+/// Writes the facts of a fill into `env`, one row of `schema::ENV_FIELDS`
+/// at a time, read by the row's own getter and filed under its snake path
+/// (`system.appearance` is `env.system.appearance`). Lua's rule for a fact
+/// the host cannot tell is `refresh_hz`'s: no key rather than a nil-shaped
+/// one, so a `Null` reading is left out — and taken out, when a fact a
+/// fill had goes. Two facts, one letter apart, are both here: `focused` is
+/// the *window*'s keyboard, `focus` the focused *node*'s key — Lua cannot
+/// converge on Node's `focused()` for the latter because the former has
+/// been `focused` since env existed.
+///
+/// The one deliberate divergence the table names: `window.native_controls`
+/// is a rect elsewhere and two numbers here, the keep-out extent of the
+/// OS-drawn controls (macOS traffic lights) at the window origin.
+fn env_facts_into(lua: &Lua, t: &Table, facts: &kui_core::schema::EnvFacts) -> mlua::Result<()> {
+    let sub = |head: &str| -> mlua::Result<Table> {
+        match t.raw_get::<Option<Table>>(head)? {
+            Some(s) => Ok(s),
+            None => {
+                let s = lua.create_table()?;
+                t.raw_set(head, &s)?;
+                Ok(s)
+            }
         }
+    };
+    for row in kui_core::schema::ENV_FIELDS {
+        let value = (row.get)(facts);
         if row.name == "window.native_controls" {
-            let win = t
-                .get::<Option<Table>>("window")?
-                .unwrap_or(lua.create_table()?);
+            let win = sub("window")?;
+            if value == Value::Null {
+                win.raw_remove("controls_w")?;
+                win.raw_remove("controls_h")?;
+                continue;
+            }
             let f = |k: &str| value.get(k).and_then(Value::as_float).unwrap_or(0.0) as f32;
-            win.set("controls_w", f("x") + f("w"))?;
-            win.set("controls_h", f("y") + f("h"))?;
-            t.set("window", win)?;
+            win.raw_set("controls_w", f("x") + f("w"))?;
+            win.raw_set("controls_h", f("y") + f("h"))?;
             continue;
         }
         for path in row.lua {
-            let lua_value = value_to_lua(lua, &value)?;
+            let lua_value = if value == Value::Null {
+                mlua::Value::Nil
+            } else {
+                value_to_lua(lua, &value)?
+            };
             match path.split_once('.') {
-                None => t.set(*path, lua_value)?,
-                Some((head, leaf)) => {
-                    let sub = t.get::<Option<Table>>(head)?.unwrap_or(lua.create_table()?);
-                    sub.set(leaf, lua_value)?;
-                    t.set(head, sub)?;
-                }
+                None => t.raw_set(*path, lua_value)?,
+                Some((head, leaf)) => sub(head)?.raw_set(leaf, lua_value)?,
             }
         }
     }
-    // The palette the core derived from `system`, as roles rather than
-    // values (ADR 0019). Every key is a 0xRRGGBBAA number — the same
-    // spelling a `color` prop takes — so `bg = env.theme.surface` needs no
-    // conversion; `appearance` says which base it came from and
-    // `disabled_opacity` is a multiplier, not a colour. The roles are
-    // generated from `schema::THEME_ROLES`, so a script and a Rust view
-    // read the same list under the same names. Read-only: a Lua script is
-    // a guest in someone else's frame, and the theme is the host's to set.
+    Ok(())
+}
+
+/// The palette the core derived from `system`, as roles rather than
+/// values (ADR 0019). Every key is a 0xRRGGBBAA number — the same spelling
+/// a `color` prop takes — so `bg = env.theme.surface` needs no conversion;
+/// `appearance` says which base it came from and `disabled_opacity` is a
+/// multiplier, not a colour. The roles are generated from
+/// `schema::THEME_ROLES`, so a script and a Rust view read the same list
+/// under the same names. Read-only: a Lua script is a guest in someone
+/// else's frame, and the theme is the host's to set.
+fn env_theme_into(lua: &Lua, t: &Table, theme: &kui_core::Theme) -> mlua::Result<()> {
     let th = lua.create_table()?;
     for role in kui_core::schema::THEME_ROLES {
-        th.set(role.name, (role.get)(&theme).to_hex())?;
+        th.set(role.name, (role.get)(theme).to_hex())?;
     }
     th.set("appearance", theme.appearance.name())?;
     th.set("disabled_opacity", theme.disabled_opacity)?;
-    t.set("theme", th)?;
-    // The sizes the stock widgets are built from (backlog T2), generated
-    // from `schema::METRIC_ROLES` the same way: `radius = env.metrics.radius`
-    // makes a script's control agree with the host's button. Read-only for
-    // the same reason the theme is.
+    t.set("theme", th)
+}
+
+/// The sizes the stock widgets are built from (backlog T2), generated from
+/// `schema::METRIC_ROLES` the same way: `radius = env.metrics.radius` makes
+/// a script's control agree with the host's button. Read-only for the same
+/// reason the theme is.
+fn env_metrics_into(
+    lua: &Lua,
+    t: &Table,
+    metrics: &kui_core::metrics::Metrics,
+) -> mlua::Result<()> {
     let mt = lua.create_table()?;
     for role in kui_core::schema::METRIC_ROLES {
-        mt.set(role.name, (role.get)(&metrics))?;
+        mt.set(role.name, (role.get)(metrics))?;
     }
-    t.set("metrics", mt)?;
+    t.set("metrics", mt)
+}
+
+/// What [`LuaExtension::env_for`] keeps: the table, and what its facts,
+/// palette, sizes and tokens were last written from.
+struct EnvCache {
+    table: Table,
+    facts: Option<kui_core::schema::EnvFacts>,
+    theme: Option<kui_core::Theme>,
+    metrics: Option<kui_core::metrics::Metrics>,
+    tokens_rev: u64,
+}
+
+type FrameCell = std::cell::RefCell<&'static mut Ui<'static>>;
+
+thread_local! {
+    /// The frame a script's `env` functions reach while one of its fills
+    /// runs: set by [`with_frame`] around the call and put back after,
+    /// null between — so a function a script kept and calls later errors
+    /// rather than touching a frame that is gone.
+    static CURRENT_FRAME: std::cell::Cell<*const FrameCell> =
+        const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+/// The handle `env`'s functions hold in place of a borrow of the frame:
+/// what they borrow through, for the length of one call, while
+/// [`with_frame`] has a frame up.
+#[derive(Clone, Copy)]
+struct FrameUi;
+
+impl FrameUi {
+    fn cell(self) -> mlua::Result<&'static FrameCell> {
+        let p = CURRENT_FRAME.get();
+        if p.is_null() {
+            return Err(mlua::Error::runtime(
+                "env's functions answer only while a view or a component's function runs",
+            ));
+        }
+        // SAFETY: `with_frame` keeps the cell alive for as long as the
+        // pointer is set, and puts the previous one back before it goes.
+        Ok(unsafe { &*p })
+    }
+
+    fn borrow(self) -> mlua::Result<std::cell::Ref<'static, &'static mut Ui<'static>>> {
+        self.cell()?
+            .try_borrow()
+            .map_err(|_| mlua::Error::runtime("env re-entered while it was drawing"))
+    }
+
+    fn borrow_mut(self) -> mlua::Result<std::cell::RefMut<'static, &'static mut Ui<'static>>> {
+        self.cell()?
+            .try_borrow_mut()
+            .map_err(|_| mlua::Error::runtime("env re-entered while it was drawing"))
+    }
+}
+
+/// Runs `f` with `ui` reachable by `env`'s functions, and the previous
+/// frame (a fill around this one) back after, however `f` ends.
+fn with_frame<R>(ui: &mut Ui<'_>, f: impl FnOnce() -> R) -> R {
+    struct Restore(*const FrameCell);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            CURRENT_FRAME.set(self.0);
+        }
+    }
+    let cell = std::cell::RefCell::new(ui);
+    // The lifetimes are erased for the thread-local's sake; the pointer
+    // never outlives `cell`, which `Restore` guarantees on every way out.
+    let erased = std::ptr::from_ref(&cell).cast::<FrameCell>();
+    let _restore = Restore(CURRENT_FRAME.replace(erased));
+    f()
+}
+
+fn env_table(
+    lua: &Lua,
+    ui: FrameUi,
+    loaded: std::rc::Rc<std::cell::RefCell<Vec<Loaded>>>,
+) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
     // An editor's text, by the label its `key` field declares or by the
     // integer key an event carried — either spelling, like every query
     // beside it (AR26: it took the integer alone, against its own doc,
@@ -1192,8 +1327,8 @@ fn env_table<'scope, 'env: 'scope>(
     // around it). A label no frame declared answers nil.
     t.set(
         "edit_text",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(None);
             };
@@ -1210,8 +1345,8 @@ fn env_table<'scope, 'env: 'scope>(
     // frame declares nothing under it.
     t.set(
         "set_edit_text",
-        scope.create_function(move |_, (key, text): (mlua::Value, String)| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, (key, text): (mlua::Value, String)| {
+            let mut ui = ui.borrow_mut()?;
             match key {
                 mlua::Value::String(label) => {
                     ui.set_edit_text_by_label(&label.to_str()?, &text);
@@ -1228,8 +1363,8 @@ fn env_table<'scope, 'env: 'scope>(
     // the name it gives it, without an event having told it the key.
     t.set(
         "is_focused",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(false);
             };
@@ -1238,8 +1373,8 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     t.set(
         "is_hovered",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(false);
             };
@@ -1251,8 +1386,8 @@ fn env_table<'scope, 'env: 'scope>(
     // that draws its own button styles the pressed state from this.
     t.set(
         "is_pressed",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(false);
             };
@@ -1263,8 +1398,8 @@ fn env_table<'scope, 'env: 'scope>(
     // drop-dependent *layout*; the colour swap is the `drop_bg` prop.
     t.set(
         "is_drop_target",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(false);
             };
@@ -1275,8 +1410,8 @@ fn env_table<'scope, 'env: 'scope>(
     // none.
     t.set(
         "drop_target",
-        scope.create_function(move |_, ()| {
-            let ui = ui.borrow();
+        lua.create_function(move |_, ()| {
+            let ui = ui.borrow()?;
             Ok(ui.drop_target().map(|k| k.0 as i64))
         })?,
     )?;
@@ -1287,8 +1422,8 @@ fn env_table<'scope, 'env: 'scope>(
     // different parents answer the same.
     t.set(
         "label_of",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(None);
             };
@@ -1307,8 +1442,8 @@ fn env_table<'scope, 'env: 'scope>(
     // is a toast's expiry, with nothing owed until then.
     t.set(
         "request_frame_at",
-        scope.create_function(move |_, at: f64| {
-            ui.borrow_mut().request_frame_at(at);
+        lua.create_function(move |_, at: f64| {
+            ui.borrow_mut()?.request_frame_at(at);
             Ok(())
         })?,
     )?;
@@ -1320,49 +1455,49 @@ fn env_table<'scope, 'env: 'scope>(
     // while `fn` runs, so `fn` calls `env` as the view does.
     t.set(
         "span",
-        scope.create_function(move |_, (name, f): (String, mlua::Function)| {
-            let id = ui.borrow_mut().core().span_begin(&name);
+        lua.create_function(move |_, (name, f): (String, mlua::Function)| {
+            let id = ui.borrow_mut()?.core().span_begin(&name);
             let r = f.call::<mlua::MultiValue>(());
-            ui.borrow_mut().core().span_end(id);
+            ui.borrow_mut()?.core().span_end(id);
             r
         })?,
     )?;
     t.set(
         "perf_measure",
-        scope.create_function(move |_, (name, ms): (String, f64)| {
-            ui.borrow_mut().core().perf_measure(&name, ms);
+        lua.create_function(move |_, (name, ms): (String, f64)| {
+            ui.borrow_mut()?.core().perf_measure(&name, ms);
             Ok(())
         })?,
     )?;
     t.set(
         "perf_count",
-        scope.create_function(move |_, (name, n): (String, f64)| {
-            ui.borrow_mut().core().perf_count(&name, n.floor() as i64);
+        lua.create_function(move |_, (name, n): (String, f64)| {
+            ui.borrow_mut()?.core().perf_count(&name, n.floor() as i64);
             Ok(())
         })?,
     )?;
     t.set(
         "perf_gauge",
-        scope.create_function(move |_, (name, value): (String, f64)| {
-            ui.borrow_mut().core().perf_gauge(&name, value);
+        lua.create_function(move |_, (name, value): (String, f64)| {
+            ui.borrow_mut()?.core().perf_gauge(&name, value);
             Ok(())
         })?,
     )?;
     t.set(
         "perf_mark",
-        scope.create_function(move |_, name: String| {
-            ui.borrow_mut().core().perf_mark(&name);
+        lua.create_function(move |_, name: String| {
+            ui.borrow_mut()?.core().perf_mark(&name);
             Ok(())
         })?,
     )?;
     t.set(
         "perf_measuring",
-        scope.create_function(move |_, ()| Ok(ui.borrow_mut().core().perf_measuring()))?,
+        lua.create_function(move |_, ()| Ok(ui.borrow_mut()?.core().perf_measuring()))?,
     )?;
     t.set(
         "request_frame_for",
-        scope.create_function(move |_, why: String| {
-            ui.borrow_mut().request_frame_for(&why);
+        lua.create_function(move |_, why: String| {
+            ui.borrow_mut()?.request_frame_for(&why);
             Ok(())
         })?,
     )?;
@@ -1372,8 +1507,8 @@ fn env_table<'scope, 'env: 'scope>(
     // when nothing asked.
     t.set(
         "slot_fill",
-        scope.create_function(move |_, name: String| {
-            Ok(ui.borrow_mut().core().slot_fill(&name).map(|f| f.name()))
+        lua.create_function(move |_, name: String| {
+            Ok(ui.borrow_mut()?.core().slot_fill(&name).map(|f| f.name()))
         })?,
     )?;
     // The exit a node leaves by if it leaves this frame (backlog F136),
@@ -1381,8 +1516,8 @@ fn env_table<'scope, 'env: 'scope>(
     // opacity = 0 })` aims a throw before the view drops the card.
     t.set(
         "exit_with",
-        scope.create_function(move |_, (key, exit): (mlua::Value, mlua::Value)| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, (key, exit): (mlua::Value, mlua::Value)| {
+            let mut ui = ui.borrow_mut()?;
             let key = key_arg(&mut ui, key)?;
             let e = kui_core::enter::parse(&lua_to_value(&exit)?)
                 .map_err(|m| mlua::Error::runtime(format!("exit_with: {m}")))?;
@@ -1392,8 +1527,8 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     t.set(
         "set_focus",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let key = key_arg(&mut ui, key)?;
             ui.focus(key);
             Ok(())
@@ -1401,8 +1536,8 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     t.set(
         "blur",
-        scope.create_function(move |_, ()| {
-            ui.borrow_mut().blur();
+        lua.create_function(move |_, ()| {
+            ui.borrow_mut()?.blur();
             Ok(())
         })?,
     )?;
@@ -1414,15 +1549,15 @@ fn env_table<'scope, 'env: 'scope>(
     // can step onto a row it is declaring right now.
     t.set(
         "focus_next",
-        scope.create_function(move |_, ()| {
-            ui.borrow_mut().focus_next();
+        lua.create_function(move |_, ()| {
+            ui.borrow_mut()?.focus_next();
             Ok(())
         })?,
     )?;
     t.set(
         "focus_prev",
-        scope.create_function(move |_, ()| {
-            ui.borrow_mut().focus_prev();
+        lua.create_function(move |_, ()| {
+            ui.borrow_mut()?.focus_prev();
             Ok(())
         })?,
     )?;
@@ -1433,8 +1568,8 @@ fn env_table<'scope, 'env: 'scope>(
     // it is declaring right now — call it after the region's node.
     t.set(
         "focus_region",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let key = match key {
                 mlua::Value::Nil => None,
                 v => Some(key_arg(&mut ui, v)?),
@@ -1455,7 +1590,7 @@ fn env_table<'scope, 'env: 'scope>(
     // case as `announcement-repeated`.
     t.set(
         "announce",
-        scope.create_function(move |_, (text, live): (String, Option<String>)| {
+        lua.create_function(move |_, (text, live): (String, Option<String>)| {
             let live = live.unwrap_or_else(|| "polite".to_string());
             let Some(i) = schema::LIVE.iter().position(|v| *v == live) else {
                 return Err(mlua::Error::runtime(format!(
@@ -1463,7 +1598,7 @@ fn env_table<'scope, 'env: 'scope>(
                     schema::LIVE.join(" | ")
                 )));
             };
-            ui.borrow_mut()
+            ui.borrow_mut()?
                 .announce(&text, kui_core::Live::from_index(i));
             Ok(())
         })?,
@@ -1483,8 +1618,8 @@ fn env_table<'scope, 'env: 'scope>(
     // `pcall` and retried.
     t.set(
         "reveal",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             match key {
                 mlua::Value::String(s) if ui.key_of(&s.to_str()?).is_none() => {
                     ui.reveal_label(&s.to_str()?);
@@ -1502,8 +1637,8 @@ fn env_table<'scope, 'env: 'scope>(
     // back to `set_scroll` to restore a position.
     t.set(
         "scroll_offset",
-        scope.create_function(move |lua, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |lua, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let off = match key_query(&mut ui, key)? {
                 Some(key) => ui.scroll_offset(key),
                 None => kui_core::Vec2::ZERO,
@@ -1530,8 +1665,8 @@ fn env_table<'scope, 'env: 'scope>(
     // finished, which is the layout the pointer was over.
     t.set(
         "text_hit",
-        scope.create_function(move |lua, (key, x, y): (mlua::Value, f32, f32)| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |lua, (key, x, y): (mlua::Value, f32, f32)| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(mlua::Value::Nil);
             };
@@ -1551,9 +1686,9 @@ fn env_table<'scope, 'env: 'scope>(
     // none) and closes the menu (docs/adr/0017-selection-as-a-scope.md).
     t.set(
         "open_menu",
-        scope.create_function(
+        lua.create_function(
             move |_, (key, x, y, items): (mlua::Value, f32, f32, mlua::Table)| {
-                let mut ui = ui.borrow_mut();
+                let mut ui = ui.borrow_mut()?;
                 let Some(target) = key_query(&mut ui, key)? else {
                     return Ok(false);
                 };
@@ -1571,8 +1706,8 @@ fn env_table<'scope, 'env: 'scope>(
     // Closes whatever menu is open; true when there was one.
     t.set(
         "close_menu",
-        scope.create_function(move |_, ()| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, ()| {
+            let mut ui = ui.borrow_mut()?;
             Ok(ui.close_menu())
         })?,
     )?;
@@ -1582,8 +1717,8 @@ fn env_table<'scope, 'env: 'scope>(
     // nothing (docs/adr/0017-selection-as-a-scope.md).
     t.set(
         "selection_text",
-        scope.create_function(move |_, ()| {
-            let ui = ui.borrow();
+        lua.create_function(move |_, ()| {
+            let ui = ui.borrow()?;
             Ok(ui.selection_text())
         })?,
     )?;
@@ -1595,8 +1730,8 @@ fn env_table<'scope, 'env: 'scope>(
     // `answer_selection_range` (docs/adr/0017-selection-as-a-scope.md).
     t.set(
         "request_copy",
-        scope.create_function(move |_, ()| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, ()| {
+            let mut ui = ui.borrow_mut()?;
             Ok(match ui.request_copy() {
                 kui_core::CopyRequest::Ready(text) => (Some(text), false),
                 kui_core::CopyRequest::Asked => (None, true),
@@ -1608,8 +1743,8 @@ fn env_table<'scope, 'env: 'scope>(
     // whole. False when nothing asked.
     t.set(
         "answer_selection_range",
-        scope.create_function(move |_, text: String| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, text: String| {
+            let mut ui = ui.borrow_mut()?;
             Ok(ui.answer_selection_range(&text))
         })?,
     )?;
@@ -1620,8 +1755,8 @@ fn env_table<'scope, 'env: 'scope>(
     // sink (or as typing into a focused editor).
     t.set(
         "set_clipboard",
-        scope.create_function(move |_, (text, html): (String, Option<String>)| {
-            ui.borrow_mut().set_clipboard(text, html);
+        lua.create_function(move |_, (text, html): (String, Option<String>)| {
+            ui.borrow_mut()?.set_clipboard(text, html);
             Ok(())
         })?,
     )?;
@@ -1630,21 +1765,21 @@ fn env_table<'scope, 'env: 'scope>(
     // it (backlog F84).
     t.set(
         "set_clipboard_secret",
-        scope.create_function(move |_, text: String| {
-            ui.borrow_mut().set_clipboard_secret(text);
+        lua.create_function(move |_, text: String| {
+            ui.borrow_mut()?.set_clipboard_secret(text);
             Ok(())
         })?,
     )?;
     t.set(
         "request_paste",
-        scope.create_function(move |_, ()| {
-            ui.borrow_mut().request_paste();
+        lua.create_function(move |_, ()| {
+            ui.borrow_mut()?.request_paste();
             Ok(())
         })?,
     )?;
     t.set(
         "awaiting_paste",
-        scope.create_function(move |_, ()| Ok(ui.borrow().awaiting_paste()))?,
+        lua.create_function(move |_, ()| Ok(ui.borrow()?.awaiting_paste()))?,
     )?;
     // The platform's Open, Save or folder dialog (backlog C51): `{ mode =
     // "open"|"save"|"folder", multiple, title, filters = {{ name, extensions
@@ -1654,19 +1789,19 @@ fn env_table<'scope, 'env: 'scope>(
     // cancelled. False when one is already out.
     t.set(
         "request_files",
-        scope.create_function(move |_, opts: Option<mlua::Value>| {
+        lua.create_function(move |_, opts: Option<mlua::Value>| {
             let v = match &opts {
                 Some(o) => lua_to_value(o)?,
                 None => Value::Null,
             };
             let dialog = kui_core::FileDialog::from_value(&v)
                 .map_err(|e| mlua::Error::runtime(format!("request_files: {e}")))?;
-            Ok(ui.borrow_mut().request_files(dialog))
+            Ok(ui.borrow_mut()?.request_files(dialog))
         })?,
     )?;
     t.set(
         "awaiting_files",
-        scope.create_function(move |_, ()| Ok(ui.borrow().awaiting_files()))?,
+        lua.create_function(move |_, ()| Ok(ui.borrow()?.awaiting_files()))?,
     )?;
     // The selection as HTML: the formatting the text declared (bold,
     // The text selection's two ends as the drag made them: `{anchor =
@@ -1676,8 +1811,8 @@ fn env_table<'scope, 'env: 'scope>(
     // the anchor reads as one (ADR 0029). Nil with no text selection.
     t.set(
         "selection_ends",
-        scope.create_function(move |lua, ()| {
-            let ui = ui.borrow();
+        lua.create_function(move |lua, ()| {
+            let ui = ui.borrow()?;
             let Some((a, f)) = ui.selection_ends() else {
                 return Ok(mlua::Value::Nil);
             };
@@ -1704,8 +1839,8 @@ fn env_table<'scope, 'env: 'scope>(
     // offered and only Rust had (backlog B1a).
     t.set(
         "cell_selection",
-        scope.create_function(move |lua, ()| {
-            let ui = ui.borrow();
+        lua.create_function(move |lua, ()| {
+            let ui = ui.borrow()?;
             match ui.cell_selection() {
                 Some(sel) => value_to_lua(lua, &sel.to_value(kui_core::Handles::INT)),
                 None => Ok(mlua::Value::Nil),
@@ -1717,8 +1852,8 @@ fn env_table<'scope, 'env: 'scope>(
     // beside the plain text, never instead of it.
     t.set(
         "selection_html",
-        scope.create_function(move |_, ()| {
-            let ui = ui.borrow();
+        lua.create_function(move |_, ()| {
+            let ui = ui.borrow()?;
             Ok(ui.selection_html())
         })?,
     )?;
@@ -1728,8 +1863,8 @@ fn env_table<'scope, 'env: 'scope>(
     // part of it.
     t.set(
         "select_all_in",
-        scope.create_function(move |_, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(false);
             };
@@ -1740,8 +1875,8 @@ fn env_table<'scope, 'env: 'scope>(
     // one to drop.
     t.set(
         "clear_selection",
-        scope.create_function(move |_, ()| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, ()| {
+            let mut ui = ui.borrow_mut()?;
             Ok(ui.clear_selection())
         })?,
     )?;
@@ -1750,9 +1885,9 @@ fn env_table<'scope, 'env: 'scope>(
     // drew no text. A byte past the text is the end.
     t.set(
         "caret_rect",
-        scope.create_function(move |lua, (key, byte): (mlua::Value, mlua::Value)| {
+        lua.create_function(move |lua, (key, byte): (mlua::Value, mlua::Value)| {
             let byte = measure_arg(&byte, "caret_rect: byte")?;
-            let mut ui = ui.borrow_mut();
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(mlua::Value::Nil);
             };
@@ -1764,8 +1899,8 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     t.set(
         "scroll_geometry",
-        scope.create_function(move |lua, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |lua, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(mlua::Value::Nil);
             };
@@ -1780,8 +1915,8 @@ fn env_table<'scope, 'env: 'scope>(
     // `layout` event's numbers without the event (backlog C26 step 2).
     t.set(
         "layout_of",
-        scope.create_function(move |lua, key: mlua::Value| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |lua, key: mlua::Value| {
+            let mut ui = ui.borrow_mut()?;
             let Some(key) = key_query(&mut ui, key)? else {
                 return Ok(mlua::Value::Nil);
             };
@@ -1795,8 +1930,8 @@ fn env_table<'scope, 'env: 'scope>(
     // to the top" and a huge y is "jump to the end".
     t.set(
         "set_scroll",
-        scope.create_function(move |_, (key, x, y): (mlua::Value, f32, f32)| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, (key, x, y): (mlua::Value, f32, f32)| {
+            let mut ui = ui.borrow_mut()?;
             let at = kui_core::Vec2::new(x, y);
             // A label not declared yet waits for the frame's end, as
             // `reveal`'s does (backlog DX15).
@@ -1818,8 +1953,8 @@ fn env_table<'scope, 'env: 'scope>(
     // key nothing declared yet is the first frame, with nothing to correct.
     t.set(
         "shift_scroll",
-        scope.create_function(move |_, (key, drawn, target): (mlua::Value, f32, f32)| {
-            let mut ui = ui.borrow_mut();
+        lua.create_function(move |_, (key, drawn, target): (mlua::Value, f32, f32)| {
+            let mut ui = ui.borrow_mut()?;
             if let Some(key) = key_query(&mut ui, key)? {
                 ui.shift_scroll(
                     key,
@@ -1838,9 +1973,9 @@ fn env_table<'scope, 'env: 'scope>(
     // end that way, or for a key nothing declared.
     t.set(
         "edge_scroll",
-        scope.create_function(
+        lua.create_function(
             move |lua, (key, x, y, rect): (mlua::Value, f32, f32, Table)| {
-                let mut ui = ui.borrow_mut();
+                let mut ui = ui.borrow_mut()?;
                 let Some(key) = key_query(&mut ui, key)? else {
                     return Ok(None);
                 };
@@ -1869,9 +2004,9 @@ fn env_table<'scope, 'env: 'scope>(
     // one there is until step 3.
     t.set(
         "set_window_size",
-        scope.create_function(move |_, (window, w, h): (mlua::Value, f32, f32)| {
+        lua.create_function(move |_, (window, w, h): (mlua::Value, f32, f32)| {
             let window = window_arg(&window, "set_window_size: window")?;
-            ui.borrow_mut()
+            ui.borrow_mut()?
                 .set_window_size(kui_core::WindowId(window), kui_core::Size::new(w, h));
             Ok(())
         })?,
@@ -1887,25 +2022,25 @@ fn env_table<'scope, 'env: 'scope>(
     let env = t.clone();
     t.set(
         "set_tokens",
-        scope.create_function(move |lua, decl: Table| {
+        lua.create_function(move |lua, decl: Table| {
             let tokens = parse_tokens(&decl)?;
-            ui.borrow_mut().set_tokens(tokens);
-            env.set("tokens", tokens_table(lua, &ui.borrow())?)
+            ui.borrow_mut()?.set_tokens(tokens);
+            env.set("tokens", tokens_table(lua, &**ui.borrow()?)?)
         })?,
     )?;
     t.set(
         "focus_window",
-        scope.create_function(move |_, window: mlua::Value| {
+        lua.create_function(move |_, window: mlua::Value| {
             let window = window_arg(&window, "focus_window: window")?;
-            ui.borrow_mut().focus_window(kui_core::WindowId(window));
+            ui.borrow_mut()?.focus_window(kui_core::WindowId(window));
             Ok(())
         })?,
     )?;
     t.set(
         "measure_text",
-        scope.create_function(
+        lua.create_function(
             move |lua, (s, opts, max_w): (mlua::Value, Option<Table>, Option<f32>)| {
-                let mut guard = ui.borrow_mut();
+                let mut guard = ui.borrow_mut()?;
                 let m = measure_from_lua(&mut guard, &s, opts.as_ref(), max_w)?;
                 value_to_lua(lua, &m.to_value())
             },
@@ -1913,11 +2048,11 @@ fn env_table<'scope, 'env: 'scope>(
     )?;
     t.set(
         "caret_in_text",
-        scope.create_function(
+        lua.create_function(
             move |lua, args: (mlua::Value, Option<Table>, Option<f32>, mlua::Value)| {
                 let (s, opts, max_w, byte) = args;
                 let byte = measure_arg(&byte, "caret_in_text: byte")?;
-                let mut guard = ui.borrow_mut();
+                let mut guard = ui.borrow_mut()?;
                 match caret_in_from_lua(&mut guard, &s, opts.as_ref(), max_w, byte)? {
                     Some(r) => value_to_lua(lua, &r.to_value()),
                     None => Ok(mlua::Value::Nil),
@@ -1925,6 +2060,7 @@ fn env_table<'scope, 'env: 'scope>(
             },
         )?,
     )?;
+    let loaded_names = loaded.clone();
     // `env.add_extension(namespace, path)` → true, or nil and a message:
     // the script hosting an extension of its own (ADR 0014, and
     // `kui_core::slot`). A `.lua` file or a folder with `init.lua` is
@@ -1944,7 +2080,7 @@ fn env_table<'scope, 'env: 'scope>(
     // this adds is a plugin that draws in the script's own tree.
     t.set(
         "add_extension",
-        scope.create_function(move |_, (namespace, path): (String, String)| {
+        lua.create_function(move |_, (namespace, path): (String, String)| {
             let path = std::path::PathBuf::from(path);
             if let Some(prev) = loaded.borrow().iter().find(|l| l.namespace == namespace) {
                 return Ok(if prev.path == path {
@@ -1985,7 +2121,7 @@ fn env_table<'scope, 'env: 'scope>(
                     )),
                 ));
             };
-            let origin = match ui.borrow_mut().add_extension(&namespace, ext) {
+            let origin = match ui.borrow_mut()?.add_extension(&namespace, ext) {
                 Ok(origin) => origin,
                 Err(e) => return Ok((None, Some(e))),
             };
@@ -2001,8 +2137,8 @@ fn env_table<'scope, 'env: 'scope>(
     // what it can name in a `fill`, and what a reply's `from` will say.
     t.set(
         "extension_namespaces",
-        scope.create_function(move |lua, ()| {
-            lua.create_sequence_from(loaded.borrow().iter().map(|l| l.namespace.clone()))
+        lua.create_function(move |lua, ()| {
+            lua.create_sequence_from(loaded_names.borrow().iter().map(|l| l.namespace.clone()))
         })?,
     )?;
     Ok(t)

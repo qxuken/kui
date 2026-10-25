@@ -66,6 +66,17 @@ function view(env, slot)
    return column({ width = 0, height = 0 })
 end
 
+
+
+
+components = {
+   button = function(env, props, inst)
+      ensure_tokens(env)
+      local c = { env = env, skin = ledger, settings = settings, id = "button" }
+      return button.view(props, c)
+   end,
+}
+
 function on_event(ev)
    local m = ev
    local id = m.id

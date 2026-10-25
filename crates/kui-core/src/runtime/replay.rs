@@ -243,12 +243,13 @@ pub(crate) enum Read {
     /// `kui_theme`, the bindings' theme tables) or a role by name through
     /// a token lookup: a colour drawn from it is baked into the spec the
     /// journal keeps, so a palette that differs runs the fill again. Noted
-    /// once a fill, compared by value — a palette set again to what it
-    /// was is no change. Boxed, so the other reads stay small.
-    Theme(Box<crate::theme::Theme>),
+    /// once a fill, as the palette's generation, which moves only when the
+    /// palette comes out different — a palette set again to what it was
+    /// is no change (backlog C64).
+    Theme(u64),
     /// The sizes, read as the palette is (`Core::metrics`, `kui_metrics`,
     /// a length role by name).
-    Metrics(Box<crate::metrics::Metrics>),
+    Metrics(u64),
     /// Whether anyone chose the accent (`Core::has_accent`).
     Accent(bool),
     /// Something the core does not compare (the selection's text): a
@@ -552,8 +553,8 @@ impl Core {
             Read::EditText(k, s) => self.edit.text(*k) == *s,
             Read::Env(f) => env_same(f, &self.env_facts_raw()),
             Read::Measure(rev) => self.text_rev() == *rev,
-            Read::Theme(t) => **t == self.theme,
-            Read::Metrics(m) => **m == self.metrics,
+            Read::Theme(g) => *g == self.theme_gen,
+            Read::Metrics(g) => *g == self.metrics_gen,
             Read::Accent(a) => self.has_accent_raw() == *a,
             Read::Opaque => false,
         }

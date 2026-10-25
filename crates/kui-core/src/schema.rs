@@ -2738,7 +2738,7 @@ pub struct EnvField {
 
 /// Everything an env reading is taken from: the stored [`Env`](crate::env::Env) and the
 /// frame's own facts beside it (`Core::env_facts`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EnvFacts {
     pub env: crate::env::Env,
     pub viewport: crate::geom::Size,

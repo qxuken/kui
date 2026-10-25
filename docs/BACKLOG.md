@@ -3591,60 +3591,15 @@ whose host keeps its params is 1.03 µs, and 1.25 µs when the host builds
 them every frame. A fresh slot is 29.9 µs. Profiling 200 replayed slots
 (`--bench replay_only`) put the replay gap in core, not in Lua. Four
 entries, all for Kit's M2: what ADR B's cheap instances need besides a
-shared `env`. They are filed, not built. C60 was held for the draft ADR
+shared `env` — **built 2026-10-25** beside ADR 0060, and in the archive
+with the numbers: a replayed slot whose host keeps its params is 1.25×
+a native button, a fresh fill a quarter of what it was. C60 was held for the draft ADR
 in Kit's plan (components an extension provides) and is built, with [ADR
 0060](adr/0060-components-an-extension-provides.md), in the archive; C61
 is held for the runner's. C59 — only a Rust host loaded a Lua extension,
 Kit's track A of M1 — was filed the same day and built with [ADR
 0059](adr/0059-a-lua-extension-loads-in-every-host.md), and is in the
 archive.
-
-### `.` C62 — Declaring a slot scans every slot declared so far, so n slots cost O(n²) a frame
-
-**Found.** `Core::begin_slot` (`runtime/fills.rs`) checks for
-`duplicate-slot` with `slot_labels.find(name)`, and `LabelIndex::find`
-walks every entry declared this frame comparing strings. It's the single
-hottest function in a frame of 200 replayed slots, with `memcmp` beside
-it, and the per-slot cost rises with the count: 0.86 µs a button from 0
-to 20, 1.05 µs from 20 to 200.
-
-**Do.** Keep the frame's slot names in a hash set beside the label index,
-cleared with it, so the check is one lookup. `slot_declared` reads the
-same set.
-
-### `.` C63 — A replayed fill is kept again every frame, and its specs are cloned to push
-
-**Found.** In the same profile, `Kept::insert` and `NodeSpec::clone` run
-once per replayed fill a frame: a replay takes the kept fill out
-(`take_replayable`), pushes clones of its journaled specs through the
-doors (`replay_op`), and inserts it back under its key.
-
-**Do.** Leave a replayed fill where it is and push its ops by reference;
-re-key it only when the slot's key moved. The journal stays the record of
-what the doors saw (ADR 0045, decision 3).
-
-### `.` C64 — Every replay compares the whole palette by value
-
-**Found.** `Theme::eq` runs once per replayed fill: the palette and the
-metrics are among the facts a kept fill read, compared by value (backlog
-F155), so 200 replayed slots compare the same `Theme` 200 times.
-
-**Do.** Give the resolved palette and metrics a generation number that
-moves when either changes. A replay then compares one integer, and the
-by-value comparison happens once a frame.
-
-### `.` C65 — A Lua fill builds its whole `env` before it draws: about 22 µs
-
-**Found.** A Kit fill that draws nothing costs about 22 µs (the `buttons`
-rows at 0: an empty toolbar against no toolbar). `LuaExtension::view`
-builds a fresh `env` every call, with about 48 scoped closures and the
-theme, metrics and token tables (`crates/kui-lua/src/lib.rs`), so a
-fresh slot is 43× a native button.
-
-**Do.** Build `env` once per extension per frame and share it across that
-extension's fills, with the per-fill facts (`slot`) passed beside it. This
-is ADR B's decision 4 in Kit's plan; the entry holds the measurement and
-the target: a fresh fill's fixed cost under 2 µs.
 
 ## After alpha.58
 
@@ -5543,14 +5498,14 @@ move.
 
 - `.` **F205** — [A one-line text in a box that scrolls sideways is cut at the box with nothing to scroll to](backlog/closed-2026-09.md#-f205--a-one-line-text-in-a-box-that-scrolls-sideways-is-cut-at-the-box-with-nothing-to-scroll-to--done-2026-10-25) — done (2026-10-25) — a text in a `scroll_x` box is no narrower than its min-content
 - `.` **F206** — [The devtools' strip wraps tabs onto more lines, holds four placement buttons, and its tooltips cover the pane](backlog/closed-2026-09.md#-f206--the-devtools-strip-wraps-tabs-onto-more-lines-holds-four-placement-buttons-and-its-tooltips-cover-the-pane--done-2026-10-25) — done (2026-10-25) — "⋮" menu with the dock side, one scrolling tab line, short tooltips, drag-select followed from the inner scroller, the examples' View menu
-**From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 built in Kit's M2 with ADR 0060; C62–C65 open, for Kit's M2
+**From Kit's M0 spike (2026-10-25)** — C59, filed and built the same day with ADR 0059; C60 built in Kit's M2 with ADR 0060, and C62–C65 beside it
 
 - `~` **C59** — [Only a Rust host loads a Lua extension](backlog/closed-2026-09.md#-c59--only-a-rust-host-loads-a-lua-extension--done-2026-10-25) — done (2026-10-25) — every host's door loads a `.lua` file or a folder holding `init.lua` (`kui_ffi::open_extension`), kui-lua opens C plugins through a loader kui-ffi registers, a loaded file's chunk is `@path` and its folder first on `package.path`
 - `~` **C60** — [An extension can fill a slot once a frame but provide nothing a host places as often as it likes](backlog/closed-2026-09.md#-c60--an-extension-can-fill-a-slot-once-a-frame-but-provide-nothing-a-host-places-as-often-as-it-likes--done-2026-10-25) — done (2026-10-25) — [ADR 0060](adr/0060-components-an-extension-provides.md): components placed by position, host children by group, events as the host's message through `emit`, replayed by default; doors in five bindings, a corpus scene in all five
-- `.` **C62** — [Declaring a slot scans every slot declared so far](#from-kits-m0-spike-2026-10-25) — open — a hash set of the frame's slot names
-- `.` **C63** — [A replayed fill is kept again every frame, and its specs are cloned to push](#from-kits-m0-spike-2026-10-25) — open
-- `.` **C64** — [Every replay compares the whole palette by value](#from-kits-m0-spike-2026-10-25) — open — a generation number
-- `.` **C65** — [A Lua fill builds its whole `env` before it draws: about 22 µs](#from-kits-m0-spike-2026-10-25) — open — one `env` per extension per frame
+- `.` **C62** — [Declaring a slot scans every slot declared so far, so n slots cost O(n²) a frame](backlog/closed-2026-09.md#-c62--declaring-a-slot-scans-every-slot-declared-so-far-so-n-slots-cost-on²-a-frame--done-2026-10-25) — done (2026-10-25) — a hash set of the frame's slot names in front of the scan
+- `.` **C63** — [A replayed fill is kept again every frame, and its specs are cloned to push](backlog/closed-2026-09.md#-c63--a-replayed-fill-is-kept-again-every-frame-and-its-specs-are-cloned-to-push--done-2026-10-25) — done, in part (2026-10-25) — instances kept by key; the spec clone stays, since sharing its groups through `Arc` cost every plain frame 8%
+- `.` **C64** — [Every replay compares the whole palette by value](backlog/closed-2026-09.md#-c64--every-replay-compares-the-whole-palette-by-value--done-2026-10-25) — done (2026-10-25) — palette and sizes carry a generation that moves when they change
+- `.` **C65** — [A Lua fill builds its whole `env` before it draws: about 22 µs](backlog/closed-2026-09.md#-c65--a-lua-fill-builds-its-whole-env-before-it-draws-about-22-µs--done-2026-10-25) — done (2026-10-25) — one `env` per script, its functions reaching the frame through a thread-local, its facts written when they change: a frame with one empty fill 22.5 → 2.7 µs, a fresh fill 29.9 → 7.1 µs
 
 **From Kit's M1 (2026-10-25)** — T7, T8 and V12, filed and built the same day with ADRs 0061, 0062 and 0063
 

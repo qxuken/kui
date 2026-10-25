@@ -49,6 +49,9 @@ pub enum Buttons {
     /// kui's stock button from Rust, no Kit at all: the floor a button
     /// costs in a frame.
     Native,
+    /// One `kit/button` component per button, placed by position and
+    /// replayed by default (ADR 0060), its props built every frame.
+    Components,
 }
 
 pub struct Scene {
@@ -173,6 +176,14 @@ impl Scene {
                 ui.open(NodeSpec::row().gap(6.0));
                 for (name, p) in &self.kept {
                     ui.slot_replay(name, p);
+                }
+                ui.close();
+            }
+            Buttons::Components => {
+                ui.open(NodeSpec::row().gap(6.0));
+                for i in 0..self.n_buttons {
+                    let p = self.item(i);
+                    ui.component("kit/button", &p);
                 }
                 ui.close();
             }

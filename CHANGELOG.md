@@ -72,6 +72,11 @@ was the first bare bump to break an app in five releases).
   (backlog C59, ADR 0059).
 - `EventKind` and `kui_core::Event` gained `Component`, a component's
   event (ADR 0060): an exhaustive `match` on either adds an arm.
+- A Lua script's `env` is one table shared by every fill of the script,
+  its facts written again as they change (backlog C65): a script that
+  stored its own fields on `env` finds them there next fill, and one of
+  `env`'s functions called outside a view or a component's function is an
+  error, as it was once the view's scope ended.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -455,6 +460,21 @@ for lua-language-server, and a new runner beside the window's.
     - a Lua fill's `env` costs 22 µs.
 
 ### Changed
+
+- **Extension fills are much cheaper** (backlog C62–C65). Measured on
+  M0's bench, a frame of 200 Kit buttons, each per button:
+    - a replayed slot whose host keeps its params: 1.03 → 0.85 µs, against
+      0.68 µs for kui's stock button from Rust;
+    - a component, its props built every frame: 1.08 → 1.03 µs;
+    - a fresh Lua fill: 29.9 → 7.1 µs, and a frame with one fill that
+      draws nothing 22.5 → 2.7 µs.
+
+  A Lua script's `env` is built once and shared by its fills, its facts
+  written when they change; a slot's duplicate check is a hash lookup; and
+  a replay compares the palette and the sizes by generation.
+
+  **What you can delete:** a host's cache of which panes to replay by
+  hand to keep a frame of many small extension fills under budget.
 
 - **The devtools light the app as a browser's do** (backlog F197). The
   tree tab highlights the node under a hovered row, a breadcrumb or the

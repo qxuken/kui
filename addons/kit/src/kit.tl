@@ -65,6 +65,17 @@ global function view(env: kui.Env, slot: kui.Slot): kui.Node
   return column { width = 0, height = 0 }
 end
 
+-- The components (ADR 0060): placed by a host as `kit/<name>` as often as
+-- it likes, each instance keyed by where it is and replayed while its
+-- props hold. M2 moves the button here; M3 moves the rest.
+global components: {string:function(kui.Env, {string:any}, kui.Slot): kui.Node} = {
+  button = function(env: kui.Env, props: {string:any}, inst: kui.Slot): kui.Node
+    ensure_tokens(env)
+    local c: ctx.Ctx = { env = env, skin = ledger, settings = settings, id = "button" }
+    return button.view(props as button.Params, c)
+  end,
+}
+
 global function on_event(ev: kui.Event): {string:any}
   local m = ev as {string:any}
   local id = m.id as string
