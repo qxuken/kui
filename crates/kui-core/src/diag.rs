@@ -219,6 +219,13 @@ warnings! {
     /// for. A focusable node inside the *container* but outside every item —
     /// a "+" at the end of a tab bar — is reachable and is not reported.
     pub const FOCUSABLE_INSIDE_ITEM: &str = "focusable-inside-item";
+    /// A control — anything focusable or with a click — inside a `live`
+    /// region. A live region reads as one message, its subtree
+    /// presentational (that is what makes every platform announce it), so
+    /// assistive technology cannot reach the control at all: a notice's
+    /// Retry, a toast's close button. Put `live` on the node holding the
+    /// message alone, beside the controls.
+    pub const CONTROL_INSIDE_LIVE: &str = "control-inside-live";
     /// A `radio` with no `radioGroup` above it, or a `tab` with no
     /// `tabList` — the stock `<radio>` included. Outside its container an
     /// item is no composite's:
@@ -1519,6 +1526,9 @@ impl Diagnostics {
             };
             if sem.role == Role::None || sem.presentational {
                 skip_until = tree.subtree_end(i);
+                if tree.specs[i].access().live != access::Live::Off {
+                    self.check_live_controls(tree, i);
+                }
             }
             if sem.role == Role::Slider {
                 self.check_slider_range(tree, i);
@@ -1549,6 +1559,23 @@ impl Diagnostics {
                     )
                 });
             }
+        }
+    }
+
+    /// The controls a live region at `i` hides (see
+    /// [`CONTROL_INSIDE_LIVE`]).
+    fn check_live_controls(&mut self, tree: &Tree, i: usize) {
+        for j in i + 1..tree.subtree_end(i) {
+            let spec = &tree.specs[j];
+            if !access::focusable(tree, j) && spec.events().on_click().is_none() {
+                continue;
+            }
+            self.warn(CONTROL_INSIDE_LIVE, tree.keys[j], || {
+                "this control sits inside a `live` region, which reads as one message, so \
+                 assistive technology cannot reach it (put `live` on the node holding the \
+                 message alone, beside the controls)"
+                    .to_string()
+            });
         }
     }
 

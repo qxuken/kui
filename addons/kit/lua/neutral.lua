@@ -32,6 +32,7 @@ local neutral = {
    hair = 1,
    shadow = 4,
    shadow_blur = 16,
+   label_bold = false,
    label_upper = false,
    ctl_border = false,
    field_box = true,

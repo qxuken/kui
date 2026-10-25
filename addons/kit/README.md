@@ -34,10 +34,12 @@ kit::Toolbar::new().place_with(ui, |group, ui| {
 });
 ```
 
-```js
-// Node: bindings/node/kit.js, functions that are also JSX components
-import { Toolbar, Button } from './bindings/node/kit.js';
-Toolbar({}, [Button({ label: 'Run', variant: 'primary', onPress: { kind: 'run' } })]);
+```tsx
+// Node: @qxuken/kui/kit, functions that are also JSX components
+import * as kit from '@qxuken/kui/kit';
+await runWindowed(app, { extensions: [kit.extension] });
+// in a view:
+<kit.Toolbar><kit.Button label="Run" variant="primary" onPress={{ kind: 'run' }} /></kit.Toolbar>
 ```
 
 ```lua

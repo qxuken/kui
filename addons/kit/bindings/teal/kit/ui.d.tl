@@ -4,9 +4,9 @@
 -- Phosphor, Neutral) the host picks.
 
 local record kit
-  -- How loud a control is.
+  -- How loud a control is; success confirms what just happened (Copied).
   enum Variant
-    "default" "primary" "ghost" "danger"
+    "default" "primary" "ghost" "danger" "success"
   end
 
   -- What a badge, a stat or a toast is about.
@@ -48,6 +48,10 @@ local record kit
     label: string
     -- Shown, not choosable.
     disabled: boolean
+    -- A count beside the label (a segment's, a tab's).
+    count: integer
+    -- The count is bad news: drawn in the danger colour.
+    alert: boolean
   end
 
   -- A table's column: which field of the channel it shows, and how.
@@ -116,6 +120,9 @@ local record kit
     density: Density
     -- The skin's hard shadows; on when left out.
     shadows: boolean
+    -- Corner radius in px, for a brand with its own; the skin's when left
+    -- out.
+    radius: number
     -- Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
     -- "$brandSurface" }` — a colour or a token each.
     roles: any
@@ -133,6 +140,9 @@ local record kit
     scroll: boolean
     -- Takes the room its parent leaves.
     grow: boolean
+    -- The body's padding in px; 10 when left out, 0 for a body that brings
+    -- its own or is often empty.
+    pad: number
     key: string
     fresh: boolean
   end
@@ -214,8 +224,11 @@ local record kit
 
   -- The props of `kit/button`.
   record ButtonProps
-    -- The text on it; its accessible name.
+    -- The text on it; its accessible name unless `name` says more.
     label: string
+    -- Its accessible name when that says more than the label; start it with
+    -- the label's words (Clear → Clear the selection).
+    name: string
     -- Default when left out.
     variant: Variant
     -- An icon's name before the label (Kit's icon set).
@@ -224,6 +237,10 @@ local record kit
     shortcut: string
     -- Drawn and read as unavailable; presses nothing.
     disabled: boolean
+    -- A toggle that is on (a panel shown): drawn selected and read as such.
+    pressed: boolean
+    -- A hint under the pointer — why it is disabled, say.
+    tooltip: string
     -- The message `press` arrives as. Pressed.
     on_press: any
     key: string
@@ -244,6 +261,10 @@ local record kit
     variant: Variant
     -- Unavailable.
     disabled: boolean
+    -- A toggle that is on: drawn selected and read as such.
+    pressed: boolean
+    -- The hint under the pointer; the label when left out.
+    tooltip: string
     -- The message `press` arrives as. Pressed.
     on_press: any
     key: string
@@ -258,8 +279,11 @@ local record kit
   record TextFieldProps
     -- Its text: yours to keep, from `change`.
     value: string
-    -- Its label, above it.
+    -- Its label, above it; its name.
     label: string
+    -- The label names the field but is not drawn: a field whose place says
+    -- what it is.
+    hide_label: boolean
     -- Shown while it is empty.
     placeholder: string
     -- In the data face.
@@ -268,6 +292,9 @@ local record kit
     disabled: boolean
     -- Its width in px; grows when left out.
     width: number
+    -- Takes the keyboard each time this number changes: keep a counter in
+    -- your model and bump it (⌘F).
+    focus: integer
     -- The message `change` arrives as. The text changed.
     on_change: any
     -- The message `submit` arrives as. Enter.
@@ -294,6 +321,8 @@ local record kit
     placeholder: string
     -- A count after the query: `12 of 340`.
     count: string
+    -- Takes the keyboard each time this number changes (⌘F).
+    focus: integer
     -- The message `change` arrives as. The query changed; cleared is the
     -- empty string.
     on_change: any
@@ -538,6 +567,8 @@ local record kit
     label: string
     -- Neutral when left out.
     tone: Tone
+    -- A dot in the tone's colour before the label: a status.
+    dot: boolean
     key: string
     fresh: boolean
   end
@@ -562,6 +593,20 @@ local record kit
     text: string
     -- Wraps rather than scrolls sideways.
     wrap: boolean
+    -- At most this many lines high, the rest scrolled to.
+    max_lines: integer
+    key: string
+    fresh: boolean
+  end
+
+  -- The props of `kit/notice`.
+  record NoticeProps
+    -- What happened, or what to know.
+    message: string
+    -- Danger, warn, ok, accent or neutral (the default).
+    tone: Tone
+    -- A bold first line.
+    title: string
     key: string
     fresh: boolean
   end
@@ -845,6 +890,10 @@ local record kit
 
   -- Text in the data face on the panel colour: a payload, a command, a stack.
   code: function(props: CodeProps): kui.Node
+
+  -- A message in the flow of the page: an error to act on, a warning, a note;
+  -- its actions after it.
+  notice: function(props: NoticeProps, children?: {any:any}): kui.Node
 
   -- What a view shows with nothing in it: a title, a sentence, and what to
   -- do.

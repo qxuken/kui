@@ -29,12 +29,13 @@ concat :: proc(a, b: string) -> string {
 	return strings.concatenate({a, b}, context.temp_allocator)
 }
 
-// How loud a control is.
+// How loud a control is; success confirms what just happened (Copied).
 Variant :: enum {
 	Default,
 	Primary,
 	Ghost,
 	Danger,
+	Success,
 }
 
 @(private)
@@ -43,6 +44,7 @@ VARIANT_NAMES := [Variant]string {
 	.Primary = "primary",
 	.Ghost = "ghost",
 	.Danger = "danger",
+	.Success = "success",
 }
 
 // What a badge, a stat or a toast is about.
@@ -140,6 +142,10 @@ Choice :: struct {
 	label: string,
 	// Shown, not choosable.
 	disabled: Maybe(bool),
+	// A count beside the label (a segment's, a tab's).
+	count: Maybe(i64),
+	// The count is bad news: drawn in the danger colour.
+	alert: Maybe(bool),
 }
 
 @(private)
@@ -148,6 +154,8 @@ choice_value :: proc(p: Choice) -> ^c.Value {
 	c.value_map_set(m, "value", c.value_str(p.value))
 	c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
+	if x, ok := p.count.?; ok do c.value_map_set(m, "count", c.value_int(x))
+	if x, ok := p.alert.?; ok do c.value_map_set(m, "alert", c.value_bool(x))
 	return m
 }
 
@@ -268,6 +276,8 @@ Settings :: struct {
 	density: Maybe(Density),
 	// The skin's hard shadows; on when left out.
 	shadows: Maybe(bool),
+	// Corner radius in px, for a brand with its own; the skin's when left out.
+	radius: Maybe(f64),
 	// Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
 	// "$brandSurface" }` — a colour or a token each.
 	roles: any,
@@ -282,6 +292,7 @@ settings_props :: proc(p: Settings) -> ^c.Value {
 	if x, ok := p.skin.?; ok do c.value_map_set(m, "skin", c.value_str(SKIN_NAMES[x]))
 	if x, ok := p.density.?; ok do c.value_map_set(m, "density", c.value_str(DENSITY_NAMES[x]))
 	if x, ok := p.shadows.?; ok do c.value_map_set(m, "shadows", c.value_bool(x))
+	if x, ok := p.radius.?; ok do c.value_map_set(m, "radius", c.value_float(x))
 	if p.roles != nil do c.value_map_set(m, "roles", (^c.Value)(kui.encode(p.roles)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -310,6 +321,9 @@ Panel :: struct {
 	scroll: Maybe(bool),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
+	// The body's padding in px; 10 when left out, 0 for a body that brings its own
+	// or is often empty.
+	pad: Maybe(f64),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -322,6 +336,7 @@ panel_props :: proc(p: Panel) -> ^c.Value {
 	if p.subtitle != "" do c.value_map_set(m, "subtitle", c.value_str(p.subtitle))
 	if x, ok := p.scroll.?; ok do c.value_map_set(m, "scroll", c.value_bool(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
+	if x, ok := p.pad.?; ok do c.value_map_set(m, "pad", c.value_float(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -673,8 +688,11 @@ divider_in :: proc(ui: ^kui.Ui, namespace: string, p: Divider) -> i32 {
 
 // A button. Space, Enter and assistive technology press it as a click does.
 Button :: struct {
-	// The text on it; its accessible name.
+	// The text on it; its accessible name unless `name` says more.
 	label: string,
+	// Its accessible name when that says more than the label; start it with the
+	// label's words (Clear → Clear the selection).
+	name: string,
 	// Default when left out.
 	variant: Maybe(Variant),
 	// An icon's name before the label (Kit's icon set).
@@ -683,6 +701,10 @@ Button :: struct {
 	shortcut: string,
 	// Drawn and read as unavailable; presses nothing.
 	disabled: Maybe(bool),
+	// A toggle that is on (a panel shown): drawn selected and read as such.
+	pressed: Maybe(bool),
+	// A hint under the pointer — why it is disabled, say.
+	tooltip: string,
 	// The message `press` arrives as. Pressed.
 	on_press: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -703,10 +725,13 @@ With_Button_Press :: struct {
 button_props :: proc(p: Button) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "label", c.value_str(p.label))
+	if p.name != "" do c.value_map_set(m, "name", c.value_str(p.name))
 	if x, ok := p.variant.?; ok do c.value_map_set(m, "variant", c.value_str(VARIANT_NAMES[x]))
 	if p.icon != "" do c.value_map_set(m, "icon", c.value_str(p.icon))
 	if p.shortcut != "" do c.value_map_set(m, "shortcut", c.value_str(p.shortcut))
 	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
+	if x, ok := p.pressed.?; ok do c.value_map_set(m, "pressed", c.value_bool(x))
+	if p.tooltip != "" do c.value_map_set(m, "tooltip", c.value_str(p.tooltip))
 	if p.on_press != nil do c.value_map_set(m, "on_press", (^c.Value)(kui.encode(p.on_press)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -734,6 +759,10 @@ IconButton :: struct {
 	variant: Maybe(Variant),
 	// Unavailable.
 	disabled: Maybe(bool),
+	// A toggle that is on: drawn selected and read as such.
+	pressed: Maybe(bool),
+	// The hint under the pointer; the label when left out.
+	tooltip: string,
 	// The message `press` arrives as. Pressed.
 	on_press: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -757,6 +786,8 @@ icon_button_props :: proc(p: IconButton) -> ^c.Value {
 	c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.variant.?; ok do c.value_map_set(m, "variant", c.value_str(VARIANT_NAMES[x]))
 	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
+	if x, ok := p.pressed.?; ok do c.value_map_set(m, "pressed", c.value_bool(x))
+	if p.tooltip != "" do c.value_map_set(m, "tooltip", c.value_str(p.tooltip))
 	if p.on_press != nil do c.value_map_set(m, "on_press", (^c.Value)(kui.encode(p.on_press)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -778,8 +809,11 @@ icon_button_in :: proc(ui: ^kui.Ui, namespace: string, p: IconButton) -> i32 {
 TextField :: struct {
 	// Its text: yours to keep, from `change`.
 	value: string,
-	// Its label, above it.
+	// Its label, above it; its name.
 	label: string,
+	// The label names the field but is not drawn: a field whose place says what it
+	// is.
+	hide_label: Maybe(bool),
 	// Shown while it is empty.
 	placeholder: string,
 	// In the data face.
@@ -788,6 +822,9 @@ TextField :: struct {
 	disabled: Maybe(bool),
 	// Its width in px; grows when left out.
 	width: Maybe(f64),
+	// Takes the keyboard each time this number changes: keep a counter in your
+	// model and bump it (⌘F).
+	focus: Maybe(i64),
 	// The message `change` arrives as. The text changed.
 	on_change: any,
 	// The message `submit` arrives as. Enter.
@@ -824,10 +861,12 @@ text_field_props :: proc(p: TextField) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "value", c.value_str(p.value))
 	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if x, ok := p.hide_label.?; ok do c.value_map_set(m, "hide_label", c.value_bool(x))
 	if p.placeholder != "" do c.value_map_set(m, "placeholder", c.value_str(p.placeholder))
 	if x, ok := p.mono.?; ok do c.value_map_set(m, "mono", c.value_bool(x))
 	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
+	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.on_submit != nil do c.value_map_set(m, "on_submit", (^c.Value)(kui.encode(p.on_submit)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -854,6 +893,8 @@ Search :: struct {
 	placeholder: string,
 	// A count after the query: `12 of 340`.
 	count: string,
+	// Takes the keyboard each time this number changes (⌘F).
+	focus: Maybe(i64),
 	// The message `change` arrives as. The query changed; cleared is the empty
 	// string.
 	on_change: any,
@@ -892,6 +933,7 @@ search_props :: proc(p: Search) -> ^c.Value {
 	c.value_map_set(m, "value", c.value_str(p.value))
 	if p.placeholder != "" do c.value_map_set(m, "placeholder", c.value_str(p.placeholder))
 	if p.count != "" do c.value_map_set(m, "count", c.value_str(p.count))
+	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.on_submit != nil do c.value_map_set(m, "on_submit", (^c.Value)(kui.encode(p.on_submit)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -1452,6 +1494,8 @@ Badge :: struct {
 	label: string,
 	// Neutral when left out.
 	tone: Maybe(Tone),
+	// A dot in the tone's colour before the label: a status.
+	dot: Maybe(bool),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -1462,6 +1506,7 @@ badge_props :: proc(p: Badge) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.tone.?; ok do c.value_map_set(m, "tone", c.value_str(TONE_NAMES[x]))
+	if x, ok := p.dot.?; ok do c.value_map_set(m, "dot", c.value_bool(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -1522,6 +1567,8 @@ Code :: struct {
 	text: string,
 	// Wraps rather than scrolls sideways.
 	wrap: Maybe(bool),
+	// At most this many lines high, the rest scrolled to.
+	max_lines: Maybe(i64),
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -1532,6 +1579,7 @@ code_props :: proc(p: Code) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "text", c.value_str(p.text))
 	if x, ok := p.wrap.?; ok do c.value_map_set(m, "wrap", c.value_bool(x))
+	if x, ok := p.max_lines.?; ok do c.value_map_set(m, "max_lines", c.value_int(x))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -1546,6 +1594,60 @@ code_in :: proc(ui: ^kui.Ui, namespace: string, p: Code) -> i32 {
 	defer c.value_free(props)
 	name := concat(namespace, "/code")
 	return c.component(ui, name, props, nil, nil)
+}
+
+// A message in the flow of the page: an error to act on, a warning, a note; its
+// actions after it.
+Notice :: struct {
+	// What happened, or what to know.
+	message: string,
+	// Danger, warn, ok, accent or neutral (the default).
+	tone: Maybe(Tone),
+	// A bold first line.
+	title: string,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+@(private)
+notice_props :: proc(p: Notice) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "message", c.value_str(p.message))
+	if x, ok := p.tone.?; ok do c.value_map_set(m, "tone", c.value_str(TONE_NAMES[x]))
+	if p.title != "" do c.value_map_set(m, "title", c.value_str(p.title))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+notice :: proc(ui: ^kui.Ui, p: Notice) -> i32 {
+	return notice_in(ui, NAMESPACE, p)
+}
+
+notice_in :: proc(ui: ^kui.Ui, namespace: string, p: Notice) -> i32 {
+	props := notice_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/notice")
+	return c.component(ui, name, props, nil, nil)
+}
+
+// notice with your children: `children` builds the group it asks for.
+notice_with :: proc(ui: ^kui.Ui, p: Notice, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := notice_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/notice"), props, call, &b)
 }
 
 // What a view shows with nothing in it: a title, a sentence, and what to do.

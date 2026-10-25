@@ -6,8 +6,8 @@
 import type { Channel, KuiNode } from '@qxuken/kui';
 import type { ColorProp } from '@qxuken/kui/jsx-runtime';
 
-/** How loud a control is. */
-export type Variant = 'default' | 'primary' | 'ghost' | 'danger';
+/** How loud a control is; success confirms what just happened (Copied). */
+export type Variant = 'default' | 'primary' | 'ghost' | 'danger' | 'success';
 
 /** What a badge, a stat or a toast is about. */
 export type Tone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger';
@@ -35,6 +35,10 @@ export interface Choice {
   label: string;
   /** Shown, not choosable. */
   disabled?: boolean;
+  /** A count beside the label (a segment's, a tab's). */
+  count?: number;
+  /** The count is bad news: drawn in the danger colour. */
+  alert?: boolean;
 }
 
 /** A table's column: which field of the channel it shows, and how. */
@@ -103,6 +107,8 @@ export interface SettingsProps {
   density?: Density;
   /** The skin's hard shadows; on when left out. */
   shadows?: boolean;
+  /** Corner radius in px, for a brand with its own; the skin's when left out. */
+  radius?: number;
   /** Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = "$brandSurface" }` — a colour or a token each. */
   roles?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -121,6 +127,8 @@ export interface PanelProps {
   scroll?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
+  /** The body's padding in px; 10 when left out, 0 for a body that brings its own or is often empty. */
+  pad?: number;
   /** is the body. */
   children?: KuiNode;
   /** goes in the header, after the title. */
@@ -243,8 +251,10 @@ export interface DividerProps {
 
 /** The props of `kit/button`. */
 export interface ButtonProps {
-  /** The text on it; its accessible name. */
+  /** The text on it; its accessible name unless `name` says more. */
   label: string;
+  /** Its accessible name when that says more than the label; start it with the label's words (Clear → Clear the selection). */
+  name?: string;
   /** Default when left out. */
   variant?: Variant;
   /** An icon's name before the label (Kit's icon set). */
@@ -253,6 +263,10 @@ export interface ButtonProps {
   shortcut?: string;
   /** Drawn and read as unavailable; presses nothing. */
   disabled?: boolean;
+  /** A toggle that is on (a panel shown): drawn selected and read as such. */
+  pressed?: boolean;
+  /** A hint under the pointer — why it is disabled, say. */
+  tooltip?: string;
   /** The message press arrives as: yours, with `press: ButtonPress` in it. Pressed. */
   onPress?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -277,6 +291,10 @@ export interface IconButtonProps {
   variant?: Variant;
   /** Unavailable. */
   disabled?: boolean;
+  /** A toggle that is on: drawn selected and read as such. */
+  pressed?: boolean;
+  /** The hint under the pointer; the label when left out. */
+  tooltip?: string;
   /** The message press arrives as: yours, with `press: IconButtonPress` in it. Pressed. */
   onPress?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -295,8 +313,10 @@ export type IconButtonPressMsg<T = {}> = T & { press: IconButtonPress };
 export interface TextFieldProps {
   /** Its text: yours to keep, from `change`. */
   value: string;
-  /** Its label, above it. */
+  /** Its label, above it; its name. */
   label?: string;
+  /** The label names the field but is not drawn: a field whose place says what it is. */
+  hideLabel?: boolean;
   /** Shown while it is empty. */
   placeholder?: string;
   /** In the data face. */
@@ -305,6 +325,8 @@ export interface TextFieldProps {
   disabled?: boolean;
   /** Its width in px; grows when left out. */
   width?: number;
+  /** Takes the keyboard each time this number changes: keep a counter in your model and bump it (⌘F). */
+  focus?: number;
   /** The message change arrives as: yours, with `change: TextFieldChange` in it. The text changed. */
   onChange?: unknown;
   /** The message submit arrives as: yours, with `submit: TextFieldSubmit` in it. Enter. */
@@ -339,6 +361,8 @@ export interface SearchProps {
   placeholder?: string;
   /** A count after the query: `12 of 340`. */
   count?: string;
+  /** Takes the keyboard each time this number changes (⌘F). */
+  focus?: number;
   /** The message change arrives as: yours, with `change: SearchChange` in it. The query changed; cleared is the empty string. */
   onChange?: unknown;
   /** The message submit arrives as: yours, with `submit: SearchSubmit` in it. Enter. */
@@ -641,6 +665,8 @@ export interface BadgeProps {
   label: string;
   /** Neutral when left out. */
   tone?: Tone;
+  /** A dot in the tone's colour before the label: a status. */
+  dot?: boolean;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -669,6 +695,24 @@ export interface CodeProps {
   text: string;
   /** Wraps rather than scrolls sideways. */
   wrap?: boolean;
+  /** At most this many lines high, the rest scrolled to. */
+  maxLines?: number;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** The props of `kit/notice`. */
+export interface NoticeProps {
+  /** What happened, or what to know. */
+  message: string;
+  /** Danger, warn, ok, accent or neutral (the default). */
+  tone?: Tone;
+  /** A bold first line. */
+  title?: string;
+  /** are its actions, at its end. */
+  children?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -1000,6 +1044,9 @@ export declare function Stat(props: StatProps, children?: KuiNode): KuiNode;
 /** Text in the data face on the panel colour: a payload, a command, a stack. */
 export declare function Code(props: CodeProps, children?: KuiNode): KuiNode;
 
+/** A message in the flow of the page: an error to act on, a warning, a note; its actions after it. */
+export declare function Notice(props: NoticeProps, children?: KuiNode): KuiNode;
+
 /** What a view shows with nothing in it: a title, a sentence, and what to do. */
 export declare function Empty(props: EmptyProps, children?: KuiNode): KuiNode;
 
@@ -1059,6 +1106,7 @@ export interface Kit {
   Badge: typeof Badge;
   Stat: typeof Stat;
   Code: typeof Code;
+  Notice: typeof Notice;
   Empty: typeof Empty;
   Progress: typeof Progress;
   Dialog: typeof Dialog;

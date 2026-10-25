@@ -56,6 +56,8 @@ local record Skin
   shadow_blur: number
   -- Labels drawn in capitals (written into the string: kui has no text-transform).
   label_upper: boolean
+  -- Labels on controls in bold; Neutral's are regular, its primary action aside.
+  label_bold: boolean
   -- Controls carry a border; Neutral's sit on a sunken fill instead.
   ctl_border: boolean
   -- A text field: an underline (Ledger, Phosphor) or a box (Neutral).
@@ -76,6 +78,8 @@ local record Settings
   skin: Skin
   density: Density
   shadows: boolean
+  -- The brand's corner radius in px; the skin's when nil.
+  radius: number
   -- Roles the brand overrides: a colour, `{ light, dark }`, or a token name.
   roles: {string:any}
 end
@@ -146,7 +150,7 @@ function M.tokens(s: Settings): Decl
     lengths = {
       kitRow = M.row_h(s),
       kitCtl = M.ctl_h(s),
-      kitRadius = skin.radius,
+      kitRadius = s.radius or skin.radius,
       kitRuleW = skin.rule_w,
       kitHair = skin.hair,
       kitShadow = shadow,
@@ -162,7 +166,7 @@ end
 
 -- What the token table depends on: declared again only when it moves.
 function M.key(s: Settings): string
-  local parts = { s.skin.name, s.density, tostring(s.shadows) }
+  local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius) }
   if s.roles then
     local names: {string} = {}
     for k in pairs(s.roles) do names[#names + 1] = k end

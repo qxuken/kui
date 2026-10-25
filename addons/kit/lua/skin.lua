@@ -73,7 +73,11 @@ local Skin = {}
 
 
 
+
+
 local Settings = {}
+
+
 
 
 
@@ -147,7 +151,7 @@ function M.tokens(s)
       lengths = {
          kitRow = M.row_h(s),
          kitCtl = M.ctl_h(s),
-         kitRadius = skin.radius,
+         kitRadius = s.radius or skin.radius,
          kitRuleW = skin.rule_w,
          kitHair = skin.hair,
          kitShadow = shadow,
@@ -163,7 +167,7 @@ end
 
 
 function M.key(s)
-   local parts = { s.skin.name, s.density, tostring(s.shadows) }
+   local parts = { s.skin.name, s.density, tostring(s.shadows), tostring(s.radius) }
    if s.roles then
       local names = {}
       for k in pairs(s.roles) do names[#names + 1] = k end

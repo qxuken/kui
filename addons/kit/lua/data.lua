@@ -293,12 +293,15 @@ function M.badge(c, p)
       label = label,
       height = 18,
       pad = { x = 6 },
+      gap = 5,
       cross_align = "center",
       radius = c.s.skin.radius > 0 and 9 or 0,
       bg = ref(c, accent and "accent" or "sunken"),
 
 
-      ctx.data(c, label, { size = 10.5, bold = true, color = ref(c, tone_ink(tone)), max_lines = 1 }),
+      p.dot == true and column({ width = 6, height = 6, radius = 3,
+bg = ref(c, tone == "neutral" and "faint" or (accent and "on_accent" or tone)), }) or nil,
+      ctx.text(c, label, { size = "$kitSizeLabel", bold = c.s.skin.label_bold, color = ref(c, tone_ink(tone)), max_lines = 1 }),
    }
    if tone ~= "neutral" and not accent then
       t.border = { w = "$kitHair", color = ref(c, tone) }
@@ -322,17 +325,57 @@ function M.stat(c, p)
    return column(t)
 end
 
+local LINE = 16
+
 function M.code(c, p)
    local wrap = p.wrap == true
+   local lines = p.max_lines
+   local body = ctx.data(c, str(p.text) or "", { wrap = wrap and "glyph" or "none", line_height = LINE })
+
+
+   local inner = { key = "lines", width = "grow", selectable = true, body }
+   if lines then
+      inner.max_height = lines * LINE
+      inner.scroll_y = true
+   end
+   inner.scroll_x = not wrap
    return column({
       width = "grow",
       bg = ref(c, "sunken"),
       radius = "$kitRadius",
       pad = 8,
-      scroll_x = not wrap,
-      selectable = true,
-      ctx.data(c, str(p.text) or "", { wrap = wrap and "word" or "none" }),
+      column(inner),
    })
+end
+
+local NOTICE_ROLE = { danger = "danger", warn = "warn", ok = "ok", accent = "accent", neutral = "muted" }
+
+function M.notice(c, p)
+   local tone = str(p.tone) or "neutral"
+   local role = NOTICE_ROLE[tone] or "muted"
+
+
+   local body = { width = "grow", gap = 2, live = tone == "danger" and "assertive" or "polite" }
+   if str(p.title) then
+      body[#body + 1] = ctx.text(c, p.title, { bold = true, color = ref(c, role == "muted" and "fg" or role), wrap = "word" })
+   end
+   body[#body + 1] = ctx.text(c, str(p.message) or "", { color = ref(c, role == "muted" and "fg" or role), wrap = "word" })
+   local t = {
+      role = "group",
+
+      label = str(p.title),
+      width = "grow",
+      pad = { x = 12, y = 8 },
+      gap = 10,
+      cross_align = "center",
+      radius = "$kitRadius",
+      bg = ref(c, "sunken"),
+      border = { w = c.s.skin.ctl_border and "$kitRuleW" or "$kitHair", color = ref(c, role == "muted" and "rule" or role) },
+      icons.node(c, tone == "ok" and "check" or (tone == "neutral" or tone == "accent") and "info" or "alert", 14, role),
+      column(body),
+      row({ gap = 8, cross_align = "center", children("") }),
+   }
+   return row(t)
 end
 
 function M.empty(c, p)

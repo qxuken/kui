@@ -32,6 +32,7 @@ local phosphor: skin.Skin = {
   shadow = 0,
   -- The glow: a blur with no offset, in the ink.
   shadow_blur = 8,
+  label_bold = true,
   label_upper = true,
   ctl_border = true,
   field_box = false,

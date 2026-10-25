@@ -53,7 +53,7 @@ end
 
 function M.caption(c, s, o)
    local t = {
-      size = "$kitSizeLabel", family = "$kitUi", bold = true, color = M.ref(c, "fg"),
+      size = "$kitSizeLabel", family = "$kitUi", bold = c.s.skin.label_bold, color = M.ref(c, "fg"),
       max_lines = 1, ellipsis = true,
    }
    if o then for k, v in pairs(o) do t[k] = v end end

@@ -177,6 +177,25 @@ for lua-language-server, and a new runner beside the window's.
   every component live, 100,000 rows built by a worker and handed over as
   a channel, a live chart, a log, and an HTTP server.
 
+- **Kit in the npm package** (backlog C77): `import { Button, extension }
+  from '@qxuken/kui/kit'`, then `runWindowed(app, { extensions: [extension]
+  })` — the generated components, typed, and Kit's Lua shipped beside them;
+  `install(ctx)` for a headless `Ctx`. Kit gained what a real app's
+  migration asked for: a `notice` (an inline message with its actions),
+  toggle buttons (`pressed`), a button's accessible `name` when it says more
+  than its label, `tooltip`s, a `success` variant, counts and alerts on
+  segments, `focus` requests on fields, `hide_label`, `max_lines` on code,
+  a brand `radius`, a panel's `pad`, solid play and stop icons, and regular
+  label weight in Neutral.
+
+- `createApp` takes `extensions`, loaded before the first frame as a
+  window's are.
+
+- **A warning for controls inside a live region** (backlog C76):
+  `control-inside-live`. A live region reads as one message and its subtree
+  is presentational, so a button inside one cannot be reached by assistive
+  technology; put `live` on the message alone.
+
 - **Exported tokens** (backlog C74): an extension's token table marked
   exported (`Tokens::exported`, Lua's `export = true`) is read by every
   origin after its own table and the host's, so an app paints its own
@@ -686,6 +705,12 @@ for lua-language-server, and a new runner beside the window's.
   line of one that does not wrap, the longest word of one that does —
   so the line counts in the box's content, as CSS counts unbreakable
   overflow, and a text that wraps still wraps at the box.
+- `runWindowed(app, { extensions })` loads them: `windowOptions` dropped the
+  key, so a Node window opened with none, and `WindowOptions` did not
+  declare it (backlog C75).
+- Kit's notice and toast keep their buttons reachable by assistive
+  technology: `live` sits on the message, not on the whole row.
+
 - A Lua host's children inside another script's component are placed as
   the host's: a Kit button the app puts in a Kit toolbar is drawn by Kit,
   under Kit's origin and palette, where it was taken for the toolbar's

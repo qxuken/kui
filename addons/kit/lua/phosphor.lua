@@ -33,6 +33,7 @@ local phosphor = {
    shadow = 0,
 
    shadow_blur = 8,
+   label_bold = true,
    label_upper = true,
    ctl_border = true,
    field_box = false,

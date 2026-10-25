@@ -1189,6 +1189,12 @@ export type WarningCode =
    *  precedent for. A focusable node inside the *container* but outside every
    *  item — a "+" at the end of a tab bar — is reachable and is not reported. */
   | 'focusable-inside-item'
+  /** A control — anything focusable or with a click — inside a `live` region. A
+   *  live region reads as one message, its subtree presentational (that is what
+   *  makes every platform announce it), so assistive technology cannot reach
+   *  the control at all: a notice's Retry, a toast's close button. Put `live`
+   *  on the node holding the message alone, beside the controls. */
+  | 'control-inside-live'
   /** A `radio` with no `radioGroup` above it, or a `tab` with no `tabList` —
    *  the stock `<radio>` included. Outside its container an item is no
    *  composite's: each one is a Tab stop of its own, the arrows, Home and End
@@ -2255,7 +2261,16 @@ export interface ScrollGeometry {
   maxOffset: ScrollOffset;
 }
 
+/** An extension a window or a headless app loads before its first frame:
+ *  a `.lua` script, a folder holding `init.lua`, or a C library (ADR 0059),
+ *  under `namespace` (its own name when left out). */
+export type ExtensionEntry = string | { path: string; namespace?: string };
+
 export interface WindowOptions {
+  /** Extensions loaded before the window opens, in order: their origins
+   *  are their places in this list. `@qxuken/kui/kit`'s `extension` is
+   *  one entry. */
+  extensions?: ExtensionEntry[];
   width?: number;
   height?: number;
   /** Smallest inner size the user may resize the window to (logical px).
@@ -6625,6 +6640,8 @@ export declare function createApp<M, A = AppMsg, E = never>(
     width?: number;
     height?: number;
     scale?: number;
+    /** Extensions loaded before the first frame, as a window's are. */
+    extensions?: ExtensionEntry[];
     /** `false` keeps the core's warnings off the console; they still
      *  collect on `app.warnings`. */
     warnings?: boolean;

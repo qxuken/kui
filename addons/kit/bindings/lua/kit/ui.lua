@@ -6,8 +6,8 @@
 -- local kit = require("kit.ui")  -- the components under the namespace `kit`
 -- local other = kit.at("left")    -- the same, for an add-on loaded as `left`
 
----How loud a control is.
----@alias kit.Variant "default"|"primary"|"ghost"|"danger"
+---How loud a control is; success confirms what just happened (Copied).
+---@alias kit.Variant "default"|"primary"|"ghost"|"danger"|"success"
 
 ---What a badge, a stat or a toast is about.
 ---@alias kit.Tone "neutral"|"accent"|"ok"|"warn"|"danger"
@@ -33,6 +33,8 @@
 ---@field value string What the choice is; what the event carries.
 ---@field label string What it reads as.
 ---@field disabled? boolean Shown, not choosable.
+---@field count? integer A count beside the label (a segment's, a tab's).
+---@field alert? boolean The count is bad news: drawn in the danger colour.
 
 ---A table's column: which field of the channel it shows, and how.
 ---@class kit.Column
@@ -73,6 +75,7 @@
 ---@field skin? kit.Skin The skin; Ledger when left out.
 ---@field density? kit.Density Comfortable when left out.
 ---@field shadows? boolean The skin's hard shadows; on when left out.
+---@field radius? number Corner radius in px, for a brand with its own; the skin's when left out.
 ---@field roles? any Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = "$brandSurface" }` — a colour or a token each.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -83,6 +86,7 @@
 ---@field subtitle? string A line under the title.
 ---@field scroll? boolean The body scrolls rather than grows.
 ---@field grow? boolean Takes the room its parent leaves.
+---@field pad? number The body's padding in px; 10 when left out, 0 for a body that brings its own or is often empty.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -141,11 +145,14 @@
 
 ---The props of `kit/button`.
 ---@class kit.ButtonProps
----@field label string The text on it; its accessible name.
+---@field label string The text on it; its accessible name unless `name` says more.
+---@field name? string Its accessible name when that says more than the label; start it with the label's words (Clear → Clear the selection).
 ---@field variant? kit.Variant Default when left out.
 ---@field icon? string An icon's name before the label (Kit's icon set).
 ---@field shortcut? string The chord, shown faintly after the label: `⌘R`.
 ---@field disabled? boolean Drawn and read as unavailable; presses nothing.
+---@field pressed? boolean A toggle that is on (a panel shown): drawn selected and read as such.
+---@field tooltip? string A hint under the pointer — why it is disabled, say.
 ---@field on_press? any The message it arrives as: yours, with `press = {…}` in it (kit.ButtonPress). Pressed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -159,6 +166,8 @@
 ---@field label string What it does: its accessible name and its tooltip.
 ---@field variant? kit.Variant Ghost when left out.
 ---@field disabled? boolean Unavailable.
+---@field pressed? boolean A toggle that is on: drawn selected and read as such.
+---@field tooltip? string The hint under the pointer; the label when left out.
 ---@field on_press? any The message it arrives as: yours, with `press = {…}` in it (kit.IconButtonPress). Pressed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -169,11 +178,13 @@
 ---The props of `kit/text_field`.
 ---@class kit.TextFieldProps
 ---@field value string Its text: yours to keep, from `change`.
----@field label? string Its label, above it.
+---@field label? string Its label, above it; its name.
+---@field hide_label? boolean The label names the field but is not drawn: a field whose place says what it is.
 ---@field placeholder? string Shown while it is empty.
 ---@field mono? boolean In the data face.
 ---@field disabled? boolean Unavailable.
 ---@field width? number Its width in px; grows when left out.
+---@field focus? integer Takes the keyboard each time this number changes: keep a counter in your model and bump it (⌘F).
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextFieldChange). The text changed.
 ---@field on_submit? any The message it arrives as: yours, with `submit = {…}` in it (kit.TextFieldSubmit). Enter.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -192,6 +203,7 @@
 ---@field value string The query: yours to keep.
 ---@field placeholder? string Shown while it is empty; `Search` when left out.
 ---@field count? string A count after the query: `12 of 340`.
+---@field focus? integer Takes the keyboard each time this number changes (⌘F).
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.SearchChange). The query changed; cleared is the empty string.
 ---@field on_submit? any The message it arrives as: yours, with `submit = {…}` in it (kit.SearchSubmit). Enter.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -354,6 +366,7 @@
 ---@class kit.BadgeProps
 ---@field label string What it says.
 ---@field tone? kit.Tone Neutral when left out.
+---@field dot? boolean A dot in the tone's colour before the label: a status.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -370,6 +383,15 @@
 ---@class kit.CodeProps
 ---@field text string The text.
 ---@field wrap? boolean Wraps rather than scrolls sideways.
+---@field max_lines? integer At most this many lines high, the rest scrolled to.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---The props of `kit/notice`.
+---@class kit.NoticeProps
+---@field message string What happened, or what to know.
+---@field tone? kit.Tone Danger, warn, ok, accent or neutral (the default).
+---@field title? string A bold first line.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
@@ -708,6 +730,17 @@ local function make(namespace)
   ---@return kui.Node
   function M.code(props)
     return component(namespace .. "/code", props)
+  end
+
+  ---A message in the flow of the page: an error to act on, a warning, a note;
+  ---its actions after it.
+  ---
+  ---Your children: its list part are its actions, at its end.
+  ---@param props kit.NoticeProps
+  ---@param children? table
+  ---@return kui.Node
+  function M.notice(props, children)
+    return component(namespace .. "/notice", props, children)
   end
 
   ---What a view shows with nothing in it: a title, a sentence, and what to

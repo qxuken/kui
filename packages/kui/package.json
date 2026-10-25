@@ -26,6 +26,10 @@
     "./jsx-dev-runtime": {
       "types": "./jsx-runtime.d.ts",
       "default": "./jsx-dev-runtime.js"
+    },
+    "./kit": {
+      "types": "./kit/index.d.ts",
+      "default": "./kit/index.js"
     }
   },
   "files": [
@@ -36,6 +40,7 @@
     "jsx-dev-runtime.js",
     "encoder.js",
     "native.cjs",
+    "kit/",
     "prebuilds/",
     "props.md",
     "howto.md",

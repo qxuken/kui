@@ -52,7 +52,7 @@ end
 -- A label on a control or a header, cased as the skin says.
 function M.caption(c: Ctx, s: string, o?: {string:any}): kui.Node
   local t: {string:any} = {
-    size = "$kitSizeLabel", family = "$kitUi", bold = true, color = M.ref(c, "fg"),
+    size = "$kitSizeLabel", family = "$kitUi", bold = c.s.skin.label_bold, color = M.ref(c, "fg"),
     max_lines = 1, ellipsis = true,
   }
   if o then for k, v in pairs(o) do t[k] = v end end

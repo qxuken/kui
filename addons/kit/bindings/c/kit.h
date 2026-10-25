@@ -16,7 +16,7 @@
 #endif
 
 /*
- * How loud a control is.
+ * How loud a control is; success confirms what just happened (Copied).
  */
 typedef enum KitVariant {
     KIT_VARIANT_UNSET = 0,
@@ -24,6 +24,7 @@ typedef enum KitVariant {
     KIT_VARIANT_PRIMARY,
     KIT_VARIANT_GHOST,
     KIT_VARIANT_DANGER,
+    KIT_VARIANT_SUCCESS,
 } KitVariant;
 
 static inline KuiStr kit_variant_name(KitVariant v) {
@@ -32,6 +33,7 @@ static inline KuiStr kit_variant_name(KitVariant v) {
     case KIT_VARIANT_PRIMARY: return KUI_STR("primary");
     case KIT_VARIANT_GHOST: return KUI_STR("ghost");
     case KIT_VARIANT_DANGER: return KUI_STR("danger");
+    case KIT_VARIANT_SUCCESS: return KUI_STR("success");
     default: return KUI_STR("");
     }
 }
@@ -170,6 +172,16 @@ typedef struct KitChoice {
      */
     bool disabled;
     bool disabled_set;
+    /*
+     * A count beside the label (a segment's, a tab's).
+     */
+    int64_t count;
+    bool count_set;
+    /*
+     * The count is bad news: drawn in the danger colour.
+     */
+    bool alert;
+    bool alert_set;
 } KitChoice;
 
 static inline KuiValue *kit_choice_value(const KitChoice *p) {
@@ -177,6 +189,8 @@ static inline KuiValue *kit_choice_value(const KitChoice *p) {
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
     kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
+    if (p->count_set) kui_value_map_set(m, KUI_STR("count"), kui_value_int(p->count));
+    if (p->alert_set) kui_value_map_set(m, KUI_STR("alert"), kui_value_bool(p->alert));
     return m;
 }
 
@@ -356,6 +370,11 @@ typedef struct KitSettings {
     bool shadows;
     bool shadows_set;
     /*
+     * Corner radius in px, for a brand with its own; the skin's when left out.
+     */
+    double radius;
+    bool radius_set;
+    /*
      * Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
      * "$brandSurface" }` — a colour or a token each.
      */
@@ -371,6 +390,7 @@ static inline KuiValue *kit_settings_props(const KitSettings *p) {
     if (p->skin != 0) kui_value_map_set(m, KUI_STR("skin"), kui_value_str(kit_skin_name(p->skin)));
     if (p->density != 0) kui_value_map_set(m, KUI_STR("density"), kui_value_str(kit_density_name(p->density)));
     if (p->shadows_set) kui_value_map_set(m, KUI_STR("shadows"), kui_value_bool(p->shadows));
+    if (p->radius_set) kui_value_map_set(m, KUI_STR("radius"), kui_value_float(p->radius));
     if (p->roles != NULL) kui_value_map_set(m, KUI_STR("roles"), p->roles);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -408,6 +428,12 @@ typedef struct KitPanel {
      */
     bool grow;
     bool grow_set;
+    /*
+     * The body's padding in px; 10 when left out, 0 for a body that brings its
+     * own or is often empty.
+     */
+    double pad;
+    bool pad_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -420,6 +446,7 @@ static inline KuiValue *kit_panel_props(const KitPanel *p) {
     if (p->subtitle.len > 0) kui_value_map_set(m, KUI_STR("subtitle"), kui_value_str(p->subtitle));
     if (p->scroll_set) kui_value_map_set(m, KUI_STR("scroll"), kui_value_bool(p->scroll));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
+    if (p->pad_set) kui_value_map_set(m, KUI_STR("pad"), kui_value_float(p->pad));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -710,9 +737,14 @@ static inline int32_t kit_divider(KuiCtx *ctx, const KitDivider *p) {
  */
 typedef struct KitButton {
     /*
-     * The text on it; its accessible name.
+     * The text on it; its accessible name unless `name` says more.
      */
     KuiStr label;
+    /*
+     * Its accessible name when that says more than the label; start it with the
+     * label's words (Clear → Clear the selection).
+     */
+    KuiStr name;
     /*
      * Default when left out.
      */
@@ -731,6 +763,15 @@ typedef struct KitButton {
     bool disabled;
     bool disabled_set;
     /*
+     * A toggle that is on (a panel shown): drawn selected and read as such.
+     */
+    bool pressed;
+    bool pressed_set;
+    /*
+     * A hint under the pointer — why it is disabled, say.
+     */
+    KuiStr tooltip;
+    /*
      * The message `press` arrives as, consumed; NULL for none. Pressed.
      */
     KuiValue *on_press;
@@ -743,10 +784,13 @@ typedef struct KitButton {
 static inline KuiValue *kit_button_props(const KitButton *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->name.len > 0) kui_value_map_set(m, KUI_STR("name"), kui_value_str(p->name));
     if (p->variant != 0) kui_value_map_set(m, KUI_STR("variant"), kui_value_str(kit_variant_name(p->variant)));
     if (p->icon.len > 0) kui_value_map_set(m, KUI_STR("icon"), kui_value_str(p->icon));
     if (p->shortcut.len > 0) kui_value_map_set(m, KUI_STR("shortcut"), kui_value_str(p->shortcut));
     if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
+    if (p->pressed_set) kui_value_map_set(m, KUI_STR("pressed"), kui_value_bool(p->pressed));
+    if (p->tooltip.len > 0) kui_value_map_set(m, KUI_STR("tooltip"), kui_value_str(p->tooltip));
     if (p->on_press != NULL) kui_value_map_set(m, KUI_STR("on_press"), p->on_press);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -783,6 +827,15 @@ typedef struct KitIconButton {
     bool disabled;
     bool disabled_set;
     /*
+     * A toggle that is on: drawn selected and read as such.
+     */
+    bool pressed;
+    bool pressed_set;
+    /*
+     * The hint under the pointer; the label when left out.
+     */
+    KuiStr tooltip;
+    /*
      * The message `press` arrives as, consumed; NULL for none. Pressed.
      */
     KuiValue *on_press;
@@ -798,6 +851,8 @@ static inline KuiValue *kit_icon_button_props(const KitIconButton *p) {
     kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->variant != 0) kui_value_map_set(m, KUI_STR("variant"), kui_value_str(kit_variant_name(p->variant)));
     if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
+    if (p->pressed_set) kui_value_map_set(m, KUI_STR("pressed"), kui_value_bool(p->pressed));
+    if (p->tooltip.len > 0) kui_value_map_set(m, KUI_STR("tooltip"), kui_value_str(p->tooltip));
     if (p->on_press != NULL) kui_value_map_set(m, KUI_STR("on_press"), p->on_press);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -821,9 +876,15 @@ typedef struct KitTextField {
      */
     KuiStr value;
     /*
-     * Its label, above it.
+     * Its label, above it; its name.
      */
     KuiStr label;
+    /*
+     * The label names the field but is not drawn: a field whose place says what
+     * it is.
+     */
+    bool hide_label;
+    bool hide_label_set;
     /*
      * Shown while it is empty.
      */
@@ -844,6 +905,12 @@ typedef struct KitTextField {
     double width;
     bool width_set;
     /*
+     * Takes the keyboard each time this number changes: keep a counter in your
+     * model and bump it (⌘F).
+     */
+    int64_t focus;
+    bool focus_set;
+    /*
      * The message `change` arrives as, consumed; NULL for none. The text
      * changed.
      */
@@ -862,10 +929,12 @@ static inline KuiValue *kit_text_field_props(const KitTextField *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
     if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->hide_label_set) kui_value_map_set(m, KUI_STR("hide_label"), kui_value_bool(p->hide_label));
     if (p->placeholder.len > 0) kui_value_map_set(m, KUI_STR("placeholder"), kui_value_str(p->placeholder));
     if (p->mono_set) kui_value_map_set(m, KUI_STR("mono"), kui_value_bool(p->mono));
     if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
+    if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->on_submit != NULL) kui_value_map_set(m, KUI_STR("on_submit"), p->on_submit);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -898,6 +967,11 @@ typedef struct KitSearch {
      */
     KuiStr count;
     /*
+     * Takes the keyboard each time this number changes (⌘F).
+     */
+    int64_t focus;
+    bool focus_set;
+    /*
      * The message `change` arrives as, consumed; NULL for none. The query
      * changed; cleared is the empty string.
      */
@@ -917,6 +991,7 @@ static inline KuiValue *kit_search_props(const KitSearch *p) {
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
     if (p->placeholder.len > 0) kui_value_map_set(m, KUI_STR("placeholder"), kui_value_str(p->placeholder));
     if (p->count.len > 0) kui_value_map_set(m, KUI_STR("count"), kui_value_str(p->count));
+    if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->on_submit != NULL) kui_value_map_set(m, KUI_STR("on_submit"), p->on_submit);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -1494,6 +1569,11 @@ typedef struct KitBadge {
      * Neutral when left out.
      */
     KitTone tone;
+    /*
+     * A dot in the tone's colour before the label: a status.
+     */
+    bool dot;
+    bool dot_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -1504,6 +1584,7 @@ static inline KuiValue *kit_badge_props(const KitBadge *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->tone != 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(kit_tone_name(p->tone)));
+    if (p->dot_set) kui_value_map_set(m, KUI_STR("dot"), kui_value_bool(p->dot));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -1575,6 +1656,11 @@ typedef struct KitCode {
      */
     bool wrap;
     bool wrap_set;
+    /*
+     * At most this many lines high, the rest scrolled to.
+     */
+    int64_t max_lines;
+    bool max_lines_set;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -1585,6 +1671,7 @@ static inline KuiValue *kit_code_props(const KitCode *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("text"), kui_value_str(p->text));
     if (p->wrap_set) kui_value_map_set(m, KUI_STR("wrap"), kui_value_bool(p->wrap));
+    if (p->max_lines_set) kui_value_map_set(m, KUI_STR("max_lines"), kui_value_int(p->max_lines));
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -1594,6 +1681,56 @@ static inline KuiValue *kit_code_props(const KitCode *p) {
 static inline int32_t kit_code(KuiCtx *ctx, const KitCode *p) {
     KuiValue *props = kit_code_props(p);
     int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/code"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * A message in the flow of the page: an error to act on, a warning, a note; its
+ * actions after it.
+ */
+typedef struct KitNotice {
+    /*
+     * What happened, or what to know.
+     */
+    KuiStr message;
+    /*
+     * Danger, warn, ok, accent or neutral (the default).
+     */
+    KitTone tone;
+    /*
+     * A bold first line.
+     */
+    KuiStr title;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitNotice;
+
+static inline KuiValue *kit_notice_props(const KitNotice *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("message"), kui_value_str(p->message));
+    if (p->tone != 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(kit_tone_name(p->tone)));
+    if (p->title.len > 0) kui_value_map_set(m, KUI_STR("title"), kui_value_str(p->title));
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/notice: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_notice(KuiCtx *ctx, const KitNotice *p) {
+    KuiValue *props = kit_notice_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/notice"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_notice with your children: `children` builds the group it asks for. */
+static inline int32_t kit_notice_with(KuiCtx *ctx, const KitNotice *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_notice_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/notice"), props, children, user);
     kui_value_free(props);
     return fill;
 }

@@ -137,7 +137,6 @@ function M.toast(c: Ctx, p: P): kui.Node
   return row(surface(c, {
     key = "toast",
     float = { anchor = "viewport", at = { "end", "end" }, dx = -16, dy = -16 },
-    live = "polite",
     label = message,
     min_width = 240,
     max_width = 420,
@@ -147,7 +146,8 @@ function M.toast(c: Ctx, p: P): kui.Node
     enter = { opacity = 0, dy = 12 },
     transition = 160,
     icons.node(c, TONE_ICON[tone] or "info", 14, role),
-    row { width = "grow", ctx.text(c, message, { wrap = "word" }) },
+    -- Live on the message alone, so the close button stays a control.
+    row { width = "grow", live = "polite", ctx.text(c, message, { wrap = "word" }) },
     row {
       role = "button", label = "Dismiss", width = 20, height = 20, main_align = "center",
       cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "hover"), cursor = "pointer",

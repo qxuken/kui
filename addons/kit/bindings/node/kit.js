@@ -18,6 +18,7 @@ function make(namespace) {
       if (props.skin !== undefined) wire.skin = props.skin;
       if (props.density !== undefined) wire.density = props.density;
       if (props.shadows !== undefined) wire.shadows = props.shadows;
+      if (props.radius !== undefined) wire.radius = props.radius;
       if (props.roles !== undefined) wire.roles = props.roles;
       const groups = undefined;
       return {
@@ -33,6 +34,7 @@ function make(namespace) {
       if (props.subtitle !== undefined) wire.subtitle = props.subtitle;
       if (props.scroll !== undefined) wire.scroll = props.scroll;
       if (props.grow !== undefined) wire.grow = props.grow;
+      if (props.pad !== undefined) wire.pad = props.pad;
       const groups = {};
       if (props.actions !== undefined) groups.actions = flat(props.actions);
       if (props.footer !== undefined) groups.footer = flat(props.footer);
@@ -120,10 +122,13 @@ function make(namespace) {
     Button(props = {}, children) {
       const wire = {};
       if (props.label !== undefined) wire.label = props.label;
+      if (props.name !== undefined) wire.name = props.name;
       if (props.variant !== undefined) wire.variant = props.variant;
       if (props.icon !== undefined) wire.icon = props.icon;
       if (props.shortcut !== undefined) wire.shortcut = props.shortcut;
       if (props.disabled !== undefined) wire.disabled = props.disabled;
+      if (props.pressed !== undefined) wire.pressed = props.pressed;
+      if (props.tooltip !== undefined) wire.tooltip = props.tooltip;
       if (props.onPress !== undefined) wire.on_press = props.onPress;
       const groups = undefined;
       return {
@@ -139,6 +144,8 @@ function make(namespace) {
       if (props.label !== undefined) wire.label = props.label;
       if (props.variant !== undefined) wire.variant = props.variant;
       if (props.disabled !== undefined) wire.disabled = props.disabled;
+      if (props.pressed !== undefined) wire.pressed = props.pressed;
+      if (props.tooltip !== undefined) wire.tooltip = props.tooltip;
       if (props.onPress !== undefined) wire.on_press = props.onPress;
       const groups = undefined;
       return {
@@ -152,10 +159,12 @@ function make(namespace) {
       const wire = {};
       if (props.value !== undefined) wire.value = props.value;
       if (props.label !== undefined) wire.label = props.label;
+      if (props.hideLabel !== undefined) wire.hide_label = props.hideLabel;
       if (props.placeholder !== undefined) wire.placeholder = props.placeholder;
       if (props.mono !== undefined) wire.mono = props.mono;
       if (props.disabled !== undefined) wire.disabled = props.disabled;
       if (props.width !== undefined) wire.width = props.width;
+      if (props.focus !== undefined) wire.focus = props.focus;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       if (props.onSubmit !== undefined) wire.on_submit = props.onSubmit;
       const groups = undefined;
@@ -171,6 +180,7 @@ function make(namespace) {
       if (props.value !== undefined) wire.value = props.value;
       if (props.placeholder !== undefined) wire.placeholder = props.placeholder;
       if (props.count !== undefined) wire.count = props.count;
+      if (props.focus !== undefined) wire.focus = props.focus;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       if (props.onSubmit !== undefined) wire.on_submit = props.onSubmit;
       const groups = undefined;
@@ -335,6 +345,7 @@ function make(namespace) {
       const wire = {};
       if (props.label !== undefined) wire.label = props.label;
       if (props.tone !== undefined) wire.tone = props.tone;
+      if (props.dot !== undefined) wire.dot = props.dot;
       const groups = undefined;
       return {
         type: 'component',
@@ -361,11 +372,25 @@ function make(namespace) {
       const wire = {};
       if (props.text !== undefined) wire.text = props.text;
       if (props.wrap !== undefined) wire.wrap = props.wrap;
+      if (props.maxLines !== undefined) wire.max_lines = props.maxLines;
       const groups = undefined;
       return {
         type: 'component',
         key: props.key != null ? String(props.key) : undefined,
         props: { name: `${namespace}/code`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
+    Notice(props = {}, children) {
+      const wire = {};
+      if (props.message !== undefined) wire.message = props.message;
+      if (props.tone !== undefined) wire.tone = props.tone;
+      if (props.title !== undefined) wire.title = props.title;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/notice`, props: wire, groups, fresh: props.fresh },
         children: flat(children ?? props.children),
       };
     },
@@ -530,6 +555,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Empty, Progress, Dialog, Popover, Menu, Toast, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Dialog, Popover, Menu, Toast, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

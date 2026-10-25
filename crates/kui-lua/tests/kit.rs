@@ -142,6 +142,10 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<SlotFill>)>)
     put("stat", kit::Stat::new("p95", "412 ms").delta("-8%").tone(kit::Tone::Ok).place(ui));
     put("empty", kit::Empty::new("Nothing yet").detail("Run a request.").place(ui));
     put("progress", kit::Progress::new().value(0.4).label("Loading").place(ui));
+    put("notice", kit::Notice::new("The port is busy.").tone(kit::Tone::Danger).title("Not bound").place_with(ui, |_, ui| {
+        kit::Button::new("Retry").place(ui);
+    }));
+    put("pressed", kit::Button::new("Logs").pressed(true).icon("terminal").tooltip("Hide the log").place(ui));
     put("sparkline", kit::Sparkline::new(rows(), "ms").place(ui));
     put("line_chart", kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")]).area(true).place(ui));
     put("bar_chart", kit::BarChart::new(rows(), "name", "ms").place(ui));

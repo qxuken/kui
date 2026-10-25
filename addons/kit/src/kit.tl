@@ -42,10 +42,12 @@ end
 
 local function apply(p: P)
   local roles = p.roles
+  local radius = p.radius
   settings = {
     skin = SKINS[p.skin as string] or ledger,
     density = p.density == "compact" and "compact" or "comfortable",
     shadows = p.shadows ~= false,
+    radius = radius is number and radius or nil,
     roles = roles is {string:any} and roles or nil,
   }
 end
@@ -67,7 +69,7 @@ provide(inputs as {string:any}, {
   "button", "icon_button", "text_field", "search", "select", "checkbox", "switch",
   "radio_group", "segmented", "slider",
 })
-provide(data as {string:any}, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress" })
+provide(data as {string:any}, { "table", "list", "inspector", "log", "badge", "stat", "code", "empty", "progress", "notice" })
 provide(overlays as {string:any}, { "dialog", "popover", "menu", "toast" })
 provide(charts as {string:any}, { "sparkline", "line_chart", "bar_chart", "histogram" })
 provide(waterfall as {string:any}, { "waterfall" })

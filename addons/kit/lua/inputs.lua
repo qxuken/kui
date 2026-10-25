@@ -32,6 +32,9 @@ local function look(c, variant)
       return ref(c, "danger"), ref(c, "danger"), ref(c, "on_accent"), bordered
    elseif variant == "ghost" then
       return nil, ref(c, "hover"), ref(c, "fg"), false
+   elseif variant == "success" then
+
+      return bordered and ref(c, "panel") or ref(c, "sunken"), ref(c, "hover"), ref(c, "ok"), bordered
    end
    return bordered and ref(c, "panel") or ref(c, "sunken"), ref(c, "hover"), ref(c, "fg"), bordered
 end
@@ -49,10 +52,19 @@ local function pressable(c, variant, t)
    t.pressed_bg = ref(c, "press")
    t.cursor = "pointer"
    if border then
-      t.border = { w = "$kitRuleW", color = ref(c, variant == "danger" and "danger" or "ink") }
+      local edge = (variant == "danger" or variant == "success") and (variant == "danger" and "danger" or "ok") or "ink"
+      t.border = { w = "$kitRuleW", color = ref(c, edge) }
    end
    if variant == "primary" then ctx.shadow(c, t, true) end
    return t
+end
+
+
+local function pressed_look(c, t)
+   t.selected = true
+   t.bg = ref(c, "sel")
+   t.hover_bg = ref(c, "sel")
+   return ref(c, "sel_fg")
 end
 
 function M.button(c, p)
@@ -60,15 +72,18 @@ function M.button(c, p)
    local _, _, ink, _ = look(c, variant)
    local label = str(p.label) or ""
    local t = pressable(c, variant, {
-      label = label,
+      label = str(p.name) or label,
+      tooltip = str(p.tooltip),
       disabled = p.disabled == true,
       pad = { x = 10 },
       gap = 6,
       on_click = act(c, "button.press"),
    })
+   if p.pressed == true then ink = pressed_look(c, t) end
    if p.disabled == true then t.opacity = "$disabledOpacity" end
-   if str(p.icon) then t[#t + 1] = icons.node(c, p.icon, 13, variant == "primary" and "on_accent" or "fg") end
-   t[#t + 1] = ctx.caption(c, label, { color = ink })
+   local icon_role = p.pressed == true and "sel_fg" or (variant == "primary" and "on_accent" or (variant == "success" and "ok" or "fg"))
+   if str(p.icon) then t[#t + 1] = icons.node(c, p.icon, 13, icon_role) end
+   t[#t + 1] = ctx.caption(c, label, { color = ink, bold = variant == "primary" or c.s.skin.label_bold })
    if str(p.shortcut) then
       t[#t + 1] = ctx.data(c, p.shortcut, { size = "$kitSizeLabel", color = ref(c, variant == "primary" and "on_accent" or "faint") })
    end
@@ -80,14 +95,19 @@ function M.icon_button(c, p)
    local label = str(p.label) or ""
    local t = pressable(c, variant, {
       label = label,
-      tooltip = label,
+      tooltip = str(p.tooltip) or label,
       disabled = p.disabled == true,
       width = "$kitCtl",
       main_align = "center",
       on_click = act(c, "icon_button.press"),
    })
+   local role = variant == "primary" and "on_accent" or (variant == "success" and "ok" or "fg")
+   if p.pressed == true then
+      pressed_look(c, t)
+      role = "sel_fg"
+   end
    if p.disabled == true then t.opacity = "$disabledOpacity" end
-   t[#t + 1] = icons.node(c, str(p.icon) or "", 14, variant == "primary" and "on_accent" or "fg")
+   t[#t + 1] = icons.node(c, str(p.icon) or "", 14, role)
    return row(t)
 end
 
@@ -108,12 +128,29 @@ local function underline(c, focused)
    return ctx.rule(c, focused and "accent" or "ink", focused and "$kitRuleW" or "$kitHair")
 end
 
+
+
+
+
+
+
+
+local function focus_request(c, p)
+   local st = ctx.state(c, function() return { seen = false } end)
+   local want = p.focus
+   if want ~= nil and st.seen and want ~= st.focus then
+      c.env.set_focus("edit")
+   end
+   st.focus, st.seen = want, true
+end
+
 local function labelled(c, label, body, width)
    if not label then return body end
    return column({ width = (width) or "grow", gap = 3, ctx.muted(c, ctx.label(c, label), { bold = true }), body })
 end
 
 function M.text_field(c, p)
+   focus_request(c, p)
    local focused = c.env.is_focused("edit")
    local value = str(p.value) or ""
    local box = {
@@ -137,10 +174,12 @@ function M.text_field(c, p)
    }
    well(c, box, focused)
    local field = column({ width = (p.width) or "grow", gap = 0, row(box), underline(c, focused) })
+   if p.hide_label == true then return field end
    return labelled(c, str(p.label), field, p.width)
 end
 
 function M.search(c, p)
+   focus_request(c, p)
    local focused = c.env.is_focused("edit")
    local value = str(p.value) or ""
    local box = {
@@ -373,7 +412,10 @@ function M.segmented(c, p)
          hover_bg = here and ref(c, bordered and "accent" or "panel") or ref(c, "hover"),
          cursor = "pointer",
          on_click = act(c, "segmented.pick", { value = o.value }),
+         gap = 6,
          ctx.caption(c, o.label, { color = ref(c, here and bordered and "on_accent" or "fg") }),
+         o.count ~= nil and ctx.data(c, tostring(o.count), { size = "$kitSizeLabel", bold = o.alert == true,
+color = ref(c, o.alert == true and "danger" or (here and bordered and "on_accent" or "muted")), }) or nil,
       })
    end
    return row(t)

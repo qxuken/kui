@@ -1112,8 +1112,8 @@ runWindowed[PACE] = pacer;
  * is opened as a user who asked for less motion would see it.
  */
 export function windowOptions(opts = {}) {
-  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel } = opts;
-  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel };
+  const { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel, extensions } = opts;
+  return { width, height, minWidth, minHeight, maxWidth, maxHeight, chrome, textAa, frameLatency, system, icon, appId, backdrop, titlebar, wheelFeel, edgeScrollFeel, extensions };
 }
 
 /**
@@ -1127,7 +1127,14 @@ export function windowOptions(opts = {}) {
  * `tick` runs here too: `app.advance(ms)` is the window's timer, by hand.
  */
 export function createApp(config, opts = {}) {
-  return createLoop(config, opts, opts.surface ?? new Ctx(), opts.clock ?? null);
+  const surface = opts.surface ?? new Ctx();
+  // The window's `extensions` option, for a headless app: loaded before
+  // the first frame, in order, so origins match the window's.
+  for (const e of opts.extensions ?? []) {
+    const { path, namespace = '' } = typeof e === 'string' ? { path: e } : e;
+    surface.addExtension(namespace, path);
+  }
+  return createLoop(config, opts, surface, opts.clock ?? null);
 }
 
 /**

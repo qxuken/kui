@@ -9,7 +9,7 @@ return {
   doc = "Kit: a UI kit for kui, tuned for dense tool UIs — inputs, data views, overlays, layout, charts and a trace waterfall, drawn by a skin (Ledger, Phosphor, Neutral) the host picks.",
 
   enums = {
-    { name = "Variant", doc = "How loud a control is.", "default", "primary", "ghost", "danger" },
+    { name = "Variant", doc = "How loud a control is; success confirms what just happened (Copied).", "default", "primary", "ghost", "danger", "success" },
     { name = "Tone", doc = "What a badge, a stat or a toast is about.", "neutral", "accent", "ok", "warn", "danger" },
     { name = "Align", doc = "Where a cell's content sits.", "start", "center", "end" },
     { name = "Axis", doc = "Which way a split divides.", "row", "column" },
@@ -24,6 +24,8 @@ return {
         { "value", "string", doc = "What the choice is; what the event carries." },
         { "label", "string", doc = "What it reads as." },
         { "disabled", "boolean?", doc = "Shown, not choosable." },
+        { "count", "integer?", doc = "A count beside the label (a segment's, a tab's)." },
+        { "alert", "boolean?", doc = "The count is bad news: drawn in the danger colour." },
       } },
     { name = "Column", doc = "A table's column: which field of the channel it shows, and how.",
       fields = {
@@ -69,6 +71,7 @@ return {
         { "skin", "Skin?", doc = "The skin; Ledger when left out." },
         { "density", "Density?", doc = "Comfortable when left out." },
         { "shadows", "boolean?", doc = "The skin's hard shadows; on when left out." },
+        { "radius", "number?", doc = "Corner radius in px, for a brand with its own; the skin's when left out." },
         { "roles", "any?", doc = "Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel = \"$brandSurface\" }` — a colour or a token each." },
       } },
 
@@ -80,6 +83,7 @@ return {
         { "subtitle", "string?", doc = "A line under the title." },
         { "scroll", "boolean?", doc = "The body scrolls rather than grows." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+        { "pad", "number?", doc = "The body's padding in px; 10 when left out, 0 for a body that brings its own or is often empty." },
       },
       children = {
         { "", doc = "is the body." },
@@ -136,11 +140,14 @@ return {
     { "button",
       doc = "A button. Space, Enter and assistive technology press it as a click does.",
       props = {
-        { "label", "string", doc = "The text on it; its accessible name." },
+        { "label", "string", doc = "The text on it; its accessible name unless `name` says more." },
+        { "name", "string?", doc = "Its accessible name when that says more than the label; start it with the label's words (Clear → Clear the selection)." },
         { "variant", "Variant?", doc = "Default when left out." },
         { "icon", "string?", doc = "An icon's name before the label (Kit's icon set)." },
         { "shortcut", "string?", doc = "The chord, shown faintly after the label: `⌘R`." },
         { "disabled", "boolean?", doc = "Drawn and read as unavailable; presses nothing." },
+        { "pressed", "boolean?", doc = "A toggle that is on (a panel shown): drawn selected and read as such." },
+        { "tooltip", "string?", doc = "A hint under the pointer — why it is disabled, say." },
       },
       events = { { "press", doc = "Pressed." } } },
     { "icon_button",
@@ -150,17 +157,21 @@ return {
         { "label", "string", doc = "What it does: its accessible name and its tooltip." },
         { "variant", "Variant?", doc = "Ghost when left out." },
         { "disabled", "boolean?", doc = "Unavailable." },
+        { "pressed", "boolean?", doc = "A toggle that is on: drawn selected and read as such." },
+        { "tooltip", "string?", doc = "The hint under the pointer; the label when left out." },
       },
       events = { { "press", doc = "Pressed." } } },
     { "text_field",
       doc = "A one-line text field, the skin's field style (an underline in Ledger).",
       props = {
         { "value", "string", doc = "Its text: yours to keep, from `change`." },
-        { "label", "string?", doc = "Its label, above it." },
+        { "label", "string?", doc = "Its label, above it; its name." },
+        { "hide_label", "boolean?", doc = "The label names the field but is not drawn: a field whose place says what it is." },
         { "placeholder", "string?", doc = "Shown while it is empty." },
         { "mono", "boolean?", doc = "In the data face." },
         { "disabled", "boolean?", doc = "Unavailable." },
         { "width", "number?", doc = "Its width in px; grows when left out." },
+        { "focus", "integer?", doc = "Takes the keyboard each time this number changes: keep a counter in your model and bump it (⌘F)." },
       },
       events = {
         { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },
@@ -172,6 +183,7 @@ return {
         { "value", "string", doc = "The query: yours to keep." },
         { "placeholder", "string?", doc = "Shown while it is empty; `Search` when left out." },
         { "count", "string?", doc = "A count after the query: `12 of 340`." },
+        { "focus", "integer?", doc = "Takes the keyboard each time this number changes (⌘F)." },
       },
       events = {
         { "change", doc = "The query changed; cleared is the empty string.", fields = { { "text", "string", doc = "The query." } } },
@@ -295,6 +307,7 @@ return {
       props = {
         { "label", "string", doc = "What it says." },
         { "tone", "Tone?", doc = "Neutral when left out." },
+        { "dot", "boolean?", doc = "A dot in the tone's colour before the label: a status." },
       } },
     { "stat",
       doc = "A number with its label, and how it moved.",
@@ -309,7 +322,16 @@ return {
       props = {
         { "text", "string", doc = "The text." },
         { "wrap", "boolean?", doc = "Wraps rather than scrolls sideways." },
+        { "max_lines", "integer?", doc = "At most this many lines high, the rest scrolled to." },
       } },
+    { "notice",
+      doc = "A message in the flow of the page: an error to act on, a warning, a note; its actions after it.",
+      props = {
+        { "message", "string", doc = "What happened, or what to know." },
+        { "tone", "Tone?", doc = "Danger, warn, ok, accent or neutral (the default)." },
+        { "title", "string?", doc = "A bold first line." },
+      },
+      children = { { "", doc = "are its actions, at its end." } } },
     { "empty",
       doc = "What a view shows with nothing in it: a title, a sentence, and what to do.",
       props = {

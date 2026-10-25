@@ -9970,14 +9970,14 @@ test('a Lua component holds the host\'s children and its events arrive as the ho
 });
 
 test('Kit through its generated wrappers: a Kit button in a Kit toolbar, pressed, is the host\'s message (ADR 0066)', async () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const kit = await import(join(here, '..', '..', 'addons/kit/bindings/node/kit.js'));
+  // As an app gets it: @qxuken/kui/kit, Kit loaded by its `install`.
+  const kit = await import('./kit/index.js');
   const ctx = new Ctx();
   ctx.setInspect(true);
-  ctx.addExtension('kit', join(here, '..', '..', 'addons/kit/lua/kit.lua'));
+  kit.install(ctx);
   const enc = createEncoder(protocol());
   const draw = () => {
-    const tree = box({ fill: true, pad: 8, gap: 6 }, [
+    const tree = box({ width: 'grow', height: 'grow', pad: 8, gap: 6 }, [
       kit.Settings({ skin: 'neutral', density: 'compact' }),
       kit.Toolbar({ trailing: [kit.Badge({ label: 'live', tone: 'ok' })] }, [
         kit.Button({ label: 'Run', variant: 'primary', onPress: { kind: 'run' } }),
@@ -10008,6 +10008,19 @@ test('Kit through its generated wrappers: a Kit button in a Kit toolbar, pressed
   events = press('Beta');
   assert.equal(events[0].payload.kind, 'seg');
   assert.deepEqual(events[0].payload.change, { value: 'b' });
+});
+
+test('createApp loads extensions before the first frame, as a window does (Kit\'s entry)', async () => {
+  const kit = await import('./kit/index.js');
+  const app = createApp(
+    { init: {}, update: () => undefined, view: () => box({ width: 'grow', height: 'grow' }, [kit.Button({ key: 'b', label: 'Loaded' })]) },
+    { width: 300, height: 120, extensions: [kit.extension], warnings: false }
+  );
+  app.render();
+  assert.ok(app.ctx.accessTree().nodes.some((n) => n.name === 'Loaded'));
+  assert.deepEqual(app.warnings, []);
+  // and a window's options keep the entry for the constructor
+  assert.deepEqual(windowOptions({ extensions: [kit.extension], title: 'x' }).extensions, [kit.extension]);
 });
 
 test('a Channel hands rows to a Lua component by handle, and onRange reports the rows in view (ADR 0065)', () => {

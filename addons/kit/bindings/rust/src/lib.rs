@@ -83,7 +83,7 @@ impl From<&str> for Length {
     }
 }
 
-/// How loud a control is.
+/// How loud a control is; success confirms what just happened (Copied).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Variant {
     #[default]
@@ -91,6 +91,7 @@ pub enum Variant {
     Primary,
     Ghost,
     Danger,
+    Success,
 }
 
 impl Variant {
@@ -101,6 +102,7 @@ impl Variant {
             Variant::Primary => "primary",
             Variant::Ghost => "ghost",
             Variant::Danger => "danger",
+            Variant::Success => "success",
         }
     }
 
@@ -265,6 +267,10 @@ pub struct Choice {
     pub label: String,
     /// Shown, not choosable.
     pub disabled: Option<bool>,
+    /// A count beside the label (a segment's, a tab's).
+    pub count: Option<i64>,
+    /// The count is bad news: drawn in the danger colour.
+    pub alert: Option<bool>,
 }
 
 impl Choice {
@@ -274,12 +280,26 @@ impl Choice {
             value: value.into(),
             label: label.into(),
             disabled: None,
+            count: None,
+            alert: None,
         }
     }
 
     /// Shown, not choosable.
     pub fn disabled(mut self, v: bool) -> Self {
         self.disabled = Some(v);
+        self
+    }
+
+    /// A count beside the label (a segment's, a tab's).
+    pub fn count(mut self, v: i64) -> Self {
+        self.count = Some(v);
+        self
+    }
+
+    /// The count is bad news: drawn in the danger colour.
+    pub fn alert(mut self, v: bool) -> Self {
+        self.alert = Some(v);
         self
     }
 
@@ -290,6 +310,12 @@ impl Choice {
         m.push(("label".into(), Value::str((&self.label).as_str())));
         if let Some(v) = &self.disabled {
             m.push(("disabled".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.count {
+            m.push(("count".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.alert {
+            m.push(("alert".into(), Value::Bool(*v)));
         }
         Value::Map(m)
     }
@@ -549,6 +575,8 @@ pub struct Settings {
     pub density: Option<Density>,
     /// The skin's hard shadows; on when left out.
     pub shadows: Option<bool>,
+    /// Corner radius in px, for a brand with its own; the skin's when left out.
+    pub radius: Option<f64>,
     /// Roles the brand overrides, by name: `{ accent = 0x2f6fedff, panel =
     /// "$brandSurface" }` — a colour or a token each.
     pub roles: Option<Value>,
@@ -565,6 +593,7 @@ impl Settings {
             skin: None,
             density: None,
             shadows: None,
+            radius: None,
             roles: None,
             key: None,
             fresh: false,
@@ -586,6 +615,12 @@ impl Settings {
     /// The skin's hard shadows; on when left out.
     pub fn shadows(mut self, v: bool) -> Self {
         self.shadows = Some(v);
+        self
+    }
+
+    /// Corner radius in px, for a brand with its own; the skin's when left out.
+    pub fn radius(mut self, v: f64) -> Self {
+        self.radius = Some(v);
         self
     }
 
@@ -619,6 +654,9 @@ impl Settings {
         }
         if let Some(v) = &self.shadows {
             m.push(("shadows".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.radius {
+            m.push(("radius".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.roles {
             m.push(("roles".into(), v.clone()));
@@ -655,6 +693,9 @@ pub struct Panel {
     pub scroll: Option<bool>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
+    /// The body's padding in px; 10 when left out, 0 for a body that brings its
+    /// own or is often empty.
+    pub pad: Option<f64>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -669,6 +710,7 @@ impl Panel {
             subtitle: None,
             scroll: None,
             grow: None,
+            pad: None,
             key: None,
             fresh: false,
         }
@@ -698,6 +740,13 @@ impl Panel {
         self
     }
 
+    /// The body's padding in px; 10 when left out, 0 for a body that brings its
+    /// own or is often empty.
+    pub fn pad(mut self, v: f64) -> Self {
+        self.pad = Some(v);
+        self
+    }
+
     /// Keys the instance.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = Some(key.into());
@@ -724,6 +773,9 @@ impl Panel {
         }
         if let Some(v) = &self.grow {
             m.push(("grow".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.pad {
+            m.push(("pad".into(), Value::Float(*v)));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -1253,8 +1305,11 @@ impl Divider {
 /// A button. Space, Enter and assistive technology press it as a click does.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Button {
-    /// The text on it; its accessible name.
+    /// The text on it; its accessible name unless `name` says more.
     pub label: String,
+    /// Its accessible name when that says more than the label; start it with
+    /// the label's words (Clear → Clear the selection).
+    pub name: Option<String>,
     /// Default when left out.
     pub variant: Option<Variant>,
     /// An icon's name before the label (Kit's icon set).
@@ -1263,6 +1318,10 @@ pub struct Button {
     pub shortcut: Option<String>,
     /// Drawn and read as unavailable; presses nothing.
     pub disabled: Option<bool>,
+    /// A toggle that is on (a panel shown): drawn selected and read as such.
+    pub pressed: Option<bool>,
+    /// A hint under the pointer — why it is disabled, say.
+    pub tooltip: Option<String>,
     /// The message `press` arrives as, with `press: ButtonPress` in it.
     /// Pressed.
     pub on_press: Option<Value>,
@@ -1277,14 +1336,24 @@ impl Button {
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
+            name: None,
             variant: None,
             icon: None,
             shortcut: None,
             disabled: None,
+            pressed: None,
+            tooltip: None,
             on_press: None,
             key: None,
             fresh: false,
         }
+    }
+
+    /// Its accessible name when that says more than the label; start it with
+    /// the label's words (Clear → Clear the selection).
+    pub fn name(mut self, v: impl Into<String>) -> Self {
+        self.name = Some(v.into());
+        self
     }
 
     /// Default when left out.
@@ -1311,6 +1380,18 @@ impl Button {
         self
     }
 
+    /// A toggle that is on (a panel shown): drawn selected and read as such.
+    pub fn pressed(mut self, v: bool) -> Self {
+        self.pressed = Some(v);
+        self
+    }
+
+    /// A hint under the pointer — why it is disabled, say.
+    pub fn tooltip(mut self, v: impl Into<String>) -> Self {
+        self.tooltip = Some(v.into());
+        self
+    }
+
     /// The message `press` arrives as. Pressed.
     pub fn on_press(mut self, msg: impl Into<Value>) -> Self {
         self.on_press = Some(msg.into());
@@ -1333,6 +1414,9 @@ impl Button {
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("label".into(), Value::str((&self.label).as_str())));
+        if let Some(v) = &self.name {
+            m.push(("name".into(), Value::str(v.as_str())));
+        }
         if let Some(v) = &self.variant {
             m.push(("variant".into(), v.to_value()));
         }
@@ -1344,6 +1428,12 @@ impl Button {
         }
         if let Some(v) = &self.disabled {
             m.push(("disabled".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.pressed {
+            m.push(("pressed".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.tooltip {
+            m.push(("tooltip".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.on_press {
             m.push(("on_press".into(), v.clone()));
@@ -1393,6 +1483,10 @@ pub struct IconButton {
     pub variant: Option<Variant>,
     /// Unavailable.
     pub disabled: Option<bool>,
+    /// A toggle that is on: drawn selected and read as such.
+    pub pressed: Option<bool>,
+    /// The hint under the pointer; the label when left out.
+    pub tooltip: Option<String>,
     /// The message `press` arrives as, with `press: IconButtonPress` in it.
     /// Pressed.
     pub on_press: Option<Value>,
@@ -1410,6 +1504,8 @@ impl IconButton {
             label: label.into(),
             variant: None,
             disabled: None,
+            pressed: None,
+            tooltip: None,
             on_press: None,
             key: None,
             fresh: false,
@@ -1425,6 +1521,18 @@ impl IconButton {
     /// Unavailable.
     pub fn disabled(mut self, v: bool) -> Self {
         self.disabled = Some(v);
+        self
+    }
+
+    /// A toggle that is on: drawn selected and read as such.
+    pub fn pressed(mut self, v: bool) -> Self {
+        self.pressed = Some(v);
+        self
+    }
+
+    /// The hint under the pointer; the label when left out.
+    pub fn tooltip(mut self, v: impl Into<String>) -> Self {
+        self.tooltip = Some(v.into());
         self
     }
 
@@ -1456,6 +1564,12 @@ impl IconButton {
         }
         if let Some(v) = &self.disabled {
             m.push(("disabled".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.pressed {
+            m.push(("pressed".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.tooltip {
+            m.push(("tooltip".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.on_press {
             m.push(("on_press".into(), v.clone()));
@@ -1499,8 +1613,11 @@ impl IconButtonPress {
 pub struct TextField {
     /// Its text: yours to keep, from `change`.
     pub value: String,
-    /// Its label, above it.
+    /// Its label, above it; its name.
     pub label: Option<String>,
+    /// The label names the field but is not drawn: a field whose place says
+    /// what it is.
+    pub hide_label: Option<bool>,
     /// Shown while it is empty.
     pub placeholder: Option<String>,
     /// In the data face.
@@ -1509,6 +1626,9 @@ pub struct TextField {
     pub disabled: Option<bool>,
     /// Its width in px; grows when left out.
     pub width: Option<f64>,
+    /// Takes the keyboard each time this number changes: keep a counter in your
+    /// model and bump it (⌘F).
+    pub focus: Option<i64>,
     /// The message `change` arrives as, with `change: TextFieldChange` in it.
     /// The text changed.
     pub on_change: Option<Value>,
@@ -1527,10 +1647,12 @@ impl TextField {
         Self {
             value: value.into(),
             label: None,
+            hide_label: None,
             placeholder: None,
             mono: None,
             disabled: None,
             width: None,
+            focus: None,
             on_change: None,
             on_submit: None,
             key: None,
@@ -1538,9 +1660,16 @@ impl TextField {
         }
     }
 
-    /// Its label, above it.
+    /// Its label, above it; its name.
     pub fn label(mut self, v: impl Into<String>) -> Self {
         self.label = Some(v.into());
+        self
+    }
+
+    /// The label names the field but is not drawn: a field whose place says
+    /// what it is.
+    pub fn hide_label(mut self, v: bool) -> Self {
+        self.hide_label = Some(v);
         self
     }
 
@@ -1565,6 +1694,13 @@ impl TextField {
     /// Its width in px; grows when left out.
     pub fn width(mut self, v: f64) -> Self {
         self.width = Some(v);
+        self
+    }
+
+    /// Takes the keyboard each time this number changes: keep a counter in your
+    /// model and bump it (⌘F).
+    pub fn focus(mut self, v: i64) -> Self {
+        self.focus = Some(v);
         self
     }
 
@@ -1599,6 +1735,9 @@ impl TextField {
         if let Some(v) = &self.label {
             m.push(("label".into(), Value::str(v.as_str())));
         }
+        if let Some(v) = &self.hide_label {
+            m.push(("hide_label".into(), Value::Bool(*v)));
+        }
         if let Some(v) = &self.placeholder {
             m.push(("placeholder".into(), Value::str(v.as_str())));
         }
@@ -1610,6 +1749,9 @@ impl TextField {
         }
         if let Some(v) = &self.width {
             m.push(("width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.focus {
+            m.push(("focus".into(), Value::Int(*v)));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
@@ -1680,6 +1822,8 @@ pub struct Search {
     pub placeholder: Option<String>,
     /// A count after the query: `12 of 340`.
     pub count: Option<String>,
+    /// Takes the keyboard each time this number changes (⌘F).
+    pub focus: Option<i64>,
     /// The message `change` arrives as, with `change: SearchChange` in it. The
     /// query changed; cleared is the empty string.
     pub on_change: Option<Value>,
@@ -1699,6 +1843,7 @@ impl Search {
             value: value.into(),
             placeholder: None,
             count: None,
+            focus: None,
             on_change: None,
             on_submit: None,
             key: None,
@@ -1715,6 +1860,12 @@ impl Search {
     /// A count after the query: `12 of 340`.
     pub fn count(mut self, v: impl Into<String>) -> Self {
         self.count = Some(v.into());
+        self
+    }
+
+    /// Takes the keyboard each time this number changes (⌘F).
+    pub fn focus(mut self, v: i64) -> Self {
+        self.focus = Some(v);
         self
     }
 
@@ -1752,6 +1903,9 @@ impl Search {
         }
         if let Some(v) = &self.count {
             m.push(("count".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.focus {
+            m.push(("focus".into(), Value::Int(*v)));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
@@ -3020,6 +3174,8 @@ pub struct Badge {
     pub label: String,
     /// Neutral when left out.
     pub tone: Option<Tone>,
+    /// A dot in the tone's colour before the label: a status.
+    pub dot: Option<bool>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -3032,6 +3188,7 @@ impl Badge {
         Self {
             label: label.into(),
             tone: None,
+            dot: None,
             key: None,
             fresh: false,
         }
@@ -3040,6 +3197,12 @@ impl Badge {
     /// Neutral when left out.
     pub fn tone(mut self, v: Tone) -> Self {
         self.tone = Some(v);
+        self
+    }
+
+    /// A dot in the tone's colour before the label: a status.
+    pub fn dot(mut self, v: bool) -> Self {
+        self.dot = Some(v);
         self
     }
 
@@ -3061,6 +3224,9 @@ impl Badge {
         m.push(("label".into(), Value::str((&self.label).as_str())));
         if let Some(v) = &self.tone {
             m.push(("tone".into(), v.to_value()));
+        }
+        if let Some(v) = &self.dot {
+            m.push(("dot".into(), Value::Bool(*v)));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -3174,6 +3340,8 @@ pub struct Code {
     pub text: String,
     /// Wraps rather than scrolls sideways.
     pub wrap: Option<bool>,
+    /// At most this many lines high, the rest scrolled to.
+    pub max_lines: Option<i64>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -3186,6 +3354,7 @@ impl Code {
         Self {
             text: text.into(),
             wrap: None,
+            max_lines: None,
             key: None,
             fresh: false,
         }
@@ -3194,6 +3363,12 @@ impl Code {
     /// Wraps rather than scrolls sideways.
     pub fn wrap(mut self, v: bool) -> Self {
         self.wrap = Some(v);
+        self
+    }
+
+    /// At most this many lines high, the rest scrolled to.
+    pub fn max_lines(mut self, v: i64) -> Self {
+        self.max_lines = Some(v);
         self
     }
 
@@ -3216,6 +3391,9 @@ impl Code {
         if let Some(v) = &self.wrap {
             m.push(("wrap".into(), Value::Bool(*v)));
         }
+        if let Some(v) = &self.max_lines {
+            m.push(("max_lines".into(), Value::Int(*v)));
+        }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
         }
@@ -3233,6 +3411,93 @@ impl Code {
     /// Places it under `<namespace>/code`.
     pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/code"), &self.props())
+    }
+}
+
+/// A message in the flow of the page: an error to act on, a warning, a note;
+/// its actions after it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Notice {
+    /// What happened, or what to know.
+    pub message: String,
+    /// Danger, warn, ok, accent or neutral (the default).
+    pub tone: Option<Tone>,
+    /// A bold first line.
+    pub title: Option<String>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl Notice {
+    /// What it needs; the rest by their setters.
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            tone: None,
+            title: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Danger, warn, ok, accent or neutral (the default).
+    pub fn tone(mut self, v: Tone) -> Self {
+        self.tone = Some(v);
+        self
+    }
+
+    /// A bold first line.
+    pub fn title(mut self, v: impl Into<String>) -> Self {
+        self.title = Some(v.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+/// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+/// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("message".into(), Value::str((&self.message).as_str())));
+        if let Some(v) = &self.tone {
+            m.push(("tone".into(), v.to_value()));
+        }
+        if let Some(v) = &self.title {
+            m.push(("title".into(), Value::str(v.as_str())));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/notice`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
+        ui.component("kit/notice", &self.props())
+    }
+
+    /// Places it under `<namespace>/notice`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
+        ui.component(&format!("{namespace}/notice"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
+        ui.component_with("kit/notice", &self.props(), children)
     }
 }
 

@@ -32,6 +32,7 @@ local ledger = {
    hair = 1,
    shadow = 3,
    shadow_blur = 0,
+   label_bold = true,
    label_upper = true,
    ctl_border = true,
    field_box = false,

@@ -68,7 +68,7 @@ def main [
                 must cargo run -q -p kui-lua --example lua-types -- packages/lua
             }
         }]
-        [addons "the add-ons' wrappers and Lua (addons/*)" {
+        [addons "the add-ons' wrappers and Lua (addons/*), and Kit in the npm package" {
             for dir in (ls addons | where type == dir | get name) {
                 if ($"($dir)/schema.lua" | path exists) {
                     must cargo run -q -p kui-addon-schema -- gen $"($dir)/schema.lua" $"($dir)/bindings" ...$check_flag
@@ -76,6 +76,23 @@ def main [
                 if ($"($dir)/build.lua" | path exists) {
                     must lua $"($dir)/build.lua" ...$check_flag
                 }
+            }
+            # @qxuken/kui/kit ships Kit: its wrappers and the Lua the
+            # extension loads, copied from addons/kit (packages/kui/kit/index.js
+            # is hand-written beside them).
+            let copies = (
+                [[from to]; [addons/kit/bindings/node/kit.js packages/kui/kit/components.js]
+                    [addons/kit/bindings/node/kit.d.ts packages/kui/kit/components.d.ts]]
+                | append (ls addons/kit/lua/*.lua | get name | each {|f| {from: $f, to: $"packages/kui/kit/lua/($f | path basename)"} })
+            )
+            let stale = $copies | where {|c| not ($c.to | path exists) or (open --raw $c.from) != (open --raw $c.to) }
+            if $check {
+                if ($stale | is-not-empty) {
+                    error make {msg: $"stale: ($stale | get to | str join ', ') — run nu scripts/gen.nu"}
+                }
+            } else {
+                mkdir packages/kui/kit/lua
+                for c in $stale { cp $c.from $c.to }
             }
         }]
         [node "npm run gen (jsx-runtime.d.ts, index.d.ts, docs/props.md)" {

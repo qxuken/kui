@@ -31,7 +31,7 @@ function M.panel(c: Ctx, p: P): kui.Node
   if str(p.title) then
     local head: kui.Props = {
       width = "grow", height = "$kitCtl", pad = { x = 10 }, gap = 8, cross_align = "center",
-      ctx.caption(c, p.title as string, { size = "$kitSizeLabel" }),
+      ctx.caption(c, p.title as string, { size = "$kitSizeLabel", bold = true }),
     }
     if str(p.subtitle) then head[#head + 1] = ctx.muted(c, p.subtitle as string, { max_lines = 1, ellipsis = true }) end
     head[#head + 1] = ctx.grow()
@@ -44,7 +44,7 @@ function M.panel(c: Ctx, p: P): kui.Node
     width = "grow",
     height = (grow or p.scroll == true) and "grow" or nil,
     scroll_y = p.scroll == true,
-    pad = 10,
+    pad = (p.pad as number) or 10,
     gap = 8,
     children(""),
   }
