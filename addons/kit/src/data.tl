@@ -552,6 +552,14 @@ function M.log(c: Ctx, p: P): kui.Node
   -- The log and, while it is not at its end, the jump back there.
   -- Always the same box around the rows, so the scroller keeps its key
   -- (and its offset) whether or not the jump is in it.
+  -- Following: the scroller is `anchor`ed, which keeps an anchored node
+  -- left at its end at its end in the core's own layout, the frame its
+  -- box or its rows change size. The pin below came a frame late when
+  -- only the box moved (a panel above it grew): this view was replayed,
+  -- not asked, and the rows sat a band short of the end for that frame.
+  -- Only while following: a list re-anchors its window itself when its
+  -- estimate moves, and the core's anchoring would add the move again.
+  local tails = wants and st.follow and n > 0
   local function framed(t: kui.Node): kui.Node
     local away = wants and not st.follow and n > 0
     return column { width = "grow", height = p.grow == true and "grow" or nil, t, away and jump(c) or nil }
@@ -571,6 +579,7 @@ function M.log(c: Ctx, p: P): kui.Node
       bg = ref(c, "sunken"),
       pad = { y = 4 },
       selectable = true,
+      anchor = tails or nil,
     }, line))
   end
   -- Wrapped: rows of their own heights, measured as they come into view.
@@ -636,6 +645,7 @@ function M.log(c: Ctx, p: P): kui.Node
     bg = ref(c, "sunken"),
     pad = { y = 4 },
     selectable = true,
+    anchor = tails or nil,
   } as kui.List, measure, line)
   if hold and hold.row >= 0 then
     -- After the list has measured: the row the reader had at the top goes

@@ -74,8 +74,8 @@ fn a_prepended_row_moves_the_offset_by_its_height() {
 }
 
 /// A row above the anchor changing height moves the offset by the change,
-/// and one below it changes nothing — including rows appended at the end,
-/// so a log that is tailing still asks for the end itself.
+/// and one below it changes nothing — including rows appended at the end
+/// of a list that is not at its end.
 #[test]
 fn only_content_before_the_anchor_moves_it() {
     let mut core = Core::new();
@@ -169,4 +169,53 @@ fn a_missing_anchor_and_the_clamp() {
         core.nodes().iter().find(|n| n.key == d).map(|n| n.rect.x),
         Some(0.0)
     );
+}
+
+/// An anchored scroller left at its end stays at its end in the same
+/// frame, whatever changes size: rows appended, its own box shrinking.
+/// Scrolled away from the end, it stays where it was put.
+#[test]
+fn an_anchored_scroller_at_its_end_stays_there() {
+    let mut core = Core::new();
+    scrolled_to(&mut core, &ten(), true, 100.0);
+    assert_eq!(core.scroll_offset(list()).y, 100.0, "at the end");
+    let mut rows = ten();
+    rows.push(("k", 20.0));
+    rows.push(("l", 30.0));
+    frame(&mut core, &rows, true);
+    assert_eq!(core.scroll_offset(list()).y, 150.0, "followed the new rows");
+    assert_eq!(row_y(&mut core, "l"), Some(70.0), "l at the bottom");
+
+    // Its box shrinks under it (a sibling above grows): still at the end.
+    let boxed = |core: &mut Core, rows: &[(&str, f32)], above: f32| {
+        let mut ui = core.frame(Size::new(200.0, VIEW_H), 1.0);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.leaf_keyed("above", NodeSpec::row().grow_width().height(above));
+        ui.with_keyed("list", NodeSpec::column().fill().scroll_y().anchor(), |ui| {
+            for (key, h) in rows {
+                ui.leaf_keyed(key, NodeSpec::row().grow_width().height(*h));
+            }
+        });
+        ui.finish();
+    };
+    let mut core = Core::new();
+    core.set_inspect(true);
+    boxed(&mut core, &ten(), 0.0);
+    core.set_scroll(list(), Vec2::new(0.0, 100.0));
+    boxed(&mut core, &ten(), 0.0);
+    boxed(&mut core, &ten(), 40.0);
+    assert_eq!(core.scroll_offset(list()).y, 140.0, "the end of a 60-tall box");
+    boxed(&mut core, &ten(), 10.0);
+    assert_eq!(core.scroll_offset(list()).y, 110.0, "and of a 90-tall one");
+
+    // Scrolled up by a wheel notch: rows appended move nothing.
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(100.0, 50.0)));
+    core.handle_input(InputEvent::Scroll(Vec2::new(0.0, 10.0)));
+    boxed(&mut core, &ten(), 10.0);
+    let away = core.scroll_offset(list()).y;
+    assert!(away < 110.0, "scrolled away: {away}");
+    let mut rows = ten();
+    rows.push(("k", 20.0));
+    boxed(&mut core, &rows, 10.0);
+    assert_eq!(core.scroll_offset(list()).y, away, "stays where it was put");
 }

@@ -915,6 +915,13 @@ impl Core {
         if self.is_hovered(key) {
             return true;
         }
+        // Keyboard focus shows it too, as the pointer does: a bar of a
+        // chart reached by the arrows says what it is, where it showed the
+        // hint of whatever the pointer had last been left over. Only focus
+        // the keyboard put there — a click focuses and hovers at once.
+        if self.is_focused(key) && self.focus_visible() {
+            return true;
+        }
         let Some(h) = self.interaction.hovered() else {
             return false;
         };

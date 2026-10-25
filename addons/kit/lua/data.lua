@@ -553,6 +553,14 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
 
 
 
+
+
+
+
+
+
+
+   local tails = wants and st.follow and n > 0
    local function framed(t)
       local away = wants and not st.follow and n > 0
       return column({ width = "grow", height = p.grow == true and "grow" or nil, t, away and jump(c) or nil })
@@ -572,6 +580,7 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
          bg = ref(c, "sunken"),
          pad = { y = 4 },
          selectable = true,
+         anchor = tails or nil,
       }, line))
    end
 
@@ -637,6 +646,7 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
       bg = ref(c, "sunken"),
       pad = { y = 4 },
       selectable = true,
+      anchor = tails or nil,
    }, measure, line)
    if hold and hold.row >= 0 then
 

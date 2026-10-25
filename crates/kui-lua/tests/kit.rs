@@ -1359,3 +1359,43 @@ fn a_notice_narrower_than_its_actions_puts_them_under_the_message() {
         "the action is under the message: {retry:?} vs {msg:?}"
     );
 }
+
+#[test]
+fn a_following_log_stays_at_its_end_the_frame_its_box_changes() {
+    // A panel above the log grew: the log's view was replayed (nothing it
+    // reads had changed yet), its pin to the end came a frame later, and
+    // for that frame the last line sat below the box (or a band above
+    // the foot when the box grew).
+    for wrap in [false, true] {
+        let mut r = LuaRig::new(&format!(
+            r#"
+            local cols = {{ time = {{}}, level = {{}}, message = {{}} }}
+            for i = 1, 60 do
+              cols.time[i], cols.level[i], cols.message[i] = string.format("12:%02d", i), "info", "line " .. i
+            end
+            local ch = channel(cols)
+            above = 0
+            function view(env)
+              return column {{ width = "grow", height = "grow",
+                column {{ key = "box", width = 360, height = 300,
+                  row {{ width = "grow", height = above }},
+                  column {{ width = "grow", height = "grow",
+                    component("kit/log", {{ rows = ch, grow = true, wrap = {wrap} }}) }} }} }}
+            end
+            "#
+        ));
+        r.frames(6);
+        for above in [80.0, 20.0, 120.0] {
+            r.app.globals().set("above", above).unwrap();
+            r.frames(1);
+            let bx = r.node(|n| n.label.as_deref() == Some("box")).unwrap().rect;
+            let last = r.text("line 60").expect("the last line is built");
+            let foot = bx.y + bx.h;
+            assert!(
+                last.y + last.h <= foot + 0.5 && last.y + last.h >= foot - 30.0,
+                "the last line at the foot the frame the box moved (wrap {wrap}, above {above}): {last:?} in {bx:?}"
+            );
+        }
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}

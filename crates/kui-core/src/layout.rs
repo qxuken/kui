@@ -2147,6 +2147,18 @@ fn positions(
         };
         let (lead_main, between_main) = main_spread(spec.main_align, free_main, n_main);
         let content_start = main_pad_start + lead_main;
+        // Tailing: an anchored container the last layout left at its end,
+        // and nobody has scrolled since, goes to its end again below.
+        // Read before the anchor correction moves the offset.
+        let tailing = anchors
+            && scroll.tail(tree.keys[i]).is_some_and(|was| {
+                let now = scroll.offset(tree.keys[i]);
+                let now = match spec.dir {
+                    Dir::Row => now.x,
+                    Dir::Column => now.y,
+                };
+                (now - was).abs() < 0.5
+            });
         if anchors && let Some((anchor, was_at)) = scroll.anchor(tree.keys[i]) {
             let mut at = content_start;
             let mut c = first_in_flow(tree, i as u32);
@@ -2192,6 +2204,16 @@ fn positions(
                 },
             );
             tree.scroll_max[i] = max;
+            if tailing {
+                let now = scroll.offset(tree.keys[i]);
+                let delta = match spec.dir {
+                    Dir::Row => Vec2::new(max.x - now.x, 0.0),
+                    Dir::Column => Vec2::new(0.0, max.y - now.y),
+                };
+                if delta != Vec2::ZERO {
+                    scroll.scroll_by(tree.keys[i], delta);
+                }
+            }
             // The one place the container's resolved box and its content
             // size exist together; the store keeps a copy, since the tree
             // holding them is cleared before the next view reads it.
@@ -2235,6 +2257,19 @@ fn positions(
                 c = tree.next_sibling[c as usize];
             }
             scroll.set_anchor(tree.keys[i], next);
+            // At its end on the main axis (with somewhere to scroll): the
+            // next layout keeps it there while nobody scrolls (`tailing`).
+            let max_main = match spec.dir {
+                Dir::Row => tree.scroll_max[i].x,
+                Dir::Column => tree.scroll_max[i].y,
+            };
+            let kept = scroll.offset(tree.keys[i]);
+            let kept_main = match spec.dir {
+                Dir::Row => kept.x,
+                Dir::Column => kept.y,
+            };
+            let at_end = max_main > 0.0 && main_scroll >= max_main - 0.5;
+            scroll.set_tail(tree.keys[i], at_end.then_some(kept_main));
         }
 
         // Out of flow first, so the in-flow walk is one shape whether or

@@ -228,3 +228,24 @@ fn a_dialog_declared_inside_a_tooltip_box_is_not_inside_it() {
     let over_badge = at(&mut core, Vec2::new(15.0, 15.0), &badge);
     assert_eq!(over_badge.len(), 1, "over a badge: {over_badge:?}");
 }
+
+/// Keyboard focus shows a node's hint as the pointer does: Tab onto a
+/// focusable box with a `tooltip` and the hint floats, with the pointer
+/// nowhere near; a click focuses without the hint coming from focus.
+#[test]
+fn a_tooltip_shows_while_the_keyboard_holds_focus() {
+    let build = |core: &mut Core| {
+        let mut ui = core.frame(VIEW, 1.0);
+        ui.with(NodeSpec::column().size(60.0, 20.0).on_click("a").label("first").tooltip("the first"), |_| {});
+        ui.with(NodeSpec::column().size(60.0, 20.0).on_click("b").label("second").tooltip("the second"), |_| {});
+        ui.finish();
+    };
+    let mut core = Core::new();
+    build(&mut core);
+    build(&mut core);
+    assert!(hints(&mut core).is_empty(), "nothing hovered, nothing focused");
+    kui_core::testing::tab(&mut core, false);
+    build(&mut core);
+    build(&mut core);
+    assert_eq!(hints(&mut core).len(), 1, "the focused box's hint shows");
+}

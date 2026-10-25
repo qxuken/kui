@@ -112,6 +112,12 @@ struct Entry {
     /// layout and where its leading edge was in the content, on the main
     /// axis. What the next layout keeps still.
     anchor: Option<(Key, f32)>,
+    /// For an `anchor` container the last layout left at its end on the
+    /// main axis: the retained offset it left there. While the offset is
+    /// still that — nobody scrolled since — the next layout keeps it at
+    /// the end, whatever grew or shrank: a tailing log stays tailing when
+    /// its box or its rows change size, in the same frame.
+    tail: Option<f32>,
     /// A programmatic offset change waiting to be eased — a `set_scroll`
     /// or a `reveal` since the last layout. The pointer's own
     /// writes leave it false: a scroll under the thumb or the wheel is
@@ -711,6 +717,17 @@ impl ScrollStore {
     /// `None` when the container had nothing in view.
     pub(crate) fn set_anchor(&mut self, key: Key, anchor: Option<(Key, f32)>) {
         self.entries.entry(key).or_default().anchor = anchor;
+    }
+
+    /// The retained offset an `anchor` container was left at its end with
+    /// by the last layout, if it was (see the entry's `tail`).
+    pub(crate) fn tail(&self, key: Key) -> Option<f32> {
+        self.entries.get(&key).and_then(|e| e.tail)
+    }
+
+    /// Records whether this layout left `key` at its end, and the offset.
+    pub(crate) fn set_tail(&mut self, key: Key, tail: Option<f32>) {
+        self.entries.entry(key).or_default().tail = tail;
     }
 
     /// What layout calls on a scroll container: records the geometry it
