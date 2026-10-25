@@ -286,7 +286,7 @@ end
 
 local function labelled(c: Ctx, label: string, body: kui.Node, width: any): kui.Node
   if not label then return body end
-  return column { width = (width as number) or "grow", gap = 3, ctx.muted(c, ctx.label(c, label), { bold = true }), body }
+  return column(ctx.up_to({ gap = 3, ctx.muted(c, ctx.label(c, label), { bold = true }), body }, width, 80))
 end
 
 -- A field's Choose… button and its dialog, for `browse`: the press marks
@@ -352,11 +352,12 @@ function M.text_field(c: Ctx, p: P): kui.Node
   if err and err ~= "" then box.gap = 6 end
   well(c, box, focused, err ~= nil)
   local chooser = browse_button(c, p, value)
-  local field: kui.Node = column { width = (not chooser and p.width as number) or "grow", min_width = 0, gap = 0,
-    row(box), underline(c, focused, err ~= nil) }
+  -- The field takes what its row leaves, down to 80 px (its text scrolls
+  -- in the editor); a Choose… button beside it keeps its whole label.
+  local field: kui.Node = column(ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil) },
+    not chooser and p.width or nil, 80))
   if chooser then
-    -- The button beside the field, on its line; the field gives it room.
-    field = row { width = (p.width as number) or "grow", gap = 8, cross_align = "center", field, chooser }
+    field = row(ctx.up_to({ gap = 8, cross_align = "center", field, chooser }, p.width, 80))
   end
   if p.hide_label == true then return field end
   return labelled(c, str(p.label), field, p.width)
@@ -413,11 +414,11 @@ function M.text_area(c: Ctx, p: P): kui.Node
       on_change = act(c, "text_area.change"),
     },
   }
-  local field = column { width = (p.width as number) or "grow", height = grow and "grow" or nil, gap = 0,
-    column(box), error_line(c, err) }
+  local field = column(ctx.up_to({ height = grow and "grow" or nil, gap = 0,
+    column(box), error_line(c, err) }, p.width, 80))
   if p.hide_label == true or not str(p.label) then return field end
-  return column { width = (p.width as number) or "grow", height = grow and "grow" or nil, gap = 3,
-    ctx.muted(c, ctx.label(c, p.label as string), { bold = true }), field }
+  return column(ctx.up_to({ height = grow and "grow" or nil, gap = 3,
+    ctx.muted(c, ctx.label(c, p.label as string), { bold = true }), field }, p.width, 80))
 end
 
 function M.search(c: Ctx, p: P): kui.Node
@@ -478,7 +479,6 @@ function M.select(c: Ctx, p: P): kui.Node
   local field = pressable(c, "default", {
     label = (str(p.label) or "choice") .. ": " .. (current or "none"),
     expanded = st.open and "expanded" or "collapsed",
-    width = (p.width as number) or "grow",
     pad = { x = 8 },
     gap = 6,
     on_click = act(c, "select.open"),
@@ -488,6 +488,8 @@ function M.select(c: Ctx, p: P): kui.Node
     ctx.grow(),
     icons.node(c, st.open and "chevron_up" or "chevron_down", 12, "muted"),
   })
+  -- Up to its width, less in a narrow row, its choice ellipsized.
+  ctx.up_to(field, p.width, 80)
   ctx.ring(c, field, "field")
   if st.open then
     local list: kui.Props = {
@@ -530,7 +532,7 @@ function M.select(c: Ctx, p: P): kui.Node
     end
     -- Beside the field, not in it: a button's children are presentational
     -- to assistive technology, and the options must be read.
-    return labelled(c, str(p.label), column { width = (p.width as number) or "grow", row(field), column(list) }, p.width)
+    return labelled(c, str(p.label), column(ctx.up_to({ row(field), column(list) }, p.width, 80)), p.width)
   end
   return labelled(c, str(p.label), row(field), p.width)
 end

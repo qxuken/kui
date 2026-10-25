@@ -2150,3 +2150,41 @@ fn a_fields_choose_button_asks_for_a_folder_and_fills_the_field() {
     assert_eq!(folder, "/Volumes/Data/Sync", "a cancel changes nothing");
     assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
 }
+
+#[test]
+fn a_narrow_row_shrinks_its_field_and_keeps_its_button_inside_the_panel() {
+    // Tidewater made narrow: the sync folder's field kept its 440 px, and
+    // its Choose… button stood out past the panel's frame, its label cut.
+    for w in [760.0, 600.0, 520.0] {
+        let mut r = LuaRig::new(&format!(
+            r#"
+            function view(env)
+              return column {{ width = {w}, height = "grow",
+                component("kit/panel", {{ key = "folder", title = "Folder" }}, {{
+                  row {{ width = "grow", gap = 24, pad = 10,
+                    column {{ width = 250, text("Sync folder") }},
+                    column {{ width = "grow", min_width = 0,
+                      component("kit/text_field", {{ label = "Sync folder", hide_label = true, value = "/Users/me/Pictures",
+                        mono = true, width = 440, browse = "folder" }}),
+                      component("kit/select", {{ label = "Mode", value = "a", width = 300,
+                        options = {{ {{ value = "a", label = "A rather long choice" }} }} }}) }} }} }}) }}
+            end
+            "#
+        ));
+        r.frames(3);
+        let panel = r.node(|n| n.role == Some(kui_core::Role::Group) && n.label.as_deref() == Some("Folder"))
+            .map(|n| n.rect)
+            .unwrap_or_else(|| r.named("Folder"));
+        let choose = r.named("Choose… sync folder");
+        let mode = r.named("Mode: A rather long choice");
+        let inside = |b: kui_core::Rect| b.x >= panel.x - 0.5 && b.x + b.w <= panel.x + panel.w - 1.5;
+        assert!(inside(choose), "at {w}: the button inside the panel: {choose:?} in {panel:?}");
+        assert!(inside(mode), "at {w}: the select inside the panel: {mode:?} in {panel:?}");
+        let label = r
+            .node(|n| n.text.as_deref().is_some_and(|t| t.to_lowercase().starts_with("choose")))
+            .expect("the button's label")
+            .rect;
+        assert!(label.x + label.w <= choose.x + choose.w, "at {w}: its whole label");
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}

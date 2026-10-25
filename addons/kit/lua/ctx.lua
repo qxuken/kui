@@ -119,6 +119,17 @@ function M.focus_ring(c, w, h, radius)
 end
 
 
+
+
+
+function M.up_to(t, w, least)
+   t.width = "grow"
+   t.min_width = least or 0
+   if type(w) == "number" then t.max_width = w end
+   return t
+end
+
+
 function M.grow()
    return row({ width = "grow" })
 end

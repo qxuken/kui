@@ -1,6 +1,8 @@
 [
   { name: "preferences-general", size: "1040x760", after: 1000, args: ["ledger", "general"], appearance: "light" }
   { name: "preferences-sync", size: "1040x760", after: 1000, args: ["neutral", "sync"] }
+  { name: "preferences-sync-narrow", size: "820x620", after: 1000, args: ["ledger", "sync"] }
+  { name: "preferences-network-narrow", size: "820x620", after: 1000, args: ["neutral", "network"] }
   { name: "preferences-network", size: "1040x760", after: 1000, args: ["phosphor", "network"] }
   { name: "preferences-invalid", size: "1040x760", after: 1000, args: ["neutral", "invalid"] }
   { name: "preferences-named", size: "1040x760", after: 1000, args: ["ledger", "named"] }

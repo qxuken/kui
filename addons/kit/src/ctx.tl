@@ -117,6 +117,17 @@ function M.focus_ring(c: Ctx, w: number, h: number, radius?: number): kui.Node
   }
 end
 
+-- A control's `width` as a width that gives way: up to `w` px, less when
+-- its row has less, never under `least`. A fixed width held its row at
+-- least that wide, so a narrow window pushed what followed it (a field's
+-- Choose… button) out past its panel's frame. With no `w`, it grows.
+function M.up_to(t: kui.Props, w: any, least?: number): kui.Props
+  t.width = "grow"
+  t.min_width = least or 0
+  if w is number then t.max_width = w end
+  return t
+end
+
 -- A spacer that takes the room its row leaves.
 function M.grow(): kui.Node
   return row { width = "grow" }

@@ -287,7 +287,7 @@ end
 
 local function labelled(c, label, body, width)
    if not label then return body end
-   return column({ width = (width) or "grow", gap = 3, ctx.muted(c, ctx.label(c, label), { bold = true }), body })
+   return column(ctx.up_to({ gap = 3, ctx.muted(c, ctx.label(c, label), { bold = true }), body }, width, 80))
 end
 
 
@@ -353,11 +353,12 @@ function M.text_field(c, p)
    if err and err ~= "" then box.gap = 6 end
    well(c, box, focused, err ~= nil)
    local chooser = browse_button(c, p, value)
-   local field = column({ width = (not chooser and p.width) or "grow", min_width = 0, gap = 0,
-row(box), underline(c, focused, err ~= nil), })
-   if chooser then
 
-      field = row({ width = (p.width) or "grow", gap = 8, cross_align = "center", field, chooser })
+
+   local field = column(ctx.up_to({ gap = 0, row(box), underline(c, focused, err ~= nil) },
+   not chooser and p.width or nil, 80))
+   if chooser then
+      field = row(ctx.up_to({ gap = 8, cross_align = "center", field, chooser }, p.width, 80))
    end
    if p.hide_label == true then return field end
    return labelled(c, str(p.label), field, p.width)
@@ -414,11 +415,11 @@ function M.text_area(c, p)
          on_change = act(c, "text_area.change"),
       }),
    }
-   local field = column({ width = (p.width) or "grow", height = grow and "grow" or nil, gap = 0,
-column(box), error_line(c, err), })
+   local field = column(ctx.up_to({ height = grow and "grow" or nil, gap = 0,
+column(box), error_line(c, err), }, p.width, 80))
    if p.hide_label == true or not str(p.label) then return field end
-   return column({ width = (p.width) or "grow", height = grow and "grow" or nil, gap = 3,
-ctx.muted(c, ctx.label(c, p.label), { bold = true }), field, })
+   return column(ctx.up_to({ height = grow and "grow" or nil, gap = 3,
+ctx.muted(c, ctx.label(c, p.label), { bold = true }), field, }, p.width, 80))
 end
 
 function M.search(c, p)
@@ -479,7 +480,6 @@ function M.select(c, p)
    local field = pressable(c, "default", {
       label = (str(p.label) or "choice") .. ": " .. (current or "none"),
       expanded = st.open and "expanded" or "collapsed",
-      width = (p.width) or "grow",
       pad = { x = 8 },
       gap = 6,
       on_click = act(c, "select.open"),
@@ -489,6 +489,8 @@ function M.select(c, p)
       ctx.grow(),
       icons.node(c, st.open and "chevron_up" or "chevron_down", 12, "muted"),
    })
+
+   ctx.up_to(field, p.width, 80)
    ctx.ring(c, field, "field")
    if st.open then
       local list = {
@@ -531,7 +533,7 @@ function M.select(c, p)
       end
 
 
-      return labelled(c, str(p.label), column({ width = (p.width) or "grow", row(field), column(list) }), p.width)
+      return labelled(c, str(p.label), column(ctx.up_to({ row(field), column(list) }, p.width, 80)), p.width)
    end
    return labelled(c, str(p.label), row(field), p.width)
 end
