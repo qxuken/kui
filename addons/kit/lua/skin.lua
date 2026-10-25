@@ -115,7 +115,7 @@ local SHADED = { "accent", "danger", "panel", "sunken", "raised" }
 
 local TOWARD = { accent = "on_accent", danger = "on_danger" }
 
-local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES }
+local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES, AREA_ALPHA = 0.14 }
 
 
 local function camel(role)
@@ -134,13 +134,30 @@ end
 
 
 
+
+
+
+
+local refs = setmetatable({}, { __mode = "k" })
+
 function M.ref(s, role)
+   local memo = refs[s]
+   if not memo then
+      memo = {}
+      refs[s] = memo
+   end
+   local r = memo[role]
+   if r then return r end
    local o = s.roles and s.roles[role]
-   if type(o) == "string" then return o end
-   local fill = role:match("^(.-)_hover$") or role:match("^(.-)_press$")
-   local named = fill and s.roles and s.roles[fill]
-   if type(named) == "string" then return named end
-   return "$kit" .. camel(role)
+   if type(o) == "string" then
+      r = o
+   else
+      local fill = role:match("^(.-)_hover$") or role:match("^(.-)_press$")
+      local named = fill and s.roles and s.roles[fill]
+      r = type(named) == "string" and named or ("$kit" .. camel(role))
+   end
+   memo[role] = r
+   return r
 end
 
 local function half_of(v, l, d)
@@ -178,6 +195,15 @@ local function shades(h, fill, value)
    return over(value, h.hover), over(value, h.press)
 end
 
+
+local AREA_ALPHA = M.AREA_ALPHA
+
+
+function M.faded(color, a)
+   local alpha = color & 0xff
+   return (color & ~0xff) | math.floor(alpha * a + 0.5)
+end
+
 function M.tokens(s)
    local skin = s.skin
    local colors = {}
@@ -199,7 +225,11 @@ function M.tokens(s)
       colors["kitGroup" .. i] = { light = skin.light.groups[i], dark = skin.dark.groups[i] }
    end
    for i = 1, #skin.light.series do
-      colors["kitSeries" .. i] = { light = skin.light.series[i], dark = skin.dark.series[i] }
+      local ls, ds = skin.light.series[i], skin.dark.series[i]
+      colors["kitSeries" .. i] = { light = ls, dark = ds }
+
+
+      colors["kitArea" .. i] = { light = M.faded(ls, AREA_ALPHA), dark = M.faded(ds, AREA_ALPHA) }
    end
    local shadow = s.shadows and skin.shadow or 0
    return {

@@ -114,7 +114,7 @@ local SHADED: {string} = { "accent", "danger", "panel", "sunken", "raised" }
 -- for the loud fills; the washes, laid over it, for the quiet ones.
 local TOWARD: {string:string} = { accent = "on_accent", danger = "on_danger" }
 
-local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES }
+local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES, AREA_ALPHA = 0.14 }
 
 -- `sel_fg` → `SelFg`, the tail of a `kit…` token name.
 local function camel(role: string): string
@@ -133,13 +133,30 @@ end
 -- The name a role paints under: the brand's token where it named one,
 -- `"$kitSelFg"` otherwise. A shade of a fill the brand named a token for
 -- is that token: Kit cannot shade a colour it does not know.
+-- Each settings' answers, kept: a chart asks for a role per tick and per
+-- label, and the answer is two pattern matches and two substitutions.
+-- Settings are replaced whole when they change, never edited, so a table
+-- of them is the key; weak, so old settings go.
+local refs: {Settings:{string:string}} = setmetatable({}, { __mode = "k" })
+
 function M.ref(s: Settings, role: string): string
+  local memo = refs[s]
+  if not memo then
+    memo = {}
+    refs[s] = memo
+  end
+  local r = memo[role]
+  if r then return r end
   local o = s.roles and s.roles[role]
-  if o is string then return o end
-  local fill = role:match("^(.-)_hover$") or role:match("^(.-)_press$")
-  local named = fill and s.roles and s.roles[fill]
-  if named is string then return named end
-  return "$kit" .. camel(role)
+  if o is string then
+    r = o
+  else
+    local fill = role:match("^(.-)_hover$") or role:match("^(.-)_press$")
+    local named = fill and s.roles and s.roles[fill]
+    r = named is string and named or ("$kit" .. camel(role))
+  end
+  memo[role] = r
+  return r
 end
 
 local function half_of(v: any, l: integer, d: integer): integer, integer
@@ -177,6 +194,15 @@ local function shades(h: {string:any}, fill: string, value: integer): integer, i
   return over(value, h.hover as integer), over(value, h.press as integer)
 end
 
+-- How opaque the area under a chart's line is.
+local AREA_ALPHA = M.AREA_ALPHA
+
+-- 0xRRGGBBAA with its alpha scaled by `a`.
+function M.faded(color: integer, a: number): integer
+  local alpha = color & 0xff
+  return (color & ~0xff) | math.floor(alpha * a + 0.5)
+end
+
 function M.tokens(s: Settings): Decl
   local skin = s.skin
   local colors: {string:{string:integer}} = {}
@@ -198,7 +224,11 @@ function M.tokens(s: Settings): Decl
     colors["kitGroup" .. i] = { light = skin.light.groups[i], dark = skin.dark.groups[i] }
   end
   for i = 1, #skin.light.series do
-    colors["kitSeries" .. i] = { light = skin.light.series[i], dark = skin.dark.series[i] }
+    local ls, ds = skin.light.series[i], skin.dark.series[i]
+    colors["kitSeries" .. i] = { light = ls, dark = ds }
+    -- The area under a series' line: its colour at AREA_ALPHA, so a chart
+    -- fills it with plain polygons and no opacity of their own.
+    colors["kitArea" .. i] = { light = M.faded(ls, AREA_ALPHA), dark = M.faded(ds, AREA_ALPHA) }
   end
   local shadow = s.shadows and skin.shadow or 0
   return {

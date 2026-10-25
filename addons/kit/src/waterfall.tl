@@ -311,7 +311,7 @@ function M.waterfall(c: Ctx, p: P): kui.Node
       local x = (m.at - v0) * scale
       lanes[#lanes + 1] = column {
         key = "m" .. i,
-        float = { anchor = "parent", dx = x, dy = 0 },
+        float = { anchor = "parent", clip = true, dx = x, dy = 0 },
         width = 1, height = #st.index.lanes * (LANE_H + 2), bg = ref(c, "accent"),
         tooltip = m.label,
       }

@@ -1399,3 +1399,81 @@ fn a_following_log_stays_at_its_end_the_frame_its_box_changes() {
         assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
     }
 }
+
+#[test]
+fn a_line_charts_area_is_polygons_under_its_line_and_no_path() {
+    // The area was one path through every point, rasterized again on every
+    // tick: 3–4 ms a frame for 300 points. Polygons of eight points each
+    // cost a quad apiece, and together they cover the plot's width.
+    let (mut core, w) = lua_app(
+        r#"
+        local cols = { t = {}, a = {} }
+        for i = 1, 300 do cols.t[i], cols.a[i] = i, 50 + 30 * math.sin(i / 9) end
+        local ch = channel(cols)
+        function view(env)
+          return column { width = "grow", height = "grow",
+            component("kit/line_chart", { data = ch, x = "t", area = true, height = 160,
+              series = { { field = "a", name = "A" } } }) }
+        end
+        "#,
+        4,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+    let nodes = core.nodes();
+    assert!(nodes.iter().all(|n| n.kind != kui_core::NodeKind::Path), "no path");
+    let polys: Vec<_> = nodes.iter().filter(|n| n.kind == kui_core::NodeKind::Polygon).collect();
+    assert!(polys.len() > 10, "the area is cut into polygons: {}", polys.len());
+    let line = nodes
+        .iter()
+        .filter(|n| n.kind == kui_core::NodeKind::Line)
+        .max_by(|a, b| a.rect.w.total_cmp(&b.rect.w))
+        .expect("the series' line")
+        .rect;
+    let left = polys.iter().map(|p| p.rect.x).fold(f32::MAX, f32::min);
+    let right = polys.iter().map(|p| p.rect.x + p.rect.w).fold(f32::MIN, f32::max);
+    assert!(
+        (left - line.x).abs() <= 2.0 && (right - (line.x + line.w)).abs() <= 2.0,
+        "the polygons span the line: {left}..{right} vs {line:?}"
+    );
+}
+
+#[test]
+fn a_charts_floats_are_cut_at_the_scroller_it_sits_in() {
+    // The x labels and the hover bands are floats against their parent,
+    // and a float escapes every clip unless it says `clip`: scrolled up,
+    // the labels drew over the app's top bar and the bands took the
+    // pointer there.
+    let mut r = LuaRig::new(
+        r#"
+        local cols = { t = {}, a = {} }
+        for i = 1, 60 do cols.t[i], cols.a[i] = i, 50 + 30 * math.sin(i / 9) end
+        local ch = channel(cols)
+        hovers, scrolled = 0, false
+        function on_event(ev) if ev.kind == "hover" then hovers = hovers + 1 end end
+        function view(env)
+          if not scrolled then env.set_scroll("list", 0, 150); scrolled = true end
+          return column { width = "grow", height = "grow",
+            row { key = "top", label = "top", width = "grow", height = 60 },
+            column { key = "list", width = "grow", height = 200, scroll_y = true,
+              column { width = "grow", height = 100 },
+              component("kit/line_chart", { data = ch, x = "t", height = 160, on_hover = { kind = "hover" },
+                series = { { field = "a", name = "A" } } }),
+              column { width = "grow", height = 300 } } }
+        end
+        "#,
+    );
+    r.frames(4);
+    let top = r.node(|n| n.label.as_deref() == Some("top")).unwrap().rect;
+    // Every x label above the scroller's top edge would be drawn on the bar.
+    use kui_core::{InputEvent, Vec2};
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(top.x + top.w / 2.0, top.y + top.h - 10.0)));
+    r.route(e);
+    r.frames(2);
+    let over_bar: i64 = r.app.globals().get("hovers").unwrap();
+    assert_eq!(over_bar, 0, "a band past the scroller's edge takes no pointer");
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(top.x + top.w / 2.0, top.y + top.h + 30.0)));
+    r.route(e);
+    r.frames(2);
+    let inside: i64 = r.app.globals().get("hovers").unwrap();
+    assert!(inside > 0, "inside the scroller the bands still hover");
+}

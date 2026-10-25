@@ -6,6 +6,7 @@
 
 local ctx = require("ctx")
 local data = require("data")
+local skin = require("skin")
 
 
 
@@ -129,37 +130,70 @@ end
 
 
 
+
+
+
+
+
 local function points(xs, ys, from, to, x0, x1,
    y0, y1, w, h)
    local out = {}
    if to < from then return out end
    local sx = w / math.max(x1 - x0, 1e-12)
    local sy = h / math.max(y1 - y0, 1e-12)
-   local bucket, lo, hi, lo_x, hi_x = -1, 0.0, 0.0, 0.0, 0.0
-   local function flush()
-      if bucket < 0 then return end
-      if lo_x <= hi_x then
-         out[#out + 1] = { lo_x, h - (lo - y0) * sy }
-         if hi ~= lo then out[#out + 1] = { hi_x, h - (hi - y0) * sy } end
-      else
-         out[#out + 1] = { hi_x, h - (hi - y0) * sy }
-         if hi ~= lo then out[#out + 1] = { lo_x, h - (lo - y0) * sy } end
-      end
-   end
-   for i = from, to do
-      local x = xs and (xs[i] - x0) * sx or (i - from) * sx
+
+   local base = h + y0 * sy
+   local step = 2 / sx
+   local n = 0
+   local i = from
+   while i <= to do
+
+      local x = xs[i]
+      local edge = x0 + ((x - x0) // step + 1) * step
       local y = ys[i] or 0
-      local b = math.floor(x / 2)
-      if b ~= bucket then
-         flush()
-         bucket, lo, hi, lo_x, hi_x = b, y, y, x, x
-      else
-         if y < lo then lo, lo_x = y, x end
-         if y > hi then hi, hi_x = y, x end
+      local lo, hi, lo_i, hi_i = y, y, i, i
+      i = i + 1
+      while i <= to do
+         local xi = xs[i]
+         if xi >= edge then break end
+         local yi = ys[i] or 0
+         if yi < lo then
+            lo, lo_i = yi, i
+         elseif yi > hi then
+            hi, hi_i = yi, i
+         end
+         i = i + 1
+      end
+
+      local a_i, a_y, b_i, b_y = lo_i, lo, hi_i, hi
+      if lo_i > hi_i then a_i, a_y, b_i, b_y = hi_i, hi, lo_i, lo end
+      n = n + 1
+      out[n] = { (xs[a_i] - x0) * sx, base - a_y * sy }
+      if b_i ~= a_i then
+         n = n + 1
+         out[n] = { (xs[b_i] - x0) * sx, base - b_y * sy }
       end
    end
-   flush()
    return out
+end
+
+
+
+
+
+
+local function area(plot, pts, h, bg, opacity)
+   local n = #pts
+   local i = 1
+   while i < n do
+      local j = math.min(i + 5, n)
+      local poly = {}
+      for k = i, j do poly[k - i + 1] = pts[k] end
+      poly[#poly + 1] = { pts[j][1], h }
+      poly[#poly + 1] = { pts[i][1], h }
+      plot[#plot + 1] = polygon({ points = poly, bg = bg, opacity = opacity })
+      i = j
+   end
 end
 
 local function range_of(ys, from, to)
@@ -185,7 +219,7 @@ function M.sparkline(c, p)
       local lo, hi = range_of(ys, 1, n)
       local idx = {}
       for i = 1, n do idx[i] = i end
-      box[1] = line({
+      box[#box + 1] = line({
          points = points(idx, ys, 1, n, 1, n, lo, hi, w, h - 2),
          width = 1.5,
          color = (p.color) or ref(c, "accent"),
@@ -234,7 +268,7 @@ on_layout = act(c, "line_chart.layout"), }
       local y = h - (v - lo) / (hi - lo) * h
       plot[#plot + 1] = line({ from = { 0, y }, to = { w, y }, width = 1, color = ref(c, "rule") })
       labels[#labels + 1] = column({
-         float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
+         float = { anchor = "parent", clip = true, dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
          ctx.data(c, with_unit(short(v), str(p.y_unit)), { size = 10, color = ref(c, "faint") }),
       })
       v = v + step
@@ -251,7 +285,7 @@ on_layout = act(c, "line_chart.layout"), }
       local left = math.max(0, math.min(w - lw, px - lw / 2))
       local align = px - lw / 2 < 0 and "start" or (px + lw / 2 > w and "end" or "center")
       axis[#axis + 1] = row({ key = "x" .. i, width = lw, main_align = align,
-float = { anchor = "parent", dx = left, dy = 0 },
+float = { anchor = "parent", clip = true, dx = left, dy = 0 },
 ctx.data(c, tick_label[i], { size = 10, color = ref(c, "faint"), max_lines = 1 }), })
    end
    local legend = { gap = 12, cross_align = "center" }
@@ -260,10 +294,18 @@ ctx.data(c, tick_label[i], { size = 10, color = ref(c, "faint"), max_lines = 1 }
       local color = (s.color) or ("$kitSeries" .. ((k - 1) % 6 + 1))
       local pts = points(xs, ys, from, to, x0, x1, lo, hi, w, h)
       if k == 1 and p.area == true and #pts >= 2 then
-         local d = { string.format("M%.1f %.1f", pts[1][1], h) }
-         for _, pt in ipairs(pts) do d[#d + 1] = string.format("L%.1f %.1f", pt[1], pt[2]) end
-         d[#d + 1] = string.format("L%.1f %.1fZ", pts[#pts][1], h)
-         plot[#plot + 1] = path({ d = table.concat(d, " "), bg = color, opacity = 0.14 })
+
+
+
+         local fill = "$kitArea" .. ((k - 1) % 6 + 1)
+         local opacity = nil
+         local own = s.color
+         if math.type(own) == "integer" then
+            fill = skin.faded(own, skin.AREA_ALPHA)
+         elseif own then
+            fill, opacity = color, skin.AREA_ALPHA
+         end
+         area(plot, pts, h, fill, opacity)
       end
       if #pts >= 2 then
          plot[#plot + 1] = line({ points = pts, width = 1.5, color = color })
@@ -276,7 +318,7 @@ ctx.muted(c, (s.name or s.field)), })
    if p.on_hover and to >= from then
       local bands = math.min(to - from + 1, 64)
       local bw = w / bands
-      local hover = { width = "grow", height = h, float = { anchor = "parent" } }
+      local hover = { width = "grow", height = h, float = { anchor = "parent", clip = true } }
       for b = 0, bands - 1 do
          local mid = from + math.floor((b + 0.5) / bands * (to - from + 1))
          hover[#hover + 1] = column({ key = "b" .. b, width = bw, height = h, hoverable = true,
@@ -381,7 +423,7 @@ lying(c, values, names, "bar_chart.select", unit, (p.label_width or 120)), })
    while v <= top_tick + step / 2 do
       local y = h - v / top_tick * plot_h
       scale[#scale + 1] = column({
-         float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
+         float = { anchor = "parent", clip = true, dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
          ctx.data(c, with_unit(short(v), unit), { size = 10, color = ref(c, "faint") }),
       })
       if v > 0 then

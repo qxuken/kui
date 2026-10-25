@@ -217,6 +217,93 @@ fn channel_table_frame_100k(bencher: divan::Bencher) {
     });
 }
 
+/// A line chart's columns: `n` samples of two series against `t`, from
+/// sample `from` on.
+fn chart_columns(from: usize, n: usize) -> Vec<(String, kui_core::channel::Column)> {
+    use kui_core::channel::Column;
+    let at = |i: usize| (from + i) as f64;
+    vec![
+        ("t".into(), Column::F64((0..n).map(|i| at(i) * 0.1).collect())),
+        (
+            "a".into(),
+            Column::F64((0..n).map(|i| 40.0 + 25.0 * (at(i) * 0.09).sin() + (hash(at(i) as u64) % 12) as f64).collect()),
+        ),
+        (
+            "b".into(),
+            Column::F64((0..n).map(|i| 55.0 + 10.0 * (at(i) * 0.021).sin() + (hash(at(i) as u64 + 7) % 4) as f64).collect()),
+        ),
+    ]
+}
+
+fn hash(i: u64) -> u64 {
+    let x = i.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    x ^ (x >> 29)
+}
+
+fn chart_props(ch: &kui_core::channel::Channel, window: Option<f64>) -> kui_core::Value {
+    use kui_core::Value;
+    let series = |f: &'static str| Value::map([("field", Value::str(f)), ("name", Value::str(f))]);
+    let mut props = vec![
+        ("data", ch.handle()),
+        ("x", Value::str("t")),
+        ("area", Value::Bool(true)),
+        ("height", Value::Float(360.0)),
+        ("series", Value::list([series("a"), series("b")])),
+    ];
+    if let Some(w) = window {
+        props.push(("window", Value::Float(w)));
+    }
+    Value::map(props)
+}
+
+fn chart_frame(core: &mut Core, exts: &mut Extensions, props: &kui_core::Value) {
+    let mut ui = core.frame_with(Size::new(1400.0, 500.0), 1.0, exts);
+    ui.component("kit/line_chart", props);
+    ui.finish();
+}
+
+/// A live line chart: 300 samples of two series, its area filled, a new
+/// revision every frame with the oldest sample gone and a new one on —
+/// what the Kit app's Charts page draws on every tick (budget 1 ms).
+#[divan::bench]
+fn line_chart_live_300(bencher: divan::Bencher) {
+    let mut ch = kui_core::channel::Channel::table(chart_columns(0, 300)).unwrap();
+    let mut exts = Extensions::new();
+    exts.push_as("kit", Box::new(scene::load_kit())).unwrap();
+    let mut core = Core::new();
+    for _ in 0..3 {
+        chart_frame(&mut core, &mut exts, &chart_props(&ch, None));
+    }
+    let w = core.take_warnings();
+    assert!(w.is_empty(), "the chart is clean: {w:?}");
+    let mut from = 0;
+    bencher.bench_local(|| {
+        from += 1;
+        ch = ch.publish(chart_columns(from, 300)).unwrap();
+        chart_frame(&mut core, &mut exts, &chart_props(&ch, None));
+    });
+}
+
+/// 100,000 samples of two series in view, the chart asked again every
+/// frame (its window moves by a sample): the cut to two points a pixel
+/// is the cost, and Kit's plan gave it 1 ms.
+#[divan::bench]
+fn line_chart_100k(bencher: divan::Bencher) {
+    let ch = kui_core::channel::Channel::table(chart_columns(0, 100_000)).unwrap();
+    let mut exts = Extensions::new();
+    exts.push_as("kit", Box::new(scene::load_kit())).unwrap();
+    let mut core = Core::new();
+    for _ in 0..3 {
+        chart_frame(&mut core, &mut exts, &chart_props(&ch, Some(10_000.0)));
+    }
+    let mut odd = false;
+    bencher.bench_local(|| {
+        odd = !odd;
+        let window = if odd { 9_999.9 } else { 10_000.0 };
+        chart_frame(&mut core, &mut exts, &chart_props(&ch, Some(window)));
+    });
+}
+
 fn main() {
     divan::main();
 }

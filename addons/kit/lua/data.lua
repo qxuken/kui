@@ -486,7 +486,7 @@ local function jump(c)
       key = "jump",
       role = "button",
       label = "Jump to the latest line",
-      float = { anchor = "parent", at = { "end", "end" }, self = { "end", "end" }, dx = -12, dy = -8 },
+      float = { anchor = "parent", clip = true, at = { "end", "end" }, self = { "end", "end" }, dx = -12, dy = -8 },
       height = 22,
       pad = { x = 8 },
       gap = 5,
