@@ -242,7 +242,7 @@ for lua-language-server, and a new runner beside the window's.
   keeps the buffer) answers, per bucket of near one size, the least,
   greatest, first and last value of a number column and the row each
   came from — a chart's pixel columns of a hundred thousand rows in
-  about 0.1 ms (1 ms for a million), where Kit's Lua copied the column
+  about 64 µs (0.5 ms for a million), where Kit's Lua copied the column
   and bucketed it at 1.5 ms a series. A range shorter than `buckets`
   gets a bucket a row, `to` past the end stops there, an empty range
   gets none, and NaN is skipped, a bucket of only NaN reading NaN. Lua
@@ -1154,9 +1154,10 @@ for lua-language-server, and a new runner beside the window's.
   scale 2, the 1 px bleed's outline two thirds of it. The cells now go
   to one list sorted by row at the end (kui-core's `raster.rs`, zeno's cell
   walk and sweep over storage of kui's own), and the masks are the same
-  to the byte: the zigzag rasterizes in about 6 ms, a 1,400-point area
-  in 0.7 ms where it took 2.5, a 300-point one in about 0.2 ms where it
-  took 0.35. `benches/paths.rs` measures it.
+  to the byte: the zigzag rasterizes in 5.5 ms, a 1,400-point area in
+  0.6 ms where it took 2.5, a 300-point one in 0.16 ms where it took
+  0.35. An outline of 64 commands or fewer still goes to zeno's mask,
+  which is quicker for so few edges. `benches/paths.rs` measures it.
 
   *What you can delete:* an area chart cut into polygon chunks, or
   thinned before it reached a `path`, to dodge the raster.
