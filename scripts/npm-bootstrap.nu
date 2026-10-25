@@ -101,7 +101,7 @@ def placeholder [pkg: string, dir: path] {
         version: $PLACEHOLDER
         description: "Placeholder: the real versions are published by kui's release workflow (ADR 0068). Install a 0.1.x version."
         license: "MIT"
-        repository: {type: "git", url: "https://github.com/qxuken/kui"}
+        repository: {type: "git", url: "git+https://github.com/qxuken/kui.git"}
         publishConfig: {access: "public"}
         files: ["README.md"]
     } | to json --indent 2 | save -f ($dir | path join "package.json")
