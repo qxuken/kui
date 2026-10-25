@@ -791,7 +791,11 @@ local record kit
     -- The action's accessible name when it says more than its label (Undo →
     -- Undo the delete).
     action_name: string
-    -- The message `dismiss` arrives as. Its close button.
+    -- How long it stays, in ms, counted again from when the pointer leaves
+    -- it; 5000 when left out, 0 to keep it until dismissed.
+    duration: number
+    -- The message `dismiss` arrives as. Its close button, or its `duration`
+    -- ran out.
     on_dismiss: any
     -- The message `action` arrives as. Its action was pressed.
     on_action: any

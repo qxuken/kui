@@ -662,6 +662,303 @@ fn lua_app(src: &str, frames: usize) -> (Core, Vec<String>) {
     (core, warnings)
 }
 
+/// A Lua app placing Kit, kept across frames: its own `on_event` hears
+/// what Kit proposes, so a test drives it with the pointer and reads the
+/// tree it draws.
+struct LuaRig {
+    core: Core,
+    exts: Extensions,
+    warnings: Vec<String>,
+    /// Events that reached no extension: the host's.
+    host: Vec<UiEvent>,
+}
+
+impl LuaRig {
+    fn new(src: &str) -> Self {
+        let mut exts = Extensions::new();
+        exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).unwrap()))
+            .unwrap();
+        exts.push_as(
+            "app",
+            Box::new(LuaExtension::from_source("app.lua", src).unwrap()),
+        )
+        .unwrap();
+        let mut core = Core::new();
+        core.set_inspect(true);
+        LuaRig { core, exts, warnings: Vec::new(), host: Vec::new() }
+    }
+
+    fn frames(&mut self, n: usize) {
+        for _ in 0..n {
+            let mut ui = self.core.frame_with(VIEW, 1.0, &mut self.exts);
+            ui.configure_root(NodeSpec::column().fill());
+            ui.finish();
+            let events = self.core.take_pending_events();
+            let host = &mut self.host;
+            self.exts.route(events, |ev| host.push(ev));
+            self.warnings
+                .extend(self.core.take_warnings().into_iter().map(|w| format!("{w:?}")));
+        }
+    }
+
+    fn route(&mut self, events: Vec<UiEvent>) {
+        let host = &mut self.host;
+        self.exts.route(events, |ev| host.push(ev));
+    }
+
+    fn click(&mut self, x: f32, y: f32) {
+        let events = click_at(&mut self.core, x, y);
+        self.route(events);
+    }
+
+    /// A click as a window delivers one: the pointer arrives, then the
+    /// press, then the release, a frame drawn between each.
+    fn slow_click(&mut self, x: f32, y: f32) {
+        use kui_core::{InputEvent, Vec2};
+        let e = self.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        self.route(e);
+        self.frames(1);
+        let e = self.core.handle_input(InputEvent::mouse_down(1));
+        self.route(e);
+        self.frames(1);
+        let e = self.core.handle_input(InputEvent::mouse_up());
+        self.route(e);
+        self.frames(1);
+    }
+
+    fn node(&mut self, pick: impl Fn(&kui_core::NodeInfo) -> bool) -> Option<kui_core::NodeInfo> {
+        self.core.nodes().into_iter().find(|n| pick(n))
+    }
+
+    fn text(&mut self, s: &str) -> Option<kui_core::Rect> {
+        self.node(|n| n.text.as_deref() == Some(s)).map(|n| n.rect)
+    }
+
+    fn named(&mut self, s: &str) -> kui_core::Rect {
+        self.core
+            .access_tree()
+            .nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some(s))
+            .unwrap_or_else(|| panic!("no node named {s}"))
+            .rect
+    }
+}
+
+#[test]
+fn a_select_opens_on_a_click_in_its_middle_and_closes_on_one_outside() {
+    // In a toolbar's trailing group, as the samples place their skin
+    // select: a click in the middle of the field opens it, a click on the
+    // window outside closes it and is not swallowed.
+    let mut r = LuaRig::new(
+        r#"
+        skin, clicks = "ledger", 0
+        function on_event(ev)
+          if ev.kind == "skin" then skin = ev.change.value end
+          if ev.kind == "hit" then clicks = clicks + 1 end
+        end
+        function view(env)
+          return column { width = "grow", height = "grow",
+            component("kit/toolbar", {}, {
+              text("Title"),
+              trailing = {
+                row { width = 120, component("kit/select", { label = "Skin", value = skin, on_change = { kind = "skin" },
+                  options = { { value = "ledger", label = "Ledger" }, { value = "neutral", label = "Neutral" } } }) },
+              },
+            }),
+            row { key = "elsewhere", label = "Elsewhere", role = "button", width = 200, height = 40, on_click = { kind = "hit" },
+              text("clicks " .. clicks) },
+          }
+        end
+        "#,
+    );
+    r.frames(2);
+    let field = r.named("Skin: Ledger");
+    r.slow_click(field.x + field.w / 2.0, field.y + field.h / 2.0);
+    r.frames(2);
+    assert!(r.text("Neutral").is_some(), "open after a click in the middle");
+    let away = r.named("Elsewhere");
+    r.slow_click(away.x + away.w / 2.0, away.y + away.h / 2.0);
+    r.frames(2);
+    assert!(r.text("Neutral").is_none(), "closed by the press outside");
+    // The press that closes a menu is the menu's, as a native one's is;
+    // the next reaches the window.
+    r.slow_click(away.x + away.w / 2.0, away.y + away.h / 2.0);
+    r.frames(1);
+    assert!(r.text("clicks 1").is_some(), "the window is not blocked once it closed");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+/// Sixty one-line log rows in a 360×300 box, `wrap` as given.
+fn log_app(wrap: bool) -> String {
+    format!(
+        r#"
+        local cols = {{ time = {{}}, level = {{}}, message = {{}} }}
+        for i = 1, 60 do
+          cols.time[i], cols.level[i], cols.message[i] = string.format("12:%02d", i), "info", "line " .. i
+        end
+        local ch = channel(cols)
+        function view(env)
+          return column {{ width = "grow", height = "grow",
+            column {{ key = "box", width = 360, height = 300,
+              component("kit/log", {{ rows = ch, grow = true, wrap = {wrap} }}) }} }}
+        end
+        "#
+    )
+}
+
+fn shows(r: &mut LuaRig, text: &str) -> bool {
+    let bx = r.node(|n| n.label.as_deref() == Some("box")).expect("the box").rect;
+    r.text(text).is_some_and(|t| t.y >= bx.y - 0.5 && t.y + t.h <= bx.y + bx.h + 0.5)
+}
+
+#[test]
+fn a_log_scrolled_up_stays_where_the_reader_put_it() {
+    // It followed its end on every frame it was asked, within a row of the
+    // end: the first notch up was pulled back down.
+    for wrap in [false, true] {
+        let mut r = LuaRig::new(&log_app(wrap));
+        r.frames(6);
+        assert!(shows(&mut r, "line 60"), "at the end first (wrap {wrap})");
+        let bx = r.node(|n| n.label.as_deref() == Some("box")).unwrap().rect;
+        let (x, y) = (bx.x + bx.w / 2.0, bx.y + bx.h / 2.0);
+        use kui_core::{InputEvent, Vec2};
+        let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+        r.route(e);
+        // A short move, as a glide's first frame is: it was within a row of the
+        // end, which the old test still counted as the end.
+        let e = r.core.handle_input(InputEvent::ScrollGesture { delta: Vec2::new(0.0, 10.0), begins: true });
+        r.route(e);
+        r.frames(4);
+        assert!(!shows(&mut r, "line 60"), "the reader's scroll up stands (wrap {wrap})");
+        assert!(r.text("LATEST").is_some(), "the jump back shows while it is away (wrap {wrap})");
+        // Back down to the end: following again, no jump.
+        let e = r.core.handle_input(InputEvent::ScrollGesture { delta: Vec2::new(0.0, -2000.0), begins: false });
+        r.route(e);
+        r.frames(4);
+        assert!(shows(&mut r, "line 60"), "back at the end (wrap {wrap})");
+        assert!(r.text("LATEST").is_none(), "following again (wrap {wrap})");
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
+#[test]
+fn a_text_area_takes_a_click_anywhere_in_its_well() {
+    // Only the line of text was the editor: a press in the empty well
+    // under it, where a note's body is, focused nothing.
+    let mut r = LuaRig::new(
+        r#"
+        function view(env)
+          return column { width = "grow",
+            column { key = "note", width = 400,
+              component("kit/text_area", { label = "Note", hide_label = true, value = "one line", rows = 8 }) } }
+        end
+        "#,
+    );
+    r.frames(2);
+    let well = r.node(|n| n.label.as_deref() == Some("note")).unwrap().rect;
+    r.slow_click(well.x + well.w / 2.0, well.y + well.h - 12.0);
+    r.frames(1);
+    let focused = r.core.access_tree().nodes.iter().any(|n| n.name.as_deref() == Some("Note") && n.focused);
+    assert!(focused, "the editor took the press in its well");
+}
+
+#[test]
+fn a_switch_moves_its_knob_and_keeps_its_colour() {
+    // The knob was the on_accent colour on, muted off, and jumped (a 0.12
+    // ms transition): on and off read as two marks, not one that moved.
+    let src = |on: bool| {
+        format!(
+            r#"
+            function view(env)
+              return column {{ width = "grow",
+                component("kit/switch", {{ label = "Pinned", on = {on} }}) }}
+            end
+            "#
+        )
+    };
+    let knob = |on: bool| {
+        let mut r = LuaRig::new(&src(on));
+        r.frames(2);
+        let k = r.node(|n| n.label.as_deref() == Some("knob")).expect("the knob");
+        (k.rect.x, k.bg)
+    };
+    let (off_x, off_bg) = knob(false);
+    let (on_x, on_bg) = knob(true);
+    assert!(on_x > off_x + 10.0, "on is to the right: {off_x} → {on_x}");
+    assert_eq!(off_bg, on_bg, "the same knob in both states");
+}
+
+#[test]
+fn a_toast_goes_by_itself_after_its_duration() {
+    let mut r = LuaRig::new(
+        r#"
+        shown = true
+        function on_event(ev) if ev.kind == "off" then shown = false end end
+        function view(env)
+          return column { width = "grow", height = "grow",
+            shown and component("kit/toast", { message = "Saved.", duration = 1000, on_dismiss = { kind = "off" } }) or nil }
+        end
+        "#,
+    );
+    r.core.set_time(10.0);
+    r.frames(2);
+    assert!(r.text("Saved.").is_some(), "shown");
+    r.core.set_time(10.5);
+    r.frames(2);
+    assert!(r.text("Saved.").is_some(), "still shown halfway");
+    r.core.set_time(11.2);
+    r.frames(3);
+    assert!(r.text("Saved.").is_none(), "gone after its second");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn every_button_shades_under_the_pointer_and_the_press_and_stays_opaque() {
+    // Primary and danger hovered to their own colour (no hover at all),
+    // and every press was a translucent wash: under the primary button it
+    // showed Ledger's hard shadow through the fill, so the shadow seemed
+    // to jump into the button.
+    for skin in ["ledger", "neutral", "phosphor"] {
+        for variant in ["default", "primary", "danger", "success"] {
+            let mut r = LuaRig::new(&format!(
+                r#"
+                function view(env)
+                  return column {{ width = "grow", pad = 20,
+                    component("kit/settings", {{ skin = "{skin}" }}),
+                    component("kit/button", {{ label = "Go", variant = "{variant}" }}) }}
+                end
+                "#
+            ));
+            r.frames(2);
+            let rest = r.named("Go");
+            let (x, y) = (rest.x + rest.w / 2.0, rest.y + rest.h / 2.0);
+            let bg = |r: &mut LuaRig| {
+                r.core
+                    .nodes()
+                    .into_iter()
+                    .find(|n| n.rect.x == rest.x && n.rect.y == rest.y && n.rect.w == rest.w)
+                    .map(|n| n.bg)
+                    .expect("the button")
+            };
+            let rest_bg = bg(&mut r);
+            use kui_core::{InputEvent, Vec2};
+            let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+            r.route(e);
+            r.frames(1);
+            let hover_bg = bg(&mut r);
+            let e = r.core.handle_input(InputEvent::mouse_down(1));
+            r.route(e);
+            r.frames(1);
+            let press_bg = bg(&mut r);
+            assert_ne!(rest_bg, hover_bg, "{skin} {variant}: a hover shows");
+            assert_ne!(hover_bg, press_bg, "{skin} {variant}: a press shows");
+            assert_eq!(press_bg.a, 1.0, "{skin} {variant}: the press is opaque: {press_bg:?}");
+            assert_eq!(hover_bg.a, 1.0, "{skin} {variant}: the hover is opaque: {hover_bg:?}");
+        }
+    }
+}
+
 #[test]
 fn a_dialog_shows_its_body() {
     // The body was a grow, scrolling column in a box with no height of its

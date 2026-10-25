@@ -30,8 +30,12 @@ function M.panel(c, p)
    local grow = p.grow == true
    local t = region(c, { width = "grow", height = grow and "grow" or nil, label = str(p.title), role = "group" })
    if str(p.title) then
+
+
+
+      local skin = require("skin")
       local head = {
-         width = "grow", height = "$kitCtl", pad = { x = 10 }, gap = 8, cross_align = "center",
+         width = "grow", height = skin.ctl_h(c.s) + 8, pad = { x = 10 }, gap = 8, cross_align = "center",
          ctx.caption(c, p.title, { size = "$kitSizeLabel", bold = true }),
       }
       if str(p.subtitle) then head[#head + 1] = ctx.muted(c, p.subtitle, { max_lines = 1, ellipsis = true }) end

@@ -920,7 +920,9 @@ export interface ToastProps {
   action?: string;
   /** The action's accessible name when it says more than its label (Undo → Undo the delete). */
   actionName?: string;
-  /** The message dismiss arrives as: yours, with `dismiss: ToastDismiss` in it. Its close button. */
+  /** How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed. */
+  duration?: number;
+  /** The message dismiss arrives as: yours, with `dismiss: ToastDismiss` in it. Its close button, or its `duration` ran out. */
   onDismiss?: unknown;
   /** The message action arrives as: yours, with `action: ToastAction` in it. Its action was pressed. */
   onAction?: unknown;

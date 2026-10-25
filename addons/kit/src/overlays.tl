@@ -137,10 +137,38 @@ end
 
 local TONE_ICON: {string:string} = { ok = "check", warn = "alert", danger = "alert", accent = "info", neutral = "info" }
 
+local record Shown
+  message: string
+  since: number
+end
+
+-- How long a toast stays when the host says nothing, in ms.
+local TOAST_MS = 5000
+
 function M.toast(c: Ctx, p: P): kui.Node
   local tone = str(p.tone) or "neutral"
   local message = str(p.message) or ""
   local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or (tone == "accent" and "accent" or "muted")
+  -- It goes by itself after `duration` ms (0 keeps it), counted from when
+  -- its message first showed and again from when the pointer leaves it:
+  -- a frame asked for at the deadline, and in that frame a node whose
+  -- first layout raises `dismiss` as its close button would.
+  local env = c.env
+  local now = env.now or 0
+  local st = ctx.state(c, function(): Shown return {} end)
+  if st.message ~= message or not st.since then st.message, st.since = message, now end
+  local ok, over = pcall(env.is_hovered, "toast")
+  if ok and over then st.since = now end
+  local ms = (p.duration or TOAST_MS) as number
+  local expire: kui.Node = nil
+  if ms > 0 then
+    local due = st.since + ms / 1000
+    if now >= due then
+      expire = column { key = "expire", width = 0, height = 0, on_layout = act(c, "toast.expire") }
+    else
+      env.request_frame_at(due)
+    end
+  end
   return row(surface(c, {
     key = "toast",
     -- Its own bottom-right corner on the window's, 16 px in: with `self`
@@ -160,8 +188,8 @@ function M.toast(c: Ctx, p: P): kui.Node
     -- One action on what just happened (Undo), quiet beside the message.
     str(p.action) and row {
       key = "action", role = "button", label = str(p.action_name) or str(p.action), height = "$kitCtl", min_width = "fit",
-      pad = { x = 8 }, cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "hover"),
-      pressed_bg = ref(c, "press"), cursor = "pointer", on_click = act(c, "toast.action"),
+      pad = { x = 8 }, cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "raised_hover"),
+      pressed_bg = ref(c, "raised_press"), cursor = "pointer", on_click = act(c, "toast.action"),
       ctx.caption(c, str(p.action), { color = ref(c, "fg") }),
     } or nil,
     row {
@@ -170,11 +198,13 @@ function M.toast(c: Ctx, p: P): kui.Node
       on_click = act(c, "toast.dismiss"),
       icons.node(c, "x", 12, "muted"),
     },
+    expire,
   }))
 end
 
 function M.event(m: P, kit: string): any
-  if kit == "dialog.dismiss" or kit == "popover.dismiss" or kit == "menu.dismiss" or kit == "toast.dismiss" then
+  if kit == "dialog.dismiss" or kit == "popover.dismiss" or kit == "menu.dismiss" or kit == "toast.dismiss"
+    or kit == "toast.expire" then
     return emit("on_dismiss", {})
   elseif kit == "toast.action" then
     return emit("on_action", {})

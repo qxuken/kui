@@ -138,10 +138,38 @@ end
 
 local TONE_ICON = { ok = "check", warn = "alert", danger = "alert", accent = "info", neutral = "info" }
 
+
+
+
+
+
+
+local TOAST_MS = 5000
+
 function M.toast(c, p)
    local tone = str(p.tone) or "neutral"
    local message = str(p.message) or ""
    local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or (tone == "accent" and "accent" or "muted")
+
+
+
+
+   local env = c.env
+   local now = env.now or 0
+   local st = ctx.state(c, function() return {} end)
+   if st.message ~= message or not st.since then st.message, st.since = message, now end
+   local ok, over = pcall(env.is_hovered, "toast")
+   if ok and over then st.since = now end
+   local ms = (p.duration or TOAST_MS)
+   local expire = nil
+   if ms > 0 then
+      local due = st.since + ms / 1000
+      if now >= due then
+         expire = column({ key = "expire", width = 0, height = 0, on_layout = act(c, "toast.expire") })
+      else
+         env.request_frame_at(due)
+      end
+   end
    return row(surface(c, {
       key = "toast",
 
@@ -161,8 +189,8 @@ function M.toast(c, p)
 
       str(p.action) and row({
          key = "action", role = "button", label = str(p.action_name) or str(p.action), height = "$kitCtl", min_width = "fit",
-         pad = { x = 8 }, cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "hover"),
-         pressed_bg = ref(c, "press"), cursor = "pointer", on_click = act(c, "toast.action"),
+         pad = { x = 8 }, cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "raised_hover"),
+         pressed_bg = ref(c, "raised_press"), cursor = "pointer", on_click = act(c, "toast.action"),
          ctx.caption(c, str(p.action), { color = ref(c, "fg") }),
       }) or nil,
       row({
@@ -171,11 +199,13 @@ function M.toast(c, p)
          on_click = act(c, "toast.dismiss"),
          icons.node(c, "x", 12, "muted"),
       }),
+      expire,
    }))
 end
 
 function M.event(m, kit)
-   if kit == "dialog.dismiss" or kit == "popover.dismiss" or kit == "menu.dismiss" or kit == "toast.dismiss" then
+   if kit == "dialog.dismiss" or kit == "popover.dismiss" or kit == "menu.dismiss" or kit == "toast.dismiss" or
+      kit == "toast.expire" then
       return emit("on_dismiss", {})
    elseif kit == "toast.action" then
       return emit("on_action", {})

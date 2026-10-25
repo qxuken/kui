@@ -507,6 +507,7 @@ function make(namespace) {
       if (props.tone !== undefined) wire.tone = props.tone;
       if (props.action !== undefined) wire.action = props.action;
       if (props.actionName !== undefined) wire.action_name = props.actionName;
+      if (props.duration !== undefined) wire.duration = props.duration;
       if (props.onDismiss !== undefined) wire.on_dismiss = props.onDismiss;
       if (props.onAction !== undefined) wire.on_action = props.onAction;
       const groups = undefined;

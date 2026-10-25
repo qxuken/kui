@@ -30,6 +30,9 @@ local record Half
   -- The one loud colour and what reads on it.
   accent: integer
   on_accent: integer
+  -- What reads on `danger` as a fill (a destructive button's label): the
+  -- page's colour where danger is dark, the ink where it is light.
+  on_danger: integer
   -- The keyboard focus ring.
   focus: integer
   ok: integer
@@ -97,8 +100,19 @@ end
 local ROLES: {string} = {
   "bg", "side", "panel", "raised", "sunken", "hover", "press", "rule", "ink",
   "fg", "muted", "faint", "sel", "sel_fg", "accent", "on_accent", "focus",
-  "ok", "warn", "danger", "scrim",
+  "ok", "warn", "danger", "on_danger", "scrim",
 }
+
+-- The fills a pointer changes: each gets an opaque hover and press shade
+-- (`accent_hover`, `panel_press`), worked out from the skin's colours. A
+-- translucent wash over a fill let what is under it show through: under
+-- the primary button that was Ledger's hard shadow, so a press looked as
+-- if the shadow had jumped into the button.
+local SHADED: {string} = { "accent", "danger", "panel", "sunken", "raised" }
+
+-- The colour a fill moves toward on hover and press: what reads on it,
+-- for the loud fills; the washes, laid over it, for the quiet ones.
+local TOWARD: {string:string} = { accent = "on_accent", danger = "on_danger" }
 
 local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES }
 
@@ -117,10 +131,14 @@ function M.ctl_h(s: Settings): number
 end
 
 -- The name a role paints under: the brand's token where it named one,
--- `"$kitSelFg"` otherwise.
+-- `"$kitSelFg"` otherwise. A shade of a fill the brand named a token for
+-- is that token: Kit cannot shade a colour it does not know.
 function M.ref(s: Settings, role: string): string
   local o = s.roles and s.roles[role]
   if o is string then return o end
+  local fill = role:match("^(.-)_hover$") or role:match("^(.-)_press$")
+  local named = fill and s.roles and s.roles[fill]
+  if named is string then return named end
   return "$kit" .. camel(role)
 end
 
@@ -128,6 +146,35 @@ local function half_of(v: any, l: integer, d: integer): integer, integer
   if v is integer then return v, v end
   if v is {string:integer} then return v.light or l, v.dark or d end
   return l, d
+end
+
+-- 0xRRGGBBAA's channels, and back.
+local function channels(c: integer): integer, integer, integer, integer
+  return (c >> 24) & 255, (c >> 16) & 255, (c >> 8) & 255, c & 255
+end
+
+-- `a` moved `t` of the way to `b`, opaque.
+local function mix(a: integer, b: integer, t: number): integer
+  local ar, ag, ab = channels(a)
+  local br, bg, bb = channels(b)
+  local function m(x: integer, y: integer): integer return math.floor(x + (y - x) * t + 0.5) end
+  return (m(ar, br) << 24) | (m(ag, bg) << 16) | (m(ab, bb) << 8) | 0xff
+end
+
+-- A wash (with its own alpha) laid over an opaque fill.
+local function over(fill: integer, wash: integer): integer
+  local _, _, _, a = channels(wash)
+  return mix(fill, wash | 0xff, a / 255)
+end
+
+-- A fill's hover and press shades in one half of a skin.
+local function shades(h: {string:any}, fill: string, value: integer): integer, integer
+  local toward = TOWARD[fill]
+  if toward then
+    local t = h[toward] as integer
+    return mix(value, t, 0.16), mix(value, t, 0.30)
+  end
+  return over(value, h.hover as integer), over(value, h.press as integer)
 end
 
 function M.tokens(s: Settings): Decl
@@ -138,6 +185,14 @@ function M.tokens(s: Settings): Decl
   for _, role in ipairs(ROLES) do
     local lv, dv = half_of(s.roles and s.roles[role], l[role] as integer, d[role] as integer)
     colors["kit" .. camel(role)] = { light = lv, dark = dv }
+  end
+  for _, fill in ipairs(SHADED) do
+    -- From the colours in force, the brand's integers included.
+    local base = colors["kit" .. camel(fill)]
+    local lh, lp = shades(l, fill, base.light)
+    local dh, dp = shades(d, fill, base.dark)
+    colors["kit" .. camel(fill) .. "Hover"] = { light = lh, dark = dh }
+    colors["kit" .. camel(fill) .. "Press"] = { light = lp, dark = dp }
   end
   for i = 1, #skin.light.groups do
     colors["kitGroup" .. i] = { light = skin.light.groups[i], dark = skin.dark.groups[i] }

@@ -167,7 +167,9 @@ local function setting(m, r, errors, warnings)
   local dirty = changed(m, r)
   return row { key = "row." .. r[3], width = "grow", gap = 24, pad = { y = 10 },
     column { width = 250, gap = 3,
-      row { gap = 6, cross_align = "center",
+      -- As tall as the badge with or without it: a "changed" that appears
+      -- does not push the help line and the rows under it down.
+      row { height = 18, gap = 6, cross_align = "center",
         text(r[4], { size = "$kitSize", family = "$kitUi", bold = true, color = "$kitFg" }),
         dirty and row { tooltip = "Changed, not saved yet", role = "image", label = "changed",
           kit.badge({ label = "changed", tone = "accent" }) } or nil,

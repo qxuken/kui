@@ -29,8 +29,12 @@ function M.panel(c: Ctx, p: P): kui.Node
   local grow = p.grow == true
   local t = region(c, { width = "grow", height = grow and "grow" or nil, label = str(p.title), role = "group" })
   if str(p.title) then
+    -- A control's height and 4 px either side: a search or a segmented
+    -- control in the actions sat flush against the frame and the rule
+    -- under the header, the same height as the header itself.
+    local skin = require("skin")
     local head: kui.Props = {
-      width = "grow", height = "$kitCtl", pad = { x = 10 }, gap = 8, cross_align = "center",
+      width = "grow", height = skin.ctl_h(c.s) + 8, pad = { x = 10 }, gap = 8, cross_align = "center",
       ctx.caption(c, p.title as string, { size = "$kitSizeLabel", bold = true }),
     }
     if str(p.subtitle) then head[#head + 1] = ctx.muted(c, p.subtitle as string, { max_lines = 1, ellipsis = true }) end

@@ -21,21 +21,36 @@ local function str(v: any): string
   return v is string and v or nil
 end
 
--- The look a button's variant paints with: its fill, hover fill, label
--- colour and whether it carries a border.
-local function look(c: Ctx, variant: string): string, string, string, boolean
+local record Look
+  -- The fill at rest, under the pointer and held; nil at rest for none.
+  bg: string
+  hover: string
+  press: string
+  -- The role the label, the icon and the shortcut are drawn in: one
+  -- colour for all three, so an icon is never dark beside a white label.
+  ink: string
+  border: boolean
+end
+
+-- The look a button's variant paints with. Every variant has a visible
+-- hover and press, and every shade is opaque (`accent_hover`, worked out
+-- by the skin): a translucent wash over a fill showed what was under it —
+-- under the primary button, Ledger's hard shadow.
+local function look(c: Ctx, variant: string): Look
   local bordered = c.s.skin.ctl_border
+  local quiet = bordered and "panel" or "sunken"
   if variant == "primary" then
-    return ref(c, "accent"), ref(c, "accent"), ref(c, "on_accent"), bordered
+    return { bg = ref(c, "accent"), hover = ref(c, "accent_hover"), press = ref(c, "accent_press"), ink = "on_accent", border = bordered }
   elseif variant == "danger" then
-    return ref(c, "danger"), ref(c, "danger"), ref(c, "on_accent"), bordered
+    return { bg = ref(c, "danger"), hover = ref(c, "danger_hover"), press = ref(c, "danger_press"), ink = "on_danger", border = bordered }
   elseif variant == "ghost" then
-    return nil, ref(c, "hover"), ref(c, "fg"), false
+    -- No fill of its own: the washes over whatever it sits on.
+    return { bg = nil, hover = ref(c, "hover"), press = ref(c, "press"), ink = "fg", border = false }
   elseif variant == "success" then
     -- Confirms rather than invites: the ok colour on the quiet fill.
-    return bordered and ref(c, "panel") or ref(c, "sunken"), ref(c, "hover"), ref(c, "ok"), bordered
+    return { bg = ref(c, quiet), hover = ref(c, quiet .. "_hover"), press = ref(c, quiet .. "_press"), ink = "ok", border = bordered }
   end
-  return bordered and ref(c, "panel") or ref(c, "sunken"), ref(c, "hover"), ref(c, "fg"), bordered
+  return { bg = ref(c, quiet), hover = ref(c, quiet .. "_hover"), press = ref(c, quiet .. "_press"), ink = "fg", border = bordered }
 end
 
 -- A pressable box at the control height: what button, icon_button and a
@@ -44,21 +59,23 @@ local function pressable(c: Ctx, variant: string, t: kui.Props): kui.Props
   -- Unavailable is quiet whatever the variant: a faded accent and its
   -- shadow read as a muddy call to action, not as "not now".
   if t.disabled == true and variant ~= "ghost" then variant = "default" end
-  local bg, hover, _, border = look(c, variant)
+  local lk = look(c, variant)
   t.role = t.role or "button"
   t.height = t.height or "$kitCtl"
   -- Never squeezed below its label: a crowded row gives elsewhere.
   t.min_width = t.min_width or "fit"
   t.cross_align = "center"
   t.radius = "$kitRadius"
-  t.bg = bg
-  t.hover_bg = hover
-  t.pressed_bg = ref(c, "press")
+  t.bg = lk.bg
+  t.hover_bg = lk.hover
+  t.pressed_bg = lk.press
   t.cursor = "pointer"
-  if border then
+  if lk.border then
     local edge = (variant == "danger" or variant == "success") and (variant == "danger" and "danger" or "ok") or "ink"
     t.border = { w = "$kitRuleW", color = ref(c, edge) }
   end
+  -- The shadow stays where it is under hover and press: the fill shades,
+  -- opaque, and nothing of it moves.
   if variant == "primary" then ctx.shadow(c, t, true) end
   return t
 end
@@ -74,7 +91,7 @@ end
 function M.button(c: Ctx, p: P): kui.Node
   local variant = str(p.variant) or "default"
   if p.disabled == true and variant ~= "ghost" then variant = "default" end
-  local _, _, ink, _ = look(c, variant)
+  local ink_role = look(c, variant).ink
   local label = str(p.label) or ""
   local t = pressable(c, variant, {
     label = str(p.name) or label,
@@ -84,13 +101,18 @@ function M.button(c: Ctx, p: P): kui.Node
     gap = 6,
     on_click = act(c, "button.press"),
   })
-  if p.pressed == true then ink = pressed_look(c, t) end
+  if p.pressed == true then
+    pressed_look(c, t)
+    ink_role = "sel_fg"
+  end
   if p.disabled == true then t.opacity = "$disabledOpacity" end
-  local icon_role = p.pressed == true and "sel_fg" or (variant == "primary" and "on_accent" or (variant == "success" and "ok" or "fg"))
-  if str(p.icon) then t[#t + 1] = icons.node(c, p.icon as string, 13, icon_role) end
-  t[#t + 1] = ctx.caption(c, label, { color = ink, bold = variant == "primary" or c.s.skin.label_bold })
+  -- The icon takes the label's colour, whatever the variant.
+  if str(p.icon) then t[#t + 1] = icons.node(c, p.icon as string, 13, ink_role) end
+  t[#t + 1] = ctx.caption(c, label, { color = ref(c, ink_role), bold = variant == "primary" or c.s.skin.label_bold })
   if str(p.shortcut) then
-    t[#t + 1] = ctx.data(c, p.shortcut as string, { size = "$kitSizeLabel", color = ref(c, variant == "primary" and "on_accent" or "faint") })
+    -- Faint beside a quiet label; on a filled one, the label's own ink.
+    local quiet = ink_role == "fg" or ink_role == "ok"
+    t[#t + 1] = ctx.data(c, p.shortcut as string, { size = "$kitSizeLabel", color = ref(c, quiet and "faint" or ink_role) })
   end
   return row(t)
 end
@@ -107,7 +129,7 @@ function M.icon_button(c: Ctx, p: P): kui.Node
     main_align = "center",
     on_click = act(c, "icon_button.press"),
   })
-  local role = variant == "primary" and "on_accent" or (variant == "success" and "ok" or "fg")
+  local role = look(c, variant).ink
   if p.pressed == true then
     pressed_look(c, t)
     role = "sel_fg"
@@ -197,6 +219,9 @@ function M.text_field(c: Ctx, p: P): kui.Node
       size = "$kitSize",
       family = p.mono == true and "$kitData" or "$kitUi",
       color = ref(c, "fg"),
+      -- The whole height of the field is the editor's, so a press above
+      -- or below the line still puts the caret in it.
+      height = "grow",
       disabled = p.disabled == true,
       -- The error is read after the name, as what to fix.
       description = err ~= "" and err or nil,
@@ -226,13 +251,16 @@ function M.text_area(c: Ctx, p: P): kui.Node
   local pad = 8
   local boxed = c.s.skin.field_box
   local edge = err and "danger" or (focused and (boxed and "focus" or "ink") or (boxed and "rule" or "faint"))
+  local grow = p.grow == true
+  -- The editor is the whole well, its padding inside it: a press anywhere
+  -- in the box puts the caret there (in the padding or under the last
+  -- line, at the nearest place), where only the lines of text took one.
   local box: kui.Props = {
     key = "box",
     width = "grow",
-    min_height = rows * line_h + 2 * pad,
+    height = grow and "grow" or nil,
     max_height = max_rows and (max_rows * line_h + 2 * pad) or nil,
     scroll_y = max_rows ~= nil,
-    pad = pad,
     bg = ref(c, "sunken"),
     radius = "$kitRadius",
     border = { w = ((focused or err ~= nil) and not boxed) and "$kitRuleW" or "$kitHair", color = ref(c, edge) },
@@ -240,10 +268,14 @@ function M.text_area(c: Ctx, p: P): kui.Node
       key = "edit",
       value = value,
       multiline = true,
+      width = "grow",
+      height = grow and "grow" or nil,
+      min_height = rows * line_h + 2 * pad,
+      pad = pad,
+      cursor = "text",
       placeholder = str(p.placeholder),
       label = str(p.label) or str(p.placeholder),
       description = err ~= "" and err or nil,
-      width = "grow",
       size = "$kitSize",
       line_height = line_h,
       family = p.mono == true and "$kitData" or "$kitUi",
@@ -253,8 +285,6 @@ function M.text_area(c: Ctx, p: P): kui.Node
       on_change = act(c, "text_area.change"),
     },
   }
-  local grow = p.grow == true
-  if grow then box.height = "grow" end
   local field = column { width = (p.width as number) or "grow", height = grow and "grow" or nil, gap = 0,
     column(box), error_line(c, err) }
   if p.hide_label == true or not str(p.label) then return field end
@@ -414,22 +444,40 @@ function M.checkbox(c: Ctx, p: P): kui.Node
   }
 end
 
+-- How long a switch's knob takes to cross, in ms: `transition` is ms (it
+-- was 0.12, so the knob jumped and its colour swapped in one frame).
+local SLIDE = 140
+
 function M.switch(c: Ctx, p: P): kui.Node
   local on = p.on == true
+  local bordered = c.s.skin.ctl_border
+  local round = c.s.skin.radius > 0
+  -- The knob is one thing in both states — the raised colour, outlined
+  -- in the ink where controls are outlined — and only its place moves;
+  -- the track fills with the accent behind it. A knob that changed colour
+  -- with the state read as two different marks, not one that moved.
+  -- Round skins: a raised disc, as a platform switch has. Square ones: a
+  -- solid block of the ink (Ledger's printed mark), or, where the ink is
+  -- the accent itself (Phosphor), the page colour edged in the ink, so it
+  -- shows on the lit track as on the dark one. A hollow square read as a
+  -- checkbox sitting in the track.
+  local sk = c.s.skin
+  local ink_is_accent = sk.dark.ink == sk.dark.accent
+  local knob = column {
+    key = "knob", width = 14, height = 14, radius = round and 7 or 0, transition = SLIDE,
+    bg = ref(c, round and "raised" or (ink_is_accent and "bg" or "ink")),
+    border = (not round and ink_is_accent) and { w = "$kitHair", color = ref(c, "ink") } or nil,
+  }
   local track: kui.Props = {
-    width = 30, height = 16, radius = 8, pad = 2,
+    width = 32, height = 18, pad = 2,
+    radius = round and 9 or 0,
     main_align = on and "end" or "start",
     cross_align = "center",
     bg = ref(c, on and "accent" or "sunken"),
-    border = { w = "$kitHair", color = ref(c, on and "accent" or "ink") },
-    -- The knob slides: the same node, keyed, moving with a transition.
-    column { key = "knob", width = 12, height = 12, radius = 6, transition = 0.12,
-      bg = ref(c, on and "on_accent" or "muted") },
+    border = { w = "$kitHair", color = ref(c, on and "accent" or (bordered and "ink" or "rule")) },
+    transition = SLIDE,
+    knob,
   }
-  if c.s.skin.radius == 0 then
-    track.radius = 0
-    track[1] = column { key = "knob", width = 12, height = 12, transition = 0.12, bg = ref(c, on and "on_accent" or "muted") }
-  end
   return row {
     role = "switch",
     label = str(p.label),

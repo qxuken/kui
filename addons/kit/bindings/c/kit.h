@@ -2235,8 +2235,14 @@ typedef struct KitToast {
      */
     KuiStr action_name;
     /*
+     * How long it stays, in ms, counted again from when the pointer leaves it;
+     * 5000 when left out, 0 to keep it until dismissed.
+     */
+    double duration;
+    bool duration_set;
+    /*
      * The message `dismiss` arrives as, consumed; NULL for none. Its close
-     * button.
+     * button, or its `duration` ran out.
      */
     KuiValue *on_dismiss;
     /*
@@ -2256,6 +2262,7 @@ static inline KuiValue *kit_toast_props(const KitToast *p) {
     if (p->tone != 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(kit_tone_name(p->tone)));
     if (p->action.len > 0) kui_value_map_set(m, KUI_STR("action"), kui_value_str(p->action));
     if (p->action_name.len > 0) kui_value_map_set(m, KUI_STR("action_name"), kui_value_str(p->action_name));
+    if (p->duration_set) kui_value_map_set(m, KUI_STR("duration"), kui_value_float(p->duration));
     if (p->on_dismiss != NULL) kui_value_map_set(m, KUI_STR("on_dismiss"), p->on_dismiss);
     if (p->on_action != NULL) kui_value_map_set(m, KUI_STR("on_action"), p->on_action);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));

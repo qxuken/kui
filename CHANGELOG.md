@@ -299,6 +299,25 @@ for lua-language-server, and a new runner beside the window's.
   (`number`, `ago`, `clock`), `x_unit` and `y_unit`; `bar_chart`'s value
   axis, value labels, wrapping names, `unit` and `horizontal`; `slider`'s
   `value_label`, `radio_group`'s `hide_label`, a toast's `action`.
+  From running the samples: every button variant shades under the
+  pointer and the press in every skin, and the shades are opaque — the
+  skin works out `accent_hover`, `panel_press` and the rest — where a
+  primary or danger button had no hover and every press was a translucent
+  wash that showed Ledger's hard shadow through the fill, so the shadow
+  seemed to jump. A danger button's label and every button's icon take
+  the colour that reads on its fill (a new `on_danger` role): Ledger's
+  light danger button had ink on red, and Neutral's icons stayed dark
+  beside a white label. A log stops following the moment it is scrolled
+  up, starts again at its end, and shows a Latest button while it is
+  away (it pulled a scroll that had only begun back down). A switch's
+  knob is one mark that slides, in 140 ms (its transition was 0.12 ms),
+  over a track that fills behind it. A toast goes by itself after
+  `duration` (5 s; 0 keeps it), counted again from when the pointer
+  leaves it. A `text_area` is its editor from edge to edge, so a press
+  anywhere in the well puts the caret there, and a text field's whole
+  height is its editor. Ledger's table header takes a hairline, not a
+  second 2 px frame inside its panel, and a panel's header leaves 4 px
+  around the controls in it.
 
 - **Contribution slots** (backlog C86, [ADR
   0067](docs/adr/0067-slots-fold-into-components.md)'s second step): a
@@ -851,6 +870,13 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- A component instance placed by an extension's root — every instance of
+  a `kui run` app, whose view is its extension's root — hears its own
+  events (ADR 0067). `Extensions::finish` pruned the instances that heard
+  an event before it drew the roots, when their records were still last
+  frame's, so the event was forgotten and the instance replayed what it
+  had shown: a Kit select in a runner app opened on some clicks and not
+  others, and a press outside never closed its menu.
 - `kui run --headless` ends with 1 when a task throws, where it printed
   the error and ran on: a headless test whose check threw waited for a
   `kui.exit` the throw had skipped, and hung (from the Kit samples).

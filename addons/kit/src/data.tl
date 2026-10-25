@@ -212,7 +212,10 @@ function M.table(c: Ctx, p: P): kui.Node
     height = p.grow == true and "grow" or nil,
     bg = ref(c, "panel"),
     row(head),
-    ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", c.s.skin.ctl_border and "$kitRuleW" or "$kitHair"),
+    -- A hairline under the header in every skin: Ledger's 2 px ink here,
+    -- inside a panel already framed in it, drew a second frame across the
+    -- table and read heavier than the region it is in.
+    ctx.rule(c, "rule", "$kitHair"),
     n == 0 and column { width = "grow", pad = 16, ctx.muted(c, "No rows") } or view,
   }
 end
@@ -390,6 +393,53 @@ local record Follow
   rev: integer
   width: number
   heights: kui.RowHeights
+  -- Kept at the end: on until the reader scrolls up, on again when they
+  -- come back to the end or press the jump.
+  follow: boolean
+  -- Where the scroll stood when the log was last drawn.
+  last_y: number
+end
+
+-- Whether a log keeps to its end, from where its scroller stands: any
+-- move up is the reader's and stops it (a wheel's first notch, not a
+-- screenful later — the old test, "within a row of the end", pinned a
+-- glide that had only begun back down); reaching the end starts it again.
+local function following(st: Follow, g: kui.ScrollGeometry)
+  if st.follow == nil then st.follow = true end
+  if not g then return end
+  local y = g.offset.y
+  -- At the end first: a log that grew taller clamps its scroll up to a
+  -- new, nearer end, which is still the end.
+  if y >= g.max_offset.y - 1 then
+    st.follow = true
+  elseif st.last_y and y < st.last_y - 0.5 then
+    st.follow = false
+  end
+  st.last_y = y
+end
+
+-- What a log shows while it is not keeping to its end: a button over its
+-- foot that takes it back there and keeps it.
+local function jump(c: Ctx): kui.Node
+  return row {
+    key = "jump",
+    role = "button",
+    label = "Jump to the latest line",
+    float = { anchor = "parent", at = { "end", "end" }, self = { "end", "end" }, dx = -12, dy = -8 },
+    height = 22,
+    pad = { x = 8 },
+    gap = 5,
+    cross_align = "center",
+    radius = "$kitRadius",
+    bg = ref(c, "raised"),
+    hover_bg = ref(c, "raised_hover"),
+    pressed_bg = ref(c, "raised_press"),
+    border = { w = "$kitHair", color = ref(c, c.s.skin.ctl_border and "ink" or "rule") },
+    cursor = "pointer",
+    on_click = act(c, "log.end"),
+    icons.node(c, "chevron_down", 12, "fg"),
+    ctx.caption(c, "Latest", { size = "$kitSizeLabel" }),
+  }
 end
 
 function M.log(c: Ctx, p: P): kui.Node
@@ -419,20 +469,27 @@ function M.log(c: Ctx, p: P): kui.Node
         ctx.data(c, message(c, cell_text(ch:get(i, "message"))) as string, text_opts) },
     }
   end
+  local wants = ctx.flag(p.follow, true)
+  following(st, env.scroll_geometry("rows"))
+  -- The log and, while it is not at its end, the jump back there.
+  -- Always the same box around the rows, so the scroller keeps its key
+  -- (and its offset) whether or not the jump is in it.
+  local function framed(t: kui.Node): kui.Node
+    local away = wants and not st.follow and n > 0
+    return column { width = "grow", height = p.grow == true and "grow" or nil, t, away and jump(c) or nil }
+  end
   if not wrap then
-    if ctx.flag(p.follow, true) and n > st.n then
-      -- At the end before the rows arrived (or on the first frame): stay there.
-      local g = env.scroll_geometry("rows")
-      local at_end = not g or g.offset.y + g.h >= st.n * row_h - row_h
-      if at_end then env.set_scroll("rows", 0, n * row_h) end
+    if wants and st.follow and n > 0 then
+      -- Past the end: the core clamps it to the end as laid out.
+      env.set_scroll("rows", 0, 1e9)
     end
     st.n = n
-    return body(c, "rows", n, row_h, {
+    return framed(body(c, "rows", n, row_h, {
       height = p.grow == true and "grow" or nil,
       bg = ref(c, "sunken"),
       pad = { y = 4 },
       selectable = true,
-    }, line)
+    }, line))
   end
   -- Wrapped: rows of their own heights, measured as they come into view.
   -- New rows at the end keep what was measured; rows that moved (a log
@@ -440,8 +497,6 @@ function M.log(c: Ctx, p: P): kui.Node
   local rev = ch and ch.rev or 0
   if not st.heights then st.heights = row_heights(n, row_h) end
   local g = env.scroll_geometry("rows")
-  -- At the end as of the last layout, or before the first one.
-  local at_end = not g or g.offset.y + g.h >= g.content_h - row_h
   if rev ~= st.rev then
     if n <= st.n then st.heights:clear() end
     st.heights:set_len(n)
@@ -452,7 +507,7 @@ function M.log(c: Ctx, p: P): kui.Node
       { size = "$kitSizeLabel", family = "$kitData" } as kui.Props, math.max(40, width - label_w))
     return math.max(row_h, m.height + 2)
   end
-  local pin = ctx.flag(p.follow, true) and at_end and n > 0
+  local pin = wants and st.follow and n > 0
   if pin and g and g.w > 0 then
     -- Following: the last screenful measured first, so the estimate the
     -- rows above stand on has already moved for them when the list slices.
@@ -485,7 +540,7 @@ function M.log(c: Ctx, p: P): kui.Node
     env.set_scroll("rows", 0, 1e9)
   end
   st.n, st.rev = n, rev
-  return t
+  return framed(t)
 end
 
 -- A tone's ink: what a badge's text and border are drawn in.
@@ -649,6 +704,9 @@ end
 function M.event(m: P, kit: string): any
   if kit == "table.select" or kit == "list.select" or kit == "log.select" then
     return emit("on_select", { row = m.row })
+  elseif kit == "log.end" then
+    local st = ctx.peek(m.inst as integer) as Follow
+    if st then st.follow, st.last_y = true, nil end
   elseif kit == "table.sort" then
     return emit("on_sort", { field = m.field })
   elseif kit == "table.range" then

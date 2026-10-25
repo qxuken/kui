@@ -4488,8 +4488,11 @@ pub struct Toast {
     /// The action's accessible name when it says more than its label (Undo →
     /// Undo the delete).
     pub action_name: Option<String>,
+    /// How long it stays, in ms, counted again from when the pointer leaves it;
+    /// 5000 when left out, 0 to keep it until dismissed.
+    pub duration: Option<f64>,
     /// The message `dismiss` arrives as, with `dismiss: ToastDismiss` in it.
-    /// Its close button.
+    /// Its close button, or its `duration` ran out.
     pub on_dismiss: Option<Value>,
     /// The message `action` arrives as, with `action: ToastAction` in it. Its
     /// action was pressed.
@@ -4508,6 +4511,7 @@ impl Toast {
             tone: None,
             action: None,
             action_name: None,
+            duration: None,
             on_dismiss: None,
             on_action: None,
             key: None,
@@ -4534,7 +4538,15 @@ impl Toast {
         self
     }
 
-    /// The message `dismiss` arrives as. Its close button.
+    /// How long it stays, in ms, counted again from when the pointer leaves it;
+    /// 5000 when left out, 0 to keep it until dismissed.
+    pub fn duration(mut self, v: f64) -> Self {
+        self.duration = Some(v);
+        self
+    }
+
+    /// The message `dismiss` arrives as. Its close button, or its `duration`
+    /// ran out.
     pub fn on_dismiss(mut self, msg: impl Into<Value>) -> Self {
         self.on_dismiss = Some(msg.into());
         self
@@ -4570,6 +4582,9 @@ impl Toast {
         }
         if let Some(v) = &self.action_name {
             m.push(("action_name".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.duration {
+            m.push(("duration".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.on_dismiss {
             m.push(("on_dismiss".into(), v.clone()));

@@ -497,7 +497,8 @@
 ---@field tone? kit.Tone Neutral when left out.
 ---@field action? string One action on what happened, a button beside the message: `Undo`.
 ---@field action_name? string The action's accessible name when it says more than its label (Undo → Undo the delete).
----@field on_dismiss? any The message it arrives as: yours, with `dismiss = {…}` in it (kit.ToastDismiss). Its close button.
+---@field duration? number How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed.
+---@field on_dismiss? any The message it arrives as: yours, with `dismiss = {…}` in it (kit.ToastDismiss). Its close button, or its `duration` ran out.
 ---@field on_action? any The message it arrives as: yours, with `action = {…}` in it (kit.ToastAction). Its action was pressed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.

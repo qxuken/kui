@@ -44,6 +44,9 @@ local Half = {}
 
 
 
+
+
+
 local Skin = {}
 
 
@@ -98,8 +101,19 @@ local Settings = {}
 local ROLES = {
    "bg", "side", "panel", "raised", "sunken", "hover", "press", "rule", "ink",
    "fg", "muted", "faint", "sel", "sel_fg", "accent", "on_accent", "focus",
-   "ok", "warn", "danger", "scrim",
+   "ok", "warn", "danger", "on_danger", "scrim",
 }
+
+
+
+
+
+
+local SHADED = { "accent", "danger", "panel", "sunken", "raised" }
+
+
+
+local TOWARD = { accent = "on_accent", danger = "on_danger" }
 
 local M = { Half = Half, Skin = Skin, Settings = Settings, ROLES = ROLES }
 
@@ -119,9 +133,13 @@ end
 
 
 
+
 function M.ref(s, role)
    local o = s.roles and s.roles[role]
    if type(o) == "string" then return o end
+   local fill = role:match("^(.-)_hover$") or role:match("^(.-)_press$")
+   local named = fill and s.roles and s.roles[fill]
+   if type(named) == "string" then return named end
    return "$kit" .. camel(role)
 end
 
@@ -129,6 +147,35 @@ local function half_of(v, l, d)
    if math.type(v) == "integer" then return v, v end
    if type(v) == "table" then return v.light or l, v.dark or d end
    return l, d
+end
+
+
+local function channels(c)
+   return (c >> 24) & 255, (c >> 16) & 255, (c >> 8) & 255, c & 255
+end
+
+
+local function mix(a, b, t)
+   local ar, ag, ab = channels(a)
+   local br, bg, bb = channels(b)
+   local function m(x, y) return math.floor(x + (y - x) * t + 0.5) end
+   return (m(ar, br) << 24) | (m(ag, bg) << 16) | (m(ab, bb) << 8) | 0xff
+end
+
+
+local function over(fill, wash)
+   local _, _, _, a = channels(wash)
+   return mix(fill, wash | 0xff, a / 255)
+end
+
+
+local function shades(h, fill, value)
+   local toward = TOWARD[fill]
+   if toward then
+      local t = h[toward]
+      return mix(value, t, 0.16), mix(value, t, 0.30)
+   end
+   return over(value, h.hover), over(value, h.press)
 end
 
 function M.tokens(s)
@@ -139,6 +186,14 @@ function M.tokens(s)
    for _, role in ipairs(ROLES) do
       local lv, dv = half_of(s.roles and s.roles[role], l[role], d[role])
       colors["kit" .. camel(role)] = { light = lv, dark = dv }
+   end
+   for _, fill in ipairs(SHADED) do
+
+      local base = colors["kit" .. camel(fill)]
+      local lh, lp = shades(l, fill, base.light)
+      local dh, dp = shades(d, fill, base.dark)
+      colors["kit" .. camel(fill) .. "Hover"] = { light = lh, dark = dh }
+      colors["kit" .. camel(fill) .. "Press"] = { light = lp, dark = dp }
    end
    for i = 1, #skin.light.groups do
       colors["kitGroup" .. i] = { light = skin.light.groups[i], dark = skin.dark.groups[i] }

@@ -2103,7 +2103,11 @@ Toast :: struct {
 	// The action's accessible name when it says more than its label (Undo → Undo
 	// the delete).
 	action_name: string,
-	// The message `dismiss` arrives as. Its close button.
+	// How long it stays, in ms, counted again from when the pointer leaves it;
+	// 5000 when left out, 0 to keep it until dismissed.
+	duration: Maybe(f64),
+	// The message `dismiss` arrives as. Its close button, or its `duration` ran
+	// out.
 	on_dismiss: any,
 	// The message `action` arrives as. Its action was pressed.
 	on_action: any,
@@ -2112,7 +2116,7 @@ Toast :: struct {
 	fresh: bool,
 }
 
-// What `dismiss` carries: Its close button.
+// What `dismiss` carries: Its close button, or its `duration` ran out.
 Toast_Dismiss :: struct {
 }
 
@@ -2137,6 +2141,7 @@ toast_props :: proc(p: Toast) -> ^c.Value {
 	if x, ok := p.tone.?; ok do c.value_map_set(m, "tone", c.value_str(TONE_NAMES[x]))
 	if p.action != "" do c.value_map_set(m, "action", c.value_str(p.action))
 	if p.action_name != "" do c.value_map_set(m, "action_name", c.value_str(p.action_name))
+	if x, ok := p.duration.?; ok do c.value_map_set(m, "duration", c.value_float(x))
 	if p.on_dismiss != nil do c.value_map_set(m, "on_dismiss", (^c.Value)(kui.encode(p.on_dismiss)))
 	if p.on_action != nil do c.value_map_set(m, "on_action", (^c.Value)(kui.encode(p.on_action)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))

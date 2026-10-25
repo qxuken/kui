@@ -24,19 +24,34 @@ end
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 local function look(c, variant)
    local bordered = c.s.skin.ctl_border
+   local quiet = bordered and "panel" or "sunken"
    if variant == "primary" then
-      return ref(c, "accent"), ref(c, "accent"), ref(c, "on_accent"), bordered
+      return { bg = ref(c, "accent"), hover = ref(c, "accent_hover"), press = ref(c, "accent_press"), ink = "on_accent", border = bordered }
    elseif variant == "danger" then
-      return ref(c, "danger"), ref(c, "danger"), ref(c, "on_accent"), bordered
+      return { bg = ref(c, "danger"), hover = ref(c, "danger_hover"), press = ref(c, "danger_press"), ink = "on_danger", border = bordered }
    elseif variant == "ghost" then
-      return nil, ref(c, "hover"), ref(c, "fg"), false
+
+      return { bg = nil, hover = ref(c, "hover"), press = ref(c, "press"), ink = "fg", border = false }
    elseif variant == "success" then
 
-      return bordered and ref(c, "panel") or ref(c, "sunken"), ref(c, "hover"), ref(c, "ok"), bordered
+      return { bg = ref(c, quiet), hover = ref(c, quiet .. "_hover"), press = ref(c, quiet .. "_press"), ink = "ok", border = bordered }
    end
-   return bordered and ref(c, "panel") or ref(c, "sunken"), ref(c, "hover"), ref(c, "fg"), bordered
+   return { bg = ref(c, quiet), hover = ref(c, quiet .. "_hover"), press = ref(c, quiet .. "_press"), ink = "fg", border = bordered }
 end
 
 
@@ -45,21 +60,23 @@ local function pressable(c, variant, t)
 
 
    if t.disabled == true and variant ~= "ghost" then variant = "default" end
-   local bg, hover, _, border = look(c, variant)
+   local lk = look(c, variant)
    t.role = t.role or "button"
    t.height = t.height or "$kitCtl"
 
    t.min_width = t.min_width or "fit"
    t.cross_align = "center"
    t.radius = "$kitRadius"
-   t.bg = bg
-   t.hover_bg = hover
-   t.pressed_bg = ref(c, "press")
+   t.bg = lk.bg
+   t.hover_bg = lk.hover
+   t.pressed_bg = lk.press
    t.cursor = "pointer"
-   if border then
+   if lk.border then
       local edge = (variant == "danger" or variant == "success") and (variant == "danger" and "danger" or "ok") or "ink"
       t.border = { w = "$kitRuleW", color = ref(c, edge) }
    end
+
+
    if variant == "primary" then ctx.shadow(c, t, true) end
    return t
 end
@@ -75,7 +92,7 @@ end
 function M.button(c, p)
    local variant = str(p.variant) or "default"
    if p.disabled == true and variant ~= "ghost" then variant = "default" end
-   local _, _, ink, _ = look(c, variant)
+   local ink_role = look(c, variant).ink
    local label = str(p.label) or ""
    local t = pressable(c, variant, {
       label = str(p.name) or label,
@@ -85,13 +102,18 @@ function M.button(c, p)
       gap = 6,
       on_click = act(c, "button.press"),
    })
-   if p.pressed == true then ink = pressed_look(c, t) end
+   if p.pressed == true then
+      pressed_look(c, t)
+      ink_role = "sel_fg"
+   end
    if p.disabled == true then t.opacity = "$disabledOpacity" end
-   local icon_role = p.pressed == true and "sel_fg" or (variant == "primary" and "on_accent" or (variant == "success" and "ok" or "fg"))
-   if str(p.icon) then t[#t + 1] = icons.node(c, p.icon, 13, icon_role) end
-   t[#t + 1] = ctx.caption(c, label, { color = ink, bold = variant == "primary" or c.s.skin.label_bold })
+
+   if str(p.icon) then t[#t + 1] = icons.node(c, p.icon, 13, ink_role) end
+   t[#t + 1] = ctx.caption(c, label, { color = ref(c, ink_role), bold = variant == "primary" or c.s.skin.label_bold })
    if str(p.shortcut) then
-      t[#t + 1] = ctx.data(c, p.shortcut, { size = "$kitSizeLabel", color = ref(c, variant == "primary" and "on_accent" or "faint") })
+
+      local quiet = ink_role == "fg" or ink_role == "ok"
+      t[#t + 1] = ctx.data(c, p.shortcut, { size = "$kitSizeLabel", color = ref(c, quiet and "faint" or ink_role) })
    end
    return row(t)
 end
@@ -108,7 +130,7 @@ function M.icon_button(c, p)
       main_align = "center",
       on_click = act(c, "icon_button.press"),
    })
-   local role = variant == "primary" and "on_accent" or (variant == "success" and "ok" or "fg")
+   local role = look(c, variant).ink
    if p.pressed == true then
       pressed_look(c, t)
       role = "sel_fg"
@@ -198,6 +220,9 @@ function M.text_field(c, p)
          size = "$kitSize",
          family = p.mono == true and "$kitData" or "$kitUi",
          color = ref(c, "fg"),
+
+
+         height = "grow",
          disabled = p.disabled == true,
 
          description = err ~= "" and err or nil,
@@ -227,13 +252,16 @@ function M.text_area(c, p)
    local pad = 8
    local boxed = c.s.skin.field_box
    local edge = err and "danger" or (focused and (boxed and "focus" or "ink") or (boxed and "rule" or "faint"))
+   local grow = p.grow == true
+
+
+
    local box = {
       key = "box",
       width = "grow",
-      min_height = rows * line_h + 2 * pad,
+      height = grow and "grow" or nil,
       max_height = max_rows and (max_rows * line_h + 2 * pad) or nil,
       scroll_y = max_rows ~= nil,
-      pad = pad,
       bg = ref(c, "sunken"),
       radius = "$kitRadius",
       border = { w = ((focused or err ~= nil) and not boxed) and "$kitRuleW" or "$kitHair", color = ref(c, edge) },
@@ -241,10 +269,14 @@ function M.text_area(c, p)
          key = "edit",
          value = value,
          multiline = true,
+         width = "grow",
+         height = grow and "grow" or nil,
+         min_height = rows * line_h + 2 * pad,
+         pad = pad,
+         cursor = "text",
          placeholder = str(p.placeholder),
          label = str(p.label) or str(p.placeholder),
          description = err ~= "" and err or nil,
-         width = "grow",
          size = "$kitSize",
          line_height = line_h,
          family = p.mono == true and "$kitData" or "$kitUi",
@@ -254,8 +286,6 @@ function M.text_area(c, p)
          on_change = act(c, "text_area.change"),
       }),
    }
-   local grow = p.grow == true
-   if grow then box.height = "grow" end
    local field = column({ width = (p.width) or "grow", height = grow and "grow" or nil, gap = 0,
 column(box), error_line(c, err), })
    if p.hide_label == true or not str(p.label) then return field end
@@ -415,22 +445,40 @@ function M.checkbox(c, p)
    })
 end
 
+
+
+local SLIDE = 140
+
 function M.switch(c, p)
    local on = p.on == true
+   local bordered = c.s.skin.ctl_border
+   local round = c.s.skin.radius > 0
+
+
+
+
+
+
+
+
+
+   local sk = c.s.skin
+   local ink_is_accent = sk.dark.ink == sk.dark.accent
+   local knob = column({
+      key = "knob", width = 14, height = 14, radius = round and 7 or 0, transition = SLIDE,
+      bg = ref(c, round and "raised" or (ink_is_accent and "bg" or "ink")),
+      border = (not round and ink_is_accent) and { w = "$kitHair", color = ref(c, "ink") } or nil,
+   })
    local track = {
-      width = 30, height = 16, radius = 8, pad = 2,
+      width = 32, height = 18, pad = 2,
+      radius = round and 9 or 0,
       main_align = on and "end" or "start",
       cross_align = "center",
       bg = ref(c, on and "accent" or "sunken"),
-      border = { w = "$kitHair", color = ref(c, on and "accent" or "ink") },
-
-      column({ key = "knob", width = 12, height = 12, radius = 6, transition = 0.12,
-bg = ref(c, on and "on_accent" or "muted"), }),
+      border = { w = "$kitHair", color = ref(c, on and "accent" or (bordered and "ink" or "rule")) },
+      transition = SLIDE,
+      knob,
    }
-   if c.s.skin.radius == 0 then
-      track.radius = 0
-      track[1] = column({ key = "knob", width = 12, height = 12, transition = 0.12, bg = ref(c, on and "on_accent" or "muted") })
-   end
    return row({
       role = "switch",
       label = str(p.label),

@@ -431,9 +431,10 @@ return {
         { "tone", "Tone?", doc = "Neutral when left out." },
         { "action", "string?", doc = "One action on what happened, a button beside the message: `Undo`." },
         { "action_name", "string?", doc = "The action's accessible name when it says more than its label (Undo → Undo the delete)." },
+        { "duration", "number?", doc = "How long it stays, in ms, counted again from when the pointer leaves it; 5000 when left out, 0 to keep it until dismissed." },
       },
       events = {
-        { "dismiss", doc = "Its close button." },
+        { "dismiss", doc = "Its close button, or its `duration` ran out." },
         { "action", doc = "Its action was pressed." },
       } },
 
