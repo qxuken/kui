@@ -28,6 +28,12 @@ smallvec = { version = "1", features = ["const_new"] }
 kui-derive = { workspace = true, optional = true }
 # The recording's format (ADR 0058): no dependencies of its own.
 kui-trace.workspace = true
+# The `svg` element (ADR 0063): usvg parses and flattens a document into
+# paths, resvg rasterizes the ones kui's `path` cannot draw. 0.46 shares
+# tiny-skia 0.11 with the tree; no text (no second font stack), no svgz, no
+# embedded raster decoders.
+usvg = { version = "0.46", default-features = false }
+resvg = { version = "0.46", default-features = false }
 # `tracing` spans for every recorded span, under the `tracing` feature
 # (ADR 0058, decision 12); already in the tree through winit and zbus.
 tracing = { version = "0.1", optional = true, default-features = false, features = ["std"] }

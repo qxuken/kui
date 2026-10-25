@@ -150,6 +150,7 @@ pub mod slot;
 pub mod slots;
 pub mod spec;
 pub mod stats;
+pub mod svg;
 /// The headless driver the crate's own tests use. Test infrastructure,
 /// behind the `conformance` feature like the corpus.
 #[cfg(feature = "conformance")]
