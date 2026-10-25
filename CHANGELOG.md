@@ -140,6 +140,11 @@ was the first bare bump to break an app in five releases).
   Lua are back with the new meaning, a contribution slot (below).
 - Node's wire protocol is 27: a prebuilt addon from before refuses the
   stream.
+- `slide` eases a node's place within its parent, not in the window
+  (backlog C97): a move an ancestor makes — a resize, the parent's own
+  slide — is followed at once, and `slide` on a node that does not move
+  within its parent (a wrapper's child, where the wrapper is reordered)
+  no longer animates.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -212,6 +217,19 @@ where it returned a table. A plugin with only a `view` is untouched — its
 step with the one meaning a component cannot have: a place where any
 number of extensions append components — three plugins each adding a
 button to one toolbar, without the host naming them.
+
+A switch's knob that slides fell out of step with its track whenever the
+window resized: the track moved with layout, and the knob eased towards
+where the track had gone, by its own transition. `slide` eased every
+change of the node's position, whoever made it. It now eases the node's
+place within its parent — the node it is laid against, which is the
+anchor for a float and the window for a viewport float — so what the
+ancestors do is followed on the frame they do it, and a nested slide adds
+only its own move to its parent's, where it trailed its parent's ease by
+its own. Reordered rows slide as they did. What changes is a `slide` put
+on a node whose parent is what moves: on a row's child rather than the
+row, it did glide and now rides along — move `slide` to the row. A keyed
+node that changes parents glides on from where it was drawn.
 
 The rest of this release breaks nothing else: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
@@ -1099,6 +1117,16 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* a field-level `onKey` that forwarded function
   keys to the app's keymap.
+
+- A sliding node keeps to its parent while an ancestor moves (backlog
+  C97, and under **What breaks**): the stock switch's knob, and Kit's,
+  trailed the track through a window resize, and a sliding child trailed
+  its sliding parent by its own transition. Only the node's own move
+  within its parent eases now
+  (`crates/kui-core/tests/slide_relative.rs`).
+
+  *What you can delete:* a `slide` an app turned off while the window
+  resized, and a knob drawn by hand at the track's end to dodge it.
 
 ## 0.1.0-alpha.67 (2026-10-24)
 

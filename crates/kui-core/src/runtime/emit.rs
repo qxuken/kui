@@ -1991,15 +1991,29 @@ impl Core {
     /// regions come from the same positions, so input follows the motion).
     /// Nodes whose `enter` has an offset start that far away on first
     /// sight and ease in the same way; without `slide` that entrance is
-    /// all their position ever eases. Preorder means a parent shifts before
-    /// its children are visited, so nested sliders ease relative to an
-    /// already-eased parent.
+    /// all their position ever eases.
     ///
-    /// The position eased is the one in the scroll containers' content,
-    /// not on screen: a scroll moves the content under the node and is not
-    /// the node moving, so it rides along on the frame the offset changes
-    /// rather than trailing it by the node's transition.
+    /// The position eased is the node's place within its parent (backlog
+    /// C97), not its place in the window: what moves the parent — a window
+    /// resize that moves a switch's track, a scroll, the parent's own
+    /// slide — is followed on the frame it happens, and only the node's own
+    /// move within the parent animates. Eased in the window's terms, a
+    /// switch's knob trailed its track through every resize by its own
+    /// transition. Preorder means a parent has moved, eased and all, before
+    /// its children are visited, so a nested slider is placed against
+    /// where its parent is drawn and adds only its own lag.
+    ///
+    /// "Parent" is what the node is laid against: the parent node for one
+    /// in flow or a parent float, the anchor for a node-anchored float,
+    /// nothing (the window's origin) for a viewport float. In flow inside a
+    /// scroll container the place is the one in the content, the offset
+    /// added back, since a scroll moves the content under the node and is
+    /// not the node moving.
     fn ease_positions(&mut self) {
+        // The subtree shifts made so far this pass, so a node-anchored
+        // float can read its anchor's laid place (`laid`); empty, and
+        // unallocated, on a frame where nothing is mid-slide.
+        let mut moved: Vec<(usize, usize, Vec2)> = Vec::new();
         for i in 0..self.tree.len() {
             let spec = &self.tree.specs[i];
             let Some(t) = spec.transition else {
@@ -2009,23 +2023,27 @@ impl Core {
             if !spec.slide && enter.is_none() {
                 continue;
             }
+            let slide = spec.slide;
             let key = self.tree.keys[i];
-            let s = self.scrolled_by(i);
-            let target = Vec2::new(self.tree.pos[i].x + s.x, self.tree.pos[i].y + s.y);
-            let from = enter.map(|e| [target.x + e.dx, target.y + e.dy, 0.0, 0.0]);
-            let v = self.anim.drive(
+            let (by, origin, rel) = self.slide_frame(i, &moved);
+            let from = enter.map(|e| [rel.x + e.dx, rel.y + e.dy, 0.0, 0.0]);
+            let v = self.anim.drive_pos(
                 key,
-                Slot::Pos,
+                by.map(|r| self.tree.keys[r]),
+                [origin.x, origin.y],
                 from,
-                [target.x, target.y, 0.0, 0.0],
+                [rel.x, rel.y, 0.0, 0.0],
                 t,
-                spec.slide,
+                slide,
             );
-            // Whole physical pixels, so the text inside moves with its box
-            // rather than wobbling in it (`Vec2::snapped`). Rounding here
-            // and not at the end means the last frame lands exactly on the
-            // layout position, as it did before.
-            let d = Vec2::new(v[0] - target.x, v[1] - target.y).snapped(self.scale);
+            // Where the node is drawn: its eased place from where its
+            // parent is drawn. Whole physical pixels, so the text inside
+            // moves with its box rather than wobbling in it
+            // (`Vec2::snapped`); rounding the difference and not the end
+            // means the last frame lands exactly on the layout position.
+            let at = Vec2::new(origin.x + v[0], origin.y + v[1]);
+            let p = self.tree.pos[i];
+            let d = Vec2::new(at.x - p.x, at.y - p.y).snapped(self.scale);
             if d.x == 0.0 && d.y == 0.0 {
                 continue;
             }
@@ -2034,50 +2052,51 @@ impl Core {
                 p.x += d.x;
                 p.y += d.y;
             }
+            moved.push((i, end, d));
         }
     }
 
-    /// How far up and left the scroll offsets this layout applied moved
-    /// node `i`: each scrolling ancestor's, as `layout::positions` shifted
-    /// its in-flow children by it. A parent float is placed against its
-    /// parent's box, which its parent's own offset does not move; a
-    /// viewport float is moved by none; a node-anchored one by whatever
-    /// moved its anchor.
-    fn scrolled_by(&self, i: usize) -> Vec2 {
+    /// What node `i`'s slide is measured from (`ease_positions`): the
+    /// index of the node it is laid against, if any; that node's origin as
+    /// drawn now (its eased position, less its scroll offset when `i` is
+    /// in its content); and `i`'s laid place relative to it, which is what
+    /// the slide eases.
+    fn slide_frame(&self, i: usize, moved: &[(usize, usize, Vec2)]) -> (Option<usize>, Vec2, Vec2) {
+        use crate::spec::FloatAnchor;
         let tree = &self.tree;
-        let mut by = Vec2::ZERO;
-        let mut c = i;
-        // Bounded: a node anchor that leads back into its own chain is a
-        // loop, and the walk is cut off rather than spun.
-        for _ in 0..tree.len() {
-            let float = tree.specs[c].layout.float;
-            let parent = match float.map(|f| f.anchor) {
-                Some(crate::spec::FloatAnchor::Viewport) => break,
-                Some(crate::spec::FloatAnchor::Node(k)) => match tree.index_of(k) {
-                    Some(a) => {
-                        c = a;
-                        continue;
-                    }
-                    None => break,
-                },
-                _ => tree.parent[c],
-            };
-            if parent == NIL {
-                break;
-            }
-            let p = parent as usize;
-            let l = &tree.specs[p].layout;
-            if float.is_none()
-                && (l.scroll_x || l.scroll_y)
-                && let Some(off) = self.scroll.laid_offset(tree.keys[p])
+        let float = tree.specs[i].layout.float;
+        let anchored = matches!(float.map(|f| f.anchor), Some(FloatAnchor::Node(_)));
+        let by = match float.map(|f| f.anchor) {
+            Some(FloatAnchor::Viewport) => None,
+            Some(FloatAnchor::Node(k)) => tree.index_of(k),
+            _ => (tree.parent[i] != NIL).then_some(tree.parent[i] as usize),
+        };
+        let Some(r) = by else {
+            return (None, Vec2::ZERO, tree.pos[i]);
+        };
+        let mut origin = tree.pos[r];
+        if float.is_none() {
+            let l = &tree.specs[r].layout;
+            if (l.scroll_x || l.scroll_y)
+                && let Some(off) = self.scroll.laid_offset(tree.keys[r])
             {
                 let off = off.snapped(self.scale);
-                by.x += off.x;
-                by.y += off.y;
+                origin.x -= off.x;
+                origin.y -= off.y;
             }
-            c = p;
         }
-        by
+        // A parent has shifted its subtree, `i` with it, so the two
+        // positions as they stand are as far apart as layout put them. An
+        // anchor need not hold `i` in its subtree, so each is read back to
+        // its laid place first.
+        let rel = if !anchored {
+            Vec2::new(tree.pos[i].x - origin.x, tree.pos[i].y - origin.y)
+        } else {
+            let a = laid(tree.pos[i], i, moved);
+            let b = laid(origin, r, moved);
+            Vec2::new(a.x - b.x, a.y - b.y)
+        };
+        (Some(r), origin, rel)
     }
 
     /// After the layout events: every node whose keyframe stops name a
@@ -4186,4 +4205,14 @@ fn group_in_tree_order(
     stack.clear();
     stack.extend(out.iter().map(|&r| (tree.keys[r as usize], rank_of(r))));
     *order = out;
+}
+
+/// Node `k`'s position as layout put it, before the slides
+/// `ease_positions` has applied so far this frame: `p` less every subtree
+/// shift that held it.
+fn laid(p: Vec2, k: usize, moved: &[(usize, usize, Vec2)]) -> Vec2 {
+    moved
+        .iter()
+        .filter(|(s, e, _)| (*s..*e).contains(&k))
+        .fold(p, |p, (_, _, d)| Vec2::new(p.x - d.x, p.y - d.y))
 }

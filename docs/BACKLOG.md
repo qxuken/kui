@@ -3687,13 +3687,7 @@ strokes a 1 px bleed outline pass besides, and re-rasterizes the whole
 mask on any change to `d`. Kit now draws areas as polygon chunks. **Do.**
 Find what makes it super-linear (adaptive storage), and cache or tile.
 
-### `.` C97 — `slide` eases a move an ancestor made
-
-**Found** by the user, again: Kit's switch knob, which slides, falls out
-of step with its track while the window resizes — the track moves with
-layout and the knob eases toward it. `slide` eases every change of a
-node's position, including those its ancestors cause. **Do.** Ease a
-node's position relative to its parent, so only its own move animates.
+- `.` **C97** — [`slide` eases a move an ancestor made](backlog/closed-2026-09.md#-c97--slide-eases-a-move-an-ancestor-made--done-2026-10-26) — done (2026-10-26) — eases the place within the parent; ancestors' moves followed at once, a reparented node glides on
 
 ### `.` C98 — An open menu ignores its items' accelerators
 

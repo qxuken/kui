@@ -564,6 +564,15 @@ pub struct AnimStore {
     /// one reads the clock as it is so that siblings stay in phase. A node
     /// a frame went without starts again, as an entrance does.
     starts: FxHashMap<Key, (f64, u64)>,
+    /// What each sliding node's position is measured from (backlog C97),
+    /// by node: the node it is relative to (its parent, a float's anchor,
+    /// none for the viewport), that node's origin as last drawn, and the
+    /// last frame that drove it. A position eases relative to its parent
+    /// so that a move an ancestor makes is followed at once; when the
+    /// parent changes (a card dragged to another column) the leg is moved
+    /// into the new parent's terms by the difference of the two origins,
+    /// so it glides on from where it was drawn rather than jumping.
+    pos_frames: FxHashMap<Key, (Option<Key>, [f32; 2], u64)>,
     /// Driver time in seconds; None until the driver first sets it.
     now: Option<f64>,
     /// The core's frame counter as of `begin_frame`.
@@ -632,6 +641,11 @@ impl AnimStore {
             self.turns
                 .retain(|_, t| t.is_some_and(|t| t.last_used >= cutoff));
         }
+        if !self.pos_frames.is_empty()
+            && let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no)
+        {
+            self.pos_frames.retain(|_, (_, _, used)| *used >= cutoff);
+        }
     }
 
     /// Every slot the last frame drove and left mid-flight, by node: what
@@ -687,6 +701,46 @@ impl AnimStore {
     ) -> [f32; 4] {
         self.node(key)
             .drive(slot, enter_from, target, transition, follow)
+    }
+
+    /// [`Self::drive`] for [`Slot::Pos`], whose `target` (and
+    /// `enter_from`) are relative to `origin`, the drawn origin of the node
+    /// `by` names (backlog C97). Measured from the parent, a position
+    /// eases only what moved it within the parent; what moved the parent
+    /// — a resize, a scroll, the parent's own slide — the caller adds back
+    /// at once. A node whose `by` changed since the last frame that drove
+    /// it (reparented) has its running leg moved by the difference of the
+    /// two origins first, so the value stays where it was drawn and the
+    /// leg carries on from there in the new parent's terms.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn drive_pos(
+        &mut self,
+        key: Key,
+        by: Option<Key>,
+        origin: [f32; 2],
+        enter_from: Option<[f32; 4]>,
+        target: [f32; 4],
+        transition: Transition,
+        follow: bool,
+    ) -> [f32; 4] {
+        let frame_no = self.frame_no;
+        let was = self.pos_frames.insert(key, (by, origin, frame_no));
+        if let Some((was_by, was_origin, used)) = was
+            && was_by != by
+            && used + 1 >= frame_no
+            && let Some(Some(tw)) = self
+                .tweens
+                .get_mut(&key)
+                .map(|s| s[Slot::Pos as usize].as_mut())
+        {
+            let dx = was_origin[0] - origin[0];
+            let dy = was_origin[1] - origin[1];
+            for v in [&mut tw.from, &mut tw.to, &mut tw.value] {
+                v[0] += dx;
+                v[1] += dy;
+            }
+        }
+        self.drive(key, Slot::Pos, enter_from, target, transition, follow)
     }
 
     /// The tween slots of one node, borrowed once.

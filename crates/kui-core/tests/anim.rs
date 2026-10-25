@@ -626,12 +626,14 @@ fn a_slide_rides_the_scroll_rather_than_easing_after_it() {
     );
     assert!(!core.animating(), "and owe no frames for it");
     // Scrolled, a move in the content still eases: 40 px further down,
-    // halfway there at half the transition.
+    // halfway there at half the transition. The racer's lane moved and
+    // the racer did not move within it, so it rides the lane at once
+    // (backlog C97).
     core.set_time(0.0);
-    assert_eq!(scrolled_slider_ys(&mut core, 140.0), (40.0, 60.0));
+    assert_eq!(scrolled_slider_ys(&mut core, 140.0), (40.0, 100.0));
     assert!(core.animating());
     core.set_time(0.05);
-    assert_eq!(scrolled_slider_ys(&mut core, 140.0), (60.0, 80.0));
+    assert_eq!(scrolled_slider_ys(&mut core, 140.0), (60.0, 100.0));
 }
 
 #[test]

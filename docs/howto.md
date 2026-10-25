@@ -677,6 +677,32 @@ tree order between themselves.
 [`slide` row](props.md#container-props) ·
 [ADR 0046](adr/0046-a-node-over-its-siblings-paints-after-them.md)
 
+### Why does a sliding knob keep to its track while the window resizes?
+
+`slide` eases a node's place **within its parent**, not its place in the
+window. A switch's knob that slides between the ends of its track moves
+with the track at once when a resize, a scroll or the track's own `slide`
+moves it, and eases only when it moves along the track. Eased in the
+window's terms, as it was before alpha.68, the knob trailed its track by
+its own transition through every resize.
+
+So put `slide` on the node that changes place within its parent. A row
+that moves in a list slides; the text inside it rides along without one. A
+row wrapped in a box that the list reorders wants `slide` on the box, since
+the row does not move within the box. A child that slides inside a sliding
+parent adds its own move to its parent's, measured from where the parent
+is drawn. A card that keeps its key when it moves to another column
+glides from where it was drawn into its place in the new one.
+
+```jsx
+<box transition={120} mainAlign={on ? "end" : "start"} width={36} height={20}>
+  <box key="knob" transition={120} slide width={16} height={16} />
+</box>
+```
+
+[`slide` row](props.md#container-props) ·
+[alpha.68](../CHANGELOG.md)
+
 ### How do I stack a canvas's items in the order my document lists them?
 
 Floats stack in the order they open: a key the stack has not seen goes on
