@@ -205,6 +205,9 @@ local record kit
     collapsed: boolean
     -- A count beside the heading.
     count: integer
+    -- The body's left inset in px; 18 when left out, under the title. 0 for
+    -- rows with their own inset that line up with `leading`.
+    indent: number
     -- The message `toggle` arrives as. The heading was pressed.
     on_toggle: any
     key: string

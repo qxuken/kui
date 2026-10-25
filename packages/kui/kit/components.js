@@ -102,8 +102,11 @@ function make(namespace) {
       if (props.title !== undefined) wire.title = props.title;
       if (props.collapsed !== undefined) wire.collapsed = props.collapsed;
       if (props.count !== undefined) wire.count = props.count;
+      if (props.indent !== undefined) wire.indent = props.indent;
       if (props.onToggle !== undefined) wire.on_toggle = props.onToggle;
-      const groups = undefined;
+      const groups = {};
+      if (props.leading !== undefined) groups.leading = flat(props.leading);
+      if (props.actions !== undefined) groups.actions = flat(props.actions);
       return {
         type: 'component',
         key: props.key != null ? String(props.key) : undefined,

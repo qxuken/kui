@@ -61,15 +61,19 @@ function M.toolbar(c: Ctx, _p: P): kui.Node
     bg = ref(c, "side"),
     row {
       width = "grow",
-      height = 38,
-      pad = { x = 8 },
+      min_height = 38,
+      pad = { x = 8, y = 6 },
       gap = 6,
       cross_align = "center",
+      -- Too narrow for both groups, the trailing one moves to a line of
+      -- its own rather than the two overlapping
+      -- or a control being squeezed to a sliver.
+      wrap_children = true,
       -- The unnamed group takes the room: a host's own spacer in it pushes
       -- what follows to the group's end, where a spacer of Kit's beside it
       -- split the room with it and left that midway.
-      row { width = "grow", gap = 6, cross_align = "center", children("") },
-      row { gap = 6, cross_align = "center", children("trailing") },
+      row { width = "grow", min_width = "fit", gap = 6, cross_align = "center", children("") },
+      row { min_width = "fit", gap = 6, cross_align = "center", children("trailing") },
     },
     ctx.rule(c, "rule", "$kitHair"),
   }
@@ -153,9 +157,11 @@ function M.tabs(c: Ctx, p: P): kui.Node
       column { width = "grow", height = "$kitRuleW", bg = here and ref(c, "accent") or nil },
     }
   end
-  -- What acts on the chosen tab — close it, run it — at the strip's far side.
+  -- What acts on the chosen tab — close it, run it — at the strip's far side,
+  -- never squeezed: in a narrow strip the tabs' labels give (an ellipsis),
+  -- not the buttons.
   strip[#strip + 1] = ctx.grow()
-  strip[#strip + 1] = row { height = "grow", gap = 4, cross_align = "center", pad = { r = 4 }, children("trailing") }
+  strip[#strip + 1] = row { height = "grow", min_width = "fit", gap = 4, cross_align = "center", pad = { r = 4 }, children("trailing") }
   return column {
     width = "grow",
     height = "grow",
@@ -174,12 +180,16 @@ function M.section(c: Ctx, p: P): kui.Node
   local st = ctx.state(c, function(): Folded return { collapsed = false } end)
   local collapsed: boolean
   if p.collapsed ~= nil then collapsed = p.collapsed == true else collapsed = st.collapsed end
+  -- The heading folds; what the host puts before it (a box ticking the
+  -- whole section) and after it (a status, an action on the section) are
+  -- its siblings, not inside it, so each stays a control of its own.
   local head: kui.Props = {
     role = "button",
     label = str(p.title),
     expanded = collapsed and "collapsed" or "expanded",
     width = "grow",
-    height = "$kitRow",
+    min_width = 0,
+    height = "grow",
     gap = 6,
     cross_align = "center",
     cursor = "pointer",
@@ -189,9 +199,22 @@ function M.section(c: Ctx, p: P): kui.Node
     ctx.caption(c, str(p.title) or "", { size = "$kitSizeLabel" }),
   }
   if p.count ~= nil then head[#head + 1] = ctx.data(c, tostring(p.count), { size = "$kitSizeLabel", color = ref(c, "faint") }) end
-  local t: kui.Props = { width = "grow", gap = 4, row(head) }
+  local bar = row {
+    key = "head",
+    width = "grow",
+    min_height = "$kitRow",
+    gap = 6,
+    cross_align = "center",
+    children("leading"),
+    row(head),
+    children("actions"),
+  }
+  local t: kui.Props = { width = "grow", gap = 4, bar }
   if not collapsed then
-    t[#t + 1] = column { key = "body", width = "grow", gap = 6, pad = { l = 18 }, children("") }
+    -- The body lines up under the title by default; `indent` moves it (0
+    -- for rows that bring their own inset and line up with `leading`).
+    local indent = (p.indent or 18) as number
+    t[#t + 1] = column { key = "body", width = "grow", gap = 6, pad = { l = indent }, children("") }
   end
   return column(t)
 end

@@ -130,6 +130,7 @@
 ---@field title string The heading.
 ---@field collapsed? boolean Folded: yours to keep.
 ---@field count? integer A count beside the heading.
+---@field indent? number The body's left inset in px; 18 when left out, under the title. 0 for rows with their own inset that line up with `leading`.
 ---@field on_toggle? any The message it arrives as: yours, with `toggle = {…}` in it (kit.SectionToggle). The heading was pressed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -604,7 +605,10 @@ local function make(namespace)
 
   ---A heading that folds what is under it.
   ---
-  ---Your children: its list part is what it folds.
+  ---Your children: its list part is what it folds; `leading` goes before the
+  ---heading, beside it rather than in it: a box that ticks the whole section;
+  ---`actions` goes after the heading, at the far side: a status, an action on
+  ---the whole section.
   ---@param props kit.SectionProps
   ---@param children? table
   ---@return kui.Node

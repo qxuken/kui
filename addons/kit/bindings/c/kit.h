@@ -669,6 +669,12 @@ typedef struct KitSection {
     int64_t count;
     bool count_set;
     /*
+     * The body's left inset in px; 18 when left out, under the title. 0 for
+     * rows with their own inset that line up with `leading`.
+     */
+    double indent;
+    bool indent_set;
+    /*
      * The message `toggle` arrives as, consumed; NULL for none. The heading was
      * pressed.
      */
@@ -684,6 +690,7 @@ static inline KuiValue *kit_section_props(const KitSection *p) {
     kui_value_map_set(m, KUI_STR("title"), kui_value_str(p->title));
     if (p->collapsed_set) kui_value_map_set(m, KUI_STR("collapsed"), kui_value_bool(p->collapsed));
     if (p->count_set) kui_value_map_set(m, KUI_STR("count"), kui_value_int(p->count));
+    if (p->indent_set) kui_value_map_set(m, KUI_STR("indent"), kui_value_float(p->indent));
     if (p->on_toggle != NULL) kui_value_map_set(m, KUI_STR("on_toggle"), p->on_toggle);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));

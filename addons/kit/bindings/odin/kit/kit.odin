@@ -601,6 +601,9 @@ Section :: struct {
 	collapsed: Maybe(bool),
 	// A count beside the heading.
 	count: Maybe(i64),
+	// The body's left inset in px; 18 when left out, under the title. 0 for rows
+	// with their own inset that line up with `leading`.
+	indent: Maybe(f64),
 	// The message `toggle` arrives as. The heading was pressed.
 	on_toggle: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -625,6 +628,7 @@ section_props :: proc(p: Section) -> ^c.Value {
 	c.value_map_set(m, "title", c.value_str(p.title))
 	if x, ok := p.collapsed.?; ok do c.value_map_set(m, "collapsed", c.value_bool(x))
 	if x, ok := p.count.?; ok do c.value_map_set(m, "count", c.value_int(x))
+	if x, ok := p.indent.?; ok do c.value_map_set(m, "indent", c.value_float(x))
 	if p.on_toggle != nil do c.value_map_set(m, "on_toggle", (^c.Value)(kui.encode(p.on_toggle)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))

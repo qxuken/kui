@@ -429,6 +429,8 @@ function M.badge(c, p)
    local t = {
       label = label,
       height = 18,
+
+      min_width = "fit",
       pad = { x = 6 },
       gap = 5,
       cross_align = "center",

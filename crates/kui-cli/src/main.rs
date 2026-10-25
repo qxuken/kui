@@ -1,7 +1,7 @@
 //! `kui`: runs a Lua or Teal app with Kit and a standard library, and
 //! nothing else to install (ADR 0064).
 //!
-//!   kui run [path] [--headless] [--watch] [--size WxH] [-- app args]
+//!   kui run [path] [--headless] [--watch] [--size WxH] [--appearance light|dark] [-- app args]
 //!   kui check [path]
 //!   kui new <dir>
 //!
@@ -36,6 +36,8 @@ run options:
   --no-rename    keep the name kui in the Dock (macOS names an app by its binary)
   --shot FILE    no window: write a frame to FILE (.png) and end
   --after MS     with --shot, how long to run first (default 800)
+  --appearance light|dark
+                 pin the light or dark appearance over the OS's (headless has none of its own)
   -- ARGS        what follows is the app's, in kui.args
 
 An app defines view(env) and, to hear its events and kui.dispatch, update(msg).
@@ -53,6 +55,7 @@ struct Args {
     rest: Vec<String>,
     devtools: bool,
     no_rename: bool,
+    appearance: kui_native::Appearance,
 }
 
 fn parse() -> Result<Args, String> {
@@ -68,6 +71,7 @@ fn parse() -> Result<Args, String> {
         rest: Vec::new(),
         devtools: false,
         no_rename: false,
+        appearance: kui_native::Appearance::Unknown,
     };
     match it.peek().map(String::as_str) {
         Some("run" | "check" | "new" | "types") => a.cmd = it.next().unwrap(),
@@ -93,6 +97,13 @@ fn parse() -> Result<Args, String> {
             "--after" => {
                 let v = it.next().ok_or("--after needs milliseconds")?;
                 a.after = v.parse().map_err(|_| format!("--after: bad milliseconds {v}"))?;
+            }
+            "--appearance" => {
+                a.appearance = match it.next().as_deref() {
+                    Some("light") => kui_native::Appearance::Light,
+                    Some("dark") => kui_native::Appearance::Dark,
+                    _ => return Err("--appearance needs light or dark".into()),
+                };
             }
             "--size" => {
                 let v = it.next().ok_or("--size needs WxH, as 1200x800")?;
@@ -184,6 +195,9 @@ fn run(args: &Args) -> Result<i32, String> {
         .titlebar(project.titlebar)
         .extension_as("app", ext)
         .extension_as(kit::NAMESPACE, kit);
+    if args.appearance != kui_native::Appearance::Unknown {
+        launcher = launcher.system(kui_native::SystemEnv { appearance: args.appearance, ..Default::default() });
+    }
     if args.devtools || project.devtools {
         launcher = launcher.devtools(true);
     }

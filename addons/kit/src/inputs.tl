@@ -41,9 +41,14 @@ end
 -- A pressable box at the control height: what button, icon_button and a
 -- select's field share.
 local function pressable(c: Ctx, variant: string, t: kui.Props): kui.Props
+  -- Unavailable is quiet whatever the variant: a faded accent and its
+  -- shadow read as a muddy call to action, not as "not now".
+  if t.disabled == true and variant ~= "ghost" then variant = "default" end
   local bg, hover, _, border = look(c, variant)
   t.role = t.role or "button"
   t.height = t.height or "$kitCtl"
+  -- Never squeezed below its label: a crowded row gives elsewhere.
+  t.min_width = t.min_width or "fit"
   t.cross_align = "center"
   t.radius = "$kitRadius"
   t.bg = bg
@@ -68,6 +73,7 @@ end
 
 function M.button(c: Ctx, p: P): kui.Node
   local variant = str(p.variant) or "default"
+  if p.disabled == true and variant ~= "ghost" then variant = "default" end
   local _, _, ink, _ = look(c, variant)
   local label = str(p.label) or ""
   local t = pressable(c, variant, {
@@ -91,6 +97,7 @@ end
 
 function M.icon_button(c: Ctx, p: P): kui.Node
   local variant = str(p.variant) or "ghost"
+  if p.disabled == true and variant ~= "ghost" then variant = "default" end
   local label = str(p.label) or ""
   local t = pressable(c, variant, {
     label = label,
@@ -124,9 +131,12 @@ end
 -- The underline under a field in the skins that draw one.
 local function underline(c: Ctx, focused: boolean): kui.Node
   if c.s.skin.field_box then return nil end
-  -- At rest in the soft rule colour, in the accent and thicker when focused:
-  -- an underline in the ink is a line as loud as the text above it.
-  return ctx.rule(c, focused and "accent" or "rule", focused and "$kitRuleW" or "$kitHair")
+  -- At rest a hairline in the faint ink: soft beside the text, yet the
+  -- 3:1 a field's edge needs to read as a field (the `rule` colour drew
+  -- it at 1.5:1, a version field read as a label). Focused, the region
+  -- rule in the ink: the accent is a highlighter on Ledger's paper and
+  -- vanished there as a focus mark.
+  return ctx.rule(c, focused and "ink" or "faint", focused and "$kitRuleW" or "$kitHair")
 end
 
 local record Asked
@@ -391,16 +401,22 @@ function M.segmented(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
   -- A track with the chosen segment filled, in every skin: an outline and
   -- a rule between each segment drew a cage of edges around three words.
-  -- Where controls are outlined (Ledger) the chosen one takes the accent.
+  -- Where controls are outlined (Ledger, Phosphor) the chosen one is
+  -- printed in the ink, the page's colour on it: the accent stays the one
+  -- action's, and a view switch is not one. The track is the pressed wash,
+  -- so it reads on any surface (Ledger's sunken was its toolbar's colour).
   local bordered = c.s.skin.ctl_border
+  local on_bg = bordered and "ink" or "panel"
+  local on_fg = bordered and "bg" or "fg"
   local t: kui.Props = {
     role = "radioGroup",
     label = str(p.label),
     height = "$kitCtl",
+    min_width = "fit",
     radius = "$kitRadius",
     pad = 2,
     gap = 2,
-    bg = ref(c, "sunken"),
+    bg = ref(c, "press"),
     clip = true,
   }
   for i, o in ipairs(options) do
@@ -412,17 +428,20 @@ function M.segmented(c: Ctx, p: P): kui.Node
       checked = here,
       disabled = o.disabled == true,
       height = "grow",
+      min_width = "fit",
       pad = { x = 10 },
       cross_align = "center",
       radius = "$kitRadius",
-      bg = here and ref(c, bordered and "accent" or "panel") or nil,
-      hover_bg = here and ref(c, bordered and "accent" or "panel") or ref(c, "hover"),
+      bg = here and ref(c, on_bg) or nil,
+      hover_bg = here and ref(c, on_bg) or ref(c, "hover"),
       cursor = "pointer",
       on_click = act(c, "segmented.pick", { value = o.value }),
       gap = 6,
-      ctx.caption(c, o.label as string, { color = ref(c, here and bordered and "on_accent" or "fg") }),
+      ctx.caption(c, o.label as string, { color = ref(c, here and on_fg or "fg") }),
+      -- An alert count is in the danger colour off the chosen segment; on
+      -- it, in its ink and bold (the danger colour has no contrast on ink).
       o.count ~= nil and ctx.data(c, tostring(o.count), { size = "$kitSizeLabel", bold = o.alert == true,
-        color = ref(c, o.alert == true and "danger" or (here and bordered and "on_accent" or "muted")) }) or nil,
+        color = ref(c, here and on_fg or (o.alert == true and "danger" or "muted")) }) or nil,
     }
   end
   return row(t)

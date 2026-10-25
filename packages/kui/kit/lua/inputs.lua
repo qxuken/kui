@@ -42,9 +42,14 @@ end
 
 
 local function pressable(c, variant, t)
+
+
+   if t.disabled == true and variant ~= "ghost" then variant = "default" end
    local bg, hover, _, border = look(c, variant)
    t.role = t.role or "button"
    t.height = t.height or "$kitCtl"
+
+   t.min_width = t.min_width or "fit"
    t.cross_align = "center"
    t.radius = "$kitRadius"
    t.bg = bg
@@ -69,6 +74,7 @@ end
 
 function M.button(c, p)
    local variant = str(p.variant) or "default"
+   if p.disabled == true and variant ~= "ghost" then variant = "default" end
    local _, _, ink, _ = look(c, variant)
    local label = str(p.label) or ""
    local t = pressable(c, variant, {
@@ -92,6 +98,7 @@ end
 
 function M.icon_button(c, p)
    local variant = str(p.variant) or "ghost"
+   if p.disabled == true and variant ~= "ghost" then variant = "default" end
    local label = str(p.label) or ""
    local t = pressable(c, variant, {
       label = label,
@@ -127,7 +134,10 @@ local function underline(c, focused)
    if c.s.skin.field_box then return nil end
 
 
-   return ctx.rule(c, focused and "accent" or "rule", focused and "$kitRuleW" or "$kitHair")
+
+
+
+   return ctx.rule(c, focused and "ink" or "faint", focused and "$kitRuleW" or "$kitHair")
 end
 
 
@@ -393,15 +403,21 @@ function M.segmented(c, p)
 
 
 
+
+
+
    local bordered = c.s.skin.ctl_border
+   local on_bg = bordered and "ink" or "panel"
+   local on_fg = bordered and "bg" or "fg"
    local t = {
       role = "radioGroup",
       label = str(p.label),
       height = "$kitCtl",
+      min_width = "fit",
       radius = "$kitRadius",
       pad = 2,
       gap = 2,
-      bg = ref(c, "sunken"),
+      bg = ref(c, "press"),
       clip = true,
    }
    for i, o in ipairs(options) do
@@ -413,17 +429,20 @@ function M.segmented(c, p)
          checked = here,
          disabled = o.disabled == true,
          height = "grow",
+         min_width = "fit",
          pad = { x = 10 },
          cross_align = "center",
          radius = "$kitRadius",
-         bg = here and ref(c, bordered and "accent" or "panel") or nil,
-         hover_bg = here and ref(c, bordered and "accent" or "panel") or ref(c, "hover"),
+         bg = here and ref(c, on_bg) or nil,
+         hover_bg = here and ref(c, on_bg) or ref(c, "hover"),
          cursor = "pointer",
          on_click = act(c, "segmented.pick", { value = o.value }),
          gap = 6,
-         ctx.caption(c, o.label, { color = ref(c, here and bordered and "on_accent" or "fg") }),
+         ctx.caption(c, o.label, { color = ref(c, here and on_fg or "fg") }),
+
+
          o.count ~= nil and ctx.data(c, tostring(o.count), { size = "$kitSizeLabel", bold = o.alert == true,
-color = ref(c, o.alert == true and "danger" or (here and bordered and "on_accent" or "muted")), }) or nil,
+color = ref(c, here and on_fg or (o.alert == true and "danger" or "muted")), }) or nil,
       })
    end
    return row(t)

@@ -10,7 +10,7 @@
 #![allow(clippy::new_without_default, clippy::too_many_arguments)]
 
 use kui_core::channel::Channel;
-use kui_core::{FillAnswer, Ui, Value};
+use kui_core::{SlotFill, Ui, Value};
 
 /// The namespace the components are placed under unless told otherwise.
 pub const NAMESPACE: &str = "kit";
@@ -671,12 +671,12 @@ impl Settings {
     }
 
     /// Places it under `kit/settings`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/settings", &self.props())
     }
 
     /// Places it under `<namespace>/settings`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/settings"), &self.props())
     }
 }
@@ -787,17 +787,17 @@ impl Panel {
     }
 
     /// Places it under `kit/panel`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/panel", &self.props())
     }
 
     /// Places it under `<namespace>/panel`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/panel"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"actions"`, `"footer"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/panel", &self.props(), children)
     }
 }
@@ -846,17 +846,17 @@ impl Toolbar {
     }
 
     /// Places it under `kit/toolbar`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/toolbar", &self.props())
     }
 
     /// Places it under `<namespace>/toolbar`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/toolbar"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"trailing"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/toolbar", &self.props(), children)
     }
 }
@@ -904,17 +904,17 @@ impl Statusbar {
     }
 
     /// Places it under `kit/statusbar`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/statusbar", &self.props())
     }
 
     /// Places it under `<namespace>/statusbar`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/statusbar"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"trailing"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/statusbar", &self.props(), children)
     }
 }
@@ -1005,17 +1005,17 @@ impl Split {
     }
 
     /// Places it under `kit/split`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/split", &self.props())
     }
 
     /// Places it under `<namespace>/split`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/split"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `"first"`, `"second"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/split", &self.props(), children)
     }
 }
@@ -1101,17 +1101,17 @@ impl Tabs {
     }
 
     /// Places it under `kit/tabs`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/tabs", &self.props())
     }
 
     /// Places it under `<namespace>/tabs`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/tabs"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"trailing"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/tabs", &self.props(), children)
     }
 }
@@ -1142,6 +1142,9 @@ pub struct Section {
     pub collapsed: Option<bool>,
     /// A count beside the heading.
     pub count: Option<i64>,
+    /// The body's left inset in px; 18 when left out, under the title. 0 for
+    /// rows with their own inset that line up with `leading`.
+    pub indent: Option<f64>,
     /// The message `toggle` arrives as, with `toggle: SectionToggle` in it. The
     /// heading was pressed.
     pub on_toggle: Option<Value>,
@@ -1158,6 +1161,7 @@ impl Section {
             title: title.into(),
             collapsed: None,
             count: None,
+            indent: None,
             on_toggle: None,
             key: None,
             fresh: false,
@@ -1173,6 +1177,13 @@ impl Section {
     /// A count beside the heading.
     pub fn count(mut self, v: i64) -> Self {
         self.count = Some(v);
+        self
+    }
+
+    /// The body's left inset in px; 18 when left out, under the title. 0 for
+    /// rows with their own inset that line up with `leading`.
+    pub fn indent(mut self, v: f64) -> Self {
+        self.indent = Some(v);
         self
     }
 
@@ -1204,6 +1215,9 @@ impl Section {
         if let Some(v) = &self.count {
             m.push(("count".into(), Value::Int(*v)));
         }
+        if let Some(v) = &self.indent {
+            m.push(("indent".into(), Value::Float(*v)));
+        }
         if let Some(v) = &self.on_toggle {
             m.push(("on_toggle".into(), v.clone()));
         }
@@ -1217,17 +1231,17 @@ impl Section {
     }
 
     /// Places it under `kit/section`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/section", &self.props())
     }
 
     /// Places it under `<namespace>/section`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/section"), &self.props())
     }
 
-    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"leading"`, `"actions"` where it asks.
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/section", &self.props(), children)
     }
 }
@@ -1292,12 +1306,12 @@ impl Divider {
     }
 
     /// Places it under `kit/divider`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/divider", &self.props())
     }
 
     /// Places it under `<namespace>/divider`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/divider"), &self.props())
     }
 }
@@ -1448,12 +1462,12 @@ impl Button {
     }
 
     /// Places it under `kit/button`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/button", &self.props())
     }
 
     /// Places it under `<namespace>/button`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/button"), &self.props())
     }
 }
@@ -1584,12 +1598,12 @@ impl IconButton {
     }
 
     /// Places it under `kit/icon_button`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/icon_button", &self.props())
     }
 
     /// Places it under `<namespace>/icon_button`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/icon_button"), &self.props())
     }
 }
@@ -1769,12 +1783,12 @@ impl TextField {
     }
 
     /// Places it under `kit/text_field`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/text_field", &self.props())
     }
 
     /// Places it under `<namespace>/text_field`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/text_field"), &self.props())
     }
 }
@@ -1937,12 +1951,12 @@ impl Search {
     }
 
     /// Places it under `kit/search`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/search", &self.props())
     }
 
     /// Places it under `<namespace>/search`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/search"), &self.props())
     }
 }
@@ -2089,12 +2103,12 @@ impl Select {
     }
 
     /// Places it under `kit/select`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/select", &self.props())
     }
 
     /// Places it under `<namespace>/select`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/select"), &self.props())
     }
 }
@@ -2232,17 +2246,17 @@ impl Checkbox {
     }
 
     /// Places it under `kit/checkbox`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/checkbox", &self.props())
     }
 
     /// Places it under `<namespace>/checkbox`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/checkbox"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/checkbox", &self.props(), children)
     }
 }
@@ -2340,12 +2354,12 @@ impl Switch {
     }
 
     /// Places it under `kit/switch`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/switch", &self.props())
     }
 
     /// Places it under `<namespace>/switch`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/switch"), &self.props())
     }
 }
@@ -2451,12 +2465,12 @@ impl RadioGroup {
     }
 
     /// Places it under `kit/radio_group`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/radio_group", &self.props())
     }
 
     /// Places it under `<namespace>/radio_group`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/radio_group"), &self.props())
     }
 }
@@ -2554,12 +2568,12 @@ impl Segmented {
     }
 
     /// Places it under `kit/segmented`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/segmented", &self.props())
     }
 
     /// Places it under `<namespace>/segmented`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/segmented"), &self.props())
     }
 }
@@ -2673,12 +2687,12 @@ impl Slider {
     }
 
     /// Places it under `kit/slider`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/slider", &self.props())
     }
 
     /// Places it under `<namespace>/slider`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/slider"), &self.props())
     }
 }
@@ -2853,12 +2867,12 @@ impl Table {
     }
 
     /// Places it under `kit/table`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/table", &self.props())
     }
 
     /// Places it under `<namespace>/table`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/table"), &self.props())
     }
 }
@@ -3018,12 +3032,12 @@ impl List {
     }
 
     /// Places it under `kit/list`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/list", &self.props())
     }
 
     /// Places it under `<namespace>/list`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/list"), &self.props())
     }
 }
@@ -3104,12 +3118,12 @@ impl Inspector {
     }
 
     /// Places it under `kit/inspector`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/inspector", &self.props())
     }
 
     /// Places it under `<namespace>/inspector`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/inspector"), &self.props())
     }
 }
@@ -3224,12 +3238,12 @@ impl Log {
     }
 
     /// Places it under `kit/log`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/log", &self.props())
     }
 
     /// Places it under `<namespace>/log`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/log"), &self.props())
     }
 }
@@ -3322,12 +3336,12 @@ impl Badge {
     }
 
     /// Places it under `kit/badge`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/badge", &self.props())
     }
 
     /// Places it under `<namespace>/badge`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/badge"), &self.props())
     }
 }
@@ -3407,12 +3421,12 @@ impl Stat {
     }
 
     /// Places it under `kit/stat`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/stat", &self.props())
     }
 
     /// Places it under `<namespace>/stat`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/stat"), &self.props())
     }
 }
@@ -3488,12 +3502,12 @@ impl Code {
     }
 
     /// Places it under `kit/code`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/code", &self.props())
     }
 
     /// Places it under `<namespace>/code`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/code"), &self.props())
     }
 }
@@ -3570,17 +3584,17 @@ impl Notice {
     }
 
     /// Places it under `kit/notice`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/notice", &self.props())
     }
 
     /// Places it under `<namespace>/notice`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/notice"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/notice", &self.props(), children)
     }
 }
@@ -3644,17 +3658,17 @@ impl Empty {
     }
 
     /// Places it under `kit/empty`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/empty", &self.props())
     }
 
     /// Places it under `<namespace>/empty`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/empty"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/empty", &self.props(), children)
     }
 }
@@ -3726,12 +3740,12 @@ impl Progress {
     }
 
     /// Places it under `kit/progress`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/progress", &self.props())
     }
 
     /// Places it under `<namespace>/progress`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/progress"), &self.props())
     }
 }
@@ -3809,17 +3823,17 @@ impl Dialog {
     }
 
     /// Places it under `kit/dialog`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/dialog", &self.props())
     }
 
     /// Places it under `<namespace>/dialog`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/dialog"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"actions"` where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/dialog", &self.props(), children)
     }
 }
@@ -3907,17 +3921,17 @@ impl Popover {
     }
 
     /// Places it under `kit/popover`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/popover", &self.props())
     }
 
     /// Places it under `<namespace>/popover`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/popover"), &self.props())
     }
 
     /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
-    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/popover", &self.props(), children)
     }
 }
@@ -4009,12 +4023,12 @@ impl Menu {
     }
 
     /// Places it under `kit/menu`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/menu", &self.props())
     }
 
     /// Places it under `<namespace>/menu`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/menu"), &self.props())
     }
 }
@@ -4122,12 +4136,12 @@ impl Toast {
     }
 
     /// Places it under `kit/toast`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/toast", &self.props())
     }
 
     /// Places it under `<namespace>/toast`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/toast"), &self.props())
     }
 }
@@ -4233,12 +4247,12 @@ impl Sparkline {
     }
 
     /// Places it under `kit/sparkline`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/sparkline", &self.props())
     }
 
     /// Places it under `<namespace>/sparkline`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/sparkline"), &self.props())
     }
 }
@@ -4348,12 +4362,12 @@ impl LineChart {
     }
 
     /// Places it under `kit/line_chart`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/line_chart", &self.props())
     }
 
     /// Places it under `<namespace>/line_chart`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/line_chart"), &self.props())
     }
 }
@@ -4455,12 +4469,12 @@ impl BarChart {
     }
 
     /// Places it under `kit/bar_chart`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/bar_chart", &self.props())
     }
 
     /// Places it under `<namespace>/bar_chart`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/bar_chart"), &self.props())
     }
 }
@@ -4557,12 +4571,12 @@ impl Histogram {
     }
 
     /// Places it under `kit/histogram`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/histogram", &self.props())
     }
 
     /// Places it under `<namespace>/histogram`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/histogram"), &self.props())
     }
 }
@@ -4703,12 +4717,12 @@ impl Waterfall {
     }
 
     /// Places it under `kit/waterfall`.
-    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
         ui.component("kit/waterfall", &self.props())
     }
 
     /// Places it under `<namespace>/waterfall`.
-    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/waterfall"), &self.props())
     }
 }

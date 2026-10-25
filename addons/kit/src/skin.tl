@@ -19,7 +19,8 @@ local record Half
   -- A hairline between rows, and the rule that marks a region.
   rule: integer
   ink: integer
-  -- Text: body, secondary, barely there.
+  -- Text: body, secondary, and the quietest — counts, times, shortcuts —
+  -- which still reads at 4.5:1 on `panel` (WCAG AA for small text).
   fg: integer
   muted: integer
   faint: integer

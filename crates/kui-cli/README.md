@@ -53,6 +53,7 @@ end
 | `--headless` | No window: a server, a script, a test. |
 | `--shot out.png [--after ms]` | No window: writes a frame after `ms` (800) and ends. |
 | `--size WxH` | The window's size (1000×700, or the manifest's). |
+| `--appearance light\|dark` | Pins the appearance over the OS's, so a token with a light and a dark value takes that one; headless has no OS to ask, so a `--shot` in light needs it. |
 | `-- args…` | What follows is the app's own, in `kui.args`: `kui run . -- --port 3001`. |
 | `--devtools` | Opens with the devtools panel; its Log tab has what the app printed and logged. |
 | `--no-rename` | Keeps the name "kui" in the Dock and ⌘Tab (macOS names an app by its binary, so a windowed run relaunches as a free clone named after the app). |

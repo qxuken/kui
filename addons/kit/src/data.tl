@@ -428,6 +428,8 @@ function M.badge(c: Ctx, p: P): kui.Node
   local t: kui.Props = {
     label = label,
     height = 18,
+    -- Whole or not at all: a status cut to half a word says nothing.
+    min_width = "fit",
     pad = { x = 6 },
     gap = 5,
     cross_align = "center",

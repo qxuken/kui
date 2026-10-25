@@ -62,15 +62,19 @@ function M.toolbar(c, _p)
       bg = ref(c, "side"),
       row({
          width = "grow",
-         height = 38,
-         pad = { x = 8 },
+         min_height = 38,
+         pad = { x = 8, y = 6 },
          gap = 6,
          cross_align = "center",
 
 
 
-         row({ width = "grow", gap = 6, cross_align = "center", children("") }),
-         row({ gap = 6, cross_align = "center", children("trailing") }),
+         wrap_children = true,
+
+
+
+         row({ width = "grow", min_width = "fit", gap = 6, cross_align = "center", children("") }),
+         row({ min_width = "fit", gap = 6, cross_align = "center", children("trailing") }),
       }),
       ctx.rule(c, "rule", "$kitHair"),
    })
@@ -155,8 +159,10 @@ function M.tabs(c, p)
       })
    end
 
+
+
    strip[#strip + 1] = ctx.grow()
-   strip[#strip + 1] = row({ height = "grow", gap = 4, cross_align = "center", pad = { r = 4 }, children("trailing") })
+   strip[#strip + 1] = row({ height = "grow", min_width = "fit", gap = 4, cross_align = "center", pad = { r = 4 }, children("trailing") })
    return column({
       width = "grow",
       height = "grow",
@@ -175,12 +181,16 @@ function M.section(c, p)
    local st = ctx.state(c, function() return { collapsed = false } end)
    local collapsed
    if p.collapsed ~= nil then collapsed = p.collapsed == true else collapsed = st.collapsed end
+
+
+
    local head = {
       role = "button",
       label = str(p.title),
       expanded = collapsed and "collapsed" or "expanded",
       width = "grow",
-      height = "$kitRow",
+      min_width = 0,
+      height = "grow",
       gap = 6,
       cross_align = "center",
       cursor = "pointer",
@@ -190,9 +200,22 @@ function M.section(c, p)
       ctx.caption(c, str(p.title) or "", { size = "$kitSizeLabel" }),
    }
    if p.count ~= nil then head[#head + 1] = ctx.data(c, tostring(p.count), { size = "$kitSizeLabel", color = ref(c, "faint") }) end
-   local t = { width = "grow", gap = 4, row(head) }
+   local bar = row({
+      key = "head",
+      width = "grow",
+      min_height = "$kitRow",
+      gap = 6,
+      cross_align = "center",
+      children("leading"),
+      row(head),
+      children("actions"),
+   })
+   local t = { width = "grow", gap = 4, bar }
    if not collapsed then
-      t[#t + 1] = column({ key = "body", width = "grow", gap = 6, pad = { l = 18 }, children("") })
+
+
+      local indent = (p.indent or 18)
+      t[#t + 1] = column({ key = "body", width = "grow", gap = 6, pad = { l = indent }, children("") })
    end
    return column(t)
 end

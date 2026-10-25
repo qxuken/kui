@@ -135,11 +135,16 @@ return {
         { "title", "string", doc = "The heading." },
         { "collapsed", "boolean?", doc = "Folded: yours to keep." },
         { "count", "integer?", doc = "A count beside the heading." },
+        { "indent", "number?", doc = "The body's left inset in px; 18 when left out, under the title. 0 for rows with their own inset that line up with `leading`." },
       },
       events = {
         { "toggle", doc = "The heading was pressed.", fields = { { "collapsed", "boolean", doc = "What it asks to be." } } },
       },
-      children = { { "", doc = "is what it folds." } } },
+      children = {
+        { "", doc = "is what it folds." },
+        { "leading", doc = "goes before the heading, beside it rather than in it: a box that ticks the whole section." },
+        { "actions", doc = "goes after the heading, at the far side: a status, an action on the whole section." },
+      } },
     { "divider", doc = "A rule between groups, as the skin draws regions." },
 
     -- Inputs ---------------------------------------------------------------

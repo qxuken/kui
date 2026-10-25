@@ -227,10 +227,16 @@ export interface SectionProps {
   collapsed?: boolean;
   /** A count beside the heading. */
   count?: number;
+  /** The body's left inset in px; 18 when left out, under the title. 0 for rows with their own inset that line up with `leading`. */
+  indent?: number;
   /** The message toggle arrives as: yours, with `toggle: SectionToggle` in it. The heading was pressed. */
   onToggle?: unknown;
   /** is what it folds. */
   children?: KuiNode;
+  /** goes before the heading, beside it rather than in it: a box that ticks the whole section. */
+  leading?: KuiNode;
+  /** goes after the heading, at the far side: a status, an action on the whole section. */
+  actions?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
