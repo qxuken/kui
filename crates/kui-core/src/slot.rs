@@ -711,10 +711,13 @@ impl Fill for Extensions {
         // still arrive; the rest are gone (ADR 0060).
         let generation = self.generation;
         self.instances.retain(|_, r| r.generation == generation);
-        if !self.heard.is_empty() {
-            let instances = &self.instances;
-            self.heard.retain(|k| instances.contains_key(k));
-        }
+        // `heard` is pruned at the end, not here: the roots drawn below
+        // place their instances after this point, and an instance a root
+        // places (every instance of a runner app, whose view is its
+        // extension's root) heard its event before this frame's placement
+        // recorded it again. Pruned here, the event was forgotten and the
+        // instance replayed what it showed before it: a select's menu
+        // that a press outside never closed.
         // By index rather than over a snapshot: a root drawn here may load
         // an extension of its own, which joins the end of the list, and
         // the frame it arrived on is the frame it should draw on.
@@ -741,6 +744,10 @@ impl Fill for Extensions {
         }
         // After the roots, which record their instances under this one.
         self.instances.retain(|_, r| r.generation == generation);
+        if !self.heard.is_empty() {
+            let instances = &self.instances;
+            self.heard.retain(|k| instances.contains_key(k));
+        }
         self.generation = generation.wrapping_add(1);
     }
 

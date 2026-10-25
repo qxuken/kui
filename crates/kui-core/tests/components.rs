@@ -380,6 +380,69 @@ fn children_are_refused_twice_and_an_unknown_component_says_so() {
     );
 }
 
+/// An app whose view is its extension's `root`, as a runner app's is:
+/// it places `kit/button`, so the button's instance is placed by a root
+/// that `Extensions::finish` draws, not by the host's view.
+struct App;
+
+static NO_COMPONENTS: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(Vec::new);
+
+impl Extension for App {
+    fn name(&self) -> &str {
+        "app"
+    }
+    fn components(&self) -> &[String] {
+        &NO_COMPONENTS
+    }
+    fn view(&mut self, _slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        ui.component("kit/button", &Value::map([("onClick", Value::str("saved"))]));
+        Ok(())
+    }
+    fn component(&mut self, _inst: &Instance<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
+        Ok(())
+    }
+    fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
+        Vec::new()
+    }
+}
+
+#[test]
+fn an_instance_a_root_placed_that_heard_its_event_is_asked_again() {
+    // The heard set was pruned at the top of `Extensions::finish`, before
+    // the roots drew: the button a root placed had no record of this
+    // frame yet, its event was forgotten, and it replayed what it showed
+    // before — a runner app's select whose menu a press outside never
+    // closed.
+    let kit = Kit::default();
+    let fills = kit.fills.clone();
+    let mut exts = Extensions::new();
+    exts.push_as("kit", Box::new(kit)).unwrap();
+    exts.push_as("app", Box::new(App)).unwrap();
+    let mut core = Core::new();
+    core.set_inspect(true);
+    let frame = |core: &mut Core, exts: &mut Extensions| {
+        let mut ui = core.frame_with(VIEW, 1.0, exts);
+        ui.configure_root(NodeSpec::column().pad(8.0).gap(4.0));
+        ui.finish();
+    };
+    frame(&mut core, &mut exts);
+    frame(&mut core, &mut exts);
+    assert_eq!(fills.get(), 1, "filled once, then replayed");
+    let rect = core
+        .access_tree()
+        .nodes
+        .iter()
+        .find(|n| n.name.as_deref() == Some("Kit button"))
+        .expect("the button")
+        .rect;
+    let events = click_at(&mut core, rect.x + 4.0, rect.y + 4.0);
+    exts.route(events, |_| {});
+    frame(&mut core, &mut exts);
+    assert_eq!(fills.get(), 2, "the click was heard: asked again");
+    let texts: Vec<String> = core.nodes().iter().filter_map(|n| n.text.clone()).collect();
+    assert!(texts.contains(&"clicks 1".to_string()), "{texts:?}");
+}
+
 #[test]
 fn an_instance_that_heard_its_own_event_is_asked_again() {
     let mut r = rig(Kit::default());
