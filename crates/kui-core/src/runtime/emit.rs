@@ -2059,7 +2059,8 @@ impl Core {
     /// What node `i`'s slide is measured from (`ease_positions`): the
     /// index of the node it is laid against, if any; that node's origin as
     /// drawn now (its eased position, less its scroll offset when `i` is
-    /// in its content); and `i`'s laid place relative to it, which is what
+    /// in its content; for a viewport float, what its ancestors' slides
+    /// carried it by); and `i`'s laid place relative to it, which is what
     /// the slide eases.
     fn slide_frame(&self, i: usize, moved: &[(usize, usize, Vec2)]) -> (Option<usize>, Vec2, Vec2) {
         use crate::spec::FloatAnchor;
@@ -2071,8 +2072,13 @@ impl Core {
             Some(FloatAnchor::Node(k)) => tree.index_of(k),
             _ => (tree.parent[i] != NIL).then_some(tree.parent[i] as usize),
         };
+        // A viewport float's place is the window's. Its ancestors' slides
+        // carry it as they carry any node of their subtree, so what they
+        // shifted it by is its origin, followed at once like a parent's.
         let Some(r) = by else {
-            return (None, Vec2::ZERO, tree.pos[i]);
+            let at = laid(tree.pos[i], i, moved);
+            let carried = Vec2::new(tree.pos[i].x - at.x, tree.pos[i].y - at.y);
+            return (None, carried, at);
         };
         let mut origin = tree.pos[r];
         if float.is_none() {

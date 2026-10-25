@@ -217,3 +217,53 @@ fn a_card_taken_to_another_column_glides_from_where_it_was() {
     assert_eq!(columns(&mut core, true, 40.0), (200.0, 40.0));
     assert!(!core.animating());
 }
+
+/// Two sliding rows; row "a" holds a sliding viewport float at (300, 10).
+/// Returns row "a"'s y and the float's.
+fn rows_with_float(core: &mut Core, a_first: bool) -> (f32, f32) {
+    let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let labels = if a_first { ["a", "b"] } else { ["b", "a"] };
+    for label in labels {
+        let bg = if label == "a" { TRACK } else { Color::WHITE };
+        let row = NodeSpec::row()
+            .size(200.0, 40.0)
+            .bg(bg)
+            .transition_with(linear())
+            .slide();
+        ui.with_keyed(label, row, |ui| {
+            if label == "a" {
+                ui.leaf_keyed(
+                    "badge",
+                    NodeSpec::row()
+                        .size(10.0, 10.0)
+                        .bg(KNOB)
+                        .float(kui_core::FloatConfig::viewport().offset(300.0, 10.0))
+                        .transition_with(linear())
+                        .slide(),
+                );
+            }
+        });
+    }
+    ui.finish();
+    (at(core, TRACK).1, at(core, KNOB).1)
+}
+
+#[test]
+fn a_sliding_viewport_float_is_carried_by_its_sliding_ancestor_without_a_lag_of_its_own() {
+    let mut core = Core::new();
+    core.set_time(0.0);
+    assert_eq!(rows_with_float(&mut core, true), (0.0, 10.0));
+    core.set_time(0.0);
+    rows_with_float(&mut core, false);
+    // Row "a" eases from 0 to 40; the float, which did not move in the
+    // window, is carried as any node of the row is, by the row's lag alone.
+    for t in [0.025, 0.05, 0.075] {
+        core.set_time(t);
+        let (row, badge) = rows_with_float(&mut core, false);
+        assert_eq!(badge - 10.0, row - 40.0, "carried by the row at {t}");
+    }
+    core.set_time(0.2);
+    assert_eq!(rows_with_float(&mut core, false), (40.0, 10.0));
+    assert!(!core.animating());
+}
