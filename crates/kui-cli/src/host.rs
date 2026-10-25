@@ -175,18 +175,28 @@ struct DefaultMenu {
 }
 
 /// `kui run --shot out.png`: a frame `after` seconds in, written to `path`,
-/// then the run ends.
+/// then the run ends. With `--record MS`, every frame drawn for that long
+/// from then on, written as an animation (`.gif`, `.png`/`.apng`).
 pub struct Shot {
     pub path: PathBuf,
     pub after: f64,
     at: Option<f64>,
     /// Frames since the capture was asked: it is written once drawn.
     since: u32,
+    /// `--record`: how long to record, in seconds, and when it stops.
+    record: Option<f64>,
+    stop_at: Option<f64>,
 }
 
 impl Shot {
     pub fn new(path: PathBuf, after_ms: f64) -> Self {
-        Shot { path, after: after_ms / 1000.0, at: None, since: 0 }
+        Shot { path, after: after_ms / 1000.0, at: None, since: 0, record: None, stop_at: None }
+    }
+
+    /// Records `ms` of frames instead of taking one.
+    pub fn recording(mut self, ms: Option<f64>) -> Self {
+        self.record = ms.map(|ms| ms / 1000.0);
+        self
     }
 }
 
@@ -426,7 +436,32 @@ impl App for Runner {
         if let Err(e) = modules::drain(&self.lua) {
             self.shared.error(e.to_string());
         }
-        if let Some(shot) = &mut self.shot {
+        if let Some(shot) = &mut self.shot
+            && let Some(len) = shot.record
+        {
+            // A recording: started at `after`, stopped `len` later, and the
+            // run ends when the file is written (its `capture` event).
+            let now = ui.now();
+            let at = *shot.at.get_or_insert(now + shot.after);
+            match shot.stop_at {
+                None if now >= at => {
+                    ui.record_to(
+                        shot.path.to_string_lossy().into_owned(),
+                        Some(Value::map([("kui", Value::str("recorded"))])),
+                    );
+                    shot.stop_at = Some(now + len);
+                    ui.request_frame();
+                }
+                None => ui.request_frame_at(at),
+                Some(stop) if shot.since == 0 && now >= stop => {
+                    ui.stop_recording();
+                    shot.since = 1;
+                    ui.request_frame();
+                }
+                Some(stop) if shot.since == 0 => ui.request_frame_at(stop),
+                Some(_) => {}
+            }
+        } else if let Some(shot) = &mut self.shot {
             let now = ui.now();
             let at = *shot.at.get_or_insert(now + shot.after);
             if shot.since > 0 {
@@ -464,6 +499,12 @@ impl App for Runner {
                 self.shared.ops.poke();
             }
             _ => {}
+        }
+        if ev.payload.get_str("kui") == Some("recorded")
+            && let Some(shot) = &self.shot
+        {
+            eprintln!("kui: wrote {}", shot.path.display());
+            self.shared.exit.lock().unwrap().get_or_insert(0);
         }
     }
 

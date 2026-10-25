@@ -53,6 +53,7 @@ run options:
   --no-rename    keep the name kui in the Dock (macOS names an app by its binary)
   --shot FILE    no window: write a frame to FILE (.png) and end
   --after MS     with --shot, how long to run first (default 800)
+  --record MS    with --shot, record MS of frames into FILE (.gif, .png) instead of one
   --appearance light|dark
                  pin the light or dark appearance over the OS's (headless has none of its own)
   -- ARGS        what follows is the app's, in kui.args
@@ -68,6 +69,7 @@ struct Args {
     size: Option<(f64, f64)>,
     shot: Option<PathBuf>,
     after: f64,
+    record: Option<f64>,
     /// After `--`: the app's own arguments.
     rest: Vec<String>,
     devtools: bool,
@@ -85,6 +87,7 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
         size: None,
         shot: None,
         after: 800.0,
+        record: None,
         rest: Vec::new(),
         devtools: false,
         no_rename: false,
@@ -110,6 +113,10 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
             "--shot" => {
                 a.shot = Some(PathBuf::from(it.next().ok_or("--shot needs a file, as out.png")?));
                 a.headless = true;
+            }
+            "--record" => {
+                let v = it.next().ok_or("--record needs milliseconds")?;
+                a.record = Some(v.parse().map_err(|_| format!("--record: bad milliseconds {v}"))?);
             }
             "--after" => {
                 let v = it.next().ok_or("--after needs milliseconds")?;
@@ -267,7 +274,7 @@ fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
     let watch = args.watch.then(|| host::Watch::start(&project, shared.clone()));
     let shot = args.shot.clone().map(|p| {
         let p = if p.is_absolute() { p } else { std::env::current_dir().unwrap_or_default().join(p) };
-        host::Shot::new(p, args.after)
+        host::Shot::new(p, args.after).recording(args.record)
     });
     let runner = host::Runner::new(lua, shared.clone(), &project, baseline, watch, load_error, shot);
     let (w, h) = args.size.unwrap_or(project.size);

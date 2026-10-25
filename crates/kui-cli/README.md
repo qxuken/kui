@@ -52,6 +52,7 @@ end
 | `--watch` | Reloads when the app's files change, keeping `model`; a load that fails keeps the old code and shows the error over the window. |
 | `--headless` | No window: a server, a script, a test. |
 | `--shot out.png [--after ms]` | No window: writes a frame after `ms` (800) and ends. |
+| `--shot out.gif --record ms` | No window: records `ms` of frames from `--after` on into an animation (`.gif`, or `.png` for an animated PNG) and ends: a switch's slide, a toast's exit, to look at frame by frame. |
 | `--size WxH` | The window's size (1000×700, or the manifest's). |
 | `--appearance light\|dark` | Pins the appearance over the OS's, so a token with a light and a dark value takes that one; headless has no OS to ask, so a `--shot` in light needs it. |
 | `-- args…` | What follows is the app's own, in `kui.args`: `kui run . -- --port 3001`. |
