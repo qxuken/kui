@@ -251,6 +251,7 @@ Edit_Flag :: enum u32 {
 	Keep_Tab = 3, // KUI_EDIT_KEEP_TAB
 	Secure = 4, // KUI_EDIT_SECURE
 	Value = 5, // KUI_EDIT_VALUE
+	Tab_Inserts = 6, // KUI_EDIT_TAB_INSERTS
 }
 Edit_Flags :: bit_set[Edit_Flag;u32]
 

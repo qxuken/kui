@@ -357,6 +357,39 @@ for lua-language-server, and a new runner beside the window's.
   headless. Preferences' ⌘S / Ctrl+S saves (a menu bar it never had), its
   toasts stack with an Undo each; the book's task list clears done tasks
   with a ghost button beside the primary Add.
+  A third pass, on the keyboard and on focus: nothing changes size when
+  it takes focus — Ledger's field underline keeps the region rule's height
+  whatever its thickness (a focused field moved the rows under it) — and
+  a text field's `error` sits at the end of its well, cut short with the
+  whole message as its tooltip, so a field in a toolbar keeps its height
+  and its buttons their line. Focus rings show only when the keyboard put
+  focus there: a click on a list row, a table or a segment focuses without
+  one. A checkbox and a switch draw their ring 2 px round the mark rather
+  than round the whole row. A segmented control and a radio group are
+  entered on the chosen item; a bar chart's bars and a waterfall's spans
+  are one Tab stop the arrows walk (Enter picks; the bar the keyboard is
+  on takes the hover colour and shows its tooltip) when the host picks
+  with `on_select`, and with no `on_select` neither they nor a table's or
+  a list's rows, nor sort headers with no `on_sort`, take the keyboard. A
+  `text_area` lets Tab leave it, `tab_inserts` keeps Tab as indentation.
+  A slider's whole track is grabbed (an open hand, a closed one while
+  held) and a drag can start on the handle, which was a region of its own
+  that took the press. A bar chart's value column is as wide as its widest
+  label. A toast with no tone is `info` (the skin's focus blue; `Tone`
+  gains `info`), and the last toast in a `toaster` slides out with it
+  rather than vanishing. Phosphor's off switch is a dim track and a solid
+  knob, not a hollow square in a lit frame. A live line chart's area is
+  polygons rather than a path rasterized again on every tick (emit 3–4 ms
+  a tick for 300 points; the line chart's own fill went from 1.7 to 0.4
+  ms a frame in `cargo bench -p kui-lua --bench kit -- line_chart`, 100,000
+  points from 1.75 s to 5 ms), and its labels and hover bands, the bar
+  chart's, the waterfall's and the log's Latest button take their
+  parent's clip instead of drawing over a scrolled page's top bar. The
+  log keeps its end the frame its box changes height (Watchtower's events
+  sat a band off it for a frame). Field Notes' New note puts the keyboard
+  in the new title and its checklist folds. The Kit app shows all 39
+  components, a Keyboard page and a toast stack, and runs as an app of its
+  own (`kui.config.lua`: Kit, `dev.kui.kit.gallery`).
 
 - **How kui reaches a machine** (backlog C88, [ADR
   0068](docs/adr/0068-how-kui-reaches-a-machine.md)). `kui pack` builds a
@@ -933,6 +966,26 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- An `anchor` scroller the last layout left at its end stays at its end
+  in the next, whatever changed size — its rows or its own box — until
+  something scrolls it away: a log whose panel grew sat a band short of
+  its end for one frame, until the view's own pin to the end came round
+  (from Watchtower). `anchor`'s documentation says so.
+- A tooltip shows while the keyboard holds focus on its node, as it does
+  under the pointer (`hint_shows`): a bar reached by Tab showed none.
+- A composite is entered on its `checked` item after a `selected` one
+  (ADR 0007 amended): a radio group and a segmented control were entered
+  on their first item whichever was chosen.
+- Tab and Shift-Tab leave a multiline editor as they leave a field, as a
+  browser's textarea does; the keyboard could not leave a text area. An
+  editor declared `tab_inserts` (Lua `tab_inserts`, JSX `tabInserts`, C
+  `KUI_EDIT_TAB_INSERTS`, Odin `EDIT_TAB_INSERTS`) keeps Tab as
+  indentation, and Tab under Ctrl, Alt or the primary still walks the
+  ring from it. `keep_tab` now holds for a multiline editor too.
+- `key_focus` on an editor takes focus as the editor first shows, in Lua
+  and Node: the editor path does not open through `open_from`, where the
+  row is honoured, and dropped it (Kit's `autofocus` never took the
+  keyboard from the button that opened the field).
 - A component instance placed by an extension's root — every instance of
   a `kui run` app, whose view is its extension's root — hears its own
   events (ADR 0067). `Extensions::finish` pruned the instances that heard
