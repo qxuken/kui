@@ -1,0 +1,11 @@
+[
+  { name: "preferences-general", size: "1040x760", after: 1000, args: ["ledger", "general"] }
+  { name: "preferences-sync", size: "1040x760", after: 1000, args: ["neutral", "sync"] }
+  { name: "preferences-network", size: "1040x760", after: 1000, args: ["phosphor", "network"] }
+  { name: "preferences-invalid", size: "1040x760", after: 1000, args: ["neutral", "invalid"] }
+  { name: "preferences-notifications", size: "1040x760", after: 1000, args: ["ledger", "notifications"] }
+  { name: "preferences-advanced", size: "1040x760", after: 1000, args: ["neutral", "advanced"] }
+  { name: "preferences-search", size: "1040x760", after: 1000, args: ["ledger", "search"] }
+  { name: "preferences-nothing", size: "820x520", after: 1000, args: ["phosphor", "nothing"] }
+  { name: "preferences-reset", size: "1040x760", after: 1000, args: ["ledger", "reset"] }
+]

@@ -347,6 +347,44 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     assert!(s.contains("rows\t100000\tspans\t18000"), "the worker's channels arrived:\n{s}");
 }
 
+/// Runs a Kit sample's own headless test (addons/kit/samples/<name>/test),
+/// in place: each writes only to the temp folder and serves on a free port.
+fn kit_sample(name: &str) {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit/samples").join(name);
+    let o = kui(&dir, &["run", "test", "--headless"], 60);
+    let s = out(&o);
+    assert!(o.status.success() && s.contains("PASS: 0 failure(s)"), "{name}:\n{s}");
+    assert!(!s.contains("warning"), "{name}:\n{s}");
+}
+
+#[test]
+fn the_relay_sample_sends_real_requests_to_its_mock_api() {
+    kit_sample("relay");
+}
+
+#[test]
+fn the_watchtower_sample_runs_its_teal_dashboard() {
+    kit_sample("watchtower");
+}
+
+#[test]
+fn the_field_notes_sample_keeps_its_notes_in_sqlite() {
+    kit_sample("field-notes");
+}
+
+#[test]
+fn the_preferences_sample_validates_saves_and_reads_back() {
+    kit_sample("preferences");
+}
+
+#[test]
+fn the_watchtower_sample_type_checks() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit/samples/watchtower");
+    let o = kui(&dir, &["check", "."], 60);
+    let s = out(&o);
+    assert!(o.status.success() && s.contains("ok:"), "{s}");
+}
+
 #[test]
 fn types_writes_what_editors_read() {
     let dir = app("types", &[("main.lua", "")]);
