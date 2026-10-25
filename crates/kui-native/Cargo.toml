@@ -91,6 +91,8 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Memory",
     # The accent colour DWM keeps in the registry (`mod system_env`).
     "Win32_System_Registry",
+    # Whether a high contrast theme is on (`mod system_env`, ADR 0069).
+    "Win32_UI_Accessibility",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     # The client area extended under the frame, so a system backdrop shows

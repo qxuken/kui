@@ -1,5 +1,5 @@
 //! What this runner can ask the OS for itself: the accent colour, the
-//! reduce-motion setting and the UI language — `env.system` minus the
+//! reduce-motion and increase-contrast settings and the UI language — `env.system` minus the
 //! appearance, which comes off the window (winit's `theme()`) because it
 //! is per-window and already answered there.
 //!
@@ -11,6 +11,7 @@
 //! |---|---|---|---|
 //! | accent | `NSColor.controlAccentColor` | DWM's `AccentColor` | — |
 //! | motion | `NSWorkspace.accessibilityDisplayShouldReduceMotion` | `SPI_GETCLIENTAREAANIMATION` | — |
+//! | contrast | `NSWorkspace.accessibilityDisplayShouldIncreaseContrast` | `SPI_GETHIGHCONTRAST` | — |
 //! | locale | `NSLocale.preferredLanguages` | `GetUserDefaultLocaleName` | `LANG` |
 //!
 //! On the main thread, at startup and whenever the user has plainly been
@@ -24,15 +25,16 @@
 //! need when it arrives (`xdg-desktop-portal`'s `Settings`, or
 //! `gsettings`); the seam for it is [`query`], and only its body moves.
 
-use kui_core::{Color, Locale, MotionPref};
+use kui_core::{Color, ContrastPref, Locale, MotionPref};
 
-/// The three facts [`query`] answers. `Default` is "asked nobody", which
+/// The four facts [`query`] answers. `Default` is "asked nobody", which
 /// is also what a platform with no answer reports.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Queried {
     pub accent: Option<Color>,
     pub motion: MotionPref,
     pub locale: Option<Locale>,
+    pub contrast: ContrastPref,
 }
 
 /// Ask the OS. Cheap enough to call on a focus change; see the module doc
@@ -42,6 +44,7 @@ pub(crate) fn query() -> Queried {
         accent: accent(),
         motion: motion(),
         locale: locale(),
+        contrast: contrast(),
     }
 }
 
@@ -73,6 +76,16 @@ fn motion() -> MotionPref {
         MotionPref::Reduced
     } else {
         MotionPref::Full
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn contrast() -> ContrastPref {
+    // "Increase contrast" in System Settings › Accessibility › Display.
+    if objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldIncreaseContrast() {
+        ContrastPref::More
+    } else {
+        ContrastPref::Normal
     }
 }
 
@@ -163,6 +176,28 @@ fn motion() -> MotionPref {
 }
 
 #[cfg(target_os = "windows")]
+fn contrast() -> ContrastPref {
+    use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};
+    // A high contrast theme on, the setting Windows' "Contrast themes"
+    // page turns on. A failed call is unknown, not a "no".
+    let mut hc = HIGHCONTRASTW {
+        cbSize: std::mem::size_of::<HIGHCONTRASTW>() as u32,
+        dwFlags: 0,
+        lpszDefaultScheme: std::ptr::null_mut(),
+    };
+    let ok =
+        unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cbSize, (&raw mut hc).cast(), 0) };
+    if ok == 0 {
+        ContrastPref::Unknown
+    } else if hc.dwFlags & HCF_HIGHCONTRASTON != 0 {
+        ContrastPref::More
+    } else {
+        ContrastPref::Normal
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn locale() -> Option<Locale> {
     use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
     // Already a BCP-47 tag ("en-US"), UTF-16, NUL-terminated; the returned
@@ -189,6 +224,11 @@ fn accent() -> Option<Color> {
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn motion() -> MotionPref {
     MotionPref::Unknown
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn contrast() -> ContrastPref {
+    ContrastPref::Unknown
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -249,6 +289,7 @@ mod tests {
         let q = query();
         if cfg!(any(target_os = "macos", target_os = "windows")) {
             assert_ne!(q.motion, MotionPref::Unknown, "the OS knows this one");
+            assert_ne!(q.contrast, ContrastPref::Unknown, "and this one");
             assert!(q.accent.is_some(), "and this one");
         } else {
             assert_eq!(
@@ -257,6 +298,7 @@ mod tests {
                     accent: None,
                     motion: MotionPref::Unknown,
                     locale: q.locale,
+                    contrast: ContrastPref::Unknown,
                 }
             );
         }

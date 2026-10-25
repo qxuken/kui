@@ -320,6 +320,11 @@ pub const MOTIONS: &[&str] = &["unknown", "full", "reduced"];
 /// reason: a host with no bridge reports that it cannot tell.
 pub const ASSISTIVE: &[&str] = &["unknown", "none", "listening"];
 
+/// The OS increased-contrast setting (`crate::env::ContrastPref::name`
+/// spellings, in `ContrastPref::ALL` order), `unknown` first for the same
+/// reason.
+pub const CONTRASTS: &[&str] = &["unknown", "normal", "more"];
+
 /// The audio output device's state (`crate::env::AudioDevice::name`
 /// spellings, in `AudioDevice::ALL` order), `closed` first so a zeroed C
 /// call reports the default.
@@ -1707,7 +1712,7 @@ pub const CUSTOM: &[CustomProp] = &[
         lua: "`window_events = { on_resize=, on_focus=, on_system_settings_change=, on_fonts=, on_modifiers=, on_open= }` (root table)",
         c: "`kui_root_with` (`KuiWindowEvents`)",
         odin: "`kui.root_with` (`Window_Events`)",
-        doc: "The messages the window's own events arrive as (ADR 0048), one boxed group on the root rather than six rows on every node: `onResize` hears `resize: {width, height, scale}`, `onFocus` this window gaining or losing the keyboard as `window: {phase: \"focused\" | \"blurred\"}`, `onSystemSettingsChange` `system: {appearance, accent, motion, locale, assistive}`, `onFonts` the system's fonts changing (the message as declared), `onModifiers` `modifiers: {shift, ctrl, alt, super}`, and `onOpen` the OS's documents as `open: {paths}` — read on the main window's root alone, since the OS opens documents to the app. Each arrives as its message with the data in the field named for the event, as a node's handler does. A root that declares no group, or a group that leaves a key out, hears none of those events; `env` reads every fact they report either way. Read from the last frame the window finished, so a resize the next frame begins with arrives as the message the frame before declared. A window's opening and closing are its `windows` entry's (`onWindow`), and the menu bar's choice is the `menuBar` element's (`onMenu`). Declared on any node but the root it is ignored, and `window-events-off-root` says so.",
+        doc: "The messages the window's own events arrive as (ADR 0048), one boxed group on the root rather than six rows on every node: `onResize` hears `resize: {width, height, scale}`, `onFocus` this window gaining or losing the keyboard as `window: {phase: \"focused\" | \"blurred\"}`, `onSystemSettingsChange` `system: {appearance, accent, motion, locale, assistive, contrast}`, `onFonts` the system's fonts changing (the message as declared), `onModifiers` `modifiers: {shift, ctrl, alt, super}`, and `onOpen` the OS's documents as `open: {paths}` — read on the main window's root alone, since the OS opens documents to the app. Each arrives as its message with the data in the field named for the event, as a node's handler does. A root that declares no group, or a group that leaves a key out, hears none of those events; `env` reads every fact they report either way. Read from the last frame the window finished, so a resize the next frame begins with arrives as the message the frame before declared. A window's opening and closing are its `windows` entry's (`onWindow`), and the menu bar's choice is the `menuBar` element's (`onMenu`). Declared on any node but the root it is ignored, and `window-events-off-root` says so.",
     },
     CustomProp {
         name: "tooltip",
@@ -2581,8 +2586,8 @@ pub const EVENTS: &[EventDef] = &[
         kind: "system",
         handler: "windowEvents.onSystemSettingsChange",
         field: Some("system"),
-        payload: "`system: { appearance, accent, motion, locale, assistive }` in the `windowEvents.onSystemSettingsChange` message",
-        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, or the UI language — or assistive technology starting to listen (as the root's `windowEvents.onSystemSettingsChange` message, ADR 0048: one per window that noticed and declared it). The field is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so declaring this is how a palette follows the OS.",
+        payload: "`system: { appearance, accent, motion, locale, assistive, contrast }` in the `windowEvents.onSystemSettingsChange` message",
+        doc: "An OS setting the user changed while the app was open — the light/dark appearance, the accent colour, reduced motion, increased contrast, or the UI language — or assistive technology starting to listen (as the root's `windowEvents.onSystemSettingsChange` message, ADR 0048: one per window that noticed and declared it). The field is `env.system` as it now reads, in the same spellings and with the same nulls, so a handler can keep the whole reading or take the one field it branches on. The first frame establishes the reading rather than reporting it, the way the viewport does; a host whose view is a function the runner calls every frame can equally re-read `env` and ignore this, but a host that retains the tree it was handed (Node, C, Lua) only re-runs its view for a message, so declaring this is how a palette follows the OS.",
     },
     EventDef {
         kind: "fonts",
@@ -2879,6 +2884,15 @@ pub const ENV_FIELDS: &[EnvField] = &[
         lua: &["system.assistive"],
         c: "`kui_env_set_assistive(assistive)`",
         doc: "Whether assistive technology is listening: `\"listening\"` once an accessibility client has asked this window for its tree, `\"none\"` while the bridge is up and nobody has, `\"unknown\"` where there is no bridge — a headless `Ctx`, a runner built without `accesskit`, a C host that never called the setter (`KUI_ASSISTIVE_*`, unknown 0). The reading that changes what a view *says* rather than what it draws: an alert that announces when something is listening and blinks when nothing is. Reported through the `system` event when it changes, like the other four. Two limits are the platform's, not kui's. *Any* client counts — a probe, an accessibility inspector, a test driving the AX API and VoiceOver alike all ask for the tree, and nothing tells them apart — so it says something is listening, not that a person is. And it falls back to `\"none\"` only where the adapter reports deactivation, which in the pinned AccessKit is AT-SPI alone (the session's accessibility bus going away); on macOS and Windows nothing reports a client leaving, so once it has risen it stays `\"listening\"` for the window's life.",
+    },
+    EnvField {
+        name: "system.contrast",
+        get: |f| Value::str(f.env.system.contrast.name()),
+        from: "`SystemEnv::contrast`",
+        node: &["system.contrast"],
+        lua: &["system.contrast"],
+        c: "`kui_env_set_contrast(contrast)`",
+        doc: "Whether the user asked for more contrast (ADR 0069): `\"more\"` under macOS's Increase Contrast or a Windows high contrast theme, `\"normal\"` when the OS says not, `\"unknown\"` where nobody asked (`KUI_CONTRAST_*`, unknown 0). What a `when` entry's `contrast = \"more\"` reads, so a view that thickens its borders for it declares the entry and is not re-run. Reported through the `system` event when it changes, like the rest of `system`.",
     },
     EnvField {
         name: "window.id",
@@ -4159,6 +4173,7 @@ mod tests {
             motion: _,
             locale: _,
             assistive: _,
+            contrast: _,
         } = system;
         let WindowEnv {
             id: _,
@@ -4177,6 +4192,7 @@ mod tests {
             "system.motion",
             "system.locale",
             "system.assistive",
+            "system.contrast",
             "window.id",
             "window.custom_chrome",
             "window.maximized",

@@ -105,11 +105,14 @@ pub struct SystemEnv {
     pub locale: Option<Locale>,
     /// Whether assistive technology has asked for the access tree.
     pub assistive: Assistive,
+    /// Whether the user asked for more contrast (ADR 0069): what a
+    /// `when` entry's `contrast = "more"` reads.
+    pub contrast: ContrastPref,
 }
 
 impl SystemEnv {
     /// The reading as a `system` event carries it, `{appearance, accent,
-    /// motion, locale, assistive}`: the names each type spells itself,
+    /// motion, locale, assistive, contrast}`: the names each type spells itself,
     /// the accent as `0xRRGGBBAA`, and `null` for an accent or a locale the
     /// host cannot tell.
     pub fn to_value(&self) -> Value {
@@ -126,6 +129,7 @@ impl SystemEnv {
                 self.locale.map_or(Value::Null, |l| Value::str(l.as_str())),
             ),
             ("assistive", Value::str(self.assistive.name())),
+            ("contrast", Value::str(self.contrast.name())),
         ])
     }
 
@@ -143,6 +147,11 @@ impl SystemEnv {
                 l => Some(Locale::new(l.as_str()?)?),
             },
             assistive: Assistive::parse(v.get_str("assistive")?)?,
+            // A reading from before the field existed says nothing of it.
+            contrast: match v.get_str("contrast") {
+                Some(c) => ContrastPref::parse(c)?,
+                None => ContrastPref::Unknown,
+            },
         })
     }
 
@@ -175,6 +184,10 @@ impl SystemEnv {
             locale: self.locale.or(base.locale),
             assistive: match self.assistive {
                 Assistive::Unknown => base.assistive,
+                pinned => pinned,
+            },
+            contrast: match self.contrast {
+                ContrastPref::Unknown => base.contrast,
                 pinned => pinned,
             },
         }
@@ -272,6 +285,55 @@ impl MotionPref {
     /// would have had before this field existed.
     pub fn is_reduced(self) -> bool {
         self == MotionPref::Reduced
+    }
+}
+
+/// The OS increased-contrast setting (ADR 0069): `More` is "the user
+/// asked for more contrast" — macOS's Increase Contrast, a Windows high
+/// contrast theme — `Normal` is "the user did not", `Unknown` is "nobody
+/// asked the OS". A view reads it as `env.system.contrast`, and a `when`
+/// entry as `contrast = "more"`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ContrastPref {
+    #[default]
+    Unknown,
+    Normal,
+    More,
+}
+
+impl ContrastPref {
+    /// Wire order, as [`Appearance::ALL`]: `unknown` is 0.
+    pub const ALL: &'static [ContrastPref] = &[
+        ContrastPref::Unknown,
+        ContrastPref::Normal,
+        ContrastPref::More,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ContrastPref::Unknown => "unknown",
+            ContrastPref::Normal => "normal",
+            ContrastPref::More => "more",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|c| c.name() == name)
+    }
+
+    /// The code a C host passes; `unknown` is 0.
+    pub fn code(self) -> u32 {
+        Self::ALL.iter().position(|c| *c == self).unwrap() as u32
+    }
+
+    pub fn from_code(code: u32) -> Option<Self> {
+        Self::ALL.get(code as usize).copied()
+    }
+
+    /// Whether the user asked for more. `Unknown` answers `false`, as
+    /// [`MotionPref::is_reduced`] does.
+    pub fn is_more(self) -> bool {
+        self == ContrastPref::More
     }
 }
 
@@ -512,6 +574,8 @@ mod tests {
         assert_eq!(devices, crate::schema::AUDIO_DEVICES);
         let assistive: Vec<&str> = Assistive::ALL.iter().map(|a| a.name()).collect();
         assert_eq!(assistive, crate::schema::ASSISTIVE);
+        let contrasts: Vec<&str> = ContrastPref::ALL.iter().map(|c| c.name()).collect();
+        assert_eq!(contrasts, crate::schema::CONTRASTS);
         let backdrops: Vec<&str> = crate::window::Backdrop::ALL
             .iter()
             .map(|b| b.name())

@@ -110,6 +110,7 @@ fn the_env_setters_take_exactly_the_documented_fields() {
         "kui_env_set_window",
         "kui_env_set_audio",
         "kui_env_set_assistive",
+        "kui_env_set_contrast",
         "kui_env_set_always_on_top",
         "kui_env_set_backdrop",
     ] {
@@ -132,6 +133,7 @@ fn the_env_setters_take_exactly_the_documented_fields() {
                 || f.c.starts_with("`kui_env_set_window(")
                 || f.c.starts_with("`kui_env_set_audio(")
                 || f.c.starts_with("`kui_env_set_assistive(")
+                || f.c.starts_with("`kui_env_set_contrast(")
                 || f.c.starts_with("`kui_env_set_always_on_top(")
                 || f.c.starts_with("`kui_env_set_backdrop("),
             "{}: a stored env fact C cannot write",

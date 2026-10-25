@@ -119,6 +119,7 @@ fn main() {
             "appearances": names(schema::APPEARANCES),
             "motions": names(schema::MOTIONS),
             "assistive": names(schema::ASSISTIVE),
+            "contrasts": names(schema::CONTRASTS),
             "audioDevices": names(schema::AUDIO_DEVICES),
             "orientations": names(schema::ORIENTATIONS),
             "live": names(schema::LIVE),

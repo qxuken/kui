@@ -360,6 +360,7 @@ fn a_pinned_reading_lies_over_the_queried_one_field_by_field() {
         motion: MotionPref::Full,
         locale: Locale::new("en-US"),
         assistive: Assistive::Listening,
+        contrast: kui_core::ContrastPref::Normal,
     };
     // Unknown is "not pinned": the default pins nothing.
     assert_eq!(SystemEnv::default().over(queried), queried);
@@ -383,6 +384,7 @@ fn a_pinned_reading_lies_over_the_queried_one_field_by_field() {
         motion: MotionPref::Reduced,
         locale: Locale::new("pt-BR"),
         assistive: Assistive::None,
+        contrast: kui_core::ContrastPref::More,
     };
     assert_eq!(all.over(queried), all);
     // And over a host that answers nothing, the pin is the whole reading.

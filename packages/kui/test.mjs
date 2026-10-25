@@ -7913,6 +7913,7 @@ test('env() reports the defaults a headless Ctx starts with', () => {
     motion: 'unknown',
     locale: null,
     assistive: 'unknown',
+    contrast: 'unknown',
   });
   assert.deepEqual(env.viewport, { width: 320, height: 240, scale: 2 });
   assert.deepEqual(env.window, {
@@ -8378,6 +8379,7 @@ test('setEnv carries the OS settings, each with an unknown of its own', () => {
     motion: 'reduced',
     locale: 'pt-BR',
     assistive: 'listening',
+    contrast: 'unknown',
   });
 
   // Only what you pass moves, here as everywhere in setEnv.
@@ -8399,6 +8401,7 @@ test('setEnv carries the OS settings, each with an unknown of its own', () => {
     motion: 'unknown',
     locale: null,
     assistive: 'unknown',
+    contrast: 'unknown',
   });
   ctx.setEnv({ system: { accent: 0 } });
   assert.equal(ctx.env().system.accent, null, 'a transparent accent is no accent');

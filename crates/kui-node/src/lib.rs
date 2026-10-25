@@ -34,10 +34,10 @@
 //! Book: <https://kui-book.qxuken.dev>. Repository: <https://github.com/qxuken/kui>.
 
 use kui_core::{
-    Appearance, Assistive, AudioCommand, AudioSpec, Color, Core, EditKey, FontId, FrameSample,
-    FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods, MotionPref,
-    MouseButton, PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens, UiEvent, Value,
-    Vec2, schema::color_hex_str,
+    Appearance, Assistive, AudioCommand, AudioSpec, Color, ContrastPref, Core, EditKey, FontId,
+    FrameSample, FrameStats, ImageId, InputEvent, Key, KeyCode, KeyMods, KeyPress, Locale, Mods,
+    MotionPref, MouseButton, PlayOptions, PlaybackId, Rect, Size, SoundId, SystemEnv, Tokens,
+    UiEvent, Value, Vec2, schema::color_hex_str,
 };
 use napi::Env;
 use napi::ValueType;
@@ -436,6 +436,14 @@ fn system_env(who: &str, sys: &mut SystemEnv, o: &JsonMap<String, Json>) -> Resu
                     err(format!(
                         "{who}: system.motion is one of {:?}",
                         kui_core::schema::MOTIONS
+                    ))
+                })?
+            }
+            "contrast" => {
+                sys.contrast = ContrastPref::parse(&name(key, v)?).ok_or_else(|| {
+                    err(format!(
+                        "{who}: system.contrast is one of {:?}",
+                        kui_core::schema::CONTRASTS
                     ))
                 })?
             }

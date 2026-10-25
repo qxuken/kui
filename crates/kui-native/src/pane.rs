@@ -93,6 +93,7 @@ pub(crate) fn system_reading(
         motion: queried.motion,
         locale: queried.locale,
         assistive,
+        contrast: queried.contrast,
     })
 }
 
@@ -828,6 +829,7 @@ mod tests {
             accent: Some(Color::hex(0x0a84ffff)),
             motion: MotionPref::Full,
             locale: Locale::new("en-US"),
+            contrast: kui_core::ContrastPref::Normal,
         };
         let none = SystemEnv::default();
         // Nothing pinned: the reading is the query plus the window's
@@ -840,6 +842,7 @@ mod tests {
                 motion: MotionPref::Full,
                 locale: queried.locale,
                 assistive: Assistive::Unknown,
+                contrast: kui_core::ContrastPref::Normal,
             }
         );
         // The bridge's reading rides the query, and the pin cannot say

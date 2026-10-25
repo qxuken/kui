@@ -187,7 +187,9 @@ pub use display::{
 pub use edge_scroll::EdgeScrollFeel;
 pub use edit::{EditOptions, MAX_UNDECLARED_EDITS, SECURE_BULLET};
 pub use enter::Enter;
-pub use env::{Appearance, Assistive, AudioDevice, AudioEnv, Env, Locale, MotionPref, SystemEnv};
+pub use env::{
+    Appearance, Assistive, AudioDevice, AudioEnv, ContrastPref, Env, Locale, MotionPref, SystemEnv,
+};
 pub use event::{
     Boundary, ButtonEvent, ButtonPhase, CapturePhase, Captured, ChangePhase, Click, ContextMenu,
     Dismiss, Drag, DragPhase, DropPhase, EditChange, Event, FileDrop, Files, Focus, FocusBy,

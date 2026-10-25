@@ -285,6 +285,9 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::schema::MOTIONS, 0 => [
         "KUI_MOTION_UNKNOWN", "KUI_MOTION_FULL", "KUI_MOTION_REDUCED",
     ]);
+    abi_enum!(o, kui_core::schema::CONTRASTS, 0 => [
+        "KUI_CONTRAST_UNKNOWN", "KUI_CONTRAST_NORMAL", "KUI_CONTRAST_MORE",
+    ]);
     abi_enum!(o, kui_core::schema::ASSISTIVE, 0 => [
         "KUI_ASSISTIVE_UNKNOWN", "KUI_ASSISTIVE_NONE", "KUI_ASSISTIVE_LISTENING",
     ]);

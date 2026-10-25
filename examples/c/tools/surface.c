@@ -1176,8 +1176,10 @@ static int surface(void) {
         check(!kui_fragment_source(ui, frag, &wgsl), "kui_fragment_remove: the handle is dead");
     }
 
-    /* The assistive fact, and the cursor the last hover derived. */
+    /* The assistive fact, the contrast setting, and the cursor the last
+     * hover derived. */
     kui_env_set_assistive(ui, KUI_ASSISTIVE_LISTENING);
+    kui_env_set_contrast(ui, KUI_CONTRAST_MORE);
     kui_set_time(ui, 0.3);
     kui_frame_begin(ui, 800, 600, 2.0f);
     surface_view(&k, ui);

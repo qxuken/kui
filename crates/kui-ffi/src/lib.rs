@@ -239,10 +239,10 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
 use kui_core::{
-    Align, Appearance, Assistive, AudioDevice, AudioEnv, Color, Core, DismissReason, Edges,
-    EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe, Locale, Mods, MotionPref,
-    MouseButton, NodeSpec, OptionAsAlt, Rect, Size, Sizing, Span, SystemEnv, TextStyle, UiEvent,
-    Value, Vec2, WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
+    Align, Appearance, Assistive, AudioDevice, AudioEnv, Color, ContrastPref, Core, DismissReason,
+    Edges, EditKey, EditOptions, Enter, FloatConfig, InputEvent, Key, Keyframe, Locale, Mods,
+    MotionPref, MouseButton, NodeSpec, OptionAsAlt, Rect, Size, Sizing, Span, SystemEnv, TextStyle,
+    UiEvent, Value, Vec2, WindowButton, WindowCommand, WindowConfig, WindowId, WindowKind,
 };
 
 // ---------------------------------------------------------------------------
@@ -376,11 +376,32 @@ pub extern "C" fn kui_env_set_system(
                 // re-pushing the settings on an OS notification does not
                 // forget that a screen reader is attached.
                 assistive: c.core().env.system.assistive,
+                // Nor this: a newer setting, with a door of its own so an
+                // older host's call keeps its four arguments.
+                contrast: c.core().env.system.contrast,
             };
             // `set_system` re-resolves the palette from what was just
             // written, so a host that pushes the appearance and reads
             // `kui_theme` back before its next frame sees the answer.
             c.core().set_system(sys);
+        }
+    });
+}
+
+/// Whether the user asked for more contrast, for views and `when`
+/// entries to read (ADR 0069): a `KUI_CONTRAST_*` (0 is unknown). Push it
+/// at startup and on the OS's change notification; it sticks across
+/// frames, and `kui_env_set_system` leaves it alone. An out-of-range code
+/// is ignored.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_env_set_contrast(ptr: *mut KuiCtx, contrast: u32) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            if let Some(contrast) = ContrastPref::from_code(contrast) {
+                let mut sys = c.core().env.system;
+                sys.contrast = contrast;
+                c.core().set_system(sys);
+            }
         }
     });
 }

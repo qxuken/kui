@@ -247,6 +247,7 @@ System_Event :: struct {
 	motion:     string,
 	locale:     string,
 	assistive:  string,
+	contrast:   string,
 }
 
 Fonts_Event :: struct {}

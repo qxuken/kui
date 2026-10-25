@@ -2555,6 +2555,9 @@ bool kui_poll_event(KuiCtx *ctx, KuiEvent *out);
  *   kui_env_set_assistive  assistive                (SystemEnv's fifth:
  *                       whether an accessibility client is listening,
  *                       which is not a setting and has its own door)
+ *   kui_env_set_contrast  contrast                  (SystemEnv's sixth:
+ *                       the increased-contrast setting, newer than the
+ *                       four and so a door of its own)
  *   kui_env_set_always_on_top  always_on_top       (WindowEnv's level:
  *                       what the host did about kui_always_on_top_get,
  *                       its own door so an older host has nothing to
@@ -2606,6 +2609,21 @@ enum {
  * which is loud. */
 void kui_env_set_system(KuiCtx *ctx, uint32_t appearance, uint32_t accent,
                         uint32_t motion, KuiStr locale);
+/* Whether the user asked for more contrast, as kui_env_set_contrast takes it
+ * and Node and Lua read back as "unknown"/"normal"/"more" (ADR 0069). Zero
+ * is unknown. */
+enum {
+    KUI_CONTRAST_UNKNOWN = 0,
+    KUI_CONTRAST_NORMAL = 1,
+    KUI_CONTRAST_MORE = 2,
+};
+/* The increased-contrast setting - macOS's Increase Contrast, a Windows
+ * high contrast theme - for views to read as env.system.contrast and for a
+ * `when` entry's `contrast = "more"`. Push it at startup and on the OS's
+ * change notification; kui_env_set_system leaves it alone. Its own setter
+ * so kui_env_set_system keeps its four arguments: additive, off
+ * KUI_ABI_VERSION. An out-of-range code is ignored. */
+void kui_env_set_contrast(KuiCtx *ctx, uint32_t contrast);
 /* Whether assistive technology is listening, as kui_env_set_assistive takes
  * it and Node and Lua read back as "unknown"/"none"/"listening". Zero is
  * unknown: a host with no accessibility bridge reports that it cannot

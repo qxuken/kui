@@ -48,6 +48,7 @@ const ENV_FACTS: &[(&str, &str)] = &[
     ("system.motion", "string"),
     ("system.locale", "string"),
     ("system.assistive", "string"),
+    ("system.contrast", "string"),
     ("window.id", "integer"),
     ("window.custom_chrome", "boolean"),
     ("window.maximized", "boolean"),

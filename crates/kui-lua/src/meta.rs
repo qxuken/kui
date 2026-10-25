@@ -507,6 +507,7 @@ pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
             ("motion", true, "\"unknown\"|\"full\"|\"reduced\""),
             ("locale", false, "string"),
             ("assistive", true, "\"unknown\"|\"none\"|\"listening\""),
+            ("contrast", true, "\"unknown\"|\"normal\"|\"more\""),
         ],
     ),
     (
