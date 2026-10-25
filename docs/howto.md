@@ -1284,6 +1284,12 @@ off once: `Launcher::smooth_wheel(false)`, `smoothWheel: false` to
 `runWindowed`, `kui_set_smooth_wheel(ctx, false)`; the system's reduced
 motion makes them jump either way.
 
+A row that scrolls only sideways takes a mouse wheel's plain turn,
+down toward its end, while it has room; at its end the turn goes on to
+the page around it. Shift turns any notch sideways, as a browser's
+wheel does, where Windows and Linux leave that to the app (macOS does
+it itself). A trackpad's swipe goes the way it is swiped.
+
 How far a notch goes and how quickly it lands is the wheel feel, also
 the app's: a preset by name, slow to fast `gentle`, `standard` (the
 default, 40 px a notch), `brisk` (a touch faster, 48 px) and `swift`

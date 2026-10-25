@@ -31,6 +31,9 @@ const AT_LIMIT: f32 = 0.5;
 pub(crate) struct ScrollLatch {
     x: Option<Key>,
     y: Option<Key>,
+    /// The `y` target is a scroller that moves only sideways, which a
+    /// mouse wheel's turn moves along `x` (ADR 0050, amended 2026-10-25).
+    y_sideways: bool,
     /// The modifiers held when the gesture began (`KeyMods::bits`): what
     /// a handler's `scroll_mods` is asked against for the whole of it, so
     /// a glide stays what the swipe was whatever is let go or pressed
@@ -90,16 +93,33 @@ impl Core {
                 ..ScrollLatch::default()
             };
         }
+        // A mouse wheel's turn with Shift held scrolls sideways, as a
+        // browser's does: macOS turns it before it gets here, Windows and
+        // Linux leave it to the app. A handler that names Shift hears the
+        // turn as it came (`scroll_mods`, backlog F122).
+        let held = self.scroll_latch.held;
+        let mut delta = delta;
+        if wheel.is_some()
+            && delta.x == 0.0
+            && held & crate::input::KeyMods::SHIFT != 0
+            && !self.named_hears(false, held)
+        {
+            delta = Vec2::new(delta.y, 0.0);
+        }
+        // A plain turn may move a scroller that only goes sideways; a
+        // trackpad's pixels have an `x` of their own.
+        let sideways = wheel.is_some() && delta.x == 0.0;
         let tx = (delta.x != 0.0)
-            .then(|| self.scroll_target(true, delta.x))
+            .then(|| self.scroll_target(true, delta.x, false))
             .flatten();
         let ty = (delta.y != 0.0)
-            .then(|| self.scroll_target(false, delta.y))
+            .then(|| self.scroll_target(false, delta.y, sideways))
             .flatten();
+        let turned = ty.is_some() && self.scroll_latch.y_sideways;
         match (tx, ty) {
             // One target for both: one event on a handler, as the whole
             // delta always was.
-            (Some(a), Some(b)) if a.key == b.key && a.handler == b.handler => {
+            (Some(a), Some(b)) if !turned && a.key == b.key && a.handler == b.handler => {
                 self.scroll_into(a, delta, wheel, out)
             }
             (a, b) => {
@@ -107,10 +127,39 @@ impl Core {
                     self.scroll_into(a, Vec2::new(delta.x, 0.0), wheel, out);
                 }
                 if let Some(b) = b {
-                    self.scroll_into(b, Vec2::new(0.0, delta.y), wheel, out);
+                    let d = if turned {
+                        Vec2::new(delta.y, 0.0)
+                    } else {
+                        Vec2::new(0.0, delta.y)
+                    };
+                    self.scroll_into(b, d, wheel, out);
                 }
             }
         }
+    }
+
+    /// Whether a handler around the pointer that names a modifier of
+    /// `held` takes the gesture on `x` (or `y`): the walk `scroll_target`
+    /// begins with.
+    fn named_hears(&self, x: bool, held: u32) -> bool {
+        let regions = &self.interaction.scroll_regions;
+        let mut at = self
+            .interaction
+            .scroll_regions_at()
+            .next()
+            .map(|r| r.node)
+            .and_then(|node| regions.iter().rposition(|r| r.node == node));
+        while let Some(i) = at {
+            let r = regions[i];
+            if r.inert {
+                return false;
+            }
+            if r.hears(x, held) {
+                return true;
+            }
+            at = (r.parent != NIL).then_some(r.parent as usize);
+        }
+        false
     }
 
     /// The region the gesture's `x` (or `y`) goes to: the latched one
@@ -121,7 +170,12 @@ impl Core {
     /// is painted under the pointer: a list at its end in a popover
     /// passes the gesture to the scroller the popover was declared in,
     /// not to the page it happens to float over.
-    fn scroll_target(&mut self, x: bool, d: f32) -> Option<ScrollRegion> {
+    ///
+    /// `sideways` (a mouse wheel's plain turn, on `y`): a container on
+    /// the way that scrolls only along `x` and still has room that way
+    /// takes it, to move along `x` — `y_sideways` says so — and one at
+    /// its end hands it on, as a list at its end does.
+    fn scroll_target(&mut self, x: bool, d: f32, sideways: bool) -> Option<ScrollRegion> {
         let latched = if x {
             self.scroll_latch.x
         } else {
@@ -139,6 +193,9 @@ impl Core {
             {
                 return Some(r.asked(x, self.scroll_latch.held));
             }
+        }
+        if !x {
+            self.scroll_latch.y_sideways = false;
         }
         let regions = &self.interaction.scroll_regions;
         let mut at = self
@@ -175,6 +232,16 @@ impl Core {
             }
             if matches!(self.answer(&r, x, d), Answer::Take) {
                 picked = Some(r);
+                break;
+            }
+            if sideways
+                && !r.handler
+                && r.takes_x
+                && !r.takes_y
+                && matches!(self.answer(&r, true, d), Answer::Take)
+            {
+                picked = Some(r);
+                self.scroll_latch.y_sideways = true;
                 break;
             }
             at = (r.parent != NIL).then_some(r.parent as usize);
