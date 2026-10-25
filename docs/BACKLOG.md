@@ -3605,6 +3605,24 @@ C86 — slots folded into components — was settled by a grilling round
 and built with [ADR 0067](adr/0067-slots-fold-into-components.md), and is
 in the archive; C87 is the name that round left open.
 
+### `~` C88 — Nothing installs the runner, and nothing ships an app made on it
+
+**Found** after Kit's samples (2026-10-25): `kui-cli` is `publish = false`
+and the runner ships nowhere; `@qxuken/kui` carries all four addons, 89 MB
+an install; and an app written on the runner reaches its users only as a
+folder of Lua and a runner they install themselves. Cookie Mapping, the
+first such app, would ship to frontend developers through a company's
+own npm registry and S3.
+
+**Do.** [ADR 0068](adr/0068-how-kui-reaches-a-machine.md), accepted the
+same day after a grilling round, in its building order: release binaries
+with install scripts and `kui upgrade`; per-platform npm packages for the
+addon and the runner; `kui.data_dir`, app identity and the runner pin
+with its compatibility table; `kui pack` (a zip archive, sources by
+default and bytecode opt-in, `exe` / `app` / `bin` / `npm`, a runner
+mirror, an installer, logs and devtools in a packed app); the runner's
+default menu.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
