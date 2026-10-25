@@ -37,6 +37,7 @@ pub fn load_app(
         let (shared, baseline, dir) = (shared.clone(), baseline.clone(), project.dir.clone());
         move |lua: &Lua| -> mlua::Result<()> {
             crate::project::add_path(lua, &dir)?;
+            modules::install_loader(lua)?;
             crate::teal::install(lua)?;
             crate::kit::install_ui(lua)?;
             modules::install(lua, shared.clone())?;
@@ -155,8 +156,22 @@ pub struct Runner {
     /// The devtools' Log tab's rows, and the log's revision they hold.
     log: Option<kui_core::channel::Channel>,
     log_rev: u64,
-    /// `kui.devtools("log")`: the tab to choose once declared.
+    /// `kui.devtools("log")`: the tab to choose once declared. The Log
+    /// tab to start with, so the panel opens on what the app printed
+    /// (ADR 0068, decision 21).
     devtools_tab: Option<String>,
+    /// The macOS menu bar the runner gives an app that declares none
+    /// (ADR 0068, decision 22): its revision once declared, and whether
+    /// the app has since declared its own.
+    menu: DefaultMenu,
+}
+
+/// The runner's own menu bar, until the app declares one.
+#[derive(Default)]
+struct DefaultMenu {
+    declared_rev: Option<u64>,
+    app_owns: bool,
+    devtools: bool,
 }
 
 /// `kui run --shot out.png`: a frame `after` seconds in, written to `path`,
@@ -197,7 +212,43 @@ impl Runner {
             dismissed: 0,
             log: None,
             log_rev: u64::MAX,
-            devtools_tab: None,
+            devtools_tab: Some("kui:log".into()),
+            menu: DefaultMenu { devtools: project.devtools_reachable, ..Default::default() },
+        }
+    }
+
+    /// The menu bar an app gets when it declares none, on macOS where the
+    /// system owns the bar: the standard menus (ADR 0052) and a View menu
+    /// with the devtools. Declared every frame like any bar, until a frame
+    /// shows the app declared its own: then it is the app's for good.
+    fn default_menu(&mut self, ui: &mut Ui<'_>) {
+        if !cfg!(target_os = "macos") || self.menu.app_owns {
+            return;
+        }
+        let core = ui.core();
+        if let Some(rev) = self.menu.declared_rev
+            && core.menu_bar_revision() != rev
+        {
+            self.menu.app_owns = true;
+            return;
+        }
+        let mut items = Vec::new();
+        if self.menu.devtools {
+            items.push(Value::map([
+                ("label", "Toggle Developer Tools".into()),
+                ("id", "kui:devtools".into()),
+                ("accel", "alt+mod+i".into()),
+            ]));
+        }
+        let menus = Value::List(vec![Value::map([
+            ("label", "View".into()),
+            ("items", Value::List(items)),
+        ])]);
+        if let Ok(mut bar) = kui_core::MenuBar::from_value(&menus) {
+            bar = bar.on_menu(Value::map([("kui", "menu".into())]));
+            bar.standard_menus = true;
+            core.declare_menu_bar(bar);
+            self.menu.declared_rev = Some(core.menu_bar_revision());
         }
     }
 
@@ -253,7 +304,8 @@ impl Runner {
                 self.devtools_tab = Some(name);
             }
         }
-        if !ui.core().devtools() {
+        // Hidden (on, docked nowhere, waiting for F12): no tab to fill.
+        if !ui.core().devtools() || ui.core().devtools_dock() == kui_core::DevtoolsDock::Off {
             return;
         }
         let rev = crate::modules::log::revision();
@@ -397,13 +449,21 @@ impl App for Runner {
             self.closing = true;
             ui.window_command(WindowCommand::Close(WindowId::MAIN));
         }
+        self.default_menu(ui);
         self.devtools(ui);
         self.overlay(ui);
     }
 
     fn on_event(&mut self, ev: UiEvent) {
-        if ev.payload.get_str("kui") == Some("dismiss") {
-            self.dismissed = self.shared.errors.lock().unwrap().len();
+        match ev.payload.get_str("kui") {
+            Some("dismiss") => self.dismissed = self.shared.errors.lock().unwrap().len(),
+            // The default menu's Toggle Developer Tools: on at the Log tab
+            // when hidden, away when shown.
+            Some("menu") if ev.data().and_then(|d| d.get_str("item")) == Some("kui:devtools") => {
+                *self.shared.devtools.lock().unwrap() = Some((None, None));
+                self.shared.ops.poke();
+            }
+            _ => {}
         }
     }
 

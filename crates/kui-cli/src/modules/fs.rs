@@ -9,6 +9,21 @@ fn io(path: &std::path::Path, e: std::io::Error) -> mlua::Error {
     fail(format!("{}: {e}", path.display()))
 }
 
+/// A path the app may write: anywhere but a packed app's own files, which
+/// are read-only (ADR 0068, decision 18).
+fn writable(lua: &Lua, path: &str) -> mlua::Result<std::path::PathBuf> {
+    let p = shared(lua).path(path);
+    if let Some(dir) = crate::packed::dir()
+        && p.starts_with(dir)
+    {
+        return Err(fail(format!(
+            "{path}: a packed app's own files are read-only — write under kui.data_dir ({})",
+            crate::modules::app().map(|a| a.data_dir.display().to_string()).unwrap_or_default()
+        )));
+    }
+    Ok(p)
+}
+
 pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     let fs = lua.create_table()?;
     fs.set(
@@ -22,7 +37,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     fs.set(
         "write",
         lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {
-            let p = shared(lua).path(&path);
+            let p = writable(lua, &path)?;
             if let Some(dir) = p.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
             }
@@ -35,7 +50,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "create",
         lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {
             use std::io::Write;
-            let p = shared(lua).path(&path);
+            let p = writable(lua, &path)?;
             if let Some(dir) = p.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
             }
@@ -50,7 +65,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         "append",
         lua.create_function(|lua, (path, data): (String, mlua::LuaString)| {
             use std::io::Write;
-            let p = shared(lua).path(&path);
+            let p = writable(lua, &path)?;
             let mut f = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -98,14 +113,14 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     fs.set(
         "mkdir",
         lua.create_function(|lua, path: String| {
-            let p = shared(lua).path(&path);
+            let p = writable(lua, &path)?;
             std::fs::create_dir_all(&p).map_err(|e| io(&p, e))
         })?,
     )?;
     fs.set(
         "remove",
         lua.create_function(|lua, path: String| {
-            let p = shared(lua).path(&path);
+            let p = writable(lua, &path)?;
             if p.is_dir() {
                 std::fs::remove_dir_all(&p).map_err(|e| io(&p, e))
             } else {
@@ -116,8 +131,7 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     fs.set(
         "rename",
         lua.create_function(|lua, (from, to): (String, String)| {
-            let s = shared(lua);
-            let (a, b) = (s.path(&from), s.path(&to));
+            let (a, b) = (writable(lua, &from)?, writable(lua, &to)?);
             std::fs::rename(&a, &b).map_err(|e| io(&a, e))
         })?,
     )?;

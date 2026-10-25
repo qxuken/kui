@@ -32,6 +32,37 @@ pub struct Project {
     /// Globs the watcher follows, beside the app's own `.lua` and `.tl`.
     pub watch_include: Vec<String>,
     pub watch_exclude: Vec<String>,
+    /// Reverse DNS (`dev.qxuken.cookie-mapping`): what names the app's
+    /// data and cache folders and its macOS bundle; the folder's name when
+    /// the manifest gives none (ADR 0068, decision 8). `kui pack` asks for
+    /// one.
+    pub id: String,
+    /// Whether `id` came from the manifest.
+    pub id_given: bool,
+    /// The app's own version, the manifest's.
+    pub version: Option<String>,
+    /// `kui = "<version>"`: the runner the app was written against.
+    pub pin: Option<String>,
+    /// What `kui pack` reads: `pack = { exclude, console, devtools, npm }`.
+    pub pack: PackConfig,
+    /// Whether F12 and the menu reach the devtools: always under `kui
+    /// run`, and in a packed app unless `pack.devtools = false` (or
+    /// `KUI_FLAGS` asks for them back).
+    pub devtools_reachable: bool,
+}
+
+/// The manifest's `pack` table.
+#[derive(Clone, Default)]
+pub struct PackConfig {
+    /// Globs left out of the archive, beside `.git`, `node_modules`,
+    /// `test/` and `.kui/`.
+    pub exclude: Vec<String>,
+    /// A Windows `exe` with a console (a tool run from a terminal).
+    pub console: bool,
+    /// The devtools in a packed app: on unless `devtools = false`.
+    pub devtools: bool,
+    /// The `npm` format's package name (`@company/cookie-mapping`).
+    pub npm_name: Option<String>,
 }
 
 const ENTRIES: [&str; 3] = ["main.lua", "main.tl", "app.lua"];
@@ -65,6 +96,12 @@ pub fn find(path: &Path) -> Result<Project, String> {
         rename: true,
         watch_include: Vec::new(),
         watch_exclude: Vec::new(),
+        id: String::new(),
+        id_given: false,
+        version: None,
+        pin: None,
+        pack: PackConfig { devtools: true, ..Default::default() },
+        devtools_reachable: true,
     };
     if let Some(config) = ["kui.config.lua", "kui.config.tl"]
         .iter()
@@ -86,7 +123,21 @@ pub fn find(path: &Path) -> Result<Project, String> {
     if entry_name_from_file(&p) {
         p.name = p.entry.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or(p.name);
     }
+    if p.id.is_empty() {
+        p.id = default_id(&p.name);
+    }
     Ok(p)
+}
+
+/// The id an app without one gets: its name, lowercased, with anything but
+/// letters, digits, `.`, `-` and `_` turned into `-`.
+pub fn default_id(name: &str) -> String {
+    let id: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') { c.to_ascii_lowercase() } else { '-' })
+        .collect();
+    let id = id.trim_matches('-').to_string();
+    if id.is_empty() { "kui-app".into() } else { id }
 }
 
 /// A file given alone names the app after itself (`kui run tool.lua` is
@@ -135,6 +186,27 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
         p.rename = t.get::<Option<bool>>("rename")?.unwrap_or(true);
         if let Some(i) = t.get::<Option<String>>("icon")? {
             p.icon = Some(p.dir.join(i));
+        }
+        if let Some(id) = t.get::<Option<String>>("id")? {
+            if id.is_empty() || id.contains(['/', '\\']) || id.starts_with('.') {
+                return Err(mlua::Error::runtime(format!(
+                    "id = {id:?}: reverse DNS, as \"dev.example.notes\" (no slashes)"
+                )));
+            }
+            p.id = id;
+            p.id_given = true;
+        }
+        p.version = t.get::<Option<String>>("version")?;
+        p.pin = t.get::<Option<String>>("kui")?;
+        if let Some(pk) = t.get::<Option<mlua::Table>>("pack")? {
+            if let Some(x) = pk.get::<Option<Vec<String>>>("exclude")? {
+                p.pack.exclude = x;
+            }
+            p.pack.console = pk.get::<Option<bool>>("console")?.unwrap_or(false);
+            p.pack.devtools = pk.get::<Option<bool>>("devtools")?.unwrap_or(true);
+            if let Some(npm) = pk.get::<Option<mlua::Table>>("npm")? {
+                p.pack.npm_name = npm.get::<Option<String>>("name")?;
+            }
         }
         if let Some(w) = t.get::<Option<mlua::Table>>("watch")? {
             if let Some(i) = w.get::<Option<Vec<String>>>("include")? {

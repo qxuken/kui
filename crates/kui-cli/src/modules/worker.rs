@@ -102,6 +102,7 @@ fn run(file: &std::path::Path, shared: Arc<Shared>, stop: &AtomicBool) -> Result
     let setup = || -> mlua::Result<()> {
         kui_lua::install_data(&lua)?;
         crate::project::add_path(&lua, &shared.dir)?;
+        super::install_loader(&lua)?;
         crate::teal::install(&lua)?;
         super::install(&lua, shared.clone())?;
         let source = std::fs::read_to_string(file).map_err(|e| fail(format!("{}: {e}", file.display())))?;

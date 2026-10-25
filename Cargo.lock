@@ -1705,11 +1705,14 @@ dependencies = [
 name = "kui-cli"
 version = "0.1.0-alpha.67"
 dependencies = [
+ "crc32fast",
+ "flate2",
  "kui-core",
  "kui-lua",
  "kui-native",
  "libc",
  "mlua",
+ "png 0.18.1",
  "ring",
  "rusqlite",
  "tiny_http",

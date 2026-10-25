@@ -106,6 +106,87 @@ pub fn set_name(name: String) {
     let _ = NAME.set(name);
 }
 
+/// Who the app is and where it writes (ADR 0068): `kui.id`,
+/// `kui.app_version`, `kui.data_dir`, `kui.cache_dir`, and `kui.packed`
+/// when it runs from a packed archive.
+#[derive(Clone, Default)]
+pub struct AppInfo {
+    pub id: String,
+    pub version: Option<String>,
+    pub data_dir: std::path::PathBuf,
+    pub cache_dir: std::path::PathBuf,
+    /// What `kui.pack.lua` said, for a packed app: (runner, bytecode, hash).
+    pub packed: Option<(String, bool, String)>,
+}
+
+static APP: std::sync::OnceLock<AppInfo> = std::sync::OnceLock::new();
+
+pub fn set_app(info: AppInfo) {
+    let _ = APP.set(info);
+}
+
+pub fn app() -> Option<&'static AppInfo> {
+    APP.get()
+}
+
+/// Lua loads bytecode as readily as source, and does not check it: a
+/// crafted chunk can crash the process. So the runner loads source only —
+/// `load`, `loadfile`, `dofile` and `require`'s file searcher — except from
+/// a packed app's own folder, which `kui pack --bytecode` wrote (ADR 0068,
+/// decision 12).
+///
+/// Installed before the `.tl` searcher, which goes in ahead of it.
+pub fn install_loader(lua: &Lua) -> mlua::Result<()> {
+    let loadfile = lua.create_function(|lua, (path, env): (String, Option<Table>)| {
+            let bytes = match std::fs::read(&path) {
+                Ok(b) => b,
+                Err(e) => return Ok((None, Some(format!("cannot open {path}: {e}")))),
+            };
+            let packed = crate::packed::dir().is_some_and(|d| std::path::Path::new(&path).starts_with(d));
+            let mut chunk = lua.load(bytes).set_name(format!("@{path}"));
+            if !packed {
+                chunk = chunk.set_mode(mlua::chunk::ChunkMode::Text);
+            }
+            if let Some(env) = env {
+                chunk = chunk.set_environment(env);
+            }
+            match chunk.into_function() {
+                Ok(f) => Ok((Some(f), None)),
+                Err(e) => Ok((None, Some(e.to_string()))),
+            }
+    })?;
+    lua.load(LOADER_LUA).set_name("@kui:loader").call::<()>(loadfile)
+}
+
+const LOADER_LUA: &str = r##"
+local loadfile_ = ...
+local load_ = load
+-- An `env` given, even nil, is the chunk's `_ENV`; one left out is the
+-- globals. So the arguments are passed on as many as they came.
+function load(...)
+  local chunk, name, _, env = ...
+  if select("#", ...) >= 4 then return load_(chunk, name, "t", env) end
+  return load_(chunk, name, "t")
+end
+function loadfile(path, _mode, env)
+  return loadfile_(path, env)
+end
+function dofile(path)
+  local f, err = loadfile_(path)
+  if not f then error(err, 2) end
+  return f()
+end
+-- `require`'s searcher for Lua files, the same as Lua's own but through
+-- the loader above.
+package.searchers[2] = function(name)
+  local path, err = package.searchpath(name, package.path)
+  if not path then return "\n\t" .. err end
+  local f, lerr = loadfile_(path)
+  if not f then error(("error loading module '%s' from file '%s':\n\t%s"):format(name, path, lerr), 2) end
+  return f, path
+end
+"##;
+
 /// What `kui.parse_args` raises to stop the script once it has printed
 /// help or a mistake and set the exit: no failure to report.
 pub const EXIT_MARK: &str = "kui: exit requested";
@@ -241,6 +322,21 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
         kui.set("cwd", cwd.to_string_lossy().as_ref())?;
     }
     kui.set("platform", PLATFORM)?;
+    if let Some(app) = APP.get() {
+        kui.set("id", app.id.as_str())?;
+        if let Some(v) = &app.version {
+            kui.set("app_version", v.as_str())?;
+        }
+        kui.set("data_dir", app.data_dir.to_string_lossy().as_ref())?;
+        kui.set("cache_dir", app.cache_dir.to_string_lossy().as_ref())?;
+        if let Some((runner, bytecode, hash)) = &app.packed {
+            let t = lua.create_table()?;
+            t.set("runner", runner.as_str())?;
+            t.set("bytecode", *bytecode)?;
+            t.set("hash", hash.as_str())?;
+            kui.set("packed", t)?;
+        }
+    }
     kui.set("cpus", std::thread::available_parallelism().map_or(1, |n| n.get()))?;
     if shared.worker.is_some() {
         kui.set("__worker", true)?;

@@ -4,14 +4,27 @@
 //!   kui run [path] [--headless] [--watch] [--size WxH] [--appearance light|dark] [-- app args]
 //!   kui check [path]
 //!   kui new <dir>
+//!   kui pack [path] [--target t,...] [--format f,...]
+//!   kui upgrade [version]
+//!   kui runners fetch <version> --to <dir>
 //!
-//! `kui <path>` is `kui run <path>`.
+//! `kui <path>` is `kui run <path>`. A runner `kui pack` added an app to
+//! runs that app: every argument is the app's, the runner's own come from
+//! `KUI_FLAGS` (ADR 0068).
 
+mod archive;
 mod host;
+mod icons;
+mod compat;
 mod kit;
 mod modules;
 mod ops;
+mod pack;
+mod packed;
+mod pe;
+mod paths;
 mod project;
+mod release;
 mod rename;
 mod teal;
 
@@ -26,6 +39,10 @@ usage:
   kui check [path]           type-check the app's .tl files
   kui new <dir>              start an app in dir
   kui types [path]           write editor declarations (LuaLS, Teal) into path/.kui/types
+  kui pack [path] [options]  build the app for any platform (see kui pack --help)
+  kui upgrade [version]      replace this kui with the release's (default: the latest)
+  kui runners fetch <version> --to <dir>
+                             download every platform's runner, for a mirror
   kui <path>                 the same as kui run <path>
 
 run options:
@@ -58,8 +75,8 @@ struct Args {
     appearance: kui_native::Appearance,
 }
 
-fn parse() -> Result<Args, String> {
-    let mut it = std::env::args().skip(1).peekable();
+fn parse(argv: Vec<String>) -> Result<Args, String> {
+    let mut it = argv.into_iter().peekable();
     let mut a = Args {
         cmd: "run".into(),
         path: PathBuf::from("."),
@@ -129,7 +146,18 @@ fn parse() -> Result<Args, String> {
 }
 
 fn main() -> ExitCode {
-    let args = match parse() {
+    // A runner with an app packed into it runs that app.
+    if let Some(packed) = packed::detect() {
+        return exit(packed.and_then(run_packed));
+    }
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    match argv.first().map(String::as_str) {
+        Some("pack") => return exit(pack_cmd(&argv[1..])),
+        Some("upgrade") => return exit(upgrade(&argv[1..])),
+        Some("runners") => return exit(runners(&argv[1..])),
+        _ => {}
+    }
+    let args = match parse(argv) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("kui: {e}");
@@ -148,8 +176,12 @@ fn main() -> ExitCode {
         "check" => check(&args),
         "new" => new(&args),
         "types" => types(&args.path).map(|()| 0),
-        _ => run(&args),
+        _ => run(&args, None),
     };
+    exit(result)
+}
+
+fn exit(result: Result<i32, String>) -> ExitCode {
     match result {
         Ok(code) => ExitCode::from(code.clamp(0, 255) as u8),
         Err(e) => {
@@ -159,14 +191,62 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(args: &Args) -> Result<i32, String> {
-    let project = project::find(&args.path)?;
+/// A packed app: every argument is the app's, and the runner's own flags
+/// come from `KUI_FLAGS` (ADR 0068, decision 19).
+fn run_packed(p: packed::Packed) -> Result<i32, String> {
+    let flags: Vec<String> = std::env::var("KUI_FLAGS")
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    let mut args = parse(flags).map_err(|e| format!("KUI_FLAGS: {e}"))?;
+    args.cmd = "run".into();
+    args.path = p.dir.clone();
+    args.rest = std::env::args().skip(1).collect();
+    // A packed app names itself: its bundle on macOS, its file elsewhere.
+    args.no_rename = true;
+    run(&args, Some(&p))
+}
+
+fn run(args: &Args, packed: Option<&packed::Packed>) -> Result<i32, String> {
+    let mut project = project::find(&args.path)?;
+    if let Some(p) = packed {
+        if let Some(entry) = &p.entry {
+            project.entry = project.dir.join(entry);
+        }
+        project.devtools_reachable = project.pack.devtools || args.devtools;
+    }
     if !args.headless && !args.no_rename && project.rename {
         rename::relaunch_as(&project.name);
     }
     project::load_dotenv(&project.dir);
     modules::set_args(args.rest.clone());
     modules::set_name(project.name.clone());
+    modules::set_app(modules::AppInfo {
+        id: project.id.clone(),
+        version: project.version.clone(),
+        data_dir: paths::data_dir(&project.id),
+        cache_dir: paths::cache_dir(&project.id),
+        packed: packed.map(|p| (p.runner.clone(), p.bytecode, p.hash.clone())),
+    });
+    // The log's file (ADR 0068, decision 20): `KUI_LOG=<path>`, `-` for
+    // none beside stderr; a packed GUI app's under its data folder.
+    match std::env::var("KUI_LOG").ok().filter(|v| !v.is_empty()) {
+        Some(v) if v == "-" => {}
+        Some(v) => modules::log::to_file(std::path::Path::new(&v)).map_err(|e| format!("KUI_LOG {v}: {e}"))?,
+        None if packed.is_some() && !args.headless => {
+            let file = paths::data_dir(&project.id)
+                .join("logs")
+                .join(format!("{}.log", project::default_id(&project.name)));
+            if let Err(e) = modules::log::to_file(&file) {
+                eprintln!("kui: the log file {}: {e}", file.display());
+            }
+        }
+        None => {}
+    }
+    if let Some(w) = project.pin.as_deref().and_then(compat::warning) {
+        eprintln!("kui: {w}");
+    }
     modules::set_task_error_exits(args.headless);
     let shared = modules::Shared::new(project.dir.clone(), None);
     let loaded = host::load_app(&project, shared.clone(), args.watch);
@@ -199,8 +279,21 @@ fn run(args: &Args) -> Result<i32, String> {
     if args.appearance != kui_native::Appearance::Unknown {
         launcher = launcher.system(kui_native::SystemEnv { appearance: args.appearance, ..Default::default() });
     }
+    // The devtools are on in every runner app, hidden until F12 (or the
+    // macOS View menu) brings them up at the Log tab (ADR 0068, decision
+    // 21); `--devtools` or the manifest's `devtools` opens with them shown.
     if args.devtools || project.devtools {
         launcher = launcher.devtools(true);
+    } else if project.devtools_reachable && !args.headless {
+        launcher = launcher.setup_core(|core| {
+            core.set_devtools(true);
+            core.set_devtools_dock(kui_core::DevtoolsDock::Off);
+        });
+    }
+    if project.devtools_reachable
+        && let Some(f12) = kui_core::Accel::parse("f12")
+    {
+        launcher = launcher.devtools_key(f12);
     }
     if let Some((w, h)) = project.min_size {
         launcher = launcher.min_size(w, h);
@@ -330,4 +423,153 @@ fn types(dir: &std::path::Path) -> Result<(), String> {
     }
     println!("wrote {} (LuaLS and Teal declarations)", types.display());
     Ok(())
+}
+
+const PACK_USAGE: &str = "\
+kui pack — build the app for any platform (ADR 0068)
+
+usage: kui pack [path] [options]
+
+  --target T,...       linux-x64, linux-arm64, darwin-arm64, win32-x64, or all (default: this machine)
+  --format F,...       exe (Windows), app (macOS), bin (Linux), npm, kui (the archive alone);
+                       default: each target's own
+  --out DIR            where the builds go (default: dist)
+  --bytecode           compile the app's Lua to bytecode (sources by default)
+  --strip              with --bytecode, drop the debug information
+  --installer URL      also write install.sh and install.ps1 fetching the builds from URL
+  --runner FILE        use this runner binary rather than the release's
+  --runner-mirror URL  fetch runners from a mirror with the release's layout (also KUI_RUNNER_MIRROR)
+
+The app needs an id in kui.config.lua. It packs the runner it pins (kui = \"<version>\"),
+else this one; runners for other versions or platforms come from the release.
+";
+
+fn split_list(v: &str) -> Vec<String> {
+    v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+}
+
+fn pack_cmd(argv: &[String]) -> Result<i32, String> {
+    let mut o = pack::Opts {
+        path: PathBuf::from("."),
+        targets: Vec::new(),
+        formats: Vec::new(),
+        out: PathBuf::from("dist"),
+        bytecode: false,
+        strip: false,
+        installer: None,
+        runner: None,
+        mirror: None,
+    };
+    let mut it = argv.iter();
+    let mut path = None;
+    while let Some(a) = it.next() {
+        let mut val = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value\n\n{PACK_USAGE}"));
+        match a.as_str() {
+            "-h" | "--help" => {
+                print!("{PACK_USAGE}");
+                return Ok(0);
+            }
+            "--target" => o.targets.extend(split_list(&val("--target")?)),
+            "--format" => o.formats.extend(split_list(&val("--format")?)),
+            "--out" => o.out = PathBuf::from(val("--out")?),
+            "--bytecode" => o.bytecode = true,
+            "--strip" => o.strip = true,
+            "--installer" => o.installer = Some(val("--installer")?),
+            "--runner" => o.runner = Some(PathBuf::from(val("--runner")?)),
+            "--runner-mirror" => o.mirror = Some(val("--runner-mirror")?),
+            other if other.starts_with("--") => return Err(format!("unknown option {other}\n\n{PACK_USAGE}")),
+            other => {
+                if path.replace(PathBuf::from(other)).is_some() {
+                    return Err(format!("one path at a time\n\n{PACK_USAGE}"));
+                }
+            }
+        }
+    }
+    if let Some(p) = path {
+        o.path = p;
+    }
+    if o.strip && !o.bytecode {
+        return Err("--strip drops bytecode's debug information: it needs --bytecode".into());
+    }
+    o.mirror = release::mirror(o.mirror.as_deref());
+    pack::run(&o)
+}
+
+/// `kui upgrade [version]`: this binary replaced by the release's.
+fn upgrade(argv: &[String]) -> Result<i32, String> {
+    let mut version = "latest".to_string();
+    let mut mirror = None;
+    let mut it = argv.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--mirror" => mirror = it.next().cloned(),
+            "-h" | "--help" => {
+                println!("kui upgrade [version] [--mirror URL]: replace this kui with the release's (default: the latest)");
+                return Ok(0);
+            }
+            v => version = v.to_string(),
+        }
+    }
+    let mirror = release::mirror(mirror.as_deref());
+    let exe = std::env::current_exe().map_err(|e| format!("this kui's path: {e}"))?;
+    let exe = exe.canonicalize().unwrap_or(exe);
+    let shown = exe.to_string_lossy().replace('\\', "/");
+    if shown.contains("/node_modules/") {
+        return Err(format!("this kui came with npm: npm i -g @qxuken/kui-cli@{version}"));
+    }
+    if shown.contains("/Cellar/") || shown.contains("/homebrew/") || shown.contains("/linuxbrew/") {
+        return Err("this kui came with Homebrew: brew upgrade kui".into());
+    }
+    if shown.contains("/target/debug/") || shown.contains("/target/release/") {
+        return Err(format!("this kui is a build from source ({}); cargo build it again", exe.display()));
+    }
+    let platform = release::current_platform().ok_or("the release has no runner for this machine")?;
+    let version = release::resolve(&version, mirror.as_deref())?;
+    if version == compat::VERSION {
+        println!("kui {version} already");
+        return Ok(0);
+    }
+    let base = release::base_url(mirror.as_deref(), &version);
+    let sums = release::sums(&base)?;
+    let asset = release::fetch_verified(&base, &release::asset_name(&version, platform), &sums)?;
+    let bin = release::binary_from_asset(&asset, platform)?;
+    let new = exe.with_extension("new");
+    std::fs::write(&new, &bin).map_err(|e| format!("{}: {e}", new.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    }
+    // A running exe cannot be deleted on Windows, but it can be renamed.
+    if cfg!(windows) {
+        let old = exe.with_extension("old");
+        let _ = std::fs::remove_file(&old);
+        std::fs::rename(&exe, &old).map_err(|e| format!("{}: {e}", exe.display()))?;
+    }
+    std::fs::rename(&new, &exe).map_err(|e| format!("{}: {e}", exe.display()))?;
+    println!("kui {} → {version} ({})", compat::VERSION, exe.display());
+    Ok(0)
+}
+
+/// `kui runners fetch <version> --to <dir>`.
+fn runners(argv: &[String]) -> Result<i32, String> {
+    let usage = "kui runners fetch <version|latest> --to <dir> [--mirror URL]";
+    let mut it = argv.iter();
+    if it.next().map(String::as_str) != Some("fetch") {
+        return Err(format!("usage: {usage}"));
+    }
+    let (mut version, mut to, mut mirror) = (None, None, None);
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--to" => to = it.next().cloned(),
+            "--mirror" => mirror = it.next().cloned(),
+            v => version = Some(v.to_string()),
+        }
+    }
+    let (Some(version), Some(to)) = (version, to) else {
+        return Err(format!("usage: {usage}"));
+    };
+    let mirror = release::mirror(mirror.as_deref());
+    release::fetch_all(&version, std::path::Path::new(&to), mirror.as_deref())?;
+    Ok(0)
 }
