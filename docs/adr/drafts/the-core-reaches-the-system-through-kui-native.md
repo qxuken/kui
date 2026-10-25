@@ -195,6 +195,20 @@ or a Session about 1,380 times; other crates' about 200 more.
   benches (no per-frame call is added).
 - **The F203 rule is restated as decision 2** — asks for what is seen,
   calls for what is needed now — in the memory that recorded it.
+- **A browser host gets a contract.** `kui-core` already compiles for
+  `wasm32-unknown-unknown`, but `Instant::now` and `SystemTime::now`
+  panic there and `FontSystem::new()` finds no fonts and no locale
+  without a word. A web `Platform` answers the clocks with
+  `performance.now()` and `Date.now()`, `thread_cpu_us` with nothing,
+  `fonts` with the faces it bundles and `navigator.language`, and
+  `create_file` with an error or a download; `font_file` and
+  `fonts_in_dir` have no meaning there and answer nothing. Fonts that
+  arrive later, fetched, are added as bytes (`add_font_data`), the way
+  any app adds its own. The rest of a browser host — the renderer's
+  captures (`kui-wgpu` asserts a capture is `Send`, which wgpu's web
+  types are not), a `requestAnimationFrame` loop, text input, an
+  accessibility mirror, the clipboard, audio — is a host's work and
+  outside this ADR.
 
 ## Build order
 
