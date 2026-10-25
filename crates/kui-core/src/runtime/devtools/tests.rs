@@ -2610,6 +2610,33 @@ fn the_panel_s_captures_answer_the_panel_and_an_app_s_the_app() {
         )),
         "the path is in the stream"
     );
+    // And under the Perf tab's toolbar: saved, a click on the path copies
+    // it, a button opens its folder.
+    assert!(state(&core, |s| s
+        .perf
+        .saved
+        .as_ref()
+        .is_some_and(|s| !s.pending)));
+    core.set_inspect(true);
+    core.devtools_act("tab:perf");
+    frame(&mut core);
+    let texts: Vec<String> = core.nodes().iter().filter_map(|n| n.text.clone()).collect();
+    assert!(texts.iter().any(|t| t == "screenshot saved"), "{texts:?}");
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .unwrap()
+        .to_string_lossy();
+    assert!(texts.iter().any(|t| *t == name), "the file's name");
+    assert!(core.key_of("kui-devtools/reveal-saved").is_some());
+    let copy = core.key_of("kui-devtools/copy-saved").unwrap();
+    let _ = core.take_menu_actions();
+    access_click(&mut core, copy);
+    assert!(
+        core.take_menu_actions().iter().any(
+            |a| matches!(a, crate::menu::MenuAction::SetClipboard { text, .. } if *text == path)
+        ),
+        "the path on the clipboard"
+    );
     // The app's own, the same message: the app's.
     core.captured(
         message,
@@ -2666,10 +2693,82 @@ fn a_drag_across_the_bars_reads_a_range() {
     assert_eq!(state(&core, |s| s.perf.range), Some((20, 25)));
     assert_eq!(state(&core, |s| s.perf.selected), Some(20), "no click");
     assert_eq!(state(&core, |s| s.perf.drag), None, "the drag let go");
-    // Clear goes back to the whole recording.
+    // A plain click on a bar goes back to the whole recording, a
+    // shift-click makes a range again, and the button clears it too.
+    click_at(&mut core, b.x + 2.0, y);
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.perf.range), None, "a click deselects");
+    assert_eq!(state(&core, |s| s.perf.selected), Some(25));
+    core.handle_input(InputEvent::Modifiers(KeyMods::NONE.with_shift()));
+    click_at(&mut core, a.x + 2.0, y);
+    core.handle_input(InputEvent::Modifiers(KeyMods::NONE));
+    busy(&mut core);
+    assert_eq!(
+        state(&core, |s| s.perf.range),
+        Some((20, 25)),
+        "shift-click"
+    );
     core.devtools_act("perf-range-clear");
     busy(&mut core);
     assert_eq!(state(&core, |s| s.perf.range), None);
+}
+
+/// A range dragged to the chart's edge scrolls the bars on under the
+/// held pointer, and the range keeps its start and runs on with them.
+#[test]
+fn a_range_dragged_to_the_edge_scrolls_the_bars() {
+    let mut t = 0.0;
+    let busy = |core: &mut Core, t: &mut f64| {
+        *t += 1.0 / 60.0;
+        core.set_time(*t);
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui, None);
+        ui.request_frame();
+        ui.finish();
+    };
+    let mut core = on();
+    core.set_inspect(true);
+    core.devtools_act("tab:perf");
+    core.devtools_act("perf-record");
+    for _ in 0..300 {
+        busy(&mut core, &mut t);
+    }
+    core.devtools_act("perf-record");
+    busy(&mut core, &mut t);
+    busy(&mut core, &mut t);
+    let n = state(&core, |s| s.perf.view.as_ref().unwrap().tl.frames.len());
+    let bars = core.key_of("kui-devtools/perf-bars").unwrap();
+    let g = core.scroll_geometry(bars).unwrap();
+    assert!(g.offset.x > 0.0, "opened on its newest frames: {g:?}");
+    // A few bars in from the right: the tab's own overlay bar is on the
+    // last one.
+    let from = n - 5;
+    let last = core.key_of(&format!("perf-bar:{from}")).unwrap();
+    let r = node(&core, last).rect;
+    let y = r.y + r.h / 2.0;
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(r.x + 2.0, y)));
+    core.handle_input(InputEvent::mouse_down(1));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(r.x - 20.0, y)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(g.rect.x + 2.0, y)));
+    for _ in 0..30 {
+        busy(&mut core, &mut t);
+    }
+    let moved = core.scroll_geometry(bars).unwrap();
+    assert!(
+        moved.offset.x < g.offset.x - 50.0,
+        "the bars scrolled toward the start: {} → {}",
+        g.offset.x,
+        moved.offset.x
+    );
+    core.handle_input(InputEvent::mouse_up());
+    busy(&mut core, &mut t);
+    let (a, b) = state(&core, |s| s.perf.range).expect("a range");
+    assert_eq!(b, from, "the start it was dragged from");
+    let first_seen = (g.offset.x / (g.rect.w + g.max_offset.x) * n as f32) as usize;
+    assert!(
+        a < first_seen,
+        "the range ran on past what was in view: {a} vs {first_seen}"
+    );
 }
 
 /// Clear after a recording starts the live strip again: nothing of the

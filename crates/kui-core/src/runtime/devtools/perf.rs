@@ -153,7 +153,9 @@ pub(super) fn perf_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme, place: Place)
             },
         );
     } else if let Some(view) = st.perf.view.clone() {
-        // A drag across the bars chooses a range; let go, it stays.
+        // A drag across the bars chooses a range; let go, it stays. Held
+        // past the chart's edge, the bars scroll on under it.
+        drag_edge_scroll(ui, st);
         if let Some(r) = drag_range(ui, st, view.tl.frames.len()) {
             st.perf.range = Some(r);
         }
@@ -248,7 +250,7 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 "screenshot",
                 Icon::Camera,
                 None,
-                "screenshot the window · saved to the desktop (KUI_CAPTURE_DIR), the path in Events",
+                "screenshot the window · saved to the desktop (KUI_CAPTURE_DIR), the path shown below",
             );
             icon_button(
                 ui,
@@ -257,13 +259,84 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 Icon::Video,
                 Some(p.screen_recording),
                 if p.screen_recording {
-                    "stop the screen recording · the GIF is written, its path in Events"
+                    "stop the screen recording · the GIF is written, its path shown below"
                 } else {
                     "record the window as a GIF · until pressed again, the docked panel with it"
                 },
             );
         },
     );
+    if let Some(saved) = &p.saved {
+        saved_row(ui, t, saved);
+    }
+}
+
+/// The last file the tab saved: what it is and whether it is written,
+/// its path — a click copies it — and a button opening its folder.
+fn saved_row(ui: &mut Ui<'_>, t: &Theme, saved: &super::Saved) {
+    let (state, color) = match (&saved.error, saved.pending) {
+        (Some(_), _) => ("not saved", t.danger),
+        (None, true) => ("saving", t.muted),
+        (None, false) => ("saved", t.muted),
+    };
+    ui.with(
+        NodeSpec::row()
+            .grow_width()
+            .min_height(Min::FIT)
+            .gap(6.0)
+            .cross_align(Align::Center),
+        |ui| {
+            ui.text(
+                &format!("{} {state}", saved.what),
+                TextStyle::new(10.0).color(color).nowrap(),
+            );
+            ui.with_keyed(
+                "kui-devtools/copy-saved",
+                NodeSpec::row()
+                    .grow_width()
+                    .pad_xy(4.0, 2.0)
+                    .radius(3.0)
+                    .hover_bg(t.hover)
+                    .gap(4.0)
+                    .on_click(action("copy-saved"))
+                    .tooltip(format!("copy {}", saved.path).as_str())
+                    .label(format!("copy {}", saved.path).as_str()),
+                |ui| {
+                    // The name, which an ellipsis would cut first, and the
+                    // folder it is in; the whole path is the tooltip's.
+                    let p = std::path::Path::new(&saved.path);
+                    let name = p
+                        .file_name()
+                        .map_or(saved.path.clone(), |n| n.to_string_lossy().into_owned());
+                    ui.text(&name, TextStyle::new(10.0).color(t.fg).mono().nowrap());
+                    if let Some(dir) = p.parent().and_then(|d| d.file_name()) {
+                        ui.text_in(
+                            NodeSpec::row().grow_width(),
+                            &format!("in {}", dir.to_string_lossy()),
+                            TextStyle::new(10.0).color(t.faint).nowrap().ellipsis(),
+                        );
+                    }
+                },
+            );
+            if !saved.pending && saved.error.is_none() {
+                small_button(
+                    ui,
+                    t,
+                    "reveal-saved",
+                    "open folder",
+                    "show the file in its folder",
+                    false,
+                );
+            }
+        },
+    );
+    if let Some(e) = &saved.error {
+        ui.text_in(
+            NodeSpec::row().grow_width().min_height(Min::FIT),
+            e,
+            TextStyle::new(10.0).color(t.danger),
+        );
+    }
 }
 
 /// The recent frames: the core's own recording of them while the tab is
@@ -419,7 +492,7 @@ fn chart(
     // it shares no scroll state with a recording's chart and shows no
     // bar. A recording's chart scrolls once its bars are past the width.
     let (key, empty) = if pick {
-        ("kui-devtools/perf-bars", 0)
+        (BARS, 0)
     } else {
         (
             "kui-devtools/perf-live",
@@ -456,7 +529,7 @@ fn chart(
                 {
                     let row = NodeSpec::row()
                         .fill()
-                        .pad_xy(4.0, 4.0)
+                        .pad_xy(BARS_PAD, 4.0)
                         .gap(gap)
                         .main_align(Align::End)
                         .cross_align(Align::End);
@@ -554,21 +627,59 @@ fn bar(ui: &mut Ui<'_>, t: &Theme, i: usize, b: &Bar, w: f32, per_us: f32, on: b
 /// the last frame laid them out: `None` while there is no drag, or one
 /// shorter than a click's slop.
 fn drag_range(ui: &mut Ui<'_>, st: &State, n: usize) -> Option<(usize, usize)> {
-    let (x0, x1) = st.perf.drag?;
-    if n == 0 || (x1 - x0).abs() < 4.0 {
+    let (c0, x1) = st.perf.drag?;
+    let c1 = bars_content_x(ui.core(), x1);
+    if n == 0 || (c1 - c0).abs() < DRAG_SLOP {
         return None;
     }
-    let key = ui.core().key_of("kui-devtools/perf-bars")?;
+    let key = ui.core().key_of(BARS)?;
     let g = ui.scroll_geometry(key)?;
-    let content = (g.rect.w + g.max_offset.x - 8.0).max(1.0);
+    let content = (g.rect.w + g.max_offset.x - 2.0 * BARS_PAD).max(1.0);
     let stride = content / n as f32;
-    let at = |x: f32| {
-        (((x - g.rect.x - 4.0 + g.offset.x) / stride)
-            .floor()
-            .max(0.0) as usize)
-            .min(n - 1)
+    let at = |c: f32| ((c / stride).floor().max(0.0) as usize).min(n - 1);
+    Some((at(c0.min(c1)), at(c0.max(c1))))
+}
+
+/// The bars under a drag held past the chart's edge scroll toward it,
+/// by the edge scroll's feel, and go on while the pointer is held there
+/// (`Ui::edge_scroll` asks for the frames); a drag still inside its
+/// click's slop scrolls nothing.
+fn drag_edge_scroll(ui: &mut Ui<'_>, st: &State) {
+    let Some((c0, x1)) = st.perf.drag.filter(|_| !st.perf.drag_ended) else {
+        return;
     };
-    Some((at(x0.min(x1)), at(x0.max(x1))))
+    if (bars_content_x(ui.core(), x1) - c0).abs() < DRAG_SLOP {
+        return;
+    }
+    let Some(key) = ui.core().key_of(BARS) else {
+        return;
+    };
+    let Some(g) = ui.scroll_geometry(key) else {
+        return;
+    };
+    let x = x1 - ui.core().dt_shift().x;
+    ui.edge_scroll(
+        key,
+        crate::geom::Vec2::new(x, g.rect.y + g.rect.h / 2.0),
+        g.rect,
+    );
+}
+
+/// A recording's bars, by the name the chart keys them under.
+const BARS: &str = "kui-devtools/perf-bars";
+/// The bars row's padding along `x`.
+const BARS_PAD: f32 = 4.0;
+/// How far a drag across the bars goes before it is one, not a click.
+pub(super) const DRAG_SLOP: f32 = 4.0;
+
+/// Window px `x` as a place along a recording's bars, from their start
+/// whatever has scrolled — as the last frame laid them out. `x` itself
+/// when there are no bars.
+pub(super) fn bars_content_x(core: &mut crate::runtime::Core, x: f32) -> f32 {
+    let Some(g) = core.key_of(BARS).and_then(|k| core.scroll_geometry(k)) else {
+        return x;
+    };
+    x - core.dt_shift().x - g.rect.x - BARS_PAD + g.offset.x
 }
 
 /// A small table of `(name, value)` rows.

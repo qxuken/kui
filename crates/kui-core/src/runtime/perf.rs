@@ -110,7 +110,11 @@ pub(crate) struct Recorder {
     frame: Option<u64>,
     /// The last frame finished: what a present is for.
     last_frame: u64,
-    frame_t: u64,
+    /// When this frame's `begin_frame` began, read there only while
+    /// something listened: `None` when listening began later in it — the
+    /// Perf tab opened, its clear — and the frame begins when it is
+    /// recorded, not at a time left from the last frame anything kept.
+    frame_t: Option<u64>,
     spans_in_frame: usize,
     /// Spans a frame had past [`MAX_SPANS`].
     pub(crate) dropped: u64,
@@ -684,9 +688,10 @@ impl Core {
             }
         }
         if self.perf.why == 0 {
+            self.perf.frame_t = None;
             return;
         }
-        self.perf.frame_t = self.perf.now();
+        self.perf.frame_t = Some(self.perf.now());
     }
 
     /// The end of `begin_frame`, once the frame has its number and the
@@ -702,7 +707,10 @@ impl Core {
             .map(|n| self.perf.name(n))
             .collect();
         causes.append(&mut self.perf.named);
-        let t = self.perf.frame_t;
+        let t = match self.perf.frame_t.take() {
+            Some(t) => t,
+            None => self.perf.now(),
+        };
         self.perf.push(Record::FrameBegin { t, frame, causes });
         let by = self.owed_by().clone();
         let mut holders: Vec<(&'static str, String, u64)> = Vec::new();
