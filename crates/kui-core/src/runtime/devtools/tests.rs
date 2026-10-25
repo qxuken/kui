@@ -2671,3 +2671,58 @@ fn a_drag_across_the_bars_reads_a_range() {
     busy(&mut core);
     assert_eq!(state(&core, |s| s.perf.range), None);
 }
+
+/// Clear after a recording starts the live strip again: nothing of the
+/// recording in it, a fixed row of slots whose bars keep their width as
+/// the ring fills, and no scroller — so no scroll state carried over
+/// from the recording's chart, whose offset snapping back flashed its
+/// overlay bar for a second (the user's report, 2026-10-25).
+#[test]
+fn clear_after_a_recording_starts_the_live_strip_again() {
+    let busy = |core: &mut Core| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui, None);
+        ui.request_frame();
+        ui.finish();
+    };
+    let mut core = on();
+    core.set_inspect(true);
+    core.devtools_act("tab:perf");
+    core.devtools_act("perf-record");
+    for _ in 0..300 {
+        busy(&mut core);
+    }
+    core.devtools_act("perf-record");
+    busy(&mut core);
+    busy(&mut core);
+    assert!(
+        core.key_of("kui-devtools/perf-bars").is_some(),
+        "the recording's chart"
+    );
+    core.devtools_act("perf-clear");
+    busy(&mut core);
+    busy(&mut core);
+    let kept = core.perf_trace_read().timeline().frames.len();
+    assert!(
+        kept <= 2,
+        "the recording is not in the live strip: {kept} frames"
+    );
+    assert!(core.key_of("kui-devtools/perf-bars").is_none());
+    let live = core
+        .key_of("kui-devtools/perf-live")
+        .expect("the live strip");
+    assert!(
+        core.scroll_geometry(live).is_none(),
+        "the live strip never scrolls"
+    );
+    let slots = node(&core, live).children;
+    assert_eq!(slots, crate::runtime::perf::LIVE_FRAMES as u32);
+    for _ in 0..10 {
+        busy(&mut core);
+    }
+    assert_eq!(
+        node(&core, live).children,
+        slots,
+        "as many slots as it fills"
+    );
+}

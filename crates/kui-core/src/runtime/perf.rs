@@ -273,6 +273,15 @@ impl Core {
         self.perf_set(why::RECORDING, on);
     }
 
+    /// Drops what has been kept, as the Perf tab's clear does: its live
+    /// view starts again from the next frame rather than on the end of
+    /// the recording it was showing.
+    pub(crate) fn perf_clear_kept(&mut self) {
+        if self.perf.why & why::RECORDING == 0 {
+            self.perf.clear();
+        }
+    }
+
     /// Whether a recording is running.
     pub fn perf_recording(&self) -> bool {
         self.perf.why & why::RECORDING != 0

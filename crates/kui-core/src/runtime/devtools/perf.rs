@@ -98,7 +98,7 @@ const EXTENSION: Color = Color {
 /// The chart's bars' area: twice the frame budget tall.
 const CHART_H: f32 = 64.0;
 const BAR_W: f32 = 4.0;
-const LIVE_BAR_W: f32 = 2.0;
+const LIVE_BAR_W: f32 = 1.0;
 
 fn ms(us: u64) -> String {
     format!("{:.2}", us as f64 / 1000.0)
@@ -414,6 +414,23 @@ fn chart(
     } else {
         (LIVE_BAR_W, 0.0)
     };
+    // The live strip is a fixed number of slots, the newest on the right,
+    // so a bar keeps its width while the ring fills; it never scrolls, so
+    // it shares no scroll state with a recording's chart and shows no
+    // bar. A recording's chart scrolls once its bars are past the width.
+    let (key, empty) = if pick {
+        ("kui-devtools/perf-bars", 0)
+    } else {
+        (
+            "kui-devtools/perf-live",
+            crate::runtime::perf::LIVE_FRAMES.saturating_sub(bars.len()),
+        )
+    };
+    let bars = if pick {
+        bars
+    } else {
+        &bars[bars.len().saturating_sub(crate::runtime::perf::LIVE_FRAMES)..]
+    };
     ui.with(
         NodeSpec::column()
             .grow_width()
@@ -435,23 +452,26 @@ fn chart(
                     .bg(t.danger.faded(0.5)),
             );
             let bars_key = ui.with_keyed(
-                "kui-devtools/perf-bars",
+                key,
                 {
                     let row = NodeSpec::row()
                         .fill()
                         .pad_xy(4.0, 4.0)
                         .gap(gap)
                         .main_align(Align::End)
-                        .cross_align(Align::End)
-                        .scroll_x()
-                        .scrollbar(crate::spec::ScrollbarMode::Auto);
+                        .cross_align(Align::End);
                     if pick {
-                        row.on_drag(action("perf-drag"))
+                        row.scroll_x()
+                            .scrollbar(crate::spec::ScrollbarMode::Auto)
+                            .on_drag(action("perf-drag"))
                     } else {
                         row
                     }
                 },
                 |ui| {
+                    for _ in 0..empty {
+                        ui.leaf(NodeSpec::row().grow_width().min_width(w));
+                    }
                     for (i, b) in bars.iter().enumerate() {
                         bar(ui, t, i, b, w, per_us, selected == Some(i), pick);
                     }
