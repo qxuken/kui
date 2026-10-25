@@ -200,14 +200,20 @@ it fails:
   missing ones, while the tag can still move. The first release with
   per-platform packages (0.1.0-alpha.68, or whichever carries ADR 0068)
   needs the eight new names (and `@qxuken/kui-cli`) put up once by hand
-  beforehand: run release.yml by hand (`workflow_dispatch`) on the commit
-  to be tagged, download its `npm-packages` artifact, and from a login on
-  npmjs with 2FA publish the nine new ones, platform packages first
+  beforehand, which is [`scripts/npm-bootstrap.nu`](../scripts/npm-bootstrap.nu):
+  from a login on npmjs with 2FA (npm 11.15 or newer, `@qxuken` and the
+  default registry both npmjs), `nu scripts/npm-bootstrap.nu --trust`
+  publishes a `0.0.0-bootstrap.0` placeholder of every name npmjs lacks
+  and gives each `release.yml` as its trusted publisher (`npm trust
+  github`; npm opens the browser for 2FA and npmjs offers to skip it for
+  five minutes). Then tag, within two days. The tag's run publishes the
+  real versions with provenance and moves `latest` off the placeholders;
+  after it, `nu scripts/npm-bootstrap.nu --deprecate` marks them. Or by
+  hand: release.yml's `npm-packages` artifact from a `workflow_dispatch`
+  run, the nine new ones published from it platform packages first
   (`npm publish ./qxuken-kui-cli-linux-x64-<version>.tgz --tag alpha
-  --access public`, …, or `npm stage publish` and `npm-approve.nu`
-  below); then give each a trusted publisher as above, and tag. The tag's
-  run finds those versions live and skips them; they lack provenance,
-  later releases do not. What to check on npmjs the first time: that the
+  --access public`, …), then each given a trusted publisher as above; the
+  tag's run finds those versions live and skips them, without provenance. What to check on npmjs the first time: that the
   scope allows the new names, that each package's Trusted Publisher form
   saves, and that `npm view @qxuken/kui-cli-linux-x64@<version>` answers
   after the run.

@@ -642,7 +642,7 @@ jobs:
             fi
           done
           if [ -n "$missing" ]; then
-            echo "::error::not on npmjs yet:$missing - publish each once by hand and give it this workflow as its trusted publisher (docs/releasing.md), then re-run this job"
+            echo "::error::not on npmjs yet:$missing - run 'nu scripts/npm-bootstrap.nu --trust' from a login on npmjs (placeholders, then this workflow as each one's trusted publisher; docs/releasing.md), then re-run this job"
             exit 1
           fi
 
