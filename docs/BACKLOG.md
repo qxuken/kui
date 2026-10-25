@@ -3660,6 +3660,56 @@ body, the howto, the guide, props.md's section headings and the glossary,
 which gains it beside **Component**. No symbol changes unless the word
 does (`widgets::` in Rust is already the module).
 
+## From the core impurities audit (2026-10-25)
+
+The user, after F203: "all system calls and integrations should go
+through the native layer". An audit of `kui-core` found four groups that
+reach the system directly, and a grilling the same day settled how they
+move and what grew out of it: two entries, both **proposed** with their
+ADRs, and both waiting on Kit (`claude/kui-tools-design-system-b8ffa1`,
+which takes backlog ids from C59 on and ADRs from 0059 on, writing 0067
+now) landing on main. Both are numbered when they land: the ids here are
+placeholders.
+
+### `.` C-sys — The core finds fonts, writes files, reads the environment and the clocks itself
+
+**Found.** The audit at `356dc309`: the system font scan
+(`FontSystem::new()`, fontconfig, `sys-locale`), `kui-font-check`
+threads, `DEFAULT_FAMILIES` under `cfg(target_os)`, `load_font_file` /
+`load_fonts_dir` by path, `share_faces`' `unsafe` mapping; the perf
+recorder creating and writing its file and reading `KUI_PERF_TRACE`; the
+devtools reading `KUI_CAPTURE_DIR`, `HOME`, `USERPROFILE`, `KUI_DEVTOOLS`
+and `KUI_SMOKE_FRAMES`, asking the disk `is_dir()` and writing a trace
+with `std::fs::write`; and `Instant::now`, `SystemTime::now` and
+`libc::clock_gettime`, the core's one reason to depend on `libc`.
+
+**Do.** [draft ADR S](adr/drafts/the-core-reaches-the-system-through-kui-native.md):
+a `Platform` trait the Session holds (`with_platform`, a `Bare` default,
+a fake with generated fonts under test), implemented by
+`kui_native::system` behind a new default `gui` feature so headless
+kui-ffi can depend on it; fonts, perf, devtools and clocks through it;
+a `clippy.toml` and a CI grep that name the ADR. **Waits on** Kit on
+main.
+
+### `~` C-io — An app has no way to read, write or list files through kui, off the frame
+
+**Found.** The same grilling: the devtools' "save trace" writes on the
+frame; a Lua guest has no file access, the Kit runner's `kui.fs` is
+synchronous (C83), and a headless C host writes its own — and an app
+editing a large file wants it saved with progress, cancelling and no
+half-written file.
+
+**Do.** [draft ADR I](adr/drafts/the-cores-io-asks.md): seven verbs by path
+(`read_file`, `write_file`, `delete_file`, `read_dir`, `stat`, `rename`,
+`create_dir`), each an `IoId` answered by one `io` event with a coded
+error; streamed reads, atomic replace, best-effort delete with the Trash,
+listings as channels, `after` chaining with `busy` against overlapping
+mutations and no order otherwise promised, cancelling, opt-in progress,
+`io_pending` and the exit budget; served by one pool in
+`kui_native::system` for every host, Node woken through a threadsafe
+function, the Kit runner's `kui.fs` rebuilt on it. **Waits on** C-sys, and
+Kit's channel (ADR 0065) on main.
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
