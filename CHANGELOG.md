@@ -49,6 +49,11 @@ was the first bare bump to break an app in five releases).
   scrolls it, while it has room, where it went to the page around it;
   and a notch with Shift held scrolls sideways off macOS, where it
   scrolled down (backlog F202, ADR 0050).
+- A held drag-select or caret drag, and `Ui::edge_scroll`, hand an axis
+  their scroller cannot move on to the scroller around it, where they
+  stopped; `overscroll: contain` keeps it in (backlog F204, ADR 0029).
+- `MenuAction` has a sixth variant, `ShowInFolder { path }`: a Rust host
+  that matches the enum whole adds an arm (backlog F203).
 - A function key pressed in a focused editor goes to the `onKey` sink
   above it, where the editor kept it and did nothing with it.
 - Under custom chrome a press on the drawn menu bar's empty room starts
@@ -87,6 +92,23 @@ at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
 
 ### Added
+
+- **Show a file in its folder, or open it with its app** (backlog F203).
+  `kui_native::show_in_folder(path)` shows a file or folder in the
+  system's file manager — selected in Finder or Explorer, its folder
+  opened elsewhere — and `kui_native::open_external(target)` opens a
+  file, a folder or a URL with what the system opens it with: C
+  `kui_show_in_folder` and `kui_open_external`, Odin `show_in_folder`
+  and `open_external`, Node `showInFolder` and `openExternal`. Each
+  starts the platform's own tool with the path as an argument, no shell
+  between, returns once it has started, and fails, naming why, for a
+  path that does not exist. The core touches no system: the devtools'
+  "open folder" queues `MenuAction::ShowInFolder`, which the runner
+  applies and a host of its own applies with the same door
+  (`KUI_MENU_ACTION_SHOW_IN_FOLDER`, Node `{kind: 'showInFolder'}`).
+
+  *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
+  spawn for "Show in folder" or a link.
 
 - **The Lua DSL described for Teal** (backlog F194).
   `kui_lua::teal_decls()` returns a `kui.d.tl` for
@@ -277,6 +299,20 @@ for lua-language-server, and a new runner beside the window's.
   frames alone; **whole recording** goes back.
 
   *What you can delete:* nothing — a look, not a door.
+- **A held drag hands on** (backlog F204, [ADR 0029's
+  amendment](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md#amended-2026-10-25-a-held-drag-hands-on)).
+  A drag held at an edge scrolled only the scroller its press was in:
+  selecting from a code block that scrolls sideways down a page could
+  not scroll the page, and a short log stopped at its end with the page
+  still. Now, on each axis, a scroller that cannot move — it does not
+  scroll that way, it is at its end, the pointer is clear of its zones —
+  hands that axis to the scroller around it, measured by that one's
+  own edges, as the wheel chains; `overscroll: contain` keeps it in.
+  `Ui::edge_scroll(key, …)` hands on the same way from `key`, so a board
+  that scrolls sideways inside a page needs one call.
+
+  *What you can delete:* a second `edge_scroll` call for the page around
+  the container a drag scrolls.
 - **A mouse wheel reaches what scrolls sideways** (backlog F202,
   [ADR 0050's amendment](docs/adr/0050-a-wheel-notch-glides.md#amended-2026-10-25-a-wheel-reaches-what-scrolls-sideways)).
   On Windows and Linux a mouse could not scroll a row that moves only

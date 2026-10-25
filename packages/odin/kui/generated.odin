@@ -466,6 +466,7 @@ Menu_Action_Kind :: enum u32 {
 	Look_Up = 2, // KUI_MENU_ACTION_LOOK_UP
 	Set_Clipboard_Secret = 3, // KUI_MENU_ACTION_SET_CLIPBOARD_SECRET
 	Set_Clipboard_Image = 4, // KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE
+	Show_In_Folder = 5, // KUI_MENU_ACTION_SHOW_IN_FOLDER
 }
 
 Copy_Answer :: enum u32 {
@@ -2897,8 +2898,10 @@ shift_scroll :: proc(ui: ^Ui, key: u64, drawn: f32, target: f32) {
 }
 
 // Scrolls a node for a drag the app holds with the pointer in the edge zone
-// inside a rect, by the edge scroll's feel; returns what moved and asks for
-// the next frame while it moves (ADR 0029).
+// inside a rect, by the edge scroll's feel — on an axis it cannot move, the
+// container around it, as the wheel chains, unless one says `overscroll:
+// contain`; returns what moved and asks for the next frame while it moves
+// (ADR 0029).
 // Rust: Ui::edge_scroll.
 edge_scroll :: proc(ui: ^Ui, key: u64, x: f32, y: f32, rx: f32, ry: f32, rw: f32, rh: f32) -> (dx: f32, dy: f32, ok: bool) {
 	c_dx: f32
@@ -4241,6 +4244,23 @@ stop_recording :: proc(ui: ^Ui) {
 // Rust: Captures::serve.
 serve_captures :: proc(ui: ^Ui) {
 	c.serve_captures(ui)
+}
+
+// Shows a file or folder in the system's file manager — selected in Finder
+// or Explorer, its folder opened elsewhere — and returns once it has
+// started (backlog F203): "Show in folder" beside a file the app saved, and
+// what a host applies the devtools' `ShowInFolder` menu action with.
+// Rust: kui_native::show_in_folder.
+show_in_folder :: proc(path: string) -> bool {
+	return c.show_in_folder(path)
+}
+
+// Opens a file, a folder or a URL (`https:`, `mailto:`, …) with what the
+// system opens it with, and returns once that has started (backlog F203): a
+// saved report in its app, a link in the browser.
+// Rust: kui_native::open_external.
+open_external :: proc(target: string) -> bool {
+	return c.open_external(target)
 }
 
 // kui_slot_name (kui.h).

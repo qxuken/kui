@@ -210,55 +210,51 @@ impl Core {
     /// inside `rect` — the area whose edges scroll, usually the
     /// container's own `scroll_geometry` rect — or past it, or pinned
     /// against the window's edge, the container moves at once, not
-    /// eased, at a speed from how deep and how long. Returns what it
-    /// moved this frame, positive toward later content; `None` when the
-    /// pointer is out of the zones, the container is at its end that
-    /// way, or `key` is no scroll container. While it moves it asks for
-    /// the next frame, so a pointer held still goes on scrolling: call
-    /// it once a frame for as long as the drag is held, from the view or
-    /// between frames, and place the drag's live end under the pointer
-    /// after. Coordinates are the host's, as `scroll_geometry`'s are.
+    /// eased, at a speed from how deep and how long. On an axis `key`
+    /// cannot move — it does not scroll that way, it is at its end, the
+    /// pointer is clear of its zones — the container around it in the
+    /// tree takes that axis by its own rect's zones, and so on out, as the
+    /// wheel chains, stopped by one that says `overscroll: contain` (ADR
+    /// 0029, amended 2026-10-25): a board that scrolls sideways inside a
+    /// page that scrolls down needs the one call. Returns what moved this
+    /// frame, positive toward later content, summed over the containers
+    /// that moved; `None` when nothing did or `key` is no scroll
+    /// container. While it moves it asks for the next frame, so a pointer
+    /// held still goes on scrolling: call it once a frame for as long as
+    /// the drag is held, from the view or between frames, and place the
+    /// drag's live end under the pointer after. Coordinates are the
+    /// host's, as `scroll_geometry`'s are.
     ///
     /// The ramp is kept per container while the calls come every frame,
     /// and starts again after a frame without one. Not before the drag
     /// has left its press's click slop: a press near an edge that has
     /// not moved is a click, and the app knows which of its presses
     /// are drags. kui's own caret drag and drag-select go by the same
-    /// feel on their own.
+    /// feel, and hand on the same way, on their own.
     #[track_caller]
     pub fn edge_scroll(&mut self, key: Key, pointer: Vec2, rect: Rect) -> Option<Vec2> {
-        let frame = self.frame_no;
-        self.edge_ramps.retain(|e| e.3 + 1 >= frame);
-        let g = self.scroll_geometry(key)?;
+        self.scroll_geometry(key)?;
         let now = self.anim.time();
-        let at = self.edge_ramps.iter().position(|e| e.0 == key);
-        let (mut ramp, last) = at.map_or((Default::default(), None), |i| {
-            (self.edge_ramps[i].1, self.edge_ramps[i].2)
-        });
+        let last = self
+            .edge_ramps
+            .iter()
+            .find(|e| e.0 == key && e.3 + 1 >= self.frame_no)
+            .and_then(|e| e.2);
         let dt = match (now, last) {
             (Some(n), Some(l)) => (n - l).clamp(0.0, follow::MAX_FRAME),
             _ => follow::CLOCKLESS_FRAME,
         } as f32;
         let shift = self.dt_shift();
         let window = Rect::new(-shift.x, -shift.y, self.viewport.w, self.viewport.h);
-        let axes = (g.max_offset.x > 0.0, g.max_offset.y > 0.0);
-        let feel = self.edge_feel;
-        let delta = ramp.step(&feel, rect, window, pointer, axes, dt);
-        let entry = (key, ramp, now, frame);
-        match at {
-            Some(i) => self.edge_ramps[i] = entry,
-            None => self.edge_ramps.push(entry),
-        }
-        // What the clamp leaves of the step: at the end that way, none.
-        let go = |o: f32, d: f32, m: f32| (o + d).clamp(0.0, m.max(0.0)) - o.clamp(0.0, m.max(0.0));
-        let moved = Vec2::new(
-            go(g.offset.x, delta.x, g.max_offset.x),
-            go(g.offset.y, delta.y, g.max_offset.y),
-        );
+        // The containers around `key` by the rects the last frame laid
+        // them at, in the host's coordinates as `rect` is.
+        let picks = self.edge_chain(key, rect, pointer, window, |r| {
+            Rect::new(r.x - shift.x, r.y - shift.y, r.w, r.h)
+        });
+        let (moved, _) = self.step_edge_chain(picks, pointer, window, dt);
         if moved == Vec2::ZERO {
             return None;
         }
-        self.scroll.scroll_by(key, moved);
         self.owe_frame("edge_scroll");
         Some(moved)
     }

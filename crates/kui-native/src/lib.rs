@@ -205,6 +205,8 @@ mod retarget;
 mod retry;
 mod scroll_gesture;
 mod secure_input;
+mod system;
+pub use system::{open_external, show_in_folder};
 pub mod testing;
 mod unseen;
 mod windows;

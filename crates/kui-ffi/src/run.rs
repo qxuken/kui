@@ -663,6 +663,29 @@ pub extern "C" fn kui_encode_image(
     })
 }
 
+/// Shows `path` in the system's file manager: `kui_native::show_in_folder`.
+/// False, with the reason on stderr, for a path that does not exist or a
+/// file manager that would not start.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_show_in_folder(path: KuiStr) -> bool {
+    guard(false, || {
+        kui_native::show_in_folder(&kstr(path))
+            .map_err(|e| eprintln!("kui: kui_show_in_folder: {e}"))
+            .is_ok()
+    })
+}
+
+/// Opens `target` with what the system opens it with:
+/// `kui_native::open_external`. False, with the reason on stderr.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_open_external(target: KuiStr) -> bool {
+    guard(false, || {
+        kui_native::open_external(&kstr(target))
+            .map_err(|e| eprintln!("kui: kui_open_external: {e}"))
+            .is_ok()
+    })
+}
+
 /// An animated PNG or GIF written a frame at a time: the handle
 /// `kui_animation_encoder_new` hands out, and `_finish` or `_free` takes
 /// back.

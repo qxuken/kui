@@ -701,6 +701,13 @@ pub enum MenuAction {
         height: u32,
         rgba: std::sync::Arc<[u8]>,
     },
+    /// Show the file at `path` in the system's file manager — selected
+    /// in Finder or Explorer, its folder opened elsewhere. Queued by the
+    /// devtools' "open folder" under a file the Perf tab saved, never by
+    /// a menu row: the core touches no system, so it asks. The runner
+    /// applies it with `kui_native::show_in_folder` (backlog F203); a host
+    /// that cannot drops it.
+    ShowInFolder { path: String },
 }
 
 // -- The application menu bar -----------------------------------------------

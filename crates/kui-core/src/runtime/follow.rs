@@ -15,7 +15,12 @@
 //! of the pressed node that scrolls, or that declared `on_scroll` — the
 //! second kind is nudged as an event, since the core holds nothing of
 //! what it scrolls (a `cells` grid is one screenful of the app's history;
-//! decision 4).
+//! decision 4). From a container the edge step hands on, per axis: one
+//! that cannot move the way its zone scrolls — it does not scroll that
+//! way, it is at its end, the pointer is clear of its zones — gives that
+//! axis to the container around it, as the wheel chains, unless it says
+//! `overscroll: contain` (ADR 0029, amended 2026-10-25). `Ui::edge_scroll`
+//! hands on the same way.
 
 use super::*;
 use crate::edge_scroll::EdgeRamp;
@@ -61,8 +66,21 @@ pub(crate) struct DragFollow {
     pub point: Vec2,
     pub scroller: Option<Scroller>,
     pub stepped: bool,
+    /// The container the last step moved — the scroller or one it
+    /// handed an axis to: who holds the next frame in a trace.
+    pub stepped_key: Option<Key>,
+    /// A handler scroller's ramp; a container's are kept per container
+    /// by the hand-off (`Core::step_edge_chain`).
     pub ramp: EdgeRamp,
 }
+
+/// What an axis of a held drag scrolls this frame: the container and the
+/// rect its zones are measured against.
+pub(crate) type EdgePick = Option<(Key, Rect)>;
+
+/// How close to its limit a container has to be to count as there:
+/// a sub-pixel remainder is no room to move.
+const AT_LIMIT: f32 = 0.5;
 
 impl Core {
     /// Arms the follow for a drag a press just started on `node` at
@@ -73,6 +91,7 @@ impl Core {
             point,
             scroller,
             stepped: false,
+            stepped_key: None,
             ramp: EdgeRamp::default(),
         });
     }
@@ -111,8 +130,7 @@ impl Core {
     pub(crate) fn autoscroller(&self) -> Option<Key> {
         self.drag_follow
             .filter(|f| f.stepped)
-            .and_then(|f| f.scroller)
-            .map(Scroller::key)
+            .and_then(|f| f.stepped_key.or(f.scroller.map(Scroller::key)))
     }
 
     /// The nearest ancestor-or-self of `node` that a held drag scrolls,
@@ -250,15 +268,20 @@ impl Core {
         let Some(mut f) = self.drag_follow else {
             return;
         };
+        // A step the last frame took may have moved a container the
+        // scroller handed an axis to, which its own reading misses.
+        let was_stepped = f.stepped;
         f.stepped = false;
+        f.stepped_key = None;
         if let Some(scroller) = f.scroller {
             // 1. The frame under the pointer moved: place the end again.
             let key = scroller.key();
             let now = self.reading_of(key, scroller);
-            let moved = match scroller {
-                Scroller::Container { .. } => now != scroller,
-                Scroller::Handler { seen, .. } => seen.is_none() || now != scroller,
-            };
+            let moved = was_stepped
+                || match scroller {
+                    Scroller::Container { .. } => now != scroller,
+                    Scroller::Handler { seen, .. } => seen.is_none() || now != scroller,
+                };
             if moved {
                 self.rehit(f.point);
                 f.scroller = Some(now);
@@ -271,22 +294,14 @@ impl Core {
                 let feel = self.edge_feel;
                 f.stepped = match scroller {
                     Scroller::Container { .. } => {
-                        let spec = self.tree.specs[i].layout;
-                        let axes = (spec.scroll_x, spec.scroll_y);
-                        let delta = f.ramp.step(&feel, rect, window, f.point, axes, dt);
-                        // A step the clamp would undo is no step: a
-                        // scroller at its end under a held pointer is
-                        // idle, not asking for frames until the release.
-                        let moves = self.scroll.geometry(key).is_some_and(|g| {
-                            let can =
-                                |o: f32, d: f32, m: f32| (o + d).clamp(0.0, m) != o.clamp(0.0, m);
-                            can(g.offset.x, delta.x, g.max_offset.x)
-                                || can(g.offset.y, delta.y, g.max_offset.y)
-                        });
-                        if moves {
-                            self.scroll.scroll_by(key, delta);
-                        }
-                        moves
+                        // Per axis, the scroller or the container it hands
+                        // that axis to. A step the clamp would undo is no
+                        // step: a scroller at its end under a held pointer
+                        // is idle, not asking for frames until the release.
+                        let picks = self.edge_chain(key, rect, f.point, window, |r| r);
+                        let (moved, by) = self.step_edge_chain(picks, f.point, window, dt);
+                        f.stepped_key = by;
+                        moved != Vec2::ZERO
                     }
                     Scroller::Handler { .. } => {
                         // A grid scrolls lines and has no columns to
@@ -311,6 +326,127 @@ impl Core {
             }
         }
         self.drag_follow = Some(f);
+    }
+
+    /// The containers a held drag with the pointer at `p` scrolls this
+    /// frame, per axis (`[x, y]`), walking out from the container
+    /// `start` through the finished frame's scroll regions — the wheel's,
+    /// which a build under way leaves whole — `start`'s zones measured
+    /// against `first`, every other container's against `rect_of` its
+    /// region's rect: on each axis the first container that scrolls along
+    /// it, has the pointer in its edge zone and room the way that zone
+    /// scrolls. One at its end, or with the pointer clear of its zones,
+    /// hands the axis to the container around it, as the wheel chains;
+    /// one that says `overscroll: contain` keeps the axis whether or not
+    /// it can move. The walk ends at a handler, whose room the core cannot
+    /// read, and at a modal's edge (ADR 0029, amended 2026-10-25).
+    pub(crate) fn edge_chain(
+        &self,
+        start: Key,
+        first: Rect,
+        p: Vec2,
+        window: Rect,
+        rect_of: impl Fn(Rect) -> Rect,
+    ) -> [EdgePick; 2] {
+        let feel = self.edge_feel;
+        let regions = &self.interaction.scroll_regions;
+        let Some(start) = regions.iter().rposition(|r| r.key == start) else {
+            return [None, None];
+        };
+        let mut picks = [None, None];
+        for (axis, pick) in picks.iter_mut().enumerate() {
+            let x = axis == 0;
+            let mut i = start;
+            loop {
+                let r = &regions[i];
+                if i != start && (r.handler || r.inert) {
+                    break;
+                }
+                if if x { r.scrolls_x } else { r.scrolls_y } {
+                    let rect = if i == start { first } else { rect_of(r.rect) };
+                    let way = crate::edge_scroll::zone_way(&feel, rect, window, p, x);
+                    let room = way != 0.0
+                        && self.scroll.geometry(r.key).is_some_and(|g| {
+                            let (o, m) = if x {
+                                (g.offset.x, g.max_offset.x)
+                            } else {
+                                (g.offset.y, g.max_offset.y)
+                            };
+                            if way > 0.0 {
+                                o < m - AT_LIMIT
+                            } else {
+                                o > AT_LIMIT
+                            }
+                        });
+                    if room {
+                        *pick = Some((r.key, rect));
+                        break;
+                    }
+                    if r.contain {
+                        break;
+                    }
+                }
+                if r.parent == NIL {
+                    break;
+                }
+                i = r.parent as usize;
+            }
+        }
+        picks
+    }
+
+    /// Steps the containers `picks` names by the edge scroll's feel over
+    /// `dt` seconds — each on the axes it was picked for, with a ramp of
+    /// its own that starts again after a frame it was not stepped in —
+    /// and returns what moved, per axis, and the first container that
+    /// did.
+    pub(crate) fn step_edge_chain(
+        &mut self,
+        picks: [EdgePick; 2],
+        p: Vec2,
+        window: Rect,
+        dt: f32,
+    ) -> (Vec2, Option<Key>) {
+        let frame = self.frame_no;
+        self.edge_ramps.retain(|e| e.3 + 1 >= frame);
+        let jobs: Vec<(Key, Rect, (bool, bool))> = match picks {
+            [Some((a, r)), Some((b, _))] if a == b => vec![(a, r, (true, true))],
+            _ => picks
+                .iter()
+                .enumerate()
+                .filter_map(|(axis, pick)| pick.map(|(k, r)| (k, r, (axis == 0, axis == 1))))
+                .collect(),
+        };
+        let feel = self.edge_feel;
+        let now = self.anim.time();
+        let mut moved = Vec2::ZERO;
+        let mut by = None;
+        for (key, rect, axes) in jobs {
+            let at = self.edge_ramps.iter().position(|e| e.0 == key);
+            let mut ramp = at.map_or_else(EdgeRamp::default, |j| self.edge_ramps[j].1);
+            let delta = ramp.step(&feel, rect, window, p, axes, dt);
+            let entry = (key, ramp, now, frame);
+            match at {
+                Some(j) => self.edge_ramps[j] = entry,
+                None => self.edge_ramps.push(entry),
+            }
+            let Some(g) = self.scroll.geometry(key) else {
+                continue;
+            };
+            // What the clamp leaves of the step: at the end that way, none.
+            let go =
+                |o: f32, d: f32, m: f32| (o + d).clamp(0.0, m.max(0.0)) - o.clamp(0.0, m.max(0.0));
+            let d = Vec2::new(
+                go(g.offset.x, delta.x, g.max_offset.x),
+                go(g.offset.y, delta.y, g.max_offset.y),
+            );
+            if d != Vec2::ZERO {
+                self.scroll.scroll_by(key, d);
+                moved = Vec2::new(moved.x + d.x, moved.y + d.y);
+                by = by.or(Some(key));
+            }
+        }
+        (moved, by)
     }
 
     /// The `scroll` event a delta over the `on_scroll` node `key` makes —

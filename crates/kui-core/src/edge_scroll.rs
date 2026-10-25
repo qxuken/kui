@@ -228,6 +228,19 @@ impl EdgeRamp {
     }
 }
 
+/// Which way the zones of a container at `rect` scroll a pointer at `p`
+/// along `x` (or `y`): -1 toward earlier content, +1 toward later, 0 when
+/// it is in neither — what the hand-off asks before a container is
+/// stepped (ADR 0029, amended 2026-10-25).
+pub(crate) fn zone_way(feel: &EdgeScrollFeel, rect: Rect, window: Rect, p: Vec2, x: bool) -> f32 {
+    let (_, _, way) = if x {
+        axis(feel, rect.x, rect.w, p.x, window.x, window.w)
+    } else {
+        axis(feel, rect.y, rect.h, p.y, window.y, window.h)
+    };
+    way
+}
+
 /// How deep `v` is in the zones of a container spanning `len` from `lo`
 /// on one axis, in a window spanning `win_len` from `win_lo`: the depth,
 /// the zone's own depth, and the way it scrolls — -1 toward earlier

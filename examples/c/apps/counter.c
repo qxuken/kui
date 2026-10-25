@@ -415,6 +415,16 @@ static int headless(void) {
     }
     printf("encoded a PNG and a GIF animation and read them back\n");
 
+    /* The file manager and default apps: a path that does not exist is
+     * refused, naming why on stderr, and nothing is started. */
+    if (kui_show_in_folder(KUI_STR("/no/such/kui/file.png")) ||
+        kui_open_external(KUI_STR("/no/such/kui/file.png")) || kui_open_external(KUI_STR(""))) {
+        fprintf(stderr, "FAIL: kui_show_in_folder / kui_open_external took a missing path\n");
+        kui_ctx_free(ctx);
+        return 1;
+    }
+    printf("refused to show or open a missing path\n");
+
     kui_ctx_free(ctx);
     if (state.count != 1) {
         fprintf(stderr, "FAIL: expected count 1\n");

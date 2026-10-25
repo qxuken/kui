@@ -386,6 +386,9 @@ pub extern "C" fn kui_take_menu_action(ptr: *mut KuiCtx, out: *mut KuiMenuAction
                 image = Some((width, height, rgba));
                 (KUI_MENU_ACTION_SET_CLIPBOARD_IMAGE, String::new(), None)
             }
+            kui_core::MenuAction::ShowInFolder { path } => {
+                (KUI_MENU_ACTION_SHOW_IN_FOLDER, path, None)
+            }
         };
         c.menu_text = text;
         c.menu_html = html.unwrap_or_default();

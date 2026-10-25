@@ -5466,3 +5466,8 @@ move.
 **From the Perf tab on Windows (2026-10-25)** — F202, filed and built the same day
 
 - `.` **F202** — [A mouse wheel cannot scroll what moves only sideways off macOS](backlog/closed-2026-09.md#-f202--a-mouse-wheel-cannot-scroll-what-moves-only-sideways-off-macos--done-2026-10-25) — done (2026-10-25) — Shift turns a notch sideways; a plain notch moves a sideways-only scroller while it has room, then hands on
+
+**From the open-folder and drag questions (2026-10-25)** — F203 and F204, filed and built the same day
+
+- `.` **F203** — [An app cannot show a file in its folder or open it with its app, and the devtools did it from the core](backlog/closed-2026-09.md#-f203--an-app-cannot-show-a-file-in-its-folder-or-open-it-with-its-app-and-the-devtools-did-it-from-the-core--done-2026-10-25) — done (2026-10-25) — `show_in_folder` / `open_external` in kui-native with doors in C, Odin and Node; the core asks with `MenuAction::ShowInFolder`
+- `.` **F204** — [A held drag scrolls only the scroller its press was in](backlog/closed-2026-09.md#-f204--a-held-drag-scrolls-only-the-scroller-its-press-was-in--done-2026-10-25) — done (2026-10-25) — hands an axis on as the wheel chains, `overscroll: contain` keeps it in
