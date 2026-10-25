@@ -913,7 +913,9 @@ impl Core {
     pub(crate) fn has_accent_raw(&self) -> bool {
         match self.theme_source {
             ThemeSource::Derived => self.env.system.accent.is_some(),
-            ThemeSource::DerivedWithAccent(_) | ThemeSource::Pinned(_) => true,
+            ThemeSource::DerivedWithAccent(_)
+            | ThemeSource::Pinned(_)
+            | ThemeSource::Pair { .. } => true,
         }
     }
 
@@ -936,6 +938,14 @@ impl Core {
     /// [`ThemeSource::Pinned`].
     pub fn set_theme(&mut self, theme: Theme) {
         self.set_theme_source(ThemeSource::Pinned(theme));
+    }
+
+    /// One palette for each appearance, picked from `env.system` every
+    /// frame (ADR 0061): a skin's or a brand's light and dark halves,
+    /// followed through the OS's changes with nothing more from the app.
+    /// Shorthand for [`ThemeSource::Pair`].
+    pub fn set_theme_pair(&mut self, light: Theme, dark: Theme) {
+        self.set_theme_source(ThemeSource::Pair { light, dark });
     }
 
     /// Keep following the OS's light/dark, but paint this accent instead

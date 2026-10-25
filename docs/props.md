@@ -665,6 +665,8 @@ its generator (`nu scripts/odin.nu gen --check`).
 | `Core::window_closed` | `kui_window_closed` | `window_closed` | `Ctx.windowClosed` | *none: a script is a guest in the host's frame (ADR 0014): its env is the view's reading, and registering, driving, pacing and reading back are the host's* | The driver reports a window gone. |
 | `Core::dismiss_window` | `kui_window_dismissed` | `window_dismissed` | `Ctx.windowDismissed` | *none: a script is a guest in the host's frame (ADR 0014): its env is the view's reading, and registering, driving, pacing and reading back are the host's* | The driver reports a popup dismissed, with why (ADR 0003 step 4). |
 | `Core::set_theme` | `kui_theme_set` | `theme_set` | `setTheme` | *none: read-only: the palette is the host's (ADR 0019)* | Pins a whole palette. |
+| `Core::set_theme_pair` | `kui_theme_set_pair` | `theme_set_pair` | `setTheme({ light, dark })`: an override object for each half | *none: as `set_theme`* | One palette for each appearance, picked from `system` every frame (ADR 0061). |
+| `Theme::derive` | `kui_theme_derive` | `theme_derive` | each half of `setTheme({ light, dark })` starts from it | *none: as `set_theme`* | The stock palette for an appearance and an accent, with no context. |
 | `Core::set_accent` | `kui_theme_set_accent` | `theme_set_accent` | `setAccent` | *none: as `set_theme`* | Pins an accent and keeps the OS's base. |
 | `Ui::theme` | `kui_theme` | `theme` | `theme` | `env.theme`, a reading | The palette in effect (`THEME_ROLES`). |
 | `Core::set_metrics` | `kui_metrics_set` | `metrics_set` | `setMetrics` | *none: as `set_theme` (backlog T2)* | Pins the stock widgets' sizes. |

@@ -1037,6 +1037,20 @@ static int surface(void) {
         KuiTheme pinned = KUI_THEME_INIT;
         check(kui_theme(ui, &pinned) && pinned.bg == 0x102030ff, "kui_theme_set pins the palette");
         kui_theme_set(ui, NULL); /* back to deriving */
+        /* A pair (ADR 0061): each half from its stock base, the half the
+         * reported appearance asks for painted. */
+        KuiTheme light = KUI_THEME_INIT, dark = KUI_THEME_INIT;
+        check(kui_theme_derive(KUI_APPEARANCE_LIGHT, 0, &light)
+                  && kui_theme_derive(KUI_APPEARANCE_DARK, 0xffd400ff, &dark)
+                  && light.bg != dark.bg && dark.accent == 0xffd400ff,
+              "kui_theme_derive reads both bases, with an accent");
+        light.bg = 0xf6f3eaff;
+        dark.bg = 0x131312ff;
+        kui_theme_set_pair(ui, &light, &dark);
+        KuiTheme paired = KUI_THEME_INIT;
+        check(kui_theme(ui, &paired) && (paired.bg == 0xf6f3eaff || paired.bg == 0x131312ff),
+              "kui_theme_set_pair paints one of its halves");
+        kui_theme_set(ui, NULL);
         KuiMetrics metrics = KUI_METRICS_INIT;
         check(kui_metrics(ui, &metrics) && metrics.control_text > 0, "kui_metrics");
         metrics.control_text = 11;

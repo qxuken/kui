@@ -1144,6 +1144,8 @@ foreign lib {
 	theme :: proc(ctx: ^Ctx, out: ^Theme) -> bool ---
 	theme_set_accent :: proc(ctx: ^Ctx, accent: u32) ---
 	theme_set :: proc(ctx: ^Ctx, theme: ^Theme) ---
+	theme_derive :: proc(appearance: u32, accent: u32, out: ^Theme) -> bool ---
+	theme_set_pair :: proc(ctx: ^Ctx, light: ^Theme, dark: ^Theme) ---
 	metrics :: proc(ctx: ^Ctx, out: ^Metrics) -> bool ---
 	metrics_set :: proc(ctx: ^Ctx, metrics: ^Metrics) ---
 	tokens_set :: proc(ctx: ^Ctx, colors: [^]ColorToken, color_count: uint, lengths: [^]LengthToken, length_count: uint) ---

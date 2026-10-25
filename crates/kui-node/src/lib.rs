@@ -1440,6 +1440,46 @@ fn theme_from_json(core: &Core, v: &Json) -> Result<kui_core::Theme> {
     Ok(t)
 }
 
+/// `setTheme({ light, dark })`: each half's overrides on that half's base,
+/// or `None` when the object is the single-palette form. Mixing the two —
+/// `light` beside a role — is refused by name, since one of them would be
+/// silently ignored.
+fn theme_pair_from_json(
+    core: &Core,
+    v: &Json,
+) -> Result<Option<(kui_core::Theme, kui_core::Theme)>> {
+    let Json::Object(o) = v else {
+        return Ok(None);
+    };
+    if !o.contains_key("light") && !o.contains_key("dark") {
+        return Ok(None);
+    }
+    if let Some(k) = o.keys().find(|k| *k != "light" && *k != "dark") {
+        return Err(err(format!(
+            "setTheme(): {k:?} beside `light`/`dark` — put it inside the half it belongs to"
+        )));
+    }
+    let half = |name: &str, appearance: &str| -> Result<kui_core::Theme> {
+        let mut h = match o.get(name) {
+            None | Some(Json::Null) => serde_json::Map::new(),
+            Some(Json::Object(h)) => h.clone(),
+            Some(_) => {
+                return Err(err(format!(
+                    "setTheme(): `{name}` must be an object of role overrides"
+                )));
+            }
+        };
+        if h.contains_key("appearance") {
+            return Err(err(format!(
+                "setTheme(): `{name}` is its own appearance; drop `appearance`"
+            )));
+        }
+        h.insert("appearance".into(), Json::String(appearance.into()));
+        theme_from_json(core, &Json::Object(h))
+    };
+    Ok(Some((half("light", "light")?, half("dark", "dark")?)))
+}
+
 /// The palette the core derived from `env.system`, as roles rather than
 /// values: one `0xRRGGBBAA` number per row of
 /// `schema::THEME_ROLES`, under that row's camelCase spelling, plus
@@ -3393,10 +3433,21 @@ macro_rules! core_methods {
             /// name keeps the base's, and the ones derived from the accent
             /// (its hover, its pressed shade, the label on it, the ring,
             /// the selection tint) are recomputed unless named too.
-            #[napi(ts_args_type = "theme: ThemeOverrides")]
+            ///
+            /// `{ light: {…}, dark: {…} }` is one palette for each
+            /// appearance (ADR 0061): each half is overrides on that base,
+            /// and the core picks the half the OS's appearance asks for
+            /// every frame, so a skin follows light and dark with no
+            /// listener. A half left out is the stock base for it.
+            #[napi(ts_args_type = "theme: ThemeOverrides | ThemePairOverrides")]
             pub fn set_theme(&mut self, theme: Json) -> Result<()> {
-                let t = theme_from_json(self.$core(), &theme)?;
-                self.$core().set_theme(t);
+                match theme_pair_from_json(self.$core(), &theme)? {
+                    Some((light, dark)) => self.$core().set_theme_pair(light, dark),
+                    None => {
+                        let t = theme_from_json(self.$core(), &theme)?;
+                        self.$core().set_theme(t);
+                    }
+                }
                 Ok(())
             }
 

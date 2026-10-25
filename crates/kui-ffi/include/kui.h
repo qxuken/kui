@@ -2655,6 +2655,16 @@ void kui_theme_set_accent(KuiCtx *ctx, uint32_t accent);
  * kui_theme and change the roles you mean to change rather than zeroing a
  * fresh struct - a zeroed role is transparent, not "leave it alone". */
 void kui_theme_set(KuiCtx *ctx, const KuiTheme *theme);
+/* The stock palette for `appearance` (a KUI_APPEARANCE_*) under `accent`
+ * (0xRRGGBBAA, zero for kui's own), with no context: where a palette of
+ * your own starts, or each half of a pair. False for a NULL out or a
+ * reservation below the ABI-1 layout. */
+bool kui_theme_derive(uint32_t appearance, uint32_t accent, KuiTheme *out);
+/* One palette for each appearance (ADR 0061), picked from what
+ * kui_env_set_system reports every frame, so a skin's light and dark
+ * halves follow the OS with nothing more from you. Either NULL goes back to
+ * deriving both. Start each half from kui_theme_derive. */
+void kui_theme_set_pair(KuiCtx *ctx, const KuiTheme *light, const KuiTheme *dark);
 
 /* The sizes the stock widgets are built from - the palette's other axis
  * (kui_core::metrics): kui_core::schema::METRIC_ROLES field for

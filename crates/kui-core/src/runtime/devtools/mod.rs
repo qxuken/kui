@@ -791,7 +791,28 @@ impl State {
                 }
                 // The app pinned a palette: the same palette, recoloured.
                 ThemeSource::Pinned(t) => ThemeSource::Pinned(t.with_accent(c)),
+                // A pair: both halves recoloured, still following the OS.
+                ThemeSource::Pair { light, dark } => ThemeSource::Pair {
+                    light: light.with_accent(c),
+                    dark: dark.with_accent(c),
+                },
             }),
+            // A pair under a base override shows the app's own half for
+            // that base — a skin's light half, not kui's stock light.
+            (Some(base), c) if matches!(app, ThemeSource::Pair { .. }) => {
+                let ThemeSource::Pair { light, dark } = app else {
+                    unreachable!()
+                };
+                let half = if base == crate::env::Appearance::Light {
+                    light
+                } else {
+                    dark
+                };
+                Some(ThemeSource::Pinned(match c {
+                    Some(c) => half.with_accent(c),
+                    None => half,
+                }))
+            }
             (Some(base), c) => {
                 // The app's own accent under the chosen base — the OS's
                 // where the app follows the OS, so a host that reports
@@ -800,6 +821,7 @@ impl State {
                     ThemeSource::Derived => sys.accent,
                     ThemeSource::DerivedWithAccent(a) => Some(a),
                     ThemeSource::Pinned(t) => Some(t.accent),
+                    ThemeSource::Pair { .. } => unreachable!("answered above"),
                 };
                 Some(ThemeSource::Pinned(Theme::derive(base, c.or(own))))
             }
@@ -2691,6 +2713,7 @@ impl Core {
             ThemeSource::Derived => "derived",
             ThemeSource::DerivedWithAccent(_) => "derived + accent",
             ThemeSource::Pinned(_) => "pinned",
+            ThemeSource::Pair { .. } => "pair",
         };
         let opt = |s: Option<String>| s.unwrap_or_else(|| "—".into());
         let hex = |c: Color| format!("#{:06x}", c.to_hex() >> 8);

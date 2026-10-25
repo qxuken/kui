@@ -5549,3 +5549,8 @@ move.
 - `.` **C63** — [A replayed fill is kept again every frame, and its specs are cloned to push](#from-kits-m0-spike-2026-10-25) — open
 - `.` **C64** — [Every replay compares the whole palette by value](#from-kits-m0-spike-2026-10-25) — open — a generation number
 - `.` **C65** — [A Lua fill builds its whole `env` before it draws: about 22 µs](#from-kits-m0-spike-2026-10-25) — open — one `env` per extension per frame
+
+**From Kit's M1 (2026-10-25)** — T7, filed and built the same day with ADR 0061
+
+- `.` **T7** — [A palette of one's own follows nothing, so a skin cannot follow light and dark](backlog/closed-2026-09.md#-t7--a-palette-of-ones-own-follows-nothing-so-a-skin-cannot-follow-light-and-dark--done-2026-10-25) — done (2026-10-25) — `ThemeSource::Pair`, Node `setTheme({ light, dark })`, C `kui_theme_set_pair` + `kui_theme_derive`
+

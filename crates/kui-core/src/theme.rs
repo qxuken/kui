@@ -356,6 +356,12 @@ pub enum ThemeSource {
     DerivedWithAccent(Color),
     /// Exactly this, following nothing.
     Pinned(Theme),
+    /// One palette for each appearance, picked by what `env.system` says
+    /// every frame (ADR 0061): a skin or a brand with a light and a dark
+    /// half follows the OS without the app setting its theme again when
+    /// the appearance changes. An appearance the host cannot tell takes
+    /// the dark half, as the dark base stands for it in [`Theme::derive`].
+    Pair { light: Theme, dark: Theme },
 }
 
 impl ThemeSource {
@@ -365,6 +371,19 @@ impl ThemeSource {
             Self::Derived => Theme::from_system(sys),
             Self::DerivedWithAccent(c) => Theme::derive(sys.appearance, Some(*c)),
             Self::Pinned(t) => *t,
+            Self::Pair { light, dark } => match sys.appearance {
+                Appearance::Light => *light,
+                Appearance::Dark | Appearance::Unknown => *dark,
+            },
+        }
+    }
+
+    /// The pair whose halves are the stock bases under `accent` (the OS's
+    /// when `None`): where a pair of overrides starts from.
+    pub fn stock_pair(accent: Option<Color>) -> Self {
+        Self::Pair {
+            light: Theme::derive(Appearance::Light, accent),
+            dark: Theme::derive(Appearance::Dark, accent),
         }
     }
 }
@@ -372,6 +391,22 @@ impl ThemeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR 0061: a pair follows the appearance every frame, and an
+    /// appearance nobody reported takes the dark half.
+    #[test]
+    fn a_pair_follows_the_appearance() {
+        let light = Theme::light().with_accent(Color::hex(0xd45b3bff));
+        let dark = Theme::dark().with_accent(Color::hex(0xffd400ff));
+        let src = ThemeSource::Pair { light, dark };
+        let sys = |appearance| SystemEnv {
+            appearance,
+            ..SystemEnv::default()
+        };
+        assert_eq!(src.resolve(&sys(Appearance::Light)), light);
+        assert_eq!(src.resolve(&sys(Appearance::Dark)), dark);
+        assert_eq!(src.resolve(&sys(Appearance::Unknown)), dark);
+    }
 
     /// The reason this is safe to turn on for everyone: a host that
     /// cannot ask the OS anything gets the palette kui always painted.

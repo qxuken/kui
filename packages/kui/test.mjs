@@ -8890,6 +8890,24 @@ test('setAccent keeps the OS light/dark, setTheme follows nothing, null derives 
   assert.throws(() => ctx.setTheme({ surfce: '#fff' }), /no such role/);
 });
 
+test('setTheme({ light, dark }) follows the OS with one palette for each appearance (ADR 0061)', () => {
+  const ctx = new Ctx();
+  ctx.setEnv({ system: { appearance: 'light' } });
+  ctx.setTheme({ light: { surface: '#fffdf8', accent: '#ffd400' }, dark: { surface: '#1a1a18' } });
+  assert.equal(ctx.theme().surface, 0xfffdf8ff, 'the light half');
+  assert.equal(ctx.theme().accent, 0xffd400ff);
+  assert.equal(ctx.theme().onAccent, 0x000000ff, 'the accent recomputed its label in the half');
+  ctx.setEnv({ system: { appearance: 'dark' } });
+  assert.equal(ctx.theme().surface, 0x1a1a18ff, 'the dark half, with no listener');
+  assert.equal(ctx.theme().appearance, 'dark');
+  // A half left out is the stock base for it.
+  ctx.setTheme({ light: { surface: '#fafafa' } });
+  assert.notEqual(ctx.theme().surface, 0xfafafaff);
+  // Mixing the two forms names the stray key.
+  assert.throws(() => ctx.setTheme({ light: {}, surface: '#fff' }), /"surface" beside/);
+  assert.throws(() => ctx.setTheme({ dark: { appearance: 'light' } }), /drop `appearance`/);
+});
+
 test('a <text> with no color takes the theme\'s foreground, so light mode is legible', () => {
   // The colour a glyph quad carries, for a text that named none. Before
   // ADR 0019 this was the constant `#e8e8ea` on every base, which is

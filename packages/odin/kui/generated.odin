@@ -2383,6 +2383,26 @@ theme_set :: proc(ui: ^Ui, theme: Maybe(Theme) = nil) {
 	c.theme_set(ui, theme_c)
 }
 
+// The stock palette for an appearance and an accent, with no context.
+// Rust: Theme::derive.
+theme_derive :: proc(appearance: Appearance, accent: Color) -> (out: Theme, ok: bool) #optional_ok {
+	c_out := c.Theme{size = size_of(c.Theme)}
+	ok = c.theme_derive(u32(appearance), accent, &c_out)
+	out = theme_from_c(c_out)
+	return
+}
+
+// One palette for each appearance, picked from `system` every frame (ADR
+// 0061).
+// Rust: Core::set_theme_pair.
+theme_set_pair :: proc(ui: ^Ui, light: Theme, dark: Theme) {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	light_c := theme_to_c(light, &scratch)
+	dark_c := theme_to_c(dark, &scratch)
+	c.theme_set_pair(ui, &light_c, &dark_c)
+}
+
 // The sizes in effect (`METRIC_ROLES`).
 // Rust: Ui::metrics.
 metrics :: proc(ui: ^Ui) -> (out: Metrics, ok: bool) #optional_ok {

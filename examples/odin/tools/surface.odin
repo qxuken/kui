@@ -922,6 +922,17 @@ surface :: proc() -> bool {
 		kui.theme_set(ui)
 		derived, _ := kui.theme(ui)
 		check(derived.bg != 0x102030ff, "theme_set with none derives again")
+		// A pair (ADR 0061): each half from its stock base, the half the
+		// reported appearance asks for painted.
+		light, light_ok := kui.theme_derive(.Light, 0)
+		dark, dark_ok := kui.theme_derive(.Dark, 0xffd400ff)
+		check(light_ok && dark_ok && light.bg != dark.bg && dark.accent == 0xffd400ff, "theme_derive reads both bases, with an accent")
+		light.bg = 0xf6f3eaff
+		dark.bg = 0x131312ff
+		kui.theme_set_pair(ui, light, dark)
+		paired, paired_ok := kui.theme(ui)
+		check(paired_ok && (paired.bg == 0xf6f3eaff || paired.bg == 0x131312ff), "theme_set_pair paints one of its halves")
+		kui.theme_set(ui)
 		metrics, metrics_ok := kui.metrics(ui)
 		check(metrics_ok && metrics.control_text > 0, "metrics")
 		stock := metrics.control_text

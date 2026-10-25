@@ -4884,3 +4884,50 @@ mod lua_extensions {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+/// ADR 0061: a pair of palettes from `kui_theme_derive`, set with
+/// `kui_theme_set_pair`, follows what `kui_env_set_system` reports.
+#[cfg(test)]
+mod theme_pair {
+    use super::*;
+
+    #[test]
+    fn a_pair_follows_the_reported_appearance() {
+        let sized = || KuiTheme {
+            size: std::mem::size_of::<KuiTheme>() as u32,
+            ..KuiTheme::default()
+        };
+        let (mut light, mut dark) = (sized(), sized());
+        assert!(kui_theme_derive(Appearance::Light.code(), 0, &mut light));
+        assert!(kui_theme_derive(
+            Appearance::Dark.code(),
+            0xffd400ff,
+            &mut dark
+        ));
+        assert_eq!(dark.accent, 0xffd400ff);
+        light.surface = 0xfffdf8ff;
+        dark.surface = 0x1a1a18ff;
+
+        let ctx = kui_ctx_new();
+        kui_theme_set_pair(ctx, &light, &dark);
+        let read = |ctx| {
+            let mut t = sized();
+            assert!(kui_theme(ctx, &mut t));
+            t
+        };
+        kui_env_set_system(ctx, Appearance::Light.code(), 0, 0, ks(""));
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_frame_finish(ctx);
+        assert_eq!(read(ctx).surface, 0xfffdf8ff);
+        kui_env_set_system(ctx, Appearance::Dark.code(), 0, 0, ks(""));
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_frame_finish(ctx);
+        assert_eq!(read(ctx).surface, 0x1a1a18ff);
+        // Either half NULL goes back to deriving.
+        kui_theme_set_pair(ctx, &light, std::ptr::null());
+        kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+        kui_frame_finish(ctx);
+        assert_ne!(read(ctx).surface, 0x1a1a18ff);
+        kui_ctx_free(ctx);
+    }
+}

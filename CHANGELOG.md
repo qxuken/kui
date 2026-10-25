@@ -132,6 +132,29 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **A theme with a light half and a dark half** (backlog T7,
+  [ADR 0061](docs/adr/0061-a-theme-with-a-light-half-and-a-dark-half.md)).
+  Hand the core one palette for each appearance, and it picks the half
+  the OS asks for at the start of every frame. The stock widgets, the
+  focus ring, the scrollbars, the selection and the menus all follow
+  light and dark with no listener:
+    - Rust: `Core::set_theme_pair(light, dark)`, or
+      `ThemeSource::Pair { light, dark }`.
+    - Node: `setTheme({ light: { surface, accent, … }, dark: { … } })`.
+      Each half is overrides on its own base, and an `accent` recomputes
+      that half's shades. Mixing the two forms is refused by name.
+    - C: `kui_theme_set_pair(ctx, &light, &dark)`. Start each half from
+      the new `kui_theme_derive(appearance, accent, &out)`, the stock
+      palette with no context. Odin gets `theme_set_pair` and
+      `theme_derive`.
+
+  An appearance nobody reported takes the dark half. The devtools' base
+  override shows the app's own half for that base.
+
+  **What you can delete:** the `onSystemSettingsChange` handler that set
+  the theme again for the new appearance, and the second palette's
+  bookkeeping beside it.
+
 - **A `.lua` extension loads in every host** (backlog C59,
   [ADR 0059](docs/adr/0059-a-lua-extension-loads-in-every-host.md)).
   Every door that loads an extension now takes a `.lua` file, or a folder

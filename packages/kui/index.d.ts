@@ -1868,6 +1868,14 @@ export interface Theme {
  *  `accentPressed`, `onAccent`, `accentSoft`, `selection` and `focusRing`
  *  from it, and any of those named explicitly then wins. An unknown key
  *  throws rather than doing nothing. */
+/** One palette for each appearance (ADR 0061): each half is overrides on
+ *  that base, and the core picks the half the OS's appearance asks for
+ *  every frame. A half left out is the stock base for it. */
+export interface ThemePairOverrides {
+  light?: Omit<ThemeOverrides, 'appearance'>;
+  dark?: Omit<ThemeOverrides, 'appearance'>;
+}
+
 export interface ThemeOverrides {
   /** Which base to start from; the OS's when absent. */
   appearance?: 'unknown' | 'light' | 'dark';
@@ -3339,8 +3347,14 @@ export declare class Ctx {
    * name keeps the base's, and the ones derived from the accent
    * (its hover, its pressed shade, the label on it, the ring,
    * the selection tint) are recomputed unless named too.
+   *
+   * `{ light: {…}, dark: {…} }` is one palette for each
+   * appearance (ADR 0061): each half is overrides on that base,
+   * and the core picks the half the OS's appearance asks for
+   * every frame, so a skin follows light and dark with no
+   * listener. A half left out is the stock base for it.
    */
-  setTheme(theme: ThemeOverrides): void
+  setTheme(theme: ThemeOverrides | ThemePairOverrides): void
   /**
    * The sizes the stock widgets are built from — the palette's
    * other axis: one number per metric, logical px before the
@@ -4964,8 +4978,14 @@ export declare class KuiWindow {
    * name keeps the base's, and the ones derived from the accent
    * (its hover, its pressed shade, the label on it, the ring,
    * the selection tint) are recomputed unless named too.
+   *
+   * `{ light: {…}, dark: {…} }` is one palette for each
+   * appearance (ADR 0061): each half is overrides on that base,
+   * and the core picks the half the OS's appearance asks for
+   * every frame, so a skin follows light and dark with no
+   * listener. A half left out is the stock base for it.
    */
-  setTheme(theme: ThemeOverrides): void
+  setTheme(theme: ThemeOverrides | ThemePairOverrides): void
   /**
    * The sizes the stock widgets are built from — the palette's
    * other axis: one number per metric, logical px before the

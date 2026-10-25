@@ -1156,6 +1156,22 @@ pub const DOORS: &[Door] = &[
         doc: "Pins a whole palette.",
     },
     Door {
+        rust: "Core::set_theme_pair",
+        c: Is("kui_theme_set_pair"),
+        odin: Is("theme_set_pair"),
+        node: As("`setTheme({ light, dark })`: an override object for each half"),
+        lua: No("as `set_theme`"),
+        doc: "One palette for each appearance, picked from `system` every frame (ADR 0061).",
+    },
+    Door {
+        rust: "Theme::derive",
+        c: Is("kui_theme_derive"),
+        odin: Is("theme_derive"),
+        node: As("each half of `setTheme({ light, dark })` starts from it"),
+        lua: No("as `set_theme`"),
+        doc: "The stock palette for an appearance and an accent, with no context.",
+    },
+    Door {
         rust: "Core::set_accent",
         c: Is("kui_theme_set_accent"),
         odin: Is("theme_set_accent"),
@@ -2040,6 +2056,7 @@ mod tests {
         let ui = read(root.join("ui.rs")) + &runtime;
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
+        let theme = read(root.join("theme.rs"));
         let scroll = read(root.join("scroll.rs"));
         let edge = read(root.join("edge_scroll.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
@@ -2060,6 +2077,7 @@ mod tests {
                 "Core" => &runtime,
                 "SharedResources" => &session,
                 "Tokens" => &tokens,
+                "Theme" => &theme,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,

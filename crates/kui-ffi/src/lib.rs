@@ -435,38 +435,7 @@ pub extern "C" fn kui_theme(ptr: *mut KuiCtx, out: *mut KuiTheme) -> bool {
         let Some(c) = (unsafe { ctx(ptr) }) else {
             return false;
         };
-        let t = *c.core().theme();
-        write_out(
-            out,
-            KuiTheme {
-                appearance: t.appearance.code(),
-                disabled_opacity: t.disabled_opacity,
-                bg: t.bg.to_hex(),
-                surface: t.surface.to_hex(),
-                raised: t.raised.to_hex(),
-                sunken: t.sunken.to_hex(),
-                border: t.border.to_hex(),
-                border_strong: t.border_strong.to_hex(),
-                fg: t.fg.to_hex(),
-                muted: t.muted.to_hex(),
-                faint: t.faint.to_hex(),
-                accent: t.accent.to_hex(),
-                accent_hover: t.accent_hover.to_hex(),
-                accent_pressed: t.accent_pressed.to_hex(),
-                on_accent: t.on_accent.to_hex(),
-                accent_soft: t.accent_soft.to_hex(),
-                selection: t.selection.to_hex(),
-                focus_ring: t.focus_ring.to_hex(),
-                hover: t.hover.to_hex(),
-                pressed: t.pressed.to_hex(),
-                success: t.success.to_hex(),
-                warning: t.warning.to_hex(),
-                danger: t.danger.to_hex(),
-                scrollbar: t.scrollbar.to_hex(),
-                scrollbar_active: t.scrollbar_active.to_hex(),
-                ..Default::default()
-            },
-        )
+        write_out(out, kui_theme_from(c.core().theme()))
     })
 }
 
@@ -503,6 +472,77 @@ pub extern "C" fn kui_theme_set(ptr: *mut KuiCtx, theme: *const KuiTheme) {
             }
         }
     })
+}
+
+/// The stock palette for `appearance` (a `KUI_APPEARANCE_*`) under `accent`
+/// (`0xRRGGBBAA`, zero for kui's own), with no context: where a host
+/// starts a palette of its own, or each half of a pair
+/// ([`kui_theme_set_pair`]). False for a NULL `out` or a `size` below the
+/// first ABI's layout.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_theme_derive(appearance: u32, accent: u32, out: *mut KuiTheme) -> bool {
+    guard(false, || {
+        let appearance = Appearance::from_code(appearance).unwrap_or_default();
+        let accent = (accent != 0).then(|| Color::hex(accent));
+        write_out(
+            out,
+            kui_theme_from(&kui_core::Theme::derive(appearance, accent)),
+        )
+    })
+}
+
+/// One palette for each appearance, picked from what
+/// [`kui_env_set_system`] reports every frame (ADR 0061): a skin's or a
+/// brand's light and dark halves, followed through the OS's changes with
+/// nothing more from the host. Either NULL goes back to deriving both.
+/// Start each half from [`kui_theme_derive`]; every field is read, as in
+/// [`kui_theme_set`].
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_theme_set_pair(
+    ptr: *mut KuiCtx,
+    light: *const KuiTheme,
+    dark: *const KuiTheme,
+) {
+    guard((), || {
+        if let Some(c) = unsafe { ctx(ptr) } {
+            match unsafe { (light.as_ref(), dark.as_ref()) } {
+                (Some(l), Some(d)) => c.core().set_theme_pair(theme_of(l), theme_of(d)),
+                _ => c.core().derive_theme(),
+            }
+        }
+    })
+}
+
+/// A core palette as the C struct, every role a `0xRRGGBBAA`.
+fn kui_theme_from(t: &kui_core::Theme) -> KuiTheme {
+    KuiTheme {
+        appearance: t.appearance.code(),
+        disabled_opacity: t.disabled_opacity,
+        bg: t.bg.to_hex(),
+        surface: t.surface.to_hex(),
+        raised: t.raised.to_hex(),
+        sunken: t.sunken.to_hex(),
+        border: t.border.to_hex(),
+        border_strong: t.border_strong.to_hex(),
+        fg: t.fg.to_hex(),
+        muted: t.muted.to_hex(),
+        faint: t.faint.to_hex(),
+        accent: t.accent.to_hex(),
+        accent_hover: t.accent_hover.to_hex(),
+        accent_pressed: t.accent_pressed.to_hex(),
+        on_accent: t.on_accent.to_hex(),
+        accent_soft: t.accent_soft.to_hex(),
+        selection: t.selection.to_hex(),
+        focus_ring: t.focus_ring.to_hex(),
+        hover: t.hover.to_hex(),
+        pressed: t.pressed.to_hex(),
+        success: t.success.to_hex(),
+        warning: t.warning.to_hex(),
+        danger: t.danger.to_hex(),
+        scrollbar: t.scrollbar.to_hex(),
+        scrollbar_active: t.scrollbar_active.to_hex(),
+        ..Default::default()
+    }
 }
 
 /// Declares the named colours and lengths of the calling origin: the
