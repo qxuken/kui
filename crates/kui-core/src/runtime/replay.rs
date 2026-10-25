@@ -1,38 +1,31 @@
-//! A slot replayed by its host (ADR 0045): the host says an extension's
-//! fill would come out as it did last frame, and the core pushes last
-//! frame's nodes again without asking the extension.
+//! A component instance replayed (ADR 0060, ADR 0067): what an
+//! extension's fill did last frame, pushed again without asking it.
 //!
-//! `Ui::slot_kept` fills a slot as `slot_with` does and *keeps* what the
-//! fill did — every node it pushed, as the door it came through saw it,
-//! before hover, accent or a transition's easing touched the spec; the
-//! labels and data indices beside them; the slots it declared inside
-//! itself, with their params; and every fact of the frame it read while
-//! it ran (which node was hovered, where a scroller stood, the theme and
-//! the metrics, a role read by name).
-//! `Ui::slot_replay` is the host's claim that nothing *it* feeds the
-//! extension has changed. The core checks everything it can see itself
-//! — the slot's params, the facts the fill read, where the slot sits —
-//! and either pushes the kept nodes again through the same doors
-//! (`Replayed`) or runs the extension as `slot_kept` would and says
-//! why (`SlotFill`). A slot not declared for a frame forgets what it
-//! kept.
+//! Every placement of a component keeps what its fill did — every node it
+//! pushed, as the door it came through saw it, before hover, accent or a
+//! transition's easing touched the spec; the labels and data indices
+//! beside them; the components it placed inside itself, with their props;
+//! and every fact of the frame it read while it ran (which node was
+//! hovered, where a scroller stood, the theme and the metrics, a role or a
+//! label read by name). The next placement at the same key with the same
+//! props pushes the kept nodes again through the same doors (`Replayed`)
+//! when nothing it read has moved, and runs the extension otherwise,
+//! saying why (`FillAnswer`). An instance not placed for a frame forgets
+//! what it kept.
 //!
-//! What a replay re-issues is the fill's *nodes*: a nested slot is
-//! declared again and whoever fills it runs fresh, so an engine's field
-//! inside a script's pane blinks its caret while the pane around it is
-//! not rebuilt. What a replay does not re-issue is anything the fill
-//! declared of the *frame* — a title, a window, a frame asked for, a
-//! devtools tab — so a fill that declares one is kept as not replayable
-//! (it is a fill whose next frame is its own business), as is one that
-//! pushed a node through a door the journal does not know (a `cells`
-//! grid), or whose view failed. The check is by count: every node the
-//! fill pushed is either in the journal, a nested fill's, or the core's
-//! own (a hover hint), or the kept fill is refused whole.
+//! What a replay re-issues is the fill's *nodes*: a nested component is
+//! placed again and filled or replayed by its own lights. What a replay
+//! does not re-issue is anything the fill declared of the *frame* — a
+//! title, a window, a frame asked for, a devtools tab — so a fill that
+//! declares one is kept as not replayable, as is one that pushed a node
+//! through a door the journal does not know (a `cells` grid), or whose
+//! view failed. The check is by count: every node the fill pushed is
+//! either in the journal, a nested fill's, or the core's own (a hover
+//! hint), or the kept fill is refused whole.
 //!
 //! Nothing here keeps a frame: the tree is built from scratch as always,
 //! laid out and emitted as always; only the extension's `view` — and a
-//! binding's work between its tables and the tree — is skipped, and only
-//! when the host asked and the core found nothing it read moved.
+//! binding's work between its tables and the tree — is skipped.
 
 use std::cell::RefCell;
 
@@ -44,46 +37,43 @@ use crate::path::{FillRule, PathOp, Turn};
 use crate::resources::{ImageId, ImageOpts};
 use crate::schema::EnvFacts;
 use crate::scroll::ScrollGeometry;
-use crate::slot::Slot;
+use crate::slot::Instance;
 use crate::text::Span;
 
-/// How `Ui::slot_replay` filled a slot: replayed from what was kept, or
-/// run fresh, and why. Every answer but `Replayed` left the slot filled
-/// and kept as `slot_kept` would, so the next frame may replay it.
+/// How a component placement was filled: replayed from what was kept, or
+/// run fresh, and why. Every answer but `Replayed` left the instance
+/// filled and kept, so the next frame may replay it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SlotFill {
+pub enum FillAnswer {
     /// Last frame's nodes, pushed again; the extension was not asked.
-    Replayed,
-    /// Nothing was kept for the name: its first frame, a frame after
-    /// one that did not declare it, or one that filled it with
-    /// `slot_with`.
-    NotKept,
-    /// The params differ from the kept fill's.
-    Params,
+    Replayed = 0,
+    /// Nothing was kept at the key: its first frame, a frame after one
+    /// that did not place it, a `fresh` placement, or a `root`.
+    NotKept = 1,
+    /// The props differ from the kept fill's.
+    Params = 2,
     /// A fact of the frame the fill read has moved since: a hover, a
     /// focus, a scroll offset, the theme or the metrics, the clock.
-    Reads,
+    Reads = 3,
     /// The kept fill cannot be replayed: it declared something of the
     /// frame beyond its nodes, pushed through a door the journal does
     /// not know, or its view failed.
-    NotReplayable,
-    /// The slot was declared under another parent than the kept fill's,
-    /// so its keys would not be the kept ones.
-    Moved,
+    NotReplayable = 4,
     /// The component instance heard one of its own events since it was
     /// filled, so its extension's state may have moved with it: a wheel
-    /// that zoomed a waterfall, a drag that moved a split.
-    Heard,
+    /// that zoomed a waterfall, a drag that moved a split. (Code 5 was
+    /// the slot's `Moved`, gone with name-keyed slots, ADR 0067.)
+    Heard = 6,
 }
 
-impl SlotFill {
+impl FillAnswer {
     /// Whether the extension was spared.
     pub fn replayed(self) -> bool {
         self == Self::Replayed
     }
 
     /// A short name, the one the bindings hand out: `replayed`,
-    /// `not-kept`, `params`, `reads`, `not-replayable`, `moved`, `heard`.
+    /// `not-kept`, `params`, `reads`, `not-replayable`, `heard`.
     pub fn name(self) -> &'static str {
         match self {
             Self::Replayed => "replayed",
@@ -91,7 +81,6 @@ impl SlotFill {
             Self::Params => "params",
             Self::Reads => "reads",
             Self::NotReplayable => "not-replayable",
-            Self::Moved => "moved",
             Self::Heard => "heard",
         }
     }
@@ -109,7 +98,6 @@ impl SlotFill {
             2 => Self::Params,
             3 => Self::Reads,
             4 => Self::NotReplayable,
-            5 => Self::Moved,
             6 => Self::Heard,
             _ => return None,
         })
@@ -191,12 +179,6 @@ pub(crate) enum Op {
         text: Box<str>,
     },
     KeyFocus(Key),
-    /// A slot declared inside the fill: declared again on replay, and
-    /// filled fresh by whoever fills it.
-    Slot {
-        name: Box<str>,
-        params: Value,
-    },
     /// The host's children of a group, asked for here by an instance's
     /// fill (ADR 0060): built again on replay by the host's own builder,
     /// which the frame's placement hands in.
@@ -204,16 +186,10 @@ pub(crate) enum Op {
     /// A component the fill placed, with no children of its own: placed
     /// again on replay, and filled or replayed by its own lights.
     Component {
+        key: Key,
         name: Box<str>,
         props: Value,
     },
-}
-
-/// Under what a fill is kept: a slot by its full name, an instance by its
-/// key (ADR 0060).
-pub(crate) enum KeepAs {
-    Slot(String),
-    Instance,
 }
 
 /// A fact of the frame a kept fill read, with what it read: the replay
@@ -285,7 +261,6 @@ pub(crate) const ONCE_TOKENS: u8 = 8;
 
 /// The fill being kept, while it runs.
 pub(crate) struct Recording {
-    name: KeepAs,
     slot_key: Key,
     origin: OriginId,
     params: Value,
@@ -455,38 +430,29 @@ impl Core {
         }
     }
 
-    /// Asks that the next fill of the slot keyed `key` be kept under
-    /// `name`: `fill_within` begins the recording when it reaches that
-    /// slot. Nothing happens while a fill is already being kept — a kept
-    /// fill's nested slots are filled plainly.
-    pub(crate) fn keep_next_fill(&mut self, name: &str, key: Key, params: &Value) {
-        if self.recording.is_some() {
-            return;
-        }
-        self.keep_next = Some((KeepAs::Slot(name.to_owned()), key, params.clone()));
-    }
-
-    /// [`Self::keep_next_fill`] for a component instance, kept by its key.
+    /// Asks that the next fill of the instance keyed `key` be kept:
+    /// `fill_instance` begins the recording when it reaches that key.
+    /// Nothing happens while a fill is already being kept — a kept fill's
+    /// nested instances are filled plainly.
     pub(crate) fn keep_next_instance(&mut self, key: Key, props: &Value) {
         if self.recording.is_some() {
             return;
         }
-        self.keep_next = Some((KeepAs::Instance, key, props.clone()));
+        self.keep_next = Some((key, props.clone()));
     }
 
-    /// Nothing filled the slot asked for: the ask lapses.
+    /// Nothing filled the instance asked for: the ask lapses.
     pub(crate) fn forget_next_fill(&mut self) {
         self.keep_next = None;
     }
 
     /// `fill_within`'s first act: the recording begins if this is the
     /// fill asked for.
-    pub(crate) fn begin_keeping(&mut self, slot: &Slot<'_>, origin: OriginId) {
-        let Some((name, key, params)) = self.keep_next.take_if(|(_, k, _)| *k == slot.key) else {
+    pub(crate) fn begin_keeping(&mut self, slot: &Instance<'_>, origin: OriginId) {
+        let Some((key, params)) = self.keep_next.take_if(|(k, _)| *k == slot.key) else {
             return;
         };
         self.recording = Some(Recording {
-            name,
             slot_key: key,
             origin,
             params,
@@ -504,7 +470,7 @@ impl Core {
 
     /// `fill_within`'s last act for the fill being kept: the journal is
     /// checked against what the tree gained and kept for the next frame.
-    pub(crate) fn end_keeping(&mut self, slot: &Slot<'_>) {
+    pub(crate) fn end_keeping(&mut self, slot: &Instance<'_>) {
         let Some(r) = self.recording.as_ref() else {
             return;
         };
@@ -529,14 +495,7 @@ impl Core {
             taint: r.taint,
             frame: self.frame_no,
         };
-        match r.name {
-            KeepAs::Slot(name) => {
-                self.kept.insert(name, kept);
-            }
-            KeepAs::Instance => {
-                self.kept_instances.insert(kept.slot_key, kept);
-            }
-        }
+        self.kept_instances.insert(kept.slot_key, kept);
     }
 
     /// The first fact the kept fill read that reads otherwise now, as
@@ -591,82 +550,38 @@ impl Core {
             .wrapping_add(self.weights_rev)
     }
 
-    /// Whether the slot `name`, declared at `key` with `params`, can be
+    /// Whether the instance at `key`, placed with `props`, can be
     /// replayed: the kept fill comes out when it can, the reason stays
-    /// when it cannot (and the kept fill is dropped, since the fresh
-    /// fill that follows replaces it).
-    pub(crate) fn take_replayable(
+    /// when it cannot (and the kept fill is dropped, since the fresh fill
+    /// that follows replaces it).
+    pub(crate) fn take_replayable_instance(
         &mut self,
-        name: &str,
         key: Key,
-        params: &Value,
-    ) -> Result<Kept, (SlotFill, Option<String>)> {
-        let Some(kept) = self.kept.remove(name) else {
-            return Err((SlotFill::NotKept, None));
+        props: &Value,
+    ) -> Result<Kept, (FillAnswer, Option<String>)> {
+        let Some(kept) = self.kept_instances.remove(&key) else {
+            return Err((FillAnswer::NotKept, None));
         };
-        if kept.slot_key != key {
-            return Err((SlotFill::Moved, None));
-        }
         if let Some(why) = kept.taint {
-            return Err((SlotFill::NotReplayable, Some(why.to_owned())));
+            return Err((FillAnswer::NotReplayable, Some(why.to_owned())));
         }
-        if kept.params != *params {
-            return Err((SlotFill::Params, None));
+        if kept.params != *props {
+            return Err((FillAnswer::Params, None));
         }
         if let Some(moved) = self.first_moved(&kept.reads) {
-            return Err((SlotFill::Reads, Some(moved)));
+            return Err((FillAnswer::Reads, Some(moved)));
         }
         Ok(kept)
     }
 
     /// Pushes the kept fill's nodes again as the fill of `slot`, under
-    /// the origin that made them, `filler` answering the slots it
-    /// declares inside; then keeps it for the frame after.
-    pub(crate) fn replay(
-        &mut self,
-        name: &str,
-        slot: &Slot<'_>,
-        mut kept: Kept,
-        filler: Option<&mut dyn crate::slot::Fill>,
-    ) {
-        let origin = kept.origin;
-        let ops = std::mem::take(&mut kept.ops);
-        self.fill_within(slot, origin, filler, |ui| {
-            for op in &ops {
-                replay_op(ui, op);
-            }
-        });
-        kept.ops = ops;
-        kept.frame = self.frame_no;
-        self.kept.insert(name.to_owned(), kept);
-    }
-
-    /// [`Self::take_replayable`] for the component instance at `key`.
-    pub(crate) fn take_replayable_instance(
-        &mut self,
-        key: Key,
-        props: &Value,
-    ) -> Result<Kept, (SlotFill, Option<String>)> {
-        let Some(kept) = self.kept_instances.remove(&key) else {
-            return Err((SlotFill::NotKept, None));
-        };
-        if let Some(why) = kept.taint {
-            return Err((SlotFill::NotReplayable, Some(why.to_owned())));
-        }
-        if kept.params != *props {
-            return Err((SlotFill::Params, None));
-        }
-        if let Some(moved) = self.first_moved(&kept.reads) {
-            return Err((SlotFill::Reads, Some(moved)));
-        }
-        Ok(kept)
-    }
-
-    /// [`Self::replay`] for a component instance: the host's `children`
-    /// build their groups again where the kept fill asked for them.
+    /// the origin that made them, `filler` answering the components it
+    /// places inside and the host's `children` building their groups
+    /// again where the kept fill asked for them; then keeps it for the
+    /// frame after.
     pub(crate) fn replay_instance(
         &mut self,
-        slot: &Slot<'_>,
+        slot: &Instance<'_>,
         mut kept: Kept,
         filler: Option<&mut dyn crate::slot::Fill>,
         children: &mut dyn crate::slot::Children,
@@ -683,67 +598,16 @@ impl Core {
         self.kept_instances.insert(slot.key, kept);
     }
 
-    /// The last answer `Ui::slot_replay` gave for `name` this frame, or
-    /// the frame before while this one is being built — for a host's
-    /// own ledger of what its panes cost, and for a test.
-    ///
-    /// `None` for a frame that asked `slot_replay` nothing of `name`: one
-    /// that kept the slot with `slot_kept`, filled it with `slot_with`, or
-    /// did not declare it. Once a frame is finished its own answers are
-    /// the only ones read (backlog F156); the frame before's stand in
-    /// only while the next is built, until its slot is declared.
-    pub fn slot_fill(&self, name: &str) -> Option<SlotFill> {
-        self.find_slot_fill(name).map(|(f, _)| f)
-    }
-
-    /// Beside [`Self::slot_fill`]: for `Reads`, the fact that moved as
-    /// words (`Hover(Key(…), false)`), for `NotReplayable` what the
-    /// fill declared or drew; `None` for the other answers.
-    pub fn slot_fill_why(&self, name: &str) -> Option<&str> {
-        self.find_slot_fill(name).and_then(|(_, why)| why)
-    }
-
-    fn find_slot_fill(&self, name: &str) -> Option<(SlotFill, Option<&str>)> {
-        // This frame's answers first, newest first, then — while this
-        // frame is being built, and only then — the last frame's. After
-        // `finish_frame` the frame before's are a frame stale: a frame
-        // that kept, filled plainly or skipped the slot answered nothing.
-        let last: &[_] = if self.building {
-            &self.slot_fills_last
-        } else {
-            &[]
-        };
-        self.slot_fills
-            .iter()
-            .rev()
-            .chain(last.iter().rev())
-            .find(|(n, ..)| n == name)
-            .map(|(_, f, w)| (*f, w.as_deref()))
-    }
-
-    pub(crate) fn note_slot_fill(&mut self, name: &str, fill: SlotFill, why: Option<String>) {
-        self.slot_fills.push((name.to_owned(), fill, why));
-    }
-
-    /// How many nodes the kept fill of `name` holds, if one is kept.
-    pub fn slot_kept_nodes(&self, name: &str) -> Option<usize> {
-        self.kept.get(name).map(Kept::nodes)
-    }
-
-    /// At `begin_frame`: the fills a frame answered are the frame's.
+    /// At `begin_frame`: no fill is being kept yet.
     pub(crate) fn replay_begin_frame(&mut self) {
-        // This frame's answers so far are the last frame's, and a view
-        // that asks before its slot is declared reads those.
-        self.slot_fills_last = std::mem::take(&mut self.slot_fills);
         self.recording = None;
         self.keep_next = None;
     }
 
-    /// At `finish_frame`: a slot not declared this frame forgets what it
-    /// kept, as its params were never retained either.
+    /// At `finish_frame`: an instance not placed this frame forgets what
+    /// it kept, as its props were never retained either.
     pub(crate) fn replay_finish_frame(&mut self) {
         let now = self.frame_no;
-        self.kept.retain(|_, k| k.frame == now);
         self.kept_instances.retain(|_, k| k.frame == now);
     }
 
@@ -824,12 +688,9 @@ fn replay_op(ui: &mut Ui<'_>, op: &Op) {
         }
         Op::Hint { key, text } => core.hint(*key, &**text),
         Op::KeyFocus(key) => core.set_key_focus(Some(*key)),
-        Op::Slot { name, params } => {
-            ui.slot_with(name, params);
-        }
         Op::Children(group) => ui.children(group),
-        Op::Component { name, props } => {
-            ui.component(name, props);
+        Op::Component { key, name, props } => {
+            ui.component_at(*key, name, props);
         }
     }
 }

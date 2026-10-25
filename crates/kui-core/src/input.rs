@@ -1509,9 +1509,6 @@ pub enum EventKind {
     /// not be (ADR 0055).
     Capture,
     Dismiss,
-    /// An extension's message to whoever placed its slot (ADR 0014): the
-    /// payload is the message as the extension sent it.
-    Reply,
     /// A component's event (ADR 0060): the message its host passed for
     /// the event prop, with what the extension sent under the prop's
     /// field (`onSelect`'s data under `select`).
@@ -1553,7 +1550,6 @@ impl EventKind {
         EventKind::Sound,
         EventKind::Capture,
         EventKind::Dismiss,
-        EventKind::Reply,
         EventKind::Component,
         EventKind::Range,
     ];
@@ -1592,7 +1588,6 @@ impl EventKind {
             EventKind::Sound => "sound",
             EventKind::Capture => "capture",
             EventKind::Dismiss => "dismiss",
-            EventKind::Reply => "reply",
             EventKind::Component => "component",
             EventKind::Range => "range",
         }

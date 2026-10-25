@@ -2633,13 +2633,6 @@ pub const EVENTS: &[EventDef] = &[
         doc: "The user asked for a surface to go away — Escape, or a press that landed outside it. The core closes nothing: the app stops declaring the surface (or asks first). A `modal` node gets one on the node, as its `modal` message, and only the modal in effect does; a `kind: \"popup\"` window gets one as its `windows` entry's `onDismiss` message (ADR 0048), carrying the window's `id`, reported by the driver because a press outside a window and a key sent to a non-activating one are both facts only the OS has. The two are the same event, so a dropdown that graduates from a modal float to a popup window changes its declaration and not its handler.",
     },
     EventDef {
-        kind: "reply",
-        handler: "an extension",
-        field: None,
-        payload: "the message the extension sent, on the node its event was about",
-        doc: "An extension's message to whoever placed its slot (`docs/adr/0014-slots-an-extension-fills-in-place.md`): what its handler answered an event of its own fill with, routed up to the host — or to the guest that placed it, up to the reply hops' limit. `origin` is the extension that spoke.",
-    },
-    EventDef {
         kind: "component",
         handler: "a component's event prop (`onSelect`, Lua's `on_select`)",
         field: None,

@@ -1202,7 +1202,7 @@ pub(crate) mod tests {
     /// file gives the event's class, and the envelope beside them.
     #[test]
     fn a_delivered_event_has_the_fields_its_class_names() {
-        use kui_core::{Core, Extension, InputEvent, Size, Slot, Vec2};
+        use kui_core::{Core, Extension, InputEvent, Size, Instance, Vec2};
         let mut ext = crate::LuaExtension::from_source(
             "events",
             r#"
@@ -1237,7 +1237,7 @@ pub(crate) mod tests {
         let mut core = Core::new();
         let sized = |core: &mut Core, ext: &mut crate::LuaExtension, w: f32| {
             let mut ui = core.frame(Size::new(w, 200.0), 1.0);
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
             for e in core.take_pending_events() {
                 ext.on_event(&e);

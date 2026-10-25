@@ -15,7 +15,7 @@
 //!
 //! Run: cargo bench -p kui-lua --bench walk
 
-use kui_core::{Core, Extension, OriginId, Size, Slot};
+use kui_core::{Core, Extension, OriginId, Size, Instance};
 use kui_lua::LuaExtension;
 
 const TREE: &str = r#"
@@ -54,7 +54,7 @@ fn source(cached: bool) -> String {
 fn frame(core: &mut Core, ext: &mut LuaExtension) {
     let mut ui = core.frame(Size::new(900.0, 700.0), 1.0);
     ui.set_origin(OriginId(1));
-    ext.view(&Slot::root(), &mut ui).unwrap();
+    ext.view(&Instance::root(), &mut ui).unwrap();
     ui.finish();
 }
 

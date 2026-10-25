@@ -9,7 +9,7 @@ use std::rc::Rc;
 use kui_core::slot::emit;
 use kui_core::testing::click_at;
 use kui_core::{
-    Color, Core, EventKind, Extension, Extensions, NodeSpec, OriginId, Size, Slot, SlotFill,
+    Color, Core, EventKind, Extension, Extensions, NodeSpec, OriginId, Size, Instance, FillAnswer,
     TextStyle, Ui, UiEvent, Value,
 };
 
@@ -35,18 +35,13 @@ impl Extension for Kit {
     fn name(&self) -> &str {
         "kit"
     }
-    fn slots(&self) -> &[String] {
-        &SLOTS
-    }
     fn components(&self) -> &[String] {
         &COMPONENTS
     }
-    fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
-        // A slot's fill holds no host children.
-        ui.children("");
+    fn view(&mut self, _slot: &Instance<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
         Ok(())
     }
-    fn component(&mut self, inst: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn component(&mut self, inst: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.fills.set(self.fills.get() + 1);
         match inst.name {
             "card" => {
@@ -117,7 +112,6 @@ impl Extension for Kit {
     }
 }
 
-static SLOTS: std::sync::LazyLock<Vec<String>> = std::sync::LazyLock::new(|| vec!["panel".into()]);
 
 struct Rig {
     core: Core,
@@ -175,7 +169,7 @@ impl Rig {
     }
 }
 
-fn card(ui: &mut Ui<'_>, title: &str, body: &str) -> Option<SlotFill> {
+fn card(ui: &mut Ui<'_>, title: &str, body: &str) -> Option<FillAnswer> {
     let body = body.to_string();
     ui.component_with(
         "kit/card",
@@ -313,10 +307,10 @@ fn an_unchanged_instance_is_replayed_and_still_builds_the_hosts_children() {
     assert_eq!(
         answers,
         [
-            Some(SlotFill::NotKept),
-            Some(SlotFill::Replayed),
-            Some(SlotFill::Replayed),
-            Some(SlotFill::Params),
+            Some(FillAnswer::NotKept),
+            Some(FillAnswer::Replayed),
+            Some(FillAnswer::Replayed),
+            Some(FillAnswer::Params),
         ]
     );
     assert_eq!(
@@ -359,21 +353,16 @@ fn a_component_forwards_its_hosts_children_into_one_it_places() {
         .collect();
     assert!(texts.contains(&"inner".to_string()), "{texts:?}");
     let codes: Vec<&str> = r.core.take_warnings().iter().map(|w| w.code).collect();
-    assert_eq!(
-        codes,
-        ["unknown-slot"],
-        "only the test's own undeclared slot"
-    );
+    assert_eq!(codes, Vec::<&str>::new(), "no warning");
 }
 
 #[test]
-fn children_are_refused_in_a_slot_and_twice_and_an_unknown_component_says_so() {
+fn children_are_refused_twice_and_an_unknown_component_says_so() {
     let mut r = rig(Kit {
         twice: true,
         ..Kit::default()
     });
     r.frame(|ui| {
-        ui.slot("kit/panel");
         card(ui, "one", "alpha");
         ui.component("kit/nothing", &Value::Null);
         ui.component("other/thing", &Value::Null);
@@ -381,7 +370,7 @@ fn children_are_refused_in_a_slot_and_twice_and_an_unknown_component_says_so() {
     let codes: Vec<&str> = r.core.take_warnings().iter().map(|w| w.code).collect();
     assert_eq!(
         codes.iter().filter(|c| **c == "children-misplaced").count(),
-        2,
+        1,
         "{codes:?}"
     );
     assert_eq!(
@@ -402,7 +391,7 @@ fn an_instance_that_heard_its_own_event_is_asked_again() {
     for _ in 0..2 {
         r.frame(|ui| answers.push(ui.component("kit/button", &props)));
     }
-    assert_eq!(answers, [Some(SlotFill::NotKept), Some(SlotFill::Replayed)]);
+    assert_eq!(answers, [Some(FillAnswer::NotKept), Some(FillAnswer::Replayed)]);
     assert_eq!(r.click(12.0, 12.0).len(), 1);
     answers.clear();
     for _ in 0..2 {
@@ -410,7 +399,7 @@ fn an_instance_that_heard_its_own_event_is_asked_again() {
     }
     assert_eq!(
         answers,
-        [Some(SlotFill::Heard), Some(SlotFill::Replayed)],
+        [Some(FillAnswer::Heard), Some(FillAnswer::Replayed)],
         "the click moved the extension's count, so the props alone do not vouch for it"
     );
     assert!(texts(&mut r).contains(&"clicks 1".to_string()), "{:?}", texts(&mut r));

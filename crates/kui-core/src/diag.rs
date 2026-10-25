@@ -429,13 +429,6 @@ warnings! {
     /// with `Core::new_in` against one `Session`.
     pub const FOREIGN_RESOURCE: &str = "foreign-resource";
 
-    /// An extension names a slot no host declared this frame, so it drew
-    /// nothing. A slot is a position the host declares in its own view by
-    /// full name, `ui.slot("ns/name")` — the namespace the host gave the
-    /// extension, then the name the extension lists; one listing none fills
-    /// `"ns/root"` after the host's view. Declare the slot, or drop the name
-    /// from the extension's list.
-    pub const UNKNOWN_SLOT: &str = "unknown-slot";
     /// A colour, length or family prop named a token — `bg = "$peach"` —
     /// that nothing declared and that is no theme, metrics or number role,
     /// or named one of another kind (a length in a colour slot). The slot is left at
@@ -494,11 +487,6 @@ warnings! {
     /// rasterizer cannot hold, so the image draws nothing. Raised once per
     /// key.
     pub const SVG_TOO_LARGE: &str = "svg-too-large";
-    /// A slot name declared twice in one frame. The second declaration was
-    /// ignored: a fill is keyed by the slot's full name, so two fills of one
-    /// name would share every key. Two places for one extension are two
-    /// names.
-    pub const DUPLICATE_SLOT: &str = "duplicate-slot";
     /// An extension returned from `view` with nodes still open. The core
     /// closed them at the depth the fill began, so the host's tree is what
     /// the host declared; outside the guard, the rest of the host's view
@@ -509,11 +497,13 @@ warnings! {
     /// red where the fill would have been, and reported here once per
     /// extension and slot rather than once per frame.
     pub const EXTENSION_VIEW_ERROR: &str = "extension-view-error";
-    /// An extension declared one of its *own* slots while it was drawing,
-    /// so filling it would have meant calling it inside itself. The slot
-    /// is left empty. An extension may host extensions (`Fill::add`), and
-    /// may declare their slots — what it cannot do is be its own guest.
-    pub const RECURSIVE_SLOT: &str = "recursive-slot";
+    /// An extension placed one of its *own* components while it was
+    /// drawing, with no spare handle to draw it (`Extension::reentry`), so
+    /// drawing it would have meant calling the extension inside itself.
+    /// The instance is left empty. An extension may host extensions
+    /// (`Fill::add`) and place theirs — what it cannot do is be its own
+    /// guest.
+    pub const RECURSIVE_COMPONENT: &str = "recursive-component";
     /// `request_frame_for` was given more distinct names than a session
     /// keeps (256): the rest are recorded as `request_frame`. A name per
     /// call — a counter, an id — rather than per reason is the usual
@@ -590,22 +580,6 @@ pub fn text_beyond_line(text: Key, line: Key, reach: usize) -> Warning {
         message: format!(
             "the text ({:016x}) is more than {reach} levels below its `line` row ({:016x}), further than a              place remembers, so a hit asked by the row's key answers byte 0; flatten the wrappers              between them, or ask by a nearer key",
             text.0, line.0
-        ),
-    }
-}
-
-/// The [`UNKNOWN_SLOT`] warning for one extension and slot. Keyed by the
-/// full name: there is no node, and one line per slot is the useful
-/// count however many frames repeat it.
-pub fn unknown_slot(extension: &str, namespace: &str, slot: &str) -> Warning {
-    let full = crate::slot::full_name(namespace, slot);
-    Warning {
-        code: UNKNOWN_SLOT,
-        key: Key::ROOT.str(UNKNOWN_SLOT).str(&full),
-        message: format!(
-            "extension `{extension}` (namespace `{namespace}`) fills slot {slot:?}, which no view \
-             declared this frame, so it drew nothing; declare `ui.slot({full:?})` where it \
-             should go, or drop the name from the extension's `slots`"
         ),
     }
 }
@@ -702,19 +676,6 @@ pub fn dtcg_skipped(path: &str, message: &str) -> Warning {
     }
 }
 
-/// The [`DUPLICATE_SLOT`] warning for one name. Keyed by the name: a slot
-/// is not a node, and the conflict is between two declarations of it.
-pub fn duplicate_slot(slot: &str) -> Warning {
-    Warning {
-        code: DUPLICATE_SLOT,
-        key: Key::ROOT.str(DUPLICATE_SLOT).str(slot),
-        message: format!(
-            "slot {slot:?} was declared twice in one frame; the second was ignored, since a \
-             fill is keyed by the slot's name — two places want two names"
-        ),
-    }
-}
-
 /// The [`UNBALANCED_EXTENSION`] warning for one fill. Keyed by the slot,
 /// which names the extension through its namespace, so a plugin that
 /// never closes costs one line.
@@ -761,27 +722,12 @@ pub fn extension_view_error(extension: &str, slot: &str, slot_key: Key, err: &st
     }
 }
 
-/// The [`RECURSIVE_SLOT`] warning for one fill. Keyed by the slot, the
-/// same way `unbalanced-extension` is: the conflict is a name, and one
-/// line per name is the useful count however many frames repeat it.
-pub fn recursive_slot(extension: &str, slot: &str, slot_key: Key) -> Warning {
-    Warning {
-        code: RECURSIVE_SLOT,
-        key: slot_key.str(RECURSIVE_SLOT),
-        message: format!(
-            "extension `{extension}` declared slot {slot:?} while it was drawing, which is its \
-             own; it was left empty, since filling it would mean calling `{extension}` inside \
-             itself. An extension may declare the slots of extensions it loaded — not its own"
-        ),
-    }
-}
-
-/// The [`RECURSIVE_SLOT`] warning for a component an extension placed of
-/// its own while drawing (ADR 0060).
+/// The [`RECURSIVE_COMPONENT`] warning for a component an extension placed
+/// of its own while drawing (ADR 0060).
 pub fn recursive_component(extension: &str, name: &str, key: Key) -> Warning {
     Warning {
-        code: RECURSIVE_SLOT,
-        key: key.str(RECURSIVE_SLOT),
+        code: RECURSIVE_COMPONENT,
+        key: key.str(RECURSIVE_COMPONENT),
         message: format!(
             "extension `{extension}` placed its own component {name:?} while it was drawing; \
              the list cannot ask `{extension}` inside itself, so it was left empty — place it \

@@ -4,7 +4,7 @@
 //! the script's replies to the host.
 
 use kui_core::{
-    Core, EventKind, Extension, Extensions, Key, NodeSpec, OriginId, Size, Slot, UiEvent, Value,
+    Core, EventKind, Extension, Extensions, Key, NodeSpec, OriginId, Size, Instance, UiEvent, Value,
 };
 use kui_lua::LuaExtension;
 
@@ -73,7 +73,7 @@ fn view_is_told_the_slot_its_namespace_and_the_params() {
     let key = Key::ROOT.str("fs/panel");
     for params in [Value::map([("title", "todos".into())]), Value::Null] {
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
-        let slot = Slot {
+        let slot = Instance {
             name: "panel",
             namespace: "fs",
             params: &params,
@@ -227,7 +227,7 @@ impl Extension for Panel {
     fn slots(&self) -> &[String] {
         &self.slots
     }
-    fn view(&mut self, slot: &Slot<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, slot: &Instance<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
         let title = slot
             .params
             .get_str("title")
@@ -366,7 +366,7 @@ fn a_fill_takes_a_full_name_and_params_and_nothing_else() {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         let err = ext
-            .view(&Slot::root(), &mut ui)
+            .view(&Instance::root(), &mut ui)
             .expect_err("should not build");
         ui.finish();
         err
@@ -402,7 +402,7 @@ fn add_extension_answers_with_what_went_wrong() {
     let mut exts = Extensions::new();
     {
         let mut ui = core.frame_with(Size::new(400.0, 100.0), 1.0, &mut exts);
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
     }
     let tried: mlua::Table = ext.lua().globals().get("tried").unwrap();
@@ -545,7 +545,7 @@ impl Extension for Counted {
     fn slots(&self) -> &[String] {
         &self.slots
     }
-    fn view(&mut self, slot: &Slot<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, slot: &Instance<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(), String> {
         self.views.set(self.views.get() + 1);
         let title = slot
             .params
@@ -729,7 +729,7 @@ fn a_folder_with_init_lua_loads_and_requires_its_modules() {
     assert_eq!(ext.name(), "kit");
     let mut core = Core::new();
     let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
-    ext.view(&Slot::root(), &mut ui).unwrap();
+    ext.view(&Instance::root(), &mut ui).unwrap();
     ui.finish();
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -768,7 +768,7 @@ fn a_script_loads_a_script_and_names_a_c_path_it_cannot_open() {
     let mut exts = Extensions::new();
     {
         let mut ui = core.frame_with(Size::new(300.0, 100.0), 1.0, &mut exts);
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
     }
     let result: mlua::Table = ext.lua().globals().get("result").unwrap();
@@ -823,7 +823,7 @@ fn a_script_loads_the_dtcg_fixture_and_paints_with_it() {
     let mut core = Core::new();
     for _ in 0..2 {
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
     }
     let warnings: Vec<_> = core.take_warnings().into_iter().map(|w| w.code).collect();

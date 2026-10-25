@@ -1,56 +1,53 @@
-//! Slots: the places a host declares in its own view for an extension to
-//! fill, with parameters in and replies out.
+//! Components (ADR 0060, ADR 0067): what an extension provides for a host
+//! to place, with props in and the host's own messages out.
 //!
-//! A slot is a position, not a node. `Ui::slot` (or `slot_with`) is a call
-//! the host makes anywhere among its children, and whatever fills it draws
-//! then and there, as children of the node the host is inside. The filling
-//! is done by whatever implements [`Fill`], which the frame was begun with
+//! A placement is a position, not a node. `Ui::component` (or
+//! `component_with`, with the host's children) is a call the host makes
+//! anywhere among its children, and the instance draws then and there, as
+//! children of the node the host is inside. The drawing is done by
+//! whatever implements [`Fill`], which the frame was begun with
 //! (`Core::frame_with`); the windowed runner hands in its [`Extensions`].
 //! An app that loads no extensions never meets this module.
 //!
-//! Slot names are namespaced, and the host decides the namespace. An
-//! extension names the slots it fills in its own vocabulary (`"panel"`,
-//! `"status"`, no `/` in them). The host gives each extension a namespace
-//! when it loads it ([`Extensions::push_as`]; [`Extensions::push`] uses the
-//! extension's own name) and declares slots by their full name:
-//! `ui.slot("fs/panel")` is the `"panel"` of the extension the host calls
-//! `fs`. The same plugin loaded twice is two namespaces with two sets of
-//! slots.
+//! Names are namespaced, and the host decides the namespace. An extension
+//! names what it provides in its own vocabulary (`"panel"`, `"button"`, no
+//! `/` in them). The host gives each extension a namespace when it loads
+//! it ([`Extensions::push_as`]; [`Extensions::push`] uses the extension's
+//! own name) and places by full name: `ui.component("fs/panel", &props)` is
+//! the `"panel"` of the extension the host calls `fs`. The same plugin
+//! loaded twice is two namespaces.
 //!
 //! ```rust
-//! use kui_core::slot::{full_name, split_name, Extensions, ROOT_SLOT};
+//! use kui_core::slot::{full_name, split_name, Extensions, ROOT_COMPONENT};
 //!
 //! assert_eq!(full_name("fs", "panel"), "fs/panel");
 //! assert_eq!(split_name("left/fs/panel"), ("left/fs", "panel"));
-//! assert_eq!(split_name("root"), ("", ROOT_SLOT));
+//! assert_eq!(split_name("root"), ("", ROOT_COMPONENT));
 //!
 //! // The runner's list; `push_as(namespace, Box<dyn Extension>)` loads one.
 //! let exts = Extensions::new();
 //! assert!(exts.is_empty());
 //! ```
 //!
-//! The reserved slot name `"root"` ([`ROOT_SLOT`]) is what an extension
-//! listing no slots fills: `ns/root`, once after the host's view. A host
-//! that declares `ui.slot("ns/root")` itself moves that fill to the
-//! position it chose.
+//! Every extension provides `"root"` ([`ROOT_COMPONENT`]), its `view`: one
+//! that provides nothing else is placed as `ns/root` once after the host's
+//! view, and a host that places `ns/root` itself moves it there. A `root`
+//! is drawn fresh every frame — a view's state can change without an event
+//! the core sees — where every other instance is replayed while what it
+//! read holds.
 //!
 //! An extension may host extensions of its own, by the same mechanism one
 //! level down: [`Fill::add`] loads one while a frame is being built, under
-//! a namespace of its own in the same list; a guest's `ui.slot(..)`
-//! declares a slot like anyone's, except that it cannot fill itself (a
-//! cycle is the `recursive-slot` warning and an empty position); and
-//! replies go to whoever declared the slot ([`Extensions::route`]), which
-//! for every extension the host declared is the host.
+//! a namespace of its own in the same list; a guest places components like
+//! anyone, except that it cannot place its own while it draws without a
+//! spare handle ([`Extension::reentry`]; otherwise `recursive-component`).
 //!
-//! A **component** (ADR 0060) is a slot made cheap and repeatable: an
-//! extension lists the components it provides ([`Extension::components`]),
-//! and a host places one with `Ui::component` as many times as it likes,
-//! each instance keyed by where it was placed. An instance can hold the
-//! host's own children — the fill marks where with `Ui::children(group)`,
-//! and the host's [`Children`] builds them under the host's origin — and
-//! its events reach the host as the messages the host passed in its
-//! props: the extension answers an event with [`emit`], and
-//! [`Extensions::route`] delivers the host's message for that prop.
+//! Each instance is keyed by where it was placed. It can hold the host's
+//! own children — the fill marks where with `Ui::children(group)`, and the
+//! host's [`Children`] builds them under the host's origin — and its events
+//! reach whoever placed it as the messages passed in its props: the
+//! extension answers an event with [`emit`], and [`Extensions::route`]
+//! delivers the placer's message for that prop.
 
 use crate::input::UiEvent;
 use crate::key::Key;
@@ -59,35 +56,35 @@ use crate::tree::OriginId;
 use crate::ui::Ui;
 use crate::value::Value;
 
-/// Which slot an extension is filling, handed to `Extension::view`.
+/// Which component instance an extension is drawing, handed to
+/// `Extension::view` and `Extension::component`.
 #[derive(Clone, Copy, Debug)]
-pub struct Slot<'a> {
-    /// The name in the extension's own vocabulary — what it listed in
-    /// `slots`, or `"root"` for the fill after the host's view.
+pub struct Instance<'a> {
+    /// The component in the extension's own vocabulary — one it lists in
+    /// `components`, or `"root"`.
     pub name: &'a str,
     /// The namespace the host gave this extension: what makes `name` a
-    /// full slot name (`namespace/name`), and what tells one instance of
-    /// a plugin loaded twice from the other.
+    /// full name (`namespace/name`), and what tells one load of a plugin
+    /// loaded twice from the other.
     pub namespace: &'a str,
-    /// What the host passed with `slot_with`; `Value::Null` for `slot`.
-    /// Declared every frame and never retained — read it, do not keep it.
+    /// The props whoever placed it passed. Declared every frame and never
+    /// retained — read it, do not keep it.
     pub params: &'a Value,
-    /// The slot's own key, `enclosing.str("namespace/name")`: what
-    /// `key_of` answers for the full name, and the namespace the
-    /// extension's nodes are keyed under.
+    /// The instance's own key: where it was placed (or its `key` prop),
+    /// and the namespace the extension's nodes are keyed under.
     pub key: Key,
 }
 
-/// The reserved slot name an extension listing none fills.
-pub const ROOT_SLOT: &str = "root";
+/// The component every extension provides: its `view`.
+pub const ROOT_COMPONENT: &str = "root";
 
-/// What separates a namespace from a slot name in a full name. A
+/// What separates a namespace from a component name in a full name. A
 /// namespace may contain it (the host chooses namespaces, and `"left/fs"`
-/// is a fine one); a slot name an extension lists may not, so a full name
+/// is a fine one); a name an extension lists may not, so a full name
 /// splits at its last one.
 pub const NAMESPACE_SEPARATOR: char = '/';
 
-/// `Value::Null` with a `'static` address, for a slot with no params.
+/// `Value::Null` with a `'static` address, for an instance with no props.
 pub static NULL_PARAMS: Value = Value::Null;
 
 /// The host's children of a component instance, by group: what a fill's
@@ -162,28 +159,29 @@ pub fn event_field(prop: &str) -> String {
     out
 }
 
-/// How many times a reply may be answered by another reply before the
-/// rest go to the host instead ([`Extensions::route`]). Nesting is a few
-/// levels deep in anything sane; this is the bound that keeps two
-/// extensions answering each other from being an infinite loop.
-pub const MAX_REPLY_HOPS: usize = 16;
+/// How many times an emit may be answered by another before the rest go to
+/// the host instead ([`Extensions::route`]): a guest that placed a guest
+/// hears its events and may emit in turn. Nesting is a few levels deep in
+/// anything sane; this is the bound that keeps two extensions answering
+/// each other from being an infinite loop.
+pub const MAX_EMIT_HOPS: usize = 16;
 
-impl Slot<'_> {
-    /// The `"root"` slot as a test drives an extension without a runner:
-    /// no namespace, no params, keyed under the root. The runner's own
-    /// root fill is `Slot { name: "root", namespace: <the host's> }`, keyed
+impl Instance<'_> {
+    /// The `"root"` instance as a test drives an extension without a
+    /// runner: no namespace, no props, keyed under the root. The runner's
+    /// own is `Instance { name: "root", namespace: <the host's> }`, keyed
     /// under `"ns/root"`.
-    pub fn root() -> Slot<'static> {
-        Slot {
-            name: ROOT_SLOT,
+    pub fn root() -> Instance<'static> {
+        Instance {
+            name: ROOT_COMPONENT,
             namespace: "",
             params: &NULL_PARAMS,
-            key: Key::ROOT.str(ROOT_SLOT),
+            key: Key::ROOT.str(ROOT_COMPONENT),
         }
     }
 
-    /// The full name the host declares: `namespace/name`, or just `name`
-    /// for a slot with no namespace (`Slot::root`).
+    /// The full name a host places it by: `namespace/name`, or just `name`
+    /// with no namespace (`Instance::root`).
     pub fn full_name(&self) -> String {
         full_name(self.namespace, self.name)
     }
@@ -198,13 +196,12 @@ pub fn full_name(namespace: &str, name: &str) -> String {
     }
 }
 
-/// The one entry in `Extension::slots` that means "every name the host
-/// declares under my namespace": for an extension that learns its slots
-/// after it loads. `fill` matches any declared name against it and
-/// `finish` has nothing to warn about for it.
-pub const ANY_SLOT: &str = "*";
+/// The one entry in `Extension::components` that means "every name placed
+/// under my namespace": for an extension that learns what it provides
+/// after it loads (views registered at runtime).
+pub const ANY_COMPONENT: &str = "*";
 
-/// Splits a full slot name at its last separator into (namespace, name);
+/// Splits a full name at its last separator into (namespace, name);
 /// a name with none has the empty namespace.
 pub fn split_name(full: &str) -> (&str, &str) {
     match full.rfind(NAMESPACE_SEPARATOR) {
@@ -213,19 +210,14 @@ pub fn split_name(full: &str) -> (&str, &str) {
     }
 }
 
-/// What fills slots: the runner's extension list, or a test's stand-in.
-/// A frame begun with `Core::frame_with` carries one; `Ui::slot` calls
-/// [`Fill::fill`] at the position the host declared, and `Ui::finish`
-/// calls [`Fill::finish`] once the host's view is done.
+/// What draws components: the runner's extension list, or a test's
+/// stand-in. A frame begun with `Core::frame_with` carries one;
+/// `Ui::component` calls [`Fill::component`] at the position the host
+/// placed it, and `Ui::finish` calls [`Fill::finish`] once the host's view
+/// is done.
 pub trait Fill {
-    /// Fill the slot declared as `full_name` now, at the cursor, with
-    /// `key` its key: for the extension it names,
-    /// `ui.fill(origin, slot, |ui| ext.view(slot, ui))`, which is where
-    /// the namespace and the bound come from.
-    fn fill(&mut self, full_name: &str, key: Key, params: &Value, ui: &mut Ui<'_>);
-    /// After the host's view: fill every `ns/root` the host did not
-    /// declare, and warn about every slot an extension names that
-    /// nothing declared this frame.
+    /// After the host's view: place every `ns/root` the host did not, and
+    /// forget the instances this frame did not place.
     fn finish(&mut self, ui: &mut Ui<'_>);
     /// Loads `ext` under `namespace`, mid-frame, and answers with the
     /// origin it got — what a guest that hosts guests of its own calls
@@ -238,7 +230,7 @@ pub trait Fill {
         let _ = ext;
         Err(format!(
             "cannot load `{namespace}`: this frame was begun with something other than an \
-             extension list to fill its slots"
+             extension list to draw its components"
         ))
     }
     /// Fill the component instance placed as `full_name` at `key` now,
@@ -262,7 +254,7 @@ pub trait Fill {
     /// after the frame. `slot` is the slot the placer's own nodes are in
     /// (`None` for the host's view). Answers whether the instance heard
     /// one of its own events since it was last filled, which a replay
-    /// cannot know about ([`SlotFill::Heard`](crate::SlotFill::Heard)).
+    /// cannot know about ([`FillAnswer::Heard`](crate::FillAnswer::Heard)).
     /// The default keeps nothing and heard nothing.
     fn placed(
         &mut self,
@@ -281,30 +273,25 @@ pub trait Fill {
 /// that are read while it is busy.
 struct Entry {
     namespace: String,
-    /// `None` for exactly as long as this extension is filling a slot:
-    /// `fill_one` takes it out so the list is free to fill the slots the
-    /// extension itself declares, and puts it back after. A slot of its
-    /// own that it declares while filling therefore finds nobody, which
-    /// is the cycle warning rather than a borrow panic.
+    /// `None` for exactly as long as this extension is drawing: `fill_one`
+    /// takes it out so the list is free to draw what the extension itself
+    /// places, and puts it back after. One of its own components placed
+    /// while it draws therefore takes a spare, or finds nobody, which is
+    /// the cycle warning rather than a borrow panic.
     ext: Option<Box<dyn Extension>>,
     /// Second handles onto the extension (`Extension::reentry`), for a
     /// component of its own placed while it draws — inside a host's
     /// children of one of its instances. One deeper than the deepest
     /// nesting so far; each comes back after its fill.
     spares: Vec<Box<dyn Extension>>,
-    /// `Extension::name` and `Extension::slots` as they answered at load.
-    /// Copied because both are read while `ext` is taken — and because
-    /// every binding already reads `slots` once, at load, so there was
-    /// never a second answer to miss.
+    /// `Extension::name` and `Extension::components` as they answered at
+    /// load: read while `ext` is taken, and every binding reads its list
+    /// once, at load.
     name: String,
-    slots: Vec<String>,
-    /// `Extension::components` as it answered at load (ADR 0060).
     components: Vec<String>,
-    /// The origin that declared the slot this extension last filled:
-    /// `OriginId::HOST` for one in the host's own view, another
-    /// extension's when that extension declared it. Where its replies go
-    /// (see `route`).
-    asked_by: OriginId,
+    /// The generation its `root` was last placed in by someone: a root
+    /// placed this frame is not placed again after the host's view.
+    root_placed: u32,
 }
 
 /// The runner's extensions, each under the namespace the host gave it.
@@ -316,7 +303,7 @@ pub struct Extensions {
     list: Vec<Entry>,
     /// Each component instance placed last frame, by its key: where its
     /// events go and the messages its host passed for them (ADR 0060).
-    instances: rustc_hash::FxHashMap<Key, Instance>,
+    instances: rustc_hash::FxHashMap<Key, PlacedInstance>,
     /// Bumped by every `finish`: an instance not placed since is dropped.
     generation: u32,
     /// Instances an event reached since they were last placed: their
@@ -326,8 +313,9 @@ pub struct Extensions {
 }
 
 /// What [`Extensions::route`] needs of a placed instance after the frame.
-struct Instance {
-    /// The origin that placed it, and the slot its nodes are in.
+struct PlacedInstance {
+    /// The origin that placed it, and the instance the placer's own nodes
+    /// are in (`None` for the host's view).
     placer: OriginId,
     slot: Option<Key>,
     /// The event props the host passed, as (field, message), in prop
@@ -337,7 +325,7 @@ struct Instance {
     generation: u32,
 }
 
-impl Instance {
+impl PlacedInstance {
     /// Whether `props`' event props are exactly these, without building
     /// a list to compare: a frame that passes the same ones allocates
     /// nothing.
@@ -389,9 +377,9 @@ impl Extensions {
     /// argument, a Node option, a Lua call) passes it through rather than
     /// substituting `name()` first — three of them did, and a fourth did
     /// not. Fails when that name is empty too, when the namespace is
-    /// already taken (two extensions cannot share one, since slot names
-    /// would collide), or when a slot the extension lists contains the
-    /// separator (a slot name is the extension's own word; the host adds
+    /// already taken (two extensions cannot share one, since full names
+    /// would collide), or when a component the extension lists contains
+    /// the separator (a name is the extension's own word; the host adds
     /// the namespace).
     pub fn push_as(
         &mut self,
@@ -423,13 +411,12 @@ impl Extensions {
             ));
         }
         if let Some(bad) = ext
-            .slots()
+            .components()
             .iter()
-            .chain(ext.components())
             .find(|s| s.is_empty() || s.contains(NAMESPACE_SEPARATOR))
         {
             return Err(format!(
-                "extension `{}` lists slot {bad:?}: a slot name is one word without `{}` — the \
+                "extension `{}` lists component {bad:?}: a name is one word without `{}` — the \
                  host adds the namespace",
                 ext.name(),
                 NAMESPACE_SEPARATOR
@@ -445,11 +432,10 @@ impl Extensions {
         self.list.push(Entry {
             namespace,
             name: ext.name().to_owned(),
-            slots: ext.slots().to_vec(),
             components: ext.components().to_vec(),
             ext: Some(ext),
             spares,
-            asked_by: OriginId::HOST,
+            root_placed: self.generation.wrapping_sub(1),
         });
         Ok(origin)
     }
@@ -476,16 +462,6 @@ impl Extensions {
         self.list.get(i).map(|e| e.namespace.as_str())
     }
 
-    /// Who declared the slot the extension at `origin` last filled, and
-    /// so where its replies go: `OriginId::HOST` unless another extension
-    /// declared it.
-    pub fn asked_by(&self, origin: OriginId) -> OriginId {
-        let Some(i) = (origin.0 as usize).checked_sub(1) else {
-            return OriginId::HOST;
-        };
-        self.list.get(i).map_or(OriginId::HOST, |e| e.asked_by)
-    }
-
     /// Every (namespace, extension), in origin order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &dyn Extension)> {
         self.list
@@ -495,14 +471,14 @@ impl Extensions {
 
     /// Delivers `events` to the extensions they came from and hands
     /// `to_host` everything addressed to the host: the host's own events,
-    /// and the replies of every extension whose slot the host declared.
+    /// and the component events of every instance the host placed.
     ///
-    /// A reply from an extension a *guest* placed goes to that guest
-    /// instead, as one more event — its `origin` still the replier's, so
-    /// the receiver knows who spoke — and whatever the guest answers
-    /// travels the same way, up to [`MAX_REPLY_HOPS`] levels. This is the
-    /// loop all four hosts route with; one that grew its own would
-    /// disagree with the others about who hears a nested plugin.
+    /// An instance a *guest* placed raises its events to that guest
+    /// instead, as one more event, and whatever the guest emits in turn
+    /// travels the same way, up to [`MAX_EMIT_HOPS`] levels. An answer that
+    /// is not an [`emit`] is dropped (ADR 0067). This is the loop every
+    /// host routes with; one that grew its own would disagree with the
+    /// others about who hears a nested plugin.
     pub fn route(
         &mut self,
         events: impl IntoIterator<Item = UiEvent>,
@@ -534,10 +510,6 @@ impl Extensions {
             {
                 self.heard.insert(inst);
             }
-            if replies.is_empty() {
-                continue;
-            }
-            let up = self.asked_by(to);
             for payload in replies {
                 // A component's event (ADR 0060): the host's own message
                 // for the prop, on the instance the event came from, to
@@ -557,55 +529,38 @@ impl Extensions {
                         UiEvent::component(rec.placer, inst, message, field, fields.clone());
                     out.window = ev.window;
                     out.slot = rec.slot;
-                    if rec.placer == OriginId::HOST || depth + 1 >= MAX_REPLY_HOPS {
+                    if rec.placer == OriginId::HOST || depth + 1 >= MAX_EMIT_HOPS {
                         to_host(out);
                     } else {
                         queue.push_back((rec.placer, depth + 1, out));
                     }
-                    continue;
-                }
-                let mut reply = UiEvent::declared(
-                    crate::input::EventKind::Reply,
-                    to,
-                    ev.key,
-                    Some(&payload),
-                    Value::Null,
-                );
-                reply.window = ev.window;
-                // About the same node, so from the same slot.
-                reply.slot = ev.slot;
-                if up == OriginId::HOST || depth + 1 >= MAX_REPLY_HOPS {
-                    to_host(reply);
-                } else {
-                    queue.push_back((up, depth + 1, reply));
                 }
             }
         }
     }
 
-    /// Fills `name` of the extension at `i` as its origin, at the cursor.
+    /// Draws `name` of the extension at `i` as its origin, at the cursor.
     ///
     /// The extension comes *out* of the list for the duration, so the
-    /// list itself stays free to fill the slots this extension declares
-    /// while it draws — and so the one slot it cannot fill is its own,
-    /// which would be the cycle.
+    /// list itself stays free to draw what this extension places while it
+    /// draws — and so one of its own components placed meanwhile takes a
+    /// spare handle, or is the cycle.
     fn fill_one(
         &mut self,
         i: usize,
         name: &str,
         key: Key,
         params: &Value,
-        children: Option<&mut dyn Children>,
+        children: &mut dyn Children,
         ui: &mut Ui<'_>,
     ) {
         let ns = self.list[i].namespace.clone();
         let ext_name = self.list[i].name.clone();
-        let instance = children.is_some();
         // Busy drawing: a component of its own placed inside one of its
         // instances' host children is drawn by a spare handle.
         let (mut ext, spare) = match self.list[i].ext.take() {
             Some(ext) => (ext, false),
-            None => match self.list[i].spares.pop().filter(|_| instance) {
+            None => match self.list[i].spares.pop() {
                 Some(mut s) => {
                     if self.list[i].spares.is_empty()
                         && let Some(deeper) = s.reentry()
@@ -616,21 +571,13 @@ impl Extensions {
                 }
                 None => {
                     let full = full_name(&ns, name);
-                    let warning = if instance {
-                        crate::diag::recursive_component(&ext_name, &full, key)
-                    } else {
-                        crate::diag::recursive_slot(&ext_name, &full, key)
-                    };
-                    ui.core().warn(warning);
+                    ui.core()
+                        .warn(crate::diag::recursive_component(&ext_name, &full, key));
                     return;
                 }
             },
         };
-        // Who put it here, and so where its replies go — the busy
-        // handle's own placer once a spare is done.
-        let asked_before = self.list[i].asked_by;
-        self.list[i].asked_by = ui.origin();
-        let slot = Slot {
+        let slot = Instance {
             name,
             namespace: &ns,
             params,
@@ -638,10 +585,10 @@ impl Extensions {
         };
         let origin = OriginId(i as u16 + 1);
         let body = |ui: &mut Ui<'_>| {
-            let drawn = if instance {
-                ext.component(&slot, ui)
-            } else {
+            let drawn = if name == ROOT_COMPONENT {
                 ext.view(&slot, ui)
+            } else {
+                ext.component(&slot, ui)
             };
             if let Err(err) = drawn {
                 ui.core().taint_kept("its view failed");
@@ -658,13 +605,9 @@ impl Extensions {
                 );
             }
         };
-        match children {
-            Some(children) => ui.fill_instance(origin, &slot, self, children, body),
-            None => ui.fill_within(origin, &slot, self, body),
-        }
+        ui.fill_instance(origin, &slot, self, children, body);
         if spare {
             self.list[i].spares.push(ext);
-            self.list[i].asked_by = asked_before;
         } else {
             self.list[i].ext = Some(ext);
         }
@@ -685,32 +628,12 @@ impl TryFrom<Vec<Box<dyn Extension>>> for Extensions {
     }
 }
 
-/// The runner's loop, as a `Fill`. A declared name is split at its last
-/// `/` into the namespace and the extension's own slot name; the
-/// extension under that namespace fills it if it lists the name (or the
-/// name is `"root"` and it lists none). A view that errors leaves its
-/// message in the tree (red, where the fill would have been) and raises
-/// `extension-view-error`, once per extension and slot.
+/// The runner's loop, as a `Fill`. A placed name is split at its last
+/// `/` into the namespace and the extension's own component name; the
+/// extension under that namespace draws it if it provides the name (`root`
+/// always). A view that errors leaves its message in the tree (red, where
+/// the instance would have been) and raises `extension-view-error`.
 impl Fill for Extensions {
-    fn fill(&mut self, full_name: &str, key: Key, params: &Value, ui: &mut Ui<'_>) {
-        let (ns, name) = split_name(full_name);
-        let Some(i) = self.list.iter().position(|e| e.namespace == ns) else {
-            return;
-        };
-        let slots = &self.list[i].slots;
-        // A wildcard takes every declared name, `root` included: under it
-        // `root` is one more name the host chose, not the auto-fill.
-        let wants = slots.iter().any(|s| s == ANY_SLOT)
-            || if name == ROOT_SLOT {
-                slots.is_empty() && self.list[i].components.is_empty()
-            } else {
-                slots.iter().any(|s| s == name)
-            };
-        if wants {
-            self.fill_one(i, name, key, params, None, ui);
-        }
-    }
-
     fn finish(&mut self, ui: &mut Ui<'_>) {
         // The instances this frame placed are the ones whose events can
         // still arrive; the rest are gone (ADR 0060).
@@ -720,43 +643,26 @@ impl Fill for Extensions {
             let instances = &self.instances;
             self.heard.retain(|k| instances.contains_key(k));
         }
-        self.generation = generation.wrapping_add(1);
-        // By index rather than over a snapshot: a root fill here may load
+        // By index rather than over a snapshot: a root drawn here may load
         // an extension of its own, which joins the end of the list, and
         // the frame it arrived on is the frame it should draw on.
         let mut i = 0;
         while i < self.list.len() {
-            let ns = self.list[i].namespace.clone();
-            if self.list[i].slots.is_empty() && !self.list[i].components.is_empty() {
-                // An extension of components only: placed where a host
-                // puts them, never filled after the view (ADR 0060).
-            } else if self.list[i].slots.is_empty() {
-                // The fill every extension got before slots existed: after
-                // the host's view, in list order.
-                let full = full_name(&ns, ROOT_SLOT);
-                if !ui.slot_declared(&full)
-                    && let Some(key) = ui.core().begin_slot(&full)
-                {
-                    self.fill_one(i, ROOT_SLOT, key, &NULL_PARAMS, None, ui);
-                }
-            } else {
-                // A wildcard lists nothing to check: whatever the host
-                // declared under the namespace was filled above.
-                for name in self.list[i].slots.clone() {
-                    if name == ANY_SLOT {
-                        continue;
-                    }
-                    let full = full_name(&ns, &name);
-                    if ui.slot_declared(&full) {
-                        continue;
-                    }
-                    let ext_name = self.list[i].name.clone();
-                    ui.core()
-                        .warn(crate::diag::unknown_slot(&ext_name, &ns, &name));
+            // An extension providing nothing but its `root`, which the host
+            // did not place: drawn after the host's view, in list order —
+            // the fill every extension got before components existed.
+            if self.list[i].components.is_empty() && self.list[i].root_placed != generation {
+                let full = full_name(&self.list[i].namespace, ROOT_COMPONENT);
+                if let Some(key) = ui.core().root_fill_key(&full) {
+                    self.placed(&full, key, &NULL_PARAMS, OriginId::HOST, None);
+                    self.fill_one(i, ROOT_COMPONENT, key, &NULL_PARAMS, &mut |_: &str, _: &mut Ui<'_>| {}, ui);
                 }
             }
             i += 1;
         }
+        // After the roots, which record their instances under this one.
+        self.instances.retain(|_, r| r.generation == generation);
+        self.generation = generation.wrapping_add(1);
     }
 
     fn add(&mut self, namespace: &str, ext: Box<dyn Extension>) -> Result<OriginId, String> {
@@ -776,10 +682,14 @@ impl Fill for Extensions {
             return false;
         };
         let comps = &self.list[i].components;
-        if !comps.iter().any(|c| c == name || c == ANY_SLOT) {
+        let root = name == ROOT_COMPONENT;
+        if !root && !comps.iter().any(|c| c == name || c == ANY_COMPONENT) {
             return false;
         }
-        self.fill_one(i, name, key, props, Some(children), ui);
+        if root {
+            self.list[i].root_placed = self.generation;
+        }
+        self.fill_one(i, name, key, props, children, ui);
         true
     }
 
@@ -796,7 +706,7 @@ impl Fill for Extensions {
         match self.instances.get_mut(&key) {
             Some(rec) => {
                 if !rec.same_events(props) {
-                    rec.events = Instance::events_of(props);
+                    rec.events = PlacedInstance::events_of(props);
                 }
                 rec.placer = placer;
                 rec.slot = slot;
@@ -807,10 +717,10 @@ impl Fill for Extensions {
                 if self.list.iter().any(|e| e.namespace == ns) {
                     self.instances.insert(
                         key,
-                        Instance {
+                        PlacedInstance {
                             placer,
                             slot,
-                            events: Instance::events_of(props),
+                            events: PlacedInstance::events_of(props),
                             generation,
                         },
                     );
@@ -822,9 +732,6 @@ impl Fill for Extensions {
 }
 
 impl<F: Fill + ?Sized> Fill for &mut F {
-    fn fill(&mut self, full_name: &str, key: Key, params: &Value, ui: &mut Ui<'_>) {
-        F::fill(&mut **self, full_name, key, params, ui);
-    }
     fn finish(&mut self, ui: &mut Ui<'_>) {
         F::finish(&mut **self, ui);
     }
@@ -854,9 +761,6 @@ impl<F: Fill + ?Sized> Fill for &mut F {
 }
 
 impl<F: Fill + ?Sized> Fill for Box<F> {
-    fn fill(&mut self, full_name: &str, key: Key, params: &Value, ui: &mut Ui<'_>) {
-        F::fill(&mut **self, full_name, key, params, ui);
-    }
     fn finish(&mut self, ui: &mut Ui<'_>) {
         F::finish(&mut **self, ui);
     }

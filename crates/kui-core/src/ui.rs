@@ -48,8 +48,8 @@ use crate::env::Env;
 use crate::geom::{Rect, Size, Vec2};
 use crate::key::Key;
 use crate::line::Stroke;
-use crate::runtime::{Core, SlotFill};
-use crate::slot::{Children, Fill, Slot};
+use crate::runtime::{Core, FillAnswer};
+use crate::slot::{Children, Fill, Instance};
 use crate::spec::{NodeSpec, TextStyle};
 use crate::text::Span;
 use crate::tree::OriginId;
@@ -117,149 +117,19 @@ impl<'a> Ui<'a> {
         }
     }
 
-    /// Declares a slot here, with no parameters: whatever fills it draws
-    /// now, as children of the node this view is inside, at this
-    /// position among its siblings. `name` is the full name,
-    /// `namespace/slot` — the namespace the host gave the extension when
-    /// it loaded it, and the slot in the extension's own vocabulary
-    /// (`"fs/panel"`). `"ns/root"` is the fill that follows the host's
-    /// view for an extension listing no slots, and declaring it moves
-    /// that fill here.
-    pub fn slot(&mut self, name: &str) {
-        self.slot_with(name, &crate::slot::NULL_PARAMS);
-    }
-
-    /// `slot` with parameters the extension reads this frame
-    /// (`Slot::params`); a `Value` because it is the type that already
-    /// crosses to an extension. Nothing is retained — pass what is true
-    /// this frame, every frame.
-    ///
-    /// Whether the slot was declared: false for a name this frame already
-    /// declared (which warns, `duplicate-slot`) or outside a frame. True
-    /// whether or not anything filled it — a host with nothing loaded
-    /// still gets a placed, empty node to lay out around.
-    pub fn slot_with(&mut self, name: &str, params: &Value) -> bool {
-        let Some(key) = self.core.begin_slot(name) else {
-            return false;
-        };
-        self.fill_slot(name, key, params);
-        true
-    }
-
-    /// Fills the slot declared at `key`, plainly. Inside a fill being
-    /// kept, the slot is journaled as a slot — to be declared again and
-    /// filled fresh on a replay — and what fills it now is not the kept
-    /// fill's own (ADR 0045).
-    fn fill_slot(&mut self, name: &str, key: Key, params: &Value) {
-        let keeping = self.core.keeping();
-        if keeping {
-            self.core.keep_op(crate::runtime::replay::Op::Slot {
-                name: name.into(),
-                params: params.clone(),
-            });
-            self.core.pause_keeping();
-        }
-        if let Some(filler) = self.filler.as_deref_mut() {
-            filler.fill(name, key, params, &mut Ui::new(self.core));
-        }
-        if keeping {
-            self.core.resume_keeping();
-        }
-    }
-
-    /// [`Self::slot_with`], and what the fill built is *kept* for
-    /// [`Self::slot_replay`] to push again next frame (ADR 0045): every
-    /// node as its door saw it, the slots declared inside, and every fact
-    /// of the frame the fill read. Whether the slot was declared, as
-    /// `slot_with` answers. Inside a fill that is itself being kept this
-    /// is `slot_with`: a kept fill's nested slots are filled fresh on a
-    /// replay, and so are not kept of their own.
-    pub fn slot_kept(&mut self, name: &str, params: &Value) -> bool {
-        let Some(key) = self.core.begin_slot(name) else {
-            return false;
-        };
-        if self.core.keeping() {
-            self.fill_slot(name, key, params);
-        } else {
-            self.fill_and_keep(name, key, params);
-        }
-        true
-    }
-
-    /// The host's claim that nothing it feeds the extension filling
-    /// `name` has changed since the fill was kept (ADR 0045). The core
-    /// checks what it can see — the params, every fact of the frame the
-    /// kept fill read, that the slot is declared where it was — and
-    /// pushes the kept nodes again without asking the extension
-    /// (`SlotFill::Replayed`), or fills and keeps it as `slot_kept`
-    /// would and says why (the other answers). `None` when the slot was
-    /// not declared (a duplicate, or outside a frame). The kept fill's
-    /// nested slots are declared again and filled fresh either way.
-    ///
-    /// What the host vouches for is its own side only: the state the
-    /// extension reads from the host outside kui. A view that reads the
-    /// env's clock or caret phase off a reading handed out whole (Lua's
-    /// `env.now`) is one the host must not replay, since a reading does
-    /// not say which of its fields were used.
-    pub fn slot_replay(&mut self, name: &str, params: &Value) -> Option<SlotFill> {
-        let key = self.core.begin_slot(name)?;
-        if self.core.keeping() {
-            // Nested in a fill being kept: plain, as `slot_kept` is.
-            self.fill_slot(name, key, params);
-            return Some(SlotFill::NotKept);
-        }
-        let (fill, why) = match self.core.take_replayable(name, key, params) {
-            Ok(kept) => {
-                let (namespace, short) = crate::slot::split_name(name);
-                let slot = Slot {
-                    name: short,
-                    namespace,
-                    params,
-                    key,
-                };
-                // Matched out so the filler is a coercion site: the
-                // borrow's object lifetime shortens to the call's.
-                match self.filler.as_deref_mut() {
-                    Some(f) => self.core.replay(name, &slot, kept, Some(f)),
-                    None => self.core.replay(name, &slot, kept, None),
-                }
-                (SlotFill::Replayed, None)
-            }
-            Err((fill, why)) => {
-                self.fill_and_keep(name, key, params);
-                (fill, why)
-            }
-        };
-        self.core.note_slot_fill(name, fill, why);
-        Some(fill)
-    }
-
-    /// Fills the slot declared at `key` and keeps what the fill built —
-    /// unless a fill is already being kept, when it is a plain fill.
-    fn fill_and_keep(&mut self, name: &str, key: Key, params: &Value) {
-        self.core.keep_next_fill(name, key, params);
-        if let Some(filler) = self.filler.as_deref_mut() {
-            filler.fill(name, key, params, &mut Ui::new(self.core));
-        }
-        // Nothing filled it: the ask lapses.
-        self.core.forget_next_fill();
-    }
-
-    /// Whether the full name `name` was declared this frame so far.
-    pub fn slot_declared(&self, name: &str) -> bool {
-        self.core.slot_declared(name)
-    }
-
-    /// Declares a devtools tab an extension fills: `name` is the tab's
-    /// identity, `label` what the strip shows,
-    /// `slot` the full slot name (`"ts/panel"`) the extension names.
-    /// While the tab is the one on show, the panel declares the slot in
-    /// the tab's body and the fill is drawn there; otherwise the slot is
-    /// not declared and the extension is not asked, though its naming
-    /// the slot raises no `unknown-slot`. Made every frame, panel on or
-    /// off. A name declared twice in a frame warns `duplicate-tab`.
-    pub fn devtools_tab(&mut self, name: &str, label: &str, slot: &str) {
-        self.core.devtools_tab_declare(name, label, Some(slot));
+    /// Declares a devtools tab an extension draws: `name` is the tab's
+    /// identity, `label` what the strip shows, `component` the full name
+    /// of the component (`"ts/panel"`) placed in its body (ADR 0067).
+    /// While the tab is the one on show, the panel places the component in
+    /// the tab's body with `props` and the panel's facts (`selected`,
+    /// `hovered`, `picked`, `region`, `focus`) as its props — event props
+    /// among `props` bring the tab's events to the host as its own
+    /// messages; otherwise nothing is placed and the extension is not
+    /// asked. Made every frame, panel on or off. A name declared twice in a
+    /// frame warns `duplicate-tab`.
+    pub fn devtools_tab(&mut self, name: &str, label: &str, component: &str, props: &Value) {
+        self.core
+            .devtools_tab_declare_with(name, label, Some(component), props);
     }
 
     /// Declares a devtools tab the host draws itself, and draws it
@@ -378,7 +248,7 @@ impl<'a> Ui<'a> {
     /// tagged with the origin, keyed under the slot's key, and closed
     /// for it if it leaves any open. What a `Fill` implementation calls
     /// per extension; see `Core::fill`.
-    pub fn fill(&mut self, origin: OriginId, slot: &Slot<'_>, f: impl FnOnce(&mut Ui<'_>)) {
+    pub fn fill(&mut self, origin: OriginId, slot: &Instance<'_>, f: impl FnOnce(&mut Ui<'_>)) {
         self.core.fill(slot, origin, f);
     }
 
@@ -389,7 +259,7 @@ impl<'a> Ui<'a> {
     pub fn fill_within(
         &mut self,
         origin: OriginId,
-        slot: &Slot<'_>,
+        slot: &Instance<'_>,
         filler: &mut dyn Fill,
         f: impl FnOnce(&mut Ui<'_>),
     ) {
@@ -402,7 +272,7 @@ impl<'a> Ui<'a> {
     pub fn fill_instance(
         &mut self,
         origin: OriginId,
-        slot: &Slot<'_>,
+        slot: &Instance<'_>,
         filler: &mut dyn Fill,
         children: &mut dyn Children,
         f: impl FnOnce(&mut Ui<'_>),
@@ -425,7 +295,7 @@ impl<'a> Ui<'a> {
     /// ```rust,ignore
     /// ui.component("kit/button", &Value::map([("label", "Save".into()), ("onClick", Msg::Save.into())]));
     /// ```
-    pub fn component(&mut self, name: &str, props: &Value) -> Option<SlotFill> {
+    pub fn component(&mut self, name: &str, props: &Value) -> Option<FillAnswer> {
         self.place(name, props, None, None)
     }
 
@@ -439,7 +309,7 @@ impl<'a> Ui<'a> {
         name: &str,
         props: &Value,
         mut children: impl FnMut(&str, &mut Ui<'_>),
-    ) -> Option<SlotFill> {
+    ) -> Option<FillAnswer> {
         self.place(name, props, Some(&mut children), None)
     }
 
@@ -455,8 +325,8 @@ impl<'a> Ui<'a> {
         name: &str,
         props: &Value,
         mut children: impl FnMut(&str, &mut Ui<'_>),
-        mut fill: impl FnMut(&Slot<'_>, &mut Ui<'_>),
-    ) -> Option<SlotFill> {
+        mut fill: impl FnMut(&Instance<'_>, &mut Ui<'_>),
+    ) -> Option<FillAnswer> {
         self.place(name, props, Some(&mut children), Some(&mut fill))
     }
 
@@ -486,16 +356,38 @@ impl<'a> Ui<'a> {
         props: &Value,
         children: Option<&mut dyn Children>,
         by: Option<InstanceFill<'_>>,
-    ) -> Option<SlotFill> {
+    ) -> Option<FillAnswer> {
+        self.place_at(None, name, props, children, by)
+    }
+
+    /// A component placed again by a replay, at the key it had when the
+    /// kept fill placed it: a replay pushes nodes under their own keys, so
+    /// the counter a fresh placement would read is not where it was.
+    pub(crate) fn component_at(&mut self, key: Key, name: &str, props: &Value) -> Option<FillAnswer> {
+        self.place_at(Some(key), name, props, None, None)
+    }
+
+    fn place_at(
+        &mut self,
+        at: Option<Key>,
+        name: &str,
+        props: &Value,
+        children: Option<&mut dyn Children>,
+        by: Option<InstanceFill<'_>>,
+    ) -> Option<FillAnswer> {
         if self.core.tree.is_empty() {
             return None;
         }
         let label = props.get_str("key");
-        let key = match label {
-            Some(l) => self.core.child_key(l),
-            None => self.core.auto_key(),
+        let key = match (at, label) {
+            (Some(k), _) => k,
+            (None, Some(l)) => self.core.child_key(l),
+            (None, None) => self.core.auto_key(),
         };
-        let fresh = matches!(props.get("fresh"), Some(Value::Bool(true)));
+        // A `root` is drawn fresh every frame: a view's state can change
+        // without an event the core sees (ADR 0067).
+        let fresh = matches!(props.get("fresh"), Some(Value::Bool(true)))
+            || crate::slot::split_name(name).1 == crate::slot::ROOT_COMPONENT;
         // Inside a fill being kept, a placement is one more op of it: a
         // replay places it again — unless the host's children are a
         // closure of the fill's own, which no replay could call.
@@ -506,6 +398,7 @@ impl<'a> Ui<'a> {
                     .taint_kept("it placed a component with children of its own");
             } else {
                 self.core.keep_op(crate::runtime::replay::Op::Component {
+                    key,
                     name: name.into(),
                     props: props.clone(),
                 });
@@ -523,7 +416,7 @@ impl<'a> Ui<'a> {
         };
         let mut answer = None;
         let (namespace, short) = crate::slot::split_name(name);
-        let slot = Slot {
+        let slot = Instance {
             name: short,
             namespace,
             params: props,
@@ -541,28 +434,28 @@ impl<'a> Ui<'a> {
                     Ok(kept) if !heard => {
                         let filler = self.filler.as_deref_mut().map(shorter_fill);
                         self.core.replay_instance(&slot, kept, filler, &mut placed);
-                        Some(SlotFill::Replayed)
+                        Some(FillAnswer::Replayed)
                     }
                     Ok(_) => {
                         self.core.keep_next_instance(key, props);
-                        Some(SlotFill::Heard)
+                        Some(FillAnswer::Heard)
                     }
                     Err((fill, _)) => {
                         self.core.keep_next_instance(key, props);
-                        Some(if heard { SlotFill::Heard } else { fill })
+                        Some(if heard { FillAnswer::Heard } else { fill })
                     }
                 }
             } else {
                 None
             };
             answer = match replayed {
-                Some(SlotFill::Replayed) => Some(SlotFill::Replayed),
+                Some(FillAnswer::Replayed) => Some(FillAnswer::Replayed),
                 other => {
                     let filler = self.filler.as_deref_mut().map(shorter_fill);
                     self.core
                         .fill_instance(&slot, placer, filler, &mut placed, |ui| by(&slot, ui));
                     self.core.forget_next_fill();
-                    Some(other.unwrap_or(SlotFill::NotKept))
+                    Some(other.unwrap_or(FillAnswer::NotKept))
                 }
             };
         } else if let Some(filler) = self.filler.as_deref_mut() {
@@ -572,12 +465,12 @@ impl<'a> Ui<'a> {
                     Ok(kept) if !heard => {
                         self.core
                             .replay_instance(&slot, kept, Some(filler), &mut placed);
-                        answer = Some(SlotFill::Replayed);
+                        answer = Some(FillAnswer::Replayed);
                     }
                     kept => {
                         let fill = match kept {
                             Err((fill, _why)) if !heard => fill,
-                            _ => SlotFill::Heard,
+                            _ => FillAnswer::Heard,
                         };
                         self.core.keep_next_instance(key, props);
                         let filled = filler.component(
@@ -592,7 +485,7 @@ impl<'a> Ui<'a> {
                     }
                 }
             } else if filler.component(name, key, props, &mut placed, &mut Ui::new(self.core)) {
-                answer = Some(SlotFill::NotKept);
+                answer = Some(FillAnswer::NotKept);
             }
         }
         if keeping {
@@ -1863,7 +1756,7 @@ impl<'a> Ui<'a> {
 }
 
 /// A fill an instance is drawn by in place (`Ui::component_by`).
-type InstanceFill<'f> = &'f mut dyn FnMut(&Slot<'_>, &mut Ui<'_>);
+type InstanceFill<'f> = &'f mut dyn FnMut(&Instance<'_>, &mut Ui<'_>);
 
 /// A placement's children as the fill sees them: the host's builder, run
 /// with the placer's own children in reach (ADR 0060).

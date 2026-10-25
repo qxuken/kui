@@ -843,7 +843,6 @@ pub enum Event {
     Capture(Captured),
     Dismiss(Dismiss),
     Range(RowRange),
-    Reply,
     /// A component instance's event (ADR 0060): the host's own message
     /// for the event prop is [`UiEvent::message`]'s to decode.
     Component,
@@ -937,7 +936,6 @@ impl UiEvent {
             EventKind::Sound => Event::Sound(read_sound(p)?),
             EventKind::Capture => Event::Capture(read_captured(p)?),
             EventKind::Dismiss => Event::Dismiss(read_dismiss(p)?),
-            EventKind::Reply => Event::Reply,
             EventKind::Component => Event::Component,
             EventKind::Range => Event::Range(read_range(p)?),
         })

@@ -4,7 +4,7 @@
 //! the table marks `"only": "js"` is JS's spelling (`percent`), which
 //! Lua refuses for its own `pct`.
 
-use kui_core::{Core, Extension, OriginId, Size, Slot};
+use kui_core::{Core, Extension, OriginId, Size, Instance};
 use kui_lua::LuaExtension;
 
 /// A JSON value as a Lua literal.
@@ -43,7 +43,7 @@ fn laid(width: &str) -> Result<f32, String> {
     core.set_inspect(true);
     let mut ui = core.frame(Size::new(1200.0, 100.0), 1.0);
     ui.set_origin(OriginId(1));
-    let built = ext.view(&Slot::root(), &mut ui);
+    let built = ext.view(&Instance::root(), &mut ui);
     ui.finish();
     built?;
     let nodes = core.nodes();

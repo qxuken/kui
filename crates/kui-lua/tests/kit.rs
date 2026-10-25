@@ -5,7 +5,7 @@
 
 use kui_core::channel::{Channel, Column};
 use kui_core::testing::click_at;
-use kui_core::{Core, EventKind, Extension, Extensions, NodeSpec, Size, SlotFill, Ui, UiEvent, Value};
+use kui_core::{Core, EventKind, Extension, Extensions, NodeSpec, Size, FillAnswer, Ui, UiEvent, Value};
 use kui_kit as kit;
 use kui_lua::LuaExtension;
 
@@ -95,9 +95,9 @@ fn logs() -> Channel {
 }
 
 /// One of every component, through the wrappers.
-fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<SlotFill>)>) {
+fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)>) {
     let choices = vec![kit::Choice::new("a", "Alpha"), kit::Choice::new("b", "Beta")];
-    let mut put = |name: &'static str, a: Option<SlotFill>| answers.push((name, a));
+    let mut put = |name: &'static str, a: Option<FillAnswer>| answers.push((name, a));
     put("settings", kit::Settings::new().place(ui));
     put("toolbar", kit::Toolbar::new().place_with(ui, |group, ui| {
         if group.is_empty() {
@@ -182,7 +182,7 @@ fn every_component_draws_without_a_warning() {
     // A second frame with nothing moved replays what read nothing that moved.
     let mut again = Vec::new();
     r.frame(|ui| gallery(ui, &mut again));
-    let replayed = again.iter().filter(|(_, a)| *a == Some(SlotFill::Replayed)).count();
+    let replayed = again.iter().filter(|(_, a)| *a == Some(FillAnswer::Replayed)).count();
     assert!(replayed >= 10, "{again:?}");
     assert!(r.core.take_warnings().is_empty());
 }

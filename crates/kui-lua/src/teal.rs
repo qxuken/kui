@@ -1128,7 +1128,7 @@ mod tests {
     /// have only the fields the file gives theirs.
     #[test]
     fn the_env_record_is_the_env() {
-        use kui_core::{Core, Key, Rect, Size, Slot};
+        use kui_core::{Core, Key, Rect, Size, Instance};
         let mut paths: Vec<&str> = schema::ENV_FIELDS
             .iter()
             .flat_map(|f| f.lua.iter().copied())

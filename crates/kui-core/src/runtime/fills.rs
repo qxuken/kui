@@ -5,7 +5,7 @@
 //! it owns the node stack and the keys.
 
 use super::*;
-use crate::slot::{Children, Slot};
+use crate::slot::{Children, Instance};
 
 /// A fill being drawn: the slot or instance it fills, and for an
 /// instance what its host's children are built against.
@@ -35,43 +35,17 @@ pub(crate) struct ChildrenState {
 }
 
 impl Core {
-    /// Declares a slot under its full name at the cursor and returns its
-    /// key — `parent.str(name)`, recorded for `key_of` — or `None` when it
-    /// cannot be declared: outside a frame, or a second time in one
-    /// frame, which is the `duplicate-slot` warning.
-    ///
-    /// An extension may declare one too, and its key nests under the slot
-    /// the extension is itself filling, like any of its nodes. Names stay
-    /// frame-wide because namespaces are: there is one extension called
-    /// `todos` however deep the thing that loaded it sat, so `todos/panel`
-    /// is one slot and declaring it twice is the same warning wherever
-    /// the two declarations came from.
-    pub fn begin_slot(&mut self, name: &str) -> Option<Key> {
+    /// The key the `root` of the extension `full` (`ns/root`) is drawn
+    /// under after the host's view — `parent.str(full)`, recorded for
+    /// `key_of` — or `None` outside a frame (ADR 0067: an extension
+    /// providing nothing else is placed there unless the host placed it).
+    pub(crate) fn root_fill_key(&mut self, full: &str) -> Option<Key> {
         if self.tree.is_empty() {
             return None;
         }
-        // A name not hashed this frame was not declared: one lookup, and
-        // the scan only for a hash seen before (a duplicate, or a
-        // collision).
-        let h = crate::key::hash_bulk(name.as_bytes());
-        if !self.slot_names_seen.insert(h) && self.slot_labels.find(name).next().is_some() {
-            self.diag.raise(crate::diag::duplicate_slot(name));
-            return None;
-        }
-        let key = self.parent_key().str(name);
-        self.slot_labels.push(key, name, self.origin, self.ns_key);
-        self.key_labels.push(key, name, self.origin, self.ns_key);
+        let key = self.parent_key().str(full);
+        self.key_labels.push(key, full, self.origin, self.ns_key);
         Some(key)
-    }
-
-    /// Whether the full name `name` was declared this frame so far — or
-    /// is the slot of a devtools tab declared this frame, which counts
-    /// whether or not the panel mounted it, so a plugin whose only slot
-    /// is a tab is quiet with the panel off.
-    pub fn slot_declared(&self, name: &str) -> bool {
-        let h = crate::key::hash_bulk(name.as_bytes());
-        (self.slot_names_seen.contains(&h) && self.slot_labels.find(name).next().is_some())
-            || self.devtools_tab_slot(name)
     }
 
     /// Runs `f` as the fill of `slot` under `origin`: every node it opens
@@ -82,7 +56,7 @@ impl Core {
     /// `unbalanced-extension` warning). The host's origin, counter and
     /// namespace are what they were when `f` returns, so the host's next
     /// child is keyed as if the fill had not happened.
-    pub fn fill(&mut self, slot: &Slot<'_>, origin: OriginId, f: impl FnOnce(&mut Ui<'_>)) {
+    pub fn fill(&mut self, slot: &Instance<'_>, origin: OriginId, f: impl FnOnce(&mut Ui<'_>)) {
         self.fill_within(slot, origin, None, f);
     }
 
@@ -92,7 +66,7 @@ impl Core {
     /// nothing answers, so a slot declared inside draws nothing.
     pub fn fill_within(
         &mut self,
-        slot: &Slot<'_>,
+        slot: &Instance<'_>,
         origin: OriginId,
         filler: Option<&mut dyn crate::slot::Fill>,
         f: impl FnOnce(&mut Ui<'_>),
@@ -105,7 +79,7 @@ impl Core {
     /// `Ui::children`.
     pub fn fill_instance(
         &mut self,
-        slot: &Slot<'_>,
+        slot: &Instance<'_>,
         origin: OriginId,
         filler: Option<&mut dyn crate::slot::Fill>,
         children: &mut dyn Children,
@@ -116,7 +90,7 @@ impl Core {
 
     fn fill_frame(
         &mut self,
-        slot: &Slot<'_>,
+        slot: &Instance<'_>,
         origin: OriginId,
         filler: Option<&mut dyn crate::slot::Fill>,
         children: Option<&mut dyn Children>,

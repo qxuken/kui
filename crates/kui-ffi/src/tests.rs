@@ -4130,7 +4130,7 @@ mod borrows {
 #[cfg(test)]
 mod replay_headless {
     use super::*;
-    use kui_core::{Extension, Extensions, Slot, SlotFill, Ui, UiEvent, Value};
+    use kui_core::{Extension, Extensions, Instance, FillAnswer, Ui, UiEvent, Value};
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -4148,7 +4148,7 @@ mod replay_headless {
         fn slots(&self) -> &[String] {
             &[]
         }
-        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+        fn view(&mut self, _slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
             self.views.set(self.views.get() + 1);
             let mut ctx = KuiCtx::borrowing_in(ui);
             let mut t = KuiTheme::default();
@@ -4204,22 +4204,22 @@ mod replay_headless {
             fill
         };
         frame(&mut core, true);
-        assert_eq!(frame(&mut core, false), Some(SlotFill::Replayed));
+        assert_eq!(frame(&mut core, false), Some(FillAnswer::Replayed));
         assert_eq!(views.get(), 1);
 
         let pink = kui_core::Color::hex(0xff00ffff);
         core.set_theme(kui_core::Theme::light().with_accent(pink));
-        assert_eq!(frame(&mut core, false), Some(SlotFill::Reads));
+        assert_eq!(frame(&mut core, false), Some(FillAnswer::Reads));
         assert_eq!(core.slot_fill_why("painted/root"), Some("Theme"));
         assert_eq!((views.get(), bg.get()), (2, 0xff00ffff));
-        assert_eq!(frame(&mut core, false), Some(SlotFill::Replayed));
+        assert_eq!(frame(&mut core, false), Some(FillAnswer::Replayed));
 
         let mut m = *core.metrics();
         m.radius += 3.0;
         core.set_metrics(m);
-        assert_eq!(frame(&mut core, false), Some(SlotFill::Reads));
+        assert_eq!(frame(&mut core, false), Some(FillAnswer::Reads));
         assert_eq!(core.slot_fill_why("painted/root"), Some("Metrics"));
-        assert_eq!(frame(&mut core, false), Some(SlotFill::Replayed));
+        assert_eq!(frame(&mut core, false), Some(FillAnswer::Replayed));
         assert_eq!(views.get(), 3);
     }
 }

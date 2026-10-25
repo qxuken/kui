@@ -355,7 +355,7 @@
 
 use kui_core::schema::{self, Kind, Parsed, PropsOut};
 use kui_core::{
-    Align, Color, Content, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Slot,
+    Align, Color, Content, EditOptions, Extension, FloatConfig, Key, PadShorthand, Sizing, Instance,
     Span, Ui, UiEvent, Value, WindowConfig, WindowLifecycle, widgets,
 };
 use mlua::{Lua, Table};
@@ -487,7 +487,7 @@ impl LuaExtension {
     /// global fills `"root"`.
     ///
     /// ```
-    /// use kui_core::{Core, Extension, Size, Slot};
+    /// use kui_core::{Core, Extension, Size, Instance};
     /// use kui_lua::LuaExtension;
     ///
     /// let mut ext = LuaExtension::from_source("hello.lua", r#"
@@ -499,7 +499,7 @@ impl LuaExtension {
     ///
     /// let mut core = Core::new();
     /// let mut ui = core.frame(Size::new(320.0, 240.0), 1.0);
-    /// ext.view(&Slot::root(), &mut ui)?;
+    /// ext.view(&Instance::root(), &mut ui)?;
     /// ui.finish();
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
@@ -685,7 +685,7 @@ impl Extension for LuaExtension {
         &self.slots
     }
 
-    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         let view: mlua::Function = self
             .lua
             .globals()
@@ -702,7 +702,7 @@ impl Extension for LuaExtension {
         &self.components
     }
 
-    fn component(&mut self, inst: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn component(&mut self, inst: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.draw_component(inst, ui)
     }
 
@@ -858,7 +858,7 @@ impl LuaExtension {
 
     /// Draws one component instance: the script's `components[name]`
     /// called as `(env, props, inst)` and its tree built (ADR 0060).
-    fn draw_component(&self, inst: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn draw_component(&self, inst: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         let f: mlua::Function = self
             .lua
             .globals()
@@ -875,7 +875,7 @@ impl LuaExtension {
     fn draw(
         &self,
         view: &mlua::Function,
-        slot: &Slot<'_>,
+        slot: &Instance<'_>,
         component: bool,
         ui: &mut Ui<'_>,
     ) -> Result<(), String> {
@@ -980,7 +980,7 @@ impl LuaExtension {
     /// Builds a view's or an instance's tree, with what the build needs of
     /// the script at hand: its folder (a relative `svg` `src`) and itself
     /// under its namespace (a component of its own, ADR 0060).
-    fn build_root(&self, root: &Table, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn build_root(&self, root: &Table, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         let outer = VIEW_ROOT.replace(root.to_pointer());
         let outer_dir = BUILD_DIR.replace(self.dir.clone());
         let outer_ext = BUILD_EXT.replace(Some(BuildExt {
@@ -1042,7 +1042,7 @@ fn event_payload(lua: &Lua, payload: &Value) -> mlua::Result<Table> {
 /// another), `params` absent for a slot declared without any
 /// (`Value::Null`), and the slot's key as the integer the events and
 /// `env.set_focus` use.
-fn slot_table(lua: &Lua, slot: &Slot<'_>) -> mlua::Result<Table> {
+fn slot_table(lua: &Lua, slot: &Instance<'_>) -> mlua::Result<Table> {
     let t = lua.create_table()?;
     t.set("name", slot.name)?;
     t.set("namespace", slot.namespace)?;
@@ -5288,7 +5288,7 @@ mod tests {
     fn frame(core: &mut Core, ext: &mut LuaExtension) -> usize {
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         core.output().0.quads.len()
     }
@@ -5561,7 +5561,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Slot::root(), &mut ui).unwrap_err();
+        let err = ext.view(&Instance::root(), &mut ui).unwrap_err();
         assert!(err.contains("sheet"), "{err}");
         assert!(err.contains("popup"), "{err}");
     }
@@ -5590,7 +5590,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -5629,7 +5629,7 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
         assert!(
             err.contains("block | bar | underline") && err.contains("blob"),
             "{err}"
@@ -5664,7 +5664,7 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
         assert!(
             err.contains("option_as_alt") && err.contains("\"both\"") && err.contains("meta"),
             "{err}"
@@ -5702,7 +5702,7 @@ mod tests {
                     .unwrap();
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let built = ext.view(&Slot::root(), &mut ui);
+            let built = ext.view(&Instance::root(), &mut ui);
             ui.finish();
             built
         };
@@ -5744,7 +5744,7 @@ mod tests {
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.option_as_alt(kui_core::OptionAsAlt::Left);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         assert_eq!(core.option_as_alt(), kui_core::OptionAsAlt::Left);
     }
@@ -6729,7 +6729,7 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
         assert!(err.contains("needs options"), "{err}");
         ui.finish();
         let mut ext = LuaExtension::from_source(
@@ -6739,7 +6739,7 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
         assert!(err.contains("index from 1"), "{err}");
         ui.finish();
         // And, by name (backlog RG10): no label, and no options at all —
@@ -6748,7 +6748,7 @@ mod tests {
             let mut ext = LuaExtension::from_source("bad", src).unwrap();
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let err = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+            let err = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
             ui.finish();
             err
         };
@@ -7628,7 +7628,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         assert_eq!(
             core.take_window_commands(),
@@ -7676,7 +7676,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -7738,7 +7738,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
 
@@ -8675,7 +8675,7 @@ mod tests {
         ext.lua.globals().set("target", "nope").unwrap();
         cmd(&ext, "set");
         let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
-        let e = ext.view(&Slot::root(), &mut ui).unwrap_err().to_string();
+        let e = ext.view(&Instance::root(), &mut ui).unwrap_err().to_string();
         ui.finish();
         assert!(
             e.contains("no node is keyed \"nope\"") && e.contains("integer key"),
@@ -8755,7 +8755,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -8842,7 +8842,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -8898,7 +8898,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -8954,7 +8954,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let (dl, _) = core.output();
         let glyphs = dl
@@ -9025,7 +9025,7 @@ mod tests {
             for _ in 0..2 {
                 let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
                 ui.set_origin(OriginId(1));
-                ext.view(&Slot::root(), &mut ui).unwrap();
+                ext.view(&Instance::root(), &mut ui).unwrap();
                 ui.finish();
             }
             let (dl, _) = core.output();
@@ -9070,7 +9070,7 @@ mod tests {
             let mut core = Core::new();
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let r = ext.view(&Slot::root(), &mut ui).map_err(|e| e.to_string());
+            let r = ext.view(&Instance::root(), &mut ui).map_err(|e| e.to_string());
             ui.finish();
             r
         };
@@ -9136,7 +9136,7 @@ mod tests {
         core.set_diagnostics(true);
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
         assert_eq!(codes, [kui_core::diag::CELLS_TOO_LARGE]);
@@ -9168,7 +9168,7 @@ mod tests {
         core.set_diagnostics(true);
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let codes: Vec<&str> = core.take_warnings().iter().map(|w| w.code).collect();
         assert_eq!(codes, [kui_core::diag::CELLS_TOO_LARGE]);
@@ -9206,7 +9206,7 @@ mod tests {
             let frame = |core: &mut Core, ext: &mut LuaExtension| {
                 let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
                 ui.set_origin(OriginId(1));
-                ext.view(&Slot::root(), &mut ui).unwrap();
+                ext.view(&Instance::root(), &mut ui).unwrap();
                 ui.finish();
                 core.output();
             };
@@ -9254,7 +9254,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = missing.view(&Slot::root(), &mut ui).unwrap_err();
+        let err = missing.view(&Instance::root(), &mut ui).unwrap_err();
         ui.finish();
         assert!(
             err.to_string().contains("cells needs rows and cols"),
@@ -9283,7 +9283,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
             core.output();
         };
@@ -9332,7 +9332,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
             core.output();
         };
@@ -9426,7 +9426,7 @@ mod tests {
         for _ in 0..2 {
             let mut ui = core.frame(Size::new(400.0, 400.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         }
         let built: i64 = ext.lua.globals().get("built").unwrap();
@@ -9445,7 +9445,7 @@ mod tests {
             let mut core = Core::new();
             let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let r = ext.view(&Slot::root(), &mut ui).map_err(|e| e.to_string());
+            let r = ext.view(&Instance::root(), &mut ui).map_err(|e| e.to_string());
             ui.finish();
             r
         };
@@ -9522,7 +9522,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -9583,7 +9583,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -9646,7 +9646,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let (dl, _) = core.output();
         let solids = dl
@@ -9681,7 +9681,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let (dl, _) = core.output();
         let red = Color::hex(0xff0000ff);
@@ -9714,7 +9714,7 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        let err = bad.view(&Slot::root(), &mut ui).unwrap_err();
+        let err = bad.view(&Instance::root(), &mut ui).unwrap_err();
         assert!(err.contains("solid | wavy | dotted"), "{err}");
     }
 
@@ -9728,7 +9728,7 @@ mod tests {
             let mut core = Core::new();
             let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            let lowered = ext.view(&Slot::root(), &mut ui);
+            let lowered = ext.view(&Instance::root(), &mut ui);
             ui.finish();
             lowered?;
             let (dl, _) = core.output();
@@ -9772,7 +9772,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         assert_eq!(core.text_cache_len(), 2);
     }
@@ -9797,7 +9797,7 @@ mod tests {
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let names: Vec<String> = core
             .access_tree()
@@ -9860,7 +9860,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
 
@@ -9912,7 +9912,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
 
@@ -9973,7 +9973,7 @@ mod tests {
         .unwrap();
         let mut ui = core.frame(Size::new(400.0, 100.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let handle = core.add_system_font("Fixture Mono").unwrap();
         let expected = core
@@ -10018,7 +10018,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -10088,7 +10088,7 @@ mod tests {
         let frame = |core: &mut Core, ext: &mut LuaExtension| {
             let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
         };
         frame(&mut core, &mut ext);
@@ -10143,7 +10143,7 @@ mod tests {
         core.set_time(t);
         let mut ui = core.frame(Size::new(400.0, 200.0), 1.0);
         ui.set_origin(OriginId(1));
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
     }
 
@@ -10318,7 +10318,7 @@ mod tests {
         let sized = |core: &mut Core, ext: &mut LuaExtension, w: f32| {
             let mut ui = core.frame(Size::new(w, 200.0), 1.0);
             ui.set_origin(OriginId(1));
-            ext.view(&Slot::root(), &mut ui).unwrap();
+            ext.view(&Instance::root(), &mut ui).unwrap();
             ui.finish();
             for e in core.take_pending_events() {
                 ext.on_event(&e);
@@ -10391,7 +10391,7 @@ mod tests {
         )
         .unwrap();
         let mut ui = core.frame(Size::new(300.0, 200.0), 1.0);
-        let err = bad.view(&Slot::root(), &mut ui).unwrap_err();
+        let err = bad.view(&Instance::root(), &mut ui).unwrap_err();
         assert!(err.contains("on_blur"), "{err}");
         assert!(err.contains("on_system_settings_change"), "{err}");
         ui.finish();
@@ -10417,7 +10417,7 @@ mod tests {
         core.set_focused(false);
         assert!(core.take_pending_events().is_empty());
         let mut ui = core.frame(Size::new(300.0, 100.0), 1.0);
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         assert!(core.take_pending_events().is_empty(), "no resize");
         assert!(
@@ -10703,7 +10703,7 @@ mod tests {
         .unwrap();
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
-        ext.view(&Slot::root(), &mut ui).unwrap();
+        ext.view(&Instance::root(), &mut ui).unwrap();
         ui.finish();
         let g = ext.lua.globals();
         assert_eq!(g.get::<mlua::Value>("geom").unwrap(), mlua::Value::Nil);
@@ -10727,6 +10727,6 @@ mod tests {
         let mut ext = LuaExtension::from_source("bad", "function view() return 5 end").unwrap();
         let mut core = Core::new();
         let mut ui = core.frame(Size::new(100.0, 100.0), 1.0);
-        assert!(ext.view(&Slot::root(), &mut ui).is_err());
+        assert!(ext.view(&Instance::root(), &mut ui).is_err());
     }
 }

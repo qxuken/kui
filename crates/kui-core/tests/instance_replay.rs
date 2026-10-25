@@ -1,21 +1,22 @@
-//! A slot replayed by its host (ADR 0045, backlog F142): `Ui::slot_kept`
-//! keeps what an extension's fill built, and `Ui::slot_replay` pushes it
-//! again without asking the extension — when the params agree, the slot
-//! is where it was, and nothing the fill read of the frame has moved.
-//! Everything else here is the core refusing, and saying why.
+//! A component instance replayed (ADR 0060, ADR 0067; first built for
+//! slots as ADR 0045, backlog F142): every placement keeps what the
+//! extension's fill built, and the next placement at the same key pushes it
+//! again without asking the extension — when the props agree and nothing
+//! the fill read of the frame has moved. Everything else here is the core
+//! refusing, and saying which.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use kui_core::{
-    Color, Core, Extension, Extensions, InputEvent, Key, NodeSpec, OriginId, Size, Slot, SlotFill,
+    Color, Core, Extension, Extensions, InputEvent, Key, NodeSpec, OriginId, Size, Instance, FillAnswer,
     TextStyle, Ui, UiEvent, Value, Vec2,
 };
 
 /// A stand-in extension that counts its views and draws what the test
 /// asks: `rows` text rows in a keyed column, each a hover-tracking box,
-/// and — on request — reads a fact of the frame, declares a nested
-/// slot, asks for a frame, or draws a `cells` grid.
+/// and — on request — reads a fact of the frame, places a nested
+/// component, asks for a frame, or draws a `cells` grid.
 #[derive(Default)]
 struct Ext {
     views: Rc<Cell<usize>>,
@@ -34,7 +35,7 @@ struct Ext {
     read_metrics: bool,
     /// Draw the `accent` role, read by name through `Ui::token_color`.
     read_token: bool,
-    /// Declare `inner/panel` between the rows.
+    /// Place `inner/panel` between the rows.
     nest: bool,
     /// Ask for a frame while drawing.
     ask_frame: bool,
@@ -55,10 +56,10 @@ impl Extension for Ext {
     fn name(&self) -> &str {
         "outer"
     }
-    fn slots(&self) -> &[String] {
-        &[]
+    fn components(&self) -> &[String] {
+        std::slice::from_ref(&PANE)
     }
-    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.views.set(self.views.get() + 1);
         if self.fail {
             return Err("no view today".into());
@@ -107,7 +108,7 @@ impl Extension for Ext {
                 let label = format!("row{i}");
                 ui.text_in_keyed(&label, row(i), &format!("row {i}"), TextStyle::new(12.0));
                 if self.nest && i == 0 {
-                    ui.slot("inner/panel");
+                    ui.component("inner/panel", &Value::Null);
                 }
             }
             if self.cells {
@@ -130,7 +131,7 @@ impl Extension for Ext {
     }
 }
 
-/// The inner extension a nested slot asks for: one text, counted.
+/// The inner extension a nested placement asks for: one text, counted.
 #[derive(Default)]
 struct Inner {
     views: Rc<Cell<usize>>,
@@ -140,10 +141,10 @@ impl Extension for Inner {
     fn name(&self) -> &str {
         "inner"
     }
-    fn slots(&self) -> &[String] {
-        std::slice::from_ref(&PANEL)
+    fn components(&self) -> &[String] {
+        &[]
     }
-    fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, _slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.views.set(self.views.get() + 1);
         ui.text_in_keyed(
             "inner",
@@ -158,7 +159,7 @@ impl Extension for Inner {
     }
 }
 
-static PANEL: String = String::new();
+static PANE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| "pane".to_owned());
 
 struct Rig {
     core: Core,
@@ -174,15 +175,14 @@ fn rig(ext: Ext) -> Rig {
     let inner_views = Rc::new(Cell::new(0));
     let mut exts = Extensions::new();
     exts.push_as("outer", Box::new(ext)).unwrap();
-    // `Inner` lists its slot by a static the test cannot name in `slots`,
-    // so it is loaded under the wildcard instead.
+    // `Inner` takes every name under its namespace.
     exts.push_as(
         "inner",
         Box::new(InnerAny {
             inner: Inner {
                 views: inner_views.clone(),
             },
-            slots: vec![kui_core::ANY_SLOT.to_owned()],
+            components: vec![kui_core::ANY_COMPONENT.to_owned()],
         }),
     )
     .unwrap();
@@ -198,20 +198,20 @@ fn rig(ext: Ext) -> Rig {
     }
 }
 
-/// `Inner` with a slots list of its own.
+/// `Inner` with a components list of its own.
 struct InnerAny {
     inner: Inner,
-    slots: Vec<String>,
+    components: Vec<String>,
 }
 
 impl Extension for InnerAny {
     fn name(&self) -> &str {
         self.inner.name()
     }
-    fn slots(&self) -> &[String] {
-        &self.slots
+    fn components(&self) -> &[String] {
+        &self.components
     }
-    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.inner.view(slot, ui)
     }
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
@@ -219,42 +219,41 @@ impl Extension for InnerAny {
     }
 }
 
-fn params(title: &str) -> Value {
-    Value::map([("title", Value::Str(title.into()))])
+fn params(title: &str, fresh: bool) -> Value {
+    let mut p = vec![
+        ("key".to_owned(), Value::str("pane")),
+        ("title".to_owned(), Value::Str(title.into())),
+    ];
+    if fresh {
+        p.push(("fresh".to_owned(), Value::Bool(true)));
+    }
+    Value::Map(p)
 }
 
 impl Rig {
-    /// One frame: a root column, the slot — kept when `fresh`, replayed
-    /// otherwise — then a host cell; `inside` puts the slot in a keyed
-    /// box of its own instead of at the root. Answers what `slot_replay`
-    /// said (`None` for a `slot_kept` frame).
-    fn frame_with(&mut self, fresh: bool, title: &str, inside: bool) -> Option<SlotFill> {
-        let p = params(title);
+    /// One frame: a root column, the instance — `fresh` (drawn and not
+    /// kept) or replayable — then a host cell; `inside` places it in a
+    /// keyed box of its own instead of at the root, which is another key.
+    /// Answers what the placement said.
+    fn frame_with(&mut self, fresh: bool, title: &str, inside: bool) -> Option<FillAnswer> {
+        let p = params(title, fresh);
         let mut ui = self
             .core
             .frame_with(Size::new(400.0, 300.0), 1.0, &mut self.exts);
         ui.configure_root(NodeSpec::column().fill());
-        let place = |ui: &mut Ui<'_>| {
-            if fresh {
-                assert!(ui.slot_kept("outer/root", &p));
-                None
-            } else {
-                ui.slot_replay("outer/root", &p)
-            }
-        };
         let fill = if inside {
             let mut fill = None;
-            ui.with_keyed("other", NodeSpec::column(), |ui| fill = place(ui));
+            ui.with_keyed("other", NodeSpec::column(), |ui| fill = ui.component("outer/pane", &p));
             fill
         } else {
-            place(&mut ui)
+            ui.component("outer/pane", &p)
         };
         ui.leaf(NodeSpec::row().size(40.0, 10.0));
         ui.finish();
         fill
     }
 
-    fn frame(&mut self, fresh: bool) -> Option<SlotFill> {
+    fn frame(&mut self, fresh: bool) -> Option<FillAnswer> {
         self.frame_with(fresh, "a title", false)
     }
 
@@ -292,30 +291,27 @@ impl Rig {
 }
 
 #[test]
-fn a_replayed_slot_spares_the_extension_and_builds_the_same_tree() {
+fn a_replayed_instance_spares_the_extension_and_builds_the_same_tree() {
     let mut r = rig(Ext {
         rows: 3,
         ..Default::default()
     });
-    r.frame(true);
-    assert_eq!(r.views.get(), 1);
-    // A second frame, fresh, for the tree to compare against.
-    r.frame(true);
+    // A fresh frame, drawn and not kept, for the tree to compare against.
+    assert_eq!(r.frame(true), Some(FillAnswer::NotKept));
     let fresh = r.keys();
     let fresh_texts = r.texts();
-    assert_eq!(r.views.get(), 2);
-
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.views.get(), 1);
+    // The first replayable placement fills and keeps; the next replays.
+    assert_eq!(r.frame(false), Some(FillAnswer::NotKept));
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     assert_eq!(r.views.get(), 2, "the extension was not asked");
     assert_eq!(r.keys(), fresh, "the same nodes under the same keys");
     assert_eq!(r.texts(), fresh_texts, "and the same text");
-    assert_eq!(r.core.slot_fill("outer/root"), Some(SlotFill::Replayed));
     // The panel, its title, and a box with a text per row.
-    assert_eq!(r.core.slot_kept_nodes("outer/root"), Some(8));
-
+    assert_eq!(r.core.instance_kept_nodes(Key::ROOT.str("pane")), Some(8));
     // Again and again.
     for _ in 0..3 {
-        assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+        assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     }
     assert_eq!(r.views.get(), 2);
 }
@@ -326,8 +322,8 @@ fn a_replayed_node_still_takes_input_under_the_extensions_origin() {
         rows: 2,
         ..Default::default()
     });
-    r.frame(true);
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    r.frame(false);
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     let rect = r.rect_of("row1");
     let events = kui_core::testing::click(&mut r.core, Vec2::new(rect.x + 2.0, rect.y + 2.0));
     let hit = events
@@ -342,55 +338,36 @@ fn a_replayed_node_still_takes_input_under_the_extensions_origin() {
 }
 
 #[test]
-fn a_fresh_fill_is_asked_for_and_says_why() {
+fn a_fresh_fill_says_why() {
     let mut r = rig(Ext {
         rows: 1,
         ..Default::default()
     });
-    // Nothing kept yet: the first replay fills, and keeps.
-    assert_eq!(r.frame(false), Some(SlotFill::NotKept));
+    // Nothing kept yet: the first placement fills, and keeps.
+    assert_eq!(r.frame(false), Some(FillAnswer::NotKept));
     assert_eq!(r.views.get(), 1);
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
 
-    // Other params: filled fresh, and the new params are what is kept.
-    assert_eq!(
-        r.frame_with(false, "another", false),
-        Some(SlotFill::Params)
-    );
+    // Other props: filled fresh, and the new props are what is kept.
+    assert_eq!(r.frame_with(false, "another", false), Some(FillAnswer::Params));
     assert_eq!(r.views.get(), 2);
     assert!(r.texts().iter().any(|t| t == "another"));
-    assert_eq!(
-        r.frame_with(false, "another", false),
-        Some(SlotFill::Replayed)
-    );
+    assert_eq!(r.frame_with(false, "another", false), Some(FillAnswer::Replayed));
 
-    // Declared under another parent: the keys would differ, so fresh.
-    assert_eq!(r.frame_with(false, "another", true), Some(SlotFill::Moved));
+    // Placed under another parent: another key, so nothing kept there.
+    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::NotKept));
     assert_eq!(r.views.get(), 3);
-    assert_eq!(
-        r.frame_with(false, "another", true),
-        Some(SlotFill::Replayed)
-    );
+    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::Replayed));
 
-    // A frame that fills it plainly, or not at all, forgets the kept one.
-    {
-        let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
-        ui.slot_with("outer/root", &params("another"));
-        ui.finish();
-    }
-    assert_eq!(
-        r.frame_with(false, "another", true),
-        Some(SlotFill::NotKept)
-    );
+    // A frame that places it fresh, or not at all, forgets the kept one.
+    assert_eq!(r.frame_with(true, "another", true), Some(FillAnswer::NotKept));
+    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::NotKept));
     {
         let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
         ui.leaf(NodeSpec::row().size(40.0, 10.0));
         ui.finish();
     }
-    assert_eq!(
-        r.frame_with(false, "another", true),
-        Some(SlotFill::NotKept)
-    );
+    assert_eq!(r.frame_with(false, "another", true), Some(FillAnswer::NotKept));
 }
 
 #[test]
@@ -400,8 +377,8 @@ fn a_fact_the_fill_read_that_moved_runs_it_again() {
         read_hover: true,
         ..Default::default()
     });
-    r.frame(true);
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    r.frame(false);
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     assert!(r.texts().iter().any(|t| t == "not hovered"));
 
     // The pointer onto the row the fill asked about: what it read moved.
@@ -410,22 +387,15 @@ fn a_fact_the_fill_read_that_moved_runs_it_again() {
         rect.x + 1.0,
         rect.y + 1.0,
     )));
-    assert_eq!(r.frame(false), Some(SlotFill::Reads));
-    assert!(
-        r.core
-            .slot_fill_why("outer/root")
-            .is_some_and(|w| w.starts_with("Hover(")),
-        "{:?}",
-        r.core.slot_fill_why("outer/root")
-    );
+    assert_eq!(r.frame(false), Some(FillAnswer::Reads));
     assert_eq!(r.views.get(), 2);
     assert!(r.texts().iter().any(|t| t == "hovered"));
     // Still there: replayed, hovered.
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     // Away again.
     r.core
         .handle_input(InputEvent::CursorMoved(Vec2::new(390.0, 290.0)));
-    assert_eq!(r.frame(false), Some(SlotFill::Reads));
+    assert_eq!(r.frame(false), Some(FillAnswer::Reads));
     assert!(r.texts().iter().any(|t| t == "not hovered"));
 }
 
@@ -437,21 +407,14 @@ fn a_label_asked_for_before_it_answered_runs_the_fill_again_once_it_does() {
         ..Default::default()
     });
     // The first fill asks before its row exists: no answer, and kept so.
-    r.frame(true);
+    assert_eq!(r.frame(false), Some(FillAnswer::NotKept));
     assert!(r.texts().iter().any(|t| t == "no row0 yet"));
     // The row is in the last frame now: what was read moved, so the
-    // fill runs, and finds it.
-    assert_eq!(r.frame(false), Some(SlotFill::Reads));
-    assert!(
-        r.core
-            .slot_fill_why("outer/root")
-            .is_some_and(|w| w.starts_with("LabelMissing")),
-        "{:?}",
-        r.core.slot_fill_why("outer/root")
-    );
+    // fill runs, and finds it (backlog C84).
+    assert_eq!(r.frame(false), Some(FillAnswer::Reads));
     assert!(r.texts().iter().any(|t| t == "found row0"));
     // Answered from then on: replayed.
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     assert_eq!(r.views.get(), 2);
 }
 
@@ -462,28 +425,32 @@ fn the_clock_is_never_the_same_twice() {
         read_clock: true,
         ..Default::default()
     });
-    r.frame(true);
-    assert_eq!(r.frame(false), Some(SlotFill::Reads));
-    assert_eq!(r.frame(false), Some(SlotFill::Reads));
+    r.frame(false);
+    assert_eq!(r.frame(false), Some(FillAnswer::Reads));
+    assert_eq!(r.frame(false), Some(FillAnswer::Reads));
     assert_eq!(r.views.get(), 3);
 }
 
 #[test]
-fn a_nested_slot_is_declared_again_and_filled_fresh() {
+fn a_nested_instance_is_placed_again_and_replayed_by_its_own_lights() {
     let mut r = rig(Ext {
         rows: 2,
         nest: true,
         ..Default::default()
     });
-    r.frame(true);
+    r.frame(false);
     assert_eq!((r.views.get(), r.inner_views.get()), (1, 1));
     let fresh = r.keys();
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
+    // Filled plainly while the outer was being kept, the inner keeps of its
+    // own from the outer's first replay, and replays from the next.
     assert_eq!(
         (r.views.get(), r.inner_views.get()),
         (1, 2),
-        "the outer was spared, the inner ran"
+        "the outer was spared; the inner it placed again ran, and kept"
     );
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
+    assert_eq!((r.views.get(), r.inner_views.get()), (1, 2), "both spared now");
     assert_eq!(r.keys(), fresh);
     assert!(r.texts().iter().any(|t| t == "inner"));
     // The inner's nodes carry its origin, inside the outer's.
@@ -510,9 +477,9 @@ fn a_fill_that_declares_of_the_frame_or_pushes_an_unknown_node_is_not_replayed()
         },
     ] {
         let mut r = rig(ext);
-        r.frame(true);
-        assert_eq!(r.frame(false), Some(SlotFill::NotReplayable));
-        assert_eq!(r.frame(false), Some(SlotFill::NotReplayable));
+        r.frame(false);
+        assert_eq!(r.frame(false), Some(FillAnswer::NotReplayable));
+        assert_eq!(r.frame(false), Some(FillAnswer::NotReplayable));
         assert_eq!(r.views.get(), 3);
     }
 }
@@ -526,14 +493,14 @@ fn a_replay_resolves_hover_for_its_own_frame() {
         rows: 2,
         ..Default::default()
     });
-    r.frame(true);
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    r.frame(false);
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     let rect = r.rect_of("row1");
     r.core.handle_input(InputEvent::CursorMoved(Vec2::new(
         rect.x + 1.0,
         rect.y + 1.0,
     )));
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     let key = r.core.key_of("row1").unwrap();
     r.core.set_inspect(true);
     let bg = r
@@ -546,75 +513,10 @@ fn a_replay_resolves_hover_for_its_own_frame() {
     assert_eq!(bg, Color::hex(0x3355ffff), "painted hovered");
 }
 
-#[test]
-fn a_slot_kept_inside_a_kept_fill_is_a_plain_slot() {
-    // The nested extension's own `slot_replay` has nothing to replay from
-    // inside a fill being kept: it fills, answers `NotKept`, and the
-    // outer's journal is whole.
-    struct Nester {
-        inner_fill: Rc<Cell<Option<SlotFill>>>,
-    }
-    impl Extension for Nester {
-        fn name(&self) -> &str {
-            "nester"
-        }
-        fn slots(&self) -> &[String] {
-            &[]
-        }
-        fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
-            ui.with_keyed("box", NodeSpec::column(), |ui| {
-                self.inner_fill
-                    .set(ui.slot_replay("inner/panel", &Value::Null));
-            });
-            Ok(())
-        }
-        fn on_event(&mut self, _ev: &UiEvent) -> Vec<Value> {
-            Vec::new()
-        }
-    }
-    let inner_fill = Rc::new(Cell::new(None));
-    let inner_views = Rc::new(Cell::new(0));
-    let mut exts = Extensions::new();
-    exts.push_as(
-        "nester",
-        Box::new(Nester {
-            inner_fill: inner_fill.clone(),
-        }),
-    )
-    .unwrap();
-    exts.push_as(
-        "inner",
-        Box::new(InnerAny {
-            inner: Inner {
-                views: inner_views.clone(),
-            },
-            slots: vec![kui_core::ANY_SLOT.to_owned()],
-        }),
-    )
-    .unwrap();
-    let mut core = Core::new();
-    for i in 0..3 {
-        let mut ui = core.frame_with(Size::new(200.0, 200.0), 1.0, &mut exts);
-        let fill = ui.slot_replay("nester/root", &Value::Null);
-        ui.finish();
-        assert_eq!(
-            fill,
-            Some(if i == 0 {
-                SlotFill::NotKept
-            } else {
-                SlotFill::Replayed
-            })
-        );
-    }
-    assert_eq!(inner_fill.get(), Some(SlotFill::NotKept));
-    assert_eq!(inner_views.get(), 3, "the inner ran every frame");
-}
-
 /// What a theme change does to a kept fill: one that read the palette
-/// (through `Ui::theme` or a role by name) or the metrics is run again,
-/// says the theme or metrics moved, and draws the new one; one that read
-/// neither is replayed; and a palette set again to what it was is no
-/// change (backlog F155).
+/// (through `Ui::theme` or a role by name) or the metrics is run again and
+/// draws the new one; one that read neither is replayed; and a palette set
+/// again to what it was is no change (backlog F155).
 #[test]
 fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
     let pink = kui_core::Theme::light().with_accent(Color::hex(0xff00ffff));
@@ -625,7 +527,7 @@ fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
         core.set_metrics(m);
     };
     type Change<'a> = &'a dyn Fn(&mut Core);
-    let cases: [(Ext, Change<'_>, &str, &str); 3] = [
+    let cases: [(Ext, Change<'_>, &str); 3] = [
         (
             Ext {
                 rows: 1,
@@ -633,7 +535,6 @@ fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
                 ..Default::default()
             },
             &theme,
-            "Theme",
             "ff00ffff",
         ),
         (
@@ -643,7 +544,6 @@ fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
                 ..Default::default()
             },
             &theme,
-            "Theme",
             "ff00ffff",
         ),
         (
@@ -653,23 +553,21 @@ fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
                 ..Default::default()
             },
             &metrics,
-            "Metrics",
             "radius 13",
         ),
     ];
-    for (ext, change, why, drawn) in cases {
+    for (ext, change, drawn) in cases {
         let mut r = rig(ext);
-        r.frame(true);
-        assert_eq!(r.frame(false), Some(SlotFill::Replayed), "{why}");
+        r.frame(false);
+        assert_eq!(r.frame(false), Some(FillAnswer::Replayed), "{drawn}");
         change(&mut r.core);
-        assert_eq!(r.frame(false), Some(SlotFill::Reads), "{why}");
-        assert_eq!(r.core.slot_fill_why("outer/root"), Some(why));
+        assert_eq!(r.frame(false), Some(FillAnswer::Reads), "{drawn}");
         assert_eq!(r.views.get(), 2);
         assert!(r.texts().iter().any(|t| t == drawn), "{:?}", r.texts());
-        assert_eq!(r.frame(false), Some(SlotFill::Replayed), "{why}");
+        assert_eq!(r.frame(false), Some(FillAnswer::Replayed), "{drawn}");
         // Set again, the same: nothing moved.
         change(&mut r.core);
-        assert_eq!(r.frame(false), Some(SlotFill::Replayed), "{why}");
+        assert_eq!(r.frame(false), Some(FillAnswer::Replayed), "{drawn}");
         assert_eq!(r.views.get(), 2);
     }
 
@@ -678,52 +576,9 @@ fn a_fill_that_read_the_theme_or_metrics_runs_again_when_either_changes() {
         rows: 2,
         ..Default::default()
     });
-    r.frame(true);
+    r.frame(false);
     theme(&mut r.core);
     metrics(&mut r.core);
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.frame(false), Some(FillAnswer::Replayed));
     assert_eq!(r.views.get(), 1);
-}
-
-/// `Core::slot_fill` after a frame reads that frame's answer, and a frame
-/// that did not ask `slot_replay` — it kept the slot, filled it plainly,
-/// or did not declare it — has none; only while the next frame is built,
-/// before its slot, does it read the frame before's (backlog F156).
-#[test]
-fn slot_fill_after_a_frame_that_did_not_replay_is_none() {
-    let mut r = rig(Ext {
-        rows: 1,
-        ..Default::default()
-    });
-    r.frame(true);
-    assert_eq!(r.core.slot_fill("outer/root"), None, "kept, not asked");
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
-    assert_eq!(r.core.slot_fill("outer/root"), Some(SlotFill::Replayed));
-
-    // Kept: the extension ran, and nothing was asked of `slot_replay`.
-    assert_eq!(r.frame(true), None);
-    assert_eq!(r.views.get(), 2);
-    assert_eq!(r.core.slot_fill("outer/root"), None);
-    assert_eq!(r.core.slot_fill_why("outer/root"), None);
-
-    // Filled plainly, or not declared: the same.
-    for declare in [true, false] {
-        // An answer first, so the frame after has one to fall back on.
-        assert!(r.frame(false).is_some());
-        assert!(r.core.slot_fill("outer/root").is_some());
-        let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
-        if declare {
-            ui.slot_with("outer/root", &params("a title"));
-        }
-        ui.finish();
-        assert_eq!(r.core.slot_fill("outer/root"), None, "declared: {declare}");
-    }
-
-    // While a frame is built, before its slot: the frame before's answer.
-    r.frame(true);
-    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
-    let mut ui = r.core.frame_with(Size::new(400.0, 300.0), 1.0, &mut r.exts);
-    assert_eq!(ui.core().slot_fill("outer/root"), Some(SlotFill::Replayed));
-    ui.finish();
-    assert_eq!(r.core.slot_fill("outer/root"), None, "and after it, none");
 }

@@ -7403,10 +7403,10 @@ impl crate::runtime::Extension for ConfKit {
     fn components(&self) -> &[String] {
         &CONF_COMPONENTS
     }
-    fn view(&mut self, _slot: &crate::slot::Slot<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, _slot: &crate::slot::Instance<'_>, _ui: &mut Ui<'_>) -> Result<(), String> {
         Ok(())
     }
-    fn component(&mut self, inst: &crate::slot::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn component(&mut self, inst: &crate::slot::Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         let title = inst.params.get_str("title").unwrap_or("card").to_string();
         ui.with(
             NodeSpec::column()

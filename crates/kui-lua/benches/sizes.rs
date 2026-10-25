@@ -8,7 +8,7 @@
 //!
 //! Run: cargo bench -p kui-lua --bench sizes
 
-use kui_core::{Core, Extension, OriginId, Size, Slot};
+use kui_core::{Core, Extension, OriginId, Size, Instance};
 use kui_lua::LuaExtension;
 
 fn view(width: &str) -> String {
@@ -29,7 +29,7 @@ fn view(width: &str) -> String {
 fn frame(core: &mut Core, ext: &mut LuaExtension) {
     let mut ui = core.frame(Size::new(1600.0, 1000.0), 1.0);
     ui.set_origin(OriginId(1));
-    ext.view(&Slot::root(), &mut ui).unwrap();
+    ext.view(&Instance::root(), &mut ui).unwrap();
     ui.finish();
 }
 

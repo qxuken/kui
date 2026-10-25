@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use kui_core::{Color, Core, Extension, NodeSpec, OriginId, Size, Slot, TextStyle};
+use kui_core::{Color, Core, Extension, NodeSpec, OriginId, Size, Instance, TextStyle};
 use kui_lua::LuaExtension;
 
 const ROWS: usize = 300;
@@ -55,7 +55,7 @@ fn rust_frame(core: &mut Core) {
 fn lua_frame(core: &mut Core, ext: &mut LuaExtension) {
     let mut ui = core.frame(Size::new(800.0, 600.0), 1.0);
     ui.set_origin(OriginId(1));
-    ext.view(&Slot::root(), &mut ui).expect("lua view");
+    ext.view(&Instance::root(), &mut ui).expect("lua view");
     ui.finish();
 }
 

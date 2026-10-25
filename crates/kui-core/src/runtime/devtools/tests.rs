@@ -2859,7 +2859,7 @@ fn the_menu_holds_the_placements_and_an_overflowing_strip_scrolls() {
         let mut ui = core.frame(VIEWPORT, 1.0);
         view(&mut ui, None);
         for i in 0..12 {
-            ui.devtools_tab(&format!("ext{i}"), &format!("Extension tab {i}"), "slot");
+            ui.devtools_tab(&format!("ext{i}"), &format!("Extension tab {i}"), "ext/tab", &crate::value::Value::Null);
         }
         ui.finish();
     };

@@ -12,7 +12,7 @@ use kui_core::diag::{RESERVED_TOKEN, UNKNOWN_TOKEN};
 use kui_core::testing::codes;
 use kui_core::tokens::{COLOR_ROLES, LENGTH_ROLES};
 use kui_core::{
-    Appearance, Color, Core, Extension, Extensions, NodeSpec, Size, Slot, SystemEnv, TokenError,
+    Appearance, Color, Core, Extension, Extensions, NodeSpec, Size, Instance, SystemEnv, TokenError,
     TokenKind, TokenRef, Tokens, Ui, UiEvent, Value,
 };
 
@@ -162,10 +162,7 @@ impl Extension for Guest {
     fn name(&self) -> &str {
         "guest"
     }
-    fn slots(&self) -> &[String] {
-        &[]
-    }
-    fn view(&mut self, _slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, _slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         if let Some(t) = self.declare.take() {
             ui.set_tokens(t);
         }

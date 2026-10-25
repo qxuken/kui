@@ -202,11 +202,16 @@ pub enum Tab {
 /// identity), the label the strip shows, and
 /// the slot an extension fills it through — `None` for the host form,
 /// whose content is the host's own subtree, anchored to the body.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct TabDecl {
     pub(crate) name: String,
     pub(crate) label: String,
+    /// The component placed in the tab's body (ADR 0067), `None` for a
+    /// tab the host draws itself.
     pub(crate) slot: Option<String>,
+    /// What the host passes the component besides the panel's facts: its
+    /// event props, so the tab's events reach the host as its own messages.
+    pub(crate) props: Value,
 }
 
 /// Which tab the panel shows: one of its own three, or a declared one by
@@ -1259,6 +1264,18 @@ impl Core {
     /// `Ui::devtools_tab` / `devtools_tab_with`, for a binding that
     /// opens the content itself.
     pub fn devtools_tab_declare(&mut self, name: &str, label: &str, slot: Option<&str>) -> bool {
+        self.devtools_tab_declare_with(name, label, slot, &Value::Null)
+    }
+
+    /// [`Self::devtools_tab_declare`] with the props the tab's component is
+    /// placed with besides the panel's facts (ADR 0067): its event props.
+    pub fn devtools_tab_declare_with(
+        &mut self,
+        name: &str,
+        label: &str,
+        slot: Option<&str>,
+        props: &Value,
+    ) -> bool {
         self.taint_kept("it declared a devtools tab");
         if !cfg!(feature = "devtools") || self.tree.is_empty() {
             return false;
@@ -1271,6 +1288,7 @@ impl Core {
             name: name.to_string(),
             label: label.to_string(),
             slot: slot.map(str::to_string),
+            props: props.clone(),
         });
         true
     }
@@ -1321,21 +1339,14 @@ impl Core {
         self.open_keyed(&format!("devtools-tab:{name}"), spec);
     }
 
-    /// Whether `name` is a slot a declared tab names this frame — what
-    /// counts as *declared* for the `unknown-slot` check whether or not
-    /// the panel mounted it.
-    pub(crate) fn devtools_tab_slot(&self, name: &str) -> bool {
-        self.dt_tabs.iter().any(|t| t.slot.as_deref() == Some(name))
-    }
-
-    /// Mounts the extension form of the tab on show, if it has one: the
-    /// slot is declared at the cursor under the host's origin — so the
-    /// fill's replies reach the host — and filled inside a float anchored to the
-    /// tab's body, the panel's facts as params. Called with the filler in
-    /// hand: from `Ui::finish` in the
-    /// main window before the filler's own finish, and in the panel's
-    /// window after its build. Nothing to do when the tab on show is the
-    /// panel's own or a host form.
+    /// Mounts the extension form of the tab on show, if it has one: its
+    /// component is placed under the host's origin — so the instance's
+    /// events reach the host — inside a float anchored to the tab's body,
+    /// the panel's facts as its props, and drawn fresh (the facts move
+    /// with every hover). Called with the filler in hand: from
+    /// `Ui::finish` in the main window before the filler's own finish, and
+    /// in the panel's window after its build. Nothing to do when the tab
+    /// on show is the panel's own or a host form.
     pub(crate) fn devtools_fill_mount(&mut self, filler: &mut dyn crate::slot::Fill) {
         if !cfg!(feature = "devtools") || self.tree.is_empty() {
             return;
@@ -1360,21 +1371,43 @@ impl Core {
             let Some(slot) = decl.slot.clone() else {
                 return;
             };
-            (decl.name.clone(), slot, d.facts_params())
+            (decl.name.clone(), slot, merged(&decl.props, d.facts_params()))
         };
         let saved = self.origin;
         self.origin = OriginId::HOST;
-        if let Some(key) = self.begin_slot(&slot) {
-            self.devtools_tab_open(&name);
-            filler.fill(&slot, key, &params, &mut crate::ui::Ui::new(self));
-            self.close();
-        }
+        self.devtools_tab_open(&name);
+        let key = self.child_key(&slot);
+        filler.placed(&slot, key, &params, OriginId::HOST, None);
+        filler.component(
+            &slot,
+            key,
+            &params,
+            &mut |_: &str, _: &mut crate::ui::Ui<'_>| {},
+            &mut crate::ui::Ui::new(self),
+        );
+        self.close();
         self.origin = saved;
     }
 }
 
+/// The host's props for a tab's component, then the panel's facts, which
+/// win a name both use.
+fn merged(props: &Value, facts: Value) -> Value {
+    let Value::Map(facts) = facts else { return props.clone() };
+    let mut out: Vec<(String, Value)> = match props {
+        Value::Map(entries) => entries
+            .iter()
+            .filter(|(k, _)| !facts.iter().any(|(f, _)| f == k))
+            .cloned()
+            .collect(),
+        _ => Vec::new(),
+    };
+    out.extend(facts);
+    Value::Map(out)
+}
+
 impl State {
-    /// The panel's facts as a slot's params: the
+    /// The panel's facts as a tab component's props: the
     /// selected, hovered and picked nodes as hex keys (`null` for none),
     /// the region and the focus by label from the facts rows.
     fn facts_params(&self) -> Value {

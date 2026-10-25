@@ -1327,10 +1327,10 @@ impl kui_core::Extension for Rows {
     fn name(&self) -> &str {
         "rows"
     }
-    fn slots(&self) -> &[String] {
-        &[]
+    fn components(&self) -> &[String] {
+        std::slice::from_ref(&LIST)
     }
-    fn view(&mut self, _slot: &kui_core::Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, _slot: &kui_core::Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         ui.with_keyed("list", NodeSpec::column().gap(1.0), |ui| {
             for i in 0..500u64 {
                 ui.with_indexed(
@@ -1352,14 +1352,18 @@ impl kui_core::Extension for Rows {
     }
 }
 
+static LIST: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| "list".to_owned());
+
 fn run_slot_frame(core: &mut Core, exts: &mut kui_core::Extensions, replay: bool) -> usize {
     let mut ui = core.frame_with(Size::new(1920.0, 1080.0), 2.0, exts);
     ui.configure_root(NodeSpec::column().fill());
-    if replay {
-        ui.slot_replay("rows/root", &Value::Null);
+    // Replayed, or fresh — drawn every frame and not kept (ADR 0067).
+    let props = if replay {
+        Value::Null
     } else {
-        ui.slot_kept("rows/root", &Value::Null);
-    }
+        Value::map([("fresh", Value::Bool(true))])
+    };
+    ui.component("rows/list", &props);
     ui.finish();
     let (dl, _) = core.output();
     dl.quads.len()

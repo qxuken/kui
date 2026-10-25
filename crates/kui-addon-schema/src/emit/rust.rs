@@ -115,7 +115,7 @@ fn lib(schema: &Schema) -> String {
          //! setter each the rest, and `place` puts it in a view under the namespace\n\
          //! `{a}` (`place_in` under another, for {a} loaded twice).\n\n\
          #![allow(clippy::new_without_default, clippy::too_many_arguments)]\n\n\
-         use kui_core::channel::Channel;\nuse kui_core::{{SlotFill, Ui, Value}};\n\n\
+         use kui_core::channel::Channel;\nuse kui_core::{{FillAnswer, Ui, Value}};\n\n\
          /// The namespace the components are placed under unless told otherwise.\n\
          pub const NAMESPACE: &str = \"{a}\";\n"
     );
@@ -306,8 +306,8 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
     );
     let _ = writeln!(
         s,
-        "    /// Places it under `{a}/{}`.\n    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {{\n        ui.component(\"{a}/{}\", &self.props())\n    }}\n\n    \
-         /// Places it under `<namespace>/{}`.\n    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {{\n        ui.component(&format!(\"{{namespace}}/{}\"), &self.props())\n    }}",
+        "    /// Places it under `{a}/{}`.\n    pub fn place(&self, ui: &mut Ui<'_>) -> Option<FillAnswer> {{\n        ui.component(\"{a}/{}\", &self.props())\n    }}\n\n    \
+         /// Places it under `<namespace>/{}`.\n    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<FillAnswer> {{\n        ui.component(&format!(\"{{namespace}}/{}\"), &self.props())\n    }}",
         c.name, c.name, c.name, c.name
     );
     if has_children(c) {
@@ -325,7 +325,7 @@ fn component(s: &mut String, schema: &Schema, c: &Component) {
         let _ = writeln!(
             s,
             "\n    /// Places it with your children: `children(group, ui)` builds {} where it asks.\n    \
-             pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {{\n        \
+             pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<FillAnswer> {{\n        \
              ui.component_with(\"{a}/{}\", &self.props(), children)\n    }}",
             groups.join(", "),
             c.name

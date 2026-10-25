@@ -1,4 +1,5 @@
-//! A declared devtools tab (`docs/adr/0032-a-devtools-tab-mounts-a-slot.md`):
+//! A declared devtools tab (`docs/adr/0032-a-devtools-tab-mounts-a-slot.md`,
+//! its extension form a component since ADR 0067):
 //! the tab body is a node in the panel, and the content is a layer
 //! anchored to it — from the host's own view, lazily, or from an
 //! extension's fill of the slot the panel declares. Both forms are driven
@@ -9,11 +10,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use kui_core::diag::{DUPLICATE_TAB, UNKNOWN_SLOT};
+use kui_core::diag::DUPLICATE_TAB;
 use kui_core::testing::{click_at, codes};
 use kui_core::{
     Core, DevtoolsDock, Extension, Extensions, InputEvent, Key, KeyCode, KeyMods, KeyPress,
-    NodeSpec, Slot, TextStyle, Ui, UiEvent, Value, widgets,
+    NodeSpec, Instance, TextStyle, Ui, UiEvent, Value, widgets,
 };
 
 const VIEWPORT: kui_core::Size = kui_core::Size {
@@ -553,8 +554,8 @@ fn a_tab_declared_twice_warns_and_keeps_the_first() {
         let mut ui = core.frame(VIEWPORT, 1.0);
         ui.with(NodeSpec::column().grow_width(), |ui| {
             ui.devtools_tab_with("x", "First", |_| {});
-            ui.devtools_tab("x", "Second", "ext/x");
-            ui.devtools_tab("y", "Other", "ext/y");
+            ui.devtools_tab("x", "Second", "ext/x", &Value::Null);
+            ui.devtools_tab("y", "Other", "ext/y", &Value::Null);
         });
         ui.finish();
     };
@@ -598,10 +599,10 @@ impl Extension for Ext {
     fn name(&self) -> &str {
         "ts"
     }
-    fn slots(&self) -> &[String] {
+    fn components(&self) -> &[String] {
         std::slice::from_ref(Box::leak(Box::new("panel".to_string())))
     }
-    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         self.seen
             .borrow_mut()
             .push((slot.full_name(), slot.params.clone()));
@@ -611,14 +612,19 @@ impl Extension for Ext {
     }
     fn on_event(&mut self, ev: &UiEvent) -> Vec<Value> {
         self.heard.borrow_mut().push(ev.payload.clone());
-        vec![Value::map([("kind", Value::str("reply"))])]
+        vec![kui_core::slot::emit("on_plug", Value::Null)]
     }
 }
 
 fn host_view(ui: &mut Ui<'_>) {
     ui.with(NodeSpec::column().fill(), |ui| {
         widgets::button(ui, "press", Value::map([("kind", Value::str("pressed"))]));
-        ui.devtools_tab("syntax", "Tree-sitter", "ts/panel");
+        ui.devtools_tab(
+            "syntax",
+            "Tree-sitter",
+            "ts/panel",
+            &Value::map([("on_plug", Value::map([("kind", Value::str("plugged"))]))]),
+        );
     });
 }
 
@@ -628,12 +634,12 @@ fn frame_with(core: &mut Core, exts: &mut Extensions) {
     ui.finish();
 }
 
-/// The extension form: the slot is declared only while the tab is on
-/// show — and raises no `unknown-slot` otherwise — the fill lands over
-/// the body with the panel's facts as params, its events go to the
-/// extension by origin, and its replies reach the host.
+/// The extension form (ADR 0067): the component is placed only while the
+/// tab is on show, over the body, with the host's props and the panel's
+/// facts; its events go to the extension by origin, and what it emits
+/// reaches the host as the host's own message.
 #[test]
-fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
+fn an_extension_form_tab_places_a_component_when_shown() {
     let seen = Rc::new(RefCell::new(Vec::new()));
     let heard = Rc::new(RefCell::new(Vec::new()));
     let mut exts = Extensions::try_from(vec![Box::new(Ext {
@@ -651,11 +657,7 @@ fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
         seen.borrow().is_empty(),
         "not on show: the extension is not asked"
     );
-    let ws = core.take_warnings();
-    assert!(
-        !codes(&ws).contains(&UNKNOWN_SLOT),
-        "a tab's slot counts as declared with the tab not on show: {ws:?}"
-    );
+    assert!(core.take_warnings().is_empty());
 
     core.handle_input(chord('N'));
     core.handle_input(chord('N'));
@@ -665,8 +667,8 @@ fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
     let (name, params) = seen.borrow()[0].clone();
     assert_eq!(name, "ts/panel");
     assert!(
-        params.get("selected").is_some(),
-        "the panel's facts: {params:?}"
+        params.get("selected").is_some() && params.get("on_plug").is_some(),
+        "the host's props and the panel's facts: {params:?}"
     );
     frame_with(&mut core, &mut exts);
     let body = rect_of(&core, "kui-devtools/tab/syntax").expect("the body");
@@ -677,15 +679,16 @@ fn an_extension_form_tab_is_a_slot_the_panel_declares_when_shown() {
     );
     assert!(texts(&core).iter().any(|t| t == "from the plugin"));
 
-    // The fill's click is the extension's, by origin; its reply is the
-    // host's, because the panel declared the slot for the host.
+    // The fill's click is the extension's, by origin; what it emits is the
+    // host's, because the panel placed the component for the host.
     let evs = click_at(&mut core, content.x + 2.0, content.y + 2.0);
     assert_eq!(evs.len(), 1);
     let mut out = Vec::new();
     exts.route(evs, |ev| out.push(ev));
     assert_eq!(heard.borrow().len(), 1, "the extension heard its click");
-    assert_eq!(out.len(), 1, "one reply for the host: {out:?}");
-    assert_eq!(out[0].event.name(), "reply");
+    assert_eq!(out.len(), 1, "one event for the host: {out:?}");
+    assert_eq!(out[0].event.name(), "component");
+    assert_eq!(out[0].payload.get_str("kind"), Some("plugged"));
     let _ = Key::ROOT;
 }
 

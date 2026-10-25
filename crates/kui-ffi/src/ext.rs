@@ -72,7 +72,7 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 
-use kui_core::{Extension, Slot, Ui, UiEvent, Value};
+use kui_core::{Extension, Instance, Ui, UiEvent, Value};
 
 use crate::convert::kstr;
 use crate::{KUI_ABI_VERSION, KuiCtx, KuiEvent, KuiStr, KuiValue};
@@ -464,7 +464,7 @@ impl Extension for CExtension {
         &self.components
     }
 
-    fn view(&mut self, slot: &Slot<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
+    fn view(&mut self, slot: &Instance<'_>, ui: &mut Ui<'_>) -> Result<(), String> {
         // Borrows the host's frame for this call only - the plugin builds
         // into the same tree the host just built into, under its own origin.
         // Which slot, and with what, rides on the context: `kui_slot_name`
