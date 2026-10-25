@@ -4,12 +4,14 @@
 //! absolute and `H`, `V`, `S`, `T` and the relative forms expanded by
 //! [`Path::parse`], the one parser every binding goes through — filled by
 //! a rule and, optionally, stroked. The core flattens it once per frame
-//! for the hit outline, rasterizes it through zeno (swash's rasterizer,
-//! already in the tree for glyphs) into an alpha mask at the node's
-//! physical scale, keeps the mask in the glyph atlas keyed on a hash of
-//! the ops, and draws it as a `GlyphMask` quad tinted by the fill or the
-//! stroke colour. The ops live in a per-frame list beside the tree, as a
-//! line's points do, and a node refers to its run by [`PathId`].
+//! for the hit outline, rasterizes it — zeno's stroker and cell walk
+//! (swash's rasterizer, already in the tree for glyphs) over storage of
+//! kui's own that keeps the cost linear (`raster`, backlog C96) — into
+//! an alpha mask at the node's physical scale, keeps the mask in the
+//! glyph atlas keyed on a hash of the ops, and draws it as a `GlyphMask`
+//! quad tinted by the fill or the stroke colour. The ops live in a
+//! per-frame list beside the tree, as a line's points do, and a node
+//! refers to its run by [`PathId`].
 
 use crate::geom::{Rect, Vec2};
 use crate::retain::Kept;
@@ -1152,7 +1154,8 @@ pub fn rasterize_at(
     h: u32,
     paint: MaskPaint,
 ) -> Vec<u8> {
-    use swash::zeno::{Cap, Command, Fill, Join, Mask, PathBuilder, Point, Stroke};
+    use crate::raster::{Blend, render};
+    use swash::zeno::{Cap, Command, Fill, Join, PathBuilder, Point, Stroke, Style};
     let len = (w as usize) * (h as usize);
     let mut buf = vec![0u8; len];
     if len == 0 || ops.is_empty() || !drawable(ops, scale, off, w, h, paint) {
@@ -1328,10 +1331,7 @@ pub fn rasterize_at(
                 FillRule::NonZero => Fill::NonZero,
                 FillRule::EvenOdd => Fill::EvenOdd,
             };
-            Mask::new(&cmds[..])
-                .style(fill)
-                .size(w, h)
-                .render_into(&mut buf, None);
+            render(&cmds, Style::Fill(fill), w, h, &mut buf, Blend::Over);
             // A fill that covers nothing - a ring's sector at a sweep of
             // 0, out along a radius and back - has no edge to bleed: the
             // outline alone would paint it as a hairline.
@@ -1340,24 +1340,14 @@ pub fn rasterize_at(
             }
             // The bleed: the outline a pixel wide, in the same mask by
             // max, so two fills sharing an edge overlap by the ramp.
-            let mut edge = vec![0u8; len];
             let mut stroke = Stroke::new(1.0);
             stroke.join(Join::Round).cap(Cap::Round);
-            Mask::new(&lines[..])
-                .style(stroke)
-                .size(w, h)
-                .render_into(&mut edge, None);
-            for (a, e) in buf.iter_mut().zip(edge) {
-                *a = (*a).max(e);
-            }
+            render(&lines, Style::Stroke(stroke), w, h, &mut buf, Blend::Max);
         }
         MaskPaint::Stroke(width) => {
             let mut stroke = Stroke::new(width.max(0.0));
             stroke.join(Join::Round).cap(Cap::Round);
-            Mask::new(&lines[..])
-                .style(stroke)
-                .size(w, h)
-                .render_into(&mut buf, None);
+            render(&lines, Style::Stroke(stroke), w, h, &mut buf, Blend::Over);
         }
         MaskPaint::Dashed(width, cut) => {
             let mut stroke = Stroke::new(width.max(0.0));
@@ -1367,10 +1357,7 @@ pub fn rasterize_at(
             if !cut.finer_than(1.0) {
                 stroke.dash(&cut.lens, cut.offset);
             }
-            Mask::new(&lines[..])
-                .style(stroke)
-                .size(w, h)
-                .render_into(&mut buf, None);
+            render(&lines, Style::Stroke(stroke), w, h, &mut buf, Blend::Over);
         }
     }
     buf

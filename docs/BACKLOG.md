@@ -3678,16 +3678,7 @@ bucket it; pure Lua is about 1.5 ms per series per 100k points, so Kit's
 min/max (and first/last) per bucket over a row range — on a channel, in
 Rust, reached from Lua and Node.
 
-### `.` C96 — A path whose `d` changes costs far more than its size
-
-**Found** profiling Kit's line chart: zeno's fill raster grows
-super-linearly with the edges crossing a scanline (a 1,400-vertex zigzag
-over a 360 px plot took 1.7 s a frame; 300 points at scale 2, 3–4 ms),
-strokes a 1 px bleed outline pass besides, and re-rasterizes the whole
-mask on any change to `d`. Kit now draws areas as polygon chunks. **Do.**
-Find what makes it super-linear (adaptive storage), and cache or tile.
-
-- `.` **C97** — [`slide` eases a move an ancestor made](backlog/closed-2026-09.md#-c97--slide-eases-a-move-an-ancestor-made--done-2026-10-26) — done (2026-10-26) — eases the place within the parent; ancestors' moves followed at once, a reparented node glides on
+- `.` **C96** — [A path whose `d` changes costs far more than its size](backlog/closed-2026-09.md#-c96--a-path-whose-d-changes-costs-far-more-than-its-size--done-2026-10-26) — done (2026-10-26) — zeno's cell walk over kui's own storage (cells sorted by row once): the 1,400-vertex zigzag 1.65 s → 6 ms, masks the same to the byte
 
 ### `.` C98 — An open menu ignores its items' accelerators
 

@@ -139,6 +139,7 @@ pub mod message;
 pub mod metrics;
 pub mod mip;
 pub mod path;
+mod raster;
 pub mod resources;
 pub(crate) mod retain;
 pub mod runtime;

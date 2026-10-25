@@ -1128,6 +1128,20 @@ for lua-language-server, and a new runner beside the window's.
   *What you can delete:* a `slide` an app turned off while the window
   resized, and a knob drawn by hand at the track's end to dodge it.
 
+- A path whose `d` changes costs what its size says (backlog C96): the
+  mask's raster kept each scanline's cells in a list it walked from the
+  start for every new one, so a row crossed by k edges cost k², and the
+  area under a 1,400-vertex zigzag over a 360 px plot took 1.65 s at
+  scale 2, the 1 px bleed's outline two thirds of it. The cells now go
+  to one list sorted by row at the end (kui-core's `raster.rs`, zeno's cell
+  walk and sweep over storage of kui's own), and the masks are the same
+  to the byte: the zigzag rasterizes in about 6 ms, a 1,400-point area
+  in 0.7 ms where it took 2.5, a 300-point one in about 0.2 ms where it
+  took 0.35. `benches/paths.rs` measures it.
+
+  *What you can delete:* an area chart cut into polygon chunks, or
+  thinned before it reached a `path`, to dodge the raster.
+
 ## 0.1.0-alpha.67 (2026-10-24)
 
 **What breaks.**
