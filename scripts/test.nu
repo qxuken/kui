@@ -159,6 +159,12 @@ def main [
         # The addon `native.cjs` picks up (the newest build wins); built
         # here rather than in the pool, so it does not wait on a cargo lock.
         try { ^cargo build -q -p kui-node } catch { print -e "the Node addon failed to build"; exit 2 }
+        # The corpus report Node's conformance test compares against, made
+        # again from this checkout's core: one left from before a pull
+        # failed the scene the pull changed, as if Node had drifted.
+        try {
+            ^cargo run -q -p kui-core --features conformance --example conformance-dump -- target/conformance.txt
+        } catch { print -e "the conformance report failed to build"; exit 2 }
         let npx = if $nu.os-info.name == "windows" { "node.exe" } else { "node" }
         $records = ($records | append {key: "node", cwd: ($root | path join packages kui), argv: [$npx "--test" "test.mjs"]})
     }

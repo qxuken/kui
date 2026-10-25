@@ -1110,7 +1110,7 @@ impl Tabs {
         ui.component(&format!("{namespace}/tabs"), &self.props())
     }
 
-    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group), `"trailing"` where it asks.
     pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
         ui.component_with("kit/tabs", &self.props(), children)
     }

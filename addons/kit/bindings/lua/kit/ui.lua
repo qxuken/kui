@@ -593,7 +593,8 @@ local function make(namespace)
 
   ---A strip of tabs over the body of the one chosen.
   ---
-  ---Your children: its list part is the chosen tab's body.
+  ---Your children: its list part is the chosen tab's body; `trailing` ends
+  ---the strip, at the far side: what acts on the chosen tab.
   ---@param props kit.TabsProps
   ---@param children? table
   ---@return kui.Node

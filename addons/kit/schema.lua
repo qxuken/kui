@@ -125,7 +125,10 @@ return {
       events = {
         { "change", doc = "Another tab was chosen.", fields = { { "value", "string", doc = "Its value." } } },
       },
-      children = { { "", doc = "is the chosen tab's body." } } },
+      children = {
+        { "", doc = "is the chosen tab's body." },
+        { "trailing", doc = "ends the strip, at the far side: what acts on the chosen tab." },
+      } },
     { "section",
       doc = "A heading that folds what is under it.",
       props = {

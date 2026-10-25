@@ -88,7 +88,8 @@ function make(namespace) {
       if (props.tabs !== undefined) wire.tabs = props.tabs;
       if (props.value !== undefined) wire.value = props.value;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
-      const groups = undefined;
+      const groups = {};
+      if (props.trailing !== undefined) groups.trailing = flat(props.trailing);
       return {
         type: 'component',
         key: props.key != null ? String(props.key) : undefined,

@@ -203,6 +203,8 @@ export interface TabsProps {
   onChange?: unknown;
   /** is the chosen tab's body. */
   children?: KuiNode;
+  /** ends the strip, at the far side: what acts on the chosen tab. */
+  trailing?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */

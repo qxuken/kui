@@ -152,6 +152,9 @@ function M.tabs(c, p)
          column({ width = "grow", height = "$kitRuleW", bg = here and ref(c, "accent") or nil }),
       })
    end
+
+   strip[#strip + 1] = ctx.grow()
+   strip[#strip + 1] = row({ height = "grow", gap = 4, cross_align = "center", pad = { r = 4 }, children("trailing") })
    return column({
       width = "grow",
       height = "grow",

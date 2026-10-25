@@ -226,7 +226,8 @@ for lua-language-server, and a new runner beside the window's.
   with `hide_label`, and `grow` makes the whole row its target; `segmented`
   and `search` take a `label` that names them without drawing (backlog
   C78); a spacer among a toolbar's or statusbar's items pushes what follows
-  to the end, where it stopped midway (backlog C82).
+  to the end, where it stopped midway, and `tabs` take a `trailing` group
+  for what acts on the chosen tab (backlog C82).
 
 - **Kit in the npm package** (backlog C77): `import { Button, extension }
   from '@qxuken/kui/kit'`, then `runWindowed(app, { extensions: [extension]
