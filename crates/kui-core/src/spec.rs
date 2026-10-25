@@ -1553,6 +1553,17 @@ pub struct InteractSpec {
     /// Declaring one replaces the ring the core draws by default. Pressed
     /// wins over focus wins over hover; eases with `transition`.
     pub focus_bg: Option<Color>,
+    /// The colour of the ring the core draws around a keyboard-visibly
+    /// focused node, for this node and every node under it that declares
+    /// none of its own (backlog C93): the nearest declaration on the
+    /// focused node or above it wins, and with none the theme's
+    /// `focus_ring` does. A colour with no alpha draws no ring — the way a
+    /// surface that shows its focus itself turns the core's off without
+    /// touching its background, as `focus_bg` would. What an extension
+    /// that draws in its own palette sets once, at the root of what it
+    /// draws, so the core's ring is in its colour; a `$token` resolves
+    /// against the declaring node's origin.
+    pub focus_ring: Option<Color>,
     /// Background while files dragged in from the OS are over this node.
     /// Wins over pressed, focus and hover — a press
     /// cannot be held while the OS holds a drag — and eases with
@@ -1817,6 +1828,7 @@ impl InteractSpec {
         click_sound: None,
         hover_sound: None,
         focus_bg: None,
+        focus_ring: None,
         drop_bg: None,
         selectable: false,
         focus_region: false,
@@ -2551,6 +2563,13 @@ impl NodeSpec {
     /// field); replaces the default focus ring.
     pub fn focus_bg(mut self, c: Color) -> Self {
         self.interact_mut().focus_bg = Some(c);
+        self
+    }
+
+    /// The core focus ring's colour here and below (see the `focus_ring`
+    /// field); [`Color::TRANSPARENT`] turns the ring off.
+    pub fn focus_ring(mut self, c: Color) -> Self {
+        self.interact_mut().focus_ring = Some(c);
         self
     }
 

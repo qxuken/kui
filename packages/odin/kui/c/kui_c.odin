@@ -705,6 +705,7 @@ Spec :: struct {
 	reveal_on_hover: u32,
 	floats_in_order: u32,
 	on_range: ^Value,
+	focus_ring: u32,
 }
 
 Announcement :: struct {

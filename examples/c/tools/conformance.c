@@ -2399,7 +2399,7 @@ static void conf_sampler(KuiCtx *ui, const Fixtures *f, int phase) {
         .shadow_color = 0x00000080, .shadow_x = 3, .shadow_y = 2, .shadow_blur = 2,
         .hoverable = 1, .hover_bg = 0x262a3aff, .pressed_bg = 0x30364aff,
         .hover_group = KUI_STR("cards"),
-        .focusable = 1, .focus_bg = 0x2b3350ff, .initial_focus = 1,
+        .focusable = 1, .focus_bg = 0x2b3350ff, .focus_ring = 0x8899aaff, .initial_focus = 1,
         .accent = 1,
         .cursor = KUI_CURSOR_POINTER,
         .selected = 1, .expanded = KUI_EXPANDED_EXPANDED,

@@ -2548,9 +2548,12 @@ impl Core {
     /// The default focus ring around the keyboard-visibly focused node, at
     /// the end of the layer the node is in — above every sibling that could
     /// touch it, under every layer over it — in the same display list
-    /// every binding draws. Not for editors (the caret shows focus), key
-    /// sinks (an app surface styles itself, through `is_focused` /
-    /// `focus_visible`) or nodes declaring `focus_bg`.
+    /// every binding draws. Not for editors (the caret shows focus), the
+    /// root (the whole window is not a thing focus is on) or nodes
+    /// declaring `focus_bg`. A key sink gets it too (backlog C93): a list
+    /// or a table that takes its keys as a sink drew no ring, so every
+    /// one drew its own edge. Its colour is the nearest `focus_ring` on
+    /// the node or above it, else the theme's; one with no alpha is none.
     fn emit_focus_ring(&mut self, layer: u32, scale: f32) {
         if !self.focus_visible {
             return;
@@ -2567,11 +2570,11 @@ impl Core {
                 .access()
                 .role
                 .is_some_and(crate::access::Role::is_editor);
-        if editor
-            || spec.events().on_key().is_some()
-            || spec.interact().focus_bg.is_some()
-            || spec.disabled
-        {
+        if editor || i == 0 || spec.interact().focus_bg.is_some() || spec.disabled {
+            return;
+        }
+        let mut ring = self.focus_ring_color(i);
+        if ring.a <= 0.0 {
             return;
         }
         let node = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
@@ -2605,7 +2608,6 @@ impl Core {
         if visible.w <= 0.0 || visible.h <= 0.0 {
             return;
         }
-        let mut ring = self.theme.focus_ring;
         ring.a *= self.opacity.get(i).copied().unwrap_or(1.0);
         self.display.quads.push(Quad {
             rect: rect.scaled(scale),
@@ -2618,6 +2620,20 @@ impl Core {
             clip: clip_id,
             uv: [0; 4],
         });
+    }
+
+    /// The ring colour for focused node `i`: the nearest `focus_ring`
+    /// declared on it or an ancestor, else the theme's. One walk up, once a
+    /// frame, for the one focused node.
+    fn focus_ring_color(&self, i: usize) -> Color {
+        let mut n = i as u32;
+        while n != NIL {
+            if let Some(c) = self.tree.specs[n as usize].interact().focus_ring {
+                return c;
+            }
+            n = self.tree.parent[n as usize];
+        }
+        self.theme.focus_ring
     }
 
     /// See the `ime_rect` field. None when nothing with a caret is

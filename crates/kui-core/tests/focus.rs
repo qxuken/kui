@@ -10,7 +10,8 @@
 use kui_core::testing::{click_at, tab};
 use kui_core::{
     AccessAction, AccessRequest, Align, Color, Core, EditKey, EditOptions, EventKind, FloatConfig,
-    InputEvent, Key, Mods, NodeSpec, Role, Size, TextStyle, UiEvent, Value, Vec2, WindowButton,
+    InputEvent, Key, KeyCode, KeyMods, KeyPress, Mods, NodeSpec, Role, Size, TextStyle, UiEvent,
+    Value, Vec2, WindowButton,
 };
 
 const H: f32 = 20.0;
@@ -353,16 +354,93 @@ fn keyboard_focus_draws_a_ring_and_pointer_focus_does_not() {
     frame(&mut core, false, false);
     assert_eq!(ring_count(&mut core), 0);
 
-    // Editors and sinks draw no ring: the caret and the app show focus.
+    // A sink draws the ring as a control does (backlog C93); an editor
+    // draws none, its caret showing the focus.
     core.set_focus(Some(k.name));
     tab(&mut core, false);
     assert_eq!(core.focus(), Some(k.pane));
     frame(&mut core, false, false);
-    assert_eq!(ring_count(&mut core), 0);
+    assert_eq!(ring_count(&mut core), 1, "the sink's ring");
     core.focus_next(false);
     assert_eq!(core.focus(), Some(k.name));
     frame(&mut core, false, false);
     assert_eq!(ring_count(&mut core), 0);
+}
+
+/// A 100x40 sink inside a box that may declare `focus_ring`, and the sink
+/// itself may declare one too: what the C93 tests below draw.
+fn sink_frame(core: &mut Core, outer: Option<Color>, own: Option<Color>) -> Key {
+    let mut ui = core.frame(Size::new(200.0, 200.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut wrap = NodeSpec::column().pad(10.0);
+    if let Some(c) = outer {
+        wrap = wrap.focus_ring(c);
+    }
+    let mut sink = Key::ROOT;
+    ui.with(wrap, |ui| {
+        let mut spec = NodeSpec::row()
+            .size(100.0, 40.0)
+            .on_key("keys")
+            .label("list");
+        if let Some(c) = own {
+            spec = spec.focus_ring(c);
+        }
+        sink = ui.leaf_keyed("list", spec);
+    });
+    ui.finish();
+    sink
+}
+
+/// The ring's border colour in the last frame, if one was drawn.
+fn ring_color(core: &mut Core) -> Option<Color> {
+    core.output()
+        .0
+        .quads
+        .iter()
+        .find(|q| q.color.a == 0.0 && q.border_w == 2.0 && q.border_color.a > 0.0)
+        .map(|q| q.border_color)
+}
+
+/// A sink clicked into focus shows no ring; the first key it takes shows
+/// the focus, as a browser's :focus-visible does after a key, and the
+/// ring with it (backlog C93).
+#[test]
+fn a_key_a_focused_sink_takes_shows_its_ring() {
+    let mut core = Core::new();
+    let sink = sink_frame(&mut core, None, None);
+    click_at(&mut core, 50.0, 30.0);
+    assert_eq!(core.focus(), Some(sink));
+    assert!(!core.focus_visible());
+    sink_frame(&mut core, None, None);
+    assert_eq!(ring_count(&mut core), 0, "a click shows no ring");
+    core.press(KeyPress::new(KeyCode::Down, KeyMods::NONE));
+    assert!(core.focus_visible(), "the key showed the focus");
+    sink_frame(&mut core, None, None);
+    assert_eq!(ring_color(&mut core), Some(core.theme().focus_ring));
+    // A modifier alone is not the keyboard in use.
+    click_at(&mut core, 50.0, 30.0);
+    core.press(KeyPress::new(KeyCode::Shift, KeyMods::NONE.with_shift()));
+    assert!(!core.focus_visible());
+}
+
+/// `focus_ring` colours the ring for the node and everything under it,
+/// the nearest declaration winning; a colour with no alpha turns it off.
+#[test]
+fn focus_ring_is_inherited_and_transparent_turns_it_off() {
+    let mut core = Core::new();
+    let ink = Color::hex(0xcc3300ff);
+    let own = Color::hex(0x00aa66ff);
+    let sink = sink_frame(&mut core, Some(ink), None);
+    core.set_focus(Some(sink));
+    core.press(KeyPress::new(KeyCode::Down, KeyMods::NONE));
+    assert_eq!(core.focus(), Some(sink));
+    assert!(core.focus_visible());
+    sink_frame(&mut core, Some(ink), None);
+    assert_eq!(ring_color(&mut core), Some(ink), "inherited from the box");
+    sink_frame(&mut core, Some(ink), Some(own));
+    assert_eq!(ring_color(&mut core), Some(own), "the nearest wins");
+    sink_frame(&mut core, Some(ink), Some(Color::TRANSPARENT));
+    assert_eq!(ring_count(&mut core), 0, "none drawn");
 }
 
 #[test]

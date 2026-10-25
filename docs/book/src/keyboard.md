@@ -24,7 +24,9 @@ the ring. A plain box joins it with `.focusable()`.
 ```
 
 `.focus_bg(..)` is what a focusable box shows while focused. Without
-it, kui draws a ring.
+it, kui draws a ring, around a key sink too. `.focus_ring(colour)` on a
+box colours that ring for everything inside it, and a transparent one
+turns it off.
 
 ## Reading focus
 

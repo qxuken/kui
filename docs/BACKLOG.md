@@ -3653,11 +3653,7 @@ in every binding.
 Rust has it; Kit had to read a pressed group another way. **Do.** The door
 in Lua (and Node, C, Odin where missing), pinned in DOORS.
 
-### `.` C93 — A key sink draws no focus ring
-
-A list or table that takes keys as a sink gets no core ring, so Kit draws
-its own edge. **Do.** The core ring on a focused sink, focus-visible only,
-in the theme's focus colour.
+- `.` **C93** — [A key sink draws no focus ring](backlog/closed-2026-09.md#-c93--a-key-sink-draws-no-focus-ring--done-2026-10-26) — done (2026-10-26) — a focused sink draws the core ring when focus is keyboard-visible; a key a sink takes shows the focus; `focusRing` colours the ring down a subtree (transparent turns it off)
 
 ### `.` C94 — An editor's key events carry no Ctrl
 
@@ -5639,3 +5635,4 @@ move.
 - `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`
 - `.` **C98** — [An open menu ignores its items' accelerators](backlog/closed-2026-09.md#-c98--an-open-menu-ignores-its-items-accelerators--done-2026-10-26) — done (2026-10-26) — an open context menu or drawn-bar menu chooses the enabled row whose accelerator was pressed, and closes
 - `.` **C91** — [A child that only declares a cursor or hover takes the press](backlog/closed-2026-09.md#-c91--a-child-that-only-declares-a-cursor-or-hover-takes-the-press--done-2026-10-26) — done (2026-10-26) — a press on a node that takes none goes to the nearest ancestor that does (`HitRegion::press_to`); hover unchanged
+- `.` **C93** — [A key sink draws no focus ring](backlog/closed-2026-09.md#-c93--a-key-sink-draws-no-focus-ring--done-2026-10-26) — done (2026-10-26) — a focused sink draws the core ring when focus is keyboard-visible; a key a sink takes shows the focus; `focusRing` colours the ring down a subtree (transparent turns it off)

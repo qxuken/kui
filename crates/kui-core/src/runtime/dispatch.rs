@@ -1429,7 +1429,16 @@ impl Core {
         {
             return false;
         }
-        self.deliver_to_sink(target, EventKind::Key, kp.to_value(phase), out)
+        let delivered = self.deliver_to_sink(target, EventKind::Key, kp.to_value(phase), out);
+        // A key the sink took is the keyboard in use, and the focus shows
+        // from here, as a browser's :focus-visible does after a key
+        // (backlog C93): a list clicked and then walked with the arrows
+        // showed no ring, its focus still the click's. A modifier alone
+        // is not a key in use.
+        if delivered && phase == KeyPhase::Down && !kp.code.is_modifier() {
+            self.focus_visible = true;
+        }
+        delivered
     }
 
     /// The node the sink `key` names, in the last frame's tree: one that

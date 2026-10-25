@@ -221,7 +221,10 @@
 ///   same ABI, the new slot (ADR 0067): `kui_slot`, the optional
 ///   `kui_ext_contributions` export with its `KuiContribution` rows,
 ///   `kui_instance_slot`, and `from` appended to `KuiEvent` (80 bytes on
-///   64-bit, from 64): the provider that raised a component event.
+///   64-bit, from 64): the provider that raised a component event. And
+///   `focus_ring` appended to `KuiSpec` (816 bytes on 64-bit, from 808),
+///   the core focus ring's colour (backlog C93), with
+///   `kui_tab_moves_focus` (backlog C99), a new function.
 pub const KUI_ABI_VERSION: u32 = 39;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a

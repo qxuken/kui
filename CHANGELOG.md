@@ -74,8 +74,9 @@ was the first bare bump to break an app in five releases).
   event (ADR 0060), and `Range`, a node's rows in view (ADR 0065): an
   exhaustive `match` on either adds two arms.
 - C's ABI is 39: `KuiSpec` gained `on_range` (808 bytes on 64-bit, from
-  800; ABI 38), and the slot doors went (ABI 39, below). Recompile;
-  zeroed, a node reports no range.
+  800; ABI 38), the slot doors went (ABI 39, below), and `KuiSpec`
+  gained `focus_ring` (816 bytes; backlog C93). Recompile; zeroed, a node
+  reports no range and colours no ring.
 - A Lua script's `env` is one table shared by every fill of the script,
   its facts written again as they change (backlog C65): a script that
   stored its own fields on `env` finds them there next fill, and one of
@@ -162,6 +163,13 @@ was the first bare bump to break an app in five releases).
   the walk stops at a modal's edge and at the selection scope the press
   is in. `HitRegion` gained `press_to`: a struct literal adds
   `press_to: None`.
+- A focused `onKey` sink draws the core's focus ring while focus is
+  keyboard-visible, as a control does, where it drew none (backlog C93);
+  the root never does. And a key a sink takes — a press delivered to it,
+  a modifier alone excepted — makes focus keyboard-visible, as a
+  browser's :focus-visible is after a key: a list clicked and then walked
+  with the arrows showed no ring. A surface that shows its own focus
+  turns the ring off with `focusRing` transparent (below) or `focusBg`.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -273,6 +281,16 @@ for lua-language-server, and a new runner beside the window's.
   *What you can delete:* a `ch:column` copied into a script to bucket
   it, and the bucketing loop.
 
+- **The core focus ring in an app's colour** (backlog C93): `focusRing`
+  (Lua and Rust `focus_ring`, C `KuiSpec.focus_ring`, Odin
+  `Spec.focus_ring`) colours the ring for the node and everything under
+  it that declares none, the nearest declaration winning, else the
+  theme's `focusRing`; a `$token` resolves as any colour prop does, so an
+  add-on sets `focus_ring = "$kitFocus"` once at the root of what it
+  draws. A colour with no alpha draws no ring (in C, whose 0 is unset,
+  `0xffffff00`), turning it off without touching the background as
+  `focusBg` does. The devtools' node list, which draws its own focused
+  border, turns it off so.
 - **Show a file in its folder, or open it with its app** (backlog F203).
   `kui_native::show_in_folder(path)` shows a file or folder in the
   system's file manager — selected in Finder or Explorer, its folder

@@ -131,7 +131,8 @@ use crate::{Result, err, value_of};
 /// v27: the old `slot` op (17) is gone, folded into `component` (ADR
 /// 0067); `devtoolsTab` carries a component and its props (a JSON strref,
 /// absent for none) where it carried a slot; and `slot` is a new op (29),
-/// a contribution slot (ADR 0067's second step): name, props.
+/// a contribution slot (ADR 0067's second step): name, props. And
+/// `focusRing` is a new row (backlog C93), in the same unreleased version.
 pub const VERSION: u32 = 27;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a

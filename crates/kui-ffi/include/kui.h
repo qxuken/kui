@@ -446,6 +446,9 @@ extern "C" {
  * KuiContribution rows; kui_instance_slot tells an instance which slot it
  * was placed in; and KuiEvent appends `from`, the namespace of the
  * provider that raised a component event (80 bytes on 64-bit, from 64).
+ * And KuiSpec appends focus_ring (816 bytes on 64-bit, from 808), the core
+ * focus ring's colour (backlog C93); kui_tab_moves_focus (backlog C99) is
+ * a new function.
  */
 #define KUI_ABI_VERSION 39u
 uint32_t kui_abi_version(void);
@@ -1465,6 +1468,12 @@ typedef struct KuiSpec {
      * either changes. A borrowed KuiValue*, cloned while the node opens;
      * NULL for none. Needs a stable key. ABI 38. */
     const KuiValue *on_range;
+    /* The core focus ring's colour here and below (focusRing, backlog
+     * C93): the nearest declaration on the focused node - a control, a
+     * focusable box, an on_key sink - or above it wins, else the theme's.
+     * 0 for none; a colour with no alpha but 0 (0xffffff00) turns the
+     * ring off. ABI 39, appended (816 bytes on 64-bit). */
+    uint32_t focus_ring;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */

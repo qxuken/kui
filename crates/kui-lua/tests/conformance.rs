@@ -1077,7 +1077,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                      radius_tl = 8, radius_tr = 2, radius_br = 8, radius_bl = 2,
                      shadow_color = 0x00000080, shadow_x = 3, shadow_y = 2, shadow_blur = 2,
                      hoverable = true, hover_bg = 0x262a3aff, pressed_bg = 0x30364aff,
-                     hover_group = "cards", focusable = true, focus_bg = 0x2b3350ff,
+                     hover_group = "cards", focusable = true, focus_bg = 0x2b3350ff, focus_ring = 0x8899aaff,
                      initial_focus = true, accent = true, cursor = "pointer",
                      selected = true, expanded = "expanded",
                      on_click = {{ kind = "card" }}, on_hover = {{ kind = "hov" }},

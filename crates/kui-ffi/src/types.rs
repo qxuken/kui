@@ -936,6 +936,11 @@ pub struct KuiSpec {
     /// The message the data rows in view arrive as (`onRange`, ADR 0065),
     /// borrowed like `on_layout`; NULL for none. ABI 38.
     pub on_range: *const KuiValue,
+    /// The core focus ring's colour here and below (`focusRing`, backlog
+    /// C93): the nearest declaration on the focused node or above it wins,
+    /// else the theme's. 0 for none; a colour with no alpha but 0
+    /// (`0xffffff00`) turns the ring off. ABI 39, appended.
+    pub focus_ring: u32,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

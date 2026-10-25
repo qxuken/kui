@@ -518,6 +518,9 @@ pub(crate) fn spec_of(
     if s.focus_bg != 0 {
         spec = spec.focus_bg(color_of(s.focus_bg));
     }
+    if s.focus_ring != 0 {
+        spec = spec.focus_ring(color_of(s.focus_ring));
+    }
     if let Some(hint) = opt_str(s.tooltip) {
         // Two of the prop's three effects; `kui_close` adds the third (the
         // float, while hovered) once it knows the node closed, and a

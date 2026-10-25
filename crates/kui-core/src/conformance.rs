@@ -1744,7 +1744,9 @@ pub const SCENES: &[Scene] = &[
               claims no letter; the space presses the button and never \
               reaches the shell, because the button has something to \
               activate; and Tab moves focus off it, because Tab is the \
-              ring\'s wherever focus is.",
+              ring\'s wherever focus is. The last sink, clicked into focus \
+              and then pressed, draws the core\'s ring: a key it took shows \
+              the focus (backlog C93).",
         custom: &["key", "keyFocus"],
         elements: &["box"],
         build: build_keys,
@@ -1769,7 +1771,7 @@ pub const SCENES: &[Scene] = &[
             Step::KeyUp('b' as u32),
         ],
         expect: Expect {
-            solid: 4,
+            solid: 5,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -1808,7 +1810,7 @@ pub const SCENES: &[Scene] = &[
               (`numpad`) while its code stays `enter`; to it the Shift and \
               the lock are only ever held. The second hears the Shift's \
               press and release with its side (`left`), the lock's press, \
-              and the Enter.",
+              and the Enter, which shows its focus ring (backlog C93).",
         custom: &["key"],
         elements: &["box"],
         build: build_modifier_keys,
@@ -1831,7 +1833,7 @@ pub const SCENES: &[Scene] = &[
             Step::KeyAtDown(1, 3),
         ],
         expect: Expect {
-            solid: 2,
+            solid: 3,
             shadows: 0,
             images: 0,
             segments: 0,
@@ -7719,6 +7721,7 @@ fn build_sampler(ui: &mut Ui<'_>, f: &Fixtures, _phase: u32) {
             .hover_group("cards")
             .focusable()
             .focus_bg(Color::hex(0x2b3350ff))
+            .focus_ring(Color::hex(0x8899aaff))
             .initial_focus()
             .accent()
             .cursor(crate::cursor::CursorShape::Pointer)

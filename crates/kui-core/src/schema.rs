@@ -192,6 +192,7 @@ pub const P_WINDOW_EVENTS: u32 = 140;
 pub const P_REVEAL_ON_HOVER: u32 = 141;
 pub const P_FLOATS_IN_ORDER: u32 = 142;
 pub const P_ON_RANGE: u32 = 143;
+pub const P_FOCUS_RING: u32 = 144;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -955,6 +956,13 @@ pub const PROPS: &[PropDef] = &[
         kind: Kind::Color,
         apply: Apply::SpecColor(|s, c| s.focus_bg(c)),
         doc: "Background while the node holds keyboard-visible focus (moved there by Tab or assistive technology, not a click); replaces the default focus ring. Pressed wins over focus wins over hover; eases with `transition`.",
+    },
+    PropDef {
+        name: "focusRing",
+        id: P_FOCUS_RING,
+        kind: Kind::Color,
+        apply: Apply::SpecColor(|s, c| s.focus_ring(c)),
+        doc: "The colour of the ring the core draws around a keyboard-visibly focused node — a control, a `focusable` box, an `onKey` sink — for this node and everything under it that declares none (backlog C93): the nearest declaration on the focused node or above it wins, else the theme's `focusRing`. A colour with no alpha draws no ring, turning it off without touching the background as `focusBg` would (in C, whose 0 is unset, any colour with no alpha but 0: `0xffffff00`). What an add-on that paints in its own palette sets once at the root of what it draws, `focusRing=\"$kitFocus\"`.",
     },
     PropDef {
         name: "modal",

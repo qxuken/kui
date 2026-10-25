@@ -377,6 +377,9 @@ pub(super) fn tree_tab(
             // rows are clickable and not Tab stops, and the arrows reach
             // this rather than a row (backlog D1a, ADR 0011).
             .on_key(action("tree-key"))
+            // Its own border shows the focus, keyboard or click (below),
+            // so the core's ring stays off (backlog C93).
+            .focus_ring(Color::TRANSPARENT)
             .role(crate::access::Role::List)
             .label("nodes")
             // Unfocused, no ring: the list's own colour again would be a

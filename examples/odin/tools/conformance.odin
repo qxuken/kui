@@ -1970,6 +1970,7 @@ scene_sampler :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 			hover_group    = "cards",
 			focusable      = true,
 			focus_bg       = 0x2b3350ff,
+			focus_ring     = 0x8899aaff,
 			initial_focus  = true,
 			accent         = true,
 			cursor         = .Pointer,

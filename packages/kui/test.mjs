@@ -5979,6 +5979,7 @@ SCENE_TREES.sampler = (fx) =>
           hoverGroup: 'cards',
           focusable: true,
           focusBg: '#2b3350',
+          focusRing: '#8899aa',
           initialFocus: true,
           accent: true,
           cursor: 'pointer',

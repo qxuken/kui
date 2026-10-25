@@ -799,6 +799,12 @@ Spec :: struct {
 	// Background while the node holds keyboard-visible focus (moved there by Tab
 	// or assistive technology, not a click); replaces the default focus ring.
 	focus_bg: Color,
+	// The colour of the ring the core draws around a keyboard-visibly focused
+	// node — a control, a `focusable` box, an `onKey` sink — for this node
+	// and everything under it that declares none (backlog C93): the nearest
+	// declaration on the focused node or above it wins, else the theme's
+	// `focusRing`.
+	focus_ring: Color,
 	// Modal surface: the Tab ring becomes this node's subtree, everything outside
 	// it is inert to the pointer, the wheel and assistive technology, and Escape
 	// or a press outside arrives on it as this message with `dismiss: {reason:
@@ -1090,6 +1096,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.drop_bg = s.drop_bg
 	out.pressed_bg = s.pressed_bg
 	out.focus_bg = s.focus_bg
+	out.focus_ring = s.focus_ring
 	out.modal = borrow(scratch, s.modal)
 	out.initial_focus = 1 if s.initial_focus else 0
 	out.hover_group = s.hover_group
