@@ -3692,6 +3692,17 @@ multiline editor inserts Tab by default; Escape then Tab, and the toggle,
 move focus; a `tab_moves_focus` opt-out (replacing the unreleased
 `tab_inserts`) gives the textarea behaviour.
 
+### `.` C100 — A view guesses its size, and re-runs for every hover
+
+**Found** in the user's demo notes (2026-10-26): a narrow window pushes
+Kit's controls out of their panels, and Kit's fixes guess at widths the
+core knows exactly during layout; Kit reads `is_hovered` / `is_pressed`
+for its colours, so every pointer move refills an instance replay could
+have kept. **Do.** [ADR 0069](adr/0069-props-by-condition.md): `when`
+rules over own size, window size, environment and state, a lazy branch
+by room or query, `min_column`, `onQuery`, the match cache; doors in
+every binding; Kit adopts it in the same round.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into

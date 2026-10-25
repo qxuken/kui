@@ -20,6 +20,23 @@ _Avoid_: label (that is the accessible name), id
 The accessible name a reader hears for a node. It is not a key label.
 _Avoid_: name, title
 
+**Rule**:
+One entry of a node's `when` list: a condition set and the props it sets
+while every condition holds (ADR 0069). Every matching rule applies, in
+order.
+_Avoid_: breakpoint, style variant
+
+**Condition**:
+One fact a rule tests: the node's own size, the window's size, a system
+setting (dark, reduced motion, contrast, platform, scale) or the node's
+state (hovered, pressed, focused).
+_Avoid_: query (that is the lazy form's), media query
+
+**Container**:
+A node that reads its own size in an axis, so its size there does not
+come from its content.
+_Avoid_: box, wrapper
+
 ## Events and messages
 
 **Event**:
