@@ -184,7 +184,16 @@ impl Core {
             }
             _ => crate::input::HitShape::Rect,
         };
+        let focusable = crate::access::focusable(&self.tree, i);
+        // A live node that takes no press hands it to the nearest ancestor
+        // that does (backlog C91). A disabled one keeps it, and does
+        // nothing with it, as a disabled control always has.
+        let press_to = (live && slider.is_none() && !focusable && !self.takes_press(i))
+            .then(|| self.enclosing_press(i))
+            .flatten()
+            .map(|j| self.tree.keys[j]);
         hits.push(HitRegion {
+            press_to,
             key: self.tree.keys[i],
             origin: self.tree.origins[i],
             rect,
@@ -198,7 +207,7 @@ impl Core {
             key_up: spec.events().key_up,
             context_menu,
             drop,
-            focusable: crate::access::focusable(&self.tree, i),
+            focusable,
             edit_origin: None,
             select_scope: self.scope_of(i).filter(|_| live),
             window: spec.window,
@@ -279,6 +288,7 @@ impl Core {
             // The editor's own node carries any override.
             cursor: spec.cursor,
             slider: None,
+            press_to: None,
         });
     }
 

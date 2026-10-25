@@ -715,6 +715,54 @@ impl Core {
         None
     }
 
+    /// Whether node `i` declares something a primary press does: a click,
+    /// a drag, a key sink, window chrome, a slider that asked for its
+    /// changes, or an editor. Declared, not live — a disabled node that
+    /// declares one keeps a press it does nothing with, as a disabled
+    /// control does, rather than handing it on (backlog C91).
+    pub(crate) fn takes_press(&self, i: usize) -> bool {
+        let spec = &self.tree.specs[i];
+        let ev = spec.events();
+        ev.on_click().is_some()
+            || ev.on_drag().is_some()
+            || ev.on_key().is_some()
+            || spec.window.is_some()
+            || (ev.on_change().is_some() && spec.access().role == Some(crate::access::Role::Slider))
+            || matches!(self.tree.content[i], NodeContent::Edit(_))
+    }
+
+    /// The node a primary press on node `i` goes to when `i` does nothing
+    /// with a press (backlog C91): the nearest ancestor that takes one —
+    /// [`Self::takes_press`], or focusable — and nothing when that
+    /// ancestor is disabled, which swallows it. Kit's slider handle,
+    /// declaring only a hover, was the topmost region and took the press
+    /// its track was waiting for; hover composes up the tree, and now a
+    /// press does too. The walk stops at the modal boundary, and does not
+    /// climb out of the selection scope the press is in: past that, the
+    /// press is the scope's drag-select, as it is for `enclosing_drag`.
+    pub(crate) fn enclosing_press(&self, i: usize) -> Option<usize> {
+        let scope = self.scopes.get(i).copied().flatten();
+        if scope == Some(self.tree.keys[i]) {
+            return None;
+        }
+        let mut n = self.tree.parent[i];
+        while n != crate::tree::NIL {
+            let j = n as usize;
+            if !self.interactive(j) {
+                return None;
+            }
+            let spec = &self.tree.specs[j];
+            if self.takes_press(j) || crate::access::focusable(&self.tree, j) {
+                return (!spec.disabled).then_some(j);
+            }
+            if scope == Some(self.tree.keys[j]) {
+                return None;
+            }
+            n = self.tree.parent[j];
+        }
+        None
+    }
+
     /// The zone node `i` belongs to: itself when it declares `on_drop`,
     /// else the nearest enclosing declaration —
     /// the same walk as `enclosing_menu`, stopping at the modal boundary

@@ -151,6 +151,17 @@ was the first bare bump to break an app in five releases).
   indent back from the start of the line, where it typed four spaces.
   A multiline editor declared `tab_moves_focus` (or a field) still blurs
   on the first Escape.
+- A primary press on a node that declares no press handler and is not
+  focusable — one with only a hover colour, a cursor, a hover group or
+  an `onHover` — goes to the nearest ancestor that takes a press (a
+  click, a drag, a slider's track, a key sink, window chrome, an editor,
+  a focusable node), which clicks, drags, slides or focuses as if pressed
+  itself (backlog C91); it went nowhere. Hover is the child's as before,
+  and both show pressed while the pointer is on the child. A disabled
+  ancestor that declares a handler keeps the press, doing nothing, and
+  the walk stops at a modal's edge and at the selection scope the press
+  is in. `HitRegion` gained `press_to`: a struct literal adds
+  `press_to: None`.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press

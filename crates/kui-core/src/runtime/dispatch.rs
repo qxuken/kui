@@ -746,9 +746,15 @@ impl Core {
                     return out;
                 }
                 // Click-to-focus / caret placement / start drag-selection,
-                // against the previous frame's layout.
+                // against the previous frame's layout. On the region the
+                // press lands on: the one under the pointer, or the
+                // ancestor a hover-only one hands its press to (backlog
+                // C91), which focuses, clicks and drags as if pressed.
                 if let Some(p) = self.interaction.cursor() {
-                    let pressed = self.interaction.hit_at(p).map(|h| {
+                    // The region Tab enters afterwards is the one under
+                    // the pointer, though the press went on above it.
+                    let landed = self.interaction.hit_at(p).map(|h| h.key);
+                    let pressed = self.interaction.press_hit_at(p).map(|h| {
                         // A region that does something with a press
                         // claims it: a button inside a selectable
                         // card is a button first (ADR 0017).
@@ -874,7 +880,7 @@ impl Core {
                             Some((key, _, focusable, Some(scope), _)) => {
                                 let target = self.press_focus(key, focusable);
                                 self.move_focus(target);
-                                self.settle_region(Some(key));
+                                self.settle_region(landed.or(Some(key)));
                                 // The press arms the drag with what the
                                 // click count says it moves by: a second
                                 // click held and dragged selects word by
@@ -901,7 +907,7 @@ impl Core {
                                 // Whatever the press did to focus, Tab
                                 // afterwards enters the ring under the
                                 // pointer (`docs/adr/0022`, decision 3).
-                                self.settle_region(Some(key));
+                                self.settle_region(landed.or(Some(key)));
                             }
                             None => {
                                 self.move_focus(None);

@@ -2051,6 +2051,20 @@ pub struct HitRegion {
     /// captures the pointer until release, each new value a `change`
     /// event. Boxed: nearly every region has none.
     pub slider: Option<Box<crate::slider::SliderTrack>>,
+    /// Where a primary press here goes when this region does nothing
+    /// with one (backlog C91): the nearest ancestor that takes a press —
+    /// a click, a drag, a slider's track, a key sink, window chrome, an
+    /// editor, a focusable node. A node that declares only a hover, a
+    /// cursor, a hover group or a hover message tracks the pointer, so it
+    /// is the topmost region under it and took the press, which its
+    /// clickable parent never saw: a slider's handle that lit up under
+    /// the pointer swallowed the press its track was waiting for. Hover
+    /// composes as it did — the child is what is hovered — and the press
+    /// is the ancestor's, as an unclaimed key is the enclosing sink's.
+    /// Resolved at emission, where the tree is; `None` for a region that
+    /// takes the press itself, a disabled one (which swallows it, as a
+    /// disabled control does), and one nothing above takes it for.
+    pub press_to: Option<Key>,
 }
 
 /// An OS file drag over a zone: what `dropBg` reads and what
@@ -2384,6 +2398,14 @@ pub struct Interaction {
     cursor: Option<Vec2>,
     hovered: Option<Key>,
     pressed: Option<Key>,
+    /// The hovered region's `press_to`: the node a press here would be
+    /// (backlog C91) — what a release over a hover-only child is matched
+    /// against, and what keeps its ancestor pressed under the pointer.
+    hovered_press_to: Option<Key>,
+    /// The region a press landed on when it went to `press_to`'s node
+    /// instead: still drawn pressed while the pointer is over it, as it
+    /// was when it kept the press itself.
+    press_via: Option<Key>,
     /// Hover group of the hovered / pressed region, for group styling.
     hovered_group: Option<u64>,
     pressed_group: Option<u64>,
@@ -2542,6 +2564,20 @@ impl Interaction {
         self.hits.iter().rev().find(|h| self.contains(h, p))
     }
 
+    /// The region a primary press at `p` lands on: the topmost region
+    /// there, or the ancestor it hands its press to (`press_to`, backlog
+    /// C91) when it does nothing with one itself.
+    pub(crate) fn press_hit_at(&self, p: Vec2) -> Option<&HitRegion> {
+        let h = self.hit_at(p)?;
+        Some(self.press_owner(h).unwrap_or(h))
+    }
+
+    /// The region `h` hands a primary press to, when it hands it on.
+    fn press_owner(&self, h: &HitRegion) -> Option<&HitRegion> {
+        let to = h.press_to?;
+        self.hits.iter().rev().find(|r| r.key == to)
+    }
+
     /// Every scroll region under the cursor — containers and `on_scroll`
     /// handlers — topmost by paint order first: what a notch walks when
     /// the innermost scroller moves on one axis only.
@@ -2582,12 +2618,17 @@ impl Interaction {
             Target::Bar(_) => None,
             Target::Hit(h) => self.hits.iter().rposition(|x| std::ptr::eq(x, h)),
         });
-        let (hovered, group) = match idx {
-            Some(i) => (Some(self.hits[i].key), self.hits[i].group),
-            None => (None, None),
+        let (hovered, group, press_to) = match idx {
+            Some(i) => (
+                Some(self.hits[i].key),
+                self.hits[i].group,
+                self.hits[i].press_to,
+            ),
+            None => (None, None, None),
         };
         self.hovered = hovered;
         self.hovered_group = group;
+        self.hovered_press_to = press_to;
         if before == hovered {
             return;
         }
@@ -2883,10 +2924,20 @@ impl Interaction {
             }
             InputEvent::MouseDown { clicks, .. } => {
                 self.pressed = self.hovered;
+                self.press_via = None;
+                // A region that does nothing with a press hands it to the
+                // ancestor that does (backlog C91): that node is pressed,
+                // and its track, drag or chrome is what the press starts.
+                if let Some(to) = self.hovered_press_to
+                    && self.hits.iter().any(|r| r.key == to)
+                {
+                    self.press_via = self.hovered;
+                    self.pressed = Some(to);
+                }
                 self.pressed_group = self.hovered_group;
                 self.press_clicks = clicks;
                 let lent = self.lent_drag.take();
-                if let Some(h) = self.cursor.and_then(|p| self.hit_at(p)) {
+                if let Some(h) = self.cursor.and_then(|p| self.press_hit_at(p)) {
                     if h.window == Some(WindowRole::Drag) {
                         // The OS drag steals subsequent mouse events, so don't
                         // leave a press pending.
@@ -2983,9 +3034,11 @@ impl Interaction {
                 // A press that actually dragged is not a click, and a
                 // press on a slider's track is the slide, never a click.
                 let click_ok = !dragged.is_some_and(|d| d.moved) && slid.is_none();
+                // Released over the pressed node, or over a region that
+                // hands its press to it (backlog C91).
                 if click_ok
                     && let (Some(pressed), Some(hovered)) = (self.pressed, self.hovered)
-                    && pressed == hovered
+                    && (pressed == hovered || self.hovered_press_to == Some(pressed))
                     && let Some(region) = self.hits.iter().rev().find(|h| h.key == pressed)
                 {
                     if let Some(sound) = region.click_sound {
@@ -3009,6 +3062,7 @@ impl Interaction {
                     }
                 }
                 self.pressed = None;
+                self.press_via = None;
                 self.pressed_group = None;
             }
         }
@@ -3116,7 +3170,14 @@ impl Interaction {
     }
 
     pub fn is_pressed(&self, key: Key) -> bool {
-        self.pressed == Some(key) && (self.hovered == Some(key) || self.drag_captured(key))
+        // A press a hover-only child handed on (backlog C91) holds both:
+        // the node it went to, under the pointer anywhere it hands on
+        // from, and the child, while the pointer is still on it.
+        let held = self.pressed == Some(key)
+            && (self.hovered == Some(key)
+                || self.hovered_press_to == Some(key)
+                || self.drag_captured(key));
+        held || (self.press_via == Some(key) && self.hovered == Some(key))
     }
 
     /// Whether a pointer-captured drag is running on `key`. The press is
@@ -3246,6 +3307,7 @@ mod tests {
             hover_sound: None,
             cursor: None,
             slider: None,
+            press_to: None,
         }
     }
 

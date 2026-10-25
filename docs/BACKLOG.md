@@ -3646,13 +3646,7 @@ rows and Left/Right between cells, Home/End, Page. ADR 0007's composites
 are one-dimensional. **Do.** A `grid` composite (row and column indices),
 in every binding.
 
-### `.` C91 — A child that only declares a cursor or hover takes the press
-
-**Found** in Kit's slider: the handle, declaring only hover, became the
-topmost hit region and took the press, so the track never saw it. Presses
-do not bubble to an ancestor that handles them. **Do.** A node that
-declares no press handler and no focus lets the press through to the
-nearest ancestor that takes one, as hover already composes.
+- `.` **C91** — [A child that only declares a cursor or hover takes the press](backlog/closed-2026-09.md#-c91--a-child-that-only-declares-a-cursor-or-hover-takes-the-press--done-2026-10-26) — done (2026-10-26) — a press on a node that takes none goes to the nearest ancestor that does (`HitRegion::press_to`); hover unchanged
 
 ### `.` C92 — Lua has no `is_group_pressed`
 
@@ -5644,3 +5638,4 @@ move.
 
 - `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`
 - `.` **C98** — [An open menu ignores its items' accelerators](backlog/closed-2026-09.md#-c98--an-open-menu-ignores-its-items-accelerators--done-2026-10-26) — done (2026-10-26) — an open context menu or drawn-bar menu chooses the enabled row whose accelerator was pressed, and closes
+- `.` **C91** — [A child that only declares a cursor or hover takes the press](backlog/closed-2026-09.md#-c91--a-child-that-only-declares-a-cursor-or-hover-takes-the-press--done-2026-10-26) — done (2026-10-26) — a press on a node that takes none goes to the nearest ancestor that does (`HitRegion::press_to`); hover unchanged
