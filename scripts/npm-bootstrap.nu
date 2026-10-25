@@ -12,7 +12,6 @@
 #   nu scripts/npm-bootstrap.nu --trust        and attach release.yml as each one's trusted publisher
 #   nu scripts/npm-bootstrap.nu --dry-run      say what would happen, change nothing
 #   nu scripts/npm-bootstrap.nu --deprecate    after the first real release: deprecate the placeholders
-#                                              (release.yml tries this itself; this is its fallback)
 #
 # A placeholder is `0.0.0-bootstrap.0`: a package.json and a README saying
 # the real versions come from CI, nothing to run. npmjs points `latest` at

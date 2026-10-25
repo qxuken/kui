@@ -207,11 +207,10 @@ it fails:
   and gives each `release.yml` as its trusted publisher (`npm trust
   github`; npm opens the browser for 2FA and npmjs offers to skip it for
   five minutes). Then tag, within two days. The tag's run publishes the
-  real versions with provenance, moves `latest` off the placeholders, and
-  then tries to deprecate them and drop their `bootstrap` tag itself
-  ("npm placeholders deprecated"); if trusted publishing does not reach
-  `npm deprecate`, the step warns, and `nu scripts/npm-bootstrap.nu
-  --deprecate` from a login on npmjs does it. Done 2026-10-25 for the
+  real versions with provenance and moves `latest` off the placeholders;
+  after it, `nu scripts/npm-bootstrap.nu --deprecate` from a login on
+  npmjs deprecates them and drops their `bootstrap` tag (by hand: it
+  needs the account, not the workflow). Done 2026-10-25 for the
   nine names: placeholders published and trusted. Or by
   hand: release.yml's `npm-packages` artifact from a `workflow_dispatch`
   run, the nine new ones published from it platform packages first
