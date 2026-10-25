@@ -3992,7 +3992,7 @@ impl Code {
 pub struct Notice {
     /// What happened, or what to know.
     pub message: String,
-    /// Danger, warn, ok, accent or neutral (the default).
+    /// Danger, warn, ok, accent, info or neutral (the default).
     pub tone: Option<Tone>,
     /// A bold first line.
     pub title: Option<String>,
@@ -4014,7 +4014,7 @@ impl Notice {
         }
     }
 
-    /// Danger, warn, ok, accent or neutral (the default).
+    /// Danger, warn, ok, accent, info or neutral (the default).
     pub fn tone(mut self, v: Tone) -> Self {
         self.tone = Some(v);
         self

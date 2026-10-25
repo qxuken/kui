@@ -808,7 +808,7 @@ export interface CodeProps {
 export interface NoticeProps {
   /** What happened, or what to know. */
   message: string;
-  /** Danger, warn, ok, accent or neutral (the default). */
+  /** Danger, warn, ok, accent, info or neutral (the default). */
   tone?: Tone;
   /** A bold first line. */
   title?: string;

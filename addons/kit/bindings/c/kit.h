@@ -1978,7 +1978,7 @@ typedef struct KitNotice {
      */
     KuiStr message;
     /*
-     * Danger, warn, ok, accent or neutral (the default).
+     * Danger, warn, ok, accent, info or neutral (the default).
      */
     KitTone tone;
     /*

@@ -18,6 +18,7 @@ PAGES = {
   { value = "trace", label = "Trace" },
   { value = "overlays", label = "Overlays" },
   { value = "layout", label = "Layout" },
+  { value = "keyboard", label = "Keyboard" },
 }
 
 -- The app's state, made once; a --watch reload keeps it.
@@ -30,6 +31,11 @@ function init()
     side = 0.18,
     -- Inputs
     name = "kit",
+    version = "1.4",
+    notes = "",
+    code = "{\n    \"name\": \"kit\"\n}",
+    pinned = true,
+    sort_by = "recent",
     query = "",
     mode = "auto",
     follow = true,
@@ -39,15 +45,15 @@ function init()
     zoom = 0.4,
     -- Data
     rows = nil, rows_ms = nil, filtered = false,
-    selected = nil, sort = nil, descending = false, data_query = "",
+    selected = nil, sort = nil, descending = false, data_query = "", item = nil,
     log_lines = { time = {}, level = {}, message = {} },
     log = nil,
     -- Charts
-    t = 0, series = { t = {}, cpu = {}, mem = {} }, chart = nil,
+    t = 0, series = { t = {}, cpu = {}, mem = {} }, chart = nil, bar = nil,
     -- Trace
     spans = nil, trace_start = nil, trace_length = nil, span = nil,
     -- Overlays
-    dialog = false, menu = false, popover = false, toast = nil, last_choice = nil,
+    dialog = false, menu = false, popover = false, toasts = {}, toast_n = 0, last_choice = nil,
     -- Layout
     split = 0.5, tab = "one", folded = false,
     -- Server
@@ -99,6 +105,22 @@ if not feeds then
   worker:dispatch({ kind = "trace", n = 3000 })
 end
 
+-- A toast on the stack: `t` has its message and, as it likes, a tone,
+-- an action and a duration.
+local function toast(t)
+  local m = model
+  m.toast_n = m.toast_n + 1
+  t.id = m.toast_n
+  m.toasts[#m.toasts + 1] = t
+end
+
+local function toast_off(id)
+  local m = model
+  for i, t in ipairs(m.toasts) do
+    if t.id == id then table.remove(m.toasts, i); return end
+  end
+end
+
 local function refresh_rows()
   worker:dispatch({ kind = "view", query = model.data_query, sort = model.sort, descending = model.descending })
 end
@@ -128,9 +150,14 @@ function update(msg)
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "rows" then m.rows, m.rows_ms, m.filtered = msg.rows, msg.ms, msg.filtered; m.selected = nil
   elseif k == "trace" then m.spans = msg.spans
-  elseif k == "worker_exit" then m.toast = { message = "The data worker stopped: " .. tostring(msg.error), tone = "danger" }
+  elseif k == "worker_exit" then toast({ message = "The data worker stopped: " .. tostring(msg.error), tone = "danger", duration = 0 })
   -- Inputs
   elseif k == "name" then m.name = msg.change.text
+  elseif k == "version" then m.version = msg.change.text
+  elseif k == "notes" then m.notes = msg.change.text
+  elseif k == "code" then m.code = msg.change.text
+  elseif k == "pinned" then m.pinned = msg.toggle.on
+  elseif k == "sort_by" then m.sort_by = msg.change.value
   elseif k == "query" then m.query = msg.change.text
   elseif k == "mode" then m.mode = msg.change.value
   elseif k == "follow" then m.follow = msg.toggle.checked
@@ -138,9 +165,11 @@ function update(msg)
   elseif k == "level" then m.level = msg.change.value
   elseif k == "view" then m.view = msg.change.value
   elseif k == "zoom" then m.zoom = msg.change.value
-  elseif k == "press" then m.toast = { message = "Pressed " .. msg.what, tone = "accent" }
+  elseif k == "press" then toast({ message = "Pressed " .. msg.what })
   -- Data
   elseif k == "select" then m.selected = msg.select.row
+  elseif k == "item" then m.item = msg.select.row
+  elseif k == "bar" then m.bar = msg.select.row
   elseif k == "sort" then
     if m.sort == msg.sort.field then m.descending = not m.descending else m.sort, m.descending = msg.sort.field, false end
     refresh_rows()
@@ -155,8 +184,16 @@ function update(msg)
   elseif k == "menu" then m.menu = msg.open
   elseif k == "popover" then m.popover = msg.open
   elseif k == "choose" then m.menu = false; m.last_choice = msg.choose.value
-  elseif k == "toast" then m.toast = { message = msg.message, tone = msg.tone }
-  elseif k == "toast_off" then m.toast = nil
+  elseif k == "toast" then toast({ message = msg.message, tone = msg.tone, action = msg.action, duration = msg.duration })
+  elseif k == "toast_all" then
+    toast({ message = "A new version is ready." })
+    toast({ message = "Saved to disk.", tone = "ok" })
+    toast({ message = "The upstream is slow.", tone = "warn" })
+    toast({ message = "Deleted 3 rows.", action = "Undo", duration = 8000 })
+  elseif k == "toast_off" then toast_off(msg.id)
+  elseif k == "undo" then
+    toast_off(msg.id)
+    toast({ message = "Restored the 3 rows.", tone = "ok" })
   -- Layout
   elseif k == "split" then m.split = msg.resize.fraction
   elseif k == "tab" then m.tab = msg.change.value
@@ -166,12 +203,23 @@ function update(msg)
     if msg.toggle.on and not m.serving then
       local ok, port = pcall(serve)
       if ok then m.serving, m.port = true, port
-      else m.toast = { message = tostring(port), tone = "danger" } end
+      else toast({ message = tostring(port), tone = "danger", duration = 0 }) end
     elseif not msg.toggle.on and m.serving then
       server:stop(); m.serving = false
     end
   elseif k == "hit" then m.hits = m.hits + 1
   end
+end
+
+-- The toasts, stacked in the corner while there are any.
+local function toasts(m)
+  if #m.toasts == 0 then return nil end
+  local t = {}
+  for i, s in ipairs(m.toasts) do
+    t[i] = kit.toast({ key = "toast" .. s.id, message = s.message, tone = s.tone, action = s.action, duration = s.duration,
+      inline = true, on_dismiss = { kind = "toast_off", id = s.id }, on_action = { kind = "undo", id = s.id } })
+  end
+  return kit.toaster({}, t)
 end
 
 function view(env)
@@ -214,6 +262,6 @@ function view(env)
       kit.switch({ label = m.serving and ("Serving :" .. m.port .. " · " .. m.hits .. " hits") or "Serve on :3050",
         on = m.serving, on_toggle = { kind = "serve" } }),
     }),
-    m.toast and kit.toast({ message = m.toast.message, tone = m.toast.tone, on_dismiss = { kind = "toast_off" } }) or nil,
+    toasts(m),
   }
 end

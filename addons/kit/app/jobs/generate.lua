@@ -19,20 +19,29 @@ end
 -- The rows as built, kept for the views the app asks for.
 local all = nil
 
-local NAMES = { "id", "method", "path", "status", "ms", "size" }
+local NAMES = { "id", "method", "path", "status", "tone", "ms", "size" }
+
+-- A status's tone, for the table's badge column.
+local function tone_of(status)
+  if status >= 500 then return "danger" end
+  if status >= 400 then return "warn" end
+  if status >= 300 then return "neutral" end
+  return "ok"
+end
 
 local function rows(n)
-  local id, method, path, status, ms, size = {}, {}, {}, {}, {}, {}
+  local id, method, path, status, tone, ms, size = {}, {}, {}, {}, {}, {}, {}
   for i = 1, n do
     id[i] = i - 1
     method[i] = METHODS[1 + math.floor(rand() * #METHODS)]
     path[i] = PATHS[1 + math.floor(rand() * #PATHS)] .. "/" .. math.floor(rand() * 9000 + 1000)
     status[i] = STATUS[1 + math.floor(rand() * #STATUS)]
+    tone[i] = tone_of(status[i])
     -- A long tail: most requests are quick, a few are slow.
     ms[i] = math.floor((rand() ^ 3) * 1800 + 2) + 0.0
     size[i] = math.floor(rand() * 64000)
   end
-  all = { id = id, method = method, path = path, status = status, ms = ms, size = size }
+  all = { id = id, method = method, path = path, status = status, tone = tone, ms = ms, size = size }
   return channel(all)
 end
 

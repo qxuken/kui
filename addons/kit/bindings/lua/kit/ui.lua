@@ -440,7 +440,7 @@
 ---The props of `kit/notice`.
 ---@class kit.NoticeProps
 ---@field message string What happened, or what to know.
----@field tone? kit.Tone Danger, warn, ok, accent or neutral (the default).
+---@field tone? kit.Tone Danger, warn, ok, accent, info or neutral (the default).
 ---@field title? string A bold first line.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.

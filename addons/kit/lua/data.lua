@@ -783,7 +783,7 @@ function M.notice(c, p)
       radius = "$kitRadius",
       bg = ref(c, "sunken"),
       border = { w = "$kitHair", color = ref(c, role == "muted" and "rule" or role) },
-      icons.node(c, tone == "ok" and "check" or (tone == "neutral" or tone == "accent") and "info" or "alert", 14, role),
+      icons.node(c, tone == "ok" and "check" or (tone == "neutral" or tone == "accent" or tone == "info") and "info" or "alert", 14, role),
       row({ key = "wrap", width = "grow", min_width = 0, gap = 10, cross_align = "center", wrap_children = true,
 column(body),
 row({ key = "actions", min_width = "fit", gap = 8, cross_align = "center", children("") }), }),

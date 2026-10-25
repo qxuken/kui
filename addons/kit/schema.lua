@@ -382,7 +382,7 @@ return {
       doc = "A message in the flow of the page: an error to act on, a warning, a note; its actions after it.",
       props = {
         { "message", "string", doc = "What happened, or what to know." },
-        { "tone", "Tone?", doc = "Danger, warn, ok, accent or neutral (the default)." },
+        { "tone", "Tone?", doc = "Danger, warn, ok, accent, info or neutral (the default)." },
         { "title", "string?", doc = "A bold first line." },
       },
       children = { { "", doc = "are its actions, at its end." } } },

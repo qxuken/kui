@@ -328,6 +328,9 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
         local steps = {}
         for _, p in ipairs(PAGES) do steps[#steps + 1] = { kind = "page", change = { value = p.value } } end
         for _, s in ipairs({ "phosphor", "neutral", "ledger" }) do steps[#steps + 1] = { kind = "skin", change = { value = s } } end
+        steps[#steps + 1] = { kind = "density", toggle = { on = true } }
+        steps[#steps + 1] = { kind = "shadows", toggle = { on = false } }
+        steps[#steps + 1] = { kind = "toast_all" }
         steps[#steps + 1] = { kind = "menu", open = true }
         steps[#steps + 1] = { kind = "dialog", open = true }
         local i = 0
@@ -345,6 +348,31 @@ fn the_kit_app_draws_every_page_in_every_skin_without_a_warning() {
     assert!(o.status.success(), "{s}");
     assert!(!s.contains("warning"), "{s}");
     assert!(s.contains("rows\t100000\tspans\t18000"), "the worker's channels arrived:\n{s}");
+}
+
+/// The Kit app is Kit's gallery: every component its schema describes is
+/// placed on one of its pages (by its wrapper, `kit.<name>(`), so a new
+/// component cannot ship without a live demo.
+#[test]
+fn the_kit_app_places_every_component() {
+    let kit = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../addons/kit");
+    let schema = std::fs::read_to_string(kit.join("schema.lua")).unwrap();
+    let app = ["main.lua", "pages.lua"]
+        .iter()
+        .map(|f| std::fs::read_to_string(kit.join("app").join(f)).unwrap())
+        .collect::<String>();
+    // A component's entry opens a line of its own: `    { "name",`.
+    let names: Vec<&str> = schema
+        .lines()
+        .filter_map(|l| l.strip_prefix("    { \""))
+        .filter_map(|l| l.split('"').next())
+        .collect();
+    assert!(names.len() >= 39, "the schema's components: {names:?}");
+    let missing: Vec<&&str> = names.iter().filter(|n| !app.contains(&format!("kit.{n}("))).collect();
+    assert!(missing.is_empty(), "components with no demo in the Kit app: {missing:?}");
+    // And it runs as an app of its own: a name, an id, a window.
+    let config = std::fs::read_to_string(kit.join("app/kui.config.lua")).unwrap();
+    assert!(config.contains("name = \"Kit\"") && config.contains("id = \"dev.kui.kit.gallery\""), "{config}");
 }
 
 /// Runs a Kit sample's own headless test (addons/kit/samples/<name>/test),
