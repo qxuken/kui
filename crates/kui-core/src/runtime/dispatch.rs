@@ -1657,7 +1657,8 @@ impl Core {
     /// performs for it (⌘C/X/V/A, ⌘Z, ⇧⌘Z, ⌘Y — the primary modifier, as
     /// the runner's `edit_chord` reads it), and anything pressed without
     /// Control or Command, which is typing: a Mac's Option composes ø,
-    /// and a key with no text yet may be the first half of one. Static,
+    /// and a key with no text yet may be the first half of one — but not
+    /// a function key, which is never either. Static,
     /// like `claims`: the press is resolved before the channel that acts
     /// on it arrives.
     fn editor_claims(&self, key: Key, kp: &KeyPress) -> bool {
@@ -1666,6 +1667,12 @@ impl Core {
         }
         if kp.edit_event().is_some() {
             return true;
+        }
+        // A function key types nothing and begins no composition, so it is
+        // not typing: F5 or F12 pressed in a field is the app's shortcut,
+        // as it is from anywhere else in the window.
+        if matches!(kp.code, KeyCode::F(_)) {
+            return false;
         }
         let clipboard = kp.mods.primary()
             && matches!(kp.code, KeyCode::Char(c) if "cxvazy".contains(c.to_ascii_lowercase()));

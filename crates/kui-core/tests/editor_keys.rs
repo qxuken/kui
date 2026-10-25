@@ -150,6 +150,25 @@ fn a_chord_the_editor_does_not_act_on_reaches_the_sink_above_it() {
 }
 
 #[test]
+fn a_function_key_reaches_the_sink_above_the_field() {
+    // F12 is a devtools toggle and F5 a refresh, from a field as from
+    // anywhere: a function key types nothing and composes nothing, so the
+    // editor has no use for it, chorded or not.
+    let (mut core, shell, field) = rig(EditOptions::default(), true);
+    for (code, mods) in [
+        (KeyCode::F(12), KeyMods::default()),
+        (KeyCode::F(5), KeyMods::default()),
+        (KeyCode::F(5), primary()),
+    ] {
+        let evs = press(&mut core, code, mods, None);
+        let name = format!("f{}", if let KeyCode::F(n) = code { n } else { 0 });
+        assert_eq!(heard(&evs, shell)[0], ("down".into(), name), "{code:?}");
+    }
+    assert_eq!(core.edit_text(field).as_deref(), Some("ab"));
+    assert_eq!(core.focus(), Some(field), "focus stays in the field");
+}
+
+#[test]
 fn the_editor_keeps_what_it_acts_on() {
     let (mut core, shell, field) = rig(EditOptions::default(), true);
     // The clipboard and undo chords a driver performs for it.

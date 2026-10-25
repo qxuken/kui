@@ -358,3 +358,138 @@ fn a_different_bar_of_the_same_length_closes_the_open_menu() {
     ]));
     assert_eq!(core.menu_bar_open(), Some(0));
 }
+
+/// A bar whose Edit menu has every standard editing row, over a field —
+/// what an app on Windows or Linux draws and a user reaches for with
+/// the pointer.
+fn frame_with_edit_menu(core: &mut Core) -> Key {
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    kui_core::widgets::menu_bar(
+        &mut ui,
+        MenuBar::new(vec![BarMenu::new(
+            "Edit",
+            vec![
+                MenuItem::role(MenuRole::Cut),
+                MenuItem::role(MenuRole::Copy),
+                MenuItem::role(MenuRole::Paste),
+                MenuItem::role(MenuRole::SelectAll),
+            ],
+        )])
+        .on_menu("chose"),
+    );
+    ui.text_edit(
+        "note",
+        "hello",
+        &EditOptions::default(),
+        NodeSpec::column().width(200.0).label("Note"),
+    );
+    ui.finish();
+    core.key_of("note").expect("the editor is keyed")
+}
+
+/// Opens the drawn Edit menu with the pointer and chooses `row` in it.
+fn choose_from_edit_menu(core: &mut Core, row: &str) {
+    let edit = center(core, Role::MenuItem, "Edit");
+    click(core, edit);
+    frame_with_edit_menu(core);
+    let at = center(core, Role::MenuItem, row);
+    click(core, at);
+    frame_with_edit_menu(core);
+}
+
+#[test]
+fn the_bars_select_all_selects_the_field_the_press_took_focus_from() {
+    let mut core = Core::new();
+    let key = frame_with_edit_menu(&mut core);
+    core.set_focus(Some(key));
+    frame_with_edit_menu(&mut core);
+    choose_from_edit_menu(&mut core, "Select All");
+    assert_eq!(core.focus(), Some(key), "the field has the keyboard back");
+    assert_eq!(core.edit.copy_selection(key).as_deref(), Some("hello"));
+}
+
+#[test]
+fn the_bars_paste_lands_in_the_field_the_press_took_focus_from() {
+    let mut core = Core::new();
+    let key = frame_with_edit_menu(&mut core);
+    core.set_focus(Some(key));
+    frame_with_edit_menu(&mut core);
+    let edit = center(&mut core, Role::MenuItem, "Edit");
+    click(&mut core, edit);
+    frame_with_edit_menu(&mut core);
+    let paste = center(&mut core, Role::MenuItem, "Paste");
+    click(&mut core, paste);
+    assert_eq!(
+        core.take_menu_actions(),
+        vec![kui_core::MenuAction::Paste],
+        "the host is asked for the clipboard"
+    );
+    // The runner's answer, as it sends it: read the clipboard and dispatch
+    // straight after the click, before any frame has laid the window out
+    // without the menu — so with the menu's modal scope still standing.
+    core.handle_input(InputEvent::Paste {
+        text: " world".into(),
+        marks: Default::default(),
+    });
+    frame_with_edit_menu(&mut core);
+    assert_eq!(core.focus(), Some(key), "the field has the keyboard back");
+    assert_eq!(core.edit_text(key).as_deref(), Some("hello world"));
+}
+
+#[test]
+fn under_custom_chrome_the_room_past_the_titles_moves_the_window() {
+    use kui_core::{WindowCommand, WindowId};
+    let mut core = Core::new();
+    core.env.window.custom_chrome = true;
+    frame(&mut core);
+    // Well right of the three titles, on the strip.
+    let strip = Vec2::new(380.0, kui_core::widgets::MENU_BAR_H / 2.0);
+    kui_core::testing::drive(
+        &mut core,
+        &[InputEvent::CursorMoved(strip), InputEvent::mouse_down(1)],
+    );
+    core.handle_input(InputEvent::mouse_up());
+    assert_eq!(
+        core.take_window_commands(),
+        vec![WindowCommand::StartDrag(WindowId::MAIN)]
+    );
+    // A title still opens its menu, and starts no drag.
+    let file = center(&mut core, Role::MenuItem, "File");
+    click(&mut core, file);
+    assert_eq!(core.menu_bar_open(), Some(0));
+    assert!(core.take_window_commands().is_empty());
+    // With a menu open the strip is the modal scope's, and a press on it
+    // moves no window from under the open menu.
+    frame(&mut core);
+    click(&mut core, strip);
+    assert!(core.take_window_commands().is_empty());
+}
+
+#[test]
+fn under_native_decorations_the_strip_moves_nothing() {
+    let mut core = Core::new();
+    frame(&mut core);
+    click(
+        &mut core,
+        Vec2::new(380.0, kui_core::widgets::MENU_BAR_H / 2.0),
+    );
+    assert!(core.take_window_commands().is_empty());
+}
+
+#[test]
+fn an_open_bar_over_the_app_is_no_modal_behind_content() {
+    let mut core = Core::new();
+    frame(&mut core);
+    let file = center(&mut core, Role::MenuItem, "File");
+    click(&mut core, file);
+    frame(&mut core);
+    assert_eq!(core.menu_bar_open(), Some(0));
+    assert!(
+        !core
+            .take_warnings()
+            .iter()
+            .any(|w| w.code == kui_core::diag::MODAL_BEHIND_CONTENT),
+        "the bar is in flow by design, and the app under it inert on purpose"
+    );
+}

@@ -1907,12 +1907,25 @@ pub fn menu_bar(ui: &mut Ui<'_>, bar: MenuBar) {
         .gap(2.0)
         .bg(t.bg)
         .role(Role::Menu)
-        .label("Menu bar");
+        .label("Menu bar")
+        // A press on a title or a row leaves the keyboard where it was, as
+        // a platform's menu bar does. Were the title to take focus, the
+        // modal the bar becomes would remember the *title* as the focus it
+        // displaced and hand focus back to it on close — leaving the field
+        // the user was in without its caret, and Select All and Paste,
+        // which act on the focused field, with nothing to act on.
+        .keep_focus();
     if open.is_some() {
         // The bar and not the dropdown is the modal while a menu is open:
         // the titles have to stay live for the hover to walk them, and the
         // app below has to be as inert as it is under any other menu.
         spec = spec.modal(Value::str(MENU_BAR_KEY));
+    } else if ui.env().window.custom_chrome {
+        // Under custom chrome the strip is window chrome, as the titlebar
+        // beside it is: the room past the titles moves the window, and the
+        // titles, being clickable, win the hit test. Not while a menu is
+        // open, where a press there is the dismissal the modal makes it.
+        spec = spec.window_drag();
     }
     let root = ui.with_keyed(MENU_BAR_KEY, spec, |ui| {
         // Hovering another title while a menu is open moves the open menu

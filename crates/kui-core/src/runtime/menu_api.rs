@@ -560,7 +560,17 @@ impl Core {
                     self.push_edit_event(key, EventKind::Change, out);
                 }
             }
-            MenuRole::Paste => self.queue_paste(),
+            MenuRole::Paste => {
+                // The answer is a paste to the focused editor, and a host
+                // sends it straight after this input, before a frame has
+                // handed focus back from the closing menu (the native
+                // runner does). So focus goes back to the field now, as
+                // Cut and Select All take it back.
+                if let Some(key) = self.menu_editor {
+                    self.move_focus(Some(key));
+                }
+                self.queue_paste();
+            }
             MenuRole::LookUp => {
                 if let Some(action) = self.lookup_action() {
                     self.menu_actions.push(action);

@@ -45,6 +45,11 @@ was the first bare bump to break an app in five releases).
   before the panel's own.
 - The devtools' tree arrows select the row they land on, and Enter puts
   the selection down rather than picking it (backlog F201).
+- A function key pressed in a focused editor goes to the `onKey` sink
+  above it, where the editor kept it and did nothing with it.
+- Under custom chrome a press on the drawn menu bar's empty room starts
+  a window drag, while no menu is open; a press on a title still opens
+  its menu.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -281,6 +286,38 @@ for lua-language-server, and a new runner beside the window's.
   an `i32` reaches is not drawn (cosmic-text added one to the position
   it had saturated), and a wrapped long line's row count is held at half
   a `u32` (backlog FZ15, found by the `scenes` fuzz target).
+
+- The menu bar drawn in the window — Windows and Linux — acts on the
+  field the user was in. A press on a title took the keyboard, so the
+  menu, a modal, remembered the *title* as the focus it displaced and
+  handed focus back to it on close: the field lost its caret, Select All
+  selected nothing, and Paste — answered by the runner before the next
+  frame — landed on the menu's row. The bar now leaves the keyboard where
+  it was (`keep_focus`), and Paste hands it back to the field before
+  asking for the clipboard, as Cut and Select All do; the right-click
+  menu's Paste the same. Found driving an app on Windows.
+
+  *What you can delete:* an app's own Edit-menu handling that refocused
+  the field, or read the clipboard itself, because the drawn bar's rows
+  did nothing.
+
+- The drawn menu bar is window chrome under custom chrome: its room past
+  the titles moves the window, as the titlebar beside it does (and under
+  **What breaks**). An open bar no longer warns `modal-behind-content`
+  about itself — it is in flow by design, and the app under it inert on
+  purpose.
+
+  *What you can delete:* a `window="drag"` box an app laid behind the
+  bar, and a filter on the warning.
+
+- F5, F12 and every other function key reach an app's keymap from a
+  focused field (and under **What breaks**): the editor took them as
+  typing, though they type nothing and compose nothing, so a devtools or
+  refresh shortcut worked everywhere in a window but the field the user
+  was typing in.
+
+  *What you can delete:* a field-level `onKey` that forwarded function
+  keys to the app's keymap.
 
 ## 0.1.0-alpha.67 (2026-10-24)
 
