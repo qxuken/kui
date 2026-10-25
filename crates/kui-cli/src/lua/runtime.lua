@@ -295,7 +295,7 @@ end
 
 -- The waiting calls: each starts an operation and waits on it.
 
---- `kui.http.request{ url, method, headers, json | body, timeout }` or
+--- `kui.http.request{ url, method, headers, json | body, timeout (ms) }` or
 --- `kui.http.request(url, opts)`: `{ status, ok, headers, body, json? }`.
 function kui.http.request(target, opts)
   return kui.__await(kui.http.__request(target, nil, opts))

@@ -78,6 +78,33 @@ local record Seen
   n: integer
 end
 
+-- A tone a channel cell names, as the role its text is drawn in; nil for
+-- none or a word Kit has no tone for.
+local TONE_ROLE: {string:string} = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "muted" }
+
+local function tone_of(v: any): string
+  return v is string and TONE_ROLE[v] or nil
+end
+
+-- A small pill for a cell or a row: its text in the tone, a dot before it
+-- when `dot`. What a badge draws, sized to sit in a row.
+-- Its ground is the pressed wash, which reads on a panel and a sidebar
+-- alike; the accent tone fills it, as a badge's does. On a selected row
+-- it takes the selection's ink.
+local function pill(c: Ctx, label: string, tone: string, dot: boolean, sel: boolean): kui.Node
+  local role = tone_of(tone)
+  local accent = role == "accent" and not sel
+  local ink = ref(c, sel and "sel_fg" or (accent and "on_accent" or (role or "muted")))
+  local spot = sel and "sel_fg" or (accent and "on_accent" or (role == "muted" and "faint" or (role or "faint")))
+  return row {
+    height = 18, min_width = "fit", pad = { x = 6 }, gap = 5, cross_align = "center",
+    radius = c.s.skin.radius > 0 and 9 or 0,
+    bg = accent and ref(c, "accent") or (not sel and ref(c, "press") or nil),
+    dot and column { width = 6, height = 6, radius = 3, bg = ref(c, spot) } or nil,
+    ctx.data(c, label, { size = "$kitSizeLabel", bold = c.s.skin.label_bold, color = ink, max_lines = 1 }),
+  }
+end
+
 -- Up, Down, Home, End and the pages from `selected` in `n` rows.
 local function step(code: string, selected: integer, n: integer, page: integer): integer
   local s = selected or -1
@@ -150,16 +177,30 @@ function M.table(c: Ctx, p: P): kui.Node
     for j, col in ipairs(cols) do
       local s = cell_text(ch:get(i, col.field as string))
       name[#name + 1] = s
-      line[#line + 1] = row {
-        width = (col.width as number) or "grow",
-        main_align = col.align == "end" and "end" or (col.align == "center" and "center" or "start"),
-        text(s, {
+      -- A column with a `tone` field draws each cell in the tone its row
+      -- names there (a status, an HTTP method); with `badge`, as a pill
+      -- with a dot. On the selected row the selection's ink wins.
+      local tone = str(col.tone) and cell_text(ch:get(i, col.tone as string)) or nil
+      local cell: kui.Node
+      if col.badge == true and s ~= "" then
+        cell = pill(c, s, tone, true, sel)
+      else
+        local role = not sel and tone_of(tone) or nil
+        cell = text(s, {
           size = "$kitSize",
-          color = ink,
+          color = role and ref(c, role == "accent" and "fg" or role) or ink,
+          bold = role ~= nil and role ~= "muted" and c.s.skin.label_bold or nil,
           family = col.mono == true and "$kitData" or "$kitUi",
           max_lines = 1,
           ellipsis = true,
-        }),
+        })
+      end
+      line[#line + 1] = row {
+        width = (col.width as number) or "grow",
+        min_width = 0,
+        cross_align = "center",
+        main_align = col.align == "end" and "end" or (col.align == "center" and "center" or "start"),
+        cell,
       }
     end
     line.label = table.concat(name, ", ")
@@ -196,25 +237,37 @@ function M.list(c: Ctx, p: P): kui.Node
     local sel = selected == i
     local title = cell_text(ch:get(i, p.title as string))
     local t: kui.Props = {
-      index = i,
-      role = "listItem",
-      label = title,
-      selected = sel,
-      height = row_h,
       width = "grow",
-      pad = { x = 10 },
+      min_width = 0,
       main_align = "center",
       gap = 1,
-      bg = sel and ref(c, "sel") or nil,
-      hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
-      on_click = act(c, "list.select", { row = i }),
       ctx.text(c, title, { color = ref(c, sel and "sel_fg" or "fg"), max_lines = 1, ellipsis = true }),
     }
     if two then
       t[#t + 1] = ctx.muted(c, cell_text(ch:get(i, p.detail as string)), { max_lines = 1, ellipsis = true,
         color = ref(c, sel and "sel_fg" or "muted") })
     end
-    return column(t)
+    -- A `badge` field puts a pill before the title (a method, a state),
+    -- in the tone the row's `tone` field names.
+    local badge = str(p.badge) and cell_text(ch:get(i, p.badge as string)) or ""
+    local tone = str(p.tone) and cell_text(ch:get(i, p.tone as string)) or nil
+    return row {
+      index = i,
+      role = "listItem",
+      label = badge ~= "" and (badge .. " " .. title) or title,
+      selected = sel,
+      height = row_h,
+      width = "grow",
+      pad = { x = 10 },
+      gap = 8,
+      cross_align = "center",
+      bg = sel and ref(c, "sel") or nil,
+      hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
+      on_click = act(c, "list.select", { row = i }),
+      badge ~= "" and row { width = p.badge_width as number, min_width = "fit",
+        pill(c, badge, tone, false, sel) } or nil,
+      column(t),
+    }
   end)
 end
 
@@ -387,7 +440,8 @@ function M.log(c: Ctx, p: P): kui.Node
   local rev = ch and ch.rev or 0
   if not st.heights then st.heights = row_heights(n, row_h) end
   local g = env.scroll_geometry("rows")
-  local was_end = not g or g.offset.y + g.h >= st.heights:total() - row_h
+  -- At the end as of the last layout, or before the first one.
+  local at_end = not g or g.offset.y + g.h >= g.content_h - row_h
   if rev ~= st.rev then
     if n <= st.n then st.heights:clear() end
     st.heights:set_len(n)
@@ -398,6 +452,21 @@ function M.log(c: Ctx, p: P): kui.Node
       { size = "$kitSizeLabel", family = "$kitData" } as kui.Props, math.max(40, width - label_w))
     return math.max(row_h, m.height + 2)
   end
+  local pin = ctx.flag(p.follow, true) and at_end and n > 0
+  if pin and g and g.w > 0 then
+    -- Following: the last screenful measured first, so the estimate the
+    -- rows above stand on has already moved for them when the list slices.
+    local filled, i = 0.0, n - 1
+    while i >= 0 and filled < g.h + row_h do
+      local h = st.heights:measured(i)
+      if not h or h <= 0 then
+        h = measure(i, g.w)
+        st.heights:set(i, h)
+      end
+      filled = filled + h
+      i = i - 1
+    end
+  end
   local t = list(env, {
     key = "rows",
     heights = st.heights,
@@ -407,8 +476,13 @@ function M.log(c: Ctx, p: P): kui.Node
     pad = { y = 4 },
     selectable = true,
   } as kui.List, measure, line)
-  if ctx.flag(p.follow, true) and rev ~= st.rev and n > st.n and was_end then
-    env.set_scroll("rows", 0, st.heights:total())
+  if pin then
+    -- After the list, and past the end: the list keeps its window on the
+    -- row it starts with when measuring moves the estimate (its own
+    -- scroll shift), which pinned the window mid-log, above a blank band
+    -- where the end should be. Asked last, and clamped by the core to the
+    -- end as laid out, the pin wins.
+    env.set_scroll("rows", 0, 1e9)
   end
   st.n, st.rev = n, rev
   return t
@@ -497,6 +571,11 @@ function M.notice(c: Ctx, p: P): kui.Node
     body[#body + 1] = ctx.text(c, p.title as string, { bold = true, color = ref(c, role == "muted" and "fg" or role), wrap = "word" })
   end
   body[#body + 1] = ctx.text(c, str(p.message) or "", { color = ref(c, role == "muted" and "fg" or role), wrap = "word" })
+  -- The message takes the room, never narrower than a short line
+  -- (`min_width`); where the actions do not fit beside that, the row wraps
+  -- them onto a line of their own under the message, lined up with its
+  -- text, instead of squeezing it to a word a line.
+  body.width, body.min_width = "grow", 160
   local t: kui.Props = {
     role = "group",
     -- Named by its title at most: the live message inside reads itself.
@@ -509,8 +588,9 @@ function M.notice(c: Ctx, p: P): kui.Node
     bg = ref(c, "sunken"),
     border = { w = "$kitHair", color = ref(c, role == "muted" and "rule" or role) },
     icons.node(c, tone == "ok" and "check" or (tone == "neutral" or tone == "accent") and "info" or "alert", 14, role),
-    column(body),
-    row { gap = 8, cross_align = "center", children("") },
+    row { key = "wrap", width = "grow", min_width = 0, gap = 10, cross_align = "center", wrap_children = true,
+      column(body),
+      row { key = "actions", min_width = "fit", gap = 8, cross_align = "center", children("") } },
   }
   return row(t)
 end

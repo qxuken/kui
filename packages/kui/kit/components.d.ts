@@ -27,6 +27,9 @@ export type Density = 'comfortable' | 'compact';
 /** A log line's level. */
 export type Level = 'debug' | 'info' | 'warn' | 'error';
 
+/** How a chart labels its x axis: the number (with `x_unit`), time counted back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the local time of day. */
+export type XFormat = 'number' | 'ago' | 'clock';
+
 /** A choice: what it is, and what it reads as. */
 export interface Choice {
   /** What the choice is; what the event carries. */
@@ -53,6 +56,10 @@ export interface Column {
   align?: Align;
   /** Its cells in the data face: ids, timings, hashes. */
   mono?: boolean;
+  /** A channel column naming each cell's tone (`ok`, `warn`, `danger`, `accent`, `neutral`): the cell is drawn in it — a status, an HTTP method. */
+  tone?: string;
+  /** Its cells as pills with a dot in their `tone`: a status column. */
+  badge?: boolean;
 }
 
 /** A tab: its value and its label. */
@@ -335,8 +342,12 @@ export interface TextFieldProps {
   disabled?: boolean;
   /** Its width in px; grows when left out. */
   width?: number;
-  /** Takes the keyboard each time this number changes: keep a counter in your model and bump it (⌘F). */
+  /** Takes the keyboard each time this number changes while the field is on screen: keep a counter in your model and bump it (⌘F). A field that shows after the bump takes its number as where it starts. */
   focus?: number;
+  /** Takes the keyboard as it first shows: a new item's name. */
+  autofocus?: boolean;
+  /** What is wrong with the text: drawn under the field in the danger colour, its edge in danger too, and read after its name. An empty string marks the field only, for fields that share one message. */
+  error?: string;
   /** The message change arrives as: yours, with `change: TextFieldChange` in it. The text changed. */
   onChange?: unknown;
   /** The message submit arrives as: yours, with `submit: TextFieldSubmit` in it. Enter. */
@@ -363,6 +374,50 @@ export interface TextFieldSubmit {
 /** Your message `T` as `submit` arrives. */
 export type TextFieldSubmitMsg<T = {}> = T & { submit: TextFieldSubmit };
 
+/** The props of `kit/text_area`. */
+export interface TextAreaProps {
+  /** Its text: yours to keep, from `change`. */
+  value: string;
+  /** Its label, above it; its name. */
+  label?: string;
+  /** The label names the field but is not drawn. */
+  hideLabel?: boolean;
+  /** Shown while it is empty. */
+  placeholder?: string;
+  /** In the data face: code, JSON. */
+  mono?: boolean;
+  /** Unavailable. */
+  disabled?: boolean;
+  /** Its width in px; grows when left out. */
+  width?: number;
+  /** Lines tall at the least; 4 when left out. It grows with its text. */
+  rows?: number;
+  /** Lines tall at the most, scrolling past them; no limit when left out. */
+  maxRows?: number;
+  /** Takes the room its parent leaves (a request body filling its tab), `rows` still its least. */
+  grow?: boolean;
+  /** Takes the keyboard each time this number changes while it is on screen. */
+  focus?: number;
+  /** Takes the keyboard as it first shows. */
+  autofocus?: boolean;
+  /** What is wrong with the text, under it in the danger colour. */
+  error?: string;
+  /** The message change arrives as: yours, with `change: TextAreaChange` in it. The text changed. */
+  onChange?: unknown;
+  /** Keys the instance; by default it is keyed by where it is placed. */
+  key?: string | number;
+  /** Asks the extension every frame instead of replaying an unchanged instance. */
+  fresh?: boolean;
+}
+
+/** What `onChange`'s message carries under `change`. */
+export interface TextAreaChange {
+  /** The whole text. */
+  text: string;
+}
+/** Your message `T` as `change` arrives. */
+export type TextAreaChangeMsg<T = {}> = T & { change: TextAreaChange };
+
 /** The props of `kit/search`. */
 export interface SearchProps {
   /** The query: yours to keep. */
@@ -373,8 +428,10 @@ export interface SearchProps {
   label?: string;
   /** A count after the query: `12 of 340`. */
   count?: string;
-  /** Takes the keyboard each time this number changes (⌘F). */
+  /** Takes the keyboard each time this number changes while it is on screen (⌘F). */
   focus?: number;
+  /** Takes the keyboard as it first shows. */
+  autofocus?: boolean;
   /** The message change arrives as: yours, with `change: SearchChange` in it. The query changed; cleared is the empty string. */
   onChange?: unknown;
   /** The message submit arrives as: yours, with `submit: SearchSubmit` in it. Enter. */
@@ -491,8 +548,10 @@ export interface RadioGroupProps {
   options: Choice[];
   /** The one chosen: yours to keep. */
   value?: string;
-  /** The group's name. */
+  /** The group's name, drawn above it. */
   label?: string;
+  /** The name is read but not drawn: a group whose place says what it is. */
+  hideLabel?: boolean;
   /** The message change arrives as: yours, with `change: RadioGroupChange` in it. An option was chosen. */
   onChange?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -545,6 +604,8 @@ export interface SliderProps {
   step?: number;
   /** Its label; its name. */
   label?: string;
+  /** The value as text, shown beside the label and read for it: `20 MB/s`, `30 days`. The number when left out. */
+  valueLabel?: string;
   /** The message change arrives as: yours, with `change: SliderChange` in it. It asks for another value. */
   onChange?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -623,6 +684,12 @@ export interface ListProps {
   title: string;
   /** The field its second line reads. */
   detail?: string;
+  /** A field drawn as a pill before the title: a method, a state. */
+  badge?: string;
+  /** A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`, `neutral`). */
+  tone?: string;
+  /** The badge column's width in px, so the titles line up; each badge's own when left out. */
+  badgeWidth?: number;
   /** The selected row (0-based): yours to keep. */
   selected?: number;
   /** Takes the room its parent leaves. */
@@ -795,6 +862,8 @@ export type DialogDismissMsg<T = {}> = T & { dismiss: DialogDismiss };
 
 /** The props of `kit/popover`. */
 export interface PopoverProps {
+  /** Its name, read and not drawn: what it holds (Scale the service). A modal surface with no name warns `modal-without-name`. */
+  label?: string;
   /** Its width in px. */
   width?: number;
   /** The message dismiss arrives as: yours, with `dismiss: PopoverDismiss` in it. Escape, or a press outside. */
@@ -847,8 +916,14 @@ export interface ToastProps {
   message: string;
   /** Neutral when left out. */
   tone?: Tone;
+  /** One action on what happened, a button beside the message: `Undo`. */
+  action?: string;
+  /** The action's accessible name when it says more than its label (Undo → Undo the delete). */
+  actionName?: string;
   /** The message dismiss arrives as: yours, with `dismiss: ToastDismiss` in it. Its close button. */
   onDismiss?: unknown;
+  /** The message action arrives as: yours, with `action: ToastAction` in it. Its action was pressed. */
+  onAction?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -860,6 +935,12 @@ export interface ToastDismiss {
 }
 /** Your message `T` as `dismiss` arrives. */
 export type ToastDismissMsg<T = {}> = T & { dismiss: ToastDismiss };
+
+/** What `onAction`'s message carries under `action`. */
+export interface ToastAction {
+}
+/** Your message `T` as `action` arrives. */
+export type ToastActionMsg<T = {}> = T & { action: ToastAction };
 
 /** The props of `kit/sparkline`. */
 export interface SparklineProps {
@@ -893,6 +974,12 @@ export interface LineChartProps {
   area?: boolean;
   /** With it, only the last `window` of x is shown: a live chart. */
   window?: number;
+  /** How the x ticks read; the number when left out. */
+  xFormat?: XFormat;
+  /** After each x tick's number: `min`, `s`. */
+  xUnit?: string;
+  /** After each y tick's number: `ms`, `%`. */
+  yUnit?: string;
   /** The message hover arrives as: yours, with `hover: LineChartHover` in it. The pointer moved over a row. */
   onHover?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -917,8 +1004,16 @@ export interface BarChartProps {
   label: string;
   /** The column of their values. */
   value: string;
-  /** In px; 160 when left out. */
+  /** In px; 160 when left out (standing bars). */
   height?: number;
+  /** After each value and axis number: `%`, `ms`. */
+  unit?: string;
+  /** Each bar's value over it; on when left out. */
+  values?: boolean;
+  /** Bars lying along rows, each name whole beside its bar: for long names or many bars. */
+  horizontal?: boolean;
+  /** Lying bars: the names' column in px; 120 when left out. */
+  labelWidth?: number;
   /** The message select arrives as: yours, with `select: BarChartSelect` in it. A bar was clicked. */
   onSelect?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -1026,6 +1121,9 @@ export declare function IconButton(props: IconButtonProps, children?: KuiNode): 
 /** A one-line text field, the skin's field style (an underline in Ledger). */
 export declare function TextField(props: TextFieldProps, children?: KuiNode): KuiNode;
 
+/** A text field of several lines, in a well in every skin: a note, a request body. */
+export declare function TextArea(props: TextAreaProps, children?: KuiNode): KuiNode;
+
 /** A search field: a glass, the query, and a clear button while it has one. */
 export declare function Search(props: SearchProps, children?: KuiNode): KuiNode;
 
@@ -1116,6 +1214,7 @@ export interface Kit {
   Button: typeof Button;
   IconButton: typeof IconButton;
   TextField: typeof TextField;
+  TextArea: typeof TextArea;
   Search: typeof Search;
   Select: typeof Select;
   Checkbox: typeof Checkbox;

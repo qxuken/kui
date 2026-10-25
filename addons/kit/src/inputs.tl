@@ -118,25 +118,37 @@ function M.icon_button(c: Ctx, p: P): kui.Node
 end
 
 -- A field's well: an underline in Ledger and Phosphor, a box in Neutral.
-local function well(c: Ctx, t: kui.Props, focused: boolean)
+-- In error its edge is the danger colour, focused or not.
+local function well(c: Ctx, t: kui.Props, focused: boolean, bad: boolean)
   if c.s.skin.field_box then
     t.bg = ref(c, "sunken")
     t.radius = "$kitRadius"
-    t.border = { w = "$kitHair", color = ref(c, focused and "focus" or "rule") }
+    t.border = { w = "$kitHair", color = ref(c, bad and "danger" or (focused and "focus" or "rule")) }
   else
     t.border = nil
   end
 end
 
 -- The underline under a field in the skins that draw one.
-local function underline(c: Ctx, focused: boolean): kui.Node
+local function underline(c: Ctx, focused: boolean, bad: boolean): kui.Node
   if c.s.skin.field_box then return nil end
   -- At rest a hairline in the faint ink: soft beside the text, yet the
   -- 3:1 a field's edge needs to read as a field (the `rule` colour drew
   -- it at 1.5:1, a version field read as a label). Focused, the region
   -- rule in the ink: the accent is a highlighter on Ledger's paper and
-  -- vanished there as a focus mark.
-  return ctx.rule(c, focused and "ink" or "faint", focused and "$kitRuleW" or "$kitHair")
+  -- vanished there as a focus mark. In error, the danger colour.
+  local role = bad and "danger" or (focused and "ink" or "faint")
+  return ctx.rule(c, role, (focused or bad) and "$kitRuleW" or "$kitHair")
+end
+
+-- What is wrong with a field, under it in the danger colour. An empty
+-- message marks the field without a line: fields that share one message.
+local function error_line(c: Ctx, msg: string): kui.Node
+  if not msg or msg == "" then return nil end
+  return row { width = "grow", gap = 5, pad = { t = 4 }, cross_align = "center",
+    icons.node(c, "alert", 12, "danger"),
+    row { width = "grow", min_width = 0,
+      ctx.text(c, msg, { size = "$kitSizeLabel", color = ref(c, "danger"), wrap = "word" }) } }
 end
 
 local record Asked
@@ -145,12 +157,18 @@ local record Asked
 end
 
 -- `focus` is a request: each new number takes the keyboard to the field.
--- The first number seen is where it starts, not a request.
+-- The first number seen is where it starts, not a request; and a field
+-- that was not on screen last frame — new, or back after the number
+-- moved while it was away — takes its number as where it starts too:
+-- the request was for the field showing then, and there is no node of
+-- this one's to move the keyboard to yet. `autofocus` is the way to ask
+-- for a field as it first shows (the edit's `key_focus`).
 local function focus_request(c: Ctx, p: P)
   local st = ctx.state(c, function(): Asked return { seen = false } end)
   local want = p.focus as integer
   if want ~= nil and st.seen and want ~= st.focus then
-    c.env.set_focus("edit")
+    -- Refused when no node was keyed "edit" here last frame: an arriving field.
+    pcall(c.env.set_focus, "edit")
   end
   st.focus, st.seen = want, true
 end
@@ -164,6 +182,7 @@ function M.text_field(c: Ctx, p: P): kui.Node
   focus_request(c, p)
   local focused = c.env.is_focused("edit")
   local value = str(p.value) or ""
+  local err = str(p.error)
   local box: kui.Props = {
     height = "$kitCtl",
     width = "grow",
@@ -179,14 +198,68 @@ function M.text_field(c: Ctx, p: P): kui.Node
       family = p.mono == true and "$kitData" or "$kitUi",
       color = ref(c, "fg"),
       disabled = p.disabled == true,
+      -- The error is read after the name, as what to fix.
+      description = err ~= "" and err or nil,
+      key_focus = p.autofocus == true or nil,
       on_change = act(c, "text_field.change"),
       on_submit = act(c, "text_field.submit", { text = value }),
     },
   }
-  well(c, box, focused)
-  local field = column { width = (p.width as number) or "grow", gap = 0, row(box), underline(c, focused) }
+  well(c, box, focused, err ~= nil)
+  local field = column { width = (p.width as number) or "grow", gap = 0, row(box), underline(c, focused, err ~= nil),
+    error_line(c, err) }
   if p.hide_label == true then return field end
   return labelled(c, str(p.label), field, p.width)
+end
+
+-- A field of several lines: a well in every skin (an underline under a
+-- block of text reads as a rule, not a field), `rows` lines tall at the
+-- least, growing with its text up to `max_rows` and scrolling past them.
+function M.text_area(c: Ctx, p: P): kui.Node
+  focus_request(c, p)
+  local focused = c.env.is_focused("edit")
+  local value = str(p.value) or ""
+  local err = str(p.error)
+  local line_h = 17
+  local rows = math.max(1, (p.rows or 4) as number)
+  local max_rows = p.max_rows as number
+  local pad = 8
+  local boxed = c.s.skin.field_box
+  local edge = err and "danger" or (focused and (boxed and "focus" or "ink") or (boxed and "rule" or "faint"))
+  local box: kui.Props = {
+    key = "box",
+    width = "grow",
+    min_height = rows * line_h + 2 * pad,
+    max_height = max_rows and (max_rows * line_h + 2 * pad) or nil,
+    scroll_y = max_rows ~= nil,
+    pad = pad,
+    bg = ref(c, "sunken"),
+    radius = "$kitRadius",
+    border = { w = ((focused or err ~= nil) and not boxed) and "$kitRuleW" or "$kitHair", color = ref(c, edge) },
+    edit {
+      key = "edit",
+      value = value,
+      multiline = true,
+      placeholder = str(p.placeholder),
+      label = str(p.label) or str(p.placeholder),
+      description = err ~= "" and err or nil,
+      width = "grow",
+      size = "$kitSize",
+      line_height = line_h,
+      family = p.mono == true and "$kitData" or "$kitUi",
+      color = ref(c, "fg"),
+      disabled = p.disabled == true,
+      key_focus = p.autofocus == true or nil,
+      on_change = act(c, "text_area.change"),
+    },
+  }
+  local grow = p.grow == true
+  if grow then box.height = "grow" end
+  local field = column { width = (p.width as number) or "grow", height = grow and "grow" or nil, gap = 0,
+    column(box), error_line(c, err) }
+  if p.hide_label == true or not str(p.label) then return field end
+  return column { width = (p.width as number) or "grow", height = grow and "grow" or nil, gap = 3,
+    ctx.muted(c, ctx.label(c, p.label as string), { bold = true }), field }
 end
 
 function M.search(c: Ctx, p: P): kui.Node
@@ -212,6 +285,7 @@ function M.search(c: Ctx, p: P): kui.Node
       on_change = act(c, "search.change"),
       on_submit = act(c, "search.submit", { text = value }),
       on_cancel = act(c, "search.clear"),
+      key_focus = p.autofocus == true or nil,
     },
   }
   if str(p.count) then box[#box + 1] = ctx.data(c, p.count as string, { size = "$kitSizeLabel", color = ref(c, "muted") }) end
@@ -223,8 +297,8 @@ function M.search(c: Ctx, p: P): kui.Node
       icons.node(c, "x", 12, "muted"),
     }
   end
-  well(c, box, focused)
-  return column { width = "grow", row(box), underline(c, focused) }
+  well(c, box, focused, false)
+  return column { width = "grow", row(box), underline(c, focused, false) }
 end
 
 -- The label of the option chosen, nil for none.
@@ -375,7 +449,7 @@ end
 function M.radio_group(c: Ctx, p: P): kui.Node
   local options = (p.options or {}) as {P}
   local t: kui.Props = { role = "radioGroup", label = str(p.label), gap = 2 }
-  if str(p.label) then t[#t + 1] = ctx.muted(c, ctx.label(c, p.label as string), { bold = true }) end
+  if str(p.label) and p.hide_label ~= true then t[#t + 1] = ctx.muted(c, ctx.label(c, p.label as string), { bold = true }) end
   for i, o in ipairs(options) do
     local here = o.value == p.value
     t[#t + 1] = row {
@@ -452,10 +526,13 @@ function M.slider(c: Ctx, p: P): kui.Node
   local v = math.max(lo, math.min(hi, (p.value or lo) as number))
   local f = hi > lo and (v - lo) / (hi - lo) or 0
   local step = (p.step or (hi - lo) / 100) as number
+  -- The value as the host wrote it (`20 MB/s`), or the number itself.
+  local shown = str(p.value_label) or string.format("%g", v)
   local track = row {
     role = "slider",
     label = str(p.label),
     value_now = v,
+    value_text = str(p.value_label),
     value_min = lo,
     value_max = hi,
     value_step = step,
@@ -476,7 +553,7 @@ function M.slider(c: Ctx, p: P): kui.Node
     width = "grow",
     gap = 2,
     row { width = "grow", ctx.muted(c, ctx.label(c, p.label as string), { bold = true }), ctx.grow(),
-      ctx.data(c, string.format("%g", v), { size = "$kitSizeLabel", color = ref(c, "muted") }) },
+      ctx.data(c, shown, { size = "$kitSizeLabel", color = ref(c, "fg") }) },
     track,
   }
 end
@@ -485,7 +562,7 @@ end
 function M.event(m: P, kit: string): any
   if kit == "button.press" or kit == "icon_button.press" then
     return emit("on_press", {})
-  elseif kit == "text_field.change" or kit == "search.change" then
+  elseif kit == "text_field.change" or kit == "search.change" or kit == "text_area.change" then
     local ch = m.change as P
     return emit("on_change", { text = ch and ch.text or "" })
   elseif kit == "text_field.submit" or kit == "search.submit" then

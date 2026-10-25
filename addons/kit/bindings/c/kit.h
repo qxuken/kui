@@ -156,6 +156,27 @@ static inline KuiStr kit_level_name(KitLevel v) {
 }
 
 /*
+ * How a chart labels its x axis: the number (with `x_unit`), time counted back
+ * to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the
+ * local time of day.
+ */
+typedef enum KitXFormat {
+    KIT_X_FORMAT_UNSET = 0,
+    KIT_X_FORMAT_NUMBER,
+    KIT_X_FORMAT_AGO,
+    KIT_X_FORMAT_CLOCK,
+} KitXFormat;
+
+static inline KuiStr kit_x_format_name(KitXFormat v) {
+    switch (v) {
+    case KIT_X_FORMAT_NUMBER: return KUI_STR("number");
+    case KIT_X_FORMAT_AGO: return KUI_STR("ago");
+    case KIT_X_FORMAT_CLOCK: return KUI_STR("clock");
+    default: return KUI_STR("");
+    }
+}
+
+/*
  * A choice: what it is, and what it reads as.
  */
 typedef struct KitChoice {
@@ -220,6 +241,17 @@ typedef struct KitColumn {
      */
     bool mono;
     bool mono_set;
+    /*
+     * A channel column naming each cell's tone (`ok`, `warn`, `danger`,
+     * `accent`, `neutral`): the cell is drawn in it — a status, an HTTP
+     * method.
+     */
+    KuiStr tone;
+    /*
+     * Its cells as pills with a dot in their `tone`: a status column.
+     */
+    bool badge;
+    bool badge_set;
 } KitColumn;
 
 static inline KuiValue *kit_column_value(const KitColumn *p) {
@@ -229,6 +261,8 @@ static inline KuiValue *kit_column_value(const KitColumn *p) {
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
     if (p->align != 0) kui_value_map_set(m, KUI_STR("align"), kui_value_str(kit_align_name(p->align)));
     if (p->mono_set) kui_value_map_set(m, KUI_STR("mono"), kui_value_bool(p->mono));
+    if (p->tone.len > 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(p->tone));
+    if (p->badge_set) kui_value_map_set(m, KUI_STR("badge"), kui_value_bool(p->badge));
     return m;
 }
 
@@ -912,11 +946,23 @@ typedef struct KitTextField {
     double width;
     bool width_set;
     /*
-     * Takes the keyboard each time this number changes: keep a counter in your
-     * model and bump it (⌘F).
+     * Takes the keyboard each time this number changes while the field is on
+     * screen: keep a counter in your model and bump it (⌘F). A field that
+     * shows after the bump takes its number as where it starts.
      */
     int64_t focus;
     bool focus_set;
+    /*
+     * Takes the keyboard as it first shows: a new item's name.
+     */
+    bool autofocus;
+    bool autofocus_set;
+    /*
+     * What is wrong with the text: drawn under the field in the danger colour,
+     * its edge in danger too, and read after its name. An empty string marks
+     * the field only, for fields that share one message.
+     */
+    KuiStr error;
     /*
      * The message `change` arrives as, consumed; NULL for none. The text
      * changed.
@@ -942,6 +988,8 @@ static inline KuiValue *kit_text_field_props(const KitTextField *p) {
     if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
     if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
+    if (p->autofocus_set) kui_value_map_set(m, KUI_STR("autofocus"), kui_value_bool(p->autofocus));
+    if (p->error.len > 0) kui_value_map_set(m, KUI_STR("error"), kui_value_str(p->error));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->on_submit != NULL) kui_value_map_set(m, KUI_STR("on_submit"), p->on_submit);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -953,6 +1001,113 @@ static inline KuiValue *kit_text_field_props(const KitTextField *p) {
 static inline int32_t kit_text_field(KuiCtx *ctx, const KitTextField *p) {
     KuiValue *props = kit_text_field_props(p);
     int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/text_field"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/*
+ * A text field of several lines, in a well in every skin: a note, a request
+ * body.
+ */
+typedef struct KitTextArea {
+    /*
+     * Its text: yours to keep, from `change`.
+     */
+    KuiStr value;
+    /*
+     * Its label, above it; its name.
+     */
+    KuiStr label;
+    /*
+     * The label names the field but is not drawn.
+     */
+    bool hide_label;
+    bool hide_label_set;
+    /*
+     * Shown while it is empty.
+     */
+    KuiStr placeholder;
+    /*
+     * In the data face: code, JSON.
+     */
+    bool mono;
+    bool mono_set;
+    /*
+     * Unavailable.
+     */
+    bool disabled;
+    bool disabled_set;
+    /*
+     * Its width in px; grows when left out.
+     */
+    double width;
+    bool width_set;
+    /*
+     * Lines tall at the least; 4 when left out. It grows with its text.
+     */
+    int64_t rows;
+    bool rows_set;
+    /*
+     * Lines tall at the most, scrolling past them; no limit when left out.
+     */
+    int64_t max_rows;
+    bool max_rows_set;
+    /*
+     * Takes the room its parent leaves (a request body filling its tab), `rows`
+     * still its least.
+     */
+    bool grow;
+    bool grow_set;
+    /*
+     * Takes the keyboard each time this number changes while it is on screen.
+     */
+    int64_t focus;
+    bool focus_set;
+    /*
+     * Takes the keyboard as it first shows.
+     */
+    bool autofocus;
+    bool autofocus_set;
+    /*
+     * What is wrong with the text, under it in the danger colour.
+     */
+    KuiStr error;
+    /*
+     * The message `change` arrives as, consumed; NULL for none. The text
+     * changed.
+     */
+    KuiValue *on_change;
+    /* Keys the instance (empty: where it is placed); fresh asks the
+     * extension every frame instead of replaying. */
+    KuiStr key;
+    bool fresh;
+} KitTextArea;
+
+static inline KuiValue *kit_text_area_props(const KitTextArea *p) {
+    KuiValue *m = kui_value_map();
+    kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->hide_label_set) kui_value_map_set(m, KUI_STR("hide_label"), kui_value_bool(p->hide_label));
+    if (p->placeholder.len > 0) kui_value_map_set(m, KUI_STR("placeholder"), kui_value_str(p->placeholder));
+    if (p->mono_set) kui_value_map_set(m, KUI_STR("mono"), kui_value_bool(p->mono));
+    if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
+    if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
+    if (p->rows_set) kui_value_map_set(m, KUI_STR("rows"), kui_value_int(p->rows));
+    if (p->max_rows_set) kui_value_map_set(m, KUI_STR("max_rows"), kui_value_int(p->max_rows));
+    if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
+    if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
+    if (p->autofocus_set) kui_value_map_set(m, KUI_STR("autofocus"), kui_value_bool(p->autofocus));
+    if (p->error.len > 0) kui_value_map_set(m, KUI_STR("error"), kui_value_str(p->error));
+    if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
+    if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
+    if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
+    return m;
+}
+
+/* Places kit/text_area: a KUI_SLOT_* code, KUI_SLOT_UNDECLARED when nothing provides it. */
+static inline int32_t kit_text_area(KuiCtx *ctx, const KitTextArea *p) {
+    KuiValue *props = kit_text_area_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/text_area"), props, NULL, NULL);
     kui_value_free(props);
     return fill;
 }
@@ -979,10 +1134,16 @@ typedef struct KitSearch {
      */
     KuiStr count;
     /*
-     * Takes the keyboard each time this number changes (⌘F).
+     * Takes the keyboard each time this number changes while it is on screen
+     * (⌘F).
      */
     int64_t focus;
     bool focus_set;
+    /*
+     * Takes the keyboard as it first shows.
+     */
+    bool autofocus;
+    bool autofocus_set;
     /*
      * The message `change` arrives as, consumed; NULL for none. The query
      * changed; cleared is the empty string.
@@ -1005,6 +1166,7 @@ static inline KuiValue *kit_search_props(const KitSearch *p) {
     if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->count.len > 0) kui_value_map_set(m, KUI_STR("count"), kui_value_str(p->count));
     if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
+    if (p->autofocus_set) kui_value_map_set(m, KUI_STR("autofocus"), kui_value_bool(p->autofocus));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->on_submit != NULL) kui_value_map_set(m, KUI_STR("on_submit"), p->on_submit);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -1217,9 +1379,14 @@ typedef struct KitRadioGroup {
      */
     KuiStr value;
     /*
-     * The group's name.
+     * The group's name, drawn above it.
      */
     KuiStr label;
+    /*
+     * The name is read but not drawn: a group whose place says what it is.
+     */
+    bool hide_label;
+    bool hide_label_set;
     /*
      * The message `change` arrives as, consumed; NULL for none. An option was
      * chosen.
@@ -1240,6 +1407,7 @@ static inline KuiValue *kit_radio_group_props(const KitRadioGroup *p) {
     }
     if (p->value.len > 0) kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
     if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->hide_label_set) kui_value_map_set(m, KUI_STR("hide_label"), kui_value_bool(p->hide_label));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -1331,6 +1499,11 @@ typedef struct KitSlider {
      */
     KuiStr label;
     /*
+     * The value as text, shown beside the label and read for it: `20 MB/s`, `30
+     * days`. The number when left out.
+     */
+    KuiStr value_label;
+    /*
      * The message `change` arrives as, consumed; NULL for none. It asks for
      * another value.
      */
@@ -1348,6 +1521,7 @@ static inline KuiValue *kit_slider_props(const KitSlider *p) {
     kui_value_map_set(m, KUI_STR("max"), kui_value_float(p->max));
     if (p->step_set) kui_value_map_set(m, KUI_STR("step"), kui_value_float(p->step));
     if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
+    if (p->value_label.len > 0) kui_value_map_set(m, KUI_STR("value_label"), kui_value_str(p->value_label));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -1467,6 +1641,21 @@ typedef struct KitList {
      */
     KuiStr detail;
     /*
+     * A field drawn as a pill before the title: a method, a state.
+     */
+    KuiStr badge;
+    /*
+     * A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`,
+     * `neutral`).
+     */
+    KuiStr tone;
+    /*
+     * The badge column's width in px, so the titles line up; each badge's own
+     * when left out.
+     */
+    double badge_width;
+    bool badge_width_set;
+    /*
      * The selected row (0-based): yours to keep.
      */
     int64_t selected;
@@ -1492,6 +1681,9 @@ static inline KuiValue *kit_list_props(const KitList *p) {
     if (p->rows != NULL) kui_value_map_set(m, KUI_STR("rows"), kui_channel_handle(p->rows));
     kui_value_map_set(m, KUI_STR("title"), kui_value_str(p->title));
     if (p->detail.len > 0) kui_value_map_set(m, KUI_STR("detail"), kui_value_str(p->detail));
+    if (p->badge.len > 0) kui_value_map_set(m, KUI_STR("badge"), kui_value_str(p->badge));
+    if (p->tone.len > 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(p->tone));
+    if (p->badge_width_set) kui_value_map_set(m, KUI_STR("badge_width"), kui_value_float(p->badge_width));
     if (p->selected_set) kui_value_map_set(m, KUI_STR("selected"), kui_value_int(p->selected));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
@@ -1927,6 +2119,11 @@ static inline int32_t kit_dialog_with(KuiCtx *ctx, const KitDialog *p, KuiChildr
  */
 typedef struct KitPopover {
     /*
+     * Its name, read and not drawn: what it holds (Scale the service). A modal
+     * surface with no name warns `modal-without-name`.
+     */
+    KuiStr label;
+    /*
      * Its width in px.
      */
     double width;
@@ -1944,6 +2141,7 @@ typedef struct KitPopover {
 
 static inline KuiValue *kit_popover_props(const KitPopover *p) {
     KuiValue *m = kui_value_map();
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->width_set) kui_value_map_set(m, KUI_STR("width"), kui_value_float(p->width));
     if (p->on_dismiss != NULL) kui_value_map_set(m, KUI_STR("on_dismiss"), p->on_dismiss);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
@@ -2028,10 +2226,24 @@ typedef struct KitToast {
      */
     KitTone tone;
     /*
+     * One action on what happened, a button beside the message: `Undo`.
+     */
+    KuiStr action;
+    /*
+     * The action's accessible name when it says more than its label (Undo →
+     * Undo the delete).
+     */
+    KuiStr action_name;
+    /*
      * The message `dismiss` arrives as, consumed; NULL for none. Its close
      * button.
      */
     KuiValue *on_dismiss;
+    /*
+     * The message `action` arrives as, consumed; NULL for none. Its action was
+     * pressed.
+     */
+    KuiValue *on_action;
     /* Keys the instance (empty: where it is placed); fresh asks the
      * extension every frame instead of replaying. */
     KuiStr key;
@@ -2042,7 +2254,10 @@ static inline KuiValue *kit_toast_props(const KitToast *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("message"), kui_value_str(p->message));
     if (p->tone != 0) kui_value_map_set(m, KUI_STR("tone"), kui_value_str(kit_tone_name(p->tone)));
+    if (p->action.len > 0) kui_value_map_set(m, KUI_STR("action"), kui_value_str(p->action));
+    if (p->action_name.len > 0) kui_value_map_set(m, KUI_STR("action_name"), kui_value_str(p->action_name));
     if (p->on_dismiss != NULL) kui_value_map_set(m, KUI_STR("on_dismiss"), p->on_dismiss);
+    if (p->on_action != NULL) kui_value_map_set(m, KUI_STR("on_action"), p->on_action);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
     return m;
@@ -2142,6 +2357,18 @@ typedef struct KitLineChart {
     double window;
     bool window_set;
     /*
+     * How the x ticks read; the number when left out.
+     */
+    KitXFormat x_format;
+    /*
+     * After each x tick's number: `min`, `s`.
+     */
+    KuiStr x_unit;
+    /*
+     * After each y tick's number: `ms`, `%`.
+     */
+    KuiStr y_unit;
+    /*
      * The message `hover` arrives as, consumed; NULL for none. The pointer
      * moved over a row.
      */
@@ -2164,6 +2391,9 @@ static inline KuiValue *kit_line_chart_props(const KitLineChart *p) {
     if (p->height_set) kui_value_map_set(m, KUI_STR("height"), kui_value_float(p->height));
     if (p->area_set) kui_value_map_set(m, KUI_STR("area"), kui_value_bool(p->area));
     if (p->window_set) kui_value_map_set(m, KUI_STR("window"), kui_value_float(p->window));
+    if (p->x_format != 0) kui_value_map_set(m, KUI_STR("x_format"), kui_value_str(kit_x_format_name(p->x_format)));
+    if (p->x_unit.len > 0) kui_value_map_set(m, KUI_STR("x_unit"), kui_value_str(p->x_unit));
+    if (p->y_unit.len > 0) kui_value_map_set(m, KUI_STR("y_unit"), kui_value_str(p->y_unit));
     if (p->on_hover != NULL) kui_value_map_set(m, KUI_STR("on_hover"), p->on_hover);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -2195,10 +2425,30 @@ typedef struct KitBarChart {
      */
     KuiStr value;
     /*
-     * In px; 160 when left out.
+     * In px; 160 when left out (standing bars).
      */
     double height;
     bool height_set;
+    /*
+     * After each value and axis number: `%`, `ms`.
+     */
+    KuiStr unit;
+    /*
+     * Each bar's value over it; on when left out.
+     */
+    bool values;
+    bool values_set;
+    /*
+     * Bars lying along rows, each name whole beside its bar: for long names or
+     * many bars.
+     */
+    bool horizontal;
+    bool horizontal_set;
+    /*
+     * Lying bars: the names' column in px; 120 when left out.
+     */
+    double label_width;
+    bool label_width_set;
     /*
      * The message `select` arrives as, consumed; NULL for none. A bar was
      * clicked.
@@ -2216,6 +2466,10 @@ static inline KuiValue *kit_bar_chart_props(const KitBarChart *p) {
     kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
     if (p->height_set) kui_value_map_set(m, KUI_STR("height"), kui_value_float(p->height));
+    if (p->unit.len > 0) kui_value_map_set(m, KUI_STR("unit"), kui_value_str(p->unit));
+    if (p->values_set) kui_value_map_set(m, KUI_STR("values"), kui_value_bool(p->values));
+    if (p->horizontal_set) kui_value_map_set(m, KUI_STR("horizontal"), kui_value_bool(p->horizontal));
+    if (p->label_width_set) kui_value_map_set(m, KUI_STR("label_width"), kui_value_float(p->label_width));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));

@@ -85,6 +85,15 @@ fn spans() -> Channel {
     .unwrap()
 }
 
+fn states() -> Channel {
+    Channel::table(vec![
+        ("name".into(), Column::strs(["auth", "orders", "search"])),
+        ("state".into(), Column::strs(["healthy", "down", "GET"])),
+        ("tone".into(), Column::strs(["ok", "danger", "accent"])),
+    ])
+    .unwrap()
+}
+
 fn logs() -> Channel {
     Channel::table(vec![
         ("time".into(), Column::strs(["12:00:01", "12:00:02"])),
@@ -122,6 +131,17 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
     }));
     put("icon_button", kit::IconButton::new("refresh", "Reload").on_press(msg("reload")).place(ui));
     put("text_field", kit::TextField::new("hello").label("Name").place(ui));
+    put("text_field_error", kit::TextField::new("a/b").label("Device").error("A name cannot hold /.").place(ui));
+    put("text_area", kit::TextArea::new("line one\nline two").label("Note").rows(3).max_rows(6).place(ui));
+    put("table_toned", kit::Table::new(
+        vec![
+            kit::Column::new("name", "Name"),
+            kit::Column::new("state", "State").tone("tone").badge(true).width(90.0),
+        ],
+        states(),
+    )
+    .place(ui));
+    put("list_badged", kit::List::new(states(), "name").badge("state").tone("tone").badge_width(60.0).place(ui));
     put("select", kit::Select::new(choices.clone()).value("a").label("Mode").place(ui));
     put("checkbox", kit::Checkbox::new("Follow", true).on_toggle(msg("follow")).place(ui));
     put("checkbox_rich", kit::Checkbox::new("mobile-limit", false).hide_label(true).grow(true).place_with(ui, |_, ui| {
@@ -129,8 +149,10 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
     }));
     put("switch", kit::Switch::new("Live", false).on_toggle(msg("live")).place(ui));
     put("radio_group", kit::RadioGroup::new(choices.clone()).value("b").place(ui));
+    put("radio_group_unlabelled", kit::RadioGroup::new(choices.clone()).value("a").label("Theme").hide_label(true).place(ui));
     put("segmented", kit::Segmented::new(choices.clone(), "a").label("Filter").on_change(msg("seg")).place(ui));
     put("slider", kit::Slider::new(0.3, 0.0, 1.0).label("Zoom").place(ui));
+    put("slider_said", kit::Slider::new(2500.0, 0.0, 10000.0).label("Upload").value_label("2.5 MB/s").place(ui));
     put("split", kit::Split::new(0.4).place_with(ui, |group, ui| {
         kit::Badge::new(group).place(ui);
     }));
@@ -152,7 +174,12 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<FillAnswer>)
     put("pressed", kit::Button::new("Logs").pressed(true).icon("terminal").tooltip("Hide the log").place(ui));
     put("sparkline", kit::Sparkline::new(rows(), "ms").place(ui));
     put("line_chart", kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")]).area(true).place(ui));
+    put("line_chart_ago", kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")])
+        .x_format(kit::XFormat::Ago).x_unit("min").y_unit("ms").place(ui));
+    put("line_chart_clock", kit::LineChart::new(rows(), "t", vec![kit::Series::new("ms", "Time")])
+        .x_format(kit::XFormat::Clock).place(ui));
     put("bar_chart", kit::BarChart::new(rows(), "name", "ms").place(ui));
+    put("bar_chart_lying", kit::BarChart::new(rows(), "name", "ms").horizontal(true).unit("ms").place(ui));
     put("histogram", kit::Histogram::new(rows(), "ms").bins(4).place(ui));
     put("waterfall", kit::Waterfall::new(spans()).place(ui));
     put("statusbar", kit::Statusbar::new().place_with(ui, |_, ui| {
@@ -374,4 +401,147 @@ fn a_child_left_out_with_nil_leaves_the_rest_in_place() {
     }
     let texts: Vec<String> = core.nodes().into_iter().filter_map(|n| n.text).collect();
     assert_eq!(texts, ["a", "b", "c", "d", "e"]);
+}
+
+/// A Lua app placing Kit, its view run `frames` times; the warnings the
+/// frames raised, and the core to read afterwards.
+fn lua_app(src: &str, frames: usize) -> (Core, Vec<String>) {
+    let mut exts = Extensions::new();
+    exts.push_as("kit", Box::new(LuaExtension::from_file(KIT).unwrap()))
+        .unwrap();
+    exts.push_as("app", Box::new(LuaExtension::from_source("app.lua", src).unwrap()))
+        .unwrap();
+    let mut core = Core::new();
+    core.set_inspect(true);
+    let mut warnings = Vec::new();
+    for _ in 0..frames {
+        let mut ui = core.frame_with(VIEW, 1.0, &mut exts);
+        ui.configure_root(NodeSpec::column().fill());
+        ui.finish();
+        warnings.extend(core.take_warnings().into_iter().map(|w| format!("{w:?}")));
+    }
+    (core, warnings)
+}
+
+#[test]
+fn a_dialog_shows_its_body() {
+    // The body was a grow, scrolling column in a box with no height of its
+    // own, and laid out at nothing: only the title and the buttons showed.
+    let (core, w) = lua_app(
+        r#"
+        function view(env)
+          return column { width = "grow", height = "grow",
+            component("kit/dialog", { title = "Delete it?", on_dismiss = { kind = "x" } },
+              { text("It goes for good."), actions = { component("kit/button", { label = "Delete" }) } }) }
+        end
+        "#,
+        2,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+    let nodes = core.nodes();
+    let text = nodes
+        .iter()
+        .find(|n| n.text.as_deref() == Some("It goes for good."))
+        .expect("the body's text is built")
+        .rect;
+    // The text is laid out either way; the box it is clipped to was not.
+    let body = nodes.iter().find(|n| n.label.as_deref() == Some("body")).expect("the body box").rect;
+    assert!(body.h >= text.h, "the body is as tall as its text: {body:?} holding {text:?}");
+}
+
+#[test]
+fn a_named_popover_raises_no_warning() {
+    let (_, w) = lua_app(
+        r#"
+        function view(env)
+          return column { width = "grow",
+            component("kit/popover", { label = "Scale", on_dismiss = { kind = "x" } }, { text("Instances") }) }
+        end
+        "#,
+        2,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+}
+
+#[test]
+fn a_field_back_on_screen_does_not_replay_a_focus_asked_while_it_was_away() {
+    // Field 1 shows, then field 2, the focus counter moves while 2 shows,
+    // and 1 comes back: it took the moved number as a request in its first
+    // frame back, when it had no node to focus ("no node is keyed edit").
+    let (_, w) = lua_app(
+        r#"
+        local frame = 0
+        function view(env)
+          frame = frame + 1
+          local which = (frame <= 2 or frame >= 6) and 1 or 2
+          local focus = frame >= 5 and 1 or 0
+          return column { width = "grow",
+            column { key = "editor." .. which,
+              component("kit/text_field", { label = "Title", value = "x", focus = focus }) } }
+        end
+        "#,
+        8,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+}
+
+#[test]
+fn a_wrapped_log_follows_to_its_last_line() {
+    // Pinned to the estimate's end, the wrapped log measured the rows it
+    // showed, moved the estimate, and kept its window mid-log: the last
+    // lines never showed and a blank band stood where they belonged.
+    let (core, w) = lua_app(
+        r#"
+        local cols = { time = {}, level = {}, message = {} }
+        for i = 1, 18 do
+          cols.time[i], cols.level[i] = string.format("12:00:%02d", i), "info"
+          cols.message[i] = i % 3 == 0
+            and ("line " .. i .. " is a long one that goes on past the width of the log so that it wraps onto more rows than one")
+            or ("line " .. i)
+        end
+        local ch = channel(cols)
+        function view(env)
+          return column { width = "grow", height = "grow",
+            column { key = "box", width = 360, height = 300,
+              component("kit/log", { rows = ch, grow = true, wrap = true }) } }
+        end
+        "#,
+        8,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+    let nodes = core.nodes();
+    let bx = nodes.iter().find(|n| n.label.as_deref() == Some("box")).expect("the box").rect;
+    let last = nodes
+        .iter()
+        .find(|n| n.text.as_deref().is_some_and(|t| t.starts_with("line 18")))
+        .expect("the last line is built")
+        .rect;
+    assert!(
+        last.y >= bx.y - 0.5 && last.y + last.h <= bx.y + bx.h + 0.5,
+        "the last line shows inside the log: {last:?} in {bx:?}"
+    );
+}
+
+#[test]
+fn a_notice_narrower_than_its_actions_puts_them_under_the_message() {
+    let (core, w) = lua_app(
+        r#"
+        function view(env)
+          return column { width = "grow",
+            column { width = 250,
+              component("kit/notice", { tone = "danger", message = "The disk is full, free some room and try again." },
+                { component("kit/button", { label = "Retry" }) }) } }
+        end
+        "#,
+        2,
+    );
+    assert!(w.is_empty(), "{w:#?}");
+    let nodes = core.nodes();
+    let msg = nodes
+        .iter()
+        .find(|n| n.text.as_deref().is_some_and(|t| t.starts_with("The disk")))
+        .expect("the message")
+        .rect;
+    let retry = nodes.iter().find(|n| n.text.as_deref() == Some("RETRY")).expect("the action").rect;
+    assert!(retry.y >= msg.y + msg.h - 0.5, "the action is under the message: {retry:?} vs {msg:?}");
 }

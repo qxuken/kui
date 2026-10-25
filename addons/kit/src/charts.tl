@@ -75,7 +75,55 @@ local function short(v: number): string
   if a >= 1e9 then return string.format("%.3gG", v / 1e9) end
   if a >= 1e6 then return string.format("%.3gM", v / 1e6) end
   if a >= 1e4 then return string.format("%.3gk", v / 1e3) end
+  if a > 0 and a < 1e-9 then return "0" end
   return string.format("%.4g", v)
+end
+
+-- A value with the host's unit after it: `12 ms`, `40%`.
+local function with_unit(s: string, unit: string): string
+  if not unit or unit == "" then return s end
+  if unit:match("^[%%°]") then return s .. unit end
+  return s .. " " .. unit
+end
+
+-- Steps a clock axis ticks at, in seconds: round minutes and hours.
+local CLOCK_STEPS: {number} = { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400 }
+
+-- The ticks across [x0, x1] about `px` apart in a plot `w` wide, and each
+-- one's label, as `fmt` says:
+--   "number" — the value, shortened, with `unit`;
+--   "ago"    — x counts back to now (`-15` … `0`): `15 min ago` … `now`;
+--   "clock"  — x is Unix seconds: the local time, to the second when the
+--              ticks are under a minute apart.
+local function x_ticks(x0: number, x1: number, w: number, fmt: string, unit: string): {number}, {string}
+  local want = math.max(2, math.floor(w / 90))
+  local raw = (x1 - x0) / want
+  local step: number
+  if fmt == "clock" then
+    step = CLOCK_STEPS[#CLOCK_STEPS]
+    for _, st in ipairs(CLOCK_STEPS) do
+      if st >= raw then step = st; break end
+    end
+  else
+    step = nice(raw)
+  end
+  local at: {number} = {}
+  local labels: {string} = {}
+  local v = math.ceil(x0 / step - 1e-9) * step
+  while v <= x1 + step * 1e-6 do
+    local s: string
+    if fmt == "clock" then
+      s = os.date(step < 60 and "%H:%M:%S" or "%H:%M", math.floor(v)) as string
+    elseif fmt == "ago" then
+      local back = math.abs(v)
+      s = back < step * 1e-6 and "now" or (with_unit(short(back), unit) .. " ago")
+    else
+      s = with_unit(short(v), unit)
+    end
+    at[#at + 1], labels[#labels + 1] = v, s
+    v = v + step
+  end
+  return at, labels
 end
 
 -- The points of ys[from..to] against xs scaled into w×h, at most two a
@@ -179,16 +227,31 @@ function M.line_chart(c: Ctx, p: P): kui.Node
   local plot: kui.Props = { key = "plot", width = "grow", height = h, clip = true,
     on_layout = act(c, "line_chart.layout") }
   -- Grid lines and their labels.
-  local labels: kui.Props = { width = 44, height = h }
+  local labels: kui.Props = { width = str(p.y_unit) and 56 or 44, height = h }
   local v = lo
   while v <= hi + step / 2 do
     local y = h - (v - lo) / (hi - lo) * h
     plot[#plot + 1] = line { from = { 0, y }, to = { w, y }, width = 1, color = ref(c, "rule") }
     labels[#labels + 1] = column {
       float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
-      ctx.data(c, short(v), { size = 10, color = ref(c, "faint") }),
+      ctx.data(c, with_unit(short(v), str(p.y_unit)), { size = 10, color = ref(c, "faint") }),
     }
     v = v + step
+  end
+  -- The x axis: ticks at round steps, each with its label, the end ones
+  -- kept inside the plot.
+  local fmt = str(p.x_format) or "number"
+  local tick_at, tick_label = x_ticks(x0, x1, w, fmt, str(p.x_unit))
+  local axis: kui.Props = { width = "grow", height = 14 }
+  for i, tx in ipairs(tick_at) do
+    local px = (tx - x0) / (x1 - x0) * w
+    plot[#plot + 1] = line { from = { px, h - 4 }, to = { px, h }, width = 1, color = ref(c, "faint") }
+    local lw = 80
+    local left = math.max(0, math.min(w - lw, px - lw / 2))
+    local align: kui.MainAlign = px - lw / 2 < 0 and "start" or (px + lw / 2 > w and "end" or "center")
+    axis[#axis + 1] = row { key = "x" .. i, width = lw, main_align = align,
+      float = { anchor = "parent", dx = left, dy = 0 },
+      ctx.data(c, tick_label[i], { size = 10, color = ref(c, "faint"), max_lines = 1 }) }
   end
   local legend: kui.Props = { gap = 12, cross_align = "center" }
   for k, s in ipairs(series) do
@@ -227,33 +290,67 @@ function M.line_chart(c: Ctx, p: P): kui.Node
     label = "line chart",
     row(legend),
     row { width = "grow", gap = 6, column(labels), column(plot) },
-    row { width = "grow", pad = { l = 50 },
-      ctx.data(c, short(x0), { size = 10, color = ref(c, "faint") }),
-      ctx.grow(),
-      ctx.data(c, short(x1), { size = 10, color = ref(c, "faint") }) },
+    row { width = "grow", pad = { l = (str(p.y_unit) and 56 or 44) + 6 }, row(axis) },
   }
 end
 
 -- Bars standing on a baseline, `values[i]` against `top`, each labelled.
-local function bars(c: Ctx, h: number, values: {number}, names: {string}, kit: string): kui.Node
-  local top = 0.0
-  for _, v in ipairs(values) do if v > top then top = v end end
+-- With `shown`, each bar carries its value over it.
+local function bars(c: Ctx, h: number, values: {number}, names: {string}, kit: string, top: number, ph: number,
+                    shown: boolean, unit: string): kui.Node
+  if not top then
+    top = 0.0
+    for _, v in ipairs(values) do if v > top then top = v end end
+  end
   if top <= 0 then top = 1 end
   local plot: kui.Props = { width = "grow", height = h, gap = 2, cross_align = "end" }
   for i, v in ipairs(values) do
+    local said = with_unit(short(v), unit)
     local t: kui.Props = {
       key = "b" .. i,
       width = "grow",
-      height = math.max(1, v / top * (h - 14)),
+      height = math.max(1, v / top * (ph or h)),
       bg = ref(c, "accent"),
       hover_bg = ref(c, "ink"),
-      label = (names[i] or "") .. ": " .. short(v),
-      tooltip = (names[i] or "") .. ": " .. short(v),
+      label = (names[i] or "") .. ": " .. said,
+      tooltip = (names[i] or "") .. ": " .. said,
     }
     if kit then t.on_click = act(c, kit, { row = i - 1 }); t.cursor = "pointer" end
-    plot[#plot + 1] = column(t)
+    if shown then
+      plot[#plot + 1] = column { key = "c" .. i, width = "grow", min_width = 0, gap = 2, cross_align = "center",
+        ctx.data(c, said, { size = 10, color = ref(c, "muted"), max_lines = 1 }),
+        column(t) }
+    else
+      plot[#plot + 1] = column(t)
+    end
   end
   return row(plot)
+end
+
+-- Bars lying along rows, for labels too long to stand under a bar: the
+-- label, the bar, its value; the longest bar takes the room.
+local function lying(c: Ctx, values: {number}, names: {string}, kit: string, unit: string, label_w: number): kui.Node
+  local top = 0.0
+  for _, v in ipairs(values) do if v > top then top = v end end
+  if top <= 0 then top = 1 end
+  local t: kui.Props = { width = "grow", gap = 4 }
+  for i, v in ipairs(values) do
+    local said = with_unit(short(v), unit)
+    local bar: kui.Props = {
+      key = "bar", width = { pct = math.max(0.5, v / top * 100) }, height = 12, bg = ref(c, "accent"),
+      hover_bg = ref(c, "ink"),
+    }
+    local r: kui.Props = {
+      key = "b" .. i, width = "grow", height = 18, gap = 8, cross_align = "center",
+      label = (names[i] or "") .. ": " .. said, tooltip = (names[i] or "") .. ": " .. said,
+      row { width = label_w, min_width = 0, ctx.text(c, names[i] or "", { size = "$kitSizeLabel", max_lines = 1, ellipsis = true }) },
+      row { width = "grow", min_width = 0, cross_align = "center", gap = 6, row(bar),
+        ctx.data(c, said, { size = 10, color = ref(c, "muted"), max_lines = 1 }) },
+    }
+    if kit then r.on_click = act(c, kit, { row = i - 1 }); r.cursor = "pointer"; r.hover_bg = ref(c, "hover") end
+    t[#t + 1] = row(r)
+  end
+  return column(t)
 end
 
 function M.bar_chart(c: Ctx, p: P): kui.Node
@@ -262,16 +359,47 @@ function M.bar_chart(c: Ctx, p: P): kui.Node
   local values = col(ch, p.value as string)
   local names: {string} = {}
   for i = 0, n - 1 do names[i + 1] = data.cell_text(ch:get(i, p.label as string)) end
-  local axis: kui.Props = { width = "grow", gap = 2 }
-  for i = 1, n do
-    axis[#axis + 1] = row { width = "grow", main_align = "center",
-      ctx.muted(c, names[i], { size = 10, max_lines = 1, ellipsis = true }) }
+  local unit = str(p.unit)
+  if p.horizontal == true then
+    return column { width = "grow", role = "group", label = "bar chart",
+      lying(c, values, names, "bar_chart.select", unit, (p.label_width or 120) as number) }
   end
+  local h = (p.height or 160) as number
+  -- A value axis: round steps from 0 to past the tallest bar, ruled
+  -- across the plot faintly, the bars standing on the ink baseline.
+  local top = 0.0
+  for _, v in ipairs(values) do if v > top then top = v end end
+  local step = nice(math.max(top, 1e-9) / 4)
+  local top_tick = math.max(step, math.ceil(top / step - 1e-9) * step)
+  local plot_h = h - 16
+  local scale: kui.Props = { width = unit and 52 or 40, height = h }
+  -- The rules as lines in the plot's own box, drawn before the bars and
+  -- so under them (a float would be a layer over them), clipped to the box.
+  local plot: kui.Props = { width = "grow", height = h }
+  local v = 0.0
+  while v <= top_tick + step / 2 do
+    local y = h - v / top_tick * plot_h
+    scale[#scale + 1] = column {
+      float = { anchor = "parent", dx = 0, dy = math.max(0, math.min(h - 12, y - 6)) },
+      ctx.data(c, with_unit(short(v), unit), { size = 10, color = ref(c, "faint") }),
+    }
+    if v > 0 then
+      plot[#plot + 1] = line { from = { 0, y }, to = { 8192, y }, width = 1, color = ref(c, "rule") }
+    end
+    v = v + step
+  end
+  -- Names under their bars, two lines before an ellipsis: a hyphenated
+  -- name breaks at its hyphen rather than being cut to its first word.
+  local axis: kui.Props = { width = "grow", gap = 2, cross_align = "start" }
+  for i = 1, n do
+    axis[#axis + 1] = row { width = "grow", min_width = 0, main_align = "center",
+      ctx.muted(c, names[i], { size = 10, max_lines = 2, ellipsis = true, wrap = "word" }) }
+  end
+  plot[#plot + 1] = bars(c, h, values, names, "bar_chart.select", top_tick, plot_h, p.values ~= false, unit)
   return column {
     width = "grow", gap = 4, role = "group", label = "bar chart",
-    bars(c, (p.height or 160) as number, values, names, "bar_chart.select"),
-    ctx.rule(c, "ink", "$kitHair"),
-    row(axis),
+    row { width = "grow", gap = 6, column(scale), column { width = "grow", gap = 0, column(plot), ctx.rule(c, "ink", "$kitHair") } },
+    row { width = "grow", pad = { l = (unit and 52 or 40) + 6 }, row(axis) },
   }
 end
 
@@ -308,7 +436,7 @@ function M.histogram(c: Ctx, p: P): kui.Node
   end
   return column {
     width = "grow", gap = 4, role = "group", label = "histogram of " .. tostring(p.field),
-    bars(c, (p.height or 120) as number, b.counts, b.names, nil),
+    bars(c, (p.height or 120) as number, b.counts, b.names, nil, nil, nil, false, nil),
     ctx.rule(c, "ink", "$kitHair"),
     row { width = "grow",
       ctx.data(c, short(b.lo), { size = 10, color = ref(c, "faint") }),

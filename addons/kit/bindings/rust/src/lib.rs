@@ -258,6 +258,32 @@ impl Level {
     }
 }
 
+/// How a chart labels its x axis: the number (with `x_unit`), time counted back
+/// to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the
+/// local time of day.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum XFormat {
+    #[default]
+    Number,
+    Ago,
+    Clock,
+}
+
+impl XFormat {
+    /// The value's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            XFormat::Number => "number",
+            XFormat::Ago => "ago",
+            XFormat::Clock => "clock",
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        Value::str(self.as_str())
+    }
+}
+
 /// A choice: what it is, and what it reads as.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Choice {
@@ -334,6 +360,12 @@ pub struct Column {
     pub align: Option<Align>,
     /// Its cells in the data face: ids, timings, hashes.
     pub mono: Option<bool>,
+    /// A channel column naming each cell's tone (`ok`, `warn`, `danger`,
+    /// `accent`, `neutral`): the cell is drawn in it — a status, an HTTP
+    /// method.
+    pub tone: Option<String>,
+    /// Its cells as pills with a dot in their `tone`: a status column.
+    pub badge: Option<bool>,
 }
 
 impl Column {
@@ -345,6 +377,8 @@ impl Column {
             width: None,
             align: None,
             mono: None,
+            tone: None,
+            badge: None,
         }
     }
 
@@ -366,6 +400,20 @@ impl Column {
         self
     }
 
+    /// A channel column naming each cell's tone (`ok`, `warn`, `danger`,
+    /// `accent`, `neutral`): the cell is drawn in it — a status, an HTTP
+    /// method.
+    pub fn tone(mut self, v: impl Into<String>) -> Self {
+        self.tone = Some(v.into());
+        self
+    }
+
+    /// Its cells as pills with a dot in their `tone`: a status column.
+    pub fn badge(mut self, v: bool) -> Self {
+        self.badge = Some(v);
+        self
+    }
+
     /// As the extension reads it.
     pub fn to_value(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
@@ -379,6 +427,12 @@ impl Column {
         }
         if let Some(v) = &self.mono {
             m.push(("mono".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.tone {
+            m.push(("tone".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.badge {
+            m.push(("badge".into(), Value::Bool(*v)));
         }
         Value::Map(m)
     }
@@ -1640,9 +1694,16 @@ pub struct TextField {
     pub disabled: Option<bool>,
     /// Its width in px; grows when left out.
     pub width: Option<f64>,
-    /// Takes the keyboard each time this number changes: keep a counter in your
-    /// model and bump it (⌘F).
+    /// Takes the keyboard each time this number changes while the field is on
+    /// screen: keep a counter in your model and bump it (⌘F). A field that
+    /// shows after the bump takes its number as where it starts.
     pub focus: Option<i64>,
+    /// Takes the keyboard as it first shows: a new item's name.
+    pub autofocus: Option<bool>,
+    /// What is wrong with the text: drawn under the field in the danger colour,
+    /// its edge in danger too, and read after its name. An empty string marks
+    /// the field only, for fields that share one message.
+    pub error: Option<String>,
     /// The message `change` arrives as, with `change: TextFieldChange` in it.
     /// The text changed.
     pub on_change: Option<Value>,
@@ -1667,6 +1728,8 @@ impl TextField {
             disabled: None,
             width: None,
             focus: None,
+            autofocus: None,
+            error: None,
             on_change: None,
             on_submit: None,
             key: None,
@@ -1711,10 +1774,25 @@ impl TextField {
         self
     }
 
-    /// Takes the keyboard each time this number changes: keep a counter in your
-    /// model and bump it (⌘F).
+    /// Takes the keyboard each time this number changes while the field is on
+    /// screen: keep a counter in your model and bump it (⌘F). A field that
+    /// shows after the bump takes its number as where it starts.
     pub fn focus(mut self, v: i64) -> Self {
         self.focus = Some(v);
+        self
+    }
+
+    /// Takes the keyboard as it first shows: a new item's name.
+    pub fn autofocus(mut self, v: bool) -> Self {
+        self.autofocus = Some(v);
+        self
+    }
+
+    /// What is wrong with the text: drawn under the field in the danger colour,
+    /// its edge in danger too, and read after its name. An empty string marks
+    /// the field only, for fields that share one message.
+    pub fn error(mut self, v: impl Into<String>) -> Self {
+        self.error = Some(v.into());
         self
     }
 
@@ -1766,6 +1844,12 @@ impl TextField {
         }
         if let Some(v) = &self.focus {
             m.push(("focus".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.autofocus {
+            m.push(("autofocus".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.error {
+            m.push(("error".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
@@ -1827,6 +1911,240 @@ impl TextFieldSubmit {
     }
 }
 
+/// A text field of several lines, in a well in every skin: a note, a request
+/// body.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextArea {
+    /// Its text: yours to keep, from `change`.
+    pub value: String,
+    /// Its label, above it; its name.
+    pub label: Option<String>,
+    /// The label names the field but is not drawn.
+    pub hide_label: Option<bool>,
+    /// Shown while it is empty.
+    pub placeholder: Option<String>,
+    /// In the data face: code, JSON.
+    pub mono: Option<bool>,
+    /// Unavailable.
+    pub disabled: Option<bool>,
+    /// Its width in px; grows when left out.
+    pub width: Option<f64>,
+    /// Lines tall at the least; 4 when left out. It grows with its text.
+    pub rows: Option<i64>,
+    /// Lines tall at the most, scrolling past them; no limit when left out.
+    pub max_rows: Option<i64>,
+    /// Takes the room its parent leaves (a request body filling its tab),
+    /// `rows` still its least.
+    pub grow: Option<bool>,
+    /// Takes the keyboard each time this number changes while it is on screen.
+    pub focus: Option<i64>,
+    /// Takes the keyboard as it first shows.
+    pub autofocus: Option<bool>,
+    /// What is wrong with the text, under it in the danger colour.
+    pub error: Option<String>,
+    /// The message `change` arrives as, with `change: TextAreaChange` in it.
+    /// The text changed.
+    pub on_change: Option<Value>,
+    /// Keys the instance; by default it is keyed by where it is placed.
+    pub key: Option<String>,
+    /// Asks the extension every frame instead of replaying an unchanged instance.
+    pub fresh: bool,
+}
+
+impl TextArea {
+    /// What it needs; the rest by their setters.
+    pub fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            label: None,
+            hide_label: None,
+            placeholder: None,
+            mono: None,
+            disabled: None,
+            width: None,
+            rows: None,
+            max_rows: None,
+            grow: None,
+            focus: None,
+            autofocus: None,
+            error: None,
+            on_change: None,
+            key: None,
+            fresh: false,
+        }
+    }
+
+    /// Its label, above it; its name.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
+        self
+    }
+
+    /// The label names the field but is not drawn.
+    pub fn hide_label(mut self, v: bool) -> Self {
+        self.hide_label = Some(v);
+        self
+    }
+
+    /// Shown while it is empty.
+    pub fn placeholder(mut self, v: impl Into<String>) -> Self {
+        self.placeholder = Some(v.into());
+        self
+    }
+
+    /// In the data face: code, JSON.
+    pub fn mono(mut self, v: bool) -> Self {
+        self.mono = Some(v);
+        self
+    }
+
+    /// Unavailable.
+    pub fn disabled(mut self, v: bool) -> Self {
+        self.disabled = Some(v);
+        self
+    }
+
+    /// Its width in px; grows when left out.
+    pub fn width(mut self, v: f64) -> Self {
+        self.width = Some(v);
+        self
+    }
+
+    /// Lines tall at the least; 4 when left out. It grows with its text.
+    pub fn rows(mut self, v: i64) -> Self {
+        self.rows = Some(v);
+        self
+    }
+
+    /// Lines tall at the most, scrolling past them; no limit when left out.
+    pub fn max_rows(mut self, v: i64) -> Self {
+        self.max_rows = Some(v);
+        self
+    }
+
+    /// Takes the room its parent leaves (a request body filling its tab),
+    /// `rows` still its least.
+    pub fn grow(mut self, v: bool) -> Self {
+        self.grow = Some(v);
+        self
+    }
+
+    /// Takes the keyboard each time this number changes while it is on screen.
+    pub fn focus(mut self, v: i64) -> Self {
+        self.focus = Some(v);
+        self
+    }
+
+    /// Takes the keyboard as it first shows.
+    pub fn autofocus(mut self, v: bool) -> Self {
+        self.autofocus = Some(v);
+        self
+    }
+
+    /// What is wrong with the text, under it in the danger colour.
+    pub fn error(mut self, v: impl Into<String>) -> Self {
+        self.error = Some(v.into());
+        self
+    }
+
+    /// The message `change` arrives as. The text changed.
+    pub fn on_change(mut self, msg: impl Into<Value>) -> Self {
+        self.on_change = Some(msg.into());
+        self
+    }
+
+    /// Keys the instance.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+/// Asks the extension every frame.
+    pub fn fresh(mut self) -> Self {
+        self.fresh = true;
+        self
+    }
+
+/// The props as the extension reads them.
+    pub fn props(&self) -> Value {
+        let mut m: Vec<(String, Value)> = Vec::new();
+        m.push(("value".into(), Value::str((&self.value).as_str())));
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.hide_label {
+            m.push(("hide_label".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.placeholder {
+            m.push(("placeholder".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.mono {
+            m.push(("mono".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.disabled {
+            m.push(("disabled".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.width {
+            m.push(("width".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.rows {
+            m.push(("rows".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.max_rows {
+            m.push(("max_rows".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.grow {
+            m.push(("grow".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.focus {
+            m.push(("focus".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.autofocus {
+            m.push(("autofocus".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.error {
+            m.push(("error".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.on_change {
+            m.push(("on_change".into(), v.clone()));
+        }
+        if let Some(k) = &self.key {
+            m.push(("key".into(), Value::str(k.as_str())));
+        }
+        if self.fresh {
+            m.push(("fresh".into(), Value::Bool(true)));
+        }
+        Value::Map(m)
+    }
+
+    /// Places it under `kit/text_area`.
+    pub fn place(&self, ui: &mut Ui<'_>) -> Option<SlotFill> {
+        ui.component("kit/text_area", &self.props())
+    }
+
+    /// Places it under `<namespace>/text_area`.
+    pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
+        ui.component(&format!("{namespace}/text_area"), &self.props())
+    }
+}
+
+/// What `on_change`'s message carries under `change`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TextAreaChange {
+    /// The whole text.
+    pub text: String,
+}
+
+impl TextAreaChange {
+    /// Read off an event's payload: the fields under `change`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("change")?;
+        Some(Self {
+            text: _d.get_str("text").map(str::to_string).unwrap_or_default(),
+        })
+    }
+}
+
 /// A search field: a glass, the query, and a clear button while it has one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Search {
@@ -1839,8 +2157,11 @@ pub struct Search {
     pub label: Option<String>,
     /// A count after the query: `12 of 340`.
     pub count: Option<String>,
-    /// Takes the keyboard each time this number changes (⌘F).
+    /// Takes the keyboard each time this number changes while it is on screen
+    /// (⌘F).
     pub focus: Option<i64>,
+    /// Takes the keyboard as it first shows.
+    pub autofocus: Option<bool>,
     /// The message `change` arrives as, with `change: SearchChange` in it. The
     /// query changed; cleared is the empty string.
     pub on_change: Option<Value>,
@@ -1862,6 +2183,7 @@ impl Search {
             label: None,
             count: None,
             focus: None,
+            autofocus: None,
             on_change: None,
             on_submit: None,
             key: None,
@@ -1888,9 +2210,16 @@ impl Search {
         self
     }
 
-    /// Takes the keyboard each time this number changes (⌘F).
+    /// Takes the keyboard each time this number changes while it is on screen
+    /// (⌘F).
     pub fn focus(mut self, v: i64) -> Self {
         self.focus = Some(v);
+        self
+    }
+
+    /// Takes the keyboard as it first shows.
+    pub fn autofocus(mut self, v: bool) -> Self {
+        self.autofocus = Some(v);
         self
     }
 
@@ -1934,6 +2263,9 @@ impl Search {
         }
         if let Some(v) = &self.focus {
             m.push(("focus".into(), Value::Int(*v)));
+        }
+        if let Some(v) = &self.autofocus {
+            m.push(("autofocus".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
@@ -2388,8 +2720,10 @@ pub struct RadioGroup {
     pub options: Vec<Choice>,
     /// The one chosen: yours to keep.
     pub value: Option<String>,
-    /// The group's name.
+    /// The group's name, drawn above it.
     pub label: Option<String>,
+    /// The name is read but not drawn: a group whose place says what it is.
+    pub hide_label: Option<bool>,
     /// The message `change` arrives as, with `change: RadioGroupChange` in it.
     /// An option was chosen.
     pub on_change: Option<Value>,
@@ -2406,6 +2740,7 @@ impl RadioGroup {
             options: options,
             value: None,
             label: None,
+            hide_label: None,
             on_change: None,
             key: None,
             fresh: false,
@@ -2418,9 +2753,15 @@ impl RadioGroup {
         self
     }
 
-    /// The group's name.
+    /// The group's name, drawn above it.
     pub fn label(mut self, v: impl Into<String>) -> Self {
         self.label = Some(v.into());
+        self
+    }
+
+    /// The name is read but not drawn: a group whose place says what it is.
+    pub fn hide_label(mut self, v: bool) -> Self {
+        self.hide_label = Some(v);
         self
     }
 
@@ -2451,6 +2792,9 @@ impl RadioGroup {
         }
         if let Some(v) = &self.label {
             m.push(("label".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.hide_label {
+            m.push(("hide_label".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
@@ -2608,6 +2952,9 @@ pub struct Slider {
     pub step: Option<f64>,
     /// Its label; its name.
     pub label: Option<String>,
+    /// The value as text, shown beside the label and read for it: `20 MB/s`,
+    /// `30 days`. The number when left out.
+    pub value_label: Option<String>,
     /// The message `change` arrives as, with `change: SliderChange` in it. It
     /// asks for another value.
     pub on_change: Option<Value>,
@@ -2626,6 +2973,7 @@ impl Slider {
             max: max,
             step: None,
             label: None,
+            value_label: None,
             on_change: None,
             key: None,
             fresh: false,
@@ -2641,6 +2989,13 @@ impl Slider {
     /// Its label; its name.
     pub fn label(mut self, v: impl Into<String>) -> Self {
         self.label = Some(v.into());
+        self
+    }
+
+    /// The value as text, shown beside the label and read for it: `20 MB/s`,
+    /// `30 days`. The number when left out.
+    pub fn value_label(mut self, v: impl Into<String>) -> Self {
+        self.value_label = Some(v.into());
         self
     }
 
@@ -2673,6 +3028,9 @@ impl Slider {
         }
         if let Some(v) = &self.label {
             m.push(("label".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.value_label {
+            m.push(("value_label".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
@@ -2940,6 +3298,14 @@ pub struct List {
     pub title: String,
     /// The field its second line reads.
     pub detail: Option<String>,
+    /// A field drawn as a pill before the title: a method, a state.
+    pub badge: Option<String>,
+    /// A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`,
+    /// `neutral`).
+    pub tone: Option<String>,
+    /// The badge column's width in px, so the titles line up; each badge's own
+    /// when left out.
+    pub badge_width: Option<f64>,
     /// The selected row (0-based): yours to keep.
     pub selected: Option<i64>,
     /// Takes the room its parent leaves.
@@ -2960,6 +3326,9 @@ impl List {
             rows: rows,
             title: title.into(),
             detail: None,
+            badge: None,
+            tone: None,
+            badge_width: None,
             selected: None,
             grow: None,
             on_select: None,
@@ -2971,6 +3340,26 @@ impl List {
     /// The field its second line reads.
     pub fn detail(mut self, v: impl Into<String>) -> Self {
         self.detail = Some(v.into());
+        self
+    }
+
+    /// A field drawn as a pill before the title: a method, a state.
+    pub fn badge(mut self, v: impl Into<String>) -> Self {
+        self.badge = Some(v.into());
+        self
+    }
+
+    /// A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`,
+    /// `neutral`).
+    pub fn tone(mut self, v: impl Into<String>) -> Self {
+        self.tone = Some(v.into());
+        self
+    }
+
+    /// The badge column's width in px, so the titles line up; each badge's own
+    /// when left out.
+    pub fn badge_width(mut self, v: f64) -> Self {
+        self.badge_width = Some(v);
         self
     }
 
@@ -3012,6 +3401,15 @@ impl List {
         m.push(("title".into(), Value::str((&self.title).as_str())));
         if let Some(v) = &self.detail {
             m.push(("detail".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.badge {
+            m.push(("badge".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.tone {
+            m.push(("tone".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.badge_width {
+            m.push(("badge_width".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.selected {
             m.push(("selected".into(), Value::Int(*v)));
@@ -3856,6 +4254,9 @@ impl DialogDismiss {
 /// close.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Popover {
+    /// Its name, read and not drawn: what it holds (Scale the service). A modal
+    /// surface with no name warns `modal-without-name`.
+    pub label: Option<String>,
     /// Its width in px.
     pub width: Option<f64>,
     /// The message `dismiss` arrives as, with `dismiss: PopoverDismiss` in it.
@@ -3871,11 +4272,19 @@ impl Popover {
     /// What it needs; the rest by their setters.
     pub fn new() -> Self {
         Self {
+            label: None,
             width: None,
             on_dismiss: None,
             key: None,
             fresh: false,
         }
+    }
+
+    /// Its name, read and not drawn: what it holds (Scale the service). A modal
+    /// surface with no name warns `modal-without-name`.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
+        self
     }
 
     /// Its width in px.
@@ -3905,6 +4314,9 @@ impl Popover {
 /// The props as the extension reads them.
     pub fn props(&self) -> Value {
         let mut m: Vec<(String, Value)> = Vec::new();
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
+        }
         if let Some(v) = &self.width {
             m.push(("width".into(), Value::Float(*v)));
         }
@@ -4071,9 +4483,17 @@ pub struct Toast {
     pub message: String,
     /// Neutral when left out.
     pub tone: Option<Tone>,
+    /// One action on what happened, a button beside the message: `Undo`.
+    pub action: Option<String>,
+    /// The action's accessible name when it says more than its label (Undo →
+    /// Undo the delete).
+    pub action_name: Option<String>,
     /// The message `dismiss` arrives as, with `dismiss: ToastDismiss` in it.
     /// Its close button.
     pub on_dismiss: Option<Value>,
+    /// The message `action` arrives as, with `action: ToastAction` in it. Its
+    /// action was pressed.
+    pub on_action: Option<Value>,
     /// Keys the instance; by default it is keyed by where it is placed.
     pub key: Option<String>,
     /// Asks the extension every frame instead of replaying an unchanged instance.
@@ -4086,7 +4506,10 @@ impl Toast {
         Self {
             message: message.into(),
             tone: None,
+            action: None,
+            action_name: None,
             on_dismiss: None,
+            on_action: None,
             key: None,
             fresh: false,
         }
@@ -4098,9 +4521,28 @@ impl Toast {
         self
     }
 
+    /// One action on what happened, a button beside the message: `Undo`.
+    pub fn action(mut self, v: impl Into<String>) -> Self {
+        self.action = Some(v.into());
+        self
+    }
+
+    /// The action's accessible name when it says more than its label (Undo →
+    /// Undo the delete).
+    pub fn action_name(mut self, v: impl Into<String>) -> Self {
+        self.action_name = Some(v.into());
+        self
+    }
+
     /// The message `dismiss` arrives as. Its close button.
     pub fn on_dismiss(mut self, msg: impl Into<Value>) -> Self {
         self.on_dismiss = Some(msg.into());
+        self
+    }
+
+    /// The message `action` arrives as. Its action was pressed.
+    pub fn on_action(mut self, msg: impl Into<Value>) -> Self {
+        self.on_action = Some(msg.into());
         self
     }
 
@@ -4123,8 +4565,17 @@ impl Toast {
         if let Some(v) = &self.tone {
             m.push(("tone".into(), v.to_value()));
         }
+        if let Some(v) = &self.action {
+            m.push(("action".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.action_name {
+            m.push(("action_name".into(), Value::str(v.as_str())));
+        }
         if let Some(v) = &self.on_dismiss {
             m.push(("on_dismiss".into(), v.clone()));
+        }
+        if let Some(v) = &self.on_action {
+            m.push(("on_action".into(), v.clone()));
         }
         if let Some(k) = &self.key {
             m.push(("key".into(), Value::str(k.as_str())));
@@ -4155,6 +4606,20 @@ impl ToastDismiss {
     /// Read off an event's payload: the fields under `dismiss`.
     pub fn from_payload(payload: &Value) -> Option<Self> {
         let _d = payload.get("dismiss")?;
+        Some(Self {
+        })
+    }
+}
+
+/// What `on_action`'s message carries under `action`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ToastAction {
+}
+
+impl ToastAction {
+    /// Read off an event's payload: the fields under `action`.
+    pub fn from_payload(payload: &Value) -> Option<Self> {
+        let _d = payload.get("action")?;
         Some(Self {
         })
     }
@@ -4273,6 +4738,12 @@ pub struct LineChart {
     pub area: Option<bool>,
     /// With it, only the last `window` of x is shown: a live chart.
     pub window: Option<f64>,
+    /// How the x ticks read; the number when left out.
+    pub x_format: Option<XFormat>,
+    /// After each x tick's number: `min`, `s`.
+    pub x_unit: Option<String>,
+    /// After each y tick's number: `ms`, `%`.
+    pub y_unit: Option<String>,
     /// The message `hover` arrives as, with `hover: LineChartHover` in it. The
     /// pointer moved over a row.
     pub on_hover: Option<Value>,
@@ -4292,6 +4763,9 @@ impl LineChart {
             height: None,
             area: None,
             window: None,
+            x_format: None,
+            x_unit: None,
+            y_unit: None,
             on_hover: None,
             key: None,
             fresh: false,
@@ -4313,6 +4787,24 @@ impl LineChart {
     /// With it, only the last `window` of x is shown: a live chart.
     pub fn window(mut self, v: f64) -> Self {
         self.window = Some(v);
+        self
+    }
+
+    /// How the x ticks read; the number when left out.
+    pub fn x_format(mut self, v: XFormat) -> Self {
+        self.x_format = Some(v);
+        self
+    }
+
+    /// After each x tick's number: `min`, `s`.
+    pub fn x_unit(mut self, v: impl Into<String>) -> Self {
+        self.x_unit = Some(v.into());
+        self
+    }
+
+    /// After each y tick's number: `ms`, `%`.
+    pub fn y_unit(mut self, v: impl Into<String>) -> Self {
+        self.y_unit = Some(v.into());
         self
     }
 
@@ -4348,6 +4840,15 @@ impl LineChart {
         }
         if let Some(v) = &self.window {
             m.push(("window".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.x_format {
+            m.push(("x_format".into(), v.to_value()));
+        }
+        if let Some(v) = &self.x_unit {
+            m.push(("x_unit".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.y_unit {
+            m.push(("y_unit".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.on_hover {
             m.push(("on_hover".into(), v.clone()));
@@ -4398,8 +4899,17 @@ pub struct BarChart {
     pub label: String,
     /// The column of their values.
     pub value: String,
-    /// In px; 160 when left out.
+    /// In px; 160 when left out (standing bars).
     pub height: Option<f64>,
+    /// After each value and axis number: `%`, `ms`.
+    pub unit: Option<String>,
+    /// Each bar's value over it; on when left out.
+    pub values: Option<bool>,
+    /// Bars lying along rows, each name whole beside its bar: for long names or
+    /// many bars.
+    pub horizontal: Option<bool>,
+    /// Lying bars: the names' column in px; 120 when left out.
+    pub label_width: Option<f64>,
     /// The message `select` arrives as, with `select: BarChartSelect` in it. A
     /// bar was clicked.
     pub on_select: Option<Value>,
@@ -4417,15 +4927,44 @@ impl BarChart {
             label: label.into(),
             value: value.into(),
             height: None,
+            unit: None,
+            values: None,
+            horizontal: None,
+            label_width: None,
             on_select: None,
             key: None,
             fresh: false,
         }
     }
 
-    /// In px; 160 when left out.
+    /// In px; 160 when left out (standing bars).
     pub fn height(mut self, v: f64) -> Self {
         self.height = Some(v);
+        self
+    }
+
+    /// After each value and axis number: `%`, `ms`.
+    pub fn unit(mut self, v: impl Into<String>) -> Self {
+        self.unit = Some(v.into());
+        self
+    }
+
+    /// Each bar's value over it; on when left out.
+    pub fn values(mut self, v: bool) -> Self {
+        self.values = Some(v);
+        self
+    }
+
+    /// Bars lying along rows, each name whole beside its bar: for long names or
+    /// many bars.
+    pub fn horizontal(mut self, v: bool) -> Self {
+        self.horizontal = Some(v);
+        self
+    }
+
+    /// Lying bars: the names' column in px; 120 when left out.
+    pub fn label_width(mut self, v: f64) -> Self {
+        self.label_width = Some(v);
         self
     }
 
@@ -4455,6 +4994,18 @@ impl BarChart {
         m.push(("value".into(), Value::str((&self.value).as_str())));
         if let Some(v) = &self.height {
             m.push(("height".into(), Value::Float(*v)));
+        }
+        if let Some(v) = &self.unit {
+            m.push(("unit".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.values {
+            m.push(("values".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.horizontal {
+            m.push(("horizontal".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.label_width {
+            m.push(("label_width".into(), Value::Float(*v)));
         }
         if let Some(v) = &self.on_select {
             m.push(("on_select".into(), v.clone()));

@@ -8,7 +8,7 @@ typed wrappers generated from [`schema.lua`](schema.lua) (ADR 0066).
 | Group | Components |
 | --- | --- |
 | Layout | `panel`, `toolbar`, `statusbar`, `split`, `tabs`, `section`, `divider` |
-| Inputs | `button`, `icon_button`, `text_field`, `search`, `select`, `checkbox`, `switch`, `radio_group`, `segmented`, `slider` |
+| Inputs | `button`, `icon_button`, `text_field`, `text_area`, `search`, `select`, `checkbox`, `switch`, `radio_group`, `segmented`, `slider` |
 | Data | `table`, `list`, `log` (over a channel, ADR 0065), `inspector`, `badge`, `stat`, `code`, `empty`, `progress` |
 | Overlays | `dialog`, `popover`, `menu`, `toast` |
 | Charts | `sparkline`, `line_chart`, `bar_chart`, `histogram`, `waterfall` |

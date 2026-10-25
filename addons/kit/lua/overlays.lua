@@ -35,20 +35,25 @@ end
 function M.dialog(c, p)
    local env = c.env
    local title = str(p.title) or ""
+   local vh = env.viewport_h or 600
    local box = surface(c, {
       key = "dialog",
       role = "dialog",
       label = title,
       modal = act(c, "dialog.dismiss"),
       width = (p.width or 420),
-      max_height = math.max(120, (env.viewport_h or 600) - 48),
+      max_height = math.max(120, vh - 48),
       enter = { opacity = 0, dy = 8 },
       transition = 140,
       row({
          width = "grow", height = 40, pad = { x = 16 }, cross_align = "center",
          text(title, { size = "$kitSizeTitle", bold = true, family = "$kitUi", color = ref(c, "fg") }),
       }),
-      column({ key = "body", width = "grow", height = "grow", scroll_y = true, pad = { x = 16, y = 4 }, gap = 8, children("") }),
+
+
+
+      column({ key = "body", width = "grow", max_height = math.max(48, vh - 48 - 40 - 52), scroll_y = true,
+pad = { x = 16, y = 4 }, gap = 8, children(""), }),
       row({
          width = "grow", pad = 12, gap = 8, cross_align = "center",
          ctx.grow(),
@@ -73,6 +78,8 @@ function M.popover(c, p)
    return column(surface(c, {
       key = "popover",
       role = "dialog",
+
+      label = str(p.label),
       float = MENU_FLOAT,
       modal = act(c, "popover.dismiss"),
       width = p.width,
@@ -137,7 +144,9 @@ function M.toast(c, p)
    local role = (tone == "ok" or tone == "warn" or tone == "danger") and tone or (tone == "accent" and "accent" or "muted")
    return row(surface(c, {
       key = "toast",
-      float = { anchor = "viewport", at = { "end", "end" }, dx = -16, dy = -16 },
+
+
+      float = { anchor = "viewport", at = { "end", "end" }, self = { "end", "end" }, dx = -16, dy = -16 },
       label = message,
       min_width = 240,
       max_width = 420,
@@ -149,6 +158,13 @@ function M.toast(c, p)
       icons.node(c, TONE_ICON[tone] or "info", 14, role),
 
       row({ width = "grow", live = "polite", ctx.text(c, message, { wrap = "word" }) }),
+
+      str(p.action) and row({
+         key = "action", role = "button", label = str(p.action_name) or str(p.action), height = "$kitCtl", min_width = "fit",
+         pad = { x = 8 }, cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "hover"),
+         pressed_bg = ref(c, "press"), cursor = "pointer", on_click = act(c, "toast.action"),
+         ctx.caption(c, str(p.action), { color = ref(c, "fg") }),
+      }) or nil,
       row({
          role = "button", label = "Dismiss", width = 20, height = 20, main_align = "center",
          cross_align = "center", radius = "$kitRadius", hover_bg = ref(c, "hover"), cursor = "pointer",
@@ -161,6 +177,8 @@ end
 function M.event(m, kit)
    if kit == "dialog.dismiss" or kit == "popover.dismiss" or kit == "menu.dismiss" or kit == "toast.dismiss" then
       return emit("on_dismiss", {})
+   elseif kit == "toast.action" then
+      return emit("on_action", {})
    elseif kit == "menu.choose" then
       return emit("on_choose", { value = m.value })
    end

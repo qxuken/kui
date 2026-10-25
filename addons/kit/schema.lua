@@ -16,6 +16,7 @@ return {
     { name = "Skin", doc = "The look: Ledger's paper and ink, Phosphor's terminal, or Neutral's quiet chrome.", "ledger", "phosphor", "neutral" },
     { name = "Density", doc = "Row and control heights: 22 and 26 px, or 20 and 22 px compact.", "comfortable", "compact" },
     { name = "Level", doc = "A log line's level.", "debug", "info", "warn", "error" },
+    { name = "XFormat", doc = "How a chart labels its x axis: the number (with `x_unit`), time counted back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the local time of day.", "number", "ago", "clock" },
   },
 
   records = {
@@ -34,6 +35,8 @@ return {
         { "width", "number?", doc = "Its width in px; shares the rest when left out." },
         { "align", "Align?", doc = "Where its cells sit; numbers read best at the end." },
         { "mono", "boolean?", doc = "Its cells in the data face: ids, timings, hashes." },
+        { "tone", "string?", doc = "A channel column naming each cell's tone (`ok`, `warn`, `danger`, `accent`, `neutral`): the cell is drawn in it — a status, an HTTP method." },
+        { "badge", "boolean?", doc = "Its cells as pills with a dot in their `tone`: a status column." },
       } },
     { name = "Tab", doc = "A tab: its value and its label.",
       fields = {
@@ -182,11 +185,33 @@ return {
         { "mono", "boolean?", doc = "In the data face." },
         { "disabled", "boolean?", doc = "Unavailable." },
         { "width", "number?", doc = "Its width in px; grows when left out." },
-        { "focus", "integer?", doc = "Takes the keyboard each time this number changes: keep a counter in your model and bump it (⌘F)." },
+        { "focus", "integer?", doc = "Takes the keyboard each time this number changes while the field is on screen: keep a counter in your model and bump it (⌘F). A field that shows after the bump takes its number as where it starts." },
+        { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows: a new item's name." },
+        { "error", "string?", doc = "What is wrong with the text: drawn under the field in the danger colour, its edge in danger too, and read after its name. An empty string marks the field only, for fields that share one message." },
       },
       events = {
         { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },
         { "submit", doc = "Enter.", fields = { { "text", "string", doc = "The whole text." } } },
+      } },
+    { "text_area",
+      doc = "A text field of several lines, in a well in every skin: a note, a request body.",
+      props = {
+        { "value", "string", doc = "Its text: yours to keep, from `change`." },
+        { "label", "string?", doc = "Its label, above it; its name." },
+        { "hide_label", "boolean?", doc = "The label names the field but is not drawn." },
+        { "placeholder", "string?", doc = "Shown while it is empty." },
+        { "mono", "boolean?", doc = "In the data face: code, JSON." },
+        { "disabled", "boolean?", doc = "Unavailable." },
+        { "width", "number?", doc = "Its width in px; grows when left out." },
+        { "rows", "integer?", doc = "Lines tall at the least; 4 when left out. It grows with its text." },
+        { "max_rows", "integer?", doc = "Lines tall at the most, scrolling past them; no limit when left out." },
+        { "grow", "boolean?", doc = "Takes the room its parent leaves (a request body filling its tab), `rows` still its least." },
+        { "focus", "integer?", doc = "Takes the keyboard each time this number changes while it is on screen." },
+        { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows." },
+        { "error", "string?", doc = "What is wrong with the text, under it in the danger colour." },
+      },
+      events = {
+        { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },
       } },
     { "search",
       doc = "A search field: a glass, the query, and a clear button while it has one.",
@@ -195,7 +220,8 @@ return {
         { "placeholder", "string?", doc = "Shown while it is empty; `Search` when left out." },
         { "label", "string?", doc = "Its name, read and not drawn: what it searches (the placeholder when left out)." },
         { "count", "string?", doc = "A count after the query: `12 of 340`." },
-        { "focus", "integer?", doc = "Takes the keyboard each time this number changes (⌘F)." },
+        { "focus", "integer?", doc = "Takes the keyboard each time this number changes while it is on screen (⌘F)." },
+        { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows." },
       },
       events = {
         { "change", doc = "The query changed; cleared is the empty string.", fields = { { "text", "string", doc = "The query." } } },
@@ -242,7 +268,8 @@ return {
       props = {
         { "options", "{Choice}", doc = "The options, in order." },
         { "value", "string?", doc = "The one chosen: yours to keep." },
-        { "label", "string?", doc = "The group's name." },
+        { "label", "string?", doc = "The group's name, drawn above it." },
+        { "hide_label", "boolean?", doc = "The name is read but not drawn: a group whose place says what it is." },
       },
       events = {
         { "change", doc = "An option was chosen.", fields = { { "value", "string", doc = "Its value." } } },
@@ -265,6 +292,7 @@ return {
         { "max", "number", doc = "The most." },
         { "step", "number?", doc = "What an arrow moves it by; a hundredth of the range when left out." },
         { "label", "string?", doc = "Its label; its name." },
+        { "value_label", "string?", doc = "The value as text, shown beside the label and read for it: `20 MB/s`, `30 days`. The number when left out." },
       },
       events = {
         { "change", doc = "It asks for another value.", fields = { { "value", "number", doc = "The value it asks for." } } },
@@ -296,6 +324,9 @@ return {
         { "rows", "channel", doc = "The rows." },
         { "title", "string", doc = "The field each row's title reads." },
         { "detail", "string?", doc = "The field its second line reads." },
+        { "badge", "string?", doc = "A field drawn as a pill before the title: a method, a state." },
+        { "tone", "string?", doc = "A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`, `neutral`)." },
+        { "badge_width", "number?", doc = "The badge column's width in px, so the titles line up; each badge's own when left out." },
         { "selected", "integer?", doc = "The selected row (0-based): yours to keep." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
       },
@@ -379,6 +410,7 @@ return {
     { "popover",
       doc = "A panel floating beside what opened it; Escape and a press outside ask it to close.",
       props = {
+        { "label", "string?", doc = "Its name, read and not drawn: what it holds (Scale the service). A modal surface with no name warns `modal-without-name`." },
         { "width", "number?", doc = "Its width in px." },
       },
       events = { { "dismiss", doc = "Escape, or a press outside." } },
@@ -397,8 +429,13 @@ return {
       props = {
         { "message", "string", doc = "What happened." },
         { "tone", "Tone?", doc = "Neutral when left out." },
+        { "action", "string?", doc = "One action on what happened, a button beside the message: `Undo`." },
+        { "action_name", "string?", doc = "The action's accessible name when it says more than its label (Undo → Undo the delete)." },
       },
-      events = { { "dismiss", doc = "Its close button." } } },
+      events = {
+        { "dismiss", doc = "Its close button." },
+        { "action", doc = "Its action was pressed." },
+      } },
 
     -- Charts ---------------------------------------------------------------
     { "sparkline",
@@ -419,6 +456,9 @@ return {
         { "height", "number?", doc = "In px; 160 when left out." },
         { "area", "boolean?", doc = "Filled under the first line." },
         { "window", "number?", doc = "With it, only the last `window` of x is shown: a live chart." },
+        { "x_format", "XFormat?", doc = "How the x ticks read; the number when left out." },
+        { "x_unit", "string?", doc = "After each x tick's number: `min`, `s`." },
+        { "y_unit", "string?", doc = "After each y tick's number: `ms`, `%`." },
       },
       events = {
         { "hover", doc = "The pointer moved over a row.", fields = { { "row", "integer", doc = "The row under it." } } },
@@ -429,7 +469,11 @@ return {
         { "data", "channel", doc = "The rows." },
         { "label", "string", doc = "The column naming each bar." },
         { "value", "string", doc = "The column of their values." },
-        { "height", "number?", doc = "In px; 160 when left out." },
+        { "height", "number?", doc = "In px; 160 when left out (standing bars)." },
+        { "unit", "string?", doc = "After each value and axis number: `%`, `ms`." },
+        { "values", "boolean?", doc = "Each bar's value over it; on when left out." },
+        { "horizontal", "boolean?", doc = "Bars lying along rows, each name whole beside its bar: for long names or many bars." },
+        { "label_width", "number?", doc = "Lying bars: the names' column in px; 120 when left out." },
       },
       events = {
         { "select", doc = "A bar was clicked.", fields = { { "row", "integer", doc = "Its row." } } },

@@ -134,6 +134,22 @@ LEVEL_NAMES := [Level]string {
 	.Error = "error",
 }
 
+// How a chart labels its x axis: the number (with `x_unit`), time counted back
+// to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds as the
+// local time of day.
+XFormat :: enum {
+	Number,
+	Ago,
+	Clock,
+}
+
+@(private)
+X_FORMAT_NAMES := [XFormat]string {
+	.Number = "number",
+	.Ago = "ago",
+	.Clock = "clock",
+}
+
 // A choice: what it is, and what it reads as.
 Choice :: struct {
 	// What the choice is; what the event carries.
@@ -171,6 +187,11 @@ Column :: struct {
 	align: Maybe(Align),
 	// Its cells in the data face: ids, timings, hashes.
 	mono: Maybe(bool),
+	// A channel column naming each cell's tone (`ok`, `warn`, `danger`, `accent`,
+	// `neutral`): the cell is drawn in it — a status, an HTTP method.
+	tone: string,
+	// Its cells as pills with a dot in their `tone`: a status column.
+	badge: Maybe(bool),
 }
 
 @(private)
@@ -181,6 +202,8 @@ column_value :: proc(p: Column) -> ^c.Value {
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
 	if x, ok := p.align.?; ok do c.value_map_set(m, "align", c.value_str(ALIGN_NAMES[x]))
 	if x, ok := p.mono.?; ok do c.value_map_set(m, "mono", c.value_bool(x))
+	if p.tone != "" do c.value_map_set(m, "tone", c.value_str(p.tone))
+	if x, ok := p.badge.?; ok do c.value_map_set(m, "badge", c.value_bool(x))
 	return m
 }
 
@@ -826,9 +849,16 @@ TextField :: struct {
 	disabled: Maybe(bool),
 	// Its width in px; grows when left out.
 	width: Maybe(f64),
-	// Takes the keyboard each time this number changes: keep a counter in your
-	// model and bump it (⌘F).
+	// Takes the keyboard each time this number changes while the field is on
+	// screen: keep a counter in your model and bump it (⌘F). A field that shows
+	// after the bump takes its number as where it starts.
 	focus: Maybe(i64),
+	// Takes the keyboard as it first shows: a new item's name.
+	autofocus: Maybe(bool),
+	// What is wrong with the text: drawn under the field in the danger colour, its
+	// edge in danger too, and read after its name. An empty string marks the field
+	// only, for fields that share one message.
+	error: string,
 	// The message `change` arrives as. The text changed.
 	on_change: any,
 	// The message `submit` arrives as. Enter.
@@ -871,6 +901,8 @@ text_field_props :: proc(p: TextField) -> ^c.Value {
 	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
 	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
+	if x, ok := p.autofocus.?; ok do c.value_map_set(m, "autofocus", c.value_bool(x))
+	if p.error != "" do c.value_map_set(m, "error", c.value_str(p.error))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.on_submit != nil do c.value_map_set(m, "on_submit", (^c.Value)(kui.encode(p.on_submit)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -889,6 +921,87 @@ text_field_in :: proc(ui: ^kui.Ui, namespace: string, p: TextField) -> i32 {
 	return c.component(ui, name, props, nil, nil)
 }
 
+// A text field of several lines, in a well in every skin: a note, a request
+// body.
+TextArea :: struct {
+	// Its text: yours to keep, from `change`.
+	value: string,
+	// Its label, above it; its name.
+	label: string,
+	// The label names the field but is not drawn.
+	hide_label: Maybe(bool),
+	// Shown while it is empty.
+	placeholder: string,
+	// In the data face: code, JSON.
+	mono: Maybe(bool),
+	// Unavailable.
+	disabled: Maybe(bool),
+	// Its width in px; grows when left out.
+	width: Maybe(f64),
+	// Lines tall at the least; 4 when left out. It grows with its text.
+	rows: Maybe(i64),
+	// Lines tall at the most, scrolling past them; no limit when left out.
+	max_rows: Maybe(i64),
+	// Takes the room its parent leaves (a request body filling its tab), `rows`
+	// still its least.
+	grow: Maybe(bool),
+	// Takes the keyboard each time this number changes while it is on screen.
+	focus: Maybe(i64),
+	// Takes the keyboard as it first shows.
+	autofocus: Maybe(bool),
+	// What is wrong with the text, under it in the danger colour.
+	error: string,
+	// The message `change` arrives as. The text changed.
+	on_change: any,
+	// Keys the instance (empty: where it is placed); fresh asks every frame.
+	key:   string,
+	fresh: bool,
+}
+
+// What `change` carries: The text changed.
+TextArea_Change :: struct {
+	// The whole text.
+	text: string,
+}
+
+// Embed with `using _:` in the message passed as `on_change`.
+With_TextArea_Change :: struct {
+	change: TextArea_Change,
+}
+
+@(private)
+text_area_props :: proc(p: TextArea) -> ^c.Value {
+	m := c.value_map()
+	c.value_map_set(m, "value", c.value_str(p.value))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if x, ok := p.hide_label.?; ok do c.value_map_set(m, "hide_label", c.value_bool(x))
+	if p.placeholder != "" do c.value_map_set(m, "placeholder", c.value_str(p.placeholder))
+	if x, ok := p.mono.?; ok do c.value_map_set(m, "mono", c.value_bool(x))
+	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
+	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
+	if x, ok := p.rows.?; ok do c.value_map_set(m, "rows", c.value_int(x))
+	if x, ok := p.max_rows.?; ok do c.value_map_set(m, "max_rows", c.value_int(x))
+	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
+	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
+	if x, ok := p.autofocus.?; ok do c.value_map_set(m, "autofocus", c.value_bool(x))
+	if p.error != "" do c.value_map_set(m, "error", c.value_str(p.error))
+	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
+	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
+	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
+	return m
+}
+
+text_area :: proc(ui: ^kui.Ui, p: TextArea) -> i32 {
+	return text_area_in(ui, NAMESPACE, p)
+}
+
+text_area_in :: proc(ui: ^kui.Ui, namespace: string, p: TextArea) -> i32 {
+	props := text_area_props(p)
+	defer c.value_free(props)
+	name := concat(namespace, "/text_area")
+	return c.component(ui, name, props, nil, nil)
+}
+
 // A search field: a glass, the query, and a clear button while it has one.
 Search :: struct {
 	// The query: yours to keep.
@@ -900,8 +1013,11 @@ Search :: struct {
 	label: string,
 	// A count after the query: `12 of 340`.
 	count: string,
-	// Takes the keyboard each time this number changes (⌘F).
+	// Takes the keyboard each time this number changes while it is on screen
+	// (⌘F).
 	focus: Maybe(i64),
+	// Takes the keyboard as it first shows.
+	autofocus: Maybe(bool),
 	// The message `change` arrives as. The query changed; cleared is the empty
 	// string.
 	on_change: any,
@@ -942,6 +1058,7 @@ search_props :: proc(p: Search) -> ^c.Value {
 	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if p.count != "" do c.value_map_set(m, "count", c.value_str(p.count))
 	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
+	if x, ok := p.autofocus.?; ok do c.value_map_set(m, "autofocus", c.value_bool(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.on_submit != nil do c.value_map_set(m, "on_submit", (^c.Value)(kui.encode(p.on_submit)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -1147,8 +1264,10 @@ RadioGroup :: struct {
 	options: []Choice,
 	// The one chosen: yours to keep.
 	value: string,
-	// The group's name.
+	// The group's name, drawn above it.
 	label: string,
+	// The name is read but not drawn: a group whose place says what it is.
+	hide_label: Maybe(bool),
 	// The message `change` arrives as. An option was chosen.
 	on_change: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -1173,6 +1292,7 @@ radio_group_props :: proc(p: RadioGroup) -> ^c.Value {
 	c.value_map_set(m, "options", kit_list(p.options, proc(x: Choice) -> ^c.Value { return choice_value(x) }))
 	if p.value != "" do c.value_map_set(m, "value", c.value_str(p.value))
 	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if x, ok := p.hide_label.?; ok do c.value_map_set(m, "hide_label", c.value_bool(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -1251,6 +1371,9 @@ Slider :: struct {
 	step: Maybe(f64),
 	// Its label; its name.
 	label: string,
+	// The value as text, shown beside the label and read for it: `20 MB/s`, `30
+	// days`. The number when left out.
+	value_label: string,
 	// The message `change` arrives as. It asks for another value.
 	on_change: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -1277,6 +1400,7 @@ slider_props :: proc(p: Slider) -> ^c.Value {
 	c.value_map_set(m, "max", c.value_float(p.max))
 	if x, ok := p.step.?; ok do c.value_map_set(m, "step", c.value_float(x))
 	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
+	if p.value_label != "" do c.value_map_set(m, "value_label", c.value_str(p.value_label))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -1395,6 +1519,14 @@ List :: struct {
 	title: string,
 	// The field its second line reads.
 	detail: string,
+	// A field drawn as a pill before the title: a method, a state.
+	badge: string,
+	// A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`,
+	// `neutral`).
+	tone: string,
+	// The badge column's width in px, so the titles line up; each badge's own when
+	// left out.
+	badge_width: Maybe(f64),
 	// The selected row (0-based): yours to keep.
 	selected: Maybe(i64),
 	// Takes the room its parent leaves.
@@ -1423,6 +1555,9 @@ list_props :: proc(p: List) -> ^c.Value {
 	if p.rows != nil do c.value_map_set(m, "rows", c.channel_handle(p.rows))
 	c.value_map_set(m, "title", c.value_str(p.title))
 	if p.detail != "" do c.value_map_set(m, "detail", c.value_str(p.detail))
+	if p.badge != "" do c.value_map_set(m, "badge", c.value_str(p.badge))
+	if p.tone != "" do c.value_map_set(m, "tone", c.value_str(p.tone))
+	if x, ok := p.badge_width.?; ok do c.value_map_set(m, "badge_width", c.value_float(x))
 	if x, ok := p.selected.?; ok do c.value_map_set(m, "selected", c.value_int(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
@@ -1841,6 +1976,9 @@ dialog_with :: proc(ui: ^kui.Ui, p: Dialog, data: ^$T, children: proc(data: ^T, 
 // A panel floating beside what opened it; Escape and a press outside ask it to
 // close.
 Popover :: struct {
+	// Its name, read and not drawn: what it holds (Scale the service). A modal
+	// surface with no name warns `modal-without-name`.
+	label: string,
 	// Its width in px.
 	width: Maybe(f64),
 	// The message `dismiss` arrives as. Escape, or a press outside.
@@ -1862,6 +2000,7 @@ With_Popover_Dismiss :: struct {
 @(private)
 popover_props :: proc(p: Popover) -> ^c.Value {
 	m := c.value_map()
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if x, ok := p.width.?; ok do c.value_map_set(m, "width", c.value_float(x))
 	if p.on_dismiss != nil do c.value_map_set(m, "on_dismiss", (^c.Value)(kui.encode(p.on_dismiss)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
@@ -1959,8 +2098,15 @@ Toast :: struct {
 	message: string,
 	// Neutral when left out.
 	tone: Maybe(Tone),
+	// One action on what happened, a button beside the message: `Undo`.
+	action: string,
+	// The action's accessible name when it says more than its label (Undo → Undo
+	// the delete).
+	action_name: string,
 	// The message `dismiss` arrives as. Its close button.
 	on_dismiss: any,
+	// The message `action` arrives as. Its action was pressed.
+	on_action: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
 	key:   string,
 	fresh: bool,
@@ -1975,12 +2121,24 @@ With_Toast_Dismiss :: struct {
 	dismiss: Toast_Dismiss,
 }
 
+// What `action` carries: Its action was pressed.
+Toast_Action :: struct {
+}
+
+// Embed with `using _:` in the message passed as `on_action`.
+With_Toast_Action :: struct {
+	action: Toast_Action,
+}
+
 @(private)
 toast_props :: proc(p: Toast) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "message", c.value_str(p.message))
 	if x, ok := p.tone.?; ok do c.value_map_set(m, "tone", c.value_str(TONE_NAMES[x]))
+	if p.action != "" do c.value_map_set(m, "action", c.value_str(p.action))
+	if p.action_name != "" do c.value_map_set(m, "action_name", c.value_str(p.action_name))
 	if p.on_dismiss != nil do c.value_map_set(m, "on_dismiss", (^c.Value)(kui.encode(p.on_dismiss)))
+	if p.on_action != nil do c.value_map_set(m, "on_action", (^c.Value)(kui.encode(p.on_action)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
 	return m
@@ -2053,6 +2211,12 @@ LineChart :: struct {
 	area: Maybe(bool),
 	// With it, only the last `window` of x is shown: a live chart.
 	window: Maybe(f64),
+	// How the x ticks read; the number when left out.
+	x_format: Maybe(XFormat),
+	// After each x tick's number: `min`, `s`.
+	x_unit: string,
+	// After each y tick's number: `ms`, `%`.
+	y_unit: string,
 	// The message `hover` arrives as. The pointer moved over a row.
 	on_hover: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -2080,6 +2244,9 @@ line_chart_props :: proc(p: LineChart) -> ^c.Value {
 	if x, ok := p.height.?; ok do c.value_map_set(m, "height", c.value_float(x))
 	if x, ok := p.area.?; ok do c.value_map_set(m, "area", c.value_bool(x))
 	if x, ok := p.window.?; ok do c.value_map_set(m, "window", c.value_float(x))
+	if x, ok := p.x_format.?; ok do c.value_map_set(m, "x_format", c.value_str(X_FORMAT_NAMES[x]))
+	if p.x_unit != "" do c.value_map_set(m, "x_unit", c.value_str(p.x_unit))
+	if p.y_unit != "" do c.value_map_set(m, "y_unit", c.value_str(p.y_unit))
 	if p.on_hover != nil do c.value_map_set(m, "on_hover", (^c.Value)(kui.encode(p.on_hover)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -2105,8 +2272,17 @@ BarChart :: struct {
 	label: string,
 	// The column of their values.
 	value: string,
-	// In px; 160 when left out.
+	// In px; 160 when left out (standing bars).
 	height: Maybe(f64),
+	// After each value and axis number: `%`, `ms`.
+	unit: string,
+	// Each bar's value over it; on when left out.
+	values: Maybe(bool),
+	// Bars lying along rows, each name whole beside its bar: for long names or
+	// many bars.
+	horizontal: Maybe(bool),
+	// Lying bars: the names' column in px; 120 when left out.
+	label_width: Maybe(f64),
 	// The message `select` arrives as. A bar was clicked.
 	on_select: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -2132,6 +2308,10 @@ bar_chart_props :: proc(p: BarChart) -> ^c.Value {
 	c.value_map_set(m, "label", c.value_str(p.label))
 	c.value_map_set(m, "value", c.value_str(p.value))
 	if x, ok := p.height.?; ok do c.value_map_set(m, "height", c.value_float(x))
+	if p.unit != "" do c.value_map_set(m, "unit", c.value_str(p.unit))
+	if x, ok := p.values.?; ok do c.value_map_set(m, "values", c.value_bool(x))
+	if x, ok := p.horizontal.?; ok do c.value_map_set(m, "horizontal", c.value_bool(x))
+	if x, ok := p.label_width.?; ok do c.value_map_set(m, "label_width", c.value_float(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))

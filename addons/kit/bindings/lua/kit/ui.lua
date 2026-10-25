@@ -28,6 +28,11 @@
 ---A log line's level.
 ---@alias kit.Level "debug"|"info"|"warn"|"error"
 
+---How a chart labels its x axis: the number (with `x_unit`), time counted
+---back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds
+---as the local time of day.
+---@alias kit.XFormat "number"|"ago"|"clock"
+
 ---A choice: what it is, and what it reads as.
 ---@class kit.Choice
 ---@field value string What the choice is; what the event carries.
@@ -43,6 +48,8 @@
 ---@field width? number Its width in px; shares the rest when left out.
 ---@field align? kit.Align Where its cells sit; numbers read best at the end.
 ---@field mono? boolean Its cells in the data face: ids, timings, hashes.
+---@field tone? string A channel column naming each cell's tone (`ok`, `warn`, `danger`, `accent`, `neutral`): the cell is drawn in it — a status, an HTTP method.
+---@field badge? boolean Its cells as pills with a dot in their `tone`: a status column.
 
 ---A tab: its value and its label.
 ---@class kit.Tab
@@ -185,7 +192,9 @@
 ---@field mono? boolean In the data face.
 ---@field disabled? boolean Unavailable.
 ---@field width? number Its width in px; grows when left out.
----@field focus? integer Takes the keyboard each time this number changes: keep a counter in your model and bump it (⌘F).
+---@field focus? integer Takes the keyboard each time this number changes while the field is on screen: keep a counter in your model and bump it (⌘F). A field that shows after the bump takes its number as where it starts.
+---@field autofocus? boolean Takes the keyboard as it first shows: a new item's name.
+---@field error? string What is wrong with the text: drawn under the field in the danger colour, its edge in danger too, and read after its name. An empty string marks the field only, for fields that share one message.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextFieldChange). The text changed.
 ---@field on_submit? any The message it arrives as: yours, with `submit = {…}` in it (kit.TextFieldSubmit). Enter.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -199,13 +208,37 @@
 ---@class kit.TextFieldSubmit
 ---@field text string The whole text.
 
+---The props of `kit/text_area`.
+---@class kit.TextAreaProps
+---@field value string Its text: yours to keep, from `change`.
+---@field label? string Its label, above it; its name.
+---@field hide_label? boolean The label names the field but is not drawn.
+---@field placeholder? string Shown while it is empty.
+---@field mono? boolean In the data face: code, JSON.
+---@field disabled? boolean Unavailable.
+---@field width? number Its width in px; grows when left out.
+---@field rows? integer Lines tall at the least; 4 when left out. It grows with its text.
+---@field max_rows? integer Lines tall at the most, scrolling past them; no limit when left out.
+---@field grow? boolean Takes the room its parent leaves (a request body filling its tab), `rows` still its least.
+---@field focus? integer Takes the keyboard each time this number changes while it is on screen.
+---@field autofocus? boolean Takes the keyboard as it first shows.
+---@field error? string What is wrong with the text, under it in the danger colour.
+---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextAreaChange). The text changed.
+---@field key? string Keys the instance; by default it is keyed by where it is placed.
+---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
+
+---What `on_change`'s message carries under `change`.
+---@class kit.TextAreaChange
+---@field text string The whole text.
+
 ---The props of `kit/search`.
 ---@class kit.SearchProps
 ---@field value string The query: yours to keep.
 ---@field placeholder? string Shown while it is empty; `Search` when left out.
 ---@field label? string Its name, read and not drawn: what it searches (the placeholder when left out).
 ---@field count? string A count after the query: `12 of 340`.
----@field focus? integer Takes the keyboard each time this number changes (⌘F).
+---@field focus? integer Takes the keyboard each time this number changes while it is on screen (⌘F).
+---@field autofocus? boolean Takes the keyboard as it first shows.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.SearchChange). The query changed; cleared is the empty string.
 ---@field on_submit? any The message it arrives as: yours, with `submit = {…}` in it (kit.SearchSubmit). Enter.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -267,7 +300,8 @@
 ---@class kit.RadioGroupProps
 ---@field options kit.Choice[] The options, in order.
 ---@field value? string The one chosen: yours to keep.
----@field label? string The group's name.
+---@field label? string The group's name, drawn above it.
+---@field hide_label? boolean The name is read but not drawn: a group whose place says what it is.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.RadioGroupChange). An option was chosen.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -296,6 +330,7 @@
 ---@field max number The most.
 ---@field step? number What an arrow moves it by; a hundredth of the range when left out.
 ---@field label? string Its label; its name.
+---@field value_label? string The value as text, shown beside the label and read for it: `20 MB/s`, `30 days`. The number when left out.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.SliderChange). It asks for another value.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -337,6 +372,9 @@
 ---@field rows kui.Channel The rows.
 ---@field title string The field each row's title reads.
 ---@field detail? string The field its second line reads.
+---@field badge? string A field drawn as a pill before the title: a method, a state.
+---@field tone? string A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`, `neutral`).
+---@field badge_width? number The badge column's width in px, so the titles line up; each badge's own when left out.
 ---@field selected? integer The selected row (0-based): yours to keep.
 ---@field grow? boolean Takes the room its parent leaves.
 ---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.ListSelect). A row was clicked or reached by the arrows.
@@ -429,6 +467,7 @@
 
 ---The props of `kit/popover`.
 ---@class kit.PopoverProps
+---@field label? string Its name, read and not drawn: what it holds (Scale the service). A modal surface with no name warns `modal-without-name`.
 ---@field width? number Its width in px.
 ---@field on_dismiss? any The message it arrives as: yours, with `dismiss = {…}` in it (kit.PopoverDismiss). Escape, or a press outside.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -456,12 +495,18 @@
 ---@class kit.ToastProps
 ---@field message string What happened.
 ---@field tone? kit.Tone Neutral when left out.
+---@field action? string One action on what happened, a button beside the message: `Undo`.
+---@field action_name? string The action's accessible name when it says more than its label (Undo → Undo the delete).
 ---@field on_dismiss? any The message it arrives as: yours, with `dismiss = {…}` in it (kit.ToastDismiss). Its close button.
+---@field on_action? any The message it arrives as: yours, with `action = {…}` in it (kit.ToastAction). Its action was pressed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
 
 ---What `on_dismiss`'s message carries under `dismiss`.
 ---@class kit.ToastDismiss
+
+---What `on_action`'s message carries under `action`.
+---@class kit.ToastAction
 
 ---The props of `kit/sparkline`.
 ---@class kit.SparklineProps
@@ -481,6 +526,9 @@
 ---@field height? number In px; 160 when left out.
 ---@field area? boolean Filled under the first line.
 ---@field window? number With it, only the last `window` of x is shown: a live chart.
+---@field x_format? kit.XFormat How the x ticks read; the number when left out.
+---@field x_unit? string After each x tick's number: `min`, `s`.
+---@field y_unit? string After each y tick's number: `ms`, `%`.
 ---@field on_hover? any The message it arrives as: yours, with `hover = {…}` in it (kit.LineChartHover). The pointer moved over a row.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -494,7 +542,11 @@
 ---@field data kui.Channel The rows.
 ---@field label string The column naming each bar.
 ---@field value string The column of their values.
----@field height? number In px; 160 when left out.
+---@field height? number In px; 160 when left out (standing bars).
+---@field unit? string After each value and axis number: `%`, `ms`.
+---@field values? boolean Each bar's value over it; on when left out.
+---@field horizontal? boolean Bars lying along rows, each name whole beside its bar: for long names or many bars.
+---@field label_width? number Lying bars: the names' column in px; 120 when left out.
 ---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.BarChartSelect). A bar was clicked.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -642,6 +694,14 @@ local function make(namespace)
   ---@return kui.Node
   function M.text_field(props)
     return component(namespace .. "/text_field", props)
+  end
+
+  ---A text field of several lines, in a well in every skin: a note, a request
+  ---body.
+  ---@param props kit.TextAreaProps
+  ---@return kui.Node
+  function M.text_area(props)
+    return component(namespace .. "/text_area", props)
   end
 
   ---A search field: a glass, the query, and a clear button while it has one.

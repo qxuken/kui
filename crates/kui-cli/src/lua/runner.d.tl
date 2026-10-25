@@ -202,6 +202,7 @@
     headers: {string:string}
     json: any
     body: string
+    -- How long the whole request may take, in milliseconds; 30,000 (30 s) when left out.
     timeout: number
   end
   record Response

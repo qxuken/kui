@@ -232,7 +232,7 @@ function M.overlays(m)
             { value = "delete", label = "Delete", danger = true },
           } }) or nil },
         row { kit.button({ label = "Details", on_press = { kind = "popover", open = true } }),
-          m.popover and kit.popover({ width = 260, on_dismiss = { kind = "popover", open = false } }, {
+          m.popover and kit.popover({ label = "Details", width = 260, on_dismiss = { kind = "popover", open = false } }, {
             text("A popover holds anything: here, a stat.", { size = 11, family = "$kitUi", color = "$kitMuted", wrap = "word" }),
             kit.stat({ label = "p95", value = "412 ms", delta = "-8%", tone = "ok" }),
           }) or nil },

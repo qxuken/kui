@@ -85,7 +85,7 @@ a task never stops a frame.
 | `kui.process.spawn(cmd, args, opts)` | `p:read_line(stream)` *waits*, `p:lines(stream)`, `p:write`, `p:wait()` *waits*, `p:kill(sig)`. `group = true` makes it lead a process group, and its `kill` reaches all it started; it ends with the app unless `detach = true`. |
 | `kui.process.kill(pid, sig, group)` | A signal to any process (`0` asks whether it is alive); `kui.process.pid` is the app's. |
 | `kui.process.command_line(pid)` *waits* | The command a process was started with, nil when none: what tells a stale pid that is still yours from a reused one, on Windows too. |
-| `kui.http.get/post/...(url, opts)` *waits* | `{ status, ok, headers, body, json }`. |
+| `kui.http.get/post/...(url, opts)` *waits* | `{ status, ok, headers, body, json }`; `opts` takes `headers`, `json` or `body`, and `timeout` in milliseconds (30,000 by default) for the whole request. |
 | `kui.http.serve{ port, static }` | `s:get("/api/items/:id", function(req) ... end)`; each request is a task. |
 | `kui.sqlite.open(path)` | `db:query`, `db:first`, `db:exec` *wait*; `db:transaction(fn)`. |
 | `kui.worker(path, handler)` | A module on a thread of its own: `w:dispatch(msg)` reaches its `on_message`; what it dispatches reaches `handler` (or `update`). A channel in a message crosses without a copy. |

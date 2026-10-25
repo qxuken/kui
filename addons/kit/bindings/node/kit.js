@@ -170,6 +170,8 @@ function make(namespace) {
       if (props.disabled !== undefined) wire.disabled = props.disabled;
       if (props.width !== undefined) wire.width = props.width;
       if (props.focus !== undefined) wire.focus = props.focus;
+      if (props.autofocus !== undefined) wire.autofocus = props.autofocus;
+      if (props.error !== undefined) wire.error = props.error;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       if (props.onSubmit !== undefined) wire.on_submit = props.onSubmit;
       const groups = undefined;
@@ -180,6 +182,30 @@ function make(namespace) {
         children: flat(children ?? props.children),
       };
     },
+    TextArea(props = {}, children) {
+      const wire = {};
+      if (props.value !== undefined) wire.value = props.value;
+      if (props.label !== undefined) wire.label = props.label;
+      if (props.hideLabel !== undefined) wire.hide_label = props.hideLabel;
+      if (props.placeholder !== undefined) wire.placeholder = props.placeholder;
+      if (props.mono !== undefined) wire.mono = props.mono;
+      if (props.disabled !== undefined) wire.disabled = props.disabled;
+      if (props.width !== undefined) wire.width = props.width;
+      if (props.rows !== undefined) wire.rows = props.rows;
+      if (props.maxRows !== undefined) wire.max_rows = props.maxRows;
+      if (props.grow !== undefined) wire.grow = props.grow;
+      if (props.focus !== undefined) wire.focus = props.focus;
+      if (props.autofocus !== undefined) wire.autofocus = props.autofocus;
+      if (props.error !== undefined) wire.error = props.error;
+      if (props.onChange !== undefined) wire.on_change = props.onChange;
+      const groups = undefined;
+      return {
+        type: 'component',
+        key: props.key != null ? String(props.key) : undefined,
+        props: { name: `${namespace}/text_area`, props: wire, groups, fresh: props.fresh },
+        children: flat(children ?? props.children),
+      };
+    },
     Search(props = {}, children) {
       const wire = {};
       if (props.value !== undefined) wire.value = props.value;
@@ -187,6 +213,7 @@ function make(namespace) {
       if (props.label !== undefined) wire.label = props.label;
       if (props.count !== undefined) wire.count = props.count;
       if (props.focus !== undefined) wire.focus = props.focus;
+      if (props.autofocus !== undefined) wire.autofocus = props.autofocus;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       if (props.onSubmit !== undefined) wire.on_submit = props.onSubmit;
       const groups = undefined;
@@ -249,6 +276,7 @@ function make(namespace) {
       if (props.options !== undefined) wire.options = props.options;
       if (props.value !== undefined) wire.value = props.value;
       if (props.label !== undefined) wire.label = props.label;
+      if (props.hideLabel !== undefined) wire.hide_label = props.hideLabel;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       const groups = undefined;
       return {
@@ -279,6 +307,7 @@ function make(namespace) {
       if (props.max !== undefined) wire.max = props.max;
       if (props.step !== undefined) wire.step = props.step;
       if (props.label !== undefined) wire.label = props.label;
+      if (props.valueLabel !== undefined) wire.value_label = props.valueLabel;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       const groups = undefined;
       return {
@@ -313,6 +342,9 @@ function make(namespace) {
       if (props.rows !== undefined) wire.rows = props.rows;
       if (props.title !== undefined) wire.title = props.title;
       if (props.detail !== undefined) wire.detail = props.detail;
+      if (props.badge !== undefined) wire.badge = props.badge;
+      if (props.tone !== undefined) wire.tone = props.tone;
+      if (props.badgeWidth !== undefined) wire.badge_width = props.badgeWidth;
       if (props.selected !== undefined) wire.selected = props.selected;
       if (props.grow !== undefined) wire.grow = props.grow;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
@@ -445,6 +477,7 @@ function make(namespace) {
     },
     Popover(props = {}, children) {
       const wire = {};
+      if (props.label !== undefined) wire.label = props.label;
       if (props.width !== undefined) wire.width = props.width;
       if (props.onDismiss !== undefined) wire.on_dismiss = props.onDismiss;
       const groups = undefined;
@@ -472,7 +505,10 @@ function make(namespace) {
       const wire = {};
       if (props.message !== undefined) wire.message = props.message;
       if (props.tone !== undefined) wire.tone = props.tone;
+      if (props.action !== undefined) wire.action = props.action;
+      if (props.actionName !== undefined) wire.action_name = props.actionName;
       if (props.onDismiss !== undefined) wire.on_dismiss = props.onDismiss;
+      if (props.onAction !== undefined) wire.on_action = props.onAction;
       const groups = undefined;
       return {
         type: 'component',
@@ -504,6 +540,9 @@ function make(namespace) {
       if (props.height !== undefined) wire.height = props.height;
       if (props.area !== undefined) wire.area = props.area;
       if (props.window !== undefined) wire.window = props.window;
+      if (props.xFormat !== undefined) wire.x_format = props.xFormat;
+      if (props.xUnit !== undefined) wire.x_unit = props.xUnit;
+      if (props.yUnit !== undefined) wire.y_unit = props.yUnit;
       if (props.onHover !== undefined) wire.on_hover = props.onHover;
       const groups = undefined;
       return {
@@ -519,6 +558,10 @@ function make(namespace) {
       if (props.label !== undefined) wire.label = props.label;
       if (props.value !== undefined) wire.value = props.value;
       if (props.height !== undefined) wire.height = props.height;
+      if (props.unit !== undefined) wire.unit = props.unit;
+      if (props.values !== undefined) wire.values = props.values;
+      if (props.horizontal !== undefined) wire.horizontal = props.horizontal;
+      if (props.labelWidth !== undefined) wire.label_width = props.labelWidth;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
       const groups = undefined;
       return {
@@ -566,6 +609,6 @@ function make(namespace) {
 }
 
 const kit = make('kit');
-export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Dialog, Popover, Menu, Toast, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
+export const { Settings, Panel, Toolbar, Statusbar, Split, Tabs, Section, Divider, Button, IconButton, TextField, TextArea, Search, Select, Checkbox, Switch, RadioGroup, Segmented, Slider, Table, List, Inspector, Log, Badge, Stat, Code, Notice, Empty, Progress, Dialog, Popover, Menu, Toast, Sparkline, LineChart, BarChart, Histogram, Waterfall } = kit;
 export const at = make;
 export default kit;

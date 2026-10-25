@@ -80,6 +80,33 @@ end
 
 
 
+
+local TONE_ROLE = { ok = "ok", warn = "warn", danger = "danger", accent = "accent", neutral = "muted" }
+
+local function tone_of(v)
+   return type(v) == "string" and TONE_ROLE[v] or nil
+end
+
+
+
+
+
+
+local function pill(c, label, tone, dot, sel)
+   local role = tone_of(tone)
+   local accent = role == "accent" and not sel
+   local ink = ref(c, sel and "sel_fg" or (accent and "on_accent" or (role or "muted")))
+   local spot = sel and "sel_fg" or (accent and "on_accent" or (role == "muted" and "faint" or (role or "faint")))
+   return row({
+      height = 18, min_width = "fit", pad = { x = 6 }, gap = 5, cross_align = "center",
+      radius = c.s.skin.radius > 0 and 9 or 0,
+      bg = accent and ref(c, "accent") or (not sel and ref(c, "press") or nil),
+      dot and column({ width = 6, height = 6, radius = 3, bg = ref(c, spot) }) or nil,
+      ctx.data(c, label, { size = "$kitSizeLabel", bold = c.s.skin.label_bold, color = ink, max_lines = 1 }),
+   })
+end
+
+
 local function step(code, selected, n, page)
    local s = selected or -1
    if code == "down" then s = s + 1
@@ -151,16 +178,30 @@ function M.table(c, p)
       for j, col in ipairs(cols) do
          local s = cell_text(ch:get(i, col.field))
          name[#name + 1] = s
-         line[#line + 1] = row({
-            width = (col.width) or "grow",
-            main_align = col.align == "end" and "end" or (col.align == "center" and "center" or "start"),
-            text(s, {
+
+
+
+         local tone = str(col.tone) and cell_text(ch:get(i, col.tone)) or nil
+         local cell
+         if col.badge == true and s ~= "" then
+            cell = pill(c, s, tone, true, sel)
+         else
+            local role = not sel and tone_of(tone) or nil
+            cell = text(s, {
                size = "$kitSize",
-               color = ink,
+               color = role and ref(c, role == "accent" and "fg" or role) or ink,
+               bold = role ~= nil and role ~= "muted" and c.s.skin.label_bold or nil,
                family = col.mono == true and "$kitData" or "$kitUi",
                max_lines = 1,
                ellipsis = true,
-            }),
+            })
+         end
+         line[#line + 1] = row({
+            width = (col.width) or "grow",
+            min_width = 0,
+            cross_align = "center",
+            main_align = col.align == "end" and "end" or (col.align == "center" and "center" or "start"),
+            cell,
          })
       end
       line.label = table.concat(name, ", ")
@@ -197,25 +238,37 @@ function M.list(c, p)
       local sel = selected == i
       local title = cell_text(ch:get(i, p.title))
       local t = {
-         index = i,
-         role = "listItem",
-         label = title,
-         selected = sel,
-         height = row_h,
          width = "grow",
-         pad = { x = 10 },
+         min_width = 0,
          main_align = "center",
          gap = 1,
-         bg = sel and ref(c, "sel") or nil,
-         hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
-         on_click = act(c, "list.select", { row = i }),
          ctx.text(c, title, { color = ref(c, sel and "sel_fg" or "fg"), max_lines = 1, ellipsis = true }),
       }
       if two then
          t[#t + 1] = ctx.muted(c, cell_text(ch:get(i, p.detail)), { max_lines = 1, ellipsis = true,
 color = ref(c, sel and "sel_fg" or "muted"), })
       end
-      return column(t)
+
+
+      local badge = str(p.badge) and cell_text(ch:get(i, p.badge)) or ""
+      local tone = str(p.tone) and cell_text(ch:get(i, p.tone)) or nil
+      return row({
+         index = i,
+         role = "listItem",
+         label = badge ~= "" and (badge .. " " .. title) or title,
+         selected = sel,
+         height = row_h,
+         width = "grow",
+         pad = { x = 10 },
+         gap = 8,
+         cross_align = "center",
+         bg = sel and ref(c, "sel") or nil,
+         hover_bg = sel and ref(c, "sel") or ref(c, "hover"),
+         on_click = act(c, "list.select", { row = i }),
+         badge ~= "" and row({ width = p.badge_width, min_width = "fit",
+pill(c, badge, tone, false, sel), }) or nil,
+         column(t),
+      })
    end)
 end
 
@@ -388,7 +441,8 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
    local rev = ch and ch.rev or 0
    if not st.heights then st.heights = row_heights(n, row_h) end
    local g = env.scroll_geometry("rows")
-   local was_end = not g or g.offset.y + g.h >= st.heights:total() - row_h
+
+   local at_end = not g or g.offset.y + g.h >= g.content_h - row_h
    if rev ~= st.rev then
       if n <= st.n then st.heights:clear() end
       st.heights:set_len(n)
@@ -399,6 +453,21 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
       { size = "$kitSizeLabel", family = "$kitData" }, math.max(40, width - label_w))
       return math.max(row_h, m.height + 2)
    end
+   local pin = ctx.flag(p.follow, true) and at_end and n > 0
+   if pin and g and g.w > 0 then
+
+
+      local filled, i = 0.0, n - 1
+      while i >= 0 and filled < g.h + row_h do
+         local h = st.heights:measured(i)
+         if not h or h <= 0 then
+            h = measure(i, g.w)
+            st.heights:set(i, h)
+         end
+         filled = filled + h
+         i = i - 1
+      end
+   end
    local t = list(env, {
       key = "rows",
       heights = st.heights,
@@ -408,8 +477,13 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
       pad = { y = 4 },
       selectable = true,
    }, measure, line)
-   if ctx.flag(p.follow, true) and rev ~= st.rev and n > st.n and was_end then
-      env.set_scroll("rows", 0, st.heights:total())
+   if pin then
+
+
+
+
+
+      env.set_scroll("rows", 0, 1e9)
    end
    st.n, st.rev = n, rev
    return t
@@ -498,6 +572,11 @@ function M.notice(c, p)
       body[#body + 1] = ctx.text(c, p.title, { bold = true, color = ref(c, role == "muted" and "fg" or role), wrap = "word" })
    end
    body[#body + 1] = ctx.text(c, str(p.message) or "", { color = ref(c, role == "muted" and "fg" or role), wrap = "word" })
+
+
+
+
+   body.width, body.min_width = "grow", 160
    local t = {
       role = "group",
 
@@ -510,8 +589,9 @@ function M.notice(c, p)
       bg = ref(c, "sunken"),
       border = { w = "$kitHair", color = ref(c, role == "muted" and "rule" or role) },
       icons.node(c, tone == "ok" and "check" or (tone == "neutral" or tone == "accent") and "info" or "alert", 14, role),
-      column(body),
-      row({ gap = 8, cross_align = "center", children("") }),
+      row({ key = "wrap", width = "grow", min_width = 0, gap = 10, cross_align = "center", wrap_children = true,
+column(body),
+row({ key = "actions", min_width = "fit", gap = 8, cross_align = "center", children("") }), }),
    }
    return row(t)
 end

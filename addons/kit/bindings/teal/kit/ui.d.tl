@@ -40,6 +40,13 @@ local record kit
     "debug" "info" "warn" "error"
   end
 
+  -- How a chart labels its x axis: the number (with `x_unit`), time counted
+  -- back to now (`-15` … `0` reads `15 min ago` … `now`), or Unix seconds
+  -- as the local time of day.
+  enum XFormat
+    "number" "ago" "clock"
+  end
+
   -- A choice: what it is, and what it reads as.
   record Choice
     -- What the choice is; what the event carries.
@@ -66,6 +73,12 @@ local record kit
     align: Align
     -- Its cells in the data face: ids, timings, hashes.
     mono: boolean
+    -- A channel column naming each cell's tone (`ok`, `warn`, `danger`,
+    -- `accent`, `neutral`): the cell is drawn in it — a status, an HTTP
+    -- method.
+    tone: string
+    -- Its cells as pills with a dot in their `tone`: a status column.
+    badge: boolean
   end
 
   -- A tab: its value and its label.
@@ -295,9 +308,16 @@ local record kit
     disabled: boolean
     -- Its width in px; grows when left out.
     width: number
-    -- Takes the keyboard each time this number changes: keep a counter in
-    -- your model and bump it (⌘F).
+    -- Takes the keyboard each time this number changes while the field is on
+    -- screen: keep a counter in your model and bump it (⌘F). A field that
+    -- shows after the bump takes its number as where it starts.
     focus: integer
+    -- Takes the keyboard as it first shows: a new item's name.
+    autofocus: boolean
+    -- What is wrong with the text: drawn under the field in the danger
+    -- colour, its edge in danger too, and read after its name. An empty
+    -- string marks the field only, for fields that share one message.
+    error: string
     -- The message `change` arrives as. The text changed.
     on_change: any
     -- The message `submit` arrives as. Enter.
@@ -316,6 +336,46 @@ local record kit
     text: string
   end
 
+  -- The props of `kit/text_area`.
+  record TextAreaProps
+    -- Its text: yours to keep, from `change`.
+    value: string
+    -- Its label, above it; its name.
+    label: string
+    -- The label names the field but is not drawn.
+    hide_label: boolean
+    -- Shown while it is empty.
+    placeholder: string
+    -- In the data face: code, JSON.
+    mono: boolean
+    -- Unavailable.
+    disabled: boolean
+    -- Its width in px; grows when left out.
+    width: number
+    -- Lines tall at the least; 4 when left out. It grows with its text.
+    rows: integer
+    -- Lines tall at the most, scrolling past them; no limit when left out.
+    max_rows: integer
+    -- Takes the room its parent leaves (a request body filling its tab),
+    -- `rows` still its least.
+    grow: boolean
+    -- Takes the keyboard each time this number changes while it is on screen.
+    focus: integer
+    -- Takes the keyboard as it first shows.
+    autofocus: boolean
+    -- What is wrong with the text, under it in the danger colour.
+    error: string
+    -- The message `change` arrives as. The text changed.
+    on_change: any
+    key: string
+    fresh: boolean
+  end
+
+  -- What `on_change`'s message carries under `change`.
+  record TextAreaChange
+    text: string
+  end
+
   -- The props of `kit/search`.
   record SearchProps
     -- The query: yours to keep.
@@ -327,8 +387,11 @@ local record kit
     label: string
     -- A count after the query: `12 of 340`.
     count: string
-    -- Takes the keyboard each time this number changes (⌘F).
+    -- Takes the keyboard each time this number changes while it is on screen
+    -- (⌘F).
     focus: integer
+    -- Takes the keyboard as it first shows.
+    autofocus: boolean
     -- The message `change` arrives as. The query changed; cleared is the
     -- empty string.
     on_change: any
@@ -423,8 +486,10 @@ local record kit
     options: {Choice}
     -- The one chosen: yours to keep.
     value: string
-    -- The group's name.
+    -- The group's name, drawn above it.
     label: string
+    -- The name is read but not drawn: a group whose place says what it is.
+    hide_label: boolean
     -- The message `change` arrives as. An option was chosen.
     on_change: any
     key: string
@@ -467,6 +532,9 @@ local record kit
     step: number
     -- Its label; its name.
     label: string
+    -- The value as text, shown beside the label and read for it: `20 MB/s`,
+    -- `30 days`. The number when left out.
+    value_label: string
     -- The message `change` arrives as. It asks for another value.
     on_change: any
     key: string
@@ -530,6 +598,14 @@ local record kit
     title: string
     -- The field its second line reads.
     detail: string
+    -- A field drawn as a pill before the title: a method, a state.
+    badge: string
+    -- A field naming each row's badge tone (`ok`, `warn`, `danger`, `accent`,
+    -- `neutral`).
+    tone: string
+    -- The badge column's width in px, so the titles line up; each badge's own
+    -- when left out.
+    badge_width: number
     -- The selected row (0-based): yours to keep.
     selected: integer
     -- Takes the room its parent leaves.
@@ -668,6 +744,9 @@ local record kit
 
   -- The props of `kit/popover`.
   record PopoverProps
+    -- Its name, read and not drawn: what it holds (Scale the service). A
+    -- modal surface with no name warns `modal-without-name`.
+    label: string
     -- Its width in px.
     width: number
     -- The message `dismiss` arrives as. Escape, or a press outside.
@@ -707,14 +786,25 @@ local record kit
     message: string
     -- Neutral when left out.
     tone: Tone
+    -- One action on what happened, a button beside the message: `Undo`.
+    action: string
+    -- The action's accessible name when it says more than its label (Undo →
+    -- Undo the delete).
+    action_name: string
     -- The message `dismiss` arrives as. Its close button.
     on_dismiss: any
+    -- The message `action` arrives as. Its action was pressed.
+    on_action: any
     key: string
     fresh: boolean
   end
 
   -- What `on_dismiss`'s message carries under `dismiss`.
   record ToastDismiss
+  end
+
+  -- What `on_action`'s message carries under `action`.
+  record ToastAction
   end
 
   -- The props of `kit/sparkline`.
@@ -747,6 +837,12 @@ local record kit
     area: boolean
     -- With it, only the last `window` of x is shown: a live chart.
     window: number
+    -- How the x ticks read; the number when left out.
+    x_format: XFormat
+    -- After each x tick's number: `min`, `s`.
+    x_unit: string
+    -- After each y tick's number: `ms`, `%`.
+    y_unit: string
     -- The message `hover` arrives as. The pointer moved over a row.
     on_hover: any
     key: string
@@ -766,8 +862,17 @@ local record kit
     label: string
     -- The column of their values.
     value: string
-    -- In px; 160 when left out.
+    -- In px; 160 when left out (standing bars).
     height: number
+    -- After each value and axis number: `%`, `ms`.
+    unit: string
+    -- Each bar's value over it; on when left out.
+    values: boolean
+    -- Bars lying along rows, each name whole beside its bar: for long names
+    -- or many bars.
+    horizontal: boolean
+    -- Lying bars: the names' column in px; 120 when left out.
+    label_width: number
     -- The message `select` arrives as. A bar was clicked.
     on_select: any
     key: string
@@ -865,6 +970,10 @@ local record kit
 
   -- A one-line text field, the skin's field style (an underline in Ledger).
   text_field: function(props: TextFieldProps): kui.Node
+
+  -- A text field of several lines, in a well in every skin: a note, a request
+  -- body.
+  text_area: function(props: TextAreaProps): kui.Node
 
   -- A search field: a glass, the query, and a clear button while it has one.
   search: function(props: SearchProps): kui.Node
