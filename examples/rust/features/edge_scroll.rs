@@ -34,6 +34,14 @@ use kui_native::{
 /// The paragraphs to select through: enough for a long drag.
 const PARAGRAPHS: usize = 120;
 
+/// A code block wider than the text: it scrolls only sideways.
+const CODE: [&str; 4] = [
+    "fn edge_scroll(&mut self, key: Key, pointer: Vec2, rect: Rect) -> Option<Vec2> { // a held drag, its pointer, the area whose edges scroll",
+    "    let picks = self.edge_chain(key, rect, pointer, window, |r| r); // per axis: this container, or the one around it that can move",
+    "    let (moved, _) = self.step_edge_chain(picks, pointer, window, dt); // each stepped with a ramp of its own",
+    "    (moved != Vec2::ZERO).then_some(moved) // what moved, summed over the containers that moved",
+];
+
 const WORDS: &[&str] = &[
     "a held drag at the edge of a page should move the page under it",
     "slowly at first so a selection can stop on the word it wants",
@@ -226,7 +234,11 @@ impl App for EdgeScrollDemo {
             ui.with(
                 NodeSpec::column().grow_width().grow_height().gap(8.0),
                 |ui| {
-                    heading(ui, "drag-select to an edge and hold");
+                    heading(
+                        ui,
+                        "drag-select to an edge and hold · from the code block down, the text takes \
+                         the drag · a mouse wheel over the code block scrolls it sideways",
+                    );
                     ui.with_keyed(
                         "text",
                         NodeSpec::column()
@@ -246,6 +258,60 @@ impl App for EdgeScrollDemo {
                                     &paragraph(i),
                                     TextStyle::new(14.0).color(t.fg),
                                 );
+                                // A block that scrolls only sideways: a
+                                // drag-select from it down hands the text
+                                // the drag (backlog F204), and a mouse
+                                // wheel over it moves it sideways (F202).
+                                if i == 1 {
+                                    ui.with_keyed(
+                                        "code",
+                                        NodeSpec::column()
+                                            .grow_width()
+                                            .scroll_x()
+                                            .pad(10.0)
+                                            .gap(4.0)
+                                            .bg(t.surface)
+                                            .radius(6.0)
+                                            .label("A wide code block"),
+                                        |ui| {
+                                            for line in CODE {
+                                                ui.text(
+                                                    line,
+                                                    TextStyle::new(12.0).color(t.fg).mono().nowrap(),
+                                                );
+                                            }
+                                        },
+                                    );
+                                }
+                                // A box that scrolls both ways: a held drag
+                                // at a corner scrolls it on both axes, and
+                                // at its ends hands each on to the text.
+                                if i == 7 {
+                                    ui.with_keyed(
+                                        "grid",
+                                        NodeSpec::column()
+                                            .grow_width()
+                                            .height(160.0)
+                                            .scroll_x()
+                                            .scroll_y()
+                                            .pad(10.0)
+                                            .gap(2.0)
+                                            .bg(t.surface)
+                                            .radius(6.0)
+                                            .label("A box that scrolls both ways"),
+                                        |ui| {
+                                            for row in 0..30 {
+                                                let cells: String = (0..24)
+                                                    .map(|c| format!("r{row:02}c{c:02} "))
+                                                    .collect();
+                                                ui.text(
+                                                    &cells,
+                                                    TextStyle::new(12.0).color(t.fg).mono().nowrap(),
+                                                );
+                                            }
+                                        },
+                                    );
+                                }
                             }
                         },
                     );

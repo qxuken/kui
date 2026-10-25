@@ -211,6 +211,11 @@ impl Example for Demo {
     const KEYS: &'static [(&'static str, &'static str)] =
         &[("⌘N", "Demo ▸ Add a note"), ("⌘⇧W", "View ▸ Wrap")];
 
+    /// The bar is this example's subject: the harness keeps its own out.
+    fn devtools_menu(&self) -> bool {
+        false
+    }
+
     fn window(&self) -> kui_devtools::Window {
         kui_devtools::Window::default().size(640.0, 360.0)
     }

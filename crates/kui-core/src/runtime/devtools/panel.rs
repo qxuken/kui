@@ -8,7 +8,7 @@ use crate::env::Appearance;
 use crate::menu::MenuItem;
 use crate::runtime::inspect::NodeInfo;
 use crate::spec::TextStyle;
-use crate::spec::{Align, Min, NodeSpec};
+use crate::spec::{Align, FloatConfig, Min, NodeSpec, Sizing};
 use crate::theme::Theme;
 use crate::tree::OriginId;
 use crate::ui::Ui;
@@ -197,13 +197,14 @@ fn handle(ui: &mut Ui<'_>, t: &Theme, dock: Dock) {
     );
 }
 
-/// The strip across the top: the tabs on the left, and the placement
-/// buttons — one per place the panel can sit, the current one lit — with
-/// the close after them on the right. The window's title and the frame
-/// counter are rows of the Facts tab: the strip was where a narrow dock
-/// cut the title to "kawoosh — k…" to make room for them. The
-/// app-state toggles sit on the Facts rows they change.
-fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
+/// The strip across the top: the tabs on the left, scrolling sideways
+/// when there are more than fit, then the menu that holds the placements
+/// (as a browser's devtools keep their dock side in theirs) and the
+/// close. The window's title and the frame counter are rows of the Facts
+/// tab: the strip was where a narrow dock cut the title to "kawoosh — k…"
+/// to make room for them. The app-state toggles sit on the Facts rows
+/// they change.
+fn header(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
     ui.with(
         NodeSpec::row()
             .grow_width()
@@ -211,86 +212,184 @@ fn header(ui: &mut Ui<'_>, st: &State, t: &Theme) {
             .cross_align(Align::Center)
             .gap(2.0),
         |ui| {
-            tabs(ui, st, t);
-            // One radio per placement, the current one lit, in a group
-            // so the four are one Tab stop the arrows walk (ADR 0007);
-            // the same walk `Ctrl+Shift+D` makes, one press at a time.
-            // Closing is not a placement, so it is a button after them:
-            // an arrow never closes the panel.
-            let walk = "Ctrl+Shift+D walks left → right → bottom → window → off";
-            ui.with(
-                NodeSpec::row()
-                    .gap(2.0)
-                    .cross_align(Align::Center)
-                    .role(crate::access::Role::RadioGroup)
-                    .label("Dock"),
-                |ui| {
-                    for dock in Dock::ALL {
-                        let (glyph, what) = match dock {
-                            Dock::Left => (Icon::DockLeft, "dock on the left"),
-                            Dock::Right => (Icon::DockRight, "dock on the right"),
-                            Dock::Bottom => (Icon::DockBottom, "dock at the bottom"),
-                            Dock::Window => (Icon::DockWindow, "undock into a window"),
-                            Dock::Off => continue,
-                        };
-                        icon_lit(
-                            ui,
-                            t,
-                            &format!("dock:{}", dock.name()),
-                            glyph,
-                            Some(dock == st.dock),
-                            &format!("{what} · {walk}"),
-                        );
-                    }
-                },
-            );
+            let overflows = tabs(ui, st, t);
+            // The menu's button, and the menu floating under it while
+            // open: anchored to the wrapper, which is the button's box.
+            ui.with(NodeSpec::row(), |ui| {
+                icon_lit(ui, t, "more", Icon::More, None, "dock side and more");
+                if st.more_open {
+                    more_menu(ui, st, t, overflows);
+                }
+            });
             icon_lit(
                 ui,
                 t,
                 &format!("dock:{}", Dock::Off.name()),
                 Icon::Close,
                 None,
-                &format!("close · Ctrl+Shift+D brings it back · {walk}"),
+                "close · Ctrl+Shift+D",
             );
         },
     );
 }
 
-/// The tab strip, growing into the strip's leftover width. A tab is one
-/// unbreakable unit — its label never wraps inside it — and the row wraps
-/// whole tabs onto another line when a narrow dock cannot hold them all
-/// in one, so every tab stays in view and none is cut to "Synta / x".
-/// The one on show is underlined in the accent, the rest plain text.
-fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
-    ui.with(
+/// The menu under the strip's "⋮": the placements as one row of icons,
+/// the current one lit — a radio group, one Tab stop the arrows walk (ADR
+/// 0007), the walk `Ctrl+Shift+D` makes a press at a time — the close
+/// with its chord, and, when the strip cannot show every tab, every tab
+/// to go to. A press outside it, Escape or a choice closes it.
+fn more_menu(ui: &mut Ui<'_>, st: &State, t: &Theme, overflows: bool) {
+    ui.with_keyed(
+        "kui-devtools/more-menu",
+        NodeSpec::column()
+            .float(
+                FloatConfig::parent()
+                    .at(Align::End, Align::End)
+                    .self_at(Align::End, Align::Start)
+                    .offset(0.0, 4.0)
+                    .fit(),
+            )
+            .modal(action("more-close"))
+            .role(crate::access::Role::Menu)
+            .label("Devtools menu")
+            .width(Sizing::Fit)
+            .min_width(200.0)
+            .pad(8.0)
+            .gap(6.0)
+            .bg(t.raised)
+            .border(1.0, t.border)
+            .radius(6.0),
+        |ui| {
+            ui.with(
+                NodeSpec::row()
+                    .grow_width()
+                    .gap(6.0)
+                    .cross_align(Align::Center),
+                |ui| {
+                    ui.text_in(
+                        NodeSpec::row().grow_width(),
+                        "Dock side",
+                        TextStyle::new(11.0).color(t.fg).nowrap(),
+                    );
+                    ui.with(
+                        NodeSpec::row()
+                            .gap(2.0)
+                            .cross_align(Align::Center)
+                            .role(crate::access::Role::RadioGroup)
+                            .label("Dock side"),
+                        |ui| {
+                            for dock in Dock::ALL {
+                                let (glyph, what) = match dock {
+                                    Dock::Left => (Icon::DockLeft, "dock on the left"),
+                                    Dock::Right => (Icon::DockRight, "dock on the right"),
+                                    Dock::Bottom => (Icon::DockBottom, "dock at the bottom"),
+                                    Dock::Window => (Icon::DockWindow, "undock into a window"),
+                                    Dock::Off => continue,
+                                };
+                                icon_lit(
+                                    ui,
+                                    t,
+                                    &format!("dock:{}", dock.name()),
+                                    glyph,
+                                    Some(dock == st.dock),
+                                    what,
+                                );
+                            }
+                        },
+                    );
+                },
+            );
+            menu_row(ui, t, "more-close-panel", "Close devtools", "Ctrl+Shift+D");
+            if overflows {
+                ui.leaf(NodeSpec::row().grow_width().height(1.0).bg(t.border));
+                let shown = st.shown();
+                for (id, label, which) in tab_list(st) {
+                    let mark = if which == shown { "●" } else { "" };
+                    menu_row(ui, t, &format!("more-tab:{id}"), &label, mark);
+                }
+            }
+        },
+    );
+}
+
+/// A row of the "⋮" menu: its text, and on the right a chord or a mark.
+fn menu_row(ui: &mut Ui<'_>, t: &Theme, what: &str, text: &str, aside: &str) {
+    ui.with_keyed(
+        &format!("kui-devtools/{what}"),
         NodeSpec::row()
             .grow_width()
-            .wrap()
+            .pad_xy(6.0, 4.0)
+            .gap(12.0)
+            .radius(4.0)
+            .hover_bg(t.hover)
+            .on_click(action(what))
+            .role(crate::access::Role::MenuItem)
+            .label(text),
+        |ui| {
+            ui.text_in(
+                NodeSpec::row().grow_width(),
+                text,
+                TextStyle::new(11.0).color(t.fg).nowrap(),
+            );
+            if !aside.is_empty() {
+                ui.text(aside, TextStyle::new(10.0).color(t.muted).nowrap());
+            }
+        },
+    );
+}
+
+/// Every tab, in the strip's order: the panel's own, then every tab the
+/// app or an extension declared, in declaration order (ADR 0032,
+/// decision 1) — each its action's id, its label and which it shows.
+fn tab_list(st: &State) -> Vec<(String, String, Shown)> {
+    let own = Tab::ALL.iter().map(|tab| {
+        (
+            tab.name().to_string(),
+            tab.label().to_string(),
+            Shown::Builtin(*tab),
+        )
+    });
+    let declared = st.tabs.iter().enumerate().map(|(i, d)| {
+        (
+            format!("custom:{}", d.name),
+            d.label.clone(),
+            Shown::Custom(i),
+        )
+    });
+    own.chain(declared).collect()
+}
+
+/// The tab strip, growing into the strip's leftover width, on one line:
+/// a tab is one unbreakable unit — its label never wraps inside it — and
+/// when they do not all fit the strip scrolls sideways, a mouse wheel
+/// over it too, with the one on show brought into view as it changes,
+/// and the "⋮" menu lists them all. The one on show is underlined in the
+/// accent, the rest plain text. True when the strip overflows.
+fn tabs(ui: &mut Ui<'_>, st: &mut State, t: &Theme) -> bool {
+    let strip = ui.child_key("kui-devtools/tabs");
+    let overflows = ui
+        .scroll_geometry(strip)
+        .is_some_and(|g| g.max_offset.x > 0.5);
+    let shown = st.shown();
+    // Only a strip that overflows has a tab out of view to bring in:
+    // asking otherwise would cost a frame for nothing.
+    let reveal = overflows && st.tab_revealed != Some(shown);
+    st.tab_revealed = Some(shown);
+    ui.with_keyed(
+        "kui-devtools/tabs",
+        NodeSpec::row()
+            .grow_width()
+            .min_width(0.0)
             .cross_align(Align::End)
+            .scroll_x()
+            .scrollbar(crate::spec::ScrollbarMode::Hidden)
             // One Tab stop, the arrows walking the tabs (ADR 0007).
             .role(crate::access::Role::TabList)
             .label("Devtools"),
         |ui| {
-            let shown = st.shown();
-            // The panel's three, then every tab the app or an extension
-            // declared, in declaration order (ADR 0032, decision 1).
-            let own = Tab::ALL.iter().map(|tab| {
-                (
-                    tab.name().to_string(),
-                    tab.label().to_string(),
-                    Shown::Builtin(*tab),
-                )
-            });
-            let declared = st.tabs.iter().enumerate().map(|(i, d)| {
-                (
-                    format!("custom:{}", d.name),
-                    d.label.clone(),
-                    Shown::Custom(i),
-                )
-            });
-            for (id, label, which) in own.chain(declared) {
+            for (id, label, which) in tab_list(st) {
                 let on = which == shown;
-                ui.with_keyed(
+                let key = ui.with_keyed(
                     &format!("kui-devtools/tab-{id}"),
                     NodeSpec::column()
                         .height(30.0)
@@ -317,9 +416,13 @@ fn tabs(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                         );
                     },
                 );
+                if on && reveal {
+                    ui.core().reveal(key);
+                }
             }
         },
     );
+    overflows
 }
 
 /// The status block's sections, by the names of the rows each holds, in

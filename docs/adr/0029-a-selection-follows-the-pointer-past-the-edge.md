@@ -670,8 +670,12 @@ The user asked whether handing on should be opt-in.
   prop or door.
 - **Per axis, from the scroller out.** Each frame, on each axis — over
   the finished frame's scroll regions, the wheel's, which a view being
-  built leaves whole — the first container walking out from the press's
-  scroller that scrolls
+  built leaves whole — the first container walking out from the
+  innermost scroller under the pointer inside the press's (a code block
+  a selection begun in the text around it has come into — one the hand
+  moved the pointer into, not one the content carried under a pointer
+  held still), or else from
+  the press's scroller, that scrolls
   along it, has the pointer in its edge zone — measured against its own
   rect — and room the way that zone scrolls, is stepped on that axis.
   One that does not scroll that way, is at its end, or has the pointer

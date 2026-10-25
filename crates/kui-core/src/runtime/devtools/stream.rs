@@ -172,7 +172,7 @@ pub(super) fn events_tab(ui: &mut Ui<'_>, st: &mut State, t: &Theme) {
                 t,
                 "follow",
                 "follow",
-                "keep the newest row in view · a wheel up turns it off",
+                "follow the newest row",
                 st.follow,
             );
             small_button(

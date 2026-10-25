@@ -9,8 +9,12 @@ kui_native::app("Todo").devtools(true).run(Todo::default())
 ```
 
 Or set `KUI_DEVTOOLS=1` and run any app. A panel opens beside the app,
-docked to the right. `Ctrl+Shift+D` moves it (left, right, bottom, its
-own window, off); `Ctrl+Shift+I` moves the keyboard into it and back.
+docked to the right. Its "⋮" menu holds the dock side (left, right,
+bottom, its own window) and the close; `Ctrl+Shift+D` walks the same
+places and off, and `Ctrl+Shift+I` moves the keyboard into it and back.
+The tabs stay on one line: with more than fit — an app or an extension
+can add its own — the strip scrolls sideways under a mouse wheel and the
+"⋮" menu lists them all.
 
 ## Four tabs
 

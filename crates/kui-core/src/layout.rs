@@ -1477,13 +1477,20 @@ fn distribute_axis(
 
     // Text children have no spec sizing; clamp their width to the content box
     // so fit_heights wraps them. Same walk, same gate: no text, no clamp.
+    // In a box that scrolls x a text is no narrower than its min-content —
+    // its longest word, or the whole line of one that does not wrap — so
+    // a `nowrap` line overflows into the scroll, as CSS counts unbreakable
+    // overflow, where it was cut at the box with nothing to scroll to
+    // (backlog F205); one that wraps still wraps at the box.
     if axis == AxisSel::Width && tree.any_text {
+        let scrolls = spec.scroll_x;
         let mut c = tree.first_child[i as usize];
         while c != NIL {
-            if matches!(tree.content[c as usize], NodeContent::Text(_))
+            if let NodeContent::Text(tid) = tree.content[c as usize]
                 && tree.size[c as usize].w > content
             {
-                tree.size[c as usize].w = content;
+                let floor = if scrolls { text.min_content(tid) } else { 0.0 };
+                tree.size[c as usize].w = content.max(floor.min(tree.size[c as usize].w));
             }
             c = tree.next_sibling[c as usize];
         }

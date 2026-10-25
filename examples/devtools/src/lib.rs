@@ -26,8 +26,8 @@
 //! One `main` per example: `kui_devtools::main!(Counter::default())`.
 
 use kui_native::{
-    Accel, App, Appearance, Chrome, Color, Core, Extensions, MotionPref, SystemEnv, Ui, UiEvent,
-    Waker,
+    Accel, App, Appearance, BarMenu, Chrome, Color, Core, Extensions, MenuBar, MenuItem,
+    MotionPref, SystemEnv, Ui, UiEvent, Value, Waker,
 };
 
 mod drive;
@@ -151,6 +151,14 @@ pub trait Example: App {
     /// row toggles it either way.
     fn native_menus(&self) -> Option<bool> {
         None
+    }
+
+    /// Whether the harness declares its menu bar — the platform's
+    /// standard menus and a View menu that shows or hides the devtools
+    /// panel. An example that declares a bar of its own says `false`:
+    /// two declarations a frame would replace each other.
+    fn devtools_menu(&self) -> bool {
+        true
     }
 
     /// The self-check `--headless` runs: drive the example through a bare
@@ -364,6 +372,7 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
     }
     let extensions = example.extensions();
     let native_menus = example.native_menus();
+    let devtools_menu = example.devtools_menu();
     let legend: Vec<(&'static str, &'static str)> = E::KEYS.to_vec();
     let (base, accent) = (cli.base, cli.accent);
     let harness = Harness::new(name, example);
@@ -376,6 +385,12 @@ pub fn run_with<E: Example>(name: &str, mut example: E, cli: Cli) -> i32 {
         .devtools(true)
         .setup_core(move |core| {
             Harness::<E>::setup_core(core, dock, base, accent, native_menus, &legend);
+            // Drawn context and select menus, but the platform's bar kept
+            // for the harness's View menu: only an example whose subject
+            // is the bar draws one.
+            if devtools_menu {
+                core.set_native_menu_bar(true);
+            }
         });
     if let Some(key) = cli.key {
         launcher = launcher.devtools_key(key);
@@ -477,19 +492,62 @@ impl<E: Example> Harness<E> {
     }
 }
 
+/// The harness's menu bar choice: what its View menu's row posts.
+const MENU_KIND: &str = "kui-devtools-menu";
+
+/// The platform's standard menus kept beside a View menu whose one row
+/// shows the devtools panel, or hides it while it is up — the way back
+/// to a panel closed with its ×, beside `Ctrl+Shift+I`. Declared, not
+/// drawn: the platform's bar shows it (macOS), and an app drawing its
+/// own bar elsewhere has it in the frame.
+fn devtools_bar(shown: bool) -> MenuBar {
+    let row = if shown {
+        "Hide Devtools"
+    } else {
+        "Show Devtools"
+    };
+    MenuBar::new(vec![BarMenu::new(
+        "View",
+        vec![MenuItem::new(row).id(Value::str("devtools"))],
+    )])
+    .standard_menus(true)
+    .on_menu(Value::map([("kind", Value::str(MENU_KIND))]))
+}
+
+/// Whether the panel is up: on and not closed to `off`.
+fn devtools_shown(core: &Core) -> bool {
+    core.devtools() && core.devtools_dock() != Dock::Off
+}
+
 impl<E: Example> App for Harness<E> {
     fn view(&mut self, ui: &mut Ui<'_>) {
         if &*ui.window_name() == "main" {
             ui.window_title(&format!("kui — {}", self.name));
+            if self.example.devtools_menu() {
+                let shown = devtools_shown(ui.core());
+                ui.core().declare_menu_bar(devtools_bar(shown));
+            }
         }
         self.example.view(ui);
     }
 
     fn on_event(&mut self, ev: UiEvent) {
+        if is_menu_choice(&ev) {
+            return;
+        }
         self.example.on_event(ev);
     }
 
     fn on_event_with(&mut self, ev: UiEvent, core: &mut Core) {
+        // The View menu's row: the panel up or down.
+        if is_menu_choice(&ev) {
+            if devtools_shown(core) {
+                core.set_devtools_dock(Dock::Off);
+            } else {
+                core.set_devtools(true);
+            }
+            return;
+        }
         self.example.on_event_with(ev, core);
     }
 
@@ -500,6 +558,11 @@ impl<E: Example> App for Harness<E> {
     fn teardown(&mut self) {
         self.example.teardown();
     }
+}
+
+/// The harness's own View menu choice, which no example hears.
+fn is_menu_choice(ev: &UiEvent) -> bool {
+    ev.payload.get_str("kind") == Some(MENU_KIND)
 }
 
 #[cfg(test)]
@@ -529,6 +592,41 @@ mod tests {
         let mut ui = core.frame(kui_native::Size::new(800.0, 600.0), 1.0);
         h.view(&mut ui);
         ui.finish();
+    }
+
+    /// The harness declares the platform's standard menus beside a View
+    /// menu whose row hides the panel and shows it again — the way back
+    /// to a panel closed with its × — and the example never hears it.
+    #[test]
+    fn the_view_menu_hides_and_shows_the_panel() {
+        let mut core = Core::new();
+        Harness::<Blank>::setup_core(&mut core, Dock::Right, None, None, None, &[]);
+        let mut h = Harness::new("blank", Blank::default());
+        frame(&mut h, &mut core);
+        let bar = core.menu_bar().expect("the harness's bar").clone();
+        assert!(bar.standard_menus, "beside the platform's own");
+        let view = bar.menus.iter().position(|m| m.label == "View").unwrap();
+        assert_eq!(bar.menus[view].items[0].label, "Hide Devtools");
+        for shown in [false, true] {
+            for ev in core.activate_menu_bar_item(view, 0) {
+                h.on_event_with(ev, &mut core);
+            }
+            frame(&mut h, &mut core);
+            assert_eq!(devtools_shown(&core), shown);
+            let row = &core.menu_bar().unwrap().menus[view].items[0].label;
+            assert_eq!(
+                row,
+                if shown {
+                    "Hide Devtools"
+                } else {
+                    "Show Devtools"
+                }
+            );
+        }
+        assert!(
+            h.example().events.is_empty(),
+            "the example hears none of it"
+        );
     }
 
     #[test]

@@ -839,7 +839,13 @@ impl Core {
                                 // and goes on by characters.
                                 if self.arm_select_drag(scope, p, clicks, extends) {
                                     self.press_slop = Some(p);
-                                    self.arm_follow(scope, p);
+                                    // Followed from the innermost scroller
+                                    // under the press inside the scope — a
+                                    // code block that scrolls sideways in a
+                                    // page — which hands the page what it
+                                    // cannot move (backlog F204).
+                                    let from = self.scroller_under_in(scope).unwrap_or(scope);
+                                    self.arm_follow(from, p);
                                 }
                             }
                             // Everything else: a plain node, and a

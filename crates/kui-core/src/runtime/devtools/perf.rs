@@ -217,31 +217,21 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 ui,
                 t,
                 "perf-record",
-                if p.recording { Icon::Stop } else { Icon::Record },
+                if p.recording {
+                    Icon::Stop
+                } else {
+                    Icon::Record
+                },
                 Some(p.recording),
                 if p.recording {
-                    "stop recording · see the frames kept"
+                    "stop recording"
                 } else {
-                    "record frames · why each ran, who held it, what it cost, and what happened between them"
+                    "record frames"
                 },
             );
             if !p.recording && p.view.is_some() {
-                small_button(
-                    ui,
-                    t,
-                    "perf-save",
-                    "save trace",
-                    "save the recording as a .kuitrace · kui-perf opens it, kui-trace converts it",
-                    false,
-                );
-                small_button(
-                    ui,
-                    t,
-                    "perf-clear",
-                    "clear",
-                    "drop the recording · back to the live view",
-                    false,
-                );
+                small_button(ui, t, "perf-save", "save trace", "save as .kuitrace", false);
+                small_button(ui, t, "perf-clear", "clear", "drop the recording", false);
             }
             ui.leaf(NodeSpec::row().grow_width());
             icon_button(
@@ -250,7 +240,7 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 "screenshot",
                 Icon::Camera,
                 None,
-                "screenshot the window · saved to the desktop (KUI_CAPTURE_DIR), the path shown below",
+                "screenshot the window",
             );
             icon_button(
                 ui,
@@ -259,9 +249,9 @@ fn toolbar(ui: &mut Ui<'_>, st: &State, t: &Theme) {
                 Icon::Video,
                 Some(p.screen_recording),
                 if p.screen_recording {
-                    "stop the screen recording · the GIF is written, its path shown below"
+                    "stop · write the GIF"
                 } else {
-                    "record the window as a GIF · until pressed again, the docked panel with it"
+                    "record the window as a GIF"
                 },
             );
         },

@@ -151,3 +151,207 @@ fn an_apps_own_drag_hands_on_with_one_call() {
     assert_eq!(core.scroll_offset(page_key).y, moved.y);
     assert_eq!(moved.x, 0.0, "the strip had no zone there");
 }
+
+/// A selectable page holding a code block that scrolls only sideways:
+/// the keys of the page and of the block.
+fn selectable_page(core: &mut Core) -> (Key, Key) {
+    let mut ui = core.frame(WIN, 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed(
+        "page",
+        NodeSpec::column()
+            .grow_width()
+            .height(WIN.h)
+            .scroll_y()
+            .selectable(),
+        |ui| {
+            ui.with_keyed(
+                "code",
+                NodeSpec::column().grow_width().height(60.0).scroll_x(),
+                |ui| {
+                    ui.text(&"code ".repeat(80), TextStyle::new(14.0).nowrap());
+                },
+            );
+            for i in 0..80 {
+                ui.text(&format!("paragraph {i}"), TextStyle::new(14.0));
+            }
+        },
+    );
+    ui.finish();
+    (core.key_of("page").unwrap(), core.key_of("code").unwrap())
+}
+
+/// A drag-select pressed in the code block is followed from the block,
+/// not from the selection's scope: held at the right edge it scrolls
+/// the block sideways, held at the bottom the page.
+#[test]
+fn a_drag_select_in_a_sideways_block_scrolls_it_and_hands_down_to_the_page() {
+    let mut core = Core::new();
+    let mut t = 1.0;
+    core.set_time(t);
+    selectable_page(&mut core);
+    let (page_key, code) = selectable_page(&mut core);
+    let mut step = |core: &mut Core, n: usize| {
+        for _ in 0..n {
+            t += FRAME;
+            core.set_time(t);
+            selectable_page(core);
+        }
+    };
+    // The one-line text overflows the block: it has somewhere to scroll.
+    let g = core.scroll_geometry(code).unwrap();
+    assert!(
+        g.content.w > g.rect.w + 100.0,
+        "a nowrap line overflows: {g:?}"
+    );
+    press(&mut core, Vec2::new(20.0, 10.0));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(WIN.w - 0.5, 10.0)));
+    step(&mut core, 20);
+    assert!(core.scroll_offset(code).x > 0.0, "the block, sideways");
+    assert_eq!(core.scroll_offset(page_key).y, 0.0);
+    // Held on, to the line's end: the whole line is in the block's range.
+    step(&mut core, 120);
+    let g = core.scroll_geometry(code).unwrap();
+    assert_eq!(core.scroll_offset(code).x, g.max_offset.x, "to the end");
+    assert!(g.content.w > 1500.0, "the whole line: {g:?}");
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, WIN.h - 0.5)));
+    step(&mut core, 20);
+    assert!(core.scroll_offset(page_key).y > 0.0, "down is the page's");
+    // On past the block scrolling out of view, to the page's end.
+    step(&mut core, 200);
+    let end = core.scroll_geometry(page_key).unwrap().max_offset.y;
+    assert_eq!(
+        core.scroll_offset(page_key).y,
+        end,
+        "all the way down, the block long gone"
+    );
+    release(&mut core);
+}
+
+/// The other way: a drag-select pressed in the page and brought into the
+/// code block, held at the block's right edge, scrolls the block — the
+/// walk starts at the scroller under the pointer inside the press's —
+/// so part of a long line can be selected.
+#[test]
+fn a_drag_select_brought_into_a_sideways_block_scrolls_it() {
+    let mut core = Core::new();
+    let mut t = 1.0;
+    core.set_time(t);
+    selectable_page(&mut core);
+    let (page_key, code) = selectable_page(&mut core);
+    press(&mut core, Vec2::new(20.0, 120.0));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(200.0, 30.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(WIN.w - 0.5, 30.0)));
+    for _ in 0..30 {
+        t += FRAME;
+        core.set_time(t);
+        selectable_page(&mut core);
+    }
+    assert!(
+        core.scroll_offset(code).x > 100.0,
+        "{:?}",
+        core.scroll_offset(code)
+    );
+    assert_eq!(core.scroll_offset(page_key).y, 0.0);
+    let sel = core.selection().expect("a selection");
+    assert_ne!(
+        sel.anchor.node, sel.focus.node,
+        "from a paragraph into the block"
+    );
+    release(&mut core);
+}
+
+/// A page with a box that scrolls both ways in its middle, 30 paragraphs
+/// down: the keys of the page and of the box.
+fn page_with_grid(core: &mut Core) -> (Key, Key) {
+    let mut ui = core.frame(WIN, 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    ui.with_keyed(
+        "page",
+        NodeSpec::column()
+            .grow_width()
+            .height(WIN.h)
+            .scroll_y()
+            .selectable(),
+        |ui| {
+            for i in 0..80 {
+                ui.text(&format!("paragraph {i}"), TextStyle::new(14.0));
+                if i == 30 {
+                    ui.with_keyed(
+                        "grid",
+                        NodeSpec::column()
+                            .grow_width()
+                            .height(160.0)
+                            .scroll_x()
+                            .scroll_y(),
+                        |ui| {
+                            for r in 0..30 {
+                                ui.text(
+                                    &format!("row {r} ").repeat(30),
+                                    TextStyle::new(12.0).nowrap(),
+                                );
+                            }
+                        },
+                    );
+                }
+            }
+        },
+    );
+    ui.finish();
+    (core.key_of("page").unwrap(), core.key_of("grid").unwrap())
+}
+
+fn hold(core: &mut Core, t: &mut f64, n: usize) {
+    for _ in 0..n {
+        *t += FRAME;
+        core.set_time(*t);
+        page_with_grid(core);
+    }
+}
+
+/// A box the page carries under a pointer held still at the bottom edge
+/// does not take the drag: the hand never brought the drag into it.
+#[test]
+fn a_box_scrolled_under_a_still_pointer_leaves_the_drag_to_the_page() {
+    let mut core = Core::new();
+    let mut t = 1.0;
+    core.set_time(t);
+    page_with_grid(&mut core);
+    let (page_key, grid) = page_with_grid(&mut core);
+    press(&mut core, Vec2::new(20.0, 100.0));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, 300.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(20.0, WIN.h - 1.0)));
+    hold(&mut core, &mut t, 120);
+    let end = core.scroll_geometry(page_key).unwrap().max_offset.y;
+    assert_eq!(core.scroll_offset(page_key).y, end, "the page to its end");
+    assert_eq!(core.scroll_offset(grid), Vec2::ZERO, "the box untouched");
+    release(&mut core);
+}
+
+/// Brought into the two-way box and held at its bottom-right corner, a
+/// drag scrolls it on both axes.
+#[test]
+fn a_two_way_box_held_at_its_corner_scrolls_both_ways() {
+    let mut core = Core::new();
+    let mut t = 1.0;
+    core.set_time(t);
+    page_with_grid(&mut core);
+    let (page_key, grid) = page_with_grid(&mut core);
+    // The box into view first, its top at the window's middle.
+    let r = core.scroll_geometry(grid).unwrap().rect;
+    core.set_scroll(page_key, Vec2::new(0.0, r.y - WIN.h / 2.0));
+    hold(&mut core, &mut t, 1);
+    let r = core.scroll_geometry(grid).unwrap().rect;
+    press(&mut core, Vec2::new(20.0, r.y - 30.0));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(60.0, r.y + 40.0)));
+    core.handle_input(InputEvent::CursorMoved(Vec2::new(
+        r.x + r.w - 2.0,
+        r.y + r.h - 2.0,
+    )));
+    let page_at = core.scroll_offset(page_key).y;
+    hold(&mut core, &mut t, 30);
+    let o = core.scroll_offset(grid);
+    assert!(o.x > 50.0 && o.y > 50.0, "both ways: {o:?}");
+    assert_eq!(core.scroll_offset(page_key).y, page_at, "the page stays");
+    release(&mut core);
+}

@@ -70,6 +70,20 @@ fn state<T>(core: &Core, f: impl FnOnce(&State) -> T) -> T {
     f(&core.session().state().devtools)
 }
 
+/// A placement button, which lives in the strip's "⋮" menu: the menu
+/// opened and a frame drawn, then the button's key.
+fn dock_button(core: &mut Core, name: &str) -> Key {
+    let label = format!("kui-devtools/dock:{name}");
+    if core.key_of(&label).is_none() {
+        core.devtools_act("more");
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui, None);
+        ui.finish();
+    }
+    core.key_of(&label)
+        .expect("the placement button in the menu")
+}
+
 /// Off, the frame is what it always was: no wrap, no panel, the app's
 /// keys as they were. On, the panel is beside the app and the app's keys
 /// have not moved.
@@ -1508,7 +1522,7 @@ fn a_dragged_pane_never_asks_for_a_wider_window() {
     core.set_inspect(true);
     let app_min = Size::new(VIEWPORT.w - 400.0, 100.0);
     core.set_app_min_size(app_min);
-    let right = core.key_of("kui-devtools/dock:right").unwrap();
+    let right = dock_button(&mut core, "right");
     access_click(&mut core, right);
     // The driver's loop: a frame at the window's width, then the window
     // grown to the minimum it would set from the inset.
@@ -1558,7 +1572,7 @@ fn the_placement_buttons_and_the_resize_handle() {
         Vec2::new(r.x + r.w / 2.0, r.y + r.h / 2.0)
     };
     // Left: the pane precedes the app, and its handle is on its right edge.
-    let left = core.key_of("kui-devtools/dock:left").unwrap();
+    let left = dock_button(&mut core, "left");
     assert!(access_click(&mut core, left).is_empty());
     assert_eq!(core.devtools_dock(), Dock::Left);
     frame(&mut core);
@@ -1578,7 +1592,7 @@ fn the_placement_buttons_and_the_resize_handle() {
     assert!(node(&core, press).rect.x >= 300.0);
     // Right: the handle is on the left edge, and the width is what is
     // left of the window past the pointer.
-    let right = core.key_of("kui-devtools/dock:right").unwrap();
+    let right = dock_button(&mut core, "right");
     access_click(&mut core, right);
     frame(&mut core);
     frame(&mut core);
@@ -1600,7 +1614,7 @@ fn the_placement_buttons_and_the_resize_handle() {
     drag(&mut core, h, Vec2::new(VIEWPORT.w, h.y));
     assert_eq!(dock_rect(&mut core).w, SIDE_MIN_W);
     // Bottom: the handle is the top edge.
-    let bottom = core.key_of("kui-devtools/dock:bottom").unwrap();
+    let bottom = dock_button(&mut core, "bottom");
     access_click(&mut core, bottom);
     frame(&mut core);
     frame(&mut core);
@@ -1611,7 +1625,7 @@ fn the_placement_buttons_and_the_resize_handle() {
     assert_eq!(dock_rect(&mut core).h, 200.0);
     assert!(node(&core, press).rect.y + node(&core, press).rect.h <= VIEWPORT.h - 200.0);
     // Undock and close are buttons too; a window has no handle.
-    let window = core.key_of("kui-devtools/dock:window").unwrap();
+    let window = dock_button(&mut core, "window");
     access_click(&mut core, window);
     assert_eq!(core.devtools_dock(), Dock::Window);
     frame(&mut core);
@@ -1638,7 +1652,7 @@ fn the_placement_buttons_and_the_resize_handle() {
 #[test]
 fn a_closed_panel_comes_back_where_it_was() {
     let mut core = on();
-    let left = core.key_of("kui-devtools/dock:left").unwrap();
+    let left = dock_button(&mut core, "left");
     access_click(&mut core, left);
     frame(&mut core);
     let close = core.key_of("kui-devtools/dock:off").unwrap();
@@ -2039,7 +2053,7 @@ fn a_placement_chosen_in_the_panel_s_window_survives_the_window_closing() {
     let mut panel = Core::new_in(core.session());
     panel.env.window.id = id;
     frame(&mut panel);
-    let right = panel.key_of("kui-devtools/dock:right").unwrap();
+    let right = dock_button(&mut panel, "right");
     access_click(&mut panel, right);
     assert_eq!(core.devtools_dock(), Dock::Right);
     // The main window's next frame stops declaring the window: the diff
@@ -2337,7 +2351,7 @@ fn the_panel_raises_no_warning_of_its_own() {
         })
         .expect("the panel's window opens");
     settle(&mut panel);
-    assert!(panel.key_of("kui-devtools/dock:left").is_some());
+    assert!(panel.key_of("kui-devtools/more").is_some());
     let warnings = panel.take_warnings();
     assert!(warnings.is_empty(), "{warnings:#?}");
 }
@@ -2833,4 +2847,60 @@ fn clear_after_a_recording_starts_the_live_strip_again() {
         slots,
         "as many slots as it fills"
     );
+}
+
+/// The strip's "⋮" opens a menu with the placements — a choice moves the
+/// panel and closes it, a press outside closes it — and the tabs stay on
+/// one line: past the strip's width they scroll sideways and the menu
+/// lists them all, a row going to its tab.
+#[test]
+fn the_menu_holds_the_placements_and_an_overflowing_strip_scrolls() {
+    let busy = |core: &mut Core| {
+        let mut ui = core.frame(VIEWPORT, 1.0);
+        view(&mut ui, None);
+        for i in 0..12 {
+            ui.devtools_tab(&format!("ext{i}"), &format!("Extension tab {i}"), "slot");
+        }
+        ui.finish();
+    };
+    let mut core = on();
+    core.set_inspect(true);
+    busy(&mut core);
+    busy(&mut core);
+    assert!(
+        core.key_of("kui-devtools/dock:left").is_none(),
+        "in the menu"
+    );
+    let strip = core.key_of("kui-devtools/tabs").unwrap();
+    let g = core.scroll_geometry(strip).expect("the strip scrolls");
+    assert!(g.max_offset.x > 0.0, "twelve more tabs overflow it: {g:?}");
+    assert!(g.rect.h <= 31.0, "on one line: {g:?}");
+    // The menu: the placements, the close, and every tab.
+    let more = core.key_of("kui-devtools/more").unwrap();
+    access_click(&mut core, more);
+    busy(&mut core);
+    assert!(core.key_of("kui-devtools/more-menu").is_some());
+    assert!(core.key_of("kui-devtools/more-tab:custom:ext11").is_some());
+    let left = core.key_of("kui-devtools/dock:left").unwrap();
+    access_click(&mut core, left);
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.dock), Dock::Left);
+    assert!(
+        core.key_of("kui-devtools/more-menu").is_none(),
+        "a choice closes it"
+    );
+    // A tab from the menu, and a press outside closing it.
+    let more = core.key_of("kui-devtools/more").unwrap();
+    access_click(&mut core, more);
+    busy(&mut core);
+    let row = core.key_of("kui-devtools/more-tab:custom:ext11").unwrap();
+    access_click(&mut core, row);
+    busy(&mut core);
+    assert_eq!(state(&core, |s| s.shown()), Shown::Custom(11));
+    let more = core.key_of("kui-devtools/more").unwrap();
+    access_click(&mut core, more);
+    busy(&mut core);
+    click_at(&mut core, 600.0, 500.0);
+    busy(&mut core);
+    assert!(!state(&core, |s| s.more_open), "a press outside closes it");
 }

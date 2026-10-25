@@ -37,15 +37,18 @@ is its twin for Node, and `c/common.h` what the C programs share). It owns
 what is not the subject: the window title and the command line — and it
 opens the **core's devtools panel** around the example, the same
 panel any app gets from `Core::set_devtools(true)`, `win.setDevtools(true)`,
-`kui_set_devtools` or `KUI_DEVTOOLS=1`. Its header is the window's title,
-the frame counter (`n / KUI_SMOKE_FRAMES` when one is set) and an icon
-strip with a button per placement — a little window with its left, right
-or bottom pane shaded, two windows for undock, a cross for close — the
-current one lit; the tab row ends in the app-state toggles — a half disc,
-a sun or a crescent for the base, a dot in the accent, three bars for the
-menus — each with a tooltip saying what it is set to. The icons are drawn
-by the core from its own `line` and `polygon` elements, not glyphs from
-a fallback font, so they are the same on every platform. A docked pane's inner edge is a handle that resizes it, and the
+`kui_set_devtools` or `KUI_DEVTOOLS=1`. Its header is the tab strip — one
+line, scrolling sideways when the tabs outrun it — then a "⋮" menu that
+holds the dock side (a little window with its left, right or bottom pane
+shaded, two windows for undock, the current one lit) and the close, and a
+cross for close; the title and the frame counter (`n / KUI_SMOKE_FRAMES`
+when one is set) are rows of the Facts tab, beside the app-state selects.
+The icons are drawn by the core from its own `line` and `polygon`
+elements, not glyphs from a fallback font, so they are the same on every
+platform. The harness also declares the platform's menu bar (macOS) with
+its standard menus and a **View ▸ Show / Hide Devtools** row — the way
+back to a panel closed with its ×, beside `Ctrl+Shift+I`; an example whose
+subject is the bar says `devtools_menu() -> false`. A docked pane's inner edge is a handle that resizes it, and the
 example's viewport is what the pane leaves (a change is a `resize`).
 Under it, three tabs:
 

@@ -54,6 +54,13 @@ was the first bare bump to break an app in five releases).
   stopped; `overscroll: contain` keeps it in (backlog F204, ADR 0029).
 - `MenuAction` has a sixth variant, `ShowInFolder { path }`: a Rust host
   that matches the enum whole adds an arm (backlog F203).
+- A `nowrap` text in a box that scrolls x is as wide as its line, where
+  it was cut to the box: the box's content and `scroll_geometry` grow by
+  the overflow, and the box scrolls to it (backlog F205).
+- The devtools' placement buttons are in the strip's "⋮" menu
+  (`kui-devtools/more`), so `kui-devtools/dock:left` and the rest are in
+  the frame only while it is open; the tabs are one line that scrolls,
+  where they wrapped onto more (backlog F206).
 - A function key pressed in a focused editor goes to the `onKey` sink
   above it, where the editor kept it and did nothing with it.
 - Under custom chrome a press on the drawn menu bar's empty room starts
@@ -299,6 +306,21 @@ for lua-language-server, and a new runner beside the window's.
   frames alone; **whole recording** goes back.
 
   *What you can delete:* nothing — a look, not a door.
+- **The devtools' strip keeps to one line** (backlog F206). The
+  placements moved into a "⋮" menu beside the close, as a browser's
+  devtools keep their dock side: a row of the four, the close with its
+  chord, and every tab when the strip cannot show them all; a press
+  outside or Escape closes it. The tabs no longer wrap onto more lines
+  when an app or an extension adds many: the strip scrolls sideways, a
+  mouse wheel over it too, and brings the tab on show into view. The
+  panel's tooltips are a few words, where the longest covered the pane.
+  A drag-select pressed in a box that scrolls sideways inside its scope
+  is followed from that box, so it scrolls it and hands the scope the
+  rest. The examples' harness declares the platform's menu bar with a
+  **View ▸ Show / Hide Devtools** row, the way back to a panel closed
+  with its ×.
+
+  *What you can delete:* nothing — a look, not a door.
 - **A held drag hands on** (backlog F204, [ADR 0029's
   amendment](docs/adr/0029-a-selection-follows-the-pointer-past-the-edge.md#amended-2026-10-25-a-held-drag-hands-on)).
   A drag held at an edge scrolled only the scroller its press was in:
@@ -330,6 +352,14 @@ for lua-language-server, and a new runner beside the window's.
 
 ### Fixed
 
+- A one-line text in a box that scrolls sideways scrolls (backlog F205).
+  A `nowrap` text was clamped to its parent's width like any other, so
+  its line ran past the box and was cut there with nothing to scroll to
+  — a code block, a log line, a wide label in a strip. In a box that
+  scrolls x a text is now no narrower than its min-content — the whole
+  line of one that does not wrap, the longest word of one that does —
+  so the line counts in the box's content, as CSS counts unbreakable
+  overflow, and a text that wraps still wraps at the box.
 - An editor of your own types ⌥- and every other character a Mac's Option
   composes: a key sink's press carries it as `text` beside the chord its
   `code` and `alt` spell, as kui's own editor inserts it (backlog F195,
