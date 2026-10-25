@@ -2,7 +2,8 @@
   { name: "relay-body", size: "1240x800", after: 2000, args: ["ledger", "body"] }
   { name: "relay-timing", size: "1240x800", after: 2000, args: ["neutral", "timing"] }
   { name: "relay-headers", size: "1240x800", after: 2000, args: ["phosphor", "headers"] }
-  { name: "relay-post", size: "1240x800", after: 2000, args: ["neutral", "post"] }
+  { name: "relay-post", size: "1240x800", after: 2000, args: ["neutral", "post"], appearance: "light" }
+  { name: "relay-badjson", size: "1240x800", after: 2000, args: ["ledger", "badjson"], appearance: "light" }
   { name: "relay-error", size: "1240x800", after: 2000, args: ["ledger", "error"] }
   { name: "relay-sending", size: "1240x800", after: 1800, args: ["ledger", "sending"] }
   { name: "relay-empty", size: "960x600", after: 1200, args: ["neutral", "empty"] }

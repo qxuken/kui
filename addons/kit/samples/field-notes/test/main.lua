@@ -93,7 +93,7 @@ kui.spawn(function()
   update({ kind = "new" })
   check(wait(function() return find(model, model.selected).title == "Untitled" end), "a new note opens")
   local fresh = find(model, model.selected)
-  check(wait(function() return model.focus_title == 1 end) and fresh.notebook == "garden" and fresh.id ~= nil, "in Garden, saved, its title focused")
+  check(wait(function() return model.fresh ~= nil end) and model.fresh == fresh.id and fresh.notebook == "garden", "in Garden, saved, its title asks for the keyboard")
   check(store.count() == 13, "13 notes on disk")
 
 

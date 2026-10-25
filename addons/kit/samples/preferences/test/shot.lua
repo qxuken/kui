@@ -3,7 +3,8 @@
 --   kui run test/shot.lua --shot shots/preferences.png --after 1000 --size 1040x760 -- [skin] [state]
 --
 -- `skin` is ledger, neutral or phosphor; `state` one of general, sync,
--- network, invalid, notifications, advanced, search, nothing, reset.
+-- network, invalid, named, notifications, advanced, search, nothing,
+-- reverted, reset.
 package.path = kui.dir .. "/../?.lua;" .. package.path
 local skin, state = kui.args[1] or "ledger", kui.args[2] or "general"
 -- a file that is never written: the shots never save
@@ -33,6 +34,11 @@ elseif state == "search" then
   update({ kind = "query", change = { text = "proxy" } })
 elseif state == "nothing" then
   update({ kind = "query", change = { text = "bluetooth" } })
+elseif state == "named" then
+  set("device_name", "Maren/work")
+elseif state == "reverted" then
+  set("device_name", "Maren’s MacBook Pro (work)"); set("open_at_login", false)
+  update({ kind = "revert" })
 elseif state == "reset" then
   update({ kind = "section", section = "advanced" })
   set("transfers", 12); set("verbose", true); set("language", "de-DE")

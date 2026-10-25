@@ -57,17 +57,21 @@ end
 -- ---------- history ----------
 
 local history_ch = nil
+-- A method's colour in the history: reads green, writes amber, deletes red.
+local METHOD_TONE = { GET = "ok", HEAD = "ok", POST = "warn", PUT = "warn", PATCH = "warn", DELETE = "danger" }
+
 local function history_channel(m)
-  local title, detail = {}, {}
+  local title, detail, method, tone = {}, {}, {}, {}
   for i, e in ipairs(visible_history(m)) do
-    title[i] = e.method .. "  " .. path_of(e.url)
+    title[i] = path_of(e.url)
+    method[i], tone[i] = e.method, METHOD_TONE[e.method] or "neutral"
     if e.response then
       detail[i] = string.format("%d %s · %s · %s", e.response.status, reason(e.response.status), ms_of(e.response.ms), age_of(e.at))
     else
       detail[i] = "failed · " .. age_of(e.at)
     end
   end
-  local cols = { title = title, detail = detail }
+  local cols = { title = title, detail = detail, method = method, tone = tone }
   history_ch = history_ch and history_ch:publish(cols) or channel(cols)
   return history_ch
 end
@@ -82,6 +86,7 @@ local function history_pane(m)
       { kit.button({ label = "Clear the search", on_press = { kind = "query", change = { text = "" } } }) })
   else
     body = kit.list({ key = "history", rows = history_channel(m), title = "title", detail = "detail",
+      badge = "method", tone = "tone", badge_width = 58,
       selected = m.selected, grow = true, on_select = { kind = "pick" } })
   end
   return column { key = "history-pane", width = "grow", height = "grow", bg = "$kitSide",
@@ -139,11 +144,8 @@ local function body_editor(m)
   if m.method == "GET" then
     return kit.notice({ key = "no-body", message = "GET requests carry no body. Switch the method to POST, PUT or PATCH to send one." })
   end
-  return column { key = "body-box", width = "grow", height = "grow", bg = "$kitSunken", radius = "$kitRadius", pad = 8,
-    edit { key = "body", value = m.body, multiline = true, on_change = { kind = "body" }, label = "Request body",
-      width = "grow", height = "grow", size = "$kitSizeLabel", family = "$kitData", color = "$kitFg",
-      placeholder = '{ "customer": "cus_1042", "items": [] }' },
-  }
+  return kit.text_area({ key = "body", label = "Request body", hide_label = true, mono = true, grow = true, value = m.body,
+    error = m.body_error, placeholder = '{ "customer": "cus_1042", "items": [] }', on_change = { kind = "body" } })
 end
 
 local function request_pane(m)
@@ -254,7 +256,7 @@ end
 
 return function(m, env)
   local base = BASES[m.env]
-  return column { window_title = "Relay — Larder API", width = "grow", height = "grow",
+  return column { window_title = "Relay — Larder API", width = "grow", height = "grow", bg = "$kitBg",
     kit.settings({ skin = m.skin }),
     kit.toolbar({ key = "top" }, {
       text("Relay", { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" }),

@@ -3,7 +3,7 @@
   { name: "watchtower-attention", size: "1320x880", after: 1200, args: ["neutral", "attention"] }
   { name: "watchtower-restart", size: "1320x880", after: 1200, args: ["phosphor", "restart"] }
   { name: "watchtower-scale", size: "1320x880", after: 1200, args: ["neutral", "scale"] }
-  { name: "watchtower-errors", size: "1320x880", after: 1200, args: ["ledger", "errors"] }
+  { name: "watchtower-errors", size: "1320x880", after: 1200, args: ["ledger", "errors"], appearance: "light" }
   { name: "watchtower-spread", size: "1320x880", after: 1200, args: ["phosphor", "spread"] }
   { name: "watchtower-empty", size: "1040x680", after: 1200, args: ["neutral", "empty"] }
 ]

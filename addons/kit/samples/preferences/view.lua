@@ -27,9 +27,16 @@ local function set(key, extra)
   return msg
 end
 
+-- This frame's validation, by setting: a field marks itself with it.
+local ERRORS = {}
+
+-- A text field for one setting. `says` puts its error under it; a field
+-- sharing a row with another is only marked, the row saying why once.
 local function field(v, key, o)
+  local err = ERRORS[key]
   local p = { key = key, label = o.label, hide_label = true, value = v[key], mono = o.mono, width = o.width,
-    placeholder = o.placeholder, disabled = o.disabled, on_change = set(key) }
+    placeholder = o.placeholder, disabled = o.disabled, on_change = set(key),
+    error = err and (o.says and err or "") or nil }
   return kit.text_field(p)
 end
 
@@ -45,7 +52,7 @@ end
 local ROWS = {
   -- General
   { "general", "This device", "device_name", "Device name", "How your phone and other computers list this one.", "computer",
-    function(v) return field(v, "device_name", { label = "Device name", width = 320 }) end },
+    function(v) return field(v, "device_name", { label = "Device name", width = 320, says = true }) end, inline = true },
   { "general", "This device", "open_at_login", "Open at login", "Start syncing as soon as you sign in.", "startup launch",
     function(v) return switch(v, "open_at_login", "Open Tidewater when I log in") end },
   { "general", "This device", "menu_bar", "Menu bar", "A small icon with the sync state and the last few files.", "tray icon",
@@ -53,12 +60,12 @@ local ROWS = {
   { "general", "Look", "language", "Language", "The language of Tidewater's windows and notifications.", "locale",
     function(v) return row { width = 220, kit.select({ key = "language", options = settings.LANGUAGES, value = v.language, on_change = set("language") }) } end },
   { "general", "Look", "appearance", "Appearance", "System follows macOS as it switches between light and dark.", "theme dark light mode",
-    function(v) return kit.radio_group({ key = "appearance", value = v.appearance, on_change = set("appearance"), options = {
+    function(v) return kit.radio_group({ key = "appearance", label = "Appearance", hide_label = true, value = v.appearance, on_change = set("appearance"), options = {
       { value = "system", label = "Match the system" }, { value = "light", label = "Light" }, { value = "dark", label = "Dark" } } }) end },
 
   -- Sync
   { "sync", "Folder", "folder", "Sync folder", "Everything under it is kept in step with your other devices.", "path location directory",
-    function(v) return field(v, "folder", { label = "Sync folder", mono = true, width = 360 }) end },
+    function(v) return field(v, "folder", { label = "Sync folder", mono = true, width = 360, says = true }) end, inline = true },
   { "sync", "Folder", "mode", "Direction", "Upload only keeps the cloud a backup; nothing deleted there reaches this device.", "two-way backup upload download",
     function(v) return kit.segmented({ key = "mode", label = "Sync direction", value = v.mode, on_change = set("mode"), options = {
       { value = "two-way", label = "Two-way" }, { value = "upload", label = "Upload only" }, { value = "download", label = "Download only" } } }) end },
@@ -77,22 +84,22 @@ local ROWS = {
       }
     end },
   { "sync", "History", "versions", "Keep old versions", "Earlier versions of a changed file stay restorable this long.", "history retention days",
-    function(v) return column { width = 320, kit.slider({ key = "versions", label = string.format("%d days", v.versions), value = v.versions,
+    function(v) return column { width = 320, kit.slider({ key = "versions", label = "Kept for", value_label = string.format("%d days", v.versions), value = v.versions,
       min = 1, max = 90, step = 1, on_change = set("versions", { integer = true }) }) } end },
   { "sync", "History", "conflicts", "When a file changed in two places", "Keep both renames the other copy “(conflict, device)”.", "conflict merge",
     function(v) return row { width = 240, kit.select({ key = "conflicts", options = settings.CONFLICTS, value = v.conflicts, on_change = set("conflicts") }) } end },
 
   -- Network
   { "network", "Bandwidth", "upload_limit", "Upload limit", "Leave room for video calls on a slow line.", "speed throttle",
-    function(v) return column { width = 320, kit.slider({ key = "upload_limit", label = "Upload: " .. rate(v.upload_limit), value = v.upload_limit,
+    function(v) return column { width = 320, kit.slider({ key = "upload_limit", label = "Upload", value_label = rate(v.upload_limit), value = v.upload_limit,
       min = 0, max = 10000, step = 250, on_change = set("upload_limit", { integer = true }) }) } end },
   { "network", "Bandwidth", "download_limit", "Download limit", "0 is unlimited.", "speed throttle",
-    function(v) return column { width = 320, kit.slider({ key = "download_limit", label = "Download: " .. rate(v.download_limit), value = v.download_limit,
+    function(v) return column { width = 320, kit.slider({ key = "download_limit", label = "Download", value_label = rate(v.download_limit), value = v.download_limit,
       min = 0, max = 10000, step = 250, on_change = set("download_limit", { integer = true }) }) } end },
   { "network", "Bandwidth", "metered", "Metered connections", "A phone hotspot counts as metered.", "hotspot cellular data",
     function(v) return switch(v, "metered", "Pause syncing on metered connections") end },
   { "network", "Proxy", "proxy", "Proxy", "Most networks need none; a company network may.", "http socks",
-    function(v) return kit.radio_group({ key = "proxy", value = v.proxy, on_change = set("proxy"), options = {
+    function(v) return kit.radio_group({ key = "proxy", label = "Proxy", hide_label = true, value = v.proxy, on_change = set("proxy"), options = {
       { value = "none", label = "No proxy" }, { value = "system", label = "Use the system's settings" }, { value = "manual", label = "Manual" } } }) end },
   { "network", "Proxy", "proxy_host", "Proxy host and port", "Only with a manual proxy.", "address server",
     function(v)
@@ -128,10 +135,10 @@ local ROWS = {
 
   -- Advanced
   { "advanced", "Transfers", "transfers", "Parallel transfers", "More is faster on a fast line and slower on a slow one.", "concurrency threads",
-    function(v) return column { width = 320, kit.slider({ key = "transfers", label = string.format("%d at a time", v.transfers), value = v.transfers,
+    function(v) return column { width = 320, kit.slider({ key = "transfers", label = "Transfers", value_label = string.format("%d at a time", v.transfers), value = v.transfers,
       min = 1, max = 16, step = 1, on_change = set("transfers", { integer = true }) }) } end },
   { "advanced", "Transfers", "ignore", "Ignore", "Files and folders never synced, comma-separated; * matches anything.", "exclude pattern glob",
-    function(v) return field(v, "ignore", { label = "Ignore patterns", mono = true }) end },
+    function(v) return field(v, "ignore", { label = "Ignore patterns", mono = true, says = true }) end, inline = true },
   { "advanced", "Diagnostics", "verbose", "Verbose logging", "Writes every transfer to the log; support may ask for it.", "debug log",
     function(v) return switch(v, "verbose", "Log everything") end },
 }
@@ -169,7 +176,7 @@ local function setting(m, r, errors, warnings)
     },
     column { width = "grow", gap = 6,
       r[7](m.draft),
-      err and words(err, { color = "$kitDanger" }) or nil,
+      (err and not r.inline) and words(err, { color = "$kitDanger" }) or nil,
       (not err and warn) and words(warn, { color = "$kitWarn" }) or nil,
     },
   }
@@ -316,27 +323,11 @@ local function foot(m, errors)
   }
 end
 
--- A confirm dialog drawn the way kit.dialog draws one. A stand-in: Kit's
--- own lays its body out at zero height, so only its title and buttons
--- show. Back to kit.dialog once that is fixed.
-local function dialog(env, title, on_dismiss, body, actions)
-  return column { key = "scrim", float = { anchor = "viewport", at = { "start", "start" } },
-    width = env.viewport_w, height = env.viewport_h, bg = "$kitScrim", main_align = "center", cross_align = "center",
-    column { key = "dialog", role = "dialog", label = title, modal = on_dismiss, width = 420,
-      bg = "$kitRaised", radius = "$kitRadius", border = { w = "$kitHair", color = "$kitInk" }, clip = true,
-      shadow_color = "$kitInk", shadow_x = "$kitShadow", shadow_y = "$kitShadow", shadow_blur = "$kitShadowBlur",
-      row { width = "grow", height = 40, pad = { x = 16 }, cross_align = "center",
-        text(title, { size = "$kitSizeTitle", bold = true, family = "$kitUi", color = "$kitFg" }) },
-      column { key = "body", width = "grow", pad = { x = 16, y = 4 }, gap = 8, table.unpack(body) },
-      row { key = "actions", width = "grow", pad = 12, gap = 8, main_align = "end", table.unpack(actions) },
-    },
-  }
-end
-
 return function(m, env)
   local errors, warnings = settings.check(m.draft)
+  ERRORS = errors
   local changed_from_default = #settings.diff(settings.DEFAULTS, m.draft)
-  return column { window_title = "Tidewater Settings", width = "grow", height = "grow",
+  return column { window_title = "Tidewater Settings", width = "grow", height = "grow", bg = "$kitBg",
     kit.settings({ skin = m.skin }),
     kit.toolbar({ key = "top" }, {
       text("Tidewater Settings", { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" }),
@@ -354,13 +345,16 @@ return function(m, env)
       second = { content(m, errors, warnings) },
     }),
     foot(m, errors),
-    m.confirm == "reset" and dialog(env, "Reset every setting?", { kind = "cancel" }, {
+    m.confirm == "reset" and kit.dialog({ key = "reset-dialog", title = "Reset every setting?", on_dismiss = { kind = "cancel" } }, {
       words(string.format("%d setting%s differ from the defaults. They go back now; nothing is written until you press Save, so Revert still brings them back.",
         changed_from_default, changed_from_default == 1 and "" or "s"), { size = "$kitSize", color = "$kitFg" }),
-    }, {
-      kit.button({ label = "Cancel", on_press = { kind = "cancel" } }),
-      kit.button({ label = "Reset all", variant = "danger", icon = "reset", on_press = { kind = "confirm_reset" } }),
+      actions = {
+        kit.button({ label = "Cancel", on_press = { kind = "cancel" } }),
+        kit.button({ label = "Reset all", variant = "danger", icon = "reset", on_press = { kind = "confirm_reset" } }),
+      },
     }) or nil,
-    m.toast and kit.toast({ key = "toast", message = m.toast.message, tone = m.toast.tone, on_dismiss = { kind = "toast_off" } }) or nil,
+    m.toast and kit.toast({ key = "toast", message = m.toast.message, tone = m.toast.tone,
+      action = m.undo and "Undo" or nil, action_name = m.undo and ("Undo: " .. m.toast.message) or nil,
+      on_action = { kind = "undo" }, on_dismiss = { kind = "toast_off" } }) or nil,
   }
 end

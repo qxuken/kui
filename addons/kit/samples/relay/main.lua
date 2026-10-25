@@ -258,7 +258,12 @@ function update(msg)
   elseif k == "env" then m.env = msg.change.value
   elseif k == "req_tab" then m.req_tab = msg.change.value
   elseif k == "res_tab" then m.res_tab = msg.change.value
-  elseif k == "body" then m.body = msg.change.text
+  elseif k == "body" then
+    m.body = msg.change.text
+    -- Said under the body as it is typed: the API reads JSON only.
+    local ok, err = true, nil
+    if m.body:match("%S") then ok, err = pcall(kui.json.decode, m.body) end
+    m.body_error = not ok and ("Not JSON yet: " .. tostring(err):match("[^\n]*"):gsub("^.-: ", "")) or nil
   elseif k == "side" then m.side = msg.resize.fraction
   elseif k == "vsplit" then m.vsplit = msg.resize.fraction
   elseif k == "skin" then m.skin = msg.change.value

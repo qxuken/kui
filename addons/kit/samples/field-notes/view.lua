@@ -152,7 +152,7 @@ local function editor(m)
         { not m.loading and kit.button({ label = "New note", icon = "plus", on_press = { kind = "new" } }) or nil }) }
   end
   return column { key = "editor." .. n.id, width = "grow", height = "grow", scroll_y = true, pad = 16, gap = 12,
-    kit.text_field({ key = "title", label = "Title", hide_label = true, value = n.title, focus = n.id == m.fresh and m.focus_title or nil, placeholder = "Untitled",
+    kit.text_field({ key = "title", label = "Title", hide_label = true, value = n.title, autofocus = n.id == m.fresh, placeholder = "Untitled",
       on_change = { kind = "title" } }),
     row { key = "meta", width = "grow", gap = 10, cross_align = "center",
       row { width = 140, kit.select({ key = "book", options = NOTEBOOKS, value = n.notebook, on_change = { kind = "move" } }) },
@@ -161,28 +161,9 @@ local function editor(m)
       label("edited " .. when(n.updated) .. " · created " .. when(n.created)),
       kit.icon_button({ key = "delete", icon = "trash", label = "Delete this note", variant = "danger", on_press = { kind = "delete" } }),
     },
-    column { key = "body-box", width = "grow", min_height = 150, bg = "$kitSunken", radius = "$kitRadius", pad = 10,
-      edit { key = "body", value = n.body, multiline = true, label = "Note", placeholder = "Write something…",
-        width = "grow", size = "$kitSize", family = "$kitUi", color = "$kitFg",
-        on_change = { kind = "body" } } },
+    kit.text_area({ key = "body", label = "Note", hide_label = true, value = n.body, placeholder = "Write something…", rows = 8,
+      on_change = { kind = "body" } }),
     checklist(m, n),
-  }
-end
-
--- A confirm dialog drawn the way kit.dialog draws one. A stand-in: Kit's
--- own lays its body out at zero height, so only its title and buttons
--- show. Back to kit.dialog once that is fixed.
-local function dialog(env, title, on_dismiss, body, actions)
-  return column { key = "scrim", float = { anchor = "viewport", at = { "start", "start" } },
-    width = env.viewport_w, height = env.viewport_h, bg = "$kitScrim", main_align = "center", cross_align = "center",
-    column { key = "dialog", role = "dialog", label = title, modal = on_dismiss, width = 420,
-      bg = "$kitRaised", radius = "$kitRadius", border = { w = "$kitHair", color = "$kitInk" }, clip = true,
-      shadow_color = "$kitInk", shadow_x = "$kitShadow", shadow_y = "$kitShadow", shadow_blur = "$kitShadowBlur",
-      row { width = "grow", height = 40, pad = { x = 16 }, cross_align = "center",
-        text(title, { size = "$kitSizeTitle", bold = true, family = "$kitUi", color = "$kitFg" }) },
-      column { key = "body", width = "grow", pad = { x = 16, y = 4 }, gap = 8, table.unpack(body) },
-      row { key = "actions", width = "grow", pad = 12, gap = 8, main_align = "end", table.unpack(actions) },
-    },
   }
 end
 
@@ -195,7 +176,7 @@ return function(m, env)
   elseif m.saving then status = "saving…"
   elseif m.saved_at then status = "saved " .. os.date("%H:%M:%S", math.floor(m.saved_at / 1000))
   else status = "all changes saved" end
-  return column { window_title = "Field Notes", width = "grow", height = "grow",
+  return column { window_title = "Field Notes", width = "grow", height = "grow", bg = "$kitBg",
     kit.settings({ skin = m.skin }),
     kit.toolbar({ key = "top" }, {
       text("Field Notes", { size = "$kitSizeTitle", family = "$kitUi", bold = true, color = "$kitFg" }),
@@ -221,12 +202,13 @@ return function(m, env)
       label(string.format("%d notes in %d notebooks", #m.notes, #NOTEBOOKS)),
       trailing = { label(status) },
     }),
-    doomed and dialog(env, "Delete “" .. doomed.title .. "”?", { kind = "cancel" }, {
+    doomed and kit.dialog({ key = "delete-dialog", title = "Delete “" .. doomed.title .. "”?", on_dismiss = { kind = "cancel" } }, {
       text(#doomed.items > 0 and string.format("The note and its %d checklist items go for good; there is no trash.", #doomed.items)
         or "The note goes for good; there is no trash.", { size = "$kitSize", family = "$kitUi", color = "$kitFg", wrap = "word" }),
-    }, {
-      kit.button({ label = "Keep it", on_press = { kind = "cancel" } }),
-      kit.button({ label = "Delete", icon = "trash", variant = "danger", on_press = { kind = "confirm_delete" } }),
+      actions = {
+        kit.button({ label = "Keep it", on_press = { kind = "cancel" } }),
+        kit.button({ label = "Delete", icon = "trash", variant = "danger", on_press = { kind = "confirm_delete" } }),
+      },
     }) or nil,
     m.toast and kit.toast({ key = "toast", message = m.toast.message, tone = m.toast.tone, on_dismiss = { kind = "toast_off" } }) or nil,
   }

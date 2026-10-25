@@ -42,7 +42,6 @@ function init()
     side = 0.17,
     mid = 0.36,
     focus_search = 0,
-    focus_title = 0,
     new_item = "",
     confirm = nil,        -- the id a delete waits on
     toast = nil,
@@ -147,7 +146,7 @@ function update(msg)
   elseif k == "sort" then m.sort = msg.change.value
   elseif k == "pick" then
     local n = visible(m)[msg.select.row + 1]
-    if n then m.selected, m.new_item = n.id, "" end
+    if n then m.selected, m.new_item, m.fresh = n.id, "", nil end
   elseif k == "new" then
     local book = (m.notebook == "all" or m.notebook == "pinned") and "work" or m.notebook
     local now = kui.now()
@@ -159,14 +158,8 @@ function update(msg)
       kui.dispatch({ kind = "created", note = note })
     end)
   elseif k == "created" then
-    -- Only the new note's title takes `focus`, and a frame after it first
-    -- shows: Kit keeps a field's last focus number while the field is
-    -- gone, so any note reopened after a bump would ask for the keyboard
-    -- in the frame it comes back — and fail ("no node is keyed edit").
+    -- The new note opens with its title taking the keyboard (`autofocus`).
     m.selected, m.fresh = msg.note.id, msg.note.id
-    kui.timer.after(30, function() kui.dispatch({ kind = "focus_title" }) end)
-  elseif k == "focus_title" then
-    m.focus_title = m.focus_title + 1
   elseif k == "title" or k == "body" then
     local n = find(m, m.selected)
     if n then n[k] = msg.change.text; touch(n) end

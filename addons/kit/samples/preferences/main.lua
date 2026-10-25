@@ -57,6 +57,7 @@ function update(msg)
   elseif k == "section" then m.section, m.query = msg.section, ""
   elseif k == "query" then m.query = msg.change.text
   elseif k == "save" then
+    m.undo = nil
     local errors = settings.check(m.draft)
     if next(errors) then
       m.toast = { message = "Fix the highlighted settings first.", tone = "danger" }
@@ -73,18 +74,24 @@ function update(msg)
       m.toast = { message = "Could not save: " .. tostring(err):match("^[^\n]*"), tone = "danger" }
     end
   elseif k == "revert" then
+    m.undo = settings.copy(m.draft)
     m.draft = settings.copy(m.saved)
     m.toast = { message = "Changes reverted.", tone = "neutral" }
   elseif k == "reset" then m.confirm = "reset"
   elseif k == "cancel" then m.confirm = nil
   elseif k == "confirm_reset" then
     m.confirm = nil
+    m.undo = settings.copy(m.draft)
     m.draft = settings.copy(settings.DEFAULTS)
     m.toast = { message = "Every setting is back to its default. Save to keep them.", tone = "accent" }
+  elseif k == "undo" then
+    -- The toast's Undo: the draft from before the revert or the reset.
+    if m.undo then m.draft, m.undo = m.undo, nil end
+    m.toast = nil
   elseif k == "show_toml" then m.show_toml = not m.show_toml
   elseif k == "skin" then m.skin = msg.change.value
   elseif k == "side" then m.side = msg.resize.fraction
-  elseif k == "toast_off" then m.toast = nil
+  elseif k == "toast_off" then m.toast, m.undo = nil, nil
   end
 end
 

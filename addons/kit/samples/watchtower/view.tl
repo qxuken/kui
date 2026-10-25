@@ -70,7 +70,7 @@ end
 
 local COLUMNS: {kit.Column} = {
   { field = "name", title = "Service" },
-  { field = "status", title = "Status", width = 92 },
+  { field = "status", title = "Status", width = 104, tone = "tone", badge = true },
   { field = "version", title = "Version", width = 92, mono = true },
   { field = "instances", title = "Inst", width = 48, align = "end", mono = true },
   { field = "rps", title = "Req/s", width = 70, align = "end", mono = true },
@@ -81,10 +81,11 @@ local COLUMNS: {kit.Column} = {
 
 local services_ch: kui.Channel = nil
 local function services_channel(list: {fleet.Service}): kui.Channel
-  local c: {string:{any}} = { name = {}, status = {}, version = {}, instances = {}, rps = {}, p95 = {}, errors = {}, cpu = {} }
+  local c: {string:{any}} = { name = {}, status = {}, tone = {}, version = {}, instances = {}, rps = {}, p95 = {}, errors = {}, cpu = {} }
   for i, v in ipairs(list) do
     c.name[i] = v.name
-    c.status[i] = (v.status == "healthy" and "● " or v.status == "restarting" and "↻ " or v.status == "down" and "✕ " or "▲ ") .. v.status
+    c.status[i] = v.status
+    c.tone[i] = STATUS[v.status][2]
     c.version[i] = v.version
     c.instances[i] = tostring(v.instances)
     c.rps[i] = v.status == "down" and "—" or thousands(v.rps)
@@ -173,12 +174,12 @@ local function charts(m: Model): kui.Node
   return row { key = "charts", width = "grow", gap = 12,
     column { key = "lat", width = "grow",
       kit.panel({ key = "latency", title = "Edge latency", subtitle = "p50 · p95 · p99 in ms, by minutes ago" }, {
-        kit.line_chart({ data = m.chart, x = "ago", window = window, height = 170, series = {
+        kit.line_chart({ data = m.chart, x = "ago", window = window, height = 170, x_format = "ago", x_unit = "min", series = {
           { field = "p50", name = "p50" }, { field = "p95", name = "p95" }, { field = "p99", name = "p99" } } }),
       }) },
     column { key = "thr", width = "grow",
       kit.panel({ key = "throughput", title = "Throughput", subtitle = "requests a second, by minutes ago" }, {
-        kit.line_chart({ data = m.chart, x = "ago", window = window, height = 170, area = true, series = {
+        kit.line_chart({ data = m.chart, x = "ago", window = window, height = 170, x_format = "ago", x_unit = "min", area = true, series = {
           { field = "rps", name = "req/s" } } }),
       }) },
   }
@@ -223,9 +224,10 @@ local function detail(m: Model): kui.Node
           on_press = { kind = "restart" } }),
         row { key = "scale-anchor",
           kit.button({ key = "scale", label = "Scale…", icon = "sliders", on_press = { kind = "scale" } }),
-          m.scaling == v.name and kit.popover({ key = "scale-pop", width = 260, on_dismiss = { kind = "scale_off" } }, {
+          m.scaling == v.name and kit.popover({ key = "scale-pop", label = "Scale " .. v.name, width = 260, on_dismiss = { kind = "scale_off" } }, {
             column { width = "grow", gap = 10,
               kit.slider({ key = "scale-slider", label = "Instances", value = m.scale_to, min = 1, max = 12, step = 1,
+                value_label = ("%d instance%s"):format(m.scale_to, m.scale_to == 1 and "" or "s"),
                 on_change = { kind = "scale_to" } }),
               text(("Now %d. Each instance takes about 40 s to warm up."):format(v.instances),
                 { size = "$kitSizeLabel", family = "$kitUi", color = "$kitMuted", wrap = "word" } as kui.text),
@@ -245,14 +247,14 @@ local function events(m: Model): kui.Node
   local body: kui.Node
   if m.events == "errors" then
     body = column { key = "errors", width = "grow", pad = 10, gap = 8,
-      muted("5xx rate by service, %, capped at 5"),
-      kit.bar_chart({ data = m.errors, label = "service", value = "rate", height = 180 }) }
+      muted("5xx rate by service, capped at 5%"),
+      kit.bar_chart({ data = m.errors, label = "service", value = "rate", unit = "%", height = 200 }) }
   elseif m.events == "spread" then
     body = column { key = "spread", width = "grow", pad = 10, gap = 8,
       muted("Edge request latency, last 5 minutes (ms)"),
       kit.histogram({ data = m.latencies, field = "ms", bins = 30, height = 160 }) }
   else
-    body = kit.log({ key = "events-log", rows = m.log, grow = true })
+    body = kit.log({ key = "events-log", rows = m.log, grow = true, wrap = true })
   end
   return kit.tabs({ key = "events", value = m.events, on_change = { kind = "events_tab" }, tabs = {
     { value = "log", label = "Events", count = #fleet.lines },
@@ -264,26 +266,6 @@ local function events(m: Model): kui.Node
 end
 
 -- ---------- window ----------
-
--- A confirm dialog drawn the way kit.dialog draws one. A stand-in: Kit's
--- own lays its body out at zero height (a grow, scrolling column in a box
--- of no height), so only the title and the buttons show. Back to
--- kit.dialog once that is fixed.
-local function dialog(env: kui.Env, title: string, on_dismiss: any, body: {kui.Node}, actions: {kui.Node}): kui.Node
-  local kids: {kui.Node} = {}
-  for i = 1, 8 do if body[i] then kids[#kids + 1] = body[i] end end
-  return column { key = "scrim", float = { anchor = "viewport", at = { "start", "start" } },
-    width = env.viewport_w, height = env.viewport_h, bg = "$kitScrim", main_align = "center", cross_align = "center",
-    column { key = "dialog", role = "dialog", label = title, modal = on_dismiss, width = 440,
-      bg = "$kitRaised", radius = "$kitRadius", border = { w = "$kitHair", color = "$kitInk" }, clip = true,
-      shadow_color = "$kitInk", shadow_x = "$kitShadow", shadow_y = "$kitShadow", shadow_blur = "$kitShadowBlur",
-      row { width = "grow", height = 40, pad = { x = 16 }, cross_align = "center",
-        text(title, { size = "$kitSizeTitle", bold = true, family = "$kitUi", color = "$kitFg" } as kui.text) },
-      column { key = "body", width = "grow", pad = { x = 16, y = 4 }, gap = 8, table.unpack(kids) },
-      row { key = "actions", width = "grow", pad = 12, gap = 8, main_align = "end", table.unpack(actions) },
-    },
-  }
-end
 
 local SKINS: {kit.Choice} = { { value = "ledger", label = "Ledger" }, { value = "neutral", label = "Neutral" }, { value = "phosphor", label = "Phosphor" } }
 
@@ -317,13 +299,14 @@ function view.window(m: Model, env: kui.Env): kui.Node
       muted(("%d services · %d need attention"):format(#fleet.services, attention)),
       trailing = { muted("metrics: prometheus-eu-1 · scrape 1 s") },
     }),
-    target and dialog(env, "Restart " .. target.name .. "?", { kind = "cancel" }, {
+    target and kit.dialog({ key = "restart-dialog", title = "Restart " .. target.name .. "?", width = 440, on_dismiss = { kind = "cancel" } }, {
       text(("All %d instances are cycled one at a time; each drains its in-flight requests for up to 30 s first."):format(target.instances),
         { size = "$kitSize", family = "$kitUi", color = "$kitFg", wrap = "word" } as kui.text),
       target.status == "down" and kit.notice({ tone = "warn", message = "It is down because its upstream is: a restart may not bring it back." }) or nil,
-    }, {
-      kit.button({ label = "Keep running", on_press = { kind = "cancel" } }),
-      kit.button({ label = "Restart " .. target.name, variant = "danger", icon = "refresh", on_press = { kind = "confirm_restart" } }),
+      actions = {
+        kit.button({ label = "Keep running", on_press = { kind = "cancel" } }),
+        kit.button({ label = "Restart " .. target.name, variant = "danger", icon = "refresh", on_press = { kind = "confirm_restart" } }),
+      },
     }) or nil,
     m.toast and kit.toast({ key = "toast", message = m.toast, tone = m.toast_tone as kit.Tone, on_dismiss = { kind = "toast_off" } }) or nil,
   }

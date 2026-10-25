@@ -6,8 +6,8 @@
 #   nu addons/kit/samples/shots.nu relay        one
 #   nu addons/kit/samples/shots.nu relay --out /tmp/x   somewhere else
 #
-# A shots.nuon is a list of { name, size, after, args }: `args` follow `--`
-# to the shot script (a skin, a state).
+# A shots.nuon is a list of { name, size, after, args, appearance? }: `args` follow `--`
+# to the shot script (a skin, a state); `appearance` is light or dark (dark when left out).
 
 def main [
   ...samples: string   # the samples to draw; every one when left out
@@ -26,7 +26,8 @@ def main [
     mkdir $dest
     for s in (open ($dir | path join "test" "shots.nuon")) {
       let png = $dest | path join $"($s.name).png"
-      let r = (do { ^$bin run ($dir | path join "test" "shot.lua") --shot $png --after ($s.after | into string) --size $s.size -- ...$s.args } | complete)
+      let appearance = ($s | get -o appearance | default "dark")
+      let r = (do { ^$bin run ($dir | path join "test" "shot.lua") --shot $png --after ($s.after | into string) --size $s.size --appearance $appearance -- ...$s.args } | complete)
       let said = ($r.stdout + $r.stderr) | lines | where { |l| not ($l | str starts-with "kui: wrote") }
       if $r.exit_code != 0 or ($said | is-not-empty) {
         print $"($name)/($s.name): exit ($r.exit_code)"

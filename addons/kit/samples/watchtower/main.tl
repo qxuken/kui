@@ -27,13 +27,13 @@ local function publish(m: Model)
   for i, l in ipairs(fleet.lines) do time[i], level[i], message[i] = l.time, l.level, l.message end
   local lc: {string:{any}} = { time = time, level = level, message = message }
   m.log = m.log and m.log:publish(lc) or channel(lc)
-  -- the services erring at all, worst first, by their first word
+  -- the services erring at all, worst first
   local erring: {fleet.Service} = {}
   for _, v in ipairs(fleet.services) do if v.errors > 0.1 then erring[#erring + 1] = v end end
   table.sort(erring, function(a: fleet.Service, b: fleet.Service): boolean return a.errors > b.errors end)
   local label, value: {any}, {any} = {}, {}
   for i, v in ipairs(erring) do
-    label[i] = v.name:match("^[^%-]+")
+    label[i] = v.name
     value[i] = math.min(v.errors, 5)
   end
   local ec: {string:{any}} = { service = label, rate = value }

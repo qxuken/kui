@@ -3,7 +3,7 @@
 --   kui run test/shot.lua --shot shots/relay.png --after 1500 --size 1240x800 -- [skin] [state]
 --
 -- `skin` is ledger, neutral or phosphor; `state` a response tab (body,
--- headers, timing) or one of post, sending, error, empty.
+-- headers, timing) or one of post, badjson, sending, error, empty.
 package.path = kui.dir .. "/../?.lua;" .. package.path
 local skin, state = kui.args[1] or "ledger", kui.args[2] or "body"
 kui.args = { "--port", "0" }
@@ -23,9 +23,12 @@ kui.spawn(function()
     -- staged, not sent: the picture must not race the answer
     update({ kind = "pick", select = { row = 6 } })
     model.sending = true
-  elseif state == "post" then
+  elseif state == "post" or state == "badjson" then
     update({ kind = "pick", select = { row = 3 } })
     update({ kind = "req_tab", change = { value = "body" } })
+    if state == "badjson" then
+      update({ kind = "body", change = { text = '{\n  "customer": "cus_2210",\n  "items": [\n    { "sku": "VEG-0112", "qty": 2 },\n  ]\n' } })
+    end
   else
     update({ kind = "pick", select = { row = 1 } })
     update({ kind = "res_tab", change = { value = state } })

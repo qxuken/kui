@@ -82,7 +82,7 @@ kui.spawn(function()
 
   -- the events tab and the skin
   update({ kind = "events_tab", change = { value = "errors" } })
-  check(model.events == "errors" and model.errors:get(0, "service") == "inventory", "errors by service, worst first")
+  check(model.events == "errors" and model.errors:get(0, "service") == "inventory-sync", "errors by service, worst first")
   for _, s in ipairs({ "neutral", "phosphor", "ledger" }) do update({ kind = "skin", change = { value = s } }) end
   kui.sleep(200)
 
