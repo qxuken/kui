@@ -342,6 +342,8 @@ enum CaptureAsk {
     Stop,
     /// The recording, as a `.kuitrace` at this path.
     Trace(String),
+    /// What has been kept dropped: clear.
+    Clear,
 }
 
 /// A recording read whole once it stopped (ADR 0058): the trace, its
@@ -903,6 +905,7 @@ impl State {
                 self.perf.view = None;
                 self.perf.selected = None;
                 self.perf.range = None;
+                self.perf.asks.push(CaptureAsk::Clear);
             }
             "perf-range-clear" => self.perf.range = None,
             "perf-save" => {
@@ -2081,6 +2084,7 @@ impl Core {
                     self.record_to(path, marker);
                 }
                 CaptureAsk::Stop => self.stop_recording(),
+                CaptureAsk::Clear => self.perf_clear_kept(),
                 CaptureAsk::Trace(path) => {
                     // The recording the tab shows, not what has been kept
                     // since.
