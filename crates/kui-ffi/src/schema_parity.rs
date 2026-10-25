@@ -354,6 +354,7 @@ fn every_schema_prop_has_a_c_counterpart() {
             "onBoundary" => s.on_boundary = &layout_tag,
             "onMenu" => s.on_menu = &layout_tag,
             "onSelectionRange" => s.on_selection_range = &layout_tag,
+            "onRange" => s.on_range = &layout_tag,
             "selected" => s.selected = 1,
             "expanded" => s.expanded = KUI_EXPANDED_EXPANDED,
             "live" => s.live = KUI_LIVE_POLITE, // the parity index is 1; LIVE[1] = polite
@@ -557,6 +558,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         on_boundary: &menu_tag,
         on_menu: &menu_tag,
         on_selection_range: &menu_tag,
+        on_range: &menu_tag,
         reveal_on_hover: 1,
         floats_in_order: 1,
         disabled: 1,
@@ -667,6 +669,7 @@ fn fully_populated_spec_matches_the_rust_builder() {
         .on_boundary("cm")
         .on_menu("cm")
         .on_selection_range("cm")
+        .on_range("cm")
         .reveal_on_hover()
         .floats_in_order()
         .modifier_keys()
@@ -979,6 +982,9 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_animation_encoder_free",
         ];
         name.starts_with("kui_value_")
+            // A channel's builder and readers make and read data, as
+            // `kui_value_*` do; the verb is `Channel::table` (ADR 0065).
+            || name.starts_with("kui_channel_")
             // A size expression's builders make values, as `kui_value_*`
             // do; the rows they fill are `width` and the clamps.
             || name.starts_with("kui_size_")

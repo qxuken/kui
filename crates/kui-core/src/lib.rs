@@ -104,6 +104,7 @@ pub mod audio;
 pub mod calc;
 pub mod captures;
 pub mod cells;
+pub mod channel;
 pub mod color;
 pub(crate) mod composite;
 /// The scene corpus every binding is checked against. Test infrastructure,

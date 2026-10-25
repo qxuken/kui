@@ -238,9 +238,9 @@ impl CExtension {
         }
 
         // The components it provides, the same way (ADR 0060).
-        if let Some(components) = unsafe {
-            ext.sym::<extern "C" fn(*mut usize) -> *const KuiStr>("kui_ext_components")
-        } {
+        if let Some(components) =
+            unsafe { ext.sym::<extern "C" fn(*mut usize) -> *const KuiStr>("kui_ext_components") }
+        {
             let mut count = 0usize;
             let p = components(&mut count);
             if !p.is_null() {

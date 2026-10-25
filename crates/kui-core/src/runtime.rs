@@ -703,6 +703,9 @@ pub struct Core {
     /// was seen: a different rect, or a node not seen last frame, posts a
     /// `layout` event (see `emit_layout_events`).
     layouts: FxHashMap<Key, (Rect, u64)>,
+    /// The data rows each `on_range` node last reported, and in which
+    /// frame (ADR 0065).
+    ranges: FxHashMap<Key, ((u64, u64), u64)>,
     /// One-off announcements queued since the last drain (see
     /// [`Self::announce`]). The fourth of
     /// the four drained channels, and the same shape as the other three:
@@ -1421,6 +1424,7 @@ impl Core {
             families_picked_rev: 0,
             frame_no: 0,
             layouts: FxHashMap::default(),
+            ranges: FxHashMap::default(),
             announcements: Vec::new(),
             last_announcement: None,
             events_answered: 0,
@@ -2133,6 +2137,7 @@ impl Core {
         // every by-last-use store sweeps on (`retain::sweep_cutoff`, AR45).
         if let Some(cutoff) = crate::retain::sweep_cutoff(self.frame_no) {
             self.layouts.retain(|_, (_, seen)| *seen >= cutoff);
+            self.ranges.retain(|_, (_, seen)| *seen >= cutoff);
         }
         self.viewport = viewport;
         self.scale = scale;

@@ -7,7 +7,7 @@ import native from './native.cjs';
 import { createEncoder } from './encoder.js';
 
 export const {
-  Ctx, KuiWindow, RowHeights, quadStride, clipStride, protocol,
+  Ctx, KuiWindow, RowHeights, Channel, quadStride, clipStride, protocol,
   decodeImage, decodeAnimation, animationAt, encodeImage, AnimationEncoder,
   showInFolder, openExternal,
   loadTokens,

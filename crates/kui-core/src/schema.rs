@@ -191,6 +191,7 @@ pub const P_ON_SELECTION_RANGE: u32 = 139;
 pub const P_WINDOW_EVENTS: u32 = 140;
 pub const P_REVEAL_ON_HOVER: u32 = 141;
 pub const P_FLOATS_IN_ORDER: u32 = 142;
+pub const P_ON_RANGE: u32 = 143;
 
 /// The `mainAlign` / `crossAlign` rows and a float's attach points, in
 /// `Align`'s order. Append-only: the Lua and Node wires carry the index,
@@ -1005,6 +1006,13 @@ pub const PROPS: &[PropDef] = &[
         doc: "Layout handler: the node's laid-out rect arrives as this message with `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame and whenever it changes (needs a stable key).",
     },
     PropDef {
+        name: "onRange",
+        id: P_ON_RANGE,
+        kind: Kind::Handler,
+        apply: Apply::SpecMsg(|s, v| s.on_range(v)),
+        doc: "Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key.",
+    },
+    PropDef {
         name: "onClick",
         id: P_ON_CLICK,
         kind: Kind::Msg,
@@ -1806,6 +1814,10 @@ pub const C_FIELDS: &[(&str, &str)] = &[
     (
         "onLayout",
         "`on_layout` (a borrowed `KuiValue*`, cloned while the node opens)",
+    ),
+    (
+        "onRange",
+        "`on_range` (a borrowed `KuiValue*`, cloned while the node opens)",
     ),
     (
         "family",
@@ -2633,6 +2645,13 @@ pub const EVENTS: &[EventDef] = &[
         field: None,
         payload: "the message the host passed for the prop, with the extension's own fields under the prop's field — `select` for `onSelect` — on the instance; their shape is the component's to document",
         doc: "A component instance's event (`docs/adr/0060-components-an-extension-provides.md`): the extension answered an event of its own with `emit(prop, fields)`, and the host hears the message it passed for that prop — its own type, as a stock control's events arrive (ADR 0047) — about the instance's key, to whoever placed the instance. A prop the host did not pass delivers nothing.",
+    },
+    EventDef {
+        kind: "range",
+        handler: "onRange",
+        field: Some("range"),
+        payload: "`range: { first, last }` in the `onRange` message",
+        doc: "The data rows in an `onRange` node's view (ADR 0065): the least and greatest data index among its children inside its box, after the frame that first lays it out and whenever either changes — never on a frame that left them alone, so a view that pages by it does not loop.",
     },
 ];
 

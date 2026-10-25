@@ -162,6 +162,19 @@ pub(crate) const ROW_HEIGHTS: &[(&str, &str, &str)] = &[
     ("row_at", "y: number", "integer"),
 ];
 
+/// A channel's methods (ADR 0065): what a script calls on one it was
+/// handed or made. Rows and columns are 0-based; a column may be named.
+pub(crate) const CHANNEL: &[(&str, &str, &str)] = &[
+    (
+        "get",
+        "row: number, col: string | integer",
+        "number | integer | string | boolean | nil",
+    ),
+    ("row", "row: number", "table<string, any>"),
+    ("column", "col: string | integer", "any[]"),
+    ("publish", "columns: table<string, any[]>", "kui.Channel"),
+];
+
 /// A class's fields: each one's name, whether it is always there, and
 /// its LuaLS type.
 pub(crate) type Fields = &'static [(&'static str, bool, &'static str)];
@@ -373,6 +386,12 @@ pub(crate) const EVENT_DATA: &[(&str, &str, &str, Fields)] = &[
         "files",
         "kui.WithFiles",
         &[("paths", true, "string[]")],
+    ),
+    (
+        "kui.RangeEvent",
+        "range",
+        "kui.WithRange",
+        &[("first", true, "integer"), ("last", true, "integer")],
     ),
     (
         "kui.LayoutEvent",
@@ -636,6 +655,18 @@ pub fn luals_meta() -> String {
     }
     out.push_str(
         "\n---`rows` rows, none measured, each at `estimate` logical px (20 when left out) until measured.\n---@param rows number\n---@param estimate? number\n---@return kui.RowHeights\nfunction row_heights(rows, estimate) end\n\n",
+    );
+    out.push_str(
+        "---Bulk data the core owns, read by row and column (ADR 0065): `#ch` rows, 0-based; `rev`, `id` and `names` beside.\n---@class kui.Channel\n---@field rev integer\n---@field id integer\n---@field names string[]\n",
+    );
+    for (name, params, ret) in CHANNEL {
+        let _ = writeln!(
+            out,
+            "---@field {name} fun(self: kui.Channel, {params}): {ret}"
+        );
+    }
+    out.push_str(
+        "\n---A channel of `columns`: each key a column's name, each value its rows, all of one kind and one length.\n---@param columns table<string, any[]>\n---@return kui.Channel\nfunction channel(columns) end\n\n",
     );
 
     // The events a view's `on_event` hears: the envelope, then each

@@ -174,6 +174,12 @@ Layout_Event :: struct {
 }
 
 // A slider's proposed value, under `change` in its on_change message.
+// The data rows in an on_range node's view (docs/adr/0065): the least and
+// greatest data index among its children inside its box.
+Range_Event :: struct {
+	first, last: int,
+}
+
 Slider_Change_Event :: struct {
 	value: f64,
 	phase: string, // "move" | "end"
@@ -316,6 +322,10 @@ With_Files :: struct {
 
 With_Layout :: struct {
 	layout: Layout_Event,
+}
+
+With_Range :: struct {
+	range: Range_Event,
 }
 
 With_Slider_Change :: struct {

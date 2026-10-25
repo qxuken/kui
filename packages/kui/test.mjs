@@ -14,7 +14,7 @@ import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as pkg from './index.js';
-import { Ctx, KuiWindow, RowHeights, loadTokens, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, encodeImage, AnimationEncoder, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, RowHeights, Channel, loadTokens, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, encodeImage, AnimationEncoder, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -5757,7 +5757,7 @@ SCENE_TREES.virtual = () =>
     box(
       // `rowCount` is `conformance::VIRTUAL_ROW_COUNT`: how many rows the list
       // has, built or not.
-      { width: 120, height: 60, gap: 0, scrollY: true, bg: '#101018', role: 'list', label: 'log', rowCount: 109 },
+      { width: 120, height: 60, gap: 0, scrollY: true, bg: '#101018', role: 'list', label: 'log', rowCount: 109, onRange: { kind: 'rows' } },
       [
         box({ width: 'grow', height: 20 }, [], 'lead'),
         ...VIRTUAL_ROWS.map((i) =>
@@ -9964,6 +9964,63 @@ test('a Lua component holds the host\'s children and its events arrive as the ho
     assert.equal(events.length, 1, JSON.stringify(ctx.pollEvents()));
     assert.equal(events[0].payload.save, true);
     assert.deepEqual(events[0].payload.click, { count: 1 });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a Channel hands rows to a Lua component by handle, and onRange reports the rows in view (ADR 0065)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kui-channel-'));
+  try {
+    writeFileSync(
+      join(dir, 'kit.lua'),
+      `components = {
+         list = function(env, props)
+           local rows = props.rows
+           local kids = { text('rows ' .. #rows) }
+           for i = 0, 1 do kids[#kids + 1] = text(rows:get(i, 'name') .. ' ' .. rows:get(i, 'ms')) end
+           return column(kids)
+         end,
+       }`,
+    );
+    const names = Array.from({ length: 50_000 }, (_, i) => `job ${i}`);
+    const ms = Float64Array.from({ length: 50_000 }, (_, i) => i / 2);
+    const ch = new Channel({ name: names, ms });
+    assert.equal(ch.length, 50_000);
+    assert.equal(ch.rev, 1);
+    assert.deepEqual(ch.names.slice().sort(), ['ms', 'name']);
+    assert.equal(ch.get(3, 'name'), 'job 3');
+    assert.equal(ch.get(3, 'ms'), 1.5);
+    assert.ok(ch.column('ms') instanceof Float64Array);
+    assert.deepEqual(JSON.parse(JSON.stringify({ rows: ch })).rows, ch.handle());
+    assert.equal(Channel.resolve(ch.handle()).length, 50_000);
+    assert.throws(() => new Channel({ a: [1, 2], b: [1] }), /one length/);
+    const next = ch.publish({ name: ['only'] });
+    assert.equal(next.rev, 2);
+    assert.equal(Channel.resolve(ch.handle()).length, 1, 'a handle names the latest revision');
+
+    const ctx = new Ctx();
+    ctx.setInspect(true);
+    ctx.addExtension('kit', join(dir, 'kit.lua'));
+    const enc = createEncoder(protocol());
+    const rows = new Channel({ name: names, ms });
+    const draw = (scroll) => {
+      const tree = box({ gap: 4 }, [
+        el('component', { name: 'kit/list', props: { rows } }),
+        box({ key: 'pane', height: 100, overflow: 'scrollY', onRange: { kind: 'range' } },
+          Array.from({ length: 30 }, (_, i) => box({ index: i, height: 20 }, [text(`r${i}`)]))),
+      ]);
+      const { stream, strings } = enc.encode(tree);
+      ctx.frameBinary(400, 400, 1, stream, strings);
+    };
+    draw();
+    const texts = ctx.nodes().filter((n) => n.text != null).map((n) => n.text);
+    assert.ok(texts.includes('rows 50000'), texts.join(','));
+    assert.ok(texts.includes('job 1 0.5'), texts.join(','));
+    const ranges = ctx.pollEvents().filter((e) => e.event === 'range');
+    assert.equal(ranges.length, 1);
+    assert.equal(ranges[0].payload.kind, 'range');
+    assert.deepEqual(ranges[0].payload.range, { first: 0, last: 4 });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

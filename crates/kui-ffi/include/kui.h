@@ -421,8 +421,17 @@ extern "C" {
  * runner's waker, the opaque KuiWaker with kui_waker, kui_waker_wake,
  * kui_waker_wake_at, kui_waker_wake_named, kui_waker_clone and
  * kui_waker_free: new functions, no struct.
+ *
+ * ABI 38 appends on_range to KuiSpec (its 64-bit size goes from 800 to
+ * 808): the data rows in a node's view, as its message (ADR 0065).
+ * Recompile; zeroed, a node reports no range. New with it, moving no
+ * struct: kui_theme_set_pair and kui_theme_derive (ADR 0061),
+ * kui_tokens_load_dtcg and kui_tokens_dtcg_error (ADR 0062), kui_svg
+ * (ADR 0063), kui_component, kui_children, kui_emit and the optional
+ * kui_ext_components export (ADR 0060), and the channel's builder and
+ * readers (ADR 0065).
  */
-#define KUI_ABI_VERSION 37u
+#define KUI_ABI_VERSION 38u
 uint32_t kui_abi_version(void);
 
 /* -- Who writes what ------------------------------------------------------
@@ -1427,6 +1436,13 @@ typedef struct KuiSpec {
      * hover hint a tooltip floats goes over them. The hit test reads the
      * same order. ABI 36. */
     uint32_t floats_in_order;
+    /* The message the data rows in view arrive as (onRange, docs/adr/
+     * 0065-a-data-channel.md): on a node whose children carry data indices,
+     * range: {first, last} - the least and greatest index among its children
+     * inside its box - after the frame that first lays it out and whenever
+     * either changes. A borrowed KuiValue*, cloned while the node opens;
+     * NULL for none. Needs a stable key. ABI 38. */
+    const KuiValue *on_range;
 } KuiSpec;
 
 /* KuiSpec.pivot_set bits: which of pivot_x / pivot_y hold. ABI 27. */
@@ -2870,6 +2886,44 @@ bool kui_tokens_load_dtcg(KuiCtx *ctx, KuiStr path, KuiStr prefix, KuiStr inputs
 /* Why the last kui_tokens_load_dtcg said false; false (out untouched) when
  * it succeeded or none has run. Borrowed until the next call. */
 bool kui_tokens_dtcg_error(KuiCtx *ctx, KuiStr *out);
+
+/* -- Channels (docs/adr/0065-a-data-channel.md) ----------------------------
+ *
+ * Bulk data the core owns and a handle names: a table of named columns of
+ * one length - numbers, integers or strings - immutable once finished. A
+ * host builds one column at a time and holds the KuiChannel for as long as
+ * the data should live; kui_channel_handle makes the value that names it,
+ * for a component's props or a message, and a reader - a plugin, a Lua
+ * script, a Node worker - resolves the handle to read by row and column,
+ * never copying the whole. */
+typedef struct KuiChannelBuilder KuiChannelBuilder;
+typedef struct KuiChannel KuiChannel;
+/* A builder with no columns; kui_channel_finish consumes it. */
+KuiChannelBuilder *kui_channel_new(void);
+/* Add a column of count values, copied; false on a NULL builder. */
+bool kui_channel_add_f64(KuiChannelBuilder *b, KuiStr name, const double *values, size_t count);
+bool kui_channel_add_i64(KuiChannelBuilder *b, KuiStr name, const int64_t *values, size_t count);
+bool kui_channel_add_str(KuiChannelBuilder *b, KuiStr name, const KuiStr *values, size_t count);
+/* The channel, yours until kui_channel_free; the builder is consumed either
+ * way. NULL for columns of two lengths or a name given twice, the reason in
+ * kui_channel_error (borrowed until the next call on this thread). */
+KuiChannel *kui_channel_finish(KuiChannelBuilder *b);
+bool kui_channel_error(KuiStr *out);
+/* The channel a handle value names, held anew (free it), or NULL when the
+ * value is no handle or nobody holds the channel. */
+KuiChannel *kui_channel_resolve(const KuiValue *handle);
+void kui_channel_free(KuiChannel *ch);
+/* A new value naming the channel, for props or a message; free it with
+ * kui_value_free. It does not hold the channel. */
+KuiValue *kui_channel_handle(const KuiChannel *ch);
+size_t kui_channel_len(const KuiChannel *ch);
+uint64_t kui_channel_rev(const KuiChannel *ch);
+/* The index of the column called name, or -1. */
+int32_t kui_channel_column(const KuiChannel *ch, KuiStr name);
+/* A cell as a number (an integer widened), or a string borrowed while you
+ * hold ch; false for another column kind or out of range. */
+bool kui_channel_get_f64(const KuiChannel *ch, size_t row, size_t col, double *out);
+bool kui_channel_get_str(const KuiChannel *ch, size_t row, size_t col, KuiStr *out);
 bool kui_token_family(KuiCtx *ctx, KuiStr name, uint32_t *family, uint64_t *font);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before

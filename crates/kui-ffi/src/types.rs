@@ -922,6 +922,9 @@ pub struct KuiSpec {
     /// (`floatsInOrder`, ADR 0053). As a group they keep their place among
     /// the floats outside the node. ABI 36.
     pub floats_in_order: u32,
+    /// The message the data rows in view arrive as (`onRange`, ADR 0065),
+    /// borrowed like `on_layout`; NULL for none. ABI 38.
+    pub on_range: *const KuiValue,
 }
 
 /// `KuiSpec.pivot_set` bits: which of `pivot_x` / `pivot_y` hold.

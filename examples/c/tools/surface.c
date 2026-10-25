@@ -1067,6 +1067,44 @@ static int surface(void) {
         kui_metrics_set(ui, NULL);
     }
 
+    /* A channel (ADR 0065): built a column at a time, read back by row and
+     * column, its handle resolved to the same rows; columns of two lengths
+     * are refused with the reason. */
+    {
+        double ms[3] = {12.5, 30, 4};
+        int64_t depth[3] = {0, 1, 1};
+        KuiStr names[3] = {KUI_STR("build"), KUI_STR("test"), KUI_STR("deploy")};
+        KuiChannelBuilder *b = kui_channel_new();
+        check(kui_channel_add_f64(b, KUI_STR("ms"), ms, 3) &&
+                  kui_channel_add_i64(b, KUI_STR("depth"), depth, 3) &&
+                  kui_channel_add_str(b, KUI_STR("name"), names, 3),
+              "kui_channel_add_*");
+        KuiChannel *ch = kui_channel_finish(b);
+        check(ch && kui_channel_len(ch) == 3 && kui_channel_rev(ch) == 1, "kui_channel_finish");
+        int32_t col_ms = kui_channel_column(ch, KUI_STR("ms"));
+        int32_t col_name = kui_channel_column(ch, KUI_STR("name"));
+        double x = 0;
+        KuiStr name = {0};
+        check(col_ms == 0 && kui_channel_get_f64(ch, 1, (size_t)col_ms, &x) && x == 30,
+              "kui_channel_get_f64");
+        check(kui_channel_get_str(ch, 2, (size_t)col_name, &name) && kui_str_eq(name, "deploy"),
+              "kui_channel_get_str");
+        check(kui_channel_column(ch, KUI_STR("nope")) == -1, "an unknown column is -1");
+        KuiValue *handle = kui_channel_handle(ch);
+        KuiChannel *again = kui_channel_resolve(handle);
+        check(again && kui_channel_len(again) == 3, "kui_channel_resolve reads the same rows");
+        kui_channel_free(again);
+        kui_channel_free(ch);
+        check(kui_channel_resolve(handle) == NULL, "a handle nobody holds resolves to nothing");
+        kui_value_free(handle);
+        KuiChannelBuilder *bad = kui_channel_new();
+        kui_channel_add_f64(bad, KUI_STR("a"), ms, 3);
+        kui_channel_add_f64(bad, KUI_STR("b"), ms, 2);
+        KuiStr why = {0};
+        check(kui_channel_finish(bad) == NULL && kui_channel_error(&why) && why.len > 0,
+              "columns of two lengths are refused, with why");
+    }
+
     /* The text cache's budget and its reading; the font families. */
     kui_set_text_cache_budget(ui, 4 << 20);
     check(kui_text_cache_bytes(ui) > 0, "kui_text_cache_bytes: the frames above shaped text");

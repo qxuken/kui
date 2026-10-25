@@ -1516,6 +1516,8 @@ pub enum EventKind {
     /// the event prop, with what the extension sent under the prop's
     /// field (`onSelect`'s data under `select`).
     Component,
+    /// The data rows in a node's view changed (ADR 0065).
+    Range,
 }
 
 impl EventKind {
@@ -1553,6 +1555,7 @@ impl EventKind {
         EventKind::Dismiss,
         EventKind::Reply,
         EventKind::Component,
+        EventKind::Range,
     ];
 
     /// The wire name: what `ev.event` reads in every binding, a root
@@ -1591,6 +1594,7 @@ impl EventKind {
             EventKind::Dismiss => "dismiss",
             EventKind::Reply => "reply",
             EventKind::Component => "component",
+            EventKind::Range => "range",
         }
     }
 

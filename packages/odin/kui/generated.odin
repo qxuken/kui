@@ -831,6 +831,12 @@ Spec :: struct {
 	// `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame
 	// and whenever it changes (needs a stable key).
 	on_layout: any,
+	// Range handler (ADR 0065): on a node whose children carry data indices —
+	// `index`, a virtual list's rows — the least and greatest index among its
+	// children inside its box arrive as this message with `range: {first, last}`
+	// in it, after the frame that first lays it out and whenever either changes;
+	// what a table pages an unbounded source by.
+	on_range: any,
 	// Message emitted when clicked (data, not a callback).
 	on_click: any,
 	// Drag handler: the drag arrives as this message with `drag: {phase, x, y,
@@ -1089,6 +1095,7 @@ spec_to_c :: proc(s: Spec, out: ^c.Spec, scratch: ^Scratch) {
 	out.reveal_on_hover = 1 if s.reveal_on_hover else 0
 	out.on_drop = borrow(scratch, s.on_drop)
 	out.on_layout = borrow(scratch, s.on_layout)
+	out.on_range = borrow(scratch, s.on_range)
 	out.key_up = 1 if s.key_up else 0
 	out.modifier_keys = 1 if s.modifier_keys else 0
 	out.on_context_menu = borrow(scratch, s.on_context_menu)

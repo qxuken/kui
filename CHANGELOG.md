@@ -71,7 +71,10 @@ was the first bare bump to break an app in five releases).
   `env.add_extension` calls `kui_ffi::register_native_loader()` first
   (backlog C59, ADR 0059).
 - `EventKind` and `kui_core::Event` gained `Component`, a component's
-  event (ADR 0060): an exhaustive `match` on either adds an arm.
+  event (ADR 0060), and `Range`, a node's rows in view (ADR 0065): an
+  exhaustive `match` on either adds two arms.
+- C's ABI is 38: `KuiSpec` gained `on_range` (808 bytes on 64-bit, from
+  800). Recompile; zeroed, a node reports no range.
 - A Lua script's `env` is one table shared by every fill of the script,
   its facts written again as they change (backlog C65): a script that
   stored its own fields on `env` finds them there next fill, and one of
@@ -139,6 +142,33 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **A data channel** (backlog C66,
+  [ADR 0065](docs/adr/0065-a-data-channel.md)). Hand a component a
+  hundred thousand rows as one small value: a channel is named columns of
+  one length — numbers, integers, booleans or strings — the core owns,
+  read by row and column wherever its handle goes, never copied whole:
+    - Node: `const rows = new Channel({ name: names, ms: Float64Array })`,
+      then `props: { rows }`; `get(row, col)`, `column(name)`,
+      `publish(columns)` for the next revision, `Channel.resolve(handle)`.
+    - Lua: `channel { name = {...}, ms = {...} }`; a handle in props or
+      params arrives as the channel — `#rows`, `rows:get(i, "ms")`,
+      `rows:row(i)` — with rows 0-based.
+    - C: `kui_channel_new`, `kui_channel_add_f64` / `_i64` / `_str`,
+      `kui_channel_finish`, then `kui_channel_handle` for props;
+      `kui_channel_resolve`, `kui_channel_get_f64` / `_str` to read. Odin
+      gets the same as `channel_*`.
+    - Rust: `kui_core::channel::Channel`.
+
+  A new `onRange` row (`on_range`) reports the data rows in a node's view
+  as `range: { first, last }` whenever they change, so a component can
+  page a source it does not hold. A frame that draws forty of 100,000 rows
+  from a channel costs 0.39 ms; converting the same rows into Lua tables
+  took 103 ms.
+
+  **What you can delete:** the revision-and-rows dance in params (`data =
+  { rev, rows }` sent once), and a scroll offset turned into row numbers
+  by hand to page data in.
+
 - **Components an extension provides** (backlog C60,
   [ADR 0060](docs/adr/0060-components-an-extension-provides.md)). An
   extension lists components, and a host places them as often as it

@@ -682,6 +682,9 @@ impl Core {
         if self.tree.any_layout {
             self.emit_layout_events();
         }
+        if self.tree.any_range {
+            self.emit_range_events();
+        }
         self.settle_svg_sizes();
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);
@@ -2118,6 +2121,64 @@ impl Core {
                 p.x += d.x;
                 p.y += d.y;
             }
+        }
+    }
+
+    /// After layout: every `on_range` node whose least and greatest data
+    /// index among its descendants inside its box differ from the ones
+    /// last reported — or that was not seen last frame — posts its message
+    /// with `range: {first, last}` in it (ADR 0065). A node with no
+    /// indexed child in view reports nothing.
+    fn emit_range_events(&mut self) {
+        let frame_no = self.frame_no;
+        for i in 0..self.tree.len() {
+            let Some(tag) = self.tree.specs[i].events().on_range() else {
+                continue;
+            };
+            let end = self.tree.subtree_end(i) as u32;
+            let view = Rect::from_pos_size(self.tree.pos[i], self.tree.size[i]);
+            let mut range: Option<(u64, u64)> = None;
+            for &(at, index) in &self.tree.indexed {
+                if at <= i as u32 || at >= end {
+                    continue;
+                }
+                let a = at as usize;
+                let r = Rect::from_pos_size(self.tree.pos[a], self.tree.size[a]);
+                let inside = r.x < view.x + view.w
+                    && r.x + r.w > view.x
+                    && r.y < view.y + view.h
+                    && r.y + r.h > view.y;
+                if inside {
+                    range = Some(match range {
+                        Some((lo, hi)) => (lo.min(index), hi.max(index)),
+                        None => (index, index),
+                    });
+                }
+            }
+            let Some(range) = range else {
+                continue;
+            };
+            let key = self.tree.keys[i];
+            let changed = match self.ranges.get(&key) {
+                Some((last, seen)) if *seen + 1 == frame_no => *last != range,
+                _ => true,
+            };
+            self.ranges.insert(key, (range, frame_no));
+            if !changed {
+                continue;
+            }
+            let data = Value::map([
+                ("first", Value::Int(range.0 as i64)),
+                ("last", Value::Int(range.1 as i64)),
+            ]);
+            let tag = tag.clone();
+            self.pending.push(UiEvent::declared(
+                EventKind::Range,
+                self.tree.origins[i],
+                key,
+                Some(&tag),
+                data,
+            ));
         }
     }
 

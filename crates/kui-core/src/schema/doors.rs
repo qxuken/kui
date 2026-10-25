@@ -1707,6 +1707,16 @@ pub const DOORS: &[Door] = &[
         doc: "An extension's answer to an event that raises one of its component's events: the host hears the message it passed for that prop, about the instance (ADR 0060).",
     },
     Door {
+        rust: "Channel::table",
+        c: As(
+            "`kui_channel_new`, `kui_channel_add_f64` / `_i64` / `_str`, then `kui_channel_finish`",
+        ),
+        odin: As("`channel_new`, `channel_add_f64` / `_i64` / `_str`, then `channel_finish`"),
+        node: As("`new Channel({ … })`"),
+        lua: As("`channel { name = {…}, … }`"),
+        doc: "Makes a channel (ADR 0065): named columns of one length the core owns, read by row and column wherever its handle goes — a component's props, a message, another thread.",
+    },
+    Door {
         rust: "Core::slot_fill",
         c: Is("kui_slot_fill"),
         odin: Is("slot_fill"),
@@ -2092,6 +2102,7 @@ mod tests {
         let scroll = read(root.join("scroll.rs"));
         let edge = read(root.join("edge_scroll.rs"));
         let slot = read(root.join("slot.rs"));
+        let channel = read(root.join("channel.rs"));
         let launcher = read(root.join("../../kui-native/src/lib.rs"));
         let decode = read(root.join("../../kui-native/src/decode.rs"))
             + &read(root.join("../../kui-native/src/capture.rs"))
@@ -2112,6 +2123,7 @@ mod tests {
                 "Tokens" => &tokens,
                 "Theme" => &theme,
                 "slot" => &slot,
+                "Channel" => &channel,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
                 "Launcher" | "Waker" => &launcher,

@@ -2111,10 +2111,14 @@ static void conf_cells_scroll(KuiCtx *ui, const Fixtures *f, int phase) {
 static void conf_virtual(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
+    /* The rows in view, as ADR 0065's on_range reports them. */
+    KuiValue *rows_msg = kui_value_map();
+    kui_value_map_set(rows_msg, KUI_STR("kind"), kui_value_str(KUI_STR("rows")));
     KuiSpec list = {.width = {KUI_FIXED, 120}, .height = {KUI_FIXED, 60},
                     .gap = 0, .overflow = KUI_SCROLL_Y, .bg = 0x101018ff,
-                    .role = KUI_ROLE_LIST, .label = KUI_STR("log")};
+                    .role = KUI_ROLE_LIST, .label = KUI_STR("log"), .on_range = rows_msg};
     kui_open_keyed(ui, KUI_STR("list"), &list, NULL);
+    kui_value_free(rows_msg);
     /* conformance::VIRTUAL_ROW_COUNT: how many rows the list has, built or not. */
     kui_row_count(ui, 109);
     KuiSpec lead = {.width = {KUI_GROW, 1}, .height = {KUI_FIXED, 20}};

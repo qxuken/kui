@@ -205,7 +205,14 @@
 ///   and with `kui_show_in_folder`, `kui_open_external` and
 ///   `KUI_MENU_ACTION_SHOW_IN_FOLDER` (backlog F203), new functions and a
 ///   new kind whose path rides in `text`.
-pub const KUI_ABI_VERSION: u32 = 37;
+/// - ABI 38: `on_range` appended to `KuiSpec` (808 bytes on 64-bit, from
+///   800): the data rows in a node's view, as its message (ADR 0065). New
+///   with it, moving no struct: `kui_theme_set_pair`, `kui_theme_derive`
+///   (ADR 0061), `kui_tokens_load_dtcg`, `kui_tokens_dtcg_error` (ADR
+///   0062), `kui_svg` (ADR 0063), `kui_component`, `kui_children`,
+///   `kui_emit`, the optional `kui_ext_components` export (ADR 0060), and
+///   the channel's builder and readers (ADR 0065).
+pub const KUI_ABI_VERSION: u32 = 38;
 
 /// The ABI version this library implements ([`KUI_ABI_VERSION`]), for a
 /// host to compare for equality with the `KUI_ABI_VERSION` of the header

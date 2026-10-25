@@ -451,6 +451,9 @@ pub(crate) fn spec_of(
     if let Some(msg) = unsafe { s.on_selection_range.as_ref() } {
         spec = spec.on_selection_range(msg.0.clone());
     }
+    if let Some(msg) = unsafe { s.on_range.as_ref() } {
+        spec = spec.on_range(msg.0.clone());
+    }
     if s.reveal_on_hover != 0 {
         spec = spec.reveal_on_hover();
     }

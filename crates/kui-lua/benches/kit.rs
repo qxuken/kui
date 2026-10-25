@@ -11,6 +11,10 @@
 //!   panning across one (budget 1.5 ms).
 //! - `handover`: the frame on which the rows and bars cross to the script
 //!   again, by a new revision.
+//! - `channel_*` (ADR 0065): the same 100,000 rows as a channel — built
+//!   once from Rust vectors, and a frame of a Lua table component that
+//!   reads the forty rows it draws by index, asked fresh every frame —
+//!   against `handover`'s conversion.
 //!
 //! Run: cargo bench -p kui-lua --bench kit
 
@@ -148,6 +152,86 @@ fn handover(bencher: divan::Bencher) {
     bencher.bench_local(|| {
         s.rev += 1;
         frame(&mut core, &mut s, &mut exts);
+    });
+}
+
+/// The 100,000 rows the M0 table draws, as a channel's columns.
+fn channel_columns() -> Vec<(String, kui_core::channel::Column)> {
+    use kui_core::channel::Column;
+    let n = 100_000;
+    vec![
+        (
+            "name".into(),
+            Column::strs((0..n).map(|i| format!("GET /api/items/{i}"))),
+        ),
+        (
+            "ms".into(),
+            Column::F64((0..n).map(|i| (i % 997) as f64 * 0.25).collect()),
+        ),
+        (
+            "status".into(),
+            Column::I64(
+                (0..n)
+                    .map(|i| if i % 13 == 0 { 500 } else { 200 })
+                    .collect(),
+            ),
+        ),
+    ]
+}
+
+#[divan::bench(sample_count = 20, sample_size = 1)]
+fn channel_build_100k(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(channel_columns)
+        .bench_local_values(|cols| kui_core::channel::Channel::table(cols).unwrap());
+}
+
+/// The same, the columns built from nothing in the timing: what a host
+/// that holds its rows in some other shape pays to hand them over.
+#[divan::bench(sample_count = 20, sample_size = 1)]
+fn channel_from_scratch_100k(bencher: divan::Bencher) {
+    bencher.bench_local(|| kui_core::channel::Channel::table(channel_columns()).unwrap());
+}
+
+const CHANNEL_TABLE: &str = r#"
+    components = {
+      table = function(env, props)
+        local rows, first = props.rows, props.first or 0
+        local kids = {}
+        for i = first, math.min(first + 39, #rows - 1) do
+          kids[#kids + 1] = row { height = 20, gap = 8,
+            text(rows:get(i, "name"), { size = 12 }),
+            text(tostring(rows:get(i, "ms")), { size = 12 }),
+            text(tostring(rows:get(i, "status")), { size = 12 }),
+          }
+        end
+        return column(kids)
+      end,
+    }
+"#;
+
+#[divan::bench]
+fn channel_table_frame_100k(bencher: divan::Bencher) {
+    use kui_core::Value;
+    let ch = kui_core::channel::Channel::table(channel_columns()).unwrap();
+    let mut exts = Extensions::new();
+    exts.push_as(
+        "t",
+        Box::new(kui_lua::LuaExtension::from_source("t.lua", CHANNEL_TABLE).unwrap()),
+    )
+    .unwrap();
+    let mut core = Core::new();
+    let mut first = 0i64;
+    bencher.bench_local(|| {
+        first = (first + 37) % 99_000;
+        let props = Value::map([
+            ("rows", ch.handle()),
+            ("first", Value::Int(first)),
+            ("fresh", Value::Bool(true)),
+        ]);
+        let mut ui = core.frame_with(Size::new(1280.0, 820.0), 1.0, &mut exts);
+        ui.component("t/table", &props);
+        ui.finish();
     });
 }
 

@@ -190,6 +190,7 @@ pub use ext::{CExtension, open_extension, register_native_loader};
 #[macro_use]
 mod abi;
 mod access;
+mod channel;
 mod convert;
 mod dialogs;
 mod focus;
@@ -211,6 +212,7 @@ mod windows;
 
 pub use abi::*;
 pub use access::*;
+pub use channel::*;
 pub use dialogs::*;
 pub use focus::*;
 pub use frame::*;

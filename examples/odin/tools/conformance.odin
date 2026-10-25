@@ -1717,6 +1717,8 @@ scene_virtual :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 		label     = "log",
 		// conformance::VIRTUAL_ROW_COUNT: how many rows the list has.
 		row_count = 109,
+		// The rows in view, as ADR 0065's on_range reports them.
+		on_range  = msg("rows"),
 	}
 	if kui.box(ui, list) {
 		if kui.box(ui, {key = "lead", width = kui.GROW, height = kui.px(20)}) {}

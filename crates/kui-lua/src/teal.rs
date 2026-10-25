@@ -288,6 +288,7 @@ pub fn teal_decls() -> String {
         field(&mut body, name, &ty, d);
     }
     body.push_str("  end\n\n");
+    body.push_str("  -- Bulk data the core owns, read by row and column (ADR 0065); rows are 0-based.\n  record Channel\n    rev: integer\n    id: integer\n    names: {string}\n    metamethod __len: function(self: Channel): integer\n    get: function(self: Channel, row: number, col: string | integer): any\n    row: function(self: Channel, row: number): {string:any}\n    column: function(self: Channel, col: string | integer): {any}\n    publish: function(self: Channel, columns: {string:{any}}): Channel\n  end\n\n");
     body.push_str("  -- A variable-height list's row heights: measured where known, the mean of those elsewhere (rows are 0-based).\n  record RowHeights\n");
     for (name, params, ret) in ROW_HEIGHTS {
         let sep = if params.is_empty() { "" } else { ", " };
@@ -359,7 +360,9 @@ pub fn teal_decls() -> String {
     }
     out.push_str(
         "-- `rows` rows, none measured, each at `estimate` logical px (20 when left out) until measured.\n\
-         global row_heights: function(rows: number, estimate?: number): kui.RowHeights\n",
+         global row_heights: function(rows: number, estimate?: number): kui.RowHeights\n\
+         -- A channel of `columns`: each key a column's name, each value its rows (ADR 0065).\n\
+         global channel: function(columns: {string:{any}}): kui.Channel\n",
     );
     out
 }
@@ -586,6 +589,7 @@ impl Teal {
             "UniformList",
             "List",
             "RowHeights",
+            "Channel",
             "Event",
             "Envelope",
             "WindowEvents",

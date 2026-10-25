@@ -40,11 +40,13 @@ Str :: string
 Ctx :: struct {}
 Value :: struct {}
 ReplySink :: struct {}
+ChannelBuilder :: struct {}
+Channel :: struct {}
 Waker :: struct {}
 AnimationEncoder :: struct {}
 
 // -- Constants (the header's #defines and anonymous enums)
-ABI_VERSION :: 37
+ABI_VERSION :: 38
 
 MIN_FIT :: -1.0
 MIN_NONE :: -2.0
@@ -691,6 +693,7 @@ Spec :: struct {
 	on_selection_range: ^Value,
 	reveal_on_hover: u32,
 	floats_in_order: u32,
+	on_range: ^Value,
 }
 
 Announcement :: struct {
@@ -1164,6 +1167,20 @@ foreign lib {
 	tokens_families :: proc(ctx: ^Ctx, families: [^]FamilyToken, count: uint) ---
 	tokens_load_dtcg :: proc(ctx: ^Ctx, path: string, prefix: string, inputs: string) -> bool ---
 	tokens_dtcg_error :: proc(ctx: ^Ctx, out: ^string) -> bool ---
+	channel_new :: proc() -> ^ChannelBuilder ---
+	channel_add_f64 :: proc(b: ^ChannelBuilder, name: string, values: [^]f64, count: uint) -> bool ---
+	channel_add_i64 :: proc(b: ^ChannelBuilder, name: string, values: [^]i64, count: uint) -> bool ---
+	channel_add_str :: proc(b: ^ChannelBuilder, name: string, values: [^]string, count: uint) -> bool ---
+	channel_finish :: proc(b: ^ChannelBuilder) -> ^Channel ---
+	channel_error :: proc(out: ^string) -> bool ---
+	channel_resolve :: proc(handle: ^Value) -> ^Channel ---
+	channel_free :: proc(ch: ^Channel) ---
+	channel_handle :: proc(ch: ^Channel) -> ^Value ---
+	channel_len :: proc(ch: ^Channel) -> uint ---
+	channel_rev :: proc(ch: ^Channel) -> u64 ---
+	channel_column :: proc(ch: ^Channel, name: string) -> i32 ---
+	channel_get_f64 :: proc(ch: [^]Channel, row: uint, col: uint, out: ^f64) -> bool ---
+	channel_get_str :: proc(ch: [^]Channel, row: uint, col: uint, out: ^string) -> bool ---
 	token_family :: proc(ctx: ^Ctx, name: string, family: ^u32, font: ^u64) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---

@@ -172,6 +172,20 @@ pub struct Layout {
     pub scale: f32,
 }
 
+/// A `range`: the least and greatest data index in a node's view (ADR 0065).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowRange {
+    pub first: u64,
+    pub last: u64,
+}
+
+fn read_range(p: &Value) -> Option<RowRange> {
+    Some(RowRange {
+        first: p.get("first")?.as_int()? as u64,
+        last: p.get("last")?.as_int()? as u64,
+    })
+}
+
 /// A `text`: what a focused key sink was given to insert.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextInput<'a> {
@@ -828,6 +842,7 @@ pub enum Event {
     Sound(Sound),
     Capture(Captured),
     Dismiss(Dismiss),
+    Range(RowRange),
     Reply,
     /// A component instance's event (ADR 0060): the host's own message
     /// for the event prop is [`UiEvent::message`]'s to decode.
@@ -924,6 +939,7 @@ impl UiEvent {
             EventKind::Dismiss => Event::Dismiss(read_dismiss(p)?),
             EventKind::Reply => Event::Reply,
             EventKind::Component => Event::Component,
+            EventKind::Range => Event::Range(read_range(p)?),
         })
     }
 }

@@ -141,6 +141,8 @@ c_type! {
     KuiWindowCommand => "KuiWindowCommand", KuiDrawData => "KuiDrawData",
     KuiWaker => "KuiWaker",
     ViewFn => "KuiViewFn",
+    KuiChannelBuilder => "KuiChannelBuilder",
+    KuiChannel => "KuiChannel",
     Option<crate::types::ChildrenFn> => "KuiChildrenFn",
 }
 #[cfg(feature = "runner")]
@@ -860,6 +862,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         on_selection_range: *const KuiValue => "const KuiValue *",
         reveal_on_hover: u32 => "uint32_t",
         floats_in_order: u32 => "uint32_t",
+        on_range: *const KuiValue => "const KuiValue *",
     });
 
     abi_struct!(o, KuiAccessNode {
@@ -1349,6 +1352,7 @@ fn every_entry_point_is_pinned() {
         include_str!("lib.rs"),
         include_str!("abi.rs"),
         include_str!("access.rs"),
+        include_str!("channel.rs"),
         include_str!("dialogs.rs"),
         include_str!("focus.rs"),
         include_str!("frame.rs"),
@@ -1591,7 +1595,8 @@ fn an_in_struct_s_size_is_the_abi_s() {
         // (ADR 0047), five pointers after that padding. ABI 35:
         // `reveal_on_hover` (ADR 0051), past the end, so 792 + 4 rounds up
         // to 800. ABI 36: `floats_in_order` (ADR 0053), into that padding.
-        ("KuiSpec", 800, 36),
+        // ABI 38: `on_range` (ADR 0065), a pointer past the end.
+        ("KuiSpec", 808, 38),
         ("KuiGradientStop", 8, 24),
         ("KuiGradient", 32, 24),
         ("KuiSizing", 8, 16),

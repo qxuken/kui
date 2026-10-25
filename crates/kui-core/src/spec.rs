@@ -1120,6 +1120,14 @@ pub enum Handler {
     /// declared it — so a view reads a change instead of diffing
     /// `key_focus` every frame. Declares nothing interactive.
     Focus,
+    /// The data rows in view (ADR 0065): on a node whose children carry
+    /// data indices (`index`, a virtual list's rows), this message with
+    /// `range: {first, last}` in it — the least and greatest index among
+    /// its children inside its box — after the frame that first lays it
+    /// out and whenever either changes. What an extension's table pages an
+    /// unbounded source by, since scrolling alone tells it nothing. Needs
+    /// a stable key.
+    Range,
 }
 
 /// Event payloads a node declares. Boxed on `NodeSpec` because most
@@ -1326,6 +1334,12 @@ impl EventSpec {
     #[inline]
     pub fn on_menu(&self) -> Option<&Value> {
         self.get(Handler::Menu)
+    }
+
+    /// The message for [`Handler::Range`], if declared.
+    #[inline]
+    pub fn on_range(&self) -> Option<&Value> {
+        self.get(Handler::Range)
     }
 
     /// The message for [`Handler::SelectionRange`], if declared.
@@ -2627,6 +2641,13 @@ impl NodeSpec {
     /// on; `Value::Null` if the node key is identification enough.
     pub fn on_layout(mut self, tag: impl Into<Value>) -> Self {
         self.events_mut().set(Handler::Layout, tag.into());
+        self
+    }
+
+    /// Reports the data rows in view as an event whenever they change (see
+    /// [`Handler::Range`]): `range: {first, last}` in `tag`.
+    pub fn on_range(mut self, tag: impl Into<Value>) -> Self {
+        self.events_mut().set(Handler::Range, tag.into());
         self
     }
 

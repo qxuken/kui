@@ -3377,7 +3377,9 @@ pub const SCENES: &[Scene] = &[
               follows the row rather than the slot. The list declares its \
               whole size with `rowCount`, the row Select All spans by; a \
               binding that does not know the row warns, and the warning \
-              list is pinned empty.",
+              list is pinned empty. It declares `onRange` too (ADR 0065): \
+              the rows in its 60 px view are 100 and 101, which it reports \
+              once, `range rows`.",
         custom: &["index", "rowCount", "key", "overflow"],
         elements: &["box"],
         build: build_virtual,
@@ -3402,7 +3404,7 @@ pub const SCENES: &[Scene] = &[
                 // deliberately disagree.
                 "2 listItem row 102||",
             ],
-            events: &[],
+            events: &["range rows"],
             announcements: &[],
             warnings: &[],
             commands: &[],
@@ -4200,7 +4202,8 @@ fn build_virtual(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
             .scroll_y()
             .bg(Color::hex(0x101018ff))
             .role(Role::List)
-            .label("log"),
+            .label("log")
+            .on_range(Value::map([("kind", Value::str("rows"))])),
         |ui| {
             // How many rows the list has, built or not.
             ui.row_count(VIRTUAL_ROW_COUNT);

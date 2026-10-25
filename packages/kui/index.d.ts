@@ -367,6 +367,12 @@ export interface FilesEvent {
   paths: string[];
 }
 
+/** The data rows in an `onRange` node's view (docs/adr/0065): the least
+ *  and greatest data index among its children inside its box. */
+export interface RangeEvent {
+  first: number;
+  last: number;
+}
 /** The rect layout gave an `onLayout` node — logical px, viewport
  *  coordinates, after scrolling and position easing — on its first frame
  *  and whenever it changes, never on a frame that left it alone (a
@@ -579,6 +585,10 @@ export interface WithFiles {
 export interface WithLayout {
   layout: LayoutEvent;
 }
+/** The `range` field, on an `onRange` message. */
+export interface WithRange {
+  range: RangeEvent;
+}
 /** The `change` field of an editor's `onChange` message. */
 export interface WithEditChange {
   change: EditChangeEvent;
@@ -672,6 +682,8 @@ export type DropMsg<T = {}> = T & WithDrop;
 export type FilesMsg<T = {}> = T & WithFiles;
 /** The app's message `T` as an `onLayout` rect arrives. */
 export type LayoutMsg<T = {}> = T & WithLayout;
+/** The app's message `T` as an `onRange` node's rows in view arrive. */
+export type RangeMsg<T = {}> = T & WithRange;
 /** The app's message `T` as an editor's `onChange` arrives. */
 export type EditChangeMsg<T = {}> = T & WithEditChange;
 /** The app's message `T` as a slider's `onChange` arrives. */
@@ -817,7 +829,7 @@ export type EventName =
   | 'scroll' | 'focus' | 'hover' | 'drop' | 'files' | 'open' | 'layout'
   | 'resize' | 'window' | 'system' | 'fonts' | 'modifiers' | 'change'
   | 'submit' | 'cancel' | 'boundary' | 'sound' | 'capture' | 'dismiss'
-  | 'reply' | 'component';
+  | 'reply' | 'component' | 'range';
 // -- end generated --
 
 /** A position in an editor's text: one of its `runs` and a character
@@ -2568,6 +2580,51 @@ export interface ResolvedTokens {
 }
 
 // -- generated from the addon's `#[napi]` surface; edit crates/kui-node/src/lib.rs, then `npm run gen` --
+
+/**
+ * One revision of a channel, held. Columns are numbers (a `Float64Array`
+ * or an array of numbers), booleans or strings, all of one length.
+ */
+export declare class Channel {
+  /**
+   * A channel of `columns`: each key a column's name, each value its
+   * rows. Throws for columns of two lengths or of mixed kinds.
+   */
+  constructor(columns: object)
+  /**
+   * The channel a handle names, if someone still holds it: what an
+   * event's payload or a worker's message carries.
+   */
+  static resolve(handle: Json): Channel
+  /** How many rows. */
+  get length(): number
+  /** Its revision: 1, and one more for each `publish`. */
+  get rev(): number
+  /** The column names, in order. */
+  get names(): Array<string>
+  /**
+   * Row `row`'s value of column `col` (a name, or a 0-based index);
+   * `null` past the end.
+   */
+  get(row: number, col: string | number): Json
+  /** One column whole: a `Float64Array` for numbers, an array otherwise. */
+  column(col: string | number): Float64Array | Array<Json>
+  /**
+   * The next revision under the same identity, holding `columns`: a
+   * handle to this channel names that revision from now on.
+   */
+  publish(columns: object): Channel
+  /**
+   * The handle: `{ $channel, rev }`, a value that rides in props, in
+   * messages and to a worker.
+   */
+  handle(): Json
+  /**
+   * What `JSON.stringify` writes: the handle, so a channel in a
+   * component's props crosses as one.
+   */
+  toJSON(): Json
+}
 
 /**
  * The heights a `list()` slices by: a measured number per row where one is

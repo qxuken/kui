@@ -252,6 +252,8 @@ pub struct Tree {
     /// Whether any node declares `on_layout`, so the rect report can skip
     /// the walk.
     pub any_layout: bool,
+    /// Whether any node declares `on_range` (ADR 0065).
+    pub any_range: bool,
     /// Whether any node declares `on_context_menu`, so a hit region's
     /// walk for the menu it inherits is skipped wholesale on
     /// a frame that offers none.
@@ -381,6 +383,7 @@ impl Tree {
         self.any_over_siblings = false;
         self.any_floats_in_order = false;
         self.any_layout = false;
+        self.any_range = false;
         self.any_context_menu = false;
         self.any_scroll_handler = false;
         self.any_drop = false;
@@ -458,6 +461,7 @@ impl Tree {
         if let Some(events) = spec.events.as_deref() {
             self.any_modal |= events.modal().is_some();
             self.any_layout |= events.on_layout().is_some();
+            self.any_range |= events.on_range().is_some();
             self.any_context_menu |= events.on_context_menu().is_some();
             self.any_scroll_handler |= events.on_scroll().is_some();
             self.any_drop |= events.on_drop().is_some();

@@ -114,7 +114,7 @@ global type kui = record
   end
 
   enum EventKind
-    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "reply" "component"
+    "click" "drag" "key" "text" "preedit" "select" "selectionrange" "contextmenu" "menu" "forceclick" "button" "scroll" "focus" "hover" "drop" "files" "open" "layout" "resize" "window" "system" "fonts" "modifiers" "change" "submit" "cancel" "boundary" "sound" "capture" "dismiss" "reply" "component" "range"
   end
 
   enum DragEventPhase
@@ -352,6 +352,8 @@ global type kui = record
     on_drop: any
     -- Layout handler: the node's laid-out rect arrives as this message with `layout: {x, y, w, h, parent, scale}` in it (ADR 0047) on its first frame and whenever it changes (needs a stable key).
     on_layout: any
+    -- Range handler (ADR 0065): on a node whose children carry data indices — `index`, a virtual list's rows — the least and greatest index among its children inside its box arrive as this message with `range: {first, last}` in it, after the frame that first lays it out and whenever either changes; what a table pages an unbounded source by. Needs a stable key.
+    on_range: any
     -- Message emitted when clicked (data, not a callback).
     on_click: any
     -- Drag handler: the drag arrives as this message with `drag: {phase, x, y, dx, dy, parent}` in it (ADR 0047), `dx`/`dy` measured from the press point in every phase. On a `cells` grid the events also carry `cell: {row, col}`; inside an `onKey` sink that draws `role="line"` rows they carry `line`, `byte` and `clicks` — see the events table. A press on a child that does nothing with a press itself drags the nearest enclosing `onDrag` node, stopping at a clickable, a key sink, window chrome, a slider, the modal boundary and the selection scope the press is in (backlog F176).
@@ -724,6 +726,18 @@ global type kui = record
     overscan: number
   end
 
+  -- Bulk data the core owns, read by row and column (ADR 0065); rows are 0-based.
+  record Channel
+    rev: integer
+    id: integer
+    names: {string}
+    metamethod __len: function(self: Channel): integer
+    get: function(self: Channel, row: number, col: string | integer): any
+    row: function(self: Channel, row: number): {string:any}
+    column: function(self: Channel, col: string | integer): {any}
+    publish: function(self: Channel, columns: {string:{any}}): Channel
+  end
+
   -- A variable-height list's row heights: measured where known, the mean of those elsewhere (rows are 0-based).
   record RowHeights
     len: function(self: RowHeights): integer
@@ -999,6 +1013,17 @@ global type kui = record
   -- A message that carries a `files` event: its `files` field alone.
   interface WithFiles
     files: FilesEvent
+  end
+
+  -- A `range` event's data.
+  record RangeEvent
+    first: integer
+    last: integer
+  end
+
+  -- A message that carries a `range` event: its `range` field alone.
+  interface WithRange
+    range: RangeEvent
   end
 
   -- A `layout` event's data.
@@ -1821,3 +1846,5 @@ global list: function(env: kui.Env, opts: kui.List, measure: function(i: integer
 
 -- `rows` rows, none measured, each at `estimate` logical px (20 when left out) until measured.
 global row_heights: function(rows: number, estimate?: number): kui.RowHeights
+-- A channel of `columns`: each key a column's name, each value its rows (ADR 0065).
+global channel: function(columns: {string:{any}}): kui.Channel

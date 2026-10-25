@@ -360,6 +360,7 @@ use kui_core::{
 };
 use mlua::{Lua, Table};
 
+mod channel;
 mod meta;
 mod rows;
 mod teal;
@@ -518,6 +519,7 @@ impl LuaExtension {
     ) -> mlua::Result<Self> {
         let lua = Lua::new();
         rows::register(&lua)?;
+        channel::register(&lua)?;
         lua.load(PRELUDE).set_name("kui:prelude").exec()?;
         if let Some(dir) = dir {
             // `dir/?.lua;dir/?/init.lua;` ahead of the default path, so a
@@ -4877,6 +4879,10 @@ fn to_value(v: &mlua::Value, path: &mut ValuePath) -> mlua::Result<Value> {
             }
             value
         }
+        // A channel crosses as its handle (ADR 0065).
+        mlua::Value::UserData(ud) if ud.is::<channel::LuaChannel>() => {
+            ud.borrow::<channel::LuaChannel>()?.0.handle()
+        }
         other => {
             return Err(mlua::Error::runtime(format!(
                 "cannot convert {} to event payload",
@@ -4903,6 +4909,10 @@ pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
             mlua::Value::Table(t)
         }
         Value::Map(entries) => {
+            // A channel's handle is the channel (ADR 0065).
+            if let Some(ch) = channel::handle_to_lua(lua, v) {
+                return ch;
+            }
             let t = lua.create_table_with_capacity(0, entries.len())?;
             for (k, v) in entries {
                 t.set(k.as_str(), value_to_lua(lua, v)?)?;

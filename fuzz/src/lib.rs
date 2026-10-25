@@ -7,6 +7,7 @@
 //! finding: a panic in the code under test, or an `assert!` here on a
 //! property the code promises in its docs.
 
+pub mod channel;
 pub mod decode;
 pub mod dtcg;
 pub mod encode;
@@ -26,6 +27,7 @@ pub type Run = fn(&[u8]);
 pub const TARGETS: &[(&str, Run)] = &[
     ("parsers", parsers::run),
     ("dtcg", dtcg::run),
+    ("channel", channel::run),
     ("svg", svg::run),
     ("values", values::run),
     ("path", path::run),

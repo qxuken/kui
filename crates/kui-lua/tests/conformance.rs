@@ -976,7 +976,7 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
                 r#"
             return column {{ key = "list", width = 120, height = 60, gap = 0,
                              scroll_y = true, bg = 0x101018ff, row_count = {count},
-                             role = "list", label = "log",
+                             role = "list", label = "log", on_range = {{ kind = "rows" }},
               column {{ key = "lead", width = "grow", height = 20 }},
                 {rows}
               column {{ key = "tail", width = "grow", height = 100 }},
