@@ -5,9 +5,9 @@
 # a list of names, because the list was `kui`, `kui-core` and `kui-wgpu` and
 # `kui-ffi` was added to the workspace after it, so alpha.10's bump left that
 # one requirement at alpha.9 and check-version below is what caught it),
-# packages/kui/package.json, the changelog's top heading, the book's setup
-# page, and the examples' npm lockfile, which mirrors the linked package's
-# version. The release workflow refuses a tag that does not match all of
+# packages/kui/package.json and packages/kui-cli/package.json, the
+# changelog's top heading, the book's setup page, and the examples' npm
+# lockfile, which mirrors the linked package's version. The release workflow refuses a tag that does not match all of
 # them (scripts/check-version.nu), so bump, commit, then tag `v<version>`.
 #
 #   nu scripts/set-version.nu 0.1.0-alpha.2
@@ -67,9 +67,15 @@ def main [version: string] {
     # tests after this script, not before.
     let slug = ($ver | str replace -a "." "")
     edit-lines docs/howto.md {|l| $l | str replace -a $"#($slug)-unreleased" $"#($slug)-($today)" }
-    do {
-        cd packages/kui
-        ^npm version --no-git-tag-version --allow-same-version $ver | ignore
+    # @qxuken/kui-cli's template too (ADR 0068): its platform packages and
+    # both main packages' optionalDependencies are written at staging time
+    # from the workspace version (scripts/npm-platform-packages.nu), so
+    # this is the only other place an npm version is spelled out.
+    for pkg in [packages/kui packages/kui-cli] {
+        do {
+            cd $pkg
+            ^npm version --no-git-tag-version --allow-same-version $ver | ignore
+        }
     }
     # examples/node depends on packages/kui by `file:` path, so its lockfile
     # carries a copy of that manifest's version in its `../../packages/kui`

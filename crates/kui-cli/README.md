@@ -3,6 +3,18 @@
 `kui` runs a Lua or Teal app with Kit and a standard library, and nothing
 else to install ([ADR 0064](../../docs/adr/0064-the-kui-runner.md)).
 
+Install it from a release — `install.sh` (macOS, Linux) and `install.ps1`
+(Windows) are assets of each, beside the runners and their `SHA256SUMS`
+— or from npm, and `kui upgrade` keeps it current:
+
+```bash
+curl -fsSL https://github.com/qxuken/kui/releases/download/v0.1.0-alpha.68/install.sh | sh
+```
+
+```bash
+npm i -g @qxuken/kui-cli
+```
+
 ```bash
 kui new hello
 ```

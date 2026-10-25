@@ -1,7 +1,9 @@
 #!/usr/bin/env nu
-# Publishes a tagged release from this Mac: the four Node prebuilds, the
-# verification, `cargo publish` (crates.io, then drydock9), `npm publish`
-# to the Forgejo npm registry and the `latest` guard there.
+# Publishes a tagged release from this Mac: the four Node prebuilds and the
+# four runners, the verification, `cargo publish` (crates.io, then
+# drydock9), the ten npm packages (ADR 0068: the eight platform packages,
+# then @qxuken/kui and @qxuken/kui-cli) to the Forgejo npm registry and the
+# `latest` guard there.
 #
 # Since alpha.34 the two pipelines split a release between them - GitHub's
 # (.github/workflows/release.yml) publishes the crates to crates.io and
@@ -36,6 +38,10 @@
 # What differs from CI: the macOS prebuilds link against this Mac's SDK
 # (targeting macOS 11.0 arm64, as CI's does) rather than the
 # pinned 15.5 SDK, and cargo-xwin uses brew's LLVM rather than Debian's.
+#
+# The runners' release assets are left in target/pack/runner/
+# (scripts/pack-runner.nu); this script attaches nothing to a GitHub
+# release, and docs/releasing.md says how to when the runner could not.
 
 const HOST = "https://drydock9.qxuken.dev"
 const NPM_REGISTRY = "https://drydock9.qxuken.dev/api/packages/qxuken/npm/"
@@ -55,8 +61,8 @@ def step [what: string] { print $"\n=== ($what)" }
 
 use publish-crates.nu crate-published
 
-def npm-published [version: string] {
-    let r = (^npm view $"@qxuken/kui@($version)" version --registry $NPM_REGISTRY | complete)
+def npm-published [name: string, version: string] {
+    let r = (^npm view $"($name)@($version)" version --registry $NPM_REGISTRY | complete)
     ($r.exit_code == 0) and (($r.stdout | str trim) == $version)
 }
 
@@ -77,12 +83,19 @@ curl -fL --retry 3 "https://github.com/nushell/nushell/releases/download/0.116.1
   | tar -xz -C /usr/local/bin --strip-components=1 "${nu_dir}/nu"
 mkdir -p /work && cd /work && tar -xf /src.tar
 cargo zigbuild -p kui-node --release --target aarch64-unknown-linux-gnu.2.28
+cargo zigbuild -p kui-cli --release --target aarch64-unknown-linux-gnu.2.28
 nu scripts/collect-prebuild.nu aarch64-unknown-linux-gnu linux-arm64
+nu scripts/pack-runner.nu linux-arm64 --out /out/runner
 PKG_CONFIG_ALLOW_CROSS=1 \
 PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
 PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig \
   cargo zigbuild -p kui-node --release --target x86_64-unknown-linux-gnu.2.28
+PKG_CONFIG_ALLOW_CROSS=1 \
+PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig \
+PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig \
+  cargo zigbuild -p kui-cli --release --target x86_64-unknown-linux-gnu.2.28
 nu scripts/collect-prebuild.nu x86_64-unknown-linux-gnu linux-x64
+nu scripts/pack-runner.nu linux-x64 --out /out/runner
 cp -r packages/kui/prebuilds/linux-arm64 packages/kui/prebuilds/linux-x64 /out/
 '
 
@@ -113,7 +126,7 @@ def main [
 
     let scratch = (mktemp -d -t kui-release.XXXXXX)
     print $"scratch: ($scratch)"
-    rm -rf packages/kui/prebuilds
+    rm -rf packages/kui/prebuilds target/pack/runner dist/npm
 
     step "linux prebuilds (docker)"
     ^git archive --format=tar $tag | save --raw $"($scratch)/src.tar"
@@ -122,17 +135,27 @@ def main [
     let arch = if ((^uname -m | str trim) == "arm64") { "linux/arm64" } else { "linux/amd64" }
     must docker run --rm --platform $arch -v $"($scratch)/src.tar:/src.tar:ro" -v $"($scratch)/linux-build.sh:/build.sh:ro" -v $"($scratch)/out:/out" node:24-bookworm bash /build.sh
 
-    step "macOS and Windows prebuilds"
+    step "macOS and Windows prebuilds and runners"
     must rustup target add aarch64-apple-darwin x86_64-pc-windows-msvc
     # Each into its own target dir, never target/release — the windowed
-    # smoke round leaves a smoke-featured addon there.
+    # smoke round leaves a smoke-featured addon there. The addon and the
+    # runner in two builds, as CI's legs do, so neither's features reach
+    # the other.
     for t in [[target prebuild]; [aarch64-apple-darwin darwin-arm64]] {
         must cargo build -p kui-node --release --target $t.target
+        must cargo build -p kui-cli --release --target $t.target
         must $nu.current-exe scripts/collect-prebuild.nu $t.target $t.prebuild
+        must $nu.current-exe scripts/pack-runner.nu $t.prebuild
     }
     must cargo xwin build -p kui-node --release --target x86_64-pc-windows-msvc
+    must cargo xwin build -p kui-cli --release --target x86_64-pc-windows-msvc
     must $nu.current-exe scripts/collect-prebuild.nu x86_64-pc-windows-msvc win32-x64
+    must $nu.current-exe scripts/pack-runner.nu win32-x64
     cp -r $"($scratch)/out/linux-arm64" $"($scratch)/out/linux-x64" packages/kui/prebuilds/
+    for f in (glob $"($scratch)/out/runner/kui-*.tar.gz") { cp $f target/pack/runner/ }
+
+    step "npm packages"
+    must $nu.current-exe scripts/npm-platform-packages.nu --pack
 
     step "verify the bundled prebuilds"
     for p in $PREBUILDS {
@@ -143,7 +166,6 @@ def main [
     do {
         cd packages/kui
         must npm test
-        must npm pack --dry-run
     }
     must $nu.current-exe scripts/publish-crates.nu crates-io --dry-run
 
@@ -170,30 +192,33 @@ def main [
     let dist_tag = if ($version | str contains "-") {
         $version | split row "-" | skip 1 | str join "-" | split row "." | first
     } else { "latest" }
-    if (npm-published $version) {
-        print $"@qxuken/kui@($version) is already published"
-    } else {
-        do {
-            cd packages/kui
-            must npm publish --registry $NPM_REGISTRY --tag $dist_tag --userconfig $npmrc
-        }
-    }
-    # CI's guard: a prerelease also takes `latest` when it sorts highest,
-    # since a registry without `latest` answers `npm view` with nothing.
-    if $dist_tag != "latest" {
-        let versions = (^npm view $"@qxuken/kui@($dist_tag)" versions --json --registry $NPM_REGISTRY)
-        let highest = (with-env {VERSIONS: $versions} {
-            ^node -e '
-              const root = require("node:child_process").execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
-              const semver = require(require.resolve("semver", { paths: [root + "/npm/node_modules"] }));
-              const l = JSON.parse(process.env.VERSIONS);
-              process.stdout.write((Array.isArray(l) ? l : [l]).filter((v) => semver.valid(v)).sort(semver.rcompare)[0]);
-            '
-        })
-        if $highest == $version {
-            must npm dist-tag add $"@qxuken/kui@($version)" latest --registry $NPM_REGISTRY --userconfig $npmrc
+    # The platform packages first, so the two that name them never name a
+    # version the registry does not hold (CI's order).
+    let packages = $PREBUILDS | each {|p| [$"kui-($p)" $"kui-cli-($p)"] } | flatten | append [kui kui-cli]
+    for pkg in $packages {
+        let name = $"@qxuken/($pkg)"
+        if (npm-published $name $version) {
+            print $"($name)@($version) is already published"
         } else {
-            print $"latest left alone: ($highest) sorts above ($version)"
+            must npm publish $"dist/npm/qxuken-($pkg)-($version).tgz" --registry $NPM_REGISTRY --tag $dist_tag --userconfig $npmrc
+        }
+        # CI's guard: a prerelease also takes `latest` when it sorts highest,
+        # since a registry without `latest` answers `npm view` with nothing.
+        if $dist_tag != "latest" {
+            let versions = (^npm view $"($name)@($dist_tag)" versions --json --registry $NPM_REGISTRY)
+            let highest = (with-env {VERSIONS: $versions} {
+                ^node -e '
+                  const root = require("node:child_process").execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
+                  const semver = require(require.resolve("semver", { paths: [root + "/npm/node_modules"] }));
+                  const l = JSON.parse(process.env.VERSIONS);
+                  process.stdout.write((Array.isArray(l) ? l : [l]).filter((v) => semver.valid(v)).sort(semver.rcompare)[0]);
+                '
+            })
+            if $highest == $version {
+                must npm dist-tag add $"($name)@($version)" latest --registry $NPM_REGISTRY --userconfig $npmrc
+            } else {
+                print $"($name): latest left alone: ($highest) sorts above ($version)"
+            }
         }
     }
     rm -f $npmrc
@@ -204,6 +229,8 @@ def main [
             print $"($r) ($c): (if (crate-published $r $c $version) { 'published' } else { 'MISSING' })"
         }
     }
-    print (^npm view @qxuken/kui dist-tags --registry $NPM_REGISTRY)
+    for pkg in [kui kui-cli] {
+        print $"@qxuken/($pkg): (^npm view $"@qxuken/($pkg)" dist-tags --registry $NPM_REGISTRY)"
+    }
     rm -rf $scratch
 }

@@ -95,8 +95,14 @@ fn parse(argv: Vec<String>) -> Result<Args, String> {
     };
     match it.peek().map(String::as_str) {
         Some("run" | "check" | "new" | "types") => a.cmd = it.next().unwrap(),
-        Some("-h" | "--help" | "help") => a.cmd = "help".into(),
-        Some("-V" | "--version" | "version") => a.cmd = "version".into(),
+        Some("-h" | "--help" | "help") => {
+            it.next();
+            a.cmd = "help".into();
+        }
+        Some("-V" | "--version" | "version") => {
+            it.next();
+            a.cmd = "version".into();
+        }
         _ => {}
     }
     let mut path = None;

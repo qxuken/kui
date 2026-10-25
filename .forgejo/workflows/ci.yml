@@ -49,8 +49,10 @@
 # `Conformance reference report` step above them. Separate jobs would each
 # rebuild the target dir (or each restore a multi-GB cache), and it is far
 # too big to hand between jobs as an artifact. Nothing is handed between
-# jobs here: the native addon's four prebuilds are built and bundled by the
-# GitHub release workflow, each on the platform it targets. (Until alpha.34
+# jobs here: the native addon's four prebuilds, and the `kui` runner's, are
+# built by the GitHub release workflow, each on the platform it targets,
+# and shipped from there (npm's per-platform packages, the release's
+# runner archives; ADR 0068). (Until alpha.34
 # this workflow cross-compiled them on the one docker runner, through
 # cargo-zigbuild and cargo-xwin; that YAML is in the history.)
 #

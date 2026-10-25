@@ -41,7 +41,6 @@
     "encoder.js",
     "native.cjs",
     "kit/",
-    "prebuilds/",
     "props.md",
     "howto.md",
     "CHANGELOG.md",
@@ -51,6 +50,7 @@
     "build:native": "cargo build -p kui-node --release",
     "gen": "node gen-types.mjs",
     "prepack": "node prepack.mjs",
-    "test": "node --test test.mjs"
+    "test": "node --test test.mjs",
+    "prepublishOnly": "node -e \"if(!require('./package.json').optionalDependencies){console.error('@qxuken/kui is published from its staged copy, which names the platform packages: nu scripts/npm-platform-packages.nu, then npm publish in dist/npm/kui (docs/releasing.md)');process.exit(1)}\""
   }
 }

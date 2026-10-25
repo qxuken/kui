@@ -125,6 +125,11 @@ was the first bare bump to break an app in five releases).
 - A runner app's `load`, `loadfile`, `dofile` and `require` take Lua
   source only; bytecode loads only from a packed app's own files (ADR
   0068). An app that `load`ed a `string.dump` gets nil and the reason.
+- `@qxuken/kui` no longer carries every platform's addon: it names
+  `@qxuken/kui-<platform>` as optional dependencies and npm installs this
+  machine's (ADR 0068). An install with `--omit=optional`, or from a
+  lockfile written on another OS (npm/cli#4828), has no addon and says
+  how to fix it; `KUI_NODE_LIB` still points at one by hand.
 - In a runner app F12 is the devtools' key, and the devtools are on,
   hidden, until it brings them up at the Log tab: an app's own F12
   binding is now the panel's (ADR 0068).
@@ -368,7 +373,11 @@ for lua-language-server, and a new runner beside the window's.
   outside the compatibility table) and `pack`; scripts read `kui.id`,
   `kui.app_version`, `kui.data_dir`, `kui.cache_dir` and `kui.packed`.
   The samples and the book's task list keep their files in
-  `kui.data_dir`. A macOS runner app gets a View menu with Toggle
+  `kui.data_dir`. The release carries the runner for each platform with
+  `install.sh` / `install.ps1` and one `SHA256SUMS`; npm has it as
+  `@qxuken/kui-cli` over `@qxuken/kui-cli-<platform>`, and the Node
+  addon as `@qxuken/kui-<platform>` — an install downloads one platform,
+  about 25 MB where it was 89. A macOS runner app gets a View menu with Toggle
   Developer Tools until it declares its own bar.
 
 - **Contribution slots** (backlog C86, [ADR

@@ -9522,8 +9522,9 @@ test("runWindowed's `system` reaches the KuiWindow constructor (F47)", () => {
 
 
 // -- The addon resolver -----------------------------------------------------
-// `native.cjs` picks the newest of the prebuild and the two cargo profiles,
-// and a candidate can exist without being loadable — most easily by building
+// `native.cjs` tries the platform package, then the newer of the two cargo
+// profiles, then a hand-staged prebuild, and a candidate can exist without
+// being loadable — most easily by building
 // the workspace with `--all-targets`, which unifies kui-node's `napi/noop`
 // dev-dependency feature into the cdylib and leaves one at target/debug/ that
 // Node refuses with "Module did not self-register". Before this was handled,

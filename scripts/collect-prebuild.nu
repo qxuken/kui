@@ -1,9 +1,12 @@
 #!/usr/bin/env nu
 # Copies the kui-node cdylib built for a cargo target into
-# packages/kui/prebuilds/<platform>-<arch>/kui_node.node - the layout
-# packages/kui/native.cjs looks up, named after Node's process.platform and
-# process.arch (linux-x64, darwin-arm64, ...). The release workflow runs this
-# on every build leg and merges the directories before `npm publish`.
+# packages/kui/prebuilds/<platform>-<arch>/kui_node.node, named after Node's
+# process.platform and process.arch (linux-x64, darwin-arm64, ...): the
+# layout scripts/npm-platform-packages.nu reads the addons from, one
+# @qxuken/kui-<platform> package each (ADR 0068), and the one
+# packages/kui/native.cjs still falls back to for a hand-staged package.
+# The release workflow does the same in its build legs' shell (and
+# scripts/release-local.nu runs this).
 #
 #   nu scripts/collect-prebuild.nu <rust target> <platform-arch>
 

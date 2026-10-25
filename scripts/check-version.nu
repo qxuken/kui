@@ -1,6 +1,7 @@
 #!/usr/bin/env nu
 # Fails unless the workspace version, every kui-* dependency requirement,
-# packages/kui/package.json, the changelog's top heading, the book's setup
+# packages/kui/package.json and packages/kui-cli/package.json, the
+# changelog's top heading, the book's setup
 # page and the examples' npm lockfile all name `version` - the version a
 # `v*` tag names.
 #
@@ -38,8 +39,10 @@ def main [version: string] {
             }
         }
     }
-    let npm = (open packages/kui/package.json | get version)
-    if $npm != $want { $bad = ($bad | append $"packages/kui/package.json is ($npm)") }
+    for pkg in [packages/kui/package.json packages/kui-cli/package.json] {
+        let npm = (open $pkg | get version)
+        if $npm != $want { $bad = ($bad | append $"($pkg) is ($npm)") }
+    }
     # examples/node links packages/kui by `file:` path, so its lockfile
     # mirrors the version in that manifest. Nothing wrote it and nothing
     # read it until now, which is how it sat at alpha.2 through two

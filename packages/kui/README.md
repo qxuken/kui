@@ -24,12 +24,23 @@ absent. Ranges do not pin a prerelease — `^0.1.0-alpha.8` and `~0.1.0-alpha.8`
 both admit every later alpha of the same `0.1.0` — so an app that wants the
 version it tested writes that version exactly and commits its lockfile.
 
-The tarball bundles the native addon for linux-x64, linux-arm64, darwin-arm64
-and win32-x64 under `prebuilds/`; `native.cjs` picks the one matching
-`process.platform`-`process.arch`. On any other platform — an Intel Mac
-among them, since 0.1.0-alpha.41 — build it from the
-repo (`cargo build -p kui-node --release`) and set `KUI_NODE_LIB` to the
-resulting library.
+The native addon comes in a package of its own per platform —
+`@qxuken/kui-linux-x64`, `-linux-arm64` (both glibc 2.28 or newer),
+`-darwin-arm64` and `-win32-x64` — which this package names as exact-version
+`optionalDependencies`, so npm downloads only the one for the machine it
+runs on and `native.cjs` loads it. An install that leaves optional
+dependencies out (`--omit=optional`), or a lockfile written on another OS
+([npm/cli#4828](https://github.com/npm/cli/issues/4828)), can leave it
+missing; the error then says which package was expected and how to get it
+(deleting `node_modules` and the lockfile and installing again, or
+`npm install @qxuken/kui-<platform>@<the same version>`). On any other
+platform — an Intel Mac among them, since 0.1.0-alpha.41, and a musl Linux
+— build it from the repo (`cargo build -p kui-node --release`) and set
+`KUI_NODE_LIB` to the resulting library.
+
+The `kui` runner, for apps written in Lua or Teal, is `@qxuken/kui-cli` on
+npm (the same shape: a `bin` shim over `@qxuken/kui-cli-<platform>`), or
+the release's `install.sh` / `install.ps1`.
 
 ```tsx
 // tsconfig: "jsx": "react-jsx", "jsxImportSource": "@qxuken/kui"

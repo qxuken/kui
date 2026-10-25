@@ -1,19 +1,38 @@
 # GitHub Actions: the public release. Pushing a `v*` tag runs
 #
 #   check ──┬── build (linux-x64, linux-arm64, darwin-arm64, win32-x64) ──┬── packs
-#           └──────────────────────────────────────────────────────────┴── publish
+#           │     each leg: the Node addon, the `kui` runner, libkui_ffi  ├── npm-stage ──┐
+#           └─────────────────────────────────────────────────────────────┴───────────────┴── publish
 #
-# and `publish` puts the crates on crates.io and the npm package on npmjs,
-# while `packs` attaches the C and Odin tarballs to the tag's GitHub
-# release: kui-c-<version>.tar.gz and kui-odin-<version>.tar.gz, each with
-# libkui_ffi for all four platforms, shared and static (the layout is
-# scripts/pack-ffi.nu's). The two are siblings on purpose: a tag cannot be
-# moved once crates.io holds its version, so a pack that fails must not
-# hold the publish back, and a re-run of `packs` alone finishes it.
+# and `publish` puts the crates on crates.io and the ten npm packages on
+# npmjs, while `packs` attaches to the tag's GitHub release:
 #
-# `workflow_dispatch` runs everything but the two publishing steps, so the
-# builds and the packs can be tried on a branch without a tag; the packs
-# are then the run's `release-packs` artifact. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
+#   kui-c-<version>.tar.gz, kui-odin-<version>.tar.gz
+#       libkui_ffi for all four platforms, shared and static (the layout
+#       is scripts/pack-ffi.nu's)
+#   kui-<version>-<platform>.tar.gz (kui-<version>-win32-x64.zip)
+#       the runner, one file `kui` (`kui.exe`) per platform
+#       (scripts/pack-runner.nu, ADR 0068)
+#   install.sh, install.ps1
+#       scripts/install/: pick the platform's runner, check it against
+#       SHA256SUMS, put it in ~/.kui/bin
+#   SHA256SUMS
+#       over every asset above, `<sha256>  <name>` a line
+#
+# `packs` and `publish` are siblings on purpose: a tag cannot be moved once
+# crates.io holds its version, so a pack that fails must not hold the
+# publish back, and a re-run of `packs` alone finishes it. `npm-stage`
+# writes the npm packages from the build legs' artifacts
+# (scripts/npm-platform-packages.nu) and installs them on linux-x64 as a
+# user would, and `publish` puts up exactly those tarballs: the eight
+# platform packages (@qxuken/kui-<platform>, the addon; @qxuken/kui-cli-
+# <platform>, the runner) before the two that name them (@qxuken/kui,
+# @qxuken/kui-cli), esbuild's shape.
+#
+# `workflow_dispatch` runs everything but the publishing steps, so the
+# builds and the packs can be tried on a branch without a tag; the
+# release's assets are then the run's `release-packs` artifact and the npm
+# tarballs its `npm-packages` artifact. The Forgejo pipeline (.forgejo/workflows/ci.yml) is the other half
 # of a release, started by hand since alpha.66: it checks the tag in full
 # (the C round, the Node parity tests, the scene corpus, the book) and
 # publishes the crates to the Forgejo cargo registry once crates.io holds
@@ -38,12 +57,15 @@
 #   * CRATES_IO_TOKEN: a crates.io API token with publish-update on the
 #     kui-* crates (publish-new too, for a crate not yet there).
 #
-# npmjs needs no secret: @qxuken/kui trusts this workflow as its publisher
-# (npmjs.com → the package's settings → Trusted Publisher: GitHub Actions,
-# qxuken/kui, release.yml, with "Allow npm publish" and "Allow npm
-# dist-tag"). The publish job asks GitHub for an OIDC token (`id-token:
-# write`) and npm trades it for a short-lived publish token, so a tag goes
-# live with no approval, and with provenance. Until alpha.67 a stage-only
+# npmjs needs no secret: each of the ten packages trusts this workflow as
+# its publisher (npmjs.com → the package's settings → Trusted Publisher:
+# GitHub Actions, qxuken/kui, release.yml, with "Allow npm publish" and
+# "Allow npm dist-tag"). The publish job asks GitHub for an OIDC token
+# (`id-token: write`) and npm trades it for a short-lived publish token, so
+# a tag goes live with no approval, and with provenance. A trusted
+# publisher is set on a package that exists, so a package name npmjs has
+# never held is published once by hand first (docs/releasing.md says how);
+# `publish` checks all ten exist before it publishes anything. Until alpha.67 a stage-only
 # NPM_TOKEN staged the version and a maintainer approved it by hand
 # (scripts/npm-approve.nu, still the way to finish a version staged by hand).
 name: release
@@ -240,6 +262,39 @@ jobs:
           echo "$RUNNER_TEMP/nu" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/nu/nu" --version
 
+      # The runner (ADR 0068), from the same target dir as the addon, which
+      # shares most of its tree: through cargo-zigbuild at glibc 2.28 on
+      # Linux, as the addon is, so the one binary runs on the same
+      # distributions the addon does.
+      - name: Build the runner (Linux, glibc 2.28 floor)
+        if: runner.os == 'Linux'
+        run: cargo zigbuild -p kui-cli --release --target "${{ matrix.target }}.2.28"
+
+      - name: Build the runner
+        if: runner.os != 'Linux'
+        shell: bash
+        run: cargo build -p kui-cli --release --target "${{ matrix.target }}"
+
+      # kui-<version>-<platform>.tar.gz, one file `kui` (a .zip of
+      # `kui.exe` on Windows), in target/pack/runner/; and the binary
+      # asked its version on the platform it is for, which is as far as a
+      # runner without a display can run it.
+      - name: Pack the runner
+        shell: bash
+        run: |
+          set -eu
+          exe=kui
+          [ "$RUNNER_OS" = Windows ] && exe=kui.exe
+          "target/${{ matrix.target }}/release/$exe" -V
+          nu scripts/pack-runner.nu "${{ matrix.prebuild }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kui-runner-${{ matrix.prebuild }}
+          path: target/pack/runner/kui-*-${{ matrix.prebuild }}.*
+          if-no-files-found: error
+          compression-level: 0
+
       - name: Pack libkui_ffi
         shell: bash
         run: |
@@ -289,8 +344,10 @@ jobs:
           compression-level: 0
 
   # The four platforms' packs into the two release tarballs, checked once
-  # more as shipped (linux-x64, on this runner), and attached to the tag's
-  # GitHub release. Not in `publish`'s way: see the top of this file.
+  # more as shipped (linux-x64, on this runner), the four runners and the
+  # install scripts beside them, one SHA256SUMS over everything, and all
+  # of it attached to the tag's GitHub release. Not in `publish`'s way: see
+  # the top of this file.
   packs:
     needs: build
     runs-on: ubuntu-24.04
@@ -339,6 +396,36 @@ jobs:
           done
           ls -l target/pack/release
 
+      # After `bundle`, which empties target/pack/release/ first.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: kui-runner-*
+          path: target/pack/release
+          merge-multiple: true
+
+      # SHA256SUMS over every asset (pack-ffi.nu's own covered the two
+      # tarballs only), then the linux-x64 runner installed the way a user
+      # installs it: install.sh against these files laid out as a mirror
+      # (KUI_MIRROR=file://…, the release's v<version>/ layout, with the
+      # latest.txt a mirror holds), and the installed binary run.
+      - name: Runner assets
+        run: |
+          set -eu
+          ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
+          for p in linux-x64 linux-arm64 darwin-arm64; do
+            test -f "target/pack/release/kui-$ver-$p.tar.gz" || { echo "missing runner $p" >&2; exit 1; }
+          done
+          test -f "target/pack/release/kui-$ver-win32-x64.zip" || { echo "missing runner win32-x64" >&2; exit 1; }
+          cp scripts/install/install.sh scripts/install/install.ps1 target/pack/release/
+          nu scripts/pack-runner.nu sums target/pack/release
+          mirror="$RUNNER_TEMP/mirror"
+          mkdir -p "$mirror"
+          ln -s "$PWD/target/pack/release" "$mirror/v$ver"
+          echo "$ver" > "$mirror/latest.txt"
+          KUI_MIRROR="file://$mirror" KUI_INSTALL_DIR="$RUNNER_TEMP/kui-bin" sh scripts/install/install.sh
+          test "$("$RUNNER_TEMP/kui-bin/kui" -V)" = "kui $ver"
+          ls -l target/pack/release
+
       - uses: actions/upload-artifact@v7
         with:
           name: release-packs
@@ -362,11 +449,90 @@ jobs:
             pre=
             case "$tag" in *-*) pre=--prerelease ;; esac
             gh release create "$tag" "${files[@]}" --verify-tag $pre --title "$tag" \
-              --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The C and Odin tarballs hold libkui_ffi for linux-x64, linux-arm64, darwin-arm64 and win32-x64, shared and static; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui)."
+              --notes "What changed is the CHANGELOG's section for ${tag#v}: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/CHANGELOG.md. The kui runner: \`curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.sh | sh\` on macOS and Linux, \`irm https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/install.ps1 | iex\` on Windows, or the kui-${tag#v}-<platform> archives by hand (SHA256SUMS covers every asset). The C and Odin tarballs hold libkui_ffi for linux-x64, linux-arm64, darwin-arm64 and win32-x64, shared and static; README.md in each says how to link it. Rust is on crates.io, Node on npmjs (@qxuken/kui, and the runner as @qxuken/kui-cli)."
           fi
 
+  # The ten npm packages, from the build legs' artifacts: the addon and the
+  # runner each into a package per platform, and the two main packages
+  # naming those four as exact-version optionalDependencies
+  # (scripts/npm-platform-packages.nu). Then installed from the tarballs on
+  # this runner (linux-x64) as a user installs them: the addon must load
+  # out of @qxuken/kui-linux-x64 and `kui` must run out of
+  # @qxuken/kui-cli-linux-x64. The other platforms' packages are not yet
+  # on npmjs at this version; npm skips an optional dependency it cannot
+  # fetch, which is what makes the install possible before the publish.
+  npm-stage:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install nu and ALSA
+        run: |
+          set -eu
+          sudo apt-get update
+          # The addon and the runner link libasound.
+          sudo apt-get install -y --no-install-recommends libasound2-dev
+          dir="nu-${NU_VERSION}-$(uname -m)-unknown-linux-gnu"
+          curl -fL --retry 3 \
+            "https://github.com/nushell/nushell/releases/download/${NU_VERSION}/${dir}.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin --strip-components=1 "${dir}/nu"
+          nu --version
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: '{linux,darwin,win32}-*'
+          path: ${{ runner.temp }}/addons
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: kui-runner-*
+          path: ${{ runner.temp }}/runners
+          merge-multiple: true
+
+      - name: Stage
+        run: |
+          set -eu
+          nu scripts/npm-platform-packages.nu --addons "$RUNNER_TEMP/addons" --runners "$RUNNER_TEMP/runners" --out dist/npm --pack
+          ls -l dist/npm
+
+      - name: Install as a user would
+        run: |
+          set -eu
+          ver=$(nu -c 'open Cargo.toml | get workspace.package.version')
+          npm_dir="$PWD/dist/npm"
+          app="$RUNNER_TEMP/app"
+          mkdir -p "$app"
+          cd "$app"
+          echo '{ "name": "app", "version": "1.0.0", "private": true }' > package.json
+          npm install --no-audit --no-fund \
+            "$npm_dir/qxuken-kui-$ver.tgz" "$npm_dir/qxuken-kui-linux-x64-$ver.tgz" \
+            "$npm_dir/qxuken-kui-cli-$ver.tgz" "$npm_dir/qxuken-kui-cli-linux-x64-$ver.tgz"
+          # Which file the addon was loaded from, as the process says.
+          node -e '
+            import("@qxuken/kui").then((m) => {
+              const libs = process.report.getReport().sharedObjects.filter((s) => s.endsWith("kui_node.node"));
+              console.log(Object.keys(m).length, "exports from", libs);
+              if (!libs.some((s) => s.includes("/node_modules/@qxuken/kui-linux-x64/"))) process.exit(1);
+            });
+          '
+          test "$(npx --no-install kui -V)" = "kui $ver"
+          node -p 'require("@qxuken/kui-cli").path'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-packages
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+          compression-level: 0
+
   publish:
-    needs: [check, build]
+    needs: [check, build, npm-stage]
     # Only a tag publishes; a manual run stops at the builds and the packs.
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
@@ -434,15 +600,17 @@ jobs:
 
       # Every artifact the pattern matches lands in <path>/<artifact
       # name>/, which is exactly the prebuilds layout. The pattern is what
-      # keeps the kui-ffi-* packs out: prebuilds/ is in the npm package.
+      # keeps the kui-ffi-* packs and the kui-runner-* assets out.
       - uses: actions/download-artifact@v8
         with:
           pattern: '{linux,darwin,win32}-*'
           path: packages/kui/prebuilds
 
       # No target dir exists in this job, so native.cjs must find the addon
-      # under prebuilds/ - the parity tests then exercise the shipped binary.
-      - name: Verify the bundled prebuilds
+      # under prebuilds/ (its fallback for a hand-staged package) - the
+      # parity tests then exercise the shipped binary. What is published is
+      # npm-stage's tarballs, which carry the same files.
+      - name: Verify the shipped addons
         run: |
           set -eu
           ls -lR packages/kui/prebuilds
@@ -451,7 +619,32 @@ jobs:
           done
           cd packages/kui
           npm test
-          npm pack --dry-run
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-packages
+          path: dist/npm
+
+      # A trusted publisher can only be attached to a package npmjs already
+      # holds, so a name never published (a new platform, say) cannot go
+      # out from here: it is published once by hand, then given this
+      # workflow as its publisher (docs/releasing.md). Asked before the
+      # crates, so a missing one stops the release while nothing is out
+      # and the tag can still move.
+      - name: npm packages exist on npmjs
+        run: |
+          set -eu
+          missing=
+          for n in kui kui-cli kui-linux-x64 kui-linux-arm64 kui-darwin-arm64 kui-win32-x64 \
+                   kui-cli-linux-x64 kui-cli-linux-arm64 kui-cli-darwin-arm64 kui-cli-win32-x64; do
+            if ! npm view "@qxuken/$n" name --registry "$NPMJS_REGISTRY" >/dev/null 2>&1; then
+              missing="$missing @qxuken/$n"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::not on npmjs yet:$missing - publish each once by hand and give it this workflow as its trusted publisher (docs/releasing.md), then re-run this job"
+            exit 1
+          fi
 
       # In dependency order; a crate crates.io already holds at this version
       # is skipped, so re-running a job that failed partway finishes it.
@@ -460,13 +653,15 @@ jobs:
 
       # Published live, through trusted publishing (see the top of this
       # file): npm finds the OIDC environment itself, takes no token and
-      # attaches provenance. The version goes out under its dist-tag
+      # attaches provenance. npm-stage's tarballs, the eight platform
+      # packages first, so that @qxuken/kui and @qxuken/kui-cli never name
+      # a version npmjs does not hold. Each goes out under its dist-tag
       # (`alpha` for a prerelease, `latest` for a plain version), then
       # scripts/npm-approve.nu's `latest` rule: a prerelease also takes
       # `latest` when it sorts highest among the versions npmjs holds, so a
       # bare `npm install @qxuken/kui` resolves, and a stable release's
       # `latest` is never taken back by an alpha after it. A re-run finds
-      # the version live and only settles the tag.
+      # the published ones live and only settles their tags.
       #
       # A version staged by hand (`npm stage publish`, the fallback in
       # docs/releasing.md) holds its slot and makes the publish fail: approve
@@ -478,31 +673,42 @@ jobs:
           ver=$(node -p 'require("./packages/kui/package.json").version')
           tag=latest
           case "$ver" in *-*) tag="${ver#*-}"; tag="${tag%%.*}";; esac
-          cd packages/kui
-          if [ "$(npm view "@qxuken/kui@$ver" version --registry "$NPMJS_REGISTRY" 2>/dev/null || true)" = "$ver" ]; then
-            echo "@qxuken/kui@$ver is already live on npmjs"
-          else
-            npm publish --registry "$NPMJS_REGISTRY" --tag "$tag" --access public
-          fi
-          [ "$tag" = latest ] && exit 0
-          # Read off the dist-tags, not `npm view`'s cached packument, which
-          # can trail a publish by minutes (npm-approve.nu says how that
-          # was found); the new version is added to the list for the same
-          # reason.
-          latest=$(npm dist-tag ls @qxuken/kui --registry "$NPMJS_REGISTRY" | sed -n 's/^latest: //p')
-          if [ "$latest" = "$ver" ]; then
-            echo "latest is $ver already"
-            exit 0
-          fi
-          versions=$(npm view @qxuken/kui versions --json --registry "$NPMJS_REGISTRY")
-          highest=$(VERSIONS="$versions" VER="$ver" NPM_ROOT="$(npm root -g)" node -e '
-            const semver = require(require.resolve("semver", { paths: [process.env.NPM_ROOT + "/npm/node_modules"] }));
-            const all = [].concat(JSON.parse(process.env.VERSIONS), process.env.VER).filter((v) => semver.valid(v));
-            process.stdout.write(all.sort(semver.rcompare)[0]);
-          ')
-          if [ "$highest" != "$ver" ]; then
-            echo "latest left alone: $highest sorts above $ver (latest is ${latest:-unset})"
-            exit 0
-          fi
-          npm dist-tag add "@qxuken/kui@$ver" latest --registry "$NPMJS_REGISTRY"
-          npm dist-tag ls @qxuken/kui --registry "$NPMJS_REGISTRY"
+          NPM_ROOT="$(npm root -g)"
+          publish_one() {
+            name="$1"
+            tgz="$2"
+            test -f "$tgz" || { echo "missing $tgz" >&2; return 1; }
+            if [ "$(npm view "$name@$ver" version --registry "$NPMJS_REGISTRY" 2>/dev/null || true)" = "$ver" ]; then
+              echo "$name@$ver is already live on npmjs"
+            else
+              npm publish "$tgz" --registry "$NPMJS_REGISTRY" --tag "$tag" --access public
+            fi
+            [ "$tag" = latest ] && return 0
+            # Read off the dist-tags, not `npm view`'s cached packument, which
+            # can trail a publish by minutes (npm-approve.nu says how that
+            # was found); the new version is added to the list for the same
+            # reason.
+            latest=$(npm dist-tag ls "$name" --registry "$NPMJS_REGISTRY" | sed -n 's/^latest: //p')
+            if [ "$latest" = "$ver" ]; then
+              echo "$name: latest is $ver already"
+              return 0
+            fi
+            versions=$(npm view "$name" versions --json --registry "$NPMJS_REGISTRY")
+            highest=$(VERSIONS="$versions" VER="$ver" NPM_ROOT="$NPM_ROOT" node -e '
+              const semver = require(require.resolve("semver", { paths: [process.env.NPM_ROOT + "/npm/node_modules"] }));
+              const all = [].concat(JSON.parse(process.env.VERSIONS), process.env.VER).filter((v) => semver.valid(v));
+              process.stdout.write(all.sort(semver.rcompare)[0]);
+            ')
+            if [ "$highest" != "$ver" ]; then
+              echo "$name: latest left alone: $highest sorts above $ver (latest is ${latest:-unset})"
+              return 0
+            fi
+            npm dist-tag add "$name@$ver" latest --registry "$NPMJS_REGISTRY"
+            npm dist-tag ls "$name" --registry "$NPMJS_REGISTRY"
+          }
+          for p in linux-x64 linux-arm64 darwin-arm64 win32-x64; do
+            publish_one "@qxuken/kui-$p" "dist/npm/qxuken-kui-$p-$ver.tgz"
+            publish_one "@qxuken/kui-cli-$p" "dist/npm/qxuken-kui-cli-$p-$ver.tgz"
+          done
+          publish_one "@qxuken/kui" "dist/npm/qxuken-kui-$ver.tgz"
+          publish_one "@qxuken/kui-cli" "dist/npm/qxuken-kui-cli-$ver.tgz"

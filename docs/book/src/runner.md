@@ -12,11 +12,18 @@ The last chapter's host was yours. `kui` is one written for you
 a binary that opens the window, loads your script as the app, loads
 **Kit** beside it — a UI kit of ready components, drawn in a skin — and
 gives the script a standard library: files, processes, HTTP, timers,
-tasks. Install it from the repository:
+tasks. Install it with the script each release carries (Windows has
+`install.ps1` beside it), or from npm:
 
 ```bash
-cargo install --path crates/kui-cli
+curl -fsSL https://github.com/qxuken/kui/releases/download/v0.1.0-alpha.68/install.sh | sh
 ```
+
+```bash
+npm i -g @qxuken/kui-cli
+```
+
+`kui upgrade` later moves it to the newest release.
 
 Then start an app, and run it:
 

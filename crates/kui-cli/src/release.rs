@@ -12,7 +12,9 @@ use std::time::Duration;
 pub const PLATFORMS: [&str; 4] = ["linux-x64", "linux-arm64", "darwin-arm64", "win32-x64"];
 
 const GITHUB: &str = "https://github.com/qxuken/kui/releases/download";
-const LATEST_API: &str = "https://api.github.com/repos/qxuken/kui/releases/latest";
+/// The newest release, prereleases included: GitHub's `releases/latest`
+/// skips prereleases, and every alpha is one.
+const LATEST_API: &str = "https://api.github.com/repos/qxuken/kui/releases?per_page=1";
 
 /// This machine's platform, as the assets name it; `None` where the
 /// release builds none (an Intel Mac, a musl Linux).
@@ -92,7 +94,12 @@ pub fn latest_version(mirror: Option<&str>) -> Result<String, String> {
     let body = download(LATEST_API)?;
     let text = String::from_utf8_lossy(&body);
     let json = kui_core::json::parse(&text).map_err(|e| format!("{LATEST_API}: {e}"))?;
-    json.get_str("tag_name")
+    let newest = match &json {
+        kui_core::Value::List(l) => l.first().cloned().unwrap_or(kui_core::Value::Null),
+        other => other.clone(),
+    };
+    newest
+        .get_str("tag_name")
         .map(|t| t.trim_start_matches('v').to_string())
         .ok_or_else(|| format!("{LATEST_API}: no tag_name"))
 }

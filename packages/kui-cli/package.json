@@ -1,0 +1,31 @@
+{
+  "name": "@qxuken/kui-cli",
+  "version": "0.1.0-alpha.67",
+  "description": "The kui runner: run a Lua or Teal app with Kit, from npm (ADR 0064, ADR 0068)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qxuken/kui",
+    "directory": "packages/kui-cli"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": {
+    "kui": "bin/kui.js"
+  },
+  "files": [
+    "bin/kui.js",
+    "index.js",
+    "index.d.ts"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"if(!require('./package.json').optionalDependencies){console.error('@qxuken/kui-cli is published from its staged copy, which names the platform packages: nu scripts/npm-platform-packages.nu, then npm publish in dist/npm/kui-cli (docs/releasing.md)');process.exit(1)}\""
+  }
+}

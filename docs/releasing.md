@@ -2,12 +2,21 @@
 
 Tagged commits publish the library crates (`kui-derive`, `kui-core`,
 `kui-wgpu`, `kui-native`, `kui-lua`, `kui-ffi`) to crates.io and to the
-self-hosted Forgejo's cargo registry, and
-[`packages/kui`](../packages/kui) to npmjs as `@qxuken/kui`, with the Node addon
-prebuilt for linux-x64, linux-arm64, darwin-arm64 and win32-x64 bundled
-under `prebuilds/` (`native.cjs` picks the one matching the running Node;
-`KUI_NODE_LIB` still overrides it, and an in-repo `cargo build` still wins
-for development). A Rust project needs nothing but the dependency:
+self-hosted Forgejo's cargo registry; ten npm packages to npmjs
+([ADR 0068](adr/0068-how-kui-reaches-a-machine.md), esbuild's shape):
+[`packages/kui`](../packages/kui) as `@qxuken/kui`, the JS and types, and
+[`packages/kui-cli`](../packages/kui-cli) as `@qxuken/kui-cli`, a `bin`
+shim over the `kui` runner, each naming four platform packages —
+`@qxuken/kui-<platform>` (the Node addon alone) and
+`@qxuken/kui-cli-<platform>` (the runner binary alone), for linux-x64,
+linux-arm64, darwin-arm64 and win32-x64 — as exact-version
+`optionalDependencies`, so an install downloads its own platform's only
+(`native.cjs` resolves the platform package first; `KUI_NODE_LIB` still
+overrides it, and an in-repo `cargo build` is found when no platform
+package is installed); and, on the tag's GitHub release, the runner as
+`kui-<version>-<platform>.tar.gz` (`.zip` on Windows) with `install.sh`,
+`install.ps1` and a `SHA256SUMS` over every asset. A Rust project needs
+nothing but the dependency:
 
 ```toml
 # Cargo.toml
@@ -30,6 +39,7 @@ gets the later ones too once the by-hand step below has been run, scoped:
 ```bash
 npm install @qxuken/kui@alpha    # prereleases publish under their identifier as the dist-tag
 npm create @qxuken/kui-node my-app   # or scaffold an app from the template
+npm install -g @qxuken/kui-cli@alpha   # the runner, `kui`
 
 # the Forgejo copy, scoped on purpose: Forgejo does not proxy npmjs, so only @qxuken/* goes there
 npm config set @qxuken:registry https://drydock9.qxuken.dev/api/packages/qxuken/npm/
@@ -41,6 +51,26 @@ version` and `npm outdated` all answer with it. `npm view @qxuken/kui@alpha
 version` is the query that answers even if `latest` is ever missing, which it is
 on a package published before this was arranged: `npm view` defaults to `latest`
 and against a package without one prints nothing and exits 0.
+
+The runner without npm, from the release:
+
+```bash
+curl -fsSL https://github.com/qxuken/kui/releases/download/v<version>/install.sh | sh   # macOS, Linux
+irm https://github.com/qxuken/kui/releases/download/v<version>/install.ps1 | iex        # Windows
+```
+
+Either installs to `~/.kui/bin` (`%USERPROFILE%\.kui\bin`; `KUI_INSTALL_DIR`
+moves it), checks the archive against the release's `SHA256SUMS` and
+prints the PATH line for the user's shell without editing anything. With
+no version (`KUI_VERSION` or `sh install.sh <version>` names one) they take
+the newest release the GitHub API lists, prereleases included: GitHub's
+own `latest` skips prereleases, so while every release is an alpha it
+names an older one (alpha.66, which is not marked a prerelease, is
+GitHub's `latest` while alpha.67 is out), and
+`releases/latest/download/install.sh` is not a link to give out. `KUI_MIRROR=<base>` reads `<base>/v<version>/<asset>`
+instead of GitHub, and `<base>/latest.txt` (the bare version) when no
+version is named, so a mirror holds that file beside the release
+directories (`kui runners fetch` lays one out).
 
 A range does not pin a prerelease. Both `^0.1.0-alpha.8` and `~0.1.0-alpha.8`
 admit every later alpha of the same `0.1.0` — that is npm's own semver, not a
@@ -87,27 +117,39 @@ host the repository lives on; the tag starts GitHub's, and Forgejo's is
 started by hand:
 
 - **GitHub**, [release.yml](../.github/workflows/release.yml): `check`
-  (fmt, clippy, the workspace tests), then one addon build per platform on
+  (fmt, clippy, the workspace tests), then one build per platform on
   the platform itself (`ubuntu-24.04` and `ubuntu-24.04-arm` through
   cargo-zigbuild for a glibc 2.28 floor, `macos-15` for arm64 — Intel
-  Macs have had no prebuild since alpha.41 — and `windows-2025`), then
+  Macs have had no prebuild since alpha.41 — and `windows-2025`) of the
+  addon and of the runner (`kui-cli`, packed by `scripts/pack-runner.nu`
+  into its release asset and asked `kui -V` on its own platform), then
   `publish`, which verifies the tag against the manifests and the
   changelog heading, runs the parity tests against the four shipped
-  binaries, publishes the crates to crates.io in
-  dependency order and publishes the npm package on npmjs. Each build leg
-  also packs `libkui_ffi` for its platform (`scripts/pack-ffi.nu`, from
+  addons, checks that npmjs holds all ten package names, publishes the
+  crates to crates.io in dependency order and publishes the ten npm
+  packages on npmjs, the eight platform packages before `@qxuken/kui` and
+  `@qxuken/kui-cli`. What it publishes is `npm-stage`'s: that job writes
+  the ten from the legs' artifacts (`scripts/npm-platform-packages.nu`,
+  into `dist/npm/`), packs them, and installs them on linux-x64 as a user
+  would — the addon must load out of `@qxuken/kui-linux-x64` and `npx kui`
+  run out of `@qxuken/kui-cli-linux-x64` — before `publish` starts. Each
+  build leg also packs `libkui_ffi` for its platform (`scripts/pack-ffi.nu`, from
   the same target dir: the addon's tree is the library's but for 18
   crates) and, off Windows, links and runs the C and Odin counters
   against it shared and static; `packs`, beside `publish` and not in its
   way, bundles the four into `kui-c-<version>.tar.gz` and
-  `kui-odin-<version>.tar.gz`, checks them again on linux-x64 and
-  attaches them and their `SHA256SUMS` to the tag's GitHub release,
-  creating it (a prerelease for an alpha). A failed `packs` is re-run on
-  its own; the release's assets are replaced. `workflow_dispatch` runs
-  the same without `publish` and without the release, leaving the
-  tarballs as the run's `release-packs` artifact. It needs one
+  `kui-odin-<version>.tar.gz`, checks them again on linux-x64, adds the
+  four runner assets and the two install scripts, writes one `SHA256SUMS`
+  over all of it, installs the linux-x64 runner through `install.sh`
+  from those files laid out as a mirror, and attaches everything to the
+  tag's GitHub release, creating it (a prerelease for an alpha). A failed
+  `packs` is re-run on its own; the release's assets are replaced.
+  `workflow_dispatch` runs the same without `publish` and without the
+  release, leaving the release's assets as the run's `release-packs`
+  artifact and the npm tarballs as its `npm-packages` artifact. It needs one
   repository secret, `CRATES_IO_TOKEN` (a crates.io API token with publish
-  rights on the `kui-*` crates); npmjs takes no secret (below).
+  rights on the `kui-*` crates); npmjs takes no secret (below). The runner
+  is not on crates.io: `kui-cli` stays `publish = false` (ADR 0068).
 - **Forgejo**, [ci.yml](../.forgejo/workflows/ci.yml), by hand: Actions →
   ci → Run workflow on the tag, with `publish` ticked. `check` in full (the
   C round, the Odin binding, the Node parity tests, the scene corpus, the
@@ -127,11 +169,14 @@ Neither pipeline publishes the npm package to the Forgejo npm registry; that
 is done by hand, below.
 
 The npmjs half is finished by the runner through trusted publishing, since
-alpha.67: `@qxuken/kui`'s settings on npmjs.com name GitHub Actions,
+alpha.67: each package's settings on npmjs.com name GitHub Actions,
 `qxuken/kui` and `release.yml` as its trusted publisher, with "Allow npm
-publish" and "Allow npm dist-tag" ticked. The `publish` job holds
+publish" and "Allow npm dist-tag" ticked — all ten of them since ADR 0068:
+`@qxuken/kui`, `@qxuken/kui-cli`, and `@qxuken/kui-<platform>` and
+`@qxuken/kui-cli-<platform>` for linux-x64, linux-arm64, darwin-arm64 and
+win32-x64. The `publish` job holds
 `id-token: write`, npm trades GitHub's OIDC token for a publish token of
-its own, and `@qxuken/kui@<version>` goes live under its dist-tag (`alpha`
+its own, and each `<package>@<version>` goes live under its dist-tag (`alpha`
 for a prerelease) with provenance, then takes `latest` by the rule below.
 No token is stored anywhere, and nobody approves. What that needs and how
 it fails:
@@ -147,6 +192,25 @@ it fails:
 - `npm stage list`/`approve` take no OIDC, so the job cannot see a stage:
   a version staged by hand makes its publish fail until the stage is
   approved or rejected.
+- A trusted publisher is attached to a package npmjs already holds (to be
+  verified on npmjs.com the first time: as of ADR 0068 the settings page
+  offers it only for an existing package), so a name npmjs has never held
+  cannot be published by the workflow. `publish` checks all ten names
+  before it publishes anything, crates included, and fails naming the
+  missing ones, while the tag can still move. The first release with
+  per-platform packages (0.1.0-alpha.68, or whichever carries ADR 0068)
+  needs the eight new names (and `@qxuken/kui-cli`) put up once by hand
+  beforehand: run release.yml by hand (`workflow_dispatch`) on the commit
+  to be tagged, download its `npm-packages` artifact, and from a login on
+  npmjs with 2FA publish the nine new ones, platform packages first
+  (`npm publish ./qxuken-kui-cli-linux-x64-<version>.tgz --tag alpha
+  --access public`, …, or `npm stage publish` and `npm-approve.nu`
+  below); then give each a trusted publisher as above, and tag. The tag's
+  run finds those versions live and skips them; they lack provenance,
+  later releases do not. What to check on npmjs the first time: that the
+  scope allows the new names, that each package's Trusted Publisher form
+  saves, and that `npm view @qxuken/kui-cli-linux-x64@<version>` answers
+  after the run.
 
 Until alpha.67 a stage-only `NPM_TOKEN` staged the version and a maintainer
 with 2FA approved it. That is still how a version staged by hand (the
@@ -199,41 +263,69 @@ a re-run of the job runs the workflow file the tag points at. alpha.35's
 did fail there — the runner's npm predated `npm stage`, and `npm install
 -g` without `sudo` cannot write under `/usr/local`; release.yml has
 installed it with `sudo` since. The step is finished
-from any machine, with the run's own prebuilds rather than a rebuild:
+from any machine, with the run's own packages rather than a rebuild —
+the `npm-packages` artifact holds the ten tarballs `publish` would have
+put up:
 
 ```bash
-gh run download <run-id> -R qxuken/kui -D packages/kui/prebuilds -n linux-x64 -n linux-arm64 -n darwin-arm64 -n win32-x64   # the four prebuilds, in their layout (the run's kui-ffi-* packs are not npm's)
-cd packages/kui
-npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
+gh run download <run-id> -R qxuken/kui -D dist/npm -n npm-packages
+cd dist/npm
+for p in kui-linux-x64 kui-cli-linux-x64 kui-linux-arm64 kui-cli-linux-arm64 kui-darwin-arm64 kui-cli-darwin-arm64 kui-win32-x64 kui-cli-win32-x64 kui kui-cli; do
+  mkdir -p "$p" && tar -xzf "qxuken-$p-<version>.tgz" -C "$p" --strip-components=1
+  (cd "$p" && npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public)
+done
 ```
 
-That stages with the maintainer's login instead of the runner's OIDC,
-which changes nothing about what is staged: the binaries are the ones the
-run's parity tests passed over (only the provenance is missing). Then
-approve as above. To see where the
+(A package already live is refused at that step; leave it out.) That
+stages with the maintainer's login instead of the runner's OIDC, which
+changes nothing about what is staged: the binaries are the ones the run
+built and `npm-stage` installed (only the provenance is missing). Then
+`nu scripts/npm-approve.nu`, which approves all ten in publish order, the
+platform packages before the two that name them. Never publish
+`packages/kui` or `packages/kui-cli` straight out of the repository: they
+carry no `optionalDependencies` (those are written at staging time, so an
+in-repo `npm install` never asks a registry for an unpublished platform
+package), and their `prepublishOnly` refuses. To rebuild the staged copies
+from a run's artifacts instead, `gh run download <run-id> -R qxuken/kui -D
+packages/kui/prebuilds -n linux-x64 -n linux-arm64 -n darwin-arm64 -n
+win32-x64`, `gh run download <run-id> -R qxuken/kui -D target/pack/runner
+-p 'kui-runner-*'`, then `nu scripts/npm-platform-packages.nu --pack`.
+
+When `packs` cannot finish (and a re-run does not help), the runner's
+release assets are the run's four `kui-runner-<platform>` artifacts:
+download them into one directory with `install.sh` and `install.ps1`
+beside them, `nu scripts/pack-runner.nu sums <dir>` (it covers every
+file there, so add the C and Odin tarballs first if they are to be in
+it), and `gh release upload v<version> <dir>/* --clobber`. To see where the
 other half stands, `gh run view <run-id> -R qxuken/kui` lists the GitHub
 jobs, and the Forgejo cargo registry answers per crate at
 `https://drydock9.qxuken.dev/api/v1/packages/qxuken/cargo/<crate>/<version>`.
 
 The Forgejo npm copy: once both pipelines are through, `nu
 scripts/release-local.nu` from a Mac with the tag on HEAD builds the four
-prebuilds (the Linux ones in Docker with CI's pinned zig, the macOS one
-natively, Windows through cargo-xwin), runs CI's verification (`npm test`
-over the bundled prebuilds, `npm pack --dry-run`, `cargo publish
+prebuilds and the four runners (the Linux ones in Docker with CI's pinned
+zig, the macOS ones natively, Windows through cargo-xwin), stages the ten
+npm packages (`scripts/npm-platform-packages.nu --pack`), runs CI's
+verification (`npm test` over the bundled prebuilds, `cargo publish
 --dry-run`), asks for a typed confirmation, skips every crate the registries
-already hold, publishes the npm package to the Forgejo registry and applies
-the `latest` guard there. It reads the token from `$env.DRYDOCK9_TOKEN` and
+already hold, publishes the ten npm packages to the Forgejo registry in
+CI's order and applies the `latest` guard to each. It reads the token from `$env.DRYDOCK9_TOKEN` and
 takes `--dry-run` to stop before publishing. The same script is the
 fallback when a runner cannot publish at all (alpha.17's tag job hung in
 checkout): it publishes whatever crates are missing too. It does not stage
-on npmjs; do that by hand from `packages/kui` with the prebuilds still in
-place:
+on npmjs; do that by hand from the staged copies it leaves in `dist/npm/`,
+platform packages first:
 
 ```bash
-npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public
+cd dist/npm
+for p in kui-linux-x64 kui-cli-linux-x64 kui-linux-arm64 kui-cli-linux-arm64 kui-darwin-arm64 kui-cli-darwin-arm64 kui-win32-x64 kui-cli-win32-x64 kui kui-cli; do
+  (cd "$p" && npm stage publish --registry https://registry.npmjs.org/ --tag alpha --access public)
+done
 ```
 
-then `nu scripts/npm-approve.nu` as above.
+then `nu scripts/npm-approve.nu` as above. Nor does it attach the runner
+to a GitHub release; its four assets are in `target/pack/runner/`, for
+the `pack-runner.nu sums` and `gh release upload` steps above.
 
 No Mac or Windows machine runs a test or opens a window in either pipeline —
 GitHub's macOS and Windows runners compile the Node addon and nothing else —
