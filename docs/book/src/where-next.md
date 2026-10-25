@@ -1,7 +1,8 @@
 # Where next
 
 You have the whole model now: a view of the model, messages back,
-keys, floats, motion, the three doors out, and a test. What follows is
+keys, floats, motion, the three doors out, a test, guests in your frame,
+and an app with no Rust of your own. What follows is
 where to look for the rest.
 
 ## The reference gallery
@@ -65,6 +66,6 @@ devtools. Its README is the place to start.
 
 Multiple windows, the menu bar, drag and drop from the OS, images and
 shaders, sound, selection and the clipboard's finer points, tokens and
-themes, accessibility beyond names, and extensions (a Lua or C guest
-filling a slot in your frame). Each has a reference example and a
-`howto` entry.
+themes, accessibility beyond names, C plugins (chapter 13's verbs, in
+`kui.h`), and Kit's components one by one. Each has a reference example
+and a `howto` entry.

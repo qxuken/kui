@@ -78,3 +78,11 @@ harness = false
 [[bench]]
 name = "walk"
 harness = false
+
+# The book's step 11 (docs/book, docs/adr/0039): a Rust host and two Lua
+# plugins, so it lives with the crate that loads them; its `mod tests`
+# drives it headless.
+[[example]]
+name = "tutorial_11_extensions"
+path = "../../examples/rust/tutorial/11_extensions.rs"
+test = true

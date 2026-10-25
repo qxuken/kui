@@ -315,6 +315,14 @@ for lua-language-server, and a new runner beside the window's.
   `KuiEvent.from`. `inst.slot` (C `kui_instance_slot`) says where an
   instance was placed. An empty slot is silent.
 
+- **Two chapters in the book**: [Extensions: components and
+  slots](docs/book/src/extensions.md) — a Rust host placing a Lua plugin's
+  component and declaring a toolbar slot two plugins add to, step 11
+  (`cargo run -p kui-lua --example tutorial_11_extensions`, tested) — and
+  [Apps in Lua: Kit and the runner](docs/book/src/runner.md), a task list
+  on Kit with its headless test (`examples/lua/tutorial/tasks`, run by the
+  runner's suite).
+
 - **Kit samples** ([`addons/kit/samples`](addons/kit/samples)): four
   apps on the runner to look at Kit in something like real use — Relay,
   an HTTP client serving its own mock API; Watchtower, an ops dashboard

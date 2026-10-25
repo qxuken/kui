@@ -126,11 +126,13 @@ table says so.
 
 ### `tutorial/`
 
-The book's ten steps, in the order the book reads them (`cargo run -p
+The book's eleven steps, in the order the book reads them (`cargo run -p
 kui-native --example tutorial_NN_<name>`; build the book with `mdbook build
 docs/book`). No harness, no `--headless`: each is the program a chapter
 ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
---example tutorial_10_testing` runs.
+--example tutorial_10_testing` runs. Step 11 loads two Lua plugins, so it
+is kui-lua's (`cargo run -p kui-lua --example tutorial_11_extensions`), its
+scripts beside it in `11_extensions/`, and it has tests too.
 
 | Step | Adds | Chapter |
 |---|---|---|
@@ -144,6 +146,7 @@ ends with. Step 10 carries a `mod tests` that `cargo test -p kui-native
 | [`08_motion.rs`](rust/tutorial/08_motion.rs) | `transition`, `easing`, `enter` and `exit` on keyed rows | [Motion](../docs/book/src/motion.md) |
 | [`09_effects.rs`](rust/tutorial/09_effects.rs) | `on_event_with` and the clipboard, a thread and the `Waker`, the window's title and close | [Effects, the clock and the world](../docs/book/src/effects.md) |
 | [`10_testing.rs`](rust/tutorial/10_testing.rs) | A `mod tests` on `testing::Drive`: clicks by label, a key, the frame read back | [Testing without a window](../docs/book/src/testing.md) |
+| [`11_extensions.rs`](rust/tutorial/11_extensions.rs) | Two Lua plugins: a component placed by name, a slot both contribute to, `emit` and `from` | [Extensions: components and slots](../docs/book/src/extensions.md) |
 
 ### `apps/`
 
@@ -253,13 +256,14 @@ A Lua extension has no window of its own, so the panel is a Rust host with
 Lua inside it. [`panel.lua`](lua/features/slots/panel.lua) is deliberately
 the same panel as the C one: the extension contract is the contract and
 the language is a detail. A script can be a host too — `env.add_extension`
-opens a C plugin and `fill` places it — so once `cbuild` has run, the
+opens a C plugin and `component` places it — so once `cbuild` has run, the
 panel is three languages deep.
 
 | Example | Run | Shows | Headless |
 |---|---|---|---|
-| [`features/slots/panel.rs`](lua/features/slots/panel.rs) + [`panel.lua`](lua/features/slots/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the slot filled, the title from the params, the reply on a toggle, clicks routed by origin | ✓ `lua_panel --headless` |
+| [`features/slots/panel.rs`](lua/features/slots/panel.rs) + [`panel.lua`](lua/features/slots/panel.lua) | `cargo run -p kui-lua --example lua_panel` | Rust host and Lua panel sharing one frame: the component placed, the title from its props, its `on_toggle` emit arriving as the host's message, clicks routed by origin | ✓ `lua_panel --headless` |
 | [`features/kit/spike.rs`](lua/features/kit/spike.rs) + [`scene.rs`](lua/features/kit/scene.rs) | `cargo run -p kui-lua --example lua_kit_spike` | Kit ([`addons/kit`](../addons/kit)) from Rust through the `kui-kit` wrappers: a toolbar, a table of 100,000 rows and a trace waterfall of 18,000 spans from channels, every event arriving as the app's own message; its budgets are `cargo bench -p kui-lua --bench kit` | ✓ `lua_kit_spike --headless` |
+| [`tutorial/tasks/`](lua/tutorial/tasks/main.lua) | `kui run examples/lua/tutorial/tasks` | The book's runner chapter: a whole app in Lua on Kit and the `kui` runner — arguments, a JSON file, a task, a headless test (`kui run test --headless` in its folder, which the runner's suite runs) | |
 | [`tools/bench.rs`](lua/tools/bench.rs) | `cargo run -p kui-lua --example bench --release` | Frontend-lowering shootout: the same ~900-node view from Rust and from Lua | |
 | [`tools/types.rs`](lua/tools/types.rs) | `cargo run -p kui-lua --example lua-types -- packages/lua` | Writes the Lua DSL's type files, `kui.lua` for lua-language-server and `kui.d.tl` for Teal, from the schema — what `nu scripts/gen.nu` commits under [`packages/lua`](../packages/lua) | |
 

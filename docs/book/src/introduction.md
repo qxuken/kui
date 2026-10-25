@@ -55,9 +55,9 @@ test with no window, and — with the same tree — from Node, Lua or C.
 
 Each chapter adds one idea and ends with a program you can run. The
 programs live in [the kui repository](https://github.com/qxuken/kui)
-under `examples/rust/tutorial/`,
-and the code you read here is pulled from those files, so it cannot go
-stale. A code block shows the lines the chapter is about; the eye icon
+under `examples/rust/tutorial/` — the last one, an app in Lua, under
+`examples/lua/tutorial/` — and the code you read here is pulled from
+those files, so it cannot go stale. A code block shows the lines the chapter is about; the eye icon
 in its corner reveals the rest of the file.
 
 Read the chapters in order the first time. Each assumes the last.

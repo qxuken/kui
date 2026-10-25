@@ -14,6 +14,8 @@
 - [Effects, the clock and the world](effects.md)
 - [Testing without a window](testing.md)
 - [Warnings and the devtools](devtools.md)
+- [Extensions: components and slots](extensions.md)
+- [Apps in Lua: Kit and the runner](runner.md)
 - [Where next](where-next.md)
 
 # Examples

@@ -357,6 +357,17 @@ fn kit_sample(name: &str) {
     assert!(!s.contains("warning"), "{name}:\n{s}");
 }
 
+/// The book's runner chapter (docs/book/src/runner.md) ends with this app
+/// and its test, so the chapter cannot drift from what runs.
+#[test]
+fn the_books_task_list_passes_its_own_test() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/lua/tutorial/tasks");
+    let o = kui(&dir, &["run", "test", "--headless"], 60);
+    let s = out(&o);
+    assert!(o.status.success() && s.contains("PASS: 0 failure(s)"), "{s}");
+    assert!(!s.contains("warning"), "{s}");
+}
+
 #[test]
 fn the_relay_sample_sends_real_requests_to_its_mock_api() {
     kit_sample("relay");
