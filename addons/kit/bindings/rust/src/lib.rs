@@ -1700,9 +1700,11 @@ pub struct TextField {
     pub focus: Option<i64>,
     /// Takes the keyboard as it first shows: a new item's name.
     pub autofocus: Option<bool>,
-    /// What is wrong with the text: drawn under the field in the danger colour,
-    /// its edge in danger too, and read after its name. An empty string marks
-    /// the field only, for fields that share one message.
+    /// What is wrong with the text: drawn at the end of the field in the danger
+    /// colour (cut short past half its width, the whole message its tooltip),
+    /// its edge in danger too, and read after its name. It takes no room of its
+    /// own, so a field in a toolbar keeps its height. An empty string marks the
+    /// field only, for fields that share one message.
     pub error: Option<String>,
     /// The message `change` arrives as, with `change: TextFieldChange` in it.
     /// The text changed.
@@ -1788,9 +1790,11 @@ impl TextField {
         self
     }
 
-    /// What is wrong with the text: drawn under the field in the danger colour,
-    /// its edge in danger too, and read after its name. An empty string marks
-    /// the field only, for fields that share one message.
+    /// What is wrong with the text: drawn at the end of the field in the danger
+    /// colour (cut short past half its width, the whole message its tooltip),
+    /// its edge in danger too, and read after its name. It takes no room of its
+    /// own, so a field in a toolbar keeps its height. An empty string marks the
+    /// field only, for fields that share one message.
     pub fn error(mut self, v: impl Into<String>) -> Self {
         self.error = Some(v.into());
         self
@@ -1942,6 +1946,10 @@ pub struct TextArea {
     pub autofocus: Option<bool>,
     /// What is wrong with the text, under it in the danger colour.
     pub error: Option<String>,
+    /// Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still
+    /// moves on. Without it Tab and Shift+Tab move the keyboard to the next or
+    /// the last control, as from a field.
+    pub tab_inserts: Option<bool>,
     /// The message `change` arrives as, with `change: TextAreaChange` in it.
     /// The text changed.
     pub on_change: Option<Value>,
@@ -1968,6 +1976,7 @@ impl TextArea {
             focus: None,
             autofocus: None,
             error: None,
+            tab_inserts: None,
             on_change: None,
             key: None,
             fresh: false,
@@ -2047,6 +2056,14 @@ impl TextArea {
         self
     }
 
+    /// Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still
+    /// moves on. Without it Tab and Shift+Tab move the keyboard to the next or
+    /// the last control, as from a field.
+    pub fn tab_inserts(mut self, v: bool) -> Self {
+        self.tab_inserts = Some(v);
+        self
+    }
+
     /// The message `change` arrives as. The text changed.
     pub fn on_change(mut self, msg: impl Into<Value>) -> Self {
         self.on_change = Some(msg.into());
@@ -2104,6 +2121,9 @@ impl TextArea {
         }
         if let Some(v) = &self.error {
             m.push(("error".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.tab_inserts {
+            m.push(("tab_inserts".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));

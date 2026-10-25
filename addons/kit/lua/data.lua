@@ -94,9 +94,10 @@ end
 
 
 
+
+
 local function focus_edge(c, t)
-   local ok, here = pcall(c.env.is_focused, "rows")
-   if ok and here then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
+   if ctx.focus_shows(c, "rows") then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
 end
 
 

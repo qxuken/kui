@@ -853,11 +853,15 @@ export interface EditProps extends TextProps, Omit<GeneratedSpecProps, 'onChange
    *  while nothing holds focus (ADR 0022, decision 9); a blur afterwards
    *  stands. `focus(key)` moves it at any other time. */
   autofocus?: boolean;
-  /** A field's Tab is the app's: Tab and Shift-Tab do not walk the focus
+  /** An editor's Tab is the app's: Tab and Shift-Tab do not walk the focus
    *  ring from it, and the press goes to the `onKey` sink above it — so a
-   *  list built from fields indents on Tab. A `multiline` editor keeps Tab
-   *  either way. */
+   *  list built from fields indents on Tab. */
   keepTab?: boolean;
+  /** A `multiline` editor's Tab types indentation (four spaces) instead of
+   *  leaving it, as a code editor's does; Ctrl+Tab (or Alt, or the
+   *  platform primary) still walks the focus ring. Without it Tab and
+   *  Shift-Tab leave a multiline editor as they leave a field. */
+  tabInserts?: boolean;
   /** What the editor shows, faint, while it is empty: never part of its
    *  text, and its accessible description when it declares none. */
   placeholder?: string;

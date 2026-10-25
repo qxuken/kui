@@ -222,8 +222,27 @@ local function underline(c, focused, bad)
 
 
    local role = bad and "danger" or (focused and "ink" or "faint")
-   return ctx.rule(c, role, (focused or bad) and "$kitRuleW" or "$kitHair")
+
+
+
+   return column({ width = "grow", height = "$kitRuleW", main_align = "end",
+ctx.rule(c, role, (focused or bad) and "$kitRuleW" or "$kitHair"), })
 end
+
+
+
+
+
+
+local function error_tag(c, msg)
+   if not msg or msg == "" then return nil end
+   return row({ key = "error", max_width = "60%", min_width = 0, gap = 4, cross_align = "center",
+tooltip = msg,
+icons.node(c, "alert", 12, "danger"),
+row({ min_width = 0,
+ctx.text(c, msg, { size = "$kitSizeLabel", color = ref(c, "danger"), max_lines = 1, ellipsis = true }), }), })
+end
+
 
 
 
@@ -288,10 +307,11 @@ function M.text_field(c, p)
          on_change = act(c, "text_field.change"),
          on_submit = act(c, "text_field.submit", { text = value }),
       }),
+      error_tag(c, err),
    }
+   if err and err ~= "" then box.gap = 6 end
    well(c, box, focused, err ~= nil)
-   local field = column({ width = (p.width) or "grow", gap = 0, row(box), underline(c, focused, err ~= nil),
-error_line(c, err), })
+   local field = column({ width = (p.width) or "grow", gap = 0, row(box), underline(c, focused, err ~= nil) })
    if p.hide_label == true then return field end
    return labelled(c, str(p.label), field, p.width)
 end
@@ -313,6 +333,11 @@ function M.text_area(c, p)
    local grow = p.grow == true
 
 
+   local thick = (focused or err ~= nil) and not boxed
+   local edge_w = thick and c.s.skin.rule_w or c.s.skin.hair
+   local inset = pad + (c.s.skin.rule_w - edge_w)
+
+
 
    local box = {
       key = "box",
@@ -322,15 +347,16 @@ function M.text_area(c, p)
       scroll_y = max_rows ~= nil,
       bg = ref(c, "sunken"),
       radius = "$kitRadius",
-      border = { w = ((focused or err ~= nil) and not boxed) and "$kitRuleW" or "$kitHair", color = ref(c, edge) },
+      border = { w = edge_w, color = ref(c, edge) },
       edit({
          key = "edit",
          value = value,
          multiline = true,
+         tab_inserts = p.tab_inserts == true or nil,
          width = "grow",
          height = grow and "grow" or nil,
-         min_height = rows * line_h + 2 * pad,
-         pad = pad,
+         min_height = rows * line_h + 2 * inset,
+         pad = inset,
          cursor = "text",
          placeholder = str(p.placeholder),
          label = str(p.label) or str(p.placeholder),
@@ -482,7 +508,13 @@ end
 
 function M.checkbox(c, p)
    local on, mixed = p.checked == true, p.mixed == true
+   local mark = tickbox(c, on, mixed, false)
+   if ctx.focus_shows(c, "ctl") then
+      (mark)[#(mark) + 1] = ctx.focus_ring(c, 14, 14, c.s.skin.radius > 0 and 3 or 0)
+   end
    return row({
+      key = "ctl",
+      focus_bg = 0x00000000,
       role = "checkbox",
       label = str(p.label),
       checked = on,
@@ -497,7 +529,7 @@ function M.checkbox(c, p)
       cross_align = "center",
       cursor = "pointer",
       on_click = act(c, "checkbox.toggle", { checked = not on }),
-      tickbox(c, on, mixed, false),
+      mark,
       p.hide_label ~= true and ctx.text(c, str(p.label) or "", { max_lines = 1, ellipsis = true }) or nil,
       children(""),
    })
@@ -522,22 +554,31 @@ function M.switch(c, p)
 
    local sk = c.s.skin
    local ink_is_accent = sk.dark.ink == sk.dark.accent
+
+
+
+
+   local knob_bg = round and "raised" or (ink_is_accent and (on and "bg" or "muted") or "ink")
    local knob = column({
       key = "knob", width = 14, height = 14, radius = round and 7 or 0, transition = SLIDE, slide = true,
-      bg = ref(c, round and "raised" or (ink_is_accent and "bg" or "ink")),
-      border = (not round and ink_is_accent) and { w = "$kitHair", color = ref(c, "ink") } or nil,
+      bg = ref(c, knob_bg),
+      border = (not round and ink_is_accent and on) and { w = "$kitHair", color = ref(c, "ink") } or nil,
    })
+   local off_edge = ink_is_accent and "faint" or (bordered and "ink" or "rule")
    local track = {
       width = 32, height = 18, pad = 2,
       radius = round and 9 or 0,
       main_align = on and "end" or "start",
       cross_align = "center",
       bg = ref(c, on and "accent" or "sunken"),
-      border = { w = "$kitHair", color = ref(c, on and "accent" or (bordered and "ink" or "rule")) },
+      border = { w = "$kitHair", color = ref(c, on and "accent" or off_edge) },
       transition = SLIDE,
       knob,
    }
+   if ctx.focus_shows(c, "ctl") then track[#track + 1] = ctx.focus_ring(c, 32, 18, round and 9 or 0) end
    return row({
+      key = "ctl",
+      focus_bg = 0x00000000,
       role = "switch",
       label = str(p.label),
       checked = on,
@@ -640,7 +681,14 @@ function M.slider(c, p)
 
 
    local group = "kit-slider-" .. tostring(c.inst)
+
+
+
+
+   local ok, held = pcall(c.env.is_pressed, "track")
+   held = ok and held
    local track = row({
+      key = "track",
       hover_group = group,
       role = "slider",
       label = str(p.label),
@@ -653,10 +701,11 @@ function M.slider(c, p)
       width = "grow",
       height = 18,
       cross_align = "center",
-      cursor = "pointer",
+      cursor = held and "grabbing" or "pointer",
       column({ width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent") }),
       column({
          key = "handle", hover_group = group,
+         cursor = held and "grabbing" or "grab",
          width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
          bg = ref(c, "panel"), hover_bg = ref(c, "accent"), pressed_bg = ref(c, "accent_press"),
          border = { w = "$kitRuleW", color = ref(c, "ink") },

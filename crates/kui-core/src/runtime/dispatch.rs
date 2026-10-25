@@ -523,16 +523,21 @@ impl Core {
                     return out;
                 }
                 // Tab walks the focus ring (Shift-Tab backwards) unless a
-                // multiline editor holds focus — there Tab stays
-                // indentation — or a key sink does: a sink is an app that
-                // owns its keyboard, Tab included (it hands focus on with
+                // key sink holds focus: a sink is an app that owns its
+                // keyboard, Tab included (it hands focus on with
                 // `focus_next`). With nothing focused Tab enters the ring.
-                // A field declared `keep_tab` is the other exception: its
-                // Tab went to the sink above it as a press (backlog F146).
+                // An editor walks it too, a multiline one included, as a
+                // browser's textarea does — but for one declared
+                // `tab_inserts`, whose plain Tab types indentation (with a
+                // modifier held it still walks, a way out), and one
+                // declared `keep_tab`, whose Tab goes to the sink above it
+                // as a press (backlog F146).
                 let sink = self.focused_sink();
                 let traverse = ek == EditKey::Tab
                     && match self.edit.focused() {
-                        Some(k) => !self.edit.is_multiline(k) && !self.edit.keeps_tab(k),
+                        Some(k) if self.edit.keeps_tab(k) => false,
+                        Some(k) if self.edit.inserts_tab(k) => mods.word || mods.doc,
+                        Some(_) => true,
                         None => !sink,
                     };
                 if traverse {

@@ -401,7 +401,7 @@ impl Core {
     /// Which item of a composite is its Tab stop, in precedence order:
     /// the item that currently holds focus,
     /// else one declaring `initial_focus`, else the one declaring
-    /// `selected`, else the first. **No new retained state** — the roving
+    /// `selected`, else the one `checked` (a radio), else the first. **No new retained state** — the roving
     /// tabindex a browser keeps per composite is, in every pattern kui has,
     /// the item the app already marks `selected`, and the same fact that
     /// tells a reader which one is current tells the keyboard where to
@@ -413,6 +413,11 @@ impl Core {
         pick(&|j| Some(self.tree.keys[j]) == self.focus)
             .or_else(|| pick(&|j| self.tree.specs[j].initial_focus))
             .or_else(|| pick(&|j| self.tree.specs[j].access().selected))
+            // A radio group's current one is the radio that is on: what a
+            // platform's group enters on, and the state a radio reports
+            // (a radio is `checked`, not `selected`). Tab into a segmented
+            // control landed on its first segment, not the chosen one.
+            .or_else(|| pick(&|j| self.tree.specs[j].access().checked))
             .or_else(|| items.iter().filter(live).copied().next())
     }
 

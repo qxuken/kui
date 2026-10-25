@@ -94,9 +94,10 @@ end
 
 
 
+
+
 local function focus_edge(c, t)
-   local ok, here = pcall(c.env.is_focused, "rows")
-   if ok and here then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
+   if ctx.focus_shows(c, "rows") then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
 end
 
 
@@ -486,7 +487,7 @@ local function jump(c)
       key = "jump",
       role = "button",
       label = "Jump to the latest line",
-      float = { anchor = "parent", at = { "end", "end" }, self = { "end", "end" }, dx = -12, dy = -8 },
+      float = { anchor = "parent", clip = true, at = { "end", "end" }, self = { "end", "end" }, dx = -12, dy = -8 },
       height = 22,
       pad = { x = 8 },
       gap = 5,
@@ -553,6 +554,14 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
 
 
 
+
+
+
+
+
+
+
+   local tails = wants and st.follow and n > 0
    local function framed(t)
       local away = wants and not st.follow and n > 0
       return column({ width = "grow", height = p.grow == true and "grow" or nil, t, away and jump(c) or nil })
@@ -572,6 +581,7 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
          bg = ref(c, "sunken"),
          pad = { y = 4 },
          selectable = true,
+         anchor = tails or nil,
       }, line))
    end
 
@@ -637,6 +647,7 @@ ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
       bg = ref(c, "sunken"),
       pad = { y = 4 },
       selectable = true,
+      anchor = tails or nil,
    }, measure, line)
    if hold and hold.row >= 0 then
 

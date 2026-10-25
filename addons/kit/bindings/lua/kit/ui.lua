@@ -194,7 +194,7 @@
 ---@field width? number Its width in px; grows when left out.
 ---@field focus? integer Takes the keyboard each time this number changes while the field is on screen: keep a counter in your model and bump it (⌘F). A field that shows after the bump takes its number as where it starts.
 ---@field autofocus? boolean Takes the keyboard as it first shows: a new item's name.
----@field error? string What is wrong with the text: drawn under the field in the danger colour, its edge in danger too, and read after its name. An empty string marks the field only, for fields that share one message.
+---@field error? string What is wrong with the text: drawn at the end of the field in the danger colour (cut short past half its width, the whole message its tooltip), its edge in danger too, and read after its name. It takes no room of its own, so a field in a toolbar keeps its height. An empty string marks the field only, for fields that share one message.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextFieldChange). The text changed.
 ---@field on_submit? any The message it arrives as: yours, with `submit = {…}` in it (kit.TextFieldSubmit). Enter.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
@@ -223,6 +223,7 @@
 ---@field focus? integer Takes the keyboard each time this number changes while it is on screen.
 ---@field autofocus? boolean Takes the keyboard as it first shows.
 ---@field error? string What is wrong with the text, under it in the danger colour.
+---@field tab_inserts? boolean Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still moves on. Without it Tab and Shift+Tab move the keyboard to the next or the last control, as from a field.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.TextAreaChange). The text changed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.

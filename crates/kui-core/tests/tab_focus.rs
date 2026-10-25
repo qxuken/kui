@@ -1,5 +1,5 @@
 //! Tab focus traversal: cycling between edit widgets in tree order,
-//! multiline editors keeping Tab as indentation, sink precedence, and the
+//! multiline editors left by Tab unless they declare `tab_inserts`, sink precedence, and the
 //! ring confined to a modal subtree
 //! (`docs/adr/0003-modal-surfaces.md`).
 
@@ -45,17 +45,50 @@ fn tab_cycles_and_shift_tab_reverses() {
     assert_eq!(core.edit.focused(), Some(keys[3]));
 }
 
+/// A multiline editor is left by Tab and Shift-Tab, as a browser's
+/// textarea is: it kept Tab as indentation, and a text area was a trap
+/// the keyboard could not leave.
 #[test]
-fn multiline_keeps_tab_as_indentation() {
+fn tab_leaves_a_multiline_editor() {
     let mut core = Core::new();
     let keys = frame(&mut core, false);
     core.set_focus(Some(keys[3]));
+    tab(&mut core, true);
+    assert_eq!(core.edit.focused(), Some(keys[2]), "shift-tab goes back");
     tab(&mut core, false);
-    assert_eq!(core.edit.focused(), Some(keys[3]), "focus stays");
-    assert!(
-        core.edit_text(keys[3]).unwrap().contains("    "),
-        "tab indented"
+    tab(&mut core, false);
+    assert_eq!(core.edit.focused(), Some(keys[0]), "tab goes on, round to the first");
+    assert!(!core.edit_text(keys[3]).unwrap().contains(' '), "nothing typed");
+}
+
+/// `tab_inserts` keeps Tab as indentation in a multiline editor, and Tab
+/// under a modifier still walks the ring: the way out.
+#[test]
+fn tab_inserts_types_indentation_and_ctrl_tab_still_leaves() {
+    let mut core = Core::new();
+    let mut ui = core.frame(Size::new(400.0, 300.0), 1.0);
+    ui.configure_root(NodeSpec::column().fill().pad(10.0).gap(8.0));
+    let field = ui.text_edit("a", "a", &EditOptions::default(), NodeSpec::column().grow_width());
+    let code = ui.text_edit(
+        "code",
+        "",
+        &EditOptions {
+            multiline: true,
+            tab_inserts: true,
+            ..Default::default()
+        },
+        NodeSpec::column().grow_width(),
     );
+    ui.finish();
+    core.set_focus(Some(code));
+    tab(&mut core, false);
+    assert_eq!(core.edit.focused(), Some(code), "focus stays");
+    assert_eq!(core.edit_text(code).as_deref(), Some("    "), "tab indented");
+    core.handle_input(InputEvent::Key(
+        kui_core::EditKey::Tab,
+        kui_core::Mods::NONE.with_doc(),
+    ));
+    assert_eq!(core.edit.focused(), Some(field), "ctrl-tab walks the ring");
 }
 
 #[test]

@@ -76,8 +76,16 @@ pub struct EditOptions {
     /// sink above it as a chord the editor does not claim does — so a
     /// list or an outline built from fields indents on Tab (backlog F146).
     /// With no sink above, Tab does nothing here. A `multiline` editor
-    /// keeps Tab for indentation either way and ignores this.
+    /// takes it too: its Tab then goes to the sink as well.
     pub keep_tab: bool,
+    /// A `multiline` editor whose Tab types indentation (four spaces)
+    /// rather than walking the focus ring — a code editor's. Without it
+    /// Tab and Shift-Tab leave a multiline editor as they leave a field,
+    /// as a browser's textarea does: a text area was a trap the keyboard
+    /// could not leave. With it, Tab held with Ctrl, Alt or ⌘ still walks
+    /// the ring, so the keyboard always has a way out. A single-line
+    /// field ignores it.
+    pub tab_inserts: bool,
     /// What an empty editor shows where its text would be, in the theme's
     /// `faint` (backlog F149): never part of the value, gone with the
     /// first character typed or composed, and read by assistive
@@ -193,6 +201,8 @@ pub(crate) struct EditState {
     pub(crate) multiline: bool,
     /// `EditOptions::keep_tab`, as last declared.
     keep_tab: bool,
+    /// `EditOptions::tab_inserts`, as last declared.
+    tab_inserts: bool,
     /// A secure editor's text (`EditOptions::secure`), whose buffer holds
     /// a [`SECURE_BULLET`] per grapheme of it. `None` for any other: the
     /// buffer is the text.
@@ -1229,6 +1239,7 @@ impl EditStore {
                 accent: opts.accent.unwrap_or(crate::select::TINT),
                 multiline,
                 keep_tab: opts.keep_tab,
+                tab_inserts: opts.tab_inserts,
                 was_secure: secret.is_some(),
                 secret,
                 placeholder: None,
@@ -1256,6 +1267,7 @@ impl EditStore {
         state.origin = origin;
         state.multiline = multiline;
         state.keep_tab = opts.keep_tab;
+        state.tab_inserts = opts.tab_inserts;
         // Masked or shown again: a "show password" toggle on the same
         // editor, the caret on the same grapheme.
         if opts.secure != state.secret.is_some() {
@@ -1869,7 +1881,7 @@ impl EditStore {
                 }
             }
             EditKey::Tab => {
-                if s.multiline {
+                if s.multiline && s.tab_inserts {
                     s.insert_recorded("    ");
                     changed = true;
                 }
@@ -2076,12 +2088,18 @@ impl EditStore {
         self.states.get(&key).is_some_and(|s| s.multiline)
     }
 
-    /// Whether Tab in `key` is the app's rather than the focus ring's: a
-    /// field declared with `keep_tab` (a document's Tab is its own).
+    /// Whether Tab in `key` is the app's rather than the focus ring's: an
+    /// editor declared with `keep_tab`.
     pub fn keeps_tab(&self, key: Key) -> bool {
+        self.states.get(&key).is_some_and(|s| s.keep_tab)
+    }
+
+    /// Whether Tab in `key` types indentation: a multiline editor
+    /// declared with `tab_inserts`.
+    pub fn inserts_tab(&self, key: Key) -> bool {
         self.states
             .get(&key)
-            .is_some_and(|s| s.keep_tab && !s.multiline)
+            .is_some_and(|s| s.multiline && s.tab_inserts)
     }
 
     /// Whether `key` lays its text out to its box's width: a document, or

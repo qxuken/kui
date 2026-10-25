@@ -93,9 +93,10 @@ end
 
 -- The focus, drawn: the sink's own edge in the focus colour while it holds
 -- the keyboard (a scroller's ring was clipped by the pane around it).
+-- Only when the keyboard put the focus there (focus-visible): a click on
+-- a row focuses the list without a ring round it.
 local function focus_edge(c: Ctx, t: kui.Props)
-  local ok, here = pcall(c.env.is_focused, "rows")
-  if ok and here then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
+  if ctx.focus_shows(c, "rows") then t.border = { w = "$kitRuleW", color = ref(c, "focus") } end
 end
 
 -- A tone a channel cell names, as the role its text is drawn in; nil for

@@ -708,9 +708,12 @@ enum {
  * is the wrap row declared on a single-line field: it folds to its width
  * by KuiTextStyle.wrap the way a document does, and keeps a field's
  * keyboard - Enter submits, no newline is admitted, the caret opens at
- * the end. A MULTILINE editor wraps either way. KEEP_TAB makes a field's
+ * the end. A MULTILINE editor wraps either way. KEEP_TAB makes an editor's
  * Tab the app's: the press goes to the on_key sink above it instead of
- * walking the focus ring (a MULTILINE editor keeps Tab either way).
+ * walking the focus ring. Tab leaves a MULTILINE editor as it leaves a
+ * field, as a browser's textarea does, unless it declares TAB_INSERTS:
+ * then its plain Tab types indentation and Tab under Ctrl, Alt or the
+ * platform primary still walks the ring.
  * SECURE is a password field: drawn as a bullet per grapheme, no copy or
  * cut, no composition, no undo history, read as KUI_ROLE_PASSWORD_INPUT
  * with the bullets as its value, and kui_secure_input_get and
@@ -734,7 +737,8 @@ enum {
      * moves with the text - joining the undo step of the edit it answers.
      * Declare on_change with it, or the field reverts every keystroke
      * (edit-value-without-handler). ABI 33. */
-    KUI_EDIT_VALUE = 1u << 5
+    KUI_EDIT_VALUE = 1u << 5,
+    KUI_EDIT_TAB_INSERTS = 1u << 6
 };
 /* Float modes (KuiSpec.float_mode). For the named presets the other
  * bindings take ("below", "above", ...), see kui_spec_float_preset. */

@@ -958,9 +958,11 @@ typedef struct KitTextField {
     bool autofocus;
     bool autofocus_set;
     /*
-     * What is wrong with the text: drawn under the field in the danger colour,
-     * its edge in danger too, and read after its name. An empty string marks
-     * the field only, for fields that share one message.
+     * What is wrong with the text: drawn at the end of the field in the danger
+     * colour (cut short past half its width, the whole message its tooltip),
+     * its edge in danger too, and read after its name. It takes no room of its
+     * own, so a field in a toolbar keeps its height. An empty string marks the
+     * field only, for fields that share one message.
      */
     KuiStr error;
     /*
@@ -1073,6 +1075,13 @@ typedef struct KitTextArea {
      */
     KuiStr error;
     /*
+     * Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still
+     * moves on. Without it Tab and Shift+Tab move the keyboard to the next or
+     * the last control, as from a field.
+     */
+    bool tab_inserts;
+    bool tab_inserts_set;
+    /*
      * The message `change` arrives as, consumed; NULL for none. The text
      * changed.
      */
@@ -1098,6 +1107,7 @@ static inline KuiValue *kit_text_area_props(const KitTextArea *p) {
     if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
     if (p->autofocus_set) kui_value_map_set(m, KUI_STR("autofocus"), kui_value_bool(p->autofocus));
     if (p->error.len > 0) kui_value_map_set(m, KUI_STR("error"), kui_value_str(p->error));
+    if (p->tab_inserts_set) kui_value_map_set(m, KUI_STR("tab_inserts"), kui_value_bool(p->tab_inserts));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));

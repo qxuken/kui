@@ -107,6 +107,8 @@ derived orientation are the whole surface.
    still finds the ring entry); else an item declaring `initial_focus` (so
    a menu can open on a particular item, the way ADR 0003's modal entry
    already reads that row); else the item declaring `selected`; else the
+   item `checked` (a radio reports its state that way; added 2026-10-25,
+   when a segmented control was entered on its first segment); else the
    first item. **No new retained state.** The roving tabindex that
    browsers keep per composite is, in every pattern kui has, the item the
    app already marks `selected` — the same fact that tells a reader which

@@ -741,6 +741,24 @@ test('a chord and a keepTab field\'s Tab reach the sink above the editor', () =>
   assert.deepEqual(keys, [['tab', 'shell'], ['n', 'shell']], 'typing stays in the field');
 });
 
+// Tab leaves a multiline editor as it leaves a field; `tabInserts` keeps it
+// as indentation.
+test('tab leaves a multiline edit unless it declares tabInserts', () => {
+  for (const tabInserts of [true, false]) {
+    const view = () =>
+      box({ pad: 8 }, [
+        el('edit', { initial: '', multiline: true, autofocus: true, tabInserts, width: 200 }, [], 'doc'),
+        el('edit', { initial: '', width: 200 }, [], 'next'),
+      ]);
+    const ctx = new Ctx();
+    ctx.frame(320, 240, 1, view());
+    ctx.frame(320, 240, 1, view());
+    ctx.key('tab');
+    ctx.frame(320, 240, 1, view());
+    assert.equal(ctx.editText('doc'), tabInserts ? '    ' : '', `typed with tabInserts ${tabInserts}`);
+  }
+});
+
 // `secure` makes an editor a password field (backlog F167): read, drawn as
 // bullets, a password input to assistive technology, never copied, and
 // asking for secure input and the IME off while it is focused.

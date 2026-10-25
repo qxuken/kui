@@ -3416,6 +3416,7 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 multiline: t.get::<Option<bool>>("multiline")?.unwrap_or(false),
                 autofocus: t.get::<Option<bool>>("autofocus")?.unwrap_or(false),
                 keep_tab: t.get::<Option<bool>>("keep_tab")?.unwrap_or(false),
+                tab_inserts: t.get::<Option<bool>>("tab_inserts")?.unwrap_or(false),
                 secure: t.get::<Option<bool>>("secure")?.unwrap_or(false),
                 placeholder: t.get::<Option<String>>("placeholder")?,
                 wrap: p.wrap,
@@ -6312,6 +6313,40 @@ mod tests {
         assert_eq!(events[0].payload.get_str("tag"), Some("shell"));
         core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
         assert_eq!(core.focus(), focused, "focus stays in the field");
+    }
+
+    /// `tab_inserts` lowers: a multiline editor's Tab types; without it Tab
+    /// leaves the editor for the next stop.
+    #[test]
+    fn tab_inserts_keeps_a_documents_tab_and_without_it_tab_leaves() {
+        for inserts in [true, false] {
+            let mut ext = LuaExtension::from_source(
+                "tab_inserts",
+                &format!(
+                    r#"
+                    function view(env)
+                      return column {{
+                        edit {{ key = "doc", initial = "", multiline = true, autofocus = true,
+                                tab_inserts = {inserts}, width = 200 }},
+                        edit {{ key = "next", initial = "", width = 200 }},
+                      }}
+                    end
+                "#
+                ),
+            )
+            .unwrap();
+            let mut core = Core::new();
+            frame(&mut core, &mut ext);
+            frame(&mut core, &mut ext);
+            let doc = core.focus();
+            core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
+            if inserts {
+                assert_eq!(core.focus(), doc, "focus stays");
+                assert_eq!(core.edit_text(doc.unwrap()).as_deref(), Some("    "));
+            } else {
+                assert_ne!(core.focus(), doc, "tab leaves");
+            }
+        }
     }
 
     /// `secure` lowers: a password field, its text read back whole and

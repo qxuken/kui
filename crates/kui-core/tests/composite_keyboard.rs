@@ -100,6 +100,34 @@ fn a_composite_is_one_tab_stop() {
     assert_eq!(core.focus(), Some(tabs[1]));
 }
 
+/// A radio group enters on the radio that is on: radios report `checked`,
+/// not `selected`, and a segmented control was entered on its first
+/// segment whichever was chosen.
+#[test]
+fn a_radio_group_enters_on_its_checked_radio() {
+    let mut core = Core::new();
+    let mut ui = core.frame(VIEW, 1.0);
+    ui.configure_root(NodeSpec::column().fill());
+    let mut radios = Vec::new();
+    ui.with_keyed("set", NodeSpec::row().role(Role::RadioGroup), |ui| {
+        for (i, name) in ["a", "b", "c"].iter().enumerate() {
+            radios.push(ui.text_in_keyed(
+                name,
+                NodeSpec::row()
+                    .role(Role::Radio)
+                    .focusable()
+                    .checked(i == 2)
+                    .on_click(Value::str(*name)),
+                name,
+                TextStyle::new(12.0),
+            ));
+        }
+    });
+    ui.finish();
+    tab(&mut core, false);
+    assert_eq!(core.focus(), Some(radios[2]));
+}
+
 /// A `group` of focusable boxes is not a composite: four stops, as today.
 #[test]
 fn only_the_four_pairs_collapse() {

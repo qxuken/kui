@@ -197,6 +197,7 @@ function make(namespace) {
       if (props.focus !== undefined) wire.focus = props.focus;
       if (props.autofocus !== undefined) wire.autofocus = props.autofocus;
       if (props.error !== undefined) wire.error = props.error;
+      if (props.tabInserts !== undefined) wire.tab_inserts = props.tabInserts;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       const groups = undefined;
       return {

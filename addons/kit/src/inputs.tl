@@ -221,11 +221,30 @@ local function underline(c: Ctx, focused: boolean, bad: boolean): kui.Node
   -- rule in the ink: the accent is a highlighter on Ledger's paper and
   -- vanished there as a focus mark. In error, the danger colour.
   local role = bad and "danger" or (focused and "ink" or "faint")
-  return ctx.rule(c, role, (focused or bad) and "$kitRuleW" or "$kitHair")
+  -- Always the region rule's height, the hairline at its foot: the
+  -- thicker focused rule took a pixel more, and focusing a field moved
+  -- everything under it (a params table's rows, a form).
+  return column { width = "grow", height = "$kitRuleW", main_align = "end",
+    ctx.rule(c, role, (focused or bad) and "$kitRuleW" or "$kitHair") }
 end
 
--- What is wrong with a field, under it in the danger colour. An empty
--- message marks the field without a line: fields that share one message.
+-- What is wrong with a one-line field, at the end of its well in the
+-- danger colour: under the field it made the field's row taller, and a
+-- toolbar holding the field grew and moved its buttons off the field's
+-- line. Cut short past half the field, the whole message its tooltip and
+-- its description.
+local function error_tag(c: Ctx, msg: string): kui.Node
+  if not msg or msg == "" then return nil end
+  return row { key = "error", max_width = "60%", min_width = 0, gap = 4, cross_align = "center",
+    tooltip = msg,
+    icons.node(c, "alert", 12, "danger"),
+    row { min_width = 0,
+      ctx.text(c, msg, { size = "$kitSizeLabel", color = ref(c, "danger"), max_lines = 1, ellipsis = true }) } }
+end
+
+-- What is wrong with a field of several lines, under it in the danger
+-- colour. An empty message marks the field without a line: fields that
+-- share one message.
 local function error_line(c: Ctx, msg: string): kui.Node
   if not msg or msg == "" then return nil end
   return row { width = "grow", gap = 5, pad = { t = 4 }, cross_align = "center",
@@ -287,10 +306,11 @@ function M.text_field(c: Ctx, p: P): kui.Node
       on_change = act(c, "text_field.change"),
       on_submit = act(c, "text_field.submit", { text = value }),
     },
+    error_tag(c, err),
   }
+  if err and err ~= "" then box.gap = 6 end
   well(c, box, focused, err ~= nil)
-  local field = column { width = (p.width as number) or "grow", gap = 0, row(box), underline(c, focused, err ~= nil),
-    error_line(c, err) }
+  local field = column { width = (p.width as number) or "grow", gap = 0, row(box), underline(c, focused, err ~= nil) }
   if p.hide_label == true then return field end
   return labelled(c, str(p.label), field, p.width)
 end
@@ -310,6 +330,8 @@ function M.text_area(c: Ctx, p: P): kui.Node
   local boxed = c.s.skin.field_box
   local edge = err and "danger" or (focused and (boxed and "focus" or "ink") or (boxed and "rule" or "faint"))
   local grow = p.grow == true
+  -- A border takes no room, so the thicker edge focused moves nothing.
+  local thick = (focused or err ~= nil) and not boxed
   -- The editor is the whole well, its padding inside it: a press anywhere
   -- in the box puts the caret there (in the padding or under the last
   -- line, at the nearest place), where only the lines of text took one.
@@ -321,11 +343,12 @@ function M.text_area(c: Ctx, p: P): kui.Node
     scroll_y = max_rows ~= nil,
     bg = ref(c, "sunken"),
     radius = "$kitRadius",
-    border = { w = ((focused or err ~= nil) and not boxed) and "$kitRuleW" or "$kitHair", color = ref(c, edge) },
+    border = { w = thick and "$kitRuleW" or "$kitHair", color = ref(c, edge) },
     edit {
       key = "edit",
       value = value,
       multiline = true,
+      tab_inserts = p.tab_inserts == true or nil,
       width = "grow",
       height = grow and "grow" or nil,
       min_height = rows * line_h + 2 * pad,
@@ -481,7 +504,13 @@ end
 
 function M.checkbox(c: Ctx, p: P): kui.Node
   local on, mixed = p.checked == true, p.mixed == true
+  local mark = tickbox(c, on, mixed, false)
+  if ctx.focus_shows(c, "ctl") then
+    (mark as kui.Props)[#(mark as kui.Props) + 1] = ctx.focus_ring(c, 14, 14, c.s.skin.radius > 0 and 3 or 0)
+  end
   return row {
+    key = "ctl",
+    focus_bg = 0x00000000,
     role = "checkbox",
     label = str(p.label),
     checked = on,
@@ -496,7 +525,7 @@ function M.checkbox(c: Ctx, p: P): kui.Node
     cross_align = "center",
     cursor = "pointer",
     on_click = act(c, "checkbox.toggle", { checked = not on }),
-    tickbox(c, on, mixed, false),
+    mark,
     p.hide_label ~= true and ctx.text(c, str(p.label) or "", { max_lines = 1, ellipsis = true }) or nil,
     children(""),
   }
@@ -521,22 +550,31 @@ function M.switch(c: Ctx, p: P): kui.Node
   -- checkbox sitting in the track.
   local sk = c.s.skin
   local ink_is_accent = sk.dark.ink == sk.dark.accent
+  -- Where the ink is the accent (Phosphor) the off switch was a hollow
+  -- square in a lit frame, a checkbox in a box: off is now a dim track
+  -- edged in the faint ink and a solid knob in the muted one, on the lit
+  -- track and a page-coloured knob edged in the ink.
+  local knob_bg = round and "raised" or (ink_is_accent and (on and "bg" or "muted") or "ink")
   local knob = column {
     key = "knob", width = 14, height = 14, radius = round and 7 or 0, transition = SLIDE, slide = true,
-    bg = ref(c, round and "raised" or (ink_is_accent and "bg" or "ink")),
-    border = (not round and ink_is_accent) and { w = "$kitHair", color = ref(c, "ink") } or nil,
+    bg = ref(c, knob_bg),
+    border = (not round and ink_is_accent and on) and { w = "$kitHair", color = ref(c, "ink") } or nil,
   }
+  local off_edge = ink_is_accent and "faint" or (bordered and "ink" or "rule")
   local track: kui.Props = {
     width = 32, height = 18, pad = 2,
     radius = round and 9 or 0,
     main_align = on and "end" or "start",
     cross_align = "center",
     bg = ref(c, on and "accent" or "sunken"),
-    border = { w = "$kitHair", color = ref(c, on and "accent" or (bordered and "ink" or "rule")) },
+    border = { w = "$kitHair", color = ref(c, on and "accent" or off_edge) },
     transition = SLIDE,
     knob,
   }
+  if ctx.focus_shows(c, "ctl") then track[#track + 1] = ctx.focus_ring(c, 32, 18, round and 9 or 0) end
   return row {
+    key = "ctl",
+    focus_bg = 0x00000000,
     role = "switch",
     label = str(p.label),
     checked = on,
@@ -634,13 +672,22 @@ function M.slider(c: Ctx, p: P): kui.Node
   local step = (p.step or (hi - lo) / 100) as number
   -- The value as the host wrote it (`20 MB/s`), or the number itself.
   local shown = str(p.value_label) or string.format("%g", v)
-  -- The track and its handle share a hover group, so the handle lights
-  -- while the pointer is over the track and stays lit, a shade deeper,
-  -- while it is held there and dragged: it went dark the moment the press
-  -- began, as if let go.
-  local group = "kit-slider-" .. tostring(c.inst)
+  -- The handle lights while the pointer is over the track and stays lit,
+  -- a shade deeper, while it is held there and dragged (it went dark the
+  -- moment the press began, as if let go). Read off the track, the one
+  -- region the pointer meets: the handle declares nothing that tracks the
+  -- pointer. As a hover-group member it was a region of its own, on top
+  -- of the track, so a press on it was the handle's and not the slider's
+  -- — the handle could not be dragged — and it showed the arrow over a
+  -- track that showed the hand. The whole track is taken hold of now: an
+  -- open hand over it, a closed one while it is held.
+  local okp, held = pcall(c.env.is_pressed, "track")
+  held = okp and held
+  local okh, over = pcall(c.env.is_hovered, "track")
+  over = okh and over
   local track = row {
-    hover_group = group,
+    key = "track",
+    hoverable = true,
     role = "slider",
     label = str(p.label),
     value_now = v,
@@ -652,12 +699,12 @@ function M.slider(c: Ctx, p: P): kui.Node
     width = "grow",
     height = 18,
     cross_align = "center",
-    cursor = "pointer",
+    cursor = held and "grabbing" or "grab",
     column { width = { pct = f * 100 }, height = 4, radius = 2, bg = ref(c, "accent") },
     column {
-      key = "handle", hover_group = group,
+      key = "handle",
       width = 12, height = 12, radius = c.s.skin.radius > 0 and 6 or 0,
-      bg = ref(c, "panel"), hover_bg = ref(c, "accent"), pressed_bg = ref(c, "accent_press"),
+      bg = ref(c, held and "accent_press" or (over and "accent" or "panel")),
       border = { w = "$kitRuleW", color = ref(c, "ink") },
     },
     column { width = "grow", height = 4, radius = 2, bg = ref(c, "rule") },

@@ -314,8 +314,10 @@ local record kit
     focus: integer
     -- Takes the keyboard as it first shows: a new item's name.
     autofocus: boolean
-    -- What is wrong with the text: drawn under the field in the danger
-    -- colour, its edge in danger too, and read after its name. An empty
+    -- What is wrong with the text: drawn at the end of the field in the
+    -- danger colour (cut short past half its width, the whole message its
+    -- tooltip), its edge in danger too, and read after its name. It takes no
+    -- room of its own, so a field in a toolbar keeps its height. An empty
     -- string marks the field only, for fields that share one message.
     error: string
     -- The message `change` arrives as. The text changed.
@@ -365,6 +367,10 @@ local record kit
     autofocus: boolean
     -- What is wrong with the text, under it in the danger colour.
     error: string
+    -- Tab types indentation (four spaces), as in a code editor; Ctrl+Tab
+    -- still moves on. Without it Tab and Shift+Tab move the keyboard to the
+    -- next or the last control, as from a field.
+    tab_inserts: boolean
     -- The message `change` arrives as. The text changed.
     on_change: any
     key: string

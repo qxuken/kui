@@ -855,9 +855,11 @@ TextField :: struct {
 	focus: Maybe(i64),
 	// Takes the keyboard as it first shows: a new item's name.
 	autofocus: Maybe(bool),
-	// What is wrong with the text: drawn under the field in the danger colour, its
-	// edge in danger too, and read after its name. An empty string marks the field
-	// only, for fields that share one message.
+	// What is wrong with the text: drawn at the end of the field in the danger
+	// colour (cut short past half its width, the whole message its tooltip), its
+	// edge in danger too, and read after its name. It takes no room of its own, so
+	// a field in a toolbar keeps its height. An empty string marks the field only,
+	// for fields that share one message.
 	error: string,
 	// The message `change` arrives as. The text changed.
 	on_change: any,
@@ -951,6 +953,10 @@ TextArea :: struct {
 	autofocus: Maybe(bool),
 	// What is wrong with the text, under it in the danger colour.
 	error: string,
+	// Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still
+	// moves on. Without it Tab and Shift+Tab move the keyboard to the next or the
+	// last control, as from a field.
+	tab_inserts: Maybe(bool),
 	// The message `change` arrives as. The text changed.
 	on_change: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -985,6 +991,7 @@ text_area_props :: proc(p: TextArea) -> ^c.Value {
 	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
 	if x, ok := p.autofocus.?; ok do c.value_map_set(m, "autofocus", c.value_bool(x))
 	if p.error != "" do c.value_map_set(m, "error", c.value_str(p.error))
+	if x, ok := p.tab_inserts.?; ok do c.value_map_set(m, "tab_inserts", c.value_bool(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))

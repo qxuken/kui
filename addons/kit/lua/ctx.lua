@@ -79,6 +79,29 @@ function M.rule(c, role, w, vertical)
 end
 
 
+
+
+function M.focus_shows(c, key)
+   local ok, here = pcall(c.env.is_focused, key)
+   return ok and here and c.env.focus_visible == true
+end
+
+
+
+
+
+
+
+function M.focus_ring(c, w, h, radius)
+   return column({
+      float = { anchor = "parent", dx = -4, dy = -4 },
+      width = w + 8, height = h + 8,
+      radius = radius and radius > 0 and radius + 4 or 0,
+      border = { w = 2, color = M.ref(c, "focus") },
+   })
+end
+
+
 function M.grow()
    return row({ width = "grow" })
 end

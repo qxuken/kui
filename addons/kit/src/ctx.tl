@@ -77,6 +77,29 @@ function M.rule(c: Ctx, role?: string, w?: kui.Length, vertical?: boolean): kui.
   return column(t)
 end
 
+-- Whether the control keyed `key` here holds the keyboard and the
+-- keyboard put it there: a click focuses without a ring, as a browser's
+-- :focus-visible has it.
+function M.focus_shows(c: Ctx, key: string): boolean
+  local ok, here = pcall(c.env.is_focused, key)
+  return ok and here and c.env.focus_visible == true
+end
+
+-- A focus ring hugging a mark `w`×`h` (a checkbox's square, a switch's
+-- track) 2 px out from its edge, for a control whose focusable node is
+-- larger than what it draws: the core's ring went round the whole row,
+-- its label and its height, far from the box. A float, so it takes no
+-- room and moves nothing; the control turns the core's ring off with a
+-- `focus_bg`.
+function M.focus_ring(c: Ctx, w: number, h: number, radius?: number): kui.Node
+  return column {
+    float = { anchor = "parent", dx = -4, dy = -4 },
+    width = w + 8, height = h + 8,
+    radius = radius and radius > 0 and radius + 4 or 0,
+    border = { w = 2, color = M.ref(c, "focus") },
+  }
+end
+
 -- A spacer that takes the room its row leaves.
 function M.grow(): kui.Node
   return row { width = "grow" }

@@ -1477,3 +1477,209 @@ fn a_charts_floats_are_cut_at_the_scroller_it_sits_in() {
     let inside: i64 = r.app.globals().get("hovers").unwrap();
     assert!(inside > 0, "inside the scroller the bands still hover");
 }
+
+/// Every focus-ring colour a skin draws, light and dark, as quads carry it.
+fn focus_colours() -> Vec<kui_core::Color> {
+    [0x2f6fedffu32, 0x7fa8ffff, 0x5b8cffff, 0x0f7a35ff, 0x39ff6aff]
+        .iter()
+        .map(|&c| kui_core::Color::hex(c))
+        .collect()
+}
+
+fn focus_quads(core: &mut Core) -> usize {
+    let ring = focus_colours();
+    kui_core::testing::solids(core)
+        .iter()
+        .filter(|q| ring.iter().any(|c| q.color == *c || (q.border_w > 0.0 && q.border_color == *c)))
+        .count()
+}
+
+#[test]
+fn focusing_a_field_moves_nothing() {
+    // Ledger's underline went from a hair to the region rule on focus, a
+    // pixel taller, and the text area's edge thickened inward: the rows
+    // under a field, and the text in a text area, moved when it took the
+    // keyboard.
+    for skin in ["ledger", "phosphor", "neutral"] {
+        let mut r = LuaRig::new(&format!(
+            r#"
+            function view(env)
+              return column {{ width = "grow", height = "grow", gap = 4,
+                component("kit/settings", {{ skin = "{skin}" }}),
+                component("kit/text_field", {{ value = "", label = "Name", hide_label = true }}),
+                row {{ key = "after_field", label = "after_field", width = 10, height = 10 }},
+                component("kit/text_area", {{ value = "first line", label = "Notes", hide_label = true }}),
+                row {{ key = "after_area", label = "after_area", width = 10, height = 10 }},
+              }}
+            end
+            "#
+        ));
+        r.frames(3);
+        let at = |r: &mut LuaRig| {
+            let area = r
+                .core
+                .nodes()
+                .into_iter()
+                .filter(|n| n.kind == kui_core::NodeKind::Edit)
+                .nth(1)
+                .expect("the text area's editor")
+                .key;
+            // Its text, by the first glyph drawn inside its box.
+            let bx = r.node(|n| n.key == area).unwrap().rect;
+            let first = kui_core::testing::quads_of(&mut r.core, kui_core::QuadKind::GlyphMask)
+                .into_iter()
+                .filter(|q| q.rect.y >= bx.y && q.rect.y < bx.y + bx.h)
+                .map(|q| (q.rect.x, q.rect.y))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .expect("a glyph of its text");
+            (
+                r.node(|n| n.label.as_deref() == Some("after_field")).unwrap().rect.y,
+                r.node(|n| n.label.as_deref() == Some("after_area")).unwrap().rect.y,
+                first,
+            )
+        };
+        let rest = at(&mut r);
+        kui_core::testing::tab(&mut r.core, false);
+        r.frames(2);
+        assert_eq!(at(&mut r), rest, "the field focused ({skin})");
+        kui_core::testing::tab(&mut r.core, false);
+        r.frames(2);
+        assert_eq!(at(&mut r), rest, "the text area focused ({skin})");
+        assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+    }
+}
+
+#[test]
+fn a_fields_error_takes_no_room_of_its_own() {
+    // The error line under a field made the toolbar holding it taller, and
+    // its buttons, centred on the taller row, left the field's line.
+    let mut r = LuaRig::new(
+        r#"
+        err = nil
+        function view(env)
+          return column { width = "grow", height = "grow",
+            component("kit/toolbar", {}, {
+              component("kit/text_field", { value = "", placeholder = "What needs doing?", error = err }),
+              component("kit/button", { label = "Add", variant = "primary" }),
+            }),
+            row { key = "below", label = "below", width = 10, height = 10 },
+          }
+        end
+        "#,
+    );
+    r.frames(3);
+    let below = r.node(|n| n.label.as_deref() == Some("below")).unwrap().rect.y;
+    let add = r.named("Add");
+    r.app.globals().set("err", "Name the task first").unwrap();
+    r.frames(3);
+    assert!(r.text("Name the task first").is_some(), "the message shows");
+    assert_eq!(r.node(|n| n.label.as_deref() == Some("below")).unwrap().rect.y, below, "the toolbar keeps its height");
+    assert_eq!(r.named("Add").y, add.y, "the button keeps its line");
+    assert!(r.warnings.is_empty(), "{:#?}", r.warnings);
+}
+
+#[test]
+fn a_checkbox_ring_hugs_its_box_and_shows_only_from_the_keyboard() {
+    // The core's ring went round the checkbox's whole row, its full height,
+    // far from the 14 px box; and a click showed rings that only the
+    // keyboard should.
+    let mut r = LuaRig::new(
+        r#"
+        on = false
+        function on_event(ev) if ev.kind == "t" then on = ev.toggle.checked end end
+        function view(env)
+          return column { width = "grow", height = "grow", pad = 20,
+            component("kit/checkbox", { label = "Pinned", hide_label = true, checked = on, on_toggle = { kind = "t" } }) }
+        end
+        "#,
+    );
+    r.frames(3);
+    let row = r.named("Pinned");
+    r.slow_click(row.x + row.w / 2.0, row.y + row.h / 2.0);
+    r.frames(2);
+    assert_eq!(focus_quads(&mut r.core), 0, "a click focuses without a ring");
+    kui_core::testing::tab(&mut r.core, true);
+    kui_core::testing::tab(&mut r.core, false);
+    r.frames(2);
+    let ring = r
+        .node(|n| n.float && (n.rect.w - 22.0).abs() < 0.5 && (n.rect.h - 22.0).abs() < 0.5)
+        .expect("the ring round the box")
+        .rect;
+    let bx = r
+        .node(|n| (n.rect.w - 14.0).abs() < 0.5 && (n.rect.h - 14.0).abs() < 0.5 && n.rect.x >= row.x - 0.5)
+        .expect("the box")
+        .rect;
+    assert!((bx.x - ring.x - 4.0).abs() < 0.5 && (bx.y - ring.y - 4.0).abs() < 0.5, "2 px out: {ring:?} round {bx:?}");
+    assert!(focus_quads(&mut r.core) > 0, "the keyboard shows it");
+}
+
+#[test]
+fn a_click_on_a_list_row_draws_no_ring_and_the_keyboard_does() {
+    let mut r = LuaRig::new(
+        r#"
+        local ch = channel({ name = { "one", "two", "three" } })
+        sel = nil
+        function on_event(ev) if ev.kind == "sel" then sel = ev.select.row end end
+        function view(env)
+          return column { width = "grow", height = "grow",
+            component("kit/button", { label = "Before" }),
+            column { width = 300, height = 200,
+              component("kit/list", { rows = ch, title = "name", selected = sel, grow = true, on_select = { kind = "sel" } }) } }
+        end
+        "#,
+    );
+    r.frames(3);
+    let two = r.text("two").unwrap();
+    r.slow_click(two.x + 2.0, two.y + two.h / 2.0);
+    r.frames(2);
+    assert_eq!(focus_quads(&mut r.core), 0, "no ring round the list after a click");
+    // From nothing, Tab to the button and Tab again into the list.
+    r.core.set_focus(None);
+    kui_core::testing::tab(&mut r.core, false);
+    r.frames(1);
+    kui_core::testing::tab(&mut r.core, false);
+    r.frames(2);
+    assert!(focus_quads(&mut r.core) > 0, "Tab into it shows the ring");
+}
+
+#[test]
+fn a_slider_handle_is_grabbed_and_drags() {
+    // The handle showed the arrow while the track showed the hand, and a
+    // press on it was its own, not the slider's: it could not be dragged.
+    // The track is an open hand now, the handle with it, a closed one
+    // while held, and a drag that starts on the handle moves the value.
+    let mut r = LuaRig::new(
+        r#"
+        v = 0.5
+        function on_event(ev) if ev.kind == "zoom" then v = ev.change.value end end
+        function view(env)
+          return column { width = 300, height = "grow", pad = 20,
+            component("kit/slider", { value = v, min = 0, max = 1, label = "Zoom", on_change = { kind = "zoom" } }) }
+        end
+        "#,
+    );
+    r.frames(3);
+    let handle = r
+        .node(|n| (n.rect.w - 12.0).abs() < 0.5 && (n.rect.h - 12.0).abs() < 0.5)
+        .expect("the handle")
+        .rect;
+    let (x, y) = (handle.x + 6.0, handle.y + 6.0);
+    use kui_core::{InputEvent, Vec2, cursor::CursorShape};
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x, y)));
+    r.route(e);
+    r.frames(2);
+    assert_eq!(r.core.cursor_shape(), CursorShape::Grab, "an open hand over the handle");
+    let e = r.core.handle_input(InputEvent::mouse_down(1));
+    r.route(e);
+    r.frames(2);
+    assert_eq!(r.core.cursor_shape(), CursorShape::Grabbing, "a closed one while it is held");
+    let e = r.core.handle_input(InputEvent::CursorMoved(Vec2::new(x + 60.0, y)));
+    r.route(e);
+    r.frames(2);
+    assert_eq!(r.core.cursor_shape(), CursorShape::Grabbing, "still closed off the handle");
+    let e = r.core.handle_input(InputEvent::mouse_up());
+    r.route(e);
+    r.frames(2);
+    let v: f64 = r.app.globals().get("v").unwrap();
+    assert!(v > 0.6, "the drag from the handle moved the value: {v}");
+}

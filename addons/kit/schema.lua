@@ -187,7 +187,7 @@ return {
         { "width", "number?", doc = "Its width in px; grows when left out." },
         { "focus", "integer?", doc = "Takes the keyboard each time this number changes while the field is on screen: keep a counter in your model and bump it (⌘F). A field that shows after the bump takes its number as where it starts." },
         { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows: a new item's name." },
-        { "error", "string?", doc = "What is wrong with the text: drawn under the field in the danger colour, its edge in danger too, and read after its name. An empty string marks the field only, for fields that share one message." },
+        { "error", "string?", doc = "What is wrong with the text: drawn at the end of the field in the danger colour (cut short past half its width, the whole message its tooltip), its edge in danger too, and read after its name. It takes no room of its own, so a field in a toolbar keeps its height. An empty string marks the field only, for fields that share one message." },
       },
       events = {
         { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },
@@ -209,6 +209,7 @@ return {
         { "focus", "integer?", doc = "Takes the keyboard each time this number changes while it is on screen." },
         { "autofocus", "boolean?", doc = "Takes the keyboard as it first shows." },
         { "error", "string?", doc = "What is wrong with the text, under it in the danger colour." },
+        { "tab_inserts", "boolean?", doc = "Tab types indentation (four spaces), as in a code editor; Ctrl+Tab still moves on. Without it Tab and Shift+Tab move the keyboard to the next or the last control, as from a field." },
       },
       events = {
         { "change", doc = "The text changed.", fields = { { "text", "string", doc = "The whole text." } } },
