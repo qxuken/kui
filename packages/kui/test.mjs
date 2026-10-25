@@ -130,7 +130,7 @@ const READBACK = {
   onButton: (n) => n.events.button?.kind === 't',
   onLayout: (n) => n.events.layout?.kind === 't',
   modal: (n) => n.events.modal?.kind === 't',
-  role: (n) => n.role === 'terminal',
+  role: (n) => n.role === 'cell',
 };
 
 // Every prop writes at least its own id, so declaring one has to change the
@@ -7723,6 +7723,31 @@ test('uniformList says what it needs rather than drawing nothing', () => {
   assert.throws(() => uniformList(ctx, { key: 'l', rows: 10 }, () => box({})), /positive `rowH`/);
   assert.throws(() => uniformList(ctx, { key: 'l', rowH: 10 }, () => box({})), /`rows` count/);
   assert.throws(() => uniformList(ctx, { key: 'l', rows: 10, rowH: 10 }), /row builder/);
+});
+
+// A grid of focusable cells in rows is one Tab stop, the arrows moving in two
+// dimensions (ADR 0070, backlog C90).
+test('a grid is one tab stop and its arrows move between rows and cells', () => {
+  const view = () =>
+    box({ pad: 8 }, [
+      box({ role: 'grid', label: 'table' }, [0, 1].map((r) =>
+        box({ dir: 'row', role: 'row' }, [0, 1].map((c) =>
+          box({ width: 40, height: 20, role: 'cell', focusable: true, label: `${r},${c}` }, [], `c${c}`)), `r${r}`)), 'grid'),
+    ]);
+  const ctx = new Ctx();
+  ctx.frame(320, 240, 1, view());
+  const focused = () => ctx.accessTree().nodes.find((n) => n.focused)?.name;
+  ctx.key('tab');
+  ctx.frame(320, 240, 1, view());
+  assert.equal(focused(), '0,0');
+  ctx.key('right');
+  ctx.key('down');
+  ctx.frame(320, 240, 1, view());
+  assert.equal(focused(), '1,1');
+  ctx.key('home', { ctrl: true });
+  ctx.frame(320, 240, 1, view());
+  assert.equal(focused(), '0,0', 'ctrl+home: the grid\'s first cell');
+  assert.equal(ctx.accessTree().nodes.find((n) => n.name === 'table').role, 'grid');
 });
 
 // A hover group read by the name its members declare (backlog C92): a press

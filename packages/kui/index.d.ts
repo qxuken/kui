@@ -880,7 +880,7 @@ export type AccessRole =
   | 'tabList' | 'link' | 'heading' | 'list' | 'listItem' | 'image' | 'dialog'
   | 'group' | 'window' | 'titleBar' | 'staticText' | 'textInput'
   | 'multilineTextInput' | 'scrollView' | 'line' | 'radioGroup' | 'menu'
-  | 'menuItem' | 'terminal' | 'passwordInput';
+  | 'menuItem' | 'terminal' | 'passwordInput' | 'grid' | 'row' | 'cell';
 
 /** What assistive technology can ask of a node (`access(key, action)`). */
 export type AccessAction =

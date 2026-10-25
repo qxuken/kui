@@ -176,6 +176,11 @@ was the first bare bump to break an app in five releases).
   it is held whenever `doc` is; on one it is the key ⌘ is not, and Ctrl+Tab
   there is `ctrl` and no longer `doc`. Node's `key(name, mods)` takes
   `ctrl`, and C has `KUI_MOD_CTRL` (8).
+- `access::Role` gained `Grid`, `Row` and `Cell` at its tail (`Role::ALL`
+  is 30; C `KUI_ROLE_GRID`, `KUI_ROLE_ROW`, `KUI_ROLE_CELL`; ADR 0070): an
+  exhaustive `match` adds three arms. Page Up and Page Down on a focused
+  `list` item move the focus by a page of rows, where they did nothing
+  and, under a sink, bubbled to it.
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -287,6 +292,24 @@ for lua-language-server, and a new runner beside the window's.
   *What you can delete:* a `ch:column` copied into a script to bucket
   it, and the bucketing loop.
 
+- **A grid composite** (backlog C90, [ADR
+  0070](docs/adr/0070-a-grid-and-composites-past-the-window.md),
+  proposed): `role="grid"` around `role="row"`s of `role="cell"`s, the
+  focusable cells one Tab stop. Left / Right move along a row, Up / Down
+  between rows keeping the column, Home / End to the row's ends and with
+  Ctrl (or the primary) to the grid's, Page Up / Page Down by the rows its
+  scroller shows; it clamps, and moving activates nothing. A cell reports
+  no "n of m" (its row and column are an open question). In every binding
+  by the role names; AccessKit `Grid`, `Row`, `GridCell`.
+- **Composites that walk past their window** (backlog C89, ADR 0070): a
+  `list` or `grid` whose rows carry their data `index` under a `rowCount`
+  (on the list or the scroller between, as `uniformList` and Kit's body
+  declare it) steps by index over all its rows — End is the data's last
+  row, not the window's — and a step to a row the frame has not built
+  scrolls toward it and lands the focus when the next frame builds it, as
+  `onRange` pagers already expect. A key pressed again before that frame
+  goes on from the row reached for; focus moving any other way lets the
+  reach go.
 - **A hover group read by its name in every binding** (backlog C92):
   Lua `env.is_group_hovered(name)` and `env.is_group_pressed(name)`,
   Node `isGroupHovered(name)` and `isGroupPressed(name)`, C

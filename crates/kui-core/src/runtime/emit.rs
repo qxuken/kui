@@ -747,6 +747,9 @@ impl Core {
         if let Some(forward) = self.pending_focus_step.take() {
             self.focus_next(forward);
         }
+        // And a composite step that reached for a row the last frame had
+        // not built lands on it, now that this one may have (ADR 0070).
+        self.resolve_composite_reach();
     }
 
     /// Numbers the text nodes of the selection's scope in tree order and

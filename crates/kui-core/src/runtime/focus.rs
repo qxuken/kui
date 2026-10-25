@@ -913,6 +913,9 @@ impl Core {
             // An Escape armed the editor it was pressed in, and only that
             // one (backlog C99).
             self.tab_armed = None;
+            // A reach for an unbuilt row is the focus going there; it going
+            // anywhere else first lets the reach go (ADR 0070).
+            self.composite_reach = None;
         }
         if self.tree.any_region
             && let Some(k) = key

@@ -7961,6 +7961,45 @@ mod tests {
         assert!(!pressed(&ext), "released");
     }
 
+    /// A script declares the grid composite by its roles (ADR 0070): the
+    /// cells are one Tab stop the arrows walk in two dimensions.
+    #[test]
+    fn a_scripts_grid_is_walked_by_rows_and_cells() {
+        let mut ext = LuaExtension::from_source(
+            "grid",
+            r#"
+                function view(env)
+                  local rows = {}
+                  for r = 0, 1 do
+                    local cells = { key = "r" .. r, role = "row" }
+                    for c = 0, 1 do
+                      cells[#cells + 1] = row { key = "c" .. c, width = 40, height = 20,
+                        role = "cell", focusable = true, label = r .. "," .. c }
+                    end
+                    rows[#rows + 1] = row(cells)
+                  end
+                  rows.key, rows.role, rows.label = "grid", "grid", "table"
+                  return column { key = "root", column(rows) }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let cell = |r: u32, c: u32| {
+            Key::ROOT
+                .str("root")
+                .str("grid")
+                .str(&format!("r{r}"))
+                .str(&format!("c{c}"))
+        };
+        core.handle_input(InputEvent::Key(kui_core::EditKey::Tab, Default::default()));
+        assert_eq!(core.focus(), Some(cell(0, 0)));
+        core.handle_input(InputEvent::Key(kui_core::EditKey::Down, Default::default()));
+        core.handle_input(InputEvent::Key(kui_core::EditKey::Right, Default::default()));
+        assert_eq!(core.focus(), Some(cell(1, 1)));
+    }
+
     /// `env.is_group_hovered(name)` / `env.is_group_pressed(name)` read a
     /// hover group by the name its members declare (backlog C92): a press
     /// on one member is the group's.

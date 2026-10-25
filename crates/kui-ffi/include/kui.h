@@ -1576,7 +1576,9 @@ enum {
  * KUI_ROLE_RADIO_GROUP, KUI_ROLE_TAB_LIST, KUI_ROLE_MENU and KUI_ROLE_LIST
  * are the composite containers: one holding focusable KUI_ROLE_RADIO,
  * KUI_ROLE_TAB, KUI_ROLE_MENU_ITEM or KUI_ROLE_LIST_ITEM children is a
- * single Tab stop with the arrow keys moving inside it. Nothing declares
+ * single Tab stop with the arrow keys moving inside it; and KUI_ROLE_GRID
+ * is one too, its focusable KUI_ROLE_CELLs in KUI_ROLE_ROWs, Left/Right
+ * along a row and Up/Down between rows (ADR 0070). Nothing declares
  * that:
  * the core derives it from the roles and from which nodes are focusable. */
 enum {
@@ -1591,6 +1593,9 @@ enum {
     KUI_ROLE_TERMINAL, /* derived from kui_cells; its rows are the value */
     KUI_ROLE_PASSWORD_INPUT, /* derived from a KUI_EDIT_SECURE editor; its
                                 value is the bullets it draws */
+    KUI_ROLE_GRID, KUI_ROLE_ROW, KUI_ROLE_CELL, /* the grid composite (ADR
+                                0070): cells in rows, one Tab stop, the
+                                arrows moving in two dimensions */
 };
 
 /* How a composite container arranges its items

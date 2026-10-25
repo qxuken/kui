@@ -266,6 +266,7 @@ fn asserts() -> (String, Vec<&'static str>) {
         "KUI_ROLE_SCROLL_VIEW", "KUI_ROLE_LINE",
         "KUI_ROLE_RADIO_GROUP", "KUI_ROLE_MENU", "KUI_ROLE_MENU_ITEM",
         "KUI_ROLE_TERMINAL", "KUI_ROLE_PASSWORD_INPUT",
+        "KUI_ROLE_GRID", "KUI_ROLE_ROW", "KUI_ROLE_CELL",
     ]);
     abi_enum!(o, kui_core::schema::ORIENTATIONS, 1 => [
         "KUI_ORIENTATION_HORIZONTAL", "KUI_ORIENTATION_VERTICAL",

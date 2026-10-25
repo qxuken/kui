@@ -119,6 +119,17 @@ pub enum Role {
     /// that masks its own text can declare it in Rust, as
     /// [`Role::TextInput`].
     PasswordInput,
+    /// A two-dimensional composite (ADR 0070, backlog C90): its `cell`s,
+    /// in `row`s, are one Tab stop, Left / Right moving along a row and Up
+    /// / Down between rows, Home / End to a row's ends (with Ctrl, the
+    /// grid's), Page Up / Page Down by what its scroller shows.
+    Grid,
+    /// One row of a `grid`: what Up and Down move between, and what a
+    /// windowed grid numbers with `index`. Not focusable of itself.
+    Row,
+    /// One cell of a `grid`'s row: the grid's item, focusable where it
+    /// says `focusable`, as a `listItem` is.
+    Cell,
 }
 
 impl Role {
@@ -145,6 +156,9 @@ impl Role {
             Role::MenuItem => "menuItem",
             Role::Terminal => "terminal",
             Role::PasswordInput => "passwordInput",
+            Role::Grid => "grid",
+            Role::Row => "row",
+            Role::Cell => "cell",
             Role::Window => "window",
             Role::TitleBar => "titleBar",
             Role::StaticText => "staticText",
@@ -159,7 +173,7 @@ impl Role {
         Role::ALL.iter().copied().find(|r| r.name() == name)
     }
 
-    pub const ALL: [Role; 27] = [
+    pub const ALL: [Role; 30] = [
         Role::None,
         Role::Button,
         Role::Checkbox,
@@ -187,6 +201,9 @@ impl Role {
         Role::MenuItem,
         Role::Terminal,
         Role::PasswordInput,
+        Role::Grid,
+        Role::Row,
+        Role::Cell,
     ];
 
     /// A control needs a name; one without is reported as a warning.
@@ -1464,6 +1481,12 @@ fn set_positions(tree: &Tree, out: &mut AccessTree) {
         .collect();
     let mut items: Vec<usize> = Vec::new();
     for (container, item) in containers {
+        // A grid's cells are not one set: a reader places a cell by its
+        // row and column, which the access node does not carry yet (ADR
+        // 0070, open question), and "7 of 12" across rows would be wrong.
+        if item == Role::Cell {
+            continue;
+        }
         crate::composite::items(tree, container, item, &mut items);
         if items.is_empty() {
             continue;

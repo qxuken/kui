@@ -3629,26 +3629,9 @@ What Kit's fifth round of the samples found kui-core lacks (the Kit agent's
 report), and three things the user hit in the demos that are the core's,
 filed the same day for the round that builds them.
 
-### `.` C89 — The arrows stop at a virtualized list's window
+- `.` **C89** — [The arrows stop at a virtualized list's window](backlog/closed-2026-09.md#-c89--the-arrows-stop-at-a-virtualized-lists-window--done-2026-10-26) — done (2026-10-26) — ADR 0070 (proposed): a list or grid with indexed rows under a `rowCount` steps by index, scrolls to an unbuilt row and lands on it the next frame
 
-**Found** building arrow navigation into Kit's list and table: a `list`
-composite walks the items in the tree, so in a virtualized list (rows
-outside the window are not declared) the arrows stop at the window's edge.
-Kit kept its list and table as key sinks with index-based selection plus
-`reveal`. **Do.** A composite that knows its full length and asks for the
-row it needs (the channel's `onRange` already says which rows are in view),
-so roving focus walks rows that are not built yet.
-
-### `.` C90 — No grid composite
-
-**Found** the same way: a table is rows × cells and wants Up/Down between
-rows and Left/Right between cells, Home/End, Page. ADR 0007's composites
-are one-dimensional. **Do.** A `grid` composite (row and column indices),
-in every binding.
-
-- `.` **C91** — [A child that only declares a cursor or hover takes the press](backlog/closed-2026-09.md#-c91--a-child-that-only-declares-a-cursor-or-hover-takes-the-press--done-2026-10-26) — done (2026-10-26) — a press on a node that takes none goes to the nearest ancestor that does (`HitRegion::press_to`); hover unchanged
-
-- `.` **C92** — [Lua has no `is_group_pressed`](backlog/closed-2026-09.md#-c92--lua-has-no-is_group_pressed--done-2026-10-26) — done (2026-10-26) — `is_group_hovered` / `is_group_pressed` by name in Lua, Node, C and Odin, pinned in DOORS
+- `.` **C90** — [No grid composite](backlog/closed-2026-09.md#-c90--no-grid-composite--done-2026-10-26) — done (2026-10-26) — ADR 0070 (proposed): `grid` / `row` / `cell`, one Tab stop, two-dimensional arrows, Home/End (Ctrl: the grid's), Page Up/Down
 
 - `.` **C95** — [Lua cannot reduce a channel](backlog/closed-2026-09.md#-c95--lua-cannot-reduce-a-channel--done-2026-10-26) — done (2026-10-26) — `Channel::reduce` (min/max/first/last and their rows per bucket) with doors in Lua, Node, C and Odin; 100k rows into 720 in ~0.1 ms
 - `.` **C96** — [A path whose `d` changes costs far more than its size](backlog/closed-2026-09.md#-c96--a-path-whose-d-changes-costs-far-more-than-its-size--done-2026-10-26) — done (2026-10-26) — zeno's cell walk over kui's own storage (cells sorted by row once): the 1,400-vertex zigzag 1.65 s → 6 ms, masks the same to the byte
@@ -5620,7 +5603,7 @@ move.
 - `.` **T8** — [A design team's token export cannot reach a kui app without copying it by hand](backlog/closed-2026-09.md#-t8--a-design-teams-token-export-cannot-reach-a-kui-app-without-copying-it-by-hand--done-2026-10-25) — done (2026-10-25) — `kui_core::dtcg` + `json`, Node `loadTokens`, Lua `env.load_tokens`, C `kui_tokens_load_dtcg`
 - `.` **V12** — [An SVG file reaches a kui app only as `path` strings converted by hand](backlog/closed-2026-09.md#-v12--an-svg-file-reaches-a-kui-app-only-as-path-strings-converted-by-hand--done-2026-10-25) — done (2026-10-25) — the `svg` element: paths when it can, one shared raster when it cannot (`kui_core::svg`, usvg/resvg 0.46), `<svg>`, Lua `svg {}`, C `kui_svg`, Odin `kui.svg`
 
-**From Kit's sample rounds (2026-10-26)** — C89–C94, C98 and C99, built the same day
+**From Kit's sample rounds (2026-10-26)** — C89–C94, C98 and C99, built the same day, C89 and C90 with ADR 0070 (proposed)
 
 - `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`
 - `.` **C98** — [An open menu ignores its items' accelerators](backlog/closed-2026-09.md#-c98--an-open-menu-ignores-its-items-accelerators--done-2026-10-26) — done (2026-10-26) — an open context menu or drawn-bar menu chooses the enabled row whose accelerator was pressed, and closes
@@ -5628,3 +5611,5 @@ move.
 - `.` **C93** — [A key sink draws no focus ring](backlog/closed-2026-09.md#-c93--a-key-sink-draws-no-focus-ring--done-2026-10-26) — done (2026-10-26) — a focused sink draws the core ring when focus is keyboard-visible; a key a sink takes shows the focus; `focusRing` colours the ring down a subtree (transparent turns it off)
 - `.` **C94** — [An editor's key events carry no Ctrl](backlog/closed-2026-09.md#-c94--an-editors-key-events-carry-no-ctrl--done-2026-10-26) — done (2026-10-26) — `Mods::ctrl` on the editing channel and in the `boundary` event; Ctrl+Tab is `ctrl`, not a stand-in `doc`
 - `.` **C92** — [Lua has no `is_group_pressed`](backlog/closed-2026-09.md#-c92--lua-has-no-is_group_pressed--done-2026-10-26) — done (2026-10-26) — `is_group_hovered` / `is_group_pressed` by name in Lua, Node, C and Odin, pinned in DOORS
+- `.` **C89** — [The arrows stop at a virtualized list's window](backlog/closed-2026-09.md#-c89--the-arrows-stop-at-a-virtualized-lists-window--done-2026-10-26) — done (2026-10-26) — ADR 0070 (proposed): a list or grid with indexed rows under a `rowCount` steps by index, scrolls to an unbuilt row and lands on it the next frame
+- `.` **C90** — [No grid composite](backlog/closed-2026-09.md#-c90--no-grid-composite--done-2026-10-26) — done (2026-10-26) — ADR 0070 (proposed): `grid` / `row` / `cell`, one Tab stop, two-dimensional arrows, Home/End (Ctrl: the grid's), Page Up/Down

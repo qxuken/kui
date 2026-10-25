@@ -290,6 +290,11 @@ pub const ROLES: &[&str] = &[
     "menuItem",
     // Appended later: a cell grid's derived role.
     "terminal",
+    // Appended later: the grid composite (ADR 0070). `passwordInput` sits
+    // between in `Role::ALL` and is derived, never declared.
+    "grid",
+    "row",
+    "cell",
 ];
 
 /// How a composite container arranges its items

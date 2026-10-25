@@ -17,15 +17,26 @@ impl Core {
     // frame, so a view that wants selection to follow focus writes
     // `selected(ui.is_focused(key))`.
 
-    /// One arrow, Home or End step inside the composite holding node `i`.
-    /// Nothing happens when `i` is not a composite item, or when the step
-    /// runs off the end of one that clamps.
-    pub(crate) fn composite_step(&mut self, i: usize, ek: EditKey, out: &mut Vec<UiEvent>) {
+    /// One arrow, Home, End, Page Up or Page Down step inside the composite
+    /// holding node `i`. Nothing happens when `i` is not a composite item,
+    /// or when the step runs off the end of one that clamps. A step to a
+    /// row a windowed list or grid has not built reaches for it instead
+    /// (ADR 0070): the scroller moves toward it, and the frame that builds
+    /// it lands the focus there.
+    pub(crate) fn composite_step(
+        &mut self,
+        i: usize,
+        ek: EditKey,
+        mods: crate::input::Mods,
+        out: &mut Vec<UiEvent>,
+    ) {
         let mut items = std::mem::take(&mut self.items_scratch);
-        let target = self.composite_target(i, ek, &mut items);
+        let target = self.composite_target(i, ek, mods, &mut items);
         self.items_scratch = items;
-        if let Some((j, item)) = target {
-            self.move_within_composite(i, j, item, out);
+        match target {
+            Some(Target::Land(j, item)) => self.move_within_composite(i, j, item, out),
+            Some(Target::Reach(reach, toward)) => self.reach_unbuilt(i, reach, toward),
+            None => {}
         }
     }
 
@@ -56,15 +67,17 @@ impl Core {
         }
     }
 
-    /// Where a step from item `i` lands, with the item role it lands on.
-    /// Fills `items` with the composite's items on the way (see
-    /// `composite::items`).
+    /// Where a step from item `i` lands, with the item role it lands on,
+    /// or the unbuilt row it reaches for. Fills `items` with the
+    /// composite's items on the way (see `composite::items`).
     fn composite_target(
         &self,
         i: usize,
         ek: EditKey,
+        mods: crate::input::Mods,
         items: &mut Vec<usize>,
-    ) -> Option<(usize, crate::access::Role)> {
+    ) -> Option<Target> {
+        use crate::access::Role;
         let container = crate::composite::owner(&self.tree, i, items)?;
         let role = self.tree.specs[container].access().role?;
         let item = crate::composite::item_role(role)?;
@@ -75,7 +88,28 @@ impl Core {
             .copied()
             .filter(|&j| crate::access::focusable(&self.tree, j))
             .collect();
+        if role == Role::Grid {
+            return self.grid_target(container, i, ek, mods, items);
+        }
         let at = live.iter().position(|&j| j == i)?;
+        // A list whose rows carry their data index under a `rowCount` is
+        // windowed: its length is the count, and a step is by index, to a
+        // row the frame may not have built (ADR 0070).
+        if role == Role::List
+            && let Some((k, n)) = self.window_of(container, i)
+        {
+            let page = self.page_rows(container, i, &live);
+            let t = match ek {
+                EditKey::Left | EditKey::Up => k.checked_sub(1)?,
+                EditKey::Right | EditKey::Down => (k + 1 < n).then_some(k + 1)?,
+                EditKey::Home => 0,
+                EditKey::End => n.checked_sub(1)?,
+                EditKey::PageUp => k.saturating_sub(page as u64),
+                EditKey::PageDown => (k + page as u64).min(n.saturating_sub(1)),
+                _ => return None,
+            };
+            return self.land_or_reach(container, i, &live, t, None, item);
+        }
         let wrap = crate::composite::wraps(role);
         let layout = self.tree.specs[container].layout;
         // The one place the two arrow pairs differ: in a wrapped container
@@ -96,9 +130,348 @@ impl Core {
             // reader user finds.
             EditKey::Left | EditKey::Up => live[step(at, -1, live.len(), wrap)?],
             EditKey::Right | EditKey::Down => live[step(at, 1, live.len(), wrap)?],
+            // A list pages by what its scroller shows (ADR 0070); a choice
+            // among a few has no pages.
+            EditKey::PageUp | EditKey::PageDown if role == Role::List => {
+                let page = self.page_rows(container, i, &live);
+                if ek == EditKey::PageUp {
+                    live[at.saturating_sub(page)]
+                } else {
+                    live[(at + page).min(live.len() - 1)]
+                }
+            }
             _ => return None,
         };
-        Some((j, item))
+        Some(Target::Land(j, item))
+    }
+
+    /// A step inside a grid (ADR 0070, backlog C90): Left / Right along the
+    /// row, Up / Down to the row before or after keeping the column, Home /
+    /// End to the row's ends — the grid's first and last cell with Ctrl (or
+    /// the primary) held — and Page Up / Page Down by the rows its scroller
+    /// shows. It clamps at every edge, a grid being a list of rows. Rows a
+    /// windowed grid has not built are reached for by their data index.
+    fn grid_target(
+        &self,
+        container: usize,
+        i: usize,
+        ek: EditKey,
+        mods: crate::input::Mods,
+        cells: &[usize],
+    ) -> Option<Target> {
+        use crate::access::Role;
+        let live = |j: usize| crate::access::focusable(&self.tree, j);
+        // The rows in tree order, each with every cell it holds, live or
+        // not, so a disabled cell keeps its column.
+        let mut rows: Vec<(usize, Vec<usize>)> = Vec::new();
+        for &c in cells {
+            let r = crate::composite::row_of(&self.tree, container, c);
+            match rows.last_mut() {
+                Some((at, row)) if *at == r => row.push(c),
+                _ => rows.push((r, vec![c])),
+            }
+        }
+        let ri = rows.iter().position(|(_, row)| row.contains(&i))?;
+        let ci = rows[ri].1.iter().position(|&c| c == i)?;
+        let along = |row: &[usize], from: usize, back: bool| -> Option<usize> {
+            if back {
+                row[..from].iter().rev().copied().find(|&c| live(c))
+            } else {
+                row[from + 1..].iter().copied().find(|&c| live(c))
+            }
+        };
+        let to_grid_end = mods.ctrl || mods.doc;
+        let land = |j: usize| Some(Target::Land(j, Role::Cell));
+        match ek {
+            EditKey::Left => return land(along(&rows[ri].1, ci, true)?),
+            EditKey::Right => return land(along(&rows[ri].1, ci, false)?),
+            EditKey::Home if !to_grid_end => {
+                return land(rows[ri].1.iter().copied().find(|&c| live(c))?);
+            }
+            EditKey::End if !to_grid_end => {
+                return land(rows[ri].1.iter().rev().copied().find(|&c| live(c))?);
+            }
+            EditKey::Up | EditKey::Down | EditKey::PageUp | EditKey::PageDown => {}
+            EditKey::Home | EditKey::End => {}
+            _ => return None,
+        }
+        // The column a row motion keeps: this one, or the first / last for
+        // the grid's own ends.
+        let column = match ek {
+            EditKey::Home => 0,
+            EditKey::End => usize::MAX,
+            _ => ci,
+        };
+        let units: Vec<usize> = rows.iter().map(|(r, _)| *r).collect();
+        if let Some((k, n)) = self.window_of(container, rows[ri].0) {
+            let page = self.page_rows(container, rows[ri].0, &units) as u64;
+            let t = match ek {
+                EditKey::Up => k.checked_sub(1)?,
+                EditKey::Down => (k + 1 < n).then_some(k + 1)?,
+                EditKey::PageUp => k.saturating_sub(page),
+                EditKey::PageDown => (k + page).min(n.saturating_sub(1)),
+                EditKey::Home => 0,
+                _ => n.checked_sub(1)?,
+            };
+            if let Some((_, row)) = rows
+                .iter()
+                .find(|(r, _)| crate::composite::data_index(&self.tree, *r) == Some(t))
+            {
+                return land(self.grid_cell_at(row, column)?);
+            }
+            return Some(self.reach(container, rows[ri].0, &units, t, Some(column)));
+        }
+        let with_live = |r: usize| rows[r].1.iter().any(|&c| live(c));
+        let last = rows.len() - 1;
+        let page = self.page_rows(container, rows[ri].0, &units);
+        let (start, back) = match ek {
+            EditKey::Up => (ri.checked_sub(1)?, true),
+            EditKey::Down => ((ri < last).then_some(ri + 1)?, false),
+            EditKey::PageUp => (ri.saturating_sub(page), true),
+            EditKey::PageDown => ((ri + page).min(last), false),
+            EditKey::Home => (0, false),
+            _ => (last, true),
+        };
+        // Past a row with nothing live in it, the way the step went.
+        let mut r = start;
+        while !with_live(r) {
+            r = if back {
+                r.checked_sub(1)?
+            } else {
+                (r < last).then_some(r + 1)?
+            };
+        }
+        land(self.grid_cell_at(&rows[r].1, column)?)
+    }
+
+    /// The live cell of `row` nearest column `column` (`usize::MAX` for the
+    /// row's last): that column itself when it is live, else the nearest
+    /// on either side, the earlier on a tie.
+    fn grid_cell_at(&self, row: &[usize], column: usize) -> Option<usize> {
+        let live = |j: usize| crate::access::focusable(&self.tree, j);
+        let c = column.min(row.len().checked_sub(1)?);
+        (0..row.len()).find_map(|d| {
+            [c.checked_sub(d), Some(c + d).filter(|&x| x < row.len())]
+                .into_iter()
+                .flatten()
+                .map(|x| row[x])
+                .find(|&j| live(j))
+        })
+    }
+
+    /// The data index of the composite unit at `unit` — a list's item, a
+    /// grid's row — and the count of rows the composite at `container` has,
+    /// built or not, when it is windowed: the unit carries an `index` and a
+    /// `rowCount` is declared between them (ADR 0070). An index a step is
+    /// already reaching for in the same composite stands in for the unit's,
+    /// so a key held faster than frames come keeps going.
+    fn window_of(&self, container: usize, unit: usize) -> Option<(u64, u64)> {
+        let index = crate::composite::data_index(&self.tree, unit)?;
+        let n = crate::composite::row_count(&self.tree, unit, container)?;
+        let key = self.tree.keys[container];
+        let k = self
+            .composite_reach
+            .filter(|r| r.container == key)
+            .map_or(index, |r| r.index);
+        Some((k.min(n.saturating_sub(1)), n))
+    }
+
+    /// A windowed list's step to data index `t`: onto the built item with
+    /// that index when the frame has one, else a reach for it.
+    fn land_or_reach(
+        &self,
+        container: usize,
+        i: usize,
+        live: &[usize],
+        t: u64,
+        column: Option<usize>,
+        item: crate::access::Role,
+    ) -> Option<Target> {
+        if crate::composite::data_index(&self.tree, i) == Some(t) {
+            return Some(Target::Land(i, item));
+        }
+        if let Some(&j) = live
+            .iter()
+            .find(|&&j| crate::composite::data_index(&self.tree, j) == Some(t))
+        {
+            return Some(Target::Land(j, item));
+        }
+        Some(self.reach(container, i, live, t, column))
+    }
+
+    /// A reach for the unbuilt row `t`, from the built unit `from` among
+    /// `units`: where the row would be, from the pitch the built ones are
+    /// laid at, for the scroller to move toward.
+    fn reach(
+        &self,
+        container: usize,
+        from: usize,
+        units: &[usize],
+        t: u64,
+        column: Option<usize>,
+    ) -> Target {
+        let toward = self.estimate_row(from, units, t);
+        Target::Reach(
+            Reach {
+                container: self.tree.keys[container],
+                index: t,
+                column,
+                tries: 0,
+            },
+            toward,
+        )
+    }
+
+    /// Where row `t` would sit, from the built unit `from` and the pitch
+    /// the built `units` are laid at: a virtual list's rows are uniform,
+    /// which is what lets its spacers stand in for the rest.
+    fn estimate_row(&self, from: usize, units: &[usize], t: u64) -> Rect {
+        let rect = |j: usize| Rect::from_pos_size(self.tree.pos[j], self.tree.size[j]);
+        let at = crate::composite::data_index(&self.tree, from).unwrap_or(0);
+        let pitch = self.pitch(units, from);
+        let d = t as f32 - at as f32;
+        let r = rect(from);
+        Rect::new(r.x + pitch.x * d, r.y + pitch.y * d, r.w, r.h)
+    }
+
+    /// The distance from one row to the next: across the built `units` that
+    /// carry data indices, the first to the last over the indices between;
+    /// else between the first and last in tree order; else `unit`'s own
+    /// height, rows being stacked down.
+    fn pitch(&self, units: &[usize], unit: usize) -> Vec2 {
+        let pos = |j: usize| self.tree.pos[j];
+        let indexed: Vec<(usize, u64)> = units
+            .iter()
+            .filter_map(|&j| Some((j, crate::composite::data_index(&self.tree, j)?)))
+            .collect();
+        let span = match (indexed.first(), indexed.last()) {
+            (Some(&(a, ia)), Some(&(b, ib))) if ib != ia => Some((a, b, ib as f32 - ia as f32)),
+            _ => match (units.first(), units.last()) {
+                (Some(&a), Some(&b)) if a != b => Some((a, b, (units.len() - 1) as f32)),
+                _ => None,
+            },
+        };
+        match span {
+            Some((a, b, n)) => Vec2::new((pos(b).x - pos(a).x) / n, (pos(b).y - pos(a).y) / n),
+            None => Vec2::new(0.0, self.tree.size[unit].h),
+        }
+    }
+
+    /// How many rows a page is: what the scroller around `unit` shows of
+    /// them along the way they are stacked, at least one — or the composite's
+    /// own box, with no scroller between.
+    fn page_rows(&self, container: usize, unit: usize, units: &[usize]) -> usize {
+        let pitch = self.pitch(units, unit);
+        let mut a = self.tree.parent[unit];
+        let mut view = None;
+        while a != NIL {
+            let s = &self.tree.specs[a as usize].layout;
+            if s.scroll_x || s.scroll_y {
+                view = Some(self.tree.size[a as usize]);
+                break;
+            }
+            if a as usize == container {
+                break;
+            }
+            a = self.tree.parent[a as usize];
+        }
+        let view = view.unwrap_or(self.tree.size[container]);
+        let (extent, step) = if pitch.y.abs() >= pitch.x.abs() {
+            (view.h, pitch.y.abs())
+        } else {
+            (view.w, pitch.x.abs())
+        };
+        if step <= 0.0 {
+            return 1;
+        }
+        ((extent / step).floor() as usize).max(1)
+    }
+
+    /// Starts a reach (ADR 0070): the focus shows, the scroller moves
+    /// toward where the row would be, and a frame is owed — the one whose
+    /// view builds the rows the scroller now shows, after which
+    /// [`Self::resolve_composite_reach`] lands the focus.
+    fn reach_unbuilt(&mut self, from: usize, reach: Reach, toward: Rect) {
+        self.focus_visible = true;
+        self.scroll_rect_into_view(from, toward, false);
+        self.composite_reach = Some(reach);
+        self.owe_frame("composite_reach");
+    }
+
+    /// At a frame's end: lands a reach on the row it was for, now that the
+    /// view had the chance to build it — a list's item with that index, a
+    /// grid's cell in that row nearest the column kept. A row still not
+    /// built (rows that are not uniform, so the estimate missed) is
+    /// reached for again from the rows this frame did build, a few times,
+    /// and then let go; so is one whose composite is gone. Focus moving
+    /// any other way meanwhile has already let it go.
+    pub(crate) fn resolve_composite_reach(&mut self) {
+        use crate::access::Role;
+        const TRIES: u8 = 3;
+        let Some(mut reach) = self.composite_reach.take() else {
+            return;
+        };
+        let Some(container) = self.tree.index_of(reach.container) else {
+            return;
+        };
+        let Some(role) = self.tree.specs[container].access().role else {
+            return;
+        };
+        let Some(item) = crate::composite::item_role(role) else {
+            return;
+        };
+        let mut items = std::mem::take(&mut self.items_scratch);
+        crate::composite::items(&self.tree, container, item, &mut items);
+        let units: Vec<usize> = if role == Role::Grid {
+            let mut rows: Vec<usize> = Vec::new();
+            for &c in &items {
+                let r = crate::composite::row_of(&self.tree, container, c);
+                if rows.last() != Some(&r) {
+                    rows.push(r);
+                }
+            }
+            rows
+        } else {
+            items.clone()
+        };
+        let hit = units
+            .iter()
+            .copied()
+            .find(|&u| crate::composite::data_index(&self.tree, u) == Some(reach.index));
+        let landing = hit.and_then(|u| {
+            if role == Role::Grid {
+                let row: Vec<usize> = items
+                    .iter()
+                    .copied()
+                    .filter(|&c| crate::composite::row_of(&self.tree, container, c) == u)
+                    .collect();
+                self.grid_cell_at(&row, reach.column.unwrap_or(0))
+            } else {
+                Some(u).filter(|&j| crate::access::focusable(&self.tree, j))
+            }
+        });
+        self.items_scratch = items;
+        if let Some(j) = landing {
+            self.land_focus(j);
+            self.focus_visible = true;
+            return;
+        }
+        if hit.is_some() || reach.tries + 1 >= TRIES {
+            return;
+        }
+        // Again, from the built row nearest the one wanted.
+        let near = units.iter().copied().min_by_key(|&u| {
+            crate::composite::data_index(&self.tree, u)
+                .map_or(u64::MAX, |x| x.abs_diff(reach.index))
+        });
+        if let Some(from) = near.filter(|&u| crate::composite::data_index(&self.tree, u).is_some())
+        {
+            let toward = self.estimate_row(from, &units, reach.index);
+            self.scroll_rect_into_view(from, toward, false);
+            reach.tries += 1;
+            self.composite_reach = Some(reach);
+            self.owe_frame("composite_reach");
+        }
     }
 
     /// A cross-axis step in a wrapped container: to the adjacent wrap line,
@@ -351,4 +724,23 @@ impl Core {
         }
         self.note_slider_without_handler(i);
     }
+}
+
+/// Where a composite step goes: onto a built item, or reaching for a row
+/// a windowed list or grid has not built, toward where it would be.
+enum Target {
+    Land(usize, crate::access::Role),
+    Reach(Reach, Rect),
+}
+
+/// A composite step to a row the frame did not build (ADR 0070, backlog
+/// C89): the composite, the row's data index, and for a grid the column
+/// to land in (`usize::MAX` for the row's last). Held from the key to the
+/// frame that builds the row; focus moving any other way lets it go.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Reach {
+    pub container: Key,
+    pub index: u64,
+    pub column: Option<usize>,
+    pub tries: u8,
 }

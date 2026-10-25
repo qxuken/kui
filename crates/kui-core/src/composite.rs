@@ -19,13 +19,16 @@ use crate::access::{Orientation, Role, focusable};
 use crate::spec::Dir;
 use crate::tree::Tree;
 
-/// The four container / item pairs, and nothing else. `group`, a row of
-/// links and a bar of icon buttons stay ordinary Tab rings.
-pub(crate) const PAIRS: [(Role, Role); 4] = [
+/// The container / item pairs, and nothing else. `group`, a row of links
+/// and a bar of icon buttons stay ordinary Tab rings. The fifth is the
+/// grid's (ADR 0070, backlog C90): its items are its cells, whichever
+/// `row` holds them, and its arrows move in two dimensions.
+pub(crate) const PAIRS: [(Role, Role); 5] = [
     (Role::RadioGroup, Role::Radio),
     (Role::TabList, Role::Tab),
     (Role::Menu, Role::MenuItem),
     (Role::List, Role::ListItem),
+    (Role::Grid, Role::Cell),
 ];
 
 /// The item role a container role holds, or None for a role that is not a
@@ -45,7 +48,8 @@ pub(crate) fn item_role(container: Role) -> Option<Role> {
 /// and 40 in the tree, the last item is not the last row, so wrapping from
 /// the first to "the last" would land on row 40 and claim it was row 4,000.
 pub(crate) fn wraps(container: Role) -> bool {
-    container != Role::List
+    // A grid is a list of rows, and windowed the same way.
+    !matches!(container, Role::List | Role::Grid)
 }
 
 /// Whether moving focus onto an item also emits its activation payload
@@ -120,8 +124,13 @@ pub(crate) fn owner(tree: &Tree, i: usize, scratch: &mut Vec<usize>) -> Option<u
 }
 
 /// A composite container's orientation, from its own `dir` (decision 7).
+/// A grid has none: it is arranged both ways.
 pub(crate) fn orientation(tree: &Tree, i: usize) -> Option<Orientation> {
-    item_role(tree.specs[i].access().role?)?;
+    let role = tree.specs[i].access().role?;
+    item_role(role)?;
+    if role == Role::Grid {
+        return None;
+    }
     Some(match tree.specs[i].layout.dir {
         Dir::Row => Orientation::Horizontal,
         Dir::Column => Orientation::Vertical,
@@ -139,5 +148,53 @@ pub(crate) fn line_of(tree: &Tree, container: usize, mut i: usize) -> u32 {
             p if p as usize == container => return tree.line[i],
             p => i = p as usize,
         }
+    }
+}
+
+/// The row a grid's cell at `i` sits in: the nearest `row` between it and
+/// the grid at `container`, or the grid itself for a cell outside every row
+/// (a one-row grid needs no `row`). ADR 0070.
+pub(crate) fn row_of(tree: &Tree, container: usize, i: usize) -> usize {
+    let mut j = i;
+    loop {
+        j = match tree.parent[j] {
+            crate::tree::NIL => return container,
+            p => p as usize,
+        };
+        if j == container || tree.specs[j].access().role == Some(Role::Row) {
+            return j;
+        }
+    }
+}
+
+/// The data index node `i` was opened with (`index`, `Ui::open_indexed`),
+/// if any: where a virtual list's row sits in the data, built or not.
+pub(crate) fn data_index(tree: &Tree, i: usize) -> Option<u64> {
+    tree.indexed
+        .iter()
+        .find(|(at, _)| *at as usize == i)
+        .map(|&(_, index)| index)
+}
+
+/// The `rowCount` a composite's rows are counted by: the nearest
+/// declaration from `from` up to and including the container at
+/// `container` — on the list itself, or on the scroller between it and its
+/// rows, which is where a virtual list's helper puts it (ADR 0070).
+pub(crate) fn row_count(tree: &Tree, from: usize, container: usize) -> Option<u64> {
+    if tree.row_counts.is_empty() {
+        return None;
+    }
+    let mut j = from;
+    loop {
+        if let Some(&(_, n)) = tree.row_counts.iter().find(|(at, _)| *at as usize == j) {
+            return Some(n);
+        }
+        if j == container {
+            return None;
+        }
+        j = match tree.parent[j] {
+            crate::tree::NIL => return None,
+            p => p as usize,
+        };
     }
 }

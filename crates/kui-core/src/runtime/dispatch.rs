@@ -668,7 +668,9 @@ impl Core {
                         | EditKey::Up
                         | EditKey::Down
                         | EditKey::Home
-                        | EditKey::End => self.composite_step(i, ek, &mut out),
+                        | EditKey::End
+                        | EditKey::PageUp
+                        | EditKey::PageDown => self.composite_step(i, ek, mods, &mut out),
                         _ => {}
                     }
                 }
@@ -1710,7 +1712,8 @@ impl Core {
             KeyCode::Space => activates || item,
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => slider || item,
             KeyCode::Home | KeyCode::End => item || changes,
-            KeyCode::PageUp | KeyCode::PageDown => changes,
+            // A list and a grid page (ADR 0070).
+            KeyCode::PageUp | KeyCode::PageDown => changes || item,
             // Type-ahead inside a composite; nothing anywhere else.
             KeyCode::Char(_) => item,
             _ => false,

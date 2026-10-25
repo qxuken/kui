@@ -79,7 +79,7 @@ global type kui = record
   end
 
   enum Role
-    "none" "button" "checkbox" "radio" "switch" "slider" "tab" "tabList" "link" "heading" "list" "listItem" "image" "dialog" "group" "textInput" "multilineTextInput" "line" "radioGroup" "menu" "menuItem" "terminal"
+    "none" "button" "checkbox" "radio" "switch" "slider" "tab" "tabList" "link" "heading" "list" "listItem" "image" "dialog" "group" "textInput" "multilineTextInput" "line" "radioGroup" "menu" "menuItem" "terminal" "grid" "row" "cell"
   end
 
   enum Expanded

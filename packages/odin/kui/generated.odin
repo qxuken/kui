@@ -129,6 +129,9 @@ Role :: enum u32 {
 	Menu_Item = 25, // KUI_ROLE_MENU_ITEM
 	Terminal = 26, // KUI_ROLE_TERMINAL
 	Password_Input = 27, // KUI_ROLE_PASSWORD_INPUT
+	Grid = 28, // KUI_ROLE_GRID
+	Row = 29, // KUI_ROLE_ROW
+	Cell = 30, // KUI_ROLE_CELL
 }
 
 Cursor :: enum u32 {

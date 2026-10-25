@@ -229,6 +229,10 @@ mod imp {
             Role::MultilineTextInput => AkRole::MultilineTextInput,
             Role::PasswordInput => AkRole::PasswordInput,
             Role::ScrollView => AkRole::ScrollView,
+            // The grid composite (ADR 0070): AXGrid, AXRow, AXCell.
+            Role::Grid => AkRole::Grid,
+            Role::Row => AkRole::Row,
+            Role::Cell => AkRole::GridCell,
         }
     }
 

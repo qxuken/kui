@@ -331,6 +331,12 @@ derived orientation are the whole surface.
   and Up / Down between rows, and a `grid` / `row` / `cell` vocabulary to
   say so. Decision 6's line motion is the geometric half of it already;
   decision 5's warning is where an app feels the missing semantic half.
+  *Built 2026-10-26 with [ADR 0070](0070-a-grid-and-composites-past-the-window.md)
+  (backlog C90):* `grid`, `row` and `cell`, the grid's cells one Tab stop
+  moved between in two dimensions; and beside it (backlog C89) a `list`
+  or `grid` whose rows carry their data `index` under a `rowCount` steps
+  by index past decision 8's window, scrolling to the row and landing on
+  it when the next frame builds it.
 - **Submenus.** Left / Right in a `menu` should close and open them. kui
   has no submenu relation (a `menu` inside a `menuItem`), so today those
   arrows step like any other menu's. *Built 2026-10-08 for the core's own
