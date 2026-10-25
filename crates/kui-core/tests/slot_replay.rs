@@ -25,6 +25,9 @@ struct Ext {
     read_hover: bool,
     /// Read the frame clock while drawing.
     read_clock: bool,
+    /// Ask for `row0` by label before declaring it, as a view asks for
+    /// its own scroller's geometry at its top.
+    read_label: bool,
     /// Draw the theme's accent, read through `Ui::theme`.
     read_theme: bool,
     /// Draw the metrics' radius, read through `Ui::metrics`.
@@ -73,6 +76,10 @@ impl Extension for Ext {
                     if hovered { "hovered" } else { "not hovered" },
                     TextStyle::new(12.0),
                 );
+            }
+            if self.read_label {
+                let found = ui.key_of("row0").is_some();
+                ui.text(if found { "found row0" } else { "no row0 yet" }, TextStyle::new(12.0));
             }
             if self.read_clock {
                 let now = ui.now();
@@ -420,6 +427,32 @@ fn a_fact_the_fill_read_that_moved_runs_it_again() {
         .handle_input(InputEvent::CursorMoved(Vec2::new(390.0, 290.0)));
     assert_eq!(r.frame(false), Some(SlotFill::Reads));
     assert!(r.texts().iter().any(|t| t == "not hovered"));
+}
+
+#[test]
+fn a_label_asked_for_before_it_answered_runs_the_fill_again_once_it_does() {
+    let mut r = rig(Ext {
+        rows: 1,
+        read_label: true,
+        ..Default::default()
+    });
+    // The first fill asks before its row exists: no answer, and kept so.
+    r.frame(true);
+    assert!(r.texts().iter().any(|t| t == "no row0 yet"));
+    // The row is in the last frame now: what was read moved, so the
+    // fill runs, and finds it.
+    assert_eq!(r.frame(false), Some(SlotFill::Reads));
+    assert!(
+        r.core
+            .slot_fill_why("outer/root")
+            .is_some_and(|w| w.starts_with("LabelMissing")),
+        "{:?}",
+        r.core.slot_fill_why("outer/root")
+    );
+    assert!(r.texts().iter().any(|t| t == "found row0"));
+    // Answered from then on: replayed.
+    assert_eq!(r.frame(false), Some(SlotFill::Replayed));
+    assert_eq!(r.views.get(), 2);
 }
 
 #[test]

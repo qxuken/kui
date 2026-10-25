@@ -54,6 +54,8 @@ end
 | `--shot out.png [--after ms]` | No window: writes a frame after `ms` (800) and ends. |
 | `--size WxH` | The window's size (1000×700, or the manifest's). |
 | `-- args…` | What follows is the app's own, in `kui.args`: `kui run . -- --port 3001`. |
+| `--devtools` | Opens with the devtools panel; its Log tab has what the app printed and logged. |
+| `--no-rename` | Keeps the name "kui" in the Dock and ⌘Tab (macOS names an app by its binary, so a windowed run relaunches as a free clone named after the app). |
 | `kui check [path]` | Type-checks the app's `.tl` files against kui's, Kit's and the runner's declarations. |
 | `kui new <dir>` | Starts an app, with its editor declarations. |
 | `kui types [path]` | Writes `.kui/types` (lua-language-server's and Teal's declarations), `.luarc.json` and `tlconfig.lua`. |
@@ -71,11 +73,17 @@ a task never stops a frame.
 | `kui.sleep(ms)` *waits*, `kui.timer.after/every(ms, fn)` | Time. |
 | `kui.json`, `kui.toml`, `kui.yaml` | `decode(text)`, `encode(value)`. |
 | `kui.env`, `kui.getenv` | The environment, after `.env` and `.env.local` beside the app (a variable already set wins). |
-| `kui.args`, `kui.cwd`, `kui.platform`, `kui.cpus` | The app's arguments (after `--`), the folder `kui` started in, `"macos"`/`"windows"`/`"linux"`, the cores to share work between. |
-| `kui.fs` | `read`, `write`, `append`, `create` (only if absent: a lock), `exists`, `list`, `lines`, `stat`, `mkdir`, `remove`, `rename`; paths are the app's folder's. |
+| `kui.args`, `kui.cwd`, `kui.platform`, `kui.cpus`, `kui.name` | The app's arguments (after `--`), the folder `kui` started in, `"macos"`/`"windows"`/`"linux"`, the cores to share work between, the app's name. |
+| `kui.parse_args(spec)` | The arguments read against `{ about, options = { port = { type = "integer", default = 3000, short = "p", help = … } }, args = { { name = "files", many = true } } }`: `--help` written from it, a mistake said with what to type instead (`--prot` → did you mean `--port`?), both ending the app before its window. Options also take `env`, `choices`, `required`, `many`. |
+| `kui.log(...)`, `kui.log.warn/error/debug(...)`, `print` | Printed, and kept for the devtools' Log tab, with the runner's errors and every worker's lines. |
+| `kui.devtools(on)` | The panel on, off, or toggled; `kui.devtools("log")` opens it at the Log tab. |
+| `kui.hash.sha1/sha256/sha512/fnv(data)` | Digests as hex. |
+| `kui.fs` | `read`, `write`, `append`, `create` (only if absent: a lock), `exists`, `list`, `lines`, `stat`, `mkdir`, `remove`, `rename` — at once; paths are the app's folder's. `walk(dir, { match, skip, dirs })` and `read_all(paths)` *wait*: a tree or a batch of files in one hop off the frame. |
+| `kui.json.array(t)` | Marks a list, so that empty it encodes as `[]`; a decoded empty list comes back marked. |
 | `kui.process.run(cmd, args, opts)` *waits* | `{ code, ok, stdout, stderr }`. |
 | `kui.process.spawn(cmd, args, opts)` | `p:read_line(stream)` *waits*, `p:lines(stream)`, `p:write`, `p:wait()` *waits*, `p:kill(sig)`. `group = true` makes it lead a process group, and its `kill` reaches all it started; it ends with the app unless `detach = true`. |
 | `kui.process.kill(pid, sig, group)` | A signal to any process (`0` asks whether it is alive); `kui.process.pid` is the app's. |
+| `kui.process.command_line(pid)` *waits* | The command a process was started with, nil when none: what tells a stale pid that is still yours from a reused one, on Windows too. |
 | `kui.http.get/post/...(url, opts)` *waits* | `{ status, ok, headers, body, json }`. |
 | `kui.http.serve{ port, static }` | `s:get("/api/items/:id", function(req) ... end)`; each request is a task. |
 | `kui.sqlite.open(path)` | `db:query`, `db:first`, `db:exec` *wait*; `db:transaction(fn)`. |
@@ -99,6 +107,8 @@ servers and workers they held run on.
 | `chrome` | `"native"` (the default), `"custom"` (the app draws its titlebar), `"borderless"`. |
 | `titlebar` | `"standard"`, `"medium"`, `"tall"`: the macOS strip under custom chrome. |
 | `icon` | A PNG for the Dock, the taskbar and the window. |
+| `devtools` | `true` opens with the devtools panel. |
+| `rename` | `false` keeps the name "kui" in the Dock (as `--no-rename`). |
 | `watch` | `{ include = { "*.json" }, exclude = { "data/**" } }` beside the app's `.lua` and `.tl`. |
 
 Kit is built in: `require("kit.ui")`. Its palette is readable from the app

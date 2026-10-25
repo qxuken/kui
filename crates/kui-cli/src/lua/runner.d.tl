@@ -22,6 +22,71 @@
   next_frame: function(fn: function(env: kui.Env))
   -- What followed `--` on the command line: `kui run app -- --port 3001`.
   args: {string}
+  -- The app's name (the manifest's, else its folder's).
+  name: string
+
+  -- An option `kui.parse_args` reads: `{ type = "integer", default =
+  -- 3000, short = "p", help = "…" }`. The type is the default's when left
+  -- out, and "string" without one.
+  record ArgOption
+    ["type"]: string
+    default: any
+    short: string
+    help: string
+    required: boolean
+    -- Repeatable: a list of every value given.
+    many: boolean
+    choices: {string}
+    -- An environment variable read when the line leaves it out.
+    env: string
+    -- The value's name in the help (`<path>`).
+    value: string
+  end
+  record ArgPositional
+    name: string
+    ["type"]: string
+    help: string
+    required: boolean
+    many: boolean
+    default: any
+    choices: {string}
+  end
+  record ArgSpec
+    name: string
+    about: string
+    usage: string
+    epilog: string
+    options: {string:ArgOption}
+    args: {ArgPositional}
+    -- Keep arguments past the positionals under this name (true: "rest").
+    rest: string | boolean
+  end
+  -- The command line (`kui.args`, or `argv`) read against `spec`: each
+  -- option under its key, `--help` printed from the spec, and a mistake
+  -- said with what to type instead (both end the app before its window).
+  parse_args: function(spec: ArgSpec, argv?: {string}): {string:any}
+
+  -- `kui.log(...)`, `kui.log.warn(...)`: printed, and kept for the
+  -- devtools' Log tab, as `print` is.
+  record Log
+    metamethod __call: function(self: Log, ...: any)
+    debug: function(...: any)
+    info: function(...: any)
+    warn: function(...: any)
+    error: function(...: any)
+  end
+  log: Log
+  -- The devtools panel on, off, or (with nothing) toggled.
+  devtools: function(on?: boolean)
+
+  -- Digests as lowercase hex.
+  record hash
+    sha1: function(data: string): string
+    sha256: function(data: string): string
+    sha512: function(data: string): string
+    -- 64-bit FNV-1a: a quick name, not a secret.
+    fnv: function(data: string): string
+  end
   -- The folder `kui` was started from (relative paths are the app's).
   cwd: string
   -- "macos", "windows", "linux", or the OS's own name.
@@ -46,6 +111,8 @@
   record json
     decode: function(text: string): any
     encode: function(value: any, opts?: {string:boolean}): string
+    -- `t` (or a new table) marked a list: empty, it encodes as `[]`.
+    array: function<T>(t?: {T}): {T}
   end
   record toml
     decode: function(text: string): {string:any}
@@ -56,6 +123,11 @@
     encode: function(value: any): string
   end
 
+  record WalkOpts
+    skip: {string}
+    match: string
+    dirs: boolean
+  end
   record Stat
     size: integer
     dir: boolean
@@ -72,6 +144,12 @@
     stat: function(path: string): Stat
     -- Writes a file that does not exist yet; false when it does.
     create: function(path: string, data: string): boolean
+    -- The files under `dir` (waits), relative to it: `{ skip = { ".git",
+    -- "node_modules" }, match = "**/src/*.ts", dirs = false }`.
+    walk: function(dir?: string, opts?: WalkOpts): {string}
+    -- Reads `paths` (waits): their texts in order, false for one that
+    -- could not be read.
+    read_all: function(paths: {string}): {string | boolean}
     mkdir: function(path: string)
     remove: function(path: string)
     rename: function(from: string, to: string)
@@ -114,6 +192,8 @@
     kill: function(pid: integer, sig?: string | integer, group?: boolean): boolean
     -- This process's id.
     pid: integer
+    -- The command `pid` was started with (waits), nil when none.
+    command_line: function(pid: integer): string
   end
 
   record RequestOpts

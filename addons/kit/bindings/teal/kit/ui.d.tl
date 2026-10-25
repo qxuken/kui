@@ -319,6 +319,9 @@ local record kit
     value: string
     -- Shown while it is empty; `Search` when left out.
     placeholder: string
+    -- Its name, read and not drawn: what it searches (the placeholder when
+    -- left out).
+    label: string
     -- A count after the query: `12 of 340`.
     count: string
     -- Takes the keyboard each time this number changes (⌘F).
@@ -375,6 +378,12 @@ local record kit
     mixed: boolean
     -- Unavailable.
     disabled: boolean
+    -- The label names it but is not drawn: its children draw it instead (a
+    -- name with search hits marked).
+    hide_label: boolean
+    -- Takes its row's room, the whole height a target: a list row ticked
+    -- anywhere.
+    grow: boolean
     -- The message `toggle` arrives as. Pressed.
     on_toggle: any
     key: string
@@ -430,6 +439,8 @@ local record kit
     options: {Choice}
     -- The one chosen: yours to keep.
     value: string
+    -- The group's name, read and not drawn: what the choice is of.
+    label: string
     -- The message `change` arrives as. A segment was chosen.
     on_change: any
     key: string
@@ -544,12 +555,17 @@ local record kit
 
   -- The props of `kit/log`.
   record LogProps
-    -- The lines: fields `time`, `level` and `message`.
+    -- The lines: fields `time`, `level` and `message`; a message's ANSI
+    -- colours (SGR) are drawn in the skin's.
     rows: kui.Channel
     -- Kept at the end as lines arrive; on when left out.
     follow: boolean
     -- Takes the room its parent leaves.
     grow: boolean
+    -- A line longer than the log wraps onto more rows, where it is cut.
+    wrap: boolean
+    -- The time column; on when left out.
+    time: boolean
     -- The message `select` arrives as. A line was clicked.
     on_select: any
     key: string
@@ -854,7 +870,7 @@ local record kit
   select: function(props: SelectProps): kui.Node
 
   -- A box and its label.
-  checkbox: function(props: CheckboxProps): kui.Node
+  checkbox: function(props: CheckboxProps, children?: {any:any}): kui.Node
 
   -- An on/off switch and its label.
   switch: function(props: SwitchProps): kui.Node

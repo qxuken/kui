@@ -25,6 +25,10 @@ pub struct Project {
     /// A PNG for the Dock, the taskbar and the window, against the app's
     /// folder.
     pub icon: Option<PathBuf>,
+    /// Open with the devtools panel.
+    pub devtools: bool,
+    /// Relaunch under the app's name on macOS (`rename = false` keeps "kui").
+    pub rename: bool,
     /// Globs the watcher follows, beside the app's own `.lua` and `.tl`.
     pub watch_include: Vec<String>,
     pub watch_exclude: Vec<String>,
@@ -57,6 +61,8 @@ pub fn find(path: &Path) -> Result<Project, String> {
         chrome: kui_native::Chrome::Native,
         titlebar: kui_native::Titlebar::Standard,
         icon: None,
+        devtools: false,
+        rename: true,
         watch_include: Vec::new(),
         watch_exclude: Vec::new(),
     };
@@ -125,6 +131,8 @@ fn read_config(path: &Path, p: &mut Project, entry: &mut Option<PathBuf>) -> Res
                 _ => return Err(mlua::Error::runtime(format!("titlebar = {b:?}: standard, medium or tall"))),
             };
         }
+        p.devtools = t.get::<Option<bool>>("devtools")?.unwrap_or(false);
+        p.rename = t.get::<Option<bool>>("rename")?.unwrap_or(true);
         if let Some(i) = t.get::<Option<String>>("icon")? {
             p.icon = Some(p.dir.join(i));
         }
@@ -220,4 +228,19 @@ pub fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
             f(&p);
         }
     }
+}
+
+/// `*` within a name, `**` across folders, matched against the path's end.
+pub fn glob(pattern: &str, path: &str) -> bool {
+    fn go(p: &[u8], s: &[u8]) -> bool {
+        match p.first() {
+            None => s.is_empty(),
+            Some(b'*') if p.get(1) == Some(&b'*') => (0..=s.len()).any(|i| go(&p[2..], &s[i..])),
+            Some(b'*') => (0..=s.len()).take_while(|&i| i == 0 || s[i - 1] != b'/').any(|i| go(&p[1..], &s[i..])),
+            Some(c) => s.first() == Some(c) && go(&p[1..], &s[1..]),
+        }
+    }
+    let p = pattern.as_bytes();
+    let s = path.as_bytes();
+    (0..=s.len()).filter(|&i| i == 0 || s[i - 1] == b'/').any(|i| go(p, &s[i..]))
 }

@@ -361,6 +361,8 @@ export interface SearchProps {
   value: string;
   /** Shown while it is empty; `Search` when left out. */
   placeholder?: string;
+  /** Its name, read and not drawn: what it searches (the placeholder when left out). */
+  label?: string;
   /** A count after the query: `12 of 340`. */
   count?: string;
   /** Takes the keyboard each time this number changes (⌘F). */
@@ -429,8 +431,14 @@ export interface CheckboxProps {
   mixed?: boolean;
   /** Unavailable. */
   disabled?: boolean;
+  /** The label names it but is not drawn: its children draw it instead (a name with search hits marked). */
+  hideLabel?: boolean;
+  /** Takes its row's room, the whole height a target: a list row ticked anywhere. */
+  grow?: boolean;
   /** The message toggle arrives as: yours, with `toggle: CheckboxToggle` in it. Pressed. */
   onToggle?: unknown;
+  /** draws after the box, the label's place: read as part of it, so nothing in it is a control. */
+  children?: KuiNode;
   /** Keys the instance; by default it is keyed by where it is placed. */
   key?: string | number;
   /** Asks the extension every frame instead of replaying an unchanged instance. */
@@ -499,6 +507,8 @@ export interface SegmentedProps {
   options: Choice[];
   /** The one chosen: yours to keep. */
   value: string;
+  /** The group's name, read and not drawn: what the choice is of. */
+  label?: string;
   /** The message change arrives as: yours, with `change: SegmentedChange` in it. A segment was chosen. */
   onChange?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */
@@ -639,12 +649,16 @@ export interface InspectorProps {
 
 /** The props of `kit/log`. */
 export interface LogProps {
-  /** The lines: fields `time`, `level` and `message`. */
+  /** The lines: fields `time`, `level` and `message`; a message's ANSI colours (SGR) are drawn in the skin's. */
   rows: Channel;
   /** Kept at the end as lines arrive; on when left out. */
   follow?: boolean;
   /** Takes the room its parent leaves. */
   grow?: boolean;
+  /** A line longer than the log wraps onto more rows, where it is cut. */
+  wrap?: boolean;
+  /** The time column; on when left out. */
+  time?: boolean;
   /** The message select arrives as: yours, with `select: LogSelect` in it. A line was clicked. */
   onSelect?: unknown;
   /** Keys the instance; by default it is keyed by where it is placed. */

@@ -139,6 +139,14 @@ function on_event(ev)
   if f then f(ev) end
 end
 
+-- `kui.log(...)`, `kui.log.warn(...)` and `print(...)`: printed, and kept
+-- for the devtools' Log tab.
+kui.log = setmetatable({}, { __call = function(_, ...) kui.__log("info", ...) end })
+for _, level in ipairs({ "debug", "info", "warn", "error" }) do
+  kui.log[level] = function(...) kui.__log(level, ...) end
+end
+function print(...) kui.__log("info", ...) end
+
 -- What wants the frame's env: `update` hears events without one, so
 -- clipboard writes, focus moves and measurements wait for the next view.
 local frame_fns = {}
@@ -297,6 +305,23 @@ for _, m in ipairs({ "get", "post", "put", "patch", "delete", "head" }) do
   kui.http[m] = function(url, opts)
     return kui.__await(kui.http.__request(url, method, opts))
   end
+end
+
+--- The files under `dir` (waits): `{ skip = { ".git", "node_modules" },
+--- match = "**/src/*.ts", dirs = false }`, paths relative to `dir`.
+function kui.fs.walk(dir, opts)
+  return kui.__await(kui.fs.__walk(dir, opts))
+end
+
+--- Reads `paths` (waits): their texts in order, false for one that could
+--- not be read.
+function kui.fs.read_all(paths)
+  return kui.__await(kui.fs.__read_all(paths))
+end
+
+--- The command `pid` was started with (waits), nil when no such process.
+function kui.process.command_line(pid)
+  return kui.__await(kui.process.__command_line(pid))
 end
 
 --- Runs a command to its end: `{ code, ok, stdout, stderr }`.

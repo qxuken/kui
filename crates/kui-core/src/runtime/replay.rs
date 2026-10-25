@@ -235,6 +235,14 @@ pub(crate) enum Read {
     Cursor(Option<Vec2>),
     Scroll(Key, Vec2),
     ScrollGeom(Key, Option<ScrollGeometry>),
+    /// A node asked for by label before anything answered to it (the
+    /// fill's own, not declared yet): holds while nothing does.
+    LabelMissing {
+        label: Box<str>,
+        origin: crate::tree::OriginId,
+        ns: Key,
+        guest: bool,
+    },
     Layout(Key, Option<Rect>),
     TextHit(Key, Vec2, Option<crate::text::TextHit>),
     /// Whether the text under a key was cut short (`Core::text_cut`).
@@ -560,6 +568,7 @@ impl Core {
             Read::Cursor(p) => self.interaction.cursor().map(|c| c.minus(self.dt_shift())) == *p,
             Read::Scroll(k, v) => self.scroll.offset(*k) == *v,
             Read::ScrollGeom(k, g) => self.scroll_geometry(*k) == *g,
+            Read::LabelMissing { label, origin, ns, guest } => !self.label_answers(label, *origin, *ns, *guest),
             Read::Layout(k, r) => self.layout_of_raw(*k) == *r,
             Read::TextHit(k, p, h) => self.text_hit_raw(*k, *p) == *h,
             Read::TextCut(k, v) => self.text.cut(*k, self.building) == *v,

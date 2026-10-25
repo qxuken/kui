@@ -65,8 +65,10 @@ function M.toolbar(c: Ctx, _p: P): kui.Node
       pad = { x = 8 },
       gap = 6,
       cross_align = "center",
-      children(""),
-      ctx.grow(),
+      -- The unnamed group takes the room: a host's own spacer in it pushes
+      -- what follows to the group's end, where a spacer of Kit's beside it
+      -- split the room with it and left that midway.
+      row { width = "grow", gap = 6, cross_align = "center", children("") },
       row { gap = 6, cross_align = "center", children("trailing") },
     },
     ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
@@ -80,8 +82,7 @@ function M.statusbar(c: Ctx, _p: P): kui.Node
     ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
     row {
       width = "grow", height = 22, pad = { x = 10 }, gap = 14, cross_align = "center",
-      children(""),
-      ctx.grow(),
+      row { width = "grow", gap = 14, cross_align = "center", children("") },
       row { gap = 14, cross_align = "center", children("trailing") },
     },
   }

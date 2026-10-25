@@ -891,6 +891,9 @@ Search :: struct {
 	value: string,
 	// Shown while it is empty; `Search` when left out.
 	placeholder: string,
+	// Its name, read and not drawn: what it searches (the placeholder when left
+	// out).
+	label: string,
 	// A count after the query: `12 of 340`.
 	count: string,
 	// Takes the keyboard each time this number changes (⌘F).
@@ -932,6 +935,7 @@ search_props :: proc(p: Search) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "value", c.value_str(p.value))
 	if p.placeholder != "" do c.value_map_set(m, "placeholder", c.value_str(p.placeholder))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if p.count != "" do c.value_map_set(m, "count", c.value_str(p.count))
 	if x, ok := p.focus.?; ok do c.value_map_set(m, "focus", c.value_int(x))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
@@ -1017,6 +1021,11 @@ Checkbox :: struct {
 	mixed: Maybe(bool),
 	// Unavailable.
 	disabled: Maybe(bool),
+	// The label names it but is not drawn: its children draw it instead (a name
+	// with search hits marked).
+	hide_label: Maybe(bool),
+	// Takes its row's room, the whole height a target: a list row ticked anywhere.
+	grow: Maybe(bool),
 	// The message `toggle` arrives as. Pressed.
 	on_toggle: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -1042,6 +1051,8 @@ checkbox_props :: proc(p: Checkbox) -> ^c.Value {
 	c.value_map_set(m, "checked", c.value_bool(p.checked))
 	if x, ok := p.mixed.?; ok do c.value_map_set(m, "mixed", c.value_bool(x))
 	if x, ok := p.disabled.?; ok do c.value_map_set(m, "disabled", c.value_bool(x))
+	if x, ok := p.hide_label.?; ok do c.value_map_set(m, "hide_label", c.value_bool(x))
+	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
 	if p.on_toggle != nil do c.value_map_set(m, "on_toggle", (^c.Value)(kui.encode(p.on_toggle)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -1057,6 +1068,24 @@ checkbox_in :: proc(ui: ^kui.Ui, namespace: string, p: Checkbox) -> i32 {
 	defer c.value_free(props)
 	name := concat(namespace, "/checkbox")
 	return c.component(ui, name, props, nil, nil)
+}
+
+// checkbox with your children: `children` builds the group it asks for.
+checkbox_with :: proc(ui: ^kui.Ui, p: Checkbox, data: ^$T, children: proc(data: ^T, ui: ^kui.Ui, group: string)) -> i32 {
+	Body :: struct {
+		data:     ^T,
+		children: proc(data: ^T, ui: ^kui.Ui, group: string),
+		ctx:      Body_Context,
+	}
+	call :: proc "c" (user: rawptr, ui: ^c.Ctx, group: string) {
+		b := (^Body)(user)
+		context = b.ctx
+		b.children(b.data, ui, group)
+	}
+	b := Body{data, children, context}
+	props := checkbox_props(p)
+	defer c.value_free(props)
+	return c.component(ui, concat(NAMESPACE, "/checkbox"), props, call, &b)
 }
 
 // An on/off switch and its label.
@@ -1163,6 +1192,8 @@ Segmented :: struct {
 	options: []Choice,
 	// The one chosen: yours to keep.
 	value: string,
+	// The group's name, read and not drawn: what the choice is of.
+	label: string,
 	// The message `change` arrives as. A segment was chosen.
 	on_change: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -1186,6 +1217,7 @@ segmented_props :: proc(p: Segmented) -> ^c.Value {
 	m := c.value_map()
 	c.value_map_set(m, "options", kit_list(p.options, proc(x: Choice) -> ^c.Value { return choice_value(x) }))
 	c.value_map_set(m, "value", c.value_str(p.value))
+	if p.label != "" do c.value_map_set(m, "label", c.value_str(p.label))
 	if p.on_change != nil do c.value_map_set(m, "on_change", (^c.Value)(kui.encode(p.on_change)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))
@@ -1441,12 +1473,17 @@ inspector_in :: proc(ui: ^kui.Ui, namespace: string, p: Inspector) -> i32 {
 // A log over a channel: time, level and message a line, following the end
 // unless scrolled away.
 Log :: struct {
-	// The lines: fields `time`, `level` and `message`.
+	// The lines: fields `time`, `level` and `message`; a message's ANSI colours
+	// (SGR) are drawn in the skin's.
 	rows: ^c.Channel,
 	// Kept at the end as lines arrive; on when left out.
 	follow: Maybe(bool),
 	// Takes the room its parent leaves.
 	grow: Maybe(bool),
+	// A line longer than the log wraps onto more rows, where it is cut.
+	wrap: Maybe(bool),
+	// The time column; on when left out.
+	time: Maybe(bool),
 	// The message `select` arrives as. A line was clicked.
 	on_select: any,
 	// Keys the instance (empty: where it is placed); fresh asks every frame.
@@ -1471,6 +1508,8 @@ log_props :: proc(p: Log) -> ^c.Value {
 	if p.rows != nil do c.value_map_set(m, "rows", c.channel_handle(p.rows))
 	if x, ok := p.follow.?; ok do c.value_map_set(m, "follow", c.value_bool(x))
 	if x, ok := p.grow.?; ok do c.value_map_set(m, "grow", c.value_bool(x))
+	if x, ok := p.wrap.?; ok do c.value_map_set(m, "wrap", c.value_bool(x))
+	if x, ok := p.time.?; ok do c.value_map_set(m, "time", c.value_bool(x))
 	if p.on_select != nil do c.value_map_set(m, "on_select", (^c.Value)(kui.encode(p.on_select)))
 	if p.key != "" do c.value_map_set(m, "key", c.value_str(p.key))
 	if p.fresh do c.value_map_set(m, "fresh", c.value_bool(true))

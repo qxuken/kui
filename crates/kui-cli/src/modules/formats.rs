@@ -26,7 +26,45 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             Ok(out)
         })?,
     )?;
+    // `kui.json.array(t)`: `t` (or a new table) marked a list, so that
+    // empty it encodes as `[]`; a decoded empty list comes back marked.
+    json.set(
+        "array",
+        lua.create_function(|lua, t: Option<Table>| {
+            let t = match t {
+                Some(t) => t,
+                None => lua.create_table()?,
+            };
+            kui_lua::mark_array(lua, &t)?;
+            Ok(t)
+        })?,
+    )?;
     kui.set("json", json)?;
+
+    // `kui.hash`: digests as lowercase hex — `sha1` and `sha256`, `sha512`
+    // for a file's identity, `fnv` (64-bit FNV-1a) for a quick name.
+    let hash = lua.create_table()?;
+    for (name, alg) in [
+        ("sha1", &ring::digest::SHA1_FOR_LEGACY_USE_ONLY),
+        ("sha256", &ring::digest::SHA256),
+        ("sha512", &ring::digest::SHA512),
+    ] {
+        hash.set(
+            name,
+            lua.create_function(move |_, data: mlua::LuaString| Ok(hex(ring::digest::digest(alg, &data.as_bytes()).as_ref())))?,
+        )?;
+    }
+    hash.set(
+        "fnv",
+        lua.create_function(|_, data: mlua::LuaString| {
+            let mut h: u64 = 0xcbf29ce484222325;
+            for b in data.as_bytes().iter() {
+                h = (h ^ *b as u64).wrapping_mul(0x100000001b3);
+            }
+            Ok(format!("{h:016x}"))
+        })?,
+    )?;
+    kui.set("hash", hash)?;
 
     let toml = lua.create_table()?;
     toml.set(
@@ -69,6 +107,15 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
     )?;
     kui.set("yaml", yaml)?;
     Ok(())
+}
+
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 
 fn sorted(entries: &[(String, Value)]) -> Vec<&(String, Value)> {

@@ -12,6 +12,7 @@ mod kit;
 mod modules;
 mod ops;
 mod project;
+mod rename;
 mod teal;
 
 use std::path::PathBuf;
@@ -31,6 +32,8 @@ run options:
   --watch        reload the app when its files change, keeping its model
   --headless     no window: for a server, a script, a test
   --size WxH     the window's size in logical px (default 1000x700)
+  --devtools     open with the devtools panel (its Log tab has what the app printed)
+  --no-rename    keep the name kui in the Dock (macOS names an app by its binary)
   --shot FILE    no window: write a frame to FILE (.png) and end
   --after MS     with --shot, how long to run first (default 800)
   -- ARGS        what follows is the app's, in kui.args
@@ -48,6 +51,8 @@ struct Args {
     after: f64,
     /// After `--`: the app's own arguments.
     rest: Vec<String>,
+    devtools: bool,
+    no_rename: bool,
 }
 
 fn parse() -> Result<Args, String> {
@@ -61,6 +66,8 @@ fn parse() -> Result<Args, String> {
         shot: None,
         after: 800.0,
         rest: Vec::new(),
+        devtools: false,
+        no_rename: false,
     };
     match it.peek().map(String::as_str) {
         Some("run" | "check" | "new" | "types") => a.cmd = it.next().unwrap(),
@@ -76,6 +83,8 @@ fn parse() -> Result<Args, String> {
                 break;
             }
             "--watch" => a.watch = true,
+            "--devtools" => a.devtools = true,
+            "--no-rename" => a.no_rename = true,
             "--headless" => a.headless = true,
             "--shot" => {
                 a.shot = Some(PathBuf::from(it.next().ok_or("--shot needs a file, as out.png")?));
@@ -141,10 +150,26 @@ fn main() -> ExitCode {
 
 fn run(args: &Args) -> Result<i32, String> {
     let project = project::find(&args.path)?;
+    if !args.headless && !args.no_rename && project.rename {
+        rename::relaunch_as(&project.name);
+    }
     project::load_dotenv(&project.dir);
     modules::set_args(args.rest.clone());
+    modules::set_name(project.name.clone());
     let shared = modules::Shared::new(project.dir.clone(), None);
-    let (ext, baseline, load_error) = host::load_app(&project, shared.clone(), args.watch)?;
+    let loaded = host::load_app(&project, shared.clone(), args.watch);
+    // The app ended before its window opened — `--help`, a bad flag, a
+    // script that was only a script: no window, and no error for it.
+    if let Some(code) = *shared.exit.lock().unwrap() {
+        if let Err(e) = &loaded
+            && !e.contains(modules::EXIT_MARK)
+        {
+            eprintln!("kui: {e}");
+        }
+        shared.children.kill_all();
+        return Ok(code);
+    }
+    let (ext, baseline, load_error) = loaded?;
     let lua = ext.lua().clone();
     let kit = kit::extension().map_err(|e| format!("Kit failed to load (a bug in the runner): {e}"))?;
     let watch = args.watch.then(|| host::Watch::start(&project, shared.clone()));
@@ -159,6 +184,9 @@ fn run(args: &Args) -> Result<i32, String> {
         .titlebar(project.titlebar)
         .extension_as("app", ext)
         .extension_as(kit::NAMESPACE, kit);
+    if args.devtools || project.devtools {
+        launcher = launcher.devtools(true);
+    }
     if let Some((w, h)) = project.min_size {
         launcher = launcher.min_size(w, h);
     }

@@ -1820,6 +1820,9 @@ pub struct Search {
     pub value: String,
     /// Shown while it is empty; `Search` when left out.
     pub placeholder: Option<String>,
+    /// Its name, read and not drawn: what it searches (the placeholder when
+    /// left out).
+    pub label: Option<String>,
     /// A count after the query: `12 of 340`.
     pub count: Option<String>,
     /// Takes the keyboard each time this number changes (⌘F).
@@ -1842,6 +1845,7 @@ impl Search {
         Self {
             value: value.into(),
             placeholder: None,
+            label: None,
             count: None,
             focus: None,
             on_change: None,
@@ -1854,6 +1858,13 @@ impl Search {
     /// Shown while it is empty; `Search` when left out.
     pub fn placeholder(mut self, v: impl Into<String>) -> Self {
         self.placeholder = Some(v.into());
+        self
+    }
+
+    /// Its name, read and not drawn: what it searches (the placeholder when
+    /// left out).
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
         self
     }
 
@@ -1900,6 +1911,9 @@ impl Search {
         m.push(("value".into(), Value::str((&self.value).as_str())));
         if let Some(v) = &self.placeholder {
             m.push(("placeholder".into(), Value::str(v.as_str())));
+        }
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
         }
         if let Some(v) = &self.count {
             m.push(("count".into(), Value::str(v.as_str())));
@@ -2113,6 +2127,12 @@ pub struct Checkbox {
     pub mixed: Option<bool>,
     /// Unavailable.
     pub disabled: Option<bool>,
+    /// The label names it but is not drawn: its children draw it instead (a
+    /// name with search hits marked).
+    pub hide_label: Option<bool>,
+    /// Takes its row's room, the whole height a target: a list row ticked
+    /// anywhere.
+    pub grow: Option<bool>,
     /// The message `toggle` arrives as, with `toggle: CheckboxToggle` in it.
     /// Pressed.
     pub on_toggle: Option<Value>,
@@ -2130,6 +2150,8 @@ impl Checkbox {
             checked: checked,
             mixed: None,
             disabled: None,
+            hide_label: None,
+            grow: None,
             on_toggle: None,
             key: None,
             fresh: false,
@@ -2145,6 +2167,20 @@ impl Checkbox {
     /// Unavailable.
     pub fn disabled(mut self, v: bool) -> Self {
         self.disabled = Some(v);
+        self
+    }
+
+    /// The label names it but is not drawn: its children draw it instead (a
+    /// name with search hits marked).
+    pub fn hide_label(mut self, v: bool) -> Self {
+        self.hide_label = Some(v);
+        self
+    }
+
+    /// Takes its row's room, the whole height a target: a list row ticked
+    /// anywhere.
+    pub fn grow(mut self, v: bool) -> Self {
+        self.grow = Some(v);
         self
     }
 
@@ -2177,6 +2213,12 @@ impl Checkbox {
         if let Some(v) = &self.disabled {
             m.push(("disabled".into(), Value::Bool(*v)));
         }
+        if let Some(v) = &self.hide_label {
+            m.push(("hide_label".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.grow {
+            m.push(("grow".into(), Value::Bool(*v)));
+        }
         if let Some(v) = &self.on_toggle {
             m.push(("on_toggle".into(), v.clone()));
         }
@@ -2197,6 +2239,11 @@ impl Checkbox {
     /// Places it under `<namespace>/checkbox`.
     pub fn place_in(&self, ui: &mut Ui<'_>, namespace: &str) -> Option<SlotFill> {
         ui.component(&format!("{namespace}/checkbox"), &self.props())
+    }
+
+    /// Places it with your children: `children(group, ui)` builds `""` (the unnamed group) where it asks.
+    pub fn place_with(&self, ui: &mut Ui<'_>, children: impl FnMut(&str, &mut Ui<'_>)) -> Option<SlotFill> {
+        ui.component_with("kit/checkbox", &self.props(), children)
     }
 }
 
@@ -2438,6 +2485,8 @@ pub struct Segmented {
     pub options: Vec<Choice>,
     /// The one chosen: yours to keep.
     pub value: String,
+    /// The group's name, read and not drawn: what the choice is of.
+    pub label: Option<String>,
     /// The message `change` arrives as, with `change: SegmentedChange` in it. A
     /// segment was chosen.
     pub on_change: Option<Value>,
@@ -2453,10 +2502,17 @@ impl Segmented {
         Self {
             options: options,
             value: value.into(),
+            label: None,
             on_change: None,
             key: None,
             fresh: false,
         }
+    }
+
+    /// The group's name, read and not drawn: what the choice is of.
+    pub fn label(mut self, v: impl Into<String>) -> Self {
+        self.label = Some(v.into());
+        self
     }
 
     /// The message `change` arrives as. A segment was chosen.
@@ -2482,6 +2538,9 @@ impl Segmented {
         let mut m: Vec<(String, Value)> = Vec::new();
         m.push(("options".into(), Value::List((&self.options).iter().map(|x| x.to_value()).collect())));
         m.push(("value".into(), Value::str((&self.value).as_str())));
+        if let Some(v) = &self.label {
+            m.push(("label".into(), Value::str(v.as_str())));
+        }
         if let Some(v) = &self.on_change {
             m.push(("on_change".into(), v.clone()));
         }
@@ -3059,12 +3118,17 @@ impl Inspector {
 /// unless scrolled away.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Log {
-    /// The lines: fields `time`, `level` and `message`.
+    /// The lines: fields `time`, `level` and `message`; a message's ANSI
+    /// colours (SGR) are drawn in the skin's.
     pub rows: Channel,
     /// Kept at the end as lines arrive; on when left out.
     pub follow: Option<bool>,
     /// Takes the room its parent leaves.
     pub grow: Option<bool>,
+    /// A line longer than the log wraps onto more rows, where it is cut.
+    pub wrap: Option<bool>,
+    /// The time column; on when left out.
+    pub time: Option<bool>,
     /// The message `select` arrives as, with `select: LogSelect` in it. A line
     /// was clicked.
     pub on_select: Option<Value>,
@@ -3081,6 +3145,8 @@ impl Log {
             rows: rows,
             follow: None,
             grow: None,
+            wrap: None,
+            time: None,
             on_select: None,
             key: None,
             fresh: false,
@@ -3096,6 +3162,18 @@ impl Log {
     /// Takes the room its parent leaves.
     pub fn grow(mut self, v: bool) -> Self {
         self.grow = Some(v);
+        self
+    }
+
+    /// A line longer than the log wraps onto more rows, where it is cut.
+    pub fn wrap(mut self, v: bool) -> Self {
+        self.wrap = Some(v);
+        self
+    }
+
+    /// The time column; on when left out.
+    pub fn time(mut self, v: bool) -> Self {
+        self.time = Some(v);
         self
     }
 
@@ -3126,6 +3204,12 @@ impl Log {
         }
         if let Some(v) = &self.grow {
             m.push(("grow".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.wrap {
+            m.push(("wrap".into(), Value::Bool(*v)));
+        }
+        if let Some(v) = &self.time {
+            m.push(("time".into(), Value::Bool(*v)));
         }
         if let Some(v) = &self.on_select {
             m.push(("on_select".into(), v.clone()));

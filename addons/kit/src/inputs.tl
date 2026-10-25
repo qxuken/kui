@@ -192,7 +192,7 @@ function M.search(c: Ctx, p: P): kui.Node
       key = "edit",
       value = value,
       placeholder = str(p.placeholder) or "Search",
-      label = str(p.placeholder) or "Search",
+      label = str(p.label) or str(p.placeholder) or "Search",
       width = "grow",
       size = "$kitSize",
       family = "$kitUi",
@@ -314,13 +314,17 @@ function M.checkbox(c: Ctx, p: P): kui.Node
     mixed = mixed,
     disabled = p.disabled == true,
     opacity = p.disabled == true and "$disabledOpacity" or nil,
-    height = "$kitCtl",
+    width = p.grow == true and "grow" or nil,
+    min_width = p.grow == true and 0 or nil,
+    height = p.grow == true and "grow" or "$kitCtl",
+    min_height = "$kitCtl",
     gap = 8,
     cross_align = "center",
     cursor = "pointer",
     on_click = act(c, "checkbox.toggle", { checked = not on }),
     tickbox(c, on, mixed, false),
-    ctx.text(c, str(p.label) or ""),
+    p.hide_label ~= true and ctx.text(c, str(p.label) or "", { max_lines = 1, ellipsis = true }) or nil,
+    children(""),
   }
 end
 
@@ -386,6 +390,7 @@ function M.segmented(c: Ctx, p: P): kui.Node
   local bordered = c.s.skin.ctl_border
   local t: kui.Props = {
     role = "radioGroup",
+    label = str(p.label),
     height = "$kitCtl",
     radius = "$kitRadius",
     pad = bordered and 0 or 2,

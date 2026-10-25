@@ -21,6 +21,7 @@ yaml-rust2 = "0.10"
 ureq = "3"
 tiny_http = "0.12"
 rusqlite = { version = "0.37", features = ["bundled"] }
+ring = "0.17"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -963,6 +963,11 @@ typedef struct KitSearch {
      */
     KuiStr placeholder;
     /*
+     * Its name, read and not drawn: what it searches (the placeholder when left
+     * out).
+     */
+    KuiStr label;
+    /*
      * A count after the query: `12 of 340`.
      */
     KuiStr count;
@@ -990,6 +995,7 @@ static inline KuiValue *kit_search_props(const KitSearch *p) {
     KuiValue *m = kui_value_map();
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
     if (p->placeholder.len > 0) kui_value_map_set(m, KUI_STR("placeholder"), kui_value_str(p->placeholder));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->count.len > 0) kui_value_map_set(m, KUI_STR("count"), kui_value_str(p->count));
     if (p->focus_set) kui_value_map_set(m, KUI_STR("focus"), kui_value_int(p->focus));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
@@ -1092,6 +1098,18 @@ typedef struct KitCheckbox {
     bool disabled;
     bool disabled_set;
     /*
+     * The label names it but is not drawn: its children draw it instead (a name
+     * with search hits marked).
+     */
+    bool hide_label;
+    bool hide_label_set;
+    /*
+     * Takes its row's room, the whole height a target: a list row ticked
+     * anywhere.
+     */
+    bool grow;
+    bool grow_set;
+    /*
      * The message `toggle` arrives as, consumed; NULL for none. Pressed.
      */
     KuiValue *on_toggle;
@@ -1107,6 +1125,8 @@ static inline KuiValue *kit_checkbox_props(const KitCheckbox *p) {
     kui_value_map_set(m, KUI_STR("checked"), kui_value_bool(p->checked));
     if (p->mixed_set) kui_value_map_set(m, KUI_STR("mixed"), kui_value_bool(p->mixed));
     if (p->disabled_set) kui_value_map_set(m, KUI_STR("disabled"), kui_value_bool(p->disabled));
+    if (p->hide_label_set) kui_value_map_set(m, KUI_STR("hide_label"), kui_value_bool(p->hide_label));
+    if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
     if (p->on_toggle != NULL) kui_value_map_set(m, KUI_STR("on_toggle"), p->on_toggle);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -1117,6 +1137,15 @@ static inline KuiValue *kit_checkbox_props(const KitCheckbox *p) {
 static inline int32_t kit_checkbox(KuiCtx *ctx, const KitCheckbox *p) {
     KuiValue *props = kit_checkbox_props(p);
     int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/checkbox"), props, NULL, NULL);
+    kui_value_free(props);
+    return fill;
+}
+
+/* kit_checkbox with your children: `children` builds the group it asks for. */
+static inline int32_t kit_checkbox_with(KuiCtx *ctx, const KitCheckbox *p, KuiChildrenFn children,
+    void *user) {
+    KuiValue *props = kit_checkbox_props(p);
+    int32_t fill = kui_component(ctx, KUI_STR(KIT_NAMESPACE "/checkbox"), props, children, user);
     kui_value_free(props);
     return fill;
 }
@@ -1232,6 +1261,10 @@ typedef struct KitSegmented {
      */
     KuiStr value;
     /*
+     * The group's name, read and not drawn: what the choice is of.
+     */
+    KuiStr label;
+    /*
      * The message `change` arrives as, consumed; NULL for none. A segment was
      * chosen.
      */
@@ -1250,6 +1283,7 @@ static inline KuiValue *kit_segmented_props(const KitSegmented *p) {
         kui_value_map_set(m, KUI_STR("options"), list);
     }
     kui_value_map_set(m, KUI_STR("value"), kui_value_str(p->value));
+    if (p->label.len > 0) kui_value_map_set(m, KUI_STR("label"), kui_value_str(p->label));
     if (p->on_change != NULL) kui_value_map_set(m, KUI_STR("on_change"), p->on_change);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));
@@ -1514,7 +1548,8 @@ static inline int32_t kit_inspector(KuiCtx *ctx, const KitInspector *p) {
  */
 typedef struct KitLog {
     /*
-     * The lines: fields `time`, `level` and `message`.
+     * The lines: fields `time`, `level` and `message`; a message's ANSI colours
+     * (SGR) are drawn in the skin's.
      */
     const KuiChannel *rows;
     /*
@@ -1527,6 +1562,16 @@ typedef struct KitLog {
      */
     bool grow;
     bool grow_set;
+    /*
+     * A line longer than the log wraps onto more rows, where it is cut.
+     */
+    bool wrap;
+    bool wrap_set;
+    /*
+     * The time column; on when left out.
+     */
+    bool time;
+    bool time_set;
     /*
      * The message `select` arrives as, consumed; NULL for none. A line was
      * clicked.
@@ -1543,6 +1588,8 @@ static inline KuiValue *kit_log_props(const KitLog *p) {
     if (p->rows != NULL) kui_value_map_set(m, KUI_STR("rows"), kui_channel_handle(p->rows));
     if (p->follow_set) kui_value_map_set(m, KUI_STR("follow"), kui_value_bool(p->follow));
     if (p->grow_set) kui_value_map_set(m, KUI_STR("grow"), kui_value_bool(p->grow));
+    if (p->wrap_set) kui_value_map_set(m, KUI_STR("wrap"), kui_value_bool(p->wrap));
+    if (p->time_set) kui_value_map_set(m, KUI_STR("time"), kui_value_bool(p->time));
     if (p->on_select != NULL) kui_value_map_set(m, KUI_STR("on_select"), p->on_select);
     if (p->key.len > 0) kui_value_map_set(m, KUI_STR("key"), kui_value_str(p->key));
     if (p->fresh) kui_value_map_set(m, KUI_STR("fresh"), kui_value_bool(true));

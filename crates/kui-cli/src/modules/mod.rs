@@ -13,6 +13,7 @@ use crate::ops::Ops;
 pub mod formats;
 pub mod fs;
 pub mod http;
+pub mod log;
 pub mod process;
 pub mod sqlite;
 pub mod timer;
@@ -38,6 +39,9 @@ pub struct Shared {
     pub timers: timer::Timers,
     /// Processes `kui.process.spawn` started that end with the app.
     pub children: process::Children,
+    /// `kui.devtools(on)` asked the panel on (`Some(true)`), off, or
+    /// toggled (`None`) — and on a tab, given one — for the next frame.
+    pub devtools: Mutex<Option<(Option<bool>, Option<String>)>>,
 }
 
 impl Shared {
@@ -53,6 +57,7 @@ impl Shared {
             exit: Mutex::default(),
             worker,
             children: process::Children::default(),
+            devtools: Mutex::default(),
         })
     }
 
@@ -63,7 +68,12 @@ impl Shared {
     }
 
     pub fn error(&self, msg: String) {
+        // `kui.parse_args` stopping the script after `--help`.
+        if msg.contains(EXIT_MARK) {
+            return;
+        }
         eprintln!("kui: {msg}");
+        log::push("error", msg.clone());
         let mut errors = self.errors.lock().unwrap();
         errors.push(msg);
         let n = errors.len();
@@ -79,6 +89,17 @@ static ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 pub fn set_args(args: Vec<String>) {
     let _ = ARGS.set(args);
 }
+
+/// The app's name, the manifest's: what `kui.parse_args` calls it.
+static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn set_name(name: String) {
+    let _ = NAME.set(name);
+}
+
+/// What `kui.parse_args` raises to stop the script once it has printed
+/// help or a mistake and set the exit: no failure to report.
+pub const EXIT_MARK: &str = "kui: exit requested";
 
 /// The OS, as `kui.platform` names it.
 const PLATFORM: &str = match std::env::consts::OS.as_bytes() {
@@ -151,6 +172,7 @@ pub fn fail(msg: String) -> mlua::Error {
 
 /// The runtime's Lua half (tasks, dispatch, the router).
 const RUNTIME: &str = include_str!("../lua/runtime.lua");
+const ARGS_LUA: &str = include_str!("../lua/args.lua");
 
 /// Installs `kui` and every module into `lua`, for the app (`ui`) or a
 /// worker.
@@ -198,6 +220,9 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     kui.set("dir", shared.dir.to_string_lossy().as_ref())?;
     kui.set("version", env!("CARGO_PKG_VERSION"))?;
     kui.set("args", ARGS.get().cloned().unwrap_or_default())?;
+    if let Some(name) = NAME.get() {
+        kui.set("name", name.as_str())?;
+    }
     if let Ok(cwd) = std::env::current_dir() {
         kui.set("cwd", cwd.to_string_lossy().as_ref())?;
     }
@@ -206,7 +231,24 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     if shared.worker.is_some() {
         kui.set("__worker", true)?;
     }
+    // `kui.devtools(on)`: the panel on, off, or (with nothing) toggled;
+    // `kui.devtools("log")` on, at that tab.
+    kui.set(
+        "devtools",
+        lua.create_function(|lua, on: mlua::Value| {
+            let s = shared_of(lua);
+            let ask = match on {
+                mlua::Value::Boolean(b) => (Some(b), None),
+                mlua::Value::String(t) => (Some(true), Some(t.to_str()?.to_string())),
+                _ => (None, None),
+            };
+            *s.devtools.lock().unwrap() = Some(ask);
+            s.ops.poke();
+            Ok(())
+        })?,
+    )?;
     install_env(lua, &kui)?;
+    log::install(lua, &kui)?;
     formats::install(lua, &kui)?;
     fs::install(lua, &kui)?;
     timer::install(lua, &kui)?;
@@ -217,7 +259,8 @@ pub fn install(lua: &Lua, shared: Arc<Shared>) -> mlua::Result<()> {
     lua.globals().set("kui", kui.clone())?;
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("kui", kui)?;
-    lua.load(RUNTIME).set_name("@kui:runtime").exec()
+    lua.load(RUNTIME).set_name("@kui:runtime").exec()?;
+    lua.load(ARGS_LUA).set_name("@kui:args").exec()
 }
 
 fn shared_of(lua: &Lua) -> Arc<Shared> {

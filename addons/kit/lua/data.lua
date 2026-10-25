@@ -241,41 +241,178 @@ local LEVEL_ROLE = { debug = "faint", info = "muted", warn = "warn", error = "da
 
 
 
+local ANSI = {
+   [0] = "faint", [1] = "danger", [2] = "ok", [3] = "warn",
+   [4] = "$kitSeries2", [5] = "$kitSeries5", [6] = "$kitSeries6", [7] = "fg",
+}
+
+local function ansi_colour(c, n)
+   local role = ANSI[n % 8]
+   if role:sub(1, 1) == "$" then return role end
+   return ref(c, role)
+end
+
+local function rgba(r, g, b)
+   return ((r & 255) << 24) | ((g & 255) << 16) | ((b & 255) << 8) | 0xff
+end
+
+
+local function colour256(c, n)
+   if n < 16 then return ansi_colour(c, n) end
+   if n >= 232 then
+      local v = 8 + (n - 232) * 10
+      return rgba(v, v, v)
+   end
+   local function level(v) return v == 0 and 0 or 55 + v * 40 end
+   n = n - 16
+   return rgba(level(n // 36), level(n // 6 % 6), level(n % 6))
+end
+
+
+
+
+
+
+
+
+local function apply_sgr(c, st, params)
+   local i = 1
+   while i <= #params do
+      local q = params[i]
+      if q == 0 then st.color, st.bold, st.italic, st.underline = nil, false, false, false
+      elseif q == 1 then st.bold = true
+      elseif q == 3 then st.italic = true
+      elseif q == 4 then st.underline = true
+      elseif q == 22 then st.bold = false
+      elseif q == 23 then st.italic = false
+      elseif q == 24 then st.underline = false
+      elseif q >= 30 and q <= 37 then st.color = ansi_colour(c, q - 30)
+      elseif q >= 90 and q <= 97 then st.color = ansi_colour(c, q - 90)
+      elseif q == 39 then st.color = nil
+      elseif q == 38 then
+         if params[i + 1] == 5 then
+            st.color = colour256(c, params[i + 2] or 0)
+            i = i + 2
+         elseif params[i + 1] == 2 then
+            st.color = rgba(params[i + 2] or 0, params[i + 3] or 0, params[i + 4] or 0)
+            i = i + 4
+         end
+      end
+      i = i + 1
+   end
+end
+
+
+
+
+local function message(c, raw)
+   raw = raw:match("[^\r]*$")
+   if not raw:find("\27", 1, true) then return raw end
+   local spans = {}
+   local st = { bold = false, italic = false, underline = false }
+   local at = 1
+   while at <= #raw do
+      local s, e, params, final = raw:find("\27%[([%d;:?]*)(%a)", at)
+      local chunk = raw:sub(at, (s or #raw + 1) - 1)
+      if chunk ~= "" then
+         if st.color or st.bold or st.italic or st.underline then
+            spans[#spans + 1] = { chunk, color = st.color, bold = st.bold or nil, italic = st.italic or nil,
+underline = st.underline or nil, }
+         else
+            spans[#spans + 1] = chunk
+         end
+      end
+      if not s then break end
+      if final == "m" then
+         local list = {}
+         for n in (params ~= "" and params or "0"):gmatch("%d+") do list[#list + 1] = math.tointeger(tonumber(n)) end
+         apply_sgr(c, st, list)
+      end
+      at = e + 1
+   end
+   return spans
+end
+
+
+
+
+
+
+
 
 function M.log(c, p)
    local ch = p.rows
    local n = count(ch)
    local row_h = 18
    local env = c.env
-   local st = ctx.state(c, function() return { n = 0 } end)
-   if ctx.flag(p.follow, true) and n > st.n then
-
-      local g = env.scroll_geometry("rows")
-      local at_end = not g or g.offset.y + g.h >= st.n * row_h - row_h
-      if at_end then env.set_scroll("rows", 0, n * row_h) end
+   local wrap = p.wrap == true
+   local with_time = p.time ~= false
+   local st = ctx.state(c, function() return { n = 0, rev = -1 } end)
+   local function line(i)
+      local level = cell_text(ch:get(i, "level"))
+      local text_opts = { size = "$kitSizeLabel" }
+      if wrap then text_opts.wrap = "word" else text_opts.max_lines, text_opts.ellipsis = 1, true end
+      return row({
+         index = i,
+         height = not wrap and row_h or nil,
+         width = "grow",
+         pad = { x = 8, y = wrap and 1 or 0 },
+         gap = 10,
+         cross_align = wrap and "start" or "center",
+         hover_bg = ref(c, "hover"),
+         on_click = act(c, "log.select", { row = i }),
+         with_time and ctx.data(c, cell_text(ch:get(i, "time")), { size = "$kitSizeLabel", color = ref(c, "faint") }) or nil,
+         row({ width = 44, ctx.data(c, level:upper(), { size = "$kitSizeLabel", bold = true, color = ref(c, LEVEL_ROLE[level] or "muted") }) }),
+         row({ width = "grow", min_width = 0,
+ctx.data(c, message(c, cell_text(ch:get(i, "message"))), text_opts), }),
+      })
    end
-   st.n = n
-   return body(c, "rows", n, row_h, {
+   if not wrap then
+      if ctx.flag(p.follow, true) and n > st.n then
+
+         local g = env.scroll_geometry("rows")
+         local at_end = not g or g.offset.y + g.h >= st.n * row_h - row_h
+         if at_end then env.set_scroll("rows", 0, n * row_h) end
+      end
+      st.n = n
+      return body(c, "rows", n, row_h, {
+         height = p.grow == true and "grow" or nil,
+         bg = ref(c, "sunken"),
+         pad = { y = 4 },
+         selectable = true,
+      }, line)
+   end
+
+
+
+   local rev = ch and ch.rev or 0
+   if not st.heights then st.heights = row_heights(n, row_h) end
+   local g = env.scroll_geometry("rows")
+   local was_end = not g or g.offset.y + g.h >= st.heights:total() - row_h
+   if rev ~= st.rev then
+      if n <= st.n then st.heights:clear() end
+      st.heights:set_len(n)
+   end
+   local label_w = (with_time and 70 or 0) + 54 + 16
+   local function measure(i, width)
+      local m = env.measure_text(message(c, cell_text(ch:get(i, "message"))),
+      { size = "$kitSizeLabel", family = "$kitData" }, math.max(40, width - label_w))
+      return math.max(row_h, m.height + 2)
+   end
+   local t = list(env, {
+      key = "rows",
+      heights = st.heights,
+      width = "grow",
       height = p.grow == true and "grow" or nil,
       bg = ref(c, "sunken"),
       pad = { y = 4 },
       selectable = true,
-   }, function(i)
-      local level = cell_text(ch:get(i, "level"))
-      return row({
-         index = i,
-         height = row_h,
-         width = "grow",
-         pad = { x = 8 },
-         gap = 10,
-         cross_align = "center",
-         hover_bg = ref(c, "hover"),
-         on_click = act(c, "log.select", { row = i }),
-         ctx.data(c, cell_text(ch:get(i, "time")), { size = "$kitSizeLabel", color = ref(c, "faint") }),
-         row({ width = 44, ctx.data(c, level:upper(), { size = "$kitSizeLabel", bold = true, color = ref(c, LEVEL_ROLE[level] or "muted") }) }),
-         ctx.data(c, cell_text(ch:get(i, "message")), { size = "$kitSizeLabel", max_lines = 1, ellipsis = true }),
-      })
-   end)
+   }, measure, line)
+   if ctx.flag(p.follow, true) and rev ~= st.rev and n > st.n and was_end then
+      env.set_scroll("rows", 0, st.heights:total())
+   end
+   st.n, st.rev = n, rev
+   return t
 end
 
 

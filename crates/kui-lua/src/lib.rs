@@ -4963,7 +4963,13 @@ fn to_value(v: &mlua::Value, path: &mut ValuePath) -> mlua::Result<Value> {
                     let (k, v) = pair?;
                     map.push((k, to_value(&v, path)?));
                 }
-                Value::Map(map)
+                // An empty table is a map unless it was marked a list
+                // ([`mark_array`]): what decides `[]` against `{}`.
+                if map.is_empty() && is_marked_array(t) {
+                    Value::List(Vec::new())
+                } else {
+                    Value::Map(map)
+                }
             };
             path.depth -= 1;
             if tracked {
@@ -4982,6 +4988,33 @@ fn to_value(v: &mlua::Value, path: &mut ValuePath) -> mlua::Result<Value> {
             )));
         }
     })
+}
+
+/// The metatable that says an empty table is a list, one per state.
+const ARRAY_MARK: &str = "kui.array";
+
+/// Marks `t` a list, so that empty it converts to `[]` and not `{}`: the
+/// one thing a Lua table cannot say for itself. An empty list decoded
+/// from data comes back marked, so it round-trips.
+pub fn mark_array(lua: &Lua, t: &Table) -> mlua::Result<()> {
+    let mt = match lua.named_registry_value::<Option<Table>>(ARRAY_MARK)? {
+        Some(mt) => mt,
+        None => {
+            let mt = lua.create_table()?;
+            mt.raw_set("__kui_array", true)?;
+            lua.set_named_registry_value(ARRAY_MARK, &mt)?;
+            mt
+        }
+    };
+    if t.metatable().is_none() {
+        t.set_metatable(Some(mt))?;
+    }
+    Ok(())
+}
+
+fn is_marked_array(t: &Table) -> bool {
+    t.metatable()
+        .is_some_and(|mt| mt.raw_get::<bool>("__kui_array").unwrap_or(false))
 }
 
 /// Installs the data half of the prelude — `channel {}` (ADR 0065) and
@@ -5006,6 +5039,10 @@ pub fn value_to_lua(lua: &Lua, v: &Value) -> mlua::Result<mlua::Value> {
             let t = lua.create_table_with_capacity(items.len(), 0)?;
             for (i, item) in items.iter().enumerate() {
                 t.set(i + 1, value_to_lua(lua, item)?)?;
+            }
+            // An empty list stays one on its way back.
+            if items.is_empty() {
+                mark_array(lua, &t)?;
             }
             mlua::Value::Table(t)
         }

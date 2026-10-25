@@ -129,6 +129,89 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
             lua.create_sequence_from(text.lines().map(str::to_string).collect::<Vec<_>>())
         })?,
     )?;
+    // Waiting calls, off the frame: a folder's tree and a batch of files,
+    // one hop each, where a task reading hundreds of files one `read` at a
+    // time held the frame between them.
+    fs.set(
+        "__walk",
+        lua.create_function(|lua, (dir, opts): (Option<String>, Option<Table>)| {
+            let s = shared(lua);
+            let root = s.path(dir.as_deref().unwrap_or("."));
+            let mut skip: Vec<String> = vec![".git".into(), "node_modules".into()];
+            let mut pattern: Option<String> = None;
+            let mut dirs = false;
+            if let Some(o) = opts {
+                if let Some(list) = o.get::<Option<Vec<String>>>("skip")? {
+                    skip = list;
+                }
+                pattern = o.get::<Option<String>>("match")?;
+                dirs = o.get::<Option<bool>>("dirs")?.unwrap_or(false);
+            }
+            let id = s.ops.id();
+            crate::ops::run(&s.ops, id, move || {
+                let mut out = Vec::new();
+                walk(&root, &root, &skip, pattern.as_deref(), dirs, &mut out).map_err(|e| format!("{}: {e}", root.display()))?;
+                out.sort();
+                Ok(kui_core::Value::List(out.into_iter().map(kui_core::Value::Str).collect()))
+            });
+            Ok(id)
+        })?,
+    )?;
+    fs.set(
+        "__read_all",
+        lua.create_function(|lua, paths: Vec<String>| {
+            let s = shared(lua);
+            let full: Vec<std::path::PathBuf> = paths.iter().map(|p| s.path(p)).collect();
+            let id = s.ops.id();
+            crate::ops::run(&s.ops, id, move || {
+                Ok(kui_core::Value::List(
+                    full.iter()
+                        .map(|p| match std::fs::read(p) {
+                            Ok(b) => kui_core::Value::Str(String::from_utf8_lossy(&b).into_owned()),
+                            Err(_) => kui_core::Value::Bool(false),
+                        })
+                        .collect(),
+                ))
+            });
+            Ok(id)
+        })?,
+    )?;
     kui.set("fs", fs)?;
+    Ok(())
+}
+
+/// The files under `dir` (folders too with `dirs`), as paths relative to
+/// `root` with `/` between names, past the names in `skip`, kept when
+/// `pattern` matches the path's end (`*.json`, `**/src/*.ts`).
+fn walk(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    skip: &[String],
+    pattern: Option<&str>,
+    dirs: bool,
+    out: &mut Vec<String>,
+) -> std::io::Result<()> {
+    for e in std::fs::read_dir(dir)?.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if skip.iter().any(|s| *s == name) {
+            continue;
+        }
+        let path = e.path();
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let is_dir = e.file_type().is_ok_and(|t| t.is_dir());
+        if (!is_dir || dirs) && pattern.is_none_or(|p| crate::project::glob(p, &rel)) {
+            out.push(rel);
+        }
+        if is_dir {
+            // A folder that cannot be read is passed over, not the walk's end.
+            let _ = walk(root, &path, skip, pattern, dirs, out);
+        }
+    }
     Ok(())
 }

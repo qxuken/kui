@@ -178,6 +178,26 @@ fn signal(_pid: u32, _sig: &str, _group: bool) -> Result<bool, String> {
     Err("signals are not supported on this platform".into())
 }
 
+fn command_line(pid: u32) -> Option<String> {
+    #[cfg(windows)]
+    let out = {
+        use std::os::windows::process::CommandExt;
+        Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!("(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"),
+            ])
+            .creation_flags(0x0800_0000)
+            .output()
+            .ok()?
+    };
+    #[cfg(not(windows))]
+    let out = Command::new("ps").args(["-o", "command=", "-p", &pid.to_string()]).output().ok()?;
+    let line = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !line.is_empty()).then_some(line)
+}
+
 /// `kill`'s argument: a name, or a number (`0`).
 fn sig_name(v: Option<mlua::Value>) -> mlua::Result<String> {
     Ok(match v {
@@ -348,6 +368,18 @@ pub fn install(lua: &Lua, kui: &Table) -> mlua::Result<()> {
         })?,
     )?;
     process.set("pid", std::process::id())?;
+    // `kui.process.command_line(pid)` (waits): the command a process was
+    // started with, nil when there is none — what tells a stale pid that
+    // is still ours from one the OS gave to another program.
+    process.set(
+        "__command_line",
+        lua.create_function(|lua, pid: u32| {
+            let s = shared(lua);
+            let id = s.ops.id();
+            ops::run(&s.ops, id, move || Ok(command_line(pid).map_or(Value::Null, Value::Str)));
+            Ok(id)
+        })?,
+    )?;
     kui.set("process", process)?;
     Ok(())
 }

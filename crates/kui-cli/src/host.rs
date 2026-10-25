@@ -121,25 +121,10 @@ impl Watch {
 /// A file the watcher follows: the app's code, and what the manifest adds.
 fn watched(path: &Path, include: &[String], exclude: &[String]) -> bool {
     let name = path.to_string_lossy();
-    if exclude.iter().any(|g| glob(g, &name)) {
+    if exclude.iter().any(|g| crate::project::glob(g, &name)) {
         return false;
     }
-    name.ends_with(".lua") || name.ends_with(".tl") || include.iter().any(|g| glob(g, &name))
-}
-
-/// `*` within a name, `**` across folders, matched against the path's end.
-fn glob(pattern: &str, path: &str) -> bool {
-    fn go(p: &[u8], s: &[u8]) -> bool {
-        match p.first() {
-            None => s.is_empty(),
-            Some(b'*') if p.get(1) == Some(&b'*') => (0..=s.len()).any(|i| go(&p[2..], &s[i..])),
-            Some(b'*') => (0..=s.len()).take_while(|&i| i == 0 || s[i - 1] != b'/').any(|i| go(&p[1..], &s[i..])),
-            Some(c) => s.first() == Some(c) && go(&p[1..], &s[1..]),
-        }
-    }
-    let p = pattern.as_bytes();
-    let s = path.as_bytes();
-    (0..=s.len()).filter(|&i| i == 0 || s[i - 1] == b'/').any(|i| go(p, &s[i..]))
+    name.ends_with(".lua") || name.ends_with(".tl") || include.iter().any(|g| crate::project::glob(g, &name))
 }
 
 fn snapshot(dir: &Path, include: &[String], exclude: &[String]) -> Vec<(PathBuf, SystemTime)> {
@@ -167,6 +152,11 @@ pub struct Runner {
     dismissed: usize,
     /// `--shot`: the picture to take, after how long, and how far along.
     shot: Option<Shot>,
+    /// The devtools' Log tab's rows, and the log's revision they hold.
+    log: Option<kui_core::channel::Channel>,
+    log_rev: u64,
+    /// `kui.devtools("log")`: the tab to choose once declared.
+    devtools_tab: Option<String>,
 }
 
 /// `kui run --shot out.png`: a frame `after` seconds in, written to `path`,
@@ -205,6 +195,9 @@ impl Runner {
             load_error,
             closing: false,
             dismissed: 0,
+            log: None,
+            log_rev: u64::MAX,
+            devtools_tab: None,
         }
     }
 
@@ -245,6 +238,64 @@ impl Runner {
                 self.load_error = Some(e.to_string());
             }
         }
+    }
+
+    /// `kui.devtools(on)`, and the panel's Log tab: what the app printed
+    /// and logged, and the runner's errors, in Kit's log.
+    fn devtools(&mut self, ui: &mut Ui<'_>) {
+        if let Some((want, tab)) = self.shared.devtools.lock().unwrap().take() {
+            let core = ui.core();
+            let shown = core.devtools() && core.devtools_dock() != kui_core::DevtoolsDock::Off;
+            core.set_devtools(want.unwrap_or(!shown));
+            if let Some(tab) = tab {
+                // The runner's own tab by its short name; the panel's by theirs.
+                let name = if tab == "log" { "kui:log".to_string() } else { tab };
+                self.devtools_tab = Some(name);
+            }
+        }
+        if !ui.core().devtools() {
+            return;
+        }
+        let rev = crate::modules::log::revision();
+        if rev != self.log_rev {
+            use kui_core::channel::{Channel, Column};
+            let (time, level, message) = crate::modules::log::columns();
+            let cols = vec![
+                ("time".to_string(), Column::strs(time)),
+                ("level".to_string(), Column::strs(level)),
+                ("message".to_string(), Column::strs(message)),
+            ];
+            self.log = match &self.log {
+                Some(ch) => ch.publish(cols).ok(),
+                None => Channel::table(cols).ok(),
+            };
+            self.log_rev = rev;
+        }
+        let rows = self.log.as_ref().map_or(Value::Null, |c| c.handle());
+        // A tab asked for is chosen once the panel knows it — the runner's
+        // own from the frame after its first declaration.
+        if let Some(tab) = &self.devtools_tab
+            && ui.core().set_devtools_tab(tab)
+        {
+            self.devtools_tab = None;
+        }
+        ui.devtools_tab_with("kui:log", "Log", |ui| {
+            ui.with_keyed(
+                "kui:log",
+                NodeSpec::column().width(kui_core::Sizing::Grow(1.0)).height(kui_core::Sizing::Grow(1.0)),
+                |ui| {
+                    ui.component(
+                        "kit/log",
+                        &Value::map([
+                            ("rows", rows),
+                            ("follow", Value::Bool(true)),
+                            ("grow", Value::Bool(true)),
+                            ("wrap", Value::Bool(true)),
+                        ]),
+                    );
+                },
+            );
+        });
     }
 
     fn overlay(&mut self, ui: &mut Ui<'_>) {
@@ -336,6 +387,7 @@ impl App for Runner {
             self.closing = true;
             ui.window_command(WindowCommand::Close(WindowId::MAIN));
         }
+        self.devtools(ui);
         self.overlay(ui);
     }
 

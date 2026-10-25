@@ -476,3 +476,107 @@ fn a_manifest_sets_the_window() {
     let o = kui(&bad, &["run", "--headless"], 20);
     assert!(out(&o).contains("native, custom or borderless"), "{}", out(&o));
 }
+
+#[test]
+fn parse_args_reads_the_line_and_says_what_went_wrong_before_any_window() {
+    let main = r#"
+        local o = kui.parse_args {
+          about = "a parser test",
+          options = {
+            port = { type = "integer", default = 3000, short = "p", help = "the port" },
+            host = { default = "127.0.0.1", env = "PARSE_HOST" },
+            dry_run = { type = "boolean" },
+            tag = { many = true },
+            mode = { choices = { "fast", "slow" }, default = "fast" },
+          },
+          args = { { name = "files", many = true } },
+        }
+        print("got", o.port, o.host, o.dry_run, kui.json.encode(o.tag), o.mode, kui.json.encode(o.files))
+        function view(env) return column {} end
+        kui.exit(0)
+    "#;
+    let dir = app("parse-args", &[("main.lua", main)]);
+    let o = kui(&dir, &["run", "--", "-p", "8080", "--dry-run", "--tag", "a", "--tag=b", "--mode=slow", "x", "y"], 20);
+    let s = out(&o);
+    assert!(s.contains(r#"got	8080	127.0.0.1	true	["a","b"]	slow	["x","y"]"#), "{s}");
+    let o = kui(&dir, &["run"], 20);
+    assert!(out(&o).contains(r#"got	3000	127.0.0.1	false	[]	fast	[]"#), "{}", out(&o));
+
+    // Help and mistakes end the app before its window, with no error of the runner's.
+    let o = kui(&dir, &["run", "--", "--help"], 20);
+    let s = out(&o);
+    assert!(o.status.success(), "{s}");
+    assert!(s.contains("parse-args") && s.contains("a parser test") && s.contains("-p, --port <integer>"), "{s}");
+    assert!(!s.contains("kui:") && !s.contains("got"), "{s}");
+    let o = kui(&dir, &["run", "--", "--prot", "1"], 20);
+    let s = out(&o);
+    assert_eq!(o.status.code(), Some(2), "{s}");
+    assert!(s.contains("unknown option --prot (did you mean --port?)"), "{s}");
+    assert!(!s.contains("stack traceback"), "{s}");
+    let o = kui(&dir, &["run", "--", "--mode", "medium"], 20);
+    assert!(out(&o).contains("expected one of fast, slow"), "{}", out(&o));
+}
+
+#[test]
+fn hashes_arrays_walks_and_logs() {
+    let dir = app(
+        "batteries",
+        &[
+            ("src/a.txt", "alpha"),
+            ("src/deep/b.txt", "beta"),
+            ("node_modules/x/c.txt", "skipped"),
+            (
+                "main.lua",
+                r#"
+                print("sha256", kui.hash.sha256("abc"))
+                print("sha1", kui.hash.sha1("abc"))
+                print("fnv", kui.hash.fnv("abc"))
+                print("array", kui.json.encode({ empty = kui.json.array(), map = {} }))
+                local back = kui.json.decode('{"list":[],"obj":{}}')
+                print("round", kui.json.encode(back))
+                kui.log.warn("careful", 1)
+                kui.spawn(function()
+                  local files = kui.fs.walk(".", { match = "*.txt" })
+                  print("walk", table.concat(files, ","))
+                  local texts = kui.fs.read_all({ "src/a.txt", "nope.txt", "src/deep/b.txt" })
+                  print("read_all", texts[1], texts[2], texts[3])
+                  local cmd = kui.process.command_line(kui.process.pid)
+                  print("cmd", cmd ~= nil and cmd:find("kui") ~= nil, kui.process.command_line(999999) == nil)
+                  kui.exit(0)
+                end)
+                "#,
+            ),
+        ],
+    );
+    let o = kui(&dir, &["run", "--headless"], 20);
+    let s = out(&o);
+    assert!(s.contains("sha256\tba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"), "{s}");
+    assert!(s.contains("sha1\ta9993e364706816aba3e25717850c26c9cd0d89d"), "{s}");
+    assert!(s.contains("fnv\te71fa2190541574b"), "{s}");
+    assert!(s.contains(r#"array	{"empty":[],"map":{}}"#), "{s}");
+    assert!(s.contains(r#"round	{"list":[],"obj":{}}"#), "an empty list decoded stays a list:\n{s}");
+    assert!(s.contains("[warn] careful\t1"), "{s}");
+    assert!(s.contains("walk\tsrc/a.txt,src/deep/b.txt"), "node_modules is skipped:\n{s}");
+    assert!(s.contains("read_all\talpha\tfalse\tbeta"), "{s}");
+    assert!(s.contains("cmd\ttrue\ttrue"), "{s}");
+}
+
+#[test]
+fn the_devtools_log_tab_shows_what_the_app_printed() {
+    let dir = app(
+        "log-tab",
+        &[(
+            "main.lua",
+            r#"
+            print("hello from print")
+            kui.log.error("a bad thing")
+            kui.devtools("log")
+            function view(env) return column { text("app") } end
+            "#,
+        )],
+    );
+    let shot = dir.join("shot.png");
+    let o = kui(&dir, &["run", "--shot", shot.to_str().unwrap(), "--after", "300"], 30);
+    assert!(o.status.success(), "{}", out(&o));
+    assert!(shot.exists(), "{}", out(&o));
+}

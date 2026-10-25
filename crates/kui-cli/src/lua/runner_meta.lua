@@ -121,7 +121,7 @@ function kui.pending() end
 ---@param code? integer
 function kui.exit(code) end
 ---Runs `fn(env)` at the start of the next frame, before `view`: for what only a frame can do (`env.set_clipboard`, `env.set_focus`, `env.measure_text`) from `update`, a task or a timer.
----@param fn fun(env: kui.Env)
+---@param fn fun(env: table)
 function kui.next_frame(fn) end
 ---What followed `--` on the command line: `kui run app -- --port 3001`.
 ---@type string[]
@@ -135,6 +135,72 @@ kui.platform = ""
 ---The cores to share work between.
 ---@type integer
 kui.cpus = 1
+---The app's name (the manifest's, else its folder's).
+---@type string
+kui.name = ""
+
+---@class kui.ArgOption
+---@field type? "string"|"integer"|"number"|"boolean" The default's type when left out, else "string".
+---@field default? any
+---@field short? string
+---@field help? string
+---@field required? boolean
+---@field many? boolean Repeatable: a list of every value given.
+---@field choices? string[]
+---@field env? string An environment variable read when the line leaves it out.
+---@field value? string The value's name in the help.
+
+---@class kui.ArgPositional
+---@field name string
+---@field type? "string"|"integer"|"number"|"boolean"
+---@field help? string
+---@field required? boolean
+---@field many? boolean
+---@field default? any
+---@field choices? string[]
+
+---@class kui.ArgSpec
+---@field name? string
+---@field about? string
+---@field usage? string
+---@field epilog? string
+---@field options? table<string, kui.ArgOption>
+---@field args? kui.ArgPositional[]
+---@field rest? string|boolean Keep arguments past the positionals under this name (true: "rest").
+
+---The command line (`kui.args`, or `argv`) read against `spec`: each option under its key, `--help` printed from the spec, a mistake said with what to type instead (both end the app before its window).
+---@param spec kui.ArgSpec
+---@param argv? string[]
+---@return table<string, any>
+function kui.parse_args(spec, argv) end
+
+---@class kui.Log
+---@overload fun(...: any)
+kui.log = {}
+---@param ... any
+function kui.log.debug(...) end
+---@param ... any
+function kui.log.info(...) end
+---@param ... any
+function kui.log.warn(...) end
+---@param ... any
+function kui.log.error(...) end
+
+---The devtools panel on, off, or (with nothing) toggled.
+---@param on? boolean
+function kui.devtools(on) end
+
+---Digests as lowercase hex.
+kui.hash = {}
+---@return string
+function kui.hash.sha1(data) end
+---@return string
+function kui.hash.sha256(data) end
+---@return string
+function kui.hash.sha512(data) end
+---64-bit FNV-1a: a quick name, not a secret.
+---@return string
+function kui.hash.fnv(data) end
 ---The process environment, after `.env` and `.env.local`.
 ---@type table<string, string>
 kui.env = {}
@@ -164,6 +230,11 @@ function kui.json.decode(text) end
 ---@param opts? { pretty?: boolean }
 ---@return string
 function kui.json.encode(value, opts) end
+---`t` (or a new table) marked a list: empty, it encodes as `[]`.
+---@generic T
+---@param t? T[]
+---@return T[]
+function kui.json.array(t) end
 kui.toml = {}
 ---@return table
 function kui.toml.decode(text) end
@@ -191,6 +262,15 @@ function kui.fs.stat(path) end
 ---Writes a file that does not exist yet; false when it does.
 ---@return boolean
 function kui.fs.create(path, data) end
+---The files under `dir` (waits), relative to it.
+---@param dir? string
+---@param opts? { skip?: string[], match?: string, dirs?: boolean }
+---@return string[]
+function kui.fs.walk(dir, opts) end
+---Reads `paths` (waits): their texts in order, false for one that could not be read.
+---@param paths string[]
+---@return (string|false)[]
+function kui.fs.read_all(paths) end
 function kui.fs.mkdir(path) end
 function kui.fs.remove(path) end
 function kui.fs.rename(from, to) end
@@ -213,6 +293,9 @@ function kui.process.kill(pid, sig, group) end
 ---This process's id.
 ---@type integer
 kui.process.pid = 0
+---The command `pid` was started with (waits), nil when none.
+---@return string?
+function kui.process.command_line(pid) end
 
 kui.http = {}
 ---Each waits.

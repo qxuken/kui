@@ -66,8 +66,10 @@ function M.toolbar(c, _p)
          pad = { x = 8 },
          gap = 6,
          cross_align = "center",
-         children(""),
-         ctx.grow(),
+
+
+
+         row({ width = "grow", gap = 6, cross_align = "center", children("") }),
          row({ gap = 6, cross_align = "center", children("trailing") }),
       }),
       ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
@@ -81,8 +83,7 @@ function M.statusbar(c, _p)
       ctx.rule(c, c.s.skin.ctl_border and "ink" or "rule", "$kitHair"),
       row({
          width = "grow", height = 22, pad = { x = 10 }, gap = 14, cross_align = "center",
-         children(""),
-         ctx.grow(),
+         row({ width = "grow", gap = 14, cross_align = "center", children("") }),
          row({ gap = 14, cross_align = "center", children("trailing") }),
       }),
    })

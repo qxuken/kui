@@ -124,9 +124,12 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<SlotFill>)>)
     put("text_field", kit::TextField::new("hello").label("Name").place(ui));
     put("select", kit::Select::new(choices.clone()).value("a").label("Mode").place(ui));
     put("checkbox", kit::Checkbox::new("Follow", true).on_toggle(msg("follow")).place(ui));
+    put("checkbox_rich", kit::Checkbox::new("mobile-limit", false).hide_label(true).grow(true).place_with(ui, |_, ui| {
+        ui.text("mobile-limit", kui_core::TextStyle::new(12.0));
+    }));
     put("switch", kit::Switch::new("Live", false).on_toggle(msg("live")).place(ui));
     put("radio_group", kit::RadioGroup::new(choices.clone()).value("b").place(ui));
-    put("segmented", kit::Segmented::new(choices.clone(), "a").on_change(msg("seg")).place(ui));
+    put("segmented", kit::Segmented::new(choices.clone(), "a").label("Filter").on_change(msg("seg")).place(ui));
     put("slider", kit::Slider::new(0.3, 0.0, 1.0).label("Zoom").place(ui));
     put("split", kit::Split::new(0.4).place_with(ui, |group, ui| {
         kit::Badge::new(group).place(ui);
@@ -139,6 +142,7 @@ fn gallery(ui: &mut Ui<'_>, answers: &mut Vec<(&'static str, Option<SlotFill>)>)
     put("list", kit::List::new(rows(), "name").detail("ms").place(ui));
     put("inspector", kit::Inspector::new(vec![kit::Entry::new("status", "200").mono(true)]).place(ui));
     put("log", kit::Log::new(logs()).place(ui));
+    put("log_wrapped", kit::Log::new(logs()).wrap(true).time(false).place(ui));
     put("stat", kit::Stat::new("p95", "412 ms").delta("-8%").tone(kit::Tone::Ok).place(ui));
     put("empty", kit::Empty::new("Nothing yet").detail("Run a request.").place(ui));
     put("progress", kit::Progress::new().value(0.4).label("Loading").place(ui));

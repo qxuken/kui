@@ -185,6 +185,7 @@ return {
       props = {
         { "value", "string", doc = "The query: yours to keep." },
         { "placeholder", "string?", doc = "Shown while it is empty; `Search` when left out." },
+        { "label", "string?", doc = "Its name, read and not drawn: what it searches (the placeholder when left out)." },
         { "count", "string?", doc = "A count after the query: `12 of 340`." },
         { "focus", "integer?", doc = "Takes the keyboard each time this number changes (⌘F)." },
       },
@@ -211,7 +212,10 @@ return {
         { "checked", "boolean", doc = "Ticked: yours to keep." },
         { "mixed", "boolean?", doc = "Some of what it stands for: drawn as a dash." },
         { "disabled", "boolean?", doc = "Unavailable." },
+        { "hide_label", "boolean?", doc = "The label names it but is not drawn: its children draw it instead (a name with search hits marked)." },
+        { "grow", "boolean?", doc = "Takes its row's room, the whole height a target: a list row ticked anywhere." },
       },
+      children = { { "", doc = "draws after the box, the label's place: read as part of it, so nothing in it is a control." } },
       events = {
         { "toggle", doc = "Pressed.", fields = { { "checked", "boolean", doc = "What it asks to be." } } },
       } },
@@ -240,6 +244,7 @@ return {
       props = {
         { "options", "{Choice}", doc = "The segments, in order." },
         { "value", "string", doc = "The one chosen: yours to keep." },
+        { "label", "string?", doc = "The group's name, read and not drawn: what the choice is of." },
       },
       events = {
         { "change", doc = "A segment was chosen.", fields = { { "value", "string", doc = "Its value." } } },
@@ -298,9 +303,11 @@ return {
     { "log",
       doc = "A log over a channel: time, level and message a line, following the end unless scrolled away.",
       props = {
-        { "rows", "channel", doc = "The lines: fields `time`, `level` and `message`." },
+        { "rows", "channel", doc = "The lines: fields `time`, `level` and `message`; a message's ANSI colours (SGR) are drawn in the skin's." },
         { "follow", "boolean?", doc = "Kept at the end as lines arrive; on when left out." },
         { "grow", "boolean?", doc = "Takes the room its parent leaves." },
+        { "wrap", "boolean?", doc = "A line longer than the log wraps onto more rows, where it is cut." },
+        { "time", "boolean?", doc = "The time column; on when left out." },
       },
       events = {
         { "select", doc = "A line was clicked.", fields = { { "row", "integer", doc = "Its index." } } },

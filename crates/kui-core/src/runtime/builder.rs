@@ -618,13 +618,43 @@ impl Core {
             if hits.0.is_none() && last_too {
                 hits = ask(&self.key_labels_last);
             }
-            (hits.0?, hits.1)
+            let Some(first) = hits.0 else {
+                // A fill asking for a node it has not declared yet — its
+                // own scroller, on its first frame — read "none": a fill
+                // kept with that answer must run again once the label
+                // answers, or it replays its first frame for good.
+                if fall_back {
+                    let (origin, ns) = (self.origin, self.ns_key);
+                    self.note_read(|| replay::Read::LabelMissing {
+                        label: label.into(),
+                        origin,
+                        ns,
+                        guest,
+                    });
+                }
+                return None;
+            };
+            (first, hits.1)
         };
         if count > 1 {
             self.diag
                 .raise(crate::diag::ambiguous_key(label, first, count));
         }
         Some(first)
+    }
+
+    /// Whether `label` answers for a fill of `origin` under `ns` (or the
+    /// host) in this frame's labels or the last's: what a
+    /// [`replay::Read::LabelMissing`] asks again.
+    pub(crate) fn label_answers(&self, label: &str, origin: crate::tree::OriginId, ns: Key, guest: bool) -> bool {
+        let ask = |labels: &crate::key::LabelIndex| {
+            if guest {
+                labels.find_in_fill(label, origin, ns).0.is_some()
+            } else {
+                labels.find_for(label, origin).0.is_some()
+            }
+        };
+        ask(&self.key_labels) || ask(&self.key_labels_last)
     }
 
     /// `open_keyed` in the sibling-index namespace: the key auto-keying

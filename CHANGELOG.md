@@ -94,6 +94,9 @@ was the first bare bump to break an app in five releases).
 - A Lua view draws the children after one left out with `nil` — `{ a,
   cond and b or nil, c }` draws `c` — where it dropped every sibling
   after the hole (backlog C79).
+- A kept fill that asked for one of its own nodes by label before
+  declaring it runs again the frame after the node first exists, where it
+  replayed its first frame until its params changed (backlog C84).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -201,6 +204,29 @@ for lua-language-server, and a new runner beside the window's.
   Ctrl-C, `SIGTERM` and `SIGHUP` end it the way its close button does;
   `kui.fs.create` writes a file only if it is absent. Kit's `statusbar`
   takes a `trailing` group, as its toolbar does.
+
+- **The runner's second round** (backlog C83): `kui.parse_args(spec)` —
+  options with types, defaults, short flags, `env`, `choices`, `many`, and
+  positionals — writes `--help` from the spec and says a mistake with what
+  to type instead ("did you mean --port?"), ending the app before its
+  window; an app that ends while it loads opens none. `print` and
+  `kui.log(...)` / `kui.log.warn(...)` are kept for a **Log tab in the
+  devtools**, with the runner's errors and every worker's lines, coloured
+  and wrapped; `kui.devtools()` toggles the panel and `kui.devtools("log")`
+  opens it there, as `--devtools` and the manifest's `devtools = true` do.
+  On macOS a windowed app is named after itself in the Dock and ⌘Tab, not
+  "kui" (`--no-rename` keeps it). `kui.hash` (`sha1`, `sha256`, `sha512`,
+  `fnv`), `kui.json.array` (an empty list that stays `[]`),
+  `kui.fs.walk` and `kui.fs.read_all` (a tree or a batch of files off the
+  frame), and `kui.process.command_line(pid)`.
+
+- **Kit:** the log draws a message's ANSI colours in the skin's and wraps
+  long lines (`wrap`; `time = false` drops the clock) (backlog C81); a
+  checkbox's children draw its label — a name with search hits marked —
+  with `hide_label`, and `grow` makes the whole row its target; `segmented`
+  and `search` take a `label` that names them without drawing (backlog
+  C78); a spacer among a toolbar's or statusbar's items pushes what follows
+  to the end, where it stopped midway (backlog C82).
 
 - **Kit in the npm package** (backlog C77): `import { Button, extension }
   from '@qxuken/kui/kit'`, then `runWindowed(app, { extensions: [extension]

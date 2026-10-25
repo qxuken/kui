@@ -127,3 +127,13 @@ workers — whose I/O runs as tasks that never block a frame.
   under it, in kui-lua: a child left out with `nil` in the middle of a
   list dropped every sibling after it, because Lua 5.5's `#t` stops at the
   first hole (C79).
+- The same app's second round (backlog C83, C84): `kui.parse_args` (help
+  and mistakes from a spec, ending the app before its window — the runner
+  now opens no window for an app that ended while it loaded); `kui.log`
+  and `print` kept for a devtools Log tab the runner draws with Kit's log;
+  `kui.devtools(on | "log")`; `kui.hash`; `kui.fs.walk` and `read_all` as
+  waiting calls; `kui.json.array`; `kui.process.command_line`; and on
+  macOS a windowed run relaunches as an APFS clone named after the app, so
+  the Dock does not say "kui". Under it, in the core: a fill that asked
+  for its own node by label before declaring it replayed its first frame
+  for good (C84).

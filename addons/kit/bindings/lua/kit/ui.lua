@@ -202,6 +202,7 @@
 ---@class kit.SearchProps
 ---@field value string The query: yours to keep.
 ---@field placeholder? string Shown while it is empty; `Search` when left out.
+---@field label? string Its name, read and not drawn: what it searches (the placeholder when left out).
 ---@field count? string A count after the query: `12 of 340`.
 ---@field focus? integer Takes the keyboard each time this number changes (⌘F).
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.SearchChange). The query changed; cleared is the empty string.
@@ -238,6 +239,8 @@
 ---@field checked boolean Ticked: yours to keep.
 ---@field mixed? boolean Some of what it stands for: drawn as a dash.
 ---@field disabled? boolean Unavailable.
+---@field hide_label? boolean The label names it but is not drawn: its children draw it instead (a name with search hits marked).
+---@field grow? boolean Takes its row's room, the whole height a target: a list row ticked anywhere.
 ---@field on_toggle? any The message it arrives as: yours, with `toggle = {…}` in it (kit.CheckboxToggle). Pressed.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -276,6 +279,7 @@
 ---@class kit.SegmentedProps
 ---@field options kit.Choice[] The segments, in order.
 ---@field value string The one chosen: yours to keep.
+---@field label? string The group's name, read and not drawn: what the choice is of.
 ---@field on_change? any The message it arrives as: yours, with `change = {…}` in it (kit.SegmentedChange). A segment was chosen.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -351,9 +355,11 @@
 
 ---The props of `kit/log`.
 ---@class kit.LogProps
----@field rows kui.Channel The lines: fields `time`, `level` and `message`.
+---@field rows kui.Channel The lines: fields `time`, `level` and `message`; a message's ANSI colours (SGR) are drawn in the skin's.
 ---@field follow? boolean Kept at the end as lines arrive; on when left out.
 ---@field grow? boolean Takes the room its parent leaves.
+---@field wrap? boolean A line longer than the log wraps onto more rows, where it is cut.
+---@field time? boolean The time column; on when left out.
 ---@field on_select? any The message it arrives as: yours, with `select = {…}` in it (kit.LogSelect). A line was clicked.
 ---@field key? string Keys the instance; by default it is keyed by where it is placed.
 ---@field fresh? boolean Asks the extension every frame instead of replaying an unchanged instance.
@@ -648,10 +654,14 @@ local function make(namespace)
   end
 
   ---A box and its label.
+  ---
+  ---Your children: its list part draws after the box, the label's place: read
+  ---as part of it, so nothing in it is a control.
   ---@param props kit.CheckboxProps
+  ---@param children? table
   ---@return kui.Node
-  function M.checkbox(props)
-    return component(namespace .. "/checkbox", props)
+  function M.checkbox(props, children)
+    return component(namespace .. "/checkbox", props, children)
   end
 
   ---An on/off switch and its label.

@@ -180,6 +180,7 @@ function make(namespace) {
       const wire = {};
       if (props.value !== undefined) wire.value = props.value;
       if (props.placeholder !== undefined) wire.placeholder = props.placeholder;
+      if (props.label !== undefined) wire.label = props.label;
       if (props.count !== undefined) wire.count = props.count;
       if (props.focus !== undefined) wire.focus = props.focus;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
@@ -214,6 +215,8 @@ function make(namespace) {
       if (props.checked !== undefined) wire.checked = props.checked;
       if (props.mixed !== undefined) wire.mixed = props.mixed;
       if (props.disabled !== undefined) wire.disabled = props.disabled;
+      if (props.hideLabel !== undefined) wire.hide_label = props.hideLabel;
+      if (props.grow !== undefined) wire.grow = props.grow;
       if (props.onToggle !== undefined) wire.on_toggle = props.onToggle;
       const groups = undefined;
       return {
@@ -255,6 +258,7 @@ function make(namespace) {
       const wire = {};
       if (props.options !== undefined) wire.options = props.options;
       if (props.value !== undefined) wire.value = props.value;
+      if (props.label !== undefined) wire.label = props.label;
       if (props.onChange !== undefined) wire.on_change = props.onChange;
       const groups = undefined;
       return {
@@ -333,6 +337,8 @@ function make(namespace) {
       if (props.rows !== undefined) wire.rows = props.rows;
       if (props.follow !== undefined) wire.follow = props.follow;
       if (props.grow !== undefined) wire.grow = props.grow;
+      if (props.wrap !== undefined) wire.wrap = props.wrap;
+      if (props.time !== undefined) wire.time = props.time;
       if (props.onSelect !== undefined) wire.on_select = props.onSelect;
       const groups = undefined;
       return {
