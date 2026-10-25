@@ -1248,10 +1248,13 @@ impl Diagnostics {
     }
 
     fn check_modal(&mut self, tree: &Tree) {
-        let Some(i) = (0..tree.len())
-            .rev()
-            .find(|&i| tree.specs[i].events().modal().is_some())
-        else {
+        // The drawn menu bar is not a dialog: it is in flow by design,
+        // under a titlebar and over the app (`widgets::menu_bar`), and the
+        // content after it is meant to be inert while a menu is open.
+        let Some(i) = (0..tree.len()).rev().find(|&i| {
+            tree.specs[i].events().modal().is_some()
+                && tree.origins[i] != crate::tree::OriginId::MENU_BAR
+        }) else {
             return;
         };
         let end = tree.subtree_end(i);
