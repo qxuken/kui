@@ -687,6 +687,11 @@ impl Core {
                     self.owe_frame("tab_moves_focus");
                     return out;
                 }
+                // An open menu's row whose accelerator this is takes it,
+                // as a native menu's key equivalent does (backlog C98).
+                if self.menu_accel(&kp, &mut out) {
+                    return out;
+                }
                 if self.route_key(&kp, KeyPhase::Down, &mut out) {
                     // Held from here until its release, focus moving, or
                     // the window losing the keyboard. A repeat of a key

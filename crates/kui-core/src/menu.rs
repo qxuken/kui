@@ -942,6 +942,23 @@ impl Accel {
         (code != KeyCode::Unknown && !code.is_modifier()).then_some(Accel { code, mods })
     }
 
+    /// Whether a press is this chord: the modifiers exactly, and the key by
+    /// the layout's character first and the physical position second —
+    /// case-blind for a character, since Shift is part of the chord and
+    /// the layout has already applied it. What the devtools' chords and an
+    /// open menu's accelerators (backlog C98) are matched by.
+    pub fn matches(&self, press: &crate::input::KeyPress) -> bool {
+        use crate::input::KeyCode;
+        if press.mods != self.mods {
+            return false;
+        }
+        let same = |code: KeyCode| match (self.code, code) {
+            (KeyCode::Char(a), KeyCode::Char(b)) => a.eq_ignore_ascii_case(&b),
+            (a, b) => a == b,
+        };
+        same(press.code) || same(press.physical)
+    }
+
     /// How the platform writes it: the macOS glyph run (`⇧⌘S`, in AppKit's
     /// order, no separators) or the spelled form (`Ctrl+Shift+S`).
     pub fn display(&self) -> String {

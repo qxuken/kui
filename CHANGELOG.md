@@ -1028,6 +1028,15 @@ for lua-language-server, and a new runner beside the window's.
   request_files` from its fill) carries that instance, so what the
   component proposes in reply reaches its placer's message (ADR 0067):
   a Kit field's Choose… heard the path and could tell nobody.
+- While one of the core's menus is open — a context menu (`open_menu`,
+  a `select`'s) or the drawn menu bar's — a press matching an enabled
+  row's accelerator chooses that row, posting its event as a click on it
+  would, and closes the menu, as a native menu does (backlog C98): Kit's
+  Actions menu open, ⌘C on its Copy link row did nothing and the menu
+  stayed. Rows inside submenus count, and a standard row's own
+  accelerator (Copy's ⌘C) performs its role; a disabled row, or one
+  under a disabled row, takes nothing. `Accel::matches` is the press test
+  the devtools' chords already used.
 - An `anchor` scroller the last layout left at its end stays at its end
   in the next, whatever changed size — its rows or its own box — until
   something scrolls it away: a log whose panel grew sat a band short of

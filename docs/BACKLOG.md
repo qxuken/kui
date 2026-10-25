@@ -3674,14 +3674,7 @@ Ctrl in the editor's modifiers, and the edit events that report them.
 - `.` **C96** — [A path whose `d` changes costs far more than its size](backlog/closed-2026-09.md#-c96--a-path-whose-d-changes-costs-far-more-than-its-size--done-2026-10-26) — done (2026-10-26) — zeno's cell walk over kui's own storage (cells sorted by row once): the 1,400-vertex zigzag 1.65 s → 6 ms, masks the same to the byte
 - `.` **C97** — [`slide` eases a move an ancestor made](backlog/closed-2026-09.md#-c97--slide-eases-a-move-an-ancestor-made--done-2026-10-26) — done (2026-10-26) — eases the place within the parent; ancestors' moves followed at once, a reparented node glides on
 
-### `.` C98 — An open menu ignores its items' accelerators
-
-**Found** by the user: Kit's Actions menu open, ⌘C (its Copy link row's
-shortcut) does nothing and the menu stays. **Do.** While a core menu is
-open, a press matching an enabled item's accelerator activates that item
-and closes the menu, as a native one does.
-
-- `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`
+- `.` **C98** — [An open menu ignores its items' accelerators](backlog/closed-2026-09.md#-c98--an-open-menu-ignores-its-items-accelerators--done-2026-10-26) — done (2026-10-26) — an open context menu or drawn-bar menu chooses the enabled row whose accelerator was pressed, and closes
 
 ### `.` C100 — A view guesses its size, and re-runs for every hover
 
@@ -5650,3 +5643,4 @@ move.
 **From Kit's sample rounds (2026-10-26)** — C89–C94, C98 and C99, built the same day
 
 - `.` **C99** — [Tab in a multiline editor: insert, with a way out](backlog/closed-2026-09.md#-c99--tab-in-a-multiline-editor-insert-with-a-way-out--done-2026-10-26) — done (2026-10-26) — a multiline editor takes Tab; Escape then Tab, the Ctrl+M (Ctrl+Shift+M on macOS) toggle and Ctrl+Tab leave it; `tab_moves_focus` replaces `tab_inserts`
+- `.` **C98** — [An open menu ignores its items' accelerators](backlog/closed-2026-09.md#-c98--an-open-menu-ignores-its-items-accelerators--done-2026-10-26) — done (2026-10-26) — an open context menu or drawn-bar menu chooses the enabled row whose accelerator was pressed, and closes

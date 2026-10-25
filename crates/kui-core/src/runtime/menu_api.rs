@@ -440,6 +440,50 @@ impl Core {
         self.perform_menu_item(&item, menu.target, menu.origin, false, out);
     }
 
+    /// A key press while one of the core's own menus is open (backlog
+    /// C98): the press matching an enabled row's accelerator chooses that
+    /// row — its event posted as a click on it would post it, the menu
+    /// closed — as a native menu does with its items' key equivalents.
+    /// Kit's Actions menu open, ⌘C on its Copy link row did nothing and
+    /// the menu stayed. True when a row took the press, which then goes
+    /// nowhere else.
+    ///
+    /// The context menu's rows first, then the drawn bar's open menu; a
+    /// menu the host shows itself has its own key equivalents, and a row
+    /// that opens a submenu, a dead one or one under a dead row is never
+    /// chosen, as the pointer could not choose it.
+    pub(crate) fn menu_accel(
+        &mut self,
+        kp: &crate::input::KeyPress,
+        out: &mut Vec<UiEvent>,
+    ) -> bool {
+        if let Some(menu) = self.menu.as_ref().filter(|_| !self.native_menus)
+            && let Some(path) = accel_path(&menu.items, kp)
+        {
+            self.choose_menu_path(&path, out);
+            return true;
+        }
+        let Some(open) = self.menu_bar_open.filter(|_| !self.native_menu_bar) else {
+            return false;
+        };
+        let Some(item) = self.menu_bar.as_ref().and_then(|b| {
+            let items = &b.menus.get(open).filter(|m| m.enabled)?.items;
+            MenuItem::at_path(items, &accel_path(items, kp)?).cloned()
+        }) else {
+            return false;
+        };
+        // Closed first, as a press on the row closes it before performing:
+        // a row that replays its chord plays it to the window under the
+        // menu, not back into this.
+        self.set_menu_bar_open(None);
+        let (target, origin) = (
+            self.menu_bar_root.unwrap_or(Key::ROOT),
+            self.menu_bar_origin,
+        );
+        self.perform_menu_item(&item, target, origin, true, out);
+        true
+    }
+
     /// One item, performed and posted, wherever it was chosen from: the
     /// open context menu's row, a host's native menu, or a menu of the
     /// application menu bar. The two callers differ only in what they close first
@@ -670,6 +714,36 @@ impl Taken {
         let row = self.row?;
         Some(self.path.iter().copied().chain([row]).collect())
     }
+}
+
+/// The path of the first row in `items`, submenus included, that the press
+/// `kp` is the accelerator of and that can be chosen
+/// ([`MenuItem::choosable_at`]): the row's own accelerator or its role's,
+/// in any spelling [`crate::menu::Accel::parse`] reads. A row whose
+/// accelerator kui cannot parse is the app's to match, and is passed.
+fn accel_path(items: &[MenuItem], kp: &crate::input::KeyPress) -> Option<Vec<usize>> {
+    fn walk(
+        all: &[MenuItem],
+        level: &[MenuItem],
+        path: &mut Vec<usize>,
+        kp: &crate::input::KeyPress,
+    ) -> bool {
+        for (i, item) in level.iter().enumerate() {
+            path.push(i);
+            let hit = item
+                .accel_text()
+                .and_then(crate::menu::Accel::parse)
+                .is_some_and(|a| a.matches(kp))
+                && MenuItem::choosable_at(all, path);
+            if hit || (item.selectable() && walk(all, &item.submenu, path, kp)) {
+                return true;
+            }
+            path.pop();
+        }
+        false
+    }
+    let mut path = Vec::new();
+    walk(items, items, &mut path, kp).then_some(path)
 }
 
 /// The `path` a submenu row's tag carries (`widgets::menu_row_tag`);

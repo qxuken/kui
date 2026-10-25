@@ -1097,3 +1097,83 @@ fn a_calc_ceiling_caps_the_labels_as_a_px_one_does() {
     let ink = path.chars().filter(|c| !c.is_whitespace()).count();
     assert!(glyphs.len() < ink, "cut short: {} of {ink}", glyphs.len());
 }
+
+/// The primary chord with `c`: what a Copy row's accelerator reads.
+fn mod_key(c: char) -> kui_core::KeyPress {
+    let mods = if cfg!(target_os = "macos") {
+        kui_core::KeyMods::NONE.with_super()
+    } else {
+        kui_core::KeyMods::NONE.with_ctrl()
+    };
+    kui_core::KeyPress::new(kui_core::KeyCode::Char(c), mods)
+}
+
+/// While the menu is open a press matching an enabled row's accelerator
+/// chooses that row, as a native menu does (backlog C98): its event is
+/// posted as a click on it would post it, and the menu closes. Kit's
+/// Actions menu ignored ⌘C on its Copy link row and stayed open.
+#[test]
+fn a_rows_accelerator_chooses_it_while_the_menu_is_open() {
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    let rows = vec![
+        MenuItem::new("Copy link")
+            .id(Value::str("copy-link"))
+            .accel("mod+c"),
+        MenuItem::new("Gone")
+            .id(Value::str("gone"))
+            .accel("mod+g")
+            .enabled(false),
+        MenuItem::submenu(
+            "More",
+            vec![MenuItem::new("Deep").id(Value::str("deep")).accel("mod+d")],
+        ),
+    ];
+    core.open_menu(Menu::new(scope, Vec2::new(40.0, 30.0), rows.clone()));
+    frame(&mut core);
+    // A disabled row's accelerator chooses nothing, and the menu stays.
+    let events = core.press(mod_key('g'));
+    assert!(
+        events.iter().all(|e| e.event.name() != "menu"),
+        "{events:?}"
+    );
+    assert!(core.menu().is_some(), "still open");
+    let events = core.press(mod_key('c'));
+    let menus: Vec<_> = events.iter().filter(|e| e.event.name() == "menu").collect();
+    assert_eq!(menus.len(), 1, "one choice: {events:?}");
+    assert_eq!(menus[0].key, scope, "on the menu's target");
+    assert_eq!(menus[0].data().unwrap().get_str("item"), Some("copy-link"));
+    assert!(core.menu().is_none(), "the accelerator closes the menu");
+    // A row inside a submenu is reached by its accelerator too.
+    frame(&mut core);
+    core.open_menu(Menu::new(scope, Vec2::new(40.0, 30.0), rows));
+    frame(&mut core);
+    let events = core.press(mod_key('d'));
+    let item = events
+        .iter()
+        .find(|e| e.event.name() == "menu")
+        .and_then(|e| e.data())
+        .and_then(|d| d.get_str("item").map(str::to_string));
+    assert_eq!(item.as_deref(), Some("deep"));
+    assert!(core.menu().is_none());
+}
+
+/// A standard row's role accelerator counts: ⌘C over the open menu
+/// copies, as its Copy row would.
+#[test]
+fn a_standard_rows_own_accelerator_performs_its_role() {
+    let mut core = Core::new();
+    let scope = frame(&mut core);
+    core.select_all_in(scope);
+    core.open_menu(Menu::new(scope, Vec2::new(40.0, 30.0), items()));
+    frame(&mut core);
+    core.press(mod_key('c'));
+    assert!(core.menu().is_none());
+    assert!(
+        matches!(
+            core.take_menu_actions().as_slice(),
+            [MenuAction::SetClipboard { .. }]
+        ),
+        "copied"
+    );
+}

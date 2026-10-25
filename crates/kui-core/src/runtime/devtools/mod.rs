@@ -1205,27 +1205,12 @@ const DEFAULT_INSPECT_KEY: Accel = Accel {
     },
 };
 
-/// Whether a press is this chord: the modifiers exactly, and the key by
-/// the layout's character first and the physical position second — case-blind
-/// for a character, since Shift is part
-/// of the chord and the layout has already applied it.
-fn hits(accel: Accel, press: &crate::input::KeyPress) -> bool {
-    if press.mods != accel.mods {
-        return false;
-    }
-    let same = |code: KeyCode| match (accel.code, code) {
-        (KeyCode::Char(a), KeyCode::Char(b)) => a.eq_ignore_ascii_case(&b),
-        (a, b) => a == b,
-    };
-    same(press.code) || same(press.physical)
-}
-
 /// The panel's chord for a key press, if it is one: the inspect chord
 /// (`Ctrl+Shift+I`, or what the app respelled it to), else `Ctrl+Shift`
 /// and a letter, by the layout's character first and the physical
 /// position second.
 fn chord(press: &crate::input::KeyPress, inspect: Accel) -> Option<&'static str> {
-    if hits(inspect, press) {
+    if inspect.matches(press) {
         return Some("inspect");
     }
     let m = press.mods;

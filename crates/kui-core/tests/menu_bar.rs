@@ -493,3 +493,25 @@ fn an_open_bar_over_the_app_is_no_modal_behind_content() {
         "the bar is in flow by design, and the app under it inert on purpose"
     );
 }
+
+/// An open menu of the drawn bar takes its rows' accelerators (backlog
+/// C98): ⌘N with File open chooses New, posts its payload and closes.
+#[test]
+fn an_accelerator_chooses_its_row_while_the_bars_menu_is_open() {
+    let mut core = Core::new();
+    frame(&mut core);
+    let file = center(&mut core, Role::MenuItem, "File");
+    click(&mut core, file);
+    frame(&mut core);
+    assert_eq!(core.menu_bar_open(), Some(0));
+    let mods = if cfg!(target_os = "macos") {
+        kui_core::KeyMods::NONE.with_super()
+    } else {
+        kui_core::KeyMods::NONE.with_ctrl()
+    };
+    let events = core.press(kui_core::KeyPress::new(kui_core::KeyCode::Char('n'), mods));
+    let chose: Vec<_> = events.iter().filter(|e| e.event.name() == "menu").collect();
+    assert_eq!(chose.len(), 1, "{events:?}");
+    assert_eq!(chose[0].data().unwrap().get_str("item"), Some("file.new"));
+    assert_eq!(core.menu_bar_open(), None, "and closes");
+}
