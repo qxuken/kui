@@ -1890,6 +1890,85 @@ pub struct AnimationShowing {
 /// with the runner's decoder (backlog F138), so an app that ships a photo
 /// needs no image package: `ctx.addImage(d.width, d.height, d.rgba)`.
 /// Throws, naming why, for bytes that are not an image or do not decode.
+/// Loads a DTCG token file, or a Resolver Module document composing
+/// several (ADR 0062), into kui's token shape: `tokens` is what
+/// `setTokens` takes (`ctx.setTokens(loadTokens('brand.resolver.json').tokens)`),
+/// colours with a light and a dark half; `names` says which DTCG path each
+/// name came from; `warnings` names every token skipped or changed (a
+/// shadow kui has no kind for, a colour clamped into sRGB). `source` is a
+/// path, or a token document already parsed. Throws when the file will not
+/// read or parse or the resolver cannot be resolved.
+#[napi(
+    ts_args_type = "source: string | object, options?: DtcgOptions",
+    ts_return_type = "LoadedTokens"
+)]
+pub fn load_tokens(source: Json, options: Option<Json>) -> Result<Json> {
+    use kui_core::dtcg::{self, DtcgOptions, DtcgValue};
+    let mut opts = DtcgOptions::default();
+    if let Some(Json::Object(o)) = &options {
+        for (k, v) in o {
+            match (k.as_str(), v) {
+                ("prefix", Json::String(s)) => opts.prefix = s.clone(),
+                ("modifier", Json::String(s)) => opts.modifier = s.clone(),
+                ("light", Json::String(s)) => opts.light = s.clone(),
+                ("dark", Json::String(s)) => opts.dark = s.clone(),
+                ("rem", Json::Number(n)) => opts.rem_px = n.as_f64().unwrap_or(16.0) as f32,
+                ("inputs", Json::Object(m)) => {
+                    for (mk, mv) in m {
+                        let Json::String(ctx) = mv else {
+                            return Err(err(format!(
+                                "loadTokens(): inputs.{mk} must be a context name"
+                            )));
+                        };
+                        opts.inputs.push((mk.clone(), ctx.clone()));
+                    }
+                }
+                (k, _) => {
+                    return Err(err(format!(
+                        "loadTokens(): unknown option {k:?} (prefix, modifier, light, dark, rem, inputs)"
+                    )));
+                }
+            }
+        }
+    }
+    let loaded = match &source {
+        Json::String(path) => dtcg::from_path(path, &opts),
+        other @ Json::Object(_) => dtcg::from_str(&other.to_string(), None, &opts),
+        _ => return Err(err("loadTokens(): source is a path or a token document")),
+    }
+    .map_err(|e| err(format!("loadTokens(): {e}")))?;
+    let (mut colors, mut lengths, mut families) = (JsonMap::new(), JsonMap::new(), JsonMap::new());
+    let mut names = Vec::new();
+    for n in &loaded.names {
+        let kind = match &n.value {
+            DtcgValue::Color { light, dark } => {
+                let v = if light == dark {
+                    Json::from(light.to_hex())
+                } else {
+                    serde_json::json!({ "light": light.to_hex(), "dark": dark.to_hex() })
+                };
+                colors.insert(n.name.clone(), v);
+                "color"
+            }
+            DtcgValue::Length(px) => {
+                lengths.insert(n.name.clone(), Json::from(*px as f64));
+                "length"
+            }
+            DtcgValue::Family(list) => {
+                families.insert(n.name.clone(), Json::from(list.clone()));
+                "family"
+            }
+        };
+        names.push(serde_json::json!({ "name": n.name, "path": n.path, "kind": kind }));
+    }
+    Ok(serde_json::json!({
+        "tokens": { "colors": colors, "lengths": lengths, "families": families },
+        "names": names,
+        "warnings": loaded.warnings.iter().map(|w| w.to_string()).collect::<Vec<_>>(),
+        "resolver": loaded.resolver,
+    }))
+}
+
 #[napi]
 pub fn decode_image(bytes: Buffer) -> Result<DecodedImage> {
     let p = kui_native::decode_image(&bytes)

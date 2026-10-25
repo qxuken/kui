@@ -1467,6 +1467,8 @@ global type kui = record
     focus_window: function(window: integer)
     -- Declares the origin's colour and length tokens (ADR 0027).
     set_tokens: function(decl: any)
+    -- Loads a DTCG token file or resolver (ADR 0062): colours with two halves, lengths, families; Node and Lua answer the table, C adds it.
+    load_tokens: function(path: string, opts?: {string:any}): {string:any}
     -- Runs a function inside a span of that name, on the timeline the Perf tab and a trace file show, and returns what it returned.
     span: function(name: string, f: function(): any...): any...
     -- A span timed elsewhere — a parse on another thread, a job — of so many ms, ending now, on the track named for it.

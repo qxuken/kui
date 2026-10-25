@@ -14,7 +14,7 @@ import { constants as osConstants, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as pkg from './index.js';
-import { Ctx, KuiWindow, RowHeights, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, encodeImage, AnimationEncoder, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
+import { Ctx, KuiWindow, RowHeights, loadTokens, animationAt, clipStride, createApp, createEncoder, decodeAnimation, decodeImage, decodeQuads, encodeImage, AnimationEncoder, defineTokens, list, protocol, quadStride, revealRow, roles, rowsInView, runWindowed, splitter, uniformList, windowOptions, withEffects } from './index.js';
 
 const box = (props, children = [], key) => ({ type: 'box', key, props, children });
 const text = (children, props = {}) => ({ type: 'text', props, children: [].concat(children) });
@@ -8888,6 +8888,35 @@ test('setAccent keeps the OS light/dark, setTheme follows nothing, null derives 
 
   // A role that is not one is a typo worth hearing about.
   assert.throws(() => ctx.setTheme({ surfce: '#fff' }), /no such role/);
+});
+
+test('loadTokens reads the DTCG fixture into the table setTokens takes (ADR 0062)', () => {
+  const fixture = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'crates', 'kui-core', 'tests', 'fixtures', 'dtcg', 'brand.resolver.json');
+  const loaded = loadTokens(fixture, { prefix: 'brand' });
+  assert.equal(loaded.resolver, true);
+  assert.deepEqual(loaded.tokens, {
+    colors: {
+      brandColorSurface: { light: 0xffffffff, dark: 0x1a1a18ff },
+      brandColorInk: { light: 0x141413ff, dark: 0xf1eee6ff },
+      brandColorAccent: 0xffd400ff,
+      brandColorBrand: 0xffd400ff,
+    },
+    lengths: { brandSpaceGap: 8, brandSpaceGutter: 16 },
+    families: { brandFontCode: ['IBM Plex Mono', 'mono'] },
+  });
+  assert.deepEqual(loaded.names[4], { name: 'brandColorInk', path: 'color.ink', kind: 'color' });
+  assert.equal(loaded.warnings.length, 1);
+  assert.match(loaded.warnings[0], /^shadow\.card: `shadow`/);
+  // Straight into setTokens, and the halves follow the OS.
+  const ctx = new Ctx();
+  ctx.setTokens(loaded.tokens);
+  ctx.setEnv({ system: { appearance: 'dark' } });
+  assert.equal(ctx.tokens().colors.brandColorInk, 0xf1eee6ff);
+  // A token document already parsed, and the errors a user meets.
+  const inline = loadTokens({ ink: { $type: 'color', $value: '#000000' } });
+  assert.deepEqual(inline.tokens.colors, { ink: 0x000000ff });
+  assert.throws(() => loadTokens('no/such/brand.json'), /no\/such\/brand\.json/);
+  assert.throws(() => loadTokens(fixture, { prefx: 'x' }), /unknown option "prefx"/);
 });
 
 test('setTheme({ light, dark }) follows the OS with one palette for each appearance (ADR 0061)', () => {

@@ -4931,3 +4931,65 @@ mod theme_pair {
         kui_ctx_free(ctx);
     }
 }
+
+/// ADR 0062: the DTCG fixture through C's door — added on top of the
+/// host's own tokens, read back per appearance, a bad path refused by name.
+#[cfg(test)]
+mod dtcg {
+    use super::*;
+
+    fn fixture() -> String {
+        format!(
+            "{}/../kui-core/tests/fixtures/dtcg/brand.resolver.json",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    }
+
+    #[test]
+    fn the_fixture_lands_on_top_of_the_hosts_tokens() {
+        let ctx = kui_ctx_new();
+        let own = [KuiColorToken {
+            name: ks("mine"),
+            light: 0x112233ff,
+            dark: 0x112233ff,
+        }];
+        kui_tokens_set(ctx, own.as_ptr(), 1, std::ptr::null(), 0);
+        let path = fixture();
+        assert!(kui_tokens_load_dtcg(ctx, ks(&path), ks("brand"), ks("")));
+        let mut why = KuiStr {
+            ptr: std::ptr::null(),
+            len: 0,
+        };
+        assert!(
+            !kui_tokens_dtcg_error(ctx, &mut why),
+            "no error after a load"
+        );
+        for (appearance, ink) in [
+            (Appearance::Light, 0x141413ffu32),
+            (Appearance::Dark, 0xf1eee6ff),
+        ] {
+            kui_env_set_system(ctx, appearance.code(), 0, 0, ks(""));
+            kui_frame_begin(ctx, 100.0, 100.0, 1.0);
+            let mut c = 0u32;
+            assert!(kui_token_color(ctx, ks("brandColorInk"), &mut c));
+            assert_eq!(c, ink, "{appearance:?}");
+            assert!(
+                kui_token_color(ctx, ks("mine"), &mut c),
+                "the host's own token stays"
+            );
+            let mut gutter = 0f32;
+            assert!(kui_token_length(ctx, ks("brandSpaceGutter"), &mut gutter));
+            assert_eq!(gutter, 16.0);
+            kui_frame_finish(ctx);
+        }
+        assert!(!kui_tokens_load_dtcg(
+            ctx,
+            ks("no/such/brand.json"),
+            ks(""),
+            ks("")
+        ));
+        assert!(kui_tokens_dtcg_error(ctx, &mut why));
+        assert!(kstr(why).contains("no/such/brand.json"), "{}", &*kstr(why));
+        kui_ctx_free(ctx);
+    }
+}

@@ -2465,6 +2465,19 @@ tokens_families :: proc(ui: ^Ui, families: []Family_Token) {
 	c.tokens_families(ui, raw_data(families_c), uint(len(families)))
 }
 
+// Loads a DTCG token file or resolver (ADR 0062): colours with two halves,
+// lengths, families; Node and Lua answer the table, C adds it.
+// Rust: Core::add_dtcg.
+tokens_load_dtcg :: proc(ui: ^Ui, path: string, prefix: string, inputs: string) -> bool {
+	return c.tokens_load_dtcg(ui, path, prefix, inputs)
+}
+
+// kui_tokens_dtcg_error (kui.h).
+tokens_dtcg_error :: proc(ui: ^Ui) -> (out: string, ok: bool) #optional_ok {
+	ok = c.tokens_dtcg_error(ui, &out)
+	return
+}
+
 // The clock the tweens read; a window's runner sets it from the display.
 // Rust: Core::set_time.
 set_time :: proc(ui: ^Ui, now_secs: f64) {

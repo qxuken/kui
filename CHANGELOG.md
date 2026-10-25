@@ -132,6 +132,35 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **Design tokens from a DTCG file** (backlog T8,
+  [ADR 0062](docs/adr/0062-design-tokens-loaded-from-a-dtcg-file.md)).
+  Load a company's exported tokens straight into kui: a W3C Design Tokens
+  2025.10 file, or a Resolver Module document that composes several.
+  Colours get a light and a dark half from the resolver's light/dark
+  modifier, which is found by its contexts whatever it is called.
+  Dimensions and numbers become lengths, and font families become family
+  tokens:
+    - Node: `ctx.setTokens(loadTokens('brand.resolver.json', { prefix: 'brand' }).tokens)`.
+      The result also lists each name's DTCG path and every token skipped.
+    - Lua: `env.set_tokens(env.load_tokens("brand.resolver.json").tokens)`,
+      the path taken from the script's folder.
+    - C: `kui_tokens_load_dtcg(ctx, path, prefix, inputs)` adds the tokens
+      on top of the origin's own, and `kui_tokens_dtcg_error` says why a
+      load failed. Odin gets `tokens_load_dtcg`.
+    - Rust: `kui_core::dtcg::from_path` and `Core::add_dtcg`.
+
+  What it reads:
+    - all fourteen colour spaces, clamped into sRGB with a warning;
+    - aliases, and `$type` inherited down groups;
+    - the legacy `"#rrggbb"` and `"12px"` spellings real exports carry.
+
+  A shadow, a typography or a font weight is skipped with a `dtcg-skipped`
+  warning naming the token. `kui_core::json` is the strict JSON reader
+  underneath, and a `dtcg` fuzz target covers both.
+
+  **What you can delete:** the hand-copied token table and the script that
+  kept it in step with the design team's export.
+
 - **A theme with a light half and a dark half** (backlog T7,
   [ADR 0061](docs/adr/0061-a-theme-with-a-light-half-and-a-dark-half.md)).
   Hand the core one palette for each appearance, and it picks the half

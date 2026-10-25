@@ -2841,6 +2841,29 @@ typedef struct KuiFamilyToken {
     size_t name_count;
 } KuiFamilyToken;
 void kui_tokens_families(KuiCtx *ctx, const KuiFamilyToken *families, size_t count);
+/* Load a DTCG token file, or a Resolver Module document that composes
+ * several (ADR 0062), and add its tokens to the drawing origin's table, as
+ * kui_tokens_derive adds: colours with a light and a dark half, dimensions
+ * and numbers as lengths, font families. `prefix` fronts every name
+ * ("brand" makes color.ink brandColorInk); empty names them by their paths
+ * alone (colorInk).
+ *
+ *   if (!kui_tokens_load_dtcg(ctx, KUI_STR("brand.resolver.json"),
+ *                             KUI_STR("brand"), KUI_STR("density=compact"))) {
+ *     KuiStr why; kui_tokens_dtcg_error(ctx, &why); ...
+ *   }
+ *
+ * `inputs` picks a resolver's other modifiers' contexts as name=context
+ * pairs separated by ';' or ','; a modifier left out takes its default.
+ * @modifier, @light, @dark and @rem set the loader instead: the modifier
+ * whose contexts are the halves (found by its contexts when it is not
+ * "theme"), their names, and px in a rem (16). False, adding nothing, when
+ * the file will not read or parse or cannot be resolved. A token kui has
+ * no kind for is skipped with a `dtcg-skipped` warning naming its path. */
+bool kui_tokens_load_dtcg(KuiCtx *ctx, KuiStr path, KuiStr prefix, KuiStr inputs);
+/* Why the last kui_tokens_load_dtcg said false; false (out untouched) when
+ * it succeeded or none has run. Borrowed until the next call. */
+bool kui_tokens_dtcg_error(KuiCtx *ctx, KuiStr *out);
 bool kui_token_family(KuiCtx *ctx, KuiStr name, uint32_t *family, uint64_t *font);
 
 /* The frame clock for transitions (monotonic seconds, any origin). Set before

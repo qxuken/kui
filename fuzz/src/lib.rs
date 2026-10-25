@@ -8,6 +8,7 @@
 //! property the code promises in its docs.
 
 pub mod decode;
+pub mod dtcg;
 pub mod encode;
 pub mod events;
 pub mod parsers;
@@ -23,6 +24,7 @@ pub type Run = fn(&[u8]);
 /// are kept in, and the function both run.
 pub const TARGETS: &[(&str, Run)] = &[
     ("parsers", parsers::run),
+    ("dtcg", dtcg::run),
     ("values", values::run),
     ("path", path::run),
     ("scenes", scenes::run),

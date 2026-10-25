@@ -454,6 +454,12 @@ warnings! {
     /// always means the theme's, so an app cannot shadow one. Rename the
     /// token.
     pub const RESERVED_TOKEN: &str = "reserved-token";
+    /// A token in a DTCG file (ADR 0062) was skipped or changed on its way
+    /// into the table: a type kui has no kind for (a shadow, a typography,
+    /// a font weight), a colour clamped into sRGB, an alias to nothing, two
+    /// paths that make one name. The message names the token's DTCG path;
+    /// the rest of the file landed.
+    pub const DTCG_SKIPPED: &str = "dtcg-skipped";
     /// A slot name declared twice in one frame. The second declaration was
     /// ignored: a fill is keyed by the slot's full name, so two fills of one
     /// name would share every key. Two places for one extension are two
@@ -567,6 +573,20 @@ pub fn unknown_slot(extension: &str, namespace: &str, slot: &str) -> Warning {
              declared this frame, so it drew nothing; declare `ui.slot({full:?})` where it \
              should go, or drop the name from the extension's `slots`"
         ),
+    }
+}
+
+/// The [`DTCG_SKIPPED`] warning for one token of a loaded file, keyed by
+/// its path.
+pub fn dtcg_skipped(path: &str, message: &str) -> Warning {
+    Warning {
+        code: DTCG_SKIPPED,
+        key: Key::ROOT.str(DTCG_SKIPPED).str(path),
+        message: if path.is_empty() {
+            format!("the DTCG file: {message}")
+        } else {
+            format!("DTCG token `{path}`: {message}")
+        },
     }
 }
 

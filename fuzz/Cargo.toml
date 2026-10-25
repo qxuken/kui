@@ -90,3 +90,11 @@ test = false
 doc = false
 bench = false
 required-features = ["libfuzzer"]
+
+[[bin]]
+name = "dtcg"
+path = "fuzz_targets/dtcg.rs"
+test = false
+doc = false
+bench = false
+required-features = ["libfuzzer"]

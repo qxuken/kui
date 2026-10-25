@@ -514,6 +514,8 @@ impl LuaExtension {
             let rest: String = package.get("path")?;
             let d = dir.to_string_lossy();
             package.set("path", format!("{d}/?.lua;{d}/?/init.lua;{rest}"))?;
+            // What `env.load_tokens` resolves a relative path against.
+            lua.set_named_registry_value("kui:dir", d.as_ref())?;
         }
         lua.load(source).set_name(chunk).exec()?;
         let slots = match lua.globals().get::<mlua::Value>("slots")? {
@@ -1755,6 +1757,10 @@ fn env_table<'scope, 'env: 'scope>(
     // Declare this script's tokens from inside a view (ADR 0027): the
     // same shape as the `tokens` global, replacing this origin's table
     // whole, in effect for the nodes the same view opens after the call.
+    // `env.load_tokens(path, opts)` → `{ tokens, names, warnings,
+    // resolver }`: a DTCG file or resolver (ADR 0062) in the shape
+    // `env.set_tokens` takes, a relative path from the script's folder.
+    t.set("load_tokens", lua.create_function(load_tokens)?)?;
     // A script whose lengths follow a tier declares on each change.
     let env = t.clone();
     t.set(
@@ -1878,6 +1884,97 @@ fn env_table<'scope, 'env: 'scope>(
         })?,
     )?;
     Ok(t)
+}
+
+/// `env.load_tokens(path, opts)`: the DTCG loader (ADR 0062) for a script,
+/// answering the table `env.set_tokens` takes plus where each name came
+/// from and what was skipped. Errors are Lua errors: a script asking for a
+/// brand file that is not there should hear it.
+fn load_tokens(lua: &Lua, (path, opts): (String, Option<Table>)) -> mlua::Result<Table> {
+    use kui_core::dtcg::{self, DtcgOptions, DtcgValue};
+    let mut o = DtcgOptions::default();
+    if let Some(t) = &opts {
+        for pair in t.clone().pairs::<String, mlua::Value>() {
+            let (k, v) = pair?;
+            match (k.as_str(), &v) {
+                ("prefix", mlua::Value::String(s)) => o.prefix = s.to_str()?.to_string(),
+                ("modifier", mlua::Value::String(s)) => o.modifier = s.to_str()?.to_string(),
+                ("light", mlua::Value::String(s)) => o.light = s.to_str()?.to_string(),
+                ("dark", mlua::Value::String(s)) => o.dark = s.to_str()?.to_string(),
+                ("rem", mlua::Value::Number(n)) => o.rem_px = *n as f32,
+                ("rem", mlua::Value::Integer(n)) => o.rem_px = *n as f32,
+                ("inputs", mlua::Value::Table(m)) => {
+                    for p in m.clone().pairs::<String, String>() {
+                        let (mk, mv) = p?;
+                        o.inputs.push((mk, mv));
+                    }
+                }
+                (k, _) => {
+                    return Err(mlua::Error::runtime(format!(
+                        "load_tokens: unknown option {k:?} (prefix, modifier, light, dark, rem, inputs)"
+                    )));
+                }
+            }
+        }
+    }
+    let mut p = std::path::PathBuf::from(&path);
+    if p.is_relative()
+        && let Ok(dir) = lua.named_registry_value::<String>("kui:dir")
+    {
+        p = std::path::Path::new(&dir).join(p);
+    }
+    let loaded =
+        dtcg::from_path(&p, &o).map_err(|e| mlua::Error::runtime(format!("load_tokens: {e}")))?;
+    let (colors, lengths, families) = (
+        lua.create_table()?,
+        lua.create_table()?,
+        lua.create_table()?,
+    );
+    let names = lua.create_table()?;
+    for n in &loaded.names {
+        let kind = match &n.value {
+            DtcgValue::Color { light, dark } if light == dark => {
+                colors.set(n.name.as_str(), light.to_hex())?;
+                "color"
+            }
+            DtcgValue::Color { light, dark } => {
+                let half = lua.create_table()?;
+                half.set("light", light.to_hex())?;
+                half.set("dark", dark.to_hex())?;
+                colors.set(n.name.as_str(), half)?;
+                "color"
+            }
+            DtcgValue::Length(px) => {
+                lengths.set(n.name.as_str(), *px)?;
+                "length"
+            }
+            DtcgValue::Family(list) => {
+                families.set(
+                    n.name.as_str(),
+                    lua.create_sequence_from(list.iter().map(String::as_str))?,
+                )?;
+                "family"
+            }
+        };
+        let row = lua.create_table()?;
+        row.set("name", n.name.as_str())?;
+        row.set("path", n.path.as_str())?;
+        row.set("kind", kind)?;
+        names.push(row)?;
+    }
+    let tokens = lua.create_table()?;
+    tokens.set("colors", colors)?;
+    tokens.set("lengths", lengths)?;
+    tokens.set("families", families)?;
+    let out = lua.create_table()?;
+    out.set("tokens", tokens)?;
+    out.set("names", names)?;
+    out.set(
+        "warnings",
+        lua.create_sequence_from(loaded.warnings.iter().map(|w| w.to_string()))?,
+    )?;
+    out.set("resolver", loaded.resolver)?;
+    Ok(out)
 }
 
 /// `env.measure_text(s, opts, max_w)` → `{ width, height, lines }` (logical

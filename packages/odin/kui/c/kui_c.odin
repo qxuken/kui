@@ -1153,6 +1153,8 @@ foreign lib {
 	token_length :: proc(ctx: ^Ctx, name: string, out: ^f32) -> bool ---
 	tokens_derive :: proc(ctx: ^Ctx, derived: [^]DerivedToken, count: uint) -> bool ---
 	tokens_families :: proc(ctx: ^Ctx, families: [^]FamilyToken, count: uint) ---
+	tokens_load_dtcg :: proc(ctx: ^Ctx, path: string, prefix: string, inputs: string) -> bool ---
+	tokens_dtcg_error :: proc(ctx: ^Ctx, out: ^string) -> bool ---
 	token_family :: proc(ctx: ^Ctx, name: string, family: ^u32, font: ^u64) -> bool ---
 	set_time :: proc(ctx: ^Ctx, now_secs: f64) ---
 	now :: proc(ctx: ^Ctx) -> f64 ---

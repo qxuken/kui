@@ -1386,6 +1386,12 @@ export type WarningCode =
    *  the corpus's contract and `$surface` always means the theme's, so an app
    *  cannot shadow one. Rename the token. */
   | 'reserved-token'
+  /** A token in a DTCG file (ADR 0062) was skipped or changed on its way into
+   *  the table: a type kui has no kind for (a shadow, a typography, a font
+   *  weight), a colour clamped into sRGB, an alias to nothing, two paths that
+   *  make one name. The message names the token's DTCG path; the rest of the
+   *  file landed. */
+  | 'dtcg-skipped'
   /** A slot name declared twice in one frame. The second declaration was
    *  ignored: a fill is keyed by the slot's full name, so two fills of one name
    *  would share every key. Two places for one extension are two names. */
@@ -2485,6 +2491,34 @@ export type TokenRefs<D extends TokenDeclaration> = {
  * references. Hand the same declaration to `setTokens`.
  */
 export declare function defineTokens<const D extends TokenDeclaration>(decl: D): TokenRefs<D>;
+
+/** How `loadTokens` reads a DTCG file (ADR 0062). */
+export interface DtcgOptions {
+  /** Put in front of every name: `'brand'` makes `color.ink` `brandColorInk`. */
+  prefix?: string;
+  /** The resolver modifier whose contexts are the two halves; found by its
+   *  contexts when it is not `'theme'`. */
+  modifier?: string;
+  /** Its context for the light half (`'light'`). */
+  light?: string;
+  /** Its context for the dark half (`'dark'`). */
+  dark?: string;
+  /** Px in one `rem` (16). */
+  rem?: number;
+  /** A context for each other modifier, by name; one left out takes its default. */
+  inputs?: Record<string, string>;
+}
+
+/** What `loadTokens` gives back: `tokens` goes to `setTokens` as it is. */
+export interface LoadedTokens {
+  tokens: TokenDeclaration;
+  /** Which DTCG path each name came from, in file order. */
+  names: { name: string; path: string; kind: 'color' | 'length' | 'family' }[];
+  /** Every token skipped or changed, as `path: why`. */
+  warnings: string[];
+  /** Whether the source was a resolver (two halves) or a token file. */
+  resolver: boolean;
+}
 
 /** The theme's and metrics' roles as references — `roles.surface` is
  *  `'$surface'`, `roles.radius` is `'$radius'` — the same spelling an app
@@ -4334,7 +4368,17 @@ export interface AnimationShowing {
  * with the runner's decoder (backlog F138), so an app that ships a photo
  * needs no image package: `ctx.addImage(d.width, d.height, d.rgba)`.
  * Throws, naming why, for bytes that are not an image or do not decode.
+ * Loads a DTCG token file, or a Resolver Module document composing
+ * several (ADR 0062), into kui's token shape: `tokens` is what
+ * `setTokens` takes (`ctx.setTokens(loadTokens('brand.resolver.json').tokens)`),
+ * colours with a light and a dark half; `names` says which DTCG path each
+ * name came from; `warnings` names every token skipped or changed (a
+ * shadow kui has no kind for, a colour clamped into sRGB). `source` is a
+ * path, or a token document already parsed. Throws when the file will not
+ * read or parse or the resolver cannot be resolved.
  */
+export declare function loadTokens(source: string | object, options?: DtcgOptions): LoadedTokens
+
 export declare function decodeImage(bytes: Buffer): DecodedImage
 
 /**

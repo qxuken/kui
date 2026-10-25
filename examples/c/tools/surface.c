@@ -1051,6 +1051,13 @@ static int surface(void) {
         check(kui_theme(ui, &paired) && (paired.bg == 0xf6f3eaff || paired.bg == 0x131312ff),
               "kui_theme_set_pair paints one of its halves");
         kui_theme_set(ui, NULL);
+        /* A DTCG load (ADR 0062): a file that is not there is refused, its
+         * path in the reason, and nothing is added. */
+        check(!kui_tokens_load_dtcg(ui, KUI_STR("no/such/brand.resolver.json"), KUI_STR("brand"),
+                                    KUI_STR("density=compact")),
+              "kui_tokens_load_dtcg refuses a missing file");
+        KuiStr why = {0};
+        check(kui_tokens_dtcg_error(ui, &why) && why.len > 0, "kui_tokens_dtcg_error says why");
         KuiMetrics metrics = KUI_METRICS_INIT;
         check(kui_metrics(ui, &metrics) && metrics.control_text > 0, "kui_metrics");
         metrics.control_text = 11;

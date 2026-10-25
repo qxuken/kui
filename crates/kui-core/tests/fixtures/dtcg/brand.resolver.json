@@ -1,0 +1,12 @@
+{
+  "name": "kui's DTCG fixture: one brand, two appearances",
+  "version": "2025-10-01",
+  "sets": { "base": { "sources": [{ "$ref": "base.json" }] } },
+  "modifiers": {
+    "mode": {
+      "contexts": { "light": [{ "$ref": "light.json" }], "dark": [{ "$ref": "dark.json" }] },
+      "default": "light"
+    }
+  },
+  "resolutionOrder": [{ "$ref": "#/sets/base" }, { "$ref": "#/modifiers/mode" }]
+}

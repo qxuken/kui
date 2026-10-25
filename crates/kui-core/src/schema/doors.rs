@@ -1220,6 +1220,14 @@ pub const DOORS: &[Door] = &[
         doc: "Adds font family tokens, each picked from a fallback list (ADR 0049).",
     },
     Door {
+        rust: "Core::add_dtcg",
+        c: Is("kui_tokens_load_dtcg"),
+        odin: Is("tokens_load_dtcg"),
+        node: Is("kui.loadTokens"),
+        lua: Is("load_tokens"),
+        doc: "Loads a DTCG token file or resolver (ADR 0062): colours with two halves, lengths, families; Node and Lua answer the table, C adds it.",
+    },
+    Door {
         rust: "Tokens::derive",
         c: Is("kui_tokens_derive"),
         odin: Is("tokens_derive"),

@@ -149,6 +149,8 @@ pub struct KuiCtx {
     /// Why the last `kui_ctx_add_extension` said false. Valid until the
     /// next call, like every other borrowed string here.
     pub(crate) last_ext_error: String,
+    /// Why the last `kui_tokens_load_dtcg` said false.
+    pub(crate) last_dtcg_error: String,
     /// Set only for the length of a `kui_run_with` view callback: the
     /// runner's own `Ui`, erased to a pointer because `KuiCtx` is what C
     /// holds and has no lifetime to carry one.
@@ -258,6 +260,7 @@ impl KuiCtx {
             slot_params: None,
             extensions: Default::default(),
             last_ext_error: String::new(),
+            last_dtcg_error: String::new(),
             host_ui: std::ptr::null_mut(),
             captures: None,
             perf_trace: Vec::new(),

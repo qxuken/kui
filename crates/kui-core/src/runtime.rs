@@ -1068,6 +1068,28 @@ impl Core {
         self.tokens.contains_key(&origin)
     }
 
+    /// Adds a loaded DTCG file's tokens (ADR 0062) to the running
+    /// origin's own table — a brand on top of what the app declared, a
+    /// name it shares replaced — and raises `dtcg-skipped` for each token
+    /// the load skipped or changed.
+    pub fn add_dtcg(&mut self, loaded: &crate::dtcg::Dtcg) {
+        use crate::dtcg::DtcgValue;
+        let mut t = self.tokens().cloned().unwrap_or_default();
+        for n in &loaded.names {
+            t = match &n.value {
+                DtcgValue::Color { light, dark } if light == dark => t.color(&n.name, *light),
+                DtcgValue::Color { light, dark } => t.color_themed(&n.name, *light, *dark),
+                DtcgValue::Length(px) => t.length(&n.name, *px),
+                DtcgValue::Family(list) => t.family(&n.name, list.clone()),
+            };
+        }
+        self.set_tokens(t);
+        for w in &loaded.warnings {
+            self.diag
+                .raise(crate::diag::dtcg_skipped(&w.path, &w.message));
+        }
+    }
+
     /// The running origin's own table, if it declared one.
     pub fn tokens(&self) -> Option<&crate::tokens::Tokens> {
         self.tokens.get(&self.origin)

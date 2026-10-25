@@ -300,6 +300,7 @@ pub extern "C" fn kui_ctx_new() -> *mut KuiCtx {
             slot_params: None,
             extensions: Default::default(),
             last_ext_error: String::new(),
+            last_dtcg_error: String::new(),
             host_ui: std::ptr::null_mut(),
             captures: None,
             perf_trace: Vec::new(),
@@ -675,6 +676,89 @@ pub extern "C" fn kui_tokens_families(
             t = t.family(kstr(f.name).into_owned(), names);
         }
         c.core().set_tokens(t);
+    })
+}
+
+/// Loads a DTCG token file, or a Resolver Module document composing
+/// several (ADR 0062), and adds its tokens to the calling origin's table,
+/// as [`kui_tokens_derive`] adds: colours with a light and a dark half,
+/// dimensions and numbers as lengths, font families. `prefix` goes in
+/// front of every name (`brand` makes `color.ink` `brandColorInk`); an
+/// empty one names them by their paths alone (`colorInk`).
+///
+/// `inputs` chooses a resolver's other modifiers' contexts, as
+/// `name=context` pairs separated by `;` or `,` (`density=compact;
+/// platform=desktop`); a modifier left out takes its `default`. Four
+/// keys set the loader instead: `@modifier` (the one whose contexts are
+/// the halves; found by its contexts when it is not `theme`), `@light`,
+/// `@dark` (its context names) and `@rem` (px in a rem, 16).
+///
+/// False, adding nothing, when the file will not read or parse or the
+/// resolver cannot be resolved; [`kui_tokens_dtcg_error`] says why. A
+/// token kui has no kind for (a shadow, a typography) is skipped with a
+/// `dtcg-skipped` warning naming its path, and the rest lands.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tokens_load_dtcg(
+    ptr: *mut KuiCtx,
+    path: KuiStr,
+    prefix: KuiStr,
+    inputs: KuiStr,
+) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        c.last_dtcg_error.clear();
+        let mut opts = kui_core::dtcg::DtcgOptions {
+            prefix: kstr(prefix).into_owned(),
+            ..Default::default()
+        };
+        for pair in kstr(inputs).split([';', ',']) {
+            let Some((k, v)) = pair.split_once('=') else {
+                continue;
+            };
+            let (k, v) = (k.trim(), v.trim());
+            match k {
+                "@modifier" => opts.modifier = v.into(),
+                "@light" => opts.light = v.into(),
+                "@dark" => opts.dark = v.into(),
+                "@rem" => opts.rem_px = v.parse().unwrap_or(16.0),
+                _ => opts.inputs.push((k.into(), v.into())),
+            }
+        }
+        match kui_core::dtcg::from_path(&*kstr(path), &opts) {
+            Ok(loaded) => {
+                c.core().add_dtcg(&loaded);
+                true
+            }
+            Err(e) => {
+                c.last_dtcg_error = e.message;
+                false
+            }
+        }
+    })
+}
+
+/// Why the last [`kui_tokens_load_dtcg`] on this context said false. False
+/// (and `out` untouched) when it succeeded or none has run. Borrowed until
+/// the next call on this context.
+#[unsafe(no_mangle)]
+pub extern "C" fn kui_tokens_dtcg_error(ptr: *mut KuiCtx, out: *mut KuiStr) -> bool {
+    guard(false, || {
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return false;
+        };
+        let Some(out) = (unsafe { out.as_mut() }) else {
+            return false;
+        };
+        if c.last_dtcg_error.is_empty() {
+            return false;
+        }
+        *out = KuiStr {
+            ptr: c.last_dtcg_error.as_ptr(),
+            len: c.last_dtcg_error.len(),
+        };
+        true
     })
 }
 

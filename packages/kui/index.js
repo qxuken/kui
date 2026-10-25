@@ -10,6 +10,7 @@ export const {
   Ctx, KuiWindow, RowHeights, quadStride, clipStride, protocol,
   decodeImage, decodeAnimation, animationAt, encodeImage, AnimationEncoder,
   showInFolder, openExternal,
+  loadTokens,
 } = native;
 export { createEncoder };
 

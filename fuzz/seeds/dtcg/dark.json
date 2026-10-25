@@ -1,0 +1,9 @@
+{
+  "color": {
+    "$type": "color",
+    "surface": { "$value": "#1a1a18" },
+    "ink": { "$value": "#f1eee6" },
+    "accent": { "$value": "{color.brand}" },
+    "brand": { "$value": "#ffd400" }
+  }
+}

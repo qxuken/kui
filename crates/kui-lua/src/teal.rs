@@ -139,6 +139,11 @@ const ENV_CALLS: &[(&str, &str, &str)] = &[
         "",
     ),
     ("set_tokens", "decl: any", ""),
+    (
+        "load_tokens",
+        "path: string, opts?: {string:any}",
+        "{string:any}",
+    ),
     ("focus_window", "window: integer", ""),
     (
         "measure_text",

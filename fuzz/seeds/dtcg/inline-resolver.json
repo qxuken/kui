@@ -1,0 +1,1 @@
+{"resolutionOrder":[{"type":"set","name":"s","sources":[{"a":{"$type":"color","$value":"#fff"}}]},{"type":"modifier","name":"density","contexts":{"compact":[],"comfy":[{"g":{"$type":"dimension","$value":"1rem"}}]},"default":"comfy"}]}

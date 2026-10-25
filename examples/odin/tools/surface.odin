@@ -933,6 +933,11 @@ surface :: proc() -> bool {
 		paired, paired_ok := kui.theme(ui)
 		check(paired_ok && (paired.bg == 0xf6f3eaff || paired.bg == 0x131312ff), "theme_set_pair paints one of its halves")
 		kui.theme_set(ui)
+		// A DTCG load (ADR 0062): a file that is not there is refused, its
+		// path in the reason, and nothing is added.
+		check(!kui.tokens_load_dtcg(ui, "no/such/brand.resolver.json", "brand", "density=compact"), "tokens_load_dtcg refuses a missing file")
+		why, why_ok := kui.tokens_dtcg_error(ui)
+		check(why_ok && len(why) > 0, "tokens_dtcg_error says why")
 		metrics, metrics_ok := kui.metrics(ui)
 		check(metrics_ok && metrics.control_text > 0, "metrics")
 		stock := metrics.control_text

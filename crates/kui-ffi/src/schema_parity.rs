@@ -964,6 +964,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             // The env's backdrop, read back: a reading, as the window id is.
             "kui_ctx_backdrop",
             "kui_ctx_extension_error",
+            "kui_tokens_dtcg_error",
             "kui_frame_begin",
             "kui_frame_finish",
             "kui_abi_version",

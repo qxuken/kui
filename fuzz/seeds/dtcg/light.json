@@ -1,0 +1,9 @@
+{
+  "color": {
+    "$type": "color",
+    "surface": { "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "hex": "#ffffff" } },
+    "ink": { "$value": "#141413" },
+    "accent": { "$value": "{color.brand}" },
+    "brand": { "$value": { "colorSpace": "srgb", "components": [1, 0.8313725490196079, 0] } }
+  }
+}

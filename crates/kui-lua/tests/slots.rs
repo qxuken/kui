@@ -792,3 +792,48 @@ fn a_script_loads_a_script_and_names_a_c_path_it_cannot_open() {
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// ADR 0062: a script loads the DTCG fixture with `env.load_tokens`, a
+/// relative path from its own folder, and paints with the brand.
+#[test]
+fn a_script_loads_the_dtcg_fixture_and_paints_with_it() {
+    let dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../kui-core/tests/fixtures/dtcg");
+    let script = std::env::temp_dir().join(format!("kui-lua-dtcg-{}", std::process::id()));
+    std::fs::create_dir_all(&script).unwrap();
+    std::fs::write(
+        script.join("brand.lua"),
+        format!(
+            r#"
+            loaded = env_once
+            function view(env)
+              if not loaded then
+                loaded = env.load_tokens([[{}]], {{ prefix = "brand" }})
+                env.set_tokens(loaded.tokens)
+              end
+              return column {{ bg = "$brandColorSurface", pad = "$brandSpaceGap",
+                text("brand", {{ color = "$brandColorInk", family = "$brandFontCode" }}) }}
+            end
+            "#,
+            dir.join("brand.resolver.json").display()
+        ),
+    )
+    .unwrap();
+    let mut ext = LuaExtension::from_file(script.join("brand.lua")).unwrap();
+    let mut core = Core::new();
+    for _ in 0..2 {
+        let mut ui = core.frame(Size::new(200.0, 100.0), 1.0);
+        ext.view(&Slot::root(), &mut ui).unwrap();
+        ui.finish();
+    }
+    let warnings: Vec<_> = core.take_warnings().into_iter().map(|w| w.code).collect();
+    assert!(!warnings.contains(&"unknown-token"), "{warnings:?}");
+    let loaded: mlua::Table = ext.lua().globals().get("loaded").unwrap();
+    assert!(loaded.get::<bool>("resolver").unwrap());
+    let w: mlua::Table = loaded.get("warnings").unwrap();
+    assert_eq!(w.len().unwrap(), 1);
+    let names: mlua::Table = loaded.get("names").unwrap();
+    let ink: mlua::Table = names.get(5).unwrap();
+    assert_eq!(ink.get::<String>("path").unwrap(), "color.ink");
+    let _ = std::fs::remove_dir_all(script);
+}
