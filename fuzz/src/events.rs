@@ -604,6 +604,7 @@ impl Driver<'_> {
                     shift: m & 1 != 0,
                     word: m & 2 != 0,
                     doc: m & 4 != 0,
+                    ctrl: m & 8 != 0,
                 },
             )),
             Action::Modifiers(bits) => self.input(InputEvent::Modifiers(
