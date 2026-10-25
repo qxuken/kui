@@ -12,6 +12,7 @@
 #   nu scripts/npm-bootstrap.nu --trust        and attach release.yml as each one's trusted publisher
 #   nu scripts/npm-bootstrap.nu --dry-run      say what would happen, change nothing
 #   nu scripts/npm-bootstrap.nu --deprecate    after the first real release: deprecate the placeholders
+#                                              (release.yml tries this itself; this is its fallback)
 #
 # A placeholder is `0.0.0-bootstrap.0`: a package.json and a README saying
 # the real versions come from CI, nothing to run. npmjs points `latest` at
@@ -68,10 +69,20 @@ def --wrapped must [...cmd: string] {
     }
 }
 
-# Whether npmjs holds the package (or the version, for `pkg@version`).
-def exists [spec: string] {
-    let r = (^npm view $spec version | complete)
-    $r.exit_code == 0 and ($r.stdout | str trim | is-not-empty)
+# The package's dist-tags, tag to version: the registry's own answer, where
+# `npm view` reads a cached packument that says 404 for minutes after a
+# first publish. Empty for a package npmjs does not hold. Needs no login.
+def tags [pkg: string] {
+    let r = (^npm dist-tag ls $pkg | complete)
+    if $r.exit_code != 0 { return {} }
+    $r.stdout | lines | parse "{tag}: {version}" | reduce --fold {} {|row, acc|
+        $acc | upsert ($row.tag | str trim) ($row.version | str trim)
+    }
+}
+
+# Whether npmjs holds the package.
+def exists [pkg: string] {
+    (tags $pkg) | is-not-empty
 }
 
 # A registry URL without its trailing slash, for comparing.
@@ -126,12 +137,19 @@ def main [
     if $deprecate {
         for pkg in $NEW {
             let spec = $"($pkg)@($PLACEHOLDER)"
-            if not (exists $spec) {
-                print $"($pkg): no placeholder version — nothing to deprecate"
+            # The `bootstrap` tag marks a placeholder not yet dealt with.
+            let t = (tags $pkg)
+            if "bootstrap" not-in ($t | columns) {
+                print $"($pkg): no placeholder left to deprecate"
                 continue
             }
-            if $dry_run { print $"would deprecate ($spec)"; continue }
+            if ($t | get -o latest) == $PLACEHOLDER {
+                print $"($pkg): the placeholder is still `latest` — deprecate it once a real version is published"
+                continue
+            }
+            if $dry_run { print $"would deprecate ($spec) and drop its bootstrap tag"; continue }
             must npm deprecate $spec "A placeholder that let CI publish this name; install a 0.1.x version."
+            must npm dist-tag rm $pkg bootstrap
             print $"deprecated ($spec)"
         }
         return

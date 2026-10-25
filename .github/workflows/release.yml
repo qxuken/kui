@@ -637,7 +637,9 @@ jobs:
           missing=
           for n in kui kui-cli kui-linux-x64 kui-linux-arm64 kui-darwin-arm64 kui-win32-x64 \
                    kui-cli-linux-x64 kui-cli-linux-arm64 kui-cli-darwin-arm64 kui-cli-win32-x64; do
-            if ! npm view "@qxuken/$n" name --registry "$NPMJS_REGISTRY" >/dev/null 2>&1; then
+            # The dist-tags, not `npm view`: the packument it reads is
+            # cached and answers 404 for minutes after a first publish.
+            if ! npm dist-tag ls "@qxuken/$n" --registry "$NPMJS_REGISTRY" 2>/dev/null | grep -q '^latest: '; then
               missing="$missing @qxuken/$n"
             fi
           done
@@ -712,3 +714,29 @@ jobs:
           done
           publish_one "@qxuken/kui" "dist/npm/qxuken-kui-$ver.tgz"
           publish_one "@qxuken/kui-cli" "dist/npm/qxuken-kui-cli-$ver.tgz"
+
+      # The placeholders scripts/npm-bootstrap.nu published so each name
+      # could take a trusted publisher (ADR 0068): deprecated once a real
+      # version is live, and their `bootstrap` tag dropped. Trusted
+      # publishing covers publish and dist-tags; whether it covers
+      # `npm deprecate` is for the first run to show, so a refusal is a
+      # warning naming the command to run by hand, never a failed release.
+      - name: npm placeholders deprecated
+        continue-on-error: true
+        run: |
+          set -u
+          left=
+          for n in kui-linux-x64 kui-linux-arm64 kui-darwin-arm64 kui-win32-x64 \
+                   kui-cli-linux-x64 kui-cli-linux-arm64 kui-cli-darwin-arm64 kui-cli-win32-x64 kui-cli; do
+            pkg="@qxuken/$n"
+            npm dist-tag ls "$pkg" --registry "$NPMJS_REGISTRY" 2>/dev/null | grep -q '^bootstrap: ' || continue
+            if npm deprecate "$pkg@0.0.0-bootstrap.0" "A placeholder that let CI publish this name; install a 0.1.x version." --registry "$NPMJS_REGISTRY" \
+              && npm dist-tag rm "$pkg" bootstrap --registry "$NPMJS_REGISTRY"; then
+              echo "$pkg: placeholder deprecated"
+            else
+              left="$left $pkg"
+            fi
+          done
+          if [ -n "$left" ]; then
+            echo "::warning::placeholders not deprecated from CI:$left - run 'nu scripts/npm-bootstrap.nu --deprecate' from a login on npmjs"
+          fi
