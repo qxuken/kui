@@ -3623,6 +3623,96 @@ default and bytecode opt-in, `exe` / `app` / `bin` / `npm`, a runner
 mirror, an installer, logs and devtools in a packed app); the runner's
 default menu.
 
+## From Kit's sample rounds (2026-10-26)
+
+What Kit's fifth round of the samples found kui-core lacks (the Kit agent's
+report), and three things the user hit in the demos that are the core's,
+filed the same day for the round that builds them.
+
+### `.` C89 — The arrows stop at a virtualized list's window
+
+**Found** building arrow navigation into Kit's list and table: a `list`
+composite walks the items in the tree, so in a virtualized list (rows
+outside the window are not declared) the arrows stop at the window's edge.
+Kit kept its list and table as key sinks with index-based selection plus
+`reveal`. **Do.** A composite that knows its full length and asks for the
+row it needs (the channel's `onRange` already says which rows are in view),
+so roving focus walks rows that are not built yet.
+
+### `.` C90 — No grid composite
+
+**Found** the same way: a table is rows × cells and wants Up/Down between
+rows and Left/Right between cells, Home/End, Page. ADR 0007's composites
+are one-dimensional. **Do.** A `grid` composite (row and column indices),
+in every binding.
+
+### `.` C91 — A child that only declares a cursor or hover takes the press
+
+**Found** in Kit's slider: the handle, declaring only hover, became the
+topmost hit region and took the press, so the track never saw it. Presses
+do not bubble to an ancestor that handles them. **Do.** A node that
+declares no press handler and no focus lets the press through to the
+nearest ancestor that takes one, as hover already composes.
+
+### `.` C92 — Lua has no `is_group_pressed`
+
+Rust has it; Kit had to read a pressed group another way. **Do.** The door
+in Lua (and Node, C, Odin where missing), pinned in DOORS.
+
+### `.` C93 — A key sink draws no focus ring
+
+A list or table that takes keys as a sink gets no core ring, so Kit draws
+its own edge. **Do.** The core ring on a focused sink, focus-visible only,
+in the theme's focus colour.
+
+### `.` C94 — An editor's key events carry no Ctrl
+
+The edit path's `Mods` has no ctrl (round 5 special-cased Tab). **Do.**
+Ctrl in the editor's modifiers, and the edit events that report them.
+
+### `.` C95 — Lua cannot reduce a channel
+
+A 100,000-point chart copies every column into Lua (`ch:column`) to
+bucket it; pure Lua is about 1.5 ms per series per 100k points, so Kit's
+"line chart 100k ≤ 1 ms" budget is missed. **Do.** A reduction door —
+min/max (and first/last) per bucket over a row range — on a channel, in
+Rust, reached from Lua and Node.
+
+### `.` C96 — A path whose `d` changes costs far more than its size
+
+**Found** profiling Kit's line chart: zeno's fill raster grows
+super-linearly with the edges crossing a scanline (a 1,400-vertex zigzag
+over a 360 px plot took 1.7 s a frame; 300 points at scale 2, 3–4 ms),
+strokes a 1 px bleed outline pass besides, and re-rasterizes the whole
+mask on any change to `d`. Kit now draws areas as polygon chunks. **Do.**
+Find what makes it super-linear (adaptive storage), and cache or tile.
+
+### `.` C97 — `slide` eases a move an ancestor made
+
+**Found** by the user, again: Kit's switch knob, which slides, falls out
+of step with its track while the window resizes — the track moves with
+layout and the knob eases toward it. `slide` eases every change of a
+node's position, including those its ancestors cause. **Do.** Ease a
+node's position relative to its parent, so only its own move animates.
+
+### `.` C98 — An open menu ignores its items' accelerators
+
+**Found** by the user: Kit's Actions menu open, ⌘C (its Copy link row's
+shortcut) does nothing and the menu stays. **Do.** While a core menu is
+open, a press matching an enabled item's accelerator activates that item
+and closes the menu, as a native one does.
+
+### `.` C99 — Tab in a multiline editor: insert, with a way out
+
+Round 5 made Tab leave a multiline editor unless `tab_inserts`. The user
+wants a text area to take Tab, with a way out — the editors' model, not
+the browser textarea's: CodeMirror leaves on Escape then Tab, Monaco and
+CodeMirror toggle "Tab moves focus" with Ctrl+M (Ctrl+Shift+M on macOS),
+which is what WCAG's no-keyboard-trap criterion asks for. **Do.** A
+multiline editor inserts Tab by default; Escape then Tab, and the toggle,
+move focus; a `tab_moves_focus` opt-out (replacing the unreleased
+`tab_inserts`) gives the textarea behaviour.
+
 ### `.` C87 — "Stock controls" names what kui ships, not what they are
 
 **Found** in the ADR 0067 grilling (2026-10-25): with slots folded into
