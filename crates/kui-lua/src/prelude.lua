@@ -280,8 +280,8 @@ end
 --   return column { text("identifier 12:4") }
 -- end }
 --
--- A tab in the core's devtools panel (ADR 0032), beside facts, events and
--- tree. The first form names a slot a plugin fills: the panel declares it
+-- A tab in the core's devtools panel (ADR 0032), beside facts, events,
+-- tree and perf. The first form names a slot a plugin fills: the panel declares it
 -- in the tab's body while the tab is on show. The second is the script's
 -- own content: `view` is called only while the tab is on show -- so a tab
 -- nobody looks at costs its declaration and nothing else -- and the tree

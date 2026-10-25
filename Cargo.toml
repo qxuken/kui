@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/kui-core",
     "crates/kui-derive",
+    "crates/kui-trace",
     "crates/kui-wgpu",
     "crates/kui-native",
     "crates/kui-lua",
@@ -36,6 +37,7 @@ categories = ["gui"]
 # (scripts/publish-crates.nu).
 kui-core = { path = "crates/kui-core", version = "0.1.0-alpha.67" }
 kui-derive = { path = "crates/kui-derive", version = "0.1.0-alpha.67" }
+kui-trace = { path = "crates/kui-trace", version = "0.1.0-alpha.67" }
 kui-wgpu = { path = "crates/kui-wgpu", version = "0.1.0-alpha.67" }
 kui-native = { path = "crates/kui-native", version = "0.1.0-alpha.67" }
 # `default-features = false` here so a member asks for the windowed C entry

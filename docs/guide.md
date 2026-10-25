@@ -71,14 +71,25 @@ with no code at all. It docks beside the app's tree (`left`, `right`,
 `bottom` — drag the pane's inner edge to resize it; the app's viewport is
 what the pane leaves, and a change is a `resize`), pops out into a
 window of its own (`window`) or hides with its chords live (`off`); a
-button per placement sits in its header, `Ctrl+Shift+D` walks them,
-`KUI_DEVTOOLS=bottom` starts there. Three tabs: **facts** (what the runtime believes right now — the theme,
+button per placement sits beside its tabs, `Ctrl+Shift+D` walks them,
+`KUI_DEVTOOLS=bottom` starts there. Four tabs: **facts** (what the runtime believes right now — the theme,
 the windows, the viewport, focus, the modifiers, audio), **events** (every
 event the app is handed, from every window, each row opening into its
 payload; filter, pause, follow) and **tree** (the last frame's nodes,
 collapsible and filterable, with a picker — `Ctrl+Shift+P` — that finds
 the node under the pointer over the app and an inspector for the one
-selected). The panel's own clicks and its `Ctrl+Shift+<letter>` chords are
+selected; the node under a hovered row or the picker is lit over the app
+with its box model, the selection only while the eye toggle is on) and
+**perf** (each frame's cost by phase against the budget; recorded, every
+frame and what happened between frames — why it ran, who held it,
+whether it drew anything new, its spans — as a timeline whose bars say
+why a frame lagged; a screenshot and a GIF of the window). The
+recording is kui's own format ([ADR 0058](adr/0058-a-recording-is-a-timeline.md),
+`kui-trace`): an app adds its own spans, counters, gauges and named
+causes through the `perf_*` doors in every binding, `KUI_PERF_TRACE=path`
+records a session to a file, and `kui-trace convert` / `diff` turn it
+into Perfetto's, Chrome's, speedscope's or the Firefox Profiler's format
+or compare two runs. The panel's own clicks and its `Ctrl+Shift+<letter>` chords are
 handled inside the core: nothing of it reaches `on_event` / `update`, the
 app's keys do not move for it, and off it costs one bool per frame.
 `Ctrl+Shift+I` moves the keyboard into the panel and back out (and brings

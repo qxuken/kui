@@ -194,8 +194,16 @@
 //! - Focus: `set_focus(key)`, `blur()`, `focus_next()`, `focus_prev()`,
 //!   `focus_region(key)`, `announce(text, politeness)`.
 //! - Time: `request_frame_at(at)`, a frame at a time on the frame clock
-//! - Exits: `exit_with(key, exit)`, the exit a node leaves by this frame
-//!   (`env.now + 3` is a toast's expiry).
+//!   (`env.now + 3` is a toast's expiry); `request_frame_for(why)`, a frame
+//!   after this one, named in the recording.
+//! - Exits: `exit_with(key, exit)`, the exit a node leaves by this frame.
+//! - The recording (ADR 0058), each nothing while the devtools' Perf tab
+//!   and `KUI_PERF_TRACE` are not listening (`perf_measuring()` says
+//!   which): `span(name, fn)` runs `fn` inside a span and returns what it
+//!   returned, `perf_count(name, n)` adds to the frame's counter,
+//!   `perf_gauge(name, value)` sets a reading, `perf_mark(name)` puts an
+//!   instant on the timeline, `perf_measure(name, ms)` a span timed
+//!   elsewhere.
 //! - Scrolling: `reveal(key)`, `scroll_offset(key)`, `scroll_geometry(key)`,
 //!   `set_scroll(key, x, y)`, `shift_scroll(key, drawn, target)`,
 //!   `edge_scroll(key, x, y, rect)`.
@@ -862,7 +870,10 @@ fn warn_stray_menu_keys(core: &mut kui_core::Core, keys: Vec<String>) {
 /// `caret_in_text(s, opts, max_w, byte)` (see `caret_in_from_lua`), the
 /// focus verbs `set_focus(key)` / `blur()` / `focus_next()` / `focus_prev()` / `focus_region(key)`,
 /// `request_frame_at(at)` (a frame at a time on the frame clock, `now`),
-/// `exit_with(key, exit)` (the exit a node leaves by this frame)
+/// `exit_with(key, exit)` (the exit a node leaves by this frame), the
+/// recording's `span(name, fn)` / `perf_count(name, n)` / `perf_gauge(name,
+/// value)` / `perf_mark(name)` / `perf_measure(name, ms)` /
+/// `perf_measuring()` and `request_frame_for(why)` (ADR 0058)
 /// and the scroll calls `reveal(key)` / `scroll_offset(key)` / `set_scroll(key, x, y)` /
 /// `shift_scroll(key, drawn, target)` / `edge_scroll(key, x, y, rect)` /
 /// `scroll_geometry(key)`, the text queries `text_hit(key, x, y)` /
@@ -1091,6 +1102,60 @@ fn env_table<'scope, 'env: 'scope>(
         "request_frame_at",
         scope.create_function(move |_, at: f64| {
             ui.borrow_mut().request_frame_at(at);
+            Ok(())
+        })?,
+    )?;
+    // The recording (ADR 0058): spans, counters, gauges, marks and
+    // measures under the script's origin, and a frame asked for by name.
+    // Off, each is one test of a flag in the core.
+    // `env.span(name, fn)` ends its span however `fn` leaves, a throw
+    // included, and returns what `fn` returned; the `Ui` is not held
+    // while `fn` runs, so `fn` calls `env` as the view does.
+    t.set(
+        "span",
+        scope.create_function(move |_, (name, f): (String, mlua::Function)| {
+            let id = ui.borrow_mut().core().span_begin(&name);
+            let r = f.call::<mlua::MultiValue>(());
+            ui.borrow_mut().core().span_end(id);
+            r
+        })?,
+    )?;
+    t.set(
+        "perf_measure",
+        scope.create_function(move |_, (name, ms): (String, f64)| {
+            ui.borrow_mut().core().perf_measure(&name, ms);
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "perf_count",
+        scope.create_function(move |_, (name, n): (String, f64)| {
+            ui.borrow_mut().core().perf_count(&name, n.floor() as i64);
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "perf_gauge",
+        scope.create_function(move |_, (name, value): (String, f64)| {
+            ui.borrow_mut().core().perf_gauge(&name, value);
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "perf_mark",
+        scope.create_function(move |_, name: String| {
+            ui.borrow_mut().core().perf_mark(&name);
+            Ok(())
+        })?,
+    )?;
+    t.set(
+        "perf_measuring",
+        scope.create_function(move |_, ()| Ok(ui.borrow_mut().core().perf_measuring()))?,
+    )?;
+    t.set(
+        "request_frame_for",
+        scope.create_function(move |_, why: String| {
+            ui.borrow_mut().request_frame_for(&why);
             Ok(())
         })?,
     )?;
@@ -4590,14 +4655,15 @@ mod tests {
             1,
             "the tab with neither form warns once: {ws:?}"
         );
-        // Ctrl+Shift+N three times: tree, then Tree-sitter (the first
-        // declared tab).
+        // Ctrl+Shift+N three times: tree, perf, then Tree-sitter (the
+        // first declared tab).
         let chord = || {
             kui_core::InputEvent::KeyDown(kui_core::KeyPress::new(
                 kui_core::KeyCode::Char('N'),
                 kui_core::KeyMods::NONE.with_ctrl().with_shift(),
             ))
         };
+        core.handle_input(chord());
         core.handle_input(chord());
         core.handle_input(chord());
         frame(&mut core, &mut ext);
@@ -6338,6 +6404,79 @@ mod tests {
         frame(&mut core, &mut ext);
         assert_eq!(core.next_frame_at(), Some(4.0));
         assert!(!core.animating());
+    }
+
+    /// A script records into the host's timeline (ADR 0058): `env.span`
+    /// returns what its function returned and nests, ends on a throw,
+    /// and the counter, gauge, mark and measure land beside it while the
+    /// core records — and none of it while it does not.
+    #[test]
+    fn a_script_records_spans_and_counters() {
+        use kui_core::kui_trace::Record;
+        let mut ext = LuaExtension::from_source(
+            "perf",
+            r#"
+                function view(env)
+                  measuring = env.perf_measuring()
+                  answer = env.span("rows", function()
+                    env.perf_count("rows", 3)
+                    return env.span("inner", function() return 41 end) + 1
+                  end)
+                  threw = not pcall(env.span, "boom", function() error("x") end)
+                  env.span("after", function() end)
+                  env.perf_gauge("bytes", 10)
+                  env.perf_mark("opened")
+                  env.perf_measure("parse", 2)
+                  env.request_frame_for("blink")
+                  return column { key = "root" }
+                end
+            "#,
+        )
+        .unwrap();
+        let mut core = Core::new();
+        frame(&mut core, &mut ext);
+        let g = ext.lua.globals();
+        assert!(!g.get::<bool>("measuring").unwrap(), "nothing listens");
+        assert_eq!(g.get::<i64>("answer").unwrap(), 42, "off, span only calls");
+        assert!(core.perf_trace_read().records.is_empty());
+
+        core.set_perf_recording(true);
+        frame(&mut core, &mut ext);
+        frame(&mut core, &mut ext);
+        core.set_perf_recording(false);
+        let g = ext.lua.globals();
+        assert!(g.get::<bool>("measuring").unwrap());
+        assert_eq!(g.get::<i64>("answer").unwrap(), 42);
+        assert!(g.get::<bool>("threw").unwrap());
+        let t = core.perf_trace_read();
+        let span = |name: &str| {
+            t.records
+                .iter()
+                .rev()
+                .find_map(|r| match r {
+                    Record::Span(s) if t.name(s.name) == name => Some(s.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("no span {name}"))
+        };
+        let (rows, inner) = (span("rows"), span("inner"));
+        assert_eq!(inner.parent, rows.id, "inner nests in rows");
+        let (boom, after) = (span("boom"), span("after"));
+        assert_eq!(after.parent, boom.parent, "the throw ended its span");
+        assert_eq!(span("parse").dur, 2000);
+        let has = |want: &dyn Fn(&Record) -> bool| t.records.iter().any(want);
+        assert!(has(
+            &|r| matches!(r, Record::Counter { name, value: 3, .. } if t.name(*name) == "rows")
+        ));
+        assert!(has(
+            &|r| matches!(r, Record::Gauge { name, .. } if t.name(*name) == "bytes")
+        ));
+        assert!(has(
+            &|r| matches!(r, Record::Mark { name, .. } if t.name(*name) == "opened")
+        ));
+        assert!(has(
+            &|r| matches!(r, Record::Request { why, .. } if t.name(*why) == "blink")
+        ));
     }
 
     /// A script aims the exit a card leaves by in the frame that drops it

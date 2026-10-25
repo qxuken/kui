@@ -413,6 +413,14 @@ extern "C" {
  * With it, moving no struct: KUI_QUAD_GROUP_BEGIN and KUI_QUAD_GROUP_END,
  * a faded subtree drawn as one picture, after kui_set_opacity_groups
  * (ADR 0056).
+ * Still at 37, since nothing a host had laid out moved: the recording
+ * (ADR 0058) - kui_perf_measuring, kui_span_begin, kui_span_end,
+ * kui_perf_measure, kui_perf_count, kui_perf_gauge, kui_perf_mark,
+ * kui_request_frame_for, kui_note_wake, kui_set_perf_recording,
+ * kui_perf_recording, kui_perf_trace and kui_perf_flush - and the
+ * runner's waker, the opaque KuiWaker with kui_waker, kui_waker_wake,
+ * kui_waker_wake_at, kui_waker_wake_named, kui_waker_clone and
+ * kui_waker_free: new functions, no struct.
  */
 #define KUI_ABI_VERSION 37u
 uint32_t kui_abi_version(void);
@@ -4196,7 +4204,7 @@ void kui_set_devtools_pick(KuiCtx *ctx, bool on);
 bool kui_devtools_picking(KuiCtx *ctx);
 /* Shows the panel's tab named name from the host's side - what the strip's
  * click and Ctrl+Shift+N do, for a command that jumps to the host's own
- * tab: one of the panel's own ("facts", "events", "tree", in any case)
+ * tab: one of the panel's own ("facts", "events", "tree", "perf", in any case)
  * or a declared tab's, exactly as declared. A declared name the panel
  * does not list yet is kept and shows
  * once a frame declares it; the return says whether the panel lists it
@@ -4223,6 +4231,72 @@ void kui_set_inspect(KuiCtx *ctx, bool on);
  * kui_set_inspect(ctx, true) and a frame after it. Borrowed until the
  * next call; NULL on a bad context. */
 const KuiValue *kui_nodes(KuiCtx *ctx);
+/* -- The recording --------------- */
+/* What a window did, in frames and between them, on one clock
+ * (docs/adr/0058-a-recording-is-a-timeline.md): what the devtools' Perf
+ * tab shows and KUI_PERF_TRACE=path writes, under kui_run from the first
+ * frame. Nothing is recorded unless something listens - the tab
+ * recording or on show, the file, kui_set_perf_recording - and off,
+ * every call here is a no-op on a flag; kui_perf_measuring says which,
+ * so a host skips reading clocks of its own for them. Names are kept
+ * for the session. */
+bool kui_perf_measuring(KuiCtx *ctx);
+/* A span named name, begun inside the one open now and recording the node
+ * the builder has open (so one begun inside a pane lights that pane from
+ * the panel). kui_span_begin returns its id, 0 while nothing is recorded;
+ * kui_span_end ends it and any opened inside it and left open, and 0 or
+ * an id with no begin is nothing. A span crosses a callback by its id; one
+ * left open when its frame ends is closed there and marked cut. */
+uint32_t kui_span_begin(KuiCtx *ctx, KuiStr name);
+void kui_span_end(KuiCtx *ctx, uint32_t id);
+/* A span timed elsewhere - a parse on another thread, a job - ms long,
+ * ending now, on the track named for it. */
+void kui_perf_measure(KuiCtx *ctx, KuiStr name, double ms);
+/* Adds n to this frame's counter name. */
+void kui_perf_count(KuiCtx *ctx, KuiStr name, int64_t n);
+/* Sets the reading name - a footprint, a buffer's bytes - held until set
+ * again. */
+void kui_perf_gauge(KuiCtx *ctx, KuiStr name, double value);
+/* Puts an instant on the timeline: a file opened, a command run. */
+void kui_perf_mark(KuiCtx *ctx, KuiStr name);
+/* Asks for a frame after this one, as `animate` does, and names why: the
+ * frame's causes read "request: why". */
+void kui_request_frame_for(KuiCtx *ctx, KuiStr why);
+/* A wake named name reached this context: the next frame's causes read
+ * "wake: name". For a host whose own thread or loop woke it; under
+ * kui_run, kui_waker_wake_named notes it. */
+void kui_note_wake(KuiCtx *ctx, KuiStr name);
+/* Starts a recording, dropping what was kept, or stops one and keeps it -
+ * the Perf tab's record button. kui_perf_recording says whether one runs. */
+void kui_set_perf_recording(KuiCtx *ctx, bool on);
+bool kui_perf_recording(KuiCtx *ctx);
+/* What is kept - the last recording, or the frames the Perf tab shows - as
+ * kui-trace bytes, *len of them: a .kuitrace file's. Borrowed until the
+ * next call. NULL and 0 on a bad context. */
+const uint8_t *kui_perf_trace(KuiCtx *ctx, size_t *len);
+/* Writes out what the file KUI_PERF_TRACE names holds so far. False, with
+ * the reason on stderr, when the write fails; true with no file. */
+bool kui_perf_flush(KuiCtx *ctx);
+/* The runner's waker (ADR 0058, decision 14): what a host's thread that
+ * changed what the view shows (a PTY reader, a file watcher, a socket)
+ * holds to get a frame drawn. kui_waker hands one out from a kui_run view
+ * callback's context; NULL from any other - a standalone context's host
+ * has its own way to wake its loop, and kui_note_wake to name it - and in
+ * a build without the runner. Any thread may call the rest, at any rate:
+ * wakes coalesce into the loop's next turn, and one after the run ended
+ * is dropped. kui_waker_wake asks every window for a frame;
+ * kui_waker_wake_at for one ms from now, the earliest asked for winning
+ * (0 or less is now, INFINITY never); kui_waker_wake_named wakes under a
+ * name, the next frame's causes reading "wake: name". kui_waker_clone is
+ * another handle for another thread; free each with kui_waker_free. NULL
+ * is nothing to all of them. */
+typedef struct KuiWaker KuiWaker;
+KuiWaker *kui_waker(KuiCtx *ctx);
+void kui_waker_wake(const KuiWaker *w);
+void kui_waker_wake_at(const KuiWaker *w, double ms);
+void kui_waker_wake_named(const KuiWaker *w, KuiStr name);
+KuiWaker *kui_waker_clone(const KuiWaker *w);
+void kui_waker_free(KuiWaker *w);
 /* -- Accessibility ---------------- */
 /* The access tree of the last finished frame: fills out with up to cap
  * nodes in tree order (root first) and returns the total count, so a short

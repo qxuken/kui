@@ -1503,6 +1503,136 @@ pub const DOORS: &[Door] = &[
         lua: No(GUEST),
         doc: "The last frame's nodes with what layout and the declarations made of them — a tree view's and an inspector's data.",
     },
+    // -- The recording (docs/adr/0058-a-recording-is-a-timeline.md) -------
+    // Off, every door here is a no-op on a flag; `perf_measuring` says so.
+    Door {
+        rust: "Ui::span",
+        c: No(
+            "no closure crosses kui.h: `kui_span_begin` before the work and `kui_span_end` after it",
+        ),
+        odin: No(ODIN_IS_C),
+        node: Is("span"),
+        lua: Is("span"),
+        doc: "Runs a function inside a span of that name, on the timeline the Perf tab and a trace file show, and returns what it returned.",
+    },
+    Door {
+        rust: "Core::span_begin",
+        c: Is("kui_span_begin"),
+        odin: Is("span_begin"),
+        node: Is("spanBegin"),
+        lua: As("`env.span(name, fn)`, the closure form"),
+        doc: "Begins a span inside the one open now, recording the node the builder has open; its id, 0 while nothing is recorded. A span left open when its frame ends is closed there and marked cut.",
+    },
+    Door {
+        rust: "Core::span_end",
+        c: Is("kui_span_end"),
+        odin: Is("span_end"),
+        node: Is("spanEnd"),
+        lua: As("`env.span(name, fn)` ends it as `fn` returns or throws"),
+        doc: "Ends the span an id names, and any opened inside it and left open; 0, or an id with no begin, is nothing.",
+    },
+    Door {
+        rust: "Core::perf_measure",
+        c: Is("kui_perf_measure"),
+        odin: Is("perf_measure"),
+        node: Is("perfMeasure"),
+        lua: Is("perf_measure"),
+        doc: "A span timed elsewhere — a parse on another thread, a job — of so many ms, ending now, on the track named for it.",
+    },
+    Door {
+        rust: "Core::perf_count",
+        c: Is("kui_perf_count"),
+        odin: Is("perf_count"),
+        node: Is("perfCount"),
+        lua: Is("perf_count"),
+        doc: "Adds to this frame's counter of that name.",
+    },
+    Door {
+        rust: "Core::perf_gauge",
+        c: Is("kui_perf_gauge"),
+        odin: Is("perf_gauge"),
+        node: Is("perfGauge"),
+        lua: Is("perf_gauge"),
+        doc: "Sets a reading — a footprint, a buffer's bytes — held until set again.",
+    },
+    Door {
+        rust: "Core::perf_mark",
+        c: Is("kui_perf_mark"),
+        odin: Is("perf_mark"),
+        node: Is("perfMark"),
+        lua: Is("perf_mark"),
+        doc: "Puts an instant on the timeline: a file opened, a command run.",
+    },
+    Door {
+        rust: "Core::perf_measuring",
+        c: Is("kui_perf_measuring"),
+        odin: Is("perf_measuring"),
+        node: Is("perfMeasuring"),
+        lua: Is("perf_measuring"),
+        doc: "Whether anything is recorded — the Perf tab recording or on show, `KUI_PERF_TRACE`, a `tracing` subscriber — so an app skips reading clocks of its own for the recording's doors.",
+    },
+    Door {
+        rust: "Ui::request_frame_for",
+        c: Is("kui_request_frame_for"),
+        odin: Is("request_frame_for"),
+        node: Is("requestFrameFor"),
+        lua: Is("request_frame_for"),
+        doc: "Asks for a frame and names why: `owed_by` lists it under the name, and a recording's causes read `request: why`.",
+    },
+    Door {
+        rust: "Core::note_wake",
+        c: Is("kui_note_wake"),
+        odin: Is("note_wake"),
+        node: Is("noteWake"),
+        lua: No(GUEST),
+        doc: "A wake by name reached the window: the next frame's causes read `wake: name`. For a host whose own thread or loop woke it.",
+    },
+    Door {
+        rust: "Waker::named",
+        c: As(
+            "`kui_waker` hands out the runner's waker under `kui_run`, which `kui_waker_wake_named` wakes by name; `kui_waker_wake`, `kui_waker_wake_at`, `kui_waker_clone` and `kui_waker_free` beside it",
+        ),
+        odin: As(
+            "`waker` and `waker_wake_named`, with `waker_wake`, `waker_wake_at`, `waker_clone` and `waker_free`",
+        ),
+        node: No(
+            "libuv is the addon's timer (D4): a completion runs on the loop between pumps, and `noteWake` names it there",
+        ),
+        lua: No(GUEST),
+        doc: "A waker whose wakes carry a name, read `wake: name` among the next frame's causes; any thread may hold one.",
+    },
+    Door {
+        rust: "Core::set_perf_recording",
+        c: Is("kui_set_perf_recording"),
+        odin: Is("set_perf_recording"),
+        node: Is("setPerfRecording"),
+        lua: No(GUEST),
+        doc: "Starts a recording, dropping what was kept, or stops one and keeps it — the Perf tab's record button.",
+    },
+    Door {
+        rust: "Core::perf_recording",
+        c: Is("kui_perf_recording"),
+        odin: Is("perf_recording"),
+        node: Is("perfRecording"),
+        lua: No(GUEST),
+        doc: "Whether a recording runs.",
+    },
+    Door {
+        rust: "Core::perf_trace",
+        c: Is("kui_perf_trace"),
+        odin: Is("perf_trace"),
+        node: Is("perfTrace"),
+        lua: No(GUEST),
+        doc: "What is kept — the last recording, or the frames the Perf tab shows — as `kui-trace` bytes, a `.kuitrace` file's.",
+    },
+    Door {
+        rust: "Core::perf_flush",
+        c: Is("kui_perf_flush"),
+        odin: Is("perf_flush"),
+        node: Is("perfFlush"),
+        lua: No(GUEST),
+        doc: "Writes out what the file `KUI_PERF_TRACE` names holds so far.",
+    },
     // -- Extensions --------------------------------------------------------
     Door {
         rust: "Ui::add_extension",
@@ -1867,9 +1997,10 @@ mod tests {
     use super::*;
 
     /// A row's Rust spelling is a `pub fn` in the file its prefix names —
-    /// `Ui::` in `ui.rs`, `Core::` under `runtime/`, `SharedResources::`
+    /// `Ui::` in `ui.rs` (or an `impl Ui` under `runtime/`), `Core::` under `runtime/`, `SharedResources::`
     /// in `session.rs`, `Tokens::` in `tokens.rs`, `WheelFeel::` in
-    /// `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` in the
+    /// `scroll.rs`, `EdgeScrollFeel::` in `edge_scroll.rs`, `Launcher::` and
+    /// `Waker::` in the
     /// `kui-native` crate, `kui_native::` and `Animation::` in its
     /// `decode.rs`, and `App::` a method of that crate's `App` trait (a
     /// trait's `fn` is public without the word) — so a renamed or
@@ -1888,7 +2019,9 @@ mod tests {
                 }
             }
         }
-        let ui = read(root.join("ui.rs"));
+        // `Ui`'s methods live in `ui.rs` and beside the core state they
+        // reach, in `impl Ui` blocks under `runtime/` (the recording's).
+        let ui = read(root.join("ui.rs")) + &runtime;
         let session = read(root.join("session.rs"));
         let tokens = read(root.join("tokens.rs"));
         let scroll = read(root.join("scroll.rs"));
@@ -1912,7 +2045,7 @@ mod tests {
                 "Tokens" => &tokens,
                 "WheelFeel" => &scroll,
                 "EdgeScrollFeel" => &edge,
-                "Launcher" => &launcher,
+                "Launcher" | "Waker" => &launcher,
                 "kui_native" | "Animation" | "AnimationEncoder" | "Captures" => &decode,
                 "App" => app_trait,
                 other => panic!("{}: {other} is not a prefix the table knows", d.rust),
@@ -1921,8 +2054,10 @@ mod tests {
                 format!("{}fn {name}(", if ty == "App" { "" } else { "pub " }),
                 format!("fn {name}("),
             );
+            // A generic fn is spelled `fn name<`.
+            let generic = public.replace(&format!("{name}("), &format!("{name}<"));
             assert!(
-                src.contains(&public) || (ty == "Core" && name == "env"),
+                src.contains(&public) || src.contains(&generic) || (ty == "Core" && name == "env"),
                 "{}: no `{public}` in {ty}'s sources{}",
                 d.rust,
                 if src.contains(&any) {

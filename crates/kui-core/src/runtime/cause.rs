@@ -463,14 +463,22 @@ impl Core {
         self.frame_requested = true;
         if self.trace.on {
             self.trace.ask(why, Location::caller());
+            self.perf_request(why, Location::caller());
         }
     }
 
     /// `request_frame`'s half of the trace.
     #[track_caller]
     pub(super) fn trace_request(&mut self) {
+        self.trace_request_named("request_frame");
+    }
+
+    /// [`Self::trace_request`] under a name: `request_frame_for`'s.
+    #[track_caller]
+    pub(super) fn trace_request_named(&mut self, why: &'static str) {
         if self.trace.on {
-            self.trace.ask("request_frame", Location::caller());
+            self.trace.ask(why, Location::caller());
+            self.perf_request(why, Location::caller());
         }
     }
 

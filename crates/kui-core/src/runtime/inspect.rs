@@ -120,6 +120,316 @@ pub struct NodeInfo {
     /// `click`, `drag`, `key` (the sink's tag), `hover`, `context-menu`,
     /// `force-click`, `layout`, `modal`.
     pub events: Vec<(&'static str, Value)>,
+    /// The rest of its spec as rows — interaction, access, motion, and
+    /// the layout and paint the fields above leave out — each marked set
+    /// or left at its default: the devtools inspector's, for the node it
+    /// has selected, and empty for every other node, so the snapshot
+    /// costs no more for it. Not in [`Self::to_value`].
+    pub detail: Vec<SpecRow>,
+}
+
+/// One row of a node's spec for the inspector ([`NodeInfo::detail`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpecRow {
+    /// `interaction`, `access`, `motion`, `layout`, `paint`, `text`.
+    pub group: &'static str,
+    pub name: &'static str,
+    pub value: String,
+    /// Declared: not the default a spec starts with.
+    pub set: bool,
+}
+
+fn hex(c: crate::color::Color) -> String {
+    if c.a == 0.0 {
+        "none".into()
+    } else {
+        format!("#{:08x}", c.to_hex())
+    }
+}
+
+/// The rows of `spec` the snapshot's own fields leave out; `text_color`
+/// and `text_len` for a text node.
+fn spec_rows(
+    spec: &crate::spec::NodeSpec,
+    text: Option<(crate::color::Color, usize)>,
+) -> Vec<SpecRow> {
+    let mut v: Vec<SpecRow> = Vec::new();
+    let mut row = |group, name, value: String, set: bool| {
+        v.push(SpecRow {
+            group,
+            name,
+            value,
+            set,
+        });
+    };
+    let yes = |b: bool| if b { "yes" } else { "no" }.to_string();
+    let opt_c = |c: Option<crate::color::Color>| c.map_or("—".to_string(), hex);
+    let lower = |d: String| d.to_lowercase();
+    let it = spec.interact();
+    row(
+        "interaction",
+        "hover bg",
+        opt_c(it.hover_bg),
+        it.hover_bg.is_some(),
+    );
+    row(
+        "interaction",
+        "pressed bg",
+        opt_c(it.pressed_bg),
+        it.pressed_bg.is_some(),
+    );
+    row(
+        "interaction",
+        "focus bg",
+        opt_c(it.focus_bg),
+        it.focus_bg.is_some(),
+    );
+    row(
+        "interaction",
+        "drop bg",
+        opt_c(it.drop_bg),
+        it.drop_bg.is_some(),
+    );
+    row(
+        "interaction",
+        "cursor",
+        spec.cursor.map_or("—".into(), |c| lower(format!("{c:?}"))),
+        spec.cursor.is_some(),
+    );
+    row(
+        "interaction",
+        "hoverable",
+        yes(spec.hoverable),
+        spec.hoverable,
+    );
+    row(
+        "interaction",
+        "focusable",
+        yes(spec.focusable),
+        spec.focusable,
+    );
+    row(
+        "interaction",
+        "initial focus",
+        yes(spec.initial_focus),
+        spec.initial_focus,
+    );
+    row("interaction", "disabled", yes(spec.disabled), spec.disabled);
+    row(
+        "interaction",
+        "selectable",
+        yes(it.selectable),
+        it.selectable,
+    );
+    row(
+        "interaction",
+        "focus region",
+        yes(it.focus_region),
+        it.focus_region,
+    );
+    row(
+        "interaction",
+        "reveal on hover",
+        yes(it.reveal_on_hover),
+        it.reveal_on_hover,
+    );
+    row(
+        "interaction",
+        "hover group",
+        it.hover_group.map_or("—".into(), |g| format!("{g:016x}")),
+        it.hover_group.is_some(),
+    );
+    row(
+        "interaction",
+        "sounds",
+        format!(
+            "{}{}",
+            it.click_sound
+                .map_or(String::new(), |s| format!("click {s:?} ")),
+            it.hover_sound
+                .map_or(String::new(), |s| format!("hover {s:?}"))
+        ),
+        it.click_sound.is_some() || it.hover_sound.is_some(),
+    );
+    row(
+        "interaction",
+        "window",
+        spec.window.map_or("—".into(), |w| lower(format!("{w:?}"))),
+        spec.window.is_some(),
+    );
+    let a = spec.access();
+    row(
+        "access",
+        "role (declared)",
+        a.role.map_or("—".into(), |r| r.name().to_string()),
+        a.role.is_some(),
+    );
+    row(
+        "access",
+        "label",
+        a.label.as_deref().unwrap_or("—").to_string(),
+        a.label.is_some(),
+    );
+    row(
+        "access",
+        "description",
+        a.description.as_deref().unwrap_or("—").to_string(),
+        a.description.is_some(),
+    );
+    row("access", "checked", yes(a.checked), a.checked);
+    row("access", "mixed", yes(a.mixed), a.mixed);
+    row("access", "selected", yes(a.selected), a.selected);
+    row(
+        "access",
+        "expanded",
+        a.expanded.map_or("—".into(), yes),
+        a.expanded.is_some(),
+    );
+    let num = |v: Option<f32>| v.map_or("—".to_string(), |v| format!("{v}"));
+    row(
+        "access",
+        "value",
+        format!(
+            "{} in {}..{} step {}",
+            num(a.value_now),
+            num(a.value_min),
+            num(a.value_max),
+            num(a.value_step)
+        ),
+        a.value_now.is_some() || a.value_min.is_some() || a.value_max.is_some(),
+    );
+    row(
+        "access",
+        "value text",
+        a.value_text.as_deref().unwrap_or("—").to_string(),
+        a.value_text.is_some(),
+    );
+    row("access", "tooltip", yes(a.tooltip), a.tooltip);
+    row(
+        "access",
+        "live",
+        lower(format!("{:?}", a.live)),
+        a.live != crate::access::Live::default(),
+    );
+    row(
+        "motion",
+        "transition",
+        spec.transition.map_or("—".into(), |t| format!("{t:?}")),
+        spec.transition.is_some(),
+    );
+    row("motion", "slide", yes(spec.slide), spec.slide);
+    row("motion", "animate", yes(spec.animate), spec.animate);
+    let anim = spec.anim();
+    row(
+        "motion",
+        "keyframes",
+        anim.keyframes.len().to_string(),
+        !anim.keyframes.is_empty(),
+    );
+    row(
+        "motion",
+        "enter",
+        yes(anim.enter.is_some()),
+        anim.enter.is_some(),
+    );
+    row(
+        "motion",
+        "exit",
+        yes(anim.exit.is_some()),
+        anim.exit.is_some(),
+    );
+    row(
+        "motion",
+        "over siblings",
+        yes(spec.over_siblings),
+        spec.over_siblings,
+    );
+    row(
+        "motion",
+        "floats in order",
+        yes(spec.floats_in_order),
+        spec.floats_in_order,
+    );
+    let l = &spec.layout;
+    row(
+        "layout",
+        "cross gap",
+        format!("{}", l.cross_gap),
+        l.cross_gap != 0.0,
+    );
+    row("layout", "aspect", format!("{}", l.aspect), l.aspect != 0.0);
+    row("layout", "clip", yes(l.clip), l.clip);
+    row(
+        "layout",
+        "scroll",
+        match (l.scroll_x, l.scroll_y) {
+            (true, true) => "x y".into(),
+            (true, false) => "x".into(),
+            (false, true) => "y".into(),
+            _ => "—".into(),
+        },
+        l.scroll_x || l.scroll_y,
+    );
+    row(
+        "layout",
+        "scrollbar",
+        lower(format!("{:?}", it.scrollbar)),
+        it.scrollbar != crate::spec::Scrollbar::default(),
+    );
+    row(
+        "layout",
+        "overscroll",
+        lower(format!("{:?}", it.overscroll)),
+        it.overscroll != crate::spec::Overscroll::default(),
+    );
+    row(
+        "layout",
+        "float",
+        l.float.map_or("—".into(), |f| format!("{f:?}")),
+        l.float.is_some(),
+    );
+    row("layout", "anchor", yes(l.anchor), l.anchor);
+    let st = &spec.style;
+    let sh = &st.shadow;
+    let shadow =
+        sh.color.a > 0.0 && (sh.dx != 0.0 || sh.dy != 0.0 || sh.blur > 0.0 || sh.spread != 0.0);
+    row(
+        "paint",
+        "shadow",
+        if shadow {
+            format!(
+                "{} {} blur {} spread {} {}",
+                sh.dx,
+                sh.dy,
+                sh.blur,
+                sh.spread,
+                hex(sh.color)
+            )
+        } else {
+            "—".into()
+        },
+        shadow,
+    );
+    row("paint", "accent", yes(spec.accent), spec.accent);
+    row(
+        "paint",
+        "gradient",
+        yes(it.gradient.is_some()),
+        it.gradient.is_some(),
+    );
+    row(
+        "paint",
+        "rules",
+        it.rules
+            .map_or("—".into(), |c| format!("{} {}", it.rule_w, hex(c))),
+        it.rules.is_some(),
+    );
+    row("paint", "pixel snap", yes(st.pixel_snap), st.pixel_snap);
+    if let Some((color, len)) = text {
+        row("text", "colour", hex(color), true);
+        row("text", "length", format!("{len} bytes"), true);
+    }
+    v
 }
 
 impl NodeInfo {
@@ -242,6 +552,7 @@ impl Core {
             self.inspected.clear();
             return;
         }
+        let detail_for = self.devtools_detail_key();
         let tree = &self.tree;
         let n = tree.len();
         let mut out = Vec::with_capacity(n);
@@ -387,6 +698,17 @@ impl Core {
                 scale: spec.transform_spec().map_or(1.0, |t| t.scale),
                 scroll: (l.scroll_x || l.scroll_y).then(|| self.scroll.drawn(tree.keys[i])),
                 events,
+                detail: if Some(tree.keys[i]) == detail_for {
+                    let text = match tree.content[i] {
+                        NodeContent::Text(id) => {
+                            Some((self.text.frame_color(id), self.text.content_len(id)))
+                        }
+                        _ => None,
+                    };
+                    spec_rows(spec, text)
+                } else {
+                    Vec::new()
+                },
                 key: tree.keys[i],
                 parent,
                 depth: depth[i],

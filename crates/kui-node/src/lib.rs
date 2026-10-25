@@ -3027,6 +3027,108 @@ macro_rules! core_methods {
                 self.$core().frame_unchanged()
             }
 
+            /// Whether anything is recorded (ADR 0058): the devtools' Perf
+            /// tab recording or on show, `KUI_PERF_TRACE`,
+            /// `setPerfRecording(true)`. Off, every perf door is a no-op;
+            /// read it to skip reading clocks of your own for
+            /// `perfMeasure`.
+            #[napi]
+            pub fn perf_measuring(&mut self) -> bool {
+                self.$core().perf_measuring()
+            }
+
+            /// Begins a span named `name` inside the one open now,
+            /// recording the node the builder has open; end it with
+            /// `spanEnd`. Its id, 0 while nothing is recorded. A span
+            /// crosses a callback by its id; `span(name, fn)` is the
+            /// closure form. One left open when its frame ends is closed
+            /// there and marked cut.
+            #[napi]
+            pub fn span_begin(&mut self, name: String) -> u32 {
+                self.$core().span_begin(&name).0
+            }
+
+            /// Ends the span `id` names, and any opened inside it and left
+            /// open; 0, or an id with no begin, is nothing.
+            #[napi]
+            pub fn span_end(&mut self, id: u32) {
+                self.$core().span_end(kui_core::SpanId(id));
+            }
+
+            /// A span timed elsewhere — a parse in a worker, a job — `ms`
+            /// long, ending now, on the track named `name`.
+            #[napi]
+            pub fn perf_measure(&mut self, name: String, ms: f64) {
+                self.$core().perf_measure(&name, ms);
+            }
+
+            /// Adds `n` to this frame's counter `name`.
+            #[napi]
+            pub fn perf_count(&mut self, name: String, n: i64) {
+                self.$core().perf_count(&name, n);
+            }
+
+            /// Sets the reading `name` — a footprint, a buffer's bytes —
+            /// held until set again.
+            #[napi]
+            pub fn perf_gauge(&mut self, name: String, value: f64) {
+                self.$core().perf_gauge(&name, value);
+            }
+
+            /// Puts an instant on the timeline: a file opened, a command
+            /// run.
+            #[napi]
+            pub fn perf_mark(&mut self, name: String) {
+                self.$core().perf_mark(&name);
+            }
+
+            /// Asks for a frame after this one and names why: `owedBy()`
+            /// lists it under `why`, and a recording's causes read
+            /// `request: why`.
+            #[napi]
+            pub fn request_frame_for(&mut self, why: String) {
+                self.$core().request_frame_for(&why);
+                self.$redraw();
+            }
+
+            /// A wake named `name` reached the window: the next frame's
+            /// causes read `wake: name`. Call it where a completion lands —
+            /// a socket's data, a worker's message — before the model
+            /// change it brings.
+            #[napi]
+            pub fn note_wake(&mut self, name: String) {
+                self.$core().note_wake(&name);
+            }
+
+            /// Starts a recording, dropping what was kept, or stops one and
+            /// keeps it for `perfTrace()` — the Perf tab's record button.
+            #[napi]
+            pub fn set_perf_recording(&mut self, on: bool) {
+                self.$core().set_perf_recording(on);
+            }
+
+            /// Whether a recording runs.
+            #[napi]
+            pub fn perf_recording(&mut self) -> bool {
+                self.$core().perf_recording()
+            }
+
+            /// What is kept — the last recording, or the frames the Perf
+            /// tab shows — as `kui-trace` bytes, a `.kuitrace` file's.
+            #[napi]
+            pub fn perf_trace(&mut self) -> Buffer {
+                self.$core().perf_trace().into()
+            }
+
+            /// Writes out what the file `KUI_PERF_TRACE` names holds so
+            /// far; throws when the write fails.
+            #[napi]
+            pub fn perf_flush(&mut self) -> Result<()> {
+                self.$core()
+                    .perf_flush()
+                    .map_err(|e| napi::Error::from_reason(format!("perfFlush: {e}")))
+            }
+
             /// Byte budget for the shaped-text cache: every text a frame
             /// draws is shaped once and kept, and past this many
             /// (estimated) bytes the least recently drawn entries go at
@@ -3680,7 +3782,7 @@ macro_rules! core_methods {
             /// Shows the panel's tab named `name` from the app's side —
             /// what the strip's click and `Ctrl+Shift+N` do, for a command
             /// that jumps to the app's own tab. `name` is one
-            /// of the panel's own (`facts`, `events`, `tree`, in any case)
+            /// of the panel's own (`facts`, `events`, `tree`, `perf`, in any case)
             /// or a `<devtoolsTab>`'s, exactly as declared. A declared
             /// name the panel does not list
             /// yet is kept and shows once a frame declares it; the return

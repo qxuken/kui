@@ -3546,6 +3546,39 @@ editor of an app's own could not type either. One entry, F195 — the
 press carries what a composing Option typed — **built 2026-10-25**, the
 day it was filed, and in the archive.
 
+## From the Perf tab (2026-10-25)
+
+The user, after F198 put a Perf tab in the devtools: a bar should open
+into why its frame lagged, and an app should be able to put its own
+measurements there; a recording should be kui's own format with
+adapters out, read by an inspector of its own; the time between frames
+should be in it; and C and Odin should have a waker. kawoosh built the
+first two for itself, over two tabs and some 2,300 lines. F199 — [ADR
+0058](adr/0058-a-recording-is-a-timeline.md), accepted and **built
+2026-10-25** but for the inspector, and in the archive — and F200, the
+inspector, which waits on the kui tools design system.
+
+### `~` F200 — A recording made where the panel is not has nothing to read it in
+
+**Found.** Building F199: a `.kuitrace` from `KUI_PERF_TRACE`, a CI run,
+a Node app or a long session opens in Perfetto, speedscope or the Firefox
+Profiler through `kui-trace convert`, which draw spans and counters and
+know nothing of a frame's causes, holders, verdict or burns; and the
+devtools' Perf tab reads only the recording of the app it is docked in,
+280 px wide at its narrowest.
+
+**Do.** [ADR 0058](adr/0058-a-recording-is-a-timeline.md), decision 13:
+`kui-perf`, a tool built on the kui tools design system — its tables,
+tabs, toolbar, panes, key-value detail, stats and status bar the design
+system's v1 components, its timeline and flame chart the design
+system's trace waterfall (shared with the BFF testing tool's request
+inspector) — opening a `.kuitrace` whole, zoomed and panned across frames
+and gaps, and two side by side (`kui-trace diff` drawn); as an app, and
+as an extension that mounts as a devtools tab, with the read door that
+form needs. **Waits on** the design system's v1, its trace waterfall,
+and the core changes it rests on (a `.lua` extension in every host, a
+slot that carries the host's children, cheap instances).
+
 ## After alpha.58
 
 Grouped by kind, not urgency. Nothing here blocks the tag. It was "After
@@ -5418,3 +5451,14 @@ move.
 **From Carnet's page selection (2026-10-25)** — F196, filed and built the same day
 
 - `.` **F196** — [A held drag scrolls only by the distance past the edge, which a full-screen window has none of](backlog/closed-2026-09.md#-f196--a-held-drag-scrolls-only-by-the-distance-past-the-edge-which-a-full-screen-window-has-none-of--done-2026-10-25) — done (2026-10-25) — `EdgeScrollFeel { zone_px, speed_px_s, curve, ramp_secs, ramp_max, cap_px_s, pull_back_px }`: an edge zone inside the scroller on an ease-in curve, a ramp while held, a cap, the window's edge as full depth; presets `gentle`, `standard`, `brisk`; `Ui::edge_scroll` for an app's drag; doors in four bindings (the feel's Lua a guest), `KUI_EDGE_SCROLL` in the native runner
+
+**From the user's devtools pass (2026-10-24)** — F197, filed and built the same day
+
+- `.` **F197** — [The devtools tree lights the selection for as long as it is selected, and the header cuts the title](backlog/closed-2026-09.md#-f197--the-devtools-tree-lights-the-selection-for-as-long-as-it-is-selected-and-the-header-cuts-the-title--done-2026-10-24) — done (2026-10-24) — hover and pick light a node with its box model and a badge, the selection only under the eye toggle; the inspector's box-model diagram and compact groups; tabs and placements in one strip, title and frame counter in Facts; Facts in sections, the events rows coloured
+- `.` **F198** — [The devtools show a frame's cost in a graph but not why it ran, who held it, or whether it drew anything](backlog/closed-2026-09.md#-f198--the-devtools-show-a-frames-cost-in-a-graph-but-not-why-it-ran-who-held-it-or-whether-it-drew-anything--done-2026-10-24) — done (2026-10-24) — a Perf tab: live phase bars against the budget; a recording of every frame with its cause, holders, timing and unchanged flag as a clickable timeline and a summary; a screenshot and a GIF of the window, answered to the panel
+
+**From the Perf tab (2026-10-25)** — F199, filed and built the same day with ADR 0058; F200 open; F201 built the same day
+
+- `~` **F199** — [A frame's time is one number a phase, the time between frames is not recorded, and an app cannot add its own](backlog/closed-2026-09.md#-f199--a-frames-time-is-one-number-a-phase-the-time-between-frames-is-not-recorded-and-an-app-cannot-add-its-own--done-2026-10-25) — done (2026-10-25) — [ADR 0058](adr/0058-a-recording-is-a-timeline.md): `kui-trace` (format, timeline, analysis, Chrome/Perfetto/speedscope/Firefox adapters, `diff`, CLI), the core's recorder and the runners' loop records, the doors in five bindings with `KuiWaker` for C and Odin, the Perf tab on the timeline
+- `~` **F200** — [A recording made where the panel is not has nothing to read it in](#-f200--a-recording-made-where-the-panel-is-not-has-nothing-to-read-it-in) — open — `kui-perf` on the kui tools design system, its timeline the design system's trace waterfall; waits on that system's v1
+- `.` **F201** — [The tree's arrows only move a cursor, the inspector shows only the snapshot's columns, the live graph is not full width, and a recording reads only whole](backlog/closed-2026-09.md#-f201--the-trees-arrows-only-move-a-cursor-the-inspector-shows-only-the-snapshots-columns-the-live-graph-is-not-full-width-and-a-recording-reads-only-whole--done-2026-10-25) — done (2026-10-25) — arrows select, a row click focuses the list; the selection's whole spec with a changed-only switch; bars share the chart's width; a range by drag or shift-click

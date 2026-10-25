@@ -164,3 +164,55 @@ animation_at :: proc(a: Animation, elapsed: f64) -> (index: u32, next: f64) {
 	index = c.animation_at(raw_data(a.delays), u32(len(a.delays)), a.loops, elapsed, &next)
 	return
 }
+
+// What is kept of the recording - the last one, or the frames the Perf tab
+// shows - as kui-trace bytes, a .kuitrace file's (ADR 0058). Borrowed until
+// the next perf_trace call, as kui.h says; slice.clone to keep them.
+// Rust: Core::perf_trace.
+perf_trace :: proc(ui: ^Ui) -> []u8 {
+	n: uint
+	p := c.perf_trace(ui, &n)
+	if p == nil do return nil
+	return p[:n]
+}
+
+// The runner's waker (ADR 0058, decision 14): what a thread that changed
+// what the view shows holds to get a frame drawn. Any thread may use it, at
+// any rate; free each with waker_free.
+Waker :: struct {
+	raw: ^c.Waker,
+}
+
+// The runner's waker, from a run's view context. ok is false on any other -
+// a standalone context's host wakes its own loop, and names it with
+// note_wake.
+// Rust: Waker::named.
+waker :: proc(ui: ^Ui) -> (w: Waker, ok: bool) {
+	raw := c.waker(ui)
+	return {raw}, raw != nil
+}
+
+// Asks every window for a frame; wakes coalesce into the loop's next turn.
+waker_wake :: proc(w: Waker) {
+	c.waker_wake(w.raw)
+}
+
+// Asks every window for a frame ms from now, the earliest asked for winning:
+// 0 or less is now, infinity never.
+waker_wake_at :: proc(w: Waker, ms: f64) {
+	c.waker_wake_at(w.raw, ms)
+}
+
+// waker_wake under a name: the next frame's causes read "wake: name".
+waker_wake_named :: proc(w: Waker, name: string) {
+	c.waker_wake_named(w.raw, name)
+}
+
+// Another handle on the same loop, for another thread.
+waker_clone :: proc(w: Waker) -> Waker {
+	return {c.waker_clone(w.raw)}
+}
+
+waker_free :: proc(w: Waker) {
+	c.waker_free(w.raw)
+}

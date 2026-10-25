@@ -14,6 +14,7 @@ impl Core {
     pub fn handle_input(&mut self, ev: InputEvent) -> Vec<UiEvent> {
         // The next frame's reason (backlog F111).
         self.trace_input(&ev);
+        self.perf_input(&ev);
         // What a focus move this input makes is reported as (DX18).
         let by = match &ev {
             InputEvent::CursorMoved(_)
@@ -86,6 +87,7 @@ impl Core {
     pub(crate) fn outbound(&mut self, out: &mut Vec<UiEvent>) {
         self.resolve_window_facts(out);
         self.devtools_consume(out);
+        self.perf_events(out);
         self.devtools_translate(out);
         self.stamp(out);
         self.note_taken_fields(out);

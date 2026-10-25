@@ -7,11 +7,10 @@
 //! tree in the main window (`left`, `right`, `bottom`; a handle on the
 //! pane's inner edge resizes it), in a window of its own (`window`), or
 //! nowhere with its chords still live (`off`). It shows what
-//! the runtime is doing while the app runs: a header with the window's
-//! title, the frame counter and an icon strip (the theme base, the accent,
-//! native menus, the placement), and three tabs —
+//! the runtime is doing while the app runs: a strip with the tabs and the
+//! placement buttons, and four tabs —
 //!
-//! - **facts**: the latency graph; the status block — what the runtime
+//! - **facts**: the status block — what the runtime
 //!   believes right now, each row read from the door it comes from; and
 //!   the key legend a host declared ([`Core::set_devtools_legend`]);
 //! - **events**: every `UiEvent` handed to the host from any window, as a
@@ -20,7 +19,16 @@
 //!   raised and the panel's own notes;
 //! - **tree**: the main window's last frame ([`Core::nodes`]), collapsible,
 //!   filterable, with a picker that finds the node under the pointer from
-//!   the app itself, and an inspector for the selected one.
+//!   the app itself, and an inspector for the selected one — its box
+//!   model and the values it has. As in a browser's devtools, the app is
+//!   lit (content, padding and border, and a badge naming the node) under
+//!   a hovered row or the picker; the selection stays lit only while the
+//!   eye in the toolbar is on;
+//! - **perf**: the frames' cost by phase against the budget, live; and,
+//!   recorded, every frame with why it ran, who held it and whether it
+//!   drew anything new, as a timeline that opens into a frame — plus a
+//!   screenshot and a screen recording of the window. None of it costs
+//!   anything until the record button is pressed.
 //!
 //! The chords are `Ctrl+Shift+<letter>`, a family no app keymap should
 //! use while the panel is on: `T` cycles the base (the app's own → light →
@@ -69,6 +77,8 @@ use crate::{Core, InputEvent, KeyCode, UiEvent};
 mod icons;
 #[cfg(feature = "devtools")]
 mod panel;
+#[cfg(feature = "devtools")]
+mod perf;
 #[cfg(feature = "devtools")]
 mod stream;
 #[cfg(all(test, feature = "devtools"))]
@@ -185,6 +195,7 @@ pub enum Tab {
     #[default]
     Events,
     Tree,
+    Perf,
 }
 
 /// One tab an app or an extension declared this frame: its name (the
@@ -207,13 +218,14 @@ pub(crate) enum Shown {
 }
 
 impl Tab {
-    const ALL: [Tab; 3] = [Tab::Facts, Tab::Events, Tab::Tree];
+    const ALL: [Tab; 4] = [Tab::Facts, Tab::Events, Tab::Tree, Tab::Perf];
 
     fn name(self) -> &'static str {
         match self {
             Tab::Facts => "facts",
             Tab::Events => "events",
             Tab::Tree => "tree",
+            Tab::Perf => "perf",
         }
     }
 
@@ -224,6 +236,7 @@ impl Tab {
             Tab::Facts => "Facts",
             Tab::Events => "Events",
             Tab::Tree => "Tree",
+            Tab::Perf => "Perf",
         }
     }
 
@@ -319,6 +332,162 @@ pub(crate) struct Facts {
     cursor: Option<Vec2>,
 }
 
+/// A capture the panel asked for, for the main window's core to make:
+/// the window as drawn, the docked panel with it — or the recording
+/// written out.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CaptureAsk {
+    Still(String),
+    Record(String),
+    Stop,
+    /// The recording, as a `.kuitrace` at this path.
+    Trace(String),
+}
+
+/// A recording read whole once it stopped (ADR 0058): the trace, its
+/// timeline and what the tab shows of it, worked out once rather than a
+/// frame at a time.
+pub(crate) struct PerfView {
+    pub(crate) trace: kui_trace::Trace,
+    pub(crate) tl: kui_trace::Timeline,
+    pub(crate) burns: Vec<kui_trace::analysis::Burn>,
+    pub(crate) spans: Vec<kui_trace::analysis::SpanStat>,
+    pub(crate) origins: Vec<(kui_trace::Origin, u64, u64)>,
+    pub(crate) gaps: kui_trace::analysis::Gaps,
+    pub(crate) counters: Vec<(kui_trace::NameId, f64, i64)>,
+    pub(crate) gauges: Vec<(kui_trace::NameId, f64, f64, f64)>,
+    /// Each frame's phases, by its index.
+    pub(crate) phases: Vec<kui_trace::analysis::Phases>,
+    /// Frames counted by cause, and by holder (what, name, node), the
+    /// most first.
+    pub(crate) causes: Vec<(kui_trace::NameId, usize)>,
+    pub(crate) holders: Vec<((kui_trace::NameId, kui_trace::NameId, u64), usize)>,
+    /// The frame budget the recording was made against, µs.
+    pub(crate) budget: u64,
+}
+
+impl PerfView {
+    pub(crate) fn of(trace: kui_trace::Trace, budget_ms: f32) -> PerfView {
+        use kui_trace::analysis;
+        let tl = trace.timeline();
+        let burns = analysis::burns(&tl, &trace);
+        let spans = analysis::by_span(&tl, &tl.spans);
+        let origins = analysis::by_origin(&tl, &tl.spans);
+        let gaps = analysis::gaps(&tl, &trace);
+        let counters = analysis::counters(&tl);
+        let gauges = analysis::gauges(&tl);
+        let budget = trace
+            .session
+            .as_ref()
+            .map_or(budget_ms, |s| s.budget_ms)
+            .max(1.0);
+        let phases = (0..tl.frames.len())
+            .map(|i| analysis::phases(&tl, i, &trace))
+            .collect();
+        let mut causes: rustc_hash::FxHashMap<kui_trace::NameId, usize> = Default::default();
+        let mut holders: rustc_hash::FxHashMap<(kui_trace::NameId, kui_trace::NameId, u64), usize> =
+            Default::default();
+        for f in &tl.frames {
+            for c in &f.causes {
+                *causes.entry(*c).or_default() += 1;
+            }
+            // A frame nobody here asked for counts under the empty name.
+            if f.causes.is_empty() {
+                *causes.entry(0).or_default() += 1;
+            }
+            for h in &f.holders {
+                *holders.entry((h.what, h.name, h.node)).or_default() += 1;
+            }
+        }
+        let mut causes: Vec<_> = causes.into_iter().collect();
+        causes.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut holders: Vec<_> = holders.into_iter().collect();
+        holders.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        PerfView {
+            trace,
+            tl,
+            burns,
+            spans,
+            origins,
+            gaps,
+            counters,
+            gauges,
+            phases,
+            causes,
+            holders,
+            budget: (budget * 1000.0) as u64,
+        }
+    }
+}
+
+impl PerfView {
+    /// Frames `first..=last` read whole on their own: the records from the
+    /// first one's gap to the last one's present, its holders by frame.
+    pub(crate) fn slice(&self, first: usize, last: usize) -> PerfView {
+        use kui_trace::Record;
+        let f0 = &self.tl.frames[first];
+        let f1 = &self.tl.frames[last];
+        let from = f0.gap_from;
+        let to = f1
+            .present
+            .map_or(f1.end_or_begin(), |p| p.t.max(f1.end_or_begin()))
+            + 1;
+        let frames: rustc_hash::FxHashSet<u64> = self.tl.frames[first..=last]
+            .iter()
+            .map(|f| f.frame)
+            .collect();
+        let records = self
+            .trace
+            .records
+            .iter()
+            .filter(|r| match (r.t(), r) {
+                (Some(t), _) => t >= from && t < to,
+                (None, Record::Holder { frame, .. }) => frames.contains(frame),
+                (None, _) => true,
+            })
+            .cloned()
+            .collect();
+        let trace = kui_trace::Trace {
+            session: self.trace.session.clone(),
+            names: self.trace.names.clone(),
+            tracks: self.trace.tracks.clone(),
+            records,
+        };
+        PerfView::of(trace, self.budget as f32 / 1000.0)
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct Perf {
+    /// The record button's ask, for the main window's core to apply.
+    want: Option<bool>,
+    /// The main core's recording, as it stood at its last frame.
+    recording: bool,
+    /// The last recording, read whole.
+    view: Option<std::sync::Arc<PerfView>>,
+    /// The frame the detail shows: an index into the view's frames.
+    selected: Option<usize>,
+    /// The frames the summary and the tables read, first and last
+    /// inclusive: dragged across the bars or shift-clicked; `None` is the
+    /// whole recording.
+    range: Option<(usize, usize)>,
+    /// A drag across the bars: where it began and where it is, window px.
+    drag: Option<(f32, f32)>,
+    /// The drag let go: the next build keeps its range and forgets it.
+    drag_ended: bool,
+    /// The range read whole, for the range it was read for.
+    range_view: Option<((usize, usize), std::sync::Arc<PerfView>)>,
+    /// The timeline scrolls to its newest frame on its next build: a
+    /// recording just stopped.
+    scroll_end: bool,
+    /// A screen recording the panel started is running.
+    screen_recording: bool,
+    asks: Vec<CaptureAsk>,
+    /// Captures asked and not answered: what tells the panel's `capture`
+    /// event from an app's with the same message.
+    awaiting: usize,
+}
+
 /// The session's devtools state.
 pub(crate) struct State {
     pub(crate) on: bool,
@@ -360,9 +529,16 @@ pub(crate) struct State {
     stream_filter: String,
     // The tree.
     selected: Option<Key>,
-    /// The row under the pointer in whichever window draws the tree, for
-    /// the outline the main window paints.
+    /// The node the pointer is on in whichever window draws the tree — a
+    /// row, a breadcrumb, the inspector's parent link — for the highlight
+    /// the main window paints over it, as a browser's devtools light the
+    /// element under the pointer in the elements panel.
     hovered_row: Option<Key>,
+    /// The selected node stays highlighted in the app (the eye in the
+    /// tree's toolbar). Off, a selection only opens the inspector: the
+    /// app is lit while a row is hovered or the picker is up, and left
+    /// alone while its values are read.
+    highlight: bool,
     collapsed: FxHashSet<Key>,
     tree_filter: String,
     /// The picker is up.
@@ -387,6 +563,16 @@ pub(crate) struct State {
     /// rows in hand: `up`, `down`, `left`, `right`, `home`, `end`,
     /// `pageup`, `pagedown`, `enter`, `space`.
     tree_key: Option<String>,
+    /// A row was clicked: the next tree build gives the list the keyboard.
+    focus_list: bool,
+    /// The node the last snapshot spelled out whole for the inspector.
+    detail_of: Option<Key>,
+    /// The inspector lists only the fields a node declares; off, every
+    /// field with its default.
+    changed_only: bool,
+    /// The Perf tab: the frames recorded, the one looked at, and the
+    /// captures asked for.
+    perf: Perf,
     // What the main window wrote for the others.
     facts: Facts,
     nodes: Vec<NodeInfo>,
@@ -449,6 +635,7 @@ impl Default for State {
             stream_filter: String::new(),
             selected: None,
             hovered_row: None,
+            highlight: false,
             collapsed: FxHashSet::default(),
             tree_filter: String::new(),
             pick: false,
@@ -458,6 +645,10 @@ impl Default for State {
             fold_all: false,
             tree_cursor: None,
             tree_key: None,
+            focus_list: false,
+            detail_of: None,
+            changed_only: true,
+            perf: Perf::default(),
             facts: Facts::default(),
             nodes: Vec::new(),
             frames: 0,
@@ -693,6 +884,47 @@ impl State {
                 }
                 self.pick_hover = None;
             }
+            "highlight" => self.highlight = !self.highlight,
+            "changed-only" => self.changed_only = !self.changed_only,
+            "perf-record" => {
+                let on = !self.perf.recording;
+                self.perf.want = Some(on);
+                self.perf.recording = on;
+                if on {
+                    self.perf.selected = None;
+                }
+                self.note(if on {
+                    "perf: recording frames"
+                } else {
+                    "perf: recording stopped"
+                });
+            }
+            "perf-clear" => {
+                self.perf.view = None;
+                self.perf.selected = None;
+                self.perf.range = None;
+            }
+            "perf-range-clear" => self.perf.range = None,
+            "perf-save" => {
+                let path = capture_path("kuitrace");
+                self.perf.asks.push(CaptureAsk::Trace(path));
+            }
+            "screenshot" => {
+                let path = capture_path("png");
+                self.note(format!("screenshot: saving {path}"));
+                self.perf.asks.push(CaptureAsk::Still(path));
+            }
+            "screen-record" => {
+                if self.perf.screen_recording {
+                    self.perf.asks.push(CaptureAsk::Stop);
+                } else {
+                    let path = capture_path("gif");
+                    self.note(format!("screen recording: {path}, until it is stopped"));
+                    self.perf.asks.push(CaptureAsk::Record(path));
+                }
+                self.perf.screen_recording = !self.perf.screen_recording;
+            }
+            "deselect" => self.selected = None,
             "fold-all" => self.fold_all = true,
             "unfold-all" => {
                 self.collapsed.clear();
@@ -733,12 +965,16 @@ impl State {
                         self.note(format!("dock: {}", dock.name()));
                     }
                 } else if let Some(key) = other.strip_prefix("node:").and_then(parse_key) {
-                    // A tree row: select it, or unselect the selected one.
+                    // A tree row: select it, or unselect the selected one;
+                    // the list's cursor moves to it and the list takes the
+                    // keyboard, so the arrows go on from here.
                     self.selected = if self.selected == Some(key) {
                         None
                     } else {
                         Some(key)
                     };
+                    self.tree_cursor = Some(key);
+                    self.focus_list = true;
                 } else if let Some(key) = other.strip_prefix("goto:").and_then(parse_key) {
                     // The inspector's parent row or a breadcrumb: select
                     // and bring its row into view.
@@ -752,6 +988,24 @@ impl State {
                         self.expanded.insert(seq);
                     }
                     self.stream_dirty = true;
+                } else if let Some(n) = other
+                    .strip_prefix("perf-range:")
+                    .and_then(|n| n.parse::<usize>().ok())
+                {
+                    // A shift-click on a bar: the range from the frame
+                    // looked at to this one.
+                    let from = self.perf.selected.unwrap_or(n);
+                    self.perf.range = Some((from.min(n), from.max(n)));
+                } else if let Some(n) = other
+                    .strip_prefix("perf-frame:")
+                    .and_then(|n| n.parse().ok())
+                {
+                    // A bar of the timeline: look at it, or stop looking.
+                    self.perf.selected = if self.perf.selected == Some(n) {
+                        None
+                    } else {
+                        Some(n)
+                    };
                 } else if let Some(code) = other.strip_prefix("tree-key:") {
                     // A key on the tree's list: the build applies it, since
                     // moving needs the rows and folding needs the children.
@@ -807,6 +1061,49 @@ impl State {
             self.custom = Some(t.name.clone());
         }
     }
+}
+
+/// Where a capture the panel asks for is written: `KUI_CAPTURE_DIR`, else
+/// the desktop when there is one, else the system's temporary directory —
+/// named for the moment, `kui-2026-10-24-221530.png`.
+fn capture_path(ext: &str) -> String {
+    let dir = std::env::var_os("KUI_CAPTURE_DIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(|h| std::path::PathBuf::from(h).join("Desktop"))
+                .filter(|d| d.is_dir())
+        })
+        .unwrap_or_else(std::env::temp_dir);
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    dir.join(format!("kui-{}.{ext}", utc_stamp(secs)))
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// `secs` since the epoch as `YYYY-MM-DD-HHMMSS`, UTC (Howard Hinnant's
+/// civil-from-days).
+fn utc_stamp(secs: u64) -> String {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}-{:02}{:02}{:02}",
+        rem / 3600,
+        rem / 60 % 60,
+        rem % 60
+    )
 }
 
 fn parse_key(hex: &str) -> Option<Key> {
@@ -1205,8 +1502,8 @@ impl Core {
     /// Shows the panel's tab named `name` from outside the panel — what
     /// the strip's click and `Ctrl+Shift+N` do, for an app with a command
     /// that jumps to its own tab. `name` is one of the panel's
-    /// own (`facts`, `events`, `tree`, in any case — the strip labels
-    /// them `Facts`, `Events`, `Tree`) or a declared tab's, exactly as
+    /// own (`facts`, `events`, `tree`, `perf`, in any case — the strip labels
+    /// them `Facts`, `Events`, `Tree`, `Perf`) or a declared tab's, exactly as
     /// the app declared it. A declared
     /// name the panel does not list yet is kept and shows once a frame
     /// declares it, as a strip click on it would; the return says whether
@@ -1214,7 +1511,9 @@ impl Core {
     /// frame it is on). A hidden panel comes back docked, as the
     /// picker's does. The panel's `on` is not touched: that is
     /// [`Self::set_devtools`]'s. Edge-triggered — called once a frame it
-    /// would pin the strip against the user's own clicks.
+    /// would pin the strip against the user's own clicks. A declared tab
+    /// whose name is one of the panel's own, exactly, is the one shown:
+    /// the app named it, and the panel's own is on the strip beside it.
     pub fn set_devtools_tab(&mut self, name: &str) -> bool {
         if !cfg!(feature = "devtools") {
             return false;
@@ -1222,7 +1521,11 @@ impl Core {
         let listed = {
             let mut s = self.session.state();
             let d = &mut s.devtools;
-            let listed = match Tab::parse(name) {
+            // A tab the app declared under the name, exactly, before the
+            // panel's own: an app whose `perf` tab predates the panel's
+            // keeps reaching it by name (kawoosh's, 2026-10-24); the
+            // panel's is a click on the strip away.
+            let listed = match Tab::parse(name).filter(|_| !d.lists(name)) {
                 Some(tab) => {
                     d.show(tab);
                     true
@@ -1562,6 +1865,7 @@ impl Core {
         if !main {
             return;
         }
+        self.perf_begin_frame(dock, shown);
         self.dt_inspect = want_inspect;
         if dock.docked() {
             self.dt_dock = Some(dock);
@@ -1720,10 +2024,116 @@ impl Core {
         }
     }
 
+    /// The node whose whole spec the snapshot spells out for the
+    /// inspector ([`crate::runtime::inspect::NodeInfo::detail`]): the
+    /// tree tab's selection, while the panel is on.
+    pub(crate) fn devtools_detail_key(&self) -> Option<Key> {
+        let s = self.session.state();
+        let d = &s.devtools;
+        if d.on { d.selected } else { None }
+    }
+
+    /// Whether a `capture` answer with `message` is one the panel asked
+    /// for: its marker, while one of its captures is unanswered. An app's
+    /// message that happens to spell the same map is the app's whenever
+    /// the panel has nothing outstanding.
+    pub(crate) fn devtools_capture_answer(&mut self, message: &Value) -> bool {
+        if message.get_str("dt") != Some("captured") {
+            return false;
+        }
+        let mut s = self.session.state();
+        let p = &mut s.devtools.perf;
+        if p.awaiting == 0 {
+            return false;
+        }
+        p.awaiting -= 1;
+        true
+    }
+
+    /// The Perf tab's half of `begin_frame` in the main window: the
+    /// record button applied to this core's recording, the recent frames
+    /// kept while the tab is on show here, a stopped recording read whole
+    /// for the tab, and the captures the panel asked for made — from
+    /// whichever window asked, since only this core draws the app.
+    fn perf_begin_frame(&mut self, dock: Dock, shown: Shown) {
+        let (want, asks, was, view) = {
+            let mut s = self.session.state();
+            let p = &mut s.devtools.perf;
+            (
+                p.want.take(),
+                std::mem::take(&mut p.asks),
+                p.recording,
+                p.view.clone(),
+            )
+        };
+        if let Some(on) = want {
+            self.set_perf_recording(on);
+        }
+        for ask in asks {
+            let marker = Some(action("captured"));
+            match ask {
+                CaptureAsk::Still(path) => {
+                    self.session.state().devtools.perf.awaiting += 1;
+                    self.capture_to(path, marker);
+                }
+                CaptureAsk::Record(path) => {
+                    self.session.state().devtools.perf.awaiting += 1;
+                    self.record_to(path, marker);
+                }
+                CaptureAsk::Stop => self.stop_recording(),
+                CaptureAsk::Trace(path) => {
+                    // The recording the tab shows, not what has been kept
+                    // since.
+                    let bytes = match &view {
+                        Some(v) => v.trace.to_bytes(),
+                        None => self.perf_trace(),
+                    };
+                    let note = match std::fs::write(&path, bytes) {
+                        Ok(()) => format!("trace saved: {path}"),
+                        Err(e) => format!("trace not saved: {path}: {e}"),
+                    };
+                    self.session.state().devtools.note(note);
+                }
+            }
+        }
+        let now = self.perf_recording();
+        // The recent frames, kept while the tab shows its live view in
+        // this window — not under a recording it is showing, whose frames
+        // the live view's shorter ring would trim away.
+        self.perf_set_live(
+            dock.docked()
+                && shown == Shown::Builtin(Tab::Perf)
+                && view.is_none()
+                && !now
+                && want != Some(false),
+        );
+        let stopped = (was && !now) || want == Some(false);
+        let view = stopped.then(|| {
+            std::sync::Arc::new(PerfView::of(
+                self.perf_trace_read(),
+                self.env.frame_budget_ms(),
+            ))
+        });
+        let mut s = self.session.state();
+        let p = &mut s.devtools.perf;
+        p.recording = now;
+        if let Some(v) = view {
+            p.view = Some(v);
+            p.selected = None;
+            p.scroll_end = true;
+        }
+    }
+
     /// Opens the `kui-devtools` node under the current cursor and builds
     /// the panel — the dock, the outlines, the picker — inside it, with
     /// the session's state taken out for the length of the build.
     fn build_panel(&mut self, place: Place) {
+        let span = self.span_begin_as(kui_trace::analysis::DEVTOOLS, kui_trace::Origin::Kui);
+        self.build_panel_inner(place);
+        self.span_end(span);
+    }
+
+    fn build_panel_inner(&mut self, place: Place) {
         let saved_origin = self.origin;
         self.origin = OriginId::DEVTOOLS;
         // The facts the panel reads: this frame's, from this core, when it
@@ -1829,9 +2239,20 @@ impl Core {
         }
         // Warnings logged while popped out move the stream there too.
         wake_panel |= !new_warnings_empty && d.dock == Dock::Window;
+        // A new selection's spec rows are in this snapshot, and the
+        // inspector drew from the one before: it is drawn again.
+        let detail_owed = d.selected.is_some()
+            && d.detail_of != d.selected
+            && d.shown() == Shown::Builtin(Tab::Tree);
+        d.detail_of = d.selected;
+        wake_panel |= detail_owed && d.dock == Dock::Window;
+        let owe = detail_owed && d.dock != Dock::Window;
         drop(s);
         if wake_panel {
             self.devtools_redraw_others();
+        }
+        if owe {
+            self.owe_frame("devtools");
         }
     }
 
@@ -1882,6 +2303,15 @@ impl Core {
     /// One action, from a chord or a control, with what it asks of the
     /// core done after the state borrow ends.
     fn devtools_act(&mut self, what: &str) {
+        // A bar shift-clicked chooses a range rather than a frame.
+        let ranged;
+        let what = match what.strip_prefix("perf-frame:") {
+            Some(n) if self.modifiers().shift => {
+                ranged = format!("perf-range:{n}");
+                ranged.as_str()
+            }
+            _ => what,
+        };
         let (acted, focus_main) = {
             let mut s = self.session.state();
             let acted = s.devtools.act(what);
@@ -1916,6 +2346,7 @@ impl Core {
         }
         let mut actions: Vec<String> = Vec::new();
         let mut picks = 0usize;
+        let mut captures: Vec<(bool, String)> = Vec::new();
         let mut closed = false;
         let mut resize: Option<Vec2> = None;
         out.retain(|ev| {
@@ -1930,6 +2361,23 @@ impl Core {
                     .and_then(Value::as_str);
                 match what {
                     Some("picked") => picks += 1,
+                    Some("captured") => {
+                        // A screenshot or a recording written, or not:
+                        // its path into the stream.
+                        let f = |k: &str| data.and_then(|d| d.get_str(k)).unwrap_or("");
+                        let frames = data.and_then(|d| d.get("frames")).and_then(Value::as_int);
+                        let note = if f("phase") == "saved" {
+                            match frames {
+                                Some(n) if n > 1 => {
+                                    format!("recording saved: {} · {n} frames", f("path"))
+                                }
+                                _ => format!("screenshot saved: {}", f("path")),
+                            }
+                        } else {
+                            format!("capture failed: {}", f("error"))
+                        };
+                        captures.push((f("phase") == "saved", note));
+                    }
                     Some("tree-key") => {
                         // The tree list's sink: a press (not a release, not
                         // a repeat of a chord) becomes an action naming
@@ -1952,6 +2400,24 @@ impl Core {
                     Some("own-window") => {
                         closed |= data.and_then(|d| d.get_str("phase")) == Some("closed");
                     }
+                    Some("perf-drag") => {
+                        // A drag across the timeline's bars: the build
+                        // turns it into a range of frames.
+                        let x = data.and_then(|d| d.get("x")).and_then(Value::as_float);
+                        let phase = data.and_then(|d| d.get_str("phase"));
+                        if let Some(x) = x {
+                            let x = x as f32;
+                            let mut s = self.session.state();
+                            let p = &mut s.devtools.perf;
+                            match (phase, p.drag) {
+                                (Some("start"), _) | (_, None) => p.drag = Some((x, x)),
+                                (_, Some((x0, _))) => p.drag = Some((x0, x)),
+                            }
+                            if phase == Some("end") {
+                                p.drag_ended = true;
+                            }
+                        }
+                    }
                     Some("resize") => {
                         let f = |k: &str| data.and_then(|d| d.get(k)).and_then(Value::as_float);
                         if let (Some(x), Some(y)) = (f("x"), f("y")) {
@@ -1969,6 +2435,17 @@ impl Core {
         });
         for what in actions {
             self.devtools_act(&what);
+        }
+        if !captures.is_empty() {
+            let mut s = self.session.state();
+            let d = &mut s.devtools;
+            for (saved, note) in captures {
+                // A recording that failed to start is not running.
+                if !saved && d.perf.awaiting == 0 {
+                    d.perf.screen_recording = false;
+                }
+                d.note(note);
+            }
         }
         if let Some(p) = resize {
             // The handle is dragged in the main window: the pane's extent

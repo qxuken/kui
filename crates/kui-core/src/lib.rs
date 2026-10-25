@@ -206,6 +206,9 @@ pub use keyframes::Keyframe;
 /// `#[message(crate = "kui_core")]` to the enum.
 #[cfg(feature = "derive")]
 pub use kui_derive::Message;
+/// kui's recording format (ADR 0058), for reading what
+/// [`Core::perf_trace`] hands back.
+pub use kui_trace;
 pub use line::{Dash, LineId, LineStore, Stroke};
 pub use menu::{Accel, BarMenu, Menu, MenuAction, MenuBar, MenuItem, MenuRole};
 pub use message::{EventField, MessageError, MessageField};
@@ -219,6 +222,7 @@ pub use runtime::cause::{FrameCause, FrameHolder, FrameRequest, OwedBy};
 pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
+pub use runtime::perf::{LoopNote, SpanId};
 pub use runtime::{Content, Core, Extension, Owed, SlotFill};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};

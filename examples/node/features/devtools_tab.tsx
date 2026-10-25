@@ -4,7 +4,7 @@
 // The page is a "source file" whose tokens are coloured by **highlight
 // group** (`@keyword`, `@function`, …) from a small syntax tree written by
 // hand; `<devtoolsTab>` with a **function child** adds an Inspector tab
-// beside facts, events and tree that lists the tree. Hover goes both ways:
+// beside facts, events, tree and perf that lists the tree. Hover goes both ways:
 // a row of the tab lights the node's tokens in the source, a token in the
 // source lights its path in the tab — both are the app's own nodes, so both
 // are the app's own `onHover`. A row's click selects the token in the
@@ -291,7 +291,7 @@ await run<Model, AppMsg>({
   update,
   view,
   keys: [
-    ['Ctrl+Shift+N', 'the next tab — facts, events, tree, Inspector'],
+    ['Ctrl+Shift+N', 'the next tab — facts, events, tree, perf, Inspector'],
     ['Ctrl+Shift+P', 'pick a token; the Inspector reads it back as its node'],
   ],
   window: { width: 760, height: 480 },

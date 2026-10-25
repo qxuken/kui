@@ -3,7 +3,7 @@
 //! tree-sitter inspector has. The page is a "source file" whose tokens
 //! are coloured by **highlight group** (`@keyword`, `@function`, …) from
 //! a small syntax tree this file writes by hand; the panel gains an
-//! **Inspector** tab beside facts, events and tree, drawn by this app from
+//! **Inspector** tab beside facts, events, tree and perf, drawn by this app from
 //! its own view with `Ui::devtools_tab_with`, listing that tree. Hover
 //! goes both ways: a row of the tab lights the node's tokens in the
 //! source, and a token in the source lights its path in the tab — both
@@ -447,7 +447,7 @@ impl Example for Page {
     const KEYS: &'static [(&'static str, &'static str)] = &[
         (
             "Ctrl+Shift+N",
-            "the next tab — facts, events, tree, Inspector",
+            "the next tab — facts, events, tree, perf, Inspector",
         ),
         (
             "Ctrl+Shift+P",

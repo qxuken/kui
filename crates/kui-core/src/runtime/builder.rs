@@ -369,6 +369,7 @@ impl Core {
         out.append(&mut self.interaction.take_pending());
         self.resolve_window_facts(&mut out);
         self.devtools_consume(&mut out);
+        self.perf_events(&out);
         self.devtools_translate(&mut out);
         self.stamp(&mut out);
         self.note_taken_fields(&mut out);

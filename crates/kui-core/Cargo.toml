@@ -26,6 +26,15 @@ unicode-script = "0.5"
 # The handler rows on `EventSpec`, two inline (already in the tree via cosmic-text).
 smallvec = { version = "1", features = ["const_new"] }
 kui-derive = { workspace = true, optional = true }
+# The recording's format (ADR 0058): no dependencies of its own.
+kui-trace.workspace = true
+# `tracing` spans for every recorded span, under the `tracing` feature
+# (ADR 0058, decision 12); already in the tree through winit and zbus.
+tracing = { version = "0.1", optional = true, default-features = false, features = ["std"] }
+
+[target.'cfg(unix)'.dependencies]
+# The thread's CPU clock, beside a span's wall time (ADR 0058, decision 6).
+libc = "0.2"
 
 [features]
 default = ["devtools"]
@@ -46,6 +55,11 @@ derive = ["dep:kui-derive"]
 # `required-features` on the dump example is for the message when it is run
 # from a context that has the feature off.
 conformance = []
+# Every span the recording keeps also entered as a `tracing` span (target
+# `kui`) while a subscriber listens — the door to Tracy, Instruments
+# (`tracing-oslog`) and Perfetto live (ADR 0058, decision 12). Off by
+# default.
+tracing = ["dep:tracing"]
 
 [dev-dependencies]
 divan.workspace = true

@@ -1402,6 +1402,15 @@ export type WarningCode =
    *  empty. An extension may host extensions (`Fill::add`), and may declare
    *  their slots — what it cannot do is be its own guest. */
   | 'recursive-slot'
+  /** `request_frame_for` was given more distinct names than a session keeps
+   *  (256): the rest are recorded as `request_frame`. A name per call — a
+   *  counter, an id — rather than per reason is the usual cause. Raised once
+   *  (ADR 0058, decision 8). */
+  | 'perf-names-exhausted'
+  /** `KUI_PERF_TRACE` (or `perf_trace_to`) named a file that could not be
+   *  created: nothing is recorded to it. The message names the path and the
+   *  OS's reason (ADR 0058, decision 11). */
+  | 'perf-trace-failed'
   /** The device refused a play: its voices are all held, or the sound did not
    *  decode. A released playback (`finish`) holds one of the device's 128
    *  voices until its file ends, so a view that releases faster than its sounds
@@ -1743,9 +1752,9 @@ export interface NodeInfo {
 export type DevtoolsDock = 'left' | 'right' | 'bottom' | 'window' | 'off';
 
 /** The devtools panel's own tabs (`setDevtoolsTab`, `devtoolsCurrentTab`):
- *  the runtime's facts, the event stream, the node tree. A `<devtoolsTab>`
+ *  the runtime's facts, the event stream, the node tree, the frames. A `<devtoolsTab>`
  *  the app declares is named by its `name` beside these. */
-export type DevtoolsTab = 'facts' | 'events' | 'tree';
+export type DevtoolsTab = 'facts' | 'events' | 'tree' | 'perf';
 
 /** The name of the core's devtools window while the panel is popped out
  *  (`setDevtoolsDock('window')`): what `windows()` lists it as, and what
@@ -3111,6 +3120,75 @@ export declare class Ctx {
    */
   frameUnchanged(): boolean | null
   /**
+   * Whether anything is recorded (ADR 0058): the devtools' Perf
+   * tab recording or on show, `KUI_PERF_TRACE`,
+   * `setPerfRecording(true)`. Off, every perf door is a no-op;
+   * read it to skip reading clocks of your own for
+   * `perfMeasure`.
+   */
+  perfMeasuring(): boolean
+  /**
+   * Begins a span named `name` inside the one open now,
+   * recording the node the builder has open; end it with
+   * `spanEnd`. Its id, 0 while nothing is recorded. A span
+   * crosses a callback by its id; `span(name, fn)` is the
+   * closure form. One left open when its frame ends is closed
+   * there and marked cut.
+   */
+  spanBegin(name: string): number
+  /**
+   * Ends the span `id` names, and any opened inside it and left
+   * open; 0, or an id with no begin, is nothing.
+   */
+  spanEnd(id: number): void
+  /**
+   * A span timed elsewhere — a parse in a worker, a job — `ms`
+   * long, ending now, on the track named `name`.
+   */
+  perfMeasure(name: string, ms: number): void
+  /** Adds `n` to this frame's counter `name`. */
+  perfCount(name: string, n: number): void
+  /**
+   * Sets the reading `name` — a footprint, a buffer's bytes —
+   * held until set again.
+   */
+  perfGauge(name: string, value: number): void
+  /**
+   * Puts an instant on the timeline: a file opened, a command
+   * run.
+   */
+  perfMark(name: string): void
+  /**
+   * Asks for a frame after this one and names why: `owedBy()`
+   * lists it under `why`, and a recording's causes read
+   * `request: why`.
+   */
+  requestFrameFor(why: string): void
+  /**
+   * A wake named `name` reached the window: the next frame's
+   * causes read `wake: name`. Call it where a completion lands —
+   * a socket's data, a worker's message — before the model
+   * change it brings.
+   */
+  noteWake(name: string): void
+  /**
+   * Starts a recording, dropping what was kept, or stops one and
+   * keeps it for `perfTrace()` — the Perf tab's record button.
+   */
+  setPerfRecording(on: boolean): void
+  /** Whether a recording runs. */
+  perfRecording(): boolean
+  /**
+   * What is kept — the last recording, or the frames the Perf
+   * tab shows — as `kui-trace` bytes, a `.kuitrace` file's.
+   */
+  perfTrace(): Buffer
+  /**
+   * Writes out what the file `KUI_PERF_TRACE` names holds so
+   * far; throws when the write fails.
+   */
+  perfFlush(): void
+  /**
    * Byte budget for the shaped-text cache: every text a frame
    * draws is shaped once and kept, and past this many
    * (estimated) bytes the least recently drawn entries go at
@@ -3495,7 +3573,7 @@ export declare class Ctx {
    * Shows the panel's tab named `name` from the app's side —
    * what the strip's click and `Ctrl+Shift+N` do, for a command
    * that jumps to the app's own tab. `name` is one
-   * of the panel's own (`facts`, `events`, `tree`, in any case)
+   * of the panel's own (`facts`, `events`, `tree`, `perf`, in any case)
    * or a `<devtoolsTab>`'s, exactly as declared. A declared
    * name the panel does not list
    * yet is kept and shows once a frame declares it; the return
@@ -4649,6 +4727,75 @@ export declare class KuiWindow {
    */
   frameUnchanged(): boolean | null
   /**
+   * Whether anything is recorded (ADR 0058): the devtools' Perf
+   * tab recording or on show, `KUI_PERF_TRACE`,
+   * `setPerfRecording(true)`. Off, every perf door is a no-op;
+   * read it to skip reading clocks of your own for
+   * `perfMeasure`.
+   */
+  perfMeasuring(): boolean
+  /**
+   * Begins a span named `name` inside the one open now,
+   * recording the node the builder has open; end it with
+   * `spanEnd`. Its id, 0 while nothing is recorded. A span
+   * crosses a callback by its id; `span(name, fn)` is the
+   * closure form. One left open when its frame ends is closed
+   * there and marked cut.
+   */
+  spanBegin(name: string): number
+  /**
+   * Ends the span `id` names, and any opened inside it and left
+   * open; 0, or an id with no begin, is nothing.
+   */
+  spanEnd(id: number): void
+  /**
+   * A span timed elsewhere — a parse in a worker, a job — `ms`
+   * long, ending now, on the track named `name`.
+   */
+  perfMeasure(name: string, ms: number): void
+  /** Adds `n` to this frame's counter `name`. */
+  perfCount(name: string, n: number): void
+  /**
+   * Sets the reading `name` — a footprint, a buffer's bytes —
+   * held until set again.
+   */
+  perfGauge(name: string, value: number): void
+  /**
+   * Puts an instant on the timeline: a file opened, a command
+   * run.
+   */
+  perfMark(name: string): void
+  /**
+   * Asks for a frame after this one and names why: `owedBy()`
+   * lists it under `why`, and a recording's causes read
+   * `request: why`.
+   */
+  requestFrameFor(why: string): void
+  /**
+   * A wake named `name` reached the window: the next frame's
+   * causes read `wake: name`. Call it where a completion lands —
+   * a socket's data, a worker's message — before the model
+   * change it brings.
+   */
+  noteWake(name: string): void
+  /**
+   * Starts a recording, dropping what was kept, or stops one and
+   * keeps it for `perfTrace()` — the Perf tab's record button.
+   */
+  setPerfRecording(on: boolean): void
+  /** Whether a recording runs. */
+  perfRecording(): boolean
+  /**
+   * What is kept — the last recording, or the frames the Perf
+   * tab shows — as `kui-trace` bytes, a `.kuitrace` file's.
+   */
+  perfTrace(): Buffer
+  /**
+   * Writes out what the file `KUI_PERF_TRACE` names holds so
+   * far; throws when the write fails.
+   */
+  perfFlush(): void
+  /**
    * Byte budget for the shaped-text cache: every text a frame
    * draws is shaped once and kept, and past this many
    * (estimated) bytes the least recently drawn entries go at
@@ -5033,7 +5180,7 @@ export declare class KuiWindow {
    * Shows the panel's tab named `name` from the app's side —
    * what the strip's click and `Ctrl+Shift+N` do, for a command
    * that jumps to the app's own tab. `name` is one
-   * of the panel's own (`facts`, `events`, `tree`, in any case)
+   * of the panel's own (`facts`, `events`, `tree`, `perf`, in any case)
    * or a `<devtoolsTab>`'s, exactly as declared. A declared
    * name the panel does not list
    * yet is kept and shows once a frame declares it; the return
@@ -5774,6 +5921,12 @@ export interface Ctx {
    *  end. For a caret on the frame its text is new, while `caretRect`
    *  still answers for the text the node drew last frame (backlog F171). */
   caretInText(content: KuiNode, style: TextProps | undefined, maxWidth: number | undefined, byte: number): Rect | null;
+  /** Runs `fn` inside a span named `name` on the recording's timeline
+   *  (ADR 0058) and returns what it returned: `spanBegin` / `spanEnd`
+   *  around it, timed in the core so it nests with the core's spans, and
+   *  ended however `fn` leaves. While nothing is recorded it only calls
+   *  `fn`. */
+  span<R>(name: string, fn: () => R): R;
 }
 
 export interface KuiWindow {
@@ -5788,6 +5941,8 @@ export interface KuiWindow {
   caretInText(content: KuiNode, style: TextProps | undefined, maxWidth: number | undefined, byte: number): Rect | null;
   /** See `Ctx.setTokens`. */
   setTokens(tokens: TokenDeclaration): void;
+  /** See `Ctx.span`. */
+  span<R>(name: string, fn: () => R): R;
 }
 
 /** What both drivers take. `S` is the surface the loop drives, and the

@@ -80,6 +80,7 @@ impl Core {
         let first = self.tree.len() as u32;
         // The fill the host asked to keep begins here (ADR 0045).
         self.begin_keeping(slot, origin);
+        let span = self.perf_fill_begin(origin, slot.namespace);
 
         match filler {
             Some(filler) => f(&mut Ui::with_filler(self, filler)),
@@ -101,6 +102,7 @@ impl Core {
             self.counters.truncate(depth);
         }
         self.end_keeping(slot);
+        self.span_end(span);
         if let Some(c) = self.counters.last_mut() {
             *c = saved_counter;
         }

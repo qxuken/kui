@@ -1285,6 +1285,39 @@ surface :: proc() -> bool {
 		kui.free_ui(why)
 	}
 
+	// The recording (ADR 0058), on a context of its own: off, a span's id is 0;
+	// recording, what lands is kui-trace bytes. A standalone context has no
+	// waker, and the waker's procedures take none as nothing.
+	{
+		rec := kui.new_ui()
+		check(!kui.perf_measuring(rec) && !kui.perf_recording(rec), "perf_measuring: nothing listens")
+		check(kui.span_begin(rec, "off") == 0, "span_begin: no span while off")
+		kui.set_perf_recording(rec, true)
+		check(kui.perf_measuring(rec) && kui.perf_recording(rec), "set_perf_recording: on")
+		kui.note_wake(rec, "pty")
+		kui.frame_begin(rec, 320, 240, 1)
+		span := kui.span_begin(rec, "rows")
+		check(span != 0, "a span while recording")
+		kui.perf_count(rec, "rows", 12)
+		kui.span_end(rec, span)
+		kui.request_frame_for(rec, "blink")
+		kui.frame_finish(rec)
+		kui.perf_measure(rec, "parse", 1.5)
+		kui.perf_gauge(rec, "bytes", 4096)
+		kui.perf_mark(rec, "opened")
+		kui.set_perf_recording(rec, false)
+		trace := kui.perf_trace(rec)
+		check(len(trace) > 8 && string(trace[:8]) == "KUITRACE", "perf_trace: a recording's bytes")
+		check(kui.perf_flush(rec), "perf_flush: no file is no failure")
+		w, w_ok := kui.waker(rec)
+		check(!w_ok, "waker: none on a host's own loop")
+		kui.waker_wake(w)
+		kui.waker_wake_at(w, 5)
+		kui.waker_wake_named(w, "pty")
+		kui.waker_free(kui.waker_clone(w))
+		kui.free_ui(rec)
+	}
+
 	// A standalone context is nobody's slot.
 	{
 		_, name_ok := kui.slot_name(ui)

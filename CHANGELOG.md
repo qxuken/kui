@@ -34,6 +34,17 @@ was the first bare bump to break an app in five releases).
   past the edge, at 10 px/s a px past (backlog F196). Gone with it:
   `runtime::follow::AUTOSCROLL_RATE`, `AUTOSCROLL_REACH` and the step
   they made; `CLOCKLESS_FRAME` stays.
+- The devtools' tree tab no longer outlines the selected node over the
+  app: `kui-devtools/outline-selected` is drawn only while the tab's
+  highlight toggle is on (`devtools_act("highlight")` in a test).
+- The devtools' tabs are four: `Ctrl+Shift+N` walks facts → events →
+  tree → **perf** → the declared tabs, so a test that counted presses to
+  reach a declared tab presses once more; the latency graph is the Perf
+  tab's, not the Facts tab's. An app's own tab named `perf` keeps its
+  name: `set_devtools_tab` reaches a declared tab of the name, exactly,
+  before the panel's own.
+- The devtools' tree arrows select the row they land on, and Enter puts
+  the selection down rather than picking it (backlog F201).
 
 An editor that keeps its own text and hears keys through `onKey` could
 not type a dash, or anything else a Mac types with Option: the press
@@ -53,7 +64,12 @@ all. A test that drove a held drag past an edge and counted pixels
 counts different ones; set the old rate back for it with a flat feel,
 `EdgeScrollFeel { zone_px: 4.0, speed_px_s: 40.0, curve: 1.0, ramp_secs:
 0.0, ramp_max: 1.0, cap_px_s: 1000.0, .. }`, which is 10 px/s for each px
-into a 4 px zone. The rest of this release breaks nothing: a fix to text
+into a 4 px zone. The devtools' three
+breaks are the panel's: a test that drove it and read a selection's
+outline, counted `Ctrl+Shift+N` presses to a declared tab, or walked
+the tree's rows by arrow and expected no selection, is the one that
+notices; an app's own tree, keys and events are as they were.
+The rest of this release breaks nothing: a fix to text
 at a size no screen shows, a declaration file for Teal beside the one
 for lua-language-server, and a new runner beside the window's.
 
@@ -89,6 +105,70 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* a hand-written `.d.tl` for the prelude, and a
   `kui.Env` record a Teal project kept in step with the crate docs.
+
+- **A recording of what happened, in frames and between them** (backlog
+  F199, [ADR 0058](docs/adr/0058-a-recording-is-a-timeline.md)). A
+  core can record its window as a timeline in kui's own format,
+  [`kui-trace`](crates/kui-trace): frames as intervals, with why each ran
+  (`frame_cause`, and named causes — `wake: parser`,
+  `request: caret blink`), who held it (`owed_by`), whether it drew
+  anything new (`frame_unchanged`) and the driver's present; nested spans
+  with their CPU time (unix) and the node the builder had open as they
+  began; inputs as they arrive (a run of pointer moves as one record),
+  events as they leave (kinds and keys, never payloads), frames asked
+  for, and the loop's sleeps and wakes. The core times itself — `build`,
+  `fill <namespace>` for each extension, `devtools`, `layout`, `emit`,
+  texts shaped and glyphs rasterized — so a C, Odin or headless host has
+  view and layout times with no `FrameSample` pushed; the runners add
+  the loop, a `handler` span round each call into the app, and the
+  present (`Core::push_frame_sample`, which also feeds the latency graph).
+  An app adds its own: `span_begin` / `span_end` and `Ui::span`,
+  `perf_count`, `perf_gauge`, `perf_mark`, `perf_measure` (work timed off
+  the main thread), `request_frame_for(why)`, `note_wake(name)` and
+  Rust's `Waker::named`; `perf_measuring()` says whether anyone listens.
+  The doors are in every binding, and C and Odin get a waker of their own
+  (`kui_waker` and its family) for a `kui_run` host whose data arrives on
+  a thread. Nothing is recorded until something listens — the devtools'
+  Perf tab recording or showing its live view, `KUI_PERF_TRACE`, or a
+  `tracing` subscriber under `kui-core`'s new `tracing` feature, which
+  enters every span as a `tracing` span for Tracy, Instruments
+  (`tracing-oslog`) or Perfetto live: off, every door is one test of a
+  flag. `KUI_PERF_TRACE=path` streams a session to `path`
+  (`.kuitrace`), or writes Chrome's, Perfetto's, speedscope's or the
+  Firefox Profiler's format at exit when the name says so;
+  `Core::perf_trace()` hands back the bytes. `kui-trace` reads them
+  with no kui: `kui-trace dump`, `stats`, `convert --to
+  chrome|perfetto|speedscope|firefox`, and `diff A B --fail-over 10%`,
+  which a CI job holds a scripted session's cost with.
+
+  *What you can delete:* a hand-rolled frame log on `frame_cause` and
+  `owed_by`, thread-local spans timed round an app's own systems and the
+  tab that reads them, a named-wake ledger, and a per-frame log file — kawoosh's Frames and Perf tabs among them.
+
+- **A Perf tab in the devtools** (backlog F198, F199). Live, the
+  recent frames by phase — handler, build, devtools, layout, emit,
+  render, vsync's wait — against the frame budget, and the spans that
+  cost the most. The record button keeps every frame (the newest 1800);
+  stopped, the tab reads the recording whole: frames over seconds, the
+  work spread, how many went past the budget, drew nothing new or were
+  part of a burn (30 frames or more, each within 100 ms, no input),
+  what the gaps between frames held (handlers, asleep, busy elsewhere),
+  frames counted by cause and by holder, the spans by name and by
+  origin, counters and gauges; a timeline whose bars open into their
+  frame, a burn banded under its bars. A frame opened says why it lagged
+  — *late* (its input waited for the frame), *blocked* (the thread busy
+  outside kui), *slow* (the phase and the span with the most self time),
+  *waited* (wall time far over CPU time), *wasted*, *burn* or *fine* —
+  with the path from its input to the screen leg by leg, its gap, its
+  spans as a flame chart (a span with a node lights it in the app and
+  selects it in the tree) and its causes, holders and counters. *save
+  trace* writes the recording as a `.kuitrace`. While it records the tab
+  draws nothing that moves, so a docked panel never makes a frame look
+  changed. A camera saves a screenshot of the window and a film camera
+  records it as a GIF until pressed again (`capture_to` / `record_to`),
+  to `KUI_CAPTURE_DIR`, else the desktop, else the temporary directory,
+  the path noted in the events tab; the panel's `capture` answers come
+  back to the panel, never the app.
 
 - **An app runs with no window** (backlog C58, [ADR
   0057](docs/adr/0057-an-app-runs-with-no-window.md)):
@@ -148,6 +228,42 @@ for lua-language-server, and a new runner beside the window's.
   — the band, the rate, the cap, the frame clock's delta, `shift_scroll`
   by hand and the `request_frame` to keep it going — for one
   `edge_scroll` call and placing the drag's end under the pointer after.
+
+### Changed
+
+- **The devtools light the app as a browser's do** (backlog F197). The
+  tree tab highlights the node under a hovered row, a breadcrumb or the
+  inspector's parent link — and the one under the picker — with its box
+  model over the app (the content blue, the padding green, the border
+  yellow) and a badge with its kind, name and size. A selection only
+  opens the inspector and leaves the app as it is while its values are
+  read; the eye beside the picker keeps it outlined. The inspector opens
+  on the node's title, size and a box-model diagram, and lists only the
+  values the node has. The rows draw a guide down each level, chevrons
+  for the disclosures, and flags as chips; a text node's words read as a
+  string. In a bottom dock the inspector sits beside the list.
+- **The devtools panel's frame** (backlog F197). The tabs and the
+  placement buttons share one strip, the open tab underlined, where a
+  header above the tabs held the window's title and the frame counter
+  and a narrow dock cut the title to "kawoosh — k…": both are rows of
+  the Facts tab now, whose status block is in headed sections with long
+  values cut by an ellipsis. Filters name themselves by a placeholder;
+  the events tab's rows colour what an entry is apart from where it came
+  from and what it carried.
+
+  *What you can delete:* nothing — a look, not a door.
+- **The devtools tree by keyboard, the whole spec, and a range of a
+  recording** (backlog F201). The tree's arrows select as they walk, the
+  cursor's node lit in the app while the list has the keyboard, and a
+  row clicked hands the keyboard to the list. The inspector reads the
+  selected node's whole spec — its interaction, accessibility, motion,
+  layout, paint and text settings — and shows the ones it sets until
+  **changed only** is switched to **all fields**. The Perf tab's bars
+  share the chart's width. Drag across a recording's bars, or click one
+  and shift-click another, and the summary and the tables read those
+  frames alone; **whole recording** goes back.
+
+  *What you can delete:* nothing — a look, not a door.
 
 ### Fixed
 

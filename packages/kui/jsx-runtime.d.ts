@@ -999,7 +999,7 @@ export declare namespace JSX {
      *  in `ctx.slotFill(name)` (docs/adr/0045-a-slot-replayed-by-its-host.md).
      *  One or the other. */
     slot: { name: string; params?: unknown; keep?: boolean; replay?: boolean };
-    /** A tab in the core's devtools panel, beside facts, events and tree
+    /** A tab in the core's devtools panel, beside facts, events, tree and perf
      *  (docs/adr/0032-a-devtools-tab-mounts-a-slot.md). `name` is the tab's
      *  identity, `label` what the strip shows (the name when left out).
      *
