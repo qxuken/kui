@@ -549,6 +549,18 @@ Image_Fit :: enum u32 {
 	Cover = 2, // KUI_FIT_COVER
 }
 
+Svg_Mode :: enum u32 {
+	Auto = 0, // KUI_SVG_AUTO
+	Paths = 1, // KUI_SVG_PATHS
+	Image = 2, // KUI_SVG_IMAGE
+}
+
+Svg_Fit :: enum u32 {
+	Contain = 0, // KUI_SVG_CONTAIN
+	Cover = 1, // KUI_SVG_COVER
+	Fill = 2, // KUI_SVG_FILL
+}
+
 Quad_Kind :: enum u32 {
 	Solid = 0, // KUI_QUAD_SOLID
 	Glyph_Mask = 1, // KUI_QUAD_GLYPH_MASK
@@ -3292,6 +3304,15 @@ path :: proc(ui: ^Ui, label: string, ops: []f32, fill_rule: Fill_Rule, width: f3
 	spec_c: c.Spec
 	spec_to_c(spec, &spec_c, &scratch)
 	c.path(ui, label, ([^]f32)(raw_data(ops)), uint(len(ops)), u32(fill_rule), width, color, rotate, raw_data(pivot_v[:]) if pivot_ok else nil, raw_data(dash_v[:]) if dash_ok else nil, &spec_c, to_value(on_click), to_value(on_drag), to_value(on_hover))
+}
+
+// kui_svg (kui.h).
+svg :: proc(ui: ^Ui, label: string, data: string, src: string, mode: Svg_Mode, fit: Svg_Fit, color: Color, spec: Spec = {}, on_click: any = nil) {
+	scratch: Scratch
+	defer scratch_free(&scratch)
+	spec_c: c.Spec
+	spec_to_c(spec, &spec_c, &scratch)
+	c.svg(ui, label, data, src, u32(mode), u32(fit), color, &spec_c, to_value(on_click))
 }
 
 // SVG path data to the flat op form a `path` draws (ADR 0040): one parser, so

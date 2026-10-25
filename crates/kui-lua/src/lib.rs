@@ -450,6 +450,10 @@ pub struct LuaExtension {
     /// key — what `on_event` reads `ev.slot` off, since an event carries
     /// the key and the script thinks in the names it was handed.
     slot_names: std::collections::HashMap<kui_core::Key, String>,
+    /// The folder a file-loaded script came from, which an `svg`'s
+    /// relative `src` is read against (ADR 0063); `None` for a script
+    /// loaded from a string, whose paths are the process's.
+    dir: Option<std::rc::Rc<str>>,
     /// The `tokens = { colors = …, lengths = …, families = … }` global the script
     /// declared at load, declared into the core under this
     /// extension's origin on the first `view` that finds none there;
@@ -544,6 +548,7 @@ impl LuaExtension {
             slots,
             loaded: Default::default(),
             slot_names: Default::default(),
+            dir: dir.map(|d| d.to_string_lossy().into()),
             tokens,
         })
     }
@@ -693,7 +698,9 @@ impl Extension for LuaExtension {
             ui.window_events(window_events_of(&events).map_err(|e| format!("window_events: {e}"))?);
         }
         let outer = VIEW_ROOT.replace(root.to_pointer());
+        let outer_dir = BUILD_DIR.replace(self.dir.clone());
         let built = build_node(ui, &root).map_err(|e| format!("view table: {e}"));
+        BUILD_DIR.set(outer_dir);
         VIEW_ROOT.set(outer);
         built
     }
@@ -2354,6 +2361,11 @@ thread_local! {
     /// therefore drops rather than handing the core as one off the root.
     static VIEW_ROOT: std::cell::Cell<*const std::ffi::c_void> =
         const { std::cell::Cell::new(std::ptr::null()) };
+    /// The folder of the script whose view table is being built, for a
+    /// relative `svg` `src` (ADR 0063): set around the build as
+    /// `VIEW_ROOT` is.
+    static BUILD_DIR: std::cell::Cell<Option<std::rc::Rc<str>>> =
+        const { std::cell::Cell::new(None) };
 }
 
 fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
@@ -2371,6 +2383,26 @@ fn build_node(ui: &mut Ui<'_>, t: &Table) -> mlua::Result<()> {
     let built = build_one(ui, t);
     VIEW_PATH.with_borrow_mut(|path| path.pop());
     built
+}
+
+/// A path an element names, read against the folder of the script being
+/// built when it is relative.
+fn script_relative(src: &str) -> String {
+    let p = std::path::Path::new(src);
+    if p.is_relative() {
+        let dir = BUILD_DIR.take();
+        let joined = dir.as_deref().map(|d| {
+            std::path::Path::new(d)
+                .join(p)
+                .to_string_lossy()
+                .into_owned()
+        });
+        BUILD_DIR.set(dir);
+        if let Some(j) = joined {
+            return j;
+        }
+    }
+    src.to_owned()
 }
 
 /// One view node. The containers are the path a deep view recurses
@@ -2548,6 +2580,40 @@ fn build_widget(ui: &mut Ui<'_>, t: &Table, ty: &str) -> mlua::Result<()> {
                 })
                 .collect::<mlua::Result<_>>()?;
             ui.core().open_from(p, Content::Polygon(&points));
+            Ok(())
+        }
+        "svg" => {
+            // `data` (the markup) or `src` (a file), `mode` and `fit` by
+            // name; `color` is the text-colour row, read off the parsed
+            // style, and what `currentColor` paints (ADR 0063).
+            let p = props_of(ui, t, ty, &mut checked)?;
+            let named = |row: &str, names: &[&str]| -> mlua::Result<usize> {
+                match t.get::<Option<String>>(row)? {
+                    None => Ok(0),
+                    Some(s) => names.iter().position(|n| *n == s).ok_or_else(|| {
+                        bad(format!("svg {row} must be one of {}", names.join(", ")))
+                    }),
+                }
+            };
+            let mode = kui_core::SvgMode::ALL[named("mode", &kui_core::SvgMode::NAMES)?];
+            let fit = kui_core::SvgFit::ALL[named("fit", &kui_core::SvgFit::NAMES)?];
+            let data = t.get::<Option<mlua::LuaString>>("data")?;
+            let src = t.get::<Option<String>>("src")?;
+            match (&data, src) {
+                (Some(d), _) => {
+                    let bytes = d.as_bytes();
+                    ui.core().open_from(
+                        p,
+                        Content::Svg(kui_core::SvgSource::Data(&bytes), mode, fit),
+                    );
+                }
+                (None, Some(src)) => {
+                    let path = script_relative(&src);
+                    ui.core()
+                        .open_from(p, Content::Svg(kui_core::SvgSource::File(&path), mode, fit));
+                }
+                (None, None) => return Err(bad("svg needs data (the markup) or src (a file)")),
+            }
             Ok(())
         }
         "path" => {

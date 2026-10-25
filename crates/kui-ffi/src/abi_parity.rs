@@ -345,6 +345,12 @@ fn asserts() -> (String, Vec<&'static str>) {
     abi_enum!(o, kui_core::FillRule::ALL, 0 => [
         "KUI_FILL_NONZERO", "KUI_FILL_EVENODD",
     ]);
+    abi_enum!(o, kui_core::SvgMode::ALL, 0 => [
+        "KUI_SVG_AUTO", "KUI_SVG_PATHS", "KUI_SVG_IMAGE",
+    ]);
+    abi_enum!(o, kui_core::SvgFit::ALL, 0 => [
+        "KUI_SVG_CONTAIN", "KUI_SVG_COVER", "KUI_SVG_FILL",
+    ]);
     // A path's op codes are floats on the wire; the C names are their
     // integer values.
     for (name, code) in [

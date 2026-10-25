@@ -89,6 +89,8 @@ ENUMS :: []Enum_Rule {
 	{name = "Fill_Rule", first = "KUI_FILL_NONZERO", prefix = "KUI_FILL_"},
 	{name = "Sampling", first = "KUI_SAMPLING_LINEAR", prefix = "KUI_SAMPLING_", list = "imageSampling"},
 	{name = "Image_Fit", first = "KUI_FIT_FILL", prefix = "KUI_FIT_", list = "imageFit"},
+	{name = "Svg_Mode", first = "KUI_SVG_AUTO", prefix = "KUI_SVG_", list = "svgMode"},
+	{name = "Svg_Fit", first = "KUI_SVG_CONTAIN", prefix = "KUI_SVG_", list = "svgFit"},
 	{name = "Quad_Kind", first = "KUI_QUAD_SOLID", prefix = "KUI_QUAD_"},
 	{name = "Fragment_Image", first = "KUI_FRAGMENT_IMAGE_NONE", prefix = "KUI_FRAGMENT_IMAGE_"},
 }
@@ -113,6 +115,8 @@ TYPED :: [][2]string {
 	{"*.fill_rule", "Fill_Rule"},
 	{"*.sampling", "Sampling"},
 	{"*.fit", "Image_Fit"},
+	{"kui_svg.mode", "Svg_Mode"},
+	{"kui_svg.fit", "Svg_Fit"},
 	{"*.cursor_shape", "Cell_Cursor"},
 	{"*.appearance", "Appearance"},
 	{"*.motion", "Motion"},

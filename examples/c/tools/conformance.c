@@ -1009,6 +1009,45 @@ static void conf_polygon(KuiCtx *ui, const Fixtures *f, int phase) {
  * stroked, faded; a bar turned an eighth about a pivot it names (ADR 0041);
  * and the last does not parse, which kui_path_d turns into
  * the warning under its key. Data is conformance::PATH_* to the character. */
+/* docs/adr/0063-an-svg-element.md: an icon as paths, clickable; the same
+   by width; a gradient as an image; a covered badge; the icon as a
+   decorative image; markup that does not parse. */
+static const char *SVG_ICON = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"M21 21L16.65 16.65\"/></svg>";
+static const char *SVG_BAR = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><defs><linearGradient id=\"g\"><stop offset=\"0\" stop-color=\"#d8863b\"/><stop offset=\"1\" stop-color=\"#7f9cf5\"/></linearGradient></defs><rect width=\"40\" height=\"20\" rx=\"4\" fill=\"url(#g)\"/></svg>";
+static const char *SVG_BADGE = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 40 20\"><rect width=\"40\" height=\"20\" rx=\"10\" fill=\"#9ad9a0\"/><circle cx=\"10\" cy=\"10\" r=\"6\" fill=\"currentColor\"/></svg>";
+
+static void conf_svg(KuiCtx *ui, const Fixtures *f, int phase) {
+    (void)f;
+    (void)phase;
+    KuiSpec strip = {.dir = KUI_ROW, .width = {KUI_FIXED, 240}, .height = {KUI_FIXED, 64},
+                     .pad_l = 8, .pad_r = 8, .pad_t = 8, .pad_b = 8, .gap = 8,
+                     .bg = 0x14161eff};
+    kui_open(ui, &strip, NULL);
+    KuiSpec search = {.label = KUI_STR("Search")};
+    KuiValue *click = kui_value_map();
+    kui_value_map_set(click, KUI_STR("kind"), kui_value_str(KUI_STR("search")));
+    kui_svg(ui, KUI_STR(""), KUI_STR(SVG_ICON), KUI_STR(""), KUI_SVG_AUTO, KUI_SVG_CONTAIN,
+            0xe07a8aff, &search, click);
+    KuiSpec big = {.width = {KUI_FIXED, 48}, .label = KUI_STR("Big")};
+    kui_svg(ui, KUI_STR(""), KUI_STR(SVG_ICON), KUI_STR(""), KUI_SVG_AUTO, KUI_SVG_CONTAIN,
+            0x7f9cf5ff, &big, NULL);
+    KuiSpec bar = {.label = KUI_STR("Bar")};
+    kui_svg(ui, KUI_STR(""), KUI_STR(SVG_BAR), KUI_STR(""), KUI_SVG_AUTO, KUI_SVG_CONTAIN, 0,
+            &bar, NULL);
+    KuiSpec badge = {.width = {KUI_FIXED, 30}, .height = {KUI_FIXED, 30},
+                     .label = KUI_STR("Badge")};
+    kui_svg(ui, KUI_STR(""), KUI_STR(SVG_BADGE), KUI_STR(""), KUI_SVG_AUTO, KUI_SVG_COVER,
+            0xffffffff, &badge, NULL);
+    KuiSpec deco = {.width = {KUI_FIXED, 16}, .height = {KUI_FIXED, 16}, .role = KUI_ROLE_NONE};
+    kui_svg(ui, KUI_STR(""), KUI_STR(SVG_ICON), KUI_STR(""), KUI_SVG_IMAGE, KUI_SVG_CONTAIN,
+            0x9ad9a0ff, &deco, NULL);
+    KuiSpec broken = {.width = {KUI_FIXED, 10}, .height = {KUI_FIXED, 10},
+                      .label = KUI_STR("Broken")};
+    kui_svg(ui, KUI_STR("bad"), KUI_STR("<svg"), KUI_STR(""), KUI_SVG_AUTO, KUI_SVG_CONTAIN, 0,
+            &broken, NULL);
+    kui_close(ui);
+}
+
 static void conf_path(KuiCtx *ui, const Fixtures *f, int phase) {
     (void)f;
     (void)phase;
@@ -2517,6 +2556,7 @@ static const ConfScene CONF_SCENES[] = {
     {"lines", conf_lines},
     {"polygon", conf_polygon},
     {"path", conf_path},
+    {"svg", conf_svg},
     {"fragments", conf_fragments},
     {"modal", conf_modal},
     {"composite", conf_composite},

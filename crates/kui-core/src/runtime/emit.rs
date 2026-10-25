@@ -682,6 +682,7 @@ impl Core {
         if self.tree.any_layout {
             self.emit_layout_events();
         }
+        self.settle_svg_sizes();
         self.diag
             .check(&self.tree, &self.text, &self.edit, self.frame_no);
         // A stop's position, once the layout events and the checks have

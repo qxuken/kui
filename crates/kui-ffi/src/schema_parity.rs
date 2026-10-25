@@ -931,6 +931,7 @@ fn the_verb_table_names_every_c_verb_and_nothing_else() {
             "kui_polygon",
             "kui_path",
             "kui_path_d",
+            "kui_svg",
             "kui_cells",
             "kui_audio",
             "kui_titlebar",

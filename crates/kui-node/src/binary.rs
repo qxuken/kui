@@ -127,7 +127,8 @@ use crate::{Result, err, value_of};
 /// v25: `menuBar` carries a flags word after its `onMenu` message, 1
 /// for `standardMenus` (ADR 0052); and `revealOnHover` (ADR 0051) and
 /// `floatsInOrder` (ADR 0053) are new rows.
-pub const VERSION: u32 = 25;
+/// v26: `svg` is a new op (ADR 0063).
+pub const VERSION: u32 = 26;
 
 /// The bit an encoder sets on a prop id to say the value slot holds a
 /// token index rather than a value: `bg="$peach"` rides as `P_BG | TOKEN_TAG` then the index
@@ -177,6 +178,11 @@ pub const OP_RADIO_GROUP: u32 = 25;
 /// when not declared), the dash when bit 16 says so — its four lengths
 /// and its offset (v21, backlog V2) — then props.
 pub const OP_PATH: u32 = 26;
+/// An SVG document in a box (ADR 0063): `data` as a strref (none for
+/// a file), `src` as a strref (none for markup), the `mode` and `fit`
+/// as indices into `SvgMode::ALL` and `SvgFit::ALL`, then props — whose
+/// `color` is what `currentColor` paints.
+pub const OP_SVG: u32 = 27;
 
 pub fn protocol_json() -> Json {
     let mut o = JsonMap::new();
@@ -212,6 +218,7 @@ pub fn protocol_json() -> Json {
                 ("slider", OP_SLIDER),
                 ("radioGroup", OP_RADIO_GROUP),
                 ("path", OP_PATH),
+                ("svg", OP_SVG),
             ]
             .into_iter()
             .map(|(k, v)| (k.to_string(), Json::from(v)))
@@ -1417,6 +1424,29 @@ fn decode_op(op: u32, r: &mut Reader<'_>, ui: &mut kui_core::Ui<'_>) -> Result<(
                         .open_from(p, Content::PathFlat(&floats, rule, stroke, turn));
                 }
             }
+            Ok(())
+        }
+        // data?, src?, mode, fit, then the prop list — `color` lands in
+        // the style and is what `currentColor` paints
+        // (docs/adr/0063-an-svg-element.md).
+        OP_SVG => {
+            let data = r.str_ref()?;
+            let src = r.str_ref()?;
+            let mode = kui_core::SvgMode::ALL
+                .get(r.u()? as usize)
+                .copied()
+                .unwrap_or_default();
+            let fit = kui_core::SvgFit::ALL
+                .get(r.u()? as usize)
+                .copied()
+                .unwrap_or_default();
+            let p = lower_props(r, ui)?;
+            let source = match (data, src) {
+                (Some(d), _) => kui_core::SvgSource::Data(d.as_bytes()),
+                (None, Some(path)) => kui_core::SvgSource::File(path),
+                (None, None) => return Err(err("svg needs data or src")),
+            };
+            ui.core().open_from(p, Content::Svg(source, mode, fit));
             Ok(())
         }
         // n, then n (x, y) pairs, width, flags (1 curve, 2 the width is

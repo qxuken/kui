@@ -620,6 +620,12 @@ enum { KUI_SAMPLING_LINEAR = 0, KUI_SAMPLING_NEAREST = 1 };
  * largest rect of its aspect that fits (centred), or the box filled and
  * the rest cropped (centred). The box itself is the same in every mode. */
 enum { KUI_FIT_FILL = 0, KUI_FIT_CONTAIN = 1, KUI_FIT_COVER = 2 };
+/* How an svg draws (kui_svg): kui paths when every shape is one a path
+ * draws exactly and an image when it is not, always paths, always an image */
+enum { KUI_SVG_AUTO = 0, KUI_SVG_PATHS = 1, KUI_SVG_IMAGE = 2 };
+/* How an svg's viewBox sits in its box (kui_svg): whole and centred,
+ * filling it with the overflow clipped, or stretched */
+enum { KUI_SVG_CONTAIN = 0, KUI_SVG_COVER = 1, KUI_SVG_FILL = 2 };
 /* Font families (KuiTextStyle.family) */
 enum { KUI_FONT_SANS = 0, KUI_FONT_SERIF = 1, KUI_FONT_MONO = 2 };
 /* Line breaking (KuiTextStyle.wrap) */
@@ -3775,6 +3781,17 @@ void kui_path(KuiCtx *ctx, KuiStr label, const float *ops, size_t count,
               uint32_t fill_rule, float width, uint32_t color, float rotate,
               const float *pivot, const float *dash, const KuiSpec *spec,
               KuiValue *on_click, KuiValue *on_drag, KuiValue *on_hover);
+/* An SVG document in a box (ADR 0063): data is the markup, src a file read
+ * once and again when it changes - one of the two, the other empty (data
+ * wins). mode is a KUI_SVG_AUTO / PATHS / IMAGE, fit a KUI_SVG_CONTAIN /
+ * COVER / FILL; color is what currentColor paints, 0 for the theme's
+ * foreground. No width or height in spec is the document's own size, one
+ * given keeps the aspect. label keys the node (empty = the tree position);
+ * spec may be NULL; on_click is consumed. A document that does not parse
+ * raises svg-malformed, a src that cannot be read svg-unreadable. */
+void kui_svg(KuiCtx *ctx, KuiStr label, KuiStr data, KuiStr src, uint32_t mode,
+             uint32_t fit, uint32_t color, const KuiSpec *spec,
+             KuiValue *on_click);
 /* SVG path data (M L H V C S Q T A Z, absolute or relative) to the flat op
  * form, through the one parser every binding uses. Returns how many floats
  * the form needs; they are written to out when cap holds them all, and not

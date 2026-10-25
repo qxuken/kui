@@ -44,6 +44,14 @@ pub enum Content<'a> {
         Option<Stroke>,
         Option<crate::path::Turn>,
     ),
+    /// An SVG document (ADR 0063): a box the core fills with a path per
+    /// shape or one rasterized image, and closes. Its `color` is the
+    /// prop list's text colour.
+    Svg(
+        super::SvgSource<'a>,
+        crate::svg::SvgMode,
+        crate::svg::SvgFit,
+    ),
 }
 
 /// Whether a transitioning node has a transform slot to ease: it declares
@@ -949,10 +957,16 @@ impl Core {
     /// beside the leaf, anchored to it (`PropsOut::for_leaf`, backlog
     /// RG113). Returns the key.
     pub fn open_from(&mut self, props: PropsOut, content: Content<'_>) -> Key {
-        let leaf = !matches!(content, Content::Box | Content::Fragment(..));
+        // An `svg` is a box the core fills and closes: its hint floats as
+        // a box's does, from inside it, so it is not a leaf here.
+        let leaf = !matches!(
+            content,
+            Content::Box | Content::Fragment(..) | Content::Svg(..)
+        );
         let props = if leaf { props.for_leaf() } else { props };
         let PropsOut {
             spec,
+            style,
             key: label,
             index,
             row_count,
@@ -975,6 +989,8 @@ impl Core {
             self.warn(crate::diag::window_events_off_root(key));
         }
         let at = self.tree.len() as u32;
+        // The svg takes its hint into the box it closes itself.
+        let mut tooltip = tooltip;
         match content {
             Content::Box => self.open_with_key(key, spec),
             Content::Fragment(frag, params) => self.fragment_with_key(key, frag, params, spec),
@@ -989,6 +1005,14 @@ impl Core {
             }
             Content::PathFlat(floats, rule, stroke, turn) => {
                 self.path_node_flat(key, floats, rule, stroke, turn, spec)
+            }
+            Content::Svg(src, mode, fit) => {
+                let opts = super::SvgOpts {
+                    mode,
+                    fit,
+                    color: style.color,
+                };
+                self.svg_with_key(key, src, opts, spec, tooltip.take())
             }
         }
         // Bookkeeping for the node that was actually pushed: the label

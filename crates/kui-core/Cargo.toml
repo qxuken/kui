@@ -32,8 +32,8 @@ kui-trace.workspace = true
 # paths, resvg rasterizes the ones kui's `path` cannot draw. 0.46 shares
 # tiny-skia 0.11 with the tree; no text (no second font stack), no svgz, no
 # embedded raster decoders.
-usvg = { version = "0.46", default-features = false }
-resvg = { version = "0.46", default-features = false }
+usvg = { version = "0.46", default-features = false, optional = true }
+resvg = { version = "0.46", default-features = false, optional = true }
 # `tracing` spans for every recorded span, under the `tracing` feature
 # (ADR 0058, decision 12); already in the tree through winit and zbus.
 tracing = { version = "0.1", optional = true, default-features = false, features = ["std"] }
@@ -43,12 +43,16 @@ tracing = { version = "0.1", optional = true, default-features = false, features
 libc = "0.2"
 
 [features]
-default = ["devtools"]
+default = ["devtools", "svg"]
 # The devtools panel the core draws into any app's frame when asked
 # (`Core::set_devtools`, `KUI_DEVTOOLS=1`; docs/adr/0024). On by default so
 # every binding's build has it; off for a kiosk build, where the doors
 # stay and do nothing.
 devtools = []
+# The `svg` element's parser and rasterizer (ADR 0063): usvg and resvg,
+# about 1.1 MB of a release library. Off, the element and its doors stay
+# and every document is refused with `svg-malformed`.
+svg = ["dep:usvg", "dep:resvg"]
 # `#[derive(Message)]`, a typed Rust message to and from the payload (backlog
 # C50). Off here, since only a Rust app uses it; `kui-native` turns it on.
 derive = ["dep:kui-derive"]

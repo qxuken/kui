@@ -214,6 +214,25 @@ pub fn protocol_tables() -> Vec<(&'static str, Json)> {
                     .collect(),
             ),
         ),
+        // The `svg` element's two rows (ADR 0063), in decoder order.
+        (
+            "svgMode",
+            Json::Array(
+                kui_core::SvgMode::ALL
+                    .iter()
+                    .map(|m| Json::String(m.name().into()))
+                    .collect(),
+            ),
+        ),
+        (
+            "svgFit",
+            Json::Array(
+                kui_core::SvgFit::ALL
+                    .iter()
+                    .map(|f| Json::String(f.name().into()))
+                    .collect(),
+            ),
+        ),
         (
             "accessRoles",
             Json::Array(

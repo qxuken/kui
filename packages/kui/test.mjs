@@ -5504,6 +5504,24 @@ const SCENE_TREES = {
         el('path', { d: 'M10 10 L20', bg: '#ffffff' }, [], 'bad'),
       ]),
     ]),
+  // docs/adr/0063-an-svg-element.md: an icon as paths, clickable; the
+  // same by width; a gradient as an image; a covered badge; the icon as a
+  // decorative image; markup that does not parse.
+  svg: () => {
+    const icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21L16.65 16.65"/></svg>';
+    const bar = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#d8863b"/><stop offset="1" stop-color="#7f9cf5"/></linearGradient></defs><rect width="40" height="20" rx="4" fill="url(#g)"/></svg>';
+    const badge = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" rx="10" fill="#9ad9a0"/><circle cx="10" cy="10" r="6" fill="currentColor"/></svg>';
+    return root({}, [
+      box({ dir: 'row', width: 240, height: 64, pad: 8, gap: 8, bg: '#14161e' }, [
+        el('svg', { data: icon, color: '#e07a8a', onClick: { kind: 'search' }, label: 'Search' }),
+        el('svg', { data: icon, color: '#7f9cf5', width: 48, label: 'Big' }),
+        el('svg', { data: bar, label: 'Bar' }),
+        el('svg', { data: badge, fit: 'cover', color: '#ffffff', width: 30, height: 30, label: 'Badge' }),
+        el('svg', { data: icon, mode: 'image', color: '#9ad9a0', width: 16, height: 16, role: 'none' }),
+        el('svg', { data: '<svg', width: 10, height: 10, label: 'Broken' }, [], 'bad'),
+      ]),
+    ]);
+  },
   // docs/adr/0010-a-segment-primitive.md: three strokes and a box; the
   // elbow takes a click, hit by its stroke (ADR 0026).
   underlines: () => {

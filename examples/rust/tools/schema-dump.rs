@@ -130,6 +130,8 @@ fn main() {
             "mouseButtons": all(&mut kui_core::MouseButton::NAMED.iter().filter_map(|b| b.name())),
             "imageSampling": all(&mut kui_core::Sampling::ALL.iter().map(|s| s.name())),
             "imageFit": all(&mut kui_core::ImageFit::ALL.iter().map(|f| f.name())),
+            "svgMode": all(&mut kui_core::SvgMode::ALL.iter().map(|m| m.name())),
+            "svgFit": all(&mut kui_core::SvgFit::ALL.iter().map(|f| f.name())),
         },
     });
     let text = serde_json::to_string_pretty(&out).expect("the schema is plain data");

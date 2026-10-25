@@ -351,6 +351,77 @@ pub extern "C" fn kui_path(
     });
 }
 
+/// An SVG document in a box (ADR 0063): `data` is the markup itself and
+/// `src` a file read once and again when it changes — one of the two,
+/// the other empty (`data` wins). `mode` is `KUI_SVG_AUTO` (0: kui paths
+/// when every shape is one a path draws exactly, one rasterized image
+/// when it is not), `KUI_SVG_PATHS` or `KUI_SVG_IMAGE`; `fit` is
+/// `KUI_SVG_CONTAIN` (0), `KUI_SVG_COVER` or `KUI_SVG_FILL`; an index
+/// past the table reads as the default. `color` is what `currentColor`
+/// paints, 0 for the theme's foreground. With no width or height in
+/// `spec` the box is the document's own size, one given keeps the aspect.
+/// `label` keys the node (empty for a key from the tree position);
+/// `spec` is a box's, NULL for the default, its `tooltip` floated from
+/// the box; `on_click` is consumed as [`kui_open_with`] consumes it. A
+/// document that does not parse raises `svg-malformed`, a `src` that
+/// cannot be read `svg-unreadable`, and either draws an empty box.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn kui_svg(
+    ptr: *mut KuiCtx,
+    label: KuiStr,
+    data: KuiStr,
+    src: KuiStr,
+    mode: u32,
+    fit: u32,
+    color: u32,
+    spec: *const KuiSpec,
+    on_click: *mut KuiValue,
+) {
+    guard((), || {
+        // First, so the payload is consumed on every way out.
+        let (spec, hint) = match unsafe { spec.as_ref() } {
+            Some(s) => (
+                spec_of(s, on_click, NONE, NONE, NONE),
+                opt_str(s.tooltip).map(|h| h.into_owned()),
+            ),
+            None => {
+                let mut spec = kui_core::NodeSpec::default();
+                if let Some(v) = take_msg(on_click) {
+                    spec = spec.on_click(v);
+                }
+                (spec, None)
+            }
+        };
+        let Some(c) = (unsafe { ctx(ptr) }) else {
+            return;
+        };
+        let bytes = (!data.ptr.is_null() && data.len > 0)
+            .then(|| unsafe { std::slice::from_raw_parts(data.ptr, data.len) });
+        let file = opt_str(src);
+        let source = match (bytes, &file) {
+            (Some(b), _) => kui_core::SvgSource::Data(b),
+            (None, Some(f)) => kui_core::SvgSource::File(f),
+            (None, None) => return,
+        };
+        let mut p = kui_core::schema::PropsOut::new();
+        p.spec = spec;
+        p.key = opt_str(label).map(|l| l.into_owned());
+        p.tooltip = hint;
+        p.style.color = (color != 0).then(|| color_of(color));
+        let mode = kui_core::SvgMode::ALL
+            .get(mode as usize)
+            .copied()
+            .unwrap_or_default();
+        let fit = kui_core::SvgFit::ALL
+            .get(fit as usize)
+            .copied()
+            .unwrap_or_default();
+        c.core()
+            .open_from(p, kui_core::Content::Svg(source, mode, fit));
+    });
+}
+
 /// A stroke's dash as C spells it (backlog V2): five floats — a mark, a
 /// gap, a second mark, a second gap, and how far into the pattern the
 /// stroke starts — or NULL for a solid stroke.

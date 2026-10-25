@@ -132,6 +132,34 @@ for lua-language-server, and a new runner beside the window's.
 
   *What you can delete:* an app's own `open` / `explorer` / `xdg-open`
   spawn for "Show in folder" or a link.
+- **An `svg` element** (backlog V12,
+  [ADR 0063](docs/adr/0063-an-svg-element.md)). Draw an SVG file — an
+  icon, a logo, a legend glyph — in a box, in every binding:
+    - Node: `<svg data={markup} color="$accent" label="Search"/>`, or
+      `src="icons/search.svg"`.
+    - Lua: `svg { src = "icons/search.svg", width = 16 }`, the path taken
+      from the script's folder.
+    - C: `kui_svg(ctx, label, data, src, KUI_SVG_AUTO, KUI_SVG_CONTAIN,
+      color, &spec, on_click)`. Odin gets `kui.svg`.
+    - Rust: `ui.svg(SvgSource::Data(ICON), SvgOpts::default(), spec)`.
+
+  When every shape is one a `path` draws — an icon set's strokes and
+  fills — it is drawn as paths, crisp at any size and recoloured live:
+  `color` is what `currentColor` paints, the theme's ink by default.
+  When one is not — a gradient, a mask, a filter, a picture — it is one
+  image rasterized at the drawn size; `mode="paths"` or `"image"` forces
+  a road. No size is the document's own; one axis keeps the aspect;
+  `fit` is `contain`, `cover` or `fill`. A `src` redraws when the file
+  changes. Rasters are shared, so a thousand identical icons hold one.
+  It is read as an image (`label` it, or `role="none"`), a clickable one
+  as a button. `svg-malformed`, `svg-unreadable`, `svg-approximated` and
+  `svg-too-large` say what went wrong; a `svg` fuzz target covers the
+  parser. The parser and rasterizer (usvg and resvg, about 1.1 MB of a
+  release library) sit behind kui-core's default `svg` feature.
+
+  **What you can delete:** the build step that turned icon files into
+  `path` strings, and the colour-per-theme copies of each icon.
+
 - **Design tokens from a DTCG file** (backlog T8,
   [ADR 0062](docs/adr/0062-design-tokens-loaded-from-a-dtcg-file.md)).
   Load a company's exported tokens straight into kui: a W3C Design Tokens

@@ -792,6 +792,32 @@ scene_polygon :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
 	}
 }
 
+// docs/adr/0063: an icon as paths, clickable; the same by width; a gradient
+// as an image; a covered badge; the icon as a decorative image; markup that
+// does not parse.
+SVG_ICON :: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21L16.65 16.65"/></svg>`
+SVG_BAR :: `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#d8863b"/><stop offset="1" stop-color="#7f9cf5"/></linearGradient></defs><rect width="40" height="20" rx="4" fill="url(#g)"/></svg>`
+SVG_BADGE :: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" rx="10" fill="#9ad9a0"/><circle cx="10" cy="10" r="6" fill="currentColor"/></svg>`
+
+scene_svg :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
+	strip := kui.Spec {
+		dir    = .Row,
+		width  = kui.px(240),
+		height = kui.px(64),
+		pad    = kui.pad(8),
+		gap    = 8,
+		bg     = 0x14161eff,
+	}
+	if kui.box(ui, strip) {
+		kui.svg(ui, "", SVG_ICON, "", .Auto, .Contain, 0xe07a8aff, {label = "Search"}, msg("search"))
+		kui.svg(ui, "", SVG_ICON, "", .Auto, .Contain, 0x7f9cf5ff, {width = kui.px(48), label = "Big"})
+		kui.svg(ui, "", SVG_BAR, "", .Auto, .Contain, 0, {label = "Bar"})
+		kui.svg(ui, "", SVG_BADGE, "", .Auto, .Cover, 0xffffffff, {width = kui.px(30), height = kui.px(30), label = "Badge"})
+		kui.svg(ui, "", SVG_ICON, "", .Image, .Contain, 0x9ad9a0ff, {width = kui.px(16), height = kui.px(16), role = .None})
+		kui.svg(ui, "bad", "<svg", "", .Auto, .Contain, 0, {width = kui.px(10), height = kui.px(10), label = "Broken"})
+	}
+}
+
 // docs/adr/0040-a-path-is-a-mask-in-the-atlas.md: seven paths in a 200x120
 // canvas. Data is conformance::PATH_* to the character.
 scene_path :: proc(ui: ^kui.Ui, f: ^Fixtures, phase: int) {
@@ -2099,6 +2125,7 @@ SCENES := [?]Scene {
 	{"lines", scene_lines},
 	{"polygon", scene_polygon},
 	{"path", scene_path},
+	{"svg", scene_svg},
 	{"fragments", scene_fragments},
 	{"modal", scene_modal},
 	{"composite", scene_composite},

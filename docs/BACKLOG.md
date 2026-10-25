@@ -5550,7 +5550,8 @@ move.
 - `.` **C64** — [Every replay compares the whole palette by value](#from-kits-m0-spike-2026-10-25) — open — a generation number
 - `.` **C65** — [A Lua fill builds its whole `env` before it draws: about 22 µs](#from-kits-m0-spike-2026-10-25) — open — one `env` per extension per frame
 
-**From Kit's M1 (2026-10-25)** — T7 and T8, filed and built the same day with ADRs 0061 and 0062
+**From Kit's M1 (2026-10-25)** — T7, T8 and V12, filed and built the same day with ADRs 0061, 0062 and 0063
 
 - `.` **T7** — [A palette of one's own follows nothing, so a skin cannot follow light and dark](backlog/closed-2026-09.md#-t7--a-palette-of-ones-own-follows-nothing-so-a-skin-cannot-follow-light-and-dark--done-2026-10-25) — done (2026-10-25) — `ThemeSource::Pair`, Node `setTheme({ light, dark })`, C `kui_theme_set_pair` + `kui_theme_derive`
 - `.` **T8** — [A design team's token export cannot reach a kui app without copying it by hand](backlog/closed-2026-09.md#-t8--a-design-teams-token-export-cannot-reach-a-kui-app-without-copying-it-by-hand--done-2026-10-25) — done (2026-10-25) — `kui_core::dtcg` + `json`, Node `loadTokens`, Lua `env.load_tokens`, C `kui_tokens_load_dtcg`
+- `.` **V12** — [An SVG file reaches a kui app only as `path` strings converted by hand](backlog/closed-2026-09.md#-v12--an-svg-file-reaches-a-kui-app-only-as-path-strings-converted-by-hand--done-2026-10-25) — done (2026-10-25) — the `svg` element: paths when it can, one shared raster when it cannot (`kui_core::svg`, usvg/resvg 0.46), `<svg>`, Lua `svg {}`, C `kui_svg`, Odin `kui.svg`

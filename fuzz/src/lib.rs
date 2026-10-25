@@ -15,6 +15,7 @@ pub mod parsers;
 pub mod path;
 pub mod reuse;
 pub mod scenes;
+pub mod svg;
 pub mod values;
 
 /// What a target runs on one input.
@@ -25,6 +26,7 @@ pub type Run = fn(&[u8]);
 pub const TARGETS: &[(&str, Run)] = &[
     ("parsers", parsers::run),
     ("dtcg", dtcg::run),
+    ("svg", svg::run),
     ("values", values::run),
     ("path", path::run),
     ("scenes", scenes::run),

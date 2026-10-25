@@ -958,6 +958,29 @@ export declare namespace JSX {
       sampling?: 'linear' | 'nearest';
       fit?: 'fill' | 'contain' | 'cover';
     };
+    /** An SVG document drawn in a box
+     *  (docs/adr/0063-an-svg-element.md): `data` is the markup itself,
+     *  `src` a file read once and again when it changes. `mode` `auto`
+     *  (the default) draws kui paths when every shape is one a `path`
+     *  draws exactly — crisp at any size, recoloured live — and one image
+     *  rasterized at the drawn size and scale when it is not (a gradient,
+     *  a clip, a mask, a filter, an embedded picture, a butt cap); `paths`
+     *  and `image` force one road. `fit` places the viewBox in the box:
+     *  `contain` (whole, centred), `cover` (filled, clipped) or `fill`
+     *  (stretched). `color` is what `currentColor` paints, the theme's
+     *  foreground by default, so a `stroke="currentColor"` icon takes the
+     *  ink beside it. No `width`/`height` is the document's own size; one
+     *  given keeps the aspect. Read as an image: name it with `label`, or
+     *  `role="none"` for decoration. A document that does not parse
+     *  raises `svg-malformed`, a `src` that cannot be read
+     *  `svg-unreadable`; both draw an empty box. */
+    svg: Omit<BoxProps, 'children'> & {
+      data?: string;
+      src?: string;
+      mode?: 'auto' | 'paths' | 'image';
+      fit?: 'contain' | 'cover' | 'fill';
+      color?: ColorProp;
+    };
     /** A box a registered WGSL function paints
      *  (docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md):
      *  a conic or a moving gradient, rings, noise, shimmer — anything the paint vocabulary has

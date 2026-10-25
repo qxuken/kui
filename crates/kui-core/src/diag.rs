@@ -460,6 +460,24 @@ warnings! {
     /// paths that make one name. The message names the token's DTCG path;
     /// the rest of the file landed.
     pub const DTCG_SKIPPED: &str = "dtcg-skipped";
+    /// An `svg` element's document did not parse (ADR 0063): the message
+    /// carries the parser's reason. The element draws an empty box of the
+    /// size its spec gives. Raised once per key.
+    pub const SVG_MALFORMED: &str = "svg-malformed";
+    /// An `svg` element's `src` file could not be read: the message names
+    /// the path and the reason. The element draws an empty box, and draws
+    /// the picture once the file can be read. Raised once per key.
+    pub const SVG_UNREADABLE: &str = "svg-unreadable";
+    /// An `svg` element forced to `mode="paths"` holds what a kui path
+    /// cannot draw exactly — a gradient, a clip, a mask, a filter, a butt
+    /// cap — so it was approximated or left out; the message lists what.
+    /// `auto` would have drawn it as an image.
+    pub const SVG_APPROXIMATED: &str = "svg-approximated";
+    /// An `svg` element drawn as an image holds a shape that reaches past
+    /// 30,000 px at its drawn size — a coordinate like `8e8` — which the
+    /// rasterizer cannot hold, so the image draws nothing. Raised once per
+    /// key.
+    pub const SVG_TOO_LARGE: &str = "svg-too-large";
     /// A slot name declared twice in one frame. The second declaration was
     /// ignored: a fill is keyed by the slot's full name, so two fills of one
     /// name would share every key. Two places for one extension are two
@@ -572,6 +590,50 @@ pub fn unknown_slot(extension: &str, namespace: &str, slot: &str) -> Warning {
             "extension `{extension}` (namespace `{namespace}`) fills slot {slot:?}, which no view \
              declared this frame, so it drew nothing; declare `ui.slot({full:?})` where it \
              should go, or drop the name from the extension's `slots`"
+        ),
+    }
+}
+
+/// The [`SVG_MALFORMED`] warning for an `svg` element at `key`.
+pub fn svg_malformed(key: Key, why: &str) -> Warning {
+    Warning {
+        code: SVG_MALFORMED,
+        key,
+        message: format!("this svg's document does not parse ({why}), so it draws nothing"),
+    }
+}
+
+/// The [`SVG_UNREADABLE`] warning for an `svg` element at `key`.
+pub fn svg_unreadable(key: Key, path: &str, why: &str) -> Warning {
+    Warning {
+        code: SVG_UNREADABLE,
+        key,
+        message: format!(
+            "this svg's `src` `{path}` cannot be read ({why}), so it draws nothing until it can"
+        ),
+    }
+}
+
+/// The [`SVG_TOO_LARGE`] warning for an `svg` element at `key`.
+pub fn svg_too_large(key: Key) -> Warning {
+    Warning {
+        code: SVG_TOO_LARGE,
+        key,
+        message: "this svg holds a shape that reaches past 30,000 px at its drawn size, past \
+                  what the rasterizer holds, so its image draws nothing"
+            .into(),
+    }
+}
+
+/// The [`SVG_APPROXIMATED`] warning for an `svg` element at `key`.
+pub fn svg_approximated(key: Key, what: &[String]) -> Warning {
+    Warning {
+        code: SVG_APPROXIMATED,
+        key,
+        message: format!(
+            "this svg is drawn as paths, which approximate or leave out: {}; \
+             `mode=\"auto\"` would draw it as an image",
+            what.join("; ")
         ),
     }
 }

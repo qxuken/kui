@@ -57,6 +57,7 @@ mod builder;
 mod capture_api;
 pub use builder::Content;
 pub use replay::SlotFill;
+pub use svg_node::{SvgOpts, SvgSource};
 pub mod cause;
 mod composites;
 pub mod devtools;
@@ -77,6 +78,7 @@ mod menubar_api;
 mod resources_api;
 mod scrolling;
 mod select_api;
+mod svg_node;
 mod windows;
 
 /// Wheel line-delta to logical px, at the standard feel.
@@ -406,6 +408,8 @@ pub struct Core {
     /// The masks drawn from a texture of their own rather than the atlas:
     /// too big for a page, or animating.
     pub(crate) path_textures: crate::path::PathTextures,
+    /// The `svg` elements' parsed documents, file stamps and rasters.
+    pub(crate) svgs: svg_node::SvgCache,
     /// Whether [`Core::output`] has been asked for since the frame was
     /// built: what says its `dropped_textures` and `dropped_fragments`
     /// reached a backend. A frame nobody read hands them to the next.
@@ -1286,6 +1290,7 @@ impl Core {
             path_motion: Default::default(),
             path_parsed: Default::default(),
             path_textures: crate::path::PathTextures::new(session.clone()),
+            svgs: Default::default(),
             output_read: true,
             fragments: Default::default(),
             stock_polygon: None,
@@ -2190,6 +2195,11 @@ impl Core {
         }
         if self.path_parsed.len() > 1024 {
             self.path_parsed.retain(|_, p| p.seen >= cutoff);
+        }
+        let mut dropped = Vec::new();
+        self.svgs.begin_frame(self.frame_no, &mut dropped);
+        for id in dropped {
+            self.remove_image(id);
         }
         self.fragments.begin_frame(keep_prev);
         self.cells.begin_frame(scale);

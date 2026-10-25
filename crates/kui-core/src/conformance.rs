@@ -2283,6 +2283,52 @@ pub const SCENES: &[Scene] = &[
         },
     },
     Scene {
+        name: "svg",
+        doc: "Six `svg` elements in a row (ADR 0063): an icon drawn \
+              `stroke=\"currentColor\"` at its own 24 px, painted the \
+              element's `color` and clickable — two glyph masks, a button \
+              hit in its box; the same icon given a width alone, its \
+              height kept by the aspect; a gradient, which `auto` draws as \
+              one rasterized image; a badge of plain fills `cover`ed into \
+              a square, clipped; the icon forced to an image as \
+              decoration (`role=\"none\"`), out of the access tree; and \
+              markup that does not parse, keyed, which raises its warning \
+              and draws an empty box. A click on the first icon.",
+        custom: &["key"],
+        elements: &["svg", "box"],
+        build: build_svg,
+        env: NATIVE_CHROME,
+        steps: &[Step::Cursor(20, 20), Step::MouseDown, Step::MouseUp],
+        expect: Expect {
+            solid: 1,
+            shadows: 0,
+            images: 2,
+            segments: 0,
+            segments_follow_text: false,
+            fragments: 0,
+            textures: 0,
+            glyphs_min: 6,
+            access: &[
+                "0 window ||",
+                "1 button Search||",
+                "1 image Big||",
+                "1 image Bar||",
+                "1 image Badge||",
+                "1 image Broken||",
+            ],
+            events: &["click search"],
+            announcements: &[],
+            warnings: &["svg-malformed"],
+            commands: &[],
+            audio: &[],
+            title: None,
+            always_on_top: false,
+            secure_input: false,
+            option_as_alt: OptionAsAlt::None,
+            ime_off: false,
+        },
+    },
+    Scene {
         name: "fragments",
         doc: "A box a registered WGSL function paints \
               (`docs/adr/0015-a-fragment-element-and-the-painter-it-is-not.md`): \
@@ -5365,6 +5411,72 @@ pub const PATH_BAR: &str = "M30 104 H50 V110 H30 Z";
 pub const PATH_BAR_TURN: (f32, f32, f32) = (0.125, 40.0, 107.0);
 pub const PATH_BAD: &str = "M10 10 L20";
 
+/// The `svg` scene's markup, spelled the same by every adapter.
+pub const SVG_ICON: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21L16.65 16.65"/></svg>"#;
+pub const SVG_BAR: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#d8863b"/><stop offset="1" stop-color="#7f9cf5"/></linearGradient></defs><rect width="40" height="20" rx="4" fill="url(#g)"/></svg>"##;
+pub const SVG_BADGE: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" rx="10" fill="#9ad9a0"/><circle cx="10" cy="10" r="6" fill="currentColor"/></svg>"##;
+pub const SVG_BAD: &str = "<svg";
+
+fn build_svg(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
+    use crate::runtime::{SvgOpts, SvgSource};
+    use crate::svg::{SvgFit, SvgMode};
+    let data = |s: &'static str| SvgSource::Data(s.as_bytes());
+    let ink = |c: u32| SvgOpts {
+        color: Some(Color::hex(c)),
+        ..SvgOpts::default()
+    };
+    ui.with(
+        NodeSpec::row()
+            .size(240.0, 64.0)
+            .padding(Edges::all(8.0))
+            .gap(8.0)
+            .bg(Color::hex(0x14161eff)),
+        |ui| {
+            ui.svg(
+                data(SVG_ICON),
+                ink(0xe07a8aff),
+                NodeSpec::default()
+                    .on_click(Value::map([("kind", Value::str("search"))]))
+                    .label("Search"),
+            );
+            ui.svg(
+                data(SVG_ICON),
+                ink(0x7f9cf5ff),
+                NodeSpec::default().width(48.0).label("Big"),
+            );
+            ui.svg(
+                data(SVG_BAR),
+                SvgOpts::default(),
+                NodeSpec::default().label("Bar"),
+            );
+            ui.svg(
+                data(SVG_BADGE),
+                SvgOpts {
+                    fit: SvgFit::Cover,
+                    ..ink(0xffffffff)
+                },
+                NodeSpec::default().size(30.0, 30.0).label("Badge"),
+            );
+            ui.svg(
+                data(SVG_ICON),
+                SvgOpts {
+                    mode: SvgMode::Image,
+                    ..ink(0x9ad9a0ff)
+                },
+                NodeSpec::default()
+                    .size(16.0, 16.0)
+                    .role(crate::access::Role::None),
+            );
+            ui.svg_keyed(
+                "bad",
+                data(SVG_BAD),
+                SvgOpts::default(),
+                NodeSpec::default().size(10.0, 10.0).label("Broken"),
+            );
+        },
+    );
+}
+
 fn build_path(ui: &mut Ui<'_>, _f: &Fixtures, _phase: u32) {
     use crate::path::{FillRule, Path};
     ui.with(
@@ -6329,7 +6441,12 @@ pub struct Coverage {
 /// buttons are compared byte-for-byte across all four bindings instead of
 /// being claimed by a scene that built none. Keep the constant: the test
 /// below is what stops the next exemption from being permanent.
-pub const UNDERIVED: &[(&str, &str)] = &[];
+pub const UNDERIVED: &[(&str, &str)] = &[(
+    "svg",
+    "an `svg` lowers onto the nodes there were — a box holding a path per \
+     shape, or one image (ADR 0063) — so the tree holds no node of its own \
+     to read back; the scene's masks and images are what the digests compare",
+)];
 
 /// Whether node `i`'s key is one the view spelled (`key`, `with_keyed`)
 /// rather than one auto-keying derived from its position — the observable

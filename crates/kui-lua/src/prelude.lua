@@ -188,6 +188,17 @@ function path(t)
   return t
 end
 
+-- svg { data = "<svg …>", label = "Search", color = "$accent" } or
+-- svg { src = "icons/search.svg", width = 16 }: an SVG document in a box
+-- (docs/adr/0063). `mode` is "auto" (paths when it can, an image when it
+-- cannot), "paths" or "image"; `fit` is "contain", "cover" or "fill";
+-- `color` is what `currentColor` paints. A relative `src` is the
+-- script's folder's.
+function svg(t)
+  t.type = "svg"
+  return t
+end
+
 -- cells { rows=, cols=, lines={"row text", ...}, runs={{row, col, len, fg,
 -- bg, flags}, ...}, cursor_at={row, col}, cursor_shape="block", cursor_color=,
 -- size=, family= }: a terminal's screen as one node (backlog C20). Rows and

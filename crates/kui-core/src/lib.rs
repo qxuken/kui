@@ -226,7 +226,7 @@ pub use runtime::devtools;
 pub use runtime::devtools::Dock as DevtoolsDock;
 pub use runtime::inspect::{NodeInfo, NodeKind};
 pub use runtime::perf::{LoopNote, SpanId};
-pub use runtime::{Content, Core, Extension, Owed, SlotFill};
+pub use runtime::{Content, Core, Extension, Owed, SlotFill, SvgOpts, SvgSource};
 pub use scroll::{MAX_UNDECLARED_SCROLLS, ScrollGeometry, WheelFeel};
 pub use select::{CellEnd, CellSelection, CopyRequest, Endpoint, Grain, RangeEnd, Selection};
 pub use session::{Session, SharedAudio, SharedResources};
@@ -240,6 +240,7 @@ pub use spec::{
     UnderlineStyle, Vec2Offset, corner,
 };
 pub use stats::{FrameSample, FrameStats};
+pub use svg::{SvgFit, SvgMode};
 pub use text::{DEFAULT_TEXT_CACHE_BYTES, LONG_LINE_BYTES, Span, TextHit, TextMetrics};
 pub use theme::{Theme, ThemeSource};
 pub use tokens::{

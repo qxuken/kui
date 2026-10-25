@@ -22,6 +22,8 @@ export function createEncoder(P) {
   const FLOAT_PRESET = indexOf(P.floatPreset);
   const IMAGE_SAMPLING = indexOf(P.imageSampling);
   const IMAGE_FIT = indexOf(P.imageFit);
+  const SVG_MODE = indexOf(P.svgMode);
+  const SVG_FIT = indexOf(P.svgFit);
   const PRESET_NAMES = P.floatPreset.join(' | ');
   const OPTION_AS_ALT = P.optionAsAlt;
 
@@ -1233,6 +1235,28 @@ export function createEncoder(P) {
         // off the rows here, as Lua's `path` arm does.
         const { rotate: _ownTurn, ...rows } = p;
         props(rows, el.key, false);
+        return;
+      }
+      case 'svg': {
+        // The markup as `data` or a file as `src`, the two rows by name;
+        // `color` is a schema row the props pass writes into the style,
+        // and what `currentColor` paints (docs/adr/0063-an-svg-element.md).
+        const data = p.data;
+        const src = p.src;
+        if (data != null && typeof data !== 'string') throw new Error('<svg> data must be the markup, a string');
+        if (src != null && typeof src !== 'string') throw new Error('<svg> src must be a file path, a string');
+        if (data == null && src == null) throw new Error('<svg> needs data (the markup) or src (a file)');
+        const mode = p.mode == null ? 0 : SVG_MODE[p.mode];
+        if (mode === undefined) throw new Error(`<svg> mode must be ${P.svgMode.join(' | ')}`);
+        const fit = p.fit == null ? 0 : SVG_FIT[p.fit];
+        if (fit === undefined) throw new Error(`<svg> fit must be ${P.svgFit.join(' | ')}`);
+        reserve(8);
+        f[fi++] = OP.svg;
+        strRef(data ?? null);
+        strRef(data == null ? src : null);
+        f[fi++] = mode;
+        f[fi++] = fit;
+        props(p, el.key, false);
         return;
       }
       case 'line': {

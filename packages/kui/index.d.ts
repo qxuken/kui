@@ -1392,6 +1392,19 @@ export type WarningCode =
    *  make one name. The message names the token's DTCG path; the rest of the
    *  file landed. */
   | 'dtcg-skipped'
+  /** An `svg` element's document did not parse (ADR 0063): the message carries
+   *  the parser's reason. The element draws an empty box of the size its spec
+   *  gives. Raised once per key. */
+  | 'svg-malformed'
+  /** An `svg` element's `src` file could not be read: the message names the
+   *  path and the reason. The element draws an empty box, and draws the picture
+   *  once the file can be read. Raised once per key. */
+  | 'svg-unreadable'
+  /** An `svg` element forced to `mode="paths"` holds what a kui path cannot
+   *  draw exactly — a gradient, a clip, a mask, a filter, a butt cap — so it
+   *  was approximated or left out; the message lists what. `auto` would have
+   *  drawn it as an image. */
+  | 'svg-approximated'
   /** A slot name declared twice in one frame. The second declaration was
    *  ignored: a fill is keyed by the slot's full name, so two fills of one name
    *  would share every key. Two places for one extension are two names. */

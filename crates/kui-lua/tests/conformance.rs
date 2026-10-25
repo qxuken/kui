@@ -721,6 +721,23 @@ fn lua_source(scene: &Scene, f: &Fixtures) -> String {
         // second is keyed with a tooltip, the ring is the flat op form, the cubic is a
         // stroke alone, the triangle is both and faded, and the last does not
         // parse. Data is `conformance::PATH_*` to the character.
+        "svg" => r##"
+            local icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21L16.65 16.65"/></svg>'
+            local bar = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><defs><linearGradient id="g"><stop offset="0" stop-color="#d8863b"/><stop offset="1" stop-color="#7f9cf5"/></linearGradient></defs><rect width="40" height="20" rx="4" fill="url(#g)"/></svg>'
+            local badge = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><rect width="40" height="20" rx="10" fill="#9ad9a0"/><circle cx="10" cy="10" r="6" fill="currentColor"/></svg>'
+            return row { width = 240, height = 64, pad = 8, gap = 8, bg = 0x14161eff,
+              svg { data = icon, color = 0xe07a8aff, on_click = { kind = "search" },
+                    label = "Search" },
+              svg { data = icon, color = 0x7f9cf5ff, width = 48, label = "Big" },
+              svg { data = bar, label = "Bar" },
+              svg { data = badge, fit = "cover", color = 0xffffffff, width = 30,
+                    height = 30, label = "Badge" },
+              svg { data = icon, mode = "image", color = 0x9ad9a0ff, width = 16,
+                    height = 16, role = "none" },
+              svg { key = "bad", data = "<svg", width = 10, height = 10, label = "Broken" },
+            }
+        "##
+        .to_string(),
         "path" => r#"
             return column { width = 200, height = 120, bg = 0x14161eff,
               path { d = "M60 60 L100 60 A40 40 0 0 1 60 100 Z", bg = 0x7f9cf5ff,

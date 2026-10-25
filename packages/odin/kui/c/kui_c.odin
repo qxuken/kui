@@ -100,6 +100,14 @@ FIT_FILL :: 0
 FIT_CONTAIN :: 1
 FIT_COVER :: 2
 
+SVG_AUTO :: 0
+SVG_PATHS :: 1
+SVG_IMAGE :: 2
+
+SVG_CONTAIN :: 0
+SVG_COVER :: 1
+SVG_FILL :: 2
+
 FONT_SANS :: 0
 FONT_SERIF :: 1
 FONT_MONO :: 2
@@ -1273,6 +1281,7 @@ foreign lib {
 	polyline :: proc(ctx: ^Ctx, label: string, xy: [^]f32, count: uint, width: f32, color: u32, curve: bool, dash: [^]f32, spec: ^Spec, on_click: ^Value, on_drag: ^Value, on_hover: ^Value) ---
 	polygon :: proc(ctx: ^Ctx, label: string, xy: [^]f32, count: uint, spec: ^Spec, on_click: ^Value, on_drag: ^Value, on_hover: ^Value) ---
 	path :: proc(ctx: ^Ctx, label: string, ops: [^]f32, count: uint, fill_rule: u32, width: f32, color: u32, rotate: f32, pivot: [^]f32, dash: [^]f32, spec: ^Spec, on_click: ^Value, on_drag: ^Value, on_hover: ^Value) ---
+	svg :: proc(ctx: ^Ctx, label: string, data: string, src: string, mode: u32, fit: u32, color: u32, spec: ^Spec, on_click: ^Value) ---
 	path_parse :: proc(d: string, out: [^]f32, cap: uint) -> uint ---
 	path_d :: proc(ctx: ^Ctx, label: string, d: string, fill_rule: u32, width: f32, color: u32, rotate: f32, pivot: [^]f32, dash: [^]f32, spec: ^Spec, on_click: ^Value, on_drag: ^Value, on_hover: ^Value) ---
 	close :: proc(ctx: ^Ctx) ---

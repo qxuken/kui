@@ -1247,6 +1247,32 @@ impl<'a> Ui<'a> {
         self.core.path_node(path, spec);
     }
 
+    /// An SVG in a box: paths when it can, an image when it cannot; see
+    /// `Core::svg_node`.
+    ///
+    /// ```rust,ignore
+    /// ui.svg(SvgSource::Data(ICON), SvgOpts::default(), NodeSpec::new().size(16.0, 16.0).label("Search"));
+    /// ```
+    pub fn svg(
+        &mut self,
+        src: crate::runtime::SvgSource<'_>,
+        opts: crate::runtime::SvgOpts,
+        spec: NodeSpec,
+    ) -> Key {
+        self.core.svg_node(src, opts, spec)
+    }
+
+    /// [`Self::svg`] under a label key.
+    pub fn svg_keyed(
+        &mut self,
+        label: &str,
+        src: crate::runtime::SvgSource<'_>,
+        opts: crate::runtime::SvgOpts,
+        spec: NodeSpec,
+    ) -> Key {
+        self.core.svg_node_keyed(label, src, opts, spec)
+    }
+
     /// [`Self::path`] under a label key.
     pub fn path_keyed(&mut self, label: &str, path: &crate::path::Path, spec: NodeSpec) {
         self.core.path_node_keyed(label, path, spec);

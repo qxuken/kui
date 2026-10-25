@@ -193,7 +193,7 @@ fn no_stream_panics_the_decoder() {
         schema::P_ROW_COUNT,
     ]);
     // Every op code too: they are slots like any other.
-    ids.extend(0..=binary::OP_PATH);
+    ids.extend(0..=binary::OP_SVG);
     // Streams that lowered, to build on; the smoke test's frame to start.
     let mut kept: Vec<(Vec<f64>, Vec<u8>)> = vec![(
         vec![
